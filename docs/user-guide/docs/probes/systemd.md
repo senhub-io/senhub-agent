@@ -14,9 +14,9 @@ tagged with `systemd.unit`.
 ## Quick start
 
 ```yaml
-probes:
-  - name: systemd
-    type: systemd
+# probes.d/10-systemd.yaml — each file under probes.d/ is a YAML array of probes
+- name: systemd
+  type: systemd
 ```
 
 All non-transient units are monitored by default. No parameters are required.

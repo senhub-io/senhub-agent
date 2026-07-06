@@ -21,13 +21,13 @@ you asked for leave the host.
 ## Quick start
 
 ```yaml
-probes:
-  - name: windows-events
-    type: windows_eventlog
-    params:
-      channels: [System, Application]
-      levels: [Critical, Error, Warning]
-      bookmark_path: 'C:\ProgramData\senhub-agent\eventlog.bookmark'
+# probes.d/10-windows_eventlog.yaml — each file under probes.d/ is a YAML array of probes
+- name: windows-events
+  type: windows_eventlog
+  params:
+    channels: [System, Application]
+    levels: [Critical, Error, Warning]
+    bookmark_path: 'C:\ProgramData\senhub-agent\eventlog.bookmark'
 ```
 
 ## Parameters

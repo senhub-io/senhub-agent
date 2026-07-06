@@ -12,9 +12,9 @@ lifecycle, session counts, object counts and memory allocation.
 ## Quick start
 
 ```yaml
-probes:
-  - name: varnish
-    type: varnish
+# probes.d/10-varnish.yaml — each file under probes.d/ is a YAML array of probes
+- name: varnish
+  type: varnish
 ```
 
 No parameters are required for a single-instance Varnish installation. The probe

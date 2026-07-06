@@ -12,22 +12,22 @@ The Syslog probe collects system logs and events by running a Syslog server that
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: syslog
-    type: syslog
-    params:
-      port: 514               # Syslog port (default: 514)
-      protocol: udp           # Protocol: udp or tcp (default: udp)
-      bind_address: "0.0.0.0" # Required to receive from remote senders (default: 127.0.0.1)
+# probes.d/10-syslog.yaml — each file under probes.d/ is a YAML array of probes
+- name: syslog
+  type: syslog
+  params:
+    port: 514               # Syslog port (default: 514)
+    protocol: udp           # Protocol: udp or tcp (default: udp)
+    bind_address: "0.0.0.0" # Required to receive from remote senders (default: 127.0.0.1)
 ```
 
 ### Minimal Configuration
 
 ```yaml
-probes:
-  - name: syslog
-    type: syslog
-    params: {}
+# probes.d/10-syslog.yaml
+- name: syslog
+  type: syslog
+  params: {}
 ```
 
 The Syslog probe requires no mandatory parameters and works out-of-the-box with default settings (UDP port 514).
@@ -78,48 +78,48 @@ The Syslog probe is platform-independent. It listens on the loopback interface b
 
 **Standard UDP Syslog (default):**
 ```yaml
-probes:
-  - name: syslog
-    type: syslog
-    params:
-      port: 514
-      protocol: udp
+# probes.d/10-syslog.yaml
+- name: syslog
+  type: syslog
+  params:
+    port: 514
+    protocol: udp
 ```
 
 **TCP Syslog with custom port:**
 ```yaml
-probes:
-  - name: syslog_tcp
-    type: syslog
-    params:
-      port: 1514
-      protocol: tcp
+# probes.d/10-syslog.yaml
+- name: syslog_tcp
+  type: syslog
+  params:
+    port: 1514
+    protocol: tcp
 ```
 
 **High-security environments (TCP + custom port):**
 ```yaml
-probes:
-  - name: syslog_secure
-    type: syslog
-    params:
-      port: 6514
-      protocol: tcp
+# probes.d/10-syslog.yaml
+- name: syslog_secure
+  type: syslog
+  params:
+    port: 6514
+    protocol: tcp
 ```
 
 **Multiple syslog listeners:**
 ```yaml
-probes:
-  - name: syslog_standard
-    type: syslog
-    params:
-      port: 514
-      protocol: udp
+# probes.d/10-syslog.yaml
+- name: syslog_standard
+  type: syslog
+  params:
+    port: 514
+    protocol: udp
 
-  - name: syslog_applications
-    type: syslog
-    params:
-      port: 1514
-      protocol: tcp
+- name: syslog_applications
+  type: syslog
+  params:
+    port: 1514
+    protocol: tcp
 ```
 
 ## Monitoring Tool Integration
@@ -189,20 +189,19 @@ Collect logs from multiple sources into a single location:
 
 **Configuration Example:**
 ```yaml
-# Central syslog collector
-probes:
-  - name: syslog_collector
-    type: syslog
-    params:
-      port: 514
-      protocol: udp
+# probes.d/10-syslog.yaml — central syslog collector
+- name: syslog_collector
+  type: syslog
+  params:
+    port: 514
+    protocol: udp
+```
 
-# Forward to multiple destinations
-storage:
-  - name: event
-    type: event
-    params:
-      targets: ["senhub", "local_storage", "siem"]
+```yaml
+# strategies.d/00-event.yaml — forward to multiple destinations
+event:
+  type: event
+  targets: ["senhub", "local_storage", "siem"]
 ```
 
 ### Security Monitoring (SIEM Integration)
@@ -282,8 +281,8 @@ ss -tulpn | grep 514
 
 **Verify probe configuration:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "type: syslog"
+# Check configuration (multi-file layout)
+grep -rA5 "type: syslog" /etc/senhub/probes.d/
 ```
 
 ### Permission Denied (Port < 1024)
@@ -301,12 +300,11 @@ sudo ./agent run
 sudo setcap cap_net_bind_service=+ep ./agent
 
 # Option 3: Use alternate port (>1024) and configure syslog sources
-# agent-config.yaml:
-probes:
-  - name: syslog
-    type: syslog
-    params:
-      port: 1514  # Non-privileged port
+# /etc/senhub/probes.d/10-syslog.yaml:
+- name: syslog
+  type: syslog
+  params:
+    port: 1514  # Non-privileged port
 ```
 
 **Configure syslog sources to use alternate port:**
@@ -453,27 +451,27 @@ The Syslog probe is event-driven with minimal overhead:
 Run multiple syslog servers for different purposes:
 
 ```yaml
-probes:
-  # Standard UDP syslog (network devices)
-  - name: syslog_devices
-    type: syslog
-    params:
-      port: 514
-      protocol: udp
+# probes.d/10-syslog.yaml
+# Standard UDP syslog (network devices)
+- name: syslog_devices
+  type: syslog
+  params:
+    port: 514
+    protocol: udp
 
-  # TCP syslog for applications
-  - name: syslog_apps
-    type: syslog
-    params:
-      port: 1514
-      protocol: tcp
+# TCP syslog for applications
+- name: syslog_apps
+  type: syslog
+  params:
+    port: 1514
+    protocol: tcp
 
-  # Secure syslog for critical systems
-  - name: syslog_critical
-    type: syslog
-    params:
-      port: 6514
-      protocol: tcp
+# Secure syslog for critical systems
+- name: syslog_critical
+  type: syslog
+  params:
+    port: 6514
+    protocol: tcp
 ```
 
 ### Integration with Other Probes
@@ -481,29 +479,29 @@ probes:
 Correlate syslog events with system metrics:
 
 ```yaml
-probes:
-  # Syslog events
-  - name: syslog
-    type: syslog
-    params:
-      port: 514
-      protocol: udp
+# probes.d/00-host.yaml
+# Syslog events
+- name: syslog
+  type: syslog
+  params:
+    port: 514
+    protocol: udp
 
-  # System metrics for correlation
-  - name: cpu
-    type: cpu
-    params:
-      interval: 30
+# System metrics for correlation
+- name: cpu
+  type: cpu
+  params:
+    interval: 30
 
-  - name: memory
-    type: memory
-    params:
-      interval: 30
+- name: memory
+  type: memory
+  params:
+    interval: 30
 
-  - name: network
-    type: network
-    params:
-      interval: 30
+- name: network
+  type: network
+  params:
+    interval: 30
 ```
 
 This enables correlation like:

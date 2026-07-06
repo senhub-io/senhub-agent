@@ -13,18 +13,18 @@ metric with a name and unit you define. Supports `uint16`, `int16`, `uint32`,
 ## Quick start
 
 ```yaml
-probes:
-  - name: modbus-plc
-    type: modbus
-    params:
-      host: 192.168.1.100
-      registers:
-        - name: temperature
-          address: 40001
-          type: float32_abcd
-          scale: 0.1
-          unit: Cel
-          description: Room temperature
+# probes.d/20-modbus.yaml — each file under probes.d/ is a YAML array of probes
+- name: modbus-plc
+  type: modbus
+  params:
+    host: 192.168.1.100
+    registers:
+      - name: temperature
+        address: 40001
+        type: float32_abcd
+        scale: 0.1
+        unit: Cel
+        description: Room temperature
 ```
 
 ## Parameters

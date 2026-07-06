@@ -18,13 +18,13 @@ mode so the producing application is never blocked.
 ## Quick start
 
 ```yaml
-probes:
-  - name: app-logs
-    type: filetail
-    params:
-      paths:
-        - /var/log/myapp/*.log
-      bookmark_path: /var/lib/senhub-agent/filetail.bookmark
+# probes.d/10-filetail.yaml — each file under probes.d/ is a YAML array of probes
+- name: app-logs
+  type: filetail
+  params:
+    paths:
+      - /var/log/myapp/*.log
+    bookmark_path: /var/lib/senhub-agent/filetail.bookmark
 ```
 
 ## Parameters

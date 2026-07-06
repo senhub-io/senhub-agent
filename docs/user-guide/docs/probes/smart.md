@@ -15,9 +15,9 @@ Requires `smartmontools` to be installed on the machine.
 ## Quick start
 
 ```yaml
-probes:
-  - name: smart
-    type: smart
+# probes.d/10-smart.yaml — each file under probes.d/ is a YAML array of probes
+- name: smart
+  type: smart
 ```
 
 No parameters are required — the probe auto-discovers all drives visible to

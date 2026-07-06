@@ -126,18 +126,19 @@ The tag enhancement system is **automatically enabled** for all Redfish probes. 
 
 ### Recommended Probe Configuration
 ```yaml
-probes:
-  - name: redfish
-    params:
-      endpoint: "https://your-server/redfish/v1/"
-      username: "monitoring"
-      password: "password"
-      collections:  # Optional - specify which collections to monitor
-        - system     # General system health
-        - thermal    # Temperatures and fans  
-        - power      # Power supplies
-        - storage    # Storage systems
-        - drives     # Individual drives
+# probes.d/10-redfish.yaml — each file under probes.d/ is a YAML array of probes
+- name: redfish
+  type: redfish
+  params:
+    endpoint: "https://your-server/redfish/v1/"
+    username: "monitoring"
+    password: ${secret:redfish.password}   # auto-sealed on install
+    collections:  # Optional - specify which collections to monitor
+      - system     # General system health
+      - thermal    # Temperatures and fans
+      - power      # Power supplies
+      - storage    # Storage systems
+      - drives     # Individual drives
 ```
 
 ## 📈 Integration Examples

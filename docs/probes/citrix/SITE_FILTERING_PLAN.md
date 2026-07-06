@@ -301,20 +301,21 @@ sequenceDiagram
 ## 📝 Configuration Exemple
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      base_url: "https://director.company.com/Citrix/Monitor/OData/v4/Data"
-      
-      delivery_controller:
-        url: "https://ddc1.company.com"
-        fallback_urls:
-          - "https://ddc2.company.com"
-        site_filter: "Paris-DataCenter"
-        inventory_cache_ttl: 300  # 5 minutes
-        
-      # Comportement si DDC indisponible
-      fallback_behavior: "collect_all"  # ou "fail"
+# probes.d/10-citrix.yaml — each file under probes.d/ is a YAML array of probes
+- name: citrix
+  type: citrix
+  params:
+    base_url: "https://director.company.com/Citrix/Monitor/OData/v4/Data"
+
+    delivery_controller:
+      url: "https://ddc1.company.com"
+      fallback_urls:
+        - "https://ddc2.company.com"
+      site_filter: "Paris-DataCenter"
+      inventory_cache_ttl: 300  # 5 minutes
+
+    # Comportement si DDC indisponible
+    fallback_behavior: "collect_all"  # ou "fail"
 ```
 
 ## 🔍 Monitoring et Logs
