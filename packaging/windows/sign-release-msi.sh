@@ -24,7 +24,7 @@ JSIGN_VERSION="${JSIGN_VERSION:-7.4}"
 JSIGN_SHA256="${JSIGN_SHA256:-2abf2ade9ea322acc2d60c24794eadc465ff9380938fca4c932d09e0b25f1c28}"
 PKCS11_MODULE="${PKCS11_MODULE:-/usr/local/lib/libSimplySignPKCS.dylib}"
 TSA_URL="${TSA_URL:-http://time.certum.pl}"
-SIGN_NAME="${SIGN_NAME:-SenHub Agent}"
+SIGN_NAME="${SIGN_NAME:-Sensor Factory}"
 SIGN_URL="${SIGN_URL:-https://senhub.io}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/senhub-codesign"
 
