@@ -1535,6 +1535,49 @@ pour l'affichage PRTG.
 - `sqlserver.database.io` : `db.namespace` (nom de la base), `direction` (`read`/`write`).
 - `sqlserver.database.status` : `db.namespace`.
 
+### 4.19 Probe `powerstore` (baie de stockage Dell PowerStore)
+
+Aucune convention OTel semconv pour les baies de stockage — tout sous extensions
+`senhub.powerstore.*` (même statut que `senhub.veeam.*`). `hw.*` reste réservé aux
+composants matériels d'un hôte, pas aux agrégats niveau baie. La baie est une
+`service.instance` (identité = `powerstore:<cluster.global_id>`, immuable ;
+`server.address` reste descriptif) — précédent redfish, elle est monitorée
+out-of-band via l'API REST donc pas de machine-id, ce n'est pas un `host`.
+
+#### 4.19.1 Extensions `senhub.powerstore.*`
+
+| Métrique OTel | Type / unité | Attributs | Source REST |
+|---|---|---|---|
+| `senhub.powerstore.up` | Gauge `1` | — | reachability du `/cluster` |
+| `senhub.powerstore.cluster.state` | Gauge `1` | `senhub.powerstore.cluster.config_state` | `/cluster.state` (Configured=2, Unconfigured=1, autre=0) |
+| `senhub.powerstore.hardware.components` | Gauge `{component}` | `senhub.powerstore.hardware.state` (`healthy`/`faulted`) | `/hardware.lifecycle_state` |
+| `senhub.powerstore.capacity.physical` | Gauge `By` | `senhub.powerstore.capacity.state` (`used`/`total`) | `POST /metrics/generate` (`physical_used`/`physical_total`) |
+| `senhub.powerstore.capacity.logical` | Gauge `By` | `senhub.powerstore.capacity.state` (`used`) | `logical_used` |
+| `senhub.powerstore.capacity.used_ratio` | Gauge `1` | — | `physical_used ÷ physical_total` |
+| `senhub.powerstore.data_reduction_ratio` | Gauge `1` | — | `data_reduction` |
+| `senhub.powerstore.efficiency_ratio` | Gauge `1` | — | `efficiency_ratio` |
+| `senhub.powerstore.iops` | Gauge `{operation}/s` | `senhub.powerstore.operation` (`read`/`write`/`total`) | `performance_metrics_by_cluster` (`avg_*_iops`) |
+| `senhub.powerstore.bandwidth` | Gauge `By/s` | `senhub.powerstore.operation` | `avg_*_bandwidth` |
+| `senhub.powerstore.latency` | Gauge `us` | `senhub.powerstore.operation` | `avg_*_latency` (microsecondes) |
+| `senhub.powerstore.io_size` | Gauge `By` | — | `avg_io_size` |
+| `senhub.powerstore.cpu.utilization` | Gauge `1` | — | `performance_metrics_by_appliance.avg_io_workload_cpu_utilization` (niveau appliance/node uniquement) |
+| `senhub.powerstore.replication.sessions` | Gauge `{session}` | — | `/replication_session` (0 si non configuré) |
+| `senhub.powerstore.volumes` | Gauge `{volume}` | — | `/volume` (total) |
+| `senhub.powerstore.volumes.not_ready` | Gauge `{volume}` | — | `/volume.state != Ready` |
+| `senhub.powerstore.alerts.active` | Gauge `{alert}` | `senhub.powerstore.alert.severity` (`Critical`/`Major`/`Minor`/`Info`) | `/alert.state == ACTIVE` |
+
+**État de santé (`hw.state` sur l'entité)** — dérivé chaque cycle : un composant
+`faulted` ou une alerte `Critical` active ⇒ `failed` ; une alerte `Major` active
+⇒ `degraded` ; sinon `ok`. Une transition émet un `entity.state_changed`.
+
+**Lifecycle sain vs en défaut** : `Healthy` compte comme sain ; `Empty`,
+`Initializing`, `Instantiated` et l'absence de valeur (ligne appliance = null) ne
+comptent NI sain NI en défaut (slot vide / composant en cours de démarrage) ;
+tout autre état (`Degraded`, `Failed`, `Unavailable`, `PoweredOff`…) est `faulted`.
+
+**Auth** : Basic pour les GET ; le `POST /metrics/generate` rejoue le CSRF
+`DELL-EMC-TOKEN` capturé sur le premier GET + le cookie de session.
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
