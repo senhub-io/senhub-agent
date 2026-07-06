@@ -13,13 +13,13 @@ metrics.
 ## Quick start
 
 ```yaml
-probes:
-  - name: wildfly
-    type: wildfly
-    params:
-      endpoint: http://localhost:9990
-      username: admin
-      password: changeme
+# probes.d/10-wildfly.yaml — each file under probes.d/ is a YAML array of probes
+- name: wildfly
+  type: wildfly
+  params:
+    endpoint: http://localhost:9990
+    username: admin
+    password: ${secret:wildfly.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -28,7 +28,7 @@ probes:
 |---|---|---|
 | `endpoint` | `http://localhost:9990` | WildFly HTTP Management API base URL |
 | `username` | `admin` | Management user username |
-| `password` | — | Management user password |
+| `password` | — | Management user password — reference a stored secret via `${secret:wildfly.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 
 ## Metrics
 

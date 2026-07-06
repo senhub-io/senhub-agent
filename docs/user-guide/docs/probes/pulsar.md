@@ -12,11 +12,11 @@ reporting broker health, throughput, storage and backlog at the broker level.
 ## Quick start
 
 ```yaml
-probes:
-  - name: pulsar
-    type: pulsar
-    params:
-      endpoint: http://localhost:8080
+# probes.d/10-pulsar.yaml — each file under probes.d/ is a YAML array of probes
+- name: pulsar
+  type: pulsar
+  params:
+    endpoint: http://localhost:8080
 ```
 
 ## Parameters

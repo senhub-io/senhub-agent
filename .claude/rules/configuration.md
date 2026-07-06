@@ -35,7 +35,7 @@ A single `agent-config.yaml` with top-level `probes:` and/or `storage:`. The ori
 
 `LoadFromDisk` reads `agent.yaml` first. If it contains a top-level `probes:` or `storage:` block, the legacy path is taken and `.d/` directories are **IGNORED** with a one-time WARN log. The operator migrates at their pace by trimming the monolithic file and distributing entries across the `.d/` directories.
 
-## ${env:} / ${file:} substitution
+## ${env:} / ${file:} / ${secret:} substitution
 
 Applies to string VALUES only — never to YAML keys.
 
@@ -45,17 +45,19 @@ Applies to string VALUES only — never to YAML keys.
 | `${env:VAR:-default}` | env value, or `default` |
 | `${file:/path}` | file contents trimmed of whitespace; **error if missing** |
 | `${file:/path:-default}` | file contents, or `default` if file missing |
+| `${secret:<name>}` | value from the active OS-native secret backend (`secret.Resolve`); **error if missing** unless a `:-default` is given |
 | `$$` | literal `$` (NUL-byte sentinel pre-pass) |
 
 Substitution runs **after** the multi-file merge — a reference in a `strategies.d/` fragment sees the same environment as a reference in the monolithic file.
 
 ## config_version bumps
 
-The schema version is in `config_version:` at the top of `agent.yaml`. Current version: **2**.
+The schema version is in `config_version:` at the top of `agent.yaml`. Current version: **3**.
 
 - Bump only for **breaking** schema changes.
 - When bumping, add a migrator entry in `config_migrator.go` so existing installs auto-upgrade.
 - Add a documented entry in `docs/admin-guide/CONFIG-VERSION-CHANGELOG.md`.
+- v3 (0.5.0+): on install/boot the agent auto-seals inline plaintext secrets into the OS-native store and rewrites them to `${secret:<instance>.<field>}` references (backup 0600 + resolved-value verification + restore on mismatch, idempotent). The bump only happens once a secret is actually sealed; a secret-free v2 config stays v2.
 
 Non-breaking additions (new optional fields, new probe types, new strategy params) do NOT require a bump.
 

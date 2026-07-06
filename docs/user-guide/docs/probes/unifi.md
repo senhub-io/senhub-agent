@@ -13,13 +13,13 @@ throughput and connected-client totals.
 ## Quick start
 
 ```yaml
-probes:
-  - name: unifi
-    type: unifi
-    params:
-      endpoint: https://localhost:8443
-      username: readonly
-      password: changeme
+# probes.d/10-unifi.yaml — each file under probes.d/ is a YAML array of probes
+- name: unifi
+  type: unifi
+  params:
+    endpoint: https://localhost:8443
+    username: readonly
+    password: ${secret:unifi.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -28,7 +28,7 @@ probes:
 |---|---|---|
 | `endpoint` | `https://localhost:8443` | UniFi Controller base URL |
 | `username` | required | Controller local user username |
-| `password` | required | Controller local user password |
+| `password` | required | Controller local user password — reference a stored secret via `${secret:unifi.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `site` | `default` | Controller site name to monitor |
 | `verify_tls` | `true` | Set to `false` to accept self-signed certificates (lab use only) |
 

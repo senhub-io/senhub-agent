@@ -89,6 +89,7 @@ nav:
   - Presentation: presentation.md
   - Installation: installation.md
   - Configuration: configuration.md
+  - Managing secrets: secrets.md
   - HTTP / HTTPS: http-https.md
   - Web interface: web-interface.md
   - Prometheus / VictoriaMetrics:

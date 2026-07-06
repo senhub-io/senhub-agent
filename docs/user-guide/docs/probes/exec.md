@@ -22,14 +22,14 @@ output contracts are supported:
 ## Quick start
 
 ```yaml
-probes:
-  - name: raid-status
-    type: exec
-    params:
-      command: /usr/lib/nagios/plugins/check_raid
-      args: ["-p", "1"]
-      interval: 120
-      timeout: 30
+# probes.d/10-exec.yaml — each file under probes.d/ is a YAML array of probes
+- name: raid-status
+  type: exec
+  params:
+    command: /usr/lib/nagios/plugins/check_raid
+    args: ["-p", "1"]
+    interval: 120
+    timeout: 30
 ```
 
 ## Parameters

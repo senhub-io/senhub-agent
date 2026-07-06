@@ -12,11 +12,11 @@ request and connection statistics.
 ## Quick start
 
 ```yaml
-probes:
-  - name: phpfpm
-    type: phpfpm
-    params:
-      endpoint: http://localhost/fpm-status
+# probes.d/20-php-fpm.yaml — each file under probes.d/ is a YAML array of probes
+- name: phpfpm
+  type: phpfpm
+  params:
+    endpoint: http://localhost/fpm-status
 ```
 
 ## Parameters

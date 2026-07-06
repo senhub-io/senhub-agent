@@ -19,21 +19,21 @@ STATUS` and `information_schema`.
 ## Configuration
 
 ```yaml
-probes:
-  - name: production-mysql
-    type: mysql
-    params:
-      host: db.example.com
-      port: 3306
-      username: senhub_monitor
-      password: ${env:MYSQL_MONITOR_PASSWORD}
-      interval: 60
-      timeout: 10
-      tls:
-        enabled: true
-        skip_verify: false
-        ca_file: /etc/ssl/db-ca.pem
-      max_replication_lag_seconds: 60
+# probes.d/20-mysql.yaml — each file under probes.d/ is a YAML array of probes
+- name: production-mysql
+  type: mysql
+  params:
+    host: db.example.com
+    port: 3306
+    username: senhub_monitor
+    password: ${secret:production-mysql.password}   # OS secret store; inline plaintext is auto-sealed on install
+    interval: 60
+    timeout: 10
+    tls:
+      enabled: true
+      skip_verify: false
+      ca_file: /etc/ssl/db-ca.pem
+    max_replication_lag_seconds: 60
 ```
 
 ### Parameters
@@ -43,7 +43,7 @@ probes:
 | `host` | Yes | - | Database hostname or IP |
 | `port` | No | `3306` | TCP port |
 | `username` | Yes | - | Monitoring user |
-| `password` | Yes | - | Monitoring user's password (use `${env:VAR}` for secret) |
+| `password` | Yes | - | Monitoring user's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `database` | No | `""` | Default database (optional; leave empty for server-level only) |
 | `interval` | No | `60` | Collection interval in seconds |
 | `timeout` | No | `10` | Per-query timeout in seconds |

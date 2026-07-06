@@ -13,14 +13,14 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 ## Quick start
 
 ```yaml
-probes:
-  - name: oracle
-    type: oracle
-    params:
-      host: db.example.com
-      service_name: ORCL
-      username: monitor
-      password: changeme
+# probes.d/20-oracle.yaml — each file under probes.d/ is a YAML array of probes
+- name: oracle
+  type: oracle
+  params:
+    host: db.example.com
+    service_name: ORCL
+    username: monitor
+    password: ${secret:oracle.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -31,7 +31,7 @@ probes:
 | `port` | `1521` | Oracle listener port |
 | `service_name` | required | Oracle service name (not SID) |
 | `username` | required | Database user with at least `SELECT` on v$ views |
-| `password` | — | User password |
+| `password` | — | User password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 
 ## Metrics
 
