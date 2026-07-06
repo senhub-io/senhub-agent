@@ -26,6 +26,9 @@ var paidProbes = map[string]bool{
 	"veeam":     true,
 	"redfish":   true,
 	"ibmi":      true,
+	// Dell PowerStore storage-array health (REST API): cluster state,
+	// hardware faults, capacity, volumes, active alerts.
+	"powerstore": true,
 	// Pro-tier HA / cloud probes (enterprise build): deep database, hypervisor
 	// and Microsoft-cloud integrations.
 	"mssql_ha":          true,

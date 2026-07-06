@@ -116,6 +116,7 @@ Source of truth: the `paidProbes` map in `internal/agent/services/license/probe_
 - **netscaler** - Citrix NetScaler ADC monitoring (load balancers, SSL, HA)
 - **veeam** - Veeam Backup & Replication monitoring
 - **redfish** - BMC/iDRAC/iLO hardware monitoring
+- **powerstore** - Dell PowerStore storage-array health (REST API): cluster state, hardware fault counts, physical/logical capacity and data reduction, volume readiness, active alerts by severity
 - **ibmi** - IBM i / Power Systems monitoring (JT400 JDBC bridge, senhub.ibmi.* semconv) — **Linux-only** agent runtime
 - **mssql_ha** - Deep SQL Server monitoring (Always On availability groups, HA topology) beyond the free `mssql` engine probe
 - **oracle_enterprise** - Deep Oracle monitoring (RAC, Data Guard, ASM, per-SQL) beyond the free `oracle` instance probe
