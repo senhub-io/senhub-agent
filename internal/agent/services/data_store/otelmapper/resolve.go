@@ -215,7 +215,7 @@ func resolveTypedPassthrough(m CacheMetric, otelType string, opts ResolveOptions
 	}
 	if opts.IncludeProbeTags {
 		for tagName, tagVal := range m.Tags {
-			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag {
+			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag || tagName == "unit" {
 				continue
 			}
 			attrs[tagName] = tagVal
@@ -234,17 +234,26 @@ func resolveTypedPassthrough(m CacheMetric, otelType string, opts ResolveOptions
 // resolveOTLPIngested passes an already-OTel-shaped, externally-ingested
 // metric straight through to an OtelRecord: its name is a canonical OTel
 // name and it has no transformer definition. Value and unit are taken as
-// received. Type is reported as gauge — the inbound OTLP gauge/sum
-// distinction is not preserved across the flat datapoint bus, and gauge
-// is the safe re-export default.
+// received. The inbound instrument type is preserved via the otel_type
+// control tag set by the decoder (counter / updowncounter / gauge), so a
+// re-exported counter stays a counter instead of collapsing to a gauge;
+// an absent or unrecognised type falls back to gauge, the safe default.
 func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
+	otelType := m.Tags[otelTypeTag]
+	switch otelType {
+	case "counter", "gauge", "updowncounter":
+		// preserved from the inbound stream
+	default:
+		otelType = "gauge"
+	}
+
 	attrs := map[string]string{"probe_name": m.ProbeName}
 	if m.ProbeType != "" {
 		attrs["probe_type"] = m.ProbeType
 	}
 	if opts.IncludeProbeTags {
 		for tagName, tagVal := range m.Tags {
-			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag {
+			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag || tagName == "unit" {
 				continue
 			}
 			attrs[tagName] = tagVal
@@ -253,7 +262,7 @@ func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
 	return []OtelRecord{{
 		Name:        m.MetricName,
 		Unit:        m.Unit,
-		Type:        "gauge",
+		Type:        otelType,
 		Attributes:  attrs,
 		Value:       m.Value,
 		Description: "OTLP-ingested metric",

@@ -73,10 +73,10 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 	if len(obs.Entities) != 1 {
 		t.Fatalf("got %d entities, want 1", len(obs.Entities))
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("got %d relations, want 1 (monitors)", len(obs.Relations))
+	rel, found := findRelation(obs, "monitors")
+	if !found {
+		t.Fatalf("no monitors relation; got %v", relTypes(obs))
 	}
-	rel := obs.Relations[0]
 	if rel.Type != "monitors" {
 		t.Errorf("relation.Type = %q, want %q", rel.Type, "monitors")
 	}
@@ -107,8 +107,11 @@ func TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe ok=false after setReachable(true)")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("got %d relations, want 0 when agent id is empty", len(obs.Relations))
+	// No monitors edge when the agent id is empty. A runs_on edge may still be
+	// present (the localhost endpoint is loopback) — assert on the monitors type,
+	// not the relation count.
+	if _, found := findRelation(obs, "monitors"); found {
+		t.Errorf("monitors relation must be absent when agent id empty; got %v", relTypes(obs))
 	}
 }
 
@@ -191,6 +194,55 @@ func TestEntitySource_VersionAttribute(t *testing.T) {
 	}
 	if obs.Entities[0].Attributes["service.version"] != "Apache/2.4.51" {
 		t.Errorf("service.version = %v, want Apache/2.4.51", obs.Entities[0].Attributes["service.version"])
+	}
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
+
+// findRelation returns the first relation of the given type.
+func findRelation(obs entity.Observation, relType string) (entity.Relation, bool) {
+	for _, r := range obs.Relations {
+		if r.Type == relType {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored apache emits a
+// runs_on→host edge (so it does not float), and a remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback endpoint → runs_on present, targeting the agent host.
+	local := newApacheEntitySource("", "H", "127.0.0.1", 80)
+	local.setReachable(true, "")
+	obs, _ := local.Observe()
+	runsOn, found := findRelation(obs, "runs_on")
+	if !found {
+		t.Fatalf("loopback apache: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "apache@H" {
+		t.Errorf("runs_on source = %v, want apache@H", runsOn.FromID)
+	}
+
+	// Remote endpoint → no runs_on.
+	remote := newApacheEntitySource("", "H", "10.0.0.5", 80)
+	remote.setReachable(true, "")
+	robs, _ := remote.Observe()
+	if _, found := findRelation(robs, "runs_on"); found {
+		t.Errorf("remote apache must NOT emit runs_on; relations=%v", relTypes(robs))
 	}
 }
 

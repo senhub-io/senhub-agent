@@ -4,11 +4,12 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 func TestEntitySource_Observe(t *testing.T) {
 	instance := "oracle://db.example.com:1521/ORCL"
-	src := newEntitySource(instance)
+	src := newEntitySource(instance, "db.example.com")
 
 	obs, ok := src.Observe()
 	if !ok {
@@ -44,7 +45,7 @@ func TestEntitySource_Observe(t *testing.T) {
 // TestEntitySource_Version verifies setVersion surfaces the server version on
 // the entity as db.system.version (toise#216 AT1), absent until reported.
 func TestEntitySource_Version(t *testing.T) {
-	src := newEntitySource("oracle://db.example.com:1521/ORCL")
+	src := newEntitySource("oracle://db.example.com:1521/ORCL", "db.example.com")
 
 	obs, _ := src.Observe()
 	if _, has := obs.Entities[0].Attributes["db.system.version"]; has {
@@ -63,7 +64,7 @@ func TestEntitySource_Version(t *testing.T) {
 // edge is skipped when the agent id is unset.
 func TestEntitySource_MonitorsEdge(t *testing.T) {
 	instance := "oracle://db.example.com:1521/ORCL"
-	src := newEntitySource(instance)
+	src := newEntitySource(instance, "db.example.com")
 
 	t.Run("emitted with agent id", func(t *testing.T) {
 		agentstate.SetAgentInstanceID("agent-key-1")
@@ -91,8 +92,49 @@ func TestEntitySource_MonitorsEdge(t *testing.T) {
 	t.Run("skipped without agent id", func(t *testing.T) {
 		agentstate.SetAgentInstanceID("")
 		obs, _ := src.Observe()
-		if len(obs.Relations) != 0 {
-			t.Errorf("no edge expected when agent id is unset, got %+v", obs.Relations)
+		// Remote db (db.example.com) — neither a monitors nor a runs_on edge.
+		for _, ty := range oracleRelTypes(obs) {
+			if ty == "monitors" {
+				t.Errorf("no monitors edge expected when agent id is unset, got %+v", obs.Relations)
+			}
 		}
 	})
+}
+
+// TestEntitySource_LocalRunsOn exercises the runs_on wiring. The oracle id is a
+// DSN that embeds the monitored host, so the LocalRunsOn collapse guard refuses
+// the edge even for a loopback target — a loopback-derived id is not host-unique
+// and must not anchor a host. A remote target yields no edge either. The probe
+// is wired for consistency with its siblings; the gate guarantees correctness.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-key-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback target, but the DSN id embeds "127.0.0.1" — the guard refuses runs_on.
+	local := newEntitySource("oracle://127.0.0.1:1521/ORCL", "127.0.0.1")
+	local.hostID = func() string { return "H" }
+	obs, _ := local.Observe()
+	for _, ty := range oracleRelTypes(obs) {
+		if ty == "runs_on" {
+			t.Errorf("loopback-embedding id must NOT emit runs_on (collapse guard); relations=%v", oracleRelTypes(obs))
+		}
+	}
+
+	// Remote target — no runs_on.
+	remote := newEntitySource("oracle://10.0.0.5:1521/ORCL", "10.0.0.5")
+	remote.hostID = func() string { return "H" }
+	robs, _ := remote.Observe()
+	for _, ty := range oracleRelTypes(robs) {
+		if ty == "runs_on" {
+			t.Errorf("remote db must NOT emit runs_on; relations=%v", oracleRelTypes(robs))
+		}
+	}
+}
+
+func oracleRelTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
 }

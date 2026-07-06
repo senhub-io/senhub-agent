@@ -38,6 +38,10 @@ type envoyEntitySource struct {
 	// server.port). Set once at construction, never modified.
 	descAttr map[string]any
 
+	// serverAddr is the host from the endpoint URL; a runs_on→host is emitted
+	// only when it is loopback.
+	serverAddr string
+
 	// fetchInfo fetches the Envoy /server_info endpoint and returns the node.id
 	// and version fields. Either is "" when absent or the call fails. Injected at
 	// construction; overridable in tests.
@@ -94,8 +98,9 @@ func newEnvoyEntitySource(
 	}
 
 	s := &envoyEntitySource{
-		descAttr: descAttr,
-		hostID:   hostIDFunc,
+		descAttr:   descAttr,
+		serverAddr: addr,
+		hostID:     hostIDFunc,
 		fetchInfo: func() (string, string) {
 			return fetchEnvoyServerInfo(client, endpoint)
 		},
@@ -214,6 +219,13 @@ func (s *envoyEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "service.instance",
 			ToID:     targetID,
 		})
+	}
+
+	// runs_on edge: envoy → host when the monitored endpoint is local (loopback),
+	// so a locally-monitored envoy hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", targetID, s.serverAddr, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

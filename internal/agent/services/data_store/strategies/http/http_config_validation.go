@@ -3,11 +3,66 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"senhub-agent.go/internal/agent/services/configuration"
 )
+
+// maxConfigRequestBytes bounds the request body the /config/{validate,preview,
+// test} handlers will read. A probe configuration is a few KB; 1 MiB is ample
+// headroom while capping the memory an oversized or malicious body can force
+// the JSON decoder to buffer.
+const maxConfigRequestBytes = 1 << 20
+
+// Connectivity-test timeout bounds (seconds). The caller supplies req.Timeout,
+// but it must stay strictly below the HTTP server's 10 s WriteTimeout
+// (http_server.go) — otherwise a black-holed target holds the handler past the
+// write deadline and the operator gets a connection reset instead of the JSON
+// failure result. The lower bound stops a 0/negative value from producing an
+// instant timeout; the upper bound also caps how long an authenticated caller
+// can pin a handler goroutine.
+const (
+	minConnectivityTimeoutSec     = 1
+	maxConnectivityTimeoutSec     = 8
+	defaultConnectivityTimeoutSec = 8
+)
+
+// clampConnectivityTimeout constrains an operator-supplied timeout (seconds) to
+// the [min,max] window that fits under the server WriteTimeout. A zero/negative
+// value falls back to the default.
+func clampConnectivityTimeout(sec int) int {
+	if sec <= 0 {
+		return defaultConnectivityTimeoutSec
+	}
+	if sec < minConnectivityTimeoutSec {
+		return minConnectivityTimeoutSec
+	}
+	if sec > maxConnectivityTimeoutSec {
+		return maxConnectivityTimeoutSec
+	}
+	return sec
+}
+
+// decodeConfigRequest reads and decodes a UniversalConfigRequest under a body
+// size limit. It writes the appropriate error response and returns false on
+// failure: 413 when the body exceeds the limit, 400 for malformed JSON.
+func decodeConfigRequest(w http.ResponseWriter, r *http.Request, req *UniversalConfigRequest) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxConfigRequestBytes)
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return false
+		}
+		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
 
 // Universal Configuration Validation Methods
 
@@ -37,10 +92,10 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		response.ValidationLevel = ValidationSchemaOnly
 	}
 
-	// Set default timeout if not specified
-	if req.Timeout == 0 {
-		req.Timeout = 30 // 30 seconds default
-	}
+	// Clamp the connectivity-test timeout into the window that fits under the
+	// server WriteTimeout (a larger value is silently cut off by a write-deadline
+	// reset, and lets a caller pin handler goroutines).
+	req.Timeout = clampConnectivityTimeout(req.Timeout)
 
 	// Step 1: Schema Validation (always performed)
 	schemaResult := cm.validateProbeSchema(req.Probe, req.Config)
@@ -111,7 +166,7 @@ func (cm *ConfigurationManager) validateProbeSchema(probeName string, config map
 
 	cm.logger.Debug().
 		Str("probe", probeName).
-		Any("config", config).
+		Any("config", configuration.SanitizeParamsForLog(config)).
 		Msg("Validating probe schema")
 
 	result := ValidationTestResult{
@@ -386,9 +441,7 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 	}
 
 	// Test basic HTTP connectivity to the Redfish service root
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
+	client := newConnectivityClient(time.Duration(timeout) * time.Second)
 
 	// Try to reach the Redfish service root
 	testURL := strings.TrimRight(endpointStr, "/") + "/redfish/v1/"
@@ -403,8 +456,11 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 		}
 	}()
 
-	if resp.StatusCode == 200 || resp.StatusCode == 401 {
-		// 200 = accessible, 401 = accessible but auth required (expected)
+	if resp.StatusCode == 200 || resp.StatusCode == 401 || (resp.StatusCode >= 300 && resp.StatusCode < 400) {
+		// 200 = accessible, 401 = accessible but auth required (expected),
+		// 3xx = accessible but redirecting (BMCs commonly 301 /redfish/v1 →
+		// /redfish/v1/); the redirect is not followed but the target is
+		// reachable.
 		result.Passed = true
 		result.Details = fmt.Sprintf("Redfish service accessible (HTTP %d)", resp.StatusCode)
 	} else {
@@ -431,9 +487,7 @@ func (cm *ConfigurationManager) testWebAppConnectivity(config map[string]interfa
 	}
 
 	// Test HTTP connectivity
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
+	client := newConnectivityClient(time.Duration(timeout) * time.Second)
 
 	resp, err := client.Get(urlStr)
 	if err != nil {
@@ -504,14 +558,9 @@ func (cm *ConfigurationManager) generateMockPreviewMetrics(probeName string) []P
 func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
 	cm.logger.Debug().Msg("Handling universal configuration validation request")
 
-	// Parse request body
+	// Parse request body under a size limit
 	var req UniversalConfigRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		cm.logger.Error().
-			Err(err).
-			Msg("Failed to parse universal config validation request")
-
-		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+	if !decodeConfigRequest(w, r, &req) {
 		return
 	}
 
@@ -553,14 +602,9 @@ func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseW
 func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWriter, r *http.Request) {
 	cm.logger.Debug().Msg("Handling universal configuration preview request")
 
-	// Parse request body
+	// Parse request body under a size limit
 	var req UniversalConfigRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		cm.logger.Error().
-			Err(err).
-			Msg("Failed to parse universal config preview request")
-
-		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+	if !decodeConfigRequest(w, r, &req) {
 		return
 	}
 
@@ -610,14 +654,9 @@ func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWrit
 func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
 	cm.logger.Debug().Msg("Handling universal configuration test request")
 
-	// Parse request body
+	// Parse request body under a size limit
 	var req UniversalConfigRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		cm.logger.Error().
-			Err(err).
-			Msg("Failed to parse universal config test request")
-
-		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+	if !decodeConfigRequest(w, r, &req) {
 		return
 	}
 

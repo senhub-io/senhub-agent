@@ -31,6 +31,10 @@ type consulEntitySource struct {
 	// hostIDFn returns the fallback host.id (injected for testing).
 	hostIDFn func() string
 
+	// hostID is the agent host id, resolved once at construction; it is the
+	// target of the local-target runs_on edge.
+	hostID string
+
 	mu sync.Mutex
 
 	// pinnedID is empty until the id is resolved; once set it is immutable.
@@ -58,6 +62,7 @@ func newConsulEntitySource(instanceName string, host string, port int) *consulEn
 			return id.ID
 		},
 	}
+	s.hostID = s.hostIDFn()
 	if instanceName != "" {
 		s.pinnedID = instanceName
 		s.pinnedFromConfig = true
@@ -119,10 +124,11 @@ func (s *consulEntitySource) setReachable(up bool, nodeID string, version string
 		attrs["service.version"] = version
 	}
 
+	svcID := map[string]any{"service.instance.id": s.pinnedID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": s.pinnedID},
+			ID:         svcID,
 			Attributes: attrs,
 		}},
 	}
@@ -134,8 +140,15 @@ func (s *consulEntitySource) setReachable(up bool, nodeID string, version string
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": s.pinnedID},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: consul → host when the monitored endpoint is local (loopback),
+	// so a locally-monitored consul hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, s.host, s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	s.cache = obs

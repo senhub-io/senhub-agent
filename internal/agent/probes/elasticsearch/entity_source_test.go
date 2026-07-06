@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // TestEntitySource_InstanceNameOverride verifies that when instance_name is
@@ -113,10 +114,10 @@ func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() ok=false, want true")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("Relations len=%d, want 1", len(obs.Relations))
+	r, found := findRelation(obs, "monitors")
+	if !found {
+		t.Fatalf("monitors edge missing; got %d relations", len(obs.Relations))
 	}
-	r := obs.Relations[0]
 	if r.Type != "monitors" {
 		t.Errorf("relation type = %q, want \"monitors\"", r.Type)
 	}
@@ -149,8 +150,44 @@ func TestEntitySource_MonitorsEdge_Absent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() ok=false, want true")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("Relations len=%d, want 0 when agent id is empty", len(obs.Relations))
+	if _, has := findRelation(obs, "monitors"); has {
+		t.Error("monitors edge present when agent id is empty; want absent")
+	}
+}
+
+// findRelation returns the first relation of the given type.
+func findRelation(obs entity.Observation, relType string) (entity.Relation, bool) {
+	for _, r := range obs.Relations {
+		if r.Type == relType {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable ES with a globally-
+// unique tech id is anchored to the host with runs_on (enterprise#36); a remote
+// db is not.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	runsOn := func(host string) bool {
+		s := newElasticsearchEntitySource("", host, 9200)
+		s.hostID = func() string { return "h-1" }
+		s.pinClusterUUID("cluster-001")
+		s.setReachable(true)
+		obs, _ := s.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("127.0.0.1") {
+		t.Error("loopback db with a tech id must emit runs_on→host")
+	}
+	if runsOn("10.0.0.5") {
+		t.Error("remote db must NOT emit runs_on→host")
 	}
 }
 

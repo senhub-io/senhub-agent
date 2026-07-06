@@ -3,6 +3,7 @@ package mssql
 import (
 	"strconv"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -26,6 +27,11 @@ const (
 // shutdown via the unregister returned by RegisterSource).
 type mssqlEntitySource struct {
 	obs entity.Observation
+	// hostID resolves the agent host for the local-db runs_on edge; overridable
+	// in tests. The db.instance.id is host:port-derived, so the collapse guard in
+	// the helper suppresses the runs_on even on loopback (the id is identical on
+	// every host) — the edge is wired for correctness but never materialises here.
+	hostID func() string
 }
 
 // newEntitySource builds the source for the configured host:port target. The
@@ -33,19 +39,28 @@ type mssqlEntitySource struct {
 // tagged with server.address/server.port join to this entity in the consumer.
 func newEntitySource(host string, port int) *mssqlEntitySource {
 	instanceID := dbInstanceScheme + host + ":" + strconv.Itoa(port)
-	return &mssqlEntitySource{
+	dbID := map[string]any{
+		idKeyDBInstance: instanceID,
+		idKeyDBSystem:   dbSystemMSSQL,
+	}
+	s := &mssqlEntitySource{
+		hostID: dbcommon.HostID,
 		obs: entity.Observation{
 			Entities: []entity.Entity{
 				{
 					Type: entityTypeDB,
-					ID: map[string]any{
-						idKeyDBInstance: instanceID,
-						idKeyDBSystem:   dbSystemMSSQL,
-					},
+					ID:   dbID,
 				},
 			},
 		},
 	}
+	// runs_on edge: db → host when the db is local (loopback). The host:port id
+	// embeds the loopback literal, so the collapse guard refuses it (it would
+	// false-join hosts); wired anyway so the gate alone decides correctness.
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, host, s.hostID()); ok {
+		s.obs.Relations = append(s.obs.Relations, rel)
+	}
+	return s
 }
 
 // Observe returns the fixed db entity. Always ok=true: the target is known

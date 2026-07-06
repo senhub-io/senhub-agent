@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // TestResolveInstanceID_InstanceNameTakesPrecedence verifies that a non-empty
@@ -74,12 +75,9 @@ func TestObserve_MonitorsEdgePresent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() ok=false, want true when up")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("Relations count = %d, want 1", len(obs.Relations))
-	}
-	r := obs.Relations[0]
-	if r.Type != "monitors" {
-		t.Errorf("relation type = %q, want %q", r.Type, "monitors")
+	r := phpfpmRelByType(obs, "monitors")
+	if r == nil {
+		t.Fatalf("expected a monitors relation, got %v", phpfpmRelTypes(obs))
 	}
 	if r.FromType != "service.instance" {
 		t.Errorf("FromType = %q, want %q", r.FromType, "service.instance")
@@ -109,9 +107,56 @@ func TestObserve_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() ok=false, want true when up")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("Relations count = %d, want 0 when agent id is empty", len(obs.Relations))
+	// A runs_on edge may still be present (127.0.0.1 endpoint is loopback) — that
+	// is independent of the agent id, so assert specifically on the monitors type.
+	if phpfpmRelByType(obs, "monitors") != nil {
+		t.Errorf("expected no monitors relation when agent id is empty, got %v", phpfpmRelTypes(obs))
 	}
+}
+
+// TestObserve_LocalRunsOn verifies a loopback-monitored pool emits a
+// runs_on→host edge, while a remote one does not.
+func TestObserve_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-instance-id")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	local := newPhpfpmEntitySource("", "H", "127.0.0.1", 9000)
+	local.setReachable(true, "")
+	obs, _ := local.Observe()
+	runsOn := phpfpmRelByType(obs, "runs_on")
+	if runsOn == nil {
+		t.Fatalf("loopback phpfpm: expected a runs_on edge, got %v", phpfpmRelTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "phpfpm@H" {
+		t.Errorf("runs_on source = %v, want phpfpm@H", runsOn.FromID)
+	}
+
+	remote := newPhpfpmEntitySource("", "H", "10.0.0.5", 9000)
+	remote.setReachable(true, "")
+	robs, _ := remote.Observe()
+	if phpfpmRelByType(robs, "runs_on") != nil {
+		t.Errorf("remote phpfpm must NOT emit runs_on; relations=%v", phpfpmRelTypes(robs))
+	}
+}
+
+func phpfpmRelByType(obs entity.Observation, ty string) *entity.Relation {
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == ty {
+			return &obs.Relations[i]
+		}
+	}
+	return nil
+}
+
+func phpfpmRelTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
 }
 
 // TestObserve_NotOkWhenDown verifies that ok=false is returned before the

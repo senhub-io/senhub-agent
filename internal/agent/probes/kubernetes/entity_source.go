@@ -1,8 +1,11 @@
 package kubernetes
 
 import (
+	"net"
+	"strings"
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -15,10 +18,11 @@ type k8sEntitySource struct {
 	mu              sync.Mutex
 	clusterEndpoint string
 	ready           bool
+	hostID          string // agent host id, target of the local-target runs_on edge
 }
 
 func newK8sEntitySource(clusterEndpoint string) *k8sEntitySource {
-	return &k8sEntitySource{clusterEndpoint: clusterEndpoint, ready: true}
+	return &k8sEntitySource{clusterEndpoint: clusterEndpoint, ready: true, hostID: dbcommon.HostID()}
 }
 
 // setClusterEndpoint refines the cluster identity once the live client config
@@ -65,7 +69,26 @@ func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 			ToID:     svcID,
 		})
 	}
+	// runs_on edge: cluster → host when the API server is local (loopback) — anchors
+	// an on-host cluster to the host it runs on instead of leaving it floating with
+	// only its monitors anchor. A remote API server yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, hostFromEndpoint(s.clusterEndpoint), s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
 	return obs, true
+}
+
+// hostFromEndpoint strips an optional ":port" from the scheme-less cluster
+// endpoint (host or host:port) so the runs_on gate sees a bare host. Returns the
+// input unchanged when there is no port.
+func hostFromEndpoint(endpoint string) string {
+	if !strings.Contains(endpoint, ":") {
+		return endpoint
+	}
+	if host, _, err := net.SplitHostPort(endpoint); err == nil {
+		return host
+	}
+	return endpoint
 }
 
 // registerEntitySource is a thin indirection to allow unit tests to inject a

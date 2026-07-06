@@ -33,6 +33,26 @@ import (
 // matching `journalctl` defaults.
 const DefaultPriority = 7
 
+// Respawn backoff bounds for the journalctl supervisor. When the subprocess
+// dies unexpectedly the supervisor waits, then respawns it, doubling the wait
+// on each consecutive fast failure up to the max so a crash-looping journalctl
+// cannot spin. A reader that stayed up at least journalHealthyUptime before
+// dying is treated as an isolated death and resets the backoff to the minimum.
+const (
+	journalRestartBackoffMin = 1 * time.Second
+	journalRestartBackoffMax = 60 * time.Second
+	journalHealthyUptime     = 30 * time.Second
+)
+
+// nextBackoff doubles the current backoff, capped at journalRestartBackoffMax.
+func nextBackoff(cur time.Duration) time.Duration {
+	next := cur * 2
+	if next > journalRestartBackoffMax {
+		return journalRestartBackoffMax
+	}
+	return next
+}
+
 // LinuxLogsProbeConfig captures the operator-supplied filtering
 // options. The probe is a thin wrapper around `journalctl`; every
 // option here maps directly to a journalctl flag.
@@ -67,14 +87,30 @@ type LinuxLogsProbe struct {
 	config       LinuxLogsProbeConfig
 	moduleLogger *logger.ModuleLogger
 
-	// reader is the active journalctl subprocess wrapper. nil before
-	// OnStart and after OnShutdown.
-	reader *journalReader
+	// reader is the active journalctl subprocess wrapper, guarded by
+	// readerMu because the poller (Collect) and the supervisor goroutine
+	// (respawn) both touch it. nil before OnStart and after OnShutdown.
+	readerMu sync.Mutex
+	reader   *journalReader
 
 	// quitOnce guards the close of the embedded quit channel — Probe
 	// pollers may signal shutdown via either OnShutdown(ctx) or by
 	// closing the channel passed to OnStart.
 	quitOnce sync.Once
+}
+
+// currentReader returns the active reader under the lock.
+func (p *LinuxLogsProbe) currentReader() *journalReader {
+	p.readerMu.Lock()
+	defer p.readerMu.Unlock()
+	return p.reader
+}
+
+// setReader swaps in a new active reader under the lock.
+func (p *LinuxLogsProbe) setReader(r *journalReader) {
+	p.readerMu.Lock()
+	p.reader = r
+	p.readerMu.Unlock()
 }
 
 // NewLinuxLogsProbe constructs the probe. Validation is permissive —
@@ -155,16 +191,26 @@ func (p *LinuxLogsProbe) GetInterval() time.Duration {
 	return 5 * time.Minute
 }
 
-// Collect is a no-op. The journalctl subprocess pushes records
-// directly to the agent log channel as they arrive, independent of
-// the poller's tick.
+// Collect ships no data points — the journalctl subprocess pushes
+// records directly to the agent log channel as they arrive, independent
+// of the poller's tick. It does, however, surface the reader's health:
+// if the subprocess died without a shutdown request, Collect returns an
+// error so the poller marks the probe unhealthy instead of it silently
+// shipping nothing.
 func (p *LinuxLogsProbe) Collect() ([]data_store.DataPoint, error) {
+	if reader := p.currentReader(); reader != nil {
+		if err := reader.healthErr(); err != nil {
+			return nil, err
+		}
+	}
 	return nil, nil
 }
 
-// OnStart launches the journalctl subprocess and the goroutine that
-// parses its stdout into LogRecords. quitChannel is honored: when
-// closed, the subprocess is terminated and the goroutine returns.
+// OnStart launches the journalctl subprocess and its stdout-draining
+// goroutine, then starts a supervisor that respawns the subprocess if it
+// dies unexpectedly (journald restart, OOM-kill, crash) so log collection
+// resumes without an agent restart. quitChannel is honored: when closed, the
+// active subprocess is terminated and the supervisor returns.
 func (p *LinuxLogsProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Strs("units", p.config.Units).
@@ -177,24 +223,93 @@ func (p *LinuxLogsProbe) OnStart(quitChannel chan struct{}) error {
 	if err != nil {
 		return fmt.Errorf("start journal reader: %w", err)
 	}
-	p.reader = reader
+	p.setReader(reader)
 
-	go func() {
-		<-quitChannel
-		p.moduleLogger.Info().Msg("Quit signal received; stopping journal reader")
-		_ = p.reader.stop(context.Background())
-	}()
+	go p.supervise(quitChannel)
 
 	return nil
 }
 
+// supervise watches the active journalctl subprocess. On a requested stop
+// (quitChannel closed, or an explicit OnShutdown that marks the exit expected)
+// it returns. On an unexpected death it respawns the subprocess with bounded
+// exponential backoff, resetting the backoff whenever a reader had been up long
+// enough to count as healthy.
+func (p *LinuxLogsProbe) supervise(quitChannel chan struct{}) {
+	backoff := journalRestartBackoffMin
+	for {
+		reader := p.currentReader()
+
+		select {
+		case <-quitChannel:
+			p.moduleLogger.Info().Msg("Quit signal received; stopping journal reader")
+			_ = reader.stop(context.Background())
+			return
+		case <-reader.waitCh():
+		}
+
+		// A requested stop (OnShutdown/quit) marks the exit expected — nothing
+		// to recover, the supervisor is done.
+		if !reader.exitedUnexpectedly() {
+			return
+		}
+
+		// Isolated death after a healthy run resets the backoff; a fast
+		// crash-loop keeps the grown backoff.
+		if reader.uptime() >= journalHealthyUptime {
+			backoff = journalRestartBackoffMin
+		}
+
+		newReader := p.respawn(quitChannel, reader, &backoff)
+		if newReader == nil {
+			// Quit requested while backing off.
+			return
+		}
+		p.setReader(newReader)
+	}
+}
+
+// respawn waits out the backoff (honoring quit) and re-launches journalctl,
+// retrying spawn failures with a growing backoff. Returns the new reader, or
+// nil if quitChannel closed before a reader could be spawned.
+func (p *LinuxLogsProbe) respawn(quitChannel chan struct{}, dead *journalReader, backoff *time.Duration) *journalReader {
+	for {
+		p.moduleLogger.Warn().
+			Err(dead.healthErr()).
+			Dur("backoff", *backoff).
+			Msg("journalctl subprocess died unexpectedly; respawning after backoff")
+
+		select {
+		case <-quitChannel:
+			return nil
+		case <-time.After(*backoff):
+		}
+
+		reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName())
+		if err != nil {
+			p.moduleLogger.Error().
+				Err(err).
+				Dur("backoff", *backoff).
+				Msg("failed to respawn journalctl subprocess; will retry")
+			*backoff = nextBackoff(*backoff)
+			continue
+		}
+		*backoff = nextBackoff(*backoff)
+		p.moduleLogger.Info().Msg("journalctl subprocess respawned; log collection resumed")
+		return reader
+	}
+}
+
 // OnShutdown is the explicit shutdown entry point used by the agent's
-// probe lifecycle manager. Honors the supplied deadline.
+// probe lifecycle manager. Honors the supplied deadline. The stop marks the
+// exit expected, so the supervisor treats it as a requested stop and returns
+// without respawning.
 func (p *LinuxLogsProbe) OnShutdown(ctx context.Context) error {
-	if p.reader == nil {
+	reader := p.currentReader()
+	if reader == nil {
 		return nil
 	}
-	return p.reader.stop(ctx)
+	return reader.stop(ctx)
 }
 
 // String formats the probe for log statements.

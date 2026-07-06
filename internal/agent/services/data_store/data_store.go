@@ -240,7 +240,7 @@ func (d *dataStore) GetCallback() AddCallback {
 						Str("event_source", getTagValue(correctedData[i].Tags, "event_source")).
 						Str("event_id", getTagValue(correctedData[i].Tags, "event_id")).
 						Str("message", truncateString(getTagValue(correctedData[i].Tags, "message"), 100)).
-						Msg("🔎 EVENT DETAIL - About to send to strategy")
+						Msg("EVENT DETAIL - About to send to strategy")
 				}
 			}
 
@@ -253,7 +253,7 @@ func (d *dataStore) GetCallback() AddCallback {
 				d.logger.Info().
 					Str("strategy", strategy.GetStrategyName()).
 					Int("count", len(correctedData)).
-					Msg("✅ Successfully sent datapoints to strategy")
+					Msg("Successfully sent datapoints to strategy")
 			}
 		}
 		return nil
@@ -291,7 +291,7 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 		d.logger.Error().
 			Err(err).
 			Str("strategy", strategyName).
-			Any("params", params).
+			Any("params", configuration.SanitizeParamsForLog(params)).
 			Msg("marshaling error: failed to marshal strategy parameters - using empty config")
 		paramsBytes = []byte("{}")
 	}
@@ -414,8 +414,8 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 			} else {
 				// Same name but different parameters - try to update
 				d.logger.Info().
-					Any("old_params", strategy.GetStrategyParams()).
-					Any("new_params", strategyConfig.Params).
+					Any("old_params", configuration.SanitizeParamsForLog(strategy.GetStrategyParams())).
+					Any("new_params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 					Msg("Strategy configuration changed, attempting update")
 
 				// Try to update the strategy if it supports live updates
@@ -428,7 +428,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 						replaced = strategy
 						break
 					} else {
-						d.logger.Info().Msg("✅ Strategy configuration updated successfully")
+						d.logger.Info().Msg("Strategy configuration updated successfully")
 						return strategy
 					}
 				} else {
@@ -461,7 +461,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 
 	// Create a new strategy
 	d.logger.Debug().
-		Any("params", strategyConfig.Params).
+		Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 		Msg("Creating new strategy")
 
 	var strategy SyncStrategy
@@ -491,21 +491,21 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		strategy = otlp.NewOTLPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 	default:
 		d.logger.Error().
-			Any("params", strategyConfig.Params).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Unknown strategy")
 		return nil
 	}
 
 	if strategy == nil {
 		d.logger.Error().
-			Any("params", strategyConfig.Params).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Failed to create strategy")
 		return nil
 	}
 
 	if err := strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
 		d.logger.Error().
-			Any("params", strategyConfig.Params).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Err(err).
 			Msg("Invalid strategy configuration")
 		return nil
@@ -583,7 +583,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 					Float64("original_value", originalFloat64).
 					Float64("corrected_value", newValue).
 					Float64("correction_factor", newValue/originalFloat64).
-					Msg("🔧 Unit correction applied to datapoint - ensuring consistent units across all strategies")
+					Msg("Unit correction applied to datapoint - ensuring consistent units across all strategies")
 			}
 		} else {
 			// Only the legacy fallback transformer (created when a probe
@@ -628,7 +628,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 		d.logger.Info().
 			Int("total_datapoints", len(datapoints)).
 			Int("corrections_applied", correctionCount).
-			Msg("✅ Unit corrections completed - all strategies will receive corrected metrics")
+			Msg("Unit corrections completed - all strategies will receive corrected metrics")
 	}
 
 	return correctedDatapoints
