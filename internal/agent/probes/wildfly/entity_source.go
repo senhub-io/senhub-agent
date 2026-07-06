@@ -15,11 +15,13 @@ import (
 // is reachable (up=true); a transient failure returns ok=false so the tracker
 // reuses the last good snapshot rather than emitting a delete.
 type wildflyEntitySource struct {
-	instanceID string
-	baseAttrs  map[string]any
-	mu         sync.RWMutex
-	up         bool
-	version    string
+	instanceID   string
+	baseAttrs    map[string]any
+	serverAddr   string // host from the endpoint; a runs_on→host is emitted only when it is loopback
+	runsOnHostID string // agent host id; target of the local-target runs_on edge
+	mu           sync.RWMutex
+	up           bool
+	version      string
 }
 
 // newWildflyEntitySource builds the entity source. The instance id follows the
@@ -28,10 +30,16 @@ type wildflyEntitySource struct {
 // else "wildfly" as a last resort. Descriptive server.address / server.port
 // attributes are kept but never used for identity.
 func newWildflyEntitySource(endpoint, instanceName string, resolveHostID func() string) *wildflyEntitySource {
-	instanceID := resolveInstanceID(instanceName, resolveHostID)
+	var hostID string
+	if resolveHostID != nil {
+		hostID = resolveHostID()
+	}
+	instanceID := resolveInstanceID(instanceName, func() string { return hostID })
 	host, port := hostPortFromEndpoint(endpoint)
 	return &wildflyEntitySource{
-		instanceID: instanceID,
+		instanceID:   instanceID,
+		serverAddr:   host,
+		runsOnHostID: hostID,
 		baseAttrs: map[string]any{
 			"service.name":   "wildfly",
 			"server.address": host,
@@ -126,6 +134,13 @@ func (s *wildflyEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   "service.instance",
 			ToID:     targetID,
 		})
+	}
+
+	// runs_on edge: anchor a locally-monitored WildFly to the agent host so it
+	// does not float with only its monitors edge. The helper's collapse guard
+	// suppresses the edge for a remote target or a loopback-derived identity.
+	if rel, ok := entity.LocalRunsOn("service.instance", targetID, s.serverAddr, s.runsOnHostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

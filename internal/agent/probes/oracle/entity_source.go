@@ -3,6 +3,7 @@ package oracle
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -29,13 +30,15 @@ const (
 // graph.
 type oracleEntitySource struct {
 	instance string
+	host     string        // monitored db host; a runs_on→host is emitted only when it is loopback
+	hostID   func() string // resolves the agent host id (default dbcommon.HostID)
 
 	mu      sync.Mutex
 	version string // v$instance.version, "" until the first cycle reports it
 }
 
-func newEntitySource(instance string) *oracleEntitySource {
-	return &oracleEntitySource{instance: instance}
+func newEntitySource(instance, host string) *oracleEntitySource {
+	return &oracleEntitySource{instance: instance, host: host, hostID: dbcommon.HostID}
 }
 
 // setVersion records the server version (v$instance.version) so it rides the
@@ -76,6 +79,12 @@ func (s *oracleEntitySource) Observe() (entity.Observation, bool) {
 			ToType:   entityTypeDB,
 			ToID:     dbID,
 		})
+	}
+
+	// runs_on edge: db → host when the db is local (loopback) — anchors a local
+	// db to the host it runs on instead of leaving it floating (enterprise#36).
+	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 	return obs, true
 }

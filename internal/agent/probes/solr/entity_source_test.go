@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // clusterStatusPayload returns a minimal CLUSTERSTATUS response containing a
@@ -180,10 +181,10 @@ func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("got %d relations, want 1", len(obs.Relations))
+	rel, found := findRelation(obs, "monitors")
+	if !found {
+		t.Fatalf("monitors edge missing; got %d relations", len(obs.Relations))
 	}
-	rel := obs.Relations[0]
 	if rel.Type != "monitors" {
 		t.Errorf("relation type = %q, want monitors", rel.Type)
 	}
@@ -223,8 +224,57 @@ func TestEntitySource_MonitorsEdge_Absent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("got %d relations, want 0 (no agent id set)", len(obs.Relations))
+	if _, has := findRelation(obs, "monitors"); has {
+		t.Error("monitors edge present when agent id is empty; want absent")
+	}
+}
+
+// findRelation returns the first relation of the given type.
+func findRelation(obs entity.Observation, relType string) (entity.Relation, bool) {
+	for _, r := range obs.Relations {
+		if r.Type == relType {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
+}
+
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable solr with a globally-
+// unique SolrCloud cluster id is anchored to the host with runs_on
+// (enterprise#36). The httptest server listens on 127.0.0.1, so the monitored
+// host is loopback; a remote db is not anchored.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(clusterStatusPayload("cluster-runson"))
+	}))
+	defer srv.Close()
+
+	hasRunsOn := func(src *solrEntitySource) bool {
+		src.hostID = func() string { return "h-1" }
+		src.setReachable(true, "")
+		src.tryPinClusterIDOrHostPort(context.Background())
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Loopback target (httptest binds 127.0.0.1) with a tech cluster id.
+	local := newSolrEntitySource(srv.URL, "", newTestHTTPClient())
+	if !hasRunsOn(local) {
+		t.Error("loopback db with a tech id must emit runs_on→host")
+	}
+
+	// Remote target: identity pinned via instance_name, host is non-loopback.
+	remote := newSolrEntitySource("http://10.0.0.5:8983", "prod-solr", newTestHTTPClient())
+	if hasRunsOn(remote) {
+		t.Error("remote db must NOT emit runs_on→host")
 	}
 }
 

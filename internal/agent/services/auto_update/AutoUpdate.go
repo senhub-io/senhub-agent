@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/go-version"
@@ -67,6 +68,31 @@ type autoUpdate struct {
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
 	dryRun       bool
+	// msiUpgradeLaunched is set when an MSI-managed update handed the upgrade
+	// to msiexec. msiexec stops+restarts the service itself, so the periodic
+	// checker must NOT self-exit (which would race the installer). Accessed by
+	// concurrent Update() cycles (onConfigChange + the periodic scheduler), so
+	// it is atomic and reset at the top of each Update.
+	msiUpgradeLaunched atomic.Bool
+	// betaMsiWarned records that we already warned that an opted-in beta cannot
+	// be delivered as an MSI, so the warning is emitted once, not every cycle.
+	betaMsiWarned atomic.Bool
+	// launchInstaller runs the staged MSI. Nil in production (the real msiexec
+	// launch is used); injected by tests to assert applyMsiUpdate orchestration
+	// without spawning a process.
+	launchInstaller func(msiPath, logPath string) error
+	// lastMsiAttempt records the last version handed to msiexec and the log it
+	// wrote to. msiexec is detached and fire-and-forget, so a failed install is
+	// otherwise invisible: if a later cycle still wants that same version, the
+	// install did not take — surface it instead of silently re-staging (m8).
+	lastMsiAttempt atomic.Pointer[msiAttempt]
+}
+
+// msiAttempt is the record of a launched MSI upgrade used to detect a
+// previous install that never applied (m8).
+type msiAttempt struct {
+	version string
+	logPath string
 }
 
 func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
@@ -161,6 +187,11 @@ func (a *autoUpdate) onConfigChange(string) {
 }
 
 func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (bool, error) {
+	// A prior cycle's MSI-launched state must not leak into this decision: reset
+	// before we decide, so PeriodicalCheckForUpdate reads a value set (or not) by
+	// this same cycle.
+	a.msiUpgradeLaunched.Store(false)
+
 	var registry string
 	if len(registryUrl) > 0 {
 		registry = registryUrl[0]
@@ -204,6 +235,52 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 		Str("expected_version", expectedVersion).
 		Msg("Update required")
 
+	// MSI-managed installs update by applying a new signed MSI rather than
+	// self-replacing the binary, so Windows Installer tracking (repair,
+	// upgrade, ARP version) stays coherent. Gated on isMsiManaged(), which is
+	// only true on an MSI install — a ZIP/script install keeps the binary path
+	// below unchanged.
+	if isMsiManaged() {
+		// The MSI build matrix does not (and cannot: ProductVersion carries no
+		// pre-release suffix) publish beta MSIs. On an include_beta MSI host,
+		// 'latest' can resolve to a beta whose MSI is never built — downloading
+		// it would 404 to an HTML landing page and surface as an hourly
+		// "signature verification failed". Skip it and stay put (M4).
+		if IsBetaVersion(expectedVersion) {
+			if a.betaMsiWarned.CompareAndSwap(false, true) {
+				a.logger.Warn().
+					Str("expected_version", expectedVersion).
+					Msg("Beta releases are not available as MSI; staying on current version")
+			}
+			return false, nil
+		}
+
+		// If a previous cycle already launched an MSI for this exact version and
+		// we are still here wanting it, the install did not apply (1618, a
+		// policy block, a service-stop timeout...). msiexec restarts the service
+		// on success, so a surviving process on the same version is the failure
+		// signal — surface it loudly (m8).
+		if prev := a.lastMsiAttempt.Load(); prev != nil && prev.version == expectedVersion {
+			agentstate.IncrementUpdateRejected("msi_install_unconfirmed")
+			a.logger.Error().
+				Str("version", expectedVersion).
+				Str("msiexec_log", prev.logPath).
+				Msg("Previous MSI-managed upgrade did not apply; inspect the msiexec log before retrying")
+		}
+
+		msiURL, err := a.GetMsiUrl(registry, expectedVersion)
+		if err != nil {
+			a.logger.Error().Err(err).Msg("Failed to generate MSI URL")
+			return false, err
+		}
+		a.logger.Info().Str("msi_url", msiURL).Msg("Applying MSI-managed update")
+		if err := a.applyMsiUpdate(msiURL, expectedVersion); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to apply MSI update")
+			return false, err
+		}
+		return true, nil
+	}
+
 	binaryUrl, err := a.GetBinaryUrl(registry, expectedVersion)
 	if err != nil {
 		a.logger.Error().
@@ -225,6 +302,21 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 	}
 
 	return true, nil
+}
+
+// GetMsiUrl builds the download URL of the per-version MSI installer, alongside
+// the ZIP path. The filename matches what the windows-msi workflow publishes
+// (senhub-agent-<version>-amd64.msi); a detached minisign signature is expected
+// next to it as <url>.minisig, verified exactly like the ZIP archive.
+func (a *autoUpdate) GetMsiUrl(registryUrl, version string) (string, error) {
+	registryUrl = a.GetRegistryUrl(registryUrl)
+	// Derive the arch from the running binary, matching the ZIP path
+	// (getBinaryNameForOptions). Today the ship matrix is windows/amd64 only,
+	// but a future windows/arm64 build carrying the MSI marker must not silently
+	// fetch an amd64 MSI (m9).
+	filename := fmt.Sprintf("senhub-agent-%s-%s.msi", version, runtime.GOARCH)
+	downloadPath := fmt.Sprintf(VERSION_BINARY_PATH, FormatVersionForUrl(version), filename)
+	return url.JoinPath(registryUrl, downloadPath)
 }
 
 // doUpdate downloads the per-platform release ZIP, extracts the agent
@@ -386,8 +478,11 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		return err
 	}
 
-	if updateApplied {
-		// Now that the binary is updated, exit the process to restart the service.
+	if updateApplied && !a.msiUpgradeLaunched.Load() {
+		// Binary self-replace path: the new binary is already on disk, so exit
+		// to let the service manager restart into it. The MSI path is handled by
+		// msiexec (it stops and restarts the service), so we must NOT self-exit
+		// there — doing so would race the installer.
 		a.logger.Info().Msg("Exiting to apply update")
 		os.Exit(0)
 	}
@@ -445,13 +540,19 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 	// newer beta (e.g. 0.4.2-beta) wins over the latest stable; otherwise
 	// only stable releases are resolved (#591).
 	if expectedVersionStr == "latest" {
-		includeBeta := a.configSource.GetConfiguration().Agent.IncludeBeta
+		// configSource is nil when the CLI 'update latest' path constructs the
+		// updater without one (internal/agent/update.go). Fall back to
+		// stable-only rather than dereferencing nil and panicking (m10).
+		includeBeta := false
+		if a.configSource != nil {
+			includeBeta = a.configSource.GetConfiguration().Agent.IncludeBeta
+		}
 		a.logger.Info().
 			Bool("include_beta", includeBeta).
 			Msg("Version alias 'latest' requested, fetching from registry")
 
 		if includeBeta {
-			versions, err := FetchAllVersions(a.httpClient, registryUrl, true)
+			versions, err := FetchAllVersions(a.httpClient, registryUrl, true, a.logger)
 			if err != nil {
 				a.logger.Warn().Err(err).Msg("Failed to fetch latest version from registry, skipping update")
 				return currentVersionStr
@@ -597,7 +698,7 @@ func (a *autoUpdate) GetBinaryUrl(
 // Returns the latest available version metadata if newer than current, nil otherwise.
 func (a *autoUpdate) CheckForNewVersion(includeBeta bool) (*VersionMetadata, error) {
 	registryUrl := a.GetRegistryUrl("")
-	versions, err := FetchAllVersions(a.httpClient, registryUrl, includeBeta)
+	versions, err := FetchAllVersions(a.httpClient, registryUrl, includeBeta, a.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch versions: %w", err)
 	}
@@ -627,5 +728,5 @@ func (a *autoUpdate) CheckForNewVersion(includeBeta bool) (*VersionMetadata, err
 // ListAvailableVersions returns all versions available for update
 func (a *autoUpdate) ListAvailableVersions(includeBeta bool) ([]VersionMetadata, error) {
 	registryUrl := a.GetRegistryUrl("")
-	return FetchAllVersions(a.httpClient, registryUrl, includeBeta)
+	return FetchAllVersions(a.httpClient, registryUrl, includeBeta, a.logger)
 }

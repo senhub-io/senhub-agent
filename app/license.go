@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -25,7 +24,7 @@ func handleLicenseCommand() {
 	var cmd LicenseCmd
 	parser, err := arg.NewParser(arg.Config{Program: "agent license"}, &cmd)
 	if err != nil {
-		log.Fatalf("Failed to create parser: %v", err)
+		fatalf("failed to create parser: %v", err)
 	}
 
 	// Parse args starting from index 2 (skip "agent" and "license")
@@ -35,7 +34,11 @@ func handleLicenseCommand() {
 			parser.WriteHelp(os.Stdout)
 			os.Exit(0)
 		}
-		parser.WriteUsage(os.Stdout)
+		// A parse error is a diagnostic, not data: route the cause and the
+		// usage to stderr with the unified "Error:" prefix so piped callers
+		// see the failure rather than receiving usage text on stdout.
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		parser.WriteUsage(os.Stderr)
 		os.Exit(1)
 	}
 
@@ -58,62 +61,46 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	// Get absolute config path
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
-		log.Fatalf("Failed to determine config path: %v", err)
+		fatalf("failed to determine config path: %v", err)
 	}
 
 	// Validate license code with RSA signature verification
 	validator, err := license.GetDefaultValidator(7)
 	if err != nil {
-		log.Fatalf("Failed to initialize license validator: %v", err)
+		fatalf("failed to initialize license validator: %v", err)
 	}
 
 	validatedLicense, err := validator.ValidateLicense(args.LicenseCode)
 	if err != nil {
-		fmt.Printf("❌ Invalid license code: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Invalid license code: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Show license information
-	fmt.Println("✅ License validated successfully")
+	fmt.Println("License validated successfully")
 	fmt.Printf("   Tier: %s\n", validatedLicense.Tier)
 	fmt.Printf("   Authorized probes: %v\n", validatedLicense.AuthorizedProbes)
 	fmt.Printf("   Expires at: %s\n", validatedLicense.ExpiresAt.Format(time.RFC1123))
 
 	if validatedLicense.IsExpired {
-		fmt.Printf("   ⚠️  License is expired\n")
+		fmt.Printf("   License is expired\n")
 		if validator.IsInGracePeriod(validatedLicense) {
 			gracePeriodEnd := validatedLicense.ExpiresAt.Add(time.Duration(validatedLicense.GracePeriodDays) * 24 * time.Hour)
 			fmt.Printf("   Grace period active until: %s\n", gracePeriodEnd.Format(time.RFC1123))
 		} else {
-			fmt.Printf("   ❌ Grace period has ended - license is inactive\n")
+			fmt.Printf("   Grace period has ended - license is inactive\n")
 		}
 	}
 
-	// Load configuration file
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
+	// Persist the license with a node-level edit that preserves the file's
+	// layout. A full unmarshal/marshal of LocalConfigurationData would re-emit
+	// empty probes:/storage: blocks and flip a multi-file install back to legacy
+	// monolithic, silently dropping probes.d/ + strategies.d/.
+	if err := configuration.SetLicenseField(configPath, args.LicenseCode); err != nil {
+		fatalf("failed to write license to config: %v", err)
 	}
 
-	var config configuration.LocalConfigurationData
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
-	}
-
-	// Update license field
-	config.Agent.License = args.LicenseCode
-
-	// Write back to file
-	updatedData, err := yaml.Marshal(&config)
-	if err != nil {
-		log.Fatalf("Failed to marshal config: %v", err)
-	}
-
-	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		log.Fatalf("Failed to write config file: %v", err)
-	}
-
-	fmt.Printf("\n✅ License activated and saved to: %s\n", configPath)
+	fmt.Printf("\nLicense activated and saved to: %s\n", configPath)
 	fmt.Println("   Restart the agent for changes to take effect.")
 }
 
@@ -122,18 +109,18 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	// Get absolute config path
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
-		log.Fatalf("Failed to determine config path: %v", err)
+		fatalf("failed to determine config path: %v", err)
 	}
 
 	// Load configuration file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
+		fatalf("failed to read config file %s: %v", configPath, err)
 	}
 
 	var config configuration.LocalConfigurationData
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
+		fatalf("failed to parse config file: %v", err)
 	}
 
 	// Check if license exists
@@ -149,16 +136,16 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	// Validate and show license with RSA signature verification
 	validator, err := license.GetDefaultValidator(7)
 	if err != nil {
-		log.Fatalf("Failed to initialize license validator: %v", err)
+		fatalf("failed to initialize license validator: %v", err)
 	}
 
 	validatedLicense, err := validator.ValidateLicense(config.Agent.License)
 	if err != nil {
-		fmt.Printf("❌ Invalid license in config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Invalid license in config: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("📜 Current License Information")
+	fmt.Println("Current License Information")
 	fmt.Println("================================")
 	fmt.Printf("Tier: %s\n", validatedLicense.Tier)
 	fmt.Printf("Subject: %s\n", validatedLicense.Subject)
@@ -166,7 +153,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	fmt.Printf("Expires at: %s\n", validatedLicense.ExpiresAt.Format(time.RFC1123))
 
 	if validatedLicense.IsExpired {
-		fmt.Printf("\n⚠️  Status: EXPIRED\n")
+		fmt.Printf("\nStatus: EXPIRED\n")
 		if validator.IsInGracePeriod(validatedLicense) {
 			gracePeriodEnd := validatedLicense.ExpiresAt.Add(time.Duration(validatedLicense.GracePeriodDays) * 24 * time.Hour)
 			fmt.Printf("Grace period active until: %s\n", gracePeriodEnd.Format(time.RFC1123))
@@ -175,7 +162,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 		}
 	} else {
 		daysUntilExpiry := int(time.Until(validatedLicense.ExpiresAt).Hours() / 24)
-		fmt.Printf("\n✅ Status: ACTIVE (%d days remaining)\n", daysUntilExpiry)
+		fmt.Printf("\nStatus: ACTIVE (%d days remaining)\n", daysUntilExpiry)
 	}
 
 	fmt.Println("\nAuthorized probes:")
@@ -193,45 +180,27 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 	// Get absolute config path
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
-		log.Fatalf("Failed to determine config path: %v", err)
+		fatalf("failed to determine config path: %v", err)
 	}
 
-	// Confirm if not forced
+	// Confirm if not forced. Reuse the shared confirmation helper so this
+	// destructive prompt behaves identically to uninstall / secret rm
+	// (whitespace-tolerant, non-TTY stdin aborts).
 	if !args.Force {
-		fmt.Print("Are you sure you want to remove the license? (y/N): ")
-		var response string
-		_, _ = fmt.Scanln(&response)
-		if response != "y" && response != "Y" {
+		fmt.Print("Are you sure you want to remove the license? [y/N] ")
+		if !readYesConfirmation() {
 			fmt.Println("Cancelled.")
 			return
 		}
 	}
 
-	// Load configuration file
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		log.Fatalf("Failed to read config file %s: %v", configPath, err)
+	// Clear the license with the same node-level edit as activate, so removing a
+	// license on a multi-file install does not corrupt the layout.
+	if err := configuration.SetLicenseField(configPath, ""); err != nil {
+		fatalf("failed to write license to config: %v", err)
 	}
 
-	var config configuration.LocalConfigurationData
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
-	}
-
-	// Remove license
-	config.Agent.License = ""
-
-	// Write back to file
-	updatedData, err := yaml.Marshal(&config)
-	if err != nil {
-		log.Fatalf("Failed to marshal config: %v", err)
-	}
-
-	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		log.Fatalf("Failed to write config file: %v", err)
-	}
-
-	fmt.Printf("✅ License removed from: %s\n", configPath)
+	fmt.Printf("License removed from: %s\n", configPath)
 	fmt.Println("   Agent will run in free tier mode.")
 	fmt.Println("   Restart the agent for changes to take effect.")
 }

@@ -26,19 +26,11 @@ func NewAuthenticationManager(agentKey string, agentConfig configuration.AgentCo
 	}
 }
 
-// ValidateAgentKey validates the provided agent key against the configured key
+// ValidateAgentKey validates the provided agent key against the configured
+// key(s). The comparison is constant-time (validateKeyConstantTime) so the
+// path-key routes get the same timing-safe check as the /metrics scrape route.
 func (a *AuthenticationManager) ValidateAgentKey(providedKey string) bool {
-	// Primary validation against HTTP strategy agent key
-	if providedKey == a.agentKey {
-		return true
-	}
-
-	// Fallback validation against agent config (for backward compatibility)
-	if a.agentConfig != nil && providedKey == a.agentConfig.GetAuthenticationKey() {
-		return true
-	}
-
-	return false
+	return a.validateKeyConstantTime(providedKey)
 }
 
 // AuthenticateRequest extracts the agent key from the request and validates it
@@ -52,8 +44,10 @@ func (a *AuthenticationManager) AuthenticateRequest(r *http.Request) (string, bo
 	}
 
 	if !a.ValidateAgentKey(agentKey) {
+		// Log only a short prefix: a typo'd REAL key is the common case, and the
+		// full value must not land in shared logs.
 		a.logger.Warn().
-			Str("provided_key", agentKey).
+			Str("provided_key_prefix", keyPrefixForLog(agentKey)).
 			Msg("Invalid agent key provided")
 		return agentKey, false
 	}

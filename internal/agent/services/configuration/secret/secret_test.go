@@ -1,0 +1,130 @@
+package secret
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+const plain = "sup3r-s3cr3t-v@lue"
+
+// TestSecret_NeverLeaks is the security-critical test: the wrapped value must
+// not appear through ANY stringification path.
+func TestSecret_NeverLeaks(t *testing.T) {
+	s := New(plain)
+
+	renders := map[string]string{
+		"%v":           fmt.Sprintf("%v", s),
+		"%s":           fmt.Sprintf("%s", s),
+		"%q":           fmt.Sprintf("%q", s),
+		"%+v":          fmt.Sprintf("%+v", s),
+		"%#v":          fmt.Sprintf("%#v", s),
+		"%d-on-struct": fmt.Sprintf("%v", struct{ S Secret }{s}),
+		"String()":     s.String(),
+	}
+	for what, got := range renders {
+		if strings.Contains(got, plain) {
+			t.Errorf("%s leaked the secret value: %q", what, got)
+		}
+		if !strings.Contains(got, "****") {
+			t.Errorf("%s did not show the redaction marker: %q", what, got)
+		}
+	}
+
+	if b, _ := json.Marshal(s); strings.Contains(string(b), plain) {
+		t.Errorf("MarshalJSON leaked: %s", b)
+	}
+	if b, _ := yaml.Marshal(s); strings.Contains(string(b), plain) {
+		t.Errorf("MarshalYAML leaked: %s", b)
+	}
+	if b, _ := json.Marshal(map[string]Secret{"password": s}); strings.Contains(string(b), plain) {
+		t.Errorf("nested-in-map JSON leaked: %s", b)
+	}
+
+	// Expose is the one deliberate reveal boundary.
+	if s.Expose() != plain {
+		t.Errorf("Expose() = %q, want the original value", s.Expose())
+	}
+}
+
+func TestResolve(t *testing.T) {
+	t.Cleanup(func() { SetProvider(nil) })
+
+	// No backend, no default → error (never silently empty).
+	SetProvider(nil)
+	if _, err := Resolve("veeam.password", "", false); err == nil {
+		t.Error("no backend + no default: expected error")
+	}
+	// No backend, with default → default.
+	if v, err := Resolve("veeam.password", "fallback", true); err != nil || v != "fallback" {
+		t.Errorf("no backend + default: got %q, %v", v, err)
+	}
+
+	mp := NewMemoryProvider()
+	_ = mp.Set("veeam.password", New(plain))
+	SetProvider(mp)
+
+	if v, err := Resolve("veeam.password", "", false); err != nil || v != plain {
+		t.Errorf("present secret: got %q, %v", v, err)
+	}
+	// Missing name with default → default.
+	if v, err := Resolve("absent", "dflt", true); err != nil || v != "dflt" {
+		t.Errorf("missing + default: got %q, %v", v, err)
+	}
+	// Missing name without default → error that names the key but not a value.
+	_, err := Resolve("absent", "", false)
+	if err == nil {
+		t.Fatal("missing + no default: expected error")
+	}
+	if !strings.Contains(err.Error(), "absent") || strings.Contains(err.Error(), plain) {
+		t.Errorf("error should name the key, never a value: %v", err)
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("error should wrap ErrNotFound: %v", err)
+	}
+}
+
+func TestSanitizeKey(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"veeam-prod.password", "veeam-prod.password"},
+		{"pg.billing.password", "pg.billing.password"},
+		{"citrix-1.director.auth.password", "citrix-1.director.auth.password"},
+	}
+	for _, c := range cases {
+		if got := SanitizeKey(c.in); got != c.want {
+			t.Errorf("SanitizeKey(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	// Illegal chars are replaced and a hash is appended (lossy → unique).
+	a := SanitizeKey("pg billing@dc1.password")
+	if strings.ContainsAny(a, " @") {
+		t.Errorf("illegal chars survived: %q", a)
+	}
+	// Distinct lossy inputs must not collide.
+	b := SanitizeKey("pg-billing-dc1.password")
+	if a == b {
+		t.Errorf("distinct inputs collided: %q == %q", a, b)
+	}
+	// Over-length is capped.
+	long := SanitizeKey(strings.Repeat("x", 200) + ".password")
+	if len(long) > maxKeyLen {
+		t.Errorf("key not capped: len=%d", len(long))
+	}
+}
+
+// TestSanitizeKey_NoColonForReferenceGrammar pins that a `:` in the input never
+// survives into a sanitized key — a key containing `:-` would misparse under the
+// ${secret:NAME} reference grammar (`:-` is its default separator).
+func TestSanitizeKey_NoColonForReferenceGrammar(t *testing.T) {
+	k := SanitizeKey("smtp:@relay.password")
+	if strings.Contains(k, ":") {
+		t.Errorf("sanitized key must not contain ':', got %q", k)
+	}
+	if strings.Contains(k, ":-") {
+		t.Errorf("sanitized key must not contain ':-' (reference default separator), got %q", k)
+	}
+}

@@ -24,6 +24,8 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 )
 
 // dollarSentinel replaces `$$` during the pre-pass so the substitution
@@ -43,7 +45,7 @@ const dollarSentinel = "\x00DOLLAR\x00"
 // branch claim the suffix when present, while a Windows-style file
 // path like `${file:C:/etc/x.key}` still parses correctly because the
 // regex backtracks until the closing `}` matches.
-var substitutionPattern = regexp.MustCompile(`\$\{(env|file):([^}]+?)(?::-([^}]*))?\}`)
+var substitutionPattern = regexp.MustCompile(`\$\{(env|file|secret):([^}]+?)(?::-([^}]*))?\}`)
 
 // Substitute walks v recursively and resolves every ${env:...} and
 // ${file:...} reference found in string fields. v must be a pointer
@@ -177,6 +179,13 @@ func substituteInterface(v reflect.Value) error {
 // the final config — without the sentinel the regex would not
 // match anything (no `{`) and we'd leave `$$` in place; the spec
 // requires the escape, so the sentinel pass is non-optional.
+// SubstituteString resolves every ${env:}/${file:}/${secret:} reference in a
+// single string and returns the result. It is the value-level entry point other
+// packages (e.g. the OTLP strategy's header expansion) call so that every signal
+// shares one resolver — including the secret backend — instead of a private,
+// env-only expander.
+func SubstituteString(s string) (string, error) { return substituteString(s) }
+
 func substituteString(s string) (string, error) {
 	if !strings.Contains(s, "${") && !strings.Contains(s, "$$") {
 		return s, nil // fast path — no references, no escape
@@ -247,6 +256,13 @@ func resolveReference(kind, ref, dflt string, hasDefault bool) (string, error) {
 		// and that newline would corrupt anything appended to the
 		// resolved value (URLs, headers, DSNs).
 		return strings.TrimSpace(string(data)), nil
+
+	case "secret":
+		// Resolve against the active OS-native secret backend. The value is
+		// returned to the caller and placed into the params map as a plain
+		// string; it is never logged here, and a resolution error names only
+		// the secret, never a value (see secret.Resolve).
+		return secret.Resolve(ref, dflt, hasDefault)
 
 	default:
 		// Unreachable by construction (regex restricts kind to

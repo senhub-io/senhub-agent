@@ -4,7 +4,27 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
+
+// relByType returns a pointer to the first relation of the given type, or nil.
+func relByType(obs entity.Observation, ty string) *entity.Relation {
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == ty {
+			return &obs.Relations[i]
+		}
+	}
+	return nil
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
 
 // TestResolveInstanceID verifies the D1 precedence rule in isolation.
 func TestResolveInstanceID_InstanceNameTakesPrecedence(t *testing.T) {
@@ -132,12 +152,11 @@ func TestEntitySource_MonitorsEdge_Present(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("Relations count = %d, want 1", len(obs.Relations))
-	}
-	rel := obs.Relations[0]
-	if rel.Type != "monitors" {
-		t.Errorf("relation Type = %q, want %q", rel.Type, "monitors")
+	// varnishstat is always local, so a runs_on edge is also present; assert by
+	// type, not count.
+	rel := relByType(obs, "monitors")
+	if rel == nil {
+		t.Fatalf("no monitors relation; got %v", relTypes(obs))
 	}
 	if rel.FromType != "service.instance" {
 		t.Errorf("relation FromType = %q, want %q", rel.FromType, "service.instance")
@@ -166,8 +185,41 @@ func TestEntitySource_MonitorsEdge_Absent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("Relations count = %d, want 0 when agent id is empty", len(obs.Relations))
+	// A runs_on edge is still present (varnishstat is always local); only the
+	// monitors edge must be absent when the agent id is empty.
+	if relByType(obs, "monitors") != nil {
+		t.Errorf("monitors relation must be absent when agent id is empty; got %v", relTypes(obs))
+	}
+}
+
+// TestEntitySource_LocalRunsOn verifies that the varnish instance is anchored to
+// the agent host with a runs_on edge — varnishstat is always read locally
+// (server.address "localhost"), so the target is loopback. The host-scoped id
+// "varnish@<host>" carries no loopback literal, so the collapse guard passes.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	src := newVarnishEntitySource("", "H")
+	src.setReachable(true)
+	obs, _ := src.Observe()
+	runsOn := relByType(obs, "runs_on")
+	if runsOn == nil {
+		t.Fatalf("local varnish: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "varnish@H" {
+		t.Errorf("runs_on source = %v, want varnish@H", runsOn.FromID)
+	}
+
+	// Host id unreadable → no runs_on (helper refuses an empty hostID).
+	noHost := newVarnishEntitySource("", "")
+	noHost.setReachable(true)
+	nobs, _ := noHost.Observe()
+	if relByType(nobs, "runs_on") != nil {
+		t.Errorf("varnish with empty host id must NOT emit runs_on; relations=%v", relTypes(nobs))
 	}
 }
 

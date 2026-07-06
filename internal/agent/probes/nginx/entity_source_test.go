@@ -147,12 +147,14 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("got %d relations, want 1 (monitors)", len(obs.Relations))
+	var rel *entity.Relation
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == "monitors" {
+			rel = &obs.Relations[i]
+		}
 	}
-	rel := obs.Relations[0]
-	if rel.Type != "monitors" {
-		t.Errorf("relation type = %q, want %q", rel.Type, "monitors")
+	if rel == nil {
+		t.Fatalf("no monitors relation; got %v", relTypes(obs))
 	}
 	if rel.FromType != "service.instance" {
 		t.Errorf("FromType = %q, want service.instance", rel.FromType)
@@ -184,8 +186,13 @@ func TestEntitySource_MonitorsEdgeAbsent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("got %d relations, want 0 (agent id empty)", len(obs.Relations))
+	// No monitors edge when the agent id is empty. A runs_on edge may still be
+	// present (the localhost endpoint is loopback) — that is independent of the
+	// agent id, so assert specifically on the monitors type, not the count.
+	for _, ty := range relTypes(obs) {
+		if ty == "monitors" {
+			t.Errorf("monitors relation must be absent when agent id empty; got %v", relTypes(obs))
+		}
 	}
 }
 
@@ -262,3 +269,50 @@ func contains(s, sub string) bool {
 
 // Compile-time check: the entity.Relation type is used, not entity.Relationship.
 var _ entity.Relation = entity.Relation{}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored nginx emits a
+// runs_on→host edge (so it does not float), and a remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	t.Setenv("dummy", "1")
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback endpoint → runs_on present, targeting the agent host.
+	local := newNginxEntitySource("http://127.0.0.1:8080/nginx_status", "", "H")
+	local.setReachable(true)
+	obs, _ := local.Observe()
+	var runsOn *entity.Relation
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == "runs_on" {
+			runsOn = &obs.Relations[i]
+		}
+	}
+	if runsOn == nil {
+		t.Fatalf("loopback nginx: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "nginx@H" {
+		t.Errorf("runs_on source = %v, want nginx@H", runsOn.FromID)
+	}
+
+	// Remote endpoint → no runs_on (must not claim to run on the agent host).
+	remote := newNginxEntitySource("http://10.0.0.5:8080/nginx_status", "", "H")
+	remote.setReachable(true)
+	robs, _ := remote.Observe()
+	for _, ty := range relTypes(robs) {
+		if ty == "runs_on" {
+			t.Errorf("remote nginx must NOT emit runs_on; relations=%v", relTypes(robs))
+		}
+	}
+}

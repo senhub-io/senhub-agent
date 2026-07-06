@@ -240,7 +240,7 @@ func (h *HTTPSyncStrategy) Start() error {
 
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
-	h.logger.Info().Int("count", len(datapoints)).Msg("🔥 HTTP Strategy - Received datapoints")
+	h.logger.Info().Int("count", len(datapoints)).Msg("HTTP Strategy - Received datapoints")
 
 	// Use the cache's method to add data points
 	h.cache.AddDataPointsWithTransformer(datapoints, h.transformerRegistry)
@@ -251,7 +251,7 @@ func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error
 		Int("count", len(datapoints)).
 		Int("total_time_series", cacheInfo.TotalMetrics).
 		Int("active_probes", cacheInfo.ProbeCount).
-		Msg("✅ Datapoints added to TSDB cache")
+		Msg("Datapoints added to TSDB cache")
 
 	return nil
 }
@@ -576,14 +576,23 @@ func (h *HTTPSyncStrategy) handleLicenseStatus(w http.ResponseWriter, r *http.Re
 // Universal Configuration handlers (delegated to ConfigurationManager)
 
 func (h *HTTPSyncStrategy) handleUniversalConfigValidation(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigValidation(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleUniversalConfigPreview(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigPreview(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
+		return
+	}
 	h.configManager.HandleUniversalConfigTest(w, r)
 }
 
@@ -685,7 +694,7 @@ func (h *HTTPSyncStrategy) GetStartTime() time.Time {
 // UpdateConfiguration allows updating the HTTP strategy configuration at runtime
 func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{}) error {
 	h.logger.Info().
-		Any("new_params", newParams).
+		Any("new_params", configuration.SanitizeParamsForLog(newParams)).
 		Msg("Updating HTTP strategy configuration")
 
 	// Update the configuration manager
@@ -730,7 +739,7 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 
 		h.logger.Info().
 			Int("retention_minutes", cacheConfig.RetentionMinutes).
-			Msg("✅ Cache configuration updated")
+			Msg("Cache configuration updated")
 	}
 
 	// Re-apply the cardinality cap: the config manager re-parses
@@ -740,7 +749,7 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 	// until restart (reviewer finding on #281).
 	h.cache.SetMaxSeries(h.configManager.GetMaxCacheSize())
 
-	h.logger.Info().Msg("✅ HTTP strategy configuration updated successfully")
+	h.logger.Info().Msg("HTTP strategy configuration updated successfully")
 	return nil
 }
 
@@ -764,7 +773,7 @@ func (h *HTTPSyncStrategy) restartServer() error {
 	h.logger.Info().
 		Int("port", h.port).
 		Str("bind_address", h.bindAddress).
-		Msg("🚀 HTTP server restarted successfully")
+		Msg("HTTP server restarted successfully")
 	return nil
 }
 
