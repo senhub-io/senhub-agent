@@ -1174,42 +1174,44 @@ Authorization: Bearer <token_from_auth>
 ### Basic Citrix Configuration
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      base_url: "https://your-director.domain.com/Citrix/Monitor/OData/v4/Data"
-      environment: "PROD"
-      interval: 120  # 2 minutes
-      auth:
-        method: "ntlm"  # or "basic"
-        username: "DOMAIN\\serviceaccount"
-        password: "password"
-      tls:
-        verify_ssl: false  # for development only - use true in production
+# probes.d/10-citrix.yaml — each file under probes.d/ is a YAML array of probes
+- name: citrix
+  type: citrix
+  params:
+    base_url: "https://your-director.domain.com/Citrix/Monitor/OData/v4/Data"
+    environment: "PROD"
+    interval: 120  # 2 minutes
+    auth:
+      method: "ntlm"  # or "basic"
+      username: "DOMAIN\\serviceaccount"
+      password: ${secret:citrix.password}   # auto-sealed on install
+    tls:
+      verify_ssl: false  # for development only - use true in production
 ```
 
 ### Configuration with Site Filtering (via DDC)
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      base_url: "https://director.domain.com/Citrix/Monitor/OData/v4/Data"
+# probes.d/10-citrix.yaml
+- name: citrix
+  type: citrix
+  params:
+    base_url: "https://director.domain.com/Citrix/Monitor/OData/v4/Data"
 
-      # DDC configuration for site-based filtering
-      delivery_controller:
-        url: "https://ddc-primary.domain.com"
-        fallback_urls:
-          - "https://ddc-backup.domain.com"
-        site_filter: "PROD"  # Only monitor this site
+    # DDC configuration for site-based filtering
+    delivery_controller:
+      url: "https://ddc-primary.domain.com"
+      fallback_urls:
+        - "https://ddc-backup.domain.com"
+      site_filter: "PROD"  # Only monitor this site
 
-      interval: 120
-      auth:
-        method: "ntlm"
-        username: "DOMAIN\\serviceaccount"
-        password: "password"
-      tls:
-        verify_ssl: true
+    interval: 120
+    auth:
+      method: "ntlm"
+      username: "DOMAIN\\serviceaccount"
+      password: ${secret:citrix.password}   # auto-sealed on install
+    tls:
+      verify_ssl: true
 ```
 
 **Site Filtering Mechanism:**
@@ -1222,48 +1224,49 @@ probes:
 ### Production Configuration Best Practices
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      base_url: "https://director.domain.com/Citrix/Monitor/OData/v4/Data"
-      environment: "PROD"
-      interval: 120  # 2 minutes recommended
+# probes.d/10-citrix.yaml
+- name: citrix
+  type: citrix
+  params:
+    base_url: "https://director.domain.com/Citrix/Monitor/OData/v4/Data"
+    environment: "PROD"
+    interval: 120  # 2 minutes recommended
 
-      auth:
-        method: "ntlm"  # Preferred for Windows environments
-        username: "DOMAIN\\svc_api_sensor"
-        password: "${CITRIX_API_PASSWORD}"  # Use environment variable
+    auth:
+      method: "ntlm"  # Preferred for Windows environments
+      username: "DOMAIN\\svc_api_sensor"
+      password: ${secret:citrix.password}   # auto-sealed on install
 
-      tls:
-        verify_ssl: true  # Always true in production
-        min_tls_version: "1.2"
+    tls:
+      verify_ssl: true  # Always true in production
+      min_tls_version: "1.2"
 
-      # Optional: Site-based filtering
-      delivery_controller:
-        url: "https://ddc-01.domain.com"
-        fallback_urls:
-          - "https://ddc-02.domain.com"
-          - "https://ddc-03.domain.com"
-        site_filter: "PROD"
+    # Optional: Site-based filtering
+    delivery_controller:
+      url: "https://ddc-01.domain.com"
+      fallback_urls:
+        - "https://ddc-02.domain.com"
+        - "https://ddc-03.domain.com"
+      site_filter: "PROD"
 ```
 
 ### High-Frequency Monitoring Configuration
 
 ```yaml
-# For real-time monitoring (not recommended for production)
-probes:
-  - name: citrix
-    params:
-      base_url: "https://director.domain.com/Citrix/Monitor/OData/v4/Data"
-      interval: 60  # 1 minute (higher API load)
+# probes.d/10-citrix.yaml — for real-time monitoring (not recommended for production)
+- name: citrix
+  type: citrix
+  params:
+    base_url: "https://director.domain.com/Citrix/Monitor/OData/v4/Data"
+    interval: 60  # 1 minute (higher API load)
 
-      auth:
-        method: "ntlm"
-        username: "DOMAIN\\serviceaccount"
-        password: "password"
+    auth:
+      method: "ntlm"
+      username: "DOMAIN\\serviceaccount"
+      password: ${secret:citrix.password}   # auto-sealed on install
 
-      tls:
-        verify_ssl: true
+    tls:
+      verify_ssl: true
 ```
 
 **Warning:** Intervals < 120s increase API load and may impact Director performance. Only use for troubleshooting or small environments.

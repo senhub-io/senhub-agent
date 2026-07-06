@@ -8,16 +8,16 @@ The WiFi Signal Strength probe monitors wireless network connectivity quality by
 
 ### Basic Configuration
 ```yaml
-probes:
-  - name: wifi_signal_strength
-    params:
-      interval: 60
+# probes.d/10-wifi_signal_strength.yaml — each file under probes.d/ is a YAML array of probes
+- name: wifi_signal_strength
+  params:
+    interval: 60
 ```
 
 ### Minimal Configuration
 ```yaml
-probes:
-  - name: wifi_signal_strength
+# probes.d/10-wifi_signal_strength.yaml
+- name: wifi_signal_strength
 ```
 
 ## Key Metrics
@@ -81,10 +81,9 @@ Each metric includes these tags:
 ### PRTG
 
 ```yaml
-storage:
-  - name: http
-    params:
-      endpoints: ["prtg"]
+# strategies.d/20-http.yaml
+http:
+  endpoints: ["prtg"]
 ```
 
 Access: `http://localhost:8080/api/{key}/prtg/metrics`
@@ -96,10 +95,9 @@ Access: `http://localhost:8080/api/{key}/prtg/metrics`
 ### Nagios
 
 ```yaml
-storage:
-  - name: http
-    params:
-      endpoints: ["nagios"]
+# strategies.d/20-http.yaml
+http:
+  endpoints: ["nagios"]
 ```
 
 Returns: `OK - WiFi connected | signal=85% quality=90%`
@@ -135,10 +133,10 @@ Query: `wifi_signal_strength{ssid="CompanyWiFi"}`
 
 **Configuration**:
 ```yaml
-probes:
-  - name: wifi_signal_strength
-    params:
-      interval: 30  # More frequent checks
+# probes.d/10-wifi_signal_strength.yaml
+- name: wifi_signal_strength
+  params:
+    interval: 30  # More frequent checks
 ```
 
 **Alert Rules**:
@@ -153,13 +151,13 @@ probes:
 
 **Combined Setup**:
 ```yaml
-probes:
-  - name: wifi_signal_strength
-    params:
-      interval: 60
-  - name: ping_gateway
-    params:
-      interval: 30
+# probes.d/00-host.yaml
+- name: wifi_signal_strength
+  params:
+    interval: 60
+- name: ping_gateway
+  params:
+    interval: 30
 ```
 
 ### 4. Access Point Performance
@@ -316,17 +314,17 @@ For complete connectivity monitoring, combine with:
 
 **Example Configuration**:
 ```yaml
-probes:
-  - name: wifi_signal_strength
-    params:
-      interval: 60
-  - name: ping_gateway
-    params:
-      interval: 30
-  - name: ping_webapp
-    params:
-      interval: 60
-      url: "https://www.google.com"
+# probes.d/00-host.yaml
+- name: wifi_signal_strength
+  params:
+    interval: 60
+- name: ping_gateway
+  params:
+    interval: 30
+- name: ping_webapp
+  params:
+    interval: 60
+    url: "https://www.google.com"
 ```
 
 ### Dashboard Design

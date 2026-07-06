@@ -13,11 +13,11 @@ dependencies — uses the stdlib HTTP client.
 ## Quick start
 
 ```yaml
-probes:
-  - name: nats
-    type: nats
-    params:
-      endpoint: http://localhost:8222
+# probes.d/20-nats.yaml — each file under probes.d/ is a YAML array of probes
+- name: nats
+  type: nats
+  params:
+    endpoint: http://localhost:8222
 ```
 
 ## Parameters

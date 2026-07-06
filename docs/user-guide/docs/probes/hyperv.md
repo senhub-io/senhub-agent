@@ -14,9 +14,9 @@ memory assignment and running state.
 ## Quick start
 
 ```yaml
-probes:
-  - name: hyperv
-    type: hyperv
+# probes.d/10-hyperv.yaml — each file under probes.d/ is a YAML array of probes
+- name: hyperv
+  type: hyperv
 ```
 
 No parameters are required — the probe reads WMI on the local host automatically.

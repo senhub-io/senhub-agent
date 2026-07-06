@@ -25,6 +25,7 @@ add the agent's service account to the **Event Log Readers** group).
 ## Configuration
 
 ```yaml
+# probes.d/10-windows_eventlog.yaml — each file under probes.d/ is a YAML array of probes
 - type: windows_eventlog
   name: vda_citrix_events
   params:
@@ -60,10 +61,11 @@ The probe emits **OTel logs only** — no metrics. Enable the OTLP logs
 signal on your storage so the records are consumed:
 
 ```yaml
-storage:
-  - type: otlp
-    signals:
-      logs: true
+# strategies.d/20-otlp.yaml
+otlp:
+  type: otlp
+  signals:
+    logs: true
 ```
 
 Each record carries the mandated attributes `event_id`, `event_level`,
@@ -88,6 +90,7 @@ replaced rather than silently re-reading everything.
 ### Citrix VDA diagnostics
 
 ```yaml
+# probes.d/10-windows_eventlog.yaml
 - type: windows_eventlog
   name: vda_diagnostics
   params:
@@ -100,6 +103,7 @@ replaced rather than silently re-reading everything.
 ### Security audit with PII redaction
 
 ```yaml
+# probes.d/10-windows_eventlog.yaml
 - type: windows_eventlog
   name: security_audit
   params:

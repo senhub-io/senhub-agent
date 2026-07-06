@@ -12,20 +12,20 @@ The CPU probe monitors processor performance across all major operating systems,
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: cpu
-    type: cpu
-    params:
-      interval: 30  # Collection interval in seconds (default: 30)
+# probes.d/10-cpu.yaml — each file under probes.d/ is a YAML array of probes
+- name: cpu
+  type: cpu
+  params:
+    interval: 30  # Collection interval in seconds (default: 30)
 ```
 
 ### Minimal Configuration
 
 ```yaml
-probes:
-  - name: cpu
-    type: cpu
-    params: {}
+# probes.d/10-cpu.yaml
+- name: cpu
+  type: cpu
+  params: {}
 ```
 
 The CPU probe requires no mandatory parameters and works out-of-the-box with default settings.
@@ -93,20 +93,20 @@ This ensures the probe stays functional even when platform limitations exist, pr
 
 **High-frequency monitoring (every 10 seconds):**
 ```yaml
-probes:
-  - name: cpu
-    type: cpu
-    params:
-      interval: 10
+# probes.d/10-cpu.yaml
+- name: cpu
+  type: cpu
+  params:
+    interval: 10
 ```
 
 **Standard monitoring (every minute):**
 ```yaml
-probes:
-  - name: cpu
-    type: cpu
-    params:
-      interval: 60
+# probes.d/10-cpu.yaml
+- name: cpu
+  type: cpu
+  params:
+    interval: 60
 ```
 
 ## Monitoring Tool Integration
@@ -206,8 +206,8 @@ Diagnose system issues:
 
 **Verify probe is enabled:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "name: cpu"
+# Check configuration (multi-file layout)
+grep -rA5 "name: cpu" /etc/senhub/probes.d/
 ```
 
 ### Windows: PDH Counter Errors
@@ -298,16 +298,16 @@ Typical memory footprint per collection:
 Monitor multiple systems with individual configurations:
 
 ```yaml
-probes:
-  - name: cpu_realtime
-    type: cpu
-    params:
-      interval: 10
+# probes.d/10-cpu.yaml
+- name: cpu_realtime
+  type: cpu
+  params:
+    interval: 10
 
-  - name: cpu_trending
-    type: cpu
-    params:
-      interval: 300
+- name: cpu_trending
+  type: cpu
+  params:
+    interval: 300
 ```
 
 **Note:** This will create duplicate metrics. Use unique probe names for different collection intervals.
@@ -317,21 +317,21 @@ probes:
 Correlate CPU metrics with other system metrics:
 
 ```yaml
-probes:
-  - name: cpu
-    type: cpu
-    params:
-      interval: 30
+# probes.d/00-host.yaml — group host probes in one fragment
+- name: cpu
+  type: cpu
+  params:
+    interval: 30
 
-  - name: memory
-    type: memory
-    params:
-      interval: 30
+- name: memory
+  type: memory
+  params:
+    interval: 30
 
-  - name: logicaldisk
-    type: logicaldisk
-    params:
-      interval: 60
+- name: logicaldisk
+  type: logicaldisk
+  params:
+    interval: 60
 ```
 
 This provides comprehensive system monitoring with aligned collection intervals.

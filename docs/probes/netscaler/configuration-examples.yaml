@@ -1,4 +1,13 @@
 # NetScaler ADC Probe - Configuration Examples
+#
+# Since 0.2.x the default install layout is multi-file:
+#   agent.yaml + probes.d/*.yaml + strategies.d/*.yaml
+# The single-file form below (config_version + probes in one document) still
+# loads and is fully supported. Only EXAMPLE 1 is live; the remaining examples
+# are commented so this file loads as one document — copy the probe block you
+# need into a fresh config or a probes.d/ fragment.
+
+config_version: 3
 
 # ==============================================================================
 # EXAMPLE 1: Minimal Configuration (Quick Start)
@@ -11,69 +20,69 @@ probes:
     params:
       base_url: "https://netscaler.company.com"
       username: "monitoring-user"
-      password: "secure-password"
+      password: ${secret:netscaler-test.password}   # auto-sealed on install
       interval: 60
 
 # ==============================================================================
 # EXAMPLE 2: Production Configuration (Recommended)
 # ==============================================================================
 # Best practices for production environments
-
-probes:
-  - name: netscaler-prod
-    type: netscaler
-    params:
-      # NetScaler Management IP/hostname
-      base_url: "https://netscaler.company.com"
-
-      # NITRO API credentials (read-only user recommended)
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-
-      # SSL certificate verification (always enable in production)
-      insecure_skip_verify: false
-
-      # API request timeout (increase for large deployments with 100+ vServers)
-      timeout: 30
-
-      # Metric collection interval (60s = good balance)
-      interval: 60
-
-    # Custom tags for business context
-    custom_tags:
-      - key: "environment"
-        value: "production"
-      - key: "datacenter"
-        value: "dc-paris-01"
-      - key: "team"
-        value: "infrastructure"
-      - key: "business_unit"
-        value: "ecommerce"
+#
+# probes:
+#   - name: netscaler-prod
+#     type: netscaler
+#     params:
+#       # NetScaler Management IP/hostname
+#       base_url: "https://netscaler.company.com"
+#
+#       # NITRO API credentials (read-only user recommended)
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-prod.password}   # auto-sealed on install
+#
+#       # SSL certificate verification (always enable in production)
+#       insecure_skip_verify: false
+#
+#       # API request timeout (increase for large deployments with 100+ vServers)
+#       timeout: 30
+#
+#       # Metric collection interval (60s = good balance)
+#       interval: 60
+#
+#     # Custom tags for business context
+#     custom_tags:
+#       - key: "environment"
+#         value: "production"
+#       - key: "datacenter"
+#         value: "dc-paris-01"
+#       - key: "team"
+#         value: "infrastructure"
+#       - key: "business_unit"
+#         value: "ecommerce"
 
 # ==============================================================================
 # EXAMPLE 3: High Availability (HA) Cluster Monitoring
 # ==============================================================================
 # Monitor a NetScaler HA pair with automatic failover
-
-probes:
-  - name: netscaler-ha-paris
-    type: netscaler
-    params:
-      # Primary node (agent connects here first)
-      base_url: "https://10.0.208.7"
-
-      # Secondary node (agent fails over here if primary is down or demoted)
-      secondary_url: "https://10.0.208.6"
-
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      insecure_skip_verify: true   # Required when using IPs instead of hostnames
-      timeout: 30
-      interval: 60
-    custom_tags:
-      - key: "ha_cluster"
-        value: "paris-cluster-01"
-
+#
+# probes:
+#   - name: netscaler-ha-paris
+#     type: netscaler
+#     params:
+#       # Primary node (agent connects here first)
+#       base_url: "https://10.0.208.7"
+#
+#       # Secondary node (agent fails over here if primary is down or demoted)
+#       secondary_url: "https://10.0.208.6"
+#
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-ha-paris.password}   # auto-sealed on install
+#       insecure_skip_verify: true   # Required when using IPs instead of hostnames
+#       timeout: 30
+#       interval: 60
+#     custom_tags:
+#       - key: "ha_cluster"
+#         value: "paris-cluster-01"
+#
 # Agent will automatically:
 # - Connect to base_url (primary) at startup
 # - Fail over to secondary_url after 3 consecutive collection errors
@@ -85,129 +94,129 @@ probes:
 # EXAMPLE 4: Multi-Datacenter Monitoring
 # ==============================================================================
 # Monitor NetScaler instances across multiple datacenters
-
-probes:
-  # Paris Datacenter
-  - name: netscaler-paris
-    type: netscaler
-    params:
-      base_url: "https://netscaler-paris.company.com"
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      interval: 60
-    custom_tags:
-      - key: "datacenter"
-        value: "dc-paris-01"
-      - key: "region"
-        value: "emea"
-      - key: "environment"
-        value: "production"
-
-  # London Datacenter
-  - name: netscaler-london
-    type: netscaler
-    params:
-      base_url: "https://netscaler-london.company.com"
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      interval: 60
-    custom_tags:
-      - key: "datacenter"
-        value: "dc-london-01"
-      - key: "region"
-        value: "emea"
-      - key: "environment"
-        value: "production"
-
-  # New York Datacenter
-  - name: netscaler-newyork
-    type: netscaler
-    params:
-      base_url: "https://netscaler-ny.company.com"
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      interval: 60
-    custom_tags:
-      - key: "datacenter"
-        value: "dc-newyork-01"
-      - key: "region"
-        value: "americas"
-      - key: "environment"
-        value: "production"
+#
+# probes:
+#   # Paris Datacenter
+#   - name: netscaler-paris
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-paris.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-paris.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "datacenter"
+#         value: "dc-paris-01"
+#       - key: "region"
+#         value: "emea"
+#       - key: "environment"
+#         value: "production"
+#
+#   # London Datacenter
+#   - name: netscaler-london
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-london.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-london.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "datacenter"
+#         value: "dc-london-01"
+#       - key: "region"
+#         value: "emea"
+#       - key: "environment"
+#         value: "production"
+#
+#   # New York Datacenter
+#   - name: netscaler-newyork
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-ny.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-newyork.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "datacenter"
+#         value: "dc-newyork-01"
+#       - key: "region"
+#         value: "americas"
+#       - key: "environment"
+#         value: "production"
 
 # ==============================================================================
 # EXAMPLE 5: Development/Staging Environment
 # ==============================================================================
 # Monitoring for non-production environments with relaxed settings
-
-probes:
-  - name: netscaler-dev
-    type: netscaler
-    params:
-      base_url: "https://netscaler-dev.company.local"
-      username: "nsroot"  # Default user (only for dev!)
-      password: "nsroot"
-
-      # Allow self-signed certificates in dev (NOT for production!)
-      insecure_skip_verify: true
-
-      # Longer interval for dev (save resources)
-      interval: 300  # 5 minutes
-
-      timeout: 30
-    custom_tags:
-      - key: "environment"
-        value: "development"
-      - key: "tier"
-        value: "non-production"
+#
+# probes:
+#   - name: netscaler-dev
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-dev.company.local"
+#       username: "nsroot"  # Default user (only for dev!)
+#       password: ${secret:netscaler-dev.password}   # auto-sealed on install
+#
+#       # Allow self-signed certificates in dev (NOT for production!)
+#       insecure_skip_verify: true
+#
+#       # Longer interval for dev (save resources)
+#       interval: 300  # 5 minutes
+#
+#       timeout: 30
+#     custom_tags:
+#       - key: "environment"
+#         value: "development"
+#       - key: "tier"
+#         value: "non-production"
 
 # ==============================================================================
 # EXAMPLE 6: Large Deployment (100+ Virtual Servers)
 # ==============================================================================
 # Tuned for large NetScaler deployments with many resources
-
-probes:
-  - name: netscaler-enterprise
-    type: netscaler
-    params:
-      base_url: "https://netscaler-enterprise.company.com"
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      insecure_skip_verify: false
-
-      # Increase timeout for large deployments (more API calls)
-      timeout: 60
-
-      # Slightly longer interval to reduce load on NetScaler
-      interval: 90
-    custom_tags:
-      - key: "deployment_size"
-        value: "large"
-      - key: "vserver_count"
-        value: "150+"
-      - key: "environment"
-        value: "production"
+#
+# probes:
+#   - name: netscaler-enterprise
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-enterprise.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-enterprise.password}   # auto-sealed on install
+#       insecure_skip_verify: false
+#
+#       # Increase timeout for large deployments (more API calls)
+#       timeout: 60
+#
+#       # Slightly longer interval to reduce load on NetScaler
+#       interval: 90
+#     custom_tags:
+#       - key: "deployment_size"
+#         value: "large"
+#       - key: "vserver_count"
+#         value: "150+"
+#       - key: "environment"
+#         value: "production"
 
 # ==============================================================================
 # EXAMPLE 7: SSL Certificate Monitoring Focus
 # ==============================================================================
 # Configuration optimized for SSL certificate expiration alerting
-
-probes:
-  - name: netscaler-ssl-monitoring
-    type: netscaler
-    params:
-      base_url: "https://netscaler.company.com"
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      interval: 3600  # Check every hour (certificates change infrequently)
-      timeout: 30
-    custom_tags:
-      - key: "monitoring_focus"
-        value: "ssl-certificates"
-      - key: "alert_priority"
-        value: "critical"
-
+#
+# probes:
+#   - name: netscaler-ssl-monitoring
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-ssl-monitoring.password}   # auto-sealed on install
+#       interval: 3600  # Check every hour (certificates change infrequently)
+#       timeout: 30
+#     custom_tags:
+#       - key: "monitoring_focus"
+#         value: "ssl-certificates"
+#       - key: "alert_priority"
+#         value: "critical"
+#
 # Recommended PRTG alerting thresholds:
 # - days_to_expiration < 30: WARNING
 # - days_to_expiration < 15: HIGH
@@ -218,85 +227,85 @@ probes:
 # EXAMPLE 8: Combined Monitoring (NetScaler + Citrix CVAD)
 # ==============================================================================
 # Monitor both NetScaler ADC and Citrix Virtual Apps & Desktops
-
-probes:
-  # NetScaler ADC (Load Balancing, SSL, HA)
-  - name: netscaler-adc
-    type: netscaler
-    params:
-      base_url: "https://netscaler.company.com"
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      interval: 60
-    custom_tags:
-      - key: "component"
-        value: "adc"
-      - key: "environment"
-        value: "production"
-
-  # Citrix CVAD (Virtual Apps & Desktops)
-  - name: citrix-vda
-    type: citrix
-    params:
-      base_url: "https://ddc.company.com"
-      api_key: "citrix-monitor-api-key"
-      interval: 120
-    custom_tags:
-      - key: "component"
-        value: "virtual-apps-desktops"
-      - key: "environment"
-        value: "production"
+#
+# probes:
+#   # NetScaler ADC (Load Balancing, SSL, HA)
+#   - name: netscaler-adc
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-adc.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "component"
+#         value: "adc"
+#       - key: "environment"
+#         value: "production"
+#
+#   # Citrix CVAD (Virtual Apps & Desktops)
+#   - name: citrix-vda
+#     type: citrix
+#     params:
+#       base_url: "https://ddc.company.com"
+#       api_key: ${secret:citrix-vda.api_key}   # auto-sealed on install
+#       interval: 120
+#     custom_tags:
+#       - key: "component"
+#         value: "virtual-apps-desktops"
+#       - key: "environment"
+#         value: "production"
 
 # ==============================================================================
 # EXAMPLE 9: Complete Infrastructure Stack
 # ==============================================================================
 # Monitor entire infrastructure: Hardware (Redfish) + OS (System) + ADC (NetScaler)
-
-probes:
-  # Hardware monitoring via Redfish
-  - name: server-hardware
-    type: redfish
-    params:
-      base_url: "https://ilo.server01.company.com"
-      username: "admin"
-      password: "admin-password"
-      interval: 300  # 5 minutes (hardware changes slowly)
-    custom_tags:
-      - key: "layer"
-        value: "hardware"
-      - key: "server"
-        value: "server01"
-
-  # Operating System metrics
-  - name: system-metrics
-    type: cpu
-    params:
-      interval: 60
-    custom_tags:
-      - key: "layer"
-        value: "os"
-
-  - name: memory-metrics
-    type: memory
-    params:
-      interval: 60
-
-  - name: disk-metrics
-    type: logicaldisk
-    params:
-      interval: 120
-
-  # Network ADC (NetScaler)
-  - name: netscaler-adc
-    type: netscaler
-    params:
-      base_url: "https://netscaler.company.com"
-      username: "monitoring-user"
-      password: "SecureP@ssw0rd!"
-      interval: 60
-    custom_tags:
-      - key: "layer"
-        value: "network-adc"
+#
+# probes:
+#   # Hardware monitoring via Redfish
+#   - name: server-hardware
+#     type: redfish
+#     params:
+#       base_url: "https://ilo.server01.company.com"
+#       username: "admin"
+#       password: ${secret:server-hardware.password}   # auto-sealed on install
+#       interval: 300  # 5 minutes (hardware changes slowly)
+#     custom_tags:
+#       - key: "layer"
+#         value: "hardware"
+#       - key: "server"
+#         value: "server01"
+#
+#   # Operating System metrics
+#   - name: system-metrics
+#     type: cpu
+#     params:
+#       interval: 60
+#     custom_tags:
+#       - key: "layer"
+#         value: "os"
+#
+#   - name: memory-metrics
+#     type: memory
+#     params:
+#       interval: 60
+#
+#   - name: disk-metrics
+#     type: logicaldisk
+#     params:
+#       interval: 120
+#
+#   # Network ADC (NetScaler)
+#   - name: netscaler-adc
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-adc.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "layer"
+#         value: "network-adc"
 
 # ==============================================================================
 # NOTES
@@ -347,15 +356,18 @@ probes:
 # Security:
 # ---------------------------------
 # NEVER commit real passwords to version control!
-# Use environment variables or secrets management:
+# Reference a stored secret or environment variable instead:
 #
-# Option 1: Environment variables
-# password: "${NETSCALER_PASSWORD}"
+# Option 1: OS secret store (recommended) — inline plaintext is auto-sealed on install
+# password: ${secret:netscaler-prod.password}
 #
-# Option 2: External secrets (Docker, Kubernetes)
-# Mount secrets as files and reference them
+# Option 2: Environment variables
+# password: "${env:NETSCALER_PASSWORD}"
 #
-# Option 3: SenHub Cloud (credentials managed server-side)
+# Option 3: File reference
+# password: "${file:/etc/senhub/secrets/netscaler.pwd}"
+#
+# Option 4: SenHub Cloud (credentials managed server-side)
 # No local credentials storage required
 
 # Troubleshooting:

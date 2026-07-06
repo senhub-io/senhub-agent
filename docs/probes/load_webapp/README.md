@@ -7,34 +7,34 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: load_webapp
-    params:
-      url: "https://www.example.com"
-      timeout: 30  # Request timeout in seconds (default: 30)
+# probes.d/10-load_webapp.yaml — each file under probes.d/ is a YAML array of probes
+- name: load_webapp
+  params:
+    url: "https://www.example.com"
+    timeout: 30  # Request timeout in seconds (default: 30)
 ```
 
 ### Multiple URL Monitoring
 
 ```yaml
-probes:
-  - name: production_webapp
-    type: load_webapp
-    params:
-      url: "https://app.example.com"
-      timeout: 30
+# probes.d/10-load_webapp.yaml
+- name: production_webapp
+  type: load_webapp
+  params:
+    url: "https://app.example.com"
+    timeout: 30
 
-  - name: staging_webapp
-    type: load_webapp
-    params:
-      url: "https://staging.example.com"
-      timeout: 45
+- name: staging_webapp
+  type: load_webapp
+  params:
+    url: "https://staging.example.com"
+    timeout: 45
 
-  - name: api_endpoint
-    type: load_webapp
-    params:
-      url: "https://api.example.com/health"
-      timeout: 15
+- name: api_endpoint
+  type: load_webapp
+  params:
+    url: "https://api.example.com/health"
+    timeout: 15
 ```
 
 ## Supported Protocols
@@ -76,32 +76,32 @@ For a complete metrics reference with timing breakdowns and analysis, see [METRI
 
 **Fast API monitoring (short timeout):**
 ```yaml
-probes:
-  - name: api_health_check
-    type: load_webapp
-    params:
-      url: "https://api.example.com/health"
-      timeout: 5  # Quick timeout for health check
+# probes.d/10-load_webapp.yaml
+- name: api_health_check
+  type: load_webapp
+  params:
+    url: "https://api.example.com/health"
+    timeout: 5  # Quick timeout for health check
 ```
 
 **Slow backend monitoring (long timeout):**
 ```yaml
-probes:
-  - name: legacy_app
-    type: load_webapp
-    params:
-      url: "https://legacy.example.com/dashboard"
-      timeout: 60  # Extended timeout for slow application
+# probes.d/10-load_webapp.yaml
+- name: legacy_app
+  type: load_webapp
+  params:
+    url: "https://legacy.example.com/dashboard"
+    timeout: 60  # Extended timeout for slow application
 ```
 
 **CDN performance monitoring:**
 ```yaml
-probes:
-  - name: cdn_homepage
-    type: load_webapp
-    params:
-      url: "https://www.example.com"
-      timeout: 30
+# probes.d/10-load_webapp.yaml
+- name: cdn_homepage
+  type: load_webapp
+  params:
+    url: "https://www.example.com"
+    timeout: 30
 ```
 
 ## Monitoring Tool Integration
@@ -250,18 +250,18 @@ Total Time: 2450ms breakdown:
 Monitor Content Delivery Network effectiveness:
 
 ```yaml
-probes:
-  # Origin server (no CDN)
-  - name: origin_server
-    type: load_webapp
-    params:
-      url: "https://origin.example.com/page.html"
+# probes.d/10-load_webapp.yaml
+# Origin server (no CDN)
+- name: origin_server
+  type: load_webapp
+  params:
+    url: "https://origin.example.com/page.html"
 
-  # CDN endpoint
-  - name: cdn_endpoint
-    type: load_webapp
-    params:
-      url: "https://cdn.example.com/page.html"
+# CDN endpoint
+- name: cdn_endpoint
+  type: load_webapp
+  params:
+    url: "https://cdn.example.com/page.html"
 ```
 
 **Compare metrics:**
@@ -275,18 +275,18 @@ probes:
 Monitor REST API endpoint performance:
 
 ```yaml
-probes:
-  - name: api_health
-    type: load_webapp
-    params:
-      url: "https://api.example.com/v1/health"
-      timeout: 10
+# probes.d/10-load_webapp.yaml
+- name: api_health
+  type: load_webapp
+  params:
+    url: "https://api.example.com/v1/health"
+    timeout: 10
 
-  - name: api_users
-    type: load_webapp
-    params:
-      url: "https://api.example.com/v1/users/profile"
-      timeout: 15
+- name: api_users
+  type: load_webapp
+  params:
+    url: "https://api.example.com/v1/users/profile"
+    timeout: 15
 ```
 
 Track API response times and detect degradation early.
@@ -304,19 +304,18 @@ Monitor certificate validation performance:
 Deploy agents in different regions to compare performance:
 
 ```yaml
+# probes.d/10-load_webapp.yaml
 # US East agent
-probes:
-  - name: webapp_from_us_east
-    type: load_webapp
-    params:
-      url: "https://www.example.com"
+- name: webapp_from_us_east
+  type: load_webapp
+  params:
+    url: "https://www.example.com"
 
 # EU West agent (separate deployment)
-probes:
-  - name: webapp_from_eu_west
-    type: load_webapp
-    params:
-      url: "https://www.example.com"
+- name: webapp_from_eu_west
+  type: load_webapp
+  params:
+    url: "https://www.example.com"
 ```
 
 Compare connect times and total times to optimize CDN configuration.
@@ -333,8 +332,8 @@ Compare connect times and total times to optimize CDN configuration.
 
 **Verify probe is enabled:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "name: load_webapp"
+# Check configuration (multi-file layout)
+grep -rA5 "name: load_webapp" /etc/senhub/probes.d/
 ```
 
 ### DNS Resolution Failures
@@ -564,24 +563,24 @@ The probe downloads the complete response body to accurately measure transfer ti
 Monitor multiple environments with consistent configuration:
 
 ```yaml
-probes:
-  - name: production_app
-    type: load_webapp
-    params:
-      url: "https://app.example.com"
-      timeout: 30
+# probes.d/10-load_webapp.yaml
+- name: production_app
+  type: load_webapp
+  params:
+    url: "https://app.example.com"
+    timeout: 30
 
-  - name: staging_app
-    type: load_webapp
-    params:
-      url: "https://staging.example.com"
-      timeout: 30
+- name: staging_app
+  type: load_webapp
+  params:
+    url: "https://staging.example.com"
+    timeout: 30
 
-  - name: development_app
-    type: load_webapp
-    params:
-      url: "https://dev.example.com"
-      timeout: 30
+- name: development_app
+  type: load_webapp
+  params:
+    url: "https://dev.example.com"
+    timeout: 30
 ```
 
 Compare performance across environments to detect configuration issues.
@@ -591,24 +590,24 @@ Compare performance across environments to detect configuration issues.
 Monitor critical API endpoints:
 
 ```yaml
-probes:
-  - name: auth_api
-    type: load_webapp
-    params:
-      url: "https://api.example.com/v1/auth/health"
-      timeout: 10
+# probes.d/10-load_webapp.yaml
+- name: auth_api
+  type: load_webapp
+  params:
+    url: "https://api.example.com/v1/auth/health"
+    timeout: 10
 
-  - name: users_api
-    type: load_webapp
-    params:
-      url: "https://api.example.com/v1/users/health"
-      timeout: 10
+- name: users_api
+  type: load_webapp
+  params:
+    url: "https://api.example.com/v1/users/health"
+    timeout: 10
 
-  - name: payments_api
-    type: load_webapp
-    params:
-      url: "https://api.example.com/v1/payments/health"
-      timeout: 15
+- name: payments_api
+  type: load_webapp
+  params:
+    url: "https://api.example.com/v1/payments/health"
+    timeout: 15
 ```
 
 Track individual microservice performance independently.
@@ -618,25 +617,25 @@ Track individual microservice performance independently.
 Combine Load WebApp probe with system probes for comprehensive monitoring:
 
 ```yaml
-probes:
-  # Application performance
-  - name: webapp_frontend
-    type: load_webapp
-    params:
-      url: "https://www.example.com"
+# probes.d/10-load_webapp.yaml
+# Application performance
+- name: webapp_frontend
+  type: load_webapp
+  params:
+    url: "https://www.example.com"
 
-  # Server health
-  - name: cpu
-    params:
-      interval: 30
+# Server health
+- name: cpu
+  params:
+    interval: 30
 
-  - name: memory
-    params:
-      interval: 30
+- name: memory
+  params:
+    interval: 30
 
-  - name: network
-    params:
-      interval: 60
+- name: network
+  params:
+    interval: 60
 ```
 
 Correlate application response times with server resource usage.

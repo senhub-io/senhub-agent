@@ -13,12 +13,12 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 ## Quick start
 
 ```yaml
-probes:
-  - name: kafka
-    type: kafka
-    params:
-      brokers:
-        - localhost:9092
+# probes.d/10-kafka.yaml — each file under probes.d/ is a YAML array of probes
+- name: kafka
+  type: kafka
+  params:
+    brokers:
+      - localhost:9092
 ```
 
 ## Parameters
@@ -29,7 +29,7 @@ probes:
 | `tls` | `false` | Enable TLS for the broker connection |
 | `sasl_mechanism` | — | SASL authentication: `PLAIN`, `SCRAM-SHA-256` or `SCRAM-SHA-512` |
 | `sasl_username` | — | SASL username |
-| `sasl_password` | — | SASL password |
+| `sasl_password` | — | SASL password — reference a stored secret via `${secret:<name>.sasl_password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `protocol_version` | `2.0.0` | Kafka protocol version to negotiate |
 | `topic_filter` | all | Glob patterns to restrict which topics are monitored (internal topics starting with `__` are always excluded) |
 | `group_filter` | all | Glob patterns to restrict which consumer groups are monitored |

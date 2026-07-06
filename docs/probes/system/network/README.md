@@ -7,18 +7,18 @@ The Network probe monitors network interface performance across all major operat
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: network
-    params:
-      interval: 30  # Collection interval in seconds (default: 30)
+# probes.d/10-network.yaml — each file under probes.d/ is a YAML array of probes
+- name: network
+  params:
+    interval: 30  # Collection interval in seconds (default: 30)
 ```
 
 ### Minimal Configuration
 
 ```yaml
-probes:
-  - name: network
-    params: {}
+# probes.d/10-network.yaml
+- name: network
+  params: {}
 ```
 
 The Network probe requires no mandatory parameters and works out-of-the-box with default settings.
@@ -61,18 +61,18 @@ For a complete metrics reference, see [METRICS.md](./METRICS.md).
 
 **High-frequency monitoring (every 10 seconds):**
 ```yaml
-probes:
-  - name: network
-    params:
-      interval: 10
+# probes.d/10-network.yaml
+- name: network
+  params:
+    interval: 10
 ```
 
 **Standard monitoring (every minute):**
 ```yaml
-probes:
-  - name: network
-    params:
-      interval: 60
+# probes.d/10-network.yaml
+- name: network
+  params:
+    interval: 60
 ```
 
 ## Interface Detection
@@ -209,8 +209,8 @@ Detect anomalies:
 
 **Verify probe is enabled:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "name: network"
+# Check configuration (multi-file layout)
+grep -rA5 "name: network" /etc/senhub/probes.d/
 ```
 
 **Check interface detection:**
@@ -387,14 +387,14 @@ Typical memory footprint per collection:
 Monitor network with different collection intervals:
 
 ```yaml
-probes:
-  - name: network_realtime
-    params:
-      interval: 10
+# probes.d/10-network.yaml
+- name: network_realtime
+  params:
+    interval: 10
 
-  - name: network_trending
-    params:
-      interval: 300
+- name: network_trending
+  params:
+    interval: 300
 ```
 
 **Note:** This will create duplicate metrics. Use unique probe names for different collection intervals.
@@ -404,22 +404,22 @@ probes:
 Correlate network metrics with other system metrics:
 
 ```yaml
-probes:
-  - name: network
-    params:
-      interval: 30
+# probes.d/00-host.yaml
+- name: network
+  params:
+    interval: 30
 
-  - name: cpu
-    params:
-      interval: 30
+- name: cpu
+  params:
+    interval: 30
 
-  - name: memory
-    params:
-      interval: 30
+- name: memory
+  params:
+    interval: 30
 
-  - name: logicaldisk
-    params:
-      interval: 60
+- name: logicaldisk
+  params:
+    interval: 60
 ```
 
 This provides comprehensive system monitoring with aligned collection intervals for correlation analysis.

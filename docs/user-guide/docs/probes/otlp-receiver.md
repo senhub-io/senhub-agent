@@ -18,12 +18,12 @@ deployment.
 ## Quick start
 
 ```yaml
-probes:
-  - name: otlp-in
-    type: otlp_receiver
-    params:
-      protocol: grpc          # listens on 127.0.0.1:4317
-      # address: "0.0.0.0:4317"  # required to accept remote senders
+# probes.d/10-otlp-receiver.yaml — each file under probes.d/ is a YAML array of probes
+- name: otlp-in
+  type: otlp_receiver
+  params:
+    protocol: grpc          # listens on 127.0.0.1:4317
+    # address: "0.0.0.0:4317"  # required to accept remote senders
 ```
 
 Point any OTel SDK or collector at the agent:
@@ -41,7 +41,7 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 | `address` | `127.0.0.1:4317` (grpc), `127.0.0.1:4318` (http) | Listen address. Loopback by default — accepting remote OTLP requires an explicit address (e.g. `"0.0.0.0:4317"`); pair it with the protections below |
 | `port` | from `address` | Convenience override: replaces only the port part of the address |
 | `http_path` | `/v1/metrics` | Route served by the HTTP receiver (ignored for gRPC) |
-| `bearer_token` | none | When set, senders must present `Authorization: Bearer <token>` (HTTP header or gRPC metadata). Use `${env:VAR}` or `${file:/path}` substitution, never a literal token |
+| `bearer_token` | none | When set, senders must present `Authorization: Bearer <token>` (HTTP header or gRPC metadata). Reference a stored secret via `${secret:<name>.bearer_token}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 | `allowed_cidrs` | none | Source IP allow-list (CIDR notation, IPv4/IPv6). Checked against the transport peer address — proxy headers are not trusted |
 | `rate_limit_rps` | `0` (off) | Accepted requests per second (token bucket). Excess requests get HTTP 429 / gRPC `ResourceExhausted` |
 | `rate_limit_burst` | `2 × rps` | Bucket burst capacity |
@@ -49,29 +49,29 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Opening the receiver to the network with all protections:
 
 ```yaml
-probes:
-  - name: otlp-in
-    type: otlp_receiver
-    params:
-      protocol: grpc
-      address: "0.0.0.0:4317"
-      bearer_token: "${env:OTLP_INGEST_TOKEN}"
-      allowed_cidrs: ["10.0.0.0/8"]
-      rate_limit_rps: 100
+# probes.d/10-otlp-receiver.yaml
+- name: otlp-in
+  type: otlp_receiver
+  params:
+    protocol: grpc
+    address: "0.0.0.0:4317"
+    bearer_token: ${secret:otlp-in.bearer_token}   # OS secret store; inline plaintext is auto-sealed on install
+    allowed_cidrs: ["10.0.0.0/8"]
+    rate_limit_rps: 100
 ```
 
 Run two instances to serve both protocols at once:
 
 ```yaml
-probes:
-  - name: otlp-grpc
-    type: otlp_receiver
-    params:
-      protocol: grpc
-  - name: otlp-http
-    type: otlp_receiver
-    params:
-      protocol: http
+# probes.d/10-otlp-receiver.yaml
+- name: otlp-grpc
+  type: otlp_receiver
+  params:
+    protocol: grpc
+- name: otlp-http
+  type: otlp_receiver
+  params:
+    protocol: http
 ```
 
 ## Behavior
