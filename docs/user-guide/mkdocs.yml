@@ -126,6 +126,7 @@ nav:
       - Citrix: probes/citrix.md
       - NetScaler: probes/netscaler.md
       - Redfish: probes/redfish.md
+      - Dell PowerStore: probes/powerstore.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md
