@@ -94,7 +94,7 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 			dt.moduleLogger.Debug().
 				Str("pattern", correction.MetricPattern).
 				Str("metric", metricName).
-				Msg("🔧 Pattern did not match, skipping correction")
+				Msg("Pattern did not match, skipping correction")
 			continue
 		}
 
@@ -103,7 +103,7 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 			dt.moduleLogger.Debug().
 				Interface("filter", correction.VendorFilter).
 				Interface("tags", tags).
-				Msg("🔧 Vendor filter did not match, skipping correction")
+				Msg("Vendor filter did not match, skipping correction")
 			continue
 		}
 
@@ -112,7 +112,7 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 			dt.moduleLogger.Debug().
 				Str("rule", correction.DetectionRule).
 				Float64("value", value).
-				Msg("🔧 Detection rule did not match, skipping correction")
+				Msg("Detection rule did not match, skipping correction")
 			continue
 		}
 
@@ -124,7 +124,7 @@ func (dt *DefinitionBasedTransformer) ApplyUnitCorrection(metricName string, val
 			Float64("corrected", correctedValue).
 			Float64("factor", correction.CorrectionFactor).
 			Str("reason", correction.Reason).
-			Msg("🔧 Applied unit correction for inconsistent source data")
+			Msg("Applied unit correction for inconsistent source data")
 
 		return correctedValue, true
 	}

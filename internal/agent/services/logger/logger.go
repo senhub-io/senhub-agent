@@ -243,6 +243,14 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 	return &logger
 }
 
+// interactiveLogPath derives a dedicated log file path for a foreground `run`
+// by inserting "-console" before the extension, so it never rotates the same
+// file a running service holds open.
+func interactiveLogPath(p string) string {
+	ext := filepath.Ext(p)
+	return strings.TrimSuffix(p, ext) + "-console" + ext
+}
+
 // buildProductionLogger creates a production-oriented logger configuration with:
 // - Log rotation (10MB file size trigger)
 // - Compression of rotated logs
@@ -252,6 +260,18 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 // Console output is automatically added when running in interactive mode (run command)
 func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
 	logPath := getLogPath()
+
+	// Detect interactive (`run`) vs service (daemon) mode.
+	isInteractive := service.Interactive()
+
+	// An interactive `run` must NOT share the service's rotating log file: on
+	// Windows, two processes that both rotate the same file collide on the
+	// rename ("the process cannot access the file because it is being used by
+	// another process"), flooding both with rotation errors. Give an
+	// interactive run its own log file next to the service one.
+	if isInteractive {
+		logPath = interactiveLogPath(logPath)
+	}
 
 	// Configure log rotation settings
 	logRotator := &lumberjack.Logger{
@@ -264,9 +284,6 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 
 	// Define masked writers - start with log file
 	writers := []io.Writer{NewMaskingWriter(logRotator)}
-
-	// Detect if running in interactive mode (run command) vs service mode (daemon)
-	isInteractive := service.Interactive()
 
 	// Add console output in interactive mode (run command)
 	// This ensures logs are visible in console when using: ./agent run

@@ -201,7 +201,7 @@ func FormatCompatibilityReport(report ConfigCompatibilityReport) string {
 			msg += fmt.Sprintf("  - %s\n", err)
 		}
 	} else if report.NeedsMigration {
-		msg += "⚠️  MIGRATION REQUIRED\n\n"
+		msg += "MIGRATION REQUIRED\n\n"
 		msg += fmt.Sprintf("Migration Path: %d", report.ConfigVersion)
 		for _, v := range report.MigrationPath {
 			msg += fmt.Sprintf(" → %d", v)
@@ -212,7 +212,7 @@ func FormatCompatibilityReport(report ConfigCompatibilityReport) string {
 			msg += fmt.Sprintf("  - %s\n", warn)
 		}
 	} else {
-		msg += "✅ COMPATIBLE\n"
+		msg += "COMPATIBLE\n"
 	}
 
 	return msg

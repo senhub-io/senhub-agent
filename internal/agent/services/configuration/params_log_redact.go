@@ -22,7 +22,7 @@ import "regexp"
 // full words (not a bare `auth`) so a legitimate `auth:` container key — e.g.
 // citrix `director.auth.password` — still recurses and masks only the leaf
 // secret rather than collapsing the whole subtree.
-var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community|authorization|bearer)`)
+var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community|authorization|bearer|license|jwt)`)
 
 // SanitizeParamsForLog returns a deep copy of params with the value of any key
 // matching logSensitiveKeyPattern replaced by "***". The original map is never
