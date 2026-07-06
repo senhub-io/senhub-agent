@@ -103,6 +103,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"fan_name", "sensor_name",
 	},
 
+	// Storage-array probes — powerstore_alerts_active carries one series per
+	// severity; the other metrics are single-instance per array.
+	"powerstore": {"metric_type", "severity"},
+
 	// Backup probes
 	"veeam": {
 		"metric_type",          // Category filtering
