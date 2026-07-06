@@ -12,7 +12,9 @@ func TestGetMsiUrl(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMsiUrl: %v", err)
 	}
-	want := "https://reg.example.io/download/0.4.2/senhub-agent-0.4.2-amd64.msi"
+	// Arch is derived from runtime.GOARCH now (m9), matching the ZIP path, so a
+	// future windows/arm64 build never fetches an amd64 MSI.
+	want := "https://reg.example.io/download/0.4.2/senhub-agent-0.4.2-" + runtime.GOARCH + ".msi"
 	if got != want {
 		t.Errorf("GetMsiUrl = %q, want %q", got, want)
 	}

@@ -25,13 +25,10 @@ senhub-agent install --config-path /etc/senhub-agent/agent.yaml
 
 ## Configuration Structure Overview
 
-The configuration has four main sections. In the multi-file layout they live in
-separate files (`agent:` / `cache:` in `agent.yaml`, `storage:` strategies under
-`strategies.d/`, `probes:` entries under `probes.d/`); shown together here for
-reference:
+The configuration file has four main sections:
 
 ```yaml
-config_version: 3
+config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
@@ -51,6 +48,32 @@ probes:
     params:
       interval: 60
 ```
+
+## Config versions
+
+`config_version` is the top-level schema version of the configuration. The
+agent migrates an older configuration forward automatically when it loads it,
+and stamps the new version on disk.
+
+| Version | Introduced | Meaning |
+|---|---|---|
+| `1` | 0.1.x | Legacy baseline. |
+| `2` | — | Current baseline: multi-file layout and `${env:}` / `${file:}` substitution. |
+| `3` | 0.5.0 | Secret references: inline plaintext secrets are sealed into the [secret store](secret-store.md) and rewritten as `${secret:...}`. |
+
+On first boot under version 3, the agent seals any inline plaintext secret
+into the store, replaces it with a `${secret:...}` reference, and stamps the
+file `config_version: 3`. The bump to 3 happens **only when a secret is
+actually sealed** — a secret-free version 2 configuration stays at version 2
+and is left untouched.
+
+!!! warning "Do not downgrade under a sealed config"
+    An older agent only supports up to the `config_version` it shipped with
+    (0.4.x and earlier: version 2). Loading a configuration whose version is
+    newer than the agent supports is **refused** with
+    `configuration version N is too new for this agent`, rather than passing
+    an unresolved `${secret:}` literal to a probe. Upgrade every agent before
+    distributing a version 3 (sealed) configuration.
 
 ## Agent Section
 
@@ -193,130 +216,180 @@ Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the ret
 
 ## Configuration Examples
 
-The installer writes the **multi-file layout**: a global `agent.yaml`, one or more probe fragments under `probes.d/`, and one strategy per file under `strategies.d/`. The examples below use that layout. See [Multi-File Configuration Layout](#multi-file-configuration-layout) for the loading rules.
+### Minimal Configuration
 
-An existing single-file `agent.yaml` (or legacy `agent-config.yaml`) with top-level `probes:` and `storage:` blocks still loads unchanged — you do not have to migrate.
-
-### Global settings — `agent.yaml`
-
-The global file carries only the agent identity and process-level settings. It never contains `probes:` or `storage:` blocks in the multi-file layout.
+The simplest configuration with system monitoring probes:
 
 ```yaml
-config_version: 3
+config_version: 2
+
+agent:
+  key: "550e8400-e29b-41d4-a716-446655440000"
+
+probes:
+  - name: "CPU"
+    type: cpu
+    params:
+      interval: 60
+
+  - name: "Memory"
+    type: memory
+    params:
+      interval: 60
+```
+
+### System Monitoring Configuration
+
+A complete system monitoring setup with all free-tier probes:
+
+```yaml
+config_version: 2
+
+agent:
+  key: "550e8400-e29b-41d4-a716-446655440000"
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      endpoints: ["prtg", "web", "nagios"]
+
+cache:
+  retention_minutes: 5
+
+probes:
+  - name: "CPU"
+    type: cpu
+    params:
+      interval: 60
+
+  - name: "Memory"
+    type: memory
+    params:
+      interval: 60
+
+  - name: "Disk"
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: "Network"
+    type: network
+    params:
+      interval: 60
+```
+
+### Production Configuration with Premium Probes
+
+A production setup monitoring Citrix and NetScaler infrastructure:
+
+```yaml
+config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
   license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
 
+storage:
+  - name: http
+    params:
+      port: 8443
+      endpoints: ["prtg", "web", "nagios"]
+      tls:
+        enabled: true
+        min_tls_version: "1.2"
+
 cache:
   retention_minutes: 5
 
-auto_update:
-  enabled: false
+probes:
+  - name: "CPU"
+    type: cpu
+    params:
+      interval: 60
+
+  - name: "Memory"
+    type: memory
+    params:
+      interval: 60
+
+  - name: "Disk"
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: "Network"
+    type: network
+    params:
+      interval: 60
+
+  - name: "Citrix Production"
+    type: citrix
+    params:
+      base_url: "https://director.company.com"
+      interval: 120
+      auth:
+        username: "DOMAIN\\svc-monitoring"
+        password: "SecurePassword123"
+      tls:
+        verify_ssl: true
+      timeout: 30
+    custom_tags:
+      environment: "production"
+      site: "paris"
+
+  - name: "NetScaler LB"
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "monitoring-user"
+      password: "SecurePassword123"
+      interval: 60
+    custom_tags:
+      environment: "production"
+
+  - name: "Hardware iDRAC"
+    type: redfish
+    params:
+      base_url: "https://idrac-server01.company.com"
+      username: "monitoring"
+      password: "SecurePassword123"
+      interval: 300
+      tls:
+        verify_ssl: false
 ```
 
-### Probes — `probes.d/00-host.yaml`
+### Web Application Monitoring Configuration
 
-Each file under `probes.d/` is a **bare YAML array** of probe entries — there is no `probes:` wrapper key. Files load in alphabetical order, so the numeric prefix controls ordering.
-
-```yaml
-- name: "CPU"
-  type: cpu
-  params:
-    interval: 60
-
-- name: "Memory"
-  type: memory
-  params:
-    interval: 60
-
-- name: "Disk"
-  type: logicaldisk
-  params:
-    interval: 60
-
-- name: "Network"
-  type: network
-  params:
-    interval: 60
-```
-
-Premium probes go in their own fragment, for example `probes.d/10-citrix.yaml`:
+Monitoring web application availability and load times:
 
 ```yaml
-- name: "Citrix Production"
-  type: citrix
-  params:
-    base_url: "https://director.company.com"
-    interval: 120
-    auth:
-      username: "DOMAIN\\svc-monitoring"
-      password: "${secret:citrix-production.auth.password}"
-    tls:
-      verify_ssl: true
-    timeout: 30
-  custom_tags:
-    environment: "production"
-    site: "paris"
+config_version: 2
 
-- name: "NetScaler LB"
-  type: netscaler
-  params:
-    base_url: "https://netscaler.company.com"
-    username: "monitoring-user"
-    password: "${secret:netscaler-lb.password}"
-    interval: 60
-  custom_tags:
-    environment: "production"
-```
+agent:
+  key: "550e8400-e29b-41d4-a716-446655440000"
+  license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
 
-The `${secret:...}` references above are produced automatically when the agent seals inline plaintext secrets on install or boot. You may also write them by hand. See [Managing secrets](secrets.md).
+probes:
+  - name: "Website Availability"
+    type: ping_webapp
+    params:
+      url: "https://www.company.com"
+      interval: 30
+      timeout: 10
 
-### Strategies — `strategies.d/00-http.yaml`
+  - name: "Website Load Time"
+    type: load_webapp
+    params:
+      url: "https://www.company.com"
+      interval: 60
+      timeout: 30
 
-Each file under `strategies.d/` has **exactly one top-level key**, which is the strategy name (here `http`). One strategy per file.
-
-```yaml
-http:
-  bind_address: "0.0.0.0"
-  port: 8080
-  endpoints: ["prtg", "web", "nagios"]
-```
-
-For HTTPS, add a `tls` block:
-
-```yaml
-http:
-  bind_address: "0.0.0.0"
-  port: 8443
-  endpoints: ["prtg", "web", "nagios"]
-  tls:
-    enabled: true
-    min_tls_version: "1.2"
-```
-
-### Web application monitoring — `probes.d/20-webapp.yaml`
-
-```yaml
-- name: "Website Availability"
-  type: ping_webapp
-  params:
-    url: "https://www.company.com"
-    interval: 30
-    timeout: 10
-
-- name: "Website Load Time"
-  type: load_webapp
-  params:
-    url: "https://www.company.com"
-    interval: 60
-    timeout: 30
-
-- name: "Gateway Paris"
-  type: ping_gateway
-  params:
-    target: "192.168.1.1"
-    interval: 30
+  - name: "Gateway Paris"
+    type: ping_gateway
+    params:
+      target: "192.168.1.1"
+      interval: 30
 ```
 
 ## Applying Configuration Changes
@@ -350,7 +423,7 @@ SenHub supports two license formats:
 **Compact key** (recommended): a short 40-character key bound to your agent key.
 ```yaml
 agent:
-  key: "17b3cf0a-91b1-486d-8209-90ffe00ece5e"
+  key: "550e8400-e29b-41d4-a716-446655440000"
   license: "SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY"
 ```
 
@@ -449,8 +522,8 @@ Example output:
 ```
 Checking configuration: C:\SenHub\agent-config.yaml
 
-  [OK]   config_version: 3
-  [OK]   agent.key: 17b3cf0a-91b1-486d-8209-90ffe00ece5e
+  [OK]   config_version: 2
+  [OK]   agent.key: 550e8400-e29b-41d4-a716-446655440000
   [OK]   agent.license: tier=pro, expires=2031-04-14
   [OK]   License binding verified
   [OK]   1 probe(s) configured
@@ -472,8 +545,8 @@ The agent looks for the multi-file layout in the **same directory as `agent.yaml
 |---|---|---|---|
 | **Linux (systemd)** | `/etc/senhub-agent/agent.yaml` | `/etc/senhub-agent/probes.d/` | `/etc/senhub-agent/strategies.d/` |
 | **Linux (tarball)** | `/opt/senhub/bin/agent.yaml` | `/opt/senhub/bin/probes.d/` | `/opt/senhub/bin/strategies.d/` |
-| **Windows** | `C:\SenHub\agent.yaml` | `C:\SenHub\probes.d\` | `C:\SenHub\strategies.d\` |
-| **macOS** | `/usr/local/senhub/agent.yaml` | `/usr/local/senhub/probes.d/` | `/usr/local/senhub/strategies.d/` |
+| **Windows (MSI)** | `%ProgramData%\SenHub\agent.yaml` | `%ProgramData%\SenHub\probes.d\` | `%ProgramData%\SenHub\strategies.d\` |
+| **macOS** | `/usr/local/etc/senhub-agent/agent.yaml` | `/usr/local/etc/senhub-agent/probes.d/` | `/usr/local/etc/senhub-agent/strategies.d/` |
 
 Override any of these by passing `--config-path` to the agent — the directories `probes.d/` and `strategies.d/` are always resolved next to whichever `agent.yaml` is loaded.
 
@@ -500,7 +573,7 @@ Override any of these by passing `--config-path` to the agent — the directorie
 ### `agent.yaml` example (global only)
 
 ```yaml
-config_version: 3
+config_version: 2
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
   license: "${file:/etc/senhub/license.jwt}"
@@ -550,12 +623,13 @@ String values in any configuration file can reference environment variables or f
 | `${env:VAR:-fallback}` | Value of `$VAR`, or `fallback` if unset |
 | `${file:/path/to/file}` | File contents, **trimmed of whitespace**. Error if the file is missing. |
 | `${file:/path:-fallback}` | File contents, or `fallback` if the file is missing |
-| `${secret:<name>}` | Value resolved from the OS-native secret store (see [Managing secrets](secrets.md)). Errors if the secret is missing and no default is given. |
+| `${secret:NAME}` | Value from the OS-native [secret store](secret-store.md). Error if the name is unknown or no backend is available. |
+| `${secret:NAME:-fallback}` | Stored value, or `fallback` if the name is unknown |
 | `$$` | Literal `$` character (escape) |
 
 Substitution applies to **values** only — never to YAML keys. References inside `params:` blocks of probes and strategies are also resolved.
 
-`${secret:<instance>.<field>}` references are how sealed credentials are read back from the store. They are created automatically when the agent seals inline plaintext secrets (config version 3, agent 0.5.0+) — see [Managing secrets](secrets.md).
+For `${secret:}` — storing values, the per-OS backends, and sealing inline secrets — see the [Secret Store](secret-store.md) page.
 
 ### Examples
 
@@ -598,7 +672,7 @@ Output is deterministic — two runs of the same input produce byte-identical ou
 - Use HTTPS in production for the agent API
 - Never commit configuration files containing passwords to version control
 - Bind the agent to a specific network interface (`bind_address: "127.0.0.1"`) when remote access is not needed
-- For secrets, prefer references over inline plaintext. From agent 0.5.0 (config version 3) the agent seals inline secrets into the OS-native secret store on install and boot, replacing them with `${secret:...}` references; you can also use `${file:/path/to/secret}` or `${env:VAR}`. `agent config show --redact` masks all of them safely. See [Managing secrets](secrets.md)
+- For secrets, prefer `${file:/path/to/secret}` references over inline values — file permissions limit blast radius and `agent config show --redact` masks them safely
 
 ## Troubleshooting Configuration
 

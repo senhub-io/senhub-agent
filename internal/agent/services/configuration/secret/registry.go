@@ -58,9 +58,18 @@ var (
 // initialisation lazy: a config that contains no ${secret:} reference never
 // triggers it, so no key file or store is created on a host that uses no
 // secrets. An explicit SetProvider (tests, or a CLI command) takes precedence.
+//
+// It refuses to init with an empty config dir (which would write the age key
+// and store relative to the process CWD) WITHOUT consuming the sync.Once, so a
+// caller that reaches Resolve before SetConfigDir gets a clear error and a later
+// correctly-ordered call can still succeed. Once a non-empty-dir init runs, its
+// outcome (success or failure) is latched for the process lifetime.
 func ensureInit() error {
 	if ActiveProvider() != nil {
 		return nil
+	}
+	if ConfigDir() == "" {
+		return fmt.Errorf("secret backend not initialised: configuration directory not set (call SetConfigDir first)")
 	}
 	initOnce.Do(func() { initErr = InitRegistry(ConfigDir()) })
 	return initErr

@@ -15,14 +15,17 @@ const backendEnv = "SENHUB_SECRET_BACKEND"
 
 // InitRegistry installs the active secret provider for Linux.
 //
-// systemd-creds is selected when any of these holds — otherwise the default is
-// the age key-file store (zero unit coordination, fully non-root):
+// Backend selection, in precedence order (see useSystemdCreds):
 //
-//   - $CREDENTIALS_DIRECTORY is set: the daemon is running under a unit that
-//     wired LoadCredentialEncrypted=, so secrets resolve from the runtime mount.
-//   - SENHUB_SECRET_BACKEND=systemd-creds: explicit admin opt-in for the seal.
+//   - SENHUB_SECRET_BACKEND=systemd-creds|age: explicit override, wins over
+//     everything (so `age` can be forced even under a unit).
 //   - a populated creds.d/ store already exists: the install is on systemd-creds,
 //     so every context (CLI, daemon) must agree on it.
+//   - $CREDENTIALS_DIRECTORY is set AND no age store exists: a fresh install
+//     under a unit that wired LoadCredentialEncrypted=; use systemd-creds. When
+//     an age store DOES exist it is kept — a unit credential added for an
+//     unrelated purpose must not orphan the age store.
+//   - otherwise: the age key-file store (zero unit coordination, fully non-root).
 //
 // age is the default because it works unprivileged from any context and needs no
 // systemd unit wiring; systemd-creds is the hardened opt-in.
@@ -43,17 +46,34 @@ func InitRegistry(configDir string) error {
 }
 
 func useSystemdCreds(configDir string) bool {
-	if os.Getenv("CREDENTIALS_DIRECTORY") != "" {
-		return true
-	}
+	// Explicit override wins over everything else, including a unit-set
+	// $CREDENTIALS_DIRECTORY, so an operator can always force `age` under a unit.
 	switch os.Getenv(backendEnv) {
 	case "systemd-creds":
 		return true
 	case "age":
 		return false
 	}
-	// Auto-detect an existing systemd-creds install: a creds.d/ holding at least
-	// one .cred file.
+
+	// A populated creds.d/ store means the install is already on systemd-creds;
+	// every context (CLI, daemon) must agree on it.
+	if hasCredFiles(configDir) {
+		return true
+	}
+
+	// $CREDENTIALS_DIRECTORY is set by systemd for ANY credential wired into the
+	// unit — including one an operator added for an unrelated purpose. Do not let
+	// its mere presence orphan an existing age store: only fall to systemd-creds
+	// when there is no age store to keep using. A fresh install under a unit
+	// (no age store, no creds.d/) still gets systemd-creds.
+	if os.Getenv("CREDENTIALS_DIRECTORY") != "" {
+		return !fileExists(filepath.Join(configDir, "secrets.age"))
+	}
+	return false
+}
+
+// hasCredFiles reports whether configDir/creds.d holds at least one *.cred file.
+func hasCredFiles(configDir string) bool {
 	entries, err := os.ReadDir(filepath.Join(configDir, credsStoreSubdir))
 	if err != nil {
 		return false
@@ -64,4 +84,9 @@ func useSystemdCreds(configDir string) bool {
 		}
 	}
 	return false
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

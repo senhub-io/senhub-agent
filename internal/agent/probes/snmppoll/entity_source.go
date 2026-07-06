@@ -258,19 +258,40 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (entity.Obser
 // SNMP daemon hangs the device off the host node instead of floating (#310). A
 // no-op for remote targets (a remote device must NOT claim to run on this host),
 // when the device identity is unresolved, or when the host id is unknown.
+//
+// The edge is minted through the shared entity.LocalRunsOn helper so this
+// emitter obeys the same collapse guard as every other local-anchor source: a
+// device id that embeds the loopback target is byte-identical on every host and
+// must not be anchored. Additionally, a loopback-DERIVED id ("mgmt:127.0.0.1",
+// "name:localhost" — the last-resort rungs of resolveDeviceID) is refused
+// regardless of the target literal: an SNMPv2c host with no serial/engine/MAC
+// and a default sysName mints the same node on every host, the exact cross-host
+// false-join the guard exists to prevent.
 func (s *snmpEntitySource) appendLocalRunsOn(obs *entity.Observation, deviceID string) {
-	if deviceID == "" || !dbcommon.IsLoopbackHost(s.cfg.Target) {
+	if deviceID == "" || isLoopbackDerivedDeviceID(deviceID) {
 		return
 	}
-	hostID := s.hostID()
-	if hostID == "" {
+	rel, ok := entity.LocalRunsOn(entityTypeNetworkDevice, deviceKey(deviceID), s.cfg.Target, s.hostID())
+	if !ok {
 		return
 	}
-	obs.Relations = append(obs.Relations, entity.Relation{
-		Type:     relRunsOn,
-		FromType: entityTypeNetworkDevice, FromID: deviceKey(deviceID),
-		ToType: entityTypeHost, ToID: map[string]any{idKeyHost: hostID},
-	})
+	obs.Relations = append(obs.Relations, rel)
+}
+
+// isLoopbackDerivedDeviceID reports whether a resolved device id was minted from
+// a loopback identifier — "mgmt:<loopback-ip>" or "name:localhost", the
+// last-resort rungs of resolveDeviceID. Such an id is byte-identical on every
+// host polling a default-configured local snmpd, so anchoring it to a host would
+// false-join distinct hosts. The higher rungs (serial:/engine:/mac:) are
+// globally unique and never loopback-derived.
+func isLoopbackDerivedDeviceID(deviceID string) bool {
+	if v, ok := strings.CutPrefix(deviceID, "mgmt:"); ok {
+		return entity.IsLoopbackHost(v)
+	}
+	if v, ok := strings.CutPrefix(deviceID, "name:"); ok {
+		return entity.IsLoopbackHost(strings.ToLower(strings.TrimSpace(v)))
+	}
+	return false
 }
 
 // applyGovernance stamps the operator governance attributes onto the polled

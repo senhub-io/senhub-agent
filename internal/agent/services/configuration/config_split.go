@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strings"
 	"time"
 
@@ -104,7 +103,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	agentYAML := append([]byte("# SenHub Agent — globals (migrated to multi-file layout on "+timestamp+")\n"+
 		"# Probes live in probes.d/ ; storage strategies in strategies.d/.\n"+
 		"# Original monolithic file kept as "+filepath.Base(backupPath)+".\n\n"), globalsYAML...)
-	if err := os.WriteFile(configPath, agentYAML, 0600); err != nil {
+	if err := atomicWriteFile(configPath, agentYAML, 0600); err != nil {
 		restoreSplitBackup(configPath, backupPath, log)
 		return result, fmt.Errorf("write agent.yaml: %w", err)
 	}
@@ -132,7 +131,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 		body := append([]byte("# Probes migrated from monolithic config on "+timestamp+".\n"+
 			"# Add new probes by creating additional files in this directory\n"+
 			"# (e.g. 10-mydb.yaml). Files load alphabetically.\n\n"), probesYAML...)
-		if err := os.WriteFile(probesPath, body, 0600); err != nil {
+		if err := atomicWriteFile(probesPath, body, 0600); err != nil {
 			restoreSplitBackup(configPath, backupPath, log)
 			return result, fmt.Errorf("write %s: %w", probesPath, err)
 		}
@@ -235,7 +234,6 @@ func splitStrategies(storageRaw interface{}, strategiesDir, timestamp string) (i
 		}
 		finalByName[e.name] = e
 	}
-	sort.SliceStable(order, func(i, j int) bool { return false }) // preserve append order
 
 	for i, name := range order {
 		e := finalByName[name]
@@ -250,7 +248,7 @@ func splitStrategies(storageRaw interface{}, strategiesDir, timestamp string) (i
 		}
 		header := []byte("# Strategy '" + name + "' migrated from monolithic config on " + timestamp + ".\n" +
 			"# This file MUST have exactly one top-level key — the strategy name.\n\n")
-		if err := os.WriteFile(path, append(header, body...), 0600); err != nil {
+		if err := atomicWriteFile(path, append(header, body...), 0600); err != nil {
 			return 0, fmt.Errorf("write %s: %w", path, err)
 		}
 	}
@@ -315,7 +313,7 @@ func restoreSplitBackup(configPath, backupPath string, log *logger.ModuleLogger)
 		warnRestore(log, fmt.Sprintf("backup restore failed (cannot read %s): %v", backupPath, err))
 		return
 	}
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
+	if err := atomicWriteFile(configPath, data, 0600); err != nil {
 		warnRestore(log, fmt.Sprintf("backup restore failed (cannot write %s): %v", configPath, err))
 		return
 	}

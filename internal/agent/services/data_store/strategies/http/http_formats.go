@@ -587,63 +587,30 @@ func (f *FormatConverter) applyMetricFilter(metrics []CachedMetric, filter Metri
 			}
 		}
 
-		// Filter by tag filters if specified (include tags)
+		// Filter by tag filters if specified (include tags): the metric must
+		// carry every filtered tag with one of the allowed values.
 		if len(filter.TagFilters) > 0 {
 			tagMatch := true
-			f.logger.Debug().
-				Str("metric_name", metric.MetricName).
-				Interface("metric_tags", metric.Tags).
-				Interface("filter_tags", filter.TagFilters).
-				Msg("🔍 Filtering: Checking metric against tag filters")
-
 			for tagKey, allowedValues := range filter.TagFilters {
 				metricValue, exists := metric.Tags[tagKey]
-				f.logger.Debug().
-					Str("tag_key", tagKey).
-					Str("metric_value", metricValue).
-					Bool("exists", exists).
-					Strs("allowed_values", allowedValues).
-					Msg("🔍 Filtering: Tag comparison")
-
 				if !exists {
-					f.logger.Debug().
-						Str("tag_key", tagKey).
-						Msg("🔍 Filtering: Tag not found in metric, excluding")
 					tagMatch = false
 					break
 				}
-				// Check if metric value is in allowed values
 				found := false
 				for _, allowedValue := range allowedValues {
-					f.logger.Debug().
-						Str("metric_value", metricValue).
-						Str("allowed_value", allowedValue).
-						Bool("match", metricValue == allowedValue).
-						Msg("🔍 Filtering: Value comparison")
 					if metricValue == allowedValue {
 						found = true
 						break
 					}
 				}
 				if !found {
-					f.logger.Debug().
-						Str("tag_key", tagKey).
-						Str("metric_value", metricValue).
-						Strs("allowed_values", allowedValues).
-						Msg("🔍 Filtering: No matching value found, excluding metric")
 					tagMatch = false
 					break
 				}
 			}
 			if !tagMatch {
-				f.logger.Debug().
-					Str("metric_name", metric.MetricName).
-					Msg("🔍 Filtering: Metric excluded by tag filters")
 				continue
-			} else {
-				f.logger.Debug().
-					Str("metric_name", metric.MetricName).
-					Msg("🔍 Filtering: Metric passed tag filters")
 			}
 		}
 

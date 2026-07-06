@@ -36,7 +36,7 @@ agent installs in the offline Free-tier default.
 
 | Property | Purpose |
 |---|---|
-| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (secure property, not logged) |
+| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (see the note on log exposure below) |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
@@ -44,14 +44,33 @@ agent installs in the offline Free-tier default.
 Properties are consumed only on first install; they do not overwrite an
 existing `agent.yaml`.
 
+> **`LICENSE_KEY` and install logs.** The license token is a secret. A
+> verbose install log (`/l*v`) records public property values and custom
+> action command lines, so a `LICENSE_KEY` passed on the `msiexec` line
+> can appear in that log. When you provision a license silently:
+>
+> - Prefer a non-verbose log level, or omit `/l*v` entirely, for the
+>   install that carries `LICENSE_KEY`.
+> - If you must capture a verbose log (troubleshooting), treat it as
+>   sensitive and delete it once the install is confirmed — it may also
+>   contain the token on the command line passed to the provisioning
+>   custom action.
+> - The token equally appears in the shell history / job output of the
+>   deployment tool that invokes `msiexec`; scrub those the same way.
+
 ## Silent install
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^
   LICENSE_KEY=eyJhbGciOi... ^
   TAGS=site=paris,env=prod ^
-  /l*v %TEMP%\senhub-agent-install.log
+  /l* %TEMP%\senhub-agent-install.log
 ```
+
+`/l*` logs everything except the verbose (`v`) level; the verbose level
+is what records property values, so it is deliberately omitted here while
+`LICENSE_KEY` is on the command line. Use `/l*v` only for an install that
+carries no secret, and delete the log afterwards (see the note above).
 
 Free tier, no provisioning:
 
@@ -171,29 +190,46 @@ make package-windows-msi                            # -> dist/senhub-agent-<vers
 
 ## Code signing
 
-Signing uses [`jsign`](https://ebourg.github.io/jsign/) (one tool across
-every key store, so it works on the Linux CI runner). The certificate is a
-**European CA — Certum** (OV, eIDAS), held on a cloud HSM (SimplySign) and
-addressed through jsign's `--storetype`. The agent `.exe` is signed before
-it is packaged, then the `.msi`, then any `.ps1`.
+The MSI is signed with [`jsign`](https://ebourg.github.io/jsign/) using a
+**European CA — Certum** code-signing certificate (OV, eIDAS), whose private
+key lives in Certum's cloud HSM (SimplySign) and is reached through the
+SimplySign PKCS#11 module. Authorisation is the **open SimplySign Desktop
+session** (login + OTP, 2-hour window) — this Code Signing token has **no
+card PIN**, so jsign runs without `--storepass`.
 
-Provide these repository **secrets** to enable signing (unset ⇒ the
-workflow still builds an **unsigned** MSI + warning, for layout testing):
+### Why signing is a local step, not CI
 
-| Secret | Value (Certum SimplySign) |
-|---|---|
-| `CODESIGN_STORETYPE` | `PKCS11` |
-| `CODESIGN_KEYSTORE` | path to the SimplySign PKCS#11 `.cfg` |
-| `CODESIGN_STOREPASS` | session PIN |
-| `CODESIGN_ALIAS` | certificate label |
+The SimplySign session cannot exist on an ephemeral GitHub-hosted runner, and
+we deliberately do **not** put the signing credential into CI secrets nor run
+workflow code on the signing machine. Instead the release pipeline builds the
+**unsigned** MSI and publishes the other artifacts; a maintainer signs the MSI
+locally, where the SimplySign session lives, and uploads the signed MSI plus
+its `.msi.minisig`. No signing secret ever touches CI, and there is no
+self-hosted runner to maintain.
 
-Optional repo variables: `CODESIGN_TSA` (defaults to
-`http://time.certum.pl`), `JSIGN_SHA256` (pins the jsign jar digest).
+### Sign a release MSI
 
-> **CI runner note.** Certum SimplySign opens a 2-hour signing session via
-> a mobile TOTP app, which cannot run on an ephemeral GitHub-hosted runner.
-> Sign on a **self-hosted runner** with SimplySign Desktop and a session
-> opened at release time (semi-attended), which fits a tag-based cadence.
+Prerequisites on the signing machine (macOS): **SimplySign Desktop** installed
+with an **open session**, **SimplySign Mobile** as the OTP source (runs on
+Apple-Silicon Macs, so no phone is required), **Temurin 17** (jsign + PKCS#11
+needs Java ≤ 17 here), and `opensc` + `osslsigncode`
+(`brew install opensc osslsigncode`) for read-only token inspection and local
+verification.
+
+```bash
+# open the SimplySign Desktop session first, then:
+packaging/windows/sign-release-msi.sh dist/senhub-agent-<version>-amd64.msi
+```
+
+The script is defensive: it pins the jsign jar by SHA-256, confirms the
+session token is reachable **read-only** (never consuming a PIN attempt),
+auto-discovers the certificate alias, signs with an RFC 3161 timestamp
+(`http://time.certum.pl`), and verifies the embedded digest locally. It writes
+a `-signed.msi` copy by default (pass `--in-place` to sign the file directly).
+
+> On macOS `osslsigncode verify` may print `unable to get local issuer
+> certificate`: that is only the Certum root missing from the OS trust store,
+> **not** a signing defect. The authoritative check is on Windows (below).
 
 ### Verify a signed MSI
 
@@ -201,7 +237,7 @@ Optional repo variables: `CODESIGN_TSA` (defaults to
 Get-AuthenticodeSignature .\senhub-agent-<version>-amd64.msi | Format-List
 ```
 
-Status `Valid` with the Sensor Factory publisher confirms the signature.
+Status `Valid` with the `SENSOR FACTORY SAS` publisher confirms the signature.
 
 ## Known limitations / follow-ups
 
@@ -209,7 +245,8 @@ Status `Valid` with the Sensor Factory publisher confirms the signature.
   custom dialog) are a follow-up pending interactive validation; today the
   guided install lands the offline default and those are set via properties
   (silent install / MST).
-- Production Certum certificate not yet provisioned → releases ship an
-  unsigned MSI until the signing secrets are set (issue #153).
+- The release pipeline still publishes the **unsigned** MSI; wiring it to
+  build unsigned + accept the locally-signed MSI (and its `.msi.minisig`) for
+  auto-update is the remaining step (issue #608).
 - 32-bit / ARM64 Windows are out of scope (amd64 only, per the
   distributed-binaries matrix).

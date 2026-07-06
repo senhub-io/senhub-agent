@@ -209,6 +209,24 @@ loop:
 	}
 }
 
+// TestNextBackoff pins the supervisor's restart backoff: it doubles each call
+// and saturates at the max so a crash-looping journalctl can't spin.
+func TestNextBackoff(t *testing.T) {
+	if got := nextBackoff(journalRestartBackoffMin); got != 2*time.Second {
+		t.Errorf("nextBackoff(1s) = %v, want 2s", got)
+	}
+	if got := nextBackoff(4 * time.Second); got != 8*time.Second {
+		t.Errorf("nextBackoff(4s) = %v, want 8s", got)
+	}
+	// Saturates at the cap and never exceeds it.
+	if got := nextBackoff(journalRestartBackoffMax); got != journalRestartBackoffMax {
+		t.Errorf("nextBackoff(max) = %v, want %v", got, journalRestartBackoffMax)
+	}
+	if got := nextBackoff(40 * time.Second); got != journalRestartBackoffMax {
+		t.Errorf("nextBackoff(40s) = %v, want %v (capped)", got, journalRestartBackoffMax)
+	}
+}
+
 func contains(s []string, v string) bool {
 	for _, x := range s {
 		if x == v {

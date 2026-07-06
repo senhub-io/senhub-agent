@@ -7,7 +7,10 @@ import (
 )
 
 func TestLinuxCommandNeedsRoot(t *testing.T) {
-	rootCommands := []string{"install", "uninstall", "start", "stop", "restart", "refresh-unit"}
+	// `update` replaces the on-disk binary, so it needs root on Linux like
+	// the service-lifecycle commands (its --list/--help read-only forms are
+	// exempted upstream in readOnlyCommand, not here).
+	rootCommands := []string{"install", "uninstall", "start", "stop", "restart", "refresh-unit", "update"}
 	for _, cmd := range rootCommands {
 		if !linuxCommandNeedsRoot(cmd) {
 			t.Errorf("linuxCommandNeedsRoot(%q) = false, want true (service lifecycle)", cmd)
@@ -16,7 +19,7 @@ func TestLinuxCommandNeedsRoot(t *testing.T) {
 
 	// The daemon and inspection commands must NOT require root — this is
 	// the core of #223: the long-running agent runs least-privilege.
-	nonRootCommands := []string{"run", "status", "version", "config", "update", "license", "db-monitoring", ""}
+	nonRootCommands := []string{"run", "status", "version", "config", "license", "db-monitoring", ""}
 	for _, cmd := range nonRootCommands {
 		if linuxCommandNeedsRoot(cmd) {
 			t.Errorf("linuxCommandNeedsRoot(%q) = true, want false (no elevation needed)", cmd)

@@ -10,10 +10,19 @@ import "regexp"
 // echoed into shared log infrastructure either.
 //
 // Case-insensitive substring match: catches `api_key`, `auth_token`,
-// `client_secret`, `db_password`, `pub400_user`, `auth_login` …
+// `client_secret`, `db_password`, `pub400_user`, `auth_login`,
+// `Authorization` (the OTLP strategy's `headers.Authorization: Bearer <token>`)…
 // The case-insensitivity is necessary because YAML keys are written
 // in mixed conventions (snake_case, camelCase) across the probe set.
-var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community)`)
+//
+// `authorization`/`bearer` are included so a resolved bearer token carried under
+// an `Authorization` header key is masked before it reaches any log sink — the
+// token is otherwise logged in cleartext when a strategy fails to start, at
+// Error level, i.e. exactly during a misconfiguration incident. They are the
+// full words (not a bare `auth`) so a legitimate `auth:` container key — e.g.
+// citrix `director.auth.password` — still recurses and masks only the leaf
+// secret rather than collapsing the whole subtree.
+var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community|authorization|bearer|license|jwt)`)
 
 // SanitizeParamsForLog returns a deep copy of params with the value of any key
 // matching logSensitiveKeyPattern replaced by "***". The original map is never
@@ -30,6 +39,43 @@ func SanitizeParamsForLog(params map[string]interface{}) map[string]interface{} 
 	out := make(map[string]interface{}, len(params))
 	for k, v := range params {
 		out[k] = sanitizeValueForLog(k, v)
+	}
+	return out
+}
+
+// SanitizeStorageForLog returns a log-safe view of a storage/strategies list:
+// each entry keeps its name but its Params map is passed through
+// SanitizeParamsForLog so resolved credentials (DSNs, bearer tokens, bind
+// secrets) never reach shared log infrastructure. The input slice and its maps
+// are never mutated.
+func SanitizeStorageForLog(list []StorageConfig) []map[string]interface{} {
+	if list == nil {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(list))
+	for _, s := range list {
+		out = append(out, map[string]interface{}{
+			"name":   s.Name,
+			"params": SanitizeParamsForLog(s.Params),
+		})
+	}
+	return out
+}
+
+// SanitizeProbesForLog returns a log-safe view of a probes list. Same contract
+// as SanitizeStorageForLog: the Params map of each probe is masked so probe
+// credentials (db passwords, SNMP communities, API keys) are not echoed.
+func SanitizeProbesForLog(list []ProbeConfig) []map[string]interface{} {
+	if list == nil {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(list))
+	for _, p := range list {
+		out = append(out, map[string]interface{}{
+			"name":   p.Name,
+			"type":   p.Type,
+			"params": SanitizeParamsForLog(p.Params),
+		})
 	}
 	return out
 }

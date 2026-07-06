@@ -274,7 +274,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 		tr.moduleLogger.Debug().
 			Str("probe", probeName).
 			Str("style", style).
-			Msg("✅ Definition-based transformer loaded successfully")
+			Msg("Definition-based transformer loaded successfully")
 		return transformer, nil
 	}
 
@@ -282,7 +282,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 	tr.moduleLogger.Warn().
 		Err(err).
 		Str("probe", probeName).
-		Msg("❌ Definition-based transformer not found, creating fallback")
+		Msg("Definition-based transformer not found, creating fallback")
 
 	// Create fallback transformer directly instead of loading from file
 	transformer = tr.createFallbackTransformer(probeName, style)
@@ -292,7 +292,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 	tr.moduleLogger.Debug().
 		Str("probe", probeName).
 		Str("style", style).
-		Msg("🔧 Fallback transformer created")
+		Msg("Fallback transformer created")
 
 	return transformer, nil
 }
@@ -470,7 +470,7 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 				Err(err).
 				Str("probe", probeName).
 				Str("file_path", probeFilePath).
-				Msg("❌ Failed to load embedded probe definition")
+				Msg("Failed to load embedded probe definition")
 			return nil, fmt.Errorf("failed to load probe definition: %w", err)
 		}
 		definition = loaded
@@ -480,7 +480,7 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 	tr.moduleLogger.Debug().
 		Str("probe", probeName).
 		Int("metrics_count", len(definition.Metrics)).
-		Msg("✅ Probe definition loaded from embedded files")
+		Msg("Probe definition loaded from embedded files")
 
 	// Load shared configurations from embedded files
 	unitsConfig, err := tr.loadUnitsConfigFromEmbed("definitions/shared/units.yaml")
@@ -606,7 +606,7 @@ func (tr *TransformerRegistry) loadCorrectionsConfigFromEmbed(probeName string) 
 			Str("probe", probeName).
 			Str("corrections_file", pattern).
 			Int("corrections_count", len(config.Corrections)).
-			Msg("✅ Corrections config loaded")
+			Msg("Corrections config loaded")
 
 		return &config, nil
 	}
