@@ -17,95 +17,36 @@ Each configuration version is documented with:
 ## Version 3 (Current)
 
 **Agent Versions**: 0.5.0+
-**Date**: 2026-06-25
 **Status**: ✅ Current
 
-### Breaking Changes
-- **Inline plaintext secrets are sealed into the OS-native secret store.** On
-  install and on every boot the agent scans the configuration for fields whose
-  name denotes a secret (`password`, `passphrase`, `token`, `api_key`,
-  `community`, `credential`, `dsn`, `uri`, `private_key`) carrying a plaintext
-  value. Each such value is moved into the OS-native secret store and the
-  configuration field is rewritten to a `${secret:<instance>.<field>}`
-  reference. Plaintext no longer lives in the config files.
-- **Layout is auto-harmonised before sealing.** A legacy monolithic
-  `agent.yaml` (top-level `probes:` / `storage:`) is first converted to the
-  multi-file layout (`agent.yaml` + `probes.d/` + `strategies.d/`), then the
-  secrets in the resulting fragments are sealed.
-- An agent that only supports up to version 2 **refuses** a version 3 config
-  rather than passing an unresolved `${secret:}` literal to a probe.
-
 ### New Features
-- **`${secret:<name>}` references**: read a value back from the OS-native
-  secret store, alongside the existing `${env:...}` and `${file:...}` forms.
-- **OS-native secret backends**: `age-keyfile` (default, cross-platform, file
-  backed), DPAPI on Windows, systemd-creds on Linux (hardened opt-in).
-- **`agent secret` CLI**: `set`, `get`, `list`, `rm`, `status`, `migrate` for
-  managing the store.
+- **Secret references**: Inline plaintext secrets found in the config
+  are sealed into the OS-native secret store and replaced by
+  `${secret:<instance>.<field>}` references.
 
-See the user-guide page [Managing secrets](../user-guide/docs/secrets.md) for
-task-oriented usage.
-
-### Configuration Example
-
-**Before (version 2):**
-
-```yaml
-config_version: 2
-
-probes:
-  - name: Production Citrix
-    type: citrix
-    params:
-      base_url: "https://director.company.com"
-      auth:
-        username: "DOMAIN\\svc-monitoring"
-        password: "SecurePassword123"
-```
-
-**After (version 3, secret sealed into the store):**
-
-```yaml
-config_version: 3
-```
-
-`probes.d/00-citrix.yaml`:
-
-```yaml
-- name: Production Citrix
-  type: citrix
-  params:
-    base_url: "https://director.company.com"
-    auth:
-      username: "DOMAIN\\svc-monitoring"
-      password: "${secret:production-citrix.auth.password}"
-```
-
-The plaintext `SecurePassword123` now lives only in the OS-native secret store.
+### Behaviour
+- The version bump to `3` happens **only** when a config that actually
+  contained an inline secret is sealed. A secret-free version 2 config
+  stays at version 2 and loads unchanged — there is no unconditional
+  version 2 → version 3 rewrite.
+- The `config_version` field is stamped by the agent after sealing; it
+  is not something you set by hand.
+- An older agent (maximum supported version 2) refuses a version 3
+  config rather than passing an unresolved `${secret:}` literal to a
+  probe. Update the agent before deploying a sealed config.
 
 ### Migration from version 2
-
-**Automatic Migration:**
-- On install and boot the agent harmonises the layout (monolithic to
-  multi-file when needed), then seals inline secrets.
-- Each file that is rewritten is backed up first, with `0600` permissions.
-- After the rewrite the agent verifies that every resolved `${secret:...}`
-  value equals the original plaintext; on any mismatch it restores the backup
-  and aborts, leaving the config untouched.
-- The step is idempotent: a config that already uses `${secret:...}` (or has no
-  inline secrets) is left unchanged.
-
-**Manual Migration:**
-Run `agent secret migrate` to seal inline secrets in place without waiting for
-the next boot.
+No manual migration is required. Sealing (which produces the
+`${secret:...}` references) is what stamps `config_version: 3`; a
+config without inline secrets is unaffected and remains at version 2.
 
 ---
 
-## Version 2 (Name/Type Separation)
+## Version 2
 
-**Agent Versions**: 0.1.65 - 0.4.x
+**Agent Versions**: 0.1.65+
 **Date**: 2025-10-13
-**Status**: Superseded by version 3
+**Status**: Supported
 
 ### Breaking Changes
 - Probes now require **both** `name` and `type` fields
@@ -219,8 +160,8 @@ probes:
 | Config Version | Agent Version | Status | Auto-Migration |
 |---------------|---------------|--------|----------------|
 | 1 | 0.1.0 - 0.1.63 | Legacy | ✅ Yes (1→2) |
-| 2 | 0.1.65 - 0.4.x | Superseded | ✅ Yes (2→3) |
-| 3 | 0.5.0+ | Current | N/A |
+| 2 | 0.1.65+ | Supported | N/A |
+| 3 | 0.5.0+ | Current | On secret seal (2→3) |
 
 ## Version Detection
 
@@ -246,7 +187,9 @@ Future config versions will be documented here with:
 ### How do I know which config version I have?
 
 Check the top of your `agent-config.yaml`:
-- **Has `config_version: 2`**: You have version 2
+- **Has `config_version: 3`**: You have version 3 (current — reached
+  after inline secrets were sealed into the OS secret store)
+- **Has `config_version: 2`**: You have version 2 (still supported)
 - **No `config_version` field**: You have version 1 (legacy)
 
 ### Will my old config still work?
@@ -318,5 +261,5 @@ if configVersion < CurrentConfigVersion {
 
 ---
 
-**Last Updated**: 2026-06-25
+**Current Version**: 3
 **Maintainer**: SenHub Agent Team

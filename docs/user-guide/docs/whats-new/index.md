@@ -26,7 +26,11 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 
 | Version | Date | Headline |
 |---|---|---|
-| [**Next (unreleased)**](next.md) | in progress | — |
+| [**Next — 0.5.0 (unreleased)**](next.md) | in progress | Security hardening (audit-360), secret store, signed Windows MSI |
+| [**0.4.2**](0.4.2.md) | 2026-06-30 | Entity stabilization, Pro catalogue fix, systemd install hardening |
+| [**0.4.1**](0.4.1.md) | 2026-06-23 | Auto-update reliability fix |
+| [**0.4.0**](0.4.0.md) | 2026-06-22 | The entity model: host nameplate, network interfaces, compute VMs, attribute governance |
+| [**0.3.2**](0.3.2.md) | 2026-06-17 | Probe catalog explosion — ~40 new free-tier probes and the first entity/topology model |
 | [**0.2.3**](0.2.3.md) | 2026-06-12 | Security wave: signed updates, loopback defaults, OTLP ingress guard, SNMPv3 |
 | [**0.2.2**](0.2.2.md) | 2026-06-11 | Active checks, exec + Prometheus scrape, alerting packs |
 | [**0.2.1**](0.2.1.md) | 2026-06-10 | Topology-aware edge collector — five free collectors, open source |

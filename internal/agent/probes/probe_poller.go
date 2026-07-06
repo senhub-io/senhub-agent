@@ -92,7 +92,7 @@ func NewProbePoller(
 		moduleLogger.Warn().
 			Str("probe_name", config.Name).
 			Str("probe_type", config.Type).
-			Msg("⚠️ Probe does not support SetName() - cache key collisions may occur with multiple probe instances. Probe should embed BaseProbe.")
+			Msg("Probe does not support SetName() - cache key collisions may occur with multiple probe instances. Probe should embed BaseProbe.")
 	}
 
 	// Set the probe type from configuration (v2 format: type field)
@@ -106,7 +106,7 @@ func NewProbePoller(
 		moduleLogger.Warn().
 			Str("probe_name", config.Name).
 			Str("probe_type", config.Type).
-			Msg("⚠️ Probe does not support SetProbeType() - transformers and discriminant tags will not work. Probe should embed BaseProbe.")
+			Msg("Probe does not support SetProbeType() - transformers and discriminant tags will not work. Probe should embed BaseProbe.")
 	}
 
 	probePoller := &ProbePoller{

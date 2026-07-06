@@ -449,3 +449,91 @@ func TestParseConfig_HeadersAndYAMLMaps(t *testing.T) {
 		t.Errorf("X-Tenant header missing: %+v", cfg.Headers)
 	}
 }
+
+func TestParseConfig_RejectsBlankBearerToken(t *testing.T) {
+	// An operator who sets an Authorization header clearly intends an
+	// authenticated export. A token that resolves to blank (e.g. an
+	// unset ${env:VAR} with no default expanding "Bearer ${env:VAR}"
+	// down to "Bearer ") must fail fast rather than ship every batch
+	// with a bare scheme and be silently rejected downstream — the
+	// P1.4 silent-data-loss trap.
+	cases := map[string]string{
+		"empty value":     "",
+		"whitespace only": "   ",
+		"scheme only":     "Bearer",
+		"scheme + spaces": "Bearer   ",
+		"basic scheme":    "Basic",
+	}
+	for name, val := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseConfig(map[string]interface{}{
+				"endpoint": "otlp.example.com:4317",
+				"headers": map[string]interface{}{
+					"Authorization": val,
+				},
+			})
+			if err == nil {
+				t.Fatalf("expected error for blank Authorization token %q", val)
+			}
+			if !strings.Contains(err.Error(), "Authorization") {
+				t.Errorf("error should mention Authorization: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseConfig_RejectsBlankBearerTokenPerSignal(t *testing.T) {
+	// A signal-level override with a blank token is the same trap even
+	// when the root header is fine.
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4317",
+		"headers":  map[string]interface{}{"Authorization": "Bearer good"},
+		"signals": map[string]interface{}{
+			"metrics": map[string]interface{}{
+				"headers": map[string]interface{}{"authorization": "Bearer "},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for blank per-signal Authorization token")
+	}
+	if !strings.Contains(err.Error(), "metrics") {
+		t.Errorf("error should point at the offending signal: %v", err)
+	}
+}
+
+func TestParseConfig_AcceptsValidOrAbsentAuth(t *testing.T) {
+	// A real token must parse, and no Authorization header at all
+	// (unauthenticated local OTLP) must remain valid — the check only
+	// fires on a present-but-blank credential.
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4317",
+		"headers":  map[string]interface{}{"Authorization": "Bearer real-token"},
+	}); err != nil {
+		t.Fatalf("valid bearer token rejected: %v", err)
+	}
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4317",
+	}); err != nil {
+		t.Fatalf("unauthenticated export rejected: %v", err)
+	}
+}
+
+func TestParseConfig_RejectsUnresolvedFileSecretRef(t *testing.T) {
+	// A ${file:}/${secret:} lookup that fails with no default leaves the literal
+	// template in the header (expandEnv keeps it so the failure isn't silently
+	// turned into an empty token). That literal passes the scheme check but would
+	// 401 on every export, so parse must fail fast on the unresolved reference.
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "otlp.example.com:4317",
+		"headers": map[string]interface{}{
+			"Authorization": "Bearer ${file:/nonexistent/senhub-otlp-token-xyz}",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for an unresolved ${file:} Authorization reference")
+	}
+	if !strings.Contains(err.Error(), "unresolved") {
+		t.Errorf("error should mention the unresolved reference: %v", err)
+	}
+}
