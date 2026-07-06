@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"time"
 
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -21,3 +22,12 @@ func newJournalReader(_ LinuxLogsProbeConfig, _ *logger.ModuleLogger, _ string) 
 }
 
 func (*journalReader) stop(context.Context) error { return nil }
+
+func (*journalReader) healthErr() error { return nil }
+
+// The following exist only so the cross-platform supervisor compiles on
+// non-Linux. newJournalReader always errors here, so a stub reader is never
+// actually supervised.
+func (*journalReader) waitCh() <-chan struct{}  { return nil }
+func (*journalReader) exitedUnexpectedly() bool { return false }
+func (*journalReader) uptime() time.Duration    { return 0 }

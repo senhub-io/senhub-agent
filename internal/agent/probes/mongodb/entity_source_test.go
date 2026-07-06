@@ -248,6 +248,33 @@ func TestEntitySource_MonitorsEdge_ToIDMatchesPinnedID(t *testing.T) {
 	}
 }
 
+// TestEntitySource_LocalDBRunsOnHost: a loopback-reachable mongodb with a
+// globally-unique replica-set tech id is anchored to the host with runs_on
+// (enterprise#36); a remote db is not. The replset id is host-scoped via the
+// set name, so it does not embed the loopback literal and passes the guard.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	runsOn := func(addr string) bool {
+		src := newMongodbEntitySource(addr, 27017, "")
+		src.hostID = func() string { return "h-1" }
+		src.setReachable(true, "")
+		src.pinTechID("mongodb:rs0/internal-name:27017")
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !runsOn("127.0.0.1") {
+		t.Error("loopback db with a tech id must emit runs_on→host")
+	}
+	if runsOn("10.0.0.5") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // config — instance_name parsing
 // ─────────────────────────────────────────────────────────────────────────────

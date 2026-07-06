@@ -422,7 +422,7 @@ func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName str
 			Str("probe_name", probeName).
 			Str("probe_type", probeType).
 			Str("metric_name", metricName).
-			Msg("⚠️ Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+			Msg("Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
 		discriminantTagNames = []string{}
 	}
 
@@ -464,7 +464,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 
 	c.logger.Debug().
 		Int("data_points", len(dataPoints)).
-		Msg("💾 Cache - Adding data points")
+		Msg("Cache - Adding data points")
 
 	now := time.Now()
 
@@ -484,7 +484,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			c.logger.Warn().
 				Str("metric_name", dp.Name).
 				Interface("all_tags", tags).
-				Msg("⚠️ MISSING PROBE_NAME: Metric has no probe_name tag!")
+				Msg("MISSING PROBE_NAME: Metric has no probe_name tag!")
 			probeName = "unknown" // Fallback for metrics without probe_name
 		}
 		if probeType == "" {
@@ -492,7 +492,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 				Str("metric_name", dp.Name).
 				Str("probe_name", probeName).
 				Interface("all_tags", tags).
-				Msg("⚠️ MISSING PROBE_TYPE: Metric has no probe_type tag! Probe not properly initialized with SetProbeType(). Falling back to probe_name.")
+				Msg("MISSING PROBE_TYPE: Metric has no probe_type tag! Probe not properly initialized with SetProbeType(). Falling back to probe_name.")
 			probeType = probeName // Fallback to probe_name if type missing
 		}
 
@@ -517,6 +517,14 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 		if transformer != nil {
 			unit = transformer.GetUnit(dp.Name)
 		}
+		// Fallback to a producer-supplied unit tag when no transformer
+		// definition names the metric. Definition-less metrics (OTLP-
+		// ingested, typed pass-through) carry their unit on this tag;
+		// without the fallback the pull path (Prometheus/PRTG) would drop
+		// it even though the OTLP push path already reads the same tag.
+		if unit == "" {
+			unit = tags["unit"]
+		}
 
 		// Note: Unit corrections are now applied earlier in the data processing pipeline (data_store.go)
 		// before routing to strategies, so datapoints here already have corrected values
@@ -538,7 +546,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 				Str("ts_key", tsKey).
 				Time("old_timestamp", existingMetric.Timestamp).
 				Time("new_timestamp", cachedMetric.Timestamp).
-				Msg("🔄 Replacing existing metric in time series")
+				Msg("Replacing existing metric in time series")
 		} else {
 			// Cardinality cap: refuse NEW series past maxSeries while
 			// existing series keep updating. TTL cleanup frees slots.
@@ -556,7 +564,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 				Str("ts_key", tsKey).
 				Str("metric_name", dp.Name).
 				Str("probe_name", probeName).
-				Msg("📊 Adding new metric to time series")
+				Msg("Adding new metric to time series")
 		}
 
 		c.timeSeries[tsKey] = cachedMetric
@@ -573,7 +581,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			Str("metric", dp.Name).
 			Interface("value", dp.Value).
 			Str("unit", unit).
-			Msg("💾 Cache - Stored metric")
+			Msg("Cache - Stored metric")
 	}
 }
 
@@ -609,7 +617,7 @@ func (c *MetricCache) cleanup() {
 	if len(expiredKeys) > 0 {
 		c.logger.Debug().
 			Int("expired_count", len(expiredKeys)).
-			Msg("💾 Cache - Cleaned up expired metrics")
+			Msg("Cache - Cleaned up expired metrics")
 	}
 }
 
@@ -814,7 +822,7 @@ func (c *MetricCache) UpdateTTL(newTTL time.Duration) {
 	c.logger.Info().
 		Dur("old_ttl", oldTTL).
 		Dur("new_ttl", newTTL).
-		Msg("🔄 Cache TTL updated dynamically")
+		Msg("Cache TTL updated dynamically")
 }
 
 // CacheInfoResponse represents cache statistics

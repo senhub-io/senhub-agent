@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // constantHostID returns a fixed host id, used to inject a deterministic
@@ -151,12 +152,9 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) == 0 {
-		t.Fatal("expected a monitors relation, got none")
-	}
-	rel := obs.Relations[0]
-	if rel.Type != "monitors" {
-		t.Errorf("relation type = %q, want monitors", rel.Type)
+	rel, found := findRelation(obs, "monitors")
+	if !found {
+		t.Fatalf("expected a monitors relation, got %v", relTypes(obs))
 	}
 	if got := rel.FromID["service.instance.id"]; got != "agent-instance-xyz" {
 		t.Errorf("From id = %q, want agent-instance-xyz", got)
@@ -179,8 +177,11 @@ func TestEntitySource_MonitorsEdgeAbsent(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("expected no relation when agent id is empty, got %d", len(obs.Relations))
+	// No monitors edge when the agent id is empty. A runs_on edge may still be
+	// present (the localhost target is loopback) — assert on the monitors type,
+	// not the relation count.
+	if _, found := findRelation(obs, "monitors"); found {
+		t.Errorf("expected no monitors relation when agent id is empty, got %v", relTypes(obs))
 	}
 }
 
@@ -223,6 +224,57 @@ func TestEntitySource_NoURLInID(t *testing.T) {
 		if contains(id, forbidden) {
 			t.Errorf("entity id %q contains forbidden substring %q", id, forbidden)
 		}
+	}
+}
+
+// relTypes lists the relation types in an observation.
+func relTypes(obs entity.Observation) []string {
+	var ts []string
+	for _, r := range obs.Relations {
+		ts = append(ts, r.Type)
+	}
+	return ts
+}
+
+// findRelation returns the first relation of the given type.
+func findRelation(obs entity.Observation, relType string) (entity.Relation, bool) {
+	for _, r := range obs.Relations {
+		if r.Type == relType {
+			return r, true
+		}
+	}
+	return entity.Relation{}, false
+}
+
+// TestEntitySource_LocalRunsOn verifies a loopback-monitored broker emits a
+// runs_on→host edge (so it does not float), and a remote-monitored one does not.
+func TestEntitySource_LocalRunsOn(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	// Loopback target → runs_on present, targeting the agent host.
+	local := newActivemqEntitySource("", "127.0.0.1", 8161, constantHostID("H"))
+	local.setReachable(true, "")
+	local.pinTechID("broker-uuid")
+	obs, _ := local.Observe()
+	runsOn, found := findRelation(obs, "runs_on")
+	if !found {
+		t.Fatalf("loopback broker: expected a runs_on edge, got relations %v", relTypes(obs))
+	}
+	if runsOn.ToType != "host" || runsOn.ToID["host.id"] != "H" {
+		t.Errorf("runs_on target = %s/%v, want host/H", runsOn.ToType, runsOn.ToID)
+	}
+	if runsOn.FromID["service.instance.id"] != "activemq:broker-uuid" {
+		t.Errorf("runs_on source = %v, want activemq:broker-uuid", runsOn.FromID)
+	}
+
+	// Remote target → no runs_on.
+	remote := newActivemqEntitySource("", "10.0.0.5", 8161, constantHostID("H"))
+	remote.setReachable(true, "")
+	remote.pinTechID("broker-uuid")
+	robs, _ := remote.Observe()
+	if _, found := findRelation(robs, "runs_on"); found {
+		t.Errorf("remote broker must NOT emit runs_on; relations=%v", relTypes(robs))
 	}
 }
 

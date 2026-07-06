@@ -35,6 +35,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -52,13 +53,18 @@ const (
 // be masked in ShowRedact mode. The pattern uses substring matching
 // (no `^…$` anchors) so composite names like `api_key`, `auth_token`,
 // `db_password`, `client_secret` are all caught. Case-insensitive.
-var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|secret)`)
+var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer|license|jwt)`)
 
 // fileRefPattern recognises a `${file:..}` reference inside a raw
 // (pre-substitution) string. The trailing capture is intentionally
 // permissive — the redact pass doesn't care what's inside, only
 // whether a file-backed reference was there.
 var fileRefPattern = regexp.MustCompile(`\$\{file:[^}]+\}`)
+
+// secretRefPattern recognises a `${secret:..}` reference. Its resolved value is
+// a plaintext secret, so a field carrying one is masked even when its NAME does
+// not look like a secret.
+var secretRefPattern = regexp.MustCompile(`\$\{secret:[^}]+\}`)
 
 // LoadForShow returns the merged configuration tree for `agent config
 // show` rendering. The mode parameter selects raw / resolved /
@@ -167,10 +173,18 @@ func loadMerged(configPath string, log *logger.ModuleLogger) (LocalConfiguration
 	if err := yaml.Unmarshal(raw, &data); err != nil {
 		return LocalConfigurationData{}, fmt.Errorf("parsing %s: %w", configPath, err)
 	}
+
+	// Record the config directory so a ${secret:} reference the show path
+	// resolves can locate the OS-native secret backend — mirroring the boot
+	// loader (LoadFromDisk). Without it, `config show --resolved/--redact` on a
+	// SEALED install resolves secrets against an empty backend dir and crashes.
+	// Recording the path carries no secret and initialises no backend.
+	baseDir := filepath.Dir(configPath)
+	secret.SetConfigDir(baseDir)
+
 	if legacy {
 		return data, nil
 	}
-	baseDir := filepath.Dir(configPath)
 	probes, err := loadProbesD(filepath.Join(baseDir, "probes.d"))
 	if err != nil {
 		return LocalConfigurationData{}, err
@@ -265,8 +279,9 @@ func redactInPlace(rawV, resV reflect.Value, currentName string) {
 		// regardless of whether the resolved value happens to be
 		// empty — an empty secret is still a secret slot.
 		hasFileRef := fileRefPattern.MatchString(raw)
+		hasSecretRef := secretRefPattern.MatchString(raw)
 		nameLooksSecret := currentName != "" && secretFieldPattern.MatchString(currentName)
-		if !hasFileRef && !nameLooksSecret {
+		if !hasFileRef && !hasSecretRef && !nameLooksSecret {
 			return
 		}
 		if !resV.CanSet() {

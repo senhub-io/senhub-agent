@@ -6,6 +6,34 @@ import (
 	"testing"
 )
 
+// TestEntitySource_LocalDBRunsOnHost: the db.instance.id is host:port-derived
+// ("mssql://<host>:<port>"), so it embeds the loopback literal and is identical
+// on every host. The collapse guard therefore refuses the runs_on even on a
+// loopback target (anchoring it would false-join hosts). A remote db never
+// anchors either. So no runs_on edge is ever emitted here — the edge is wired
+// for correctness but the gate suppresses it.
+func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
+	hasRunsOn := func(host string) bool {
+		src := newEntitySource(host, 1433)
+		obs, _ := src.Observe()
+		for _, r := range obs.Relations {
+			if r.Type == "runs_on" {
+				return true
+			}
+		}
+		return false
+	}
+	if hasRunsOn("127.0.0.1") {
+		t.Error("host:port id must NOT emit runs_on on loopback (collapse guard)")
+	}
+	if hasRunsOn("localhost") {
+		t.Error("host:port id must NOT emit runs_on on localhost (collapse guard)")
+	}
+	if hasRunsOn("10.0.0.5") {
+		t.Error("remote db must NOT emit runs_on→host")
+	}
+}
+
 // TestParseConfig_EncryptDefaultsToTrue pins the secure default: a config
 // that does not mention encryption must still negotiate TLS.
 func TestParseConfig_EncryptDefaultsToTrue(t *testing.T) {

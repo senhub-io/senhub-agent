@@ -165,6 +165,21 @@ metrics:
       job_name: senhub.veeam.job.name
       job_type: senhub.veeam.job.type
 
+  - name: "veeam_job_running_seconds"
+    channel: "veeam_job_running_seconds"
+    display_name: "Running Duration ({job_name})"
+    unit: "s"
+    category: "jobs_detail"
+    multi_instance_labels: ["job_name", "job_type"]
+    description: "Elapsed running time of a currently-running job (0 when not running). The supervisor sets the 'too long' alert limit; the probe applies no threshold."
+    otel:
+      name: senhub.veeam.job.running_duration
+      unit: s
+      type: gauge
+    tag_to_attribute:
+      job_name: senhub.veeam.job.name
+      job_type: senhub.veeam.job.type
+
   - name: "veeam_job_objects_count"
     channel: "veeam_job_objects_count"
     display_name: "Objects Count ({job_name})"

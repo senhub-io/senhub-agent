@@ -122,7 +122,7 @@ func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 		Msg("PRTG metrics request received")
 
 	// For now, emulate configuration handling - just log the config
-	a.logger.Debug().Any("config", req.Config).Msg("Emulating config handling")
+	a.logger.Debug().Any("config", configuration.SanitizeParamsForLog(req.Config)).Msg("Emulating config handling")
 
 	// Get metrics from cache for the specified probe
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbe(req.Probe)

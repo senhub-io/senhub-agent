@@ -40,6 +40,25 @@ func TestSyncStrategyPrtg_NewSyncStrategyPrtg(t *testing.T) {
 			t.Errorf("GetStrategyParams() != prtg: %s", strategy.GetStrategyName())
 		}
 	})
+
+	// ClientHasBoundedTimeout pins the outbound PRTG push client to a
+	// non-zero timeout. Without it a hung PRTG endpoint stalls the sync
+	// goroutine forever, silently halting the cache push.
+	t.Run("ClientHasBoundedTimeout", func(t *testing.T) {
+		strategy := NewSyncStrategyPrtg(
+			agentConfiguration,
+			configuration.StorageConfigParams{
+				"server_url": "http://localhost:8080",
+			},
+			&logger,
+		)
+		if strategy.http.Timeout <= 0 {
+			t.Fatalf("outbound PRTG client has no timeout (got %v); a hung endpoint would block indefinitely", strategy.http.Timeout)
+		}
+		if strategy.http.Timeout != defaultPushTimeout {
+			t.Errorf("expected client timeout %v, got %v", defaultPushTimeout, strategy.http.Timeout)
+		}
+	})
 }
 
 func TestSyncStrategyPrtg_ParseSyncStrategyPrtgParams(t *testing.T) {

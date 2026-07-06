@@ -107,25 +107,25 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 	// Remove files
 	for _, file := range filesToRemove {
 		if err := os.Remove(file); err != nil {
-			fmt.Printf("Warning: Could not remove %s: %v\n", file, err)
+			fmt.Fprintf(os.Stderr, "Warning: Could not remove %s: %v\n", file, err)
 		} else {
-			fmt.Printf("✅ Removed: %s\n", file)
+			fmt.Printf("Removed: %s\n", file)
 		}
 	}
 
 	// Remove directories
 	for _, dir := range dirsToRemove {
 		if err := os.RemoveAll(dir); err != nil {
-			fmt.Printf("Warning: Could not remove directory %s: %v\n", dir, err)
+			fmt.Fprintf(os.Stderr, "Warning: Could not remove directory %s: %v\n", dir, err)
 		} else {
-			fmt.Printf("✅ Removed directory: %s\n", dir)
+			fmt.Printf("Removed directory: %s\n", dir)
 		}
 	}
 
 	if len(filesToRemove) == 0 && len(dirsToRemove) == 0 {
-		fmt.Println("✅ No additional files to clean up")
+		fmt.Println("No additional files to clean up")
 	} else {
-		fmt.Printf("\n🧹 Cleanup completed - removed %d files and %d directories\n",
+		fmt.Printf("\nCleanup completed - removed %d files and %d directories\n",
 			len(filesToRemove), len(dirsToRemove))
 	}
 }
@@ -253,15 +253,24 @@ func checkConfig(configPath string) {
 	errors := 0
 	warnings := 0
 
-	// Config version
-	if config.ConfigVersion == 2 {
-		fmt.Println("  [OK]   config_version: 2")
-	} else if config.ConfigVersion == 0 {
-		fmt.Println("  [ERROR] config_version missing (should be 2)")
+	// Config version. Validate against the agent's supported range
+	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
+	// hardcoded literal, so `config check` tracks the source of truth
+	// in config_version.go. A missing field defaults to version 1
+	// (legacy) at load time, mirroring the loader.
+	switch {
+	case config.ConfigVersion == 0:
+		fmt.Printf("  [ERROR] config_version missing (expected %d)\n", configuration.CurrentConfigVersion)
 		errors++
-	} else {
-		fmt.Printf("  [WARN] config_version: %d (expected 2)\n", config.ConfigVersion)
-		warnings++
+	case configuration.ValidateConfigVersion(config.ConfigVersion) != nil:
+		fmt.Printf("  [ERROR] config_version: %d (%v)\n",
+			config.ConfigVersion, configuration.ValidateConfigVersion(config.ConfigVersion))
+		errors++
+	case config.ConfigVersion < configuration.CurrentConfigVersion:
+		fmt.Printf("  [OK]   config_version: %d (agent supports up to %d; will migrate on next write)\n",
+			config.ConfigVersion, configuration.CurrentConfigVersion)
+	default:
+		fmt.Printf("  [OK]   config_version: %d\n", config.ConfigVersion)
 	}
 
 	// Agent key
@@ -422,7 +431,7 @@ func showConfig(args []string) {
 			return
 		default:
 			if strings.HasPrefix(a, "--") {
-				fmt.Fprintf(os.Stderr, "config show: unknown flag %q\n", a)
+				fmt.Fprintf(os.Stderr, "Error: config show: unknown flag %q\n", a)
 				os.Exit(2)
 			}
 			configPath = a
@@ -450,18 +459,15 @@ func showConfig(args []string) {
 
 	data, err := configuration.LoadForShow(configPath, mode, log)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config show: %v\n", err)
-		os.Exit(1)
+		fatalf("config show: %v", err)
 	}
 
 	out, err := configuration.MarshalSortedYAML(&data)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config show: marshaling output: %v\n", err)
-		os.Exit(1)
+		fatalf("config show: marshaling output: %v", err)
 	}
 	if _, err := os.Stdout.Write(out); err != nil {
-		fmt.Fprintf(os.Stderr, "config show: write: %v\n", err)
-		os.Exit(1)
+		fatalf("config show: write: %v", err)
 	}
 }
 

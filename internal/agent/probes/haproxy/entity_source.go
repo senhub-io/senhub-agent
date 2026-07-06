@@ -28,6 +28,8 @@ import (
 type haproxyEntitySource struct {
 	instanceID string
 	attrs      map[string]any
+	serverAddr string // host from the endpoint; a runs_on→host is emitted only when it is loopback
+	hostID     string // agent host id, target of the local-target runs_on edge
 
 	mu      sync.RWMutex
 	reached bool
@@ -48,6 +50,8 @@ func newHAProxyEntitySource(addr string, port int, instanceName, hostID string) 
 	}
 	return &haproxyEntitySource{
 		instanceID: id,
+		serverAddr: addr,
+		hostID:     hostID,
 		attrs: map[string]any{
 			"service.name":   "haproxy",
 			"server.address": addr,
@@ -75,10 +79,11 @@ func (s *haproxyEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
+	svcID := map[string]any{"service.instance.id": s.instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "service.instance",
-			ID:         map[string]any{"service.instance.id": s.instanceID},
+			ID:         svcID,
 			Attributes: s.attrs,
 		}},
 	}
@@ -89,8 +94,15 @@ func (s *haproxyEntitySource) Observe() (entity.Observation, bool) {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "service.instance",
-			ToID:     map[string]any{"service.instance.id": s.instanceID},
+			ToID:     svcID,
 		})
+	}
+
+	// runs_on edge: haproxy → host when the monitored endpoint is local (loopback),
+	// so a locally-monitored haproxy hangs off the host it runs on instead of
+	// floating with only its monitors anchor. A remote endpoint yields no edge.
+	if rel, ok := entity.LocalRunsOn("service.instance", svcID, s.serverAddr, s.hostID); ok {
+		obs.Relations = append(obs.Relations, rel)
 	}
 
 	return obs, true

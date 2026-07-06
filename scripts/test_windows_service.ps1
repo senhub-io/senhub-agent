@@ -75,8 +75,10 @@ Write-Host "Stopping the service..."
 Start-Sleep -Seconds 2
 
 # Step 4: Uninstall
+# --yes bypasses the interactive confirmation so this unattended smoke
+# test does not hang / abort on the [y/N] prompt.
 Write-Host "Uninstalling the service..."
-& $serviceExecutable uninstall
+& $serviceExecutable uninstall --yes
 if (Check-ServiceInstalled -ServiceName $serviceName) {
     Write-Error "Service uninstallation failed!"
     exit 1
