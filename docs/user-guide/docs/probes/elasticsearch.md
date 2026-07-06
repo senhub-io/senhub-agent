@@ -12,11 +12,11 @@ and thread pool queue depths.
 ## Quick start
 
 ```yaml
-probes:
-  - name: elasticsearch
-    type: elasticsearch
-    params:
-      endpoint: http://localhost:9200
+# probes.d/10-elasticsearch.yaml — each file under probes.d/ is a YAML array of probes
+- name: elasticsearch
+  type: elasticsearch
+  params:
+    endpoint: http://localhost:9200
 ```
 
 ## Parameters
@@ -25,7 +25,7 @@ probes:
 |---|---|---|
 | `endpoint` | `http://localhost:9200` | Elasticsearch base URL |
 | `username` | — | Basic-auth username (for clusters with security enabled) |
-| `password` | — | Basic-auth password |
+| `password` | — | Basic-auth password — reference via `${secret:elasticsearch.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 
 ## Metrics
 

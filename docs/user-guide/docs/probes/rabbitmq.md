@@ -12,13 +12,13 @@ usage, connection counts and exchange statistics.
 ## Quick start
 
 ```yaml
-probes:
-  - name: rabbitmq
-    type: rabbitmq
-    params:
-      endpoint: http://localhost:15672
-      username: guest
-      password: guest
+# probes.d/10-rabbitmq.yaml — each file under probes.d/ is a YAML array of probes
+- name: rabbitmq
+  type: rabbitmq
+  params:
+    endpoint: http://localhost:15672
+    username: guest
+    password: ${secret:rabbitmq.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -27,7 +27,7 @@ probes:
 |---|---|---|
 | `endpoint` | `http://localhost:15672` | RabbitMQ Management API base URL |
 | `username` | `guest` | RabbitMQ management user |
-| `password` | `guest` | Management user password |
+| `password` | `guest` | Management user password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 
 ## Metrics
 

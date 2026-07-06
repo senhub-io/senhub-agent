@@ -13,19 +13,20 @@ Cette analyse est nécessaire pour implémenter le filtrage CVAD→OData et s'as
 Utilisez l'exemple `citrix-debug-example.yaml` ou ajoutez à votre configuration existante :
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      base_url: "https://your-director.company.com"
-      debug_identifiers: true  # ACTIVE LE MODE DEBUG
-      
-      auth:
-        username: "DOMAIN\\username"
-        password: "password"
-      
-      delivery_controller:
-        url: "https://your-ddc.company.com"
-        site_filter: "YourSiteName"
+# probes.d/10-citrix.yaml — each file under probes.d/ is a YAML array of probes
+- name: citrix
+  type: citrix
+  params:
+    base_url: "https://your-director.company.com"
+    debug_identifiers: true  # ACTIVE LE MODE DEBUG
+
+    auth:
+      username: "DOMAIN\\username"
+      password: ${secret:citrix.password}   # auto-sealed on install
+
+    delivery_controller:
+      url: "https://your-ddc.company.com"
+      site_filter: "YourSiteName"
 ```
 
 ### 2. Lancement

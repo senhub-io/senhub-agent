@@ -16,13 +16,13 @@ Use cases:
 ## Quick Start
 
 ```yaml
-probes:
-  - name: event
-    type: event
-    params:
-      address: 127.0.0.1   # Bind address (default: 127.0.0.1)
-      port: 5656           # Listening port (default: 5656)
-      protocol: tcp        # tcp or udp (default: tcp)
+# probes.d/10-event.yaml — each file under probes.d/ is a YAML array of probes
+- name: event
+  type: event
+  params:
+    address: 127.0.0.1   # Bind address (default: 127.0.0.1)
+    port: 5656           # Listening port (default: 5656)
+    protocol: tcp        # tcp or udp (default: tcp)
 ```
 
 Once started, the probe listens on `http://<address>:<port>/event` and accepts `POST` requests with a JSON body.

@@ -20,20 +20,20 @@ when the extension is installed.
 ## Configuration
 
 ```yaml
-probes:
-  - name: production-postgres
-    type: postgresql
-    params:
-      host: db.example.com
-      port: 5432
-      username: senhub_monitor
-      password: ${env:PG_MONITOR_PASSWORD}
-      database: postgres
-      interval: 60
-      timeout: 10
-      sslmode: require
-      max_replication_lag_seconds: 60
-      bloat_top_n: 10
+# probes.d/20-postgresql.yaml — each file under probes.d/ is a YAML array of probes
+- name: production-postgres
+  type: postgresql
+  params:
+    host: db.example.com
+    port: 5432
+    username: senhub_monitor
+    password: ${secret:production-postgres.password}   # OS secret store; inline plaintext is auto-sealed on install
+    database: postgres
+    interval: 60
+    timeout: 10
+    sslmode: require
+    max_replication_lag_seconds: 60
+    bloat_top_n: 10
 ```
 
 ### Parameters
@@ -43,7 +43,7 @@ probes:
 | `host` | Yes | - | Database hostname or IP |
 | `port` | No | `5432` | TCP port |
 | `username` | Yes | - | Monitoring role |
-| `password` | Yes | - | Role's password (use `${env:VAR}` for secret) |
+| `password` | Yes | - | Role's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `database` | No | `postgres` | Maintenance database to connect to |
 | `interval` | No | `60` | Collection interval in seconds |
 | `timeout` | No | `10` | Per-query timeout in seconds |

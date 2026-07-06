@@ -14,9 +14,9 @@ service. It is the Windows counterpart of the `systemd` probe on Linux.
 ## Quick start
 
 ```yaml
-probes:
-  - name: winservices
-    type: winservices
+# probes.d/10-winservices.yaml — each file under probes.d/ is a YAML array of probes
+- name: winservices
+  type: winservices
 ```
 
 All services visible to the SCM are monitored by default. Use `services` to

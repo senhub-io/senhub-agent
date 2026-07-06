@@ -13,9 +13,9 @@ name. Equivalent to PRTG's "Top Processes" sensor.
 ## Quick start
 
 ```yaml
-probes:
-  - name: process
-    type: process
+# probes.d/10-process.yaml — each file under probes.d/ is a YAML array of probes
+- name: process
+  type: process
 ```
 
 Monitors all processes by default. Add a `filter` block to narrow the scope.

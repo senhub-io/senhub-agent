@@ -20,14 +20,14 @@ One probe instance polls one device; declare one instance per device
 ## Quick start
 
 ```yaml
-probes:
-  - name: core-switch
-    type: snmp_poll
-    params:
-      target: 192.168.1.10
-      community: "${env:SNMP_COMMUNITY}"
-      mibs: [mib-2, if-mib]
-      interval: 60
+# probes.d/10-snmp-poll.yaml — each file under probes.d/ is a YAML array of probes
+- name: core-switch
+  type: snmp_poll
+  params:
+    target: 192.168.1.10
+    community: ${secret:core-switch.community}   # OS secret store; inline plaintext is auto-sealed on install
+    mibs: [mib-2, if-mib]
+    interval: 60
 ```
 
 This polls system and interface tables every 60 seconds and emits
@@ -40,7 +40,7 @@ one series per interface (`if_index` tag).
 | `target` | required | Device IP or hostname |
 | `port` | `161` | SNMP UDP port |
 | `version` | `2c` | `2c` or `3`. SNMPv1 is rejected (table walks need GETBULK) |
-| `community` | `public` | Community string (v2c). Use `${env:...}` or `${file:...}` substitution rather than a literal |
+| `community` | `public` | Community string (v2c) — reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `v3` | none | USM credentials, required with `version: 3` (see below) |
 | `timeout` | `5s` | Per-request timeout (duration string or seconds) |
 | `interval` | `60s` | Metric polling cadence |
