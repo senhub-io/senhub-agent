@@ -52,6 +52,7 @@ an existing agent, and MSI-managed auto-update.
 <li><span class="tag t-new">New</span> <span class="tag t-area">packaging</span> <strong>Code-signed</strong> MSI, executable and PowerShell payload, signed with an HSM-backed Certum certificate via jsign. (#607)</li>
 <li><span class="tag t-new">New</span> <span class="tag t-area">packaging</span> The installer <strong>detects an existing agent and supports ADOPT migration</strong>, taking over an already-installed instance instead of failing or duplicating it. (#607)</li>
 <li><span class="tag t-new">New</span> <span class="tag t-area">Veeam</span> The Veeam job <strong>running-duration</strong> metric is now mapped (OTel and PRTG). (#602)</li>
+<li><span class="tag t-new">New</span> <span class="tag t-area">PowerStore</span> A <strong>Dell PowerStore</strong> probe (Pro) monitors storage arrays over the PowerStore REST API — cluster state, hardware faults, capacity and data-reduction, performance (IOPS, bandwidth, latency), replication sessions, volumes and active alerts, all under <code>senhub.powerstore.*</code>. (#620)</li>
 </ul>
 
 ## Improved
