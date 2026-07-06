@@ -12,11 +12,11 @@ pending tasks, storage load, JVM heap and garbage collection.
 ## Quick start
 
 ```yaml
-probes:
-  - name: cassandra
-    type: cassandra
-    params:
-      jolokia_url: http://localhost:8778/jolokia
+# probes.d/10-cassandra.yaml — each file under probes.d/ is a YAML array of probes
+- name: cassandra
+  type: cassandra
+  params:
+    jolokia_url: http://localhost:8778/jolokia
 ```
 
 ## Parameters

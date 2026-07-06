@@ -24,11 +24,11 @@ logs — no Filebeat / journald-exporter sidecar to deploy.
 ## Quick start
 
 ```yaml
-probes:
-  - name: system-logs
-    type: linux_logs
-    params:
-      priority: 6                          # max severity (0..7)
+# probes.d/10-linux_logs.yaml — each file under probes.d/ is a YAML array of probes
+- name: system-logs
+  type: linux_logs
+  params:
+    priority: 6                          # max severity (0..7)
 ```
 
 This emits every entry with priority ≤ 6 (i.e. notice and below;
@@ -50,23 +50,23 @@ All parameters are optional.
 Examples:
 
 ```yaml
+# probes.d/10-linux_logs.yaml
 # Only ssh + kernel, error severity and above
-probes:
-  - name: critical-only
-    type: linux_logs
-    params:
-      identifiers: [sshd, kernel]
-      priority: 3
+- name: critical-only
+  type: linux_logs
+  params:
+    identifiers: [sshd, kernel]
+    priority: 3
 ```
 
 ```yaml
+# probes.d/10-linux_logs.yaml
 # Multiple service filters
-probes:
-  - name: app-services
-    type: linux_logs
-    params:
-      units: [nginx.service, postgresql.service, my-app.service]
-      priority: 6
+- name: app-services
+  type: linux_logs
+  params:
+    units: [nginx.service, postgresql.service, my-app.service]
+    priority: 6
 ```
 
 ## Output

@@ -13,13 +13,13 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 ## Quick start
 
 ```yaml
-probes:
-  - name: mssql
-    type: mssql
-    params:
-      host: localhost
-      username: sa
-      password: changeme
+# probes.d/20-mssql.yaml — each file under probes.d/ is a YAML array of probes
+- name: mssql
+  type: mssql
+  params:
+    host: localhost
+    username: sa
+    password: ${secret:mssql.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -29,7 +29,7 @@ probes:
 | `host` | required | SQL Server hostname or IP |
 | `port` | `1433` | SQL Server TCP port |
 | `username` | — | SQL Server login. Omit for Windows Integrated Authentication (the agent's OS account is used) |
-| `password` | — | Password for SQL login |
+| `password` | — | Password for SQL login — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 
 ## Metrics
 

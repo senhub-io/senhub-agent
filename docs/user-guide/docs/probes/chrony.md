@@ -14,9 +14,9 @@ Works on Linux and macOS. Requires `chronyc` to be present in the PATH.
 ## Quick start
 
 ```yaml
-probes:
-  - name: chrony
-    type: chrony
+# probes.d/10-chrony.yaml — each file under probes.d/ is a YAML array of probes
+- name: chrony
+  type: chrony
 ```
 
 No parameters are required — the probe reads the local chrony daemon.

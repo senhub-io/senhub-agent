@@ -12,20 +12,20 @@ The Ping Gateway probe monitors network connectivity to the default gateway or a
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: ping_gateway
-    type: ping_gateway
-    params:
-      interval: 30  # Collection interval in seconds (default: 30)
+# probes.d/10-ping-gateway.yaml — each file under probes.d/ is a YAML array of probes
+- name: ping_gateway
+  type: ping_gateway
+  params:
+    interval: 30  # Collection interval in seconds (default: 30)
 ```
 
 ### Minimal Configuration
 
 ```yaml
-probes:
-  - name: ping_gateway
-    type: ping_gateway
-    params: {}
+# probes.d/10-ping-gateway.yaml
+- name: ping_gateway
+  type: ping_gateway
+  params: {}
 ```
 
 The Ping Gateway probe requires no mandatory parameters and automatically detects the default gateway. It works out-of-the-box with default settings.
@@ -55,29 +55,29 @@ Platform-specific ping implementations are automatically selected based on the o
 
 **High-frequency monitoring (every 10 seconds):**
 ```yaml
-probes:
-  - name: ping_gateway
-    type: ping_gateway
-    params:
-      interval: 10
+# probes.d/10-ping-gateway.yaml
+- name: ping_gateway
+  type: ping_gateway
+  params:
+    interval: 10
 ```
 
 **Standard monitoring (every minute):**
 ```yaml
-probes:
-  - name: ping_gateway
-    type: ping_gateway
-    params:
-      interval: 60
+# probes.d/10-ping-gateway.yaml
+- name: ping_gateway
+  type: ping_gateway
+  params:
+    interval: 60
 ```
 
 **Low-frequency monitoring (every 5 minutes):**
 ```yaml
-probes:
-  - name: ping_gateway
-    type: ping_gateway
-    params:
-      interval: 300
+# probes.d/10-ping-gateway.yaml
+- name: ping_gateway
+  type: ping_gateway
+  params:
+    interval: 300
 ```
 
 ## How It Works
@@ -246,8 +246,8 @@ Diagnose network issues:
 
 **Verify probe is enabled:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "name: ping_gateway"
+# Check configuration (multi-file layout)
+grep -rA5 "name: ping_gateway" /etc/senhub/probes.d/
 ```
 
 **Common Causes:**
@@ -442,18 +442,16 @@ Network impact is negligible:
 Monitor multiple gateways or network paths:
 
 ```yaml
-probes:
-  - name: ping_gateway_primary
-    type: ping_gateway
-    params:
-      interval: 30
+# probes.d/10-ping-gateway.yaml
+- name: ping_gateway_primary
+  type: ping_gateway
+  params:
+    interval: 30
 
-  - name: ping_gateway_secondary
-    type: ping_gateway
-
-    type: ping_gateway
-    params:
-      interval: 60
+- name: ping_gateway_secondary
+  type: ping_gateway
+  params:
+    interval: 60
 ```
 
 **Note:** Current implementation auto-detects only the default gateway. Manual gateway specification will be supported in future versions.
@@ -463,27 +461,27 @@ probes:
 Comprehensive network monitoring setup:
 
 ```yaml
-probes:
-  # Local network connectivity
-  - name: ping_gateway
-    type: ping_gateway
-    params:
-      interval: 30
+# probes.d/10-ping-gateway.yaml
+# Local network connectivity
+- name: ping_gateway
+  type: ping_gateway
+  params:
+    interval: 30
 
-  # External connectivity and DNS
-  - name: ping_webapp
-    type: ping_webapp
-    params:
-      interval: 60
-      targets:
-        - url: "https://www.google.com"
-        - url: "https://1.1.1.1"
+# External connectivity and DNS
+- name: ping_webapp
+  type: ping_webapp
+  params:
+    interval: 60
+    targets:
+      - url: "https://www.google.com"
+      - url: "https://1.1.1.1"
 
-  # Interface metrics
-  - name: network
-    type: network
-    params:
-      interval: 30
+# Interface metrics
+- name: network
+  type: network
+  params:
+    interval: 30
 ```
 
 This combination provides:

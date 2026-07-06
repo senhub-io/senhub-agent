@@ -12,11 +12,11 @@ and server component.
 ## Quick start
 
 ```yaml
-probes:
-  - name: haproxy
-    type: haproxy
-    params:
-      endpoint: http://localhost:8080/stats;csv
+# probes.d/10-haproxy.yaml — each file under probes.d/ is a YAML array of probes
+- name: haproxy
+  type: haproxy
+  params:
+    endpoint: http://localhost:8080/stats;csv
 ```
 
 ## Parameters

@@ -12,11 +12,11 @@ connections and requests, and per-cluster upstream metrics.
 ## Quick start
 
 ```yaml
-probes:
-  - name: envoy
-    type: envoy
-    params:
-      endpoint: http://localhost:9901
+# probes.d/10-envoy.yaml — each file under probes.d/ is a YAML array of probes
+- name: envoy
+  type: envoy
+  params:
+    endpoint: http://localhost:9901
 ```
 
 ## Parameters

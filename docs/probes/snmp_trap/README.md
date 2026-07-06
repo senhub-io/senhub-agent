@@ -9,6 +9,7 @@ reuses the same gosnmp engine. Part of the **Free tier**.
 ## Configuration
 
 ```yaml
+# probes.d/30-snmp_trap.yaml — each file under probes.d/ is a YAML array of probes
 # v2c
 - type: snmp_trap
   name: trap_receiver
@@ -54,10 +55,10 @@ OTel logs only — no metrics. Enable the OTLP logs signal so records are
 consumed:
 
 ```yaml
-storage:
-  - type: otlp
-    signals:
-      logs: true
+# strategies.d/40-otlp.yaml
+otlp:
+  signals:
+    logs: true
 ```
 
 Each record carries:

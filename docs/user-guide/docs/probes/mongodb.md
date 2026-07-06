@@ -12,11 +12,11 @@ usage, replication state and database storage.
 ## Quick start
 
 ```yaml
-probes:
-  - name: mongodb
-    type: mongodb
-    params:
-      uri: mongodb://localhost:27017
+# probes.d/20-mongodb.yaml — each file under probes.d/ is a YAML array of probes
+- name: mongodb
+  type: mongodb
+  params:
+    uri: mongodb://localhost:27017
 ```
 
 ## Parameters
