@@ -71,7 +71,7 @@
     -->
     <Launch
         Condition="Installed OR MSI_MARKER OR NOT EXISTING_SERVICE OR ADOPT"
-        Message="A SenHub Agent installed outside this installer was detected (the 'senhub-agent' Windows service already exists). Uninstall it first, or re-run this installer with ADOPT=1 to migrate it to MSI management — your configuration under %ProgramData%\SenHub is preserved." />
+        Message="An existing SenHub Agent was found on this machine: the 'senhub-agent' Windows service is already installed, but it was not installed by this package. To continue, choose one option. Option 1 — uninstall the existing agent, then run this installer again. Option 2 — re-run this installer with the ADOPT=1 property (for example: msiexec /i senhub-agent-0.5.0-amd64.msi ADOPT=1) to take it over and manage it from now on through this installer. In both cases your configuration in %ProgramData%\SenHub is preserved." />
 
     <!-- ============================================================ -->
     <!-- Parametric configuration via public MSI properties.          -->
@@ -83,10 +83,22 @@
       comma-separated k=v list applied as host global_tags. There is no
       cloud backend/token: the agent is offline by default (see header).
     -->
-    <Property Id="LICENSE_KEY" Secure="yes" />
+    <Property Id="LICENSE_KEY" Secure="yes" Hidden="yes" />
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
+
+    <!--
+      Keep the license token out of the MSI log. Secure="yes" only lets a
+      public property survive the transition to the deferred/system context
+      — it does NOT redact it. A verbose install (/l*v) would otherwise
+      record the LICENSE_KEY property value and the SeedConfig deferred
+      custom-action data (the config-init command line embeds the token,
+      see SetProperty below). In WiX v4/v5 the special MsiHiddenProperties
+      property cannot be authored directly (WIX0070); redaction is expressed
+      per element instead — Hidden="yes" on the LICENSE_KEY Property above,
+      and HideTarget="yes" on the SeedConfig CustomAction below.
+    -->
 
     <!-- ============================================================ -->
     <!-- Existing-install detection.                                  -->
@@ -135,6 +147,7 @@
                   DllEntry="WixQuietExec64"
                   Execute="deferred"
                   Impersonate="no"
+                  HideTarget="yes"
                   Return="ignore" />
 
     <!--
@@ -182,6 +195,15 @@
     <!-- ============================================================ -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />
+    <!-- SenHub-branded wizard art (mascot + brand accent), replacing the
+         default WiX bitmaps. Dialog = 493x312 (Welcome/Finish background),
+         Banner = 493x58 (interior dialog top). -->
+    <WixVariable Id="WixUIDialogBmp" Value="packaging/windows/dialog.bmp" />
+    <WixVariable Id="WixUIBannerBmp" Value="packaging/windows/banner.bmp" />
+
+    <!-- Add/Remove Programs icon = the SenHub Agent mascot. -->
+    <Icon Id="senhub.ico" SourceFile="packaging/windows/senhub.ico" />
+    <Property Id="ARPPRODUCTICON" Value="senhub.ico" />
 
     <!-- ============================================================ -->
     <!-- Install layout.                                              -->

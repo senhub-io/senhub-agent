@@ -254,4 +254,150 @@ func TestSealInlineSecrets_NoSecrets_NoOp(t *testing.T) {
 	if names, _ := mp.List(); len(names) != 0 {
 		t.Errorf("store should be empty, has %v", names)
 	}
+	// A secret-free v2 config must NOT be stamped v3 by the seal.
+	if v, _ := readRootConfigVersion(cfg); v != 2 {
+		t.Errorf("secret-free config_version = %d, want 2 (unchanged)", v)
+	}
+}
+
+// TestSealInlineSecrets_DuplicateInstanceCollision pins the M4/MAJ-3 fix: two
+// same-type unnamed probes with different passwords derive the same store key.
+// The seal must fail with an explicit collision error and leave the plaintext
+// fully intact (no half-sealed state, no version bump, no backup litter).
+func TestSealInlineSecrets_DuplicateInstanceCollision(t *testing.T) {
+	mp := secret.NewMemoryProvider()
+	secret.SetProvider(mp)
+	t.Cleanup(func() { secret.SetProvider(nil) })
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	writeSealFile(t, cfg, "config_version: 2\n")
+	probe := filepath.Join(dir, "probes.d", "10-db.yaml")
+	writeSealFile(t, probe, `- type: mysql
+  params:
+    password: pw-one
+- type: mysql
+  params:
+    password: pw-two
+`)
+
+	err := SealInlineSecrets(cfg, nil)
+	if err == nil {
+		t.Fatal("expected a collision error, got nil")
+	}
+	if !strings.Contains(err.Error(), "collision") {
+		t.Errorf("error should name the collision: %v", err)
+	}
+
+	raw, _ := os.ReadFile(probe)
+	if !strings.Contains(string(raw), "pw-one") || !strings.Contains(string(raw), "pw-two") {
+		t.Errorf("plaintext must be left intact after a failed seal:\n%s", raw)
+	}
+	if strings.Contains(string(raw), "${secret:") {
+		t.Errorf("no reference must survive a failed seal:\n%s", raw)
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, "probes.d"))
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".backup.") {
+			t.Errorf("backup left behind after failed seal: %s", e.Name())
+		}
+	}
+	if v, _ := readRootConfigVersion(cfg); v != 2 {
+		t.Errorf("config_version = %d, want 2 (unchanged after failed seal)", v)
+	}
+}
+
+// mismatchProvider stores values faithfully but returns a constant on Get, so a
+// post-seal reload can never match the pre-seal plaintext — used to drive the
+// verify-mismatch → restore path.
+type mismatchProvider struct{ inner *secret.MemoryProvider }
+
+func (p *mismatchProvider) Get(string) (string, error)          { return "corrupted-value", nil }
+func (p *mismatchProvider) Set(n string, v secret.Secret) error { return p.inner.Set(n, v) }
+func (p *mismatchProvider) Delete(n string) error               { return p.inner.Delete(n) }
+func (p *mismatchProvider) List() ([]string, error)             { return p.inner.List() }
+func (p *mismatchProvider) Name() string                        { return "mismatch" }
+
+// TestSealInlineSecrets_VerifyMismatchRestores drives the central safety
+// property (MIN-10): when the resolved config differs from the original, every
+// backup is restored, the plaintext survives, and the version is not bumped.
+func TestSealInlineSecrets_VerifyMismatchRestores(t *testing.T) {
+	secret.SetProvider(&mismatchProvider{inner: secret.NewMemoryProvider()})
+	t.Cleanup(func() { secret.SetProvider(nil) })
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	writeSealFile(t, cfg, "config_version: 2\n")
+	probe := filepath.Join(dir, "probes.d", "10-db.yaml")
+	writeSealFile(t, probe, "- type: mysql\n  params:\n    password: real-secret\n")
+
+	err := SealInlineSecrets(cfg, nil)
+	if err == nil {
+		t.Fatal("expected a verify-mismatch error, got nil")
+	}
+	if !strings.Contains(err.Error(), "backups restored") {
+		t.Errorf("error should confirm restore: %v", err)
+	}
+	raw, _ := os.ReadFile(probe)
+	if !strings.Contains(string(raw), "real-secret") {
+		t.Errorf("plaintext must be restored on verify mismatch:\n%s", raw)
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, "probes.d"))
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".backup.") {
+			t.Errorf("backup litter left after restore: %s", e.Name())
+		}
+	}
+	if v, _ := readRootConfigVersion(cfg); v != 2 {
+		t.Errorf("config_version = %d, want 2 (never stamped on failed seal)", v)
+	}
+}
+
+// TestSealInlineSecrets_SkipsNewerConfigVersion pins the MAJ-1 fix: a config
+// stamped newer than this agent supports is left completely untouched — not
+// sealed, not downgraded.
+func TestSealInlineSecrets_SkipsNewerConfigVersion(t *testing.T) {
+	mp := secret.NewMemoryProvider()
+	secret.SetProvider(mp)
+	t.Cleanup(func() { secret.SetProvider(nil) })
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	writeSealFile(t, cfg, "config_version: 99\n")
+	probe := filepath.Join(dir, "probes.d", "10-db.yaml")
+	writeSealFile(t, probe, "- type: mysql\n  params:\n    password: keep-plain\n")
+
+	if err := SealInlineSecrets(cfg, nil); err != nil {
+		t.Fatalf("seal should skip a newer config, not error: %v", err)
+	}
+	raw, _ := os.ReadFile(probe)
+	if !strings.Contains(string(raw), "keep-plain") {
+		t.Errorf("newer-version config must be untouched:\n%s", raw)
+	}
+	if names, _ := mp.List(); len(names) != 0 {
+		t.Errorf("nothing should have been sealed: %v", names)
+	}
+	if v, _ := readRootConfigVersion(cfg); v != 99 {
+		t.Errorf("config_version = %d, want 99 (not downgraded)", v)
+	}
+}
+
+// TestSetRootConfigVersion_NeverDowngrades pins the stamp guard directly.
+func TestSetRootConfigVersion_NeverDowngrades(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	writeSealFile(t, cfg, "config_version: 5\nagent:\n  key: k\n")
+
+	if err := setRootConfigVersion(cfg, 3); err != nil {
+		t.Fatalf("setRootConfigVersion: %v", err)
+	}
+	if v, _ := readRootConfigVersion(cfg); v != 5 {
+		t.Errorf("version was lowered to %d, want 5", v)
+	}
+	if err := setRootConfigVersion(cfg, 7); err != nil {
+		t.Fatalf("setRootConfigVersion raise: %v", err)
+	}
+	if v, _ := readRootConfigVersion(cfg); v != 7 {
+		t.Errorf("version = %d, want 7 (raise allowed)", v)
+	}
 }

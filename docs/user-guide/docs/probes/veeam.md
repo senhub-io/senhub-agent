@@ -62,6 +62,7 @@ Per-job metrics for each active backup job:
 |--------|------|-------------|
 | `veeam_job_status` | Lookup | Last run result (None/Success/Warning/Failed/Running) |
 | `veeam_job_seconds_since` | Seconds | Time since last run |
+| `veeam_job_running_seconds` | Seconds | Elapsed running time of a currently-running job (0 when not running). The supervisor sets the "too long" alert limit; the probe applies no threshold |
 | `veeam_job_objects_count` | Count | Number of objects processed |
 | `veeam_job_bottleneck` | Lookup | Bottleneck type (None/Source/Proxy/Network/Target) |
 | `veeam_job_processed_bytes` | Bytes | Total disk size processed |
@@ -134,7 +135,7 @@ Available categories: `overview`, `jobs`, `repositories`, `license`, `proxies`, 
 
 Example for job details:
 ```
-http://192.168.1.100:8056/api/17b3cf0a-.../prtg/metrics/veeam-prod?tags=metric_type:jobs
+http://192.168.1.100:8056/api/550e8400-.../prtg/metrics/veeam-prod?tags=metric_type:jobs
 ```
 
 Download the PRTG lookup files from the web interface (button "PRTG Lookups" in the Sensor Builder).

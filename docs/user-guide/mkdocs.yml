@@ -89,7 +89,7 @@ nav:
   - Presentation: presentation.md
   - Installation: installation.md
   - Configuration: configuration.md
-  - Managing secrets: secrets.md
+  - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md
   - Web interface: web-interface.md
   - Prometheus / VictoriaMetrics:
@@ -126,6 +126,7 @@ nav:
       - Citrix: probes/citrix.md
       - NetScaler: probes/netscaler.md
       - Redfish: probes/redfish.md
+      - Dell PowerStore: probes/powerstore.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md
@@ -172,7 +173,13 @@ nav:
   - Troubleshooting: troubleshooting.md
   - What's new:
       - Overview: whats-new/index.md
-      - Next (unreleased): whats-new/next.md
+      - Next (0.6.0, unreleased): whats-new/next.md
+      - 0.5.1: whats-new/0.5.1.md
+      - 0.5.0: whats-new/0.5.0.md
+      - 0.4.2: whats-new/0.4.2.md
+      - 0.4.1: whats-new/0.4.1.md
+      - 0.4.0: whats-new/0.4.0.md
+      - 0.3.2: whats-new/0.3.2.md
       - 0.2.3: whats-new/0.2.3.md
       - 0.2.2: whats-new/0.2.2.md
       - 0.2.1: whats-new/0.2.1.md

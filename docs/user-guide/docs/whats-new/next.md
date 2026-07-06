@@ -1,7 +1,8 @@
-# Next (unreleased)
+# Next — 0.6.0 (unreleased)
 
-:material-progress-clock: In progress — these changes will ship as the next stable release.
+:material-progress-clock: In progress — changes for the next stable release will be listed here.
 
 <div class="rn-filter"></div>
 
-_Nothing here yet — 0.2.3 just shipped._
+
+_No changes recorded yet since 0.5.1._
