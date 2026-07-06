@@ -87,11 +87,11 @@ func NewSensor(
 			agentstate.SetLicenseInvalid("validation_failed")
 			moduleLogger.Error().
 				Err(err).
-				Msg("❌ Configured license token is INVALID and was rejected - all paid probes disabled, agent degraded to FREE TIER. Fix or remove the license to clear this alert (self-metric senhub.agent.license.invalid=1)")
+				Msg("Configured license token is INVALID and was rejected - all paid probes disabled, agent degraded to FREE TIER. Fix or remove the license to clear this alert (self-metric senhub.agent.license.invalid=1)")
 		} else if agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
 			agentstate.SetLicenseInvalid("binding_mismatch")
 			moduleLogger.Error().
-				Msg("❌ Configured license is NOT bound to this agent key and was rejected - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
+				Msg("Configured license is NOT bound to this agent key and was rejected - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else {
 			validatedLicense = lic
 			tierName := string(lic.Tier)
@@ -99,17 +99,17 @@ func NewSensor(
 				Str("tier", tierName).
 				Bool("expired", lic.IsExpired).
 				Time("expires_at", lic.ExpiresAt).
-				Msg("✅ License validated successfully")
+				Msg("License validated successfully")
 
 			if lic.IsExpired {
 				if licenseValidator.IsInGracePeriod(lic) {
 					gracePeriodEnd := lic.ExpiresAt.Add(time.Duration(lic.GracePeriodDays) * 24 * time.Hour)
 					moduleLogger.Warn().
 						Time("grace_period_ends", gracePeriodEnd).
-						Msg("⚠️ License expired but in grace period")
+						Msg("License expired but in grace period")
 				} else {
 					agentstate.SetLicenseInvalid("expired_no_grace")
-					moduleLogger.Error().Msg("❌ License expired and grace period ended - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
+					moduleLogger.Error().Msg("License expired and grace period ended - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
 					validatedLicense = nil // Disable license if expired outside grace period
 				}
 			}
@@ -151,7 +151,7 @@ func (s *sensor) SyncConfiguration() error {
 		lic, err := s.licenseValidator.ValidateLicense(config.Agent.License)
 		if err != nil {
 			agentstate.SetLicenseInvalid("validation_failed")
-			s.moduleLogger.Error().Err(err).Msg("❌ Configured license token is INVALID and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
+			s.moduleLogger.Error().Err(err).Msg("Configured license token is INVALID and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else {
 			isExpired := lic.IsExpired && !s.licenseValidator.IsInGracePeriod(lic)
 			if !isExpired {
@@ -160,10 +160,10 @@ func (s *sensor) SyncConfiguration() error {
 				s.moduleLogger.Info().
 					Str("tier", string(lic.Tier)).
 					Strs("probes", lic.AuthorizedProbes).
-					Msg("✅ License validated during configuration sync")
+					Msg("License validated during configuration sync")
 			} else {
 				agentstate.SetLicenseInvalid("expired_no_grace")
-				s.moduleLogger.Error().Msg("❌ Configured license is expired and outside its grace period - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
+				s.moduleLogger.Error().Msg("Configured license is expired and outside its grace period - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 			}
 		}
 	}
@@ -183,14 +183,14 @@ func (s *sensor) SyncConfiguration() error {
 		if !isValidProbeName(probeConfig.Name) {
 			s.moduleLogger.Error().
 				Str("probe_name", probeConfig.Name).
-				Msg("🚫 CONFIGURATION ERROR: Probe name must contain only letters, digits, hyphens and underscores (no spaces or special characters) — skipping probe")
+				Msg("CONFIGURATION ERROR: Probe name must contain only letters, digits, hyphens and underscores (no spaces or special characters) — skipping probe")
 			probeConfigs[i].Name = "" // Mark for skipping
 			continue
 		}
 		if seenNames[probeConfig.Name] {
 			s.moduleLogger.Warn().
 				Str("probe_name", probeConfig.Name).
-				Msg("⚠️ CONFIGURATION ERROR: Duplicate probe name in configuration - only the first instance will be used")
+				Msg("CONFIGURATION ERROR: Duplicate probe name in configuration - only the first instance will be used")
 		}
 		seenNames[probeConfig.Name] = true
 	}
@@ -206,7 +206,7 @@ func (s *sensor) SyncConfiguration() error {
 		if processedNames[probeConfig.Name] {
 			s.moduleLogger.Debug().
 				Str("probe_name", probeConfig.Name).
-				Msg("⏭️ Skipping duplicate probe name")
+				Msg("Skipping duplicate probe name")
 			continue
 		}
 		processedNames[probeConfig.Name] = true
@@ -239,7 +239,7 @@ func (s *sensor) SyncConfiguration() error {
 				s.moduleLogger.Info().
 					Str("probe_id", probeId).
 					Str("probe_name", probeConfig.Name).
-					Msg("✅ Probe started successfully")
+					Msg("Probe started successfully")
 			}
 		} else {
 			s.moduleLogger.Debug().
@@ -282,7 +282,7 @@ func (s *sensor) SyncConfiguration() error {
 				s.moduleLogger.Info().
 					Str("probe_id", startedProbe.ProbeId).
 					Str("probe_name", startedProbe.Probe.GetName()).
-					Msg("🛑 Probe stopped successfully")
+					Msg("Probe stopped successfully")
 				stoppedCount++
 			}
 		}
@@ -356,7 +356,7 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 				Str("probe_type", probeType).
 				Str("probe_name", probeConfig.Name).
 				Strs("free_tier_probes", freeTierProbes).
-				Msg("🚫 License validator unavailable - only free tier probes allowed")
+				Msg("License validator unavailable - only free tier probes allowed")
 			return fmt.Errorf("probe %q requires a valid license validator", probeType)
 		}
 		// Free tier probe - allow it to continue startup
@@ -369,7 +369,7 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 				Str("probe_type", probeType).
 				Str("probe_name", probeConfig.Name).
 				Strs("free_tier_probes", freeTierProbes).
-				Msg("🚫 Probe not authorized by license - skipping (upgrade license to enable)")
+				Msg("Probe not authorized by license - skipping (upgrade license to enable)")
 			return fmt.Errorf("probe %q requires a valid license", probeType)
 		}
 	}

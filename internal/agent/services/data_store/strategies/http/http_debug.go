@@ -280,7 +280,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	d.logger.Info().Msg("🧪 Injecting test redfish metrics for validation")
+	d.logger.Info().Msg("Injecting test redfish metrics for validation")
 
 	now := time.Now()
 
@@ -371,7 +371,7 @@ func (d *DebugManager) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Re
 
 	d.logger.Info().
 		Int("metrics_injected", len(testMetrics)).
-		Msg("🧪 Test redfish metrics injected successfully")
+		Msg("Test redfish metrics injected successfully")
 
 	response := map[string]interface{}{
 		"status":        "success",
@@ -412,7 +412,7 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	d.logger.Info().Msg("🔥 Injecting real production metrics for testing")
+	d.logger.Info().Msg("Injecting real production metrics for testing")
 
 	// Parse request body
 	var request RealMetricInjectionRequest
@@ -479,7 +479,7 @@ func (d *DebugManager) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Re
 	d.logger.Info().
 		Int("metrics_injected", len(dataPoints)).
 		Str("source", request.Source).
-		Msg("🔥 Real production metrics injected successfully")
+		Msg("Real production metrics injected successfully")
 
 	// Count metrics by type for better reporting
 	metricsByType := make(map[string]int)

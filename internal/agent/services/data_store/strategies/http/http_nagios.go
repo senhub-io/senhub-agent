@@ -44,7 +44,7 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
 	probeNameLower := strings.ToLower(probeName)
 
-	n.logger.Info().Str("probe", probeNameLower).Msg("🔄 Nagios endpoint - Request received")
+	n.logger.Info().Str("probe", probeNameLower).Msg("Nagios endpoint - Request received")
 
 	// Parse query parameters
 	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
@@ -84,7 +84,7 @@ func (n *NagiosManager) HandleNagiosMetrics(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	n.logger.Info().Str("method", r.Method).Msg("🔄 Nagios metrics endpoint - Request received")
+	n.logger.Info().Str("method", r.Method).Msg("Nagios metrics endpoint - Request received")
 
 	var nagiosRequest NagiosRequest
 
@@ -137,7 +137,7 @@ func (n *NagiosManager) HandleNagiosChecks(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	n.logger.Info().Msg("🔄 Nagios checks discovery endpoint - Request received")
+	n.logger.Info().Msg("Nagios checks discovery endpoint - Request received")
 
 	// Load Nagios configuration
 	config := n.strategy.configManager.LoadNagiosConfig()
