@@ -53,7 +53,7 @@ const (
 // be masked in ShowRedact mode. The pattern uses substring matching
 // (no `^…$` anchors) so composite names like `api_key`, `auth_token`,
 // `db_password`, `client_secret` are all caught. Case-insensitive.
-var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer)`)
+var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer|license|jwt)`)
 
 // fileRefPattern recognises a `${file:..}` reference inside a raw
 // (pre-substitution) string. The trailing capture is intentionally
