@@ -111,7 +111,7 @@ metrics:
     display_name: "Connections Used %"
     unit: "%"
     category: "connections"
-    description: "Threads_connected / max_connections, ratio"
+    description: "Threads_connected / max_connections, percent (0-100)"
     otel:
       name: senhub.db.connection.utilization
       unit: "1"
@@ -345,7 +345,7 @@ metrics:
     category: "storage"
     description: "Total size of all user databases (information_schema.tables sum)"
     otel:
-      name: senhub.db.database.size
+      name: senhub.db.database.size.total
       unit: "By"
       type: gauge
 
@@ -470,3 +470,32 @@ metrics:
     tag_to_attribute:
       database: db.namespace
       table: db.table.name
+
+tag_metadata:
+  database:
+    type: resource
+    label: "Database"
+  table:
+    type: resource
+    label: "Table"
+  kind:
+    type: category
+    label: "Thread Kind"
+  command:
+    type: category
+    label: "Command"
+  error:
+    type: category
+    label: "Connection Error"
+  status:
+    type: category
+    label: "Page Status"
+  state:
+    type: category
+    label: "Transaction State"
+  io.direction:
+    type: category
+    label: "I/O Direction"
+  role:
+    type: category
+    label: "Replication Role"
