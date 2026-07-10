@@ -510,6 +510,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">Backup jobs, repositories, proxies, license status</span>
   </a>
 
+  <a href="powerstore/" class="probe-card" data-family="storage" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/dell" alt="" loading="lazy">
+    <span class="probe-name">Dell PowerStore</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Array health, capacity, performance, replication, alerts</span>
+  </a>
+
   <a href="redfish/" class="probe-card" data-family="hardware" data-tier="pro">
     <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/server-network.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">Redfish</span>
