@@ -19,6 +19,7 @@ metrics:
     category: "cluster"
     multi_instance_labels: ["cluster"]
     description: "1 when the PowerStore management API answered this cycle, else 0"
+    lookup: "senhub.powerstore.up"
     otel:
       name: senhub.powerstore.up
       unit: "1"
@@ -31,6 +32,7 @@ metrics:
     category: "cluster"
     multi_instance_labels: ["cluster"]
     description: "Cluster configuration state (Configured=2, Unconfigured=1, other=0)"
+    lookup: "senhub.powerstore.cluster.state"
     otel:
       name: senhub.powerstore.cluster.state
       unit: "1"
@@ -69,6 +71,42 @@ metrics:
       attributes:
         senhub.powerstore.hardware.state: faulted
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # PER-DRIVE — one series per drive (tag: drive)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "powerstore_drive_state"
+    channel: "drive_state"
+    display_name: "Drive {drive} State"
+    unit: "#"
+    category: "hardware"
+    multi_instance_labels: ["cluster", "drive"]
+    description: "Drive lifecycle state (Healthy=1, otherwise 0)"
+    lookup: "senhub.powerstore.health"
+    otel:
+      name: senhub.powerstore.drive.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      drive: senhub.powerstore.drive.name
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PER-APPLIANCE — lifecycle state (tag: appliance)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "powerstore_appliance_state"
+    channel: "appliance_state"
+    display_name: "Appliance {appliance} State"
+    unit: "#"
+    category: "hardware"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Appliance health (1 = no faulted component, 0 = a faulted component)"
+    lookup: "senhub.powerstore.health"
+    otel:
+      name: senhub.powerstore.appliance.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
   # ═════════════════════════════════════════════════════════════════════════
   # CAPACITY — physical/logical usage + data reduction
   # ═════════════════════════════════════════════════════════════════════════
@@ -106,7 +144,7 @@ metrics:
     unit: "%"
     category: "capacity"
     multi_instance_labels: ["cluster"]
-    description: "Fraction of physical capacity used (0..1)"
+    description: "Percentage of physical capacity used (0-100; exported as a 0..1 ratio)"
     otel:
       name: senhub.powerstore.capacity.used_ratio
       unit: "1"
@@ -163,6 +201,57 @@ metrics:
       type: gauge
       attributes:
         senhub.powerstore.capacity.state: provisioned
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PER-APPLIANCE CAPACITY — one series per appliance (tag: appliance)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "powerstore_appliance_physical_used"
+    channel: "appliance_physical_used"
+    display_name: "{appliance} Physical Used"
+    unit: "Bytes"
+    category: "capacity"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Physical space used on the appliance"
+    otel:
+      name: senhub.powerstore.appliance.capacity.physical
+      unit: By
+      type: gauge
+      attributes:
+        senhub.powerstore.capacity.state: used
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  - name: "powerstore_appliance_physical_total"
+    channel: "appliance_physical_total"
+    display_name: "{appliance} Physical Total"
+    unit: "Bytes"
+    category: "capacity"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Total physical capacity of the appliance"
+    otel:
+      name: senhub.powerstore.appliance.capacity.physical
+      unit: By
+      type: gauge
+      attributes:
+        senhub.powerstore.capacity.state: total
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  - name: "powerstore_appliance_logical_used"
+    channel: "appliance_logical_used"
+    display_name: "{appliance} Logical Used"
+    unit: "Bytes"
+    category: "capacity"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Logical (thin) space used on the appliance before data reduction"
+    otel:
+      name: senhub.powerstore.appliance.capacity.logical
+      unit: By
+      type: gauge
+      attributes:
+        senhub.powerstore.capacity.state: used
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
 
   # ═════════════════════════════════════════════════════════════════════════
   # PERFORMANCE — IOPS / bandwidth / latency (collapsed via operation attr)
@@ -254,13 +343,14 @@ metrics:
   - name: "powerstore_latency_read"
     channel: "latency_read"
     display_name: "Read Latency"
-    unit: "µs"
+    unit: "ms"
     category: "performance"
     multi_instance_labels: ["cluster"]
-    description: "Average read latency over the interval (microseconds)"
+    description: "Average read latency over the interval (milliseconds)"
     otel:
       name: senhub.powerstore.latency
-      unit: us
+      unit: s
+      value_scale: 0.001
       type: gauge
       attributes:
         senhub.powerstore.operation: read
@@ -268,13 +358,14 @@ metrics:
   - name: "powerstore_latency_write"
     channel: "latency_write"
     display_name: "Write Latency"
-    unit: "µs"
+    unit: "ms"
     category: "performance"
     multi_instance_labels: ["cluster"]
-    description: "Average write latency over the interval (microseconds)"
+    description: "Average write latency over the interval (milliseconds)"
     otel:
       name: senhub.powerstore.latency
-      unit: us
+      unit: s
+      value_scale: 0.001
       type: gauge
       attributes:
         senhub.powerstore.operation: write
@@ -282,13 +373,14 @@ metrics:
   - name: "powerstore_latency_total"
     channel: "latency_total"
     display_name: "Latency"
-    unit: "µs"
+    unit: "ms"
     category: "performance"
     multi_instance_labels: ["cluster"]
-    description: "Average overall latency over the interval (microseconds)"
+    description: "Average overall latency over the interval (milliseconds)"
     otel:
       name: senhub.powerstore.latency
-      unit: us
+      unit: s
+      value_scale: 0.001
       type: gauge
       attributes:
         senhub.powerstore.operation: total
@@ -311,11 +403,142 @@ metrics:
     unit: "%"
     category: "performance"
     multi_instance_labels: ["cluster"]
-    description: "Array IO-workload CPU utilization (0..1), appliance-level"
+    description: "Array IO-workload CPU utilization, appliance-level (percent; exported as a 0..1 ratio)"
     otel:
       name: senhub.powerstore.cpu.utilization
       unit: "1"
       type: gauge
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PER-APPLIANCE PERFORMANCE — one series per appliance (tag: appliance)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "powerstore_appliance_iops_read"
+    channel: "appliance_iops_read"
+    display_name: "{appliance} Read IOPS"
+    unit: "#"
+    category: "performance"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Average read IOPS on the appliance over the interval"
+    otel:
+      name: senhub.powerstore.appliance.iops
+      unit: "{operation}/s"
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: read
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  - name: "powerstore_appliance_iops_write"
+    channel: "appliance_iops_write"
+    display_name: "{appliance} Write IOPS"
+    unit: "#"
+    category: "performance"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Average write IOPS on the appliance over the interval"
+    otel:
+      name: senhub.powerstore.appliance.iops
+      unit: "{operation}/s"
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: write
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  - name: "powerstore_appliance_iops_total"
+    channel: "appliance_iops_total"
+    display_name: "{appliance} Total IOPS"
+    unit: "#"
+    category: "performance"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Average total IOPS on the appliance over the interval"
+    otel:
+      name: senhub.powerstore.appliance.iops
+      unit: "{operation}/s"
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: total
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  - name: "powerstore_appliance_bandwidth_total"
+    channel: "appliance_bandwidth_total"
+    display_name: "{appliance} Total Bandwidth"
+    unit: "Bytes/s"
+    category: "performance"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Average total bandwidth on the appliance over the interval"
+    otel:
+      name: senhub.powerstore.appliance.bandwidth
+      unit: By/s
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: total
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  - name: "powerstore_appliance_latency_total"
+    channel: "appliance_latency_total"
+    display_name: "{appliance} Latency"
+    unit: "ms"
+    category: "performance"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Average overall latency on the appliance over the interval (milliseconds)"
+    otel:
+      name: senhub.powerstore.appliance.latency
+      unit: s
+      value_scale: 0.001
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: total
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  - name: "powerstore_appliance_cpu_utilization"
+    channel: "appliance_cpu_utilization"
+    display_name: "{appliance} CPU Utilization"
+    unit: "%"
+    category: "performance"
+    multi_instance_labels: ["cluster", "appliance"]
+    description: "Appliance IO-workload CPU utilization (percent; exported as a 0..1 ratio)"
+    otel:
+      name: senhub.powerstore.appliance.cpu.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      appliance: senhub.powerstore.appliance.name
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PER-NODE PERFORMANCE — one series per node (tag: node)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "powerstore_node_cpu_utilization"
+    channel: "node_cpu_utilization"
+    display_name: "Node {node} CPU Utilization"
+    unit: "%"
+    category: "performance"
+    multi_instance_labels: ["cluster", "node"]
+    description: "Node IO-workload CPU utilization (percent; exported as a 0..1 ratio)"
+    otel:
+      name: senhub.powerstore.node.cpu.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      node: senhub.powerstore.node.name
+
+  - name: "powerstore_node_iops_total"
+    channel: "node_iops_total"
+    display_name: "Node {node} Total IOPS"
+    unit: "#"
+    category: "performance"
+    multi_instance_labels: ["cluster", "node"]
+    description: "Average total IOPS on the node over the interval"
+    otel:
+      name: senhub.powerstore.node.iops
+      unit: "{operation}/s"
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: total
+    tag_to_attribute:
+      node: senhub.powerstore.node.name
 
   # ═════════════════════════════════════════════════════════════════════════
   # REPLICATION
@@ -331,6 +554,24 @@ metrics:
       name: senhub.powerstore.replication.sessions
       unit: "{session}"
       type: gauge
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PER-SESSION REPLICATION — one series per session (tag: session)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "powerstore_replication_state"
+    channel: "replication_state"
+    display_name: "Replication {session} State"
+    unit: "#"
+    category: "replication"
+    multi_instance_labels: ["cluster", "session"]
+    description: "Replication session state (OK=2, transitional=1, error=0)"
+    lookup: "senhub.powerstore.replication.state"
+    otel:
+      name: senhub.powerstore.replication.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      session: senhub.powerstore.replication.session_id
 
   # ═════════════════════════════════════════════════════════════════════════
   # VOLUMES — total + not-ready counts
@@ -359,6 +600,52 @@ metrics:
       unit: "{volume}"
       type: gauge
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # PER-VOLUME — one series per volume (tag: volume)
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "powerstore_volume_state"
+    channel: "volume_state"
+    display_name: "{volume} State"
+    unit: "#"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Volume operational state (Ready=1, otherwise 0)"
+    lookup: "senhub.powerstore.volume.state"
+    otel:
+      name: senhub.powerstore.volume.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_logical_used"
+    channel: "volume_logical_used"
+    display_name: "{volume} Logical Used"
+    unit: "Bytes"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Logical data written to the volume before data reduction"
+    otel:
+      name: senhub.powerstore.volume.logical_used
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_size"
+    channel: "volume_size"
+    display_name: "{volume} Provisioned Size"
+    unit: "Bytes"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Provisioned (thin) size of the volume"
+    otel:
+      name: senhub.powerstore.volume.size
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
   # ═════════════════════════════════════════════════════════════════════════
   # ALERTS — active alert count per severity
   # ═════════════════════════════════════════════════════════════════════════
@@ -375,3 +662,50 @@ metrics:
       type: gauge
     tag_to_attribute:
       severity: senhub.powerstore.alert.severity
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAG METADATA — declares which tags are filterable in the Web UI / PRTG.
+# A tag is only surfaced as a filter (HandleInfoTags) when it has an entry
+# here. metric_type carries the metric's category; severity qualifies alerts.
+# ═══════════════════════════════════════════════════════════════════════════
+tag_metadata:
+  metric_type:
+    type: category
+    label: "Metric Type"
+    value_labels:
+      cluster: "Cluster"
+      hardware: "Hardware"
+      volumes: "Volumes"
+      alerts: "Alerts"
+      capacity: "Capacity"
+      performance: "Performance"
+      replication: "Replication"
+  severity:
+    type: resource
+    label: "Alert Severity"
+    value_labels:
+      Critical: "Critical"
+      Major: "Major"
+      Minor: "Minor"
+      Info: "Info"
+    linked_categories: ["alerts"]
+  volume:
+    type: resource
+    label: "Volume"
+    linked_categories: ["volumes"]
+  appliance:
+    type: resource
+    label: "Appliance"
+    linked_categories: ["capacity", "performance", "hardware"]
+  node:
+    type: resource
+    label: "Node"
+    linked_categories: ["performance"]
+  drive:
+    type: resource
+    label: "Drive"
+    linked_categories: ["hardware"]
+  session:
+    type: resource
+    label: "Replication Session"
+    linked_categories: ["replication"]

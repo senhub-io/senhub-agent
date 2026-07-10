@@ -12,13 +12,13 @@ reporting broker-level resource usage (memory, store, temp) and per-destination
 ## Quick start
 
 ```yaml
-probes:
-  - name: activemq
-    type: activemq
-    params:
-      jolokia_url: http://localhost:8161/api/jolokia
-      username: admin
-      password: admin
+# probes.d/10-activemq.yaml — each file under probes.d/ is a YAML array of probes
+- name: activemq
+  type: activemq
+  params:
+    jolokia_url: http://localhost:8161/api/jolokia
+    username: admin
+    password: ${secret:activemq.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -27,7 +27,7 @@ probes:
 |---|---|---|
 | `jolokia_url` | `http://localhost:8161/api/jolokia` | Jolokia REST endpoint on the ActiveMQ broker |
 | `username` | `admin` | Basic-auth username |
-| `password` | `admin` | Basic-auth password |
+| `password` | `admin` | Basic-auth password — reference via `${secret:activemq.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 | `broker_name` | `localhost` | Broker name used to scope MBean queries |
 
 ## Metrics

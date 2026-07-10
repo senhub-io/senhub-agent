@@ -12,13 +12,13 @@ database read/write throughput and I/O byte counters.
 ## Quick start
 
 ```yaml
-probes:
-  - name: couchdb
-    type: couchdb
-    params:
-      endpoint: http://localhost:5984
-      username: admin
-      password: changeme
+# probes.d/10-couchdb.yaml — each file under probes.d/ is a YAML array of probes
+- name: couchdb
+  type: couchdb
+  params:
+    endpoint: http://localhost:5984
+    username: admin
+    password: ${secret:couchdb.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -27,7 +27,7 @@ probes:
 |---|---|---|
 | `endpoint` | `http://localhost:5984` | CouchDB base URL |
 | `username` | — | Admin username |
-| `password` | — | Admin password |
+| `password` | — | Admin password — reference via `${secret:couchdb.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 
 ## Metrics
 

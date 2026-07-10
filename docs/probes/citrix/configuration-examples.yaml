@@ -1,9 +1,16 @@
 # SenHub Agent Configuration with Citrix Probe
 # Complete example for monitoring Citrix Virtual Apps and Desktops
 #
+# Since 0.2.x the default install layout is multi-file:
+#   agent.yaml + probes.d/*.yaml + strategies.d/*.yaml
+# The single-file form below (agent + storage + probes in one document)
+# still loads and is fully supported for existing installs.
+#
 # NOTE: Per-component config format (recommended since 0.1.87).
 # Each component (director, delivery_controller, license_server) has its own
 # auth block. Auth method is auto-detected: NTLM for Director, Basic for DDC/License.
+
+config_version: 3
 
 agent:
   key: "your-agent-key-here"
@@ -22,6 +29,7 @@ storage:
 probes:
   # Citrix Virtual Apps and Desktops monitoring
   - name: citrix
+    type: citrix
     params:
       interval: 120           # Collection interval (2 minutes recommended)
       timeout: 30             # Request timeout (seconds)
@@ -40,206 +48,225 @@ probes:
         verify_ssl: true
         auth:
           username: "DOMAIN\\svc-monitoring"
-          password: "secure-password"          # Use environment variable: ${CITRIX_PASSWORD}
+          password: ${secret:citrix.director_password}   # auto-sealed on install
 
   # System monitoring probes (recommended for complete coverage)
   - name: cpu
+    type: cpu
     params:
       interval: 30
 
   - name: memory
+    type: memory
     params:
       interval: 30
 
   - name: network
+    type: network
     params:
       interval: 60
 
   - name: logicaldisk
+    type: logicaldisk
     params:
       interval: 30
 
----
-# Development environment
+# =============================================================================
+# ADDITIONAL EXAMPLES (commented — copy one into a fresh single-file config,
+# or split across probes.d/ + strategies.d/ for the multi-file layout)
+# =============================================================================
 
-agent:
-  key: "dev-agent-key"
+# ----- Development environment -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "dev-agent-key"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8080
+#       endpoints: ["prtg", "web"]
+#
+# probes:
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 300           # 5 minutes for development
+#       timeout: 60
+#
+#       director:
+#         url: "https://citrix-dev.company.com"
+#         verify_ssl: false
+#         auth:
+#           username: "admin"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 5
+#         backoff_factor: 1.5
 
-storage:
-  - name: http
-    params:
-      port: 8080
-      endpoints: ["prtg", "web"]
+# ----- High-availability configuration with multiple controllers and per-component auth -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "ha-citrix-agent"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8080
+#       endpoints: ["prtg", "senhub", "nagios"]
+#
+# probes:
+#   # Primary Citrix site
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 30
+#
+#       director:
+#         url: "https://citrix-site1.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-monitoring"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
+#
+#       delivery_controller:
+#         url: "https://citrix-ddc1-site1.company.com"
+#         fallback_urls:
+#           - "https://citrix-ddc2-site1.company.com"
+#         verify_ssl: true
+#         site_filter: "SITE1"
+#         auth:
+#           username: "DOMAIN\\svc-ddc"
+#           password: ${secret:citrix.ddc_password}   # auto-sealed on install
+#
+#       license_server:
+#         url: "https://citrix-license1.company.com:8083"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-lic"
+#           password: ${secret:citrix.license_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 3
+#         backoff_factor: 2.0
+#
+#   # Secondary Citrix site (different credentials)
+#   - name: citrix-site2
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 30
+#
+#       director:
+#         url: "https://citrix-site2.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-monitoring-s2"
+#           password: ${secret:citrix-site2.director_password}   # auto-sealed on install
+#
+#       delivery_controller:
+#         url: "https://citrix-ddc1-site2.company.com"
+#         fallback_urls:
+#           - "https://citrix-ddc2-site2.company.com"
+#         verify_ssl: true
+#         site_filter: "SITE2"
+#         auth:
+#           username: "DOMAIN\\svc-ddc-s2"
+#           password: ${secret:citrix-site2.ddc_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 3
+#         backoff_factor: 2.0
 
-probes:
-  - name: citrix
-    params:
-      interval: 300           # 5 minutes for development
-      timeout: 60
+# ----- Security-hardened configuration -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "${env:SENHUB_AGENT_KEY}"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8443
+#       bind_address: "127.0.0.1"
+#       endpoints: ["prtg"]
+#       tls:
+#         enabled: true
+#         cert_file: "/etc/senhub/tls/cert.pem"
+#         key_file: "/etc/senhub/tls/key.pem"
+#         min_tls_version: "1.3"
+#
+# probes:
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 15
+#
+#       director:
+#         url: "https://citrix-director.secure.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "${env:CITRIX_USERNAME}"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 2
+#         backoff_factor: 3.0
 
-      director:
-        url: "https://citrix-dev.company.com"
-        verify_ssl: false
-        auth:
-          username: "admin"
-          password: "devpassword"
+# ----- Multi-site monitoring without DDC filtering -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "citrix-global-monitoring"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8080
+#       endpoints: ["prtg", "senhub"]
+#
+# probes:
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 30
+#
+#       # Director only - no delivery_controller = no site filtering
+#       director:
+#         url: "https://citrix-director-global.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-monitoring-global"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
 
-      retry:
-        max_attempts: 5
-        backoff_factor: 1.5
-
----
-# High-availability configuration with multiple controllers and per-component auth
-
-agent:
-  key: "ha-citrix-agent"
-
-storage:
-  - name: http
-    params:
-      port: 8080
-      endpoints: ["prtg", "senhub", "nagios"]
-
-probes:
-  # Primary Citrix site
-  - name: citrix
-    params:
-      interval: 120
-      timeout: 30
-
-      director:
-        url: "https://citrix-site1.company.com"
-        verify_ssl: true
-        auth:
-          username: "DOMAIN\\svc-monitoring"
-          password: "${CITRIX_PASSWORD}"
-
-      delivery_controller:
-        url: "https://citrix-ddc1-site1.company.com"
-        fallback_urls:
-          - "https://citrix-ddc2-site1.company.com"
-        verify_ssl: true
-        site_filter: "SITE1"
-        auth:
-          username: "DOMAIN\\svc-ddc"
-          password: "${CITRIX_DDC_PASSWORD}"
-
-      license_server:
-        url: "https://citrix-license1.company.com:8083"
-        verify_ssl: true
-        auth:
-          username: "DOMAIN\\svc-lic"
-          password: "${CITRIX_LIC_PASSWORD}"
-
-      retry:
-        max_attempts: 3
-        backoff_factor: 2.0
-
-  # Secondary Citrix site (different credentials)
-  - name: citrix-site2
-    type: citrix
-    params:
-      interval: 120
-      timeout: 30
-
-      director:
-        url: "https://citrix-site2.company.com"
-        verify_ssl: true
-        auth:
-          username: "DOMAIN\\svc-monitoring-s2"
-          password: "${CITRIX_S2_PASSWORD}"
-
-      delivery_controller:
-        url: "https://citrix-ddc1-site2.company.com"
-        fallback_urls:
-          - "https://citrix-ddc2-site2.company.com"
-        verify_ssl: true
-        site_filter: "SITE2"
-        auth:
-          username: "DOMAIN\\svc-ddc-s2"
-          password: "${CITRIX_S2_DDC_PASSWORD}"
-
-      retry:
-        max_attempts: 3
-        backoff_factor: 2.0
-
----
-# Security-hardened configuration
-
-agent:
-  key: "${SENHUB_AGENT_KEY}"
-
-storage:
-  - name: http
-    params:
-      port: 8443
-      bind_address: "127.0.0.1"
-      endpoints: ["prtg"]
-      tls:
-        enabled: true
-        cert_file: "/etc/senhub/tls/cert.pem"
-        key_file: "/etc/senhub/tls/key.pem"
-        min_tls_version: "1.3"
-
-probes:
-  - name: citrix
-    params:
-      interval: 120
-      timeout: 15
-
-      director:
-        url: "https://citrix-director.secure.company.com"
-        verify_ssl: true
-        auth:
-          username: "${CITRIX_USERNAME}"
-          password: "${CITRIX_PASSWORD}"
-
-      retry:
-        max_attempts: 2
-        backoff_factor: 3.0
-
----
-# Multi-site monitoring without DDC filtering
-
-agent:
-  key: "citrix-global-monitoring"
-
-storage:
-  - name: http
-    params:
-      port: 8080
-      endpoints: ["prtg", "senhub"]
-
-probes:
-  - name: citrix
-    params:
-      interval: 120
-      timeout: 30
-
-      # Director only - no delivery_controller = no site filtering
-      director:
-        url: "https://citrix-director-global.company.com"
-        verify_ssl: true
-        auth:
-          username: "DOMAIN\\svc-monitoring-global"
-          password: "${CITRIX_PASSWORD}"
-
----
 # ===== LEGACY FORMAT (deprecated, still supported) =====
 # The flat format below is supported for backward compatibility.
 # A deprecation warning is logged at startup. Migrate to per-component blocks above.
-
+#
+# config_version: 3
+#
 # agent:
 #   key: "legacy-agent"
 #
 # probes:
 #   - name: citrix
+#     type: citrix
 #     params:
 #       director_url: "https://citrix-director.company.com"   # or base_url
 #       interval: 120
 #       auth:                                                  # global auth
 #         username: "DOMAIN\\svc-monitoring"
-#         password: "password"
+#         password: ${secret:citrix.director_password}   # auto-sealed on install
 #       tls:
 #         verify_ssl: true
 #       delivery_controller:

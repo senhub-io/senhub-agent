@@ -12,12 +12,12 @@ keyspace size, replication state and persistence (RDB/AOF) health.
 ## Quick start
 
 ```yaml
-probes:
-  - name: redis
-    type: redis
-    params:
-      host: 127.0.0.1
-      port: 6379
+# probes.d/10-redis.yaml — each file under probes.d/ is a YAML array of probes
+- name: redis
+  type: redis
+  params:
+    host: 127.0.0.1
+    port: 6379
 ```
 
 ## Parameters
@@ -26,7 +26,7 @@ probes:
 |---|---|---|
 | `host` | `127.0.0.1` | Redis server hostname or IP |
 | `port` | `6379` | Redis server port |
-| `password` | — | Redis `AUTH` password (if required) |
+| `password` | — | Redis `AUTH` password (if required) — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `tls` | `false` | Enable TLS for the Redis connection |
 
 ## Metrics

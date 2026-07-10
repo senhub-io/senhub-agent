@@ -121,6 +121,133 @@ func otelMappingViolation(m MetricDefinition) string {
 	}
 }
 
+// allowedOtelBaseUnits is the set of non-annotation UCUM units actually used
+// across the embedded probe definitions, stripped of any rate suffix. A metric
+// unit is plausible when it is one of these, a curly-brace annotation
+// (`{...}`), or either of those carrying a `/s`/`/min` rate suffix. The point
+// is to catch operator-facing units leaking into the OTel field — a bare `%`
+// or `bytes` — without forcing a mass edit of correct definitions (#475).
+var allowedOtelBaseUnits = map[string]bool{
+	"1":   true, // dimensionless / ratio
+	"By":  true, // bytes (UCUM)
+	"bit": true,
+	"s":   true,
+	"ms":  true,
+	"us":  true,
+	"ns":  true,
+	"cs":  true,
+	"Cel": true, // degrees Celsius (UCUM)
+	"W":   true,
+	"V":   true,
+	"dBm": true,
+	"d":   true,
+	"h":   true,
+}
+
+// otelUnitPlausible reports whether an OTel unit string is a plausible
+// UCUM/annotation unit. It deliberately rejects the operator-facing shortcuts
+// (`%`, `bytes`, `B`, `#`) that must never appear in an `otel.unit`.
+func otelUnitPlausible(unit string) bool {
+	if unit == "" {
+		return false
+	}
+	base := unit
+	for _, suffix := range []string{"/s", "/min"} {
+		if strings.HasSuffix(base, suffix) {
+			base = strings.TrimSuffix(base, suffix)
+			break
+		}
+	}
+	if strings.HasPrefix(base, "{") && strings.HasSuffix(base, "}") {
+		return true
+	}
+	return allowedOtelBaseUnits[base]
+}
+
+// TestYAMLDefinitions_OtelUnitAndTypeCorrectness extends the presence guard
+// (#475): for every embedded probe metric that declares a real `otel:` mapping,
+// it asserts the mapping is not just present but self-consistent —
+//
+//   - otel.type ∈ {counter, gauge, updowncounter} (the only OTel instruments)
+//   - otel.unit is non-empty and a plausible UCUM/annotation unit (rejects a
+//     bare `%`, `bytes`, `B`, … leaking from the operator-facing `unit:` field)
+//   - percent→ratio convention: a metric whose operator `unit:` is `%` must
+//     carry otel.unit `1`, never `%`.
+//
+// This is the guard that would have caught a `%`-vs-ratio mistake or a bad unit
+// token that the presence-only guard waves through.
+func TestYAMLDefinitions_OtelUnitAndTypeCorrectness(t *testing.T) {
+	defs, err := Definitions()
+	if err != nil {
+		t.Fatalf("load definitions: %v", err)
+	}
+
+	validTypes := map[string]bool{"counter": true, "gauge": true, "updowncounter": true}
+
+	checked := 0
+	for probe, def := range defs {
+		for _, m := range def.Metrics {
+			o := m.Otel
+			// Only mapped metrics carry a target unit/type. Skip opt-outs and
+			// name-less blocks — the presence guard owns those shapes.
+			if o == nil || o.Skip || o.Name == "" {
+				continue
+			}
+			checked++
+
+			if !validTypes[o.Type] {
+				t.Errorf("%s.%s: otel.type=%q — must be one of counter|gauge|updowncounter", probe, m.Name, o.Type)
+			}
+			if !otelUnitPlausible(o.Unit) {
+				t.Errorf("%s.%s: otel.unit=%q — empty or not a plausible UCUM/annotation unit (use `1` for ratios, `By` for bytes, not `%%`/`bytes`)", probe, m.Name, o.Unit)
+			}
+			if m.Unit == "%" && o.Unit != "1" {
+				t.Errorf("%s.%s: operator unit is %%%% but otel.unit=%q — percent must map to ratio `1`", probe, m.Name, o.Unit)
+			}
+		}
+	}
+
+	if checked == 0 {
+		t.Fatal("no otel-mapped metrics checked — definitions enumeration broken?")
+	}
+}
+
+// TestOtelUnitPlausible_Predicate proves the unit validator flags the operator-
+// facing mistakes (#475) while accepting the full range of units the real
+// definitions use, so the correctness guard above is neither vacuous nor prone
+// to false positives.
+func TestOtelUnitPlausible_Predicate(t *testing.T) {
+	cases := []struct {
+		unit string
+		want bool
+	}{
+		{"1", true},
+		{"By", true},
+		{"By/s", true},
+		{"bit/s", true},
+		{"s", true},
+		{"ms", true},
+		{"us", true},
+		{"d", true},
+		{"Cel", true},
+		{"dBm", true},
+		{"{connection}", true},
+		{"{packet}/s", true},
+		{"{rotation}/min", true},
+		{"", false},
+		{"%", false},
+		{"bytes", false},
+		{"Bytes", false},
+		{"B", false},
+		{"#", false},
+	}
+	for _, tc := range cases {
+		if got := otelUnitPlausible(tc.unit); got != tc.want {
+			t.Errorf("otelUnitPlausible(%q)=%v, want %v", tc.unit, got, tc.want)
+		}
+	}
+}
+
 // TestOtelMappingViolation_Predicate proves the guard is not vacuous: it
 // flags exactly the unmapped shapes (the #137 swap_* class) and passes the
 // well-formed ones. If this ever goes green for an unmapped metric, the

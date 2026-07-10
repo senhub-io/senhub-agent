@@ -14,11 +14,11 @@ size.
 ## Quick start
 
 ```yaml
-probes:
-  - name: solr
-    type: solr
-    params:
-      endpoint: http://localhost:8983
+# probes.d/10-solr.yaml — each file under probes.d/ is a YAML array of probes
+- name: solr
+  type: solr
+  params:
+    endpoint: http://localhost:8983
 ```
 
 ## Parameters

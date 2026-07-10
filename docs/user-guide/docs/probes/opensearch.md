@@ -13,11 +13,11 @@ Elasticsearch; metric names use the `opensearch.*` namespace.
 ## Quick start
 
 ```yaml
-probes:
-  - name: opensearch
-    type: opensearch
-    params:
-      endpoint: http://localhost:9200
+# probes.d/20-opensearch.yaml — each file under probes.d/ is a YAML array of probes
+- name: opensearch
+  type: opensearch
+  params:
+    endpoint: http://localhost:9200
 ```
 
 ## Parameters

@@ -324,7 +324,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	if maxConns > 0 {
 		points = append(points,
 			p.dp("senhub.db.mysql.connection.max", maxConns, now, string(dbcommon.MetricTypeConnections), allCommonTags),
-			p.dp("senhub.db.connection.utilization", connected/maxConns, now, string(dbcommon.MetricTypeConnections), allCommonTags),
+			p.dp("senhub.db.connection.utilization", connected/maxConns*100, now, string(dbcommon.MetricTypeConnections), allCommonTags),
 		)
 	}
 
@@ -369,20 +369,20 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	tmpTotal := asFloat(status["Created_tmp_tables"])
 	tmpDisk := asFloat(status["Created_tmp_disk_tables"])
 	if tmpTotal > 0 {
-		points = append(points, p.dp("senhub.db.mysql.tmp_tables.disk_ratio", tmpDisk/tmpTotal, now, string(dbcommon.MetricTypeThroughput), allCommonTags))
+		points = append(points, p.dp("senhub.db.mysql.tmp_tables.disk_ratio", tmpDisk/tmpTotal*100, now, string(dbcommon.MetricTypeThroughput), allCommonTags))
 	}
 
 	// ─── Cache (InnoDB buffer pool) ───────────────────────────────────────────
 	poolReads := asFloat(status["Innodb_buffer_pool_reads"])
 	poolReadReqs := asFloat(status["Innodb_buffer_pool_read_requests"])
 	if poolReadReqs > 0 {
-		hitRatio := float64(1) - poolReads/poolReadReqs
+		hitRatio := (float64(1) - poolReads/poolReadReqs) * 100
 		points = append(points, p.dp("senhub.db.mysql.buffer_pool.hit_ratio", hitRatio, now, string(dbcommon.MetricTypeCache), allCommonTags))
 	}
 	poolPagesTotal := asFloat(status["Innodb_buffer_pool_pages_total"])
 	poolPagesData := asFloat(status["Innodb_buffer_pool_pages_data"])
 	if poolPagesTotal > 0 {
-		points = append(points, p.dp("senhub.db.mysql.buffer_pool.utilization", poolPagesData/poolPagesTotal, now, string(dbcommon.MetricTypeCache), allCommonTags))
+		points = append(points, p.dp("senhub.db.mysql.buffer_pool.utilization", poolPagesData/poolPagesTotal*100, now, string(dbcommon.MetricTypeCache), allCommonTags))
 	}
 	dirtyTags := append([]tags.Tag{{Key: "status", Value: "dirty"}}, allCommonTags...)
 	points = append(points,

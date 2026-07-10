@@ -13,11 +13,11 @@ for the buckets endpoint.
 ## Quick start
 
 ```yaml
-probes:
-  - name: influxdb
-    type: influxdb
-    params:
-      endpoint: http://localhost:8086
+# probes.d/10-influxdb.yaml — each file under probes.d/ is a YAML array of probes
+- name: influxdb
+  type: influxdb
+  params:
+    endpoint: http://localhost:8086
 ```
 
 ## Parameters

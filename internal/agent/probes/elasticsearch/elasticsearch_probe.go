@@ -402,7 +402,7 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "elasticsearch.process.cpu.usage",
-				Value:     float64(node.Process.CPU.Percent) / 100,
+				Value:     float64(node.Process.CPU.Percent),
 				Timestamp: ts,
 				Tags:      processTags,
 			},

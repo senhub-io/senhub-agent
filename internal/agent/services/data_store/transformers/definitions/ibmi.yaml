@@ -562,6 +562,98 @@ metrics:
     tag_to_attribute:
       unit_number: ibmi.disk.unit
 
+  - name: "ibmi.disk.data_written_bytes"
+    channel: "ibmi_disk_write_bytes"
+    display_name: "Disk Write — unit {unit_number}"
+    unit: "B"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+    otel:
+      name: senhub.ibmi.disk.write
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+
+  - name: "ibmi.disk.read_requests"
+    channel: "ibmi_disk_read_requests"
+    display_name: "Disk Read Requests — unit {unit_number}"
+    unit: "#"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+    otel:
+      name: senhub.ibmi.disk.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+
+  - name: "ibmi.disk.write_requests"
+    channel: "ibmi_disk_write_requests"
+    display_name: "Disk Write Requests — unit {unit_number}"
+    unit: "#"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+    otel:
+      name: senhub.ibmi.disk.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+
+  - name: "ibmi.disk.capacity_bytes"
+    channel: "ibmi_disk_capacity"
+    display_name: "Disk Capacity — unit {unit_number}"
+    unit: "B"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+    otel:
+      name: senhub.ibmi.disk.capacity
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+
+  - name: "ibmi.disk.available_gb"
+    channel: "ibmi_disk_available"
+    display_name: "Disk Available — unit {unit_number}"
+    unit: "GB"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+    otel:
+      name: senhub.ibmi.disk.available
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+
+  - name: "ibmi.disk.percent_used"
+    channel: "ibmi_disk_percent_used"
+    display_name: "Disk Used — unit {unit_number}"
+    unit: "%"
+    category: "storage"
+    multi_instance_labels: ["unit_number"]
+    otel:
+      name: senhub.ibmi.disk.space.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      unit_number: ibmi.disk.unit
+
+  - name: "ibmi.disk.units_total"
+    channel: "ibmi_disk_units"
+    display_name: "Disk Units"
+    unit: "#"
+    category: "storage"
+    otel:
+      name: senhub.ibmi.disk.units
+      unit: "{unit}"
+      type: gauge
+
   # ============================================================
   # Output queues & spool
   # ============================================================

@@ -12,11 +12,11 @@ state breakdown (reading, writing, waiting).
 ## Quick start
 
 ```yaml
-probes:
-  - name: nginx
-    type: nginx
-    params:
-      endpoint: http://localhost/nginx_status
+# probes.d/20-nginx.yaml — each file under probes.d/ is a YAML array of probes
+- name: nginx
+  type: nginx
+  params:
+    endpoint: http://localhost/nginx_status
 ```
 
 ## Parameters

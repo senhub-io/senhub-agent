@@ -192,11 +192,16 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 		wifiTags = append(wifiTags, tags.Tag{Key: "bssid", Value: bssid, Private: false})
 	}
 
+	// netsh reports signal quality as 0-100 %, but the metric unit is dBm
+	// (Linux emits real dBm from iwconfig). Apply the standard netsh
+	// approximation: dBm ≈ (quality / 2) - 100.
+	signalDBM := float64(signalStrength)/2 - 100
+
 	return []data_store.DataPoint{
 		{
 			Name:      "wifi_signal_strength",
 			Timestamp: time.Now(),
-			Value:     float64(signalStrength),
+			Value:     signalDBM,
 			Tags:      wifiTags,
 		},
 	}, nil

@@ -153,3 +153,11 @@ metrics:
       type: gauge
     tag_to_attribute:
       database: db.namespace
+
+tag_metadata:
+  database:
+    type: resource
+    label: "Database"
+  direction:
+    type: category
+    label: "I/O Direction"

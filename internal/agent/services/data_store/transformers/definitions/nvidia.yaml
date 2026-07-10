@@ -32,7 +32,7 @@ metrics:
     display_name: "GPU {gpu.index} ({gpu.name}) Utilization"
     unit: "%"
     category: "utilization"
-    description: "GPU core utilization ratio (0–1); ratio of time the GPU was busy over the last sample period"
+    description: "GPU core utilization in percent (0–100); share of time the GPU was busy over the last sample period"
     otel:
       name: gpu.utilization
       unit: "1"
@@ -77,7 +77,7 @@ metrics:
     display_name: "GPU {gpu.index} ({gpu.name}) Memory Utilization"
     unit: "%"
     category: "memory"
-    description: "GPU framebuffer memory utilization ratio (0–1); fraction of total framebuffer in use"
+    description: "GPU framebuffer memory utilization in percent (0–100); share of total framebuffer in use"
     otel:
       name: gpu.memory.utilization
       unit: "1"
@@ -137,7 +137,7 @@ metrics:
     display_name: "GPU {gpu.index} ({gpu.name}) Encoder Utilization"
     unit: "%"
     category: "utilization"
-    description: "GPU hardware video encoder utilization ratio (0–1)"
+    description: "GPU hardware video encoder utilization in percent (0–100)"
     otel:
       name: gpu.encoder.utilization
       unit: "1"
@@ -152,7 +152,7 @@ metrics:
     display_name: "GPU {gpu.index} ({gpu.name}) Decoder Utilization"
     unit: "%"
     category: "utilization"
-    description: "GPU hardware video decoder utilization ratio (0–1)"
+    description: "GPU hardware video decoder utilization in percent (0–100)"
     otel:
       name: gpu.decoder.utilization
       unit: "1"
@@ -167,7 +167,7 @@ metrics:
     display_name: "GPU {gpu.index} ({gpu.name}) Fan Speed"
     unit: "%"
     category: "cooling"
-    description: "GPU fan speed ratio (0–1); 0 when fan speed is not available"
+    description: "GPU fan speed in percent (0–100); 0 when fan speed is not available"
     otel:
       name: gpu.fan.speed
       unit: "1"
@@ -176,3 +176,17 @@ metrics:
       gpu.index: gpu.index
       gpu.name: gpu.name
       gpu.uuid: gpu.uuid
+
+tag_metadata:
+  gpu.index:
+    type: resource
+    label: "GPU"
+  gpu.name:
+    type: resource
+    label: "GPU Name"
+  gpu.uuid:
+    type: resource
+    label: "GPU UUID"
+  metric_type:
+    type: category
+    label: "Metric Type"

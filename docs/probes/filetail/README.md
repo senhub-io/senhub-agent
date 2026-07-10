@@ -18,6 +18,7 @@ reopen.
 ## Configuration
 
 ```yaml
+# probes.d/30-filetail.yaml — each file under probes.d/ is a YAML array of probes
 - type: filetail
   name: citrix_vda_logs
   params:
@@ -57,10 +58,10 @@ OTel logs only — no metrics. Enable the OTLP logs signal so records are
 consumed:
 
 ```yaml
-storage:
-  - type: otlp
-    signals:
-      logs: true
+# strategies.d/40-otlp.yaml
+otlp:
+  signals:
+    logs: true
 ```
 
 Each record carries:
