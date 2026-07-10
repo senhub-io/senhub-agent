@@ -26,7 +26,10 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 
 | Version | Date | Headline |
 |---|---|---|
-| [**Next — 0.5.0 (unreleased)**](next.md) | in progress | Security hardening (audit-360), secret store, signed Windows MSI |
+| [**Next — 0.6.0 (unreleased)**](next.md) | in progress | Changes for the next stable release |
+| [**0.5.2**](0.5.2.md) | 2026-07-10 | PowerStore depth, Veeam plugin jobs, pull-view ratio fix |
+| [**0.5.1**](0.5.1.md) | 2026-07-06 | Dell PowerStore probe |
+| [**0.5.0**](0.5.0.md) | 2026-07-06 | Security hardening (audit-360), secret store, signed Windows MSI |
 | [**0.4.2**](0.4.2.md) | 2026-06-30 | Entity stabilization, Pro catalogue fix, systemd install hardening |
 | [**0.4.1**](0.4.1.md) | 2026-06-23 | Auto-update reliability fix |
 | [**0.4.0**](0.4.0.md) | 2026-06-22 | The entity model: host nameplate, network interfaces, compute VMs, attribute governance |
