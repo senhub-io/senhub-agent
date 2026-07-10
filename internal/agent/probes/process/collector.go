@@ -22,7 +22,7 @@ type processSnapshot struct {
 	pid        int32
 	name       string
 	owner      string
-	cpuPct     float64 // 0-100, to be divided to 0-1 for OTel
+	cpuPct     float64 // 0-100, emitted as-is; OTel mapper derives the 0-1 ratio
 	rss        uint64  // bytes
 	vms        uint64  // bytes
 	threads    int32
@@ -176,11 +176,12 @@ func appendProcessPoints(
 	snap processSnapshot,
 	pt []tags.Tag,
 ) []data_store.DataPoint {
-	// process.cpu.utilization — ratio 0-1 (OTel semconv)
+	// process.cpu.utilization — 0-100 percent; the OTel mapper derives
+	// the 0-1 ratio from the "%" unit declared in process.yaml
 	points = append(points, data_store.DataPoint{
 		Name:      "process.cpu.utilization",
 		Timestamp: ts,
-		Value:     float64(snap.cpuPct / 100.0),
+		Value:     float64(snap.cpuPct),
 		Tags:      pt,
 	})
 

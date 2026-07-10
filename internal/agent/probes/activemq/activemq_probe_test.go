@@ -147,9 +147,9 @@ func TestCollect_BrokerUp(t *testing.T) {
 		t.Errorf("activemq.message.current = %v, want 42", got)
 	}
 
-	// Memory usage: 20% → 0.20
-	if got := brokerByName["activemq.memory.usage"]; got < 0.199 || got > 0.201 {
-		t.Errorf("activemq.memory.usage = %v, want ~0.20", got)
+	// Memory usage: JMX percent is emitted as-is (0-100)
+	if got := brokerByName["activemq.memory.usage"]; got != 20 {
+		t.Errorf("activemq.memory.usage = %v, want 20", got)
 	}
 }
 

@@ -287,13 +287,13 @@ func TestBuildDatapoints_Full(t *testing.T) {
 		t.Errorf("redis.keyspace.misses: want 100, got %v", idx["redis.keyspace.misses"])
 	}
 
-	// hit ratio = 900/1000 = 0.9
+	// hit ratio = 900/1000 = 90%
 	if hr := idx["redis.keyspace.hit.ratio"]; len(hr) != 1 {
 		t.Errorf("redis.keyspace.hit.ratio missing")
 	} else {
 		got := hr[0].Value
-		if got < 0.899 || got > 0.901 {
-			t.Errorf("redis.keyspace.hit.ratio = %.4f, want ~0.9", got)
+		if got < 89.9 || got > 90.1 {
+			t.Errorf("redis.keyspace.hit.ratio = %.4f, want ~90", got)
 		}
 	}
 

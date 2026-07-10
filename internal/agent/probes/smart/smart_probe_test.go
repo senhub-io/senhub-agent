@@ -203,8 +203,8 @@ func TestBuildNVMePoints_MetricValues(t *testing.T) {
 		want   float64
 	}{
 		{"smart.disk.health", 1},
-		{"smart.nvme.available_spare", 0.9},  // 90% → ratio
-		{"smart.nvme.percentage_used", 0.05}, // 5% → ratio
+		{"smart.nvme.available_spare", 90}, // emitted as 0-100 %; mapper derives ratio
+		{"smart.nvme.percentage_used", 5},  // emitted as 0-100 %; mapper derives ratio
 		{"smart.nvme.temperature", 38},
 		{"smart.nvme.media_errors", 0},
 		{"smart.nvme.data_units_read", 1000000},
