@@ -1558,7 +1558,7 @@ out-of-band via l'API REST donc pas de machine-id, ce n'est pas un `host`.
 | `senhub.powerstore.efficiency_ratio` | Gauge `1` | — | `efficiency_ratio` |
 | `senhub.powerstore.iops` | Gauge `{operation}/s` | `senhub.powerstore.operation` (`read`/`write`/`total`) | `performance_metrics_by_cluster` (`avg_*_iops`) |
 | `senhub.powerstore.bandwidth` | Gauge `By/s` | `senhub.powerstore.operation` | `avg_*_bandwidth` |
-| `senhub.powerstore.latency` | Gauge `us` | `senhub.powerstore.operation` | `avg_*_latency` (microsecondes) |
+| `senhub.powerstore.latency` | Gauge `s` | `senhub.powerstore.operation` | `avg_*_latency` — la probe émet des ms, `value_scale: 0.001` → secondes (les vues PRTG/Nagios affichent des ms) |
 | `senhub.powerstore.io_size` | Gauge `By` | — | `avg_io_size` |
 | `senhub.powerstore.cpu.utilization` | Gauge `1` | — | `performance_metrics_by_appliance.avg_io_workload_cpu_utilization`, émis en `%` (0-100) par la probe, ÷100 par le mapper |
 | `senhub.powerstore.replication.sessions` | Gauge `{session}` | — | `/replication_session` (0 si non configuré) |
@@ -1596,7 +1596,7 @@ les instances s'écraseraient en OTLP/Prometheus (une seule série au lieu de N)
 | `senhub.powerstore.appliance.capacity.logical` | Gauge `By` | `…appliance.name` + `capacity.state` (`used`) | idem |
 | `senhub.powerstore.appliance.iops` | Gauge `{operation}/s` | `…appliance.name` + `operation` (`read`/`write`/`total`) | `performance_metrics_by_appliance` |
 | `senhub.powerstore.appliance.bandwidth` | Gauge `By/s` | `…appliance.name` + `operation` (`total`) | idem |
-| `senhub.powerstore.appliance.latency` | Gauge `us` | `…appliance.name` + `operation` (`total`) | idem |
+| `senhub.powerstore.appliance.latency` | Gauge `s` | `…appliance.name` + `operation` (`total`) | idem (ms → s via value_scale) |
 | `senhub.powerstore.appliance.cpu.utilization` | Gauge `1` | `…appliance.name` | idem (émis en `%`, ÷100 par le mapper) |
 | `senhub.powerstore.node.cpu.utilization` | Gauge `1` | `senhub.powerstore.node.name` | `performance_metrics_by_node` (émis en `%`, ÷100 par le mapper) |
 | `senhub.powerstore.node.iops` | Gauge `{operation}/s` | `…node.name` + `operation` (`total`) | idem |
