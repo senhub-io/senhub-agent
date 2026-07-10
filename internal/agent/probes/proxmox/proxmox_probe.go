@@ -223,7 +223,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 
 	// Detailed node metrics (CPU/memory) via /nodes/{node}/status.
 	if ns, err := p.fetchNodeStatus(n.Node); err == nil {
-		cpu := float64(ns.CPU)
+		cpu := float64(ns.CPU) * 100
 		points = append(points,
 			data_store.DataPoint{Name: "proxmox.node.cpu.utilization", Value: cpu, Timestamp: now, Tags: nodeTags},
 			data_store.DataPoint{Name: "proxmox.node.memory.used", Value: float64(ns.Memory.Used), Timestamp: now, Tags: nodeTags},
@@ -288,7 +288,7 @@ func (p *ProxmoxProbe) collectVMStatus(node string, vm pveVMStatus, vmType strin
 	}
 
 	return []data_store.DataPoint{
-		{Name: "proxmox.vm.cpu.utilization", Value: float64(vm.CPU), Timestamp: now, Tags: vmTags},
+		{Name: "proxmox.vm.cpu.utilization", Value: float64(vm.CPU) * 100, Timestamp: now, Tags: vmTags},
 		{Name: "proxmox.vm.memory.used", Value: float64(vm.Mem), Timestamp: now, Tags: vmTags},
 		{Name: "proxmox.vm.memory.total", Value: float64(vm.MaxMem), Timestamp: now, Tags: vmTags},
 		{Name: "proxmox.vm.disk.read", Value: float64(vm.DiskRead), Timestamp: now, Tags: vmTags},

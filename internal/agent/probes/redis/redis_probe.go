@@ -327,7 +327,7 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 	sum := hits + misses
 	ratio := float64(0)
 	if sum > 0 {
-		ratio = hits / sum
+		ratio = hits / sum * 100
 	}
 	p.addGauge(&pts, "redis.keyspace.hit.ratio", ratio, ts, "cache")
 

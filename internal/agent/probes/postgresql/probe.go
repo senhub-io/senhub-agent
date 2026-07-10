@@ -314,7 +314,7 @@ func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance s
 		// Connection utilization ratio
 		total := counts["active"] + counts["idle"] + counts["idle in transaction"]
 		if maxConn > 0 {
-			*points = append(*points, p.dp("senhub.db.connection.utilization", total/maxConn, now, connTags))
+			*points = append(*points, p.dp("senhub.db.connection.utilization", total/maxConn*100, now, connTags))
 		}
 	}
 }
@@ -346,7 +346,7 @@ func (p *pgProbe) collectThroughput(ctx context.Context, now time.Time, instance
 	cacheTags := p.tagsFor(dbcommon.MetricTypeCache, instance)
 	total := blksHit + blksRead
 	if total > 0 {
-		*points = append(*points, p.dp("senhub.db.postgresql.buffer.hit_ratio", float64(blksHit/total), now, cacheTags))
+		*points = append(*points, p.dp("senhub.db.postgresql.buffer.hit_ratio", blksHit/total*100, now, cacheTags))
 	}
 
 	// Deadlocks (locks family)

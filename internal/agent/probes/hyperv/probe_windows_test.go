@@ -106,8 +106,8 @@ func TestBuildVMPoints_CPUNormalisation(t *testing.T) {
 	for _, pt := range points {
 		if pt.Name == "hyperv.vm.cpu.usage" {
 			found = true
-			if pt.Value != 1.0 {
-				t.Errorf("100%% CPU should normalise to 1.0, got %v", pt.Value)
+			if pt.Value != 100.0 {
+				t.Errorf("100%% CPU should be emitted as 100, got %v", pt.Value)
 			}
 		}
 	}
