@@ -212,8 +212,9 @@ func (p *oracleProbe) collectSysstat(ctx context.Context, now time.Time) []data_
 	)
 
 	// Buffer cache hit ratio = 1 - physical reads / (consistent gets +
-	// db block gets). Bounded to [0,1]; undefined (no logical reads) is
-	// reported as 1 (a freshly started instance has nothing to miss).
+	// db block gets), emitted as a percentage. Bounded to [0,100];
+	// undefined (no logical reads) is reported as 100 (a freshly started
+	// instance has nothing to miss).
 	logical := stats["consistent gets"] + stats["db block gets"]
 	hit := float64(1)
 	if logical > 0 {
@@ -225,7 +226,7 @@ func (p *oracleProbe) collectSysstat(ctx context.Context, now time.Time) []data_
 			hit = 1
 		}
 	}
-	points = append(points, p.point("oracle.buffer.cache.hit_ratio", float64(hit), now, metricTypeCache, nil))
+	points = append(points, p.point("oracle.buffer.cache.hit_ratio", hit*100, now, metricTypeCache, nil))
 
 	deadlocks, ok := stats["enqueue deadlocks"]
 	if ok {

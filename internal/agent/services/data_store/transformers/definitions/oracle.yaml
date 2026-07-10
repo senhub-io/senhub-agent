@@ -178,3 +178,20 @@ metrics:
       name: oracle.enqueue_deadlocks
       unit: "{deadlock}"
       type: counter
+
+tag_metadata:
+  instance:
+    type: resource
+    label: "Instance"
+  tablespace:
+    type: resource
+    label: "Tablespace"
+  status:
+    type: category
+    label: "Session Status"
+  wait_class:
+    type: category
+    label: "Wait Class"
+  metric_type:
+    type: category
+    label: "Metric Category"

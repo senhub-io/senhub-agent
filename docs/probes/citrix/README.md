@@ -7,52 +7,52 @@ The Citrix probe monitors Citrix Virtual Apps and Desktops environments through 
 ### Basic Configuration (Recommended)
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      interval: 120  # 2 minutes recommended
-      timeout: 30
+# probes.d/10-citrix.yaml — each file under probes.d/ is a YAML array of probes
+- name: citrix
+  params:
+    interval: 120  # 2 minutes recommended
+    timeout: 30
 
-      director:
-        url: "https://citrix-director.company.com"
-        verify_ssl: true
-        auth:
-          username: "DOMAIN\\svc-monitoring"
-          password: "secure-password"
+    director:
+      url: "https://citrix-director.company.com"
+      verify_ssl: true
+      auth:
+        username: "DOMAIN\\svc-monitoring"
+        password: ${secret:citrix.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ### With Site Filtering and License Monitoring
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      interval: 120
-      timeout: 30
+# probes.d/10-citrix.yaml
+- name: citrix
+  params:
+    interval: 120
+    timeout: 30
 
-      director:
-        url: "https://citrix-director.company.com"
-        verify_ssl: false
-        auth:
-          username: "DOMAIN\\svc-monitoring"
-          password: "secure-password"
+    director:
+      url: "https://citrix-director.company.com"
+      verify_ssl: false
+      auth:
+        username: "DOMAIN\\svc-monitoring"
+        password: ${secret:citrix.director_password}   # OS secret store; inline plaintext is auto-sealed on install
 
-      delivery_controller:         # Optional
-        url: "https://citrix-ddc.company.com"
-        fallback_urls:
-          - "https://citrix-ddc2.company.com"
-        verify_ssl: false
-        site_filter: "PROD"
-        auth:
-          username: "DOMAIN\\svc-ddc"
-          password: "ddc-password"
+    delivery_controller:         # Optional
+      url: "https://citrix-ddc.company.com"
+      fallback_urls:
+        - "https://citrix-ddc2.company.com"
+      verify_ssl: false
+      site_filter: "PROD"
+      auth:
+        username: "DOMAIN\\svc-ddc"
+        password: ${secret:citrix.ddc_password}   # OS secret store; inline plaintext is auto-sealed on install
 
-      license_server:              # Optional
-        url: "https://citrix-license-server:8083"
-        verify_ssl: false
-        auth:
-          username: "DOMAIN\\svc-lic"
-          password: "lic-password"
+    license_server:              # Optional
+      url: "https://citrix-license-server:8083"
+      verify_ssl: false
+      auth:
+        username: "DOMAIN\\svc-lic"
+        password: ${secret:citrix.license_password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ### Legacy Configuration (Deprecated)
@@ -61,16 +61,16 @@ The flat format with global `auth` and `tls` blocks is still supported but depre
 A deprecation warning will be logged at startup. See [Configuration Examples](./configuration-examples.yaml) for migration guidance.
 
 ```yaml
-probes:
-  - name: citrix
-    params:
-      director_url: "https://citrix-director.company.com"
-      interval: 120
-      auth:
-        username: "DOMAIN\\svc-monitoring"
-        password: "secure-password"
-      tls:
-        verify_ssl: true
+# probes.d/10-citrix.yaml
+- name: citrix
+  params:
+    director_url: "https://citrix-director.company.com"
+    interval: 120
+    auth:
+      username: "DOMAIN\\svc-monitoring"
+      password: ${secret:citrix.password}   # OS secret store; inline plaintext is auto-sealed on install
+    tls:
+      verify_ssl: true
 ```
 
 ## Documentation Index

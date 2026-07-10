@@ -265,6 +265,26 @@ metrics:
       raid_type: hw.logical_disk.raid_level
       pool_name: senhub.hardware.storage.pool.name
 
+  - name: "hardware.storage.volume.capacity.used"
+    channel: "volume_capacity_used"
+    display_name: "Volume {volume_name} Used"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Used (consumed) volume capacity in bytes"
+    category: "volumes"
+    otel:
+      name: hw.logical_disk.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        hw.logical_disk.state: consumed
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
+
   - name: "hardware.storage.volume.capacity.allocated_percent"
     channel: "volume_capacity_allocated_percent"
     display_name: "Volume {volume_name} Allocated Percent"
@@ -298,6 +318,26 @@ metrics:
       type: gauge
       attributes:
         hw.logical_disk.state: free
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
+
+  - name: "hardware.storage.volume.capacity.used_percent"
+    channel: "volume_capacity_used_percent"
+    display_name: "Volume {volume_name} Used Percent"
+    unit: "%"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Used (consumed) volume capacity percentage"
+    category: "volumes"
+    otel:
+      name: hw.logical_disk.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.logical_disk.state: consumed
     tag_to_attribute:
       volume_id: hw.id
       volume_name: hw.name
@@ -465,6 +505,24 @@ metrics:
       controller_id: hw.parent
       raid_type: senhub.hardware.storage.pool.raid_level
 
+  - name: "hardware.storage.pool.capacity.total"
+    channel: "pool_capacity_total"
+    display_name: "Pool {pool_name} Total"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
+    description: "Total pool capacity in bytes"
+    category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: total
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
+
   - name: "hardware.storage.pool.capacity.used"
     channel: "pool_capacity_used"
     display_name: "Pool {pool_name} Used"
@@ -496,6 +554,24 @@ metrics:
       type: gauge
       attributes:
         senhub.hardware.storage.pool.state: free
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
+
+  - name: "hardware.storage.pool.capacity.allocated_percent"
+    channel: "pool_capacity_allocated_percent"
+    display_name: "Pool {pool_name} Allocated Percent"
+    unit: "%"
+    multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
+    description: "Allocated pool capacity percentage"
+    category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.storage.pool.state: allocated
     tag_to_attribute:
       pool_name: senhub.hardware.storage.pool.name
       controller_id: hw.parent

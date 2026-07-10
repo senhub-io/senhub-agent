@@ -637,3 +637,11 @@ metrics:
     tag_to_attribute:
       container_id: container.id
       container_name: container.name
+
+tag_metadata:
+  container_name:
+    type: resource
+    label: "Container"
+  metric_type:
+    type: category
+    label: "Metric Type"

@@ -154,8 +154,8 @@ func TestCollect_Up(t *testing.T) {
 	if byName["opensearch.jvm.memory.heap.used"] != float64(512*1024*1024) {
 		t.Errorf("opensearch.jvm.memory.heap.used = %v, want %v", byName["opensearch.jvm.memory.heap.used"], float64(512*1024*1024))
 	}
-	if byName["opensearch.process.cpu.usage"] != 0.42 {
-		t.Errorf("opensearch.process.cpu.usage = %v, want 0.42", byName["opensearch.process.cpu.usage"])
+	if byName["opensearch.process.cpu.usage"] != 42 {
+		t.Errorf("opensearch.process.cpu.usage = %v, want 42", byName["opensearch.process.cpu.usage"])
 	}
 }
 

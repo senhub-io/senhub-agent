@@ -7,29 +7,29 @@ The WebApp Ping probe monitors the network reachability and latency of web appli
 ### Basic Configuration
 
 ```yaml
-probes:
-  - name: webapp_ping
-    type: ping_webapp
-    params:
-      url: "https://example.com"
-      interval: 30  # Collection interval in seconds (default: 30)
+# probes.d/10-ping_webapp.yaml — each file under probes.d/ is a YAML array of probes
+- name: webapp_ping
+  type: ping_webapp
+  params:
+    url: "https://example.com"
+    interval: 30  # Collection interval in seconds (default: 30)
 ```
 
 ### Monitoring Multiple Web Applications
 
 ```yaml
-probes:
-  - name: webapp_ping_production
-    type: ping_webapp
-    params:
-      url: "https://app.example.com"
-      interval: 30
+# probes.d/10-ping_webapp.yaml
+- name: webapp_ping_production
+  type: ping_webapp
+  params:
+    url: "https://app.example.com"
+    interval: 30
 
-  - name: webapp_ping_api
-    type: ping_webapp
-    params:
-      url: "https://api.example.com"
-      interval: 60
+- name: webapp_ping_api
+  type: ping_webapp
+  params:
+    url: "https://api.example.com"
+    interval: 60
 ```
 
 The WebApp Ping probe requires only a URL parameter and performs DNS resolution followed by ICMP ping tests.
@@ -73,32 +73,32 @@ The probe accepts any valid HTTP or HTTPS URL:
 
 **High-frequency monitoring (every 10 seconds):**
 ```yaml
-probes:
-  - name: webapp_ping_critical
-    type: ping_webapp
-    params:
-      url: "https://critical-app.example.com"
-      interval: 10
+# probes.d/10-ping_webapp.yaml
+- name: webapp_ping_critical
+  type: ping_webapp
+  params:
+    url: "https://critical-app.example.com"
+    interval: 10
 ```
 
 **Standard monitoring (every minute):**
 ```yaml
-probes:
-  - name: webapp_ping_standard
-    type: ping_webapp
-    params:
-      url: "https://app.example.com"
-      interval: 60
+# probes.d/10-ping_webapp.yaml
+- name: webapp_ping_standard
+  type: ping_webapp
+  params:
+    url: "https://app.example.com"
+    interval: 60
 ```
 
 **Low-frequency monitoring (every 5 minutes):**
 ```yaml
-probes:
-  - name: webapp_ping_background
-    type: ping_webapp
-    params:
-      url: "https://backup.example.com"
-      interval: 300
+# probes.d/10-ping_webapp.yaml
+- name: webapp_ping_background
+  type: ping_webapp
+  params:
+    url: "https://backup.example.com"
+    interval: 300
 ```
 
 ## Monitoring Tool Integration
@@ -194,24 +194,24 @@ Track service level objectives:
 
 Monitor applications across multiple locations:
 ```yaml
-probes:
-  - name: webapp_ping_us_east
-    type: ping_webapp
-    params:
-      url: "https://us-east.example.com"
-      interval: 30
+# probes.d/10-ping_webapp.yaml
+- name: webapp_ping_us_east
+  type: ping_webapp
+  params:
+    url: "https://us-east.example.com"
+    interval: 30
 
-  - name: webapp_ping_us_west
-    type: ping_webapp
-    params:
-      url: "https://us-west.example.com"
-      interval: 30
+- name: webapp_ping_us_west
+  type: ping_webapp
+  params:
+    url: "https://us-west.example.com"
+    interval: 30
 
-  - name: webapp_ping_eu
-    type: ping_webapp
-    params:
-      url: "https://eu.example.com"
-      interval: 30
+- name: webapp_ping_eu
+  type: ping_webapp
+  params:
+    url: "https://eu.example.com"
+    interval: 30
 ```
 
 ### Network Path Troubleshooting
@@ -226,18 +226,18 @@ Diagnose network issues:
 
 Monitor load balancer endpoints:
 ```yaml
-probes:
-  - name: webapp_ping_lb1
-    type: ping_webapp
-    params:
-      url: "https://lb1.example.com"
-      interval: 30
+# probes.d/10-ping_webapp.yaml
+- name: webapp_ping_lb1
+  type: ping_webapp
+  params:
+    url: "https://lb1.example.com"
+    interval: 30
 
-  - name: webapp_ping_lb2
-    type: ping_webapp
-    params:
-      url: "https://lb2.example.com"
-      interval: 30
+- name: webapp_ping_lb2
+  type: ping_webapp
+  params:
+    url: "https://lb2.example.com"
+    interval: 30
 ```
 
 ## Troubleshooting
@@ -252,8 +252,8 @@ probes:
 
 **Verify probe is enabled:**
 ```bash
-# Check configuration
-cat agent-config.yaml | grep -A5 "type: ping_webapp"
+# Check configuration (multi-file layout)
+grep -rA5 "type: ping_webapp" /etc/senhub/probes.d/
 ```
 
 **Common Issues:**
@@ -397,13 +397,13 @@ ping app.example.com        # Ctrl+C to stop
 
 **Solution:**
 ```yaml
+# probes.d/10-ping_webapp.yaml
 # Increase collection frequency for better sampling
-probes:
-  - name: webapp_ping_frequent
-    type: ping_webapp
-    params:
-      url: "https://app.example.com"
-      interval: 10  # More frequent sampling
+- name: webapp_ping_frequent
+  type: ping_webapp
+  params:
+    url: "https://app.example.com"
+    interval: 10  # More frequent sampling
 ```
 
 ### Platform-Specific Issues
@@ -468,17 +468,17 @@ Typical memory footprint per probe instance:
 When monitoring many URLs, consider resource usage:
 
 ```yaml
+# probes.d/10-ping_webapp.yaml
 # Example: 10 URLs with 30s interval = 10 pings every 30s
-probes:
-  - name: webapp_ping_app1
-    type: ping_webapp
-    params: {url: "https://app1.example.com", interval: 30}
+- name: webapp_ping_app1
+  type: ping_webapp
+  params: {url: "https://app1.example.com", interval: 30}
 
-  - name: webapp_ping_app2
-    type: ping_webapp
-    params: {url: "https://app2.example.com", interval: 30}
+- name: webapp_ping_app2
+  type: ping_webapp
+  params: {url: "https://app2.example.com", interval: 30}
 
-  # ... up to 10-20 URLs recommended per agent
+# ... up to 10-20 URLs recommended per agent
 ```
 
 **Guidelines:**
@@ -493,13 +493,13 @@ probes:
 When monitoring load-balanced applications, the probe will ping the resolved IP:
 
 ```yaml
+# probes.d/10-ping_webapp.yaml
 # Load balancer DNS may resolve to multiple IPs
-probes:
-  - name: webapp_ping_lb
-    type: ping_webapp
-    params:
-      url: "https://lb.example.com"
-      interval: 30
+- name: webapp_ping_lb
+  type: ping_webapp
+  params:
+    url: "https://lb.example.com"
+    interval: 30
 ```
 
 **Note:** The probe pings the first resolved IP address. For comprehensive monitoring of all backend servers, configure separate probes for each backend IP.
@@ -509,12 +509,12 @@ probes:
 Monitor CDN edge locations:
 
 ```yaml
-probes:
-  - name: webapp_ping_cdn
-    type: ping_webapp
-    params:
-      url: "https://cdn.example.com"
-      interval: 60
+# probes.d/10-ping_webapp.yaml
+- name: webapp_ping_cdn
+  type: ping_webapp
+  params:
+    url: "https://cdn.example.com"
+    interval: 60
 ```
 
 **Note:** CDN DNS may return different IPs based on agent location (GeoDNS). This allows you to monitor the CDN edge closest to your agent.
@@ -524,21 +524,21 @@ probes:
 Combine with Load WebApp probe for comprehensive monitoring:
 
 ```yaml
-probes:
-  # Network layer monitoring (ICMP)
-  - name: webapp_ping
-    type: ping_webapp
-    params:
-      url: "https://app.example.com"
-      interval: 30
+# probes.d/10-ping_webapp.yaml
+# Network layer monitoring (ICMP)
+- name: webapp_ping
+  type: ping_webapp
+  params:
+    url: "https://app.example.com"
+    interval: 30
 
-  # Application layer monitoring (HTTP/HTTPS)
-  - name: webapp_load
-    type: load_webapp
-    params:
-      url: "https://app.example.com"
-      interval: 60
-      method: "GET"
+# Application layer monitoring (HTTP/HTTPS)
+- name: webapp_load
+  type: load_webapp
+  params:
+    url: "https://app.example.com"
+    interval: 60
+    method: "GET"
 ```
 
 **Benefits:**

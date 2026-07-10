@@ -6,31 +6,32 @@ Ce document décrit les métriques collectées via la probe Redfish pour les sys
 
 ### Configuration simple (serveur unique)
 ```yaml
-probes:
-  redfish:  # Le nom de section définit le type de probe
-    enabled: true
+# probes.d/10-redfish.yaml — each file under probes.d/ is a YAML array of probes
+- name: redfish
+  type: redfish
+  params:
     endpoint: "https://your-server.example.com"
     username: "admin"
-    password: "password"
+    password: ${secret:redfish.password}   # auto-sealed on install
     interval: 300
 ```
 
 ### Configuration multiple (plusieurs serveurs)
 ```yaml
-probes:
-  storage_dell:  # Nom personnalisé
-    probe_type: redfish  # Type explicite requis pour multiples instances
-    enabled: true
+# probes.d/10-redfish.yaml
+- name: storage_dell
+  type: redfish
+  params:
     endpoint: "https://dell-server.example.com"
     username: "admin"
-    password: "password"
-    
-  storage_hpe:   # Nom personnalisé
-    probe_type: redfish  # Type explicite requis pour multiples instances  
-    enabled: true
+    password: ${secret:storage_dell.password}   # auto-sealed on install
+
+- name: storage_hpe
+  type: redfish
+  params:
     endpoint: "https://hpe-server.example.com"
     username: "admin"
-    password: "password"
+    password: ${secret:storage_hpe.password}   # auto-sealed on install
 ```
 
 **Note importante** : La probe détecte automatiquement le type de matériel (Dell, HPE, Lenovo, Cisco) via l'API Redfish et adapte la collecte de métriques en conséquence. Aucune configuration spécifique au vendor n'est requise.

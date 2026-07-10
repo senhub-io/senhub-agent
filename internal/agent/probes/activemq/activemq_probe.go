@@ -304,9 +304,9 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 		attribute string
 		scale     float64
 	}{
-		{"activemq.memory.usage", "MemoryPercentUsage", 0.01},
-		{"activemq.store.usage", "StorePercentUsage", 0.01},
-		{"activemq.temp.usage", "TempPercentUsage", 0.01},
+		{"activemq.memory.usage", "MemoryPercentUsage", 1.0},
+		{"activemq.store.usage", "StorePercentUsage", 1.0},
+		{"activemq.temp.usage", "TempPercentUsage", 1.0},
 	}
 
 	statusTags := p.baseTags("status")

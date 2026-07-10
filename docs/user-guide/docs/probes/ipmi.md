@@ -14,9 +14,9 @@ voltages and power supply status.
 ## Quick start
 
 ```yaml
-probes:
-  - name: ipmi
-    type: ipmi
+# probes.d/10-ipmi.yaml — each file under probes.d/ is a YAML array of probes
+- name: ipmi
+  type: ipmi
 ```
 
 For local sensors, no parameters are needed. The probe calls `ipmitool sdr`
@@ -29,7 +29,7 @@ against the local BMC.
 | `mode` | `local` | `local` (host's own BMC) or `remote` (poll a remote BMC over LAN) |
 | `remote_host` | — | IP or hostname of the remote BMC (required when `mode: remote`) |
 | `remote_user` | — | IPMI username for remote access |
-| `remote_password` | — | IPMI password for remote access |
+| `remote_password` | — | IPMI password for remote access — reference a stored secret via `${secret:<name>.remote_password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `remote_iface` | `lanplus` | IPMI LAN interface: `lanplus` (IPMI 2.0) or `lan` (IPMI 1.5) |
 | `include_types` | all | Restrict to these sensor types (e.g. `[Temperature, Fan]`) |
 | `exclude_names` | — | Regex patterns to skip specific sensor names |

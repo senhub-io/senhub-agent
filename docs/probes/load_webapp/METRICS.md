@@ -643,11 +643,11 @@ The `url` tag enables monitoring multiple URLs with a single probe configuration
 
 **Single URL monitoring:**
 ```yaml
-probes:
-  - name: webapp_monitor
-    type: load_webapp
-    params:
-      url: "https://www.example.com"
+# probes.d/10-load_webapp.yaml — each file under probes.d/ is a YAML array of probes
+- name: webapp_monitor
+  type: load_webapp
+  params:
+    url: "https://www.example.com"
 ```
 
 **Metrics generated:**
@@ -659,21 +659,21 @@ load_webapp_total_time{url="https://www.example.com"} 245.8
 
 **Multiple URL monitoring:**
 ```yaml
-probes:
-  - name: production_frontend
-    type: load_webapp
-    params:
-      url: "https://app.example.com"
+# probes.d/10-load_webapp.yaml
+- name: production_frontend
+  type: load_webapp
+  params:
+    url: "https://app.example.com"
 
-  - name: production_api
-    type: load_webapp
-    params:
-      url: "https://api.example.com/health"
+- name: production_api
+  type: load_webapp
+  params:
+    url: "https://api.example.com/health"
 
-  - name: staging_frontend
-    type: load_webapp
-    params:
-      url: "https://staging.example.com"
+- name: staging_frontend
+  type: load_webapp
+  params:
+    url: "https://staging.example.com"
 ```
 
 **Query examples:**

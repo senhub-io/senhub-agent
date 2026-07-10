@@ -462,6 +462,7 @@ metrics:
     unit: "#"
     category: "cluster"
     description: "Cluster health: 1=ok, 0=fail (cluster_state from INFO cluster; emitted only when cluster_enabled=1)"
+    lookup: "redis.cluster.state"
     otel:
       name: redis.cluster.state
       unit: "1"
@@ -620,3 +621,20 @@ metrics:
       name: redis.tracking.keys
       unit: "{key}"
       type: gauge
+
+tag_metadata:
+  instance:
+    type: resource
+    label: "Instance"
+  db:
+    type: resource
+    label: "Database"
+  cmd:
+    type: resource
+    label: "Command"
+  state:
+    type: category
+    label: "CPU State"
+  metric_type:
+    type: category
+    label: "Metric Category"

@@ -12,9 +12,9 @@ utilization and fan speed per detected GPU.
 ## Quick start
 
 ```yaml
-probes:
-  - name: nvidia
-    type: nvidia
+# probes.d/20-nvidia.yaml — each file under probes.d/ is a YAML array of probes
+- name: nvidia
+  type: nvidia
 ```
 
 No parameters are required. The probe auto-detects all GPUs visible to

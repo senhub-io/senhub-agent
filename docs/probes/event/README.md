@@ -7,11 +7,11 @@ The Event probe provides a custom HTTP endpoint for receiving application events
 ## Quick Start
 
 ```yaml
-probes:
-  - name: event
-    params:
-      port: 5656
-      endpoint: "/events"
+# probes.d/10-event.yaml — each file under probes.d/ is a YAML array of probes
+- name: event
+  params:
+    port: 5656
+    endpoint: "/events"
 ```
 
 ## Key Features
@@ -44,7 +44,7 @@ probes:
 |-----------|------|---------|-------------|
 | `port` | integer | 5656 | HTTP listening port |
 | `endpoint` | string | /events | API endpoint path |
-| `api_key` | string | - | Optional API key for authentication |
+| `api_key` | string | - | Optional API key for authentication — reference a stored secret via `${secret:event.api_key}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 
 ## Use Cases
 

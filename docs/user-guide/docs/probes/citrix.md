@@ -66,18 +66,18 @@ New-ADUser -Name "svc-monitoring" `
 Minimal configuration for single-site Citrix environment:
 
 ```yaml
-probes:
-  - name: "Production Citrix"
-    type: citrix
-    params:
-      base_url: "https://director.company.com"
-      interval: 120  # 2 minutes recommended
-      auth:
-        username: "DOMAIN\\svc-monitoring"  # Note: double backslash
-        password: "SecurePassword"
-      tls:
-        verify_ssl: true
-      timeout: 30
+# probes.d/10-citrix.yaml — each file under probes.d/ is a YAML array of probes
+- name: "production-citrix"
+  type: citrix
+  params:
+    base_url: "https://director.company.com"
+    interval: 120  # 2 minutes recommended
+    auth:
+      username: "DOMAIN\\svc-monitoring"  # Note: double backslash
+      password: ${secret:production-citrix.password}   # OS secret store; inline plaintext is auto-sealed on install
+    tls:
+      verify_ssl: true
+    timeout: 30
 ```
 
 **Important notes:**
@@ -90,25 +90,25 @@ probes:
 For multi-site deployments requiring site-specific metrics:
 
 ```yaml
-probes:
-  - name: "Citrix Paris Site"
-    type: citrix
-    params:
-      base_url: "https://director-paris.company.com"
+# probes.d/10-citrix.yaml
+- name: "citrix-paris-site"
+  type: citrix
+  params:
+    base_url: "https://director-paris.company.com"
 
-      delivery_controller:
-        url: "https://citrix-ddc-paris.company.com"
-        fallback_urls:
-          - "https://citrix-ddc-paris-backup.company.com"
-        site_filter: "SITE-PARIS"  # Filter to specific site
+    delivery_controller:
+      url: "https://citrix-ddc-paris.company.com"
+      fallback_urls:
+        - "https://citrix-ddc-paris-backup.company.com"
+      site_filter: "SITE-PARIS"  # Filter to specific site
 
-      interval: 120
-      auth:
-        username: "DOMAIN\\svc-monitoring"
-        password: "SecurePassword"
-      retry:
-        max_attempts: 3
-        backoff_factor: 2.0
+    interval: 120
+    auth:
+      username: "DOMAIN\\svc-monitoring"
+      password: ${secret:citrix-paris-site.password}   # OS secret store; inline plaintext is auto-sealed on install
+    retry:
+      max_attempts: 3
+      backoff_factor: 2.0
 ```
 
 **Site filtering benefits:**
@@ -125,7 +125,7 @@ probes:
 | `base_url` | string | Yes | - | Citrix Director URL (without `/Director` path) |
 | `interval` | integer | No | `120` | Metric collection interval (seconds) |
 | `auth.username` | string | Yes | - | Domain account (`DOMAIN\\username`) |
-| `auth.password` | string | Yes | - | Account password |
+| `auth.password` | string | Yes | - | Account password — reference via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 | `tls.verify_ssl` | boolean | No | `true` | Validate SSL certificates |
 | `timeout` | integer | No | `30` | API request timeout (seconds) |
 | `delivery_controller.url` | string | No | - | DDC URL for site filtering |

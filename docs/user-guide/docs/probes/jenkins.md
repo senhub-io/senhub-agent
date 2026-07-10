@@ -12,13 +12,13 @@ executor counts, and build queue depth.
 ## Quick start
 
 ```yaml
-probes:
-  - name: jenkins
-    type: jenkins
-    params:
-      endpoint: https://jenkins.example.com
-      username: monitor
-      api_token: 11abc...
+# probes.d/10-jenkins.yaml — each file under probes.d/ is a YAML array of probes
+- name: jenkins
+  type: jenkins
+  params:
+    endpoint: https://jenkins.example.com
+    username: monitor
+    api_token: ${secret:jenkins.api_token}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -27,7 +27,7 @@ probes:
 |---|---|---|
 | `endpoint` | required | Base URL of the Jenkins controller (e.g. `https://jenkins.example.com`) |
 | `username` | — | Jenkins username for API authentication |
-| `api_token` | — | Jenkins API token for the user (preferred over a password) |
+| `api_token` | — | Jenkins API token for the user (preferred over a password) — reference a stored secret via `${secret:<name>.api_token}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 
 ## Metrics
 

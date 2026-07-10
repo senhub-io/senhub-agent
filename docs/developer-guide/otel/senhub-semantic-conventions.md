@@ -1553,14 +1553,14 @@ out-of-band via l'API REST donc pas de machine-id, ce n'est pas un `host`.
 | `senhub.powerstore.hardware.components` | Gauge `{component}` | `senhub.powerstore.hardware.state` (`healthy`/`faulted`) | `/hardware.lifecycle_state` |
 | `senhub.powerstore.capacity.physical` | Gauge `By` | `senhub.powerstore.capacity.state` (`used`/`total`) | `POST /metrics/generate` (`physical_used`/`physical_total`) |
 | `senhub.powerstore.capacity.logical` | Gauge `By` | `senhub.powerstore.capacity.state` (`used`) | `logical_used` |
-| `senhub.powerstore.capacity.used_ratio` | Gauge `1` | — | `physical_used ÷ physical_total` |
+| `senhub.powerstore.capacity.used_ratio` | Gauge `1` | — | `physical_used ÷ physical_total` — émis en `%` (0-100) par la probe, ÷100 par le mapper (le PRTG affiche 42 %, l'OTLP exporte 0.42) |
 | `senhub.powerstore.data_reduction_ratio` | Gauge `1` | — | `data_reduction` |
 | `senhub.powerstore.efficiency_ratio` | Gauge `1` | — | `efficiency_ratio` |
 | `senhub.powerstore.iops` | Gauge `{operation}/s` | `senhub.powerstore.operation` (`read`/`write`/`total`) | `performance_metrics_by_cluster` (`avg_*_iops`) |
 | `senhub.powerstore.bandwidth` | Gauge `By/s` | `senhub.powerstore.operation` | `avg_*_bandwidth` |
-| `senhub.powerstore.latency` | Gauge `us` | `senhub.powerstore.operation` | `avg_*_latency` (microsecondes) |
+| `senhub.powerstore.latency` | Gauge `s` | `senhub.powerstore.operation` | `avg_*_latency` — la probe émet des ms, `value_scale: 0.001` → secondes (les vues PRTG/Nagios affichent des ms) |
 | `senhub.powerstore.io_size` | Gauge `By` | — | `avg_io_size` |
-| `senhub.powerstore.cpu.utilization` | Gauge `1` | — | `performance_metrics_by_appliance.avg_io_workload_cpu_utilization` (niveau appliance/node uniquement) |
+| `senhub.powerstore.cpu.utilization` | Gauge `1` | — | `performance_metrics_by_appliance.avg_io_workload_cpu_utilization`, émis en `%` (0-100) par la probe, ÷100 par le mapper |
 | `senhub.powerstore.replication.sessions` | Gauge `{session}` | — | `/replication_session` (0 si non configuré) |
 | `senhub.powerstore.volumes` | Gauge `{volume}` | — | `/volume` (total) |
 | `senhub.powerstore.volumes.not_ready` | Gauge `{volume}` | — | `/volume.state != Ready` |
@@ -1577,6 +1577,39 @@ tout autre état (`Degraded`, `Failed`, `Unavailable`, `PoweredOff`…) est `fau
 
 **Auth** : Basic pour les GET ; le `POST /metrics/generate` rejoue le CSRF
 `DELL-EMC-TOKEN` capturé sur le premier GET + le cookie de session.
+
+#### 4.19.2 Séries par-ressource (multi-instance)
+
+En plus des agrégats niveau cluster ci-dessus, la probe émet une série par
+ressource. Chaque série porte un tag ressource (`volume`, `appliance`, `node`,
+`drive`, `session`) **mappé en attribut OTel via `tag_to_attribute`** — sans quoi
+les instances s'écraseraient en OTLP/Prometheus (une seule série au lieu de N).
+
+| Métrique OTel | Type / unité | Attribut ressource (+ autres) | Source REST |
+|---|---|---|---|
+| `senhub.powerstore.volume.state` | Gauge `1` | `senhub.powerstore.volume.name` | `/volume.state` (Ready=1, autre=0) |
+| `senhub.powerstore.volume.logical_used` | Gauge `By` | `…volume.name` | `/volume.logical_used` |
+| `senhub.powerstore.volume.size` | Gauge `By` | `…volume.name` | `/volume.size` (provisioned) |
+| `senhub.powerstore.drive.state` | Gauge `1` | `senhub.powerstore.drive.name` | `/hardware` (type=Drive) lifecycle (Healthy=1) |
+| `senhub.powerstore.appliance.state` | Gauge `1` | `senhub.powerstore.appliance.name` | `/appliance` lifecycle (Healthy=1) |
+| `senhub.powerstore.appliance.capacity.physical` | Gauge `By` | `…appliance.name` + `capacity.state` (`used`/`total`) | `space_metrics_by_appliance` |
+| `senhub.powerstore.appliance.capacity.logical` | Gauge `By` | `…appliance.name` + `capacity.state` (`used`) | idem |
+| `senhub.powerstore.appliance.iops` | Gauge `{operation}/s` | `…appliance.name` + `operation` (`read`/`write`/`total`) | `performance_metrics_by_appliance` |
+| `senhub.powerstore.appliance.bandwidth` | Gauge `By/s` | `…appliance.name` + `operation` (`total`) | idem |
+| `senhub.powerstore.appliance.latency` | Gauge `s` | `…appliance.name` + `operation` (`total`) | idem (ms → s via value_scale) |
+| `senhub.powerstore.appliance.cpu.utilization` | Gauge `1` | `…appliance.name` | idem (émis en `%`, ÷100 par le mapper) |
+| `senhub.powerstore.node.cpu.utilization` | Gauge `1` | `senhub.powerstore.node.name` | `performance_metrics_by_node` (émis en `%`, ÷100 par le mapper) |
+| `senhub.powerstore.node.iops` | Gauge `{operation}/s` | `…node.name` + `operation` (`total`) | idem |
+| `senhub.powerstore.replication.state` | Gauge `1` | `senhub.powerstore.replication.session_id` | `/replication_session.state` (OK=2, transitional=1, error=0) |
+
+**Cardinalité** : la perf **par-volume** (IOPS/latence par volume) n'est PAS émise
+— elle coûterait un `POST /metrics/generate` par volume par cycle (voir issue de
+suivi). Seules la capacité + l'état par-volume sont exposés. La perf par-appliance
+et par-node réutilise la même forme `perfMetrics`/`spaceMetrics` (cardinalité
+faible : 1-4 appliances, 2-8 nœuds).
+
+> Note numérotation : deux sections portent `### 4.19` (snmp_trap et powerstore) —
+> collision historique à renuméroter lors d'une passe éditoriale.
 
 ## 6. Processus d'ajout d'une convention
 

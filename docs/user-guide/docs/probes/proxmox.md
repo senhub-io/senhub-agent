@@ -13,13 +13,13 @@ usage.
 ## Quick start
 
 ```yaml
-probes:
-  - name: proxmox
-    type: proxmox
-    params:
-      endpoint: https://pve.example.com:8006
-      token_id: monitor@pve!agent
-      token_secret: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# probes.d/10-proxmox.yaml — each file under probes.d/ is a YAML array of probes
+- name: proxmox
+  type: proxmox
+  params:
+    endpoint: https://pve.example.com:8006
+    token_id: monitor@pve!agent
+    token_secret: ${secret:proxmox.token_secret}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -28,7 +28,7 @@ probes:
 |---|---|---|
 | `endpoint` | required | Proxmox VE HTTPS base URL (e.g. `https://pve.example.com:8006`) |
 | `token_id` | required | PVE API token ID in `user@realm!tokenname` format |
-| `token_secret` | required | PVE API token secret UUID |
+| `token_secret` | required | PVE API token secret UUID — reference a stored secret via `${secret:<name>.token_secret}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 
 ## Metrics
 
