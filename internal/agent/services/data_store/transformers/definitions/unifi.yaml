@@ -173,3 +173,17 @@ metrics:
     tag_to_attribute:
       device_name: unifi.device.name
       site: unifi.site
+
+tag_metadata:
+  device_name:
+    type: resource
+    label: "Device"
+  device_type:
+    type: resource
+    label: "Device Type"
+  direction:
+    type: resource
+    label: "Direction"
+  metric_type:
+    type: category
+    label: "Metric Type"
