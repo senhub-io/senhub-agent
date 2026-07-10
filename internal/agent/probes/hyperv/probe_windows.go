@@ -299,10 +299,10 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 		}
 
 		if si, ok := sumByName[vm.Name]; ok {
-			// hyperv.vm.cpu.usage — CPUUsage is a percentage (0–100), normalise to 0–1.
+			// hyperv.vm.cpu.usage — CPUUsage is a percentage, emitted as 0–100.
 			points = append(points, data_store.DataPoint{
 				Name:      "hyperv.vm.cpu.usage",
-				Value:     float64(si.CPUUsage) / 100.0,
+				Value:     float64(si.CPUUsage),
 				Timestamp: ts,
 				Tags:      vmTags,
 			})
