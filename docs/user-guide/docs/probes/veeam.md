@@ -150,6 +150,13 @@ The Veeam account must have the **Backup Administrator** role. The REST API does
 
 Some Veeam installations have job types (e.g., HyperVBackup) that cause server-side errors. The agent handles this automatically by querying jobs per type.
 
+### Job type shows "CustomPlatform"
+
+Plugin-managed backups (Veeam Backup for **Nutanix AHV** and other external
+modules) are reported by Veeam's `/jobs/states` endpoint without a standard job
+type. The agent labels these as `CustomPlatform` (Veeam's own term) so they are
+grouped and filterable, rather than left as "Unknown".
+
 ### No job metrics
 
 If `hours_to_check` is too short, jobs that ran outside the time window are excluded. Increase the value (default: 24 hours).

@@ -107,7 +107,7 @@ All metrics carry a `cluster` attribute identifying the array. Metric families t
 |--------|------|-------------|
 | `senhub.powerstore.iops` | `{operation}/s` | I/O operations per second (read / write / total, by attribute) |
 | `senhub.powerstore.bandwidth` | `By/s` | Throughput (read / write / total, by attribute) |
-| `senhub.powerstore.latency` | `us` | I/O latency in microseconds (read / write / total, by attribute) |
+| `senhub.powerstore.latency` | `ms` | I/O latency in milliseconds (read / write / total, by attribute); exported as seconds over OTel |
 | `senhub.powerstore.io_size` | `By` | Average I/O size |
 | `senhub.powerstore.cpu.utilization` | `1` | CPU workload utilization — exported as a `0..1` ratio; the PRTG/Nagios pull views show it as a percentage |
 
@@ -148,12 +148,12 @@ OTLP/Prometheus and become filterable in the Web UI.
 | `senhub.powerstore.volume.logical_used` | `By` | `volume.name` | Logical data written before data reduction |
 | `senhub.powerstore.volume.size` | `By` | `volume.name` | Provisioned (thin) volume size |
 | `senhub.powerstore.drive.state` | `1` | `drive.name` | Drive lifecycle state (Healthy=1, else 0) |
-| `senhub.powerstore.appliance.state` | `1` | `appliance.name` | Appliance lifecycle state (Healthy=1, else 0) |
+| `senhub.powerstore.appliance.state` | `1` | `appliance.name` | Appliance health (1 = no faulted component, else 0) |
 | `senhub.powerstore.appliance.capacity.physical` | `By` | `appliance.name` | Physical capacity (used / total, by attribute) |
 | `senhub.powerstore.appliance.capacity.logical` | `By` | `appliance.name` | Logical used capacity |
 | `senhub.powerstore.appliance.iops` | `{operation}/s` | `appliance.name` | Appliance IOPS (read / write / total, by attribute) |
 | `senhub.powerstore.appliance.bandwidth` | `By/s` | `appliance.name` | Appliance throughput |
-| `senhub.powerstore.appliance.latency` | `us` | `appliance.name` | Appliance latency (microseconds) |
+| `senhub.powerstore.appliance.latency` | `ms` | `appliance.name` | Appliance latency (milliseconds) |
 | `senhub.powerstore.appliance.cpu.utilization` | `1` | `appliance.name` | Appliance CPU workload (ratio; `%` in pull views) |
 | `senhub.powerstore.node.cpu.utilization` | `1` | `node.name` | Node CPU workload (ratio; `%` in pull views) |
 | `senhub.powerstore.node.iops` | `{operation}/s` | `node.name` | Node total IOPS |
