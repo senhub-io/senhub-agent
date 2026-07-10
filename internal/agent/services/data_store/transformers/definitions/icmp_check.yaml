@@ -125,3 +125,13 @@ metrics:
     tag_to_attribute:
       target: icmp.target
       ip: icmp.target.ip
+
+tag_metadata:
+  target:
+    type: resource
+    label: "Target"
+  metric_type:
+    type: category
+    label: "Metric Type"
+    value_labels:
+      availability: "Availability"
