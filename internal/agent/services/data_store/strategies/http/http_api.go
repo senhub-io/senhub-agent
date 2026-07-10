@@ -39,15 +39,16 @@ func formatProbeDisplayName(probeName string) string {
 		return probeName
 	}
 
-	// Special cases for acronyms or specific probe names
+	// Acronym-only special cases for built-in probes; user-configured
+	// instance names are shown verbatim (a lowercase "powerstore-1" must
+	// not be displayed as "Powerstore-1" — the configured casing wins).
 	switch strings.ToLower(probeName) {
 	case "cpu":
 		return "CPU"
 	case "prtg":
 		return "PRTG"
 	default:
-		// Capitalize first letter, keep rest as-is
-		return strings.ToUpper(string(probeName[0])) + probeName[1:]
+		return probeName
 	}
 }
 

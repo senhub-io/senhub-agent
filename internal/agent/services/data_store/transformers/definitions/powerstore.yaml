@@ -341,13 +341,14 @@ metrics:
   - name: "powerstore_latency_read"
     channel: "latency_read"
     display_name: "Read Latency"
-    unit: "µs"
+    unit: "ms"
     category: "performance"
     multi_instance_labels: ["cluster"]
-    description: "Average read latency over the interval (microseconds)"
+    description: "Average read latency over the interval (milliseconds)"
     otel:
       name: senhub.powerstore.latency
-      unit: us
+      unit: s
+      value_scale: 0.001
       type: gauge
       attributes:
         senhub.powerstore.operation: read
@@ -355,13 +356,14 @@ metrics:
   - name: "powerstore_latency_write"
     channel: "latency_write"
     display_name: "Write Latency"
-    unit: "µs"
+    unit: "ms"
     category: "performance"
     multi_instance_labels: ["cluster"]
-    description: "Average write latency over the interval (microseconds)"
+    description: "Average write latency over the interval (milliseconds)"
     otel:
       name: senhub.powerstore.latency
-      unit: us
+      unit: s
+      value_scale: 0.001
       type: gauge
       attributes:
         senhub.powerstore.operation: write
@@ -369,13 +371,14 @@ metrics:
   - name: "powerstore_latency_total"
     channel: "latency_total"
     display_name: "Latency"
-    unit: "µs"
+    unit: "ms"
     category: "performance"
     multi_instance_labels: ["cluster"]
-    description: "Average overall latency over the interval (microseconds)"
+    description: "Average overall latency over the interval (milliseconds)"
     otel:
       name: senhub.powerstore.latency
-      unit: us
+      unit: s
+      value_scale: 0.001
       type: gauge
       attributes:
         senhub.powerstore.operation: total
@@ -474,13 +477,14 @@ metrics:
   - name: "powerstore_appliance_latency_total"
     channel: "appliance_latency_total"
     display_name: "{appliance} Latency"
-    unit: "µs"
+    unit: "ms"
     category: "performance"
     multi_instance_labels: ["cluster", "appliance"]
-    description: "Average overall latency on the appliance over the interval (microseconds)"
+    description: "Average overall latency on the appliance over the interval (milliseconds)"
     otel:
       name: senhub.powerstore.appliance.latency
-      unit: us
+      unit: s
+      value_scale: 0.001
       type: gauge
       attributes:
         senhub.powerstore.operation: total
