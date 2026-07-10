@@ -3,6 +3,7 @@ package http
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,9 +104,17 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"fan_name", "sensor_name",
 	},
 
-	// Storage-array probes — powerstore_alerts_active carries one series per
-	// severity; the other metrics are single-instance per array.
-	"powerstore": {"metric_type", "severity"},
+	// Storage-array probes — powerstore emits cluster aggregates plus per-resource
+	// series: one per alert severity, per volume, per appliance, per node, per
+	// drive and per replication session.
+	"powerstore": {
+		"metric_type", "severity",
+		"volume",    // per-volume state/capacity
+		"appliance", // per-appliance perf/capacity/state
+		"node",      // per-node performance
+		"drive",     // per-drive lifecycle state
+		"session",   // per-replication-session state
+	},
 
 	// Backup probes
 	"veeam": {
@@ -573,11 +582,16 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 
 		c.timeSeries[tsKey] = cachedMetric
 
-		// Update probe index
-		if c.probeIndex[probeName] == nil {
-			c.probeIndex[probeName] = make(map[string]bool)
+		// Update probe index. Key on the case-folded probe name so the pull
+		// endpoints (which look up a case-folded name — see GetProbeMetrics
+		// and HandleInfoTags) resolve a probe whatever the casing of its
+		// configured name. Storing verbatim here made any probe with an
+		// uppercase letter in its name invisible to PRTG/Nagios/tags (#625).
+		idxKey := strings.ToLower(probeName)
+		if c.probeIndex[idxKey] == nil {
+			c.probeIndex[idxKey] = make(map[string]bool)
 		}
-		c.probeIndex[probeName][tsKey] = true
+		c.probeIndex[idxKey][tsKey] = true
 
 		c.logger.Debug().
 			Str("ts_key", tsKey).
@@ -609,11 +623,12 @@ func (c *MetricCache) cleanup() {
 		metric := c.timeSeries[key]
 		delete(c.timeSeries, key)
 
-		// Update probe index
-		if probeKeys, exists := c.probeIndex[metric.ProbeName]; exists {
+		// Update probe index (case-folded key, mirroring the write path — #625)
+		idxKey := strings.ToLower(metric.ProbeName)
+		if probeKeys, exists := c.probeIndex[idxKey]; exists {
 			delete(probeKeys, key)
 			if len(probeKeys) == 0 {
-				delete(c.probeIndex, metric.ProbeName)
+				delete(c.probeIndex, idxKey)
 			}
 		}
 	}
@@ -645,7 +660,10 @@ func (c *MetricCache) GetProbeMetrics(probeName string) []CachedMetric {
 
 	metrics := make([]CachedMetric, 0)
 
-	if keys, exists := c.probeIndex[probeName]; exists {
+	// Case-fold the lookup so callers that pass a verbatim configured name
+	// (e.g. the Nagios checks path) resolve the same probe the pull handlers
+	// do — the index is keyed case-folded (#625).
+	if keys, exists := c.probeIndex[strings.ToLower(probeName)]; exists {
 		for key := range keys {
 			if metric, exists := c.timeSeries[key]; exists {
 				metrics = append(metrics, metric)
