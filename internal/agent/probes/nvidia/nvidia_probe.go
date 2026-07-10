@@ -191,14 +191,14 @@ func buildDatapoints(gpu nvidiaGPU, hostTags []tags.Tag, ts time.Time) []data_st
 
 	pts := []data_store.DataPoint{
 		{Name: "senhub.nvidia.up", Value: 1, Timestamp: ts, Tags: tag()},
-		{Name: "gpu.utilization", Value: float64(gpu.utilizationGPU / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.utilization", Value: gpu.utilizationGPU, Timestamp: ts, Tags: tag()},
 		{Name: "gpu.memory.used", Value: float64(gpu.memoryUsedMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
 		{Name: "gpu.memory.total", Value: float64(gpu.memoryTotalMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.memory.utilization", Value: float64(gpu.utilizationMemory / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.memory.utilization", Value: gpu.utilizationMemory, Timestamp: ts, Tags: tag()},
 		{Name: "gpu.temperature", Value: float64(gpu.temperatureGPU), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.encoder.utilization", Value: float64(gpu.utilizationEncoder / 100), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.decoder.utilization", Value: float64(gpu.utilizationDecoder / 100), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.fan.speed", Value: float64(gpu.fanSpeed / 100), Timestamp: ts, Tags: tag()},
+		{Name: "gpu.encoder.utilization", Value: gpu.utilizationEncoder, Timestamp: ts, Tags: tag()},
+		{Name: "gpu.decoder.utilization", Value: gpu.utilizationDecoder, Timestamp: ts, Tags: tag()},
+		{Name: "gpu.fan.speed", Value: gpu.fanSpeed, Timestamp: ts, Tags: tag()},
 	}
 	// Power metrics are optional: nvidia-smi reports "N/A" for cards that
 	// don't expose the power management interface (some laptop GPUs).

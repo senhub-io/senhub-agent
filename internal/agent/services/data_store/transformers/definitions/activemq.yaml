@@ -59,7 +59,7 @@ metrics:
     display_name: "ActiveMQ Memory Usage"
     unit: "%"
     category: "resource"
-    description: "Broker JVM memory usage as a ratio of the configured memory limit (0–1)"
+    description: "Broker JVM memory usage as a percentage of the configured memory limit (0–100)"
     otel:
       name: activemq.memory.usage
       unit: "1"
@@ -70,7 +70,7 @@ metrics:
     display_name: "ActiveMQ Store Usage"
     unit: "%"
     category: "resource"
-    description: "Persistent message store usage as a ratio of the configured store limit (0–1)"
+    description: "Persistent message store usage as a percentage of the configured store limit (0–100)"
     otel:
       name: activemq.store.usage
       unit: "1"
@@ -81,7 +81,7 @@ metrics:
     display_name: "ActiveMQ Temp Usage"
     unit: "%"
     category: "resource"
-    description: "Temporary storage usage as a ratio of the configured temp limit (0–1)"
+    description: "Temporary storage usage as a percentage of the configured temp limit (0–100)"
     otel:
       name: activemq.temp.usage
       unit: "1"
@@ -159,3 +159,26 @@ metrics:
     tag_to_attribute:
       destination: messaging.destination.name
       destination_type: messaging.destination_kind
+
+tag_metadata:
+  broker:
+    type: resource
+    label: "Broker"
+  destination:
+    type: resource
+    label: "Destination"
+    linked_categories: ["messaging"]
+  destination_type:
+    type: category
+    label: "Destination Type"
+    value_labels:
+      queue: "Queue"
+      topic: "Topic"
+    linked_categories: ["messaging"]
+  metric_type:
+    type: category
+    label: "Metric Type"
+    value_labels:
+      status: "Status"
+      overview: "Overview"
+      messaging: "Messaging"

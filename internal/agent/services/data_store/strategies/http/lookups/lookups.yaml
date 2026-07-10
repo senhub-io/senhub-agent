@@ -476,3 +476,142 @@ mssql.database.status:
       severity: "warning"
       description: "Database is being copied (Azure SQL)"
   desired_value: 0
+
+# ==============================================================================
+# DELL POWERSTORE LOOKUPS
+# ==============================================================================
+# The probe encodes both codes itself (not raw Dell enums), so the mappings
+# below are authored from the agent's own source of truth.
+
+senhub.powerstore.up:
+  description: "PowerStore Array Reachability"
+  type: status
+  source: "senhub-agent probes/powerstore/metrics.go"
+  mappings:
+    0:
+      text: "DOWN"
+      severity: "error"
+      description: "Array / management API did not answer this collect cycle"
+    1:
+      text: "UP"
+      severity: "ok"
+      description: "Array management API answered this collect cycle"
+  desired_value: 1
+
+senhub.powerstore.cluster.state:
+  description: "PowerStore Cluster Configuration State"
+  type: status
+  source: "senhub-agent probes/powerstore/metrics.go"
+  mappings:
+    0:
+      text: "UNKNOWN"
+      severity: "warning"
+      description: "Cluster state is neither Configured nor Unconfigured"
+    1:
+      text: "UNCONFIGURED"
+      severity: "warning"
+      description: "Cluster has not completed initial configuration"
+    2:
+      text: "CONFIGURED"
+      severity: "ok"
+      description: "Cluster is configured and operational"
+  desired_value: 2
+
+# ==============================================================================
+# REDIS / VALKEY LOOKUPS
+# ==============================================================================
+# The probe encodes the INFO "role" field itself (not a raw vendor enum):
+# master=1, slave/replica=0, anything else (sentinel/unknown) falls through
+# to the -1 default.
+
+redis.replication.role:
+  description: "Redis Replication Role"
+  type: enum
+  source: "senhub-agent probes/redis/redis_probe.go (role → master=1, slave/replica=0, else=-1)"
+  mappings:
+    -1:
+      text: "Unknown"
+      severity: "warning"
+      description: "Role could not be determined (e.g. sentinel or missing INFO role field)"
+    0:
+      text: "Replica"
+      severity: "ok"
+      description: "Instance is a replica (slave) of a master"
+    1:
+      text: "Master"
+      severity: "ok"
+      description: "Instance is a master accepting writes"
+  desired_value: 1
+
+# ==============================================================================
+# SEARCH / DB / DISK HEALTH ENUMS (audit follow-up)
+# ==============================================================================
+# Values encoded by the probes themselves (not vendor codes).
+
+elasticsearch.cluster.health:
+  description: "Elasticsearch Cluster Health"
+  type: status
+  source: "senhub-agent probes/elasticsearch statusToFloat()"
+  mappings:
+    0:
+      text: "RED"
+      severity: "error"
+      description: "One or more primary shards unassigned"
+    1:
+      text: "YELLOW"
+      severity: "warning"
+      description: "All primaries assigned, one or more replicas unassigned"
+    2:
+      text: "GREEN"
+      severity: "ok"
+      description: "All shards assigned"
+  desired_value: 2
+
+opensearch.cluster.health:
+  description: "OpenSearch Cluster Health"
+  type: status
+  source: "senhub-agent probes/opensearch statusToFloat()"
+  mappings:
+    0:
+      text: "RED"
+      severity: "error"
+      description: "One or more primary shards unassigned"
+    1:
+      text: "YELLOW"
+      severity: "warning"
+      description: "All primaries assigned, one or more replicas unassigned"
+    2:
+      text: "GREEN"
+      severity: "ok"
+      description: "All shards assigned"
+  desired_value: 2
+
+redis.cluster.state:
+  description: "Redis Cluster State"
+  type: status
+  source: "senhub-agent probes/redis (cluster_state == ok)"
+  mappings:
+    0:
+      text: "FAIL"
+      severity: "error"
+      description: "Cluster cannot serve (slots uncovered or quorum lost)"
+    1:
+      text: "OK"
+      severity: "ok"
+      description: "Cluster is operational"
+  desired_value: 1
+
+smart.disk.health:
+  description: "S.M.A.R.T. Overall Health"
+  type: status
+  source: "senhub-agent probes/smart (smart_status.passed)"
+  mappings:
+    0:
+      text: "FAILED"
+      severity: "error"
+      description: "Drive reports SMART overall-health FAILED"
+    1:
+      text: "PASSED"
+      severity: "ok"
+      description: "Drive reports SMART overall-health PASSED"
+  desired_value: 1

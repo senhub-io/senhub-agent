@@ -380,8 +380,8 @@ func (p *smartProbe) buildNVMePoints(device string, r smartctlOutput, hostTags [
 	nvme := r.NvmeSmartHealthInformationLog
 	return []data_store.DataPoint{
 		{Name: "smart.disk.health", Value: health, Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.available_spare", Value: float64(nvme.AvailableSpare / 100), Timestamp: ts, Tags: base},
-		{Name: "smart.nvme.percentage_used", Value: float64(nvme.PercentageUsed / 100), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.available_spare", Value: float64(nvme.AvailableSpare), Timestamp: ts, Tags: base},
+		{Name: "smart.nvme.percentage_used", Value: float64(nvme.PercentageUsed), Timestamp: ts, Tags: base},
 		{Name: "smart.nvme.data_units_read", Value: float64(nvme.DataUnitsRead), Timestamp: ts, Tags: base},
 		{Name: "smart.nvme.data_units_written", Value: float64(nvme.DataUnitsWritten), Timestamp: ts, Tags: base},
 		{Name: "smart.nvme.media_errors", Value: float64(nvme.MediaErrors), Timestamp: ts, Tags: base},

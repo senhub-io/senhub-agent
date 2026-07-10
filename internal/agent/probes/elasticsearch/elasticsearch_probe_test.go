@@ -153,8 +153,8 @@ func TestCollect_Up(t *testing.T) {
 	if byName["elasticsearch.jvm.memory.heap.used"] != float64(512*1024*1024) {
 		t.Errorf("elasticsearch.jvm.memory.heap.used = %v, want %v", byName["elasticsearch.jvm.memory.heap.used"], float64(512*1024*1024))
 	}
-	if byName["elasticsearch.process.cpu.usage"] != 0.42 {
-		t.Errorf("elasticsearch.process.cpu.usage = %v, want 0.42", byName["elasticsearch.process.cpu.usage"])
+	if byName["elasticsearch.process.cpu.usage"] != 42 {
+		t.Errorf("elasticsearch.process.cpu.usage = %v, want 42", byName["elasticsearch.process.cpu.usage"])
 	}
 }
 
