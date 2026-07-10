@@ -18,14 +18,14 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 ## Quick start
 
 ```yaml
-probes:
-  - name: trap-receiver
-    type: snmp_trap
-    params:
-      bind_address: "0.0.0.0:162"
-      community: "${env:SNMP_COMMUNITY}"
-      mib_paths:
-        - /etc/senhub-agent/mibs
+# probes.d/10-snmp-trap.yaml — each file under probes.d/ is a YAML array of probes
+- name: trap-receiver
+  type: snmp_trap
+  params:
+    bind_address: "0.0.0.0:162"
+    community: ${secret:trap-receiver.community}   # OS secret store; inline plaintext is auto-sealed on install
+    mib_paths:
+      - /etc/senhub-agent/mibs
 ```
 
 ## Parameters
@@ -34,7 +34,7 @@ probes:
 |---|---|---|
 | `bind_address` | `127.0.0.1:162` | UDP listen address. Loopback by default — receiving traps from network devices requires an explicit address (e.g. `"0.0.0.0:162"`). Port 162 is privileged: run as root or grant `CAP_NET_BIND_SERVICE`, or move to a port above 1024 |
 | `version` | `v2c` | `v2c` or `v3` |
-| `community` | empty | v2c community check. Empty accepts any community — always set it on production receivers |
+| `community` | empty | v2c community check. Empty accepts any community — always set it on production receivers. Reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `mib_paths` | `[]` | Local directories or files of MIB modules for OID-to-name resolution |
 | `v3` | none | SNMPv3 USM users (see below) |
 

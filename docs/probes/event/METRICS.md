@@ -477,21 +477,19 @@ alerts:
 
 **SIEM Integration**:
 ```yaml
-storage:
-  - name: event
-    params:
-      endpoint: "https://siem.company.com/api/events"
-      auth_token: "${SIEM_TOKEN}"
-      batch_size: 100
+# strategies.d/30-event.yaml — one strategy per file, keyed by strategy name
+event:
+  endpoint: "https://siem.company.com/api/events"
+  auth_token: ${secret:event.auth_token}   # auto-sealed on install
+  batch_size: 100
 ```
 
 **Database Storage**:
 ```yaml
-storage:
-  - name: http
-    params:
-      endpoint: "https://events.company.com/ingest"
-      buffer_size: 1000
+# strategies.d/40-http.yaml
+http:
+  endpoint: "https://events.company.com/ingest"
+  buffer_size: 1000
 ```
 
 ### Performance Tuning

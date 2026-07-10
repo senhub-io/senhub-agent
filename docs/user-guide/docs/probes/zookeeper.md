@@ -13,12 +13,12 @@ state (leader/follower/observer).
 ## Quick start
 
 ```yaml
-probes:
-  - name: zookeeper
-    type: zookeeper
-    params:
-      host: localhost
-      port: 2181
+# probes.d/10-zookeeper.yaml — each file under probes.d/ is a YAML array of probes
+- name: zookeeper
+  type: zookeeper
+  params:
+    host: localhost
+    port: 2181
 ```
 
 ## Parameters

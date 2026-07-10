@@ -15,14 +15,14 @@ push (OTLP) and pull (Prometheus) sources.
 ## Quick start
 
 ```yaml
-probes:
-  - name: exporters
-    type: prometheus_scrape
-    params:
-      targets:
-        - "http://localhost:9100/metrics"      # node_exporter
-        - "http://10.0.0.5:9117/metrics"       # appliance exporter
-      interval: 60
+# probes.d/10-prometheus-scrape.yaml — each file under probes.d/ is a YAML array of probes
+- name: exporters
+  type: prometheus_scrape
+  params:
+    targets:
+      - "http://localhost:9100/metrics"      # node_exporter
+      - "http://10.0.0.5:9117/metrics"       # appliance exporter
+    interval: 60
 ```
 
 ## Parameters
@@ -33,7 +33,7 @@ probes:
 | `interval` | `60` | Seconds between scrape cycles |
 | `timeout` | `10` | Per-target budget in seconds |
 | `metric_match` | none | Regexp filter on metric family names; non-matching families are skipped |
-| `bearer_token` | none | Sent as `Authorization: Bearer ...`; use `${env:...}` substitution |
+| `bearer_token` | none | Sent as `Authorization: Bearer ...`; reference a stored secret via `${secret:<name>.bearer_token}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `insecure_skip_verify` | `false` | Accept self-signed exporter certificates |
 
 Targets are scraped in parallel (bounded). An unreachable exporter is

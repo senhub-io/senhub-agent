@@ -432,7 +432,7 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.process.cpu.usage",
-				Value:     float64(node.Process.CPU.Percent) / 100,
+				Value:     float64(node.Process.CPU.Percent),
 				Timestamp: ts,
 				Tags:      processTags,
 			},

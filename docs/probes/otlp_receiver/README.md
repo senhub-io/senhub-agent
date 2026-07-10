@@ -10,6 +10,7 @@ SenHub cloud, …). Part of the **Free tier** (universal collection).
 ## Configuration
 
 ```yaml
+# probes.d/20-otlp_receiver.yaml — each file under probes.d/ is a YAML array of probes
 - type: otlp_receiver
   name: edge_in
   params:
@@ -51,15 +52,17 @@ The ingested metrics flow to all configured storages. Typical edge-collector
 setup — receive OTLP and forward it on (OTLP re-export):
 
 ```yaml
-storage:
-  - name: otlp
-    params:
-      endpoint: "central-collector:4317"
-      signals: { metrics: { enabled: true } }
-probes:
-  - type: otlp_receiver
-    name: edge_in
-    params: { protocol: grpc, address: "0.0.0.0:4317" }
+# strategies.d/40-otlp.yaml
+otlp:
+  endpoint: "central-collector:4317"
+  signals: { metrics: { enabled: true } }
+```
+
+```yaml
+# probes.d/20-otlp_receiver.yaml
+- type: otlp_receiver
+  name: edge_in
+  params: { protocol: grpc, address: "0.0.0.0:4317" }
 ```
 
 They also surface on the Prometheus pull endpoint (`/api/<key>/prometheus/metrics`)

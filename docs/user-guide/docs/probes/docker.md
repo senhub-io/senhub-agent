@@ -12,9 +12,9 @@ running state. No external client library is required.
 ## Quick start
 
 ```yaml
-probes:
-  - name: docker
-    type: docker
+# probes.d/10-docker.yaml — each file under probes.d/ is a YAML array of probes
+- name: docker
+  type: docker
 ```
 
 The probe connects to the local Docker socket at `/var/run/docker.sock` by

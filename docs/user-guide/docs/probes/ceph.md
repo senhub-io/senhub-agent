@@ -12,13 +12,13 @@ I/O statistics.
 ## Quick start
 
 ```yaml
-probes:
-  - name: ceph
-    type: ceph
-    params:
-      endpoint: https://localhost:8443
-      username: admin
-      password: changeme
+# probes.d/10-ceph.yaml — each file under probes.d/ is a YAML array of probes
+- name: ceph
+  type: ceph
+  params:
+    endpoint: https://localhost:8443
+    username: admin
+    password: ${secret:ceph.password}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
 ## Parameters
@@ -27,7 +27,7 @@ probes:
 |---|---|---|
 | `endpoint` | `https://localhost:8443` | Base URL of the Ceph Manager Dashboard / REST API |
 | `username` | — | Ceph dashboard username (required) |
-| `password` | — | Ceph dashboard password (required) |
+| `password` | — | Ceph dashboard password (required) — reference via `${secret:ceph.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 
 ## Metrics
 

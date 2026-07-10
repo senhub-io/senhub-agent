@@ -30,16 +30,16 @@ The probe automatically detects the hardware vendor via the Redfish API and adap
 ## Basic Configuration
 
 ```yaml
-probes:
-  - name: "Hardware Server01"
-    type: redfish
-    params:
-      base_url: "https://idrac-server01.company.com"
-      username: "monitoring"
-      password: "SecurePassword123"
-      interval: 300
-      tls:
-        verify_ssl: false
+# probes.d/10-redfish.yaml — each file under probes.d/ is a YAML array of probes
+- name: "hardware-server01"
+  type: redfish
+  params:
+    base_url: "https://idrac-server01.company.com"
+    username: "monitoring"
+    password: ${secret:hardware-server01.password}   # OS secret store; inline plaintext is auto-sealed on install
+    interval: 300
+    tls:
+      verify_ssl: false
 ```
 
 **Important notes:**
@@ -52,26 +52,26 @@ probes:
 Monitor multiple hardware targets with separate probe instances:
 
 ```yaml
-probes:
-  - name: "Dell Storage ME5024"
-    type: redfish
-    params:
-      base_url: "https://dell-me5024.company.com"
-      username: "admin"
-      password: "StoragePassword"
-      interval: 300
-      tls:
-        verify_ssl: false
+# probes.d/10-redfish.yaml
+- name: "dell-storage-me5024"
+  type: redfish
+  params:
+    base_url: "https://dell-me5024.company.com"
+    username: "admin"
+    password: ${secret:dell-storage-me5024.password}   # OS secret store; inline plaintext is auto-sealed on install
+    interval: 300
+    tls:
+      verify_ssl: false
 
-  - name: "HPE ProLiant DL380"
-    type: redfish
-    params:
-      base_url: "https://ilo-dl380.company.com"
-      username: "monitoring"
-      password: "ServerPassword"
-      interval: 300
-      tls:
-        verify_ssl: false
+- name: "hpe-proliant-dl380"
+  type: redfish
+  params:
+    base_url: "https://ilo-dl380.company.com"
+    username: "monitoring"
+    password: ${secret:hpe-proliant-dl380.password}   # OS secret store; inline plaintext is auto-sealed on install
+    interval: 300
+    tls:
+      verify_ssl: false
 ```
 
 # Metrics Collected

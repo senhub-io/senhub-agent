@@ -12,12 +12,12 @@ cache hit/miss ratios, command throughput and eviction counters.
 ## Quick start
 
 ```yaml
-probes:
-  - name: memcached
-    type: memcached
-    params:
-      host: localhost
-      port: 11211
+# probes.d/10-memcached.yaml — each file under probes.d/ is a YAML array of probes
+- name: memcached
+  type: memcached
+  params:
+    host: localhost
+    port: 11211
 ```
 
 ## Parameters
