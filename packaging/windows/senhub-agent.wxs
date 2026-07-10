@@ -68,10 +68,14 @@
       present (MSI_MARKER), the box is clean (no EXISTING_SERVICE), or the
       operator opted into migration (ADOPT). Otherwise stop with a message
       rather than fail obscurely on ServiceInstall.
+
+      The message shows in a single-button (OK) dialog that aborts setup, so
+      it states plainly that setup is stopping and gives two copy-pasteable
+      command-line actions rather than an in-dialog "choose an option".
     -->
     <Launch
         Condition="Installed OR MSI_MARKER OR NOT EXISTING_SERVICE OR ADOPT"
-        Message="An existing SenHub Agent was found on this machine: the 'senhub-agent' Windows service is already installed, but it was not installed by this package. To continue, choose one option. Option 1 — uninstall the existing agent, then run this installer again. Option 2 — re-run this installer with the ADOPT=1 property (for example: msiexec /i senhub-agent-0.5.0-amd64.msi ADOPT=1) to take it over and manage it from now on through this installer. In both cases your configuration in %ProgramData%\SenHub is preserved." />
+        Message="SenHub Agent is already installed on this machine by another method (not by this installer), so setup will now stop. Do one of these from an elevated command prompt, then run setup again: (1) To keep the current agent and let this installer manage it from now on, re-run setup with ADOPT=1 — for example: msiexec /i senhub-agent.msi ADOPT=1. (2) Or remove the current agent first — run: sc stop senhub-agent  and then  sc delete senhub-agent. Either way, your configuration in %ProgramData%\SenHub is preserved." />
 
     <!-- ============================================================ -->
     <!-- Parametric configuration via public MSI properties.          -->
