@@ -81,6 +81,7 @@ metrics:
     category: "hardware"
     multi_instance_labels: ["cluster", "drive"]
     description: "Drive lifecycle state (Healthy=1, otherwise 0)"
+    lookup: "senhub.powerstore.health"
     otel:
       name: senhub.powerstore.drive.state
       unit: "1"
@@ -97,7 +98,8 @@ metrics:
     unit: "#"
     category: "hardware"
     multi_instance_labels: ["cluster", "appliance"]
-    description: "Appliance lifecycle state (Healthy=1, otherwise 0)"
+    description: "Appliance health (1 = no faulted component, 0 = a faulted component)"
+    lookup: "senhub.powerstore.health"
     otel:
       name: senhub.powerstore.appliance.state
       unit: "1"
@@ -563,6 +565,7 @@ metrics:
     category: "replication"
     multi_instance_labels: ["cluster", "session"]
     description: "Replication session state (OK=2, transitional=1, error=0)"
+    lookup: "senhub.powerstore.replication.state"
     otel:
       name: senhub.powerstore.replication.state
       unit: "1"
@@ -607,6 +610,7 @@ metrics:
     category: "volumes"
     multi_instance_labels: ["cluster", "volume"]
     description: "Volume operational state (Ready=1, otherwise 0)"
+    lookup: "senhub.powerstore.volume.state"
     otel:
       name: senhub.powerstore.volume.state
       unit: "1"
