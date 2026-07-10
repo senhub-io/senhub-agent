@@ -5,4 +5,4 @@
 <div class="rn-filter"></div>
 
 
-_No changes recorded yet since 0.5.1._
+_No changes recorded yet since 0.5.2._
