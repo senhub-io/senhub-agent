@@ -615,3 +615,57 @@ smart.disk.health:
       severity: "ok"
       description: "Drive reports SMART overall-health PASSED"
   desired_value: 1
+
+# ==============================================================================
+# DELL POWERSTORE PER-RESOURCE STATE ENUMS (audit follow-up)
+# ==============================================================================
+# Values encoded by the powerstore probe (metrics.go), not raw Dell codes.
+
+senhub.powerstore.health:
+  description: "PowerStore Component Health (drive / appliance)"
+  type: status
+  source: "senhub-agent probes/powerstore lifecycleStateValue / applianceHealth"
+  mappings:
+    0:
+      text: "FAULTED"
+      severity: "error"
+      description: "At least one faulted component (not Healthy)"
+    1:
+      text: "HEALTHY"
+      severity: "ok"
+      description: "No faulted component"
+  desired_value: 1
+
+senhub.powerstore.volume.state:
+  description: "PowerStore Volume State"
+  type: status
+  source: "senhub-agent probes/powerstore volumeStateValue"
+  mappings:
+    0:
+      text: "NOT READY"
+      severity: "warning"
+      description: "Volume is not in the Ready state"
+    1:
+      text: "READY"
+      severity: "ok"
+      description: "Volume is Ready"
+  desired_value: 1
+
+senhub.powerstore.replication.state:
+  description: "PowerStore Replication Session State"
+  type: status
+  source: "senhub-agent probes/powerstore replicationStateValue"
+  mappings:
+    0:
+      text: "ERROR"
+      severity: "error"
+      description: "Replication session in an error state"
+    1:
+      text: "TRANSITIONAL"
+      severity: "warning"
+      description: "Synchronizing / paused / failed-over"
+    2:
+      text: "OK"
+      severity: "ok"
+      description: "Replication operating normally"
+  desired_value: 2
