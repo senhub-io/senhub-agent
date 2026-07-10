@@ -30,7 +30,7 @@ metrics:
     display_name: "Proxmox Node {proxmox.node} CPU"
     unit: "%"
     category: "cpu"
-    description: "CPU utilization ratio of the Proxmox node (0–1)"
+    description: "CPU utilization of the Proxmox node in percent (0–100)"
     otel:
       name: proxmox.node.cpu.utilization
       unit: "1"
@@ -84,7 +84,7 @@ metrics:
     display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) CPU"
     unit: "%"
     category: "cpu"
-    description: "CPU utilization ratio of the VM or LXC container (0–1)"
+    description: "CPU utilization of the VM or LXC container in percent (0–100)"
     otel:
       name: proxmox.vm.cpu.utilization
       unit: "1"
@@ -236,3 +236,20 @@ metrics:
     tag_to_attribute:
       proxmox.storage: proxmox.storage
       proxmox.node: proxmox.node
+
+tag_metadata:
+  proxmox.node:
+    type: resource
+    label: "Node"
+  proxmox.vmid:
+    type: resource
+    label: "VM ID"
+  proxmox.vm.name:
+    type: resource
+    label: "VM Name"
+  proxmox.storage:
+    type: resource
+    label: "Storage Pool"
+  metric_type:
+    type: category
+    label: "Metric Type"

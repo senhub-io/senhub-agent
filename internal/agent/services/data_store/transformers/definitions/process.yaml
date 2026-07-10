@@ -13,7 +13,7 @@ multi_instance_labels: ["process.pid", "process.name"]
 
 metrics:
   # ─────────────────────────────────────────────────────────────────────────
-  # CPU utilization per process (ratio 0-1)
+  # CPU utilization per process (0-100 %; OTel mapper derives the 0-1 ratio)
   # OTel: process.cpu.utilization (gauge, 1)
   # ─────────────────────────────────────────────────────────────────────────
   - name: "process.cpu.utilization"
@@ -22,7 +22,7 @@ metrics:
     unit: "%"
     category: "cpu"
     multi_instance_labels: ["process.name", "process.pid"]
-    description: "CPU utilization ratio (0-1) for the process averaged over the last collection interval"
+    description: "CPU utilization percentage (0-100) for the process averaged over the last collection interval"
     otel:
       name: process.cpu.utilization
       unit: "1"

@@ -498,28 +498,23 @@ func (f *FormatConverter) transformMetricNameForPRTGWithLookup(key string, metri
 			}
 		}
 
-		// Get lookup from transformer for health and status metrics
+		// Attach the value lookup whenever the transformer defines one for
+		// this metric. The presence of a `lookup:` in the definition is the
+		// authoritative signal — not the metric name. A lookup-bearing metric
+		// whose name lacks health keywords (e.g. redis.replication.role,
+		// senhub.db.up) must still render its lookup in PRTG, not a raw number.
 		if lookupName := transformer.GetLookup(metric.MetricName); lookupName != "" {
-			// Check if this is a health/status metric that should use lookups
-			if f.isHealthStatusMetric(metric.MetricName, metric.Tags) {
-				valueLookup = lookupName
-				f.logger.Debug().
-					Str("metric", metric.MetricName).
-					Str("lookup", lookupName).
-					Msg("Applied lookup for health/status metric")
-			} else {
-				f.logger.Debug().
-					Str("metric", metric.MetricName).
-					Str("lookup", lookupName).
-					Msg("Lookup found but metric not identified as health/status metric")
-			}
-		} else {
-			// Check if this might be a health metric that should have a lookup
-			if f.isHealthStatusMetric(metric.MetricName, metric.Tags) {
-				f.logger.Debug().
-					Str("metric", metric.MetricName).
-					Msg("Health/status metric detected but no lookup found in transformer")
-			}
+			valueLookup = lookupName
+			f.logger.Debug().
+				Str("metric", metric.MetricName).
+				Str("lookup", lookupName).
+				Msg("Applied value lookup for metric")
+		} else if f.isHealthStatusMetric(metric.MetricName, metric.Tags) {
+			// A health-named metric with no lookup is a definition gap worth
+			// surfacing, but not an error — many health metrics are numeric.
+			f.logger.Debug().
+				Str("metric", metric.MetricName).
+				Msg("Health/status metric detected but no lookup found in transformer")
 		}
 	}
 
