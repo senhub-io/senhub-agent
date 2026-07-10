@@ -140,3 +140,48 @@ func buildChannelFor(converter *FormatConverter, probeName, metricName, displayU
 	}
 	return converter.transformToPRTGChannel(metricName, metric)
 }
+
+// TestPRTGValueLookup_AttachedWheneverDefined guards the fix that a metric gets
+// its PRTG valueLookup whenever the transformer defines a `lookup:` for it —
+// not only when the metric name happens to contain a health keyword. A
+// lookup-bearing metric with a plain name (redis.replication.role) used to lose
+// its lookup and render as a raw number.
+func TestPRTGValueLookup_AttachedWheneverDefined(t *testing.T) {
+	converter, _ := newSemanticsHarness(t)
+
+	cases := []struct {
+		name       string
+		probe      string
+		metric     string
+		wantLookup string
+	}{
+		{
+			name:       "non-health name with a defined lookup still gets it",
+			probe:      "redis",
+			metric:     "redis.replication.role",
+			wantLookup: "redis.replication.role",
+		},
+		{
+			name:       "health-named metric with a lookup keeps working",
+			probe:      "netscaler",
+			metric:     "netscaler.servicegroup.state",
+			wantLookup: "netscaler.servicegroup.state",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			channel := buildChannelFor(converter, tc.probe, tc.metric, "#")
+			if channel == nil {
+				t.Fatalf("nil channel for %s/%s", tc.probe, tc.metric)
+			}
+			if channel.ValueLookup != tc.wantLookup {
+				t.Errorf("%s/%s: ValueLookup=%q, want %q", tc.probe, tc.metric, channel.ValueLookup, tc.wantLookup)
+			}
+			// Lookup channels must not carry a Float — PRTG renders text.
+			if channel.Float != nil {
+				t.Errorf("%s/%s: lookup channel must leave Float nil, got %v", tc.probe, tc.metric, *channel.Float)
+			}
+		})
+	}
+}
