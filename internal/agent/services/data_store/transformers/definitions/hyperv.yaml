@@ -5,7 +5,7 @@ host_level: true
 multi_instance_labels: ["hyperv.vm.name", "state"]
 
 # FREE tier — Hyper-V VM monitoring via WMI root\virtualization\v2 (Windows only).
-# Metrics are OTel-first: the probe emits CPU as a fraction (0–1),
+# Metrics are OTel-first: the probe emits CPU as a percentage (0–100),
 # memory as bytes. PRTG display_name uses {hyperv.vm.name} for per-VM channels.
 
 metrics:
@@ -26,7 +26,7 @@ metrics:
     unit: "%"
     multi_instance_labels: ["hyperv.vm.name"]
     category: "cpu"
-    description: "CPU utilisation of the virtual machine (0–1 fraction)"
+    description: "CPU utilisation of the virtual machine in percent (0–100)"
     otel:
       name: hyperv.vm.cpu.usage
       unit: "1"

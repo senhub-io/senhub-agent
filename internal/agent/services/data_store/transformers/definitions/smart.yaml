@@ -19,6 +19,7 @@ metrics:
     unit: "#"
     category: "health"
     description: "1 when the S.M.A.R.T. overall assessment PASSED, 0 when FAILED"
+    lookup: "smart.disk.health"
     otel:
       name: smart.disk.health
       unit: "1"
@@ -120,7 +121,7 @@ metrics:
     display_name: "NVMe Available Spare {smart.device}"
     unit: "%"
     category: "health"
-    description: "Percentage of spare capacity remaining (ratio 0-1 on the wire; <threshold triggers warning)"
+    description: "Percentage of spare capacity remaining (0-100; <threshold triggers warning)"
     otel:
       name: smart.nvme.available_spare
       unit: "1"
@@ -134,7 +135,7 @@ metrics:
     display_name: "NVMe Wear Level {smart.device}"
     unit: "%"
     category: "health"
-    description: "Wear indicator: fraction of rated lifetime consumed (ratio 0-1 on the wire)"
+    description: "Wear indicator: percentage of rated lifetime consumed (0-100)"
     otel:
       name: smart.nvme.percentage_used
       unit: "1"
@@ -198,3 +199,11 @@ metrics:
     tag_to_attribute:
       smart.device: smart.disk.device
       smart.type: smart.disk.type
+
+tag_metadata:
+  smart.device:
+    type: resource
+    label: "Disk"
+  smart.type:
+    type: resource
+    label: "Type"

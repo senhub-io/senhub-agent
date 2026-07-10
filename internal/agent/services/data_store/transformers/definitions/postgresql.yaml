@@ -91,7 +91,7 @@ metrics:
     display_name: "Connections Used %"
     unit: "%"
     category: "connections"
-    description: "(active + idle + idle_in_transaction) / max_connections, ratio"
+    description: "(active + idle + idle_in_transaction) / max_connections, percent (0-100)"
     otel:
       name: senhub.db.connection.utilization
       unit: "1"
@@ -291,4 +291,24 @@ metrics:
       name: senhub.db.postgresql.replica.io.running
       unit: "1"
       type: gauge
+
+tag_metadata:
+  database:
+    type: resource
+    label: "Database"
+  schema:
+    type: resource
+    label: "Schema"
+  table:
+    type: resource
+    label: "Table"
+  state:
+    type: category
+    label: "Backend State"
+  operation:
+    type: category
+    label: "Operation"
+  role:
+    type: category
+    label: "Replication Role"
 
