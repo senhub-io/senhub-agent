@@ -24,6 +24,12 @@
         LICENSE_KEY=eyJhbGci... ^
         TAGS=site=paris,env=prod
 
+  Uninstall keeps %ProgramData%\SenHub (config, sealed secrets, logs)
+  by default so upgrades and reinstalls never lose operator data. A
+  full data purge is opt-in:
+
+      msiexec /x senhub-agent.msi /qn PURGE_DATA=1
+
   See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
@@ -91,6 +97,15 @@
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
+    <!--
+      PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
+      on uninstall (config, sealed secret store, license, logs, staged
+      updates). Deliberately OPT-IN: the default uninstall preserves the
+      data tree so a reinstall or upgrade never loses operator state.
+      See the PurgeDataFolder authoring on the DataFolderMarker
+      component below.
+    -->
+    <Property Id="PURGE_DATA" Secure="yes" />
 
     <!--
       Keep the license token out of the MSI log. Secure="yes" only lets a
@@ -172,6 +187,34 @@
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
+
+    <!--
+      Opt-in data purge (issue #626). util:RemoveFolderEx (on the
+      DataFolderMarker component below) deletes the tree its Property
+      points to when the component is uninstalled — and no-ops when the
+      property is EMPTY. So the purge is gated entirely here: the path
+      is only assigned on a genuine full uninstall with PURGE_DATA=1.
+
+        - REMOVE~="ALL"            → full product removal (`msiexec /x`
+                                     sets it up front), not a repair or
+                                     feature change.
+        - NOT UPGRADINGPRODUCTCODE → NOT the old product being removed
+                                     by a MajorUpgrade; the upgrade path
+                                     must never purge operator data.
+        - NOT WIX_UPGRADE_DETECTED → belt-and-braces for the new
+                                     product's session of an upgrade.
+
+      Scheduled After="AppSearch" so the property is populated before
+      Wix4RemoveFoldersEx (which runs before CostInitialize) snapshots
+      the tree into the RemoveFile table. [CommonAppDataFolder] is a
+      standard folder property, already resolved at that point (the
+      DATAFOLDER Directory id would not be — it resolves at costing).
+    -->
+    <SetProperty Id="PURGEDATAFOLDER"
+                 Value="[CommonAppDataFolder]SenHub"
+                 After="AppSearch"
+                 Sequence="execute"
+                 Condition="(PURGE_DATA=&quot;1&quot;) AND Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
 
     <InstallExecuteSequence>
       <!-- Take over a foreign service before InstallServices creates ours. -->
@@ -285,6 +328,14 @@
         the directory for removal — leftover operator config is preferred
         over data loss on uninstall (acceptance criterion: no orphan files
         OUTSIDE user preference; config is user preference).
+
+        Exception, opt-in only: since 0.5.0 the tree also holds the sealed
+        secret store, the license and staged auto-update MSIs, so an
+        operator who wants a truly clean removal can pass PURGE_DATA=1 on
+        `msiexec /x`. RemoveFolderEx reads PURGEDATAFOLDER, which the
+        SetProperty above assigns ONLY on a genuine full uninstall with
+        PURGE_DATA=1 (never on a MajorUpgrade); with the property empty —
+        every other transaction — it is a no-op.
       -->
       <Component Id="DataFolderMarker" Directory="DATAFOLDER" Guid="*">
         <RegistryValue Root="HKLM"
@@ -298,6 +349,9 @@
                        Name="Version"
                        Type="string"
                        Value="$(Version)" />
+        <util:RemoveFolderEx Id="PurgeDataFolder"
+                             On="uninstall"
+                             Property="PURGEDATAFOLDER" />
       </Component>
 
     </ComponentGroup>
