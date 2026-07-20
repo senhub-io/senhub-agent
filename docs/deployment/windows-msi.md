@@ -25,8 +25,10 @@ servers and Citrix VDA hosts using the MSI installer — interactively
 - Interactive install shows a **guided wizard** (Welcome → license →
   install directory → ready → progress → finish). A silent install (`/qn`)
   skips the UI and drives the same properties from the command line.
-- Clean major-upgrade and clean uninstall (operator config under
-  `%ProgramData%\SenHub\` is intentionally preserved on uninstall).
+- Clean major-upgrade and clean uninstall. Data under
+  `%ProgramData%\SenHub\` is intentionally preserved on uninstall unless
+  you opt into a purge with `PURGE_DATA=1` (see
+  [Uninstall and data purge](#uninstall-and-data-purge)).
 
 ## MSI properties (parametric configuration)
 
@@ -40,9 +42,10 @@ agent installs in the offline Free-tier default.
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
+| `PURGE_DATA` | Uninstall only — `PURGE_DATA=1` on `msiexec /x` deletes `%ProgramData%\SenHub\` in full (see [Uninstall and data purge](#uninstall-and-data-purge)) |
 
-Properties are consumed only on first install; they do not overwrite an
-existing `agent.yaml`.
+Install-time properties are consumed only on first install; they do not
+overwrite an existing `agent.yaml`.
 
 > **`LICENSE_KEY` and install logs.** The license token is a secret. A
 > verbose install log (`/l*v`) records public property values and custom
@@ -78,11 +81,34 @@ Free tier, no provisioning:
 msiexec /i senhub-agent-<version>-amd64.msi /qn
 ```
 
+## Uninstall and data purge
+
 Silent uninstall:
 
 ```bat
 msiexec /x senhub-agent-<version>-amd64.msi /qn
 ```
+
+By default, uninstalling removes only what the MSI installed: the binary,
+the `senhub-agent` service and the registry marker. Everything under
+`%ProgramData%\SenHub\` — configuration (`agent.yaml`, `probes.d\`,
+`strategies.d\`), the sealed secret store, the license, logs and staged
+auto-update packages — is **kept**. This is deliberate: a later reinstall
+or an upgrade picks the existing configuration back up with no data loss.
+
+To remove the machine's agent data as well, opt in with `PURGE_DATA=1`:
+
+```bat
+msiexec /x senhub-agent-<version>-amd64.msi /qn PURGE_DATA=1
+```
+
+This deletes the entire `%ProgramData%\SenHub\` tree, including the
+sealed secret store and the license. It is not recoverable; use it when
+decommissioning a host for good. The purge acts only on a real uninstall
+— a major upgrade (a newer MSI replacing an older one) never touches the
+data tree, with or without the property. An interactive uninstall from
+**Apps & features** always keeps the data (there is no way to pass the
+property there); run the `msiexec /x` command above instead.
 
 ## Existing installations
 

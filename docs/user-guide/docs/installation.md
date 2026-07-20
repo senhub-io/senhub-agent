@@ -381,7 +381,15 @@ After installation:
 msiexec /x senhub-agent-<version>-amd64.msi /qn
 ```
 
-Or use **Apps & features** / **Programs and Features** interactively. Operator configuration under `%ProgramData%\SenHub\` is intentionally preserved on uninstall.
+Or use **Apps & features** / **Programs and Features** interactively.
+
+By default, uninstalling keeps everything under `%ProgramData%\SenHub\` (configuration, sealed secret store, license, logs), so a later reinstall or upgrade picks the existing setup back up. To delete that data tree as well when decommissioning a host, opt in with `PURGE_DATA=1`:
+
+```bat
+msiexec /x senhub-agent-<version>-amd64.msi /qn PURGE_DATA=1
+```
+
+The purge is not recoverable and never applies during an upgrade. An interactive uninstall always keeps the data; use the command line to purge.
 
 **Windows (ZIP install):**
 ```powershell
