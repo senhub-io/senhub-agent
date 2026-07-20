@@ -126,6 +126,14 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"server_name", "server_type", // Managed servers
 	},
 
+	// Identity / cloud probes
+	"ad_hybrid": {
+		"service_name", // per sync-service health and agent counts
+		"agent_server", // per sync-agent liveness
+		"error_bucket", // per directory-sync export-error bucket
+	},
+	"exchange_online": {"service_display_name"}, // per Exchange service-health entry
+
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events

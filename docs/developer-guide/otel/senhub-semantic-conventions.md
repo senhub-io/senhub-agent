@@ -1611,6 +1611,47 @@ faible : 1-4 appliances, 2-8 nœuds).
 > Note numérotation : deux sections portent `### 4.19` (snmp_trap et powerstore) —
 > collision historique à renuméroter lors d'une passe éditoriale.
 
+### 4.22 Probe `ad_hybrid` (Azure AD Connect Health)
+
+Santé de la synchronisation d'identité hybride (Azure AD Connect Health). Pas de
+semconv OTel pour ce domaine — métriques sous `senhub.ad_hybrid.*` (même statut
+que `senhub.veeam.*`). Émission : ids courts snake_case côté probe (enterprise
+`probes/ad_hybrid/`), noms/unités/types déclarés par le transformer
+`transformers/definitions/ad_hybrid.yaml`.
+
+| Métrique | Type / unit | Attributs | Notes |
+|---|---|---|---|
+| `senhub.ad_hybrid.up` | Gauge `1` | — | 1 si l'API a répondu ce cycle, sinon 0 |
+| `senhub.ad_hybrid.sync.health` | Gauge `1` | `senhub.ad_hybrid.service.name` | Healthy=2, Warning=1, Error/autre=0 |
+| `senhub.ad_hybrid.sync.agents.healthy` | Gauge `{agent}` | `…service.name` | agents de sync en état healthy |
+| `senhub.ad_hybrid.sync.agents.total` | Gauge `{agent}` | `…service.name` | agents de sync enregistrés |
+| `senhub.ad_hybrid.sync.export_errors` | Gauge `{error}` | `…service.name` + `senhub.ad_hybrid.error.bucket` | erreurs d'export d'annuaire par bucket |
+| `senhub.ad_hybrid.agent.last_seen` | Gauge `s` | `…service.name` + `senhub.ad_hybrid.agent.server` | secondes depuis le dernier report de l'agent |
+
+### 4.23 Probe `exchange_online` (Exchange Online)
+
+Flux de messagerie et santé de service Exchange Online (API reporting Microsoft
+365). Pas de semconv OTel — métriques sous `senhub.exchange_online.*`. Émission :
+ids courts snake_case côté probe (enterprise `probes/exchange_online/`), déclarés
+par le transformer `transformers/definitions/exchange_online.yaml`.
+
+| Métrique | Type / unit | Attributs | Notes |
+|---|---|---|---|
+| `senhub.exchange_online.up` | Gauge `1` | — | 1 si l'API a répondu ce cycle, sinon 0 |
+| `senhub.exchange_online.service.health` | Gauge `1` | `senhub.exchange_online.service.display_name` | Healthy=2, Degraded=1, Error/autre=0 |
+| `senhub.exchange_online.mail.sent` | Counter `{mail}` | — | messages envoyés (fenêtre de reporting) |
+| `senhub.exchange_online.mail.received` | Counter `{mail}` | — | messages reçus |
+| `senhub.exchange_online.mail.delivered` | Counter `{mail}` | — | messages délivrés |
+| `senhub.exchange_online.mail.failed` | Counter `{mail}` | — | messages en échec de délivrance |
+| `senhub.exchange_online.mailboxes` | Gauge `{mailbox}` | — | nombre total de boîtes aux lettres |
+| `senhub.exchange_online.mailboxes.active` | Gauge `{mailbox}` | — | boîtes actives |
+| `senhub.exchange_online.mailbox.storage.used` | Gauge `By` | — | stockage total consommé (tous mailboxes) |
+| `senhub.exchange_online.mailbox.quota_exceeded` | Gauge `{mailbox}` | — | boîtes ayant dépassé le quota d'avertissement |
+
+> Note numérotation : §4.20/§4.21 sont aussi employés par `icmp_check`/`http_check`
+> (run « free ») — collision historique, à renuméroter lors d'une passe éditoriale
+> (au même titre que le double `### 4.19`).
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
