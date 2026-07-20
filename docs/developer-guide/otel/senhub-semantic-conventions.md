@@ -1648,9 +1648,88 @@ par le transformer `transformers/definitions/exchange_online.yaml`.
 | `senhub.exchange_online.mailbox.storage.used` | Gauge `By` | — | stockage total consommé (tous mailboxes) |
 | `senhub.exchange_online.mailbox.quota_exceeded` | Gauge `{mailbox}` | — | boîtes ayant dépassé le quota d'avertissement |
 
+### 4.36 Probe `hyperv_ha`
+
+Hyper-V Replica and Windows Failover Cluster health, read from local WMI
+(`root\virtualization\v2`, `root\MSCluster`). No OTel semconv exists for
+Hyper-V HA; all metrics live under the `senhub.hyperv_ha.*` extension namespace.
+Cluster metrics are emitted only when the Failover Clustering feature is present.
+
+| Métrique | Type / unité | Attributs | Notes |
+|---|---|---|---|
+| `senhub.hyperv_ha.up` | Gauge `1` | — | 1 si le namespace WMU Replica a répondu ce cycle, sinon 0 |
+| `senhub.hyperv_ha.replica.health` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Santé de réplication (1 = Normal, 0 = Warning/Critical) |
+| `senhub.hyperv_ha.replica.state` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Valeur brute `ReplicationState` |
+| `senhub.hyperv_ha.replica.lag` | Gauge `s` | `senhub.hyperv_ha.vm.name` | Secondes depuis la dernière réplication réussie |
+| `senhub.hyperv_ha.cluster.node.state` | Gauge `1` | `senhub.hyperv_ha.cluster.node` | État du nœud (1 = Up, 0 = Down/Paused/Joining) |
+| `senhub.hyperv_ha.cluster.group.state` | Gauge `1` | `senhub.hyperv_ha.cluster.group` | État du groupe de ressources (1 = Online, 0 = Offline/Failed/Partial) |
+
+### 4.37 Probe `mssql_ha`
+
+Santé de réplication SQL Server AlwaysOn Availability Group. Pas de semconv OTel
+pour la réplication AG ; métriques sous `senhub.mssql_ha.*` (même statut que
+`senhub.veeam.*`). Complète la probe `mssql` (lecture seule, semconv `sqlserver.*`).
+
+| Métrique | Type / unité | Attributs | Notes |
+|---|---|---|---|
+| `senhub.mssql_ha.up` | Gauge `1` | — | 1 si le dernier ping a atteint le serveur ce cycle, sinon 0 |
+| `senhub.mssql_ha.replica.role` | Gauge `1` | `senhub.mssql_ha.ag.name`, `senhub.mssql_ha.replica.name` | Rôle du réplica (Primary=1, Secondary=0) |
+| `senhub.mssql_ha.replica.health` | Gauge `1` | `…ag.name`, `…replica.name` | Santé de synchronisation (Healthy=1, sinon 0) |
+| `senhub.mssql_ha.replica.connected` | Gauge `1` | `…ag.name`, `…replica.name` | Connectivité (Connected=1, Disconnected=0) |
+| `senhub.mssql_ha.database.lag` | Gauge `s` | `…ag.name`, `senhub.mssql_ha.database.name` | Lag estimé du réplica secondaire |
+| `senhub.mssql_ha.log_send_queue` | Gauge `By` | `…ag.name`, `…database.name` | Log sur le primaire pas encore envoyé au secondaire |
+| `senhub.mssql_ha.redo_queue` | Gauge `By` | `…ag.name`, `…database.name` | Log reçu par le secondaire pas encore rejoué |
+| `senhub.mssql_ha.log_send_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit d'envoi du log primaire → secondaire |
+| `senhub.mssql_ha.redo_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit de rejeu du log sur le secondaire |
+
+### 4.38 Probe `oracle_enterprise` (Oracle EE / Diagnostics Pack)
+
+Performance et disponibilité d'Oracle Database Enterprise Edition avec l'option
+Diagnostics Pack (vues v$sysmetric, v$active_session_history, gv$ RAC,
+v$dataguard_stats). Pas de semconv OTel — métriques sous
+`senhub.oracle_enterprise.*` (même statut que `senhub.veeam.*`). Émission : ids
+courts snake_case côté probe, déclarés par le transformer
+`transformers/definitions/oracle_enterprise.yaml`.
+
+| Métrique | Type / unité | Attributs | Notes |
+|---|---|---|---|
+| `senhub.oracle_enterprise.up` | Gauge `1` | — | 1 si l'instance a répondu ce cycle, sinon 0 |
+| `senhub.oracle_enterprise.awr.db_time` | Gauge `s` | — | DB time par seconde (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.db_cpu` | Gauge `s` | — | DB CPU par seconde |
+| `senhub.oracle_enterprise.awr.parse.hard` / `.soft` | Gauge `{parse}/s` | — | hard / soft parses par seconde |
+| `senhub.oracle_enterprise.awr.logical_reads` / `physical_reads` / `physical_writes` | Gauge `{read}/s` / `{write}/s` | — | reads / writes par seconde |
+| `senhub.oracle_enterprise.awr.executions` | Gauge `{execution}/s` | — | exécutions SQL par seconde |
+| `senhub.oracle_enterprise.ash.active_sessions` | Gauge `{session}` | `senhub.oracle_enterprise.wait_class` | sessions actives (5 min) par wait class |
+| `senhub.oracle_enterprise.ash.cpu_sessions` | Gauge `{session}` | — | sessions actives sur CPU (5 min) |
+| `senhub.oracle_enterprise.rac.instances` | Gauge `{instance}` | — | instances de cluster ouvertes (gv$instance) |
+| `senhub.oracle_enterprise.rac.network.io` | Counter `By` | `senhub.oracle_enterprise.rac.instance` | octets SQL*Net cumulés, par instance RAC |
+| `senhub.oracle_enterprise.rac.gc.blocks_received` | Counter `{block}` | `senhub.oracle_enterprise.rac.instance` | blocs global-cache CR reçus (cumul), par instance |
+| `senhub.oracle_enterprise.dataguard.apply_lag` / `transport_lag` | Gauge `s` | — | apply / transport lag du standby (v$dataguard_stats) |
+
+### 4.39 Probe `vsphere_ha` (VMware vSphere HA — vSAN + NSX-T)
+
+Santé HA vSphere depuis un vCenter : santé vSAN (govmomi vSAN health) et,
+optionnellement, état de l'overlay NSX-T (API REST du NSX manager). Pas de semconv
+OTel — métriques sous `senhub.vsphere_ha.*`. NSX-T n'est interrogé que si
+`nsx_endpoint` + `nsx_username` sont configurés.
+
+| Métrique | Type / unité | Attributs | Source |
+|---|---|---|---|
+| `senhub.vsphere_ha.up` | Gauge `1` | — | 1 si la session vCenter est vivante et vSAN a répondu, sinon 0 |
+| `senhub.vsphere_ha.vsan.health` | Gauge `1` | `senhub.vsphere_ha.cluster.name` | `overallHealth` (green=2, yellow=1, red/autre=0) |
+| `senhub.vsphere_ha.vsan.disk_groups` | Gauge `{group}` | `…cluster.name` | nombre de `physicalDisksHealth` |
+| `senhub.vsphere_ha.vsan.objects` | Gauge `{object}` | `senhub.vsphere_ha.vsan.object.state` (`healthy`/`degraded`) + `…cluster.name` | `objectHealth.objectHealthDetail` |
+| `senhub.vsphere_ha.vsan.resync` | Gauge `By` | `…cluster.name` | `totalBytesToSync` |
+| `senhub.vsphere_ha.nsx.manager.health` | Gauge `1` | — | `mgr_connectivity_status == CONNECTED` |
+| `senhub.vsphere_ha.nsx.transport_nodes.total` / `.up` | Gauge `{node}` | — | `/transport-nodes/status` |
+| `senhub.vsphere_ha.nsx.logical_switches` | Gauge `{switch}` | — | `/logical-switches.result_count` |
+| `senhub.vsphere_ha.nsx.edge_cluster.health` | Gauge `1` | `senhub.vsphere_ha.nsx.edge_cluster.id` | `/edge-clusters` (1 si tous membres UP, sinon 0) |
+
 > Note numérotation : §4.20/§4.21 sont aussi employés par `icmp_check`/`http_check`
 > (run « free ») — collision historique, à renuméroter lors d'une passe éditoriale
-> (au même titre que le double `### 4.19`).
+> (au même titre que le double `### 4.19`). §4.22-4.23 + §4.36-4.39 = les 6 probes
+> Pro cloud/HA (ad_hybrid, exchange_online, hyperv_ha, mssql_ha, oracle_enterprise,
+> vsphere_ha).
 
 ## 6. Processus d'ajout d'une convention
 

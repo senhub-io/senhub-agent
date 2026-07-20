@@ -54,3 +54,31 @@ below.
 
 The mail-flow counters are now correctly typed as counters, and mailbox storage
 now declares the `By` unit.
+
+### `hyperv_ha`, `mssql_ha`, `oracle_enterprise` and `vsphere_ha` metric names normalized
+
+The same normalization was applied to the four high-availability probes — they had
+the identical inconsistency (only `up` was namespaced) and no transformer. All
+their metrics now live under `senhub.<probe>.*`, with declared units and types.
+
+**hyperv_ha** (OTLP): `hyperv.replica.health` / `.state` / `.lag`,
+`hyperv.cluster.node.state`, `hyperv.cluster.group.state` →
+`senhub.hyperv_ha.replica.*` / `senhub.hyperv_ha.cluster.*`.
+
+**mssql_ha** (OTLP): `sqlserver.ag.replica.role` / `.health` / `.connected`,
+`sqlserver.ag.database.lag`, `sqlserver.ag.log_send_queue` / `redo_queue` /
+`log_send_rate` / `redo_rate` → `senhub.mssql_ha.*`.
+
+**oracle_enterprise** (OTLP **and** Prometheus): `oracle.awr.*`, `oracle.ash.*`,
+`oracle.rac.*`, `oracle.dataguard.*` → `senhub.oracle_enterprise.*`. This also
+fixes a Prometheus namespace collision with the Free `oracle` probe
+(`senhub_oracle_awr_db_time` → `senhub_oracle_enterprise_awr_db_time`).
+`oracle.rac.instance.count` → `senhub.oracle_enterprise.rac.instances`; the two
+RAC metrics are now typed as counters.
+
+**vsphere_ha** (OTLP): `vsphere.vsan.*` and `vsphere.nsx.*` →
+`senhub.vsphere_ha.vsan.*` / `senhub.vsphere_ha.nsx.*`. The vSAN object
+health/degraded pair is collapsed to `senhub.vsphere_ha.vsan.objects` with an
+`object.state` attribute.
+
+(In every case the pre-existing `senhub.<probe>.up` metric is unchanged.)

@@ -1,0 +1,211 @@
+probe_name: "oracle_enterprise"
+friendly_name: "Oracle Database (Enterprise / Diagnostics Pack)"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for the Oracle Diagnostics Pack views (v$sysmetric, ASH,
+# gv$ RAC, v$dataguard_stats) — all metrics under senhub.oracle_enterprise.*
+# extensions (same footing as senhub.veeam.*). db.* attributes ride the
+# entity, not the metric names.
+# See senhub-semantic-conventions §4.38.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW — reachability
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "oracle_enterprise_up"
+    channel: "up"
+    display_name: "Instance Reachable"
+    unit: "#"
+    category: "overview"
+    description: "1 when the Oracle instance answered this cycle, else 0"
+    otel:
+      name: senhub.oracle_enterprise.up
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # AWR — v$sysmetric in-memory 1-minute averages (per-second rates)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "oracle_enterprise_awr_db_time"
+    channel: "awr_db_time"
+    display_name: "DB Time / s"
+    unit: "s"
+    category: "awr"
+    description: "Database time consumed per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.db_time
+      unit: "s"
+      type: gauge
+
+  - name: "oracle_enterprise_awr_db_cpu"
+    channel: "awr_db_cpu"
+    display_name: "DB CPU / s"
+    unit: "s"
+    category: "awr"
+    description: "Database CPU time consumed per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.db_cpu
+      unit: "s"
+      type: gauge
+
+  - name: "oracle_enterprise_awr_parse_hard"
+    channel: "awr_parse_hard"
+    display_name: "Hard Parses / s"
+    unit: "#"
+    category: "awr"
+    description: "Hard parse count per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.parse.hard
+      unit: "{parse}/s"
+      type: gauge
+
+  - name: "oracle_enterprise_awr_parse_soft"
+    channel: "awr_parse_soft"
+    display_name: "Soft Parses / s"
+    unit: "#"
+    category: "awr"
+    description: "Soft parse count per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.parse.soft
+      unit: "{parse}/s"
+      type: gauge
+
+  - name: "oracle_enterprise_awr_logical_reads"
+    channel: "awr_logical_reads"
+    display_name: "Logical Reads / s"
+    unit: "#"
+    category: "awr"
+    description: "Logical reads per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.logical_reads
+      unit: "{read}/s"
+      type: gauge
+
+  - name: "oracle_enterprise_awr_physical_reads"
+    channel: "awr_physical_reads"
+    display_name: "Physical Reads / s"
+    unit: "#"
+    category: "awr"
+    description: "Physical reads per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.physical_reads
+      unit: "{read}/s"
+      type: gauge
+
+  - name: "oracle_enterprise_awr_physical_writes"
+    channel: "awr_physical_writes"
+    display_name: "Physical Writes / s"
+    unit: "#"
+    category: "awr"
+    description: "Physical writes per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.physical_writes
+      unit: "{write}/s"
+      type: gauge
+
+  - name: "oracle_enterprise_awr_executions"
+    channel: "awr_executions"
+    display_name: "Executions / s"
+    unit: "#"
+    category: "awr"
+    description: "SQL executions per second (v$sysmetric)"
+    otel:
+      name: senhub.oracle_enterprise.awr.executions
+      unit: "{execution}/s"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # ASH — v$active_session_history active-session breakdown
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "oracle_enterprise_ash_active_sessions"
+    channel: "ash_active_sessions"
+    display_name: "Active Sessions ({wait_class})"
+    unit: "#"
+    category: "ash"
+    multi_instance_labels: ["wait_class"]
+    description: "Active sessions over the last 5 minutes, per wait class (ASH)"
+    otel:
+      name: senhub.oracle_enterprise.ash.active_sessions
+      unit: "{session}"
+      type: gauge
+    tag_to_attribute:
+      wait_class: senhub.oracle_enterprise.wait_class
+
+  - name: "oracle_enterprise_ash_cpu_sessions"
+    channel: "ash_cpu_sessions"
+    display_name: "Active Sessions On CPU"
+    unit: "#"
+    category: "ash"
+    description: "Active sessions on CPU over the last 5 minutes (ASH)"
+    otel:
+      name: senhub.oracle_enterprise.ash.cpu_sessions
+      unit: "{session}"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # RAC — per-instance cluster metrics (gv$ views, optional: collect_rac)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "oracle_enterprise_rac_instance_count"
+    channel: "rac_instance_count"
+    display_name: "RAC Instances"
+    unit: "#"
+    category: "rac"
+    description: "Number of open cluster instances visible via gv$instance"
+    otel:
+      name: senhub.oracle_enterprise.rac.instances
+      unit: "{instance}"
+      type: gauge
+
+  - name: "oracle_enterprise_rac_network_bytes"
+    channel: "rac_network_bytes"
+    display_name: "SQL*Net Bytes (inst {inst_id})"
+    unit: "Bytes"
+    category: "rac"
+    multi_instance_labels: ["inst_id"]
+    description: "Cumulative SQL*Net bytes exchanged with clients, per RAC instance"
+    otel:
+      name: senhub.oracle_enterprise.rac.network.io
+      unit: By
+      type: counter
+    tag_to_attribute:
+      inst_id: senhub.oracle_enterprise.rac.instance
+
+  - name: "oracle_enterprise_rac_gc_blocks_received"
+    channel: "rac_gc_blocks_received"
+    display_name: "GC CR Blocks Received (inst {inst_id})"
+    unit: "#"
+    category: "rac"
+    multi_instance_labels: ["inst_id"]
+    description: "Cumulative global-cache CR blocks received, per RAC instance"
+    otel:
+      name: senhub.oracle_enterprise.rac.gc.blocks_received
+      unit: "{block}"
+      type: counter
+    tag_to_attribute:
+      inst_id: senhub.oracle_enterprise.rac.instance
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # DATA GUARD — standby lag (v$dataguard_stats)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "oracle_enterprise_dataguard_apply_lag"
+    channel: "dataguard_apply_lag"
+    display_name: "Data Guard Apply Lag"
+    unit: "s"
+    category: "dataguard"
+    description: "Redo apply lag on the standby, in seconds (v$dataguard_stats)"
+    otel:
+      name: senhub.oracle_enterprise.dataguard.apply_lag
+      unit: "s"
+      type: gauge
+
+  - name: "oracle_enterprise_dataguard_transport_lag"
+    channel: "dataguard_transport_lag"
+    display_name: "Data Guard Transport Lag"
+    unit: "s"
+    category: "dataguard"
+    description: "Redo transport lag to the standby, in seconds (v$dataguard_stats)"
+    otel:
+      name: senhub.oracle_enterprise.dataguard.transport_lag
+      unit: "s"
+      type: gauge
