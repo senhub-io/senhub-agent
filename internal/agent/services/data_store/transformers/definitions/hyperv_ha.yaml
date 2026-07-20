@@ -1,0 +1,99 @@
+probe_name: "hyperv_ha"
+friendly_name: "Hyper-V High Availability"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for Hyper-V Replica / Failover Cluster health — all metrics
+# under senhub.hyperv_ha.* extensions (same footing as senhub.veeam.*).
+# See senhub-semantic-conventions §4.36.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW — reachability
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "hyperv_ha_up"
+    channel: "up"
+    display_name: "Service Reachable"
+    unit: "#"
+    category: "overview"
+    description: "1 when the Hyper-V replica WMI namespace answered this cycle, else 0"
+    otel:
+      name: senhub.hyperv_ha.up
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # REPLICA — per-VM Hyper-V Replica health, state and lag
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "hyperv_ha_replica_health"
+    channel: "replica_health"
+    display_name: "Replica Health ({vm_name})"
+    unit: "#"
+    category: "replica"
+    multi_instance_labels: ["vm_name"]
+    description: "Replication health (1 = Normal, 0 = Warning/Critical)"
+    otel:
+      name: senhub.hyperv_ha.replica.health
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      vm_name: senhub.hyperv_ha.vm.name
+
+  - name: "hyperv_ha_replica_state"
+    channel: "replica_state"
+    display_name: "Replica State ({vm_name})"
+    unit: "#"
+    category: "replica"
+    multi_instance_labels: ["vm_name"]
+    description: "Raw Msvm_ReplicationRelationship ReplicationState numeric value"
+    otel:
+      name: senhub.hyperv_ha.replica.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      vm_name: senhub.hyperv_ha.vm.name
+
+  - name: "hyperv_ha_replica_lag"
+    channel: "replica_lag"
+    display_name: "Replica Lag ({vm_name})"
+    unit: "s"
+    category: "replica"
+    multi_instance_labels: ["vm_name"]
+    description: "Seconds since the last successful replication for this VM"
+    otel:
+      name: senhub.hyperv_ha.replica.lag
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      vm_name: senhub.hyperv_ha.vm.name
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # CLUSTER — Failover Cluster node and resource-group state (optional feature)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "hyperv_ha_cluster_node_state"
+    channel: "cluster_node_state"
+    display_name: "Cluster Node State ({node})"
+    unit: "#"
+    category: "cluster"
+    multi_instance_labels: ["node"]
+    description: "Failover Cluster node state (1 = Up, 0 = Down/Paused/Joining)"
+    otel:
+      name: senhub.hyperv_ha.cluster.node.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      node: senhub.hyperv_ha.cluster.node
+
+  - name: "hyperv_ha_cluster_group_state"
+    channel: "cluster_group_state"
+    display_name: "Cluster Group State ({group})"
+    unit: "#"
+    category: "cluster"
+    multi_instance_labels: ["group"]
+    description: "Failover Cluster resource-group state (1 = Online, 0 = Offline/Failed/Partial)"
+    otel:
+      name: senhub.hyperv_ha.cluster.group.state
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      group: senhub.hyperv_ha.cluster.group

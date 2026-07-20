@@ -134,6 +134,27 @@ var DiscriminantTagsRegistry = map[string][]string{
 	},
 	"exchange_online": {"service_display_name"}, // per Exchange service-health entry
 
+	// High-availability probes
+	"hyperv_ha": {
+		"vm_name", // per-VM replica health/state/lag
+		"node",    // per cluster node
+		"group",   // per cluster resource group
+	},
+	"mssql_ha": {
+		"ag_name",  // availability group (on every replica and database series)
+		"replica",  // per availability-group replica
+		"database", // per availability database
+	},
+	"oracle_enterprise": {
+		"wait_class", // ASH active sessions per wait class
+		"inst_id",    // per RAC instance
+	},
+	"vsphere_ha": {
+		"metric_type",     // category filtering
+		"cluster",         // per-vSAN-cluster health / objects / resync
+		"edge_cluster_id", // per-NSX-edge-cluster health
+	},
+
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
