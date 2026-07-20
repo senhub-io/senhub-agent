@@ -63,6 +63,10 @@ func NewRedisProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		dialFn:       net.DialTimeout,
 	}
 	probe.SetProbeType(ProbeType)
+	// Expose the real (non-NoOp) entity source so EntitySource() returns it —
+	// Redis is a remote db entity, not host-local. The source is also wired to
+	// the entity rail in OnStart; this makes the structural invariant honest.
+	probe.SetEntitySource(probe.entityObs)
 	return probe, nil
 }
 

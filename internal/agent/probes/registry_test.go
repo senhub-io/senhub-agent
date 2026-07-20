@@ -269,6 +269,15 @@ func TestProbeRegistry(t *testing.T) {
 		"mssql",
 		"tomcat",
 		"mongodb",
+		"docker",
+		"redis",
+		"dns_latency",
+		"exec",
+		"http_check",
+		"icmp_check",
+		"prometheus_scrape",
+		"tcp_dial",
+		"windows_eventlog",
 	}
 
 	for _, probeName := range expectedProbes {
