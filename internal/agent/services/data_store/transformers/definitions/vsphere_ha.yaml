@@ -1,0 +1,181 @@
+probe_name: "vsphere_ha"
+friendly_name: "VMware vSphere HA"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for vSphere HA / vSAN / NSX-T health — all metrics under
+# senhub.vsphere_ha.* extensions (same footing as senhub.veeam.*).
+# See senhub-semantic-conventions §4.39.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW — reachability
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "vsphere_ha_up"
+    channel: "up"
+    display_name: "vCenter Reachable"
+    unit: "#"
+    category: "overview"
+    description: "1 when the vCenter session was live and vSAN answered this cycle, else 0"
+    otel:
+      name: senhub.vsphere_ha.up
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # VSAN — per-cluster health, disk groups, objects and resync
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "vsphere_ha_vsan_health"
+    channel: "vsan_health"
+    display_name: "vSAN Health ({cluster})"
+    unit: "#"
+    category: "vsan"
+    multi_instance_labels: ["cluster"]
+    description: "vSAN overall cluster health (green=2, yellow=1, red/other=0)"
+    otel:
+      name: senhub.vsphere_ha.vsan.health
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      cluster: senhub.vsphere_ha.cluster.name
+
+  - name: "vsphere_ha_vsan_disk_groups"
+    channel: "vsan_disk_groups"
+    display_name: "vSAN Disk Groups ({cluster})"
+    unit: "#"
+    category: "vsan"
+    multi_instance_labels: ["cluster"]
+    description: "Number of host physical-disk health summaries (disk-group proxy)"
+    otel:
+      name: senhub.vsphere_ha.vsan.disk_groups
+      unit: "{group}"
+      type: gauge
+    tag_to_attribute:
+      cluster: senhub.vsphere_ha.cluster.name
+
+  - name: "vsphere_ha_vsan_objects_healthy"
+    channel: "vsan_objects_healthy"
+    display_name: "vSAN Objects Healthy ({cluster})"
+    unit: "#"
+    category: "vsan"
+    multi_instance_labels: ["cluster"]
+    description: "Number of vSAN objects in a healthy state"
+    otel:
+      name: senhub.vsphere_ha.vsan.objects
+      unit: "{object}"
+      type: gauge
+      attributes:
+        senhub.vsphere_ha.vsan.object.state: healthy
+    tag_to_attribute:
+      cluster: senhub.vsphere_ha.cluster.name
+
+  - name: "vsphere_ha_vsan_objects_degraded"
+    channel: "vsan_objects_degraded"
+    display_name: "vSAN Objects Degraded ({cluster})"
+    unit: "#"
+    category: "vsan"
+    multi_instance_labels: ["cluster"]
+    description: "Number of vSAN objects not in a healthy state"
+    otel:
+      name: senhub.vsphere_ha.vsan.objects
+      unit: "{object}"
+      type: gauge
+      attributes:
+        senhub.vsphere_ha.vsan.object.state: degraded
+    tag_to_attribute:
+      cluster: senhub.vsphere_ha.cluster.name
+
+  - name: "vsphere_ha_vsan_resync_bytes"
+    channel: "vsan_resync_bytes"
+    display_name: "vSAN Resync Pending ({cluster})"
+    unit: "Bytes"
+    category: "vsan"
+    multi_instance_labels: ["cluster"]
+    description: "Total bytes pending vSAN resync on the cluster"
+    otel:
+      name: senhub.vsphere_ha.vsan.resync
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      cluster: senhub.vsphere_ha.cluster.name
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # NSX-T — manager, transport nodes, logical switches, edge clusters
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "vsphere_ha_nsx_manager_health"
+    channel: "nsx_manager_health"
+    display_name: "NSX Manager Health"
+    unit: "#"
+    category: "nsx"
+    description: "NSX manager connectivity (1 = CONNECTED, else 0)"
+    otel:
+      name: senhub.vsphere_ha.nsx.manager.health
+      unit: "1"
+      type: gauge
+
+  - name: "vsphere_ha_nsx_transport_nodes_total"
+    channel: "nsx_transport_nodes_total"
+    display_name: "NSX Transport Nodes Total"
+    unit: "#"
+    category: "nsx"
+    description: "Total number of NSX transport nodes"
+    otel:
+      name: senhub.vsphere_ha.nsx.transport_nodes.total
+      unit: "{node}"
+      type: gauge
+
+  - name: "vsphere_ha_nsx_transport_nodes_up"
+    channel: "nsx_transport_nodes_up"
+    display_name: "NSX Transport Nodes Up"
+    unit: "#"
+    category: "nsx"
+    description: "Transport nodes deployed (NODE_READY) and not in maintenance"
+    otel:
+      name: senhub.vsphere_ha.nsx.transport_nodes.up
+      unit: "{node}"
+      type: gauge
+
+  - name: "vsphere_ha_nsx_logical_switches"
+    channel: "nsx_logical_switches"
+    display_name: "NSX Logical Switches"
+    unit: "#"
+    category: "nsx"
+    description: "Number of NSX logical switches (segments)"
+    otel:
+      name: senhub.vsphere_ha.nsx.logical_switches
+      unit: "{switch}"
+      type: gauge
+
+  - name: "vsphere_ha_nsx_edge_clusters_health"
+    channel: "nsx_edge_cluster_health"
+    display_name: "NSX Edge Cluster Health ({edge_cluster_id})"
+    unit: "#"
+    category: "nsx"
+    multi_instance_labels: ["edge_cluster_id"]
+    description: "Edge cluster health (1 = all members UP, else 0)"
+    otel:
+      name: senhub.vsphere_ha.nsx.edge_cluster.health
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      edge_cluster_id: senhub.vsphere_ha.nsx.edge_cluster.id
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAG METADATA — declares which tags are filterable in the Web UI / PRTG.
+# ═══════════════════════════════════════════════════════════════════════════
+tag_metadata:
+  metric_type:
+    type: category
+    label: "Metric Type"
+    value_labels:
+      overview: "Overview"
+      vsan: "vSAN"
+      nsx: "NSX-T"
+  cluster:
+    type: resource
+    label: "vSAN Cluster"
+    linked_categories: ["vsan"]
+  edge_cluster_id:
+    type: resource
+    label: "NSX Edge Cluster"
+    linked_categories: ["nsx"]
