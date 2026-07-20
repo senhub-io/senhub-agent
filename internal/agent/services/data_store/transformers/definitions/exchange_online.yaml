@@ -1,0 +1,131 @@
+probe_name: "exchange_online"
+friendly_name: "Exchange Online"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for Exchange Online mail flow — all metrics under
+# senhub.exchange_online.* extensions (same footing as senhub.veeam.*).
+# See senhub-semantic-conventions §4.23.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW — reachability + service health
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "exchange_online_up"
+    channel: "up"
+    display_name: "Service Reachable"
+    unit: "#"
+    category: "overview"
+    description: "1 when the Microsoft 365 reporting API answered this cycle, else 0"
+    otel:
+      name: senhub.exchange_online.up
+      unit: "1"
+      type: gauge
+
+  - name: "exchange_online_service_health"
+    channel: "service_health"
+    display_name: "Service Health ({service_display_name})"
+    unit: "#"
+    category: "overview"
+    multi_instance_labels: ["service_display_name"]
+    description: "Exchange service-health status (Healthy=2, Degraded=1, Error/other=0)"
+    otel:
+      name: senhub.exchange_online.service.health
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      service_display_name: senhub.exchange_online.service.display_name
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # MAIL FLOW — sent / received / delivered / failed (cumulative counters)
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "exchange_online_mail_sent"
+    channel: "mail_sent"
+    display_name: "Mail Sent"
+    unit: "#"
+    category: "mailflow"
+    description: "Messages sent over the reporting window"
+    otel:
+      name: senhub.exchange_online.mail.sent
+      unit: "{mail}"
+      type: counter
+
+  - name: "exchange_online_mail_received"
+    channel: "mail_received"
+    display_name: "Mail Received"
+    unit: "#"
+    category: "mailflow"
+    description: "Messages received over the reporting window"
+    otel:
+      name: senhub.exchange_online.mail.received
+      unit: "{mail}"
+      type: counter
+
+  - name: "exchange_online_mail_delivered"
+    channel: "mail_delivered"
+    display_name: "Mail Delivered"
+    unit: "#"
+    category: "mailflow"
+    description: "Messages delivered over the reporting window"
+    otel:
+      name: senhub.exchange_online.mail.delivered
+      unit: "{mail}"
+      type: counter
+
+  - name: "exchange_online_mail_failed"
+    channel: "mail_failed"
+    display_name: "Mail Failed"
+    unit: "#"
+    category: "mailflow"
+    description: "Messages that failed delivery over the reporting window"
+    otel:
+      name: senhub.exchange_online.mail.failed
+      unit: "{mail}"
+      type: counter
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # MAILBOXES — counts and storage
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "exchange_online_mailboxes"
+    channel: "mailboxes"
+    display_name: "Mailboxes Total"
+    unit: "#"
+    category: "mailboxes"
+    description: "Total number of mailboxes"
+    otel:
+      name: senhub.exchange_online.mailboxes
+      unit: "{mailbox}"
+      type: gauge
+
+  - name: "exchange_online_mailboxes_active"
+    channel: "mailboxes_active"
+    display_name: "Mailboxes Active"
+    unit: "#"
+    category: "mailboxes"
+    description: "Number of active mailboxes"
+    otel:
+      name: senhub.exchange_online.mailboxes.active
+      unit: "{mailbox}"
+      type: gauge
+
+  - name: "exchange_online_mailbox_storage_used"
+    channel: "mailbox_storage_used"
+    display_name: "Mailbox Storage Used"
+    unit: "Bytes"
+    category: "mailboxes"
+    description: "Total storage consumed across all mailboxes"
+    otel:
+      name: senhub.exchange_online.mailbox.storage.used
+      unit: By
+      type: gauge
+
+  - name: "exchange_online_mailbox_quota_exceeded"
+    channel: "mailbox_quota_exceeded"
+    display_name: "Mailboxes Over Quota"
+    unit: "#"
+    category: "mailboxes"
+    description: "Number of mailboxes that have exceeded their warning quota"
+    otel:
+      name: senhub.exchange_online.mailbox.quota_exceeded
+      unit: "{mailbox}"
+      type: gauge

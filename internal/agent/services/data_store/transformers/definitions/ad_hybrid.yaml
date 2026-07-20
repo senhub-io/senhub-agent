@@ -1,0 +1,101 @@
+probe_name: "ad_hybrid"
+friendly_name: "Azure AD Connect Health"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for hybrid-identity sync health — all metrics under
+# senhub.ad_hybrid.* extensions (same footing as senhub.veeam.*).
+# See senhub-semantic-conventions §4.22.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW — reachability
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "ad_hybrid_up"
+    channel: "up"
+    display_name: "Service Reachable"
+    unit: "#"
+    category: "overview"
+    description: "1 when the Azure AD Connect Health API answered this cycle, else 0"
+    otel:
+      name: senhub.ad_hybrid.up
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # SYNC — per sync-service health and agent counts
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "ad_hybrid_sync_health"
+    channel: "sync_health"
+    display_name: "Sync Health ({service_name})"
+    unit: "#"
+    category: "sync"
+    multi_instance_labels: ["service_name"]
+    description: "Sync service health (Healthy=2, Warning=1, Error/other=0)"
+    otel:
+      name: senhub.ad_hybrid.sync.health
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      service_name: senhub.ad_hybrid.service.name
+
+  - name: "ad_hybrid_sync_agents_healthy"
+    channel: "sync_agents_healthy"
+    display_name: "Healthy Sync Agents ({service_name})"
+    unit: "#"
+    category: "sync"
+    multi_instance_labels: ["service_name"]
+    description: "Number of sync agents reporting a healthy state"
+    otel:
+      name: senhub.ad_hybrid.sync.agents.healthy
+      unit: "{agent}"
+      type: gauge
+    tag_to_attribute:
+      service_name: senhub.ad_hybrid.service.name
+
+  - name: "ad_hybrid_sync_agents_total"
+    channel: "sync_agents_total"
+    display_name: "Total Sync Agents ({service_name})"
+    unit: "#"
+    category: "sync"
+    multi_instance_labels: ["service_name"]
+    description: "Total number of registered sync agents"
+    otel:
+      name: senhub.ad_hybrid.sync.agents.total
+      unit: "{agent}"
+      type: gauge
+    tag_to_attribute:
+      service_name: senhub.ad_hybrid.service.name
+
+  - name: "ad_hybrid_sync_export_errors"
+    channel: "sync_export_errors"
+    display_name: "Export Errors ({error_bucket})"
+    unit: "#"
+    category: "sync"
+    multi_instance_labels: ["service_name", "error_bucket"]
+    description: "Directory-sync export error count, per error bucket"
+    otel:
+      name: senhub.ad_hybrid.sync.export_errors
+      unit: "{error}"
+      type: gauge
+    tag_to_attribute:
+      service_name: senhub.ad_hybrid.service.name
+      error_bucket: senhub.ad_hybrid.error.bucket
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # AGENTS — per sync-agent liveness
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "ad_hybrid_agent_last_seen"
+    channel: "agent_last_seen"
+    display_name: "Agent Last Seen ({agent_server})"
+    unit: "s"
+    category: "agents"
+    multi_instance_labels: ["service_name", "agent_server"]
+    description: "Seconds since the sync agent last reported to Azure AD Connect Health"
+    otel:
+      name: senhub.ad_hybrid.agent.last_seen
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      service_name: senhub.ad_hybrid.service.name
+      agent_server: senhub.ad_hybrid.agent.server
