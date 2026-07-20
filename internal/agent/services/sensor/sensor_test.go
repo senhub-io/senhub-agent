@@ -9,9 +9,24 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
+
+// fakeLicenseValidator is a hand-rolled Validator (no mocking framework, per
+// the test conventions) returning a preset license/error. It exercises the
+// binding-enforcement path without needing a real signed JWT.
+type fakeLicenseValidator struct {
+	lic *license.License
+	err error
+}
+
+func (f *fakeLicenseValidator) ValidateLicense(string) (*license.License, error) {
+	return f.lic, f.err
+}
+func (f *fakeLicenseValidator) IsProbeAuthorized(*license.License, string) bool { return true }
+func (f *fakeLicenseValidator) IsInGracePeriod(*license.License) bool           { return false }
 
 // MockConfigProvider implements configuration.ConfigurationProvider for testing
 type MockConfigProvider struct {
@@ -538,5 +553,51 @@ func TestGetLoggerForProbe(t *testing.T) {
 	probeLogger := s.getLoggerForProbe(probeConfig)
 	if probeLogger == nil {
 		t.Error("getLoggerForProbe returned nil")
+	}
+}
+
+// TestSensor_SyncConfiguration_RejectsUnboundLicense pins license-binding
+// enforcement on the SyncConfiguration path. A valid JWT bound to a DIFFERENT
+// agent key must not unlock paid probes: the constructor already rejects it,
+// and SyncConfiguration (which runs at boot) must not silently re-accept it.
+// Regression for the deterministic binding bypass.
+func TestSensor_SyncConfiguration_RejectsUnboundLicense(t *testing.T) {
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+
+	mockProvider := &MockConfigProvider{
+		config: configuration.ConfigurationData{
+			Probes: []configuration.ProbeConfig{},
+			Agent: configuration.AgentConfig{
+				License:           "signed-but-bound-to-another-agent",
+				AuthenticationKey: "agent-key-A",
+			},
+		},
+	}
+
+	// The validator parses the token fine, but the license is bound to a
+	// different agent key (Subject) than the one configured here.
+	validator := &fakeLicenseValidator{
+		lic: &license.License{
+			Tier:    license.TierPro,
+			Subject: "agent-key-B",
+		},
+	}
+
+	addDataPoint := func(data []datapoint.DataPoint, router data_store.StrategyRouter) error { return nil }
+
+	s := &sensor{
+		addDataPoint:     addDataPoint,
+		configProvider:   mockProvider,
+		moduleLogger:     logger.NewModuleLogger(baseLogger, "sensor-test"),
+		licenseValidator: validator,
+	}
+
+	if err := s.SyncConfiguration(); err != nil {
+		t.Fatalf("SyncConfiguration returned error: %v", err)
+	}
+
+	if s.license != nil {
+		t.Errorf("license bound to a different agent key was accepted during sync (tier=%v); want rejected (nil)", s.license.Tier)
 	}
 }
