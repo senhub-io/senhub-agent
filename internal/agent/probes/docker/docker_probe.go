@@ -152,6 +152,10 @@ func NewDockerProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		entitySrc:    &dockerEntitySource{},
 	}
 	p.SetProbeType(ProbeType)
+	// Expose the real (non-NoOp) entity source so EntitySource() returns it —
+	// containers are distinct entities, not host-local. The source is also
+	// wired to the entity rail in OnStart; this makes the invariant honest.
+	p.SetEntitySource(p.entitySrc)
 	p.newClient = p.buildClient
 	p.client = p.buildClient()
 	return p, nil
