@@ -15,7 +15,7 @@ jobs:
   conflict-markers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Refuse committed conflict markers
         # Only <<<<<<< / >>>>>>> are flagged: a bare ======= line is a
         # legitimate Markdown setext underline. Golden files excluded.
@@ -29,8 +29,8 @@ jobs:
   docs-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install MkDocs
