@@ -127,6 +127,13 @@ nav:
       - NetScaler: probes/netscaler.md
       - Redfish: probes/redfish.md
       - Dell PowerStore: probes/powerstore.md
+      - IBM i / AS400: probes/ibmi.md
+      - SQL Server AlwaysOn: probes/mssql_ha.md
+      - Oracle Database (Enterprise): probes/oracle_enterprise.md
+      - Hyper-V HA: probes/hyperv_ha.md
+      - VMware vSphere HA: probes/vsphere_ha.md
+      - Azure AD Connect Health: probes/ad_hybrid.md
+      - Exchange Online: probes/exchange_online.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md
