@@ -24,6 +24,7 @@ Each probe targets one class of system and turns its state into typed metrics an
     <button class="family-btn" data-family="storage">Storage</button>
     <button class="family-btn" data-family="hardware">Hardware</button>
     <button class="family-btn" data-family="adc">ADC</button>
+    <button class="family-btn" data-family="cloud">Cloud</button>
   </div>
   <div class="catalog-tiers">
     <button class="tier-toggle active" data-tier="all">All tiers</button>
@@ -529,6 +530,55 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-name">NetScaler</span>
     <span class="probe-tier-badge pro">Pro</span>
     <span class="probe-desc">Virtual servers, SSL certs, GSLB, HA state via REST API</span>
+  </a>
+
+  <a href="ibmi/" class="probe-card" data-family="os-host" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/ibm" alt="" loading="lazy">
+    <span class="probe-name">IBM i</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">CPU, ASP/disk, jobs, subsystems, DB, journals, hardware, PTF</span>
+  </a>
+
+  <a href="mssql_ha/" class="probe-card" data-family="databases" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/microsoftsqlserver" alt="" loading="lazy">
+    <span class="probe-name">SQL Server AlwaysOn</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">AlwaysOn AG replica health, database lag and redo/send queues</span>
+  </a>
+
+  <a href="oracle_enterprise/" class="probe-card" data-family="databases" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/oracle" alt="" loading="lazy">
+    <span class="probe-name">Oracle Database (Enterprise)</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">AWR rates, ASH wait classes, RAC, Data Guard lag</span>
+  </a>
+
+  <a href="hyperv_ha/" class="probe-card" data-family="containers" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://api.iconify.design/devicon/hyperv.svg" alt="" loading="lazy">
+    <span class="probe-name">Hyper-V HA</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Hyper-V Replica health/lag and Failover Cluster node/group state</span>
+  </a>
+
+  <a href="vsphere_ha/" class="probe-card" data-family="containers" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/vmware" alt="" loading="lazy">
+    <span class="probe-name">VMware vSphere HA</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">vSAN cluster health, NSX-T overlay status</span>
+  </a>
+
+  <a href="ad_hybrid/" class="probe-card" data-family="cloud" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/microsoftazure" alt="" loading="lazy">
+    <span class="probe-name">Azure AD Connect Health</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Hybrid identity sync health, agent liveness, export errors</span>
+  </a>
+
+  <a href="exchange_online/" class="probe-card" data-family="cloud" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/microsoftexchange" alt="" loading="lazy">
+    <span class="probe-name">Exchange Online</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Mail flow, mailboxes, storage, and service health</span>
   </a>
 
 </div>
