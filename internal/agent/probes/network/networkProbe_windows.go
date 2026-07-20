@@ -91,36 +91,6 @@ type windowsNetworkCollector struct {
 	logger      *logger.ModuleLogger
 }
 
-// Helper function to normalize adapter names for comparison
-func normalizeAdapterName(name string) string {
-	// Convert to lowercase
-	name = strings.ToLower(name)
-
-	// Remove trademarks and special symbols
-	replacements := [][2]string{
-		{"(r)", ""},
-		{"[r]", ""},
-		{"(tm)", ""},
-		{"[tm]", ""},
-		{"®", ""},
-		{"™", ""},
-		{"(", ""},
-		{")", ""},
-		{"[", ""},
-		{"]", ""},
-		{"-", " "},
-		{"_", " "},
-	}
-
-	for _, r := range replacements {
-		name = strings.ReplaceAll(name, r[0], r[1])
-	}
-
-	// Reduce multiple spaces to single space
-	name = strings.Join(strings.Fields(name), " ")
-	return strings.TrimSpace(name)
-}
-
 func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo, error) {
 	logger.Debug().Msg("Starting Network Interfaces Detection")
 
