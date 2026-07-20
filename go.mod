@@ -3,6 +3,7 @@ module senhub-agent.go
 go 1.26.5
 
 require (
+	filippo.io/age v1.3.1
 	github.com/Azure/go-ntlmssp v0.1.1
 	github.com/alexflint/go-arg v1.6.1
 	github.com/avast/retry-go/v4 v4.7.0
@@ -119,7 +120,6 @@ require (
 )
 
 require (
-	filippo.io/age v1.3.1 // indirect
 	filippo.io/hpke v0.4.0 // indirect
 	github.com/billgraziano/dpapi v0.5.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
