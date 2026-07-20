@@ -1,0 +1,175 @@
+probe_name: "mssql_ha"
+friendly_name: "SQL Server AlwaysOn AG"
+version: "3.0.0"
+
+# Format v3 — OTel-first source of truth.
+# No OTel semconv for AlwaysOn Availability Group health — all metrics under
+# senhub.mssql_ha.* extensions (same footing as senhub.veeam.*). The sibling
+# read-only `mssql` probe follows sqlserver.* semconv; AG replication health is
+# a SenHub extension with no upstream sqlserverreceiver equivalent.
+# See senhub-semantic-conventions §4.37.
+
+metrics:
+  # ═════════════════════════════════════════════════════════════════════════
+  # OVERVIEW — reachability
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "mssql_ha_up"
+    channel: "up"
+    display_name: "Server Reachable"
+    unit: "#"
+    category: "overview"
+    description: "1 when the last ping reached the SQL Server this cycle, else 0"
+    otel:
+      name: senhub.mssql_ha.up
+      unit: "1"
+      type: gauge
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # REPLICAS — per availability-group replica role/health/connectivity
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "mssql_ha_replica_role"
+    channel: "replica_role_{ag_name}_{replica}"
+    display_name: "Replica Role ({ag_name}/{replica})"
+    unit: "#"
+    category: "replicas"
+    multi_instance_labels: ["ag_name", "replica"]
+    description: "Availability-group replica role (Primary=1, Secondary=0)"
+    otel:
+      name: senhub.mssql_ha.replica.role
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      replica: senhub.mssql_ha.replica.name
+
+  - name: "mssql_ha_replica_health"
+    channel: "replica_health_{ag_name}_{replica}"
+    display_name: "Replica Sync Health ({ag_name}/{replica})"
+    unit: "#"
+    category: "replicas"
+    multi_instance_labels: ["ag_name", "replica"]
+    description: "Replica synchronization health (Healthy=1, otherwise 0)"
+    otel:
+      name: senhub.mssql_ha.replica.health
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      replica: senhub.mssql_ha.replica.name
+
+  - name: "mssql_ha_replica_connected"
+    channel: "replica_connected_{ag_name}_{replica}"
+    display_name: "Replica Connected ({ag_name}/{replica})"
+    unit: "#"
+    category: "replicas"
+    multi_instance_labels: ["ag_name", "replica"]
+    description: "Replica connectivity state (Connected=1, Disconnected=0)"
+    otel:
+      name: senhub.mssql_ha.replica.connected
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      replica: senhub.mssql_ha.replica.name
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # DATABASES — per availability-database lag, queues and throughput
+  # ═════════════════════════════════════════════════════════════════════════
+  - name: "mssql_ha_database_lag"
+    channel: "database_lag_{ag_name}_{database}"
+    display_name: "Secondary Lag ({ag_name}/{database})"
+    unit: "s"
+    category: "databases"
+    multi_instance_labels: ["ag_name", "database"]
+    description: "Estimated secondary-replica lag behind the primary"
+    otel:
+      name: senhub.mssql_ha.database.lag
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      database: senhub.mssql_ha.database.name
+
+  - name: "mssql_ha_log_send_queue"
+    channel: "log_send_queue_{ag_name}_{database}"
+    display_name: "Log Send Queue ({ag_name}/{database})"
+    unit: "Bytes"
+    category: "databases"
+    multi_instance_labels: ["ag_name", "database"]
+    description: "Log records on the primary not yet sent to the secondary"
+    otel:
+      name: senhub.mssql_ha.log_send_queue
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      database: senhub.mssql_ha.database.name
+
+  - name: "mssql_ha_redo_queue"
+    channel: "redo_queue_{ag_name}_{database}"
+    display_name: "Redo Queue ({ag_name}/{database})"
+    unit: "Bytes"
+    category: "databases"
+    multi_instance_labels: ["ag_name", "database"]
+    description: "Log records received by the secondary not yet redone"
+    otel:
+      name: senhub.mssql_ha.redo_queue
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      database: senhub.mssql_ha.database.name
+
+  - name: "mssql_ha_log_send_rate"
+    channel: "log_send_rate_{ag_name}_{database}"
+    display_name: "Log Send Rate ({ag_name}/{database})"
+    unit: "Bytes/s"
+    category: "databases"
+    multi_instance_labels: ["ag_name", "database"]
+    description: "Rate at which log is sent from the primary to the secondary"
+    otel:
+      name: senhub.mssql_ha.log_send_rate
+      unit: By/s
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      database: senhub.mssql_ha.database.name
+
+  - name: "mssql_ha_redo_rate"
+    channel: "redo_rate_{ag_name}_{database}"
+    display_name: "Redo Rate ({ag_name}/{database})"
+    unit: "Bytes/s"
+    category: "databases"
+    multi_instance_labels: ["ag_name", "database"]
+    description: "Rate at which received log is redone on the secondary"
+    otel:
+      name: senhub.mssql_ha.redo_rate
+      unit: By/s
+      type: gauge
+    tag_to_attribute:
+      ag_name: senhub.mssql_ha.ag.name
+      database: senhub.mssql_ha.database.name
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAG METADATA — declares which tags are filterable in the Web UI / PRTG.
+# ═══════════════════════════════════════════════════════════════════════════
+tag_metadata:
+  metric_type:
+    type: category
+    label: "Metric Type"
+    value_labels:
+      overview: "Overview"
+      replicas: "Replicas"
+      databases: "Databases"
+  ag_name:
+    type: resource
+    label: "Availability Group"
+    linked_categories: ["replicas", "databases"]
+  replica:
+    type: resource
+    label: "Replica"
+    linked_categories: ["replicas"]
+  database:
+    type: resource
+    label: "Database"
+    linked_categories: ["databases"]
