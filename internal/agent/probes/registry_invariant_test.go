@@ -144,9 +144,43 @@ func TestEveryRegisteredProbeIsAuthorizable(t *testing.T) {
 // validator recognises the names a JWT may grant, but the paid probe
 // packages live in the senhub-agent-enterprise module and are not
 // registered here. That completeness check belongs to the enterprise
-// repository's test suite, where all probes are registered (see #183).
-// The OSS direction — no paid probe leaks into the public binary — is
-// guarded by TestOSSBuildRegistersOnlyPublicProbes in the app package.
+// repository's test suite, where all probes are registered (see #183,
+// #489). The OSS direction — no paid probe leaks into the public binary
+// — is guarded by TestOSSBuildRegistersOnlyPublicProbes in the app
+// package.
+
+// TestEveryFreeTierProbeHasRegisteredConstructor is the free-tier half of
+// #489: every name declared in freeTierProbes (license.go) MUST resolve to
+// a registered probe constructor. The #484 bug shipped green because no
+// test cross-checked the licence catalogue against the registry — four
+// free-tier probes were declared but their packages never blank-imported
+// in app/probes_register.go, so the names existed for the licence
+// validator while the binary could not construct them. This test file's
+// blank-import list is pinned to app/probes_register.go by
+// TestRegistryInvariantCoversEveryShippedProbe, so a pass here covers the
+// shipped binary, not just the test binary. The paid-catalogue half runs
+// in the enterprise suite (see the comment above).
+func TestEveryFreeTierProbeHasRegisteredConstructor(t *testing.T) {
+	free := license.GetFreeTierProbes()
+	if len(free) == 0 {
+		t.Fatal("license.GetFreeTierProbes() returned no probes — free-tier catalogue is empty?")
+	}
+	sort.Strings(free)
+
+	var unregistered []string
+	for _, name := range free {
+		if _, ok := probes.LookupProbeConstructor(name); !ok {
+			unregistered = append(unregistered, name)
+		}
+	}
+	if len(unregistered) > 0 {
+		t.Fatalf("freeTierProbes entries with no registered constructor: %s\n\n"+
+			"each name in freeTierProbes (internal/agent/services/license/license.go) must match "+
+			"a probe registered via probes.RegisterProbe — check the probe package's init() and "+
+			"the blank imports in app/probes_register.go (#484/#489).",
+			strings.Join(unregistered, ", "))
+	}
+}
 
 // probeConfigFixtures supplies the minimal valid config each config-requiring
 // probe needs to construct, so TestEveryRegisteredProbeHasEntitySource can
