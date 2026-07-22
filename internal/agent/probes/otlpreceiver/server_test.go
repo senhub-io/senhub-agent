@@ -131,7 +131,7 @@ func TestGRPCReceiver_IngestsDatapoints(t *testing.T) {
 	}
 }
 
-func TestGRPCReceiver_HistogramPartialSuccess(t *testing.T) {
+func TestGRPCReceiver_HistogramIngested(t *testing.T) {
 	cb := &captureCallback{}
 	probe, _ := newTestProbe(t, map[string]interface{}{"protocol": "grpc", "address": "127.0.0.1:0"}, cb)
 	addr := probe.listener.Addr().String()
@@ -143,9 +143,12 @@ func TestGRPCReceiver_HistogramPartialSuccess(t *testing.T) {
 	defer conn.Close()
 
 	hist := &metricpb.Metric{
-		Name: "h",
+		Name: "h", Unit: "s",
 		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
-			DataPoints: []*metricpb.HistogramDataPoint{{}},
+			DataPoints: []*metricpb.HistogramDataPoint{{
+				Count: 3, Sum: float64Ptr(1.5),
+				BucketCounts: []uint64{2, 1}, ExplicitBounds: []float64{1},
+			}},
 		}},
 	}
 	req := &collectormetricspb.ExportMetricsServiceRequest{ResourceMetrics: wrap(nil, hist)}
@@ -157,8 +160,36 @@ func TestGRPCReceiver_HistogramPartialSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
+	if resp.GetPartialSuccess().GetRejectedDataPoints() != 0 {
+		t.Errorf("rejected = %d, want 0 (histogram is now ingested as component series)", resp.GetPartialSuccess().GetRejectedDataPoints())
+	}
+	// Expanded: h_count, h_sum, h_bucket{le=1}, h_bucket{le=+Inf} = 4 series.
+	waitForPoints(t, cb, 4)
+}
+
+func TestGRPCReceiver_UnsetMetricPartialSuccess(t *testing.T) {
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{"protocol": "grpc", "address": "127.0.0.1:0"}, cb)
+	addr := probe.listener.Addr().String()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer conn.Close()
+
+	req := &collectormetricspb.ExportMetricsServiceRequest{
+		ResourceMetrics: wrap(nil, &metricpb.Metric{Name: "mystery"}),
+	}
+	client := collectormetricspb.NewMetricsServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	resp, err := client.Export(ctx, req)
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
 	if resp.GetPartialSuccess().GetRejectedDataPoints() != 1 {
-		t.Errorf("rejected = %d, want 1", resp.GetPartialSuccess().GetRejectedDataPoints())
+		t.Errorf("rejected = %d, want 1 (unset metric data type)", resp.GetPartialSuccess().GetRejectedDataPoints())
 	}
 }
 

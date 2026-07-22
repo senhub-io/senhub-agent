@@ -121,7 +121,7 @@ func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request
 	if dropped > 0 {
 		resp.PartialSuccess = &collectormetricspb.ExportMetricsPartialSuccess{
 			RejectedDataPoints: int64(dropped),
-			ErrorMessage:       "non-scalar metric types (histogram/summary) are not ingested by senhub-agent",
+			ErrorMessage:       "unrecognized or unset OTLP metric data type not ingested by senhub-agent",
 		}
 	}
 

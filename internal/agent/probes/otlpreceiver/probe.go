@@ -144,8 +144,8 @@ func (p *OTLPReceiverProbe) logRejection(remote string, err error) {
 
 // ingest decodes a received metrics payload and forwards the resulting
 // datapoints through the callback. The dropped count carries the number
-// of non-scalar datapoints (histogram/summary) the flattener could not
-// map, so the gRPC/HTTP layer can build a partial-success response.
+// of metrics with an unrecognized or unset data type the flattener could
+// not map, so the gRPC/HTTP layer can build a partial-success response.
 func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) error {
 	p.mu.Lock()
 	callback := p.callback
@@ -154,7 +154,7 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 	if dropped > 0 {
 		p.moduleLogger.Debug().
 			Int("dropped", dropped).
-			Msg("Dropped non-scalar OTLP datapoints (histogram/summary not mapped to a scalar value)")
+			Msg("Dropped OTLP metrics with an unrecognized or unset data type")
 	}
 
 	if len(points) == 0 {

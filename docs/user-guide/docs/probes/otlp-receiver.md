@@ -80,9 +80,15 @@ Run two instances to serve both protocols at once:
   and every other resource attribute is folded onto each datapoint,
   so downstream sinks can group by origin. Per-datapoint attributes
   win on key collisions.
-- **Scalar metrics only.** Gauges and Sums are ingested. Histograms,
-  exponential histograms and summaries are dropped and reported in
-  the OTLP partial-success response — the sender's SDK logs it.
+- **All metric types.** Gauges and Sums map to one value each.
+  Histograms and summaries are ingested as their component series —
+  `<name>_count`, `<name>_sum`, cumulative `<name>_bucket{le="…"}`
+  (Prometheus style), `<name>{quantile="…"}` for summaries, and
+  `<name>_min` / `<name>_max` when present. Exponential histograms
+  contribute their `_count` / `_sum` / `_min` / `_max` aggregates
+  (the base-2 buckets are not expanded yet). Only a metric with an
+  unrecognized or unset data type is dropped, reported in the OTLP
+  partial-success response.
 - **Pass-through naming.** Ingested metric names are forwarded
   unchanged; nothing is renamed or prefixed.
 - **Limits.** gRPC accepts payloads up to 4 MiB (the OTel SDK
