@@ -115,12 +115,12 @@ the metrics/logs exporters. Largest and last increment.
 
 ## Phases / tracking
 
-| Phase | Scope | Issue |
-|---|---|---|
-| 1 | Complete metrics: histogram / exp-histogram / summary → scalar series | #656 |
-| 2 | Multi-signal transport + logs ingest (relay via agent log channel) | #657 |
-| 3 | Traces ingest (raw span forwarder) | #658 |
-| — | Native OTLP histogram pass-through (model carries histogram) | #659 |
+| Phase | Scope | Issue | Status |
+|---|---|---|---|
+| 1 | Complete metrics: histogram / exp-histogram / summary → scalar series | #656 | done |
+| 2 | Multi-signal transport + logs ingest (relay via agent log channel) | #657 | done |
+| 3 | Traces ingest (raw span forwarder) | #658 | todo |
+| — | Native OTLP histogram pass-through (model carries histogram) | #659 | todo |
 
 Each phase ships as its own PR with tests. Phase 1 is self-contained and
 does not touch the transport; Phases 2–3 add the multi-service transport.

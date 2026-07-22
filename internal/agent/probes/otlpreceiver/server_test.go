@@ -17,9 +17,13 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -165,6 +169,51 @@ func TestGRPCReceiver_HistogramIngested(t *testing.T) {
 	}
 	// Expanded: h_count, h_sum, h_bucket{le=1}, h_bucket{le=+Inf} = 4 series.
 	waitForPoints(t, cb, 4)
+}
+
+func TestGRPCReceiver_LogsIngestedAndRelayed(t *testing.T) {
+	// Subscribe to the agent log channel so we can observe the relay.
+	sub := agentstate.SubscribeLogs(16)
+	defer agentstate.UnsubscribeLogs(sub)
+
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "grpc", "address": "127.0.0.1:0",
+		"signals": []interface{}{"metrics", "logs"},
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer conn.Close()
+
+	rec := &logspb.LogRecord{
+		SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_WARN,
+		SeverityText:   "WARN",
+		Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "hello"}},
+	}
+	req := &collectorlogspb.ExportLogsServiceRequest{ResourceLogs: wrapLogs(nil, rec)}
+
+	client := collectorlogspb.NewLogsServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Export(ctx, req); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	select {
+	case got := <-sub:
+		if got.Body != "hello" || got.SeverityText != "WARN" {
+			t.Errorf("relayed record = %+v, want body=hello severity=WARN", got)
+		}
+		if got.ProducerProbeType != "otlp_receiver" {
+			t.Errorf("producer type = %q, want otlp_receiver", got.ProducerProbeType)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the relayed log record")
+	}
 }
 
 func TestGRPCReceiver_UnsetMetricPartialSuccess(t *testing.T) {
