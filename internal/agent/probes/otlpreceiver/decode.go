@@ -2,6 +2,7 @@ package otlpreceiver
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -72,6 +73,13 @@ func flattenMetric(m *metricpb.Metric, resourceTags []tags.Tag) (points []data_s
 		}
 	case *metricpb.Metric_Histogram:
 		for _, dp := range data.Histogram.GetDataPoints() {
+			if !histogramDataPointValid(dp) {
+				// Malformed bucket layout — dropping here keeps a poison
+				// point out of the OTLP export store, where a downstream
+				// collector could reject the whole batch on every push.
+				dropped++
+				continue
+			}
 			points = append(points, histogramToDataPoint(name, unit, dp, resourceTags))
 		}
 	case *metricpb.Metric_ExponentialHistogram:
@@ -129,7 +137,10 @@ func numberPointToDataPoint(name, unit, otelType string, dp *metricpb.NumberData
 // pointTime converts an OTLP nanosecond timestamp to time.Time, defaulting
 // to now when the sender left it unset (0).
 func pointTime(tsNano uint64) time.Time {
-	if tsNano == 0 {
+	// Unset (0) or a value past what int64 nanoseconds can hold (hostile or
+	// buggy sender — a real timestamp stays under this until year 2262)
+	// falls back to now instead of wrapping to a negative (year ~1677).
+	if tsNano == 0 || tsNano > math.MaxInt64 {
 		return time.Now()
 	}
 	return time.Unix(0, int64(tsNano))
@@ -171,7 +182,12 @@ func histogramToDataPoint(name, unit string, dp *metricpb.HistogramDataPoint, re
 		Name:      name,
 		Timestamp: pointTime(dp.GetTimeUnixNano()),
 		Value:     float64(dp.GetCount()),
-		Tags:      ingestTags(unit, "histogram", dp.GetAttributes(), resourceTags),
+		// Strip a sender-supplied `le`: it is reserved for the histogram
+		// bucket ladder. Dropping it at decode keeps it off BOTH the
+		// Prometheus exposition (where a duplicate broke the whole page)
+		// AND the OTLP export (where it would otherwise pollute the
+		// downstream backend with a bogus `le` dimension).
+		Tags:      ingestTags(unit, "histogram", withoutAttr(dp.GetAttributes(), "le"), resourceTags),
 		Histogram: h,
 	}
 }
@@ -182,6 +198,34 @@ func copyOptionalFloat(v *float64) *float64 {
 	}
 	c := *v
 	return &c
+}
+
+// histogramDataPointValid enforces the OTLP explicit-bucket invariant: when
+// bucket counts are present there must be exactly one more of them than
+// explicit bounds. An empty bucket layout (count/sum only) is valid. A point
+// that violates this is malformed and must not reach the native export.
+func histogramDataPointValid(dp *metricpb.HistogramDataPoint) bool {
+	n := len(dp.GetBucketCounts())
+	return n == 0 || n == len(dp.GetExplicitBounds())+1
+}
+
+// withoutAttr returns attrs minus any entry with the given key, without
+// mutating the input (which aliases the received proto message). Used to
+// drop Prometheus-reserved keys (`le`, `quantile`) a sender may have put on
+// a histogram/summary before they become tags.
+func withoutAttr(attrs []*commonpb.KeyValue, key string) []*commonpb.KeyValue {
+	for _, kv := range attrs {
+		if kv.GetKey() == key {
+			out := make([]*commonpb.KeyValue, 0, len(attrs)-1)
+			for _, k := range attrs {
+				if k.GetKey() != key {
+					out = append(out, k)
+				}
+			}
+			return out
+		}
+	}
+	return attrs
 }
 
 // expHistogramToDataPoints maps one OTLP exponential-histogram point to its
@@ -212,7 +256,9 @@ func expHistogramToDataPoints(name, unit string, dp *metricpb.ExponentialHistogr
 // <name>_sum and one <name>{quantile=q} gauge per reported quantile.
 func summaryToDataPoints(name, unit string, dp *metricpb.SummaryDataPoint, resourceTags []tags.Tag) []data_store.DataPoint {
 	ts := pointTime(dp.GetTimeUnixNano())
-	attrs := dp.GetAttributes()
+	// `quantile` is reserved for the summary's quantile series; strip any
+	// sender-supplied one so it cannot collide with the generated tags.
+	attrs := withoutAttr(dp.GetAttributes(), "quantile")
 
 	out := []data_store.DataPoint{
 		{

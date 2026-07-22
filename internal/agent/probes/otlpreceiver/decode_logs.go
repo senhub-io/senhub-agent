@@ -2,7 +2,6 @@ package otlpreceiver
 
 import (
 	"encoding/hex"
-	"time"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -36,10 +35,7 @@ func logRecordToInternal(lr *logspb.LogRecord, resourceAttrs map[string]string, 
 	if tsNano == 0 {
 		tsNano = lr.GetObservedTimeUnixNano()
 	}
-	when := time.Now()
-	if tsNano != 0 {
-		when = time.Unix(0, int64(tsNano))
-	}
+	when := pointTime(tsNano)
 
 	attrs := make(map[string]string, len(resourceAttrs)+len(lr.GetAttributes())+2)
 	for k, v := range resourceAttrs {
