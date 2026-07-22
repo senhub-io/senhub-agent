@@ -15,13 +15,14 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		ProbesActive: 3,
 	}
 	recs := BuildAgentRecords(snap)
-	// 31 records when neither build info nor http_requests is set and no
+	// 32 records when neither build info nor http_requests is set and no
 	// OTLP drops / checkpoint errors have occurred yet:
 	//   7 core         (uptime, cache.entries, probes.{active,total,healthy},
 	//                   collect.errors, transformer.fallback)
-	//   8 OTLP push    (metrics.pushed, logs.pushed, export.errors,
-	//                   dropped_log_records, buffer.fill_ratio,
-	//                   store_size, export.duration{window=last},
+	//   9 OTLP push    (metrics.pushed, logs.pushed, export.errors,
+	//                   dropped_log_records, dropped_span_batches,
+	//                   buffer.fill_ratio, store_size,
+	//                   export.duration{window=last},
 	//                   export.duration{window=mean})
 	//   3 OTLP checkpoint (size, last_save_age, restored_entries)
 	//   1 OTLP parallel  (sub_batches)
@@ -35,8 +36,8 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	if len(recs) != 31 {
-		t.Fatalf("expected 31 records (no build info, no http requests, no OTLP drops, no checkpoint errors), got %d", len(recs))
+	if len(recs) != 32 {
+		t.Fatalf("expected 32 records (no build info, no http requests, no OTLP drops, no checkpoint errors), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -55,6 +56,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.otlp.logs.pushed",
 		"senhub.agent.otlp.export.errors",
 		"senhub.agent.otlp.dropped_log_records",
+		"senhub.agent.otlp.dropped_span_batches",
 		"senhub.agent.otlp.buffer.fill_ratio",
 		"senhub.agent.otlp.store_size",
 		"senhub.agent.otlp.export.duration",

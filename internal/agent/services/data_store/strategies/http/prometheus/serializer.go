@@ -171,12 +171,27 @@ func effectiveType(r otelmapper.OtelRecord) string {
 // sender provided it) and `name_count`. The `le` label is appended to
 // the record's own label set.
 func writeHistogramRow(w io.Writer, name string, labelKeys []string, promLabels map[string]string, h *datapoint.HistogramValue) error {
-	bucketKeys := make([]string, 0, len(labelKeys)+1)
-	bucketKeys = append(bucketKeys, labelKeys...)
+	// `le` is reserved for histogram buckets. A sender-supplied `le`
+	// attribute would otherwise duplicate the bucket label (making the
+	// entire exposition unparseable — one poisoned series takes down the
+	// whole /metrics page) and leak a non-numeric value onto _sum/_count.
+	// Drop it from the record's own label set before we add our own.
+	baseKeys := make([]string, 0, len(labelKeys))
+	baseLabels := make(map[string]string, len(promLabels))
+	for _, k := range labelKeys {
+		if k == "le" {
+			continue
+		}
+		baseKeys = append(baseKeys, k)
+		baseLabels[k] = promLabels[k]
+	}
+
+	bucketKeys := make([]string, 0, len(baseKeys)+1)
+	bucketKeys = append(bucketKeys, baseKeys...)
 	bucketKeys = append(bucketKeys, "le")
 	sort.Strings(bucketKeys)
-	bucketLabels := make(map[string]string, len(promLabels)+1)
-	for k, v := range promLabels {
+	bucketLabels := make(map[string]string, len(baseLabels)+1)
+	for k, v := range baseLabels {
 		bucketLabels[k] = v
 	}
 
@@ -195,7 +210,7 @@ func writeHistogramRow(w io.Writer, name string, labelKeys []string, promLabels 
 		return err
 	}
 
-	labels := FormatLabels(labelKeys, promLabels)
+	labels := FormatLabels(baseKeys, baseLabels)
 	if h.Sum != nil {
 		if _, err := fmt.Fprintf(w, "%s_sum%s %s\n", name, labels, formatValue(*h.Sum)); err != nil {
 			return err
