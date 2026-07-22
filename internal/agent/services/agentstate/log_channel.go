@@ -223,6 +223,16 @@ func GetDroppedLogRecordsTotal() uint64 {
 	return logCh.dropped.Load()
 }
 
+// LogSubscriberCount returns the number of active log subscribers. Zero
+// means no log-capable strategy is draining the channel, so PublishLog
+// would fan out to nobody. The OTLP receiver reads this to warn rather
+// than silently discard ingested logs when no OTLP export is configured.
+func LogSubscriberCount() int {
+	logCh.mu.RLock()
+	defer logCh.mu.RUnlock()
+	return len(logCh.subs)
+}
+
 // resetLogChannelForTest clears all subscribers and resets the drop
 // counter. Test-only helper to keep the package-level state from
 // leaking across test cases.
