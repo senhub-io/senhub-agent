@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // newTextParser returns a TextParser initialized with LegacyValidation,
@@ -267,5 +268,121 @@ func TestSerialize_UnitConflictWarner(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("warnUnitConflict should be deduplicated; got %d warnings", count)
+	}
+}
+
+func TestSerialize_HistogramNative(t *testing.T) {
+	sum, minV, maxV := 4.2, 0.05, 0.9
+	records := []otelmapper.OtelRecord{{
+		Name:        "http.server.duration",
+		Unit:        "s",
+		Type:        "histogram",
+		Attributes:  map[string]string{"probe_name": "edge_in"},
+		Value:       6,
+		Description: "HTTP request duration",
+		Histogram: &datapoint.HistogramValue{
+			Count:          6,
+			Sum:            &sum,
+			Min:            &minV,
+			Max:            &maxV,
+			BucketCounts:   []uint64{1, 2, 3},
+			ExplicitBounds: []float64{0.1, 0.5},
+		},
+	}}
+
+	var buf bytes.Buffer
+	if err := SerializeToTextExposition(records, &buf, SerializeOptions{}); err != nil {
+		t.Fatalf("Serialize err: %v", err)
+	}
+	body := buf.String()
+	t.Logf("Output:\n%s", body)
+
+	wantLines := []string{
+		`# TYPE senhub_http_server_duration_seconds histogram`,
+		`senhub_http_server_duration_seconds_bucket{le="0.1",probe_name="edge_in"} 1`,
+		`senhub_http_server_duration_seconds_bucket{le="0.5",probe_name="edge_in"} 3`,
+		`senhub_http_server_duration_seconds_bucket{le="+Inf",probe_name="edge_in"} 6`,
+		`senhub_http_server_duration_seconds_sum{probe_name="edge_in"} 4.2`,
+		`senhub_http_server_duration_seconds_count{probe_name="edge_in"} 6`,
+	}
+	for _, line := range wantLines {
+		if !strings.Contains(body, line) {
+			t.Errorf("missing line %q in body:\n%s", line, body)
+		}
+	}
+
+	// Round-trip: the canonical Prometheus parser must see one histogram
+	// family with cumulative buckets.
+	p := newTextParser()
+	parsed, err := p.TextToMetricFamilies(strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("expfmt parse failed: %v\nbody:\n%s", err, body)
+	}
+	fam, ok := parsed["senhub_http_server_duration_seconds"]
+	if !ok {
+		t.Fatalf("histogram family missing; got keys: %v", keys(parsed))
+	}
+	if fam.GetType() != dto.MetricType_HISTOGRAM {
+		t.Errorf("family type=%v, want HISTOGRAM", fam.GetType())
+	}
+	h := fam.GetMetric()[0].GetHistogram()
+	if h.GetSampleCount() != 6 {
+		t.Errorf("sample count=%d, want 6", h.GetSampleCount())
+	}
+	if h.GetSampleSum() != 4.2 {
+		t.Errorf("sample sum=%v, want 4.2", h.GetSampleSum())
+	}
+}
+
+func TestSerialize_HistogramWithoutSumOmitsSumLine(t *testing.T) {
+	records := []otelmapper.OtelRecord{{
+		Name:       "h",
+		Unit:       "1",
+		Type:       "histogram",
+		Attributes: map[string]string{},
+		Value:      2,
+		Histogram:  &datapoint.HistogramValue{Count: 2, BucketCounts: []uint64{2}},
+	}}
+	var buf bytes.Buffer
+	if err := SerializeToTextExposition(records, &buf, SerializeOptions{}); err != nil {
+		t.Fatalf("Serialize err: %v", err)
+	}
+	body := buf.String()
+	if strings.Contains(body, "_sum") {
+		t.Errorf("optional Sum absent — no _sum line expected:\n%s", body)
+	}
+	if !strings.Contains(body, `senhub_h_ratio_bucket{le="+Inf"} 2`) {
+		t.Errorf("missing terminal +Inf bucket:\n%s", body)
+	}
+	if !strings.Contains(body, "senhub_h_ratio_count 2") {
+		t.Errorf("missing _count line:\n%s", body)
+	}
+}
+
+func TestSerialize_HistogramTypeWithoutPayloadFallsBackToScalar(t *testing.T) {
+	// Defensive: a "histogram"-typed record without payload must serialize
+	// as a plain gauge sample on its scalar value — never panic, never emit
+	// a broken histogram family.
+	records := []otelmapper.OtelRecord{{
+		Name:       "h",
+		Unit:       "1",
+		Type:       "histogram",
+		Attributes: map[string]string{"probe_name": "edge_in"},
+		Value:      6,
+	}}
+	var buf bytes.Buffer
+	if err := SerializeToTextExposition(records, &buf, SerializeOptions{}); err != nil {
+		t.Fatalf("Serialize err: %v", err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, "# TYPE senhub_h_ratio gauge") {
+		t.Errorf("payload-less histogram should degrade to gauge:\n%s", body)
+	}
+	if !strings.Contains(body, `senhub_h_ratio{probe_name="edge_in"} 6`) {
+		t.Errorf("scalar fallback sample missing:\n%s", body)
+	}
+	p := newTextParser()
+	if _, err := p.TextToMetricFamilies(strings.NewReader(body)); err != nil {
+		t.Fatalf("expfmt parse failed: %v\nbody:\n%s", err, body)
 	}
 }

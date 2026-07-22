@@ -12,15 +12,18 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // flattenResourceMetrics converts the OTLP wire form of a metrics
 // payload into the agent's flat DataPoint slice. Every OTLP metric
 // family is mapped: Gauge and Sum become a scalar DataPoint each;
-// Histogram, ExponentialHistogram and Summary are expanded into their
-// Prometheus classic-histogram component series (_count, _sum,
-// _bucket{le}, {quantile}, _min/_max) so they flow through the same
-// scalar DataPoint path. Only a genuinely unrecognized/unset data type
+// an explicit-bucket Histogram becomes ONE DataPoint carrying the
+// native histogram payload (re-exported natively over OTLP and as a
+// Prometheus classic histogram, while Value holds the count for
+// scalar-only sinks); ExponentialHistogram and Summary are expanded
+// into their scalar component series (_count, _sum, {quantile},
+// _min/_max) as before. Only a genuinely unrecognized/unset data type
 // is reported via the returned dropped count.
 //
 // Resource attributes are folded onto every emitted datapoint as
@@ -69,7 +72,7 @@ func flattenMetric(m *metricpb.Metric, resourceTags []tags.Tag) (points []data_s
 		}
 	case *metricpb.Metric_Histogram:
 		for _, dp := range data.Histogram.GetDataPoints() {
-			points = append(points, histogramToDataPoints(name, unit, dp, resourceTags)...)
+			points = append(points, histogramToDataPoint(name, unit, dp, resourceTags))
 		}
 	case *metricpb.Metric_ExponentialHistogram:
 		for _, dp := range data.ExponentialHistogram.GetDataPoints() {
@@ -148,46 +151,37 @@ func ingestTags(unit, otelType string, attrs []*commonpb.KeyValue, resourceTags 
 	return out
 }
 
-// histogramToDataPoints expands one OTLP explicit-bucket histogram point
-// into the Prometheus classic-histogram scalar series: <name>_count,
-// <name>_sum (when present), cumulative <name>_bucket{le=<bound>} (plus a
-// terminal le="+Inf"), and optional <name>_min / <name>_max gauges. OTLP
-// bucket_counts are per-bucket; Prometheus buckets are cumulative, so the
-// counts are accumulated. Count/bucket series are dimensionless ("1"); the
-// value-bearing sum/min/max keep the metric's unit.
-func histogramToDataPoints(name, unit string, dp *metricpb.HistogramDataPoint, resourceTags []tags.Tag) []data_store.DataPoint {
-	ts := pointTime(dp.GetTimeUnixNano())
-	attrs := dp.GetAttributes()
-
-	out := []data_store.DataPoint{{
-		Name:      name + "_count",
-		Timestamp: ts,
+// histogramToDataPoint maps one OTLP explicit-bucket histogram point to a
+// single DataPoint carrying the native histogram payload. Value is the
+// observation count — the scalar fallback for sinks without histogram
+// rendering (PRTG, Nagios, cloud) — while histogram-aware sinks (OTLP
+// push, Prometheus exposition) re-export the full distribution from the
+// payload. Slices and optional pointers are copied so the stored payload
+// never aliases the decoded proto message.
+func histogramToDataPoint(name, unit string, dp *metricpb.HistogramDataPoint, resourceTags []tags.Tag) data_store.DataPoint {
+	h := &datapoint.HistogramValue{
+		Count:          dp.GetCount(),
+		Sum:            copyOptionalFloat(dp.Sum),
+		Min:            copyOptionalFloat(dp.Min),
+		Max:            copyOptionalFloat(dp.Max),
+		BucketCounts:   append([]uint64(nil), dp.GetBucketCounts()...),
+		ExplicitBounds: append([]float64(nil), dp.GetExplicitBounds()...),
+	}
+	return data_store.DataPoint{
+		Name:      name,
+		Timestamp: pointTime(dp.GetTimeUnixNano()),
 		Value:     float64(dp.GetCount()),
-		Tags:      ingestTags("1", "counter", attrs, resourceTags),
-	}}
-	if dp.Sum != nil {
-		out = append(out, data_store.DataPoint{
-			Name: name + "_sum", Timestamp: ts, Value: dp.GetSum(),
-			Tags: ingestTags(unit, "counter", attrs, resourceTags),
-		})
+		Tags:      ingestTags(unit, "histogram", dp.GetAttributes(), resourceTags),
+		Histogram: h,
 	}
+}
 
-	bounds := dp.GetExplicitBounds()
-	var cumulative uint64
-	for i, bc := range dp.GetBucketCounts() {
-		cumulative += bc
-		le := "+Inf"
-		if i < len(bounds) {
-			le = strconv.FormatFloat(bounds[i], 'g', -1, 64)
-		}
-		out = append(out, data_store.DataPoint{
-			Name: name + "_bucket", Timestamp: ts, Value: float64(cumulative),
-			Tags: ingestTags("1", "counter", attrs, resourceTags, tags.Tag{Key: "le", Value: le}),
-		})
+func copyOptionalFloat(v *float64) *float64 {
+	if v == nil {
+		return nil
 	}
-
-	out = append(out, minMaxPoints(name, unit, ts, attrs, resourceTags, dp.Min, dp.Max)...)
-	return out
+	c := *v
+	return &c
 }
 
 // expHistogramToDataPoints maps one OTLP exponential-histogram point to its

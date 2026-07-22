@@ -82,10 +82,13 @@ Run two instances to serve both protocols at once:
   so downstream sinks can group by origin. Per-datapoint attributes
   win on key collisions.
 - **All metric types.** Gauges and Sums map to one value each.
-  Histograms and summaries are ingested as their component series —
-  `<name>_count`, `<name>_sum`, cumulative `<name>_bucket{le="…"}`
-  (Prometheus style), `<name>{quantile="…"}` for summaries, and
-  `<name>_min` / `<name>_max` when present. Exponential histograms
+  Explicit-bucket histograms are ingested **natively**: re-exported over
+  OTLP as a genuine histogram (buckets, sum, count, min/max preserved)
+  and on the Prometheus endpoint as a classic histogram — cumulative
+  `<name>_bucket{le="…"}`, `<name>_sum`, `<name>_count`. Sinks without
+  histogram rendering (PRTG, Nagios, cloud) show the observation count.
+  Summaries are ingested as their component series — `<name>_count`,
+  `<name>_sum`, `<name>{quantile="…"}` — and exponential histograms
   contribute their `_count` / `_sum` / `_min` / `_max` aggregates
   (the base-2 buckets are not expanded yet). Only a metric with an
   unrecognized or unset data type is dropped, reported in the OTLP
