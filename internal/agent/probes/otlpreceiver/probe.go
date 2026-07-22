@@ -1,9 +1,13 @@
 // Package otlpreceiver implements an event-driven probe that runs an
-// embedded OTLP metrics receiver (gRPC or HTTP) and ingests incoming
-// datapoints as if they had been collected by an internal probe. The
-// agent thus acts as a small edge collector, aggregating OTLP streams
-// from other instrumented devices/applications and routing them to the
-// configured sinks.
+// embedded OTLP receiver (gRPC or HTTP) and ingests incoming telemetry as
+// if it had been collected by an internal probe. The agent thus acts as a
+// small edge collector, aggregating OTLP streams from other instrumented
+// devices/applications and routing them to the configured sinks.
+//
+// Which signals the listener accepts is config-driven (`signals:`, metrics
+// only by default). Metrics become datapoints on the probe callback; logs
+// are published on the agent log channel and relayed by the OTLP export
+// strategy.
 //
 // The probe mirrors the event-driven contract used by the syslog probe:
 // it implements ProbeWithCallback (SetCallback), opens its listener in
@@ -25,15 +29,22 @@ import (
 	"google.golang.org/grpc"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
-const probeType = "otlp_receiver"
+const (
+	probeType = "otlp_receiver"
+	// noSinkWarnInterval throttles the "ingested logs have nowhere to go"
+	// warning so a sender pushing at line rate cannot flood the agent log.
+	noSinkWarnInterval = 5 * time.Minute
+)
 
-// OTLPReceiverProbe runs an embedded OTLP metrics receiver and forwards
-// every ingested datapoint to the data store via the probe callback.
+// OTLPReceiverProbe runs an embedded OTLP receiver: ingested metrics go to
+// the data store via the probe callback, ingested logs onto the agent log
+// channel for a log-capable strategy to relay.
 type OTLPReceiverProbe struct {
 	*types.BaseProbe
 	rawConfig    map[string]interface{}
@@ -41,11 +52,12 @@ type OTLPReceiverProbe struct {
 	guard        *ingressGuard
 	moduleLogger *logger.ModuleLogger
 
-	mu         sync.Mutex
-	grpcServer *grpc.Server
-	httpServer interface{ shutdown(context.Context) error }
-	listener   net.Listener
-	callback   func([]data_store.DataPoint) error
+	mu             sync.Mutex
+	grpcServer     *grpc.Server
+	httpServer     interface{ shutdown(context.Context) error }
+	listener       net.Listener
+	callback       func([]data_store.DataPoint) error
+	lastNoSinkWarn time.Time
 }
 
 // NewOTLPReceiverProbe constructs the probe from its raw config map.
@@ -95,6 +107,7 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("protocol", p.config.Protocol).
 		Str("address", p.config.Address).
+		Strs("signals", p.config.Signals.names()).
 		Msg("Starting OTLP receiver")
 
 	if netbind.IsWildcard(p.config.Address) {
@@ -172,6 +185,43 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 	}
 	p.moduleLogger.Debug().Int("datapoints", len(points)).Msg("Ingested OTLP datapoints")
 	return nil
+}
+
+// ingestLogs publishes received OTLP log records on the agent log channel,
+// from which a log-capable strategy (the OTLP export pipeline) drains them.
+// The receiver only relays: the pull sinks are metrics-only, so with no OTLP
+// export strategy subscribed the records have nowhere to go and the operator
+// gets a throttled warning rather than a silent void.
+func (p *OTLPReceiverProbe) ingestLogs(records []agentstate.LogRecord) {
+	if len(records) == 0 {
+		return
+	}
+	if agentstate.LogSubscriberCount() == 0 {
+		p.warnNoLogSink(len(records))
+		return
+	}
+	for _, rec := range records {
+		agentstate.PublishLog(rec)
+	}
+	p.moduleLogger.Debug().Int("records", len(records)).Msg("Ingested OTLP log records")
+}
+
+// warnNoLogSink warns at most once per noSinkWarnInterval that ingested logs
+// are being discarded because no log-capable strategy is configured.
+func (p *OTLPReceiverProbe) warnNoLogSink(dropped int) {
+	p.mu.Lock()
+	now := time.Now()
+	warn := now.Sub(p.lastNoSinkWarn) >= noSinkWarnInterval
+	if warn {
+		p.lastNoSinkWarn = now
+	}
+	p.mu.Unlock()
+
+	if warn {
+		p.moduleLogger.Warn().
+			Int("dropped", dropped).
+			Msg("Ingested OTLP logs discarded: no OTLP export strategy is configured to relay them")
+	}
 }
 
 // replacePort swaps the port portion of a host:port address. If the

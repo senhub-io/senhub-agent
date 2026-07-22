@@ -16,13 +16,37 @@ const (
 	defaultGRPCAddr  = "127.0.0.1:4317"
 	defaultHTTPAddr  = "127.0.0.1:4318"
 	defaultHTTPPath  = "/v1/metrics"
+	httpLogsPath     = "/v1/logs"
 	minPort          = 1
 	maxPort          = 65535
 	protocolGRPC     = "grpc"
 	protocolHTTP     = "http"
 	maxRecvMsgBytes  = 4 * 1024 * 1024 // 4 MiB — matches the OTel SDK default
 	httpReadTimeoutS = 30
+
+	signalMetrics = "metrics"
+	signalLogs    = "logs"
+	signalTraces  = "traces"
 )
+
+// signalSet records which OTLP signals the receiver accepts. A bare config
+// (no `signals:`) is metrics-only so existing installs are unchanged.
+type signalSet struct {
+	Metrics bool
+	Logs    bool
+}
+
+// names returns the enabled signals in a stable order, for logging.
+func (s signalSet) names() []string {
+	var out []string
+	if s.Metrics {
+		out = append(out, signalMetrics)
+	}
+	if s.Logs {
+		out = append(out, signalLogs)
+	}
+	return out
+}
 
 // receiverConfig is the parsed, validated configuration of the OTLP
 // receiver probe.
@@ -50,6 +74,9 @@ type receiverConfig struct {
 	// burst RateLimitBurst). 0 disables rate limiting.
 	RateLimitRPS   float64
 	RateLimitBurst int
+	// Signals selects which OTLP signal services the listener registers.
+	// Defaults to metrics only when `signals:` is absent.
+	Signals signalSet
 }
 
 func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) {
@@ -122,7 +149,43 @@ func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) 
 		}
 	}
 
+	signals, err := parseSignals(config["signals"])
+	if err != nil {
+		return receiverConfig{}, err
+	}
+	cfg.Signals = signals
+
 	return cfg, nil
+}
+
+// parseSignals reads the `signals:` list. Absent or empty means metrics
+// only (back-compat). "traces" is accepted syntactically but rejected with
+// a pointer to the tracking issue until the traces path lands (#658).
+func parseSignals(raw interface{}) (signalSet, error) {
+	if raw == nil {
+		return signalSet{Metrics: true}, nil
+	}
+	names := stringSlice(raw)
+	if len(names) == 0 {
+		return signalSet{Metrics: true}, nil
+	}
+	var s signalSet
+	for _, n := range names {
+		switch n {
+		case signalMetrics:
+			s.Metrics = true
+		case signalLogs:
+			s.Logs = true
+		case signalTraces:
+			return signalSet{}, fmt.Errorf("signals: %q ingest is not yet supported (tracked in senhub-io/senhub-agent#658)", signalTraces)
+		default:
+			return signalSet{}, fmt.Errorf("signals: unknown signal %q (want %q or %q)", n, signalMetrics, signalLogs)
+		}
+	}
+	if !s.Metrics && !s.Logs {
+		return signalSet{}, fmt.Errorf("signals: at least one of %q, %q must be enabled", signalMetrics, signalLogs)
+	}
+	return s, nil
 }
 
 // stringSlice coerces a YAML/JSON list param into []string, ignoring
