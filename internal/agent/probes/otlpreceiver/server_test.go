@@ -19,9 +19,11 @@ import (
 
 	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -213,6 +215,91 @@ func TestGRPCReceiver_LogsIngestedAndRelayed(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for the relayed log record")
+	}
+}
+
+func sampleTraceRequest(spanName string) *collectortracepb.ExportTraceServiceRequest {
+	return &collectortracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{{
+			ScopeSpans: []*tracepb.ScopeSpans{{
+				Spans: []*tracepb.Span{{Name: spanName}},
+			}},
+		}},
+	}
+}
+
+func TestGRPCReceiver_TracesIngestedAndRelayed(t *testing.T) {
+	// Subscribe to the agent span channel so we can observe the relay.
+	sub := agentstate.SubscribeSpans(16)
+	defer agentstate.UnsubscribeSpans(sub)
+
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "grpc", "address": "127.0.0.1:0",
+		"signals": []interface{}{"traces"},
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer conn.Close()
+
+	client := collectortracepb.NewTraceServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Export(ctx, sampleTraceRequest("relay-me")); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	// Spans are relayed verbatim (raw proto, no internal model): assert
+	// the ResourceSpans batch and the span name survive unchanged.
+	select {
+	case got := <-sub:
+		if len(got) != 1 {
+			t.Fatalf("relayed batch has %d ResourceSpans, want 1", len(got))
+		}
+		if name := got[0].GetScopeSpans()[0].GetSpans()[0].GetName(); name != "relay-me" {
+			t.Errorf("relayed span name = %q, want relay-me", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the relayed span batch")
+	}
+}
+
+func TestHTTPReceiver_TracesIngestedAndRelayed(t *testing.T) {
+	sub := agentstate.SubscribeSpans(16)
+	defer agentstate.UnsubscribeSpans(sub)
+
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "http", "address": "127.0.0.1:0",
+		"signals": []interface{}{"traces"},
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	body, err := proto.Marshal(sampleTraceRequest("relay-me-http"))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	resp, err := http.Post("http://"+addr+httpTracesPath, "application/x-protobuf", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	select {
+	case got := <-sub:
+		if name := got[0].GetScopeSpans()[0].GetSpans()[0].GetName(); name != "relay-me-http" {
+			t.Errorf("relayed span name = %q, want relay-me-http", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the relayed span batch")
 	}
 }
 

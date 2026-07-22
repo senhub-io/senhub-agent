@@ -38,10 +38,10 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 | Parameter | Default | Description |
 |---|---|---|
 | `protocol` | `grpc` | `grpc` (OTLP/gRPC) or `http` (OTLP/HTTP protobuf) |
-| `signals` | `[metrics]` | Which OTLP signals the listener accepts: `metrics`, `logs`, or both. Logs are relayed onward through a configured OTLP export strategy (see Behavior); `traces` is not yet supported |
+| `signals` | `[metrics]` | Which OTLP signals the listener accepts: any combination of `metrics`, `logs`, `traces`. Logs and traces are relayed onward through a configured OTLP export strategy (see Behavior) |
 | `address` | `127.0.0.1:4317` (grpc), `127.0.0.1:4318` (http) | Listen address. Loopback by default — accepting remote OTLP requires an explicit address (e.g. `"0.0.0.0:4317"`); pair it with the protections below |
 | `port` | from `address` | Convenience override: replaces only the port part of the address |
-| `http_path` | `/v1/metrics` | Route the HTTP receiver serves metrics on (ignored for gRPC). Logs are always served on `/v1/logs` |
+| `http_path` | `/v1/metrics` | Route the HTTP receiver serves metrics on (ignored for gRPC). Logs are always served on `/v1/logs`, traces on `/v1/traces` |
 | `bearer_token` | none | When set, senders must present `Authorization: Bearer <token>` (HTTP header or gRPC metadata). Reference a stored secret via `${secret:<name>.bearer_token}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 | `allowed_cidrs` | none | Source IP allow-list (CIDR notation, IPv4/IPv6). Checked against the transport peer address — proxy headers are not trusted |
 | `rate_limit_rps` | `0` (off) | Accepted requests per second (token bucket). Excess requests get HTTP 429 / gRPC `ResourceExhausted` |
@@ -100,6 +100,14 @@ Run two instances to serve both protocols at once:
   sinks (Prometheus/PRTG/Nagios) are metrics-only, so **logs need an OTLP
   export strategy** — without one, ingested logs are discarded and the
   agent logs a throttled warning.
+- **Traces are relayed.** With `signals: [traces]`, OTLP trace spans are
+  accepted (gRPC `TracesService`, or HTTP on `/v1/traces`) and forwarded
+  as a raw pass-through: spans are relayed verbatim — trace IDs, span
+  IDs, attributes, events, and resource are untouched (an OTLP-in →
+  OTLP-out relay). **Traces need an OTLP export strategy with
+  `signals.traces.enabled: true`** — the traces signal on the export side
+  gates the relay; without it, ingested spans are discarded and the agent
+  logs a throttled warning.
 - **Limits.** gRPC accepts payloads up to 4 MiB (the OTel SDK
   default); the HTTP server applies a 30-second read timeout.
 
