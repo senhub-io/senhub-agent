@@ -49,6 +49,27 @@ type HostIdentity struct {
 	K8sNodeName      string // k8s.node.name — downward-API NODE_NAME
 }
 
+// normalizeHostname lowercases the hostname and strips surrounding
+// whitespace plus a trailing FQDN root dot, so the same machine yields an
+// identical host label on every emission path (metric tags, OTLP resource,
+// entity nameplate). Windows reports an UPPER-CASE NetBIOS computer name
+// while DNS answers lower-case FQDNs; without one normalization point the
+// metric↔entity join by host name silently breaks (#627).
+func normalizeHostname(raw string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(raw), "."))
+}
+
+// canonicalHostname is the single hostname the agent emits everywhere: the
+// machine's fully-qualified DNS name when the platform provides one
+// (Windows — see resolveHostFQDN), else the OS-reported hostname, both
+// normalized to lower-case.
+func canonicalHostname(raw string) string {
+	if fqdn := resolveHostFQDN(); fqdn != "" {
+		return normalizeHostname(fqdn)
+	}
+	return normalizeHostname(raw)
+}
+
 // GetHostIdentity returns the host's stable identity plus descriptive nameplate
 // facts for entity detection. ID comes from gopsutil's HostID (the OS
 // machine-id), which — unlike the hostname — does not change on rename, so it is
@@ -69,7 +90,7 @@ func GetHostIdentity() (HostIdentity, error) {
 	np := getHostNameplate(virt)
 	return HostIdentity{
 		ID:               hostInfo.HostID,
-		Name:             hostInfo.Hostname,
+		Name:             canonicalHostname(hostInfo.Hostname),
 		OSType:           hostInfo.OS,
 		Arch:             hostInfo.KernelArch,
 		OSName:           hostInfo.Platform,
@@ -270,7 +291,7 @@ func GetHostResourceAttributes() (map[string]string, error) {
 		}
 	}
 	set("host.id", hostInfo.HostID)
-	set("host.name", hostInfo.Hostname)
+	set("host.name", canonicalHostname(hostInfo.Hostname))
 	set("host.arch", hostInfo.KernelArch)
 	set("os.type", hostInfo.OS)
 	set("os.name", hostInfo.Platform)
@@ -288,7 +309,7 @@ func GetHostTags() ([]tags.Tag, error) {
 	}
 
 	return []tags.Tag{
-		{Key: "host", Value: hostInfo.Hostname, Private: false},
+		{Key: "host", Value: canonicalHostname(hostInfo.Hostname), Private: false},
 		{Key: "os", Value: hostInfo.OS, Private: false},
 		{Key: "platform", Value: hostInfo.Platform, Private: false},
 		//  {Key: "platform_version", Value: hostInfo.PlatformVersion, Private: false},
