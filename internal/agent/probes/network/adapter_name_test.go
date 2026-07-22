@@ -1,9 +1,6 @@
 package network
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestNormalizeAdapterName(t *testing.T) {
 	tests := []struct {
@@ -108,6 +105,11 @@ func TestNormalizeAdapterNameMatchesWMIToPDH(t *testing.T) {
 			pdh:  "Microsoft Hyper-V Network Adapter",
 			wmi:  "Microsoft Hyper-V Network Adapter",
 		},
+		{
+			name: "wan miniport with parentheses and hash suffix",
+			pdh:  "WAN Miniport [IP] _2",
+			wmi:  "WAN Miniport (IP) #2",
+		},
 	}
 
 	for _, tt := range tests {
@@ -117,8 +119,8 @@ func TestNormalizeAdapterNameMatchesWMIToPDH(t *testing.T) {
 			if normPDH != normWMI {
 				t.Errorf("normalized forms diverge: pdh %q -> %q, wmi %q -> %q", tt.pdh, normPDH, tt.wmi, normWMI)
 			}
-			if !strings.Contains(normPDH, normWMI) {
-				t.Errorf("probe match predicate fails: Contains(%q, %q) = false", normPDH, normWMI)
+			if got, found := matchPDHInstance([]string{tt.pdh}, tt.wmi); !found || got != tt.pdh {
+				t.Errorf("probe match predicate fails: matchPDHInstance([%q], %q) = (%q, %v)", tt.pdh, tt.wmi, got, found)
 			}
 		})
 	}
