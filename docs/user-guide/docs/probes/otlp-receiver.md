@@ -113,6 +113,12 @@ Run two instances to serve both protocols at once:
 
 ## Operational notes
 
+- **Observability.** The agent exposes `senhub_agent_otlp_receiver_ingested_total`
+  (items accepted, by `signal`) and `senhub_agent_otlp_receiver_dropped_total`
+  (discarded, by `signal` + `reason` — `no_sink` when logs/traces arrive with
+  no export strategy, `unmapped` for a metric with an unrecognized data type).
+  A rising `dropped{reason="no_sink"}` means a sender is pushing logs/traces the
+  agent has nowhere to relay to.
 - A bind failure (port already taken) surfaces at probe start, not
   silently at runtime.
 - The listener accepts plaintext OTLP. Keep it on localhost or a
