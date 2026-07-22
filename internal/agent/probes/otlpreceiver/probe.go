@@ -171,6 +171,7 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 	p.mu.Unlock()
 
 	if dropped > 0 {
+		agentstate.IncrementOTLPReceiverDropped(signalMetrics, "unmapped", dropped)
 		p.moduleLogger.Debug().
 			Int("dropped", dropped).
 			Msg("Dropped OTLP metrics with an unrecognized or unset data type")
@@ -189,6 +190,7 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 		p.moduleLogger.Error().Err(err).Msg("Failed to forward ingested OTLP datapoints to data store")
 		return err
 	}
+	agentstate.IncrementOTLPReceiverIngested(signalMetrics, len(points))
 	p.moduleLogger.Debug().Int("datapoints", len(points)).Msg("Ingested OTLP datapoints")
 	return nil
 }
@@ -203,12 +205,14 @@ func (p *OTLPReceiverProbe) ingestLogs(records []agentstate.LogRecord) {
 		return
 	}
 	if agentstate.LogSubscriberCount() == 0 {
+		agentstate.IncrementOTLPReceiverDropped(signalLogs, "no_sink", len(records))
 		p.warnNoLogSink(len(records))
 		return
 	}
 	for _, rec := range records {
 		agentstate.PublishLog(rec)
 	}
+	agentstate.IncrementOTLPReceiverIngested(signalLogs, len(records))
 	p.moduleLogger.Debug().Int("records", len(records)).Msg("Ingested OTLP log records")
 }
 
@@ -240,12 +244,27 @@ func (p *OTLPReceiverProbe) ingestSpans(rs []*tracepb.ResourceSpans) {
 	if len(rs) == 0 {
 		return
 	}
+	spans := countSpans(rs)
 	if agentstate.SpanSubscriberCount() == 0 {
+		agentstate.IncrementOTLPReceiverDropped(signalTraces, "no_sink", spans)
 		p.warnNoSpanSink(len(rs))
 		return
 	}
 	agentstate.PublishSpans(rs)
-	p.moduleLogger.Debug().Int("resource_spans", len(rs)).Msg("Ingested OTLP spans")
+	agentstate.IncrementOTLPReceiverIngested(signalTraces, spans)
+	p.moduleLogger.Debug().Int("resource_spans", len(rs)).Int("spans", spans).Msg("Ingested OTLP spans")
+}
+
+// countSpans totals the spans across a ResourceSpans batch — the unit the
+// receiver's ingest/drop self-metrics report for traces.
+func countSpans(rs []*tracepb.ResourceSpans) int {
+	n := 0
+	for _, r := range rs {
+		for _, ss := range r.GetScopeSpans() {
+			n += len(ss.GetSpans())
+		}
+	}
+	return n
 }
 
 // warnNoSpanSink warns at most once per noSinkWarnInterval that ingested
