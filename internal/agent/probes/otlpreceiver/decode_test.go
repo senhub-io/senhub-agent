@@ -6,6 +6,8 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+
+	"senhub-agent.go/internal/agent/tags"
 )
 
 func strAttr(key, val string) *commonpb.KeyValue {
@@ -79,19 +81,166 @@ func TestFlatten_GaugeAndSum(t *testing.T) {
 	}
 }
 
-func TestFlatten_HistogramDropped(t *testing.T) {
+func float64Ptr(v float64) *float64 { return &v }
+
+// tagMapOf indexes a point's tags by key for assertions.
+func tagMapOf(tgs []tags.Tag) map[string]string {
+	m := map[string]string{}
+	for _, tg := range tgs {
+		m[tg.Key] = tg.Value
+	}
+	return m
+}
+
+func TestFlatten_HistogramExpanded(t *testing.T) {
+	// 3 bucket counts over 2 explicit bounds => buckets (-inf,0.1], (0.1,0.5], (0.5,+Inf].
 	hist := &metricpb.Metric{
-		Name: "http.server.duration",
+		Name: "http.server.duration", Unit: "s",
 		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
-			DataPoints: []*metricpb.HistogramDataPoint{{}, {}},
+			DataPoints: []*metricpb.HistogramDataPoint{{
+				TimeUnixNano:   1_700_000_000_000_000_000,
+				Count:          6,
+				Sum:            float64Ptr(4.2),
+				BucketCounts:   []uint64{1, 2, 3},
+				ExplicitBounds: []float64{0.1, 0.5},
+				Min:            float64Ptr(0.05),
+				Max:            float64Ptr(0.9),
+			}},
 		}},
 	}
-	rm := wrap(nil, hist, gaugeMetric("up", 1))
+	points, dropped := flattenResourceMetrics(wrap(nil, hist))
+	if dropped != 0 {
+		t.Fatalf("dropped = %d, want 0", dropped)
+	}
 
+	byName := map[string]float64{}
+	buckets := map[string]float64{}
+	typeOf := map[string]string{}
+	unitOf := map[string]string{}
+	for _, p := range points {
+		tm := tagMapOf(p.Tags)
+		if p.Name == "http.server.duration_bucket" {
+			buckets[tm["le"]] = p.Value
+			if tm["otel_type"] != "counter" {
+				t.Errorf("bucket otel_type = %q, want counter", tm["otel_type"])
+			}
+			continue
+		}
+		byName[p.Name] = p.Value
+		typeOf[p.Name] = tm["otel_type"]
+		unitOf[p.Name] = tm["unit"]
+	}
+
+	if byName["http.server.duration_count"] != 6 {
+		t.Errorf("_count = %v, want 6", byName["http.server.duration_count"])
+	}
+	if byName["http.server.duration_sum"] != 4.2 {
+		t.Errorf("_sum = %v, want 4.2", byName["http.server.duration_sum"])
+	}
+	if byName["http.server.duration_min"] != 0.05 || byName["http.server.duration_max"] != 0.9 {
+		t.Errorf("_min/_max = %v/%v, want 0.05/0.9", byName["http.server.duration_min"], byName["http.server.duration_max"])
+	}
+	// Cumulative buckets: 1, 1+2=3, 1+2+3=6; terminal +Inf equals count.
+	if buckets["0.1"] != 1 || buckets["0.5"] != 3 || buckets["+Inf"] != 6 {
+		t.Errorf("buckets = %v, want le0.1=1 le0.5=3 +Inf=6", buckets)
+	}
+	if typeOf["http.server.duration_count"] != "counter" || typeOf["http.server.duration_sum"] != "counter" {
+		t.Errorf("count/sum otel_type = %q/%q, want counter", typeOf["http.server.duration_count"], typeOf["http.server.duration_sum"])
+	}
+	if typeOf["http.server.duration_min"] != "gauge" || typeOf["http.server.duration_max"] != "gauge" {
+		t.Errorf("min/max otel_type not gauge: %v", typeOf)
+	}
+	if unitOf["http.server.duration_sum"] != "s" {
+		t.Errorf("_sum unit = %q, want s", unitOf["http.server.duration_sum"])
+	}
+	if unitOf["http.server.duration_count"] != "1" {
+		t.Errorf("_count unit = %q, want 1 (dimensionless)", unitOf["http.server.duration_count"])
+	}
+}
+
+func TestFlatten_SummaryExpanded(t *testing.T) {
+	summary := &metricpb.Metric{
+		Name: "rpc.latency", Unit: "ms",
+		Data: &metricpb.Metric_Summary{Summary: &metricpb.Summary{
+			DataPoints: []*metricpb.SummaryDataPoint{{
+				TimeUnixNano: 1_700_000_000_000_000_000,
+				Count:        10,
+				Sum:          55,
+				QuantileValues: []*metricpb.SummaryDataPoint_ValueAtQuantile{
+					{Quantile: 0.5, Value: 2},
+					{Quantile: 0.99, Value: 9},
+				},
+			}},
+		}},
+	}
+	points, dropped := flattenResourceMetrics(wrap(nil, summary))
+	if dropped != 0 {
+		t.Fatalf("dropped = %d, want 0", dropped)
+	}
+
+	byName := map[string]float64{}
+	quantiles := map[string]float64{}
+	for _, p := range points {
+		tm := tagMapOf(p.Tags)
+		if q, ok := tm["quantile"]; ok {
+			quantiles[q] = p.Value
+			if p.Name != "rpc.latency" {
+				t.Errorf("quantile series name = %q, want bare metric name", p.Name)
+			}
+			if tm["otel_type"] != "gauge" {
+				t.Errorf("quantile otel_type = %q, want gauge", tm["otel_type"])
+			}
+			continue
+		}
+		byName[p.Name] = p.Value
+	}
+	if byName["rpc.latency_count"] != 10 || byName["rpc.latency_sum"] != 55 {
+		t.Errorf("_count/_sum = %v/%v, want 10/55", byName["rpc.latency_count"], byName["rpc.latency_sum"])
+	}
+	if quantiles["0.5"] != 2 || quantiles["0.99"] != 9 {
+		t.Errorf("quantiles = %v, want 0.5=2 0.99=9", quantiles)
+	}
+}
+
+func TestFlatten_ExpHistogramAggregatesOnly(t *testing.T) {
+	eh := &metricpb.Metric{
+		Name: "db.query.duration", Unit: "s",
+		Data: &metricpb.Metric_ExponentialHistogram{ExponentialHistogram: &metricpb.ExponentialHistogram{
+			DataPoints: []*metricpb.ExponentialHistogramDataPoint{{
+				TimeUnixNano: 1_700_000_000_000_000_000,
+				Count:        8,
+				Sum:          float64Ptr(3.3),
+				Min:          float64Ptr(0.01),
+				Max:          float64Ptr(1.2),
+			}},
+		}},
+	}
+	points, dropped := flattenResourceMetrics(wrap(nil, eh))
+	if dropped != 0 {
+		t.Fatalf("dropped = %d, want 0", dropped)
+	}
+
+	byName := map[string]float64{}
+	for _, p := range points {
+		byName[p.Name] = p.Value
+		if p.Name == "db.query.duration_bucket" {
+			t.Errorf("exp-histogram should not emit bucket series (deferred), got %+v", p)
+		}
+	}
+	if byName["db.query.duration_count"] != 8 || byName["db.query.duration_sum"] != 3.3 {
+		t.Errorf("_count/_sum = %v/%v, want 8/3.3", byName["db.query.duration_count"], byName["db.query.duration_sum"])
+	}
+	if byName["db.query.duration_min"] != 0.01 || byName["db.query.duration_max"] != 1.2 {
+		t.Errorf("_min/_max = %v/%v, want 0.01/1.2", byName["db.query.duration_min"], byName["db.query.duration_max"])
+	}
+}
+
+func TestFlatten_UnsetDataTypeDropped(t *testing.T) {
+	// A metric with no Data oneof set is unmappable and must be counted.
+	rm := wrap(nil, &metricpb.Metric{Name: "mystery"}, gaugeMetric("up", 1))
 	points, dropped := flattenResourceMetrics(rm)
-
-	if dropped != 2 {
-		t.Errorf("dropped = %d, want 2", dropped)
+	if dropped != 1 {
+		t.Errorf("dropped = %d, want 1", dropped)
 	}
 	if len(points) != 1 || points[0].Name != "up" {
 		t.Errorf("points = %+v, want a single 'up' point", points)
