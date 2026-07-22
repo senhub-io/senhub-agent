@@ -88,6 +88,18 @@ the metrics/logs exporters. Largest and last increment.
 
 ## Cross-cutting decisions
 
+- **Cache keying (no collapse)**: an ingested metric's label set is
+  arbitrary and externally controlled, so a fixed `DiscriminantTagsRegistry`
+  list cannot enumerate it. The HTTP `MetricCache` therefore keys
+  `otlp_receiver` (and `prometheus_scrape`) on their **full tag set**
+  (`fullTagKeyProbes` in `http_cache.go`), identical to the OTLP strategy's
+  own store — so every distinct series (each histogram `le` bucket, each
+  `quantile`, each resource-attribute split) survives on the PRTG / Nagios /
+  Prometheus pull sinks, not just on the OTLP relay. The cache cardinality
+  cap bounds the memory an external producer can drive. PRTG/Nagios still
+  render these generically (raw humanized name, generic unit, no lookup or
+  threshold) — the agent cannot infer semantics for a metric it did not
+  define — but nothing is silently dropped.
 - **Licensing**: `otlp_receiver` stays **free tier** across all three
   signals. It is an onboarding/wedge capability (accept OTLP from anything
   at the edge); gating signals behind Pro would blunt that. Revisit only
