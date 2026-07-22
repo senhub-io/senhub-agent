@@ -539,12 +539,24 @@ func fullTagKey(probeName, metricName string, tags map[string]string) string {
 
 	tagParts := make([]string, 0, len(keys))
 	for _, k := range keys {
-		tagParts = append(tagParts, fmt.Sprintf("%s=%s", k, tags[k]))
+		tagParts = append(tagParts, escapeKeyPart(k)+"="+escapeKeyPart(tags[k]))
 	}
 	if len(tagParts) > 0 {
 		return fmt.Sprintf("%s:%s:%s", probeName, metricName, joinStrings(tagParts, ","))
 	}
 	return fmt.Sprintf("%s:%s", probeName, metricName)
+}
+
+// escapeKeyPart makes a tag key/value injective under the `,`/`=` join used by
+// fullTagKey, so two distinct externally-controlled tag sets (e.g.
+// {a:"1,b=2"} vs {a:"1", b:"2"}) cannot alias onto one cache slot. The
+// fast-path leaves separator-free values byte-identical, so ordinary series
+// keys are unchanged.
+func escapeKeyPart(s string) string {
+	if !strings.ContainsAny(s, `\,=`) {
+		return s
+	}
+	return strings.NewReplacer(`\`, `\\`, ",", `\,`, "=", `\=`).Replace(s)
 }
 
 // AddDataPointsWithTransformer adds data points to the cache using external transformer
