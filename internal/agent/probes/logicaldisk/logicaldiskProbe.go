@@ -6,12 +6,22 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
+
+// normalizeFSType lowercases the filesystem name the OS reports so the
+// system.filesystem.type attribute carries the same form on every
+// platform: Windows reports "NTFS"/"ReFS" while Linux mount tables are
+// already lower-case (ext4/xfs) — cross-platform rules filter on the
+// lower-case token (#627).
+func normalizeFSType(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
 
 // logicaldiskCollector defines the interface for OS-specific logicaldisk metric collectors
 type logicaldiskCollector interface {
