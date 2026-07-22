@@ -54,6 +54,7 @@ func (a *cacheAdapter) GetAll() []otelmapper.CacheMetric {
 			Value:      val,
 			Unit:       m.Unit,
 			Tags:       m.Tags,
+			Histogram:  m.Histogram,
 		})
 	}
 	return out

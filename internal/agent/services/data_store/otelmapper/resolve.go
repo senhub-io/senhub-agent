@@ -246,6 +246,15 @@ func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
 	default:
 		otelType = "gauge"
 	}
+	// A native explicit-bucket histogram carries its payload alongside the
+	// scalar count in Value. Payload presence is authoritative: a
+	// "histogram"-typed record WITHOUT payload degrades to a gauge on the
+	// count (defensive — serializers must never see a payload-less
+	// histogram type from here). No unit conversion is applied — ingested
+	// values are already OTel-native.
+	if m.Histogram != nil {
+		otelType = "histogram"
+	}
 
 	attrs := map[string]string{"probe_name": m.ProbeName}
 	if m.ProbeType != "" {
@@ -266,6 +275,7 @@ func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
 		Attributes:  attrs,
 		Value:       m.Value,
 		Description: "OTLP-ingested metric",
+		Histogram:   m.Histogram,
 	}}
 }
 

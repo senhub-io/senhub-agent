@@ -92,7 +92,7 @@ func tagMapOf(tgs []tags.Tag) map[string]string {
 	return m
 }
 
-func TestFlatten_HistogramExpanded(t *testing.T) {
+func TestFlatten_HistogramNativePayload(t *testing.T) {
 	// 3 bucket counts over 2 explicit bounds => buckets (-inf,0.1], (0.1,0.5], (0.5,+Inf].
 	hist := &metricpb.Metric{
 		Name: "http.server.duration", Unit: "s",
@@ -112,49 +112,71 @@ func TestFlatten_HistogramExpanded(t *testing.T) {
 	if dropped != 0 {
 		t.Fatalf("dropped = %d, want 0", dropped)
 	}
-
-	byName := map[string]float64{}
-	buckets := map[string]float64{}
-	typeOf := map[string]string{}
-	unitOf := map[string]string{}
-	for _, p := range points {
-		tm := tagMapOf(p.Tags)
-		if p.Name == "http.server.duration_bucket" {
-			buckets[tm["le"]] = p.Value
-			if tm["otel_type"] != "counter" {
-				t.Errorf("bucket otel_type = %q, want counter", tm["otel_type"])
-			}
-			continue
-		}
-		byName[p.Name] = p.Value
-		typeOf[p.Name] = tm["otel_type"]
-		unitOf[p.Name] = tm["unit"]
+	if len(points) != 1 {
+		t.Fatalf("got %d points, want 1 (native histogram, no scalar expansion)", len(points))
 	}
 
-	if byName["http.server.duration_count"] != 6 {
-		t.Errorf("_count = %v, want 6", byName["http.server.duration_count"])
+	p := points[0]
+	if p.Name != "http.server.duration" {
+		t.Errorf("name = %q, want bare metric name", p.Name)
 	}
-	if byName["http.server.duration_sum"] != 4.2 {
-		t.Errorf("_sum = %v, want 4.2", byName["http.server.duration_sum"])
+	if p.Value != 6 {
+		t.Errorf("Value = %v, want 6 (observation count as scalar fallback)", p.Value)
 	}
-	if byName["http.server.duration_min"] != 0.05 || byName["http.server.duration_max"] != 0.9 {
-		t.Errorf("_min/_max = %v/%v, want 0.05/0.9", byName["http.server.duration_min"], byName["http.server.duration_max"])
+	tm := tagMapOf(p.Tags)
+	if tm["otel_type"] != "histogram" {
+		t.Errorf("otel_type = %q, want histogram", tm["otel_type"])
 	}
-	// Cumulative buckets: 1, 1+2=3, 1+2+3=6; terminal +Inf equals count.
-	if buckets["0.1"] != 1 || buckets["0.5"] != 3 || buckets["+Inf"] != 6 {
-		t.Errorf("buckets = %v, want le0.1=1 le0.5=3 +Inf=6", buckets)
+	if tm["unit"] != "s" {
+		t.Errorf("unit = %q, want s", tm["unit"])
 	}
-	if typeOf["http.server.duration_count"] != "counter" || typeOf["http.server.duration_sum"] != "counter" {
-		t.Errorf("count/sum otel_type = %q/%q, want counter", typeOf["http.server.duration_count"], typeOf["http.server.duration_sum"])
+
+	h := p.Histogram
+	if h == nil {
+		t.Fatal("Histogram payload is nil")
 	}
-	if typeOf["http.server.duration_min"] != "gauge" || typeOf["http.server.duration_max"] != "gauge" {
-		t.Errorf("min/max otel_type not gauge: %v", typeOf)
+	if h.Count != 6 {
+		t.Errorf("payload Count = %d, want 6", h.Count)
 	}
-	if unitOf["http.server.duration_sum"] != "s" {
-		t.Errorf("_sum unit = %q, want s", unitOf["http.server.duration_sum"])
+	if h.Sum == nil || *h.Sum != 4.2 {
+		t.Errorf("payload Sum = %v, want 4.2", h.Sum)
 	}
-	if unitOf["http.server.duration_count"] != "1" {
-		t.Errorf("_count unit = %q, want 1 (dimensionless)", unitOf["http.server.duration_count"])
+	if h.Min == nil || *h.Min != 0.05 {
+		t.Errorf("payload Min = %v, want 0.05", h.Min)
+	}
+	if h.Max == nil || *h.Max != 0.9 {
+		t.Errorf("payload Max = %v, want 0.9", h.Max)
+	}
+	if len(h.BucketCounts) != 3 || h.BucketCounts[0] != 1 || h.BucketCounts[1] != 2 || h.BucketCounts[2] != 3 {
+		t.Errorf("payload BucketCounts = %v, want [1 2 3] (per-bucket, non-cumulative)", h.BucketCounts)
+	}
+	if len(h.ExplicitBounds) != 2 || h.ExplicitBounds[0] != 0.1 || h.ExplicitBounds[1] != 0.5 {
+		t.Errorf("payload ExplicitBounds = %v, want [0.1 0.5]", h.ExplicitBounds)
+	}
+}
+
+func TestFlatten_HistogramOptionalFieldsAbsent(t *testing.T) {
+	hist := &metricpb.Metric{
+		Name: "h", Unit: "s",
+		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
+			DataPoints: []*metricpb.HistogramDataPoint{{
+				TimeUnixNano:   1_700_000_000_000_000_000,
+				Count:          2,
+				BucketCounts:   []uint64{2},
+				ExplicitBounds: nil,
+			}},
+		}},
+	}
+	points, _ := flattenResourceMetrics(wrap(nil, hist))
+	if len(points) != 1 {
+		t.Fatalf("got %d points, want 1", len(points))
+	}
+	h := points[0].Histogram
+	if h == nil {
+		t.Fatal("Histogram payload is nil")
+	}
+	if h.Sum != nil || h.Min != nil || h.Max != nil {
+		t.Errorf("optional Sum/Min/Max must stay nil when absent from the wire: %+v", h)
 	}
 }
 

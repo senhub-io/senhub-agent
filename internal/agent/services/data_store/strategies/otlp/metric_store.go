@@ -51,6 +51,7 @@ type storedMetric struct {
 	value      float64
 	unit       string
 	tags       map[string]string
+	histogram  *datapoint.HistogramValue
 	observedAt time.Time
 }
 
@@ -169,6 +170,7 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		value:      dp.Value,
 		unit:       tagMap["unit"],
 		tags:       tagsCopy,
+		histogram:  dp.Histogram,
 		observedAt: when,
 	}
 	s.mu.Unlock()
@@ -199,6 +201,7 @@ func (s *metricStore) snapshotForCheckpoint() []entrySnapshot {
 			Value:      e.value,
 			Unit:       e.unit,
 			Tags:       e.tags,
+			Histogram:  e.histogram,
 			ObservedAt: e.observedAt,
 		})
 	}
@@ -228,6 +231,7 @@ func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
 			value:      e.Value,
 			unit:       e.Unit,
 			tags:       e.Tags,
+			histogram:  e.Histogram,
 			observedAt: e.ObservedAt,
 		}
 		s.probeCounts[e.ProbeName]++
@@ -252,6 +256,7 @@ func (s *metricStore) snapshot() ([]otelmapper.CacheMetric, []time.Time) {
 			Value:      e.value,
 			Unit:       e.unit,
 			Tags:       e.tags,
+			Histogram:  e.histogram,
 		})
 		times = append(times, e.observedAt)
 	}
