@@ -561,6 +561,58 @@ func TestDiscriminantVsContextualTagsInKey(t *testing.T) {
 	}
 }
 
+// TestFullTagKey_ExternalOriginProbesDoNotCollapse pins the fix for the
+// OTLP-receiver / prometheus_scrape collapse: their label sets are arbitrary
+// and externally controlled, so the cache keys them on the full tag set. Two
+// datapoints under one metric name that differ in ANY attribute (here a
+// histogram bucket's `le`, and an arbitrary resource attribute) must produce
+// distinct keys — otherwise all but the last collapse onto one cache slot and
+// vanish from the PRTG / Nagios / Prometheus pull sinks.
+func TestFullTagKey_ExternalOriginProbesDoNotCollapse(t *testing.T) {
+	cache := NewMetricCache(5*time.Minute, createTestModuleLogger())
+
+	for _, probeType := range []string{"otlp_receiver", "prometheus_scrape"} {
+		base := map[string]string{
+			"probe_name":  probeType,
+			"probe_type":  probeType,
+			"metric_type": "otlp_ingest",
+			"otel_type":   "counter",
+			"host.name":   "edge-01",
+		}
+		withLe := func(le string) map[string]string {
+			m := map[string]string{"le": le}
+			for k, v := range base {
+				m[k] = v
+			}
+			return m
+		}
+
+		k1 := cache.generateTimeSeriesKey(probeType, probeType, "http.server.duration_bucket", withLe("0.1"))
+		k2 := cache.generateTimeSeriesKey(probeType, probeType, "http.server.duration_bucket", withLe("0.5"))
+		kInf := cache.generateTimeSeriesKey(probeType, probeType, "http.server.duration_bucket", withLe("+Inf"))
+		if k1 == k2 || k1 == kInf || k2 == kInf {
+			t.Errorf("%s: bucket series collapsed — keys must differ by le: %q %q %q", probeType, k1, k2, kInf)
+		}
+
+		// An arbitrary resource attribute must also split the series.
+		other := map[string]string{}
+		for k, v := range base {
+			other[k] = v
+		}
+		other["host.name"] = "edge-02"
+		kHostA := cache.generateTimeSeriesKey(probeType, probeType, "requests", base)
+		kHostB := cache.generateTimeSeriesKey(probeType, probeType, "requests", other)
+		if kHostA == kHostB {
+			t.Errorf("%s: series collapsed across differing host.name: %q == %q", probeType, kHostA, kHostB)
+		}
+
+		// The full tag set (minus probe identity) is in the key.
+		if !containsSubstring(k1, "le=0.1") || !containsSubstring(k1, "host.name=edge-01") {
+			t.Errorf("%s: full tag key missing expected tags: %q", probeType, k1)
+		}
+	}
+}
+
 // Helper function for string contains check
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && indexOfSubstring(s, substr) >= 0

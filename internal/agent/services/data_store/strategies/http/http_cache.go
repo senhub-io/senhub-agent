@@ -3,6 +3,7 @@ package http
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -197,12 +198,11 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// modbus: register.name and register.address identify the register;
 	// host and modbus.unit_id distinguish probe instances.
 	"modbus": {"register.name", "register.address", "host", "modbus.unit_id", "metric_type"},
-	// prometheus_scrape: scraped label sets are arbitrary and cannot be
-	// enumerated here; per-target series stay distinct, finer label
-	// splits collapse on the cache-keyed sinks (same limitation as
-	// otlp_receiver). The OTLP/Prometheus re-export path carries all
-	// labels through the mapper pass-through.
-	"prometheus_scrape": {"target", "metric_type"},
+	// otlp_receiver and prometheus_scrape are NOT listed here: their label
+	// sets are arbitrary and externally controlled, so they key on the full
+	// tag set instead (see fullTagKeyProbes) — no series collapses on any
+	// sink, bounded by the cache cardinality cap.
+	//
 	// exec: dynamic perfdata/JSON metric names carry identity in the
 	// metric name itself (senhub.exec.<label>); no per-series labels to
 	// discriminate beyond the probe instance.
@@ -452,7 +452,28 @@ func (c *MetricCache) SetMaxSeries(n int) {
 //   - Time series continuity when metadata changes (endpoint, hostname, etc.)
 //   - Proper cardinality (only multi-instance metrics create multiple series)
 //   - Filtering still works (all tags preserved in CachedMetric.Tags)
+//
+// fullTagKeyProbes are the probes whose incoming label set is arbitrary and
+// externally controlled: the OTLP receiver ingests whatever attributes a
+// remote sender attaches, and prometheus_scrape re-emits whatever label sets a
+// scraped target exposes. A fixed DiscriminantTagsRegistry list cannot
+// enumerate those, so the cache keys them on their FULL tag set (identical to
+// the OTLP strategy's own store, metric_store.go storeKey) — every distinct
+// series stays distinct instead of collapsing onto one slot per metric name.
+// The cache cardinality cap (DefaultMaxCacheSeries) bounds the memory a remote
+// producer can drive; that cap exists precisely for these two probes.
+var fullTagKeyProbes = map[string]bool{
+	"otlp_receiver":     true,
+	"prometheus_scrape": true,
+}
+
 func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName string, tags map[string]string) string {
+	// External-origin probes with arbitrary label sets key on the full tag
+	// set so no series collapses (see fullTagKeyProbes).
+	if fullTagKeyProbes[probeType] {
+		return fullTagKey(probeName, metricName, tags)
+	}
+
 	// Get discriminant tags for this probe type from registry
 	// Use probeType (technical identifier: "redfish", "cpu", etc.) for lookup
 	// NOT probeName (unique instance name: "redfish", "redfish2", etc.)
@@ -493,6 +514,30 @@ func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName str
 	}
 
 	// Create unique key: probe:metric:discriminant_tags
+	if len(tagParts) > 0 {
+		return fmt.Sprintf("%s:%s:%s", probeName, metricName, joinStrings(tagParts, ","))
+	}
+	return fmt.Sprintf("%s:%s", probeName, metricName)
+}
+
+// fullTagKey builds a time-series key from every tag except the systematic
+// identity tags (already in the prefix), so a probe with an arbitrary,
+// externally-controlled label set keeps each distinct series distinct. Mirrors
+// the OTLP strategy store's storeKey to keep the two stores consistent.
+func fullTagKey(probeName, metricName string, tags map[string]string) string {
+	keys := make([]string, 0, len(tags))
+	for k := range tags {
+		if k == "probe_name" || k == "probe_type" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	tagParts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		tagParts = append(tagParts, fmt.Sprintf("%s=%s", k, tags[k]))
+	}
 	if len(tagParts) > 0 {
 		return fmt.Sprintf("%s:%s:%s", probeName, metricName, joinStrings(tagParts, ","))
 	}
