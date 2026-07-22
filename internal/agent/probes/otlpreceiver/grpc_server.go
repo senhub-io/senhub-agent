@@ -14,6 +14,7 @@ import (
 
 	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 )
 
 // metricsServiceServer implements the OTLP MetricsService.Export RPC by
@@ -32,12 +33,28 @@ type logsServiceServer struct {
 	probe *OTLPReceiverProbe
 }
 
+// tracesServiceServer implements the OTLP TracesService.Export RPC by
+// publishing the received ResourceSpans verbatim on the agent span
+// channel — spans have no internal model, so no decode step exists.
+type tracesServiceServer struct {
+	collectortracepb.UnimplementedTraceServiceServer
+	probe *OTLPReceiverProbe
+}
+
 func (s *logsServiceServer) Export(
 	_ context.Context,
 	req *collectorlogspb.ExportLogsServiceRequest,
 ) (*collectorlogspb.ExportLogsServiceResponse, error) {
 	s.probe.ingestLogs(flattenResourceLogs(req.GetResourceLogs(), s.probe.GetName()))
 	return &collectorlogspb.ExportLogsServiceResponse{}, nil
+}
+
+func (s *tracesServiceServer) Export(
+	_ context.Context,
+	req *collectortracepb.ExportTraceServiceRequest,
+) (*collectortracepb.ExportTraceServiceResponse, error) {
+	s.probe.ingestSpans(req.GetResourceSpans())
+	return &collectortracepb.ExportTraceServiceResponse{}, nil
 }
 
 func (s *metricsServiceServer) Export(
@@ -110,6 +127,9 @@ func (p *OTLPReceiverProbe) startGRPC(quitChannel chan struct{}) error {
 	}
 	if p.config.Signals.Logs {
 		collectorlogspb.RegisterLogsServiceServer(server, &logsServiceServer{probe: p})
+	}
+	if p.config.Signals.Traces {
+		collectortracepb.RegisterTraceServiceServer(server, &tracesServiceServer{probe: p})
 	}
 
 	p.mu.Lock()

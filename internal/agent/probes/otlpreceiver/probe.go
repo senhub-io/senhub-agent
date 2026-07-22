@@ -7,7 +7,8 @@
 // Which signals the listener accepts is config-driven (`signals:`, metrics
 // only by default). Metrics become datapoints on the probe callback; logs
 // are published on the agent log channel and relayed by the OTLP export
-// strategy.
+// strategy; trace spans are published verbatim (raw OTLP proto, no
+// internal model) on the agent span channel and relayed the same way.
 //
 // The probe mirrors the event-driven contract used by the syslog probe:
 // it implements ProbeWithCallback (SetCallback), opens its listener in
@@ -28,6 +29,8 @@ import (
 
 	"google.golang.org/grpc"
 
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -37,14 +40,16 @@ import (
 
 const (
 	probeType = "otlp_receiver"
-	// noSinkWarnInterval throttles the "ingested logs have nowhere to go"
-	// warning so a sender pushing at line rate cannot flood the agent log.
+	// noSinkWarnInterval throttles the "ingested logs/spans have nowhere
+	// to go" warnings so a sender pushing at line rate cannot flood the
+	// agent log.
 	noSinkWarnInterval = 5 * time.Minute
 )
 
 // OTLPReceiverProbe runs an embedded OTLP receiver: ingested metrics go to
 // the data store via the probe callback, ingested logs onto the agent log
-// channel for a log-capable strategy to relay.
+// channel and ingested spans onto the agent span channel, both relayed by
+// a capable strategy (the OTLP export pipeline).
 type OTLPReceiverProbe struct {
 	*types.BaseProbe
 	rawConfig    map[string]interface{}
@@ -52,12 +57,13 @@ type OTLPReceiverProbe struct {
 	guard        *ingressGuard
 	moduleLogger *logger.ModuleLogger
 
-	mu             sync.Mutex
-	grpcServer     *grpc.Server
-	httpServer     interface{ shutdown(context.Context) error }
-	listener       net.Listener
-	callback       func([]data_store.DataPoint) error
-	lastNoSinkWarn time.Time
+	mu                 sync.Mutex
+	grpcServer         *grpc.Server
+	httpServer         interface{ shutdown(context.Context) error }
+	listener           net.Listener
+	callback           func([]data_store.DataPoint) error
+	lastNoSinkWarn     time.Time
+	lastNoSpanSinkWarn time.Time
 }
 
 // NewOTLPReceiverProbe constructs the probe from its raw config map.
@@ -221,6 +227,43 @@ func (p *OTLPReceiverProbe) warnNoLogSink(dropped int) {
 		p.moduleLogger.Warn().
 			Int("dropped", dropped).
 			Msg("Ingested OTLP logs discarded: no OTLP export strategy is configured to relay them")
+	}
+}
+
+// ingestSpans publishes received OTLP spans on the agent span channel as
+// raw ResourceSpans, from which the OTLP export strategy relays them
+// verbatim. Spans have no internal scalar model, so they bypass the
+// DataPoint path entirely. Same no-sink contract as logs: with no
+// subscriber (no OTLP export strategy with signals.traces enabled) the
+// spans have nowhere to go and the operator gets a throttled warning.
+func (p *OTLPReceiverProbe) ingestSpans(rs []*tracepb.ResourceSpans) {
+	if len(rs) == 0 {
+		return
+	}
+	if agentstate.SpanSubscriberCount() == 0 {
+		p.warnNoSpanSink(len(rs))
+		return
+	}
+	agentstate.PublishSpans(rs)
+	p.moduleLogger.Debug().Int("resource_spans", len(rs)).Msg("Ingested OTLP spans")
+}
+
+// warnNoSpanSink warns at most once per noSinkWarnInterval that ingested
+// spans are being discarded because no trace-capable strategy is
+// configured.
+func (p *OTLPReceiverProbe) warnNoSpanSink(dropped int) {
+	p.mu.Lock()
+	now := time.Now()
+	warn := now.Sub(p.lastNoSpanSinkWarn) >= noSinkWarnInterval
+	if warn {
+		p.lastNoSpanSinkWarn = now
+	}
+	p.mu.Unlock()
+
+	if warn {
+		p.moduleLogger.Warn().
+			Int("dropped", dropped).
+			Msg("Ingested OTLP spans discarded: no OTLP export strategy has signals.traces enabled to relay them")
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 
 	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 )
 
 // httpReceiver wraps an *http.Server so the probe can hold it behind a
@@ -38,6 +39,9 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 	}
 	if p.config.Signals.Logs {
 		mux.HandleFunc(httpLogsPath, p.handleLogs)
+	}
+	if p.config.Signals.Traces {
+		mux.HandleFunc(httpTracesPath, p.handleTraces)
 	}
 
 	server := &http.Server{
@@ -173,6 +177,34 @@ func (p *OTLPReceiverProbe) handleLogs(w http.ResponseWriter, r *http.Request) {
 	p.ingestLogs(flattenResourceLogs(req.GetResourceLogs(), p.GetName()))
 
 	out, err := proto.Marshal(&collectorlogspb.ExportLogsServiceResponse{})
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(out)
+}
+
+// handleTraces decodes an OTLP/HTTP protobuf traces request, publishes
+// the ResourceSpans verbatim on the agent span channel for relay, and
+// replies with an empty ExportTraceServiceResponse. Same protobuf-only,
+// guarded contract as handleMetrics.
+func (p *OTLPReceiverProbe) handleTraces(w http.ResponseWriter, r *http.Request) {
+	body, ok := p.authorizeAndReadBody(w, r)
+	if !ok {
+		return
+	}
+
+	var req collectortracepb.ExportTraceServiceRequest
+	if err := proto.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid OTLP protobuf payload", http.StatusBadRequest)
+		return
+	}
+
+	p.ingestSpans(req.GetResourceSpans())
+
+	out, err := proto.Marshal(&collectortracepb.ExportTraceServiceResponse{})
 	if err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
