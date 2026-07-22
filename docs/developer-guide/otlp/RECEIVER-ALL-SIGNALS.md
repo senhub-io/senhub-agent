@@ -1,6 +1,6 @@
 # OTLP receiver — full signal coverage (metrics, logs, traces)
 
-Status: phases 1–3 shipped; native histogram pass-through (#659) open.
+Status: phases 1–3 shipped; native histogram pass-through (#659) shipped.
 Epic: senhub-io/senhub-agent#655.
 
 ## Goal
@@ -44,26 +44,26 @@ or `http`), exactly as today. The change is that the listener serves
 Which signals are accepted is config-driven (`signals:`), defaulting to
 `[metrics]` so existing installs are unchanged.
 
-### Metrics (Phase 1) — `DataPoint` expansion
+### Metrics (Phase 1 + #659) — `DataPoint` expansion / native histograms
 
-Extend `decode.go` to map the non-scalar metric families onto scalar
-component series, the Prometheus classic-histogram representation, so
-they flow through the existing `DataPoint` path:
+`decode.go` maps every metric family onto the `DataPoint` path:
 
-- Histogram → `<name>_count`, `<name>_sum`, and cumulative
-  `<name>_bucket{le="<bound>"}` series (plus `le="+Inf"`); optional
-  `<name>_min` / `<name>_max` gauges when present.
+- Histogram (explicit-bucket) → **native pass-through** (#659): ONE
+  `DataPoint` whose `Histogram *datapoint.HistogramValue` payload carries
+  count/sum/min/max/bucket_counts/explicit_bounds, threaded through the
+  mapper (`CacheMetric.Histogram` / `OtelRecord.Histogram`), the OTLP
+  store + checkpoint, and both serializers. The OTLP push emits a real
+  `metricdata.Histogram[float64]` (cumulative); the Prometheus exposition
+  emits classic `_bucket{le}`/`_sum`/`_count` lines. `Value` holds the
+  observation count so scalar-only sinks (PRTG, Nagios, cloud) render a
+  meaningful number; a nil payload falls back to the scalar/gauge path
+  everywhere.
 - Summary → `<name>_count`, `<name>_sum`, and `<name>{quantile="q"}`
-  gauges.
+  gauges (scalar expansion, unchanged).
 - ExponentialHistogram → `<name>_count`, `<name>_sum`, `<name>_min`,
   `<name>_max` scalars; the base-2 bucket expansion is a follow-up
-  (exponential buckets do not map to a fixed `le` set cleanly).
-
-Limitation (tracked): scalar expansion means an OTLP-in histogram is
-re-exported as its **component scalar series**, not as a native OTLP
-histogram. Native histogram pass-through needs the `DataPoint` /
-`OtelRecord` model to carry a histogram payload end-to-end (mapper + both
-serializers) — a separate, larger change, tracked in the epic.
+  (exponential buckets do not map to a fixed `le` set cleanly), as is a
+  possible native pass-through mirroring #659.
 
 ### Logs (Phase 2) — relay through the agent log channel
 
@@ -109,8 +109,8 @@ spans with a throttled warning (same contract as logs).
   list cannot enumerate it. The HTTP `MetricCache` therefore keys
   `otlp_receiver` (and `prometheus_scrape`) on their **full tag set**
   (`fullTagKeyProbes` in `http_cache.go`), identical to the OTLP strategy's
-  own store — so every distinct series (each histogram `le` bucket, each
-  `quantile`, each resource-attribute split) survives on the PRTG / Nagios /
+  own store — so every distinct series (each summary `quantile`, each
+  resource-attribute split, each histogram series) survives on the PRTG / Nagios /
   Prometheus pull sinks, not just on the OTLP relay. The cache cardinality
   cap bounds the memory an external producer can drive. PRTG/Nagios still
   render these generically (raw humanized name, generic unit, no lookup or
@@ -136,7 +136,7 @@ spans with a throttled warning (same contract as logs).
 | 1 | Complete metrics: histogram / exp-histogram / summary → scalar series | #656 | done |
 | 2 | Multi-signal transport + logs ingest (relay via agent log channel) | #657 | done |
 | 3 | Traces ingest (raw span forwarder) | #658 | done |
-| — | Native OTLP histogram pass-through (model carries histogram) | #659 | todo |
+| — | Native OTLP histogram pass-through (model carries histogram) | #659 | done |
 
 Each phase ships as its own PR with tests. Phase 1 is self-contained and
 does not touch the transport; Phases 2–3 add the multi-service transport.

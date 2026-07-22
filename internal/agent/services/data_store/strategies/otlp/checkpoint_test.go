@@ -261,3 +261,63 @@ func TestCheckpointer_RestoredZombiesEvictedByStaleness(t *testing.T) {
 		t.Fatalf("second restore = %d entries, want 1 (zombie gone from disk)", n)
 	}
 }
+
+func TestCheckpointer_HistogramSurvivesRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	store := newMetricStore()
+	sum, minV := 4.2, 0.05
+	store.upsert(datapoint.DataPoint{
+		Name:  "http.server.duration",
+		Value: 6,
+		Tags: []tags.Tag{
+			{Key: "probe_name", Value: "edge_in"},
+			{Key: "probe_type", Value: "otlp_receiver"},
+			{Key: "unit", Value: "s"},
+		},
+		Histogram: &datapoint.HistogramValue{
+			Count:          6,
+			Sum:            &sum,
+			Min:            &minV,
+			BucketCounts:   []uint64{1, 2, 3},
+			ExplicitBounds: []float64{0.1, 0.5},
+		},
+	})
+
+	c := newCheckpointer(checkpointConfig{Path: dir, Interval: time.Hour}, store, nil)
+	if err := c.save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	fresh := newMetricStore()
+	c2 := newCheckpointer(checkpointConfig{Path: dir, Interval: time.Hour}, fresh, nil)
+	if _, err := c2.loadAndRestore(); err != nil {
+		t.Fatalf("loadAndRestore: %v", err)
+	}
+
+	cms, _ := fresh.snapshot()
+	if len(cms) != 1 {
+		t.Fatalf("restored series=%d, want 1", len(cms))
+	}
+	h := cms[0].Histogram
+	if h == nil {
+		t.Fatal("histogram payload lost across checkpoint restart")
+	}
+	if h.Count != 6 {
+		t.Errorf("Count=%d, want 6", h.Count)
+	}
+	if h.Sum == nil || *h.Sum != 4.2 {
+		t.Errorf("Sum=%v, want 4.2", h.Sum)
+	}
+	if h.Min == nil || *h.Min != 0.05 {
+		t.Errorf("Min=%v, want 0.05", h.Min)
+	}
+	if h.Max != nil {
+		t.Errorf("absent Max must restore as nil, got %v", *h.Max)
+	}
+	if len(h.BucketCounts) != 3 || h.BucketCounts[2] != 3 {
+		t.Errorf("BucketCounts=%v, want [1 2 3]", h.BucketCounts)
+	}
+	if len(h.ExplicitBounds) != 2 || h.ExplicitBounds[1] != 0.5 {
+		t.Errorf("ExplicitBounds=%v, want [0.1 0.5]", h.ExplicitBounds)
+	}
+}

@@ -167,10 +167,18 @@ func TestGRPCReceiver_HistogramIngested(t *testing.T) {
 		t.Fatalf("Export: %v", err)
 	}
 	if resp.GetPartialSuccess().GetRejectedDataPoints() != 0 {
-		t.Errorf("rejected = %d, want 0 (histogram is now ingested as component series)", resp.GetPartialSuccess().GetRejectedDataPoints())
+		t.Errorf("rejected = %d, want 0 (histogram ingests as one native point)", resp.GetPartialSuccess().GetRejectedDataPoints())
 	}
-	// Expanded: h_count, h_sum, h_bucket{le=1}, h_bucket{le=+Inf} = 4 series.
-	waitForPoints(t, cb, 4)
+	// Native pass-through: ONE point carrying the histogram payload.
+	waitForPoints(t, cb, 1)
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	if cb.points[0].Histogram == nil {
+		t.Error("ingested histogram point lost its payload")
+	}
+	if cb.points[0].Value != 3 {
+		t.Errorf("scalar fallback Value = %v, want the count 3", cb.points[0].Value)
+	}
 }
 
 func TestGRPCReceiver_LogsIngestedAndRelayed(t *testing.T) {

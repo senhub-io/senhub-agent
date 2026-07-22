@@ -413,6 +413,9 @@ type CachedMetric struct {
 	ProbeName  string
 	MetricName string
 	Tags       map[string]string
+	// Histogram is the native distribution payload for OTLP-ingested
+	// explicit-bucket histograms. Nil for every scalar metric.
+	Histogram *datapoint.HistogramValue
 }
 
 // NewMetricCache creates a new metric cache with the specified TTL and
@@ -624,6 +627,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			ProbeName:  probeName,
 			MetricName: dp.Name,
 			Tags:       tags,
+			Histogram:  dp.Histogram,
 		}
 
 		// TSDB approach: Store/replace metric by unique key (deduplication at write-time)
