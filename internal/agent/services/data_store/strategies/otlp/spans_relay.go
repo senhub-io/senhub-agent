@@ -238,6 +238,7 @@ func (r *spansRelay) drain(ctx context.Context, ch <-chan []*tracepb.ResourceSpa
 
 	var pending []*tracepb.ResourceSpans
 	pendingSpans := 0
+	pendingBytes := 0
 
 	flush := func() {
 		if len(pending) == 0 {
@@ -246,6 +247,7 @@ func (r *spansRelay) drain(ctx context.Context, ch <-chan []*tracepb.ResourceSpa
 		r.export(pending, pendingSpans)
 		pending = nil
 		pendingSpans = 0
+		pendingBytes = 0
 	}
 
 	for {
@@ -260,13 +262,36 @@ func (r *spansRelay) drain(ctx context.Context, ch <-chan []*tracepb.ResourceSpa
 			}
 			pending = append(pending, rs...)
 			pendingSpans += countSpans(rs)
-			if r.cfg.Traces.BatchSize > 0 && pendingSpans >= r.cfg.Traces.BatchSize {
+			pendingBytes += batchBytes(rs)
+			// Flush on span count OR a byte budget — the byte budget caps
+			// the pending buffer even when a sender pushes few-but-huge
+			// spans (which the span-count trigger alone would let grow to
+			// BatchSize × maxRecvMsgBytes). The channel buffer stays the
+			// coarse cap; this keeps the in-drain accumulation bounded.
+			if (r.cfg.Traces.BatchSize > 0 && pendingSpans >= r.cfg.Traces.BatchSize) ||
+				pendingBytes >= maxPendingSpanBytes {
 				flush()
 			}
 		case <-ticker.C:
 			flush()
 		}
 	}
+}
+
+// maxPendingSpanBytes bounds the drain's in-flight accumulation between
+// flushes so a slow/down endpoint plus large payloads cannot grow it without
+// limit. Matches the receiver's per-request cap (a single accepted batch is
+// already <= maxRecvMsgBytes).
+const maxPendingSpanBytes = 4 * 1024 * 1024
+
+// batchBytes returns the marshalled size of a ResourceSpans slice — the unit
+// the byte budget is expressed in.
+func batchBytes(rs []*tracepb.ResourceSpans) int {
+	n := 0
+	for _, r := range rs {
+		n += proto.Size(r)
+	}
+	return n
 }
 
 // export ships one accumulated batch with a bounded per-call timeout. A

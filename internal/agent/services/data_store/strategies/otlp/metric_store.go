@@ -307,11 +307,22 @@ func storeKey(probeName, probeType, metricName string, tagMap map[string]string)
 	b.WriteString(metricName)
 	for _, k := range keys {
 		b.WriteByte('|')
-		b.WriteString(k)
+		b.WriteString(escapeStoreKeyPart(k))
 		b.WriteByte('=')
-		b.WriteString(tagMap[k])
+		b.WriteString(escapeStoreKeyPart(tagMap[k]))
 	}
 	return b.String()
+}
+
+// escapeStoreKeyPart keeps storeKey injective under its `|`/`=` separators so
+// two distinct externally-controlled tag sets cannot alias onto one series.
+// The fast-path leaves separator-free values byte-identical, so ordinary keys
+// (and their checkpoint continuity) are unchanged.
+func escapeStoreKeyPart(s string) string {
+	if !strings.ContainsAny(s, `\|=`) {
+		return s
+	}
+	return strings.NewReplacer(`\`, `\\`, "|", `\|`, "=", `\=`).Replace(s)
 }
 
 // coerceToFloat64 mirrors the http strategy helper: we may receive

@@ -613,6 +613,24 @@ func TestFullTagKey_ExternalOriginProbesDoNotCollapse(t *testing.T) {
 	}
 }
 
+// TestFullTagKey_SeparatorEscapingNoAlias pins the #662 fix: an
+// externally-controlled tag value containing the `,`/`=` separators must not
+// alias two distinct series onto one cache slot.
+func TestFullTagKey_SeparatorEscapingNoAlias(t *testing.T) {
+	cache := NewMetricCache(5*time.Minute, createTestModuleLogger())
+	// Unescaped, both would join to "...:a=1,b=2".
+	k1 := cache.generateTimeSeriesKey("otlp_receiver", "otlp_receiver", "m", map[string]string{"a": "1,b=2"})
+	k2 := cache.generateTimeSeriesKey("otlp_receiver", "otlp_receiver", "m", map[string]string{"a": "1", "b": "2"})
+	if k1 == k2 {
+		t.Errorf("distinct tag sets must not alias after escaping: %q == %q", k1, k2)
+	}
+	// A separator-free value keeps the key byte-identical (checkpoint continuity).
+	plain := cache.generateTimeSeriesKey("otlp_receiver", "otlp_receiver", "m", map[string]string{"host.name": "edge-01"})
+	if !containsSubstring(plain, "host.name=edge-01") {
+		t.Errorf("separator-free value must be unescaped, got %q", plain)
+	}
+}
+
 // Helper function for string contains check
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && indexOfSubstring(s, substr) >= 0
