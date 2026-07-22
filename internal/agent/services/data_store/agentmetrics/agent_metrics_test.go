@@ -204,6 +204,38 @@ func TestBuildAgentRecords_CacheDroppedEmittedPerReason(t *testing.T) {
 	}
 }
 
+func TestBuildAgentRecords_OTLPReceiverIngestEmittedPerSignal(t *testing.T) {
+	agentstate.ResetOTLPReceiverCountersForTest()
+	t.Cleanup(agentstate.ResetOTLPReceiverCountersForTest)
+
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name == "senhub.agent.otlp_receiver.ingested" || r.Name == "senhub.agent.otlp_receiver.dropped" {
+			t.Fatalf("otlp_receiver counters should not be emitted before any traffic")
+		}
+	}
+
+	agentstate.IncrementOTLPReceiverIngested("traces", 5)
+	agentstate.IncrementOTLPReceiverDropped("logs", "no_sink", 3)
+
+	var ingested, dropped *otelmapper.OtelRecord
+	recs := BuildAgentRecords(snap)
+	for i := range recs {
+		switch recs[i].Name {
+		case "senhub.agent.otlp_receiver.ingested":
+			ingested = &recs[i]
+		case "senhub.agent.otlp_receiver.dropped":
+			dropped = &recs[i]
+		}
+	}
+	if ingested == nil || ingested.Attributes["signal"] != "traces" || ingested.Value != 5 {
+		t.Errorf("ingested record = %+v, want signal=traces value=5", ingested)
+	}
+	if dropped == nil || dropped.Attributes["signal"] != "logs" || dropped.Attributes["reason"] != "no_sink" || dropped.Value != 3 {
+		t.Errorf("dropped record = %+v, want signal=logs reason=no_sink value=3", dropped)
+	}
+}
+
 func TestBuildAgentRecords_NoHTTPRecordsWhenMapEmpty(t *testing.T) {
 	snap := AgentMetricsSnapshot{StartTime: time.Now()}
 	recs := BuildAgentRecords(snap)
