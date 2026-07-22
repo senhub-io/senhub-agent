@@ -101,7 +101,9 @@ func newHTTPSpanForwarder(cfg Config) (*httpSpanForwarder, error) {
 		return nil, fmt.Errorf("traces relay TLS config: %w", err)
 	}
 	scheme := "https"
-	transport := &http.Transport{}
+	// Honor HTTP(S)_PROXY like the SDK OTLP/HTTP exporters do, so the span
+	// relay follows the same egress path as the metrics/logs exporters.
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if insec {
 		scheme = "http"
 	} else {

@@ -131,6 +131,44 @@ func TestSerialize_LabelsEscaped(t *testing.T) {
 	}
 }
 
+// TestSerialize_HistogramWithReservedLeAttribute pins the C1 fix: a
+// sender-supplied `le` attribute on a native histogram must not duplicate
+// the bucket `le` label — a duplicate label made the ENTIRE exposition
+// unparseable (one poisoned series took down the whole /metrics page).
+func TestSerialize_HistogramWithReservedLeAttribute(t *testing.T) {
+	sum := 4.2
+	records := []otelmapper.OtelRecord{{
+		Name:       "http.server.duration",
+		Unit:       "s",
+		Type:       "histogram",
+		Attributes: map[string]string{"le": "sneaky", "route": "/x"},
+		Value:      6,
+		Histogram: &datapoint.HistogramValue{
+			Count: 6, Sum: &sum,
+			BucketCounts: []uint64{1, 2, 3}, ExplicitBounds: []float64{0.1, 0.5},
+		},
+	}}
+	var buf bytes.Buffer
+	if err := SerializeToTextExposition(records, &buf, SerializeOptions{}); err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+	body := buf.String()
+
+	p := newTextParser()
+	if _, err := p.TextToMetricFamilies(strings.NewReader(body)); err != nil {
+		t.Fatalf("exposition must stay parseable despite a reserved `le` attribute: %v\nbody:\n%s", err, body)
+	}
+	if strings.Contains(body, `le="sneaky"`) {
+		t.Errorf("sender-supplied le must be stripped from the histogram labels, got:\n%s", body)
+	}
+	// The genuine bucket ladder must still be present and well-formed.
+	for _, want := range []string{`le="0.1"`, `le="0.5"`, `le="+Inf"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing bucket %s in:\n%s", want, body)
+		}
+	}
+}
+
 func keys(m map[string]*dto.MetricFamily) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

@@ -180,6 +180,63 @@ func TestFlatten_HistogramOptionalFieldsAbsent(t *testing.T) {
 	}
 }
 
+func TestFlatten_MalformedHistogramDropped(t *testing.T) {
+	// BucketCounts (2) with no explicit bounds violates len==bounds+1 (=1)
+	// → malformed → dropped, so a poison point never reaches the OTLP export.
+	bad := &metricpb.Metric{
+		Name: "bad.hist", Unit: "s",
+		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
+			DataPoints: []*metricpb.HistogramDataPoint{{
+				Count: 5, BucketCounts: []uint64{2, 3}, ExplicitBounds: nil,
+			}},
+		}},
+	}
+	// A count-only histogram (no bucket layout) is valid and kept.
+	countOnly := &metricpb.Metric{
+		Name: "ok.hist", Unit: "s",
+		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
+			DataPoints: []*metricpb.HistogramDataPoint{{Count: 3}},
+		}},
+	}
+	points, dropped := flattenResourceMetrics(wrap(nil, bad, countOnly))
+	if dropped != 1 {
+		t.Errorf("dropped = %d, want 1 (malformed histogram)", dropped)
+	}
+	if len(points) != 1 || points[0].Name != "ok.hist" {
+		t.Errorf("points = %+v, want a single ok.hist point", points)
+	}
+	if points[0].Histogram == nil || points[0].Histogram.Count != 3 {
+		t.Errorf("count-only histogram payload = %+v, want Count=3", points[0].Histogram)
+	}
+}
+
+func TestFlatten_HistogramStripsReservedLe(t *testing.T) {
+	hist := &metricpb.Metric{
+		Name: "h", Unit: "s",
+		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
+			DataPoints: []*metricpb.HistogramDataPoint{{
+				Attributes:     []*commonpb.KeyValue{strAttr("le", "sneaky"), strAttr("route", "/x")},
+				Count:          6,
+				BucketCounts:   []uint64{1, 2, 3},
+				ExplicitBounds: []float64{0.1, 0.5},
+			}},
+		}},
+	}
+	points, _ := flattenResourceMetrics(wrap(nil, hist))
+	if len(points) != 1 {
+		t.Fatalf("got %d points, want 1", len(points))
+	}
+	tm := tagMapOf(points[0].Tags)
+	if _, ok := tm["le"]; ok {
+		// A reserved `le` must never survive onto a histogram — it would
+		// pollute the OTLP export and break the Prometheus exposition.
+		t.Errorf("reserved le must be stripped, got le=%q", tm["le"])
+	}
+	if tm["route"] != "/x" {
+		t.Errorf("non-reserved attr must survive, tags=%v", tm)
+	}
+}
+
 func TestFlatten_SummaryExpanded(t *testing.T) {
 	summary := &metricpb.Metric{
 		Name: "rpc.latency", Unit: "ms",

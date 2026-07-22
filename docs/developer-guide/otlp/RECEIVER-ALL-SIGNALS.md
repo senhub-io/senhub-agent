@@ -65,6 +65,17 @@ Which signals are accepted is config-driven (`signals:`), defaulting to
   (exponential buckets do not map to a fixed `le` set cleanly), as is a
   possible native pass-through mirroring #659.
 
+**Temporality**: the agent's OTLP exporter (and the last-writer-wins store)
+are **cumulative-only** for every signal. A delta-temporality histogram (or
+sum) is re-exported as cumulative, which is lossy for a delta sender — the
+same long-standing contract the Sum path already has (`sumInstrumentType`
+degrades a delta sum to a gauge). Faithful delta pass-through is a separate
+follow-up. **Malformed histograms** (bucket-count length ≠ explicit-bounds
++ 1) are dropped at decode and surfaced via OTLP partial-success rather than
+forwarded, so a poison point cannot make a downstream collector reject the
+whole export batch. On the Prometheus side, a sender-supplied `le` attribute
+on a histogram is stripped (it is reserved for the bucket ladder).
+
 ### Logs (Phase 2) — relay through the agent log channel
 
 The OTLP export strategy already drains an internal
