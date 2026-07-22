@@ -17,6 +17,7 @@ const (
 	defaultHTTPAddr  = "127.0.0.1:4318"
 	defaultHTTPPath  = "/v1/metrics"
 	httpLogsPath     = "/v1/logs"
+	httpTracesPath   = "/v1/traces"
 	minPort          = 1
 	maxPort          = 65535
 	protocolGRPC     = "grpc"
@@ -34,6 +35,7 @@ const (
 type signalSet struct {
 	Metrics bool
 	Logs    bool
+	Traces  bool
 }
 
 // names returns the enabled signals in a stable order, for logging.
@@ -44,6 +46,9 @@ func (s signalSet) names() []string {
 	}
 	if s.Logs {
 		out = append(out, signalLogs)
+	}
+	if s.Traces {
+		out = append(out, signalTraces)
 	}
 	return out
 }
@@ -159,8 +164,7 @@ func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) 
 }
 
 // parseSignals reads the `signals:` list. Absent or empty means metrics
-// only (back-compat). "traces" is accepted syntactically but rejected with
-// a pointer to the tracking issue until the traces path lands (#658).
+// only (back-compat).
 func parseSignals(raw interface{}) (signalSet, error) {
 	if raw == nil {
 		return signalSet{Metrics: true}, nil
@@ -177,13 +181,13 @@ func parseSignals(raw interface{}) (signalSet, error) {
 		case signalLogs:
 			s.Logs = true
 		case signalTraces:
-			return signalSet{}, fmt.Errorf("signals: %q ingest is not yet supported (tracked in senhub-io/senhub-agent#658)", signalTraces)
+			s.Traces = true
 		default:
-			return signalSet{}, fmt.Errorf("signals: unknown signal %q (want %q or %q)", n, signalMetrics, signalLogs)
+			return signalSet{}, fmt.Errorf("signals: unknown signal %q (want %q, %q or %q)", n, signalMetrics, signalLogs, signalTraces)
 		}
 	}
-	if !s.Metrics && !s.Logs {
-		return signalSet{}, fmt.Errorf("signals: at least one of %q, %q must be enabled", signalMetrics, signalLogs)
+	if !s.Metrics && !s.Logs && !s.Traces {
+		return signalSet{}, fmt.Errorf("signals: at least one of %q, %q, %q must be enabled", signalMetrics, signalLogs, signalTraces)
 	}
 	return s, nil
 }

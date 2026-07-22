@@ -1,6 +1,7 @@
 # OTLP receiver — full signal coverage (metrics, logs, traces)
 
-Status: design / in progress. Epic: senhub-io/senhub-agent#655.
+Status: phases 1–3 shipped; native histogram pass-through (#659) open.
+Epic: senhub-io/senhub-agent#655.
 
 ## Goal
 
@@ -78,13 +79,28 @@ strategy is configured (nowhere to relay to).
 
 ### Traces (Phase 3) — raw span forwarder
 
-Traces have no internal representation at all; the export side
-(`strategies/otlp/traces.go`) uses the SDK `BatchSpanProcessor` fed by the
-agent's own tracer, which does not accept externally-received proto spans.
-Phase 3 adds a dedicated span forwarder: `TracesService.Export` hands the
-received `ResourceSpans` to an OTLP trace exporter that forwards them
-unchanged (OTLP-in → OTLP-out), with the same batching/retry contract as
-the metrics/logs exporters. Largest and last increment.
+Traces have no internal representation at all; the export side's SDK
+pipeline (`strategies/otlp/traces.go`) uses the `BatchSpanProcessor` fed
+by the agent's own tracer, which does not accept externally-received
+proto spans. Phase 3 therefore relays spans as **raw proto end-to-end**:
+`TracesService.Export` (and HTTP `/v1/traces`) publishes the received
+`ResourceSpans` verbatim on a dedicated agentstate span channel
+(`agentstate/span_channel.go`, the batch-shaped analogue of the log
+channel), and the OTLP export strategy's `spansRelay`
+(`strategies/otlp/spans_relay.go`) subscribes and forwards each batch
+unchanged over a raw collector `TracesService` client — gRPC or HTTP per
+the strategy `protocol`, reusing the strategy's resolved
+endpoint/TLS/headers/compression. Batching follows
+`signals.traces.batch_size` / `batch_timeout` / `buffer_size`; a failed
+export drops the batch (bounded per-call timeout, no SDK retry — the
+relay is best-effort like the receive side).
+
+The relay is gated by the export strategy's existing
+`signals.traces.enabled` flag (no new config key) and runs independently
+of the SDK pipeline — both are active when traces are enabled: the SDK
+pipeline exports the agent's own spans, the relay forwards received ones.
+With no trace-capable strategy subscribed, the receiver discards ingested
+spans with a throttled warning (same contract as logs).
 
 ## Cross-cutting decisions
 
@@ -119,7 +135,7 @@ the metrics/logs exporters. Largest and last increment.
 |---|---|---|---|
 | 1 | Complete metrics: histogram / exp-histogram / summary → scalar series | #656 | done |
 | 2 | Multi-signal transport + logs ingest (relay via agent log channel) | #657 | done |
-| 3 | Traces ingest (raw span forwarder) | #658 | todo |
+| 3 | Traces ingest (raw span forwarder) | #658 | done |
 | — | Native OTLP histogram pass-through (model carries histogram) | #659 | todo |
 
 Each phase ships as its own PR with tests. Phase 1 is self-contained and
