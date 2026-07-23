@@ -374,7 +374,7 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 
 **Possible causes and solutions:**
 
-- **No license activated**: Check with `senhub-agent license show`. Free tier only allows cpu, memory, logicaldisk, network.
+- **No license activated**: Check with `senhub-agent license show`. Without a license the agent runs every Free-tier probe — the whole universal collection tier (OS/host, logs, network checks, application, database and broker probes); only the Pro probes need a license. Each page of the [probe catalog](probes/index.md) shows the tier badge.
 - **License expired**: Check the expiration date. There is a 7-day grace period after expiration. Contact support for renewal.
 - **Probe not in license tier**: Verify the probe type is included in your tier. See the License Tiers table in the [Configuration section](configuration.md).
 

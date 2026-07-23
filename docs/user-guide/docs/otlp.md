@@ -1,6 +1,6 @@
 # OTLP / OpenTelemetry
 
-SenHub Agent can push metrics and logs natively over **OTLP/gRPC** to any
+SenHub Agent can push metrics, logs and traces natively over **OTLP/gRPC** to any
 OpenTelemetry receiver — an OTel collector, vmagent's OTLP endpoint, a
 direct VictoriaMetrics / VictoriaLogs ingest, Grafana Cloud OTLP, etc.
 
@@ -87,6 +87,13 @@ storage:
           batch_size: 1000            # max records per gRPC export
           batch_timeout: 5s           # flush even if batch_size not reached
           buffer_size: 10000          # bounded queue; drop-oldest beyond
+        traces:
+          enabled: true               # default false — relays spans ingested by an
+                                      # otlp_receiver probe (signals: [traces])
+          batch_size: 512
+          batch_timeout: 5s
+          buffer_size: 2048           # bounded queue; drop beyond
+          sample_ratio: 1.0           # head sampling, 0.0-1.0
 
       # Resource attributes attached to every emitted batch. Defaults
       # are derived from agent identity if omitted.
@@ -125,6 +132,13 @@ the corresponding pipeline and keeps the gRPC connection idle.
 OTel v1.0). Cumulative means counter values are reported as absolute
 totals since the agent start; consumers that prefer deltas (some
 Datadog setups, vmagent ingest) can set `temporality: delta`.
+
+### `signals.traces`
+
+The agent produces no spans of its own. The traces signal relays spans
+received by an [otlp_receiver probe](probes/otlp-receiver.md) configured
+with `signals: [traces]`; without such a probe there is nothing to
+export and the signal stays idle.
 
 ### `signals.entities`
 
@@ -212,6 +226,14 @@ The OTLP strategy ships logs from these probe sources:
   `journalctl --output=json --follow` and emits a log per entry
   with `host.name`, `systemd.unit`, `syslog.appname`,
   `process.pid`, … See [linux_logs probe](probes/linux-logs.md).
+- **`filetail` probe** — each line tailed from a watched log file
+  becomes a log record.
+- **`windows_eventlog` probe** — each entry read from a subscribed
+  Windows Event Log channel becomes a log record.
+- **`snmp_trap` probe** — each received SNMP trap becomes a log
+  record.
+- **`otlp_receiver` probe** with `signals: [logs]` — relays log
+  records ingested over OTLP from other emitters.
 
 Probes still emit DataPoints to the existing PRTG/Nagios/event
 strategies; the logs path is **additive**.
@@ -317,7 +339,8 @@ otlp:
 
 Notes:
 
-- **One URL, one token, three signals.** Entity events ride the logs
+- **One URL, one token, four signals** (metrics, logs, traces,
+  entities). Entity events ride the logs
   transport — enabling `signals.entities` requires no extra endpoint.
 - The bearer token comes from the environment (`${env:}`) or a root-only
   file (`${file:/etc/senhub-agent/bearer.token}`); never inline it.
@@ -490,7 +513,9 @@ Verify:
 2. The collector pipeline includes the `otlp` receiver in the `logs:`
    pipeline (not just `metrics:`).
 3. The probes you expect to produce logs are configured: `syslog`,
-   `event`, or `linux_logs`. Other probes do not produce log records.
+   `event`, `linux_logs`, `filetail`, `windows_eventlog`, `snmp_trap`,
+   or an `otlp_receiver` with `signals: [logs]`. Other probes do not
+   produce log records.
 4. The receiver tolerates the OTel log data model; older versions of
    vmagent or Loki collectors may need a recent build.
 
