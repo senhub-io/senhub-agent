@@ -3,7 +3,7 @@ package configuration
 // LicenseDocumentationTemplate is the single license comment line written into
 // agent.yaml. Full tier/format documentation lives in the docs, not in every
 // generated config.
-const LicenseDocumentationTemplate = `  # license: ""   # paid-tier probes only; empty = free tier. Prefer the license.jwt sidecar next to this file (see docs.senhub.io)`
+const LicenseDocumentationTemplate = `  # Paid-tier probes: drop the license.jwt file (from Sensor Factory) next to this config — no file = free tier. See docs.senhub.io. (An inline 'license:' JWT still works and is auto-migrated to license.jwt on next start.)`
 
 // AgentYAMLTemplate is the globals-only top-level file written by a
 // fresh `agent install` (0.2.x+ default layout). Probes and storage

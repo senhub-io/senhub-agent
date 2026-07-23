@@ -256,6 +256,14 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 		lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
 	}
 
+	// Converge on the file-based license: an install carrying a JWT inline in
+	// agent.yaml is moved to the license.jwt sidecar. Non-fatal by design, and
+	// a no-op once migrated or when the field is a ${...} reference — like the
+	// seal above, a migration fault must never brick the agent.
+	if err := MigrateLicenseToSidecar(lc.configPath, lc.logger); err != nil {
+		lc.logger.Warn().Err(err).Msg("Migrating inline license to sidecar failed; continuing with the existing config")
+	}
+
 	// Load or create configuration
 	if err := lc.loadOrCreateConfiguration(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)

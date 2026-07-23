@@ -5,6 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // licenseSidecarName is the fixed filename of the license sidecar, resolved
@@ -72,6 +77,88 @@ func RemoveLicenseSidecar(configPath string) error {
 	}
 	if err := SetLicenseField(configPath, ""); err != nil {
 		return fmt.Errorf("clearing inline license in %s: %w", configPath, err)
+	}
+	return nil
+}
+
+// readInlineLicense returns the raw agent.license scalar from configPath
+// without substitution, so a ${file:}/${secret:} reference is returned
+// verbatim (not resolved) and can be distinguished from a literal JWT.
+func readInlineLicense(configPath string) (string, error) {
+	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", configPath, err)
+	}
+	var doc struct {
+		Agent struct {
+			License string `yaml:"license"`
+		} `yaml:"agent"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return "", fmt.Errorf("parsing %s: %w", configPath, err)
+	}
+	return doc.Agent.License, nil
+}
+
+// MigrateLicenseToSidecar moves an inline plaintext license out of agent.yaml
+// into the license.jwt sidecar, so every install converges on the file-based
+// license. It backs the boot reconciliation (called alongside the inline-secret
+// seal): an install carrying a JWT inline in agent.yaml is converted on the
+// next start with no operator action.
+//
+// It is a no-op when the inline field is empty (free tier or already migrated)
+// or is a ${...} reference (the operator deliberately points elsewhere — do not
+// second-guess it). The move is backed by a timestamped backup of agent.yaml
+// and verified by reloading: on any mismatch the backup is restored and the
+// freshly written sidecar removed, so a fault never changes the effective
+// license.
+func MigrateLicenseToSidecar(configPath string, log *logger.ModuleLogger) error {
+	inline, err := readInlineLicense(configPath)
+	if err != nil {
+		return err
+	}
+	if inline == "" || strings.Contains(inline, "${") {
+		return nil
+	}
+
+	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", configPath, err)
+	}
+	backupPath := fmt.Sprintf("%s.backup.%s", configPath, time.Now().Format("20060102-150405"))
+	if err := os.WriteFile(backupPath, raw, 0o600); err != nil {
+		return fmt.Errorf("backing up %s before license migration: %w", configPath, err)
+	}
+
+	restore := func() {
+		if data, e := os.ReadFile(backupPath); e == nil {
+			_ = atomicWriteFile(configPath, data, fileModeOr(configPath, 0o600))
+		}
+		_ = os.Remove(LicenseSidecarPath(configPath))
+	}
+
+	// WriteLicenseSidecar writes the sidecar (0600) and clears the inline field.
+	if err := WriteLicenseSidecar(configPath, inline); err != nil {
+		restore()
+		_ = os.Remove(backupPath)
+		return fmt.Errorf("migrating inline license to sidecar: %w", err)
+	}
+
+	// Verify: the effective license after the move must be unchanged.
+	after, err := LoadFromDisk(configPath, nil)
+	if err != nil || after.Agent.License != inline {
+		restore()
+		_ = os.Remove(backupPath)
+		if err != nil {
+			return fmt.Errorf("verifying license migration (reload failed): %w", err)
+		}
+		return fmt.Errorf("verifying license migration: effective license changed after move")
+	}
+
+	_ = os.Remove(backupPath)
+	if log != nil {
+		log.Info().Str("sidecar", LicenseSidecarPath(configPath)).
+			Msg("Migrated inline license to the license.jwt sidecar")
 	}
 	return nil
 }
