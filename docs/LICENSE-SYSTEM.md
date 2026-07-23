@@ -220,16 +220,31 @@ go run sensor-factory-license-generator.go --generate-license \
 
 ### 3. Customer Activation
 
-**Customer receives JWT token and activates:**
+The license lives in a dedicated **`license.jwt` sidecar file** next to
+`agent.yaml` (`/etc/senhub/license.jwt`, Windows `%ProgramData%\SenHub\license.jwt`),
+not inline in the YAML. A standalone file is simple to hand to a customer and
+removes the risk of mangling a very long JWT on copy-paste. There are two ways
+to install it:
 
 ```bash
-# Activate license via CLI
+# Option A — CLI: activates and writes the sidecar for you
 ./agent license activate eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 
+# Option B — drop-in: save the token file we send you next to agent.yaml
+cp license.jwt /etc/senhub/license.jwt   # restart the agent
+```
+
+```bash
 # Verify activation via web dashboard
 # Navigate to: http://localhost:8080/web/{agentkey}/dashboard
 # Check the "License" card for status
 ```
+
+The token stays in clear on disk: it is a JWT bound to the agent key, not a
+portable access secret, so it is deliberately excluded from the `${secret:}`
+seal. The loader reads the sidecar automatically when `agent.license` is empty;
+an inline `agent.license` (including a `${file:}`/`${secret:}` reference) still
+works and takes precedence over the sidecar.
 
 ### 4. License Validation
 
@@ -270,10 +285,16 @@ The agent runs standalone (offline-only). There is no SenHub platform connection
 - Valid license → Tier specified in JWT (Free, Pro, Enterprise)
 
 **Configuration:**
+
+The license is provided as the `license.jwt` sidecar file next to `agent.yaml`
+(preferred — see Customer Activation above). An inline `agent.license` is still
+accepted for back-compat and takes precedence when set:
+
 ```yaml
 agent:
   authentication_key: "9bb3df79-2973-4662-8687-8da602175e0b"
-  license: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...  # JWT required
+  # license: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...  # optional inline override;
+  #                                                    # prefer the license.jwt sidecar
 
 probes:
   - name: Dell iDRAC
