@@ -54,6 +54,7 @@ func (a *cacheAdapter) GetAll() []otelmapper.CacheMetric {
 			Value:      val,
 			Unit:       m.Unit,
 			Tags:       m.Tags,
+			Histogram:  m.Histogram,
 		})
 	}
 	return out
@@ -174,7 +175,6 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 		ProbesActive:           h.cache.GetCacheInfo().ProbeCount,
 		ProbesTotal:            probesTotal,
 		ProbesHealthy:          probesHealthy,
-		CollectErrorsTotal:     agentstate.GetCollectErrorsTotal(),
 		HTTPRequestsByEndpoint: GetHTTPRequestCounts(),
 		BuildVersion:           agentBuildVersion(),
 		BuildCommit:            agentBuildCommit(),

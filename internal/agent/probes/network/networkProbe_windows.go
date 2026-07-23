@@ -210,17 +210,10 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 		}
 
 		if ipv4 != "" || ipv6 != "" {
-			// Find matching PDH instance using normalized names
-			var pdhName string
-			for _, inst := range pdhInstances {
-				if strings.Contains(normalizeAdapterName(inst), normalizeAdapterName(adapterInfo.name)) {
-					pdhName = inst
-					logger.Debug().Str("pdh_name", pdhName).Msg("Found matching PDH instance")
-					break
-				}
-			}
+			pdhName, found := matchPDHInstance(pdhInstances, adapterInfo.name)
 
-			if pdhName != "" {
+			if found {
+				logger.Debug().Str("pdh_name", pdhName).Msg("Found matching PDH instance")
 				interfaces[pdhName] = interfaceInfo{
 					adapterName:    adapterInfo.name,
 					connectionName: iface.Name,
@@ -243,6 +236,28 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 		} else {
 			logger.Debug().Str("interface", iface.Name).Msg("No IP addresses found for interface")
 		}
+	}
+
+	// A PDH instance nobody claimed still measures real traffic — an adapter
+	// whose WMI name failed to reconcile, or one without an IP address.
+	// Register it with best-effort adapter identification so its counters are
+	// emitted without the IP enrichment instead of the whole series being
+	// dropped (#644).
+	for _, inst := range unmatchedPDHInstances(pdhInstances, interfaces) {
+		adapterName := inst
+		for _, adapter := range adapters {
+			if normalizeAdapterName(adapter.Name) == normalizeAdapterName(inst) {
+				adapterName = adapter.Name
+				break
+			}
+		}
+		interfaces[inst] = interfaceInfo{
+			adapterName: adapterName,
+		}
+		logger.Debug().
+			Str("pdh", inst).
+			Str("adapter", adapterName).
+			Msg("PDH instance has no matched IP metadata, emitting counters without enrichment")
 	}
 
 	logger.Debug().Msg("Final Result")
@@ -371,12 +386,17 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 				Value:   pathInfo.instance, // Use PDH instance name (e.g., "Network_3")
 				Private: false,
 			},
-			{
-				Key:     "connection_name",
-				Value:   interfaceInfo.connectionName, // Keep original connection name as additional info
-				Private: false,
-			},
 		}...)
+
+		// connection_name and ip are enrichment from the WMI match; an
+		// unmatched adapter has neither (#644) and must not emit empty tags.
+		if interfaceInfo.connectionName != "" {
+			metricTags = append(metricTags, tags.Tag{
+				Key:     "connection_name",
+				Value:   interfaceInfo.connectionName,
+				Private: false,
+			})
+		}
 
 		if interfaceInfo.ipv4 != "" {
 			metricTags = append(metricTags, tags.Tag{

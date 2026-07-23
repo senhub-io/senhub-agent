@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // SerializeOptions tweaks the output format (reserved for future flags,
@@ -43,12 +44,13 @@ func SerializeToTextExposition(records []otelmapper.OtelRecord, w io.Writer, opt
 	var order []string
 
 	for _, r := range records {
-		promName := OTelNameToPromName(r.Name, r.Unit, r.Type)
+		typ := effectiveType(r)
+		promName := OTelNameToPromName(r.Name, r.Unit, typ)
 		g, ok := groups[promName]
 		if !ok {
 			g = &group{
 				promName:  promName,
-				promType:  PromType(r.Type),
+				promType:  PromType(typ),
 				help:      r.Description,
 				unit:      r.Unit,
 				firstOTel: r.Name,
@@ -60,7 +62,7 @@ func SerializeToTextExposition(records []otelmapper.OtelRecord, w io.Writer, opt
 			// name. We pick a deterministic winner (first-seen) but report
 			// any divergence via the dedicated helpers so operators have a
 			// chance to fix the YAML.
-			if got := PromType(r.Type); got != g.promType {
+			if got := PromType(typ); got != g.promType {
 				warnTypeConflict(promName, g.firstOTel, g.promType, r.Name, got)
 			}
 			if r.Unit != g.unit {
@@ -131,6 +133,12 @@ func writeGroup(w io.Writer, name, promType, help string, rows []otelmapper.Otel
 			labelOrigin[pk] = k
 		}
 		sort.Strings(labelKeys)
+		if promType == "histogram" && r.Histogram != nil {
+			if err := writeHistogramRow(w, name, labelKeys, promLabels, r.Histogram); err != nil {
+				return err
+			}
+			continue
+		}
 		labels := FormatLabels(labelKeys, promLabels)
 		valueStr := formatValue(r.Value)
 		if _, err := fmt.Fprintf(w, "%s%s %s\n", name, labels, valueStr); err != nil {
@@ -142,6 +150,74 @@ func writeGroup(w io.Writer, name, promType, help string, rows []otelmapper.Otel
 		return err
 	}
 	return nil
+}
+
+// effectiveType returns the OTel type a record should be serialized as.
+// A "histogram"-typed record without its native payload cannot produce
+// the _bucket/_sum/_count sample family the text format requires, so it
+// degrades to a gauge on its scalar value (the observation count) —
+// defensive; the resolver already types payload-less records as gauge.
+func effectiveType(r otelmapper.OtelRecord) string {
+	if r.Type == "histogram" && r.Histogram == nil {
+		return "gauge"
+	}
+	return r.Type
+}
+
+// writeHistogramRow emits one record's native classic-histogram sample
+// family: cumulative `name_bucket{le="<bound>"}` lines (OTLP bucket
+// counts are per-bucket, so they are accumulated), a terminal
+// `le="+Inf"` bucket equal to the total count, then `name_sum` (when the
+// sender provided it) and `name_count`. The `le` label is appended to
+// the record's own label set.
+func writeHistogramRow(w io.Writer, name string, labelKeys []string, promLabels map[string]string, h *datapoint.HistogramValue) error {
+	// `le` is reserved for histogram buckets. A sender-supplied `le`
+	// attribute would otherwise duplicate the bucket label (making the
+	// entire exposition unparseable — one poisoned series takes down the
+	// whole /metrics page) and leak a non-numeric value onto _sum/_count.
+	// Drop it from the record's own label set before we add our own.
+	baseKeys := make([]string, 0, len(labelKeys))
+	baseLabels := make(map[string]string, len(promLabels))
+	for _, k := range labelKeys {
+		if k == "le" {
+			continue
+		}
+		baseKeys = append(baseKeys, k)
+		baseLabels[k] = promLabels[k]
+	}
+
+	bucketKeys := make([]string, 0, len(baseKeys)+1)
+	bucketKeys = append(bucketKeys, baseKeys...)
+	bucketKeys = append(bucketKeys, "le")
+	sort.Strings(bucketKeys)
+	bucketLabels := make(map[string]string, len(baseLabels)+1)
+	for k, v := range baseLabels {
+		bucketLabels[k] = v
+	}
+
+	var cumulative uint64
+	for i, bound := range h.ExplicitBounds {
+		if i < len(h.BucketCounts) {
+			cumulative += h.BucketCounts[i]
+		}
+		bucketLabels["le"] = strconv.FormatFloat(bound, 'g', -1, 64)
+		if _, err := fmt.Fprintf(w, "%s_bucket%s %d\n", name, FormatLabels(bucketKeys, bucketLabels), cumulative); err != nil {
+			return err
+		}
+	}
+	bucketLabels["le"] = "+Inf"
+	if _, err := fmt.Fprintf(w, "%s_bucket%s %d\n", name, FormatLabels(bucketKeys, bucketLabels), h.Count); err != nil {
+		return err
+	}
+
+	labels := FormatLabels(baseKeys, baseLabels)
+	if h.Sum != nil {
+		if _, err := fmt.Fprintf(w, "%s_sum%s %s\n", name, labels, formatValue(*h.Sum)); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(w, "%s_count%s %d\n", name, labels, h.Count)
+	return err
 }
 
 // isInternalAttribute reports whether an OTel attribute should be dropped
