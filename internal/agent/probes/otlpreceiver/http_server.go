@@ -11,7 +11,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 )
 
 // httpReceiver wraps an *http.Server so the probe can hold it behind a
@@ -32,7 +34,15 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(p.config.HTTPPath, p.handleMetrics)
+	if p.config.Signals.Metrics {
+		mux.HandleFunc(p.config.HTTPPath, p.handleMetrics)
+	}
+	if p.config.Signals.Logs {
+		mux.HandleFunc(httpLogsPath, p.handleLogs)
+	}
+	if p.config.Signals.Traces {
+		mux.HandleFunc(httpTracesPath, p.handleTraces)
+	}
 
 	server := &http.Server{
 		Handler:      mux,
@@ -64,15 +74,16 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("address", p.config.Address).
 		Str("path", p.config.HTTPPath).
+		Strs("signals", p.config.Signals.names()).
 		Msg("OTLP HTTP receiver started")
 	return nil
 }
 
-// handleMetrics decodes an OTLP/HTTP protobuf metrics request, ingests
-// the datapoints, and replies with a (possibly partial-success) protobuf
-// ExportMetricsServiceResponse. Only the protobuf content type is
-// accepted — JSON ingestion is intentionally out of scope for this slice.
-func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request) {
+// authorizeAndReadBody runs the shared ingress preamble for an OTLP/HTTP
+// handler: guard (bearer/CIDR/rate-limit), POST-only, protobuf content type,
+// and a size-capped body read. It writes the error response itself and
+// returns ok=false when the request must not proceed.
+func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	if err := p.guard.allow(r.RemoteAddr, r.Header.Get("Authorization")); err != nil {
 		p.logRejection(r.RemoteAddr, err)
 		code := http.StatusInternalServerError
@@ -85,23 +96,35 @@ func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request
 			code = http.StatusTooManyRequests
 		}
 		http.Error(w, err.Error(), code)
-		return
+		return nil, false
 	}
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
+		return nil, false
 	}
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "" && contentType != "application/x-protobuf" {
 		http.Error(w, "only application/x-protobuf is supported", http.StatusUnsupportedMediaType)
-		return
+		return nil, false
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxRecvMsgBytes))
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return nil, false
+	}
+	return body, true
+}
+
+// handleMetrics decodes an OTLP/HTTP protobuf metrics request, ingests
+// the datapoints, and replies with a (possibly partial-success) protobuf
+// ExportMetricsServiceResponse. Only the protobuf content type is
+// accepted — JSON ingestion is intentionally out of scope for this slice.
+func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	body, ok := p.authorizeAndReadBody(w, r)
+	if !ok {
 		return
 	}
 
@@ -121,11 +144,67 @@ func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request
 	if dropped > 0 {
 		resp.PartialSuccess = &collectormetricspb.ExportMetricsPartialSuccess{
 			RejectedDataPoints: int64(dropped),
-			ErrorMessage:       "non-scalar metric types (histogram/summary) are not ingested by senhub-agent",
+			ErrorMessage:       "unrecognized or unset OTLP metric data type not ingested by senhub-agent",
 		}
 	}
 
 	out, err := proto.Marshal(resp)
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(out)
+}
+
+// handleLogs decodes an OTLP/HTTP protobuf logs request, publishes the
+// records on the agent log channel for relay, and replies with an empty
+// ExportLogsServiceResponse. Same protobuf-only, guarded contract as
+// handleMetrics.
+func (p *OTLPReceiverProbe) handleLogs(w http.ResponseWriter, r *http.Request) {
+	body, ok := p.authorizeAndReadBody(w, r)
+	if !ok {
+		return
+	}
+
+	var req collectorlogspb.ExportLogsServiceRequest
+	if err := proto.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid OTLP protobuf payload", http.StatusBadRequest)
+		return
+	}
+
+	p.ingestLogs(flattenResourceLogs(req.GetResourceLogs(), p.GetName()))
+
+	out, err := proto.Marshal(&collectorlogspb.ExportLogsServiceResponse{})
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(out)
+}
+
+// handleTraces decodes an OTLP/HTTP protobuf traces request, publishes
+// the ResourceSpans verbatim on the agent span channel for relay, and
+// replies with an empty ExportTraceServiceResponse. Same protobuf-only,
+// guarded contract as handleMetrics.
+func (p *OTLPReceiverProbe) handleTraces(w http.ResponseWriter, r *http.Request) {
+	body, ok := p.authorizeAndReadBody(w, r)
+	if !ok {
+		return
+	}
+
+	var req collectortracepb.ExportTraceServiceRequest
+	if err := proto.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid OTLP protobuf payload", http.StatusBadRequest)
+		return
+	}
+
+	p.ingestSpans(req.GetResourceSpans())
+
+	out, err := proto.Marshal(&collectortracepb.ExportTraceServiceResponse{})
 	if err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
