@@ -600,7 +600,7 @@ func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request)
 	}
 
 	response := LicenseStatusResponse{
-		FreeTierProbes: []string{"cpu", "memory", "logicaldisk", "network"},
+		FreeTierProbes: license.GetFreeTierProbes(),
 	}
 
 	// Get license token from configuration
