@@ -153,6 +153,8 @@ endpoint or batch knobs of its own — it reuses the log transport.
       buffer_size: 256         # bounded queue; drop-oldest beyond
       depends_on_debounce: 3   # consecutive scrapes before an outbound
                                # dependency edge is emitted (>= 1, default 3)
+      redact_attributes: []    # attribute keys DROPPED from every entity
+                               # event before export (default: none)
 ```
 
 `depends_on_debounce` controls how durable an outbound connection must be
@@ -162,6 +164,37 @@ keeps ephemeral connections out of the graph. The latency to surface a
 dependency is `depends_on_debounce x interval` (so the default `3 x 60s` is
 about three minutes); lower it for a more responsive graph, raise it to
 filter out shorter-lived connections.
+
+`redact_attributes` lists descriptive attribute keys the agent removes
+from every entity event before export — useful when the entity stream
+transits a shared collector or a third-party OTLP pipeline that should
+not see inventory identifiers such as hardware serials or cloud account
+ids:
+
+```yaml
+      redact_attributes: [hw.serial_number, cloud.account.id]
+```
+
+The listed keys are **dropped, not masked**: they simply never appear on
+the wire (an entity state is a full snapshot, so absence is the clean
+form of redaction — a `***` placeholder would pollute the graph with a
+fake shared value). The filter applies to every entity this strategy
+emits — the host entity and probe-emitted entities alike — and is
+**per-strategy**: a second `otlp` strategy pointed at a trusted backend
+can keep the full attribute set while this one redacts.
+
+Two rules to know:
+
+- **Identity keys cannot be redacted.** Keys that identify an entity
+  (`host.id`, `service.instance.id`, `container.id`,
+  `network.device.id`, `db.instance.id`, `vmid`) are refused at config
+  load with an error — removing an entity's identity would destroy the
+  entity, not protect it. Any other key is accepted.
+- **Trade-off on `hw.serial_number`.** The hardware serial is the
+  evidence an entity backend uses to reconcile the in-band host entity
+  with an out-of-band BMC (Redfish) view of the same machine. Redacting
+  it disables that `same_as` reconciliation for this export — list it
+  only when the receiving backend must not see serials.
 
 ### `resource`
 

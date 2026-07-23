@@ -83,9 +83,20 @@ signals:
   traces:
     enabled: false
     sample_ratio: 1.0
+  entities:
+    enabled: false             # opt-in; entity events ride the logs transport
+    interval: 60s              # heartbeat cadence + consumer liveness backstop
+    buffer_size: 256
+    depends_on_debounce: 3
+    depends_on_enabled: false  # outbound dependency edges are opt-in (#213)
+    depends_on_exclude_cidrs: []
+    redact_attributes: []      # attribute keys DROPPED (not masked) from every
+                               # entity event before encoding (#682)
 ```
 
 The interval is independent of probe `Collect` cadence — OTLP pulls the latest cache snapshot at its own rhythm.
+
+`redact_attributes` is the per-strategy privacy opt-out for entity attributes: listed keys are removed from `Entity.Attributes` on a copy at the pump boundary (`redactEntityEvent` in `entity_pump.go` — the shared `entity.Event` fans out to all subscribers and must never be mutated), so it covers the host entity and probe-emitted entities alike. Drop, not mask — an entity state is a full snapshot, absence IS the redaction. Identity keys (`host.id`, `service.instance.id`, `container.id`, `network.device.id`, `db.instance.id`, `vmid` — `entityIdentityKeys` in `config.go`) are refused at parse time and by `agent config check`. Trade-off to surface to users: redacting `hw.serial_number` breaks the out-of-band BMC/redfish `same_as` facet reconciliation for that export.
 
 ## Endpoint failover (`fallback_endpoints`)
 
