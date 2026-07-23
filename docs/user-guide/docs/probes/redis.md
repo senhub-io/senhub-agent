@@ -28,6 +28,9 @@ keyspace size, replication state and persistence (RDB/AOF) health.
 | `port` | `6379` | Redis server port |
 | `password` | — | Redis `AUTH` password (if required) — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `tls` | `false` | Enable TLS for the Redis connection |
+| `tls_cert_file` | — | Path to a PEM client certificate, presented to the server for mutual TLS (requires `tls_key_file`) |
+| `tls_key_file` | — | Path to the PEM private key matching `tls_cert_file` (requires `tls_cert_file`) |
+| `tls_ca_file` | — | Path to a PEM CA bundle used to verify the server certificate (defaults to the system trust store) |
 
 ## Metrics
 
