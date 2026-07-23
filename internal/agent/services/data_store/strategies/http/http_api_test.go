@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -109,8 +110,12 @@ func TestAPIManager_HandleLicenseStatus_NoLicense(t *testing.T) {
 	if response.Tier != "free" {
 		t.Errorf("Expected tier 'free', got '%s'", response.Tier)
 	}
-	if len(response.FreeTierProbes) != 4 {
-		t.Errorf("Expected 4 free tier probes, got %d", len(response.FreeTierProbes))
+	// free_tier_probes must be the full Free tier, not a hardcoded core subset.
+	if want := len(license.GetFreeTierProbes()); len(response.FreeTierProbes) != want {
+		t.Errorf("Expected %d free tier probes (the full free tier), got %d", want, len(response.FreeTierProbes))
+	}
+	if len(response.FreeTierProbes) <= 4 {
+		t.Errorf("free_tier_probes looks like the legacy 4-probe stub (%v)", response.FreeTierProbes)
 	}
 	if response.Message != "No license configured - running in free tier mode" {
 		t.Errorf("Unexpected message: %s", response.Message)
