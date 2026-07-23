@@ -539,7 +539,7 @@ func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 // The entity's service.instance.id is the resource's service.instance.id so
 // the entity identity and the OTLP resource agree on who the agent is.
 func (s *OTLPSyncStrategy) startEntityEmission() {
-	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.logger)
+	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.cfg.Entities.RedactAttributes, s.logger)
 	s.entityPump.start()
 
 	serviceName := s.cfg.Resource.ServiceName

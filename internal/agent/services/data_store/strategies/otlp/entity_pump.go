@@ -17,6 +17,7 @@ import (
 type entityPump struct {
 	pipeline *logsPipeline
 	bufSize  int
+	redact   map[string]struct{}
 	log      *logger.ModuleLogger
 
 	mu         sync.Mutex
@@ -25,11 +26,11 @@ type entityPump struct {
 	wg         sync.WaitGroup
 }
 
-func newEntityPump(p *logsPipeline, bufSize int, log *logger.ModuleLogger) *entityPump {
+func newEntityPump(p *logsPipeline, bufSize int, redact map[string]struct{}, log *logger.ModuleLogger) *entityPump {
 	if bufSize <= 0 {
 		bufSize = 256
 	}
-	return &entityPump{pipeline: p, bufSize: bufSize, log: log}
+	return &entityPump{pipeline: p, bufSize: bufSize, redact: redact, log: log}
 }
 
 // start subscribes to the entity-event channel and launches the drain
@@ -58,7 +59,7 @@ func (p *entityPump) drain(ctx context.Context, ch <-chan entity.Event) {
 			if !ok {
 				return
 			}
-			scope, rec, err := buildEntityRecord(ev)
+			scope, rec, err := buildEntityRecord(redactEntityEvent(ev, p.redact))
 			if err != nil {
 				// Surface, never silently drop — a malformed event is a
 				// producer bug worth seeing.
@@ -68,6 +69,34 @@ func (p *entityPump) drain(ctx context.Context, ch <-chan entity.Event) {
 			p.pipeline.emitEntityRecord(ctx, scope, rec)
 		}
 	}
+}
+
+// redactEntityEvent returns ev with the keys in redact removed from the
+// entity's descriptive Attributes (signals.entities.redact_attributes,
+// #682). The shared entity.Event fans out to every subscriber of
+// entity.SubscribeEvents, so it is NEVER mutated: when at least one key
+// matches, the entity struct is shallow-copied and given a fresh filtered
+// Attributes map, and the copy rides only this strategy's returned Event.
+// Entity.ID and relationship descriptors are identity, not description —
+// they pass through untouched. No matching key means no copy.
+func redactEntityEvent(ev entity.Event, redact map[string]struct{}) entity.Event {
+	if len(redact) == 0 || ev.Entity == nil || len(ev.Entity.Attributes) == 0 {
+		return ev
+	}
+	filtered := make(map[string]any, len(ev.Entity.Attributes))
+	for k, v := range ev.Entity.Attributes {
+		if _, drop := redact[k]; drop {
+			continue
+		}
+		filtered[k] = v
+	}
+	if len(filtered) == len(ev.Entity.Attributes) {
+		return ev
+	}
+	e := *ev.Entity
+	e.Attributes = filtered
+	ev.Entity = &e
+	return ev
 }
 
 // stop cancels the drain goroutine and unsubscribes. Honors the caller's
