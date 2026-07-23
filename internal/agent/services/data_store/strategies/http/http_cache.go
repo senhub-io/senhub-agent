@@ -64,6 +64,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"process":     {"process.pid", "process.name"},
 	"network":     {"interface", "adapter"},           // Different network interfaces
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
+	"os_updates":  {},                                 // System-level; one series per metric, no instances
 
 	// Application probes
 	"phpfpm":  {"pool"},                            // One series per PHP-FPM pool
