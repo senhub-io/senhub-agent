@@ -18,6 +18,7 @@ package otlp
 import (
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -213,6 +214,14 @@ type EntitiesSignal struct {
 	// DependsOnExcludeCIDRs drops dependency flows whose peer address falls in
 	// any of these ranges (operator privacy filter).
 	DependsOnExcludeCIDRs []*net.IPNet
+	// RedactAttributes is the set of descriptive attribute keys DROPPED from
+	// every entity event before encoding (operator privacy filter, #682).
+	// Drop, not mask: entity.state is a full state, so a dropped key simply
+	// never appears on the wire — a literal placeholder would poison the
+	// graph with a fake shared value. Applies to Entity.Attributes only;
+	// identity keys are refused at parse time and relationship descriptors
+	// are untouched. Empty by default (all attributes ship).
+	RedactAttributes map[string]struct{}
 	// Governance is the operator metadata stamped on this host's entity
 	// (owner/criticality/location/lifecycle/labels). Empty by default.
 	Governance governance.Governance
@@ -864,6 +873,13 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 			}
 			entities.DependsOnExcludeCIDRs = cidrs
 		}
+		if raw, ok := em["redact_attributes"]; ok {
+			set, err := parseRedactAttributes(raw)
+			if err != nil {
+				return fmt.Errorf("entities.redact_attributes: %w", err)
+			}
+			entities.RedactAttributes = set
+		}
 		if gov, err := governance.Parse(em["governance"]); err != nil {
 			return fmt.Errorf("entities.governance: %w", err)
 		} else {
@@ -1011,6 +1027,78 @@ func readInt(raw interface{}) (int, bool) {
 		return int(v), true
 	}
 	return 0, false
+}
+
+// entityIdentityKeys are the attribute keys that carry entity IDENTITY
+// (Entity.ID) across the entity types the agent emits: host.id (host),
+// service.instance.id (service.instance), container.id (container),
+// network.device.id (network.device), db.instance.id (db) and vmid
+// (compute.vm, composite with host.id). There is no canonical set in the
+// entity package — identity keys are per-type map keys — so this list is
+// the enumeration of every key used in an Entity.ID today. Identity is
+// exact and immutable (entity/model.go); redacting it would destroy the
+// entity rather than protect it, so these keys are refused in
+// redact_attributes.
+var entityIdentityKeys = []string{
+	"container.id",
+	"db.instance.id",
+	"host.id",
+	"network.device.id",
+	"service.instance.id",
+	"vmid",
+}
+
+// parseRedactAttributes parses the redact_attributes YAML list of
+// attribute-key strings into a lookup set, rejecting identity keys — an
+// entity's identity must never be redactable. Non-identity keys are
+// free-form (probe entities carry an open vocabulary), so unknown keys
+// are accepted as written.
+func parseRedactAttributes(raw interface{}) (map[string]struct{}, error) {
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("must be a list of attribute-key strings")
+	}
+	out := make(map[string]struct{}, len(list))
+	for i, item := range list {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("entry %d is not a string", i)
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, fmt.Errorf("entry %d is empty", i)
+		}
+		if slices.Contains(entityIdentityKeys, s) {
+			return nil, fmt.Errorf("entry %d %q is an entity identity key and cannot be redacted (identity keys: %s)",
+				i, s, strings.Join(entityIdentityKeys, ", "))
+		}
+		out[s] = struct{}{}
+	}
+	return out, nil
+}
+
+// ValidateEntitiesRedactAttributes validates the
+// signals.entities.redact_attributes field of a raw otlp strategy params
+// map without running the full ParseConfig. Used by `agent config check`
+// to surface the identity-key rejection with the same message the agent
+// produces at boot. A nil error means the field is absent or valid.
+func ValidateEntitiesRedactAttributes(params configuration.StorageConfigParams) error {
+	signals := readStringKeyedMap(params["signals"])
+	if signals == nil {
+		return nil
+	}
+	em := readStringKeyedMap(signals["entities"])
+	if em == nil {
+		return nil
+	}
+	raw, ok := em["redact_attributes"]
+	if !ok {
+		return nil
+	}
+	if _, err := parseRedactAttributes(raw); err != nil {
+		return fmt.Errorf("signals.entities.redact_attributes: %w", err)
+	}
+	return nil
 }
 
 // parseCIDRStrings parses a YAML list of CIDR strings into IPNets, rejecting a
