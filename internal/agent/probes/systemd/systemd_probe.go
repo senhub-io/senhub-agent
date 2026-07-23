@@ -60,6 +60,7 @@ func NewSystemdProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		entitySource: newEntitySource(hostname),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySource)
 	return probe, nil
 }
 

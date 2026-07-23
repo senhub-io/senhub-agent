@@ -19,7 +19,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -38,8 +37,6 @@ type redisProbe struct {
 	instance     string
 	moduleLogger *logger.ModuleLogger
 	entityObs    *entityObserver
-
-	unregisterEntitySource func()
 
 	// dialFn is overridable in tests; defaults to net.DialTimeout.
 	dialFn func(network, address string, timeout time.Duration) (net.Conn, error)
@@ -73,9 +70,8 @@ func NewRedisProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		dialFn:       net.DialTimeout,
 	}
 	probe.SetProbeType(ProbeType)
-	// Expose the real (non-NoOp) entity source so EntitySource() returns it —
-	// Redis is a remote db entity, not host-local. The source is also wired to
-	// the entity rail in OnStart; this makes the structural invariant honest.
+	// Redis is a remote db entity, not host-local: declare the real source
+	// so the poller registers it on Start.
 	probe.SetEntitySource(probe.entityObs)
 	return probe, nil
 }
@@ -84,15 +80,11 @@ func (p *redisProbe) ShouldStart() bool          { return true }
 func (p *redisProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *redisProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entityObs)
 	p.moduleLogger.Info().Str("instance", p.instance).Msg("Redis probe started")
 	return nil
 }
 
 func (p *redisProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	return nil
 }
 

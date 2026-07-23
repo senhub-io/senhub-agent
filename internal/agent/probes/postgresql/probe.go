@@ -21,7 +21,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 
@@ -43,8 +42,6 @@ type pgProbe struct {
 	db           *sql.DB
 	moduleLogger *logger.ModuleLogger
 	entitySrc    *pgEntitySource
-
-	unregisterEntity func()
 }
 
 // NewPostgreSQLProbe is the ProbeConstructor registered in init().
@@ -91,7 +88,6 @@ func (p *pgProbe) OnStart(_ chan struct{}) error {
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	p.db = db
-	p.unregisterEntity = entity.RegisterSource(p.entitySrc)
 
 	p.moduleLogger.Info().
 		Str("host", p.cfg.Host).
@@ -102,9 +98,6 @@ func (p *pgProbe) OnStart(_ chan struct{}) error {
 
 // OnShutdown closes the connection cleanly.
 func (p *pgProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntity != nil {
-		p.unregisterEntity()
-	}
 	if p.db != nil {
 		if err := p.db.Close(); err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("postgresql: close connection")

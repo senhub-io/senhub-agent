@@ -25,7 +25,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -57,7 +56,6 @@ type activemqProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *jolokiaClient
 	entitySrc    *activemqEntitySource
-	unregister   func()
 }
 
 // NewActivemqProbe constructs the probe. Configuration errors surface here.
@@ -193,14 +191,10 @@ func (p *activemqProbe) OnStart(_ chan struct{}) error {
 		Str("jolokia_url", p.cfg.JolokiaURL).
 		Str("broker", p.cfg.BrokerName).
 		Msg("Starting activemq probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *activemqProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.http.CloseIdleConnections()
 	return nil
 }

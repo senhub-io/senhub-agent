@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -37,6 +38,10 @@ type ProbePoller struct {
 	addDataPoint data_store.AddCallback    // Callback to store collected data
 	moduleLogger *logger.ModuleLogger
 	scheduler    periodic_scheduler.PeriodicScheduler
+	// unregisterEntitySource removes the probe's entity source from the
+	// detector registry. Set in Start, invoked in Shutdown; nil while the
+	// probe is not started or when the probe exposes the NoOp fallback.
+	unregisterEntitySource func()
 }
 
 // defaultStrategyRouter provides default routing to senhub and prtg strategies
@@ -181,7 +186,36 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 		return nil
 	}
 
-	return p.scheduler.Start(quitChannel)
+	if err := p.scheduler.Start(quitChannel); err != nil {
+		return err
+	}
+	p.registerEntitySource()
+	return nil
+}
+
+// registerEntitySource wires the probe's declared entity source into the
+// process-global detector registry. This is the ONLY registration path for
+// probe sources: probes declare their source with SetEntitySource in the
+// constructor and never call entity.RegisterSource themselves (enforced by
+// TestProbePackagesDoNotRegisterEntitySourcesDirectly), so the source the
+// registry invariant inspects via EntitySource() is by construction the one
+// the detector polls at runtime (#471). The NoOpEntitySource of host-level
+// probes and log conduits is skipped — the host entity is already emitted by
+// the detector foundation. Registration happens only after a successful
+// scheduler start, so a probe whose OnStart failed never heartbeats topology
+// it cannot observe.
+func (p *ProbePoller) registerEntitySource() {
+	if p.unregisterEntitySource != nil {
+		return
+	}
+	src := p.Probe.EntitySource()
+	if src == nil {
+		return
+	}
+	if _, isNoOp := src.(types.NoOpEntitySource); isNoOp {
+		return
+	}
+	p.unregisterEntitySource = entity.RegisterSource(src)
 }
 
 // collect gathers metrics from the probe and routes them to the appropriate
@@ -291,9 +325,17 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 	}
 }
 
-// Shutdown gracefully stops the probe and cleans up resources
+// Shutdown gracefully stops the probe and cleans up resources. The entity
+// source is unregistered first so the detector stops polling a probe that is
+// tearing down its connections — leaving it registered would heartbeat the
+// cached topology of a stopped probe forever (dead targets never expire in
+// the consumer, reloads duplicate sources).
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
 	p.moduleLogger.Debug().Msg("Shutting down probe")
 
+	if p.unregisterEntitySource != nil {
+		p.unregisterEntitySource()
+		p.unregisterEntitySource = nil
+	}
 	return p.scheduler.Shutdown(ctx)
 }
