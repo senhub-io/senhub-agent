@@ -89,6 +89,7 @@ health/degraded pair is collapsed to `senhub.vsphere_ha.vsan.objects` with an
 <ul class="rn">
 <li><span class="tag t-new">New</span> <span class="tag t-area">OTLP</span> The <strong>OTLP receiver</strong> probe now accepts <strong>logs and traces</strong>, not just metrics. A <code>signals</code> list (<code>metrics</code>, <code>logs</code>, <code>traces</code>) chooses what it ingests; logs and traces are relayed onward through a configured OTLP export strategy. This turns the agent into a single OTLP intake for every signal type. (#655)</li>
 <li><span class="tag t-new">New</span> <span class="tag t-area">License</span> The license now lives in its own <code>license.jwt</code> file next to <code>agent.yaml</code>. Hand a customer a single file to drop in place, then restart — no pasting a long token into YAML. <code>license activate</code> writes the file for you, and an existing inline license is moved into it automatically on the next start. (#639)</li>
+<li><span class="tag t-new">New</span> <span class="tag t-area">Probes</span> New free <strong>OS Updates</strong> probe (<code>type: os_updates</code>): pending updates, pending security updates and reboot-required status for the host, natively on Linux (apt, dnf/yum) and Windows (Windows Update Agent). Replaces hand-deployed apt-check exec scripts and finally covers Windows patch posture. (#603)</li>
 </ul>
 
 
