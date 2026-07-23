@@ -69,6 +69,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/nvidia"
 	_ "senhub-agent.go/internal/agent/probes/opensearch"
 	_ "senhub-agent.go/internal/agent/probes/oracle"
+	_ "senhub-agent.go/internal/agent/probes/osupdates"
 	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
 	_ "senhub-agent.go/internal/agent/probes/phpfpm"
 	_ "senhub-agent.go/internal/agent/probes/postgresql"
@@ -286,6 +287,9 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 		"windows_eventlog": true, "event": true,
 		// host hardware = host facet, not an entity (D2 / #456)
 		"smart": true, "ipmi": true, "nvidia": true,
+		// os_updates reads the local package backend (apt/dnf/WUA) —
+		// host patch posture, a host facet like cpu/memory/logicaldisk.
+		"os_updates": true,
 		// command/receiver/synthetic-check probes — no owned remote entity
 		"exec": true, "otlp_receiver": true, "snmp_trap": true,
 		"prometheus_scrape": true,
