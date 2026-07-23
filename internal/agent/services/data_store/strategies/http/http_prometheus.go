@@ -175,7 +175,6 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 		ProbesActive:           h.cache.GetCacheInfo().ProbeCount,
 		ProbesTotal:            probesTotal,
 		ProbesHealthy:          probesHealthy,
-		CollectErrorsTotal:     agentstate.GetCollectErrorsTotal(),
 		HTTPRequestsByEndpoint: GetHTTPRequestCounts(),
 		BuildVersion:           agentBuildVersion(),
 		BuildCommit:            agentBuildCommit(),

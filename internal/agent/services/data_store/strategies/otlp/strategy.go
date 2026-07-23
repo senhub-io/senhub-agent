@@ -396,12 +396,11 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 func (s *OTLPSyncStrategy) pushPeriodic(parent context.Context) {
 	probesTotal, probesHealthy := agentstate.GetProbeCounts()
 	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
-		StartTime:          s.startTime,
-		ProbesTotal:        probesTotal,
-		ProbesHealthy:      probesHealthy,
-		CollectErrorsTotal: agentstate.GetCollectErrorsTotal(),
-		BuildVersion:       cliArgs.Version,
-		BuildCommit:        cliArgs.CommitHash,
+		StartTime:     s.startTime,
+		ProbesTotal:   probesTotal,
+		ProbesHealthy: probesHealthy,
+		BuildVersion:  cliArgs.Version,
+		BuildCommit:   cliArgs.CommitHash,
 	})
 	s.doPush(parent, agentRecords)
 }

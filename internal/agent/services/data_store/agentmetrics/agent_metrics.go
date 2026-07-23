@@ -36,9 +36,6 @@ type AgentMetricsSnapshot struct {
 	// ProbesHealthy is the number of running probes whose IsHealthy() is true.
 	ProbesHealthy int
 
-	// CollectErrorsTotal is the lifetime count of probe collection errors.
-	CollectErrorsTotal uint64
-
 	// HTTPRequestsByEndpoint is a snapshot of (route template → request count).
 	HTTPRequestsByEndpoint map[string]uint64
 
@@ -107,14 +104,6 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 				"collection happens via a callback rather than a scheduler) are " +
 				"NOT counted as healthy until they explicitly publish their state.",
 		},
-		{
-			Name:        "senhub.agent.collect.errors",
-			Unit:        "{error}",
-			Type:        "counter",
-			Attributes:  map[string]string{},
-			Value:       float64(snap.CollectErrorsTotal),
-			Description: "Lifetime count of probe collection errors since agent start.",
-		},
 		// Read directly from agentstate (like the OTLP counters below)
 		// rather than through the snapshot, so every exposition bridge
 		// picks it up without plumbing changes. Nonzero means a probe is
@@ -128,6 +117,25 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(agentstate.GetTransformerFallbacksTotal()),
 			Description: "Cumulative count of datapoints processed without a transformer YAML definition (legacy fallback: no unit injection, no unit corrections).",
 		},
+	}
+
+	// Probe collection errors — one record per (probe, reason). Emitted
+	// only once an error has occurred, same emitted-when-touched shape as
+	// the other per-reason counters below (#646). Both labels are bounded:
+	// `probe` is the probe TYPE (registry-bounded), `reason` a fixed enum
+	// (collect / timeout / route). Sum across labels for the old total.
+	for key, n := range agentstate.GetCollectErrorsByLabel() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.collect.errors",
+			Unit: "{error}",
+			Type: "counter",
+			Attributes: map[string]string{
+				"probe":  key.Probe,
+				"reason": key.Reason,
+			},
+			Value:       float64(n),
+			Description: "Cumulative count of probe collection errors since agent start, by probe type and reason (collect, timeout, route).",
+		})
 	}
 
 	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
