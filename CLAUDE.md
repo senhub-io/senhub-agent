@@ -70,8 +70,8 @@ See `docs/developer-guide/current-development.md` for the live roadmap.
 
 ## License system
 
-Tiers: **Free** (cpu, memory, logicaldisk, network, linux_logs), **Pro** (most observability probes), **Enterprise** (wildcard).
-Full reference: `docs/LICENSE-SYSTEM.md`. License code in `internal/agent/services/license/`.
+Tiers: **Free** (the universal collection tier — OS/host, logs, network checks, and the application/database/broker probes; everything except the paid set), **Pro** (16 deep vendor / HA / cloud / active-check probes: `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`), **Enterprise** (wildcard). The authoritative split is `freeTierProbes` / `paidProbes` in `internal/agent/services/license/` (`license.go` + `probe_catalog.go`).
+Full reference: `docs/LICENSE-SYSTEM.md`.
 
 ## Where to look for what
 
