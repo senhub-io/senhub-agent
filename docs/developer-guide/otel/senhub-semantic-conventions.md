@@ -1731,6 +1731,26 @@ OTel — métriques sous `senhub.vsphere_ha.*`. NSX-T n'est interrogé que si
 > Pro cloud/HA (ad_hybrid, exchange_online, hyperv_ha, mssql_ha, oracle_enterprise,
 > vsphere_ha).
 
+### 4.40 Probe `os_updates` (free, #603)
+
+Posture de patching OS de la machine locale. Aucun receiver otelcol-contrib ne
+couvre ce domaine → namespace `senhub.os.updates.*`. Probe host-local
+cross-platform ; le backend natif interrogé (apt, dnf/yum, Windows Update Agent)
+est porté par l'attribut `os.package_manager` (`apt` | `dnf` | `yum` | `wua`),
+mappé depuis le tag `package_manager`. Requêtes read-only, sans escalade de
+privilèges.
+
+| Métrique OTel | Unité | Type | Source wire |
+|---|---|---|---|
+| `senhub.os.updates.up` | `1` | gauge | 1 quand le backend a répondu, 0 sinon (backend KO ou plateforme non supportée — darwin) |
+| `senhub.os.updates.pending` | `{update}` | gauge | apt-check / `apt-get -s upgrade` (lignes `Inst`) / `dnf -q updateinfo list` / WUA `Search("IsInstalled=0 and IsHidden=0 and Type='Software'")` |
+| `senhub.os.updates.pending.security` | `{update}` | gauge | volet security du même backend : champ 2 d'apt-check, origines `*-security`, `updateinfo list --security`, MsrcSeverity ou catégorie "Security Updates" (WUA) |
+| `senhub.os.updates.reboot_required` | `1` | gauge | `/var/run/reboot-required` (apt), `needs-restarting -r` exit 1 (dnf/yum), `Microsoft.Update.SystemInfo.RebootRequired` (WUA) |
+
+En échec backend, seul `senhub.os.updates.up=0` est émis — dégradation douce,
+la série ne disparaît pas. Remplace le workaround historique `exec` +
+script apt-check déployé à la main (et couvre enfin Windows).
+
 ## 6. Processus d'ajout d'une convention
 
 1. Lire les sources §1 pour le domaine concerné
