@@ -89,12 +89,17 @@ Silent uninstall:
 msiexec /x senhub-agent-<version>-amd64.msi /qn
 ```
 
-By default, uninstalling removes only what the MSI installed: the binary,
-the `senhub-agent` service and the registry marker. Everything under
+By default, uninstalling removes what the MSI installed (the binary, the
+`senhub-agent` service and the registry marker) plus the two transient
+subfolders `%ProgramData%\SenHub\logs\` and `%ProgramData%\SenHub\update\`
+(rotated logs and staged auto-update packages — both regenerated on the
+next run), so a plain uninstall leaves a clean tree. Operator state under
 `%ProgramData%\SenHub\` — configuration (`agent.yaml`, `probes.d\`,
-`strategies.d\`), the sealed secret store, the license, logs and staged
-auto-update packages — is **kept**. This is deliberate: a later reinstall
-or an upgrade picks the existing configuration back up with no data loss.
+`strategies.d\`), the sealed secret store and the license — is **kept**.
+This is deliberate: a later reinstall or an upgrade picks the existing
+configuration back up with no data loss. An in-place major upgrade never
+removes the transient folders either, so a staged auto-update in progress
+survives the upgrade.
 
 To remove the machine's agent data as well, opt in with `PURGE_DATA=1`:
 
