@@ -92,6 +92,8 @@ The probe automatically detects and monitors valid network interfaces based on p
 - **Interfaces with IP addresses** (IPv4 or IPv6)
 - **Excludes**: Virtual adapters, disabled interfaces, loopback
 
+A performance-counter instance that no adapter claims (name mismatch, or an adapter without an IP) still emits its counters, without the IP tags — real traffic is never dropped.
+
 ### Unix/Linux/macOS
 - **Non-loopback interfaces** (excludes `lo`, `lo0`)
 - **Interfaces that are UP and RUNNING**
@@ -432,9 +434,9 @@ All network metrics include detailed tags for identification and filtering:
 |-----|-------------|---------|
 | `interface` | Interface identifier | `eth0`, `ens192`, `Intel[R] PRO_1000 MT` |
 | `ip` | Primary IP address | `192.168.1.10`, `2001:db8::1` |
-| `hostname` | System hostname | `web-server-01` |
+| `host` | System FQDN, lower-cased | `web-01.example.com` |
 | `os` | Operating system | `linux`, `windows`, `darwin` |
-| `arch` | System architecture | `amd64`, `arm64` |
+| `platform` | OS distribution / platform | `debian`, `ubuntu` |
 
 **Windows-Specific Tags:**
 | Tag | Description | Example |
@@ -462,7 +464,7 @@ packets_received{ip="192.168.1.10"}
 
 **Aggregate all interfaces:**
 ```promql
-sum(bytes_sent{hostname="web-01"})
+sum(bytes_sent{host="web-01.example.com"})
 ```
 
 ## Authentication
