@@ -238,7 +238,10 @@ senhub-agent license show
 senhub-agent license activate <license-jwt>
 ```
 
-Validates the license (a signed JWT) and saves it in the configuration file.
+Validates the license and writes it to the `license.jwt` file next to
+`agent.yaml`. Restart the agent for the change to take effect. You can also
+simply place the `license.jwt` file next to the config yourself and restart —
+no CLI needed.
 
 ### Remove license
 
@@ -247,7 +250,7 @@ senhub-agent license remove
 senhub-agent license remove --force
 ```
 
-Reverts to the free tier. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs.
+Reverts to the free tier: deletes `license.jwt` and clears any inline license. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs. Restart the agent for the change to take effect.
 
 ## Other
 

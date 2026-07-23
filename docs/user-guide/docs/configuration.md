@@ -288,7 +288,8 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
+  # Paid tier? Place your license file as license.jwt next to this config
+  # (see the License section) — no need to put the token inline.
 
 storage:
   - name: http
@@ -368,7 +369,8 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
+  # Paid tier? Place your license file as license.jwt next to this config
+  # (see the License section) — no need to put the token inline.
 
 probes:
   - name: "Website Availability"
@@ -416,28 +418,50 @@ Contact SenHub support (support@senhub.io) to request a license token. Specify t
 - **Pro license**: adds Citrix, NetScaler, Redfish, Ping, SNMP, Syslog, Event
 - **Enterprise license**: all current and future probe types
 
+### Where the license is stored
+
+The license is kept in a dedicated file, `license.jwt`, next to `agent.yaml`:
+
+- Linux: `/etc/senhub/license.jwt`
+- Windows: `%ProgramData%\SenHub\license.jwt`
+
+Keeping it in its own file makes it easy to hand over and avoids pasting a long
+token into your YAML. The token is stored in clear text there by design (it is
+bound to your agent key and grants nothing on its own), so it is not sealed.
+
+> An existing install that still has the token inline under `agent:` `license:`
+> in `agent.yaml` keeps working, and is moved to `license.jwt` automatically on
+> the next start.
+
 ### License Formats
 
-SenHub supports two license formats:
+SenHub supports two license formats, both auto-detected:
 
-**Compact key** (recommended): a short 40-character key bound to your agent key.
-```yaml
-agent:
-  key: "550e8400-e29b-41d4-a716-446655440000"
-  license: "SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY"
-```
-
-**JWT token** (legacy): a longer token (~700 characters) starting with `eyJ`. Both formats are auto-detected and fully supported.
+- **Compact key** (recommended): a short 40-character key bound to your agent
+  key, e.g. `SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY`.
+- **JWT token**: a longer token (~700 characters) starting with `eyJ`.
 
 ### Activating a License
 
-Once you receive the license from support, activate it with:
+**Option A — drop the file (simplest).** Save the license file you received
+from support as `license.jwt` next to `agent.yaml` (see paths above), then
+restart the agent:
+
+```bash
+# Linux
+sudo cp license.jwt /etc/senhub/license.jwt
+sudo systemctl restart senhub-agent
+```
+
+**Option B — CLI.** Activate with the token; this validates it, verifies the
+agent-key binding, and writes `license.jwt` for you:
 
 ```bash
 senhub-agent license activate SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY
 ```
 
-This validates the license, verifies the agent key binding, and saves it in the configuration file. The license takes effect automatically.
+Either way, **the license takes effect after restarting the agent** — a license
+change is not picked up while the agent is running.
 
 ### Verifying License Status
 

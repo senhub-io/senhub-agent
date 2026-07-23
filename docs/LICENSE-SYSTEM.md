@@ -243,8 +243,11 @@ cp license.jwt /etc/senhub/license.jwt   # restart the agent
 The token stays in clear on disk: it is a JWT bound to the agent key, not a
 portable access secret, so it is deliberately excluded from the `${secret:}`
 seal. The loader reads the sidecar automatically when `agent.license` is empty;
-an inline `agent.license` (including a `${file:}`/`${secret:}` reference) still
-works and takes precedence over the sidecar.
+an inline `agent.license` **literal** JWT is auto-migrated to the sidecar on the
+next start (a timestamped backup is taken and the move is verified), so an
+existing install with the token inline converges on the file with no operator
+action. An inline `${file:}`/`${secret:}` **reference** is left untouched and
+takes precedence over the sidecar.
 
 ### 4. License Validation
 
