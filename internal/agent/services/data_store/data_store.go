@@ -621,6 +621,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			Value:     correctedValue,
 			Timestamp: dp.Timestamp,
 			Tags:      enrichedTags,
+			Histogram: dp.Histogram,
 		}
 	}
 

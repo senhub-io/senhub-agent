@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -72,10 +74,31 @@ var logicaldiskCounterPaths = map[string]LogicalDiskMetricDefinition{
 type windowsLogicalDiskCollector struct {
 	query          *pdh.Query
 	paths          map[string]pathInfo
+	fsTypes        map[string]string // drive instance ("C:") → normalized filesystem type ("ntfs")
 	initialized    bool
 	includeFilters []string
 	excludeFilters []string
 	logger         *logger.ModuleLogger
+}
+
+// queryVolumeFSType returns the filesystem name of a drive ("C:" → "ntfs")
+// via GetVolumeInformation, normalized to the lower-case form Linux reports
+// natively so cross-platform rules can filter on system_filesystem_type
+// (#627). Empty when the volume cannot be queried (ejected media, access
+// denied) — the tag is then omitted rather than emitted wrong.
+func queryVolumeFSType(drive string) string {
+	root, err := windows.UTF16PtrFromString(drive + `\`)
+	if err != nil {
+		return ""
+	}
+	var serial, maxComponentLen, fsFlags uint32
+	fsName := make([]uint16, windows.MAX_PATH+1)
+	err = windows.GetVolumeInformation(root, nil, 0, &serial, &maxComponentLen, &fsFlags,
+		&fsName[0], uint32(len(fsName)))
+	if err != nil {
+		return ""
+	}
+	return normalizeFSType(windows.UTF16ToString(fsName))
 }
 
 func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (logicaldiskCollector, error) {
@@ -93,6 +116,7 @@ func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.L
 	collector := &windowsLogicalDiskCollector{
 		query:          query,
 		paths:          make(map[string]pathInfo),
+		fsTypes:        make(map[string]string),
 		includeFilters: make([]string, len(driveFilters.Include)),
 		excludeFilters: make([]string, len(driveFilters.Exclude)),
 		logger:         moduleLogger,
@@ -207,6 +231,10 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 					continue
 				}
 
+				if _, seen := w.fsTypes[instance]; !seen && instance != "_Total" {
+					w.fsTypes[instance] = queryVolumeFSType(instance)
+				}
+
 				path := pdh.BuildCounterPath(def.path, instance)
 				w.paths[fmt.Sprintf("%s_%s", metricName, instance)] = pathInfo{
 					path:     path,
@@ -257,6 +285,21 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 				Key:   "drive",
 				Value: pathInfo.instance,
 			})
+			// device + fs_type mirror the Unix collector's tag set so the
+			// OTel attributes system.device / system.filesystem.type exist
+			// on Windows disk series too — without them cross-platform
+			// alert rules filtering on system_filesystem_type silently
+			// exclude every Windows host (#627).
+			metricTags = append(metricTags, tags.Tag{
+				Key:   "device",
+				Value: pathInfo.instance,
+			})
+			if fsType := w.fsTypes[pathInfo.instance]; fsType != "" {
+				metricTags = append(metricTags, tags.Tag{
+					Key:   "fs_type",
+					Value: fsType,
+				})
+			}
 		}
 
 		// Construction du nom de la métrique en retirant l'instance

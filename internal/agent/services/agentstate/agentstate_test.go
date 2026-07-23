@@ -24,13 +24,38 @@ func TestAgentInstanceID_EmptyIsEmpty(t *testing.T) {
 }
 
 func TestCollectErrorsCounter(t *testing.T) {
-	before := GetCollectErrorsTotal()
-	IncrementCollectErrors()
-	IncrementCollectErrors()
-	IncrementCollectErrors()
-	after := GetCollectErrorsTotal()
-	if after-before != 3 {
-		t.Errorf("expected delta 3, got %d", after-before)
+	ResetCollectErrorsForTest()
+	t.Cleanup(ResetCollectErrorsForTest)
+
+	IncrementCollectErrors("redfish", "collect")
+	IncrementCollectErrors("redfish", "collect")
+	IncrementCollectErrors("redfish", "timeout")
+	IncrementCollectErrors("mysql", "route")
+
+	if got := GetCollectErrorsTotal(); got != 4 {
+		t.Errorf("total: got %d, want 4", got)
+	}
+
+	byLabel := GetCollectErrorsByLabel()
+	if got := byLabel[collectErrorKey{Probe: "redfish", Reason: "collect"}]; got != 2 {
+		t.Errorf("redfish/collect: got %d, want 2", got)
+	}
+	if got := byLabel[collectErrorKey{Probe: "redfish", Reason: "timeout"}]; got != 1 {
+		t.Errorf("redfish/timeout: got %d, want 1", got)
+	}
+	if got := byLabel[collectErrorKey{Probe: "mysql", Reason: "route"}]; got != 1 {
+		t.Errorf("mysql/route: got %d, want 1", got)
+	}
+}
+
+func TestCollectErrors_EmptyLabelsDefaulted(t *testing.T) {
+	ResetCollectErrorsForTest()
+	t.Cleanup(ResetCollectErrorsForTest)
+
+	IncrementCollectErrors("", "")
+	byLabel := GetCollectErrorsByLabel()
+	if got := byLabel[collectErrorKey{Probe: "unknown", Reason: "collect"}]; got != 1 {
+		t.Errorf("empty labels should default to unknown/collect, got map %v", byLabel)
 	}
 }
 

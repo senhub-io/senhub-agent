@@ -25,10 +25,24 @@ configured probes.
 | `senhub_agent_probes_active` | gauge | Probes that have emitted ≥1 datapoint in cache window | – |
 | `senhub_agent_probes_total` | gauge | Configured probes currently running | – |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` | – |
-| `senhub_agent_collect_errors_total` | counter | Lifetime probe collection errors | – |
+| `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, per probe type and failure reason | `probe`, `reason` |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) | – |
+| `senhub_agent_otlp_receiver_ingested_total` | counter | Items accepted by the OTLP receiver, per signal (metrics datapoints, log records, spans) | `signal` |
+| `senhub_agent_otlp_receiver_dropped_total` | counter | Items the OTLP receiver discarded, by signal and reason (`no_sink`, `unmapped`) | `signal`, `reason` |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served per route template | `endpoint` |
 | `senhub_agent_build_info` | gauge (=1) | Agent build metadata | `version`, `commit` |
+
+`senhub_agent_collect_errors_total` carries two bounded labels so a spike can be
+attributed without log correlation:
+
+- `probe` — the probe **type** (`cpu`, `redfish`, `mysql`, …), not the
+  per-instance name, so cardinality stays bounded by the registry.
+- `reason` — `collect` (a `Collect()` cycle failed), `timeout` (that failure was
+  a deadline/timeout) or `route` (routing the collected data to an output
+  strategy failed).
+
+Each series appears only once its first error occurs; sum across labels for the
+lifetime total: `sum(senhub_agent_collect_errors_total)`.
 
 ## System probes
 

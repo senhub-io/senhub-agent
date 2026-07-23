@@ -17,9 +17,15 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -131,7 +137,7 @@ func TestGRPCReceiver_IngestsDatapoints(t *testing.T) {
 	}
 }
 
-func TestGRPCReceiver_HistogramPartialSuccess(t *testing.T) {
+func TestGRPCReceiver_HistogramIngested(t *testing.T) {
 	cb := &captureCallback{}
 	probe, _ := newTestProbe(t, map[string]interface{}{"protocol": "grpc", "address": "127.0.0.1:0"}, cb)
 	addr := probe.listener.Addr().String()
@@ -143,9 +149,12 @@ func TestGRPCReceiver_HistogramPartialSuccess(t *testing.T) {
 	defer conn.Close()
 
 	hist := &metricpb.Metric{
-		Name: "h",
+		Name: "h", Unit: "s",
 		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
-			DataPoints: []*metricpb.HistogramDataPoint{{}},
+			DataPoints: []*metricpb.HistogramDataPoint{{
+				Count: 3, Sum: float64Ptr(1.5),
+				BucketCounts: []uint64{2, 1}, ExplicitBounds: []float64{1},
+			}},
 		}},
 	}
 	req := &collectormetricspb.ExportMetricsServiceRequest{ResourceMetrics: wrap(nil, hist)}
@@ -157,8 +166,174 @@ func TestGRPCReceiver_HistogramPartialSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
+	if resp.GetPartialSuccess().GetRejectedDataPoints() != 0 {
+		t.Errorf("rejected = %d, want 0 (histogram ingests as one native point)", resp.GetPartialSuccess().GetRejectedDataPoints())
+	}
+	// Native pass-through: ONE point carrying the histogram payload.
+	waitForPoints(t, cb, 1)
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	if cb.points[0].Histogram == nil {
+		t.Error("ingested histogram point lost its payload")
+	}
+	if cb.points[0].Value != 3 {
+		t.Errorf("scalar fallback Value = %v, want the count 3", cb.points[0].Value)
+	}
+}
+
+func TestGRPCReceiver_LogsIngestedAndRelayed(t *testing.T) {
+	// Subscribe to the agent log channel so we can observe the relay.
+	sub := agentstate.SubscribeLogs(16)
+	defer agentstate.UnsubscribeLogs(sub)
+
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "grpc", "address": "127.0.0.1:0",
+		"signals": []interface{}{"metrics", "logs"},
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer conn.Close()
+
+	rec := &logspb.LogRecord{
+		SeverityNumber: logspb.SeverityNumber_SEVERITY_NUMBER_WARN,
+		SeverityText:   "WARN",
+		Body:           &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "hello"}},
+	}
+	req := &collectorlogspb.ExportLogsServiceRequest{ResourceLogs: wrapLogs(nil, rec)}
+
+	client := collectorlogspb.NewLogsServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Export(ctx, req); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	select {
+	case got := <-sub:
+		if got.Body != "hello" || got.SeverityText != "WARN" {
+			t.Errorf("relayed record = %+v, want body=hello severity=WARN", got)
+		}
+		if got.ProducerProbeType != "otlp_receiver" {
+			t.Errorf("producer type = %q, want otlp_receiver", got.ProducerProbeType)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the relayed log record")
+	}
+}
+
+func sampleTraceRequest(spanName string) *collectortracepb.ExportTraceServiceRequest {
+	return &collectortracepb.ExportTraceServiceRequest{
+		ResourceSpans: []*tracepb.ResourceSpans{{
+			ScopeSpans: []*tracepb.ScopeSpans{{
+				Spans: []*tracepb.Span{{Name: spanName}},
+			}},
+		}},
+	}
+}
+
+func TestGRPCReceiver_TracesIngestedAndRelayed(t *testing.T) {
+	// Subscribe to the agent span channel so we can observe the relay.
+	sub := agentstate.SubscribeSpans(16)
+	defer agentstate.UnsubscribeSpans(sub)
+
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "grpc", "address": "127.0.0.1:0",
+		"signals": []interface{}{"traces"},
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer conn.Close()
+
+	client := collectortracepb.NewTraceServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Export(ctx, sampleTraceRequest("relay-me")); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	// Spans are relayed verbatim (raw proto, no internal model): assert
+	// the ResourceSpans batch and the span name survive unchanged.
+	select {
+	case got := <-sub:
+		if len(got) != 1 {
+			t.Fatalf("relayed batch has %d ResourceSpans, want 1", len(got))
+		}
+		if name := got[0].GetScopeSpans()[0].GetSpans()[0].GetName(); name != "relay-me" {
+			t.Errorf("relayed span name = %q, want relay-me", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the relayed span batch")
+	}
+}
+
+func TestHTTPReceiver_TracesIngestedAndRelayed(t *testing.T) {
+	sub := agentstate.SubscribeSpans(16)
+	defer agentstate.UnsubscribeSpans(sub)
+
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "http", "address": "127.0.0.1:0",
+		"signals": []interface{}{"traces"},
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	body, err := proto.Marshal(sampleTraceRequest("relay-me-http"))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	resp, err := http.Post("http://"+addr+httpTracesPath, "application/x-protobuf", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	select {
+	case got := <-sub:
+		if name := got[0].GetScopeSpans()[0].GetSpans()[0].GetName(); name != "relay-me-http" {
+			t.Errorf("relayed span name = %q, want relay-me-http", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the relayed span batch")
+	}
+}
+
+func TestGRPCReceiver_UnsetMetricPartialSuccess(t *testing.T) {
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{"protocol": "grpc", "address": "127.0.0.1:0"}, cb)
+	addr := probe.listener.Addr().String()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer conn.Close()
+
+	req := &collectormetricspb.ExportMetricsServiceRequest{
+		ResourceMetrics: wrap(nil, &metricpb.Metric{Name: "mystery"}),
+	}
+	client := collectormetricspb.NewMetricsServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	resp, err := client.Export(ctx, req)
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
 	if resp.GetPartialSuccess().GetRejectedDataPoints() != 1 {
-		t.Errorf("rejected = %d, want 1", resp.GetPartialSuccess().GetRejectedDataPoints())
+		t.Errorf("rejected = %d, want 1 (unset metric data type)", resp.GetPartialSuccess().GetRejectedDataPoints())
 	}
 }
 

@@ -36,9 +36,6 @@ type AgentMetricsSnapshot struct {
 	// ProbesHealthy is the number of running probes whose IsHealthy() is true.
 	ProbesHealthy int
 
-	// CollectErrorsTotal is the lifetime count of probe collection errors.
-	CollectErrorsTotal uint64
-
 	// HTTPRequestsByEndpoint is a snapshot of (route template → request count).
 	HTTPRequestsByEndpoint map[string]uint64
 
@@ -107,14 +104,6 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 				"collection happens via a callback rather than a scheduler) are " +
 				"NOT counted as healthy until they explicitly publish their state.",
 		},
-		{
-			Name:        "senhub.agent.collect.errors",
-			Unit:        "{error}",
-			Type:        "counter",
-			Attributes:  map[string]string{},
-			Value:       float64(snap.CollectErrorsTotal),
-			Description: "Lifetime count of probe collection errors since agent start.",
-		},
 		// Read directly from agentstate (like the OTLP counters below)
 		// rather than through the snapshot, so every exposition bridge
 		// picks it up without plumbing changes. Nonzero means a probe is
@@ -128,6 +117,25 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(agentstate.GetTransformerFallbacksTotal()),
 			Description: "Cumulative count of datapoints processed without a transformer YAML definition (legacy fallback: no unit injection, no unit corrections).",
 		},
+	}
+
+	// Probe collection errors — one record per (probe, reason). Emitted
+	// only once an error has occurred, same emitted-when-touched shape as
+	// the other per-reason counters below (#646). Both labels are bounded:
+	// `probe` is the probe TYPE (registry-bounded), `reason` a fixed enum
+	// (collect / timeout / route). Sum across labels for the old total.
+	for key, n := range agentstate.GetCollectErrorsByLabel() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.collect.errors",
+			Unit: "{error}",
+			Type: "counter",
+			Attributes: map[string]string{
+				"probe":  key.Probe,
+				"reason": key.Reason,
+			},
+			Value:       float64(n),
+			Description: "Cumulative count of probe collection errors since agent start, by probe type and reason (collect, timeout, route).",
+		})
 	}
 
 	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
@@ -187,6 +195,14 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Attributes:  map[string]string{},
 			Value:       float64(agentstate.GetDroppedLogRecordsTotal()),
 			Description: "Cumulative count of log records dropped due to subscriber backpressure on the agent log channel.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.dropped_span_batches",
+			Unit:        "{batch}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetDroppedSpanBatchesTotal()),
+			Description: "Cumulative count of received span batches dropped due to backpressure on the agent span channel (the trace relay could not keep up).",
 		},
 		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.buffer.fill_ratio",
@@ -294,6 +310,33 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Attributes:  map[string]string{"strategy": strategy},
 			Value:       float64(n),
 			Description: "Cumulative count of oldest datapoints dropped by a bounded push buffer at its cap, by strategy.",
+		})
+	}
+
+	// OTLP receiver ingest counters — items accepted per signal
+	// (metrics=datapoints, logs=records, traces=spans). Emitted only once
+	// the receiver has taken traffic on a signal.
+	for signal, n := range agentstate.GetOTLPReceiverIngestedBySignal() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp_receiver.ingested",
+			Unit:        "{item}",
+			Type:        "counter",
+			Attributes:  map[string]string{"signal": signal},
+			Value:       float64(n),
+			Description: "Cumulative count of items accepted by the OTLP receiver, by signal (metrics datapoints, log records, spans).",
+		})
+	}
+	// OTLP receiver drop counters — items the receiver discarded, by signal
+	// and reason (no_sink: logs/traces with no export strategy to relay to;
+	// unmapped: a metric with an unrecognized/unset data type).
+	for key, n := range agentstate.GetOTLPReceiverDroppedBySignal() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp_receiver.dropped",
+			Unit:        "{item}",
+			Type:        "counter",
+			Attributes:  map[string]string{"signal": key.Signal, "reason": key.Reason},
+			Value:       float64(n),
+			Description: "Cumulative count of items the OTLP receiver discarded, by signal and reason (no_sink, unmapped).",
 		})
 	}
 

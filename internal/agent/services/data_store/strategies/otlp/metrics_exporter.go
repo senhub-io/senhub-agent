@@ -188,9 +188,10 @@ func exportInParallel(
 //	counter        → Sum{Cumulative, Monotonic}
 //	updowncounter  → Sum{Cumulative, !Monotonic}
 //	gauge          → Gauge
-//	histogram      → currently unused by the agent — we don't emit
-//	                 histograms today, so this maps to a Gauge as a
-//	                 conservative degradation rather than dropping data
+//	histogram      → Histogram{Cumulative} built from the native payload
+//	                 (OTLP-ingested explicit-bucket histograms, #659);
+//	                 payload-less histogram-typed records degrade to a
+//	                 Gauge on the count value rather than dropping data
 //
 // Cumulative temporality is the OTel default and what
 // VictoriaMetrics/Prometheus expect. Delta is exposed via
@@ -287,6 +288,13 @@ func buildAggregation(otelType string, points []otelmapper.OtelRecord, startTime
 			Temporality: metricdata.CumulativeTemporality,
 			IsMonotonic: false,
 		}
+	case "histogram":
+		if agg, ok := buildHistogramAggregation(points, startTime, now); ok {
+			return agg
+		}
+		// No record in the group carried a payload — degrade to a gauge
+		// on the scalar count values rather than dropping the series.
+		return metricdata.Gauge[float64]{DataPoints: dps}
 	default:
 		// "gauge" and unknown types both fall through here. Unknown
 		// types are emitted as gauges — the receiver sees the data,
@@ -295,6 +303,62 @@ func buildAggregation(otelType string, points []otelmapper.OtelRecord, startTime
 		// debug a missing series.
 		return metricdata.Gauge[float64]{DataPoints: dps}
 	}
+}
+
+// buildHistogramAggregation builds the native SDK Histogram aggregation
+// from records carrying an explicit-bucket payload (OTLP-ingested). One
+// HistogramDataPoint per record: Count/Sum/Bounds/BucketCounts straight
+// from the payload, Min/Max wrapped in metricdata.NewExtrema when the
+// sender provided them. A record without payload inside a
+// histogram-typed group (defensive; the resolver types payload-less
+// records as gauge) is emitted as a count-only point with the single
+// implicit +Inf bucket so it is never silently dropped. Returns ok=false
+// when NO record has a payload — the caller then falls back to Gauge.
+func buildHistogramAggregation(points []otelmapper.OtelRecord, startTime, now time.Time) (metricdata.Aggregation, bool) {
+	hasPayload := false
+	for _, p := range points {
+		if p.Histogram != nil {
+			hasPayload = true
+			break
+		}
+	}
+	if !hasPayload {
+		return nil, false
+	}
+
+	hdps := make([]metricdata.HistogramDataPoint[float64], 0, len(points))
+	for _, p := range points {
+		hdp := metricdata.HistogramDataPoint[float64]{
+			Attributes: attributeSet(p.Attributes),
+			StartTime:  startTime,
+			Time:       now,
+		}
+		h := p.Histogram
+		if h == nil {
+			count := uint64(p.Value)
+			hdp.Count = count
+			hdp.BucketCounts = []uint64{count}
+			hdps = append(hdps, hdp)
+			continue
+		}
+		hdp.Count = h.Count
+		hdp.Bounds = h.ExplicitBounds
+		hdp.BucketCounts = h.BucketCounts
+		if h.Sum != nil {
+			hdp.Sum = *h.Sum
+		}
+		if h.Min != nil {
+			hdp.Min = metricdata.NewExtrema(*h.Min)
+		}
+		if h.Max != nil {
+			hdp.Max = metricdata.NewExtrema(*h.Max)
+		}
+		hdps = append(hdps, hdp)
+	}
+	return metricdata.Histogram[float64]{
+		Temporality: metricdata.CumulativeTemporality,
+		DataPoints:  hdps,
+	}, true
 }
 
 // attributeSet converts an OtelRecord's attribute map into the SDK's
