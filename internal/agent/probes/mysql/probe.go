@@ -39,7 +39,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 
@@ -105,7 +104,6 @@ type mysqlProbe struct {
 	db           *sql.DB
 	moduleLogger *logger.ModuleLogger
 	entitySrc    *mysqlEntitySource
-	unregister   func()
 	// uuidFetched guards the one-time @@server_uuid fetch; once pinned
 	// the entity source holds the id and this flag prevents re-querying.
 	uuidFetched bool
@@ -197,7 +195,6 @@ func (p *mysqlProbe) OnStart(_ chan struct{}) error {
 	db.SetConnMaxLifetime(5 * time.Minute)
 	p.db = db
 
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("host", p.cfg.Host).
 		Int("port", p.cfg.Port).
@@ -207,9 +204,6 @@ func (p *mysqlProbe) OnStart(_ chan struct{}) error {
 
 // OnShutdown closes the database connection.
 func (p *mysqlProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	if p.db != nil {
 		return p.db.Close()
 	}

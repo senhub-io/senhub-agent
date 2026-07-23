@@ -58,9 +58,8 @@ type KubernetesProbe struct {
 	moduleLogger *logger.ModuleLogger
 	clientset    kubernetes.Interface
 	// clusterEndpoint identifies this cluster in entity IDs.
-	clusterEndpoint  string
-	entitySrc        *k8sEntitySource
-	unregisterEntity func()
+	clusterEndpoint string
+	entitySrc       *k8sEntitySource
 }
 
 // NewKubernetesProbe constructs the probe. Config errors surface here.
@@ -182,7 +181,6 @@ func (p *KubernetesProbe) OnStart(_ chan struct{}) error {
 	p.clientset = cs
 
 	p.entitySrc.setClusterEndpoint(p.clusterEndpoint)
-	p.unregisterEntity = registerEntitySource(p.entitySrc)
 
 	p.moduleLogger.Info().
 		Str("cluster", p.clusterEndpoint).
@@ -195,9 +193,6 @@ func (p *KubernetesProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *KubernetesProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntity != nil {
-		p.unregisterEntity()
-	}
 	return nil
 }
 

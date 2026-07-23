@@ -11,9 +11,13 @@ package probes_test
 // keeping the tests close to the code they exercise.
 
 import (
+	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -202,7 +206,11 @@ func init() {
 //
 // Host-level probes and log conduits satisfy the invariant via the BaseProbe
 // fallback (NoOpEntitySource). Remote-target probes MUST call SetEntitySource()
-// in their constructor with a real Source.
+// in their constructor with a real Source. Since #471 the ProbePoller itself
+// registers EntitySource() with the detector (see
+// TestProbePollerRegistersEntitySourceOnStart), so the source inspected here
+// is by construction the one polled at runtime — probes have no other
+// registration path (TestProbePackagesDoNotRegisterEntitySourcesDirectly).
 //
 // Probes that require config (host/endpoint/credentials) to construct are
 // driven through probeConfigFixtures: a minimal valid config per probe so the
@@ -248,10 +256,13 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 		"exec": true, "otlp_receiver": true, "snmp_trap": true,
 		"prometheus_scrape": true,
 		"http_check":        true, "icmp_check": true, "tcp_dial": true, "dns_latency": true,
-		// host-scoped inventory probes: they describe the local host's units/
-		// services/processes/clock, not a distinct remote entity (process emits
-		// process entities only in opt-in inventory mode, NoOp on a bare config).
-		"chrony": true, "process": true, "systemd": true, "winservices": true,
+		// host-scoped inventory probes that are NoOp on a bare config: process
+		// emits process entities only in opt-in inventory mode; systemd builds
+		// its unit source in the linux constructor only (the non-linux stub is
+		// NoOp, and this test runs on darwin/windows too). chrony and
+		// winservices declare their source unconditionally, so they are NOT
+		// allowlisted — a NoOp there is a regression.
+		"process": true, "systemd": true,
 		// hyperv is //go:build windows; on the non-windows test host its
 		// constructor is the no-op stub (NoOpEntitySource). Its real
 		// compute.vm source lives in probe_windows.go and is exercised on the
@@ -352,5 +363,78 @@ func TestRegistryInvariantCoversEveryShippedProbe(t *testing.T) {
 				"by the OSS binary (app/probes_register.go) — stale import; remove it here or "+
 				"add it to the binary.", pkg)
 		}
+	}
+}
+
+// TestProbePackagesDoNotRegisterEntitySourcesDirectly locks in the #471
+// unification: a probe declares its entity source via SetEntitySource in the
+// constructor, and the ProbePoller alone registers EntitySource() with the
+// detector (Start) and unregisters it (Shutdown). A probe package calling
+// entity.RegisterSource itself reintroduces the dual mechanism this test
+// exists to prevent — a runtime-registered source the EntitySource invariant
+// never inspects (or, symmetrically, an inspected source that never reaches
+// the detector).
+//
+// The check parses every non-test .go file in the probe subpackages
+// (including files behind foreign-platform build tags, which a plain build
+// would not reach) and fails on any selector call <entity-pkg>.RegisterSource.
+func TestProbePackagesDoNotRegisterEntitySourcesDirectly(t *testing.T) {
+	const entityPkgPath = "senhub-agent.go/internal/agent/services/entity"
+
+	var offenders []string
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		// Only probe subpackages: the top-level files (probe_poller.go) hold
+		// the one sanctioned entity.RegisterSource call site.
+		if filepath.Dir(path) == "." {
+			return nil
+		}
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return fmt.Errorf("parse %s: %w", path, perr)
+		}
+		entityName := ""
+		for _, imp := range f.Imports {
+			p, uerr := strconv.Unquote(imp.Path.Value)
+			if uerr != nil || p != entityPkgPath {
+				continue
+			}
+			entityName = "entity"
+			if imp.Name != nil {
+				entityName = imp.Name.Name
+			}
+		}
+		if entityName == "" {
+			return nil
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if id, ok := sel.X.(*ast.Ident); ok && id.Name == entityName && sel.Sel.Name == "RegisterSource" {
+				offenders = append(offenders, fmt.Sprintf("%s:%d", path, fset.Position(sel.Pos()).Line))
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking probe packages: %v", err)
+	}
+
+	if len(offenders) > 0 {
+		sort.Strings(offenders)
+		t.Fatalf("probe packages must not call entity.RegisterSource directly — the "+
+			"ProbePoller registers EntitySource() on Start and unregisters it on "+
+			"Shutdown (#471). Declare the source with SetEntitySource in the "+
+			"constructor instead. Offending call sites:\n  %s",
+			strings.Join(offenders, "\n  "))
 	}
 }

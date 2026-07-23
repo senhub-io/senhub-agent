@@ -13,7 +13,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -34,7 +33,6 @@ type MemcachedProbe struct {
 	cfg          memcachedConfig
 	moduleLogger *logger.ModuleLogger
 	entitySrc    *memcachedEntitySource
-	unregister   func()
 }
 
 type memcachedConfig struct {
@@ -95,14 +93,10 @@ func (p *MemcachedProbe) OnStart(_ chan struct{}) error {
 		Str("host", p.cfg.Host).
 		Int("port", p.cfg.Port).
 		Msg("Starting memcached probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *MemcachedProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	return nil
 }
 
