@@ -53,7 +53,8 @@ Which signals are accepted is config-driven (`signals:`), defaulting to
   count/sum/min/max/bucket_counts/explicit_bounds, threaded through the
   mapper (`CacheMetric.Histogram` / `OtelRecord.Histogram`), the OTLP
   store + checkpoint, and both serializers. The OTLP push emits a real
-  `metricdata.Histogram[float64]` (cumulative); the Prometheus exposition
+  `metricdata.Histogram[float64]` (stamped with the inbound temporality,
+  see below); the Prometheus exposition
   emits classic `_bucket{le}`/`_sum`/`_count` lines. `Value` holds the
   observation count so scalar-only sinks (PRTG, Nagios, cloud) render a
   meaningful number; a nil payload falls back to the scalar/gauge path
@@ -65,12 +66,20 @@ Which signals are accepted is config-driven (`signals:`), defaulting to
   (exponential buckets do not map to a fixed `le` set cleanly), as is a
   possible native pass-through mirroring #659.
 
-**Temporality**: the agent's OTLP exporter (and the last-writer-wins store)
-are **cumulative-only** for every signal. A delta-temporality histogram (or
-sum) is re-exported as cumulative, which is lossy for a delta sender — the
-same long-standing contract the Sum path already has (`sumInstrumentType`
-degrades a delta sum to a gauge). Faithful delta pass-through is a separate
-follow-up. **Malformed histograms** (bucket-count length ≠ explicit-bounds
+**Temporality** (#661): sums and histograms carry their inbound aggregation
+temporality through the pipeline via the `otel_temporality` control tag,
+set by the decoder **only for delta** (cumulative and unspecified streams
+stay untagged and default to cumulative everywhere — unchanged behavior).
+The OTLP exporter stamps the SDK temporality from it: a delta sum
+re-exports as a delta `Sum` (keeping its counter/updowncounter instrument
+type instead of degrading to a gauge) and a delta histogram as a delta
+`metricdata.Histogram`. The Prometheus exposition stays cumulative-shaped:
+a delta counter renders as a gauge on the raw delta value (no `_total`
+suffix), the same rendering delta sums had before pass-through. Caveat:
+the last-writer-wins store re-exports the most recent delta point on each
+push cycle until it is overwritten or evicted, so a slow delta sender sees
+its last increment repeated — end-to-end validation against a
+delta-capable backend is tracked in the recette (#663). **Malformed histograms** (bucket-count length ≠ explicit-bounds
 + 1) are dropped at decode and surfaced via OTLP partial-success rather than
 forwarded, so a poison point cannot make a downstream collector reject the
 whole export batch. On the Prometheus side, a sender-supplied `le` attribute
