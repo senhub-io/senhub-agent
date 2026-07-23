@@ -347,7 +347,7 @@ fs_inodes_used_percent{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 0
 **Verify probe is enabled:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "name: logicaldisk" /etc/senhub/probes.d/
+grep -rA5 "name: logicaldisk" /etc/senhub-agent/probes.d/
 ```
 
 ### Windows: PDH Counter Errors

@@ -652,7 +652,7 @@ probes:
     params:
       host: "${env:DB_HOST:-127.0.0.1}"
       username: monitor
-      password: "${file:/etc/senhub/secrets/db_password}"
+      password: "${file:/etc/senhub-agent/secrets/db_password}"
 ```
 
 A missing required reference (file not found, no default) **aborts agent boot** with the offending reference in the error message. An unset environment variable without a default substitutes to an empty string and does **not** abort — match POSIX shell behaviour.
