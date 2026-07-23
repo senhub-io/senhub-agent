@@ -165,7 +165,7 @@ endpoint is enabled:
 | `senhub_agent_probes_active` | gauge | Probes that have emitted ≥1 datapoint in the cache window |
 | `senhub_agent_probes_total` | gauge | Configured probes currently running |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` |
-| `senhub_agent_collect_errors_total` | counter | Lifetime probe collection errors |
+| `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, with `probe` (type) and `reason` (collect/timeout/route) labels |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served, with `endpoint` label (route template) |
 | `senhub_agent_build_info` | gauge (=1) | `version` and `commit` labels |
@@ -261,8 +261,11 @@ senhub_veeam_jobs_by_last_result{senhub_veeam_job_last_result="failed"} > 0
 # NetScaler vServers DOWN
 senhub_netscaler_lbvserver_status{senhub_netscaler_lbvserver_state="down"} == 1
 
-# Agent collect-error rate (issues per minute)
-rate(senhub_agent_collect_errors_total[5m]) * 60
+# Agent collect-error rate (issues per minute, all probes/reasons)
+sum(rate(senhub_agent_collect_errors_total[5m])) * 60
+
+# Break the same rate down by probe type and failure reason
+sum by (probe, reason) (rate(senhub_agent_collect_errors_total[5m])) * 60
 ```
 
 ## Troubleshooting
