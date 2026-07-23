@@ -24,7 +24,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -69,8 +68,6 @@ type jenkinsProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySource *entitySource
-
-	unregisterEntitySource func()
 }
 
 // NewJenkinsProbe builds a jenkins probe from its raw params block.
@@ -182,7 +179,6 @@ func (p *jenkinsProbe) ShouldStart() bool          { return true }
 func (p *jenkinsProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *jenkinsProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Str("instance", p.instance).
 		Msg("Starting jenkins probe")
@@ -190,9 +186,6 @@ func (p *jenkinsProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *jenkinsProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

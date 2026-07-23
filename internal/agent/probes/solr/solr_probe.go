@@ -18,7 +18,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -47,7 +46,6 @@ type SolrProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *solrEntitySource
-	unregister   func()
 }
 
 // NewSolrProbe constructs the probe. Config errors surface here.
@@ -107,7 +105,6 @@ func (p *SolrProbe) ShouldStart() bool          { return true }
 func (p *SolrProbe) GetInterval() time.Duration { return p.config.Interval }
 
 func (p *SolrProbe) OnStart(_ chan struct{}) error {
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("endpoint", p.config.Endpoint).
 		Msg("Starting solr probe")
@@ -115,9 +112,6 @@ func (p *SolrProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *SolrProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

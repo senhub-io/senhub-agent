@@ -16,7 +16,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -36,9 +35,6 @@ type opensearchProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *opensearchEntitySource
-	// unregister detaches the entity source from the process-global registry on
-	// shutdown so the detector stops heartbeating a stopped probe's entities.
-	unregister func()
 }
 
 type osConfig struct {
@@ -121,15 +117,11 @@ func (p *opensearchProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting opensearch probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *opensearchProbe) OnShutdown(_ context.Context) error {
 	p.client.CloseIdleConnections()
-	if p.unregister != nil {
-		p.unregister()
-	}
 	return nil
 }
 

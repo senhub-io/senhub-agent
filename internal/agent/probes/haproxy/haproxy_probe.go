@@ -25,7 +25,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -64,7 +63,6 @@ type haproxyProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *haproxyEntitySource
-	unregister   func()
 }
 
 type haproxyConfig struct {
@@ -144,7 +142,6 @@ func (p *haproxyProbe) ShouldStart() bool          { return true }
 func (p *haproxyProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *haproxyProbe) OnStart(_ chan struct{}) error {
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting haproxy probe")
@@ -152,9 +149,6 @@ func (p *haproxyProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *haproxyProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }
