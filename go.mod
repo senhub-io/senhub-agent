@@ -10,6 +10,7 @@ require (
 	github.com/citrix/adc-nitro-go v0.0.0-20250915211247-deb279797e53
 	github.com/digitalocean/go-smbios v0.0.0-20180907143718-390a4f403a8e
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-ole/go-ole v1.3.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-test/deep v1.1.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -139,7 +140,6 @@ require (
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/go-hclog v0.16.1 // indirect
