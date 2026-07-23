@@ -1,6 +1,7 @@
 package otlp
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -151,6 +152,118 @@ func TestParseConfig_EntitiesSignalDefault(t *testing.T) {
 	}
 	if cfg.Entities.DependsOnDebounce != DefaultDependsOnDebounce {
 		t.Errorf("Entities.DependsOnDebounce=%d, want %d", cfg.Entities.DependsOnDebounce, DefaultDependsOnDebounce)
+	}
+	if cfg.Entities.RedactAttributes != nil {
+		t.Errorf("Entities.RedactAttributes should default to nil (all attributes ship), got %v", cfg.Entities.RedactAttributes)
+	}
+}
+
+func TestParseConfig_EntitiesRedactAttributes(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"entities": map[string]interface{}{
+				"enabled":           true,
+				"redact_attributes": []interface{}{"hw.serial_number", "cloud.account.id"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]struct{}{"hw.serial_number": {}, "cloud.account.id": {}}
+	if !reflect.DeepEqual(cfg.Entities.RedactAttributes, want) {
+		t.Errorf("Entities.RedactAttributes=%v, want %v", cfg.Entities.RedactAttributes, want)
+	}
+}
+
+func TestParseConfig_EntitiesRedactAttributesRejectsIdentityKey(t *testing.T) {
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"entities": map[string]interface{}{
+				"redact_attributes": []interface{}{"hw.serial_number", "host.id"},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for identity key host.id in redact_attributes")
+	}
+	if !strings.Contains(err.Error(), "host.id") || !strings.Contains(err.Error(), "identity key") {
+		t.Errorf("error should name the identity key and the reason, got: %v", err)
+	}
+}
+
+func TestParseConfig_EntitiesRedactAttributesRejectsNonList(t *testing.T) {
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"entities": map[string]interface{}{
+				"redact_attributes": "hw.serial_number",
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for non-list redact_attributes")
+	}
+	if !strings.Contains(err.Error(), "list") {
+		t.Errorf("error should say a list is required, got: %v", err)
+	}
+}
+
+func TestValidateEntitiesRedactAttributes(t *testing.T) {
+	cases := []struct {
+		name    string
+		params  map[string]interface{}
+		wantErr string
+	}{
+		{
+			name:   "absent signals block passes",
+			params: map[string]interface{}{"endpoint": "x:4317"},
+		},
+		{
+			name: "absent field passes",
+			params: map[string]interface{}{
+				"signals": map[string]interface{}{
+					"entities": map[string]interface{}{"enabled": true},
+				},
+			},
+		},
+		{
+			name: "valid list passes",
+			params: map[string]interface{}{
+				"signals": map[string]interface{}{
+					"entities": map[string]interface{}{
+						"redact_attributes": []interface{}{"hw.serial_number"},
+					},
+				},
+			},
+		},
+		{
+			name: "identity key rejected",
+			params: map[string]interface{}{
+				"signals": map[string]interface{}{
+					"entities": map[string]interface{}{
+						"redact_attributes": []interface{}{"service.instance.id"},
+					},
+				},
+			},
+			wantErr: "identity key",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateEntitiesRedactAttributes(tc.params)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want it to contain %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 
