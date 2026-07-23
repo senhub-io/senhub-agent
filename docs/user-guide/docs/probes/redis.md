@@ -31,6 +31,8 @@ keyspace size, replication state and persistence (RDB/AOF) health.
 | `tls_cert_file` | — | Path to a PEM client certificate, presented to the server for mutual TLS (requires `tls_key_file`) |
 | `tls_key_file` | — | Path to the PEM private key matching `tls_cert_file` (requires `tls_cert_file`) |
 | `tls_ca_file` | — | Path to a PEM CA bundle used to verify the server certificate (defaults to the system trust store) |
+| `timeout` | `5` | Connection and command timeout in seconds |
+| `instance_name` | — | Logical name used as the entity instance identifier instead of `host:port`; set it to keep the identity stable if the address changes |
 
 ## Metrics
 
