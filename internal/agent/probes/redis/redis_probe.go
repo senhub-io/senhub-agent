@@ -34,6 +34,7 @@ const (
 type redisProbe struct {
 	*types.BaseProbe
 	cfg          probeConfig
+	tlsConfig    *tls.Config
 	instance     string
 	moduleLogger *logger.ModuleLogger
 	entityObs    *entityObserver
@@ -51,12 +52,21 @@ func NewRedisProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		return nil, err
 	}
 
+	var tlsConfig *tls.Config
+	if cfg.TLS {
+		tlsConfig, err = cfg.tlsClientConfig()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	instance := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.redis")
 
 	probe := &redisProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
+		tlsConfig:    tlsConfig,
 		instance:     instance,
 		moduleLogger: moduleLogger,
 		entityObs:    newEntityObserver(cfg, instance),
@@ -103,7 +113,7 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	defer conn.Close()
 
 	if p.cfg.TLS {
-		conn = tls.Client(conn, &tls.Config{ServerName: p.cfg.Host, MinVersion: tls.VersionTLS12})
+		conn = tls.Client(conn, p.tlsConfig)
 	}
 
 	if p.cfg.Password != "" {
