@@ -1,12 +1,14 @@
 package otlpreceiver
 
 import (
+	"math"
 	"testing"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/tags"
 )
 
@@ -210,6 +212,36 @@ func TestFlatten_MalformedHistogramDropped(t *testing.T) {
 	}
 }
 
+// TestFlatten_InconsistentHistogramDropped pins the #662 sanity check: a
+// hostile point whose bucket counts total MORE than its Count would
+// render a non-monotone +Inf bucket in the classic Prometheus exposition
+// (the +Inf value is written as Count) and corrupt histogram_quantile.
+// Such a point is dropped at decode. sum(BucketCounts) < Count stays
+// valid — the remainder is representable in the implicit +Inf bucket.
+func TestFlatten_InconsistentHistogramDropped(t *testing.T) {
+	histPoint := func(name string, count uint64, buckets []uint64) *metricpb.Metric {
+		return &metricpb.Metric{
+			Name: name, Unit: "s",
+			Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
+				DataPoints: []*metricpb.HistogramDataPoint{{
+					Count: count, BucketCounts: buckets, ExplicitBounds: []float64{0.5},
+				}},
+			}},
+		}
+	}
+	hostile := histPoint("bad.hist", 3, []uint64{4, 2})    // sum=6 > count=3
+	underfilled := histPoint("ok.hist", 5, []uint64{2, 1}) // sum=3 < count=5: +Inf remainder
+	overflow := histPoint("wrap.hist", 3, []uint64{math.MaxUint64, 2})
+
+	points, dropped := flattenResourceMetrics(wrap(nil, hostile, underfilled, overflow))
+	if dropped != 2 {
+		t.Errorf("dropped = %d, want 2 (bucket-sum > count, uint64 wrap)", dropped)
+	}
+	if len(points) != 1 || points[0].Name != "ok.hist" {
+		t.Errorf("points = %+v, want a single ok.hist point", points)
+	}
+}
+
 func TestFlatten_HistogramStripsReservedLe(t *testing.T) {
 	hist := &metricpb.Metric{
 		Name: "h", Unit: "s",
@@ -399,9 +431,9 @@ func sumMetricFull(name, unit string, monotonic bool, temporality metricpb.Aggre
 // before it, every ingested metric was flattened to a unitless value with
 // no instrument type, so the mapper re-exported counters as gauges and
 // dropped the unit. The decoder now stamps otel_type and unit control
-// tags. A cumulative monotonic sum is a counter, cumulative non-monotonic
-// is an updowncounter, a gauge stays a gauge, and a delta sum degrades to
-// gauge (the agent's exporters emit only cumulative temporality).
+// tags. A monotonic sum is a counter and a non-monotonic one an
+// updowncounter regardless of temporality (#661 — delta rides the
+// separate otel_temporality tag instead of degrading the type to gauge).
 func TestFlatten_PreservesInstrumentTypeAndUnit(t *testing.T) {
 	cumulative := metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE
 	delta := metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA
@@ -416,7 +448,7 @@ func TestFlatten_PreservesInstrumentTypeAndUnit(t *testing.T) {
 		{"gauge", gaugeMetric("system.cpu.utilization", 0.42), "gauge", "", false},
 		{"cumulative monotonic sum → counter", sumMetricFull("http.server.requests", "{request}", true, cumulative), "counter", "{request}", true},
 		{"cumulative non-monotonic sum → updowncounter", sumMetricFull("queue.depth", "{item}", false, cumulative), "updowncounter", "{item}", true},
-		{"delta sum → gauge", sumMetricFull("http.server.duration", "s", true, delta), "gauge", "s", true},
+		{"delta monotonic sum stays counter", sumMetricFull("http.server.duration", "s", true, delta), "counter", "s", true},
 	}
 
 	for _, tc := range cases {
@@ -444,6 +476,67 @@ func TestFlatten_PreservesInstrumentTypeAndUnit(t *testing.T) {
 			}
 			if tc.wantHaveUnit && tagMap["unit"] != tc.wantUnit {
 				t.Errorf("unit = %q, want %q", tagMap["unit"], tc.wantUnit)
+			}
+		})
+	}
+}
+
+// histMetricWithTemporality builds a minimal valid explicit-bucket
+// histogram carrying the given aggregation temporality.
+func histMetricWithTemporality(name string, temporality metricpb.AggregationTemporality) *metricpb.Metric {
+	return &metricpb.Metric{
+		Name: name, Unit: "s",
+		Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
+			AggregationTemporality: temporality,
+			DataPoints: []*metricpb.HistogramDataPoint{{
+				TimeUnixNano:   1_700_000_000_000_000_000,
+				Count:          3,
+				BucketCounts:   []uint64{2, 1},
+				ExplicitBounds: []float64{0.5},
+			}},
+		}},
+	}
+}
+
+// TestFlatten_DeltaTemporalityThreaded pins the #661 contract at the
+// decode boundary: only an explicit DELTA temporality produces the
+// otel_temporality control tag; cumulative and unspecified sums and
+// histograms stay untagged so everything downstream keeps its
+// cumulative default.
+func TestFlatten_DeltaTemporalityThreaded(t *testing.T) {
+	unspecified := metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_UNSPECIFIED
+	cumulative := metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE
+	delta := metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA
+
+	cases := []struct {
+		name      string
+		metric    *metricpb.Metric
+		wantDelta bool
+	}{
+		{"delta sum tagged", sumMetricFull("s.delta", "s", true, delta), true},
+		{"cumulative sum untagged", sumMetricFull("s.cumulative", "s", true, cumulative), false},
+		{"unspecified sum untagged", sumMetricFull("s.unspecified", "s", true, unspecified), false},
+		{"delta histogram tagged", histMetricWithTemporality("h.delta", delta), true},
+		{"cumulative histogram untagged", histMetricWithTemporality("h.cumulative", cumulative), false},
+		{"unspecified histogram untagged", histMetricWithTemporality("h.unspecified", unspecified), false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			points, dropped := flattenResourceMetrics(wrap(nil, tc.metric))
+			if dropped != 0 {
+				t.Fatalf("dropped = %d, want 0", dropped)
+			}
+			if len(points) != 1 {
+				t.Fatalf("got %d points, want 1", len(points))
+			}
+			tm := tagMapOf(points[0].Tags)
+			got, tagged := tm[otelmapper.TemporalityTagKey]
+			if tagged != tc.wantDelta {
+				t.Fatalf("otel_temporality tag present = %v, want %v (tags=%v)", tagged, tc.wantDelta, tm)
+			}
+			if tc.wantDelta && got != otelmapper.TemporalityDelta {
+				t.Errorf("otel_temporality = %q, want %q", got, otelmapper.TemporalityDelta)
 			}
 		})
 	}

@@ -68,10 +68,12 @@ func flattenMetric(m *metricpb.Metric, resourceTags []tags.Tag) (points []data_s
 		}
 	case *metricpb.Metric_Sum:
 		otelType := sumInstrumentType(data.Sum)
+		extra := temporalityTags(data.Sum.GetAggregationTemporality())
 		for _, dp := range data.Sum.GetDataPoints() {
-			points = append(points, numberPointToDataPoint(name, unit, otelType, dp, resourceTags))
+			points = append(points, numberPointToDataPoint(name, unit, otelType, dp, resourceTags, extra...))
 		}
 	case *metricpb.Metric_Histogram:
+		extra := temporalityTags(data.Histogram.GetAggregationTemporality())
 		for _, dp := range data.Histogram.GetDataPoints() {
 			if !histogramDataPointValid(dp) {
 				// Malformed bucket layout — dropping here keeps a poison
@@ -80,7 +82,7 @@ func flattenMetric(m *metricpb.Metric, resourceTags []tags.Tag) (points []data_s
 				dropped++
 				continue
 			}
-			points = append(points, histogramToDataPoint(name, unit, dp, resourceTags))
+			points = append(points, histogramToDataPoint(name, unit, dp, resourceTags, extra...))
 		}
 	case *metricpb.Metric_ExponentialHistogram:
 		for _, dp := range data.ExponentialHistogram.GetDataPoints() {
@@ -100,24 +102,32 @@ func flattenMetric(m *metricpb.Metric, resourceTags []tags.Tag) (points []data_s
 }
 
 // sumInstrumentType maps an inbound OTLP Sum onto the agent's internal
-// OTel instrument type. A cumulative monotonic sum is a counter; a
-// cumulative non-monotonic sum is an updowncounter. Delta-temporality
-// sums cannot be re-exported faithfully — the agent's exporters emit
-// only cumulative temporality — so they degrade to gauge, which
-// preserves the raw value without asserting false cumulative-counter
-// semantics. Full delta pass-through would need a temporality field on
-// OtelRecord threaded through both serializers (deferred follow-up).
+// OTel instrument type: monotonic → counter, non-monotonic →
+// updowncounter. Temporality is carried separately by the
+// otel_temporality control tag (see temporalityTags), so a delta sum
+// keeps its counter semantics and re-exports as a delta Sum instead of
+// degrading to a gauge (#661).
 func sumInstrumentType(sum *metricpb.Sum) string {
-	if sum.GetAggregationTemporality() == metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA {
-		return "gauge"
-	}
 	if sum.GetIsMonotonic() {
 		return "counter"
 	}
 	return "updowncounter"
 }
 
-func numberPointToDataPoint(name, unit, otelType string, dp *metricpb.NumberDataPoint, resourceTags []tags.Tag) data_store.DataPoint {
+// temporalityTags returns the otel_temporality control tag for a
+// delta-temporality sum or histogram, and nil otherwise. Cumulative is
+// the pipeline-wide default, so it is deliberately NOT tagged — an
+// unspecified/unknown temporality then falls back to cumulative
+// everywhere downstream, preserving pre-#661 behavior for every
+// non-delta sender.
+func temporalityTags(t metricpb.AggregationTemporality) []tags.Tag {
+	if t == metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA {
+		return []tags.Tag{{Key: otelmapper.TemporalityTagKey, Value: otelmapper.TemporalityDelta}}
+	}
+	return nil
+}
+
+func numberPointToDataPoint(name, unit, otelType string, dp *metricpb.NumberDataPoint, resourceTags []tags.Tag, extra ...tags.Tag) data_store.DataPoint {
 	var value float64
 	switch v := dp.GetValue().(type) {
 	case *metricpb.NumberDataPoint_AsDouble:
@@ -130,7 +140,7 @@ func numberPointToDataPoint(name, unit, otelType string, dp *metricpb.NumberData
 		Name:      name,
 		Timestamp: pointTime(dp.GetTimeUnixNano()),
 		Value:     value,
-		Tags:      ingestTags(unit, otelType, dp.GetAttributes(), resourceTags),
+		Tags:      ingestTags(unit, otelType, dp.GetAttributes(), resourceTags, extra...),
 	}
 }
 
@@ -169,7 +179,7 @@ func ingestTags(unit, otelType string, attrs []*commonpb.KeyValue, resourceTags 
 // push, Prometheus exposition) re-export the full distribution from the
 // payload. Slices and optional pointers are copied so the stored payload
 // never aliases the decoded proto message.
-func histogramToDataPoint(name, unit string, dp *metricpb.HistogramDataPoint, resourceTags []tags.Tag) data_store.DataPoint {
+func histogramToDataPoint(name, unit string, dp *metricpb.HistogramDataPoint, resourceTags []tags.Tag, extra ...tags.Tag) data_store.DataPoint {
 	h := &datapoint.HistogramValue{
 		Count:          dp.GetCount(),
 		Sum:            copyOptionalFloat(dp.Sum),
@@ -187,7 +197,7 @@ func histogramToDataPoint(name, unit string, dp *metricpb.HistogramDataPoint, re
 		// Prometheus exposition (where a duplicate broke the whole page)
 		// AND the OTLP export (where it would otherwise pollute the
 		// downstream backend with a bogus `le` dimension).
-		Tags:      ingestTags(unit, "histogram", withoutAttr(dp.GetAttributes(), "le"), resourceTags),
+		Tags:      ingestTags(unit, "histogram", withoutAttr(dp.GetAttributes(), "le"), resourceTags, extra...),
 		Histogram: h,
 	}
 }
@@ -200,13 +210,33 @@ func copyOptionalFloat(v *float64) *float64 {
 	return &c
 }
 
-// histogramDataPointValid enforces the OTLP explicit-bucket invariant: when
+// histogramDataPointValid enforces the OTLP explicit-bucket invariants: when
 // bucket counts are present there must be exactly one more of them than
-// explicit bounds. An empty bucket layout (count/sum only) is valid. A point
-// that violates this is malformed and must not reach the native export.
+// explicit bounds, and the bucket counts must not total more than the
+// point's Count. An empty bucket layout (count/sum only) is valid, and so
+// is sum(BucketCounts) < Count (the remainder is representable in the
+// implicit +Inf bucket, which serializers write as Count). But a hostile
+// sum(BucketCounts) > Count is unrepresentable: the classic Prometheus
+// exposition would render a NON-monotone bucket ladder (a cumulative
+// bucket above the +Inf value), which corrupts histogram_quantile
+// downstream. A point that violates either invariant is malformed and
+// must not reach the native export.
 func histogramDataPointValid(dp *metricpb.HistogramDataPoint) bool {
-	n := len(dp.GetBucketCounts())
-	return n == 0 || n == len(dp.GetExplicitBounds())+1
+	counts := dp.GetBucketCounts()
+	if len(counts) == 0 {
+		return true
+	}
+	if len(counts) != len(dp.GetExplicitBounds())+1 {
+		return false
+	}
+	var sum uint64
+	for _, c := range counts {
+		if sum+c < sum { // uint64 overflow: hostile by construction
+			return false
+		}
+		sum += c
+	}
+	return sum <= dp.GetCount()
 }
 
 // withoutAttr returns attrs minus any entry with the given key, without
