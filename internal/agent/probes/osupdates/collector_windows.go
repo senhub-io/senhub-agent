@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
+	"golang.org/x/sys/windows/registry"
 
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -78,11 +79,13 @@ func (c *wuaCollector) collect(_ context.Context) (updatesStatus, error) {
 	}
 	status.pending, status.pendingSecurity = pending, security
 
-	reboot, err := c.rebootRequired()
-	if err != nil {
-		return updatesStatus{}, err
+	// Reboot detection is best-effort: a failure here must not discard the
+	// pending/security counts already collected (the probe stays up=1).
+	if reboot, rerrr := c.rebootRequired(); rerrr != nil {
+		c.logger.Warn().Err(rerrr).Msg("reboot-required check failed; reporting reboot_required=0")
+	} else {
+		status.rebootRequired = reboot
 	}
-	status.rebootRequired = reboot
 	return status, nil
 }
 
@@ -139,7 +142,9 @@ func (c *wuaCollector) searchPendingUpdates() (int, int, error) {
 // set (Critical/Important/Moderate/Low — only security bulletins carry
 // one) or when its categories include the "Security Updates" category.
 func (c *wuaCollector) isSecurityUpdate(updates *ole.IDispatch, index int) (bool, error) {
-	itemRaw, err := oleutil.CallMethod(updates, "Item", index)
+	// Item is an indexed PROPERTY (DISPATCH_PROPERTYGET), not a method —
+	// CallMethod raises "Member not found" against IUpdateCollection.
+	itemRaw, err := oleutil.GetProperty(updates, "Item", index)
 	if err != nil {
 		return false, fmt.Errorf("IUpdateCollection.Item(%d): %w", index, err)
 	}
@@ -164,7 +169,7 @@ func (c *wuaCollector) isSecurityUpdate(updates *ole.IDispatch, index int) (bool
 		return false, fmt.Errorf("ICategoryCollection.Count: %w", err)
 	}
 	for j := 0; j < int(catCountRaw.Val); j++ {
-		catRaw, catErr := oleutil.CallMethod(cats, "Item", j)
+		catRaw, catErr := oleutil.GetProperty(cats, "Item", j)
 		if catErr != nil {
 			continue
 		}
@@ -181,22 +186,30 @@ func (c *wuaCollector) isSecurityUpdate(updates *ole.IDispatch, index int) (bool
 	return false, nil
 }
 
+// rebootRequired reports a pending OS reboot from the documented Windows
+// registry indicators. Unlike Microsoft.Update.SystemInfo (a COM object whose
+// instantiation is denied without an elevated token), these keys are readable
+// from any context, so the signal is reliable when the agent runs as a service
+// AND when it is exercised interactively. Any indicator present ⇒ reboot pending.
 func (c *wuaCollector) rebootRequired() (bool, error) {
-	sysInfo, err := createDispatch("Microsoft.Update.SystemInfo")
-	if err != nil {
-		return false, err
+	for _, path := range []string{
+		`SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending`,
+		`SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired`,
+	} {
+		if k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE); err == nil {
+			_ = k.Close()
+			return true, nil
+		}
 	}
-	defer sysInfo.Release()
-
-	raw, err := oleutil.GetProperty(sysInfo, "RebootRequired")
-	if err != nil {
-		return false, fmt.Errorf("ISystemInformation.RebootRequired: %w", err)
+	// A queued file rename is the classic "reboot to finish servicing" signal.
+	if k, err := registry.OpenKey(registry.LOCAL_MACHINE,
+		`SYSTEM\CurrentControlSet\Control\Session Manager`, registry.QUERY_VALUE); err == nil {
+		defer k.Close()
+		if vals, _, err := k.GetStringsValue("PendingFileRenameOperations"); err == nil && len(vals) > 0 {
+			return true, nil
+		}
 	}
-	val, ok := raw.Value().(bool)
-	if !ok {
-		return false, fmt.Errorf("ISystemInformation.RebootRequired: unexpected type %T", raw.Value())
-	}
-	return val, nil
+	return false, nil
 }
 
 func createDispatch(progID string) (*ole.IDispatch, error) {
