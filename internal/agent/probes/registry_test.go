@@ -260,6 +260,7 @@ func TestProbeRegistry(t *testing.T) {
 		"ipmi",
 		"nvidia",
 		"oracle",
+		"os_updates",
 		"process",
 		"unifi",
 		"winservices",
