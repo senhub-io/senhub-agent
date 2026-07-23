@@ -10,18 +10,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ApplyInstallOverrides sets the operator-provided agent.license and
-// agent.global_tags in a freshly generated agent.yaml, in place, preserving
-// the template comments. It backs the `config init` install path: the default
-// config is generated first (offline model — there is no cloud backend or token
-// to seed), then the few provisionable fields are written on top.
+// ApplyInstallOverrides seeds the operator-provided license and
+// agent.global_tags on a freshly generated agent.yaml. It backs the
+// `config init` install path: the default config is generated first (offline
+// model — there is no cloud backend or token to seed), then the few
+// provisionable fields are written on top.
 //
-// Empty inputs are a no-op. The edit is node-level so the extensive documentation
-// comments the generator writes into agent.yaml survive.
+// The license is written to the license.jwt sidecar (see WriteLicenseSidecar),
+// not inline, so the on-disk license is always a standalone file regardless of
+// how it was provisioned. Tags are written into agent.yaml with a node-level
+// edit so the template's documentation comments survive. Empty inputs are a
+// no-op.
 func ApplyInstallOverrides(configPath, license string, tags map[string]string) error {
 	if license == "" && len(tags) == 0 {
 		return nil
 	}
+	if len(tags) > 0 {
+		if err := applyTagOverrides(configPath, tags); err != nil {
+			return err
+		}
+	}
+	if license != "" {
+		if err := WriteLicenseSidecar(configPath, license); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyTagOverrides writes agent.global_tags into configPath in place with a
+// node-level edit, preserving the template comments.
+func applyTagOverrides(configPath string, tags map[string]string) error {
 	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", configPath, err)
@@ -46,12 +65,7 @@ func ApplyInstallOverrides(configPath, license string, tags map[string]string) e
 		return fmt.Errorf("%s: agent block is not a mapping", configPath)
 	}
 
-	if license != "" {
-		setScalarField(agent, "license", license)
-	}
-	if len(tags) > 0 {
-		setTagsField(agent, "global_tags", tags)
-	}
+	setTagsField(agent, "global_tags", tags)
 
 	out, err := marshalDocument(&doc)
 	if err != nil {

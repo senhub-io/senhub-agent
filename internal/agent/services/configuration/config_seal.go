@@ -190,7 +190,9 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 
 	// The agent's own auth key lives in the main config file's agent block (not
 	// in a probe), so seal it separately. The license is left in clear — it is a
-	// JWT bound to the agent key, not a portable access secret.
+	// JWT bound to the agent key, not a portable access secret — and its
+	// on-disk home is the license.jwt sidecar (see config_license.go), not this
+	// file, so there is nothing here to seal.
 	n, backupPath, err := sealAgentKeyInFile(configPath, st)
 	if backupPath != "" {
 		backups = append(backups, backup{configPath, backupPath})
@@ -524,8 +526,9 @@ func marshalNode(doc *yaml.Node) ([]byte, error) {
 
 // sealAgentKeyInFile seals the agent.key (when it is an inline plaintext value)
 // in the main config file, keyed as "agent.key", and rewrites it to
-// ${secret:agent.key}. The agent.license field is deliberately left untouched.
-// Returns the count (0 or 1) and the backup path.
+// ${secret:agent.key}. The agent.license field is deliberately left untouched:
+// the license lives in clear in the license.jwt sidecar (config_license.go),
+// not in this file. Returns the count (0 or 1) and the backup path.
 func sealAgentKeyInFile(path string, st *sealState) (int, string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
