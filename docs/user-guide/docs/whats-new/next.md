@@ -1,4 +1,4 @@
-# Next — 0.6.0 (unreleased)
+# Next — 0.5.3 (unreleased)
 
 :material-progress-clock: In progress — OTLP receiver handles logs and traces, file-based license, cleaner Windows uninstall, Redis mTLS.
 
