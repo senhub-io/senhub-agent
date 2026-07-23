@@ -468,13 +468,13 @@ Example API response:
   "expires_at": "2026-06-30T23:59:59Z",
   "days_remaining": 120,
   "authorized_probes": ["citrix", "netscaler", "redfish", "veeam"],
-  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"]
+  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network", "mysql", "postgresql", "redis", "docker", "syslog", "..."]
 }
 ```
 
 `authorized_probes` lists the Pro probes this license unlocks (Free probes are
-always available and are not repeated here). `free_tier_probes` currently
-reports the core host probes; the full Free tier is broader — see the
+always available and are not repeated here). `free_tier_probes` is the full
+Free tier — the whole universal collection tier, abbreviated above; see the
 [probe catalog](probes/index.md) for the tier badge on every probe.
 
 ### License Tiers
