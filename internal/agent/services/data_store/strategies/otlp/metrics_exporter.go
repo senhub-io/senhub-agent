@@ -185,20 +185,20 @@ func exportInParallel(
 //
 // Type → Aggregation mapping (per OTel spec):
 //
-//	counter        → Sum{Cumulative, Monotonic}
-//	updowncounter  → Sum{Cumulative, !Monotonic}
+//	counter        → Sum{Monotonic}
+//	updowncounter  → Sum{!Monotonic}
 //	gauge          → Gauge
-//	histogram      → Histogram{Cumulative} built from the native payload
+//	histogram      → Histogram built from the native payload
 //	                 (OTLP-ingested explicit-bucket histograms, #659);
 //	                 payload-less histogram-typed records degrade to a
 //	                 Gauge on the count value rather than dropping data
 //
-// Cumulative temporality is the OTel default and what
-// VictoriaMetrics/Prometheus expect. Delta is exposed via
-// Config.Metrics.Temporality but the SDK's preferred path for our
-// straight cumulative counters is the Sum aggregation with
-// Cumulative temporality regardless — the receiver can convert to
-// delta on its side if needed (vmagent does).
+// Temporality is stamped from the record's Temporality field (#661):
+// everything the agent produces itself is cumulative (the OTel default
+// and what VictoriaMetrics/Prometheus expect), while OTLP-ingested
+// delta streams keep their delta temporality on re-export. Temporality
+// is part of the grouping key so a (hostile) sender mixing both on one
+// metric name cannot fold a delta point into a cumulative Sum.
 func buildResourceMetrics(
 	records []otelmapper.OtelRecord,
 	res *resource.Resource,
@@ -207,9 +207,10 @@ func buildResourceMetrics(
 	now time.Time,
 ) *metricdata.ResourceMetrics {
 	type metricKey struct {
-		name string
-		unit string
-		typ  string
+		name        string
+		unit        string
+		typ         string
+		temporality string
 	}
 	type metricGroup struct {
 		key         metricKey
@@ -220,7 +221,7 @@ func buildResourceMetrics(
 	groups := map[metricKey]*metricGroup{}
 	var order []metricKey
 	for _, r := range records {
-		k := metricKey{name: r.Name, unit: r.Unit, typ: r.Type}
+		k := metricKey{name: r.Name, unit: r.Unit, typ: r.Type, temporality: r.Temporality}
 		g, ok := groups[k]
 		if !ok {
 			g = &metricGroup{key: k, description: r.Description}
@@ -239,7 +240,7 @@ func buildResourceMetrics(
 			Name:        g.key.name,
 			Description: g.description,
 			Unit:        g.key.unit,
-			Data:        buildAggregation(g.key.typ, g.points, startTime, now),
+			Data:        buildAggregation(g.key.typ, g.key.temporality, g.points, startTime, now),
 		})
 	}
 
@@ -261,10 +262,11 @@ func buildResourceMetrics(
 	}
 }
 
-// buildAggregation produces the SDK Aggregation matching the OTel type.
-// Always uses float64 — the agent's internal representation is
-// float-typed and our metric semantics don't require int storage.
-func buildAggregation(otelType string, points []otelmapper.OtelRecord, startTime, now time.Time) metricdata.Aggregation {
+// buildAggregation produces the SDK Aggregation matching the OTel type
+// and temporality. Always uses float64 — the agent's internal
+// representation is float-typed and our metric semantics don't require
+// int storage.
+func buildAggregation(otelType, temporality string, points []otelmapper.OtelRecord, startTime, now time.Time) metricdata.Aggregation {
 	dps := make([]metricdata.DataPoint[float64], 0, len(points))
 	for _, p := range points {
 		dps = append(dps, metricdata.DataPoint[float64]{
@@ -279,17 +281,17 @@ func buildAggregation(otelType string, points []otelmapper.OtelRecord, startTime
 	case "counter":
 		return metricdata.Sum[float64]{
 			DataPoints:  dps,
-			Temporality: metricdata.CumulativeTemporality,
+			Temporality: sdkTemporality(temporality),
 			IsMonotonic: true,
 		}
 	case "updowncounter":
 		return metricdata.Sum[float64]{
 			DataPoints:  dps,
-			Temporality: metricdata.CumulativeTemporality,
+			Temporality: sdkTemporality(temporality),
 			IsMonotonic: false,
 		}
 	case "histogram":
-		if agg, ok := buildHistogramAggregation(points, startTime, now); ok {
+		if agg, ok := buildHistogramAggregation(points, temporality, startTime, now); ok {
 			return agg
 		}
 		// No record in the group carried a payload — degrade to a gauge
@@ -314,7 +316,7 @@ func buildAggregation(otelType string, points []otelmapper.OtelRecord, startTime
 // records as gauge) is emitted as a count-only point with the single
 // implicit +Inf bucket so it is never silently dropped. Returns ok=false
 // when NO record has a payload — the caller then falls back to Gauge.
-func buildHistogramAggregation(points []otelmapper.OtelRecord, startTime, now time.Time) (metricdata.Aggregation, bool) {
+func buildHistogramAggregation(points []otelmapper.OtelRecord, temporality string, startTime, now time.Time) (metricdata.Aggregation, bool) {
 	hasPayload := false
 	for _, p := range points {
 		if p.Histogram != nil {
@@ -356,9 +358,20 @@ func buildHistogramAggregation(points []otelmapper.OtelRecord, startTime, now ti
 		hdps = append(hdps, hdp)
 	}
 	return metricdata.Histogram[float64]{
-		Temporality: metricdata.CumulativeTemporality,
+		Temporality: sdkTemporality(temporality),
 		DataPoints:  hdps,
 	}, true
+}
+
+// sdkTemporality maps the record-level temporality marker onto the SDK
+// enum. Anything but an explicit delta is cumulative — the pipeline
+// default and the pre-#661 behavior for every metric the agent
+// produces itself.
+func sdkTemporality(temporality string) metricdata.Temporality {
+	if temporality == otelmapper.TemporalityDelta {
+		return metricdata.DeltaTemporality
+	}
+	return metricdata.CumulativeTemporality
 }
 
 // attributeSet converts an OtelRecord's attribute map into the SDK's

@@ -314,8 +314,9 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	}
 
 	// OTLP receiver ingest counters — items accepted per signal
-	// (metrics=datapoints, logs=records, traces=spans). Emitted only once
-	// the receiver has taken traffic on a signal.
+	// (metrics=emitted internal datapoints after family expansion,
+	// logs=records, traces=spans). Emitted only once the receiver has
+	// taken traffic on a signal.
 	for signal, n := range agentstate.GetOTLPReceiverIngestedBySignal() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp_receiver.ingested",
@@ -323,7 +324,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Type:        "counter",
 			Attributes:  map[string]string{"signal": signal},
 			Value:       float64(n),
-			Description: "Cumulative count of items accepted by the OTLP receiver, by signal (metrics datapoints, log records, spans).",
+			Description: "Cumulative count of items accepted by the OTLP receiver, by signal (metrics: emitted internal datapoints after family expansion, e.g. a summary expands to count/sum/quantile points; logs: records; traces: spans).",
 		})
 	}
 	// OTLP receiver drop counters — items the receiver discarded, by signal

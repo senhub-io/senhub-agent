@@ -36,6 +36,13 @@ type OtelRecord struct {
 	// OTel metric type: "counter", "gauge", "updowncounter", "histogram"
 	Type string
 
+	// Temporality is the aggregation temporality of a counter /
+	// updowncounter / histogram record: "" (cumulative — the default,
+	// and the only value the agent's own probes ever produce) or
+	// TemporalityDelta for OTLP-ingested delta streams (#661). Gauges
+	// have no temporality; serializers ignore the field for them.
+	Temporality string
+
 	// Attributes merged from (1) static `otel.attributes` in the YAML,
 	// (2) tag_to_attribute mappings from probe tags, (3) the
 	// expand-produced attribute (e.g. hw.state=ok), (4) systematic labels
