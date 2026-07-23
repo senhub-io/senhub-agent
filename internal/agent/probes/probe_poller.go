@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -240,7 +242,7 @@ func (p *ProbePoller) collect() error {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		agentstate.IncrementCollectErrors()
+		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
 		agentstate.RecordProbeHealth(p.ProbeId, false)
 		return fmt.Errorf("collect failed: %v", err)
 	}
@@ -278,6 +280,21 @@ func (p *ProbePoller) probeType() string {
 	return "unknown"
 }
 
+// collectErrorReason classifies a Probe.Collect() error into the bounded
+// `reason` label of senhub.agent.collect.errors (#646). It never returns a
+// raw error string: a deadline/timeout maps to "timeout", everything else to
+// "collect". The routing-failure path passes "route" directly.
+func collectErrorReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout"
+	}
+	return "collect"
+}
+
 // getWrappedCallback returns a function that handles routing of collected data
 // to appropriate storage strategies for callback-based probes (syslog, event).
 //
@@ -299,7 +316,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 			err = p.addDataPoint(data, &defaultStrategyRouter{})
 		}
 		if err != nil {
-			agentstate.IncrementCollectErrors()
+			agentstate.IncrementCollectErrors(p.probeType(), "route")
 			agentstate.RecordProbeHealth(p.ProbeId, false)
 		} else {
 			agentstate.RecordProbeHealth(p.ProbeId, true)

@@ -99,6 +99,12 @@ type OTLPSyncStrategy struct {
 	// via otel.Tracer() reaches this exporter.
 	traces *tracesPipeline
 
+	// spansRelay forwards RECEIVED spans (otlp_receiver → agentstate span
+	// channel) verbatim to the traces endpoint. Independent of the SDK
+	// tracesPipeline above (which exports the agent's own spans); both are
+	// active when Traces.Enabled. nil otherwise.
+	spansRelay *spansRelay
+
 	// pushTicker drives the metrics push cadence. nil before Start, nil
 	// after Shutdown.
 	pushTicker *time.Ticker
@@ -320,6 +326,21 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)
 	}
 
+	// Relay for received spans, gated by the SAME signals.traces.enabled
+	// flag as the SDK pipeline (no separate config key). Build failure is
+	// non-fatal: the TLS/transport inputs were already validated by
+	// buildExporters above, so a failure here is exotic and must not take
+	// down the metrics/logs signals with it.
+	if s.cfg.Traces.Enabled {
+		relay, relayErr := newSpansRelay(s.cfg, s.logger)
+		if relayErr != nil {
+			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
+		} else {
+			s.spansRelay = relay
+			relay.start()
+		}
+	}
+
 	s.logger.Info().
 		Bool("memory_limit_enabled", s.memLimiter != nil && s.memLimiter.enabled()).
 		Int("memory_limit_soft_mib", s.cfg.MemoryLimit.SoftMiB).
@@ -375,12 +396,11 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 func (s *OTLPSyncStrategy) pushPeriodic(parent context.Context) {
 	probesTotal, probesHealthy := agentstate.GetProbeCounts()
 	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
-		StartTime:          s.startTime,
-		ProbesTotal:        probesTotal,
-		ProbesHealthy:      probesHealthy,
-		CollectErrorsTotal: agentstate.GetCollectErrorsTotal(),
-		BuildVersion:       cliArgs.Version,
-		BuildCommit:        cliArgs.CommitHash,
+		StartTime:     s.startTime,
+		ProbesTotal:   probesTotal,
+		ProbesHealthy: probesHealthy,
+		BuildVersion:  cliArgs.Version,
+		BuildCommit:   cliArgs.CommitHash,
 	})
 	s.doPush(parent, agentRecords)
 }
@@ -686,6 +706,13 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// SDK will be flushed before the gRPC connection closes.
 	if s.logsPump != nil {
 		s.logsPump.stop(ctx)
+	}
+
+	// Stop the span relay: cancels the drain goroutine, unsubscribes from
+	// agentstate, flushes the pending batch best-effort, and closes its
+	// own transport (independent of s.exporters).
+	if s.spansRelay != nil {
+		s.spansRelay.stop(ctx)
 	}
 
 	if s.exporters == nil {
