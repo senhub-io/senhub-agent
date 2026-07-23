@@ -3,6 +3,7 @@ package configuration
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -90,6 +91,86 @@ func TestWriteRemoveLicenseSidecar_RoundTrip(t *testing.T) {
 	}
 	if after.Agent.License != "" {
 		t.Errorf("loaded license = %q, want empty after remove", after.Agent.License)
+	}
+}
+
+func TestMigrateLicenseToSidecar_MovesInlineJWT(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(cfg, []byte("config_version: 2\nagent:\n  key: k\n  license: eyJ-inline-jwt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MigrateLicenseToSidecar(cfg, nil); err != nil {
+		t.Fatalf("MigrateLicenseToSidecar: %v", err)
+	}
+
+	// The sidecar now holds the token.
+	got, err := os.ReadFile(LicenseSidecarPath(cfg))
+	if err != nil {
+		t.Fatalf("sidecar not written: %v", err)
+	}
+	if strings.TrimSpace(string(got)) != "eyJ-inline-jwt" {
+		t.Errorf("sidecar = %q, want the migrated token", got)
+	}
+	// The inline field is cleared, but the effective license is unchanged.
+	inline, err := readInlineLicense(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inline != "" {
+		t.Errorf("inline license = %q, want cleared after migration", inline)
+	}
+	after, err := LoadFromDisk(cfg, nil)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if after.Agent.License != "eyJ-inline-jwt" {
+		t.Errorf("effective license = %q, want unchanged after migration", after.Agent.License)
+	}
+	// No backup file left behind on success.
+	entries, _ := filepath.Glob(cfg + ".backup.*")
+	if len(entries) != 0 {
+		t.Errorf("migration left backup files: %v", entries)
+	}
+
+	// Idempotent: a second run is a no-op (nothing inline to move).
+	if err := MigrateLicenseToSidecar(cfg, nil); err != nil {
+		t.Fatalf("second MigrateLicenseToSidecar: %v", err)
+	}
+}
+
+func TestMigrateLicenseToSidecar_NoOpOnReferenceOrEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		license string
+	}{
+		{"empty", ""},
+		{"file-reference", "${file:/etc/senhub/license.jwt}"},
+		{"secret-reference", "${secret:agent.license}"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfg := filepath.Join(dir, "agent.yaml")
+			body := "config_version: 2\nagent:\n  key: k\n"
+			if tc.license != "" {
+				body += "  license: \"" + tc.license + "\"\n"
+			}
+			if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := MigrateLicenseToSidecar(cfg, nil); err != nil {
+				t.Fatalf("MigrateLicenseToSidecar: %v", err)
+			}
+			if _, err := os.Stat(LicenseSidecarPath(cfg)); !os.IsNotExist(err) {
+				t.Errorf("sidecar created for %s (err=%v), want no-op", tc.name, err)
+			}
+			inline, _ := readInlineLicense(cfg)
+			if inline != tc.license {
+				t.Errorf("inline license = %q, want unchanged %q", inline, tc.license)
+			}
+		})
 	}
 }
 
