@@ -282,7 +282,7 @@ ss -tulpn | grep 514
 **Verify probe configuration:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "type: syslog" /etc/senhub/probes.d/
+grep -rA5 "type: syslog" /etc/senhub-agent/probes.d/
 ```
 
 ### Permission Denied (Port < 1024)
@@ -300,7 +300,7 @@ sudo ./agent run
 sudo setcap cap_net_bind_service=+ep ./agent
 
 # Option 3: Use alternate port (>1024) and configure syslog sources
-# /etc/senhub/probes.d/10-syslog.yaml:
+# /etc/senhub-agent/probes.d/10-syslog.yaml:
 - name: syslog
   type: syslog
   params:

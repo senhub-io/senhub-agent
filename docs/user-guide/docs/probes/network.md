@@ -206,7 +206,7 @@ Detect anomalies:
 **Verify probe is enabled:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "name: network" /etc/senhub/probes.d/
+grep -rA5 "name: network" /etc/senhub-agent/probes.d/
 ```
 
 **Check interface detection:**
