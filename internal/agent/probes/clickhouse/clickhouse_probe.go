@@ -27,7 +27,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -100,8 +99,7 @@ type ClickHouseProbe struct {
 	client       *http.Client
 
 	// entitySrc feeds the Toise topology inventory (db.clickhouse entity).
-	entitySrc  *clickhouseEntitySource
-	unregister func()
+	entitySrc *clickhouseEntitySource
 }
 
 // NewClickHouseProbe constructs the probe. Config errors surface here.
@@ -173,14 +171,10 @@ func (p *ClickHouseProbe) OnStart(_ chan struct{}) error {
 		Str("endpoint", p.config.Endpoint).
 		Str("username", p.config.Username).
 		Msg("Starting clickhouse probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *ClickHouseProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

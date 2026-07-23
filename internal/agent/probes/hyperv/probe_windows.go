@@ -32,7 +32,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -81,8 +80,7 @@ type HypervProbe struct {
 	moduleLogger *logger.ModuleLogger
 	queryFn      wmiQueryFn
 
-	entitySource           *hypervEntitySource
-	unregisterEntitySource func()
+	entitySource *hypervEntitySource
 }
 
 type probeConfig struct {
@@ -130,15 +128,11 @@ func (p *HypervProbe) ShouldStart() bool          { return true }
 func (p *HypervProbe) GetInterval() time.Duration { return p.config.Interval }
 
 func (p *HypervProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().Msg("Starting hyperv probe")
 	return nil
 }
 
 func (p *HypervProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	return nil
 }
 
