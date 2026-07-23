@@ -20,7 +20,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -46,7 +45,6 @@ type InfluxDBProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *influxdbEntitySource
-	unregister   func()
 }
 
 const (
@@ -118,14 +116,10 @@ func (p *InfluxDBProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting influxdb probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *InfluxDBProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

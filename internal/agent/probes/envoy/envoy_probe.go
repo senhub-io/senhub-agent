@@ -29,7 +29,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -66,8 +65,7 @@ type EnvoyProbe struct {
 	// collectFunc is the production fetch; overridable in tests.
 	collectFunc func() ([]data_store.DataPoint, error)
 
-	entitySrc  *envoyEntitySource
-	unregister func()
+	entitySrc *envoyEntitySource
 }
 
 // NewEnvoyProbe is the probe constructor registered in init().
@@ -139,14 +137,10 @@ func (p *EnvoyProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.config.Endpoint).
 		Msg("Starting envoy probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *EnvoyProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

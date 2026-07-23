@@ -113,26 +113,20 @@ When adding a probe, register it in the **five** places below in the **same PR**
 5. **Entity source** in the probe's constructor — non-negotiable, enforced by
    `TestEveryRegisteredProbeHasEntitySource` in `registry_invariant_test.go`.
 
-   **Remote-target probes** (anything monitoring a distinct external system — a DB instance, a message broker, an HTTP endpoint): call `SetEntitySource()` with a `SimpleEntitySource` in the constructor. The invariant test catches a nil return; `SimpleEntitySource` satisfies it:
+   **Remote-target probes** (anything monitoring a distinct external system — a DB instance, a message broker, an HTTP endpoint): call `SetEntitySource()` in the constructor and nothing else. The `ProbePoller` registers `EntitySource()` with the detector on Start and unregisters it on Shutdown — probes MUST NOT call `entity.RegisterSource` themselves (enforced by `TestProbePackagesDoNotRegisterEntitySourcesDirectly`; the dual probe-side path was removed in #471):
 
    ```go
-   // In the probe's constructor:
+   // In the probe's constructor (the ONLY entity wiring a probe does):
    entitySrc := types.NewSimpleEntitySource("db.redis", map[string]any{
        "server.address": cfg.Host,
        "server.port":    int64(cfg.Port),
    })
    p.SetEntitySource(entitySrc)
 
-   // In OnStart():
-   p.unregister = entity.RegisterSource(p.EntitySource())
-
    // In Collect(), after success:
    entitySrc.SetUp(true, map[string]any{"db.system.version": version})
    // On failure:
    entitySrc.SetUp(false, nil)
-
-   // In OnShutdown():
-   if p.unregister != nil { p.unregister() }
    ```
 
    **Host-level probes and log conduits** (cpu, memory, network, logicaldisk, linux_logs, syslog, filetail, windowseventlog, event): do NOT call `SetEntitySource()`. They inherit the `NoOpEntitySource` fallback from `BaseProbe`, which satisfies the invariant without emitting extra entity events — the host entity is already reported by the entity detector.

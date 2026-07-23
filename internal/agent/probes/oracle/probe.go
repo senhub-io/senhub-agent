@@ -17,7 +17,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -47,10 +46,6 @@ type oracleProbe struct {
 
 	db           *sql.DB
 	entitySource *oracleEntitySource
-
-	// unregisterEntitySource detaches the entity source from the
-	// process-global registry on shutdown (set in OnStart).
-	unregisterEntitySource func()
 }
 
 // NewOracleProbe builds an oracle probe from its raw params block.
@@ -84,9 +79,9 @@ func (p *oracleProbe) ShouldStart() bool          { return true }
 func (p *oracleProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 // OnStart opens the database/sql handle (go-ora is registered under the
-// "oracle" driver name) and registers the entity source. sql.Open does
-// not dial — the first ping happens in Collect, so a database that is
-// down at agent start does not block the probe; it reports up=0 instead.
+// "oracle" driver name). sql.Open does not dial — the first ping happens
+// in Collect, so a database that is down at agent start does not block
+// the probe; it reports up=0 instead.
 func (p *oracleProbe) OnStart(_ chan struct{}) error {
 	dsn := go_ora.BuildUrl(p.cfg.Host, p.cfg.Port, p.cfg.ServiceName, p.cfg.Username, p.cfg.Password, nil)
 	db, err := sql.Open("oracle", dsn)
@@ -98,18 +93,12 @@ func (p *oracleProbe) OnStart(_ chan struct{}) error {
 	db.SetConnMaxLifetime(30 * time.Minute)
 	p.db = db
 
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().Str("instance", p.instance).Msg("Oracle probe started")
 	return nil
 }
 
-// OnShutdown closes the pool and unregisters the entity source so a
-// reloaded probe does not heartbeat a stale db entity forever.
+// OnShutdown closes the pool.
 func (p *oracleProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-		p.unregisterEntitySource = nil
-	}
 	if p.db != nil {
 		if err := p.db.Close(); err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("error closing oracle connection")

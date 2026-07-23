@@ -24,7 +24,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -85,9 +84,6 @@ type NATSProbe struct {
 
 	// fetch is the HTTP GET function, replaceable in tests.
 	fetch func(path string) ([]byte, int, error)
-
-	// unregisterEntity detaches the entity source on shutdown.
-	unregisterEntity func()
 }
 
 // NewNATSProbe builds a nats probe from its raw params block.
@@ -149,7 +145,6 @@ func (p *NATSProbe) ShouldStart() bool          { return true }
 func (p *NATSProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *NATSProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntity = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("NATS probe started")
@@ -157,9 +152,6 @@ func (p *NATSProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *NATSProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntity != nil {
-		p.unregisterEntity()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }
