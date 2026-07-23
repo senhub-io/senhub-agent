@@ -80,7 +80,9 @@ the last-writer-wins store re-exports the most recent delta point on each
 push cycle until it is overwritten or evicted, so a slow delta sender sees
 its last increment repeated — end-to-end validation against a
 delta-capable backend is tracked in the recette (#663). **Malformed histograms** (bucket-count length ≠ explicit-bounds
-+ 1) are dropped at decode and surfaced via OTLP partial-success rather than
++ 1, or bucket counts totalling more than the point's `Count` — which would
+render a non-monotone `+Inf` bucket and corrupt `histogram_quantile`) are
+dropped at decode and surfaced via OTLP partial-success rather than
 forwarded, so a poison point cannot make a downstream collector reject the
 whole export batch. On the Prometheus side, a sender-supplied `le` attribute
 on a histogram is stripped (it is reserved for the bucket ladder).

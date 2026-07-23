@@ -210,13 +210,33 @@ func copyOptionalFloat(v *float64) *float64 {
 	return &c
 }
 
-// histogramDataPointValid enforces the OTLP explicit-bucket invariant: when
+// histogramDataPointValid enforces the OTLP explicit-bucket invariants: when
 // bucket counts are present there must be exactly one more of them than
-// explicit bounds. An empty bucket layout (count/sum only) is valid. A point
-// that violates this is malformed and must not reach the native export.
+// explicit bounds, and the bucket counts must not total more than the
+// point's Count. An empty bucket layout (count/sum only) is valid, and so
+// is sum(BucketCounts) < Count (the remainder is representable in the
+// implicit +Inf bucket, which serializers write as Count). But a hostile
+// sum(BucketCounts) > Count is unrepresentable: the classic Prometheus
+// exposition would render a NON-monotone bucket ladder (a cumulative
+// bucket above the +Inf value), which corrupts histogram_quantile
+// downstream. A point that violates either invariant is malformed and
+// must not reach the native export.
 func histogramDataPointValid(dp *metricpb.HistogramDataPoint) bool {
-	n := len(dp.GetBucketCounts())
-	return n == 0 || n == len(dp.GetExplicitBounds())+1
+	counts := dp.GetBucketCounts()
+	if len(counts) == 0 {
+		return true
+	}
+	if len(counts) != len(dp.GetExplicitBounds())+1 {
+		return false
+	}
+	var sum uint64
+	for _, c := range counts {
+		if sum+c < sum { // uint64 overflow: hostile by construction
+			return false
+		}
+		sum += c
+	}
+	return sum <= dp.GetCount()
 }
 
 // withoutAttr returns attrs minus any entry with the given key, without
