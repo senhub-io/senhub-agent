@@ -14,6 +14,7 @@ package otelmapper
 
 import (
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // OtelRecord is a resolved, OTel-shaped data point ready for transport-
@@ -49,6 +50,13 @@ type OtelRecord struct {
 	// Description copied from the YAML (used for the Prometheus `# HELP`
 	// line and the OTel metric description field).
 	Description string
+
+	// Histogram is the native distribution payload for Type=="histogram"
+	// records (OTLP-ingested explicit-bucket histograms). Nil on every
+	// scalar record. Serializers keyed on the histogram type MUST fall
+	// back to the scalar Value path when this is nil. The payload values
+	// are OTel-native as received — no unit conversion is applied to it.
+	Histogram *datapoint.HistogramValue
 }
 
 // CacheMetric is the minimal shape Resolve consumes. It mirrors the
@@ -76,6 +84,11 @@ type CacheMetric struct {
 
 	// Tags attached to the data point (discriminants + contextual + systematic).
 	Tags map[string]string
+
+	// Histogram is the native distribution payload carried through from
+	// the source DataPoint. Nil for scalar metrics; set only for
+	// OTLP-ingested explicit-bucket histograms.
+	Histogram *datapoint.HistogramValue
 }
 
 // ResolveOptions tunes the resolver's per-scrape behavior. Currently used
