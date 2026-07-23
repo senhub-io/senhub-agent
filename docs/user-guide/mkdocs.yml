@@ -110,6 +110,7 @@ nav:
       - Systemd Units: probes/systemd.md
       - Windows Services: probes/windows-services.md
       - Chrony (NTP): probes/chrony.md
+      - OS Updates: probes/os-updates.md
       - S.M.A.R.T. Disk Health: probes/smart.md
       - IPMI / BMC Sensors: probes/ipmi.md
       - NVIDIA GPU: probes/nvidia.md

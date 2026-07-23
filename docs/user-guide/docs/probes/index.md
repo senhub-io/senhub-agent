@@ -105,6 +105,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">NTP sync health: offset, frequency, skew, stratum</span>
   </a>
 
+  <a href="os-updates/" class="probe-card" data-family="os-host" data-tier="free">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/update.svg?color=%23666" alt="" loading="lazy">
+    <span class="probe-name">OS Updates</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Pending updates, security updates, reboot required</span>
+  </a>
+
   <a href="smart/" class="probe-card" data-family="os-host" data-tier="free">
     <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/pulse.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">S.M.A.R.T. Disk Health</span>
