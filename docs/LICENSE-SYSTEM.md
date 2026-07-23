@@ -221,7 +221,7 @@ go run sensor-factory-license-generator.go --generate-license \
 ### 3. Customer Activation
 
 The license lives in a dedicated **`license.jwt` sidecar file** next to
-`agent.yaml` (`/etc/senhub/license.jwt`, Windows `%ProgramData%\SenHub\license.jwt`),
+`agent.yaml` (`/etc/senhub-agent/license.jwt`, Windows `%ProgramData%\SenHub\license.jwt`),
 not inline in the YAML. A standalone file is simple to hand to a customer and
 removes the risk of mangling a very long JWT on copy-paste. There are two ways
 to install it:
@@ -231,7 +231,7 @@ to install it:
 ./agent license activate eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 
 # Option B — drop-in: save the token file we send you next to agent.yaml
-cp license.jwt /etc/senhub/license.jwt   # restart the agent
+cp license.jwt /etc/senhub-agent/license.jwt   # restart the agent
 ```
 
 ```bash

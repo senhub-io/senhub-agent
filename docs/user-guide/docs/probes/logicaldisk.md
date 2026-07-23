@@ -249,7 +249,7 @@ Monitor critical application storage:
 
 **Drive Identification:**
 - Drive letters: `C:`, `D:`, `E:`, etc.
-- Tag: `drive=C:`
+- Tags: `drive=C:`, `device=C:`, `fs_type=ntfs`
 
 **Default Filters:**
 - Includes: All drives (empty = all)
@@ -257,7 +257,7 @@ Monitor critical application storage:
 
 **Example Metrics:**
 ```
-disk_free_mb{drive="C:"} = 102400
+disk_free_mb{drive="C:",device="C:",fs_type="ntfs"} = 102400
 disk_free_percent{drive="C:"} = 45.2
 disk_reads_sec{drive="C:"} = 123.4
 disk_writes_sec{drive="C:"} = 87.6
