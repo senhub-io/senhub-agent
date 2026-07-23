@@ -24,9 +24,12 @@
         LICENSE_KEY=eyJhbGci... ^
         TAGS=site=paris,env=prod
 
-  Uninstall keeps %ProgramData%\SenHub (config, sealed secrets, logs)
-  by default so upgrades and reinstalls never lose operator data. A
-  full data purge is opt-in:
+  Uninstall keeps operator state under %ProgramData%\SenHub (config,
+  sealed secret store, license) by default so upgrades and reinstalls
+  never lose it. The transient subfolders logs\ and update\ (rotated
+  logs and staged auto-update MSIs — both regenerated on next run) are
+  removed on a plain uninstall so it leaves a clean tree. A full data
+  purge, including config and secrets, is opt-in:
 
       msiexec /x senhub-agent.msi /qn PURGE_DATA=1
 
@@ -101,9 +104,12 @@
       PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
       on uninstall (config, sealed secret store, license, logs, staged
       updates). Deliberately OPT-IN: the default uninstall preserves the
-      data tree so a reinstall or upgrade never loses operator state.
-      See the PurgeDataFolder authoring on the DataFolderMarker
-      component below.
+      operator state (config, secrets, license) so a reinstall or upgrade
+      never loses it. Note that the default uninstall still removes the
+      transient logs\ and update\ subfolders (see PurgeLogsFolder /
+      PurgeUpdateFolder on the DataFolderMarker component below); PURGE_DATA=1
+      additionally removes the preserved state. See the PurgeDataFolder
+      authoring on the DataFolderMarker component below.
     -->
     <Property Id="PURGE_DATA" Secure="yes" />
 
@@ -215,6 +221,29 @@
                  After="AppSearch"
                  Sequence="execute"
                  Condition="(PURGE_DATA=&quot;1&quot;) AND Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
+
+    <!--
+      Transient-folder purge on a plain uninstall (issue #648). Same
+      genuine-full-uninstall gate as PURGEDATAFOLDER above, but WITHOUT
+      the PURGE_DATA="1" requirement: logs\ and update\ hold only rotated
+      logs and staged auto-update MSIs, both regenerated on next run, so
+      a default uninstall removes them to leave a clean tree while config,
+      the sealed secret store and the license are preserved. On an upgrade
+      (UPGRADINGPRODUCTCODE / WIX_UPGRADE_DETECTED) the properties stay
+      empty and the matching RemoveFolderEx entries no-op, so staged
+      updates survive an in-place upgrade. When PURGE_DATA=1 removes the
+      whole tree, these are subsumed by PurgeDataFolder.
+    -->
+    <SetProperty Id="PURGELOGSFOLDER"
+                 Value="[CommonAppDataFolder]SenHub\logs"
+                 After="AppSearch"
+                 Sequence="execute"
+                 Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
+    <SetProperty Id="PURGEUPDATEFOLDER"
+                 Value="[CommonAppDataFolder]SenHub\update"
+                 After="AppSearch"
+                 Sequence="execute"
+                 Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
 
     <InstallExecuteSequence>
       <!-- Take over a foreign service before InstallServices creates ours. -->
@@ -329,13 +358,20 @@
         over data loss on uninstall (acceptance criterion: no orphan files
         OUTSIDE user preference; config is user preference).
 
+        Default uninstall still leaves a clean tree: the transient logs\
+        and update\ subfolders (rotated logs, staged auto-update MSIs) are
+        removed by PurgeLogsFolder / PurgeUpdateFolder below, gated on a
+        genuine full uninstall (not an upgrade) — see the SetProperty
+        authoring above. Only config, the sealed secret store and the
+        license are preserved.
+
         Exception, opt-in only: since 0.5.0 the tree also holds the sealed
         secret store, the license and staged auto-update MSIs, so an
-        operator who wants a truly clean removal can pass PURGE_DATA=1 on
-        `msiexec /x`. RemoveFolderEx reads PURGEDATAFOLDER, which the
-        SetProperty above assigns ONLY on a genuine full uninstall with
-        PURGE_DATA=1 (never on a MajorUpgrade); with the property empty —
-        every other transaction — it is a no-op.
+        operator who wants a truly clean removal (including that preserved
+        state) can pass PURGE_DATA=1 on `msiexec /x`. RemoveFolderEx reads
+        PURGEDATAFOLDER, which the SetProperty above assigns ONLY on a
+        genuine full uninstall with PURGE_DATA=1 (never on a MajorUpgrade);
+        with the property empty — every other transaction — it is a no-op.
       -->
       <Component Id="DataFolderMarker" Directory="DATAFOLDER" Guid="*">
         <RegistryValue Root="HKLM"
@@ -352,6 +388,14 @@
         <util:RemoveFolderEx Id="PurgeDataFolder"
                              On="uninstall"
                              Property="PURGEDATAFOLDER" />
+        <!-- Default-uninstall transient purge (issue #648): no-op on
+             upgrade or when the property is empty. -->
+        <util:RemoveFolderEx Id="PurgeLogsFolder"
+                             On="uninstall"
+                             Property="PURGELOGSFOLDER" />
+        <util:RemoveFolderEx Id="PurgeUpdateFolder"
+                             On="uninstall"
+                             Property="PURGEUPDATEFOLDER" />
       </Component>
 
     </ComponentGroup>
