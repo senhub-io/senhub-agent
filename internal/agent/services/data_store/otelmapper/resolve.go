@@ -195,7 +195,26 @@ const (
 	// Used for metrics that cannot be pre-enumerated in a transformer YAML
 	// (snmp_poll dynamic per-OID metrics, #207).
 	otelTypeTag = "otel_type"
+
+	// TemporalityTagKey is the control tag carrying a datapoint's
+	// aggregation temporality when it differs from the cumulative
+	// pipeline default. Set by the otlp_receiver decoder on
+	// delta-temporality sums and histograms (#661); absent everywhere
+	// else, so cumulative and unspecified streams need no tag at all.
+	TemporalityTagKey = "otel_temporality"
+
+	// TemporalityDelta is the only non-default TemporalityTagKey value.
+	TemporalityDelta = "delta"
 )
+
+// temporalityFromTags reads the otel_temporality control tag, normalizing
+// any unrecognised value to "" (cumulative, the safe default).
+func temporalityFromTags(t map[string]string) string {
+	if t[TemporalityTagKey] == TemporalityDelta {
+		return TemporalityDelta
+	}
+	return ""
+}
 
 // resolveTypedPassthrough emits an OtelRecord for a datapoint that already
 // carries a canonical OTel name and declares its instrument type in the
@@ -215,7 +234,7 @@ func resolveTypedPassthrough(m CacheMetric, otelType string, opts ResolveOptions
 	}
 	if opts.IncludeProbeTags {
 		for tagName, tagVal := range m.Tags {
-			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag || tagName == "unit" {
+			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag || tagName == TemporalityTagKey || tagName == "unit" {
 				continue
 			}
 			attrs[tagName] = tagVal
@@ -225,6 +244,7 @@ func resolveTypedPassthrough(m CacheMetric, otelType string, opts ResolveOptions
 		Name:        m.MetricName,
 		Unit:        m.Unit,
 		Type:        otelType,
+		Temporality: temporalityFromTags(m.Tags),
 		Attributes:  attrs,
 		Value:       m.Value,
 		Description: "pass-through metric (no transformer definition)",
@@ -238,6 +258,8 @@ func resolveTypedPassthrough(m CacheMetric, otelType string, opts ResolveOptions
 // control tag set by the decoder (counter / updowncounter / gauge), so a
 // re-exported counter stays a counter instead of collapsing to a gauge;
 // an absent or unrecognised type falls back to gauge, the safe default.
+// The inbound aggregation temporality is preserved the same way via the
+// otel_temporality control tag (#661) — absent means cumulative.
 func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
 	otelType := m.Tags[otelTypeTag]
 	switch otelType {
@@ -262,7 +284,7 @@ func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
 	}
 	if opts.IncludeProbeTags {
 		for tagName, tagVal := range m.Tags {
-			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag || tagName == "unit" {
+			if tagVal == "" || isSystemTag(tagName) || tagName == metricTypeTag || tagName == otelTypeTag || tagName == TemporalityTagKey || tagName == "unit" {
 				continue
 			}
 			attrs[tagName] = tagVal
@@ -272,6 +294,7 @@ func resolveOTLPIngested(m CacheMetric, opts ResolveOptions) []OtelRecord {
 		Name:        m.MetricName,
 		Unit:        m.Unit,
 		Type:        otelType,
+		Temporality: temporalityFromTags(m.Tags),
 		Attributes:  attrs,
 		Value:       m.Value,
 		Description: "OTLP-ingested metric",
