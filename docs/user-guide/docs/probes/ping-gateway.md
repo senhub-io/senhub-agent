@@ -247,7 +247,7 @@ Diagnose network issues:
 **Verify probe is enabled:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "name: ping_gateway" /etc/senhub/probes.d/
+grep -rA5 "name: ping_gateway" /etc/senhub-agent/probes.d/
 ```
 
 **Common Causes:**
