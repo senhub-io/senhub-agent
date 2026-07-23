@@ -1,0 +1,64 @@
+probe_name: "os_updates"
+friendly_name: "OS Updates"
+version: "1.0.0"
+host_level: true
+
+# Free host-local probe: OS patch posture — pending updates, pending
+# security updates and reboot-required status via the native package
+# backend (apt, dnf/yum on Linux, Windows Update Agent on Windows).
+# No otelcol-contrib receiver covers patch posture, so the whole probe
+# lives under the senhub.os.updates.* namespace. The package_manager
+# tag (apt|dnf|yum|wua) flows as the os.package_manager attribute.
+
+metrics:
+  - name: "senhub.os.updates.up"
+    channel: "os_updates_up"
+    display_name: "OS Updates Backend Up"
+    unit: "#"
+    category: "patching"
+    description: "1 when the package backend (apt, dnf/yum, Windows Update Agent) answered the update query, 0 when it failed or the platform is unsupported"
+    otel:
+      name: senhub.os.updates.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      package_manager: os.package_manager
+
+  - name: "senhub.os.updates.pending"
+    channel: "os_updates_pending"
+    display_name: "Pending Updates"
+    unit: "#"
+    category: "patching"
+    description: "Number of packages or updates with a newer version available and not yet installed"
+    otel:
+      name: senhub.os.updates.pending
+      unit: "{update}"
+      type: gauge
+    tag_to_attribute:
+      package_manager: os.package_manager
+
+  - name: "senhub.os.updates.pending.security"
+    channel: "os_updates_pending_security"
+    display_name: "Pending Security Updates"
+    unit: "#"
+    category: "patching"
+    description: "Number of pending updates classified as security fixes by the package backend"
+    otel:
+      name: senhub.os.updates.pending.security
+      unit: "{update}"
+      type: gauge
+    tag_to_attribute:
+      package_manager: os.package_manager
+
+  - name: "senhub.os.updates.reboot_required"
+    channel: "os_updates_reboot_required"
+    display_name: "Reboot Required"
+    unit: "#"
+    category: "patching"
+    description: "1 when the OS reports a pending reboot (package-triggered on Linux, Windows Update pending reboot on Windows), 0 otherwise"
+    otel:
+      name: senhub.os.updates.reboot_required
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      package_manager: os.package_manager
