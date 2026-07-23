@@ -1,6 +1,7 @@
 package otlpreceiver
 
 import (
+	"math"
 	"testing"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -208,6 +209,36 @@ func TestFlatten_MalformedHistogramDropped(t *testing.T) {
 	}
 	if points[0].Histogram == nil || points[0].Histogram.Count != 3 {
 		t.Errorf("count-only histogram payload = %+v, want Count=3", points[0].Histogram)
+	}
+}
+
+// TestFlatten_InconsistentHistogramDropped pins the #662 sanity check: a
+// hostile point whose bucket counts total MORE than its Count would
+// render a non-monotone +Inf bucket in the classic Prometheus exposition
+// (the +Inf value is written as Count) and corrupt histogram_quantile.
+// Such a point is dropped at decode. sum(BucketCounts) < Count stays
+// valid — the remainder is representable in the implicit +Inf bucket.
+func TestFlatten_InconsistentHistogramDropped(t *testing.T) {
+	histPoint := func(name string, count uint64, buckets []uint64) *metricpb.Metric {
+		return &metricpb.Metric{
+			Name: name, Unit: "s",
+			Data: &metricpb.Metric_Histogram{Histogram: &metricpb.Histogram{
+				DataPoints: []*metricpb.HistogramDataPoint{{
+					Count: count, BucketCounts: buckets, ExplicitBounds: []float64{0.5},
+				}},
+			}},
+		}
+	}
+	hostile := histPoint("bad.hist", 3, []uint64{4, 2})    // sum=6 > count=3
+	underfilled := histPoint("ok.hist", 5, []uint64{2, 1}) // sum=3 < count=5: +Inf remainder
+	overflow := histPoint("wrap.hist", 3, []uint64{math.MaxUint64, 2})
+
+	points, dropped := flattenResourceMetrics(wrap(nil, hostile, underfilled, overflow))
+	if dropped != 2 {
+		t.Errorf("dropped = %d, want 2 (bucket-sum > count, uint64 wrap)", dropped)
+	}
+	if len(points) != 1 || points[0].Name != "ok.hist" {
+		t.Errorf("points = %+v, want a single ok.hist point", points)
 	}
 }
 
