@@ -157,8 +157,15 @@ func writeGroup(w io.Writer, name, promType, help string, rows []otelmapper.Otel
 // the _bucket/_sum/_count sample family the text format requires, so it
 // degrades to a gauge on its scalar value (the observation count) —
 // defensive; the resolver already types payload-less records as gauge.
+// A delta-temporality counter cannot be a Prometheus counter either
+// (the text format is cumulative by definition), so the raw delta value
+// is exposed as a gauge without the `_total` suffix — byte-identical to
+// the rendering these streams had before delta pass-through (#661).
 func effectiveType(r otelmapper.OtelRecord) string {
 	if r.Type == "histogram" && r.Histogram == nil {
+		return "gauge"
+	}
+	if r.Type == "counter" && r.Temporality == otelmapper.TemporalityDelta {
 		return "gauge"
 	}
 	return r.Type
