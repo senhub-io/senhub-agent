@@ -180,6 +180,37 @@ func keys(m map[string]*dto.MetricFamily) []string {
 // TestSerialize_DetectsLabelCollision exercises the M2 collision path —
 // two distinct OTel attribute names that collapse to the same Prometheus
 // label after dot→underscore translation must produce a warn-once log.
+// TestSerialize_DeltaCounterRendersAsGauge pins the #661 exposition
+// contract: a Prometheus counter is cumulative by definition, so a
+// delta-temporality ingested counter must render as a gauge on its raw
+// delta value, without the `_total` suffix — the same output these
+// streams had when the decoder still degraded delta sums to gauges.
+func TestSerialize_DeltaCounterRendersAsGauge(t *testing.T) {
+	records := []otelmapper.OtelRecord{{
+		Name:        "http.server.requests",
+		Unit:        "{request}",
+		Type:        "counter",
+		Temporality: otelmapper.TemporalityDelta,
+		Attributes:  map[string]string{"probe_name": "edge_in"},
+		Value:       7,
+	}}
+
+	var buf bytes.Buffer
+	if err := SerializeToTextExposition(records, &buf, SerializeOptions{}); err != nil {
+		t.Fatalf("Serialize err: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "_total") {
+		t.Errorf("delta counter must not carry the _total suffix:\n%s", out)
+	}
+	if !strings.Contains(out, "# TYPE senhub_http_server_requests gauge") {
+		t.Errorf("delta counter must be exposed as a gauge:\n%s", out)
+	}
+	if !strings.Contains(out, `senhub_http_server_requests{probe_name="edge_in"} 7`) {
+		t.Errorf("delta counter sample missing:\n%s", out)
+	}
+}
+
 func TestSerialize_DetectsLabelCollision(t *testing.T) {
 	resetSerializerWarnDedupForTest()
 	var warnings []string

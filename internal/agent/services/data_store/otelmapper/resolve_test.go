@@ -325,6 +325,56 @@ func TestResolve_OTLPIngestPreservesInstrumentType(t *testing.T) {
 	}
 }
 
+func TestResolve_OTLPIngestDeltaTemporality(t *testing.T) {
+	// A delta-temporality ingested sum carries otel_temporality=delta
+	// (stamped by the decoder, #661). Resolve must surface it on the
+	// record's Temporality field — keeping the counter instrument type —
+	// and must not leak the control tag as an attribute. Absence of the
+	// tag means cumulative, the zero value.
+	m := CacheMetric{
+		ProbeName:  "edge_in",
+		ProbeType:  "otlp_receiver",
+		MetricName: "http.server.requests",
+		Value:      7,
+		Unit:       "{request}",
+		Tags: map[string]string{
+			"metric_type":      MetricTypeOTLPIngest,
+			"otel_type":        "counter",
+			"otel_temporality": TemporalityDelta,
+			"unit":             "{request}",
+			"probe_name":       "edge_in",
+			"probe_type":       "otlp_receiver",
+		},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+	if r.Type != "counter" {
+		t.Errorf("type=%q, want counter (delta must not degrade the instrument type)", r.Type)
+	}
+	if r.Temporality != TemporalityDelta {
+		t.Errorf("temporality=%q, want %q", r.Temporality, TemporalityDelta)
+	}
+	if _, leaked := r.Attributes["otel_temporality"]; leaked {
+		t.Errorf("otel_temporality control tag must not leak as an attribute: %v", r.Attributes)
+	}
+
+	// Without the tag, the record stays on the cumulative default.
+	delete(m.Tags, "otel_temporality")
+	recs, err = Resolve(nil, m, DefaultResolveOptions())
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("untagged pass-through: recs=%d err=%v", len(recs), err)
+	}
+	if recs[0].Temporality != "" {
+		t.Errorf("temporality=%q, want empty (cumulative default)", recs[0].Temporality)
+	}
+}
+
 func TestResolve_TypedPassThrough(t *testing.T) {
 	// An snmp_poll dynamic metric: a canonical senhub.snmp.* name with no
 	// transformer row, carrying its OTel type in the otel_type tag. Resolve

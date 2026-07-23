@@ -10,9 +10,13 @@ import "sync"
 // rest of agentstate exists.
 
 // otlpReceiverIngested counts items accepted by the receiver, keyed by signal
-// ("metrics", "logs", "traces"). The item unit is per-signal — metric
-// datapoints, log records, spans — so it measures activity per signal rather
-// than a cross-signal total.
+// ("metrics", "logs", "traces"). The item unit is per-signal: for metrics it
+// is the EMITTED internal datapoints, counted after family expansion (a
+// summary expands to _count/_sum plus one point per quantile, an exponential
+// histogram to its scalar aggregates), not the received OTLP points — the
+// number that actually lands in the sinks and that the dropped counter
+// complements. Logs count records and traces count spans, where received and
+// emitted are the same thing.
 var otlpReceiverIngested = struct {
 	mu sync.RWMutex
 	m  map[string]uint64
