@@ -94,6 +94,8 @@ storage:
           batch_timeout: 5s
           buffer_size: 2048           # bounded queue; drop beyond
           sample_ratio: 1.0           # head sampling, 0.0-1.0
+          relay_enrichment: true      # default true; add agent correlation
+                                      # context to relayed spans (see below)
 
       # Resource attributes attached to every emitted batch. Defaults
       # are derived from agent identity if omitted.
@@ -139,6 +141,42 @@ The agent produces no spans of its own. The traces signal relays spans
 received by an [otlp_receiver probe](probes/otlp-receiver.md) configured
 with `signals: [traces]`; without such a probe there is nothing to
 export and the signal stays idle.
+
+**Correlation enrichment (`relay_enrichment`, default `true`).** Relayed
+spans keep the emitting application's own identity (`service.name`,
+`service.instance.id`, `host.*`) — the agent never overwrites it. On top of
+that, the agent adds its own context so you can pivot from an app trace to
+the infrastructure telemetry of the same tenant and host:
+
+- `senhub.agent.host.id` / `host.name` / `instance.id` — which agent
+  relayed the trace (added under a reserved prefix, never colliding with the
+  app's attributes);
+- your `global_tags` (for example `tenant`, `site`) and
+  `deployment.environment` — added **only if the application didn't already
+  set that key**.
+
+Set `relay_enrichment: false` for a verbatim pass-through. When a single
+agent relays traffic for several clients (a shared gateway), assign each
+source its own tenant with per-source rules:
+
+```yaml
+        traces:
+          enabled: true
+          relay_tenant_overrides:
+            - match: { key: "service.namespace", value: "client-b" }
+              tags: { tenant: "client-b", site: "lyon" }
+```
+
+A rule applies to relayed spans whose resource attribute `key` equals
+`value`; its `tags` are inserted (only when absent) instead of the default
+`global_tags`.
+
+!!! note
+    `service.instance.id` is **not** a join key between the agent's own
+    metrics/logs and a relayed third-party trace — they are different
+    services. The reliable cross-signal pivot is **tenant/site** (always)
+    and **host** (when known), i.e. "this app trace is slow → show the infra
+    telemetry of the same tenant/host".
 
 ### `signals.entities`
 
