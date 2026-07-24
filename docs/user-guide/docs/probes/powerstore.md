@@ -73,6 +73,41 @@ Monitor several arrays with separate probe instances:
 | `password` | string | Yes | - | User password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `interval` | integer | No | `300` | Collection interval in seconds |
 | `verify_ssl` | boolean | No | `true` | Validate the array's TLS certificate (set `false` for self-signed management certificates) |
+| `volume_perf.enabled` | boolean | No | `false` | Opt in to per-volume IOPS/bandwidth/latency (one `POST /metrics/generate` per volume) |
+| `volume_perf.top_n` | integer | No | `20` | Cap the number of volumes queried per run, ranked by logical usage (busiest first) |
+| `volume_perf.interval` | integer | No | `300` | Seconds between per-volume perf runs, independent of the main `interval` |
+
+### Per-volume performance (opt-in)
+
+Per-volume IOPS/bandwidth/latency is **off by default**: unlike the cluster,
+appliance and node rollups (one request each), it costs **one `POST /metrics/generate`
+per volume**, so on an array with hundreds or thousands of volumes an unconditional
+per-cycle collection is a real request-cost and cache-cardinality concern.
+
+When you enable it, the fan-out stays bounded on two axes:
+
+- **`top_n`** caps how many volumes are queried each run — the busiest by logical
+  usage, so the volumes that matter are covered without querying the long tail.
+- **`volume_perf.interval`** throttles the fan-out to its own (typically longer)
+  cadence, decoupled from the main probe `interval`.
+
+With the defaults (`top_n: 20`, `interval: 300`) the added load is at most 20
+requests every 5 minutes and 20 × 9 = 180 extra cache series — well within the
+agent's series cap. Raise `top_n` deliberately after checking your array's volume
+count.
+
+```yaml
+probes:
+  - type: powerstore
+    endpoint: "https://10.0.199.11"
+    username: "supervision"
+    password: "${secret:powerstore.password}"
+    interval: 300
+    volume_perf:
+      enabled: true
+      top_n: 25
+      interval: 600
+```
 
 # Metrics Collected
 
@@ -147,6 +182,9 @@ OTLP/Prometheus and become filterable in the Web UI.
 | `senhub.powerstore.volume.state` | `1` | `volume.name` | Volume operational state (Ready=1, else 0) |
 | `senhub.powerstore.volume.logical_used` | `By` | `volume.name` | Logical data written before data reduction |
 | `senhub.powerstore.volume.size` | `By` | `volume.name` | Provisioned (thin) volume size |
+| `senhub.powerstore.volume.iops` | `{operation}/s` | `volume.name` | Per-volume IOPS (read / write / total) — **opt-in**, see below |
+| `senhub.powerstore.volume.bandwidth` | `By/s` | `volume.name` | Per-volume throughput — **opt-in** |
+| `senhub.powerstore.volume.latency` | `ms` | `volume.name` | Per-volume latency (milliseconds) — **opt-in** |
 | `senhub.powerstore.drive.state` | `1` | `drive.name` | Drive lifecycle state (Healthy=1, else 0) |
 | `senhub.powerstore.appliance.state` | `1` | `appliance.name` | Appliance health (1 = no faulted component, else 0) |
 | `senhub.powerstore.appliance.capacity.physical` | `By` | `appliance.name` | Physical capacity (used / total, by attribute) |
