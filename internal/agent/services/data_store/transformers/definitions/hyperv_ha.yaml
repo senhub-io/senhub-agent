@@ -5,7 +5,7 @@ version: "3.0.0"
 # Format v3 — OTel-first source of truth.
 # No OTel semconv for Hyper-V Replica / Failover Cluster health — all metrics
 # under senhub.hyperv_ha.* extensions (same footing as senhub.veeam.*).
-# See senhub-semantic-conventions §4.36.
+# See senhub-semantic-conventions §4.39.
 
 metrics:
   # ═════════════════════════════════════════════════════════════════════════

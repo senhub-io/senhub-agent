@@ -5,7 +5,7 @@ version: "3.0.0"
 # Format v3 — OTel-first source of truth.
 # No OTel semconv for Exchange Online mail flow — all metrics under
 # senhub.exchange_online.* extensions (same footing as senhub.veeam.*).
-# See senhub-semantic-conventions §4.23.
+# See senhub-semantic-conventions §4.38.
 
 metrics:
   # ═════════════════════════════════════════════════════════════════════════
