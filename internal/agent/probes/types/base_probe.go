@@ -8,13 +8,11 @@ import (
 )
 
 // BaseProbe provides common probe functionality that can be embedded
-// in concrete probe implementations. It handles data routing and
-// callback management.
+// in concrete probe implementations.
 type BaseProbe struct {
-	OnDataPoints data_store.AddCallback // Callback for collected datapoints
-	name         string                 // Unique probe name from configuration
-	probeType    string                 // Probe type (technical identifier: cpu, redfish, citrix, etc.)
-	entitySrc    entity.Source          // Set by SetEntitySource in the constructor
+	name      string        // Unique probe name from configuration
+	probeType string        // Probe type (technical identifier: cpu, redfish, citrix, etc.)
+	entitySrc entity.Source // Set by SetEntitySource in the constructor
 }
 
 // GetTargetStrategies returns the default storage strategies
@@ -25,11 +23,6 @@ type BaseProbe struct {
 // router, so listing them here is harmless when they're absent.
 func (p *BaseProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
-}
-
-// SetOnDataPoints registers the callback for handling collected datapoints
-func (p *BaseProbe) SetOnDataPoints(callback data_store.AddCallback) {
-	p.OnDataPoints = callback
 }
 
 // SetName sets the unique name for this probe instance
