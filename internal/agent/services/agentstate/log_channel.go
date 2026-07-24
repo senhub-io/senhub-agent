@@ -242,6 +242,7 @@ func UnsubscribeLogs(ch <-chan LogRecord) {
 // This keeps the channel reflecting the most recent activity rather
 // than freezing on the oldest backlog.
 func PublishLog(rec LogRecord) {
+	rec.Attributes = enrichLogAttributes(rec.Attributes, rec.ProducerProbeName)
 	logCh.mu.RLock()
 	subs := logCh.subs
 	logCh.mu.RUnlock()
@@ -268,6 +269,32 @@ func PublishLog(rec LogRecord) {
 			}
 		}
 	}
+}
+
+// enrichLogAttributes overlays the producer probe's operator-configured
+// custom_tags onto a log record's attributes for cross-signal correlation
+// (#294): the metric router already applies custom_tags to datapoints, but
+// logs never passed through it. Operator tags win on a key conflict, the
+// same precedence the metric enrichment uses (custom_tags > built-in).
+//
+// Returns the original map untouched (no allocation) when the producer has
+// no configured custom_tags — the overwhelmingly common path. Otherwise it
+// builds a fresh merged map, never mutating the caller's attributes (the
+// same record value fans out to every subscriber; a shared-map mutation
+// would race, cf. the copy-on-write subscriber-list invariant #262).
+func enrichLogAttributes(attrs map[string]string, probeName string) map[string]string {
+	custom := customTagsForProbe(probeName)
+	if len(custom) == 0 {
+		return attrs
+	}
+	merged := make(map[string]string, len(attrs)+len(custom))
+	for k, v := range attrs {
+		merged[k] = v
+	}
+	for k, v := range custom {
+		merged[k] = v
+	}
+	return merged
 }
 
 // recordRoutesTo reports whether a record with the given TargetStrategies
