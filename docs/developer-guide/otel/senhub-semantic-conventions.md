@@ -1590,6 +1590,9 @@ les instances s'écraseraient en OTLP/Prometheus (une seule série au lieu de N)
 | `senhub.powerstore.volume.state` | Gauge `1` | `senhub.powerstore.volume.name` | `/volume.state` (Ready=1, autre=0) |
 | `senhub.powerstore.volume.logical_used` | Gauge `By` | `…volume.name` | `/volume.logical_used` |
 | `senhub.powerstore.volume.size` | Gauge `By` | `…volume.name` | `/volume.size` (provisioned) |
+| `senhub.powerstore.volume.iops` | Gauge `{operation}/s` | `…volume.name` + `operation` (`read`/`write`/`total`) | `performance_metrics_by_volume` (opt-in, borné — voir `volume_perf`) |
+| `senhub.powerstore.volume.bandwidth` | Gauge `By/s` | `…volume.name` + `operation` | idem |
+| `senhub.powerstore.volume.latency` | Gauge `s` | `…volume.name` + `operation` | idem (ms → s via value_scale) |
 | `senhub.powerstore.drive.state` | Gauge `1` | `senhub.powerstore.drive.name` | `/hardware` (type=Drive) lifecycle (Healthy=1) |
 | `senhub.powerstore.appliance.state` | Gauge `1` | `senhub.powerstore.appliance.name` | `/appliance` lifecycle (Healthy=1) |
 | `senhub.powerstore.appliance.capacity.physical` | Gauge `By` | `…appliance.name` + `capacity.state` (`used`/`total`) | `space_metrics_by_appliance` |
