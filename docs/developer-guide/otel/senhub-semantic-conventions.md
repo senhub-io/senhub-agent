@@ -1394,7 +1394,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 **Stratégie :** aligner les noms sur `memcachedreceiver` quand le metric existe dans contrib (`memcached.network`, `memcached.operations`, `memcached.commands`, `memcached.cpu.usage`, `memcached.uptime`, `memcached.evictions`) ; extensions `memcached.*` locales pour les métriques sans équivalent contrib (`memcached.current.connections`, `memcached.connections.total`, `memcached.current.items`, `memcached.items.total`, `memcached.bytes`, `memcached.limit_maxbytes`). Pas de suffixe d'unité dans le nom. Unité canonique OTel dans `otel.unit`.
 
-#### 4.26.1 Métriques
+#### 4.31.1 Métriques
 
 | Métrique OTel | Unité | Type | Attributs | Source stats |
 |---|---|---|---|---|
@@ -1412,7 +1412,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 | `memcached.evictions` | `{eviction}` | counter | `server.address` | `evictions` |
 | `memcached.cpu.usage` | `s` | counter | `server.address`, `process.cpu.state` | `rusage_user` / `rusage_system` |
 
-#### 4.26.2 Collapses
+#### 4.31.2 Collapses
 
 | Métrique OTel | Valeurs de l'attribut discriminant |
 |---|---|
@@ -1423,7 +1423,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 `network.io.direction` suit la convention OTel (`transmit`/`receive`) — identique aux valeurs que `memcachedreceiver` contrib produit sur `memcached.network{direction}`.
 
-#### 4.26.3 DiscriminantTagsRegistry
+#### 4.31.3 DiscriminantTagsRegistry
 
 Tags discriminants déclarés dans `http_cache.go` : `result`, `command`, `state`, `direction`, `metric_type`.
 Le tag probe `direction` est renommé vers l'attribut OTel `network.io.direction` via `tag_to_attribute` — la discrimination dans le cache utilise le nom de tag d'origine (`direction`).
@@ -1460,7 +1460,7 @@ Probe Ubiquiti UniFi Controller — REST API stdlib HTTP, auth cookie. Une
 instance = un contrôleur. Métriques : disponibilité, inventaire par type,
 clients, débit WAN, CPU/RAM/satisfaction par AP.
 
-#### 4.26.1 Métriques
+#### 4.33.1 Métriques
 
 | Métrique OTel | Unité | Type | Attributs / Notes |
 |---|---|---|---|
@@ -1476,7 +1476,7 @@ clients, débit WAN, CPU/RAM/satisfaction par AP.
 | `unifi.ap.clients` | `{client}` | gauge | `unifi.device.name`, `unifi.site` |
 | `unifi.ap.satisfaction` | `1` | gauge | ratio 0..1 ; `unifi.device.name`, `unifi.site` |
 
-#### 4.26.2 Collapse `unifi.network.io` (#465)
+#### 4.33.2 Collapse `unifi.network.io` (#465)
 
 `unifi.network.tx_bytes` et `unifi.network.rx_bytes` (deux noms) ont été
 fusionnés en **`unifi.network.io`** discriminé par
@@ -1535,7 +1535,7 @@ pour l'affichage PRTG.
 - `sqlserver.database.io` : `db.namespace` (nom de la base), `direction` (`read`/`write`).
 - `sqlserver.database.status` : `db.namespace`.
 
-### 4.19 Probe `powerstore` (baie de stockage Dell PowerStore)
+### 4.36 Probe `powerstore` (baie de stockage Dell PowerStore)
 
 Aucune convention OTel semconv pour les baies de stockage — tout sous extensions
 `senhub.powerstore.*` (même statut que `senhub.veeam.*`). `hw.*` reste réservé aux
@@ -1544,7 +1544,7 @@ composants matériels d'un hôte, pas aux agrégats niveau baie. La baie est une
 `server.address` reste descriptif) — précédent redfish, elle est monitorée
 out-of-band via l'API REST donc pas de machine-id, ce n'est pas un `host`.
 
-#### 4.19.1 Extensions `senhub.powerstore.*`
+#### 4.36.1 Extensions `senhub.powerstore.*`
 
 | Métrique OTel | Type / unité | Attributs | Source REST |
 |---|---|---|---|
@@ -1578,7 +1578,7 @@ tout autre état (`Degraded`, `Failed`, `Unavailable`, `PoweredOff`…) est `fau
 **Auth** : Basic pour les GET ; le `POST /metrics/generate` rejoue le CSRF
 `DELL-EMC-TOKEN` capturé sur le premier GET + le cookie de session.
 
-#### 4.19.2 Séries par-ressource (multi-instance)
+#### 4.36.2 Séries par-ressource (multi-instance)
 
 En plus des agrégats niveau cluster ci-dessus, la probe émet une série par
 ressource. Chaque série porte un tag ressource (`volume`, `appliance`, `node`,
@@ -1608,10 +1608,7 @@ suivi). Seules la capacité + l'état par-volume sont exposés. La perf par-appl
 et par-node réutilise la même forme `perfMetrics`/`spaceMetrics` (cardinalité
 faible : 1-4 appliances, 2-8 nœuds).
 
-> Note numérotation : deux sections portent `### 4.19` (snmp_trap et powerstore) —
-> collision historique à renuméroter lors d'une passe éditoriale.
-
-### 4.22 Probe `ad_hybrid` (Azure AD Connect Health)
+### 4.37 Probe `ad_hybrid` (Azure AD Connect Health)
 
 Santé de la synchronisation d'identité hybride (Azure AD Connect Health). Pas de
 semconv OTel pour ce domaine — métriques sous `senhub.ad_hybrid.*` (même statut
@@ -1628,7 +1625,7 @@ que `senhub.veeam.*`). Émission : ids courts snake_case côté probe (enterpris
 | `senhub.ad_hybrid.sync.export_errors` | Gauge `{error}` | `…service.name` + `senhub.ad_hybrid.error.bucket` | erreurs d'export d'annuaire par bucket |
 | `senhub.ad_hybrid.agent.last_seen` | Gauge `s` | `…service.name` + `senhub.ad_hybrid.agent.server` | secondes depuis le dernier report de l'agent |
 
-### 4.23 Probe `exchange_online` (Exchange Online)
+### 4.38 Probe `exchange_online` (Exchange Online)
 
 Flux de messagerie et santé de service Exchange Online (API reporting Microsoft
 365). Pas de semconv OTel — métriques sous `senhub.exchange_online.*`. Émission :
@@ -1648,7 +1645,7 @@ par le transformer `transformers/definitions/exchange_online.yaml`.
 | `senhub.exchange_online.mailbox.storage.used` | Gauge `By` | — | stockage total consommé (tous mailboxes) |
 | `senhub.exchange_online.mailbox.quota_exceeded` | Gauge `{mailbox}` | — | boîtes ayant dépassé le quota d'avertissement |
 
-### 4.36 Probe `hyperv_ha`
+### 4.39 Probe `hyperv_ha`
 
 Hyper-V Replica and Windows Failover Cluster health, read from local WMI
 (`root\virtualization\v2`, `root\MSCluster`). No OTel semconv exists for
@@ -1664,7 +1661,7 @@ Cluster metrics are emitted only when the Failover Clustering feature is present
 | `senhub.hyperv_ha.cluster.node.state` | Gauge `1` | `senhub.hyperv_ha.cluster.node` | État du nœud (1 = Up, 0 = Down/Paused/Joining) |
 | `senhub.hyperv_ha.cluster.group.state` | Gauge `1` | `senhub.hyperv_ha.cluster.group` | État du groupe de ressources (1 = Online, 0 = Offline/Failed/Partial) |
 
-### 4.37 Probe `mssql_ha`
+### 4.40 Probe `mssql_ha`
 
 Santé de réplication SQL Server AlwaysOn Availability Group. Pas de semconv OTel
 pour la réplication AG ; métriques sous `senhub.mssql_ha.*` (même statut que
@@ -1682,7 +1679,7 @@ pour la réplication AG ; métriques sous `senhub.mssql_ha.*` (même statut que
 | `senhub.mssql_ha.log_send_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit d'envoi du log primaire → secondaire |
 | `senhub.mssql_ha.redo_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit de rejeu du log sur le secondaire |
 
-### 4.38 Probe `oracle_enterprise` (Oracle EE / Diagnostics Pack)
+### 4.41 Probe `oracle_enterprise` (Oracle EE / Diagnostics Pack)
 
 Performance et disponibilité d'Oracle Database Enterprise Edition avec l'option
 Diagnostics Pack (vues v$sysmetric, v$active_session_history, gv$ RAC,
@@ -1706,7 +1703,7 @@ courts snake_case côté probe, déclarés par le transformer
 | `senhub.oracle_enterprise.rac.gc.blocks_received` | Counter `{block}` | `senhub.oracle_enterprise.rac.instance` | blocs global-cache CR reçus (cumul), par instance |
 | `senhub.oracle_enterprise.dataguard.apply_lag` / `transport_lag` | Gauge `s` | — | apply / transport lag du standby (v$dataguard_stats) |
 
-### 4.39 Probe `vsphere_ha` (VMware vSphere HA — vSAN + NSX-T)
+### 4.42 Probe `vsphere_ha` (VMware vSphere HA — vSAN + NSX-T)
 
 Santé HA vSphere depuis un vCenter : santé vSAN (govmomi vSAN health) et,
 optionnellement, état de l'overlay NSX-T (API REST du NSX manager). Pas de semconv
@@ -1725,13 +1722,7 @@ OTel — métriques sous `senhub.vsphere_ha.*`. NSX-T n'est interrogé que si
 | `senhub.vsphere_ha.nsx.logical_switches` | Gauge `{switch}` | — | `/logical-switches.result_count` |
 | `senhub.vsphere_ha.nsx.edge_cluster.health` | Gauge `1` | `senhub.vsphere_ha.nsx.edge_cluster.id` | `/edge-clusters` (1 si tous membres UP, sinon 0) |
 
-> Note numérotation : §4.20/§4.21 sont aussi employés par `icmp_check`/`http_check`
-> (run « free ») — collision historique, à renuméroter lors d'une passe éditoriale
-> (au même titre que le double `### 4.19`). §4.22-4.23 + §4.36-4.39 = les 6 probes
-> Pro cloud/HA (ad_hybrid, exchange_online, hyperv_ha, mssql_ha, oracle_enterprise,
-> vsphere_ha).
-
-### 4.40 Probe `os_updates` (free, #603)
+### 4.43 Probe `os_updates` (free, #603)
 
 Posture de patching OS de la machine locale. Aucun receiver otelcol-contrib ne
 couvre ce domaine → namespace `senhub.os.updates.*`. Probe host-local
