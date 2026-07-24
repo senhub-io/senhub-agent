@@ -6,7 +6,7 @@ version: "3.0.0"
 # No OTel semconv for storage arrays — all metrics under senhub.powerstore.*
 # extensions (same footing as senhub.veeam.*). hw.* is reserved for host
 # hardware components, not array-level aggregates.
-# See senhub-semantic-conventions §4.19.
+# See senhub-semantic-conventions §4.36.
 
 metrics:
   # ═════════════════════════════════════════════════════════════════════════
