@@ -35,9 +35,9 @@ func TestNewWifiSignalStrengthProbe(t *testing.T) {
 
 // TestWifiProbe_DatapointsCarryProbeTags pins #264: wifi datapoints
 // must carry probe_name/probe_type like every other host probe — the
-// enrichment used to sit in the dead OnDataPoints branch, so the
-// transformer, per-probe custom_tags and OTLP partitioning all missed
-// wifi series.
+// enrichment used to sit in a dead conditional branch (a never-wired
+// callback, removed in #166), so the transformer, per-probe
+// custom_tags and OTLP partitioning all missed wifi series.
 func TestWifiProbe_DatapointsCarryProbeTags(t *testing.T) {
 	logger := zerolog.New(os.Stderr)
 	probe, err := NewWifiSignalStrengthProbe(map[string]interface{}{"interval": 30}, &logger)
