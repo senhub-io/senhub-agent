@@ -497,6 +497,75 @@ func TestParseConfig_TracesDefaults(t *testing.T) {
 	}
 }
 
+func TestParseConfig_RelayEnrichmentDefaultsOn(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{"endpoint": "x:4317"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.Traces.RelayEnrichment {
+		t.Errorf("RelayEnrichment should default to true")
+	}
+}
+
+func TestParseConfig_RelayEnrichmentDisabled(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"traces": map[string]interface{}{"enabled": true, "relay_enrichment": false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Traces.RelayEnrichment {
+		t.Errorf("RelayEnrichment should be false when set")
+	}
+}
+
+func TestParseConfig_RelayTenantOverrides(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"traces": map[string]interface{}{
+				"enabled": true,
+				"relay_tenant_overrides": []interface{}{
+					map[string]interface{}{
+						"match": map[string]interface{}{"key": "service.namespace", "value": "client-b"},
+						"tags":  map[string]interface{}{"tenant": "client-b", "site": "lyon"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Traces.RelayTenantOverrides) != 1 {
+		t.Fatalf("got %d overrides, want 1", len(cfg.Traces.RelayTenantOverrides))
+	}
+	o := cfg.Traces.RelayTenantOverrides[0]
+	if o.MatchKey != "service.namespace" || o.MatchValue != "client-b" || o.Tags["tenant"] != "client-b" {
+		t.Errorf("override parsed wrong: %+v", o)
+	}
+}
+
+func TestParseConfig_RelayTenantOverrideRejectsMissingMatch(t *testing.T) {
+	_, err := ParseConfig(map[string]interface{}{
+		"endpoint": "x:4317",
+		"signals": map[string]interface{}{
+			"traces": map[string]interface{}{
+				"enabled": true,
+				"relay_tenant_overrides": []interface{}{
+					map[string]interface{}{"tags": map[string]interface{}{"tenant": "x"}},
+				},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "match") {
+		t.Fatalf("expected missing-match error, got %v", err)
+	}
+}
+
 func TestParseConfig_TracesSampleRatioRange(t *testing.T) {
 	_, err := ParseConfig(map[string]interface{}{
 		"endpoint": "x:4317",
