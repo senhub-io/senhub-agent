@@ -1882,6 +1882,61 @@ raisons du choix. Si un déploiement expose encore un filtre à deux
 marqueurs, il date de l'ancien modèle et peut être réduit au prédicat
 unique ci-dessus.
 
+## 6quater. Corrélation cross-signal — contexte agent (#294)
+
+Objectif : rendre métriques, logs et traces **joignables** dans les
+backends finaux. Les backends joignent au niveau **Resource** (attributs
+indexés). Trois signaux, deux régimes d'identité :
+
+- **Signaux propres de l'agent** (métriques, logs, spans générés par
+  l'agent) : partagent la **même Resource** — `host.id`, `host.name`,
+  `service.instance.id`, `deployment.environment`, + `global_tags`
+  (tenant/site/region). Corrélation forte, native.
+- **Traces relayées** (spans reçus d'apps tierces via le receiver OTLP,
+  réémis) : portent la Resource de **l'app émettrice** (son propre
+  `service.name`/`service.instance.id`/`host.*`). Identité étrangère,
+  **jamais écrasée**.
+
+### Enrichissement des traces relayées (`relay_enrichment`, défaut on)
+
+Au flush du relay, **merge-not-overwrite**, copy-on-write sur la Resource
+(les spans sont partagés, jamais mutés) :
+
+| Attribut | Régime | Source |
+|---|---|---|
+| `senhub.agent.host.id` | ajouté (namespace réservé) | `host.id` de l'agent |
+| `senhub.agent.host.name` | ajouté | `host.name` de l'agent |
+| `senhub.agent.instance.id` | ajouté | `service.instance.id` de l'agent |
+| `tenant` / `site` / `region` | inséré **si absent** | `global_tags` de l'agent |
+| `deployment.environment` | inséré **si absent** | environnement de l'agent |
+
+`service.*` / `host.*` posés par l'app ne sont **jamais** touchés. Le
+`host.id` de l'agent n'est **jamais** posé en clé nue `host.id` (faux si
+l'app tourne ailleurs et pointe juste son SDK vers l'agent) — uniquement
+sous `senhub.agent.*`. Override par source :
+`signals.traces.relay_tenant_overrides` (`match: {key,value}` → `tags:`)
+pour le cas passerelle mono-agent multi-clients.
+
+### Vérité de corrélation (contrat de jointure)
+
+**`service.instance.id` n'est PAS une clé de jointure** entre la télémétrie
+de l'agent et une trace tierce relayée — ce sont des services différents.
+Un lien Grafana trace→metrics construit dessus renverra vide (correctement).
+La jointure réelle et utile : **tenant/site (toujours)** + **host (quand
+l'identité host est connue de façon fiable)** — pivot « trace app lente →
+télémétrie d'infra du même tenant/host ». Les clés garanties cross-signal :
+`tenant`, `site`/`region`, `deployment.environment` (insert-only partout) ;
+`host.id`/`host.name` (agent-owned toujours, traces conditionnel via
+`senhub.agent.*`).
+
+> Note : les *exemplars* (trace_id sur datapoints) sont le mécanisme OTel
+> natif metric→trace ; non applicable ici (les métriques de l'agent sont
+> collectées hors contexte de trace actif). Hors périmètre.
+
+> ⚠ Les clés `senhub.agent.*` sur les traces relayées sont un **contrat
+> partagé** avec le consommateur topologie (Toise, arête « relayed-by ») :
+> à aligner avant figeage, ne pas renommer unilatéralement.
+
 ## 7. Versioning
 
 Ce document n'a pas (encore) de numéro de version. Une fois la V1 complète (15 probes mappées) publiée dans 0.1.88, il passera en SemVer 1.0.0. Tout changement de nom/attribut/unité = major bump.

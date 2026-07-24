@@ -83,6 +83,11 @@ signals:
   traces:
     enabled: false
     sample_ratio: 1.0
+    relay_enrichment: true       # add agent correlation context to RELAYED
+                                 # spans (default true; false = verbatim)
+    relay_tenant_overrides:      # per-source tenant for the shared-gateway case
+      - match: { key: "service.namespace", value: "client-b" }
+        tags: { tenant: "client-b", site: "lyon" }
   entities:
     enabled: false             # opt-in; entity events ride the logs transport
     interval: 60s              # heartbeat cadence + consumer liveness backstop
@@ -95,6 +100,37 @@ signals:
 ```
 
 The interval is independent of probe `Collect` cadence — OTLP pulls the latest cache snapshot at its own rhythm.
+
+## Relayed-trace correlation enrichment (`relay_enrichment`, #294)
+
+The traces relay forwards spans received from third-party apps. Those spans
+carry the **emitting app's** Resource (its own `service.name` /
+`service.instance.id` / `host.*`) — a foreign identity that must be
+preserved. `relay_enrichment` (default **true**) adds the agent's
+correlation context **merge-not-overwrite** at relay flush, copy-on-write on
+the Resource only (the spans are shared, never mutated):
+
+- `senhub.agent.host.id` / `host.name` / `instance.id` — the agent's own
+  identity under a **reserved namespace** (never collides with the app's
+  keys); the "relayed by which agent" pivot.
+- `tenant` / `site` / `deployment.environment` (the agent's `global_tags` +
+  environment) — inserted **only when the app didn't set the key**. The
+  emitter value always wins.
+
+The agent's host id is **never** stamped as a bare `host.id` (it would be
+wrong when the app runs elsewhere and just points its SDK at the agent) —
+only under `senhub.agent.*`. `relay_tenant_overrides` swaps the default
+insert set for spans whose Resource matches a rule (`match: {key, value}` →
+`tags:`), the shared-gateway case where one agent relays for several
+end-clients. Set `relay_enrichment: false` for a verbatim pass-through.
+
+**Correlation contract (what actually joins across signals):**
+`service.instance.id` is NOT a join key between agent telemetry and relayed
+app traces — they are different services. The realistic pivot is
+**tenant/site (always)** + **host (when known truthfully)**: jump from a
+slow app trace to the infra telemetry of the same tenant/host. Agent-owned
+metrics/logs/own-spans share the full Resource (`host.id`,
+`service.instance.id`, `deployment.environment`, global_tags) already.
 
 `redact_attributes` is the per-strategy privacy opt-out for entity attributes: listed keys are removed from `Entity.Attributes` on a copy at the pump boundary (`redactEntityEvent` in `entity_pump.go` — the shared `entity.Event` fans out to all subscribers and must never be mutated), so it covers the host entity and probe-emitted entities alike. Drop, not mask — an entity state is a full snapshot, absence IS the redaction. Identity keys (`host.id`, `service.instance.id`, `container.id`, `network.device.id`, `db.instance.id`, `vmid` — `entityIdentityKeys` in `config.go`) are refused at parse time and by `agent config check`. Trade-off to surface to users: redacting `hw.serial_number` breaks the out-of-band BMC/redfish `same_as` facet reconciliation for that export.
 
