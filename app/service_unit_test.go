@@ -2,7 +2,6 @@ package app
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"text/template"
@@ -169,7 +168,7 @@ func TestHardenedSystemdScript_StartLimitDirectivesLiveInUnitSection(t *testing.
 // package installs and refresh-unit's fallback path converged (#396).
 func TestPackagedUnit_ExecStartPointsAtManagedBinary(t *testing.T) {
 	binPath, _ := splitExecStartLine(packagedExecStartLine())
-	want := filepath.Join(managedBinaryDir, "senhub-agent")
+	want := managedBinaryUnitPath()
 	if binPath != want {
 		t.Errorf("packaged ExecStart binary = %q, want the staged managed path %q", binPath, want)
 	}
@@ -191,7 +190,7 @@ func TestLinuxSystemdScript_SelectsTemplatePerUser(t *testing.T) {
 func TestRootSystemdScript_StartLimitDirectivesLiveInUnitSection(t *testing.T) {
 	unit := renderSystemdScript(t,
 		rootSystemdScript,
-		filepath.Join(managedBinaryDir, "senhub-agent"),
+		managedBinaryUnitPath(),
 		[]string{"run", "--config-path", "/etc/senhub-agent/agent-config.yaml"},
 		managedBinaryDir,
 	)
@@ -221,7 +220,7 @@ func TestRootSystemdScript_StartLimitDirectivesLiveInUnitSection(t *testing.T) {
 func TestRootSystemdScript_NoUserDirectiveAndNoCapabilityDrops(t *testing.T) {
 	unit := renderSystemdScript(t,
 		rootSystemdScript,
-		filepath.Join(managedBinaryDir, "senhub-agent"),
+		managedBinaryUnitPath(),
 		[]string{"run"},
 		managedBinaryDir,
 	)
@@ -242,7 +241,7 @@ func TestRootSystemdScript_NoUserDirectiveAndNoCapabilityDrops(t *testing.T) {
 // service users references the staged /var/lib path — never the
 // installer's invocation path.
 func TestInstallUnit_ExecStartPointsAtStagedBinary_BothUsers(t *testing.T) {
-	staged := filepath.Join(managedBinaryDir, "senhub-agent")
+	staged := managedBinaryUnitPath()
 	args := []string{"run", "--config-path", "/etc/senhub-agent/agent-config.yaml"}
 	for _, user := range []string{defaultServiceUser, rootServiceUser} {
 		t.Run(user, func(t *testing.T) {
