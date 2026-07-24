@@ -11,9 +11,9 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 - **OTel semantic conventions (canonical)** → `docs/developer-guide/otel/senhub-semantic-conventions.md`
 - **Release notes** → `docs/releases/`
 
-## ⚠️ Temporary dependency fork
+## ⚠️ Temporary dependency fork (enterprise only)
 
-`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). Detailed rationale lives in the private companion repo `senhub-io/senhub-internal-docs` (`TEMPORARY-FORK-citrix-adc-nitro-go.md`). Quarterly review; revert when upstream merges.
+`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). The `citrix`/`netscaler` probes that depend on it live in `senhub-agent-enterprise`, so the `require` + `replace` now live **only in that repo's `go.mod`** — this OSS core no longer requires adc-nitro-go (pruned in #208). Detailed rationale lives in the private companion repo `senhub-io/senhub-internal-docs` (`TEMPORARY-FORK-citrix-adc-nitro-go.md`). Quarterly review; revert when upstream merges.
 
 ## Project-specific build conventions
 
