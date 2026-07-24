@@ -646,6 +646,156 @@ metrics:
     tag_to_attribute:
       volume: senhub.powerstore.volume.name
 
+  # Per-volume performance — opt-in, bounded fan-out (volume_perf config, #628).
+  # Same senhub.powerstore.{iops,bandwidth,latency} families as the cluster
+  # rollup, distinguished by the volume attribute.
+  - name: "powerstore_volume_iops_read"
+    channel: "volume_iops_read"
+    display_name: "{volume} Read IOPS"
+    unit: "#"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average read IOPS for the volume over the interval"
+    otel:
+      name: senhub.powerstore.volume.iops
+      unit: "{operation}/s"
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: read
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_iops_write"
+    channel: "volume_iops_write"
+    display_name: "{volume} Write IOPS"
+    unit: "#"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average write IOPS for the volume over the interval"
+    otel:
+      name: senhub.powerstore.volume.iops
+      unit: "{operation}/s"
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: write
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_iops_total"
+    channel: "volume_iops_total"
+    display_name: "{volume} Total IOPS"
+    unit: "#"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average total IOPS for the volume over the interval"
+    otel:
+      name: senhub.powerstore.volume.iops
+      unit: "{operation}/s"
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: total
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_bandwidth_read"
+    channel: "volume_bandwidth_read"
+    display_name: "{volume} Read Bandwidth"
+    unit: "Bytes/s"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average read bandwidth for the volume over the interval"
+    otel:
+      name: senhub.powerstore.volume.bandwidth
+      unit: By/s
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: read
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_bandwidth_write"
+    channel: "volume_bandwidth_write"
+    display_name: "{volume} Write Bandwidth"
+    unit: "Bytes/s"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average write bandwidth for the volume over the interval"
+    otel:
+      name: senhub.powerstore.volume.bandwidth
+      unit: By/s
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: write
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_bandwidth_total"
+    channel: "volume_bandwidth_total"
+    display_name: "{volume} Total Bandwidth"
+    unit: "Bytes/s"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average total bandwidth for the volume over the interval"
+    otel:
+      name: senhub.powerstore.volume.bandwidth
+      unit: By/s
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: total
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_latency_read"
+    channel: "volume_latency_read"
+    display_name: "{volume} Read Latency"
+    unit: "ms"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average read latency for the volume over the interval (milliseconds)"
+    otel:
+      name: senhub.powerstore.volume.latency
+      unit: s
+      value_scale: 0.001
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: read
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_latency_write"
+    channel: "volume_latency_write"
+    display_name: "{volume} Write Latency"
+    unit: "ms"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average write latency for the volume over the interval (milliseconds)"
+    otel:
+      name: senhub.powerstore.volume.latency
+      unit: s
+      value_scale: 0.001
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: write
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
+  - name: "powerstore_volume_latency_total"
+    channel: "volume_latency_total"
+    display_name: "{volume} Latency"
+    unit: "ms"
+    category: "volumes"
+    multi_instance_labels: ["cluster", "volume"]
+    description: "Average overall latency for the volume over the interval (milliseconds)"
+    otel:
+      name: senhub.powerstore.volume.latency
+      unit: s
+      value_scale: 0.001
+      type: gauge
+      attributes:
+        senhub.powerstore.operation: total
+    tag_to_attribute:
+      volume: senhub.powerstore.volume.name
+
   # ═════════════════════════════════════════════════════════════════════════
   # ALERTS — active alert count per severity
   # ═════════════════════════════════════════════════════════════════════════
