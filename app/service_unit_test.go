@@ -175,6 +175,90 @@ func TestPackagedUnit_ExecStartPointsAtManagedBinary(t *testing.T) {
 	}
 }
 
+// `install --user root` must not fall through to kardianos's built-in
+// systemd script — that script emits StartLimitInterval/StartLimitBurst
+// inside [Service] under their legacy names, which is exactly the
+// misplacement #577 fixes.
+func TestLinuxSystemdScript_SelectsTemplatePerUser(t *testing.T) {
+	if got := linuxSystemdScript(rootServiceUser); got != rootSystemdScript {
+		t.Error("linuxSystemdScript(root) must return the corrected root template")
+	}
+	if got := linuxSystemdScript(defaultServiceUser); got != hardenedSystemdScript(defaultServiceUser) {
+		t.Error("linuxSystemdScript(senhub) must return the hardened template")
+	}
+}
+
+func TestRootSystemdScript_StartLimitDirectivesLiveInUnitSection(t *testing.T) {
+	unit := renderSystemdScript(t,
+		rootSystemdScript,
+		filepath.Join(managedBinaryDir, "senhub-agent"),
+		[]string{"run", "--config-path", "/etc/senhub-agent/agent-config.yaml"},
+		managedBinaryDir,
+	)
+	sections := unitSections(unit)
+	for _, directive := range []string{"StartLimitIntervalSec=", "StartLimitBurst="} {
+		if !sectionHasDirective(sections["[Unit]"], directive) {
+			t.Errorf("%s missing from [Unit] in the root unit", directive)
+		}
+		if sectionHasDirective(sections["[Service]"], directive) {
+			t.Errorf("%s must not appear in [Service] in the root unit (#577)", directive)
+		}
+	}
+	// The legacy pre-v230 spelling kardianos's default script used must
+	// not resurface anywhere ("StartLimitInterval=" does not prefix-match
+	// the modern "StartLimitIntervalSec=").
+	for _, directives := range sections {
+		if sectionHasDirective(directives, "StartLimitInterval=") {
+			t.Errorf("legacy StartLimitInterval= directive present in the root unit\n%s", unit)
+		}
+	}
+}
+
+// The root unit runs as root through systemd's implicit default: no
+// User=/Group= directive at all, so there is no user to resolve and no
+// 217/USER failure mode — and none of the hardened unit's capability
+// drops, which would defeat the point of --user root (raw sockets).
+func TestRootSystemdScript_NoUserDirectiveAndNoCapabilityDrops(t *testing.T) {
+	unit := renderSystemdScript(t,
+		rootSystemdScript,
+		filepath.Join(managedBinaryDir, "senhub-agent"),
+		[]string{"run"},
+		managedBinaryDir,
+	)
+	for _, line := range strings.Split(unit, "\n") {
+		trimmed := strings.TrimSpace(line)
+		for _, forbidden := range []string{"User=", "Group=", "CapabilityBoundingSet=", "AmbientCapabilities="} {
+			if strings.HasPrefix(trimmed, forbidden) {
+				t.Errorf("root unit must not contain %q directive: %q", forbidden, trimmed)
+			}
+		}
+	}
+	if !strings.Contains(unit, "\nRestart=always\n") {
+		t.Errorf("root unit must keep Restart=always (#567)\n%s", unit)
+	}
+}
+
+// After install stages the binary (#576), the unit rendered for BOTH
+// service users references the staged /var/lib path — never the
+// installer's invocation path.
+func TestInstallUnit_ExecStartPointsAtStagedBinary_BothUsers(t *testing.T) {
+	staged := filepath.Join(managedBinaryDir, "senhub-agent")
+	args := []string{"run", "--config-path", "/etc/senhub-agent/agent-config.yaml"}
+	for _, user := range []string{defaultServiceUser, rootServiceUser} {
+		t.Run(user, func(t *testing.T) {
+			unit := renderSystemdScript(t, linuxSystemdScript(user), staged, args, managedBinaryDir)
+			execLine, workDir := installedExecStart(unit)
+			binPath, _ := splitExecStartLine(execLine)
+			if binPath != staged {
+				t.Errorf("ExecStart binary = %q, want the staged managed path %q", binPath, staged)
+			}
+			if workDir != "WorkingDirectory="+managedBinaryDir {
+				t.Errorf("WorkingDirectory = %q, want %q", workDir, "WorkingDirectory="+managedBinaryDir)
+			}
+		})
+	}
+}
+
 func TestHardenedSystemdScript_CustomUser(t *testing.T) {
 	unit := renderSystemdScript(t,
 		hardenedSystemdScript("monitor"),
