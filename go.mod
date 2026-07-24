@@ -41,7 +41,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
 	golang.org/x/sys v0.45.0
-	golang.org/x/text v0.37.0
+	golang.org/x/text v0.39.0
 	google.golang.org/grpc v1.81.0
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
