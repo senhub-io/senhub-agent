@@ -7,7 +7,7 @@ version: "3.0.0"
 # senhub.mssql_ha.* extensions (same footing as senhub.veeam.*). The sibling
 # read-only `mssql` probe follows sqlserver.* semconv; AG replication health is
 # a SenHub extension with no upstream sqlserverreceiver equivalent.
-# See senhub-semantic-conventions §4.37.
+# See senhub-semantic-conventions §4.40.
 
 metrics:
   # ═════════════════════════════════════════════════════════════════════════

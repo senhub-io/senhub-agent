@@ -7,7 +7,7 @@ version: "3.0.0"
 # gv$ RAC, v$dataguard_stats) — all metrics under senhub.oracle_enterprise.*
 # extensions (same footing as senhub.veeam.*). db.* attributes ride the
 # entity, not the metric names.
-# See senhub-semantic-conventions §4.38.
+# See senhub-semantic-conventions §4.41.
 
 metrics:
   # ═════════════════════════════════════════════════════════════════════════
