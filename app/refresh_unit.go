@@ -5,9 +5,14 @@
 package app
 
 import (
-	"path/filepath"
 	"strings"
 )
+
+// managedBinaryUnitPath is the staged managed-binary path as it must appear
+// in a systemd ExecStart line: always a forward-slash Linux path, independent
+// of the build platform's separator. filepath.Join would yield backslashes on
+// a Windows test runner and corrupt the unit contract.
+func managedBinaryUnitPath() string { return managedBinaryDir + "/senhub-agent" }
 
 // refreshedUnit renders the unit refresh-unit writes over the installed
 // one. It is the packaged hardened unit with three things reconciled
@@ -42,7 +47,7 @@ func refreshedUnit(installed string, binaryExists func(string) bool) string {
 		if args == "" {
 			return unit
 		}
-		execLine = "ExecStart=" + filepath.Join(managedBinaryDir, "senhub-agent") + " " + args
+		execLine = "ExecStart=" + managedBinaryUnitPath() + " " + args
 		workDir = ""
 	}
 
@@ -125,7 +130,10 @@ func installedExecStart(unit string) (execStart, workingDirectory string) {
 func packagedExecStartLine() string {
 	for _, line := range strings.Split(packagedSystemdUnit, "\n") {
 		if strings.HasPrefix(line, "ExecStart=") {
-			return line
+			// TrimSpace so a CRLF-checked-out unit (Windows runner) matches
+			// installedExecStart, which trims each line — otherwise the stray
+			// \r makes a canonical unit look non-canonical.
+			return strings.TrimSpace(line)
 		}
 	}
 	return ""
