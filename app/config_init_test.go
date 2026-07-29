@@ -13,6 +13,7 @@ func TestParseInitConfigArgs(t *testing.T) {
 			"--license", "jwt-token",
 			"--tags", "env=prod,role=db",
 			"--otlp-endpoint", "otlp:4317",
+			"--otlp-protocol", "http",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -25,6 +26,9 @@ func TestParseInitConfigArgs(t *testing.T) {
 		}
 		if opts.otlpEndpoint != "otlp:4317" {
 			t.Errorf("otlpEndpoint = %q", opts.otlpEndpoint)
+		}
+		if opts.otlpProtocol != "http" {
+			t.Errorf("otlpProtocol = %q", opts.otlpProtocol)
 		}
 		if opts.tags["env"] != "prod" || opts.tags["role"] != "db" {
 			t.Errorf("tags = %v", opts.tags)
@@ -46,6 +50,32 @@ func TestParseInitConfigArgs(t *testing.T) {
 	t.Run("empty args ok", func(t *testing.T) {
 		if _, err := parseInitConfigArgs(nil); err != nil {
 			t.Errorf("empty args should parse: %v", err)
+		}
+	})
+
+	// audit M4/m12: validate OTLP inputs at parse, before any file is written.
+	t.Run("invalid protocol rejected at parse", func(t *testing.T) {
+		if _, err := parseInitConfigArgs([]string{"--otlp-endpoint", "x:4317", "--otlp-protocol", "thrift"}); err == nil {
+			t.Error("invalid --otlp-protocol must fail at parse, not after config generation")
+		}
+	})
+	t.Run("protocol without endpoint rejected", func(t *testing.T) {
+		if _, err := parseInitConfigArgs([]string{"--otlp-protocol", "http"}); err == nil {
+			t.Error("--otlp-protocol without --otlp-endpoint must be rejected, not silently ignored")
+		}
+	})
+
+	// audit M3: endpoint carrying YAML-breaking characters is rejected.
+	t.Run("endpoint injection rejected", func(t *testing.T) {
+		for _, ep := range []string{"collector:4317\n  insecure: true", "vm:4318 # comment", "{evil}", "a b:1"} {
+			if _, err := parseInitConfigArgs([]string{"--otlp-endpoint", ep}); err == nil {
+				t.Errorf("endpoint %q should be rejected", ep)
+			}
+		}
+	})
+	t.Run("valid endpoint+protocol pass", func(t *testing.T) {
+		if _, err := parseInitConfigArgs([]string{"--otlp-endpoint", "vm.example.com:4318", "--otlp-protocol", "http"}); err != nil {
+			t.Errorf("valid inputs should parse: %v", err)
 		}
 	})
 }
