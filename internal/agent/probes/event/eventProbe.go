@@ -11,7 +11,6 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
 )
 
 // eventSeverityToOtel maps the event probe's accepted severity strings
@@ -207,24 +206,12 @@ func (p *EventProbe) handleEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataPoint := p.processEvent(event)
-
-	// Publish to the agent's log channel for the OTLP strategy to
-	// ship as a structured log record. Independent of the data_store
-	// routing — the event is conceptually a log payload, even though
-	// the existing event strategy treats it as a DataPoint.
-	p.publishLog(event, dataPoint.Timestamp)
-
-	if p.callback == nil {
-		p.moduleLogger.Warn().Msg("Callback is not set")
-		return
-	}
-
-	if err := p.callback([]data_store.DataPoint{dataPoint}); err != nil {
-		p.moduleLogger.Error().Err(err).Msg("Failed to send DataPoint to DataStore")
-		http.Error(w, "Failed to process event", http.StatusInternalServerError)
-		return
-	}
+	// The event is a log payload — publish it once on the agent log bus
+	// (#294 step 1b). Its structured fields ride LogRecord.Fields so the
+	// event strategy rebuilds /event/insert byte-identically and the OTLP
+	// strategy can ship it. The former metric DataPoint → data_store →
+	// event strategy path was a duplicate of the same event and was removed.
+	p.publishLog(event, parseEventTimestamp(event))
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Event processed successfully")
@@ -260,6 +247,11 @@ func (p *EventProbe) publishLog(event map[string]interface{}, timestamp time.Tim
 		SeverityText:      severityStr,
 		Body:              body,
 		Attributes:        attrs,
+		// Fields carries the raw event map so the /event/insert converter
+		// (FromEventLog) rebuilds the exact legacy payload, structure
+		// included — the flat Attributes above cannot hold arrays/objects
+		// (#294 step 1b).
+		Fields:            event,
 		ProducerProbeName: p.GetName(),
 		ProducerProbeType: "event",
 	})
@@ -304,61 +296,18 @@ func validateEvent(event map[string]interface{}) error {
 }
 
 // processEvent processes the incoming event and converts it to a DataPoint.
-func (p *EventProbe) processEvent(event map[string]interface{}) data_store.DataPoint {
-	timestamp := time.Now()
+// parseEventTimestamp reads the optional RFC3339 `timestamp` field from an
+// incoming event, falling back to now. The event's structured payload is
+// carried verbatim on LogRecord.Fields; the /event/insert shape is rebuilt
+// on the consumer side by the formatter (EventMapToDataPoint), so the probe
+// no longer builds a DataPoint itself (#294 step 1b).
+func parseEventTimestamp(event map[string]interface{}) time.Time {
 	if ts, ok := event["timestamp"].(string); ok {
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {
-			timestamp = t
+			return t
 		}
 	}
-
-	// Create two sets of tags:
-	// 1. Standard string tags for required fields and simple values
-	// 2. A special JSON metadata field that preserves complex types like arrays
-	eventTags := []tags.Tag{}
-	complexValues := make(map[string]interface{})
-
-	for key, value := range event {
-		if key == "timestamp" {
-			continue
-		}
-
-		// Store all values as strings in regular tags for backward compatibility
-		eventTags = append(eventTags, tags.Tag{Key: key, Value: fmt.Sprintf("%v", value), Private: false})
-
-		// Also store complex values in their original form
-		switch v := value.(type) {
-		case []interface{}, map[string]interface{}:
-			// These are complex types that should be preserved
-			complexValues[key] = v
-		}
-	}
-
-	// If we have complex values, serialize them as JSON and add as a special tag
-	if len(complexValues) > 0 {
-		complexJSON, err := json.Marshal(complexValues)
-		if err == nil {
-			eventTags = append(eventTags, tags.Tag{
-				Key:     "_complex_values",
-				Value:   string(complexJSON),
-				Private: false,
-			})
-		} else {
-			p.moduleLogger.Error().Err(err).Msg("Failed to marshal complex values")
-		}
-	}
-
-	p.moduleLogger.Debug().
-		Time("timestamp", timestamp).
-		Any("tags", eventTags).
-		Msg("Received Event")
-
-	return data_store.DataPoint{
-		Name:      "event_event",
-		Timestamp: timestamp,
-		Value:     1.0, // You can adjust this based on your needs
-		Tags:      eventTags,
-	}
+	return time.Now()
 }
 
 // String returns a string representation of the EventProbe.

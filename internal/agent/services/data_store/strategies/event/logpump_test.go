@@ -63,6 +63,36 @@ func TestLogPump_SyslogReachesEventInsert(t *testing.T) {
 	}
 }
 
+// TestLogPump_EventReachesEventInsert verifies an event-probe LogRecord —
+// whose structured payload rides Fields — is converted via FromEventLog and
+// enqueued for /event/insert (#294 step 1b), with structure preserved.
+func TestLogPump_EventReachesEventInsert(t *testing.T) {
+	s := newPumpTestStrategy(t)
+
+	agentstate.PublishLog(agentstate.LogRecord{
+		Timestamp: time.Unix(1_700_000_000, 0),
+		Fields: map[string]any{
+			"host":     "app-1",
+			"message":  "job done",
+			"severity": "Info",
+			"targets":  []any{"a", "b"},
+		},
+		ProducerProbeType: "event",
+	})
+
+	select {
+	case evt := <-s.buffer:
+		if evt["message"] != "job done" || evt["host"] != "app-1" {
+			t.Errorf("required fields wrong: %v", evt)
+		}
+		if _, isSlice := evt["targets"].([]any); !isSlice {
+			t.Errorf("structured field lost: targets=%T (%v)", evt["targets"], evt["targets"])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("event log did not reach the event buffer")
+	}
+}
+
 // TestLogPump_NonSyslogDoesNotLeak is the anti-leak guard: only syslog
 // records feed /event/insert. A filetail (or any other) log must never be
 // posted to the legacy rail (#294 step 1a).
