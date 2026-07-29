@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -97,6 +98,12 @@ type LinuxLogsProbe struct {
 	// pollers may signal shutdown via either OnShutdown(ctx) or by
 	// closing the channel passed to OnStart.
 	quitOnce sync.Once
+
+	// emitted counts log records published to the log rail across the
+	// probe's lifetime, surviving journalctl respawns (the counter lives
+	// on the probe, not the reader). Surfaced through Collect as the
+	// conduit's throughput self-metric (#701).
+	emitted atomic.Uint64
 }
 
 // currentReader returns the active reader under the lock.
@@ -168,13 +175,12 @@ func parseConfig(config map[string]interface{}) (LinuxLogsProbeConfig, error) {
 	return parsed, nil
 }
 
-// GetTargetStrategies returns an empty list — this probe publishes to
-// the agentstate log channel directly, not through the data_store
-// router. The OTLP strategy consumes from agentstate and ships via
-// otlploggrpc.
-func (p *LinuxLogsProbe) GetTargetStrategies() []string {
-	return []string{}
-}
+// GetTargetStrategies is intentionally NOT overridden to []: the journal
+// records ride the log rail (agentstate.PublishLog), but Collect() also
+// emits the conduit's throughput self-metric, which must route to the
+// metric sinks like any other probe. It inherits the BaseProbe default
+// (senhub, prtg, http, otlp). (Before #701 this returned []string{}, so a
+// datapoint from Collect would have been dropped to no sink.)
 
 // ShouldStart always returns true. The probe checks for journalctl
 // availability lazily in OnStart; making ShouldStart OS-aware would
@@ -203,7 +209,10 @@ func (p *LinuxLogsProbe) Collect() ([]data_store.DataPoint, error) {
 			return nil, err
 		}
 	}
-	return nil, nil
+	points := []data_store.DataPoint{
+		{Name: "senhub.linux_logs.records_emitted", Value: float64(p.emitted.Load()), Timestamp: time.Now()},
+	}
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 // OnStart launches the journalctl subprocess and its stdout-draining
@@ -219,7 +228,7 @@ func (p *LinuxLogsProbe) OnStart(quitChannel chan struct{}) error {
 		Bool("include_boot", p.config.IncludeBoot).
 		Msg("Starting linux_logs probe")
 
-	reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName())
+	reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
 	if err != nil {
 		return fmt.Errorf("start journal reader: %w", err)
 	}
@@ -285,7 +294,7 @@ func (p *LinuxLogsProbe) respawn(quitChannel chan struct{}, dead *journalReader,
 		case <-time.After(*backoff):
 		}
 
-		reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName())
+		reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
 		if err != nil {
 			p.moduleLogger.Error().
 				Err(err).
