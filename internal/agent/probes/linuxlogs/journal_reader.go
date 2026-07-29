@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -101,7 +102,7 @@ func parseRealtime(s string) time.Time {
 // One malformed line is logged and skipped — the journal produces a
 // lot of records and a single garbled line should not bring down the
 // whole stream.
-func drainReader(r *bufio.Reader, log *logger.ModuleLogger, probeName string) {
+func drainReader(r *bufio.Reader, log *logger.ModuleLogger, probeName string, emitted *atomic.Uint64) {
 	for {
 		line, err := r.ReadString('\n')
 		if line != "" {
@@ -112,6 +113,9 @@ func drainReader(r *bufio.Reader, log *logger.ModuleLogger, probeName string) {
 					Msg("journalctl emitted unparseable line; skipping")
 			} else if entry.Message != "" {
 				agentstate.PublishLog(parseEntry(entry, probeName))
+				if emitted != nil {
+					emitted.Add(1)
+				}
 			}
 		}
 		if err != nil {
