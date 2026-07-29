@@ -139,6 +139,86 @@ func TestSpanSubscriberCount(t *testing.T) {
 	}
 }
 
+func TestPublishSpansTo_BroadcastReachesNamedSubscriber(t *testing.T) {
+	resetSpanChannelForTest()
+	ch := SubscribeSpansFor("otlp", 8)
+	defer UnsubscribeSpans(ch)
+
+	// PublishSpans / empty targets = broadcast; a named subscriber must
+	// still receive it (pre-#294 behavior preserved).
+	PublishSpans(spanBatch("broadcast"))
+
+	select {
+	case got := <-ch:
+		if got[0].GetScopeSpans()[0].GetSpans()[0].GetName() != "broadcast" {
+			t.Errorf("span name = %q, want broadcast", got[0].GetScopeSpans()[0].GetSpans()[0].GetName())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("named subscriber did not receive broadcast batch")
+	}
+}
+
+func TestPublishSpansTo_RoutesOnlyToNamedStrategy(t *testing.T) {
+	resetSpanChannelForTest()
+	otlp := SubscribeSpansFor("otlp", 8)
+	other := SubscribeSpansFor("otlp-toise", 8)
+	defer UnsubscribeSpans(otlp)
+	defer UnsubscribeSpans(other)
+
+	PublishSpansTo(spanBatch("for-otlp"), []string{"otlp"})
+
+	select {
+	case got := <-otlp:
+		if got[0].GetScopeSpans()[0].GetSpans()[0].GetName() != "for-otlp" {
+			t.Errorf("otlp span name = %q", got[0].GetScopeSpans()[0].GetSpans()[0].GetName())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("otlp subscriber did not receive targeted batch")
+	}
+
+	select {
+	case got := <-other:
+		t.Errorf("non-targeted strategy received a batch targeted at otlp: %+v", got)
+	case <-time.After(50 * time.Millisecond):
+		// Correct: routing kept the batch away from the other strategy.
+	}
+}
+
+func TestPublishSpansTo_CatchAllReceivesTargetedBatch(t *testing.T) {
+	resetSpanChannelForTest()
+	// SubscribeSpans (no strategy) is a catch-all tap; it sees batches
+	// regardless of their routing target.
+	ch := SubscribeSpans(8)
+	defer UnsubscribeSpans(ch)
+
+	PublishSpansTo(spanBatch("for-toise"), []string{"otlp-toise"})
+
+	select {
+	case got := <-ch:
+		if got[0].GetScopeSpans()[0].GetSpans()[0].GetName() != "for-toise" {
+			t.Errorf("span name = %q, want for-toise", got[0].GetScopeSpans()[0].GetSpans()[0].GetName())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("catch-all subscriber did not receive targeted batch")
+	}
+}
+
+func TestPublishSpansTo_NonTargetedSubscriberNotDropped(t *testing.T) {
+	resetSpanChannelForTest()
+	// A named subscriber a batch is NOT routed to must be skipped
+	// entirely: no delivery attempt, so no spurious drop accounting even
+	// when its buffer is tiny and we publish many batches it never wants.
+	SubscribeSpansFor("otlp-toise", 1)
+
+	for i := 0; i < 10; i++ {
+		PublishSpansTo(spanBatch("x"), []string{"otlp"})
+	}
+
+	if got := GetDroppedSpanBatchesTotal(); got != 0 {
+		t.Errorf("dropped=%d, want 0 (non-targeted subscriber must not be charged drops)", got)
+	}
+}
+
 func TestPublishSpans_ConcurrentProducers(t *testing.T) {
 	resetSpanChannelForTest()
 	ch := SubscribeSpans(1024)
