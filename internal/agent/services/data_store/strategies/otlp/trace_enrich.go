@@ -8,24 +8,25 @@ import (
 
 // traceEnricher adds the agent's correlation context to RELAYED spans so a
 // backend can pivot from a third-party app's trace to the infrastructure
-// telemetry of the same tenant/host (#294). Relayed spans carry the
-// EMITTING APP's Resource — a foreign identity that must be preserved — so
-// enrichment is strictly merge-not-overwrite:
+// telemetry of the same tenant (#294). Relayed spans carry the EMITTING
+// APP's Resource — a foreign identity that must be preserved — so
+// enrichment is strictly merge-not-overwrite: tenant/site/environment tags
+// are inserted ONLY when the app did not set that key (emitter value always
+// wins). The default set is the agent's global_tags; a per-source override
+// swaps it when an incoming span's Resource matches a rule (the
+// shared-gateway case).
 //
-//   - senhub.agent.* markers are added under a reserved namespace that can
-//     never collide with the app's own keys ("relayed by which agent").
-//   - Tenant/site/environment tags are inserted ONLY when the app did not
-//     set that key (emitter value always wins). The default set is the
-//     agent's global_tags; a per-source override swaps it when an incoming
-//     span's Resource matches a rule (the shared-gateway case).
+// Only standard / operator-defined keys are used — no product-namespaced
+// attributes. A "relayed-by which agent" marker was deliberately deferred:
+// OTel has no ratified key for relay/collector identity on pass-through
+// telemetry, so rather than bake a vendor name we align a key with the
+// topology consumer (Toise) and OTel Semconv first (#698).
 //
 // The app's own service.name / service.instance.id / host.* are never
-// touched. This mirrors the OpenTelemetry Collector's k8sattributes
-// (namespaced additions) + resourceprocessor `action: insert` semantics.
+// touched. This mirrors the OpenTelemetry Collector's resourceprocessor
+// `action: insert` semantics.
 type traceEnricher struct {
 	enabled bool
-	// markers are added to every relayed Resource (reserved namespace).
-	markers []*commonpb.KeyValue
 	// defaultTags are inserted only when the key is absent (tenant/site/env).
 	defaultTags map[string]string
 	// overrides swap defaultTags for spans whose Resource matches a rule.
@@ -45,7 +46,7 @@ type traceTenantOverride struct {
 // active reports whether the enricher would add anything. A disabled or
 // empty enricher is a no-op and the relay forwards spans verbatim.
 func (e *traceEnricher) active() bool {
-	return e != nil && e.enabled && (len(e.markers) > 0 || len(e.defaultTags) > 0 || len(e.overrides) > 0)
+	return e != nil && e.enabled && (len(e.defaultTags) > 0 || len(e.overrides) > 0)
 }
 
 // enrich returns a batch with each ResourceSpans' Resource augmented,
@@ -78,14 +79,13 @@ func (e *traceEnricher) enrichOne(orig *tracepb.ResourceSpans) *tracepb.Resource
 
 	tags := e.resolveTags(present, existing)
 
-	merged := make([]*commonpb.KeyValue, 0, len(existing)+len(tags)+len(e.markers))
+	merged := make([]*commonpb.KeyValue, 0, len(existing)+len(tags))
 	merged = append(merged, existing...) // emitter attrs preserved verbatim
 	for k, v := range tags {
 		if !present[k] {
 			merged = append(merged, stringKV(k, v))
 		}
 	}
-	merged = append(merged, e.markers...) // reserved namespace, always added
 
 	// Shallow-copy the ResourceSpans; keep ScopeSpans shared (spans are the
 	// bulk of the payload and are not mutated), rebuild only the Resource.
@@ -130,23 +130,11 @@ func stringKV(k, v string) *commonpb.KeyValue {
 }
 
 // buildTraceEnricher assembles the enricher from the strategy's resolved
-// identity + config. hostAttrs holds host.id/host.name; instanceID is the
-// agent's service.instance.id (may be empty when entity emission is off).
-// globalTags + environment become the default insert-if-absent set.
-func buildTraceEnricher(cfg TracesSignal, hostAttrs, globalTags map[string]string, environment, instanceID string) *traceEnricher {
+// config. globalTags + environment become the default insert-if-absent set;
+// per-source overrides come from the traces config.
+func buildTraceEnricher(cfg TracesSignal, globalTags map[string]string, environment string) *traceEnricher {
 	if !cfg.RelayEnrichment {
 		return &traceEnricher{enabled: false}
-	}
-
-	var markers []*commonpb.KeyValue
-	if id := hostAttrs["host.id"]; id != "" {
-		markers = append(markers, stringKV("senhub.agent.host.id", id))
-	}
-	if name := hostAttrs["host.name"]; name != "" {
-		markers = append(markers, stringKV("senhub.agent.host.name", name))
-	}
-	if instanceID != "" {
-		markers = append(markers, stringKV("senhub.agent.instance.id", instanceID))
 	}
 
 	defaultTags := make(map[string]string, len(globalTags)+1)
@@ -176,7 +164,6 @@ func buildTraceEnricher(cfg TracesSignal, hostAttrs, globalTags map[string]strin
 
 	return &traceEnricher{
 		enabled:     true,
-		markers:     markers,
 		defaultTags: defaultTags,
 		overrides:   overrides,
 	}

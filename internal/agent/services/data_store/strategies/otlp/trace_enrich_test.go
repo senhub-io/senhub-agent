@@ -1,6 +1,7 @@
 package otlp
 
 import (
+	"strings"
 	"testing"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -30,13 +31,12 @@ func attrMap(rs *tracepb.ResourceSpans) map[string]string {
 func testEnricher() *traceEnricher {
 	return buildTraceEnricher(
 		TracesSignal{RelayEnrichment: true},
-		map[string]string{"host.id": "H1", "host.name": "box1"},
 		map[string]string{"tenant": "acme", "site": "paris"},
-		"prod", "agent-123",
+		"prod",
 	)
 }
 
-func TestTraceEnricher_AddsMarkersAndDefaultTags(t *testing.T) {
+func TestTraceEnricher_InsertsStandardTags(t *testing.T) {
 	e := testEnricher()
 	in := rsWithResource(map[string]string{"service.name": "checkout"})
 	out := e.enrich([]*tracepb.ResourceSpans{in})[0]
@@ -46,13 +46,15 @@ func TestTraceEnricher_AddsMarkersAndDefaultTags(t *testing.T) {
 	if got["service.name"] != "checkout" {
 		t.Errorf("emitter service.name lost: %v", got)
 	}
-	// Namespaced markers always added.
-	if got["senhub.agent.host.id"] != "H1" || got["senhub.agent.host.name"] != "box1" || got["senhub.agent.instance.id"] != "agent-123" {
-		t.Errorf("markers missing: %v", got)
-	}
-	// Tenant/site/env inserted.
+	// Tenant/site/env inserted — standard / operator keys only, no vendor
+	// namespace (the relay-identity marker is deferred, see #698).
 	if got["tenant"] != "acme" || got["site"] != "paris" || got["deployment.environment"] != "prod" {
 		t.Errorf("default tags not inserted: %v", got)
+	}
+	for k := range got {
+		if strings.HasPrefix(k, "senhub.") {
+			t.Errorf("unexpected product-namespaced attribute %q on relayed span", k)
+		}
 	}
 }
 
@@ -73,10 +75,6 @@ func TestTraceEnricher_NeverOverwritesEmitterValues(t *testing.T) {
 	if got["host.id"] != "app-host" {
 		t.Errorf("emitter host.id clobbered: %v", got)
 	}
-	// The agent's own host.id still lands under its reserved namespace.
-	if got["senhub.agent.host.id"] != "H1" {
-		t.Errorf("agent marker missing: %v", got)
-	}
 }
 
 func TestTraceEnricher_PerSourceOverride(t *testing.T) {
@@ -87,9 +85,8 @@ func TestTraceEnricher_PerSourceOverride(t *testing.T) {
 				{MatchKey: "service.namespace", MatchValue: "client-b", Tags: map[string]string{"tenant": "client-b"}},
 			},
 		},
-		nil,
 		map[string]string{"tenant": "default-tenant"},
-		"", "",
+		"",
 	)
 
 	// Matching source → override tenant.
@@ -105,7 +102,7 @@ func TestTraceEnricher_PerSourceOverride(t *testing.T) {
 }
 
 func TestTraceEnricher_DisabledIsVerbatimNoCopy(t *testing.T) {
-	e := buildTraceEnricher(TracesSignal{RelayEnrichment: false}, map[string]string{"host.id": "H1"}, nil, "", "")
+	e := buildTraceEnricher(TracesSignal{RelayEnrichment: false}, map[string]string{"tenant": "acme"}, "")
 	in := []*tracepb.ResourceSpans{rsWithResource(map[string]string{"service.name": "x"})}
 	out := e.enrich(in)
 	// Same slice, same backing elements — no allocation, true pass-through.
