@@ -145,15 +145,11 @@ export and the signal stays idle.
 **Correlation enrichment (`relay_enrichment`, default `true`).** Relayed
 spans keep the emitting application's own identity (`service.name`,
 `service.instance.id`, `host.*`) — the agent never overwrites it. On top of
-that, the agent adds its own context so you can pivot from an app trace to
-the infrastructure telemetry of the same tenant and host:
-
-- `senhub.agent.host.id` / `host.name` / `instance.id` — which agent
-  relayed the trace (added under a reserved prefix, never colliding with the
-  app's attributes);
-- your `global_tags` (for example `tenant`, `site`) and
-  `deployment.environment` — added **only if the application didn't already
-  set that key**.
+that, the agent inserts its own tenancy context so you can pivot from an app
+trace to the infrastructure telemetry of the same tenant: your `global_tags`
+(for example `tenant`, `site`) and `deployment.environment` are added **only
+if the application didn't already set that key**. Only standard /
+operator-defined attributes are used — no product-specific keys.
 
 Set `relay_enrichment: false` for a verbatim pass-through. When a single
 agent relays traffic for several clients (a shared gateway), assign each
@@ -174,9 +170,8 @@ A rule applies to relayed spans whose resource attribute `key` equals
 !!! note
     `service.instance.id` is **not** a join key between the agent's own
     metrics/logs and a relayed third-party trace — they are different
-    services. The reliable cross-signal pivot is **tenant/site** (always)
-    and **host** (when known), i.e. "this app trace is slow → show the infra
-    telemetry of the same tenant/host".
+    services. The reliable cross-signal pivot is **tenant/site**, i.e. "this
+    app trace is slow → show the infra telemetry of the same tenant".
 
 ### `signals.entities`
 

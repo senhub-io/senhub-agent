@@ -1900,42 +1900,42 @@ indexés). Trois signaux, deux régimes d'identité :
 ### Enrichissement des traces relayées (`relay_enrichment`, défaut on)
 
 Au flush du relay, **merge-not-overwrite**, copy-on-write sur la Resource
-(les spans sont partagés, jamais mutés) :
+(les spans sont partagés, jamais mutés). **Clés standard / opérateur
+uniquement — aucun attribut à namespace produit** :
 
 | Attribut | Régime | Source |
 |---|---|---|
-| `senhub.agent.host.id` | ajouté (namespace réservé) | `host.id` de l'agent |
-| `senhub.agent.host.name` | ajouté | `host.name` de l'agent |
-| `senhub.agent.instance.id` | ajouté | `service.instance.id` de l'agent |
 | `tenant` / `site` / `region` | inséré **si absent** | `global_tags` de l'agent |
 | `deployment.environment` | inséré **si absent** | environnement de l'agent |
 
-`service.*` / `host.*` posés par l'app ne sont **jamais** touchés. Le
-`host.id` de l'agent n'est **jamais** posé en clé nue `host.id` (faux si
-l'app tourne ailleurs et pointe juste son SDK vers l'agent) — uniquement
-sous `senhub.agent.*`. Override par source :
-`signals.traces.relay_tenant_overrides` (`match: {key,value}` → `tags:`)
-pour le cas passerelle mono-agent multi-clients.
+`service.*` / `host.*` posés par l'app ne sont **jamais** touchés. Override
+par source : `signals.traces.relay_tenant_overrides` (`match: {key,value}` →
+`tags:`) pour le cas passerelle mono-agent multi-clients.
+
+> **Marqueur « relayé-par » différé.** Un marqueur d'identité de l'agent
+> relayeur (« quel agent a relayé cette trace ») serait utile pour joindre
+> la trace au nœud host dans le graphe topologie. Mais OTel n'a **aucune
+> clé ratifiée** pour l'identité d'un relais/collecteur sur de la télémétrie
+> pass-through, et on ne bake pas de nom produit dans un contrat qu'on veut
+> standard. Le nom de cette clé est donc à **aligner avec Toise + le SIG
+> Semconv** avant introduction (#698) — d'ici là, l'enrichissement reste
+> 100 % clés standard.
 
 ### Vérité de corrélation (contrat de jointure)
 
 **`service.instance.id` n'est PAS une clé de jointure** entre la télémétrie
 de l'agent et une trace tierce relayée — ce sont des services différents.
 Un lien Grafana trace→metrics construit dessus renverra vide (correctement).
-La jointure réelle et utile : **tenant/site (toujours)** + **host (quand
-l'identité host est connue de façon fiable)** — pivot « trace app lente →
-télémétrie d'infra du même tenant/host ». Les clés garanties cross-signal :
-`tenant`, `site`/`region`, `deployment.environment` (insert-only partout) ;
-`host.id`/`host.name` (agent-owned toujours, traces conditionnel via
-`senhub.agent.*`).
+La jointure réelle et utile : **tenant/site** — pivot « trace app lente →
+télémétrie d'infra du même tenant ». Les clés garanties cross-signal :
+`tenant`, `site`/`region`, `deployment.environment` (insert-only partout).
+La jointure par **host** entre agent et trace tierce nécessiterait un
+marqueur d'identité de l'agent relayeur, **différé** faute de clé standard
+(voir l'encart « marqueur relayé-par », #698).
 
 > Note : les *exemplars* (trace_id sur datapoints) sont le mécanisme OTel
 > natif metric→trace ; non applicable ici (les métriques de l'agent sont
 > collectées hors contexte de trace actif). Hors périmètre.
-
-> ⚠ Les clés `senhub.agent.*` sur les traces relayées sont un **contrat
-> partagé** avec le consommateur topologie (Toise, arête « relayed-by ») :
-> à aligner avant figeage, ne pas renommer unilatéralement.
 
 ## 7. Versioning
 
