@@ -400,12 +400,13 @@ func (s *EventSyncStrategy) Start() error {
 	return nil
 }
 
-// startLogPump subscribes to the agent log bus and forwards syslog records
-// to /event/insert (#294 step 1a). Idempotent. Only syslog records are
-// converted — other log producers (filetail, linux_logs, snmp_trap, the
-// otlp_receiver, and the event probe's own logs) are skipped so they do NOT
-// leak onto the /event/insert rail. The event probe keeps feeding
-// AddDataPoints until its structured payload rides the log bus (step 1b).
+// startLogPump subscribes to the agent log bus and forwards the two
+// /event/insert producers — syslog and event — to the legacy rail
+// (#294 step 1a/1b). Idempotent. Every OTHER log producer (filetail,
+// linux_logs, snmp_trap, otlp_receiver, …) is skipped so it does NOT leak
+// onto /event/insert. Each record is converted with the format-preserving
+// FromSyslogLog / FromEventLog so the payload is byte-identical to the old
+// metric datapoint path.
 func (s *EventSyncStrategy) startLogPump() {
 	s.logPumpOnce.Do(func() {
 		ch := agentstate.SubscribeLogs(s.config.QueueSize)
@@ -423,10 +424,16 @@ func (s *EventSyncStrategy) startLogPump() {
 					if !ok {
 						return
 					}
-					if rec.ProducerProbeType != "syslog" {
-						continue
+					switch rec.ProducerProbeType {
+					case "syslog":
+						s.enqueue(s.formatter.FromSyslogLog(rec))
+					case "event":
+						s.enqueue(s.formatter.FromEventLog(rec))
+					default:
+						// Not an /event/insert producer — skip so other log
+						// sources (filetail, linux_logs, snmp_trap, …) never
+						// leak onto the legacy rail.
 					}
-					s.enqueue(s.formatter.FromSyslogLog(rec))
 				}
 			}
 		}()

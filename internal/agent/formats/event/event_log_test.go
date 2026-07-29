@@ -62,6 +62,66 @@ func logRecordFrom(in syslogInput, ts time.Time) agentstate.LogRecord {
 	}
 }
 
+// TestFromEventLog_ByteIdenticalAndStructurePreserved is the golden guard
+// for #294 step 1b. It checks two things: (1) the /event/insert payload is
+// identical whether built from the legacy datapoint path
+// (FormatDataPoint(EventMapToDataPoint(...))) or from a LogRecord carrying
+// the raw map on Fields (FromEventLog); (2) the flat Attributes map could
+// NOT hold structure, so structure MUST survive via Fields — a []any field
+// stays a []any, not the string "[a b]".
+func TestFromEventLog_ByteIdenticalAndStructurePreserved(t *testing.T) {
+	f := NewFormatter()
+	ts := time.Unix(1_700_000_000, 0).UTC()
+
+	evt := map[string]any{
+		"host":     "app-7",
+		"message":  "deploy finished",
+		"severity": "Error", // a NAME, not 0..7 — the formatter maps it to Notice
+		"targets":  []any{"web", "db"},                    // structured — must survive
+		"meta":     map[string]any{"build": "42", "ok": true}, // nested — must survive
+		"count":    3,
+	}
+
+	// (1) Equivalence: legacy path vs log-bus path.
+	old := f.FormatDataPoint(f.EventMapToDataPoint(evt, ts))
+	neu := f.FromEventLog(logRecordWithFields(evt, ts))
+	oldJSON, _ := json.Marshal(old)
+	newJSON, _ := json.Marshal(neu)
+	if string(oldJSON) != string(newJSON) {
+		t.Fatalf("/event/insert payload diverged\n old: %s\n new: %s", oldJSON, newJSON)
+	}
+
+	// (2) Structure preserved + the severity-name quirk reproduced.
+	if _, isSlice := neu["targets"].([]any); !isSlice {
+		t.Errorf("targets should stay a slice, got %T (%v)", neu["targets"], neu["targets"])
+	}
+	if _, isMap := neu["meta"].(map[string]any); !isMap {
+		t.Errorf("meta should stay a map, got %T (%v)", neu["meta"], neu["meta"])
+	}
+	if neu["host"] != "app-7" || neu["message"] != "deploy finished" {
+		t.Errorf("required fields wrong: %v", neu)
+	}
+	// The named severity "Error" is NOT a syslog 0..7 code, so the legacy
+	// formatter maps it to the default (notice). Reproduced byte-for-byte.
+	if got := neu["severity"]; got != EventSeverityNotice() {
+		t.Errorf("severity = %v, want notice (the reproduced legacy quirk)", got)
+	}
+}
+
+// EventSeverityNotice returns the string form of the notice severity, used
+// by the test to assert the reproduced quirk without importing the types pkg.
+func EventSeverityNotice() string { return "notice" }
+
+func logRecordWithFields(evt map[string]any, ts time.Time) agentstate.LogRecord {
+	return agentstate.LogRecord{
+		Timestamp:         ts,
+		Body:              "", // body is not used by FromEventLog (rebuilt from Fields)
+		Fields:            evt,
+		ProducerProbeName: "event",
+		ProducerProbeType: "event",
+	}
+}
+
 // TestFromSyslogLog_ByteIdenticalToDataPointPath is the golden equivalence
 // guard for #294 step 1a: the /event/insert JSON must be identical whether
 // the event strategy is fed from the legacy DataPoint path or the new log
