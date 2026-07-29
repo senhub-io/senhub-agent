@@ -1,7 +1,10 @@
 package event
 
 import (
+	"encoding/json"
+	"fmt"
 	"strconv"
+	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/tags"
@@ -49,4 +52,47 @@ func (f *Formatter) FromSyslogLog(rec agentstate.LogRecord) event.EventDataPoint
 		},
 	}
 	return f.FormatDataPoint(dp)
+}
+
+// EventMapToDataPoint builds the "event_event" DataPoint from a raw event
+// map exactly as the event probe used to — every field stringified as a
+// tag, array/object values additionally preserved under _complex_values so
+// FormatDataPoint can restore their structure. Timestamp is passed in
+// (parsed by the caller). This is the single source of truth for the event
+// probe's /event/insert shape, shared by FromEventLog.
+func (f *Formatter) EventMapToDataPoint(evt map[string]any, ts time.Time) datapoint.DataPoint {
+	eventTags := make([]tags.Tag, 0, len(evt))
+	complexValues := make(map[string]interface{})
+	for key, value := range evt {
+		if key == "timestamp" {
+			continue
+		}
+		eventTags = append(eventTags, tags.Tag{Key: key, Value: fmt.Sprintf("%v", value)})
+		switch value.(type) {
+		case []interface{}, map[string]interface{}:
+			complexValues[key] = value
+		}
+	}
+	if len(complexValues) > 0 {
+		if b, err := json.Marshal(complexValues); err == nil {
+			eventTags = append(eventTags, tags.Tag{Key: "_complex_values", Value: string(b)})
+		}
+	}
+	return datapoint.DataPoint{
+		Name:      "event_event",
+		Timestamp: ts,
+		Value:     1.0,
+		Tags:      eventTags,
+	}
+}
+
+// FromEventLog converts an event-probe LogRecord (whose structured HTTP
+// payload rides LogRecord.Fields) into the same EventDataPoint the event
+// probe's DataPoint would have produced — so /event/insert is byte-identical
+// whether the event strategy is fed from the metric datapoint path (legacy)
+// or the log bus (#294 step 1b). Unlike syslog, the event payload can carry
+// arrays/objects, which is why it needs Fields (the flat Attributes map
+// could not hold them).
+func (f *Formatter) FromEventLog(rec agentstate.LogRecord) event.EventDataPoint {
+	return f.FormatDataPoint(f.EventMapToDataPoint(rec.Fields, rec.Timestamp))
 }
