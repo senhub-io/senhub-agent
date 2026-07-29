@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -205,6 +206,16 @@ func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
 	}
 	if protocol != "grpc" && protocol != "http" {
 		return fmt.Errorf("otlp protocol must be grpc or http, got %q", protocol)
+	}
+	// Defense-in-depth against YAML injection via the endpoint (audit M3):
+	// the endpoint is concatenated into the fragment, so reject whitespace,
+	// newlines and YAML metacharacters that could inject sibling keys,
+	// truncate the line, or break parsing. The CLI validates too; this
+	// guards any other caller.
+	if strings.IndexFunc(endpoint, func(r rune) bool {
+		return r <= ' ' || r == '#' || r == '{' || r == '}' || r == '"' || r == '\''
+	}) >= 0 {
+		return fmt.Errorf("otlp endpoint %q contains whitespace or an invalid character; expected host:port", endpoint)
 	}
 	dir := filepath.Join(configDir, "strategies.d")
 	if err := os.MkdirAll(dir, 0o750); err != nil {

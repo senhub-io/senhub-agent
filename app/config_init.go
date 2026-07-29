@@ -69,7 +69,38 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			return out, err
 		}
 	}
+	// Validate the OTLP inputs BEFORE any file is written. config init runs
+	// on unattended installs, so a bad value must fail at parse — not after
+	// a partial config already sits on disk, where a corrected rerun hits
+	// the idempotency guard and silently never provisions OTLP (audit M4/m12).
+	if err := validateOTLPArgs(out.otlpEndpoint, out.otlpProtocol); err != nil {
+		return out, err
+	}
 	return out, nil
+}
+
+// validateOTLPArgs rejects an invalid protocol, a protocol without an
+// endpoint, and an endpoint carrying characters that would break out of the
+// generated YAML (whitespace/newline injects sibling keys, '#' truncates,
+// '{' bricks parsing — audit M3).
+func validateOTLPArgs(endpoint, protocol string) error {
+	if protocol != "" && protocol != "grpc" && protocol != "http" {
+		return fmt.Errorf("--otlp-protocol must be grpc or http, got %q", protocol)
+	}
+	if protocol != "" && endpoint == "" {
+		return fmt.Errorf("--otlp-protocol requires --otlp-endpoint")
+	}
+	if endpoint != "" && strings.IndexFunc(endpoint, badEndpointRune) >= 0 {
+		return fmt.Errorf("--otlp-endpoint %q contains whitespace or an invalid character; expected host:port", endpoint)
+	}
+	return nil
+}
+
+// badEndpointRune reports whether a rune is illegal in an OTLP endpoint:
+// any control char or space (0x00-0x20), or a YAML metacharacter that could
+// break out of the `endpoint:` scalar.
+func badEndpointRune(r rune) bool {
+	return r <= ' ' || r == '#' || r == '{' || r == '}' || r == '"' || r == '\''
 }
 
 func initConfig(argv []string) {
@@ -94,6 +125,13 @@ func initConfig(argv []string) {
 	// monolithic file) is preserved verbatim.
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Printf("Configuration already present at %s — leaving it unchanged.\n", configPath)
+		// Still ensure the OTLP fragment on an existing config: a prior run
+		// could have generated the config but not yet written the fragment.
+		// Idempotent — WriteOTLPStrategyFragment no-ops when 10-otlp.yaml
+		// already exists (audit M4).
+		if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint, otlpProtocol); err != nil {
+			fatalf("config init: writing OTLP strategy: %v", err)
+		}
 		return
 	}
 

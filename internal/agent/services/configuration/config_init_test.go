@@ -40,6 +40,18 @@ func TestWriteOTLPStrategyFragment(t *testing.T) {
 		}
 	})
 
+	// audit M3: an endpoint with YAML-breaking chars must be rejected, not
+	// concatenated raw into the fragment.
+	t.Run("endpoint injection rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := WriteOTLPStrategyFragment(dir, "collector:4317\n  insecure: true", "grpc"); err == nil {
+			t.Error("newline-injecting endpoint must be rejected")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "strategies.d", "10-otlp.yaml")); !os.IsNotExist(err) {
+			t.Error("no fragment should be written for a rejected endpoint")
+		}
+	})
+
 	t.Run("empty endpoint is a no-op", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := WriteOTLPStrategyFragment(dir, "", "grpc"); err != nil {
