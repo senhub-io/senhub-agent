@@ -13,6 +13,17 @@ rewrite a single PromQL query.
 
 ## Quick start
 
+The fastest path is to provision OTLP at install time — one flag writes a
+ready-to-use `strategies.d/10-otlp.yaml`:
+
+```bash
+senhub-agent config init --otlp-endpoint otel-collector.internal:4317
+# direct to a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint:
+senhub-agent config init --otlp-endpoint vm.internal:4318 --otlp-protocol http
+```
+
+This enables metrics + logs export out of the box. To wire it by hand instead:
+
 1. Add an `otlp` storage block to your config:
 
 ```yaml
