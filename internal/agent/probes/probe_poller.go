@@ -44,13 +44,16 @@ type ProbePoller struct {
 	unregisterEntitySource func()
 }
 
-// defaultStrategyRouter provides default routing to senhub and prtg strategies
-// for probes that don't implement custom routing
+// defaultStrategyRouter provides default routing for probes that don't
+// implement custom routing. Kept in sync with types.BaseProbe's default so a
+// probe reaching this fallback is not silently cut off from otlp/http — every
+// signal must be able to reach the OTLP sink (#701). No probe hits this today
+// (all embed *types.BaseProbe), but the two defaults must not diverge.
 type defaultStrategyRouter struct{}
 
 // GetTargetStrategies returns the default target strategies
 func (d *defaultStrategyRouter) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // GenerateProbeId creates a unique identifier for a probe configuration
