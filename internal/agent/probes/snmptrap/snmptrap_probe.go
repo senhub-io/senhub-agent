@@ -97,9 +97,13 @@ func NewSNMPTrapProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 	return p, nil
 }
 
-// GetTargetStrategies returns an empty list — this probe publishes to the
-// agentstate log channel directly, like linux_logs.
-func (p *SNMPTrapProbe) GetTargetStrategies() []string { return []string{} }
+// GetTargetStrategies is intentionally NOT overridden: this probe emits
+// self-metrics (rejected_community, decode_panics) from Collect(), which
+// must route to the metric sinks like any other probe. It inherits the
+// BaseProbe default (senhub, prtg, http, otlp). The trap PAYLOADS ride the
+// log rail separately via agentstate.PublishLog — a different signal, not
+// governed by this list. (Before #701 this returned []string{}, which
+// silently dropped the self-metrics to no sink at all.)
 
 // ShouldStart always returns true; binding happens in OnStart.
 func (p *SNMPTrapProbe) ShouldStart() bool { return true }
