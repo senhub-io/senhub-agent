@@ -148,6 +148,111 @@ loop:
 	}
 }
 
+func TestRecordRoutesTo(t *testing.T) {
+	cases := []struct {
+		name     string
+		targets  []string
+		strategy string
+		want     bool
+	}{
+		{"catch-all takes everything", []string{"otlp"}, "", true},
+		{"catch-all takes broadcast", nil, "", true},
+		{"broadcast reaches named", nil, "otlp", true},
+		{"empty-slice broadcast reaches named", []string{}, "otlp", true},
+		{"targeted reaches its strategy", []string{"otlp"}, "otlp", true},
+		{"targeted skips other strategy", []string{"event"}, "otlp", false},
+		{"multi-target reaches one member", []string{"event", "otlp"}, "otlp", true},
+		{"multi-target skips non-member", []string{"event", "senhub"}, "otlp", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := recordRoutesTo(tc.targets, tc.strategy); got != tc.want {
+				t.Errorf("recordRoutesTo(%v, %q)=%v, want %v", tc.targets, tc.strategy, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPublishLog_BroadcastReachesNamedSubscriber(t *testing.T) {
+	resetLogChannelForTest()
+	ch := SubscribeLogsFor("otlp", 8)
+	defer UnsubscribeLogs(ch)
+
+	// Empty TargetStrategies = broadcast; a named subscriber must still
+	// receive it (pre-#294 behavior preserved).
+	PublishLog(LogRecord{Body: "broadcast"})
+
+	select {
+	case got := <-ch:
+		if got.Body != "broadcast" {
+			t.Errorf("body=%q", got.Body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("named subscriber did not receive broadcast record")
+	}
+}
+
+func TestPublishLog_TargetedRoutesOnlyToNamedStrategy(t *testing.T) {
+	resetLogChannelForTest()
+	otlp := SubscribeLogsFor("otlp", 8)
+	event := SubscribeLogsFor("event", 8)
+	defer UnsubscribeLogs(otlp)
+	defer UnsubscribeLogs(event)
+
+	PublishLog(LogRecord{Body: "for-otlp", TargetStrategies: []string{"otlp"}})
+
+	select {
+	case got := <-otlp:
+		if got.Body != "for-otlp" {
+			t.Errorf("otlp body=%q", got.Body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("otlp subscriber did not receive targeted record")
+	}
+
+	select {
+	case got := <-event:
+		t.Errorf("event subscriber received a record targeted at otlp: %q", got.Body)
+	case <-time.After(50 * time.Millisecond):
+		// Correct: routing kept the record away from the event strategy.
+	}
+}
+
+func TestPublishLog_CatchAllReceivesTargetedRecord(t *testing.T) {
+	resetLogChannelForTest()
+	// SubscribeLogs (no strategy) is a catch-all tap; it must see records
+	// regardless of their routing target.
+	ch := SubscribeLogs(8)
+	defer UnsubscribeLogs(ch)
+
+	PublishLog(LogRecord{Body: "for-event", TargetStrategies: []string{"event"}})
+
+	select {
+	case got := <-ch:
+		if got.Body != "for-event" {
+			t.Errorf("body=%q", got.Body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("catch-all subscriber did not receive targeted record")
+	}
+}
+
+func TestPublishLog_NonTargetedSubscriberNotDropped(t *testing.T) {
+	resetLogChannelForTest()
+	// A named subscriber that a record is NOT routed to must be skipped
+	// entirely: no delivery attempt, so no spurious drop accounting even
+	// when its buffer is tiny and we publish many records it never wants.
+	SubscribeLogsFor("event", 1)
+
+	for i := 0; i < 10; i++ {
+		PublishLog(LogRecord{Body: "x", TargetStrategies: []string{"otlp"}})
+	}
+
+	if got := GetDroppedLogRecordsTotal(); got != 0 {
+		t.Errorf("dropped=%d, want 0 (non-targeted subscriber must not be charged drops)", got)
+	}
+}
+
 func TestSyslogPriorityToSeverity_Mapping(t *testing.T) {
 	// Smoke-test the standard mapping. Out-of-range returns Unspecified.
 	cases := map[int]LogSeverity{
