@@ -207,13 +207,17 @@ func newSpansRelay(cfg Config, moduleLogger *logger.ModuleLogger) (*spansRelay, 
 
 // start subscribes to the agentstate span channel and launches the drain
 // goroutine. Idempotent — calling twice is a no-op.
+//
+// Routing-aware subscription (#294 B): the relay receives broadcast span
+// batches plus batches whose targets name this strategy, extending the
+// endpoints:/strategy routing that governs metrics and logs to traces.
 func (r *spansRelay) start() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.subscribed != nil {
 		return
 	}
-	ch := agentstate.SubscribeSpans(r.cfg.Traces.BufferSize)
+	ch := agentstate.SubscribeSpansFor(strategyName, r.cfg.Traces.BufferSize)
 	r.subscribed = ch
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
