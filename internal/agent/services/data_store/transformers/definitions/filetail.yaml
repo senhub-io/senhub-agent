@@ -1,7 +1,7 @@
 probe_name: "filetail"
 friendly_name: "File Tail"
 version: "1.0.0"
-host_level: true
+host_level: false
 
 # filetail is a log conduit: tailed lines ride the OTLP log rail
 # (agentstate.PublishLog) and are NOT mapped here. Collect() emits only

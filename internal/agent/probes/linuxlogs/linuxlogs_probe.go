@@ -190,11 +190,12 @@ func (p *LinuxLogsProbe) ShouldStart() bool {
 	return true
 }
 
-// GetInterval is irrelevant for an event-driven probe but the poller
-// requires a value. We return a long interval — the periodic Collect
-// is a no-op anyway.
+// GetInterval is the cadence at which Collect refreshes the conduit's
+// records_emitted self-metric (and surfaces reader health). Kept BELOW the
+// HTTP cache TTL (default 5m) so the series never sits on the pull-cache
+// eviction boundary (audit m8).
 func (p *LinuxLogsProbe) GetInterval() time.Duration {
-	return 5 * time.Minute
+	return 1 * time.Minute
 }
 
 // Collect ships no data points — the journalctl subprocess pushes

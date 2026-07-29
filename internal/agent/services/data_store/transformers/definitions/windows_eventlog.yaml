@@ -1,7 +1,7 @@
 probe_name: "windows_eventlog"
 friendly_name: "Windows Event Log"
 version: "1.0.0"
-host_level: true
+host_level: false
 
 # windows_eventlog is a log conduit: event records ride the OTLP log rail
 # (agentstate.PublishLog) and are NOT mapped here. Collect() emits only
