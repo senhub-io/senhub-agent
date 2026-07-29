@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -186,13 +187,35 @@ func setTagsField(m *yaml.Node, key string, tags map[string]string) {
 
 // WriteOTLPStrategyFragment writes strategies.d/10-otlp.yaml pointing at the
 // given collector endpoint, so an unattended install can opt into OTLP push
-// (metrics/logs/entities) without hand-editing YAML. No-op for an empty
-// endpoint; it never overwrites an existing 10-otlp.yaml (config init only runs
-// on a fresh install, but this keeps it safe if reused). protocol defaults to
-// grpc — the operator can tune the rest of the strategy afterwards.
-func WriteOTLPStrategyFragment(configDir, endpoint string) error {
+// (metrics + logs, both on by the strategy's defaults) without hand-editing
+// YAML. No-op for an empty endpoint; it never overwrites an existing
+// 10-otlp.yaml (config init only runs on a fresh install, but this keeps it
+// safe if reused).
+//
+// protocol selects the transport: "grpc" (default) or "http" — the latter is
+// what VictoriaMetrics / Grafana Alloy accept on their native OTLP/HTTP
+// ingestion, so a direct-to-Victoria install needs it. Empty defaults to grpc;
+// any other value is rejected so a typo fails the install rather than shipping
+// a config that only errors at first export.
+func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
 	if endpoint == "" {
 		return nil
+	}
+	if protocol == "" {
+		protocol = "grpc"
+	}
+	if protocol != "grpc" && protocol != "http" {
+		return fmt.Errorf("otlp protocol must be grpc or http, got %q", protocol)
+	}
+	// Defense-in-depth against YAML injection via the endpoint (audit M3):
+	// the endpoint is concatenated into the fragment, so reject whitespace,
+	// newlines and YAML metacharacters that could inject sibling keys,
+	// truncate the line, or break parsing. The CLI validates too; this
+	// guards any other caller.
+	if strings.IndexFunc(endpoint, func(r rune) bool {
+		return r <= ' ' || r == '#' || r == '{' || r == '}' || r == '"' || r == '\''
+	}) >= 0 {
+		return fmt.Errorf("otlp endpoint %q contains whitespace or an invalid character; expected host:port", endpoint)
 	}
 	dir := filepath.Join(configDir, "strategies.d")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -203,10 +226,11 @@ func WriteOTLPStrategyFragment(configDir, endpoint string) error {
 		return nil // already present, leave operator's fragment untouched
 	}
 	body := "# SenHub Agent — OTLP export strategy (provisioned by 'config init').\n" +
-		"# Pushes metrics, logs and entities to an OpenTelemetry collector.\n" +
+		"# Pushes metrics and logs to an OpenTelemetry collector (or an\n" +
+		"# OTLP-compatible backend: VictoriaMetrics, Grafana Alloy, ...).\n" +
 		"otlp:\n" +
 		"  endpoint: " + endpoint + "\n" +
-		"  protocol: grpc\n"
+		"  protocol: " + protocol + "\n"
 	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
