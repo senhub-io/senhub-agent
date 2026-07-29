@@ -223,12 +223,60 @@ func (s *EventSyncStrategy) enqueue(evt eventtypes.EventDataPoint) {
 		s.logger.Warn().Msg("Buffer full, attempting to make room")
 		select {
 		case <-s.buffer: // Remove oldest event
-			s.buffer <- evt
-			s.logger.Warn().Msg("Dropped oldest event to make room")
+			select {
+			case s.buffer <- evt:
+				s.logger.Warn().Msg("Dropped oldest event to make room")
+			default:
+				// The freed slot was taken by a concurrent producer. Drop
+				// rather than block: a blocking send here can park the pump
+				// goroutine so Shutdown's logWG.Wait() stalls until the next
+				// sync drains the buffer (audit m9). enqueue must never block.
+				s.logger.Warn().Msg("Buffer still full after eviction; event lost")
+			}
 		default:
 			s.logger.Error().Msg("Failed to make room in buffer, event lost")
 		}
 	}
+}
+
+// drainLogSub processes any records still buffered in the subscription
+// channel after the pump has stopped. Non-blocking: returns once the channel
+// is empty. Called from Shutdown after UnsubscribeLogs (no new sends arrive).
+func (s *EventSyncStrategy) drainLogSub() {
+	for {
+		select {
+		case rec := <-s.logSub:
+			s.convertAndEnqueue(rec)
+		default:
+			return
+		}
+	}
+}
+
+// convertAndEnqueue converts one syslog/event log record to the /event/insert
+// format and enqueues it. Shared by the pump and the shutdown drain.
+func (s *EventSyncStrategy) convertAndEnqueue(rec agentstate.LogRecord) {
+	switch rec.ProducerProbeType {
+	case "syslog":
+		s.enqueue(s.withGlobalTags(s.formatter.FromSyslogLog(rec)))
+	case "event":
+		s.enqueue(s.withGlobalTags(s.formatter.FromEventLog(rec)))
+	}
+}
+
+// withGlobalTags overlays the agent-level global_tags onto an event so
+// /event/insert stays byte-identical to the legacy metric datapoint path,
+// which flowed through the DataStore's enrichWithConfiguredTags (global_tags
+// merged into every datapoint, then emitted as fields by FormatDataPoint).
+// The log bus bypasses the DataStore, so re-apply them here. global_tags win
+// on a key conflict, matching the old MergeTags precedence (audit M2).
+// Per-probe custom_tags were already inert for syslog/event (their datapoints
+// carried no probe_name tag), so they are not re-applied.
+func (s *EventSyncStrategy) withGlobalTags(evt eventtypes.EventDataPoint) eventtypes.EventDataPoint {
+	for k, v := range s.agentConfig.GetGlobalTags() {
+		evt[k] = v
+	}
+	return evt
 }
 
 // triggerSync initiates an asynchronous sync if none is already in progress
@@ -425,14 +473,13 @@ func (s *EventSyncStrategy) startLogPump() {
 						return
 					}
 					switch rec.ProducerProbeType {
-					case "syslog":
-						s.enqueue(s.formatter.FromSyslogLog(rec))
-					case "event":
-						s.enqueue(s.formatter.FromEventLog(rec))
 					default:
 						// Not an /event/insert producer — skip so other log
 						// sources (filetail, linux_logs, snmp_trap, …) never
 						// leak onto the legacy rail.
+						continue
+					case "syslog", "event":
+						s.convertAndEnqueue(rec)
 					}
 				}
 			}
@@ -451,6 +498,12 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 		s.logCancel()
 		s.logWG.Wait()
 		agentstate.UnsubscribeLogs(s.logSub)
+		// Drain records already accepted into the subscription buffer but not
+		// yet processed by the now-stopped pump, so a burst arriving just
+		// before stop is not silently lost — the old synchronous path
+		// included such events in the final flush (audit m10). Unsubscribe
+		// above stopped new deliveries, so this non-blocking drain terminates.
+		s.drainLogSub()
 	}
 
 	if s.ticker != nil {
