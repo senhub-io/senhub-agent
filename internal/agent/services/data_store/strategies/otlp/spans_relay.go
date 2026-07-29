@@ -183,6 +183,7 @@ func (f *httpSpanForwarder) close() error {
 type spansRelay struct {
 	cfg       Config
 	forwarder spanForwarder
+	enricher  *traceEnricher
 	logger    *logger.ModuleLogger
 
 	mu         sync.Mutex
@@ -191,7 +192,7 @@ type spansRelay struct {
 	wg         sync.WaitGroup
 }
 
-func newSpansRelay(cfg Config, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
+func newSpansRelay(cfg Config, enricher *traceEnricher, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
 	var fwd spanForwarder
 	var err error
 	if cfg.Protocol == "http" {
@@ -202,7 +203,7 @@ func newSpansRelay(cfg Config, moduleLogger *logger.ModuleLogger) (*spansRelay, 
 	if err != nil {
 		return nil, fmt.Errorf("building span forwarder: %w", err)
 	}
-	return &spansRelay{cfg: cfg, forwarder: fwd, logger: moduleLogger}, nil
+	return &spansRelay{cfg: cfg, forwarder: fwd, enricher: enricher, logger: moduleLogger}, nil
 }
 
 // start subscribes to the agentstate span channel and launches the drain
@@ -310,6 +311,11 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	// Add the agent's correlation context (copy-on-write on the Resource,
+	// spans shared) so relayed third-party traces join the agent's infra
+	// telemetry in the backend (#294). No-op when enrichment is disabled.
+	rs = r.enricher.enrich(rs)
 
 	if err := r.forwarder.forward(ctx, rs); err != nil {
 		agentstate.IncrementOTLPExportErrors()
