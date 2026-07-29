@@ -13,6 +13,7 @@ func TestParseInitConfigArgs(t *testing.T) {
 			"--license", "jwt-token",
 			"--tags", "env=prod,role=db",
 			"--otlp-endpoint", "otlp:4317",
+			"--otlp-protocol", "http",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -25,6 +26,9 @@ func TestParseInitConfigArgs(t *testing.T) {
 		}
 		if opts.otlpEndpoint != "otlp:4317" {
 			t.Errorf("otlpEndpoint = %q", opts.otlpEndpoint)
+		}
+		if opts.otlpProtocol != "http" {
+			t.Errorf("otlpProtocol = %q", opts.otlpProtocol)
 		}
 		if opts.tags["env"] != "prod" || opts.tags["role"] != "db" {
 			t.Errorf("tags = %v", opts.tags)
