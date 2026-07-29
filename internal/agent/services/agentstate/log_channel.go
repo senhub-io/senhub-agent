@@ -50,10 +50,14 @@ type LogRecord struct {
 	// behavior and the default for producers that don't opt into
 	// routing, so leaving it empty is fully backward-compatible.
 	//
-	// Producers stamp this from their probe's target-strategy resolution
-	// so the endpoints:/strategy filtering that governs metrics applies
-	// to logs too (#294 rail B). Catch-all subscribers (SubscribeLogs,
-	// empty strategy name) receive every record regardless of this list.
+	// This is the MECHANISM for the endpoints:/strategy filtering that
+	// governs metrics to apply to logs too (#294 rail B). It is currently
+	// unused by production producers: every PublishLog call leaves it empty,
+	// so all records broadcast (the pre-#294 behavior) — no regression. A
+	// producer that wants per-signal routing populates it from its probe's
+	// target-strategy resolution; until one does, the filter stays dormant.
+	// Catch-all subscribers (SubscribeLogs, empty strategy name) receive
+	// every record regardless of this list.
 	TargetStrategies []string
 }
 
