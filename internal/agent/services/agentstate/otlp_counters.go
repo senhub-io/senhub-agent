@@ -302,12 +302,12 @@ func LogChannelFillRatio() float64 {
 	logCh.mu.RLock()
 	defer logCh.mu.RUnlock()
 	var max float64
-	for _, ch := range logCh.subs {
-		c := cap(ch)
+	for _, sub := range logCh.subs {
+		c := cap(sub.ch)
 		if c == 0 {
 			continue
 		}
-		r := float64(len(ch)) / float64(c)
+		r := float64(len(sub.ch)) / float64(c)
 		if r > max {
 			max = r
 		}
