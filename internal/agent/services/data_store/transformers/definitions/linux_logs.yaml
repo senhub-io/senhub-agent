@@ -1,0 +1,20 @@
+probe_name: "linux_logs"
+friendly_name: "Linux Journal Logs"
+version: "1.0.0"
+host_level: true
+
+# linux_logs is a log conduit: systemd-journal records ride the OTLP log
+# rail (agentstate.PublishLog) and are NOT mapped here. Collect() emits
+# only the conduit's own throughput self-metric (#701).
+
+metrics:
+  - name: "senhub.linux_logs.records_emitted"
+    channel: "linux_logs_records_emitted"
+    display_name: "Linux Logs Records Emitted"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of journal records this probe has published to the log rail"
+    otel:
+      name: senhub.linux_logs.records_emitted
+      unit: "{record}"
+      type: counter
