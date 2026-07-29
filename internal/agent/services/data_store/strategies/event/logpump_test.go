@@ -63,6 +63,51 @@ func TestLogPump_SyslogReachesEventInsert(t *testing.T) {
 	}
 }
 
+// tagsAgentConfig is a stub whose global_tags are non-empty, to exercise the
+// M2 re-injection.
+type tagsAgentConfig struct{ stubAgentConfig }
+
+func (tagsAgentConfig) GetGlobalTags() map[string]string {
+	return map[string]string{"site": "paris", "env": "prod"}
+}
+
+// TestLogPump_ReinjectsGlobalTags is the M2 regression guard: the old
+// datapoint path ran through the DataStore's enrichWithConfiguredTags, so
+// agent global_tags appeared as fields in every /event/insert event. The log
+// bus bypasses the DataStore, so the pump must re-apply them or the payload
+// silently loses site/env for any deployment with global_tags configured.
+func TestLogPump_ReinjectsGlobalTags(t *testing.T) {
+	s, err := NewEventSyncStrategy(tagsAgentConfig{},
+		configuration.StorageConfigParams{"server_url": "http://127.0.0.1:9"}, testBaseLogger())
+	if err != nil {
+		t.Fatalf("NewEventSyncStrategy: %v", err)
+	}
+	s.startLogPump()
+	t.Cleanup(func() {
+		if s.logCancel != nil {
+			s.logCancel()
+			s.logWG.Wait()
+			agentstate.UnsubscribeLogs(s.logSub)
+		}
+	})
+
+	agentstate.PublishLog(agentstate.LogRecord{
+		Timestamp:         time.Unix(1_700_000_000, 0),
+		Body:              "hi",
+		Attributes:        map[string]string{"syslog.severity_code": "6", "syslog.hostname": "h"},
+		ProducerProbeType: "syslog",
+	})
+
+	select {
+	case evt := <-s.buffer:
+		if evt["site"] != "paris" || evt["env"] != "prod" {
+			t.Errorf("global_tags not re-injected onto /event/insert: %v", evt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("syslog log did not reach the event buffer")
+	}
+}
+
 // TestLogPump_EventReachesEventInsert verifies an event-probe LogRecord —
 // whose structured payload rides Fields — is converted via FromEventLog and
 // enqueued for /event/insert (#294 step 1b), with structure preserved.
