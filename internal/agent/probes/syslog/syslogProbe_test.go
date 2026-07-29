@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -223,37 +223,30 @@ func TestProcessLogMessage_RFC3164_And_RFC5424_Fallback(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var captured []data_store.DataPoint
+			// #294 step 1a: the probe now emits a single log record on the
+			// agent log bus (the legacy metric DataPoint path was dropped).
+			// Body carries the message; syslog.appname carries the tag.
+			ch := agentstate.SubscribeLogs(4)
+			defer agentstate.UnsubscribeLogs(ch)
+
 			probe := &SyslogProbe{
 				BaseProbe:    &types.BaseProbe{},
 				config:       SyslogProbeConfig{Port: DefaultPort, Protocol: DefaultProtocol},
 				moduleLogger: base,
-				callback: func(points []data_store.DataPoint) error {
-					captured = append(captured, points...)
-					return nil
-				},
 			}
 
 			probe.processLogMessage(tc.logParts)
 
-			if len(captured) != 1 {
-				t.Fatalf("expected 1 datapoint, got %d", len(captured))
-			}
-			dp := captured[0]
-			var gotMessage, gotTag string
-			for _, tag := range dp.Tags {
-				switch tag.Key {
-				case "message":
-					gotMessage = tag.Value
-				case "tag":
-					gotTag = tag.Value
+			select {
+			case rec := <-ch:
+				if rec.Body != tc.wantMessage {
+					t.Errorf("body = %q, want %q", rec.Body, tc.wantMessage)
 				}
-			}
-			if gotMessage != tc.wantMessage {
-				t.Errorf("message tag = %q, want %q", gotMessage, tc.wantMessage)
-			}
-			if gotTag != tc.wantTag {
-				t.Errorf("tag tag = %q, want %q", gotTag, tc.wantTag)
+				if got := rec.Attributes["syslog.appname"]; got != tc.wantTag {
+					t.Errorf("syslog.appname = %q, want %q", got, tc.wantTag)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("no log record published on the agent log bus")
 			}
 		})
 	}
