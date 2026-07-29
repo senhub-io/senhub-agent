@@ -1,7 +1,7 @@
 probe_name: "linux_logs"
 friendly_name: "Linux Journal Logs"
 version: "1.0.0"
-host_level: true
+host_level: false
 
 # linux_logs is a log conduit: systemd-journal records ride the OTLP log
 # rail (agentstate.PublishLog) and are NOT mapped here. Collect() emits

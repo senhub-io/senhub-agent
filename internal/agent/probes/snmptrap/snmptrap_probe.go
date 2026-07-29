@@ -110,7 +110,10 @@ func (p *SNMPTrapProbe) ShouldStart() bool { return true }
 
 // GetInterval is irrelevant for an event-driven probe but the poller
 // requires a value.
-func (p *SNMPTrapProbe) GetInterval() time.Duration { return 5 * time.Minute }
+// GetInterval refreshes the receiver self-metrics; kept below the HTTP
+// cache TTL (default 5m) so the series stays off the eviction boundary
+// (audit m8).
+func (p *SNMPTrapProbe) GetInterval() time.Duration { return 1 * time.Minute }
 
 // Collect is a no-op: traps arrive via the listener and are published to
 // the log channel as they come.

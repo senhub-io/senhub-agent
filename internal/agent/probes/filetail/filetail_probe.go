@@ -99,7 +99,10 @@ func (p *FileTailProbe) ShouldStart() bool { return true }
 
 // GetInterval is irrelevant for an event-driven probe but the poller
 // requires a value.
-func (p *FileTailProbe) GetInterval() time.Duration { return 5 * time.Minute }
+// GetInterval is the self-metric refresh cadence. Kept BELOW the HTTP
+// cache TTL (default 5m) so the records_emitted series is refreshed well
+// before it can reach the pull-cache eviction boundary (audit m8).
+func (p *FileTailProbe) GetInterval() time.Duration { return 1 * time.Minute }
 
 // Collect surfaces the conduit's own throughput self-metric: the tail
 // goroutines publish log records directly to the log rail, so the only
