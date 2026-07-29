@@ -240,11 +240,13 @@ type TracesSignal struct {
 	// SampleRatio is the head sampling ratio (0.0 = drop all, 1.0 =
 	// keep all). Applied via sdktrace.ParentBased(TraceIDRatioBased).
 	SampleRatio float64
-	// RelayEnrichment adds the agent's correlation context (senhub.agent.*
-	// markers + tenant/site/environment insert-if-absent) to RELAYED spans
-	// so third-party app traces join the agent's own infra telemetry in the
-	// backend (#294). Default true; set false for a verbatim pass-through
-	// relay. Never overwrites the emitting app's own identity attributes.
+	// RelayEnrichment inserts the agent's tenancy context (tenant/site/
+	// deployment.environment, insert-if-absent, from global_tags) onto
+	// RELAYED spans so third-party app traces join the agent's own infra
+	// telemetry in the backend (#294). Standard / operator keys only — no
+	// product-namespaced attributes (a relayed-by marker is deferred to
+	// #698). Default true; set false for a verbatim pass-through relay.
+	// Never overwrites the emitting app's own identity attributes.
 	RelayEnrichment bool
 	// RelayTenantOverrides swap the default insert-if-absent tag set for
 	// relayed spans whose Resource matches a rule — the shared-gateway case

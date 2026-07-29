@@ -1,13 +1,56 @@
 package otlp
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+
+	"google.golang.org/protobuf/proto"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
+
+// TestTraceEnricher_PreservesUnknownResourceFields is the M1 regression
+// guard: a span from a newer OTel schema carries Resource fields (entity_refs,
+// future additions) the pinned proto version does not know — protobuf-go
+// keeps them as unknown fields. Enrichment MUST preserve them (the emitter's
+// foreign identity), not silently drop them by rebuilding the Resource.
+func TestTraceEnricher_PreservesUnknownResourceFields(t *testing.T) {
+	e := testEnricher() // active: inserts tenant/site/env
+
+	base := &resourcepb.Resource{Attributes: []*commonpb.KeyValue{stringKV("service.name", "checkout")}}
+	raw, err := proto.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Append an unknown field #100 (varint 42) — stands in for any
+	// newer-schema Resource field the pinned proto type can't name.
+	unknown := []byte{0xA0, 0x06, 0x2A}
+	raw = append(raw, unknown...)
+	var res resourcepb.Resource
+	if err := proto.Unmarshal(raw, &res); err != nil {
+		t.Fatal(err)
+	}
+
+	in := &tracepb.ResourceSpans{
+		Resource:   &res,
+		ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{Name: "op"}}}},
+	}
+	out := e.enrich([]*tracepb.ResourceSpans{in})[0]
+
+	outBytes, err := proto.Marshal(out.Resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(outBytes, unknown) {
+		t.Error("unknown Resource field dropped by enrichment (M1 regression)")
+	}
+	if attrMap(out)["tenant"] != "acme" {
+		t.Errorf("enrichment tag not inserted: %v", attrMap(out))
+	}
+}
 
 func rsWithResource(attrs map[string]string) *tracepb.ResourceSpans {
 	kvs := make([]*commonpb.KeyValue, 0, len(attrs))
