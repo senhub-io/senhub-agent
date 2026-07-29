@@ -52,6 +52,32 @@ func TestParseInitConfigArgs(t *testing.T) {
 			t.Errorf("empty args should parse: %v", err)
 		}
 	})
+
+	// audit M4/m12: validate OTLP inputs at parse, before any file is written.
+	t.Run("invalid protocol rejected at parse", func(t *testing.T) {
+		if _, err := parseInitConfigArgs([]string{"--otlp-endpoint", "x:4317", "--otlp-protocol", "thrift"}); err == nil {
+			t.Error("invalid --otlp-protocol must fail at parse, not after config generation")
+		}
+	})
+	t.Run("protocol without endpoint rejected", func(t *testing.T) {
+		if _, err := parseInitConfigArgs([]string{"--otlp-protocol", "http"}); err == nil {
+			t.Error("--otlp-protocol without --otlp-endpoint must be rejected, not silently ignored")
+		}
+	})
+
+	// audit M3: endpoint carrying YAML-breaking characters is rejected.
+	t.Run("endpoint injection rejected", func(t *testing.T) {
+		for _, ep := range []string{"collector:4317\n  insecure: true", "vm:4318 # comment", "{evil}", "a b:1"} {
+			if _, err := parseInitConfigArgs([]string{"--otlp-endpoint", ep}); err == nil {
+				t.Errorf("endpoint %q should be rejected", ep)
+			}
+		}
+	})
+	t.Run("valid endpoint+protocol pass", func(t *testing.T) {
+		if _, err := parseInitConfigArgs([]string{"--otlp-endpoint", "vm.example.com:4318", "--otlp-protocol", "http"}); err != nil {
+			t.Errorf("valid inputs should parse: %v", err)
+		}
+	})
 }
 
 func TestParseTagList(t *testing.T) {
