@@ -253,6 +253,99 @@ func TestPublishLog_NonTargetedSubscriberNotDropped(t *testing.T) {
 	}
 }
 
+func TestPublishLog_StampsCustomTagsFromContext(t *testing.T) {
+	resetLogChannelForTest()
+	resetSignalContextForTest()
+	defer resetSignalContextForTest()
+
+	SetSignalContext(&SignalContext{
+		CustomTagsByProbe: map[string]map[string]string{
+			"syslog-edge": {"tenant": "acme", "site": "paris"},
+		},
+	})
+
+	ch := SubscribeLogs(8)
+	defer UnsubscribeLogs(ch)
+
+	PublishLog(LogRecord{
+		Body:              "hi",
+		ProducerProbeName: "syslog-edge",
+		Attributes:        map[string]string{"syslog.facility": "daemon"},
+	})
+
+	select {
+	case got := <-ch:
+		if got.Attributes["tenant"] != "acme" || got.Attributes["site"] != "paris" {
+			t.Errorf("custom tags not stamped: %v", got.Attributes)
+		}
+		if got.Attributes["syslog.facility"] != "daemon" {
+			t.Errorf("existing attribute lost: %v", got.Attributes)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no record delivered")
+	}
+}
+
+func TestPublishLog_NoContextForProbeLeavesAttributesUntouched(t *testing.T) {
+	resetLogChannelForTest()
+	resetSignalContextForTest()
+	defer resetSignalContextForTest()
+
+	// Context exists but names a different probe — the record's producer
+	// has no custom_tags, so nothing is added.
+	SetSignalContext(&SignalContext{
+		CustomTagsByProbe: map[string]map[string]string{"other": {"tenant": "acme"}},
+	})
+
+	ch := SubscribeLogs(8)
+	defer UnsubscribeLogs(ch)
+
+	PublishLog(LogRecord{ProducerProbeName: "syslog-edge", Attributes: map[string]string{"k": "v"}})
+
+	select {
+	case got := <-ch:
+		if len(got.Attributes) != 1 || got.Attributes["k"] != "v" {
+			t.Errorf("attributes mutated: %v", got.Attributes)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no record delivered")
+	}
+}
+
+func TestEnrichLogAttributes_OperatorTagWinsAndDoesNotMutateInput(t *testing.T) {
+	resetSignalContextForTest()
+	defer resetSignalContextForTest()
+	SetSignalContext(&SignalContext{
+		CustomTagsByProbe: map[string]map[string]string{"p": {"env": "prod"}},
+	})
+
+	orig := map[string]string{"env": "from-record", "other": "x"}
+	got := enrichLogAttributes(orig, "p")
+
+	if got["env"] != "prod" {
+		t.Errorf("operator custom_tag should win: env=%q", got["env"])
+	}
+	if got["other"] != "x" {
+		t.Errorf("existing attr lost: %v", got)
+	}
+	// The caller's map must not be mutated — the same record value fans out
+	// to every subscriber, so an in-place write would race/leak.
+	if orig["env"] != "from-record" {
+		t.Errorf("input map was mutated: %v", orig)
+	}
+}
+
+func TestEnrichLogAttributes_NoCustomReturnsInputMap(t *testing.T) {
+	resetSignalContextForTest()
+	defer resetSignalContextForTest()
+
+	orig := map[string]string{"k": "v"}
+	got := enrichLogAttributes(orig, "no-such-probe")
+	if len(got) != 1 || got["k"] != "v" {
+		t.Errorf("expected input returned unchanged, got %v", got)
+	}
+}
+
 func TestSyslogPriorityToSeverity_Mapping(t *testing.T) {
 	// Smoke-test the standard mapping. Out-of-range returns Unspecified.
 	cases := map[int]LogSeverity{

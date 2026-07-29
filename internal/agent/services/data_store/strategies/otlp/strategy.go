@@ -65,6 +65,11 @@ type OTLPSyncStrategy struct {
 	// (issue #202).
 	globalTagKeys map[string]bool
 
+	// globalTags is retained (beyond the built resource) so the span relay
+	// can build its correlation enricher — it needs the tenant/site tags as
+	// discrete values, not flattened into the resource (#294).
+	globalTags map[string]string
+
 	// startTime is the OTel `start_time_unix_nano` for cumulative
 	// counters. Pinned at strategy.Start so all counters share the same
 	// reference (standard OTel pattern — counter resets on agent
@@ -205,6 +210,7 @@ func NewOTLPSyncStrategy(
 		registry:      transformers.NewTransformerRegistry(baseLogger),
 		resource:      buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
 		globalTagKeys: globalTagKeys,
+		globalTags:    globalTags,
 		memLimiter:    ml,
 	}
 
@@ -332,7 +338,8 @@ func (s *OTLPSyncStrategy) Start() error {
 	// buildExporters above, so a failure here is exotic and must not take
 	// down the metrics/logs signals with it.
 	if s.cfg.Traces.Enabled {
-		relay, relayErr := newSpansRelay(s.cfg, s.logger)
+		enricher := buildTraceEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment)
+		relay, relayErr := newSpansRelay(s.cfg, enricher, s.logger)
 		if relayErr != nil {
 			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
 		} else {

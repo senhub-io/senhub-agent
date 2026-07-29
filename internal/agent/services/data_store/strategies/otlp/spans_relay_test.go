@@ -91,7 +91,7 @@ func relaySpanBatch(name string) []*tracepb.ResourceSpans {
 func TestSpansRelay_GRPC(t *testing.T) {
 	capSrv, addr := startTracesGRPCServer(t)
 
-	relay, err := newSpansRelay(relayTestConfig(addr, "grpc"), testModuleLogger(t))
+	relay, err := newSpansRelay(relayTestConfig(addr, "grpc"), nil, testModuleLogger(t))
 	if err != nil {
 		t.Fatalf("newSpansRelay: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestSpansRelay_GRPC_FlushOnBatchSize(t *testing.T) {
 	cfg.Traces.BatchSize = 1
 	cfg.Traces.BatchTimeout = time.Hour // timer must not be the trigger
 
-	relay, err := newSpansRelay(cfg, testModuleLogger(t))
+	relay, err := newSpansRelay(cfg, nil, testModuleLogger(t))
 	if err != nil {
 		t.Fatalf("newSpansRelay: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestSpansRelay_HTTP(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	relay, err := newSpansRelay(relayTestConfig(endpointOf(srv), "http"), testModuleLogger(t))
+	relay, err := newSpansRelay(relayTestConfig(endpointOf(srv), "http"), nil, testModuleLogger(t))
 	if err != nil {
 		t.Fatalf("newSpansRelay: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestSpansRelay_HTTP(t *testing.T) {
 func TestSpansRelay_StopUnsubscribes(t *testing.T) {
 	_, addr := startTracesGRPCServer(t)
 
-	relay, err := newSpansRelay(relayTestConfig(addr, "grpc"), testModuleLogger(t))
+	relay, err := newSpansRelay(relayTestConfig(addr, "grpc"), nil, testModuleLogger(t))
 	if err != nil {
 		t.Fatalf("newSpansRelay: %v", err)
 	}

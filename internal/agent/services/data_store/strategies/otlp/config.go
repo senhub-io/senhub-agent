@@ -240,6 +240,27 @@ type TracesSignal struct {
 	// SampleRatio is the head sampling ratio (0.0 = drop all, 1.0 =
 	// keep all). Applied via sdktrace.ParentBased(TraceIDRatioBased).
 	SampleRatio float64
+	// RelayEnrichment inserts the agent's tenancy context (tenant/site/
+	// deployment.environment, insert-if-absent, from global_tags) onto
+	// RELAYED spans so third-party app traces join the agent's own infra
+	// telemetry in the backend (#294). Standard / operator keys only — no
+	// product-namespaced attributes (a relayed-by marker is deferred to
+	// #698). Default true; set false for a verbatim pass-through relay.
+	// Never overwrites the emitting app's own identity attributes.
+	RelayEnrichment bool
+	// RelayTenantOverrides swap the default insert-if-absent tag set for
+	// relayed spans whose Resource matches a rule — the shared-gateway case
+	// where one agent relays traffic for several end-clients.
+	RelayTenantOverrides []TraceTenantOverride
+}
+
+// TraceTenantOverride assigns a tag set to relayed spans whose Resource
+// attribute MatchKey equals MatchValue (e.g. service.namespace = "client-b").
+// The tags are inserted only when the emitter didn't set the key.
+type TraceTenantOverride struct {
+	MatchKey   string
+	MatchValue string
+	Tags       map[string]string
 }
 
 // ResourceConfig holds the OTel Resource attributes attached to every
@@ -415,13 +436,16 @@ func defaultConfig() Config {
 			DependsOnDebounce: DefaultDependsOnDebounce,
 		},
 		Traces: TracesSignal{
+			// RelayEnrichment default true — see parseSignals for the
+			// explicit-false override (defaults are applied before parse).
 			// Disabled by default — opt-in plumbing. Operators
 			// enable explicitly when they want span export.
-			Enabled:      false,
-			BatchSize:    DefaultTracesBatchSize,
-			BatchTimeout: DefaultTracesBatchTimeout,
-			BufferSize:   DefaultTracesBufferSize,
-			SampleRatio:  DefaultTracesSampleRatio,
+			Enabled:         false,
+			BatchSize:       DefaultTracesBatchSize,
+			BatchTimeout:    DefaultTracesBatchTimeout,
+			BufferSize:      DefaultTracesBufferSize,
+			SampleRatio:     DefaultTracesSampleRatio,
+			RelayEnrichment: true,
 		},
 		Resource: ResourceConfig{
 			ServiceName: DefaultServiceName,
@@ -910,11 +934,51 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 			}
 			traces.SampleRatio = v
 		}
+		if v, ok := tm["relay_enrichment"].(bool); ok {
+			traces.RelayEnrichment = v
+		}
+		if overrides, err := parseTraceTenantOverrides(tm["relay_tenant_overrides"]); err != nil {
+			return err
+		} else if overrides != nil {
+			traces.RelayTenantOverrides = overrides
+		}
 		if err := parseSignalTransport("traces", tm, &traces.SignalTransport); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// parseTraceTenantOverrides reads the signals.traces.relay_tenant_overrides
+// list: each entry has a `match: {key, value}` selector and a `tags` map to
+// insert-if-absent on matching relayed spans. Returns nil when absent.
+func parseTraceTenantOverrides(raw interface{}) ([]TraceTenantOverride, error) {
+	list, ok := raw.([]interface{})
+	if !ok || len(list) == 0 {
+		return nil, nil
+	}
+	out := make([]TraceTenantOverride, 0, len(list))
+	for i, item := range list {
+		m := readStringKeyedMap(item)
+		if m == nil {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: expected a map", i)
+		}
+		match := readStringKeyedMap(m["match"])
+		if match == nil {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: missing `match`", i)
+		}
+		key, _ := match["key"].(string)
+		value, _ := match["value"].(string)
+		if key == "" || value == "" {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: match.key and match.value are required", i)
+		}
+		tags := readStringMap(m["tags"])
+		if len(tags) == 0 {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: at least one tag is required", i)
+		}
+		out = append(out, TraceTenantOverride{MatchKey: key, MatchValue: value, Tags: tags})
+	}
+	return out, nil
 }
 
 // parseSignalTransport reads the optional endpoint/headers/tls fields
