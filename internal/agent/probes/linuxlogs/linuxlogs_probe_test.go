@@ -3,6 +3,7 @@ package linuxlogs
 import (
 	"bufio"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -182,7 +183,8 @@ not json at all
 {"PRIORITY":"3","MESSAGE":"boom","_HOSTNAME":"h","__REALTIME_TIMESTAMP":"1700000001000000"}
 `
 	r := bufioReaderFromString(input)
-	drainReader(r, testLogger(), "linux-logs-test")
+	var emitted atomic.Uint64
+	drainReader(r, testLogger(), "linux-logs-test", &emitted)
 
 	// Drain everything that was published.
 	deadline := time.After(2 * time.Second)
@@ -206,6 +208,47 @@ loop:
 	}
 	if got[1].Severity != agentstate.LogSeverityError {
 		t.Errorf("second record severity=%d, want ERROR (17)", got[1].Severity)
+	}
+	// The throughput self-metric counts only the published records, not the
+	// malformed line (#701).
+	if emitted.Load() != 2 {
+		t.Errorf("emitted = %d, want 2 (malformed line not counted)", emitted.Load())
+	}
+}
+
+func TestLinuxLogs_SelfMetricRoutesToOTLP(t *testing.T) {
+	// Regression for #701: the conduit's self-metric must route to the
+	// metric sinks (it used to return []string{}, dropping any datapoint).
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"})
+	probe, err := NewLinuxLogsProbe(map[string]interface{}{}, baseLogger)
+	if err != nil {
+		t.Fatalf("NewLinuxLogsProbe: %v", err)
+	}
+	p := probe.(*LinuxLogsProbe)
+
+	has := false
+	for _, s := range p.GetTargetStrategies() {
+		if s == "otlp" {
+			has = true
+		}
+	}
+	if !has {
+		t.Errorf("GetTargetStrategies %v must include otlp", p.GetTargetStrategies())
+	}
+
+	// Collect emits the self-metric (value 0 with no reader running).
+	pts, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	found := false
+	for _, dp := range pts {
+		if dp.Name == "senhub.linux_logs.records_emitted" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Collect did not emit senhub.linux_logs.records_emitted; got %+v", pts)
 	}
 }
 

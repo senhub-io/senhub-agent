@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nxadm/tail"
@@ -57,6 +58,11 @@ type FileTailProbe struct {
 	wg      sync.WaitGroup
 	quit    chan struct{}
 	stopped bool
+
+	// emitted counts log records this probe instance has published to the
+	// log rail — the conduit's own throughput self-metric, surfaced through
+	// Collect so it flows to the metric sinks like any other probe (#701).
+	emitted atomic.Uint64
 }
 
 // NewFileTailProbe constructs the probe. Validation of paths and the
@@ -81,10 +87,12 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 	return p, nil
 }
 
-// GetTargetStrategies returns an empty list — like linux_logs, this
-// probe publishes to the agentstate log channel, not the data_store
-// router.
-func (p *FileTailProbe) GetTargetStrategies() []string { return []string{} }
+// GetTargetStrategies is intentionally NOT overridden: the tailed log
+// records ride the log rail (agentstate.PublishLog), but Collect() also
+// emits the conduit's throughput self-metric, which must route to the
+// metric sinks like any other probe. It inherits the BaseProbe default
+// (senhub, prtg, http, otlp). (Before #701 this returned []string{}, so
+// any datapoint it emitted would have been dropped to no sink.)
 
 // ShouldStart always returns true; path resolution happens in OnStart.
 func (p *FileTailProbe) ShouldStart() bool { return true }
@@ -93,8 +101,15 @@ func (p *FileTailProbe) ShouldStart() bool { return true }
 // requires a value.
 func (p *FileTailProbe) GetInterval() time.Duration { return 5 * time.Minute }
 
-// Collect is a no-op — tail goroutines publish records directly.
-func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) { return nil, nil }
+// Collect surfaces the conduit's own throughput self-metric: the tail
+// goroutines publish log records directly to the log rail, so the only
+// datapoint here is the cumulative count of records emitted (#701).
+func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) {
+	points := []data_store.DataPoint{
+		{Name: "senhub.filetail.records_emitted", Value: float64(p.emitted.Load()), Timestamp: time.Now()},
+	}
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
 
 // OnStart loads the bookmark store, performs the first glob expansion,
 // and launches a rescan loop that picks up new files over time.
@@ -312,6 +327,7 @@ func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time
 		return
 	}
 	agentstate.PublishLog(rec)
+	p.emitted.Add(1)
 }
 
 // hasGlobMeta reports whether a path pattern contains glob
