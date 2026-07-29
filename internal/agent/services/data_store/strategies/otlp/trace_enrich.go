@@ -1,6 +1,8 @@
 package otlp
 
 import (
+	"google.golang.org/protobuf/proto"
+
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -66,10 +68,8 @@ func (e *traceEnricher) enrich(rs []*tracepb.ResourceSpans) []*tracepb.ResourceS
 
 func (e *traceEnricher) enrichOne(orig *tracepb.ResourceSpans) *tracepb.ResourceSpans {
 	var existing []*commonpb.KeyValue
-	var dropped uint32
 	if orig.GetResource() != nil {
 		existing = orig.Resource.Attributes
-		dropped = orig.Resource.DroppedAttributesCount
 	}
 
 	present := make(map[string]bool, len(existing))
@@ -79,21 +79,33 @@ func (e *traceEnricher) enrichOne(orig *tracepb.ResourceSpans) *tracepb.Resource
 
 	tags := e.resolveTags(present, existing)
 
-	merged := make([]*commonpb.KeyValue, 0, len(existing)+len(tags))
-	merged = append(merged, existing...) // emitter attrs preserved verbatim
+	var toAdd []*commonpb.KeyValue
 	for k, v := range tags {
 		if !present[k] {
-			merged = append(merged, stringKV(k, v))
+			toAdd = append(toAdd, stringKV(k, v))
 		}
 	}
+	if len(toAdd) == 0 {
+		return orig // nothing to add — forward the batch untouched
+	}
 
-	// Shallow-copy the ResourceSpans; keep ScopeSpans shared (spans are the
-	// bulk of the payload and are not mutated), rebuild only the Resource.
+	// Copy-on-write on the Resource ONLY (ScopeSpans, which dominate the
+	// payload, are shared and never mutated). proto.Clone deep-copies the
+	// whole Resource — Attributes AND everything else the emitter set
+	// (entity_refs, schema-versioned/unknown proto fields) — so the app's
+	// foreign identity is preserved; we then only APPEND the insert-if-absent
+	// tags. Rebuilding the Resource by hand (Attributes only) silently
+	// dropped entity_refs + unknown fields (audit M1).
+	var newRes *resourcepb.Resource
+	if orig.GetResource() != nil {
+		newRes = proto.Clone(orig.Resource).(*resourcepb.Resource)
+	} else {
+		newRes = &resourcepb.Resource{}
+	}
+	newRes.Attributes = append(newRes.Attributes, toAdd...)
+
 	return &tracepb.ResourceSpans{
-		Resource: &resourcepb.Resource{
-			Attributes:             merged,
-			DroppedAttributesCount: dropped,
-		},
+		Resource:   newRes,
 		ScopeSpans: orig.ScopeSpans,
 		SchemaUrl:  orig.SchemaUrl,
 	}
