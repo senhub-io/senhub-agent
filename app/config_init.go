@@ -25,6 +25,7 @@ type initConfigArgs struct {
 	configPath   string
 	license      string
 	otlpEndpoint string
+	otlpProtocol string
 	tags         map[string]string
 }
 
@@ -59,6 +60,8 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			}
 		case "--otlp-endpoint":
 			out.otlpEndpoint, err = value(&i)
+		case "--otlp-protocol":
+			out.otlpProtocol, err = value(&i)
 		default:
 			return out, fmt.Errorf("unknown flag %q", argv[i])
 		}
@@ -77,6 +80,7 @@ func initConfig(argv []string) {
 	configPath := opts.configPath
 	license := opts.license
 	otlpEndpoint := opts.otlpEndpoint
+	otlpProtocol := opts.otlpProtocol
 	tags := opts.tags
 
 	if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
@@ -102,7 +106,7 @@ func initConfig(argv []string) {
 		fatalf("config init: applying provisioned fields: %v", err)
 	}
 
-	if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint); err != nil {
+	if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint, otlpProtocol); err != nil {
 		fatalf("config init: writing OTLP strategy: %v", err)
 	}
 
