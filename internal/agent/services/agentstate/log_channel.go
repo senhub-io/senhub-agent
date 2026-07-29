@@ -33,6 +33,16 @@ type LogRecord struct {
 	Body         string
 	Attributes   map[string]string
 
+	// Fields carries STRUCTURED payload values (arrays, nested objects)
+	// that the flat string Attributes cannot hold — mirroring the OTel log
+	// data model, where a log body/attributes may be any value, not just
+	// strings. Populated only by producers whose payload is richer than a
+	// flat log (the event probe's HTTP events); nil for everyone else.
+	// Consumers that understand structure (the /event/insert converter;
+	// optionally the OTLP log exporter) read it; the rest ignore it (#294
+	// step 1b).
+	Fields map[string]any
+
 	// ProducerProbeName / ProducerProbeType identify the probe that
 	// produced this record. Used by the strategy to populate the
 	// service.instance.id-equivalent attribute on the OTel side, and
