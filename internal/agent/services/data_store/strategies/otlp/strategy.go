@@ -338,7 +338,16 @@ func (s *OTLPSyncStrategy) Start() error {
 	// buildExporters above, so a failure here is exotic and must not take
 	// down the metrics/logs signals with it.
 	if s.cfg.Traces.Enabled {
-		enricher := buildTraceEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment)
+		// Relay identity for the telemetry.relay.* set (#698): sourced from the
+		// host identity (gopsutil), NOT the operator-overridable Resource, so
+		// relay.host.id is char-identical to this agent's host entity identity;
+		// instance.id is the agent's service.instance.id. A transient host-info
+		// failure yields an empty host.id and the relay set is simply omitted.
+		var relayHostID, relayHostName string
+		if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
+			relayHostID, relayHostName = hi.ID, hi.Name
+		}
+		enricher := buildTraceEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
 		relay, relayErr := newSpansRelay(s.cfg, enricher, s.logger)
 		if relayErr != nil {
 			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
