@@ -68,6 +68,9 @@ probe instances and the resource is batch-level.
 ```yaml
 protocol: grpc          # grpc (default) | http
 endpoint: "otlp.example.com:4317"
+tenant: "acme"          # or org_id: — sugar for the X-Scope-OrgID header (#240)
+headers:                # arbitrary request headers (env-expandable)
+  Authorization: "Bearer ${env:OTLP_TOKEN}"
 fallback_endpoints:     # optional standby ingresses for failover (#217)
   - "otlp-dr.example.com:4317"
 signals:
@@ -100,6 +103,28 @@ signals:
 ```
 
 The interval is independent of probe `Collect` cadence — OTLP pulls the latest cache snapshot at its own rhythm.
+
+## Multi-tenant ingest & auth model (`tenant`, #240)
+
+`tenant:` (alias `org_id:`) is sugar for the **`X-Scope-OrgID`** request header
+— the de-facto multi-tenant routing key across Mimir / Loki / Tempo and
+VictoriaMetrics. It is injected after root→signal header resolution (in
+`resolveTransport`), so it lands on **every** signal, including one that
+overrides `headers:`. An explicit `X-Scope-OrgID` in `headers:` wins (the field
+is a shortcut, not an override). Control characters (CR/LF) are rejected at
+parse time — no header injection. Env-expandable (`tenant: "${env:ORG_ID}"`).
+
+The agent stays **vendor-neutral**: it carries an optional
+`Authorization: Bearer <token>` (via `headers:`) **+** an optional
+`X-Scope-OrgID`. Auth is enforced at the **edge** (collector) by a standard OTel
+authenticator extension (`bearertokenauth` / `basicauth` / `oidcauth` / mTLS) —
+nothing senhub-specific, nothing built in the agent. Trust model: a self-hosted
+/ on-prem edge trusts the agent's `X-Scope-OrgID`; an untrusted SaaS edge strips
+it and re-derives the tenant from the authenticated token (anti-spoofing).
+**The license does NOT gate ingestion** — paid-probe gating is a collection-side
+axis; an OSS agent with no license can still post. Only `tenant.id` (generic
+OTel resource attribute) / `X-Scope-OrgID` (wire) are used — no `senhub.*`
+tenant naming.
 
 ## Relayed-trace correlation enrichment (`relay_enrichment`, #294)
 
