@@ -50,6 +50,17 @@ const (
 	relBoundTo      = "bound_to"
 	relRunsOn       = "runs_on"
 
+	// Retired relation types — pre-ADR-0022 device-to-device edges that carried
+	// their facts as edge attributes Toise's bare relationship descriptor drops.
+	// Declared for vocabulary compat with the frozen contract (#239), NEVER
+	// emitted: adjacent_to became connected_to between network.interface
+	// entities, routes_via became network.route + has_route, and forwards_to
+	// went away with the bridge-FDB walk (#156). Guarded by
+	// TestBuildObservation_NoRetiredEdgeRelations.
+	relRetiredAdjacentTo = "adjacent_to"
+	relRetiredRoutesVia  = "routes_via"
+	relRetiredForwardsTo = "forwards_to"
+
 	// Polled-device descriptive attribute keys (network.device nameplate).
 	attrSysDescr      = "sys.descr"
 	attrHwVendor      = "hw.vendor"
