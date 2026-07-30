@@ -4,8 +4,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 )
 
 // LLDP topology parsing (Lot 5a prep — entity rail).
@@ -301,14 +303,14 @@ func neighborIdentity(n lldpNeighbor) deviceIdentity {
 }
 
 // canonIP renders an IP in one canonical form (IPv4 dotted no-leading-zeros,
-// IPv6 RFC 5952 lowercase compressed). A non-IP literal (hostname) is
-// lowercased/trimmed as a last resort.
+// IPv6 RFC 5952 lowercase compressed, zoned addresses included — see
+// entity.CanonicalIP). A non-IP literal (hostname) is lowercased/trimmed as a
+// last resort.
 func canonIP(s string) string {
-	s = strings.TrimSpace(s)
-	if ip := net.ParseIP(s); ip != nil {
-		return ip.String()
+	if c, ok := entity.CanonicalIP(s); ok {
+		return c
 	}
-	return strings.ToLower(s)
+	return strings.ToLower(strings.TrimSpace(s))
 }
 
 // vendorPEN extracts the IANA Private Enterprise Number from a sysObjectID
