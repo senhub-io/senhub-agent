@@ -291,8 +291,15 @@ type Config struct {
 	// to all three signals — a per-signal override is not supported
 	// because mixing transports against one endpoint is a
 	// configuration mistake far more often than an intent.
-	Protocol    string
-	Headers     map[string]string
+	Protocol string
+	Headers  map[string]string
+	// Tenant is an ergonomic shortcut for the X-Scope-OrgID request header —
+	// the de-facto multi-tenant routing key across Mimir/Loki/Tempo and
+	// VictoriaMetrics (#240). It is applied to every signal. An explicit
+	// X-Scope-OrgID in `headers:` wins (the field is a shortcut, not an
+	// override). Independent of the license — ingest tenancy is an edge/auth
+	// concern, not a paid-probe gate.
+	Tenant      string
 	TLS         TLSConfig
 	Compression string
 	Timeout     time.Duration
@@ -390,6 +397,44 @@ func (t SignalTransport) ResolveHeaders(rootHeaders map[string]string) map[strin
 		return t.Headers
 	}
 	return rootHeaders
+}
+
+// xScopeOrgIDHeader is the de-facto multi-tenant routing header used across
+// Mimir/Loki/Tempo and VictoriaMetrics. The `tenant` config field is sugar for
+// it (#240).
+const xScopeOrgIDHeader = "X-Scope-OrgID"
+
+// validateHeaderValue rejects control characters (CR/LF and other <0x20 / 0x7f)
+// that would break HTTP/gRPC header framing or allow header injection.
+func validateHeaderValue(v string) error {
+	for _, r := range v {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("value contains a control character (0x%02x); it must be a plain header token", r)
+		}
+	}
+	return nil
+}
+
+// withTenantHeader returns headers with X-Scope-OrgID set from tenant, unless an
+// explicit header of that name (case-insensitive) is already present — the
+// explicit header wins, the field is only a shortcut. The input map is never
+// mutated (a signal may share the root headers map); a copy is returned when
+// the header is added.
+func withTenantHeader(headers map[string]string, tenant string) map[string]string {
+	if tenant == "" {
+		return headers
+	}
+	for k := range headers {
+		if strings.EqualFold(k, xScopeOrgIDHeader) {
+			return headers
+		}
+	}
+	out := make(map[string]string, len(headers)+1)
+	for k, v := range headers {
+		out[k] = v
+	}
+	out[xScopeOrgIDHeader] = tenant
+	return out
 }
 
 // ResolveTLS returns the TLS config to use for this signal. When the
@@ -576,6 +621,19 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 		// service env vars on Windows) instead of living in the config
 		// file in plaintext. Same syntax as the OTel collector.
 		cfg.Headers = expandEnvMap(hdrs)
+	}
+
+	// tenant / org_id: ergonomic shortcut for the X-Scope-OrgID header (#240).
+	// Accept either key; `tenant` wins if both are set.
+	if v, ok := params["tenant"].(string); ok && v != "" {
+		cfg.Tenant = expandEnv(v)
+	} else if v, ok := params["org_id"].(string); ok && v != "" {
+		cfg.Tenant = expandEnv(v)
+	}
+	if cfg.Tenant != "" {
+		if err := validateHeaderValue(cfg.Tenant); err != nil {
+			return cfg, fmt.Errorf("tenant: %w", err)
+		}
 	}
 
 	if err := parseTLS(params["tls"], &cfg.TLS); err != nil {
