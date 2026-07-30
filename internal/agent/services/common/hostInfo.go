@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 
@@ -160,9 +161,7 @@ func getHostNameplate(virt string) hostNameplate {
 		if infos, err := cpu.Info(); err == nil && len(infos) > 0 {
 			nameplate.cpuModel = strings.TrimSpace(infos[0].ModelName)
 			nameplate.cpuVendor = strings.TrimSpace(infos[0].VendorID)
-			if mhz := infos[0].Mhz; mhz > 0 {
-				nameplate.cpuFreqHz = int64(mhz * 1e6) // MHz → Hz
-			}
+			nameplate.cpuFreqHz = mhzToHz(infos[0].Mhz)
 		}
 		if n, err := cpu.Counts(true); err == nil {
 			nameplate.cpuLogical = int64(n)
@@ -195,6 +194,17 @@ func getHostNameplate(virt string) hostNameplate {
 		}
 	})
 	return nameplate
+}
+
+// mhzToHz converts the gopsutil-reported nominal CPU frequency to integer
+// hertz (the frozen host.cpu.frequency.nominal unit). Rounded, not truncated:
+// /proc/cpuinfo values like 2112.006 MHz land at 2112005999.9999998 in
+// float64, and truncation would ship an off-by-one-hertz nameplate.
+func mhzToHz(mhz float64) int64 {
+	if mhz <= 0 {
+		return 0
+	}
+	return int64(math.Round(mhz * 1e6))
 }
 
 // totalDiskBytes sums the capacity of the host's distinct physical filesystems
