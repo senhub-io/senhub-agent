@@ -76,6 +76,7 @@ func testEnricher() *traceEnricher {
 		TracesSignal{RelayEnrichment: true},
 		map[string]string{"tenant": "acme", "site": "paris"},
 		"prod",
+		"agent-host-id", "agent-host", "agent-instance-1",
 	)
 }
 
@@ -90,7 +91,8 @@ func TestTraceEnricher_InsertsStandardTags(t *testing.T) {
 		t.Errorf("emitter service.name lost: %v", got)
 	}
 	// Tenant/site/env inserted — standard / operator keys only, no vendor
-	// namespace (the relay-identity marker is deferred, see #698).
+	// namespace. The relay identity is under the neutral telemetry.relay.*
+	// space (#698), never senhub.*.
 	if got["tenant"] != "acme" || got["site"] != "paris" || got["deployment.environment"] != "prod" {
 		t.Errorf("default tags not inserted: %v", got)
 	}
@@ -98,6 +100,70 @@ func TestTraceEnricher_InsertsStandardTags(t *testing.T) {
 		if strings.HasPrefix(k, "senhub.") {
 			t.Errorf("unexpected product-namespaced attribute %q on relayed span", k)
 		}
+	}
+}
+
+// TestTraceEnricher_StampsRelayIdentity: the telemetry.relay.* set is added to
+// a relayed span, sourced from this agent's host identity + instance id (#698).
+func TestTraceEnricher_StampsRelayIdentity(t *testing.T) {
+	e := testEnricher()
+	out := e.enrich([]*tracepb.ResourceSpans{rsWithResource(map[string]string{"service.name": "checkout"})})[0]
+	got := attrMap(out)
+	if got[relayHostIDKey] != "agent-host-id" {
+		t.Errorf("%s = %q, want agent-host-id", relayHostIDKey, got[relayHostIDKey])
+	}
+	if got[relayHostNameKey] != "agent-host" {
+		t.Errorf("%s = %q, want agent-host", relayHostNameKey, got[relayHostNameKey])
+	}
+	if got[relayInstanceIDKey] != "agent-instance-1" {
+		t.Errorf("%s = %q, want agent-instance-1", relayInstanceIDKey, got[relayInstanceIDKey])
+	}
+}
+
+// TestTraceEnricher_RelayFirstRelayWins: if ANY relay key is already present
+// (a prior relay stamped it), the whole set is left untouched — no partial mix.
+func TestTraceEnricher_RelayFirstRelayWins(t *testing.T) {
+	e := testEnricher()
+	in := rsWithResource(map[string]string{
+		"service.name":   "checkout",
+		relayInstanceIDKey: "upstream-agent", // only one of the three present
+	})
+	out := e.enrich([]*tracepb.ResourceSpans{in})[0]
+	got := attrMap(out)
+	if got[relayInstanceIDKey] != "upstream-agent" {
+		t.Errorf("upstream relay instance overwritten: %q", got[relayInstanceIDKey])
+	}
+	if _, ok := got[relayHostIDKey]; ok {
+		t.Errorf("partial relay set completed — %s must not be added when the set is already partly present", relayHostIDKey)
+	}
+}
+
+// TestTraceEnricher_ActiveWithRelayOnly: relay identity alone (no global_tags)
+// keeps the enricher active and stamps the relay set — the active() fix (#698).
+func TestTraceEnricher_ActiveWithRelayOnly(t *testing.T) {
+	e := buildTraceEnricher(TracesSignal{RelayEnrichment: true}, nil, "", "agent-host-id", "agent-host", "agent-instance-1")
+	if !e.active() {
+		t.Fatal("enricher with relay identity but no global_tags must be active")
+	}
+	out := e.enrich([]*tracepb.ResourceSpans{rsWithResource(map[string]string{"service.name": "checkout"})})[0]
+	if attrMap(out)[relayHostIDKey] != "agent-host-id" {
+		t.Error("relay identity not stamped when no global_tags configured")
+	}
+}
+
+// TestTraceEnricher_RelayOmittedWhenHostIDEmpty: a transient host-info failure
+// (empty host.id) omits the relay set rather than stamping an empty join key.
+func TestTraceEnricher_RelayOmittedWhenHostIDEmpty(t *testing.T) {
+	e := buildTraceEnricher(TracesSignal{RelayEnrichment: true}, nil, "", "", "agent-host", "agent-instance-1")
+	out := e.enrich([]*tracepb.ResourceSpans{rsWithResource(map[string]string{"service.name": "checkout"})})
+	got := attrMap(out[0])
+	if _, ok := got[relayHostIDKey]; ok {
+		t.Error("relay set stamped with an empty host.id")
+	}
+	// No tags and no stampable relay id → verbatim pass-through (only the
+	// emitter's own service.name remains).
+	if len(got) != 1 {
+		t.Errorf("expected verbatim span (only service.name), got %v", got)
 	}
 }
 
@@ -129,7 +195,7 @@ func TestTraceEnricher_PerSourceOverride(t *testing.T) {
 			},
 		},
 		map[string]string{"tenant": "default-tenant"},
-		"",
+		"", "agent-host-id", "agent-host", "agent-instance-1",
 	)
 
 	// Matching source → override tenant.
@@ -145,7 +211,7 @@ func TestTraceEnricher_PerSourceOverride(t *testing.T) {
 }
 
 func TestTraceEnricher_DisabledIsVerbatimNoCopy(t *testing.T) {
-	e := buildTraceEnricher(TracesSignal{RelayEnrichment: false}, map[string]string{"tenant": "acme"}, "")
+	e := buildTraceEnricher(TracesSignal{RelayEnrichment: false}, map[string]string{"tenant": "acme"}, "", "agent-host-id", "agent-host", "agent-instance-1")
 	in := []*tracepb.ResourceSpans{rsWithResource(map[string]string{"service.name": "x"})}
 	out := e.enrich(in)
 	// Same slice, same backing elements — no allocation, true pass-through.

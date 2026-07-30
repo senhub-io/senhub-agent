@@ -120,11 +120,27 @@ Resource matches a rule (`match: {key, value}` → `tags:`), the shared-gateway
 case where one agent relays for several end-clients. Set
 `relay_enrichment: false` for a verbatim pass-through.
 
-A "relayed-by which agent" marker (agent host/instance identity on the
-relayed span) is **deferred**: OTel has no ratified key for relay/collector
-identity on pass-through telemetry, so the key is aligned with the topology
-consumer (Toise) + the Semconv SIG before introduction (#698) rather than
-baking a `senhub.*` product name.
+A **relay-identity** set is also stamped so a backend can answer "which agent
+relayed this span" and join it to the host node on the infra graph (#698):
+
+- `telemetry.relay.host.id` — the relaying agent's `host.id`, sourced from the
+  host identity (gopsutil), NOT the operator-overridable Resource value, so it
+  is char-identical to this agent's host entity identity (the strict join the
+  topology consumer relies on).
+- `telemetry.relay.host.name` — the relaying host name.
+- `telemetry.relay.instance.id` — the relaying agent's `service.instance.id`
+  (the per-producer reference key, identical to what the agent sets on its
+  entity emissions).
+
+These keys are generic — any collector/gateway carries the same fact — so they
+live in the neutral `telemetry.*` space, aligned with the topology consumer
+(Toise) and semconv#759, **not** a `senhub.*` product name (provisional pending
+the SIG, migration path assumed). The set is **atomic and first-relay-wins**:
+it is inserted only when NONE of the three keys is already present, so a
+downstream gateway cannot mix its own `instance.id` with an upstream relay's
+`host.id`. Toise itself does not ingest traces, so it does not build the
+"relayed-by" edge from these spans — that would be a relation carried by an
+entity (a separate, deferred piece of work); these keys serve a trace backend.
 
 **Correlation contract (what actually joins across signals):**
 `service.instance.id` is NOT a join key between agent telemetry and relayed
