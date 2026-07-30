@@ -46,6 +46,26 @@ func IncrementOTLPReceiverIngested(signal string, n int) {
 	otlpReceiverIngested.mu.Unlock()
 }
 
+// SeedOTLPReceiverIngested ensures the ingest counter has a zero entry for each
+// given signal, so a configured-but-idle receiver is already visible on the
+// pull endpoints (Prometheus/PRTG/Nagios) instead of showing nothing until its
+// first datapoint. The agentmetrics builder ranges this map and only emits the
+// signals it finds, so without a seed a receiver that has not yet taken traffic
+// exposes no receiver telemetry at all (#688). Seeding never lowers an existing
+// count — a signal that already has ingested items keeps its value.
+func SeedOTLPReceiverIngested(signals ...string) {
+	otlpReceiverIngested.mu.Lock()
+	defer otlpReceiverIngested.mu.Unlock()
+	for _, s := range signals {
+		if s == "" {
+			continue
+		}
+		if _, ok := otlpReceiverIngested.m[s]; !ok {
+			otlpReceiverIngested.m[s] = 0
+		}
+	}
+}
+
 // GetOTLPReceiverIngestedBySignal returns a snapshot copy of the per-signal
 // ingest counters.
 func GetOTLPReceiverIngestedBySignal() map[string]uint64 {

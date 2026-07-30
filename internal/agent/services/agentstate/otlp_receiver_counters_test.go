@@ -47,3 +47,33 @@ func TestOTLPReceiverDroppedCounter(t *testing.T) {
 		t.Error("empty reason should be ignored")
 	}
 }
+
+// TestSeedOTLPReceiverIngested is the regression for #688: a configured but
+// idle receiver must expose its ingest self-metric at 0, and seeding must never
+// reset an already-accumulated count.
+func TestSeedOTLPReceiverIngested(t *testing.T) {
+	ResetOTLPReceiverCountersForTest()
+	t.Cleanup(ResetOTLPReceiverCountersForTest)
+
+	SeedOTLPReceiverIngested("metrics", "logs", "")
+	got := GetOTLPReceiverIngestedBySignal()
+	if v, ok := got["metrics"]; !ok || v != 0 {
+		t.Errorf("metrics seeded = (%d,%v), want (0,true)", v, ok)
+	}
+	if v, ok := got["logs"]; !ok || v != 0 {
+		t.Errorf("logs seeded = (%d,%v), want (0,true)", v, ok)
+	}
+	if _, ok := got[""]; ok {
+		t.Error("empty signal must not be seeded")
+	}
+	if _, ok := got["traces"]; ok {
+		t.Error("un-seeded signal must stay absent")
+	}
+
+	// A later ingest raises the seeded counter; re-seeding must not clobber it.
+	IncrementOTLPReceiverIngested("metrics", 4)
+	SeedOTLPReceiverIngested("metrics")
+	if v := GetOTLPReceiverIngestedBySignal()["metrics"]; v != 4 {
+		t.Errorf("metrics after ingest+reseed = %d, want 4 (seed must not reset)", v)
+	}
+}
