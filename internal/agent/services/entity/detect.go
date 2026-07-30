@@ -34,6 +34,12 @@ type HostIdentity struct {
 	ContainerRuntime      string // container.runtime — /proc heuristics (#536)
 	K8sNodeName           string // k8s.node.name — downward-API NODE_NAME (#536)
 
+	// Environment is deployment.environment (semconv) for the host — the same
+	// operator-declared value the OTLP metrics resource carries, stamped on the
+	// host ENTITY too so a topology consumer's governance view sees it without a
+	// separate declaration. Empty by default (omitted).
+	Environment string
+
 	// Governance is the operator-supplied governance attribute map
 	// (entity.owner.*, service.criticality, entity.location.*, …) stamped on the
 	// host entity. nil/empty by default.
@@ -139,6 +145,10 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	if h.K8sNodeName != "" {
 		host.Attributes["k8s.node.name"] = h.K8sNodeName
 	}
+	if h.Environment != "" {
+		host.Attributes["deployment.environment"] = h.Environment
+	}
+	// Governance last so an operator-declared key wins on any collision.
 	for k, v := range h.Governance {
 		host.Attributes[k] = v
 	}
