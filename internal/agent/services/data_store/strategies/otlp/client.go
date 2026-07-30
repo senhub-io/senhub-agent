@@ -116,8 +116,11 @@ type resolvedTransport struct {
 func resolveTransport(cfg Config, sig SignalTransport) resolvedTransport {
 	return resolvedTransport{
 		endpoint: sig.ResolveEndpoint(cfg.Endpoint),
-		headers:  sig.ResolveHeaders(cfg.Headers),
-		tls:      sig.ResolveTLS(cfg.TLS),
+		// Inject X-Scope-OrgID from the tenant field after root→signal header
+		// resolution so it lands on every signal, including one that overrides
+		// headers (#240). An explicit X-Scope-OrgID header still wins.
+		headers: withTenantHeader(sig.ResolveHeaders(cfg.Headers), cfg.Tenant),
+		tls:     sig.ResolveTLS(cfg.TLS),
 	}
 }
 
