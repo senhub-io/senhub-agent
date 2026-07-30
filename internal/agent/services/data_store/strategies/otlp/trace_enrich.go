@@ -18,11 +18,27 @@ import (
 // swaps it when an incoming span's Resource matches a rule (the
 // shared-gateway case).
 //
-// Only standard / operator-defined keys are used — no product-namespaced
-// attributes. A "relayed-by which agent" marker was deliberately deferred:
-// OTel has no ratified key for relay/collector identity on pass-through
-// telemetry, so rather than bake a vendor name we align a key with the
-// topology consumer (Toise) and OTel Semconv first (#698).
+// It also stamps a vendor-neutral RELAY-IDENTITY set so a backend can answer
+// "which agent relayed this span" and join it to the host node on the infra
+// graph (#698):
+//
+//   telemetry.relay.host.id  — the relaying agent's host.id, char-identical to
+//                              its host entity identity (gopsutil HostID, NOT
+//                              the operator-overridable Resource value, so the
+//                              strict join on the consumer holds).
+//   telemetry.relay.host.name — the relaying host name.
+//   telemetry.relay.instance.id — the relaying agent's service.instance.id,
+//                              the same value it sets as a Resource attribute
+//                              on its own entity emissions (the per-producer
+//                              reference key).
+//
+// These keys are generic (any collector/gateway carries the same fact), so
+// they live in the neutral telemetry.* space, aligned with the topology
+// consumer (Toise) and semconv#759 — NOT a senhub.* product name. Provisional
+// pending the SIG, with a migration path. The set is atomic and FIRST-RELAY-
+// WINS: it is inserted ONLY when NONE of the three keys is already present, so
+// a downstream gateway cannot mix its own instance.id with an upstream relay's
+// host.id and destroy the join.
 //
 // The app's own service.name / service.instance.id / host.* are never
 // touched. This mirrors the OpenTelemetry Collector's resourceprocessor
@@ -33,7 +49,17 @@ type traceEnricher struct {
 	defaultTags map[string]string
 	// overrides swap defaultTags for spans whose Resource matches a rule.
 	overrides []traceTenantOverride
+	// relay identity of THIS agent, stamped as the telemetry.relay.* set.
+	relayHostID     string
+	relayHostName   string
+	relayInstanceID string
 }
+
+const (
+	relayHostIDKey     = "telemetry.relay.host.id"
+	relayHostNameKey   = "telemetry.relay.host.name"
+	relayInstanceIDKey = "telemetry.relay.instance.id"
+)
 
 // traceTenantOverride replaces the default insert-if-absent tag set for
 // relayed spans whose Resource attribute matchKey equals matchValue —
@@ -45,10 +71,37 @@ type traceTenantOverride struct {
 	tags       map[string]string
 }
 
-// active reports whether the enricher would add anything. A disabled or
-// empty enricher is a no-op and the relay forwards spans verbatim.
+// active reports whether the enricher would add anything. A disabled enricher
+// is a no-op and the relay forwards spans verbatim. Once enabled it is active
+// whenever it has a relay identity to stamp (the common case — the agent's
+// instance id is always known) OR any insert-if-absent tags, so relay
+// identity is added even when no global_tags are configured.
 func (e *traceEnricher) active() bool {
-	return e != nil && e.enabled && (len(e.defaultTags) > 0 || len(e.overrides) > 0)
+	if e == nil || !e.enabled {
+		return false
+	}
+	return e.relayInstanceID != "" || len(e.defaultTags) > 0 || len(e.overrides) > 0
+}
+
+// relayKeysToAdd returns the telemetry.relay.* set for one span, or nil. The
+// set is atomic and first-relay-wins: nothing is stamped if ANY of the three
+// keys is already present (a downstream relay must not overwrite an upstream
+// one), or if this agent's host.id/instance.id are unavailable this cycle.
+func (e *traceEnricher) relayKeysToAdd(present map[string]bool) []*commonpb.KeyValue {
+	if e.relayHostID == "" || e.relayInstanceID == "" {
+		return nil
+	}
+	if present[relayHostIDKey] || present[relayHostNameKey] || present[relayInstanceIDKey] {
+		return nil
+	}
+	kvs := []*commonpb.KeyValue{
+		stringKV(relayHostIDKey, e.relayHostID),
+		stringKV(relayInstanceIDKey, e.relayInstanceID),
+	}
+	if e.relayHostName != "" {
+		kvs = append(kvs, stringKV(relayHostNameKey, e.relayHostName))
+	}
+	return kvs
 }
 
 // enrich returns a batch with each ResourceSpans' Resource augmented,
@@ -85,6 +138,7 @@ func (e *traceEnricher) enrichOne(orig *tracepb.ResourceSpans) *tracepb.Resource
 			toAdd = append(toAdd, stringKV(k, v))
 		}
 	}
+	toAdd = append(toAdd, e.relayKeysToAdd(present)...)
 	if len(toAdd) == 0 {
 		return orig // nothing to add — forward the batch untouched
 	}
@@ -143,8 +197,12 @@ func stringKV(k, v string) *commonpb.KeyValue {
 
 // buildTraceEnricher assembles the enricher from the strategy's resolved
 // config. globalTags + environment become the default insert-if-absent set;
-// per-source overrides come from the traces config.
-func buildTraceEnricher(cfg TracesSignal, globalTags map[string]string, environment string) *traceEnricher {
+// per-source overrides come from the traces config. relayHostID/relayHostName/
+// relayInstanceID are THIS agent's identity for the telemetry.relay.* set —
+// relayHostID/Name MUST come from the host identity (gopsutil), NOT the
+// operator-overridable Resource, and relayInstanceID from the agent's
+// service.instance.id (see #698).
+func buildTraceEnricher(cfg TracesSignal, globalTags map[string]string, environment, relayHostID, relayHostName, relayInstanceID string) *traceEnricher {
 	if !cfg.RelayEnrichment {
 		return &traceEnricher{enabled: false}
 	}
@@ -175,8 +233,11 @@ func buildTraceEnricher(cfg TracesSignal, globalTags map[string]string, environm
 	}
 
 	return &traceEnricher{
-		enabled:     true,
-		defaultTags: defaultTags,
-		overrides:   overrides,
+		enabled:         true,
+		defaultTags:     defaultTags,
+		overrides:       overrides,
+		relayHostID:     relayHostID,
+		relayHostName:   relayHostName,
+		relayInstanceID: relayInstanceID,
 	}
 }
