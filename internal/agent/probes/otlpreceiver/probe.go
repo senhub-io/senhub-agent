@@ -116,6 +116,11 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 		Strs("signals", p.config.Signals.names()).
 		Msg("Starting OTLP receiver")
 
+	// Seed the ingest self-metric at 0 for each enabled signal so a configured
+	// receiver is visible on the pull endpoints from the moment it starts,
+	// rather than exposing no receiver telemetry until its first datapoint (#688).
+	agentstate.SeedOTLPReceiverIngested(p.config.Signals.names()...)
+
 	if netbind.IsWildcard(p.config.Address) {
 		p.moduleLogger.Warn().
 			Str("address", p.config.Address).
