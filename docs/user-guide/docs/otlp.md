@@ -65,10 +65,14 @@ storage:
       # Required: gRPC endpoint of the receiver (no scheme prefix).
       endpoint: "otel-collector.internal:4317"
 
+      # Optional multi-tenant routing: sugar for the X-Scope-OrgID header
+      # (the standard tenant key for Mimir / Loki / Tempo / VictoriaMetrics).
+      # "org_id" is accepted as an alias. Env-expandable.
+      tenant: "acme"
+
       # Optional headers (for example bearer auth at the gateway).
       headers:
         Authorization: "Bearer YOUR-INGEST-TOKEN"
-        X-Tenant-Id: "acme"
 
       # TLS — defaults to enabled. Disable explicitly for plaintext
       # localhost / lab environments.
@@ -117,6 +121,20 @@ storage:
         # Any additional keys are passed through as resource attributes.
         k8s.cluster.name: edge-01
 ```
+
+### `tenant` (optional multi-tenant routing)
+
+Sets the **`X-Scope-OrgID`** header — the standard tenant key used by Mimir,
+Loki, Tempo and VictoriaMetrics — on every signal. `org_id` is accepted as an
+alias; an explicit `X-Scope-OrgID` in `headers:` takes precedence. The value is
+env-expandable (`tenant: "${env:ORG_ID}"`).
+
+Ingest authentication is enforced at the **collector/edge** (a standard OTLP
+authenticator: bearer token, basic auth, OIDC or mTLS), not by the agent. A
+self-hosted edge trusts the agent's `tenant`; an untrusted multi-tenant edge
+re-derives it from the authenticated token. **Your agent license does not gate
+sending data** — it only governs which paid probes may collect; an unlicensed
+agent can still push over OTLP.
 
 ### `endpoint` (required)
 
