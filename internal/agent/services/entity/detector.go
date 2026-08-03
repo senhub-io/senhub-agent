@@ -5,21 +5,31 @@ import (
 	"time"
 )
 
-// livenessSlackFactor multiplies the heartbeat cadence to produce the
-// Interval carried on each event. The consumer expires an entity at
-// last_seen + Interval, so the emitted window must outlast the re-emission
-// cadence by enough to survive a missed re-emission.
+// reEmitTicks is how many ticks the Tracker suppresses an UNCHANGED state
+// before re-publishing it (see NewTracker below, called with reEmitTicks×tick).
+// The steady-state re-emission cadence is therefore reEmitTicks×tick — NOT one
+// tick — and the liveness window must be sized against that effective cadence.
+const reEmitTicks = 2
+
+// livenessSlackOverReEmit sizes the Interval carried on each event as a multiple
+// of the effective RE-EMISSION cadence (reEmitTicks×tick), so the consumer's
+// expiry (last_seen + Interval) survives missed re-emissions.
 //
-// The Tracker suppresses unchanged heartbeats for 2 ticks, so steady-state
-// re-emission happens every 2×cadence (120s at the 60s default), not every
-// tick. With the old 3× the deadline was 180s — only 60s past the 120s
-// re-emit cadence, less than one cycle — so a single missed re-emission
-// (next at ~240s) crossed the deadline and the consumer flapped the whole
-// entity stack (#454). 5× → 300s deadline, which clears a fully missed
-// re-emission cycle (240s) with margin. Trade-off: a genuinely-gone entity
-// expires after 300s instead of 180s — acceptable; resurrection is
-// identity-stable on the consumer side.
-const livenessSlackFactor = 5
+// The earlier code multiplied the TICK by the slack factor, not the re-emission
+// cadence. At 60s ticks the effective cadence is 120s, so the previous 5×tick
+// gave a 300s window = only 2.5× the re-emit cadence: it survived ONE missed
+// re-emission (next at ~240s) but not two (~360s > 300s), leaving zero
+// tolerance for a second consecutive miss — and the whole entity stack of an
+// intermittently-slow agent flapped (#454). Sizing against the effective
+// cadence with a 3× slack absorbs two consecutive missed re-emissions before
+// expiry. The topology consumer derives its expiry from this Interval with no
+// hidden margin, so the value must carry the whole slack itself.
+const livenessSlackOverReEmit = 3
+
+// livenessSlackFactor is the resulting multiple of the TICK
+// (reEmitTicks × livenessSlackOverReEmit): 6× at the 60s default → a 360s
+// window, i.e. 3× the 120s re-emission cadence.
+const livenessSlackFactor = reEmitTicks * livenessSlackOverReEmit
 
 // lastGoodTTL bounds how long the detector keeps serving a source's last
 // good observation once Observe starts reporting failures (ok=false). A
@@ -102,9 +112,10 @@ func (d *Detector) Run(ctx context.Context) {
 
 	// One Tracker for the detector's lifetime: it remembers the last-seen
 	// set so it can emit deletes when an item disappears between cycles.
-	// Suppress unchanged heartbeats for 2 ticks: still one full tick of
-	// slack before the consumer's 3x-cadence liveness expiry.
-	tracker := NewTracker(publish, 2*d.interval)
+	// Suppress unchanged heartbeats for reEmitTicks ticks — this defines the
+	// effective re-emission cadence the liveness window is sized against
+	// (see livenessSlackOverReEmit).
+	tracker := NewTracker(publish, reEmitTicks*d.interval)
 	d.reconcile(tracker, now())
 
 	ticker := time.NewTicker(d.interval)
@@ -132,8 +143,9 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	if a.InstanceID == "" {
 		return
 	}
-	// Tick at d.interval; emit a slacked Interval so a late heartbeat does
-	// not expire a live entity (see livenessSlackFactor).
+	// Tick at d.interval; emit a slacked Interval (livenessSlackOverReEmit× the
+	// effective re-emission cadence, = livenessSlackFactor× the tick) so a late
+	// heartbeat does not expire a live entity on the consumer (#454).
 	interval := d.interval * livenessSlackFactor
 
 	// Foundation (host + service.instance + runs_on) plus everything the

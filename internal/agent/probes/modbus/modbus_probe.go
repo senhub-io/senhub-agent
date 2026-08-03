@@ -17,7 +17,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -39,8 +38,6 @@ type ModbusProbe struct {
 	instance     string
 	moduleLogger *logger.ModuleLogger
 	entitySource *modbusEntitySource
-
-	unregisterEntitySource func()
 
 	// newClient is overridable in tests.
 	newClient func(cfg probeConfig) modbusClient
@@ -76,9 +73,7 @@ func (p *ModbusProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
-// OnStart registers the entity source so Toise discovers the Modbus device.
 func (p *ModbusProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Str("host", p.cfg.Host).
 		Int("port", p.cfg.Port).
@@ -88,11 +83,7 @@ func (p *ModbusProbe) OnStart(_ chan struct{}) error {
 	return nil
 }
 
-// OnShutdown unregisters the entity source.
 func (p *ModbusProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	return nil
 }
 

@@ -34,6 +34,8 @@ metrics:
       value_scale: 1048576
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   - name: "disk_free_percent"
     channel: "disk_free_percent"
@@ -50,6 +52,8 @@ metrics:
         system.filesystem.state: free
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   # Synthetic "used %" complement of disk_free_percent — the Windows
   # probe emits "100 - free%" alongside the free counter so cross-OS
@@ -71,6 +75,8 @@ metrics:
         system.filesystem.state: used
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   # --- Windows disk I/O (instantaneous rates from Perfmon) ---
   - name: "disk_reads_sec"
@@ -88,6 +94,8 @@ metrics:
         disk.io.direction: read
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   - name: "disk_writes_sec"
     channel: "disk_writes_sec"
@@ -104,6 +112,8 @@ metrics:
         disk.io.direction: write
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   - name: "disk_read_bytes_sec"
     channel: "disk_read_bytes_sec"
@@ -120,6 +130,8 @@ metrics:
         disk.io.direction: read
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   - name: "disk_write_bytes_sec"
     channel: "disk_write_bytes_sec"
@@ -136,6 +148,8 @@ metrics:
         disk.io.direction: write
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   - name: "disk_queue_length"
     channel: "disk_queue_length"
@@ -150,6 +164,8 @@ metrics:
       type: gauge
     tag_to_attribute:
       drive: system.filesystem.mountpoint
+      device: system.device
+      fs_type: system.filesystem.type
 
   # ═════════════════════════════════════════════════════════════════════════
   # UNIX / LINUX — Filesystem capacity (from statfs)

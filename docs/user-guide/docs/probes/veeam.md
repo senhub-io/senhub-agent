@@ -112,6 +112,16 @@ Per-object backup status:
 | `veeam_objects_total` | Count | Total protected objects |
 | `veeam_objects_failed` | Count | Objects whose last backup failed |
 
+### Agent Backups
+
+Veeam Agent Backup jobs (physical Windows and Linux machines protected by the Veeam Agent) are not exposed by the Veeam REST `/jobs` endpoint — only as protected objects. The probe surfaces each agent-managed object as an additional `veeam_job_status` channel tagged `metric_type:jobs_status`, so it appears and is coloured by the same **Job Status** sensor as the VM jobs.
+
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `veeam_job_status` | Lookup | Agent backup status: Failed (last run failed), Never Run (no restore point yet), otherwise Success. The `job_type` tag is `WindowsAgentBackup` or `LinuxAgentBackup` |
+
+Because a protected object carries no session timestamp, the Stale and Running states do not apply to agent backups; the restore-point count stays on the `veeam_object_restore_points` channel above.
+
 ### Infrastructure
 
 Managed server availability:

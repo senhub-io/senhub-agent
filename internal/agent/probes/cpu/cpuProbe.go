@@ -79,13 +79,6 @@ func (p *cpuProbe) Collect() ([]data_store.DataPoint, error) {
 	// Enrich datapoints with probe name
 	enrichedMetrics := p.EnrichDataPointsWithProbeName(metrics, p.GetName())
 
-	// Send to strategies if callback is set
-	if p.OnDataPoints != nil {
-		if err := p.OnDataPoints(enrichedMetrics, p); err != nil {
-			return nil, fmt.Errorf("error handling data points: %v", err)
-		}
-	}
-
 	return enrichedMetrics, nil
 }
 

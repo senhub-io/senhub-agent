@@ -21,7 +21,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -56,12 +55,11 @@ type probeConfig struct {
 // CephProbe monitors a Ceph cluster through the REST management API.
 type CephProbe struct {
 	*types.BaseProbe
-	cfg                 probeConfig
-	moduleLogger        *logger.ModuleLogger
-	client              *http.Client
-	token               string
-	entitySrc           *cephEntitySource
-	unregisterEntitySrc func()
+	cfg          probeConfig
+	moduleLogger *logger.ModuleLogger
+	client       *http.Client
+	token        string
+	entitySrc    *cephEntitySource
 }
 
 // NewCephProbe constructs the probe from the raw params block.
@@ -142,7 +140,6 @@ func (p *CephProbe) GetTargetStrategies() []string {
 }
 
 func (p *CephProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySrc = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("ceph probe started")
@@ -150,9 +147,6 @@ func (p *CephProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *CephProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySrc != nil {
-		p.unregisterEntitySrc()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

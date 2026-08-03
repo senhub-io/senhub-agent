@@ -107,6 +107,25 @@ func TestDetectFoundation_Governance(t *testing.T) {
 	}
 }
 
+// TestDetectFoundation_Environment pins that deployment.environment rides the
+// host entity (so a topology consumer's governance view sees it), alongside
+// governance, and is omitted when unset.
+func TestDetectFoundation_Environment(t *testing.T) {
+	h := HostIdentity{ID: "h-1", Environment: "staging", Governance: map[string]any{"service.criticality": "low"}}
+	host := DetectFoundation(h, AgentIdentity{InstanceID: "a"}).Entities[0]
+	if host.Attributes["deployment.environment"] != "staging" {
+		t.Errorf("deployment.environment = %v, want staging", host.Attributes["deployment.environment"])
+	}
+	if host.Attributes["service.criticality"] != "low" {
+		t.Errorf("governance must coexist with environment: %v", host.Attributes)
+	}
+
+	bare := DetectFoundation(HostIdentity{ID: "h-2"}, AgentIdentity{InstanceID: "a"}).Entities[0]
+	if _, present := bare.Attributes["deployment.environment"]; present {
+		t.Error("no environment configured → attribute omitted")
+	}
+}
+
 // TestDetectFoundation_CapacityVirtChassis pins the AT10-AT12 host attributes:
 // numeric capacity rides as int64, virtualization/chassis as strings, all
 // omitted when zero/empty.
@@ -140,17 +159,29 @@ func TestDetectFoundation_CapacityVirtChassis(t *testing.T) {
 }
 
 // TestDetectFoundation_CloudContainerK8s pins the #536 nameplate attributes:
-// cloud.provider/cloud.region, container.runtime, k8s.node.name ride the host
-// entity when resolved and are omitted when empty.
+// cloud.provider/cloud.region/cloud.availability_zone/cloud.account.id,
+// host.type, container.runtime and k8s.node.name ride the host entity when
+// resolved and are omitted when empty.
 func TestDetectFoundation_CloudContainerK8s(t *testing.T) {
 	h := HostIdentity{
 		ID: "h-c1", CloudProvider: "aws", CloudRegion: "eu-west-1",
+		CloudAvailabilityZone: "eu-west-1a", CloudAccountID: "123456789012",
+		HostType:         "t3.medium",
 		ContainerRuntime: "containerd", K8sNodeName: "node-7",
 	}
 	host := DetectFoundation(h, AgentIdentity{InstanceID: "a"}).Entities[0]
 
 	if host.Attributes["cloud.provider"] != "aws" || host.Attributes["cloud.region"] != "eu-west-1" {
 		t.Errorf("cloud attrs wrong: %v", host.Attributes)
+	}
+	if host.Attributes["cloud.availability_zone"] != "eu-west-1a" {
+		t.Errorf("cloud.availability_zone wrong: %v", host.Attributes)
+	}
+	if host.Attributes["cloud.account.id"] != "123456789012" {
+		t.Errorf("cloud.account.id wrong: %v", host.Attributes)
+	}
+	if host.Attributes["host.type"] != "t3.medium" {
+		t.Errorf("host.type wrong: %v", host.Attributes)
 	}
 	if host.Attributes["container.runtime"] != "containerd" {
 		t.Errorf("container.runtime wrong: %v", host.Attributes)
@@ -160,7 +191,10 @@ func TestDetectFoundation_CloudContainerK8s(t *testing.T) {
 	}
 
 	bare := DetectFoundation(HostIdentity{ID: "h-c0"}, AgentIdentity{InstanceID: "a"}).Entities[0]
-	for _, k := range []string{"cloud.provider", "cloud.region", "container.runtime", "k8s.node.name"} {
+	for _, k := range []string{
+		"cloud.provider", "cloud.region", "cloud.availability_zone",
+		"cloud.account.id", "host.type", "container.runtime", "k8s.node.name",
+	} {
 		if _, present := bare.Attributes[k]; present {
 			t.Errorf("attribute %q must be omitted when empty", k)
 		}

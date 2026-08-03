@@ -219,3 +219,18 @@ func TestCollectLLDP_WalkError(t *testing.T) {
 type errContext string
 
 func (e errContext) Error() string { return string(e) }
+
+func TestCanonIP(t *testing.T) {
+	cases := map[string]string{
+		"10.0.0.1":       "10.0.0.1",
+		"2001:DB8::1":    "2001:db8::1",   // RFC 5952 lowercase
+		"fe80::1%eth0":   "fe80::1%eth0",  // zoned v6 canonicalized, not lowercased-literal
+		"FE80::A%eth0":   "fe80::a%eth0",  // zone kept, address canonical
+		" Core-SW.LOCAL": "core-sw.local", // non-IP → lowercased/trimmed fallback
+	}
+	for in, want := range cases {
+		if got := canonIP(in); got != want {
+			t.Errorf("canonIP(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

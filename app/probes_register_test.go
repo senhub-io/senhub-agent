@@ -58,6 +58,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"opensearch",
 		"nvidia",
 		"oracle",
+		"os_updates",
 		"otlp_receiver",
 		"phpfpm",
 		"postgresql",

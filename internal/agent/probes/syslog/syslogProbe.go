@@ -12,7 +12,6 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
@@ -221,16 +220,6 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		timestamp = time.Now()
 	}
 
-	eventTags := []tags.Tag{
-		{Key: "facility", Value: fmt.Sprintf("%d", facility), Private: false},
-		{Key: "severity", Value: fmt.Sprintf("%d", severity), Private: false},
-		{Key: "host", Value: hostname, Private: false},
-		{Key: "message", Value: content, Private: false},
-		{Key: "tag", Value: tag, Private: false},
-		{Key: "client", Value: client, Private: false},
-		{Key: "priority", Value: fmt.Sprintf("%d", priority), Private: false},
-	}
-
 	p.moduleLogger.Debug().
 		Int("facility", facility).
 		Int("severity", severity).
@@ -238,34 +227,12 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		Str("message", content).
 		Msg("Received syslog message")
 
-	if p.callback == nil {
-		p.moduleLogger.Warn().Msg("Callback is not set")
-		return
-	}
-
-	dataPoint := data_store.DataPoint{
-		Name:      "syslog_event",
-		Timestamp: timestamp,
-		Value:     float64(severity),
-		Tags:      eventTags,
-	}
-
-	p.moduleLogger.Debug().
-		Time("timestamp", timestamp).
-		Int("severity", severity).
-		Msg("Sending DataPoint to DataStore")
-
-	if err := p.callback([]data_store.DataPoint{dataPoint}); err != nil {
-		p.moduleLogger.Error().
-			Err(err).
-			Msg("Failed to send DataPoint to DataStore")
-	}
-
-	// Also publish to the agent's log channel so the OTLP strategy
-	// (and any future log sink) can ship the message as a structured
-	// log record. Independent of the data_store routing — the syslog
-	// message is a log, not a metric, even though the existing event
-	// strategy sees it as a DataPoint.
+	// Publish the message as a log record on the agent log bus. This is
+	// now the SINGLE emission path (#294 step 1a): the event strategy
+	// consumes syslog records from the log bus and posts /event/insert,
+	// and the OTLP strategy ships them as OTel logs. The former metric
+	// DataPoint → data_store → event strategy path was dropped — it was a
+	// duplicate of the same message ("a log, not a metric").
 	agentstate.PublishLog(agentstate.LogRecord{
 		Timestamp:    timestamp,
 		Severity:     agentstate.SyslogPriorityToSeverity(severity),

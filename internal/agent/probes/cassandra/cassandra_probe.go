@@ -17,7 +17,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -38,8 +37,7 @@ type cassandraProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *jolokiaClient
 
-	entitySrc              *entitySource
-	unregisterEntitySource func()
+	entitySrc *entitySource
 
 	// jolokiaHost and jolokiaPort are the immutable identity fields
 	// extracted from cfg.JolokiaURL at construction time.
@@ -126,7 +124,6 @@ func (p *cassandraProbe) ShouldStart() bool          { return true }
 func (p *cassandraProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *cassandraProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().
 		Str("jolokia_url", p.cfg.JolokiaURL).
 		Msg("Starting cassandra probe")
@@ -134,9 +131,6 @@ func (p *cassandraProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *cassandraProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	p.client.http.CloseIdleConnections()
 	return nil
 }

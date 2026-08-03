@@ -65,6 +65,11 @@ type OTLPSyncStrategy struct {
 	// (issue #202).
 	globalTagKeys map[string]bool
 
+	// globalTags is retained (beyond the built resource) so the span relay
+	// can build its correlation enricher — it needs the tenant/site tags as
+	// discrete values, not flattened into the resource (#294).
+	globalTags map[string]string
+
 	// startTime is the OTel `start_time_unix_nano` for cumulative
 	// counters. Pinned at strategy.Start so all counters share the same
 	// reference (standard OTel pattern — counter resets on agent
@@ -98,6 +103,12 @@ type OTLPSyncStrategy struct {
 	// registered as the OTel global, so any code that resolves a tracer
 	// via otel.Tracer() reaches this exporter.
 	traces *tracesPipeline
+
+	// spansRelay forwards RECEIVED spans (otlp_receiver → agentstate span
+	// channel) verbatim to the traces endpoint. Independent of the SDK
+	// tracesPipeline above (which exports the agent's own spans); both are
+	// active when Traces.Enabled. nil otherwise.
+	spansRelay *spansRelay
 
 	// pushTicker drives the metrics push cadence. nil before Start, nil
 	// after Shutdown.
@@ -199,6 +210,7 @@ func NewOTLPSyncStrategy(
 		registry:      transformers.NewTransformerRegistry(baseLogger),
 		resource:      buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
 		globalTagKeys: globalTagKeys,
+		globalTags:    globalTags,
 		memLimiter:    ml,
 	}
 
@@ -320,6 +332,31 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)
 	}
 
+	// Relay for received spans, gated by the SAME signals.traces.enabled
+	// flag as the SDK pipeline (no separate config key). Build failure is
+	// non-fatal: the TLS/transport inputs were already validated by
+	// buildExporters above, so a failure here is exotic and must not take
+	// down the metrics/logs signals with it.
+	if s.cfg.Traces.Enabled {
+		// Relay identity for the telemetry.relay.* set (#698): sourced from the
+		// host identity (gopsutil), NOT the operator-overridable Resource, so
+		// relay.host.id is char-identical to this agent's host entity identity;
+		// instance.id is the agent's service.instance.id. A transient host-info
+		// failure yields an empty host.id and the relay set is simply omitted.
+		var relayHostID, relayHostName string
+		if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
+			relayHostID, relayHostName = hi.ID, hi.Name
+		}
+		enricher := buildTraceEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
+		relay, relayErr := newSpansRelay(s.cfg, enricher, s.logger)
+		if relayErr != nil {
+			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
+		} else {
+			s.spansRelay = relay
+			relay.start()
+		}
+	}
+
 	s.logger.Info().
 		Bool("memory_limit_enabled", s.memLimiter != nil && s.memLimiter.enabled()).
 		Int("memory_limit_soft_mib", s.cfg.MemoryLimit.SoftMiB).
@@ -375,12 +412,11 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 func (s *OTLPSyncStrategy) pushPeriodic(parent context.Context) {
 	probesTotal, probesHealthy := agentstate.GetProbeCounts()
 	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
-		StartTime:          s.startTime,
-		ProbesTotal:        probesTotal,
-		ProbesHealthy:      probesHealthy,
-		CollectErrorsTotal: agentstate.GetCollectErrorsTotal(),
-		BuildVersion:       cliArgs.Version,
-		BuildCommit:        cliArgs.CommitHash,
+		StartTime:     s.startTime,
+		ProbesTotal:   probesTotal,
+		ProbesHealthy: probesHealthy,
+		BuildVersion:  cliArgs.Version,
+		BuildCommit:   cliArgs.CommitHash,
 	})
 	s.doPush(parent, agentRecords)
 }
@@ -519,7 +555,7 @@ func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 // The entity's service.instance.id is the resource's service.instance.id so
 // the entity identity and the OTLP resource agree on who the agent is.
 func (s *OTLPSyncStrategy) startEntityEmission() {
-	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.logger)
+	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.cfg.Entities.RedactAttributes, s.logger)
 	s.entityPump.start()
 
 	serviceName := s.cfg.Resource.ServiceName
@@ -532,31 +568,35 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			return entity.HostIdentity{}, err
 		}
 		return entity.HostIdentity{
-			ID:               hi.ID,
-			Name:             hi.Name,
-			OSType:           hi.OSType,
-			Arch:             hi.Arch,
-			OSName:           hi.OSName,
-			OSVersion:        hi.OSVersion,
-			OSBuildID:        hi.OSBuildID,
-			OSDescription:    hi.OSDescription,
-			CPUModel:         hi.CPUModel,
-			CPUVendor:        hi.CPUVendor,
-			HWVendor:         hi.HWVendor,
-			HWModel:          hi.HWModel,
-			HWSerial:         hi.HWSerial,
-			CPULogicalCount:  hi.CPULogicalCount,
-			CPUPhysicalCount: hi.CPUPhysicalCount,
-			CPUFreqHz:        hi.CPUFreqHz,
-			MemTotal:         hi.MemTotal,
-			DiskTotal:        hi.DiskTotal,
-			Virtualization:   hi.Virtualization,
-			ChassisType:      hi.ChassisType,
-			CloudProvider:    hi.CloudProvider,
-			CloudRegion:      hi.CloudRegion,
-			ContainerRuntime: hi.ContainerRuntime,
-			K8sNodeName:      hi.K8sNodeName,
-			Governance:       s.cfg.Entities.Governance.Attributes(),
+			ID:                    hi.ID,
+			Name:                  hi.Name,
+			OSType:                hi.OSType,
+			Arch:                  hi.Arch,
+			OSName:                hi.OSName,
+			OSVersion:             hi.OSVersion,
+			OSBuildID:             hi.OSBuildID,
+			OSDescription:         hi.OSDescription,
+			CPUModel:              hi.CPUModel,
+			CPUVendor:             hi.CPUVendor,
+			HWVendor:              hi.HWVendor,
+			HWModel:               hi.HWModel,
+			HWSerial:              hi.HWSerial,
+			CPULogicalCount:       hi.CPULogicalCount,
+			CPUPhysicalCount:      hi.CPUPhysicalCount,
+			CPUFreqHz:             hi.CPUFreqHz,
+			MemTotal:              hi.MemTotal,
+			DiskTotal:             hi.DiskTotal,
+			Virtualization:        hi.Virtualization,
+			ChassisType:           hi.ChassisType,
+			CloudProvider:         hi.CloudProvider,
+			CloudRegion:           hi.CloudRegion,
+			CloudAvailabilityZone: hi.CloudAvailabilityZone,
+			CloudAccountID:        hi.CloudAccountID,
+			HostType:              hi.HostType,
+			ContainerRuntime:      hi.ContainerRuntime,
+			K8sNodeName:           hi.K8sNodeName,
+			Environment:           s.cfg.Resource.Environment,
+			Governance:            s.cfg.Entities.Governance.Attributes(),
 		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {
@@ -686,6 +726,13 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// SDK will be flushed before the gRPC connection closes.
 	if s.logsPump != nil {
 		s.logsPump.stop(ctx)
+	}
+
+	// Stop the span relay: cancels the drain goroutine, unsubscribes from
+	// agentstate, flushes the pending batch best-effort, and closes its
+	// own transport (independent of s.exporters).
+	if s.spansRelay != nil {
+		s.spansRelay.stop(ctx)
 	}
 
 	if s.exporters == nil {

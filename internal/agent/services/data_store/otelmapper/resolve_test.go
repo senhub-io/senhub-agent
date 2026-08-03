@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 func TestResolve_SimpleGauge(t *testing.T) {
@@ -324,6 +325,56 @@ func TestResolve_OTLPIngestPreservesInstrumentType(t *testing.T) {
 	}
 }
 
+func TestResolve_OTLPIngestDeltaTemporality(t *testing.T) {
+	// A delta-temporality ingested sum carries otel_temporality=delta
+	// (stamped by the decoder, #661). Resolve must surface it on the
+	// record's Temporality field — keeping the counter instrument type —
+	// and must not leak the control tag as an attribute. Absence of the
+	// tag means cumulative, the zero value.
+	m := CacheMetric{
+		ProbeName:  "edge_in",
+		ProbeType:  "otlp_receiver",
+		MetricName: "http.server.requests",
+		Value:      7,
+		Unit:       "{request}",
+		Tags: map[string]string{
+			"metric_type":      MetricTypeOTLPIngest,
+			"otel_type":        "counter",
+			"otel_temporality": TemporalityDelta,
+			"unit":             "{request}",
+			"probe_name":       "edge_in",
+			"probe_type":       "otlp_receiver",
+		},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+	if r.Type != "counter" {
+		t.Errorf("type=%q, want counter (delta must not degrade the instrument type)", r.Type)
+	}
+	if r.Temporality != TemporalityDelta {
+		t.Errorf("temporality=%q, want %q", r.Temporality, TemporalityDelta)
+	}
+	if _, leaked := r.Attributes["otel_temporality"]; leaked {
+		t.Errorf("otel_temporality control tag must not leak as an attribute: %v", r.Attributes)
+	}
+
+	// Without the tag, the record stays on the cumulative default.
+	delete(m.Tags, "otel_temporality")
+	recs, err = Resolve(nil, m, DefaultResolveOptions())
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("untagged pass-through: recs=%d err=%v", len(recs), err)
+	}
+	if recs[0].Temporality != "" {
+		t.Errorf("temporality=%q, want empty (cumulative default)", recs[0].Temporality)
+	}
+}
+
 func TestResolve_TypedPassThrough(t *testing.T) {
 	// An snmp_poll dynamic metric: a canonical senhub.snmp.* name with no
 	// transformer row, carrying its OTel type in the otel_type tag. Resolve
@@ -411,5 +462,79 @@ func TestResolve_OTLPIngestExcludesTagsWhenDisabled(t *testing.T) {
 	}
 	if recs[0].Attributes["probe_name"] != "edge_in" {
 		t.Errorf("systematic probe_name must still be present: %v", recs[0].Attributes)
+	}
+}
+
+func TestResolve_OTLPIngestNativeHistogram(t *testing.T) {
+	sum := 4.2
+	h := &datapoint.HistogramValue{
+		Count:          6,
+		Sum:            &sum,
+		BucketCounts:   []uint64{1, 2, 3},
+		ExplicitBounds: []float64{0.1, 0.5},
+	}
+	m := CacheMetric{
+		ProbeName:  "edge_in",
+		ProbeType:  "otlp_receiver",
+		MetricName: "http.server.duration",
+		Value:      6, // scalar fallback = count
+		Unit:       "s",
+		Tags: map[string]string{
+			"metric_type": MetricTypeOTLPIngest,
+			"otel_type":   "histogram",
+			"unit":        "s",
+			"probe_name":  "edge_in",
+			"probe_type":  "otlp_receiver",
+		},
+		Histogram: h,
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+	if r.Type != "histogram" {
+		t.Errorf("type=%q, want histogram", r.Type)
+	}
+	if r.Histogram != h {
+		t.Errorf("payload not carried through: %+v", r.Histogram)
+	}
+	if !floatApprox(r.Value, 6) {
+		t.Errorf("value=%v, want 6 (count, no unit conversion applied)", r.Value)
+	}
+}
+
+func TestResolve_OTLPIngestHistogramTypeWithoutPayloadDegradesToGauge(t *testing.T) {
+	// Defensive: a "histogram"-typed record whose payload was lost must
+	// re-export as a gauge on the scalar count, never as a payload-less
+	// histogram that a serializer could trip on.
+	m := CacheMetric{
+		ProbeName:  "edge_in",
+		ProbeType:  "otlp_receiver",
+		MetricName: "http.server.duration",
+		Value:      6,
+		Unit:       "s",
+		Tags: map[string]string{
+			"metric_type": MetricTypeOTLPIngest,
+			"otel_type":   "histogram",
+			"probe_name":  "edge_in",
+			"probe_type":  "otlp_receiver",
+		},
+	}
+	recs, err := Resolve(nil, m, DefaultResolveOptions())
+	if err != nil {
+		t.Fatalf("pass-through must not error, got %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	if recs[0].Type != "gauge" {
+		t.Errorf("type=%q, want gauge (payload-less histogram degrades)", recs[0].Type)
+	}
+	if recs[0].Histogram != nil {
+		t.Errorf("payload must stay nil, got %+v", recs[0].Histogram)
 	}
 }

@@ -259,6 +259,45 @@ func TestLogsPump_DrainsAgentstateChannelToExporter(t *testing.T) {
 	}
 }
 
+func TestLogsPump_HonorsStrategyRouting(t *testing.T) {
+	defer resetLogChannel()
+
+	pipe, exp := newTestLogsPipeline(t, 10, 1024, 10*time.Millisecond)
+	defer pipe.shutdown(context.Background())
+
+	pump := newLogsPump(pipe, 64)
+	pump.start()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		pump.stop(ctx)
+	}()
+
+	// Broadcast and otlp-targeted records must reach the pump; an
+	// event-targeted record must be routed away from it (#294 rail B).
+	agentstate.PublishLog(agentstate.LogRecord{Timestamp: time.Now(), Body: "broadcast"})
+	agentstate.PublishLog(agentstate.LogRecord{Timestamp: time.Now(), Body: "for-otlp", TargetStrategies: []string{"otlp"}})
+	agentstate.PublishLog(agentstate.LogRecord{Timestamp: time.Now(), Body: "for-event", TargetStrategies: []string{"event"}})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(exp.snapshot()) >= 2 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	got := exp.snapshot()
+	if len(got) != 2 {
+		t.Fatalf("exporter received %d records, want 2 (broadcast + otlp)", len(got))
+	}
+	for _, r := range got {
+		if r.Body().AsString() == "for-event" {
+			t.Errorf("event-targeted record leaked into the otlp pump")
+		}
+	}
+}
+
 // resetLogChannel exposes the agentstate test helper through the
 // otlp_test package by going through the public API: subscribe and
 // unsubscribe to drain any leftover state. Safer than relying on
