@@ -76,6 +76,7 @@ Creates the default configuration for an unattended install (for example a silen
 senhub-agent config init
 senhub-agent config init --license <jwt> --tags env=prod,site=paris
 senhub-agent config init --otlp-endpoint otlp.example.com:4317
+senhub-agent config init --otlp-endpoint vm.example.com:4318 --otlp-protocol http
 ```
 
 | Flag | Description |
@@ -83,7 +84,8 @@ senhub-agent config init --otlp-endpoint otlp.example.com:4317
 | `--config-path PATH` | Target configuration file (default: OS canonical path) |
 | `--license JWT` | License token to seed (unlocks paid probe tiers) |
 | `--tags k=v,k2=v2` | Host-level global tags applied to the generated config |
-| `--otlp-endpoint HOST:PORT` | Provision an OTLP push endpoint as a strategy fragment |
+| `--otlp-endpoint HOST:PORT` | Provision an OTLP push endpoint as a strategy fragment (metrics + logs) |
+| `--otlp-protocol grpc\|http` | OTLP transport (default `grpc`; use `http` for a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint) |
 
 The generated layout is the multi-file form (`agent.yaml` + `probes.d/` + `strategies.d/`). By default the generated configuration pushes to no collector; `--otlp-endpoint` is what wires up a push.
 
@@ -238,7 +240,10 @@ senhub-agent license show
 senhub-agent license activate <license-jwt>
 ```
 
-Validates the license (a signed JWT) and saves it in the configuration file.
+Validates the license and writes it to the `license.jwt` file next to
+`agent.yaml`. Restart the agent for the change to take effect. You can also
+simply place the `license.jwt` file next to the config yourself and restart —
+no CLI needed.
 
 ### Remove license
 
@@ -247,7 +252,7 @@ senhub-agent license remove
 senhub-agent license remove --force
 ```
 
-Reverts to the free tier. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs.
+Reverts to the free tier: deletes `license.jwt` and clears any inline license. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs. Restart the agent for the change to take effect.
 
 ## Other
 

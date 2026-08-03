@@ -24,6 +24,15 @@
         LICENSE_KEY=eyJhbGci... ^
         TAGS=site=paris,env=prod
 
+  Uninstall keeps operator state under %ProgramData%\SenHub (config,
+  sealed secret store, license) by default so upgrades and reinstalls
+  never lose it. The transient subfolders logs\ and update\ (rotated
+  logs and staged auto-update MSIs — both regenerated on next run) are
+  removed on a plain uninstall so it leaves a clean tree. A full data
+  purge, including config and secrets, is opt-in:
+
+      msiexec /x senhub-agent.msi /qn PURGE_DATA=1
+
   See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
@@ -68,10 +77,14 @@
       present (MSI_MARKER), the box is clean (no EXISTING_SERVICE), or the
       operator opted into migration (ADOPT). Otherwise stop with a message
       rather than fail obscurely on ServiceInstall.
+
+      The message shows in a single-button (OK) dialog that aborts setup, so
+      it states plainly that setup is stopping and gives two copy-pasteable
+      command-line actions rather than an in-dialog "choose an option".
     -->
     <Launch
         Condition="Installed OR MSI_MARKER OR NOT EXISTING_SERVICE OR ADOPT"
-        Message="An existing SenHub Agent was found on this machine: the 'senhub-agent' Windows service is already installed, but it was not installed by this package. To continue, choose one option. Option 1 — uninstall the existing agent, then run this installer again. Option 2 — re-run this installer with the ADOPT=1 property (for example: msiexec /i senhub-agent-0.5.0-amd64.msi ADOPT=1) to take it over and manage it from now on through this installer. In both cases your configuration in %ProgramData%\SenHub is preserved." />
+        Message="SenHub Agent is already installed on this machine by another method (not by this installer), so setup will now stop. Do one of these from an elevated command prompt, then run setup again: (1) To keep the current agent and let this installer manage it from now on, re-run setup with ADOPT=1 — for example: msiexec /i senhub-agent.msi ADOPT=1. (2) Or remove the current agent first — run: sc stop senhub-agent  and then  sc delete senhub-agent. Either way, your configuration in %ProgramData%\SenHub is preserved." />
 
     <!-- ============================================================ -->
     <!-- Parametric configuration via public MSI properties.          -->
@@ -87,6 +100,18 @@
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
+    <!--
+      PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
+      on uninstall (config, sealed secret store, license, logs, staged
+      updates). Deliberately OPT-IN: the default uninstall preserves the
+      operator state (config, secrets, license) so a reinstall or upgrade
+      never loses it. Note that the default uninstall still removes the
+      transient logs\ and update\ subfolders (see PurgeLogsFolder /
+      PurgeUpdateFolder on the DataFolderMarker component below); PURGE_DATA=1
+      additionally removes the preserved state. See the PurgeDataFolder
+      authoring on the DataFolderMarker component below.
+    -->
+    <Property Id="PURGE_DATA" Secure="yes" />
 
     <!--
       Keep the license token out of the MSI log. Secure="yes" only lets a
@@ -169,7 +194,68 @@
                   Impersonate="no"
                   Return="ignore" />
 
+    <!--
+      Transient/data folder purge (issues #626 data, #648 logs+update) —
+      hardened for #707.
+
+      util:RemoveFolderEx (on the DataFolderMarker component below) deletes
+      the tree its Property points to when the component is uninstalled.
+      Wix4RemoveFoldersEx processes ALL three RemoveFolderEx rows in ONE
+      immediate custom action, and it treats an EMPTY folder property as a
+      fatal error (0x80070057 "Missing folder property") that ABORTS the
+      whole action — taking the sibling rows down with it. The pre-#707
+      authoring left a property empty when its folder should not be purged;
+      the instant PURGEDATAFOLDER was empty (i.e. every default uninstall)
+      the action aborted and the logs\/update\ purge (#648) silently never
+      ran. Recette on Windows Server 2025 caught this: default uninstall
+      left logs\ and update\ behind.
+
+      Fix: every property is ALWAYS assigned, so no row is ever empty. When
+      a folder must NOT be purged the property points at a sentinel
+      subfolder that never exists (SenHub\__no_purge__) — RemoveFolderEx
+      enumerates nothing and no-ops WITHOUT the empty-property error. A
+      conditional override then repoints the property at the real folder
+      only when it should be removed:
+
+        - PURGEDATAFOLDER   → whole tree, only on PURGE_DATA=1 full uninstall.
+        - PURGELOGSFOLDER   → logs\,   on any genuine full uninstall.
+        - PURGEUPDATEFOLDER → update\, on any genuine full uninstall.
+
+      Gate terms (see InstallExecuteSequence below):
+        - REMOVE~="ALL"            → full product removal (`msiexec /x`),
+                                     not a repair or feature change.
+        - NOT UPGRADINGPRODUCTCODE → not the old product removed by a
+                                     MajorUpgrade; upgrade never purges data.
+        - NOT WIX_UPGRADE_DETECTED → belt-and-braces for the new product's
+                                     session of an upgrade.
+
+      The set-property actions run After AppSearch (defaults first, real-path
+      overrides after) so the properties are populated before
+      Wix4RemoveFoldersEx snapshots the tree into the RemoveFile table.
+      [CommonAppDataFolder] is a standard folder property, resolved at that
+      point (the DATAFOLDER Directory id would not be — it costs later).
+    -->
+    <CustomAction Id="SetPurgeDataDefault"   Property="PURGEDATAFOLDER"   Value="[CommonAppDataFolder]SenHub\__no_purge__" />
+    <CustomAction Id="SetPurgeLogsDefault"   Property="PURGELOGSFOLDER"   Value="[CommonAppDataFolder]SenHub\__no_purge__" />
+    <CustomAction Id="SetPurgeUpdateDefault" Property="PURGEUPDATEFOLDER" Value="[CommonAppDataFolder]SenHub\__no_purge__" />
+    <CustomAction Id="SetPurgeDataReal"      Property="PURGEDATAFOLDER"   Value="[CommonAppDataFolder]SenHub" />
+    <CustomAction Id="SetPurgeLogsReal"      Property="PURGELOGSFOLDER"   Value="[CommonAppDataFolder]SenHub\logs" />
+    <CustomAction Id="SetPurgeUpdateReal"    Property="PURGEUPDATEFOLDER" Value="[CommonAppDataFolder]SenHub\update" />
+
     <InstallExecuteSequence>
+      <!-- #707: assign every RemoveFolderEx property before Wix4RemoveFoldersEx
+           snapshots the tree. Defaults (a never-existing sentinel path) run
+           first so no property is ever empty; real-path overrides run after,
+           each under its purge gate. -->
+      <Custom Action="SetPurgeDataDefault"   After="AppSearch" />
+      <Custom Action="SetPurgeLogsDefault"   After="SetPurgeDataDefault" />
+      <Custom Action="SetPurgeUpdateDefault" After="SetPurgeLogsDefault" />
+      <Custom Action="SetPurgeDataReal"      After="SetPurgeUpdateDefault"
+              Condition="(PURGE_DATA=&quot;1&quot;) AND Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
+      <Custom Action="SetPurgeLogsReal"      After="SetPurgeDataReal"
+              Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
+      <Custom Action="SetPurgeUpdateReal"    After="SetPurgeLogsReal"
+              Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
       <!-- Take over a foreign service before InstallServices creates ours. -->
       <Custom Action="AdoptExisting" Before="InstallServices"
               Condition="ADOPT AND EXISTING_SERVICE AND NOT MSI_MARKER AND NOT Installed" />
@@ -281,6 +367,22 @@
         the directory for removal — leftover operator config is preferred
         over data loss on uninstall (acceptance criterion: no orphan files
         OUTSIDE user preference; config is user preference).
+
+        Default uninstall still leaves a clean tree: the transient logs\
+        and update\ subfolders (rotated logs, staged auto-update MSIs) are
+        removed by PurgeLogsFolder / PurgeUpdateFolder below, gated on a
+        genuine full uninstall (not an upgrade) — see the set-property
+        authoring above. Only config, the sealed secret store and the
+        license are preserved.
+
+        Exception, opt-in only: since 0.5.0 the tree also holds the sealed
+        secret store, the license and staged auto-update MSIs, so an
+        operator who wants a truly clean removal (including that preserved
+        state) can pass PURGE_DATA=1 on `msiexec /x`. RemoveFolderEx reads
+        PURGEDATAFOLDER, which is set to the whole tree ONLY on a genuine
+        full uninstall with PURGE_DATA=1 (never on a MajorUpgrade); on every
+        other transaction it points at the never-existing sentinel path, so
+        it no-ops without aborting the sibling purges (#707).
       -->
       <Component Id="DataFolderMarker" Directory="DATAFOLDER" Guid="*">
         <RegistryValue Root="HKLM"
@@ -294,6 +396,25 @@
                        Name="Version"
                        Type="string"
                        Value="$(Version)" />
+        <!--
+          Three purge rows, processed together by Wix4RemoveFoldersEx. Each
+          Property is ALWAYS non-empty (see the set-property actions above):
+          the real folder when it should be purged, else a never-existing
+          sentinel (SenHub\__no_purge__) that no-ops. Never leave a property
+          empty — an empty one aborts the whole custom action (#707).
+            - PURGEDATAFOLDER   : whole tree, only on PURGE_DATA=1 uninstall (#626).
+            - PURGELOGSFOLDER   : logs\,   on any genuine full uninstall (#648).
+            - PURGEUPDATEFOLDER : update\, on any genuine full uninstall (#648).
+        -->
+        <util:RemoveFolderEx Id="PurgeDataFolder"
+                             On="uninstall"
+                             Property="PURGEDATAFOLDER" />
+        <util:RemoveFolderEx Id="PurgeLogsFolder"
+                             On="uninstall"
+                             Property="PURGELOGSFOLDER" />
+        <util:RemoveFolderEx Id="PurgeUpdateFolder"
+                             On="uninstall"
+                             Property="PURGEUPDATEFOLDER" />
       </Component>
 
     </ComponentGroup>

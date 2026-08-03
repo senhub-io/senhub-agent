@@ -12,7 +12,9 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 )
 
 // metricsServiceServer implements the OTLP MetricsService.Export RPC by
@@ -21,6 +23,38 @@ import (
 type metricsServiceServer struct {
 	collectormetricspb.UnimplementedMetricsServiceServer
 	probe *OTLPReceiverProbe
+}
+
+// logsServiceServer implements the OTLP LogsService.Export RPC by
+// converting the received records into the agent's internal log envelope
+// and publishing them on the agent log channel for relay.
+type logsServiceServer struct {
+	collectorlogspb.UnimplementedLogsServiceServer
+	probe *OTLPReceiverProbe
+}
+
+// tracesServiceServer implements the OTLP TracesService.Export RPC by
+// publishing the received ResourceSpans verbatim on the agent span
+// channel — spans have no internal model, so no decode step exists.
+type tracesServiceServer struct {
+	collectortracepb.UnimplementedTraceServiceServer
+	probe *OTLPReceiverProbe
+}
+
+func (s *logsServiceServer) Export(
+	_ context.Context,
+	req *collectorlogspb.ExportLogsServiceRequest,
+) (*collectorlogspb.ExportLogsServiceResponse, error) {
+	s.probe.ingestLogs(flattenResourceLogs(req.GetResourceLogs(), s.probe.GetName()))
+	return &collectorlogspb.ExportLogsServiceResponse{}, nil
+}
+
+func (s *tracesServiceServer) Export(
+	_ context.Context,
+	req *collectortracepb.ExportTraceServiceRequest,
+) (*collectortracepb.ExportTraceServiceResponse, error) {
+	s.probe.ingestSpans(req.GetResourceSpans())
+	return &collectortracepb.ExportTraceServiceResponse{}, nil
 }
 
 func (s *metricsServiceServer) Export(
@@ -36,7 +70,7 @@ func (s *metricsServiceServer) Export(
 	if dropped > 0 {
 		resp.PartialSuccess = &collectormetricspb.ExportMetricsPartialSuccess{
 			RejectedDataPoints: int64(dropped),
-			ErrorMessage:       "non-scalar metric types (histogram/summary) are not ingested by senhub-agent",
+			ErrorMessage:       "unrecognized or unset OTLP metric data type not ingested by senhub-agent",
 		}
 	}
 	return resp, nil
@@ -88,7 +122,15 @@ func (p *OTLPReceiverProbe) startGRPC(quitChannel chan struct{}) error {
 		grpc.MaxRecvMsgSize(maxRecvMsgBytes),
 		grpc.UnaryInterceptor(p.guardInterceptor),
 	)
-	collectormetricspb.RegisterMetricsServiceServer(server, &metricsServiceServer{probe: p})
+	if p.config.Signals.Metrics {
+		collectormetricspb.RegisterMetricsServiceServer(server, &metricsServiceServer{probe: p})
+	}
+	if p.config.Signals.Logs {
+		collectorlogspb.RegisterLogsServiceServer(server, &logsServiceServer{probe: p})
+	}
+	if p.config.Signals.Traces {
+		collectortracepb.RegisterTraceServiceServer(server, &tracesServiceServer{probe: p})
+	}
 
 	p.mu.Lock()
 	p.grpcServer = server
@@ -107,6 +149,9 @@ func (p *OTLPReceiverProbe) startGRPC(quitChannel chan struct{}) error {
 		server.GracefulStop()
 	}()
 
-	p.moduleLogger.Info().Str("address", p.config.Address).Msg("OTLP gRPC receiver started")
+	p.moduleLogger.Info().
+		Str("address", p.config.Address).
+		Strs("signals", p.config.Signals.names()).
+		Msg("OTLP gRPC receiver started")
 	return nil
 }

@@ -14,14 +14,21 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		CacheEntries: 42,
 		ProbesActive: 3,
 	}
+	// collect.errors is emitted only once an error has occurred (per-label,
+	// emitted-when-touched), so keep the global counter clean for this
+	// always-on-core-metrics count.
+	agentstate.ResetCollectErrorsForTest()
+	t.Cleanup(agentstate.ResetCollectErrorsForTest)
+
 	recs := BuildAgentRecords(snap)
 	// 31 records when neither build info nor http_requests is set and no
-	// OTLP drops / checkpoint errors have occurred yet:
-	//   7 core         (uptime, cache.entries, probes.{active,total,healthy},
-	//                   collect.errors, transformer.fallback)
-	//   8 OTLP push    (metrics.pushed, logs.pushed, export.errors,
-	//                   dropped_log_records, buffer.fill_ratio,
-	//                   store_size, export.duration{window=last},
+	// collect errors / OTLP drops / checkpoint errors have occurred yet:
+	//   6 core         (uptime, cache.entries, probes.{active,total,healthy},
+	//                   transformer.fallback)
+	//   9 OTLP push    (metrics.pushed, logs.pushed, export.errors,
+	//                   dropped_log_records, dropped_span_batches,
+	//                   buffer.fill_ratio, store_size,
+	//                   export.duration{window=last},
 	//                   export.duration{window=mean})
 	//   3 OTLP checkpoint (size, last_save_age, restored_entries)
 	//   1 OTLP parallel  (sub_batches)
@@ -31,12 +38,13 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	//   6 process      (cpu.time, memory.{resident,heap}, goroutines,
 	//                   gc.cycles, open_fds)
 	//
-	// Note: `senhub.agent.otlp.dropped{reason=...}`,
+	// Note: `senhub.agent.collect.errors{probe,reason}`,
+	// `senhub.agent.otlp.dropped{reason=...}`,
 	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
 	if len(recs) != 31 {
-		t.Fatalf("expected 31 records (no build info, no http requests, no OTLP drops, no checkpoint errors), got %d", len(recs))
+		t.Fatalf("expected 31 records (no build info, no http requests, no collect errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -49,12 +57,12 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.probes.active",
 		"senhub.agent.probes.total",
 		"senhub.agent.probes.healthy",
-		"senhub.agent.collect.errors",
 		"senhub.agent.transformer.fallback",
 		"senhub.agent.otlp.metrics.pushed",
 		"senhub.agent.otlp.logs.pushed",
 		"senhub.agent.otlp.export.errors",
 		"senhub.agent.otlp.dropped_log_records",
+		"senhub.agent.otlp.dropped_span_batches",
 		"senhub.agent.otlp.buffer.fill_ratio",
 		"senhub.agent.otlp.store_size",
 		"senhub.agent.otlp.export.duration",
@@ -130,10 +138,9 @@ func TestBuildAgentRecords_OmitBuildInfoWhenEmpty(t *testing.T) {
 
 func TestBuildAgentRecords_HTTPRequestsPerEndpoint(t *testing.T) {
 	snap := AgentMetricsSnapshot{
-		StartTime:          time.Now(),
-		ProbesTotal:        5,
-		ProbesHealthy:      4,
-		CollectErrorsTotal: 17,
+		StartTime:     time.Now(),
+		ProbesTotal:   5,
+		ProbesHealthy: 4,
 		HTTPRequestsByEndpoint: map[string]uint64{
 			"/api/{agentkey}/prtg/metrics":       123,
 			"/api/{agentkey}/prometheus/metrics": 45,
@@ -157,14 +164,49 @@ func TestBuildAgentRecords_HTTPRequestsPerEndpoint(t *testing.T) {
 		t.Errorf("/health count: got %v, want 789", endpointsSeen["/health"])
 	}
 
-	// Also verify probes.healthy / collect.errors values
+	// Also verify probes.healthy value
 	for _, r := range recs {
 		if r.Name == "senhub.agent.probes.healthy" && r.Value != 4 {
 			t.Errorf("probes.healthy: got %v, want 4", r.Value)
 		}
-		if r.Name == "senhub.agent.collect.errors" && r.Value != 17 {
-			t.Errorf("collect.errors: got %v, want 17", r.Value)
+	}
+}
+
+func TestBuildAgentRecords_CollectErrorsEmittedPerLabel(t *testing.T) {
+	agentstate.ResetCollectErrorsForTest()
+	t.Cleanup(agentstate.ResetCollectErrorsForTest)
+
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name == "senhub.agent.collect.errors" {
+			t.Fatalf("collect.errors should not be emitted before any error occurred")
 		}
+	}
+
+	agentstate.IncrementCollectErrors("redfish", "timeout")
+	agentstate.IncrementCollectErrors("redfish", "timeout")
+	agentstate.IncrementCollectErrors("mysql", "route")
+
+	seen := map[string]float64{}
+	var unit, typ string
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name != "senhub.agent.collect.errors" {
+			continue
+		}
+		seen[r.Attributes["probe"]+"/"+r.Attributes["reason"]] = r.Value
+		unit, typ = r.Unit, r.Type
+	}
+	if len(seen) != 2 {
+		t.Fatalf("expected 2 collect.errors series, got %d (%v)", len(seen), seen)
+	}
+	if seen["redfish/timeout"] != 2 {
+		t.Errorf("redfish/timeout: got %v, want 2", seen["redfish/timeout"])
+	}
+	if seen["mysql/route"] != 1 {
+		t.Errorf("mysql/route: got %v, want 1", seen["mysql/route"])
+	}
+	if unit != "{error}" || typ != "counter" {
+		t.Errorf("unit/type: got %q/%q, want {error}/counter", unit, typ)
 	}
 }
 
@@ -201,6 +243,38 @@ func TestBuildAgentRecords_CacheDroppedEmittedPerReason(t *testing.T) {
 	}
 	if rec.Type != "counter" {
 		t.Errorf("type: got %q, want counter", rec.Type)
+	}
+}
+
+func TestBuildAgentRecords_OTLPReceiverIngestEmittedPerSignal(t *testing.T) {
+	agentstate.ResetOTLPReceiverCountersForTest()
+	t.Cleanup(agentstate.ResetOTLPReceiverCountersForTest)
+
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name == "senhub.agent.otlp_receiver.ingested" || r.Name == "senhub.agent.otlp_receiver.dropped" {
+			t.Fatalf("otlp_receiver counters should not be emitted before any traffic")
+		}
+	}
+
+	agentstate.IncrementOTLPReceiverIngested("traces", 5)
+	agentstate.IncrementOTLPReceiverDropped("logs", "no_sink", 3)
+
+	var ingested, dropped *otelmapper.OtelRecord
+	recs := BuildAgentRecords(snap)
+	for i := range recs {
+		switch recs[i].Name {
+		case "senhub.agent.otlp_receiver.ingested":
+			ingested = &recs[i]
+		case "senhub.agent.otlp_receiver.dropped":
+			dropped = &recs[i]
+		}
+	}
+	if ingested == nil || ingested.Attributes["signal"] != "traces" || ingested.Value != 5 {
+		t.Errorf("ingested record = %+v, want signal=traces value=5", ingested)
+	}
+	if dropped == nil || dropped.Attributes["signal"] != "logs" || dropped.Attributes["reason"] != "no_sink" || dropped.Value != 3 {
+		t.Errorf("dropped record = %+v, want signal=logs reason=no_sink value=3", dropped)
 	}
 }
 

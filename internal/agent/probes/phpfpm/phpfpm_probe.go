@@ -21,7 +21,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -51,7 +50,6 @@ type phpFPMProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *phpfpmEntitySource
-	unregister   func()
 }
 
 type probeConfig struct {
@@ -133,14 +131,10 @@ func (p *phpFPMProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting phpfpm probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *phpFPMProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

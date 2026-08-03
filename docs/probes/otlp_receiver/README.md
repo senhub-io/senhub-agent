@@ -78,6 +78,10 @@ configured sinks — confirmed both as OTLP re-export (the sender's
 flattening, partial-success for non-scalar types, and the mapper
 pass-through are unit-tested.
 
-> **Re-export type**: gauge/sum inbound datapoints are re-exported as
-> **gauge** — the flat datapoint bus does not preserve the inbound
-> monotonicity distinction. Histograms/summaries are not ingested.
+> **Metric types**: every OTLP metric family is ingested. Gauge/Sum map
+> to one value each (the inbound instrument type and unit are preserved
+> via control tags). Histograms and summaries are expanded into their
+> Prometheus-style component series (`_count`, `_sum`, `_bucket{le}`,
+> `{quantile}`, `_min`/`_max`); exponential histograms contribute their
+> aggregates only (buckets deferred, #659). Only an unrecognized/unset
+> data type is dropped and counted for partial-success.

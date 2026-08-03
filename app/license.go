@@ -92,15 +92,16 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 		}
 	}
 
-	// Persist the license with a node-level edit that preserves the file's
-	// layout. A full unmarshal/marshal of LocalConfigurationData would re-emit
-	// empty probes:/storage: blocks and flip a multi-file install back to legacy
-	// monolithic, silently dropping probes.d/ + strategies.d/.
-	if err := configuration.SetLicenseField(configPath, args.LicenseCode); err != nil {
-		fatalf("failed to write license to config: %v", err)
+	// Persist the license to a dedicated sidecar file (license.jwt) next to the
+	// config, and clear any inline agent.license so the sidecar is the single
+	// source of truth. A standalone file is trivial to hand to an operator and
+	// avoids mangling a long JWT on copy-paste into YAML; the loader picks it up
+	// automatically when the inline field is empty.
+	if err := configuration.WriteLicenseSidecar(configPath, args.LicenseCode); err != nil {
+		fatalf("failed to write license: %v", err)
 	}
 
-	fmt.Printf("\nLicense activated and saved to: %s\n", configPath)
+	fmt.Printf("\nLicense activated and saved to: %s\n", configuration.LicenseSidecarPath(configPath))
 	fmt.Println("   Restart the agent for changes to take effect.")
 }
 
@@ -123,8 +124,17 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 		fatalf("failed to parse config file: %v", err)
 	}
 
+	// Resolve the effective license the same way the loader does at boot: the
+	// inline agent.license (with ${...} substitution) if set, otherwise the
+	// license.jwt sidecar next to the config. This keeps `show` truthful whether
+	// the license lives inline or in the sidecar file.
+	effectiveLicense, err := configuration.ResolveEffectiveLicense(configPath, config.Agent.License)
+	if err != nil {
+		fatalf("failed to resolve license: %v", err)
+	}
+
 	// Check if license exists
-	if config.Agent.License == "" {
+	if effectiveLicense == "" {
 		fmt.Println("No license configured (Free tier)")
 		fmt.Println("\nFree tier probes:")
 		for _, probe := range license.GetFreeTierProbes() {
@@ -139,7 +149,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 		fatalf("failed to initialize license validator: %v", err)
 	}
 
-	validatedLicense, err := validator.ValidateLicense(config.Agent.License)
+	validatedLicense, err := validator.ValidateLicense(effectiveLicense)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Invalid license in config: %v\n", err)
 		os.Exit(1)
@@ -194,10 +204,11 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 		}
 	}
 
-	// Clear the license with the same node-level edit as activate, so removing a
-	// license on a multi-file install does not corrupt the layout.
-	if err := configuration.SetLicenseField(configPath, ""); err != nil {
-		fatalf("failed to write license to config: %v", err)
+	// Delete the license sidecar and clear any inline agent.license (the
+	// node-level edit preserves a multi-file layout, so removing a license does
+	// not corrupt probes.d/ + strategies.d/).
+	if err := configuration.RemoveLicenseSidecar(configPath); err != nil {
+		fatalf("failed to remove license: %v", err)
 	}
 
 	fmt.Printf("License removed from: %s\n", configPath)

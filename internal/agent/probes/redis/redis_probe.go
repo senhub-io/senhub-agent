@@ -19,7 +19,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -34,11 +33,10 @@ const (
 type redisProbe struct {
 	*types.BaseProbe
 	cfg          probeConfig
+	tlsConfig    *tls.Config
 	instance     string
 	moduleLogger *logger.ModuleLogger
 	entityObs    *entityObserver
-
-	unregisterEntitySource func()
 
 	// dialFn is overridable in tests; defaults to net.DialTimeout.
 	dialFn func(network, address string, timeout time.Duration) (net.Conn, error)
@@ -51,18 +49,30 @@ func NewRedisProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		return nil, err
 	}
 
+	var tlsConfig *tls.Config
+	if cfg.TLS {
+		tlsConfig, err = cfg.tlsClientConfig()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	instance := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.redis")
 
 	probe := &redisProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
+		tlsConfig:    tlsConfig,
 		instance:     instance,
 		moduleLogger: moduleLogger,
 		entityObs:    newEntityObserver(cfg, instance),
 		dialFn:       net.DialTimeout,
 	}
 	probe.SetProbeType(ProbeType)
+	// Redis is a remote db entity, not host-local: declare the real source
+	// so the poller registers it on Start.
+	probe.SetEntitySource(probe.entityObs)
 	return probe, nil
 }
 
@@ -70,15 +80,11 @@ func (p *redisProbe) ShouldStart() bool          { return true }
 func (p *redisProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *redisProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entityObs)
 	p.moduleLogger.Info().Str("instance", p.instance).Msg("Redis probe started")
 	return nil
 }
 
 func (p *redisProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	return nil
 }
 
@@ -99,7 +105,7 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	defer conn.Close()
 
 	if p.cfg.TLS {
-		conn = tls.Client(conn, &tls.Config{ServerName: p.cfg.Host, MinVersion: tls.VersionTLS12})
+		conn = tls.Client(conn, p.tlsConfig)
 	}
 
 	if p.cfg.Password != "" {

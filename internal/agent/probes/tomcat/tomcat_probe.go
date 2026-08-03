@@ -19,7 +19,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -58,7 +57,6 @@ type TomcatProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *jolokiaClient
 	entitySrc    *tomcatEntitySource
-	unregister   func()
 }
 
 // NewTomcatProbe constructs the probe. Config errors surface here.
@@ -202,14 +200,10 @@ func (p *TomcatProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("jolokia_url", p.cfg.JolokiaURL).
 		Msg("Starting tomcat probe")
-	p.unregister = entity.RegisterSource(p.EntitySource())
 	return nil
 }
 
 func (p *TomcatProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.http.CloseIdleConnections()
 	return nil
 }

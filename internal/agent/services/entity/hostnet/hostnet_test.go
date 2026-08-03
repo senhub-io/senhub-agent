@@ -53,6 +53,22 @@ func TestParseProcRoute(t *testing.T) {
 	}
 }
 
+// A kernel row whose destination carries host bits beyond the mask must still
+// mint the canonical route.destination (host bits zeroed) — the identity rule
+// shared with the SNMP-side routes.
+func TestParseProcRoute_CanonicalDestination(t *testing.T) {
+	// dest 10.0.1.5 (LE 0501000A), gw 10.0.1.1 (LE 0101000A), mask /24.
+	sample := "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n" +
+		"eth0\t0501000A\t0101000A\t0003\t0\t0\t0\t00FFFFFF\t0\t0\t0\n"
+	routes := parseProcRoute([]byte(sample))
+	if len(routes) != 1 {
+		t.Fatalf("routes = %+v, want 1", routes)
+	}
+	if routes[0].Destination != "10.0.1.0/24" {
+		t.Errorf("destination = %q, want 10.0.1.0/24 (host bits zeroed)", routes[0].Destination)
+	}
+}
+
 func TestBuildObservation_HostRoute(t *testing.T) {
 	routes := []hostRoute{{Destination: "0.0.0.0/0", NextHop: "192.168.1.1", Metric: 100}}
 	obs := buildObservation("h1", routes)

@@ -252,19 +252,66 @@ func TestVanishedConnectionResetsStreak(t *testing.T) {
 	}
 }
 
-func TestInboundAndUnnamedAndLoopbackSkipped(t *testing.T) {
+func TestInboundAndUnnamedSkipped(t *testing.T) {
 	rows := []gnet.ConnectionStat{
-		conn(statusListen, "0.0.0.0", 443, "", 0, 100),                      // our listener on 443
-		conn(statusEstablished, "10.0.0.5", 443, "10.0.0.2", 60000, 100),    // inbound (local port 443 is ours)
-		conn(statusEstablished, "10.0.0.5", 52000, "10.0.0.9", 5432, 0),     // outbound but owner unknown
-		conn(statusEstablished, "127.0.0.1", 53000, "127.0.0.1", 6379, 100), // loopback peer
+		conn(statusListen, "0.0.0.0", 443, "", 0, 100),                   // our listener on 443
+		conn(statusEstablished, "10.0.0.5", 443, "10.0.0.2", 60000, 100), // inbound (local port 443 is ours)
+		conn(statusEstablished, "10.0.0.5", 52000, "10.0.0.9", 5432, 0),  // outbound but owner unknown
 	}
 	s := newTestSource(rows)
 	for i := 0; i < 3; i++ {
 		obs, _ := s.Observe()
 		if len(obs.Relations) != 0 {
-			t.Fatalf("scrape %d: nothing should be emitted (all rows skipped): %+v", i, obs)
+			t.Fatalf("scrape %d: inbound + unnamed rows must be skipped: %+v", i, obs)
 		}
+	}
+}
+
+func findEndpoint(obs entity.Observation, addr, port string) *entity.Entity {
+	for i := range obs.Entities {
+		e := &obs.Entities[i]
+		if e.Type == entityTypeNetworkEndpoint &&
+			e.ID[idKeyServerAddress] == addr && e.ID[idKeyServerPort] == port {
+			return e
+		}
+	}
+	return nil
+}
+
+// TestHostScopedEndpoints pins the loopback/link-local host-scoping: peers on
+// loopback and link-local unicast (previously DROPPED) are now emitted with
+// host.id in the endpoint identity so host A's 127.0.0.1 / the shared
+// 169.254.169.254 metadata endpoint never collapse onto another host's; routable
+// peers stay 3-key; unspecified/multicast stay dropped (Toise ADR 0032).
+func TestHostScopedEndpoints(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 53000, "127.0.0.1", 6379, 100),     // loopback
+		conn(statusEstablished, "10.0.0.5", 53001, "169.254.169.254", 80, 100), // cloud metadata (link-local)
+		conn(statusEstablished, "10.0.0.5", 53002, "8.8.8.8", 443, 100),        // routable
+		conn(statusEstablished, "10.0.0.5", 53003, "224.0.0.1", 5353, 100),     // multicast
+	}
+	s := New(func() string { return "host-A" }, 1, nil)
+	s.connections = fakeConns(rows)
+	s.procName = func(int32) string { return "nginx" }
+	obs, _ := s.Observe()
+
+	if ep := findEndpoint(obs, "127.0.0.1", "6379"); ep == nil {
+		t.Error("loopback peer must now be emitted")
+	} else if ep.ID[idKeyHost] != "host-A" {
+		t.Errorf("loopback endpoint must carry host.id, got ID=%v", ep.ID)
+	}
+	if ep := findEndpoint(obs, "169.254.169.254", "80"); ep == nil {
+		t.Error("link-local metadata peer must be emitted")
+	} else if ep.ID[idKeyHost] != "host-A" {
+		t.Errorf("169.254.169.254 must be host-scoped, got ID=%v", ep.ID)
+	}
+	if ep := findEndpoint(obs, "8.8.8.8", "443"); ep == nil {
+		t.Error("routable peer must be emitted")
+	} else if _, has := ep.ID[idKeyHost]; has {
+		t.Errorf("routable endpoint must NOT be host-scoped: %v", ep.ID)
+	}
+	if findEndpoint(obs, "224.0.0.1", "5353") != nil {
+		t.Error("multicast peer must be dropped")
 	}
 }
 

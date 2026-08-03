@@ -46,6 +46,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"Process probe is free tier", "process", true},
 		{"UniFi probe IS free tier", "unifi", true},
 		{"Systemd probe is free tier", "systemd", true},
+		{"OS Updates probe is free tier (#603)", "os_updates", true},
 		{"MSSQL probe is free tier", "mssql", true},
 		{"MongoDB probe is free tier", "mongodb", true},
 		{"Kafka probe is free tier", "kafka", true},
@@ -144,6 +145,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"docker":               false,
 		"redis":                false,
 		"wifi_signal_strength": false,
+		"os_updates":           false,
 	}
 
 	for _, probe := range probes {

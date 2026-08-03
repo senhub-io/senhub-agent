@@ -24,7 +24,8 @@ import (
 // consumer never sees a transient fallback id that a later tech-id fetch
 // would re-key.
 //
-// The source is registered on OnStart and unregistered on OnShutdown.
+// The source is declared via SetEntitySource in the constructor; the
+// ProbePoller registers it on Start and unregisters it on Shutdown.
 // Observe is non-blocking and returns the last cached snapshot.
 type rabbitmqEntitySource struct {
 	// serverAddr and serverPort are the descriptive attributes from the config.

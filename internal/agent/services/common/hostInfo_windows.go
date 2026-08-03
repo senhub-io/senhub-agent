@@ -7,8 +7,30 @@ import (
 	"sync"
 
 	"github.com/digitalocean/go-smbios/smbios"
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
+
+// resolveHostFQDN returns the host's fully-qualified DNS name via
+// GetComputerNameEx(ComputerNameDnsFullyQualified). os.Hostname() on
+// Windows returns the UPPER-CASE NetBIOS computer name ("DASH01"), which
+// diverges from the lower-case FQDN downstream systems join on (#627).
+// Empty on failure — the caller falls back to the OS hostname.
+func resolveHostFQDN() string {
+	size := uint32(256)
+	for range 2 {
+		buf := make([]uint16, size)
+		// On too-small-buffer failure GetComputerNameEx stores the
+		// required length (incl. NUL) in size; one retry suffices.
+		if err := windows.GetComputerNameEx(windows.ComputerNameDnsFullyQualified, &buf[0], &size); err == nil {
+			return windows.UTF16ToString(buf[:size])
+		}
+		if size <= uint32(len(buf)) {
+			return ""
+		}
+	}
+	return ""
+}
 
 // winNameplate is the host's SMBIOS system identity, read once from the raw
 // firmware table (GetSystemFirmwareTable) so vendor/model/serial/chassis come

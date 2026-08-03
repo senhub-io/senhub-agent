@@ -199,8 +199,8 @@ probes:
 #       endpoints: ["prtg"]
 #       tls:
 #         enabled: true
-#         cert_file: "/etc/senhub/tls/cert.pem"
-#         key_file: "/etc/senhub/tls/key.pem"
+#         cert_file: "/etc/senhub-agent/tls/cert.pem"
+#         key_file: "/etc/senhub-agent/tls/key.pem"
 #         min_tls_version: "1.3"
 #
 # probes:
