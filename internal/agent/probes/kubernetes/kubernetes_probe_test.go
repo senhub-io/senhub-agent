@@ -17,7 +17,6 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -116,17 +115,11 @@ func TestClusterEndpointFromHost(t *testing.T) {
 	}
 }
 
-// noopRegisterEntitySource is a test replacement for registerEntitySource
-// that avoids touching the global entity registry.
-func noopRegisterEntitySource(_ entity.Source) func() { return func() {} }
-
 // buildTestProbe constructs a KubernetesProbe backed by the given fake
-// clientset, with entity registration replaced by a no-op.
+// clientset. No entity-registry seam is needed: since #471 the probe never
+// registers its source itself — the ProbePoller does.
 func buildTestProbe(t *testing.T, cs *kubefake.Clientset, collectNodes, collectPods, collectDeployments bool) *KubernetesProbe {
 	t.Helper()
-	orig := registerEntitySource
-	registerEntitySource = noopRegisterEntitySource
-	t.Cleanup(func() { registerEntitySource = orig })
 
 	p := &KubernetesProbe{
 		BaseProbe: &types.BaseProbe{},

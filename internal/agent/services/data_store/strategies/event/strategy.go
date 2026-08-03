@@ -13,6 +13,7 @@ import (
 	"github.com/avast/retry-go/v4"
 
 	eventFormatter "senhub-agent.go/internal/agent/formats/event"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
@@ -63,6 +64,17 @@ type EventSyncStrategy struct {
 	stopOnce    sync.Once
 	agentConfig configuration.AgentConfiguration
 	formatter   *eventFormatter.Formatter
+
+	// Log-bus pump (#294 step 1a): syslog events now ride the agent log
+	// bus, not the metric datapoint path. The pump drains the log channel,
+	// keeps only syslog records, converts each to the same EventDataPoint
+	// FormatDataPoint produced, and enqueues it — so /event/insert is
+	// byte-identical. The event (HTTP) probe still feeds AddDataPoints
+	// until its structured payloads are carried on the log bus (step 1b).
+	logSub      <-chan agentstate.LogRecord
+	logCancel   context.CancelFunc
+	logWG       sync.WaitGroup
+	logPumpOnce sync.Once
 }
 
 // NewEventSyncStrategy creates a new instance of EventSyncStrategy.
@@ -178,43 +190,93 @@ func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageCon
 // AddDataPoints adds new datapoints to the buffer and triggers sync if needed
 func (s *EventSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 	for _, dp := range data {
-		evt := s.formatter.FormatDataPoint(dp)
-		if err := evt.Validate(); err != nil {
-			s.logger.Error().Err(err).Msg("Invalid event data")
-			continue
-		}
-
-		// Calculate event size
-		eventJson, err := json.Marshal(evt)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("Failed to marshal event")
-			continue
-		}
-		eventSize := int64(len(eventJson))
-
-		// Try to add to buffer
-		select {
-		case s.buffer <- evt:
-			newSize := s.currentSize.Add(eventSize)
-			s.logger.Debug().Msg("Event added to buffer successfully")
-
-			// Check if we should trigger a sync
-			if len(s.buffer) >= s.syncTriggerSize || newSize >= s.syncTriggerBytes {
-				s.triggerSync()
-			}
-		default:
-			// Buffer is full, try to make room
-			s.logger.Warn().Msg("Buffer full, attempting to make room")
-			select {
-			case <-s.buffer: // Remove oldest event
-				s.buffer <- evt
-				s.logger.Warn().Msg("Dropped oldest event to make room")
-			default:
-				s.logger.Error().Msg("Failed to make room in buffer, event lost")
-			}
-		}
+		s.enqueue(s.formatter.FormatDataPoint(dp))
 	}
 	return nil
+}
+
+// enqueue validates a formatted event and pushes it onto the buffer,
+// triggering a sync at the size/byte thresholds. On a full buffer it drops
+// the oldest event to make room (best-effort, same posture as the receive
+// side). Shared by AddDataPoints (event probe datapoints) and the log-bus
+// pump (syslog records) so both sources behave identically.
+func (s *EventSyncStrategy) enqueue(evt eventtypes.EventDataPoint) {
+	if err := evt.Validate(); err != nil {
+		s.logger.Error().Err(err).Msg("Invalid event data")
+		return
+	}
+
+	eventJson, err := json.Marshal(evt)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to marshal event")
+		return
+	}
+	eventSize := int64(len(eventJson))
+
+	select {
+	case s.buffer <- evt:
+		newSize := s.currentSize.Add(eventSize)
+		if len(s.buffer) >= s.syncTriggerSize || newSize >= s.syncTriggerBytes {
+			s.triggerSync()
+		}
+	default:
+		s.logger.Warn().Msg("Buffer full, attempting to make room")
+		select {
+		case <-s.buffer: // Remove oldest event
+			select {
+			case s.buffer <- evt:
+				s.logger.Warn().Msg("Dropped oldest event to make room")
+			default:
+				// The freed slot was taken by a concurrent producer. Drop
+				// rather than block: a blocking send here can park the pump
+				// goroutine so Shutdown's logWG.Wait() stalls until the next
+				// sync drains the buffer (audit m9). enqueue must never block.
+				s.logger.Warn().Msg("Buffer still full after eviction; event lost")
+			}
+		default:
+			s.logger.Error().Msg("Failed to make room in buffer, event lost")
+		}
+	}
+}
+
+// drainLogSub processes any records still buffered in the subscription
+// channel after the pump has stopped. Non-blocking: returns once the channel
+// is empty. Called from Shutdown after UnsubscribeLogs (no new sends arrive).
+func (s *EventSyncStrategy) drainLogSub() {
+	for {
+		select {
+		case rec := <-s.logSub:
+			s.convertAndEnqueue(rec)
+		default:
+			return
+		}
+	}
+}
+
+// convertAndEnqueue converts one syslog/event log record to the /event/insert
+// format and enqueues it. Shared by the pump and the shutdown drain.
+func (s *EventSyncStrategy) convertAndEnqueue(rec agentstate.LogRecord) {
+	switch rec.ProducerProbeType {
+	case "syslog":
+		s.enqueue(s.withGlobalTags(s.formatter.FromSyslogLog(rec)))
+	case "event":
+		s.enqueue(s.withGlobalTags(s.formatter.FromEventLog(rec)))
+	}
+}
+
+// withGlobalTags overlays the agent-level global_tags onto an event so
+// /event/insert stays byte-identical to the legacy metric datapoint path,
+// which flowed through the DataStore's enrichWithConfiguredTags (global_tags
+// merged into every datapoint, then emitted as fields by FormatDataPoint).
+// The log bus bypasses the DataStore, so re-apply them here. global_tags win
+// on a key conflict, matching the old MergeTags precedence (audit M2).
+// Per-probe custom_tags were already inert for syslog/event (their datapoints
+// carried no probe_name tag), so they are not re-applied.
+func (s *EventSyncStrategy) withGlobalTags(evt eventtypes.EventDataPoint) eventtypes.EventDataPoint {
+	for k, v := range s.agentConfig.GetGlobalTags() {
+		evt[k] = v
+	}
+	return evt
 }
 
 // triggerSync initiates an asynchronous sync if none is already in progress
@@ -382,12 +444,68 @@ func (s *EventSyncStrategy) Start() error {
 			}
 		}(s.ticker, s.tickerStop)
 	})
+	s.startLogPump()
 	return nil
+}
+
+// startLogPump subscribes to the agent log bus and forwards the two
+// /event/insert producers — syslog and event — to the legacy rail
+// (#294 step 1a/1b). Idempotent. Every OTHER log producer (filetail,
+// linux_logs, snmp_trap, otlp_receiver, …) is skipped so it does NOT leak
+// onto /event/insert. Each record is converted with the format-preserving
+// FromSyslogLog / FromEventLog so the payload is byte-identical to the old
+// metric datapoint path.
+func (s *EventSyncStrategy) startLogPump() {
+	s.logPumpOnce.Do(func() {
+		ch := agentstate.SubscribeLogs(s.config.QueueSize)
+		s.logSub = ch
+		ctx, cancel := context.WithCancel(context.Background())
+		s.logCancel = cancel
+		s.logWG.Add(1)
+		go func() {
+			defer s.logWG.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case rec, ok := <-ch:
+					if !ok {
+						return
+					}
+					switch rec.ProducerProbeType {
+					default:
+						// Not an /event/insert producer — skip so other log
+						// sources (filetail, linux_logs, snmp_trap, …) never
+						// leak onto the legacy rail.
+						continue
+					case "syslog", "event":
+						s.convertAndEnqueue(rec)
+					}
+				}
+			}
+		}()
+	})
 }
 
 // Shutdown performs a graceful shutdown of the sync strategy
 func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 	s.logger.Info().Msg("Initiating graceful shutdown")
+
+	// Stop the log-bus pump first so no new syslog events arrive while we
+	// drain. Unsubscribe follows the same #262 contract as the OTLP pump:
+	// the channel is never closed here, the pump exits via the cancel.
+	if s.logCancel != nil {
+		s.logCancel()
+		s.logWG.Wait()
+		agentstate.UnsubscribeLogs(s.logSub)
+		// Drain records already accepted into the subscription buffer but not
+		// yet processed by the now-stopped pump, so a burst arriving just
+		// before stop is not silently lost — the old synchronous path
+		// included such events in the final flush (audit m10). Unsubscribe
+		// above stopped new deliveries, so this non-blocking drain terminates.
+		s.drainLogSub()
+	}
+
 	if s.ticker != nil {
 		s.ticker.Stop()
 	}

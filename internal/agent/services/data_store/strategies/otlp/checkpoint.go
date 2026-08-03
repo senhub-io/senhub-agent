@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // Checkpoint format version. Bump when the on-disk schema changes in
@@ -49,13 +50,14 @@ type checkpoint struct {
 // uses lowercase fields by design (package-private state), and adding
 // JSON tags would force exposing those fields beyond the package.
 type entrySnapshot struct {
-	ProbeName  string            `json:"probe_name"`
-	ProbeType  string            `json:"probe_type"`
-	MetricName string            `json:"metric_name"`
-	Value      float64           `json:"value"`
-	Unit       string            `json:"unit,omitempty"`
-	Tags       map[string]string `json:"tags,omitempty"`
-	ObservedAt time.Time         `json:"observed_at"`
+	ProbeName  string                    `json:"probe_name"`
+	ProbeType  string                    `json:"probe_type"`
+	MetricName string                    `json:"metric_name"`
+	Value      float64                   `json:"value"`
+	Unit       string                    `json:"unit,omitempty"`
+	Tags       map[string]string         `json:"tags,omitempty"`
+	Histogram  *datapoint.HistogramValue `json:"histogram,omitempty"`
+	ObservedAt time.Time                 `json:"observed_at"`
 }
 
 // checkpointer periodically writes the metric store's LWW snapshot to

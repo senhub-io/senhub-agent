@@ -350,12 +350,32 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 
 	for _, storageConfig := range d.configProvider.GetConfiguration().StorageConfig {
 		strategy := d.retrieveOrCreate(storageConfig)
-		if strategy != nil {
-			newStrategies[strategy.GetStrategyName()] = strategy
-			d.logger.Debug().
-				Str("strategy", strategy.GetStrategyName()).
-				Msg("Strategy active")
+		if strategy == nil {
+			continue
 		}
+		name := strategy.GetStrategyName()
+		if existing, ok := newStrategies[name]; ok {
+			// Duplicate strategy name in one refresh — e.g. two identically
+			// named blocks in a legacy monolithic `storage:` list (the .d
+			// loader dedups; the monolithic list does not). The extra
+			// instance was already created and Started, and since it is
+			// neither the kept one nor in `previous`, the cleanup loop below
+			// would never shut it down: it leaks its goroutines and, for a
+			// bus-consuming strategy like `event`, its live log subscription
+			// double-delivers every record. Shut the extra down; keep the
+			// first (m11).
+			if existing != strategy {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				if err := strategy.Shutdown(ctx); err != nil {
+					d.logger.Error().Err(err).Str("strategy", name).Msg("Failed to shut down duplicate strategy")
+				}
+				cancel()
+			}
+			d.logger.Warn().Str("strategy", name).Msg("Duplicate strategy name in configuration; keeping the first, ignoring the extra")
+			continue
+		}
+		newStrategies[name] = strategy
+		d.logger.Debug().Str("strategy", name).Msg("Strategy active")
 	}
 
 	next := make([]SyncStrategy, 0, len(newStrategies))
@@ -385,6 +405,48 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 		}
 		cancel()
 	}
+
+	// Publish the correlation context for the log/trace rails so operator
+	// custom_tags + global_tags reach logs the same way they reach metrics
+	// — logs never pass through this router, so without this they would
+	// miss the per-probe tags entirely (#294).
+	d.publishSignalContext()
+}
+
+// publishSignalContext snapshots the agent's global_tags and per-probe
+// custom_tags into agentstate so the log rail can stamp them for
+// cross-signal correlation. Rebuilt on every config refresh; the maps are
+// plain string maps so agentstate stays free of configuration types.
+func (d *dataStore) publishSignalContext() {
+	cfg := d.configProvider.GetConfiguration()
+
+	var customByProbe map[string]map[string]string
+	for _, p := range cfg.Probes {
+		if len(p.CustomTags) == 0 {
+			continue
+		}
+		if customByProbe == nil {
+			customByProbe = make(map[string]map[string]string, len(cfg.Probes))
+		}
+		customTags := make(map[string]string, len(p.CustomTags))
+		for k, v := range p.CustomTags {
+			customTags[k] = v
+		}
+		customByProbe[p.Name] = customTags
+	}
+
+	var global map[string]string
+	if len(cfg.Agent.GlobalTags) > 0 {
+		global = make(map[string]string, len(cfg.Agent.GlobalTags))
+		for k, v := range cfg.Agent.GlobalTags {
+			global[k] = v
+		}
+	}
+
+	agentstate.SetSignalContext(&agentstate.SignalContext{
+		CustomTagsByProbe: customByProbe,
+		GlobalTags:        global,
+	})
 }
 
 func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig) SyncStrategy {
@@ -621,6 +683,7 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 			Value:     correctedValue,
 			Timestamp: dp.Timestamp,
 			Tags:      enrichedTags,
+			Histogram: dp.Histogram,
 		}
 	}
 

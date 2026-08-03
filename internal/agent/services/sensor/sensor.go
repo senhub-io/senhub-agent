@@ -152,6 +152,13 @@ func (s *sensor) SyncConfiguration() error {
 		if err != nil {
 			agentstate.SetLicenseInvalid("validation_failed")
 			s.moduleLogger.Error().Err(err).Msg("Configured license token is INVALID and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
+		} else if agentKey := config.Agent.AuthenticationKey; agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
+			// Mirror the constructor's binding enforcement (see above). Without
+			// it the initial binding_mismatch rejection is silently undone by
+			// the first SyncConfiguration — which runs at boot — unlocking paid
+			// probes for a licence not bound to this agent's authentication key.
+			agentstate.SetLicenseInvalid("binding_mismatch")
+			s.moduleLogger.Error().Msg("Configured license is NOT bound to this agent key and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else {
 			isExpired := lic.IsExpired && !s.licenseValidator.IsInGracePeriod(lic)
 			if !isExpired {

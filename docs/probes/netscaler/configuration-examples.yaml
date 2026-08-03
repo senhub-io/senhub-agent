@@ -365,7 +365,7 @@ probes:
 # password: "${env:NETSCALER_PASSWORD}"
 #
 # Option 3: File reference
-# password: "${file:/etc/senhub/secrets/netscaler.pwd}"
+# password: "${file:/etc/senhub-agent/secrets/netscaler.pwd}"
 #
 # Option 4: SenHub Cloud (credentials managed server-side)
 # No local credentials storage required

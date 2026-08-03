@@ -57,19 +57,16 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		Arguments:        serviceArgs,
 		WorkingDirectory: workingDir,
 		Option: map[string]interface{}{
-			"LogOutput":             true,
-			"ServiceName":           "senhub-agent.service",
-			"SystemdScript":         true,
-			"Restart":               "always",
-			"RestartSec":            "10",
-			"StartLimitIntervalSec": "300",
-			"StartLimitBurst":       "5",
-			"OnFailure":             "restart",
-			"RecoveryActions":       []string{"restart", "restart", "restart", "restart", "none"},
-			"RecoveryCallback":      "",
-			"ResetPeriod":           86400,
-			"RestartDelay":          10000,
-			"Actions":               []string{"restart"},
+			"LogOutput":        true,
+			"ServiceName":      "senhub-agent.service",
+			"SystemdScript":    true,
+			"Restart":          "always",
+			"OnFailure":        "restart",
+			"RecoveryActions":  []string{"restart", "restart", "restart", "restart", "none"},
+			"RecoveryCallback": "",
+			"ResetPeriod":      86400,
+			"RestartDelay":     10000,
+			"Actions":          []string{"restart"},
 		},
 	}
 
@@ -82,17 +79,21 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	if serviceUser == "" {
 		serviceUser = defaultServiceUser
 	}
-	if runtime.GOOS == "linux" && serviceUser != rootServiceUser {
-		svcConfig.Option["SystemdScript"] = hardenedSystemdScript(serviceUser)
+	if runtime.GOOS == "linux" {
+		// Never fall back to kardianos's built-in systemd script: it
+		// places StartLimitInterval/StartLimitBurst in [Service], where
+		// systemd does not honour them (#577), so the root unit gets a
+		// corrected template too.
+		svcConfig.Option["SystemdScript"] = linuxSystemdScript(serviceUser)
 
-		// Stage the binary where the unprivileged daemon can replace it in
-		// place during auto-update (#571): a service-user-owned dir under the
-		// StateDirectory, writable + outside ProtectSystem=full. The unit's
-		// ExecStart then points there.
+		// Stage the binary where the daemon can replace it in place
+		// during auto-update (#571): a service-user-owned dir under the
+		// StateDirectory, writable + outside ProtectSystem=full. The
+		// unit's ExecStart then points there.
 		if command == "install" {
 			// The dedicated user must exist before installManagedBinary
 			// chowns the staged binary to it, and before systemd
-			// validates the unit's User= (#575).
+			// validates the unit's User= (#575). No-op for root.
 			if userErr := ensureServiceUser(serviceUser); userErr != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
 				fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
@@ -101,14 +102,14 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 			// ExecStart MUST point at the staged /var/lib binary, never
 			// at the installer's invocation path (which may be /tmp and
-			// vanish, leaving systemd with 203/EXEC — #576). A staging
-			// failure is fatal: a unit written with the temp path would
-			// crash-loop, which is worse than aborting the install.
+			// vanish, leaving systemd with 203/EXEC — #576). This holds
+			// for the root unit as well. A staging failure is fatal: a
+			// unit written with the temp path would crash-loop, which is
+			// worse than aborting the install.
 			managed, err := installManagedBinary(executablePath, serviceUser)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: could not stage the managed binary to %s: %v\n", managedBinaryDir, err)
 				fmt.Fprintln(os.Stderr, "The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
-				fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if the binary cannot be staged.")
 				os.Exit(1)
 			}
 			svcConfig.Executable = managed
@@ -129,15 +130,6 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	switch command {
 	case "install":
-		// The dedicated user must exist before systemd validates the
-		// unit. A creation failure aborts the install: registering a
-		// unit whose User= cannot be resolved produces a service that
-		// never starts, which is worse than a clear error here.
-		if userErr := ensureServiceUser(serviceUser); userErr != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
-			fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
-			os.Exit(1)
-		}
 		err = s.Install()
 		if err == nil {
 			fmt.Println("Service installed successfully")

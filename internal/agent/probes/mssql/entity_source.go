@@ -23,8 +23,8 @@ const (
 
 // mssqlEntitySource is a constant single-entity source: the connection target
 // is fixed at construction, so Observe never blocks and never changes. It still
-// goes through the registry so the entity is heartbeated (and retired on
-// shutdown via the unregister returned by RegisterSource).
+// goes through the registry so the entity is heartbeated (and retired when the
+// poller unregisters it on shutdown).
 type mssqlEntitySource struct {
 	obs entity.Observation
 	// hostID resolves the agent host for the local-db runs_on edge; overridable

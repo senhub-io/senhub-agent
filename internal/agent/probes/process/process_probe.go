@@ -11,7 +11,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -24,8 +23,7 @@ type processProbe struct {
 	// entitySrc is non-nil only in inventory mode (by_name / by_user). In
 	// pure top_n or unfiltered mode the BaseProbe NoOp source is kept, so a
 	// churning resource sample never floods Toise with process nodes.
-	entitySrc  *processEntitySource
-	unregister func()
+	entitySrc *processEntitySource
 }
 
 // NewProcessProbe constructs a process probe from the YAML params block.
@@ -43,9 +41,11 @@ func NewProcessProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 	p.SetProbeType("process")
 
 	// Inventory intent = the operator named what to watch. Only then do the
-	// monitored processes become Toise entities (registered in OnStart).
+	// monitored processes become Toise entities (the poller registers the
+	// declared source; without it the NoOp fallback keeps the graph clean).
 	if cfg.byName != nil || cfg.byUser != "" {
 		p.entitySrc = newProcessEntitySource()
+		p.SetEntitySource(p.entitySrc)
 	}
 
 	return p, nil
@@ -55,19 +55,9 @@ func (p *processProbe) ShouldStart() bool { return true }
 
 func (p *processProbe) GetInterval() time.Duration { return p.cfg.interval }
 
-func (p *processProbe) OnStart(_ chan struct{}) error {
-	if p.entitySrc != nil {
-		p.unregister = entity.RegisterSource(p.entitySrc)
-	}
-	return nil
-}
+func (p *processProbe) OnStart(_ chan struct{}) error { return nil }
 
-func (p *processProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
-	return nil
-}
+func (p *processProbe) OnShutdown(_ context.Context) error { return nil }
 
 func (p *processProbe) Collect() ([]data_store.DataPoint, error) {
 	ts := time.Now()

@@ -14,21 +14,7 @@ import (
 	"sync/atomic"
 )
 
-// collectErrors is the lifetime-monotonic count of probe collection errors
-// observed across all probe pollers since the agent started.
-var collectErrors atomic.Uint64
-
-// IncrementCollectErrors records one probe collection error.
-// Called from ProbePoller.collect() when the underlying Probe.Collect()
-// returns a non-nil error.
-func IncrementCollectErrors() {
-	collectErrors.Add(1)
-}
-
-// GetCollectErrorsTotal returns the lifetime collect-error count.
-func GetCollectErrorsTotal() uint64 {
-	return collectErrors.Load()
-}
+// The per-(probe,reason) collect-error counter lives in collect_errors.go.
 
 // transformerFallbacks counts datapoints that went through the
 // data_store unit-correction pass without a transformer YAML definition

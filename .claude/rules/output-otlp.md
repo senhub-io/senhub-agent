@@ -68,6 +68,9 @@ probe instances and the resource is batch-level.
 ```yaml
 protocol: grpc          # grpc (default) | http
 endpoint: "otlp.example.com:4317"
+tenant: "acme"          # or org_id: — sugar for the X-Scope-OrgID header (#240)
+headers:                # arbitrary request headers (env-expandable)
+  Authorization: "Bearer ${env:OTLP_TOKEN}"
 fallback_endpoints:     # optional standby ingresses for failover (#217)
   - "otlp-dr.example.com:4317"
 signals:
@@ -83,9 +86,96 @@ signals:
   traces:
     enabled: false
     sample_ratio: 1.0
+    relay_enrichment: true       # add agent correlation context to RELAYED
+                                 # spans (default true; false = verbatim)
+    relay_tenant_overrides:      # per-source tenant for the shared-gateway case
+      - match: { key: "service.namespace", value: "client-b" }
+        tags: { tenant: "client-b", site: "lyon" }
+  entities:
+    enabled: false             # opt-in; entity events ride the logs transport
+    interval: 60s              # heartbeat cadence + consumer liveness backstop
+    buffer_size: 256
+    depends_on_debounce: 3
+    depends_on_enabled: false  # outbound dependency edges are opt-in (#213)
+    depends_on_exclude_cidrs: []
+    redact_attributes: []      # attribute keys DROPPED (not masked) from every
+                               # entity event before encoding (#682)
 ```
 
 The interval is independent of probe `Collect` cadence — OTLP pulls the latest cache snapshot at its own rhythm.
+
+## Multi-tenant ingest & auth model (`tenant`, #240)
+
+`tenant:` (alias `org_id:`) is sugar for the **`X-Scope-OrgID`** request header
+— the de-facto multi-tenant routing key across Mimir / Loki / Tempo and
+VictoriaMetrics. It is injected after root→signal header resolution (in
+`resolveTransport`), so it lands on **every** signal, including one that
+overrides `headers:`. An explicit `X-Scope-OrgID` in `headers:` wins (the field
+is a shortcut, not an override). Control characters (CR/LF) are rejected at
+parse time — no header injection. Env-expandable (`tenant: "${env:ORG_ID}"`).
+
+The agent stays **vendor-neutral**: it carries an optional
+`Authorization: Bearer <token>` (via `headers:`) **+** an optional
+`X-Scope-OrgID`. Auth is enforced at the **edge** (collector) by a standard OTel
+authenticator extension (`bearertokenauth` / `basicauth` / `oidcauth` / mTLS) —
+nothing senhub-specific, nothing built in the agent. Trust model: a self-hosted
+/ on-prem edge trusts the agent's `X-Scope-OrgID`; an untrusted SaaS edge strips
+it and re-derives the tenant from the authenticated token (anti-spoofing).
+**The license does NOT gate ingestion** — paid-probe gating is a collection-side
+axis; an OSS agent with no license can still post. Only `tenant.id` (generic
+OTel resource attribute) / `X-Scope-OrgID` (wire) are used — no `senhub.*`
+tenant naming.
+
+## Relayed-trace correlation enrichment (`relay_enrichment`, #294)
+
+The traces relay forwards spans received from third-party apps. Those spans
+carry the **emitting app's** Resource (its own `service.name` /
+`service.instance.id` / `host.*`) — a foreign identity that must be
+preserved. `relay_enrichment` (default **true**) inserts the agent's tenancy
+context **merge-not-overwrite** at relay flush, copy-on-write on the Resource
+only (the spans are shared, never mutated) — **standard / operator keys
+only, no product namespace**:
+
+- `tenant` / `site` / `deployment.environment` (the agent's `global_tags` +
+  environment) — inserted **only when the app didn't set the key**. The
+  emitter value always wins.
+
+`relay_tenant_overrides` swaps the default insert set for spans whose
+Resource matches a rule (`match: {key, value}` → `tags:`), the shared-gateway
+case where one agent relays for several end-clients. Set
+`relay_enrichment: false` for a verbatim pass-through.
+
+A **relay-identity** set is also stamped so a backend can answer "which agent
+relayed this span" and join it to the host node on the infra graph (#698):
+
+- `telemetry.relay.host.id` — the relaying agent's `host.id`, sourced from the
+  host identity (gopsutil), NOT the operator-overridable Resource value, so it
+  is char-identical to this agent's host entity identity (the strict join the
+  topology consumer relies on).
+- `telemetry.relay.host.name` — the relaying host name.
+- `telemetry.relay.instance.id` — the relaying agent's `service.instance.id`
+  (the per-producer reference key, identical to what the agent sets on its
+  entity emissions).
+
+These keys are generic — any collector/gateway carries the same fact — so they
+live in the neutral `telemetry.*` space, aligned with the topology consumer
+(Toise) and semconv#759, **not** a `senhub.*` product name (provisional pending
+the SIG, migration path assumed). The set is **atomic and first-relay-wins**:
+it is inserted only when NONE of the three keys is already present, so a
+downstream gateway cannot mix its own `instance.id` with an upstream relay's
+`host.id`. Toise itself does not ingest traces, so it does not build the
+"relayed-by" edge from these spans — that would be a relation carried by an
+entity (a separate, deferred piece of work); these keys serve a trace backend.
+
+**Correlation contract (what actually joins across signals):**
+`service.instance.id` is NOT a join key between agent telemetry and relayed
+app traces — they are different services. The realistic pivot is
+**tenant/site**: jump from a slow app trace to the infra telemetry of the
+same tenant. Agent-owned metrics/logs/own-spans share the full Resource
+(`host.id`, `service.instance.id`, `deployment.environment`, global_tags)
+already.
+
+`redact_attributes` is the per-strategy privacy opt-out for entity attributes: listed keys are removed from `Entity.Attributes` on a copy at the pump boundary (`redactEntityEvent` in `entity_pump.go` — the shared `entity.Event` fans out to all subscribers and must never be mutated), so it covers the host entity and probe-emitted entities alike. Drop, not mask — an entity state is a full snapshot, absence IS the redaction. Identity keys (`host.id`, `service.instance.id`, `container.id`, `network.device.id`, `db.instance.id`, `vmid` — `entityIdentityKeys` in `config.go`) are refused at parse time and by `agent config check`. Trade-off to surface to users: redacting `hw.serial_number` breaks the out-of-band BMC/redfish `same_as` facet reconciliation for that export.
 
 ## Endpoint failover (`fallback_endpoints`)
 

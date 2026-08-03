@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/agentmetrics"
 )
 
@@ -19,6 +20,12 @@ import (
 // internal/agent/services/data_store/agentmetrics/ covers the
 // neutral builder shape; this one covers the end-to-end wire format.
 func TestBuildAgentRecords_SerializesToValidPrometheus(t *testing.T) {
+	// collect.errors is emitted only once an error has occurred, so seed one
+	// to assert its labeled wire format is present in the exposition.
+	agentstate.ResetCollectErrorsForTest()
+	t.Cleanup(agentstate.ResetCollectErrorsForTest)
+	agentstate.IncrementCollectErrors("redfish", "timeout")
+
 	snap := agentmetrics.AgentMetricsSnapshot{
 		StartTime:    time.Now().Add(-1 * time.Minute),
 		CacheEntries: 12,

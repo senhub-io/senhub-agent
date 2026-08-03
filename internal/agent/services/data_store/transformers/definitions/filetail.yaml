@@ -1,0 +1,21 @@
+probe_name: "filetail"
+friendly_name: "File Tail"
+version: "1.0.0"
+host_level: false
+
+# filetail is a log conduit: tailed lines ride the OTLP log rail
+# (agentstate.PublishLog) and are NOT mapped here. Collect() emits only
+# the conduit's own throughput self-metric (#701) so operators can see
+# how many records the tailer has shipped.
+
+metrics:
+  - name: "senhub.filetail.records_emitted"
+    channel: "filetail_records_emitted"
+    display_name: "File Tail Records Emitted"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of log records this file-tail probe has published to the log rail"
+    otel:
+      name: senhub.filetail.records_emitted
+      unit: "{record}"
+      type: counter

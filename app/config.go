@@ -12,6 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
@@ -357,9 +358,16 @@ func checkConfig(configPath string) {
 			if !validStrategies[s.Name] {
 				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
 				warnings++
-			} else {
-				fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+				continue
 			}
+			if s.Name == "otlp" {
+				if verr := otlp.ValidateEntitiesRedactAttributes(s.Params); verr != nil {
+					fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
+					errors++
+					continue
+				}
+			}
+			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
 		}
 	}
 

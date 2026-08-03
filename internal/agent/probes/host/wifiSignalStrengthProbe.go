@@ -128,9 +128,9 @@ func (m *wifiSignalStrengthProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 // finish enriches collected datapoints unconditionally, like every
-// other host probe: the enrichment used to live inside the dead
-// OnDataPoints branch (SetOnDataPoints has zero callers), so wifi
-// datapoints reached the store without probe_name/probe_type —
+// other host probe: the enrichment used to live inside a dead
+// conditional branch (a never-wired callback, removed in #166), so
+// wifi datapoints reached the store without probe_name/probe_type —
 // skipping the transformer, defeating per-probe custom_tags and
 // mispartitioning OTLP series under the empty probe key (#264).
 func (m *wifiSignalStrengthProbe) finish(metrics []data_store.DataPoint) []data_store.DataPoint {

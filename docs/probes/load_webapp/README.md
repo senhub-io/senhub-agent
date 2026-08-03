@@ -333,7 +333,7 @@ Compare connect times and total times to optimize CDN configuration.
 **Verify probe is enabled:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "name: load_webapp" /etc/senhub/probes.d/
+grep -rA5 "name: load_webapp" /etc/senhub-agent/probes.d/
 ```
 
 ### DNS Resolution Failures

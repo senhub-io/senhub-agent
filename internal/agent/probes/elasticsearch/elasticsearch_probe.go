@@ -14,7 +14,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -34,8 +33,7 @@ type elasticsearchProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	// entitySrc feeds the Toise topology inventory (search.engine entity).
-	entitySrc  *elasticsearchEntitySource
-	unregister func()
+	entitySrc *elasticsearchEntitySource
 }
 
 type esConfig struct {
@@ -100,14 +98,10 @@ func (p *elasticsearchProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Msg("Starting elasticsearch probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *elasticsearchProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }
