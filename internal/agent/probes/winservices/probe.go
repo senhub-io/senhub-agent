@@ -24,7 +24,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -77,8 +76,7 @@ type WinServicesProbe struct {
 	moduleLogger *logger.ModuleLogger
 	collect      collectFunc
 
-	entitySource           *winServicesEntitySource
-	unregisterEntitySource func()
+	entitySource *winServicesEntitySource
 }
 
 // NewWinServicesProbe constructs the probe. Config errors surface here;
@@ -100,6 +98,7 @@ func NewWinServicesProbe(config map[string]interface{}, baseLogger *logger.Logge
 		entitySource: newEntitySource(),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySource)
 	return probe, nil
 }
 
@@ -124,10 +123,7 @@ func (p *WinServicesProbe) GetTargetStrategies() []string {
 func (p *WinServicesProbe) ShouldStart() bool          { return true }
 func (p *WinServicesProbe) GetInterval() time.Duration { return p.config.Interval }
 
-// OnStart registers the entity source so the host's service-control surface
-// folds into the agent's entity snapshot.
 func (p *WinServicesProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Strs("services", p.config.Services).
 		Dur("interval", p.config.Interval).
@@ -135,12 +131,7 @@ func (p *WinServicesProbe) OnStart(_ chan struct{}) error {
 	return nil
 }
 
-// OnShutdown unregisters the entity source so a stopped or reloaded probe
-// stops heartbeating its cached entity.
 func (p *WinServicesProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	return nil
 }
 

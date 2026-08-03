@@ -26,10 +26,19 @@ type HostIdentity struct {
 	Virtualization   string // host.virtualization (AT11)
 	ChassisType      string // host.chassis.type (AT12)
 
-	CloudProvider    string // cloud.provider — IMDS, best-effort (#536)
-	CloudRegion      string // cloud.region — IMDS, best-effort (#536)
-	ContainerRuntime string // container.runtime — /proc heuristics (#536)
-	K8sNodeName      string // k8s.node.name — downward-API NODE_NAME (#536)
+	CloudProvider         string // cloud.provider — IMDS, best-effort (#536)
+	CloudRegion           string // cloud.region — IMDS, best-effort (#536)
+	CloudAvailabilityZone string // cloud.availability_zone — IMDS, best-effort (#536)
+	CloudAccountID        string // cloud.account.id — IMDS, best-effort (#536)
+	HostType              string // host.type — cloud instance type, IMDS, best-effort (#536)
+	ContainerRuntime      string // container.runtime — /proc heuristics (#536)
+	K8sNodeName           string // k8s.node.name — downward-API NODE_NAME (#536)
+
+	// Environment is deployment.environment (semconv) for the host — the same
+	// operator-declared value the OTLP metrics resource carries, stamped on the
+	// host ENTITY too so a topology consumer's governance view sees it without a
+	// separate declaration. Empty by default (omitted).
+	Environment string
 
 	// Governance is the operator-supplied governance attribute map
 	// (entity.owner.*, service.criticality, entity.location.*, …) stamped on the
@@ -121,12 +130,25 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	if h.CloudRegion != "" {
 		host.Attributes["cloud.region"] = h.CloudRegion
 	}
+	if h.CloudAvailabilityZone != "" {
+		host.Attributes["cloud.availability_zone"] = h.CloudAvailabilityZone
+	}
+	if h.CloudAccountID != "" {
+		host.Attributes["cloud.account.id"] = h.CloudAccountID
+	}
+	if h.HostType != "" {
+		host.Attributes["host.type"] = h.HostType
+	}
 	if h.ContainerRuntime != "" {
 		host.Attributes["container.runtime"] = h.ContainerRuntime
 	}
 	if h.K8sNodeName != "" {
 		host.Attributes["k8s.node.name"] = h.K8sNodeName
 	}
+	if h.Environment != "" {
+		host.Attributes["deployment.environment"] = h.Environment
+	}
+	// Governance last so an operator-declared key wins on any collision.
 	for k, v := range h.Governance {
 		host.Attributes[k] = v
 	}

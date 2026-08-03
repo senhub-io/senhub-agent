@@ -32,6 +32,13 @@ func TestEveryMultiInstanceProbeHasDiscriminantTags(t *testing.T) {
 		if knownDiscriminantGaps[def.ProbeName] {
 			continue
 		}
+		// Probes that key on their FULL tag set (arbitrary, externally
+		// controlled label sets) never collapse — full-tag keying is a
+		// stronger guarantee than any discriminant list, so they are
+		// deliberately absent from DiscriminantTagsRegistry.
+		if fullTagKeyProbes[def.ProbeName] {
+			continue
+		}
 		// Collect the multi_instance labels declared at the probe level and
 		// on any individual metric.
 		hasMultiInstance := len(def.MultiInstanceLabels) > 0

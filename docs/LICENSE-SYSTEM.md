@@ -97,12 +97,12 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **unifi** - Ubiquiti UniFi Controller monitoring (stdlib REST, cookie session auth): device inventory, per-device CPU/memory, AP client counts and satisfaction scores, WAN throughput, connected-client counts
 - **winservices** - Windows Service Control Manager enumeration: running/stopped state and SCM status code per service. Host-local (queries the machine the agent runs on); the Windows counterpart of linux_logs / windows_eventlog in the free host-observability tier.
 - **systemd** - Systemd unit supervision (Linux only): active/sub/load state gauges + restart counter per unit. Watches the machine the agent runs on via D-Bus.
+- **os_updates** - OS patch posture: pending updates, pending security updates and reboot-required status via the native package backend (apt or dnf/yum on Linux, Windows Update Agent on Windows). Host-local, read-only, no privilege escalation; replaces hand-deployed apt-check exec scripts and covers Windows.
 - **kubernetes** - Kubernetes cluster supervision (nodes, pods, containers, deployments) via the API server. Container infrastructure is the cloud-native equivalent of host self-observation; the agent running inside a cluster watches the cluster it runs on.
 - **modbus** - Modbus TCP register polling for IT/OT convergence (PLCs, industrial sensors, smart-building controllers). Open standard protocol; collecting Modbus devices is universal collection, not a vendor integration.
 - **mssql** - SQL Server health and throughput monitoring (OTel-first, sqlserver.* semconv parity with otelcol-contrib sqlserverreceiver). Free as a PRTG-replacement wedge — basic engine observability the OTel Collector already gives away.
 - **tomcat** - Apache Tomcat monitoring via Jolokia REST (requests, sessions, JVM heap, GC, thread pool). Same open-core wedge as snmp_poll: replaces the PRTG Tomcat sensor at zero cost.
 - **mongodb** — MongoDB server monitoring via serverStatus + per-database dbStats. The most-deployed document database; free tier covers standalone, replica set and Atlas targets via URI. Deep auth topologies, replica-set health and Atlas-specific metrics are future paid extensions.
-- **kafka** — Kafka broker/topic/consumer-group monitoring via Admin API (12 metrics: broker count, topic/partition metadata, current/oldest offsets, ISR replicas, consumer group lag per partition and lag_sum per topic). Mirrors the OTel Collector kafkametricsreceiver metric set.
 - **redis** - Redis / Valkey health and throughput via the INFO command (memory, connections, throughput, cache hit/miss, keyspace, replication, persistence). Parity with redis_exporter — the open-source baseline is free; deep Redis depth stays paid.
 - **docker** - Docker container monitoring (per-container CPU, memory, network, block I/O, state). Basic container collection is commoditized (cadvisor / telegraf docker input), so it is free.
 - **wifi_signal_strength** - Host-local Wi-Fi signal strength of the machine the agent runs on. Niche host self-observability, same footing as cpu/memory/network.
@@ -221,16 +221,34 @@ go run sensor-factory-license-generator.go --generate-license \
 
 ### 3. Customer Activation
 
-**Customer receives JWT token and activates:**
+The license lives in a dedicated **`license.jwt` sidecar file** next to
+`agent.yaml` (`/etc/senhub-agent/license.jwt`, Windows `%ProgramData%\SenHub\license.jwt`),
+not inline in the YAML. A standalone file is simple to hand to a customer and
+removes the risk of mangling a very long JWT on copy-paste. There are two ways
+to install it:
 
 ```bash
-# Activate license via CLI
+# Option A — CLI: activates and writes the sidecar for you
 ./agent license activate eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 
+# Option B — drop-in: save the token file we send you next to agent.yaml
+cp license.jwt /etc/senhub-agent/license.jwt   # restart the agent
+```
+
+```bash
 # Verify activation via web dashboard
 # Navigate to: http://localhost:8080/web/{agentkey}/dashboard
 # Check the "License" card for status
 ```
+
+The token stays in clear on disk: it is a JWT bound to the agent key, not a
+portable access secret, so it is deliberately excluded from the `${secret:}`
+seal. The loader reads the sidecar automatically when `agent.license` is empty;
+an inline `agent.license` **literal** JWT is auto-migrated to the sidecar on the
+next start (a timestamped backup is taken and the move is verified), so an
+existing install with the token inline converges on the file with no operator
+action. An inline `${file:}`/`${secret:}` **reference** is left untouched and
+takes precedence over the sidecar.
 
 ### 4. License Validation
 
@@ -271,10 +289,16 @@ The agent runs standalone (offline-only). There is no SenHub platform connection
 - Valid license → Tier specified in JWT (Free, Pro, Enterprise)
 
 **Configuration:**
+
+The license is provided as the `license.jwt` sidecar file next to `agent.yaml`
+(preferred — see Customer Activation above). An inline `agent.license` is still
+accepted for back-compat and takes precedence when set:
+
 ```yaml
 agent:
   authentication_key: "9bb3df79-2973-4662-8687-8da602175e0b"
-  license: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...  # JWT required
+  # license: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...  # optional inline override;
+  #                                                    # prefer the license.jwt sidecar
 
 probes:
   - name: Dell iDRAC

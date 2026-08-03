@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sync/atomic"
 
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -17,7 +18,7 @@ import (
 // Same approach as the linux_logs probe's non-Linux stub.
 type eventReader struct{}
 
-func newEventReader(_ WindowsEventLogProbeConfig, _ *logger.ModuleLogger, _ string) (*eventReader, error) {
+func newEventReader(_ WindowsEventLogProbeConfig, _ *logger.ModuleLogger, _ string, _ *atomic.Uint64) (*eventReader, error) {
 	return nil, fmt.Errorf("windows_eventlog probe is not supported on %s (requires the Windows Event Log API)", runtime.GOOS)
 }
 

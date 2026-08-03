@@ -33,12 +33,42 @@ type LogRecord struct {
 	Body         string
 	Attributes   map[string]string
 
+	// Fields carries STRUCTURED payload values (arrays, nested objects)
+	// that the flat string Attributes cannot hold — mirroring the OTel log
+	// data model, where a log body/attributes may be any value, not just
+	// strings. Populated only by producers whose payload is richer than a
+	// flat log (the event probe's HTTP events); nil for everyone else.
+	// Consumers that understand structure (the /event/insert converter;
+	// optionally the OTLP log exporter) read it; the rest ignore it (#294
+	// step 1b).
+	Fields map[string]any
+
 	// ProducerProbeName / ProducerProbeType identify the probe that
 	// produced this record. Used by the strategy to populate the
 	// service.instance.id-equivalent attribute on the OTel side, and
 	// by self-metrics to attribute drops by source.
 	ProducerProbeName string
 	ProducerProbeType string
+
+	// TargetStrategies routes this record to specific log-capable
+	// strategies, mirroring the metric router (data_store.go: a
+	// datapoint reaches a strategy only when the probe's target list
+	// names it). A record is delivered to a routing-aware subscriber
+	// (SubscribeLogsFor) only when this list contains that subscriber's
+	// strategy name. An EMPTY (or nil) list means "broadcast": the
+	// record goes to every subscriber. Broadcast is the pre-#294
+	// behavior and the default for producers that don't opt into
+	// routing, so leaving it empty is fully backward-compatible.
+	//
+	// This is the MECHANISM for the endpoints:/strategy filtering that
+	// governs metrics to apply to logs too (#294 rail B). It is currently
+	// unused by production producers: every PublishLog call leaves it empty,
+	// so all records broadcast (the pre-#294 behavior) — no regression. A
+	// producer that wants per-signal routing populates it from its probe's
+	// target-strategy resolution; until one does, the filter stays dormant.
+	// Catch-all subscribers (SubscribeLogs, empty strategy name) receive
+	// every record regardless of this list.
+	TargetStrategies []string
 }
 
 // LogSeverity mirrors the OTel SeverityNumber range (1..24). Producers
@@ -121,41 +151,70 @@ func SyslogPriorityToText(pri int) string {
 	return ""
 }
 
+// logSubscription binds a delivery channel to the strategy that owns
+// it. An empty strategy marks a catch-all subscriber (SubscribeLogs)
+// that receives every record; a named subscriber (SubscribeLogsFor)
+// only receives broadcast records and records whose TargetStrategies
+// name it — this is where log routing is decided, once, at the single
+// fan-out point (the log analog of the metric router in data_store.go).
+type logSubscription struct {
+	strategy string
+	ch       chan LogRecord
+}
+
 // logChannelState is the agent's single, process-lifetime log fan-out.
-// One producer (any probe), one consumer (currently the OTLP strategy;
-// could be more later). Stored as a package var because there's only
-// one of it and exposing a constructor would require all probes to
-// thread a handle through their constructors — friction with no upside.
+// One producer (any probe), one or more consumers (the OTLP strategy
+// today; additional log-capable strategies tomorrow). Stored as a
+// package var because there's only one of it and exposing a constructor
+// would require all probes to thread a handle through their
+// constructors — friction with no upside.
 type logChannelState struct {
 	mu      sync.RWMutex
-	subs    []chan LogRecord
+	subs    []*logSubscription
 	dropped atomic.Uint64
 }
 
 var logCh = &logChannelState{}
 
-// SubscribeLogs returns a channel that will receive log records
-// published via PublishLog. The buf parameter sets the receive buffer
-// size; if the consumer falls behind enough to fill the buffer,
-// records are dropped (oldest-first) and the global drop counter is
-// incremented — readable via GetDroppedLogRecordsTotal.
+// SubscribeLogs returns a catch-all channel that receives EVERY log
+// record published via PublishLog, regardless of the record's
+// TargetStrategies routing. Use it for taps and consumers that are not
+// tied to a routed strategy (the pre-#294 semantics). Strategy pumps
+// that must honor endpoints: routing use SubscribeLogsFor instead.
+//
+// The buf parameter sets the receive buffer size; if the consumer falls
+// behind enough to fill the buffer, records are dropped (oldest-first)
+// and the global drop counter is incremented — readable via
+// GetDroppedLogRecordsTotal.
 //
 // Callers must drain the channel; abandoned subscriptions waste a
 // goroutine until UnsubscribeLogs is called.
 func SubscribeLogs(buf int) <-chan LogRecord {
+	return SubscribeLogsFor("", buf)
+}
+
+// SubscribeLogsFor returns a channel that receives log records routed to
+// the named strategy: broadcast records (empty TargetStrategies) plus
+// records whose TargetStrategies contains strategy. This is the
+// routing-aware subscription that makes the endpoints:/strategy filter
+// apply to logs the same way it applies to metrics (#294 rail B). An
+// empty strategy behaves as a catch-all (see SubscribeLogs).
+//
+// Buffer, drop and drain semantics are identical to SubscribeLogs.
+func SubscribeLogsFor(strategy string, buf int) <-chan LogRecord {
 	if buf <= 0 {
 		buf = 1024
 	}
-	ch := make(chan LogRecord, buf)
+	sub := &logSubscription{strategy: strategy, ch: make(chan LogRecord, buf)}
 	logCh.mu.Lock()
 	// Copy-on-write: publishers snapshot the slice header under RLock
 	// and iterate after releasing — the backing array must therefore
 	// never be mutated in place (#262).
-	next := make([]chan LogRecord, len(logCh.subs), len(logCh.subs)+1)
+	next := make([]*logSubscription, len(logCh.subs), len(logCh.subs)+1)
 	copy(next, logCh.subs)
-	logCh.subs = append(next, ch)
+	logCh.subs = append(next, sub)
 	logCh.mu.Unlock()
-	return ch
+	return sub.ch
 }
 
 // UnsubscribeLogs disconnects a previously-subscribed channel. The
@@ -169,10 +228,10 @@ func UnsubscribeLogs(ch <-chan LogRecord) {
 	defer logCh.mu.Unlock()
 	for i, sub := range logCh.subs {
 		// Compare by pointer through the receive-only conversion.
-		if (<-chan LogRecord)(sub) == ch {
+		if (<-chan LogRecord)(sub.ch) == ch {
 			// Copy-on-write removal — never shift the shared backing
 			// array in place (#262).
-			next := make([]chan LogRecord, 0, len(logCh.subs)-1)
+			next := make([]*logSubscription, 0, len(logCh.subs)-1)
 			next = append(next, logCh.subs[:i]...)
 			next = append(next, logCh.subs[i+1:]...)
 			logCh.subs = next
@@ -181,21 +240,31 @@ func UnsubscribeLogs(ch <-chan LogRecord) {
 	}
 }
 
-// PublishLog fans out a record to every subscriber. Non-blocking: if
-// any subscriber's buffer is full, the record is dropped FOR THAT
-// SUBSCRIBER ONLY (others still receive it). Drop count is bumped once
-// per dropped record per subscriber. Producers should never wait —
-// log emission is best-effort under backpressure.
+// PublishLog fans out a record to every subscriber it is routed to.
+// Routing (#294 rail B): a named subscriber receives the record only
+// when rec.TargetStrategies is empty (broadcast) or contains that
+// subscriber's strategy name; catch-all subscribers always receive it.
+// Non-routed subscribers are skipped entirely — no send, no drop count.
+//
+// Non-blocking: if a routed subscriber's buffer is full, the record is
+// dropped FOR THAT SUBSCRIBER ONLY (others still receive it). Drop count
+// is bumped once per dropped record per subscriber. Producers should
+// never wait — log emission is best-effort under backpressure.
 //
 // Drop-oldest semantics on a full buffer: we make one attempt to
 // receive a stale record off the channel before sending the new one.
 // This keeps the channel reflecting the most recent activity rather
 // than freezing on the oldest backlog.
 func PublishLog(rec LogRecord) {
+	rec.Attributes = enrichLogAttributes(rec.Attributes, rec.ProducerProbeName)
 	logCh.mu.RLock()
 	subs := logCh.subs
 	logCh.mu.RUnlock()
-	for _, ch := range subs {
+	for _, sub := range subs {
+		if !recordRoutesTo(rec.TargetStrategies, sub.strategy) {
+			continue
+		}
+		ch := sub.ch
 		select {
 		case ch <- rec:
 			// Sent.
@@ -216,11 +285,64 @@ func PublishLog(rec LogRecord) {
 	}
 }
 
+// enrichLogAttributes overlays the producer probe's operator-configured
+// custom_tags onto a log record's attributes for cross-signal correlation
+// (#294): the metric router already applies custom_tags to datapoints, but
+// logs never passed through it. Operator tags win on a key conflict, the
+// same precedence the metric enrichment uses (custom_tags > built-in).
+//
+// Returns the original map untouched (no allocation) when the producer has
+// no configured custom_tags — the overwhelmingly common path. Otherwise it
+// builds a fresh merged map, never mutating the caller's attributes (the
+// same record value fans out to every subscriber; a shared-map mutation
+// would race, cf. the copy-on-write subscriber-list invariant #262).
+func enrichLogAttributes(attrs map[string]string, probeName string) map[string]string {
+	custom := customTagsForProbe(probeName)
+	if len(custom) == 0 {
+		return attrs
+	}
+	merged := make(map[string]string, len(attrs)+len(custom))
+	for k, v := range attrs {
+		merged[k] = v
+	}
+	for k, v := range custom {
+		merged[k] = v
+	}
+	return merged
+}
+
+// recordRoutesTo reports whether a record with the given TargetStrategies
+// should be delivered to a subscriber owned by strategy. A catch-all
+// subscriber (empty strategy) always matches; an empty target list is a
+// broadcast that matches every subscriber; otherwise the target list
+// must name the subscriber's strategy.
+func recordRoutesTo(targets []string, strategy string) bool {
+	if strategy == "" || len(targets) == 0 {
+		return true
+	}
+	for _, t := range targets {
+		if t == strategy {
+			return true
+		}
+	}
+	return false
+}
+
 // GetDroppedLogRecordsTotal returns the lifetime count of log records
 // dropped due to subscriber backpressure. Used by the OTLP strategy's
 // self-observability metric.
 func GetDroppedLogRecordsTotal() uint64 {
 	return logCh.dropped.Load()
+}
+
+// LogSubscriberCount returns the number of active log subscribers. Zero
+// means no log-capable strategy is draining the channel, so PublishLog
+// would fan out to nobody. The OTLP receiver reads this to warn rather
+// than silently discard ingested logs when no OTLP export is configured.
+func LogSubscriberCount() int {
+	logCh.mu.RLock()
+	defer logCh.mu.RUnlock()
+	return len(logCh.subs)
 }
 
 // resetLogChannelForTest clears all subscribers and resets the drop

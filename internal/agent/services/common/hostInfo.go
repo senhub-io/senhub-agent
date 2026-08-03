@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 
@@ -43,10 +44,34 @@ type HostIdentity struct {
 	// Cloud / container / orchestrator nameplate (#536). Best-effort, resolved
 	// from cloud metadata (IMDS), /proc container heuristics, and the
 	// downward-API env var; "" → omitted. Cached with the rest of the nameplate.
-	CloudProvider    string // cloud.provider — aws/gcp/azure
-	CloudRegion      string // cloud.region
-	ContainerRuntime string // container.runtime — docker/containerd/lxc/podman
-	K8sNodeName      string // k8s.node.name — downward-API NODE_NAME
+	CloudProvider         string // cloud.provider — aws/gcp/azure
+	CloudRegion           string // cloud.region — IMDS
+	CloudAvailabilityZone string // cloud.availability_zone — IMDS
+	CloudAccountID        string // cloud.account.id — IMDS: AWS account / GCP project number / Azure subscription
+	HostType              string // host.type — IMDS: provider instance/machine type
+	ContainerRuntime      string // container.runtime — docker/containerd/lxc/podman
+	K8sNodeName           string // k8s.node.name — downward-API NODE_NAME
+}
+
+// normalizeHostname lowercases the hostname and strips surrounding
+// whitespace plus a trailing FQDN root dot, so the same machine yields an
+// identical host label on every emission path (metric tags, OTLP resource,
+// entity nameplate). Windows reports an UPPER-CASE NetBIOS computer name
+// while DNS answers lower-case FQDNs; without one normalization point the
+// metric↔entity join by host name silently breaks (#627).
+func normalizeHostname(raw string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(raw), "."))
+}
+
+// canonicalHostname is the single hostname the agent emits everywhere: the
+// machine's fully-qualified DNS name when the platform provides one
+// (Windows — see resolveHostFQDN), else the OS-reported hostname, both
+// normalized to lower-case.
+func canonicalHostname(raw string) string {
+	if fqdn := resolveHostFQDN(); fqdn != "" {
+		return normalizeHostname(fqdn)
+	}
+	return normalizeHostname(raw)
 }
 
 // GetHostIdentity returns the host's stable identity plus descriptive nameplate
@@ -68,30 +93,33 @@ func GetHostIdentity() (HostIdentity, error) {
 	}
 	np := getHostNameplate(virt)
 	return HostIdentity{
-		ID:               hostInfo.HostID,
-		Name:             hostInfo.Hostname,
-		OSType:           hostInfo.OS,
-		Arch:             hostInfo.KernelArch,
-		OSName:           hostInfo.Platform,
-		OSVersion:        hostInfo.PlatformVersion,
-		OSBuildID:        hostInfo.KernelVersion,
-		OSDescription:    strings.TrimSpace(hostInfo.Platform + " " + hostInfo.PlatformVersion),
-		CPUModel:         np.cpuModel,
-		CPUVendor:        np.cpuVendor,
-		HWVendor:         np.hwVendor,
-		HWModel:          np.hwModel,
-		HWSerial:         np.hwSerial,
-		CPULogicalCount:  np.cpuLogical,
-		CPUPhysicalCount: np.cpuPhysical,
-		CPUFreqHz:        np.cpuFreqHz,
-		MemTotal:         np.memTotal,
-		DiskTotal:        np.diskTotal,
-		Virtualization:   virt,
-		ChassisType:      chassisName(np.chassisCode, virt),
-		CloudProvider:    np.cloudProvider,
-		CloudRegion:      np.cloudRegion,
-		ContainerRuntime: np.containerRuntime,
-		K8sNodeName:      np.k8sNodeName,
+		ID:                    hostInfo.HostID,
+		Name:                  canonicalHostname(hostInfo.Hostname),
+		OSType:                hostInfo.OS,
+		Arch:                  hostInfo.KernelArch,
+		OSName:                hostInfo.Platform,
+		OSVersion:             hostInfo.PlatformVersion,
+		OSBuildID:             hostInfo.KernelVersion,
+		OSDescription:         strings.TrimSpace(hostInfo.Platform + " " + hostInfo.PlatformVersion),
+		CPUModel:              np.cpuModel,
+		CPUVendor:             np.cpuVendor,
+		HWVendor:              np.hwVendor,
+		HWModel:               np.hwModel,
+		HWSerial:              np.hwSerial,
+		CPULogicalCount:       np.cpuLogical,
+		CPUPhysicalCount:      np.cpuPhysical,
+		CPUFreqHz:             np.cpuFreqHz,
+		MemTotal:              np.memTotal,
+		DiskTotal:             np.diskTotal,
+		Virtualization:        virt,
+		ChassisType:           chassisName(np.chassisCode, virt),
+		CloudProvider:         np.cloudProvider,
+		CloudRegion:           np.cloudRegion,
+		CloudAvailabilityZone: np.cloudAZ,
+		CloudAccountID:        np.cloudAccountID,
+		HostType:              np.hostType,
+		ContainerRuntime:      np.containerRuntime,
+		K8sNodeName:           np.k8sNodeName,
 	}, nil
 }
 
@@ -107,6 +135,8 @@ type hostNameplate struct {
 	chassisCode                 int // raw SMBIOS chassis_type (Linux DMI), 0 = unknown
 
 	cloudProvider, cloudRegion string // cloud.provider / cloud.region (IMDS, #536)
+	cloudAZ, cloudAccountID    string // cloud.availability_zone / cloud.account.id (IMDS, #536)
+	hostType                   string // host.type — instance/machine type (IMDS, #536)
 	containerRuntime           string // container.runtime (/proc heuristics, #536)
 	k8sNodeName                string // k8s.node.name (downward-API env, #536)
 }
@@ -131,9 +161,7 @@ func getHostNameplate(virt string) hostNameplate {
 		if infos, err := cpu.Info(); err == nil && len(infos) > 0 {
 			nameplate.cpuModel = strings.TrimSpace(infos[0].ModelName)
 			nameplate.cpuVendor = strings.TrimSpace(infos[0].VendorID)
-			if mhz := infos[0].Mhz; mhz > 0 {
-				nameplate.cpuFreqHz = int64(mhz * 1e6) // MHz → Hz
-			}
+			nameplate.cpuFreqHz = mhzToHz(infos[0].Mhz)
 		}
 		if n, err := cpu.Counts(true); err == nil {
 			nameplate.cpuLogical = int64(n)
@@ -157,10 +185,26 @@ func getHostNameplate(virt string) hostNameplate {
 		// IMDS is a network call; only worth attempting when the host is a guest
 		// (cloud VMs are virtualized). Bare metal skips it to avoid the timeout.
 		if virt != "" && virt != "none" {
-			nameplate.cloudProvider, nameplate.cloudRegion = detectCloud(defaultCloudTimeout)
+			ci := detectCloud(defaultCloudTimeout)
+			nameplate.cloudProvider = ci.provider
+			nameplate.cloudRegion = ci.region
+			nameplate.cloudAZ = ci.availabilityZone
+			nameplate.cloudAccountID = ci.accountID
+			nameplate.hostType = ci.instanceType
 		}
 	})
 	return nameplate
+}
+
+// mhzToHz converts the gopsutil-reported nominal CPU frequency to integer
+// hertz (the frozen host.cpu.frequency.nominal unit). Rounded, not truncated:
+// /proc/cpuinfo values like 2112.006 MHz land at 2112005999.9999998 in
+// float64, and truncation would ship an off-by-one-hertz nameplate.
+func mhzToHz(mhz float64) int64 {
+	if mhz <= 0 {
+		return 0
+	}
+	return int64(math.Round(mhz * 1e6))
 }
 
 // totalDiskBytes sums the capacity of the host's distinct physical filesystems
@@ -270,7 +314,7 @@ func GetHostResourceAttributes() (map[string]string, error) {
 		}
 	}
 	set("host.id", hostInfo.HostID)
-	set("host.name", hostInfo.Hostname)
+	set("host.name", canonicalHostname(hostInfo.Hostname))
 	set("host.arch", hostInfo.KernelArch)
 	set("os.type", hostInfo.OS)
 	set("os.name", hostInfo.Platform)
@@ -288,7 +332,7 @@ func GetHostTags() ([]tags.Tag, error) {
 	}
 
 	return []tags.Tag{
-		{Key: "host", Value: hostInfo.Hostname, Private: false},
+		{Key: "host", Value: canonicalHostname(hostInfo.Hostname), Private: false},
 		{Key: "os", Value: hostInfo.OS, Private: false},
 		{Key: "platform", Value: hostInfo.Platform, Private: false},
 		//  {Key: "platform_version", Value: hostInfo.PlatformVersion, Private: false},

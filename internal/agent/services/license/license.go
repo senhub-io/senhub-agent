@@ -464,6 +464,11 @@ var freeTierProbes = map[string]bool{
 	// wifi_signal_strength: host-local, niche — same footing as the other
 	// host self-observability probes (#476 tiering).
 	"wifi_signal_strength": true,
+	// os_updates: host-local patch posture — pending updates, security
+	// updates and reboot-required read from the machine's own package
+	// backend (apt, dnf/yum, Windows Update Agent). Free for the same
+	// reason cpu/memory/logicaldisk are free — host self-observability.
+	"os_updates": true,
 }
 
 // isFreeTierProbe checks if a probe is in the free tier

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -75,6 +76,7 @@ type eventReader struct {
 	cfg       WindowsEventLogProbeConfig
 	log       *logger.ModuleLogger
 	probeName string
+	emitted   *atomic.Uint64
 
 	stopEvent windows.Handle
 	bookmarks *bookmarkStore
@@ -87,7 +89,7 @@ type eventReader struct {
 // Returns an error only for unrecoverable setup failures (event creation,
 // bookmark load); a single channel that fails to subscribe is logged and
 // skipped so one bad channel name does not sink the whole probe.
-func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, probeName string) (*eventReader, error) {
+func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, probeName string, emitted *atomic.Uint64) (*eventReader, error) {
 	stop, err := windows.CreateEvent(nil, 1 /*manual reset*/, 0 /*nonsignalled*/, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create stop event: %w", err)
@@ -107,6 +109,7 @@ func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, pr
 		cfg:       cfg,
 		log:       log,
 		probeName: probeName,
+		emitted:   emitted,
 		stopEvent: stop,
 		bookmarks: store,
 	}
@@ -224,6 +227,9 @@ func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 					Msg("Unparseable event XML; skipped")
 			} else if r.cfg.shouldEmit(parsed) {
 				agentstate.PublishLog(parsed.toLogRecord(r.probeName, r.cfg.RedactPII))
+				if r.emitted != nil {
+					r.emitted.Add(1)
+				}
 			}
 
 			if uerr := evtUpdateBookmark(bookmark, ev); uerr != nil {

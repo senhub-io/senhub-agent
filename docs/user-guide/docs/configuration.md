@@ -99,23 +99,7 @@ Each probe entry defines a monitoring target. The agent collects metrics at regu
 
 ### Available Probe Types
 
-| Type | License | Description |
-|------|---------|-------------|
-| `cpu` | Free | CPU utilization |
-| `memory` | Free | Memory usage (physical and swap) |
-| `logicaldisk` | Free | Disk space and I/O metrics |
-| `network` | Free | Network interface metrics (bandwidth, errors, packets) |
-| `veeam` | Pro | Veeam Backup & Replication v13 monitoring (via REST API) |
-| `citrix` | Pro | Citrix Virtual Apps and Desktops monitoring (via Director API) |
-| `netscaler` | Pro | Citrix ADC / NetScaler monitoring (via NITRO API) |
-| `redfish` | Pro | Hardware monitoring via Redfish API (Dell iDRAC, HPE iLO, etc.) |
-| `ping_webapp` | Pro | Web application availability check |
-| `load_webapp` | Pro | Web page load time measurement |
-| `ping_gateway` | Pro | Network gateway connectivity monitoring |
-| `syslog` | Pro | Syslog message collection (UDP/TCP) |
-| `event` | Pro | Custom event collection via HTTP |
-| `wifi_signal_strength` | Pro | WiFi signal quality monitoring |
-| `otel` | Enterprise | OpenTelemetry metrics collection |
+The complete list of probe types lives in the [probe catalog](probes/index.md). Each catalog page documents the probe's `type` value, its parameters and metrics, and carries a Free/Pro tier badge.
 
 ### Common Probe Parameters
 
@@ -288,7 +272,8 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
+  # Paid tier? Place your license file as license.jwt next to this config
+  # (see the License section) — no need to put the token inline.
 
 storage:
   - name: http
@@ -368,7 +353,8 @@ config_version: 2
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  license: "SH-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XXXXXX-XX"
+  # Paid tier? Place your license file as license.jwt next to this config
+  # (see the License section) — no need to put the token inline.
 
 probes:
   - name: "Website Availability"
@@ -407,37 +393,59 @@ This applies to:
 
 ### Free Tier
 
-Without a license, the agent runs with free-tier probes only: `cpu`, `memory`, `logicaldisk`, `network`. These probes are always available regardless of license status.
+Without a license the agent runs every Free-tier probe: the whole universal collection tier — OS/host, logs, network checks, and the application, database and broker probes (MySQL, PostgreSQL, Redis, Kafka, Docker, and more). Each page of the [probe catalog](probes/index.md) shows a Free/Pro tier badge. Only the Pro probes (deep vendor integrations) need a license.
 
 ### Obtaining a License
 
 Contact SenHub support (support@senhub.io) to request a license token. Specify the probe types you need:
 
-- **Pro license**: adds Citrix, NetScaler, Redfish, Ping, SNMP, Syslog, Event
+- **Pro license**: adds the deep vendor, HA, cloud and active-check integrations — `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`
 - **Enterprise license**: all current and future probe types
+
+### Where the license is stored
+
+The license is kept in a dedicated file, `license.jwt`, next to `agent.yaml`:
+
+- Linux: `/etc/senhub-agent/license.jwt`
+- Windows: `%ProgramData%\SenHub\license.jwt`
+
+Keeping it in its own file makes it easy to hand over and avoids pasting a long
+token into your YAML. The token is stored in clear text there by design (it is
+bound to your agent key and grants nothing on its own), so it is not sealed.
+
+> An existing install that still has the token inline under `agent:` `license:`
+> in `agent.yaml` keeps working, and is moved to `license.jwt` automatically on
+> the next start.
 
 ### License Formats
 
-SenHub supports two license formats:
+SenHub supports two license formats, both auto-detected:
 
-**Compact key** (recommended): a short 40-character key bound to your agent key.
-```yaml
-agent:
-  key: "550e8400-e29b-41d4-a716-446655440000"
-  license: "SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY"
-```
-
-**JWT token** (legacy): a longer token (~700 characters) starting with `eyJ`. Both formats are auto-detected and fully supported.
+- **Compact key** (recommended): a short 40-character key bound to your agent
+  key, e.g. `SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY`.
+- **JWT token**: a longer token (~700 characters) starting with `eyJ`.
 
 ### Activating a License
 
-Once you receive the license from support, activate it with:
+**Option A — drop the file (simplest).** Save the license file you received
+from support as `license.jwt` next to `agent.yaml` (see paths above), then
+restart the agent:
+
+```bash
+# Linux
+sudo cp license.jwt /etc/senhub-agent/license.jwt
+sudo systemctl restart senhub-agent
+```
+
+**Option B — CLI.** Activate with the token; this validates it, verifies the
+agent-key binding, and writes `license.jwt` for you:
 
 ```bash
 senhub-agent license activate SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY
 ```
 
-This validates the license, verifies the agent key binding, and saves it in the configuration file. The license takes effect automatically.
+Either way, **the license takes effect after restarting the agent** — a license
+change is not picked up while the agent is running.
 
 ### Verifying License Status
 
@@ -459,17 +467,22 @@ Example API response:
   "tier": "pro",
   "expires_at": "2026-06-30T23:59:59Z",
   "days_remaining": 120,
-  "authorized_probes": ["cpu", "memory", "logicaldisk", "network", "citrix", "netscaler", "redfish", "ping_webapp", "syslog"],
-  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network"]
+  "authorized_probes": ["citrix", "netscaler", "redfish", "veeam"],
+  "free_tier_probes": ["cpu", "memory", "logicaldisk", "network", "mysql", "postgresql", "redis", "docker", "syslog", "..."]
 }
 ```
+
+`authorized_probes` lists the Pro probes this license unlocks (Free probes are
+always available and are not repeated here). `free_tier_probes` is the full
+Free tier — the whole universal collection tier, abbreviated above; see the
+[probe catalog](probes/index.md) for the tier badge on every probe.
 
 ### License Tiers
 
 | Tier | Available Probes |
 |------|-----------------|
-| **Free** | cpu, memory, logicaldisk, network |
-| **Pro** | All free + veeam, citrix, netscaler, redfish, ping_webapp, load_webapp, ping_gateway, syslog, event, wifi_signal_strength |
+| **Free** | The universal collection tier — OS/host, logs, network checks, application, database and broker probes. See the [probe catalog](probes/index.md) for the tier badge on each probe. |
+| **Pro** | All free + citrix, netscaler, veeam, redfish, ibmi, powerstore, mssql_ha, oracle_enterprise, hyperv_ha, vsphere_ha, ad_hybrid, exchange_online, event, ping_gateway, ping_webapp, load_webapp |
 | **Enterprise** | All probes (including future additions) |
 
 ### Grace Period
@@ -576,7 +589,6 @@ Override any of these by passing `--config-path` to the agent — the directorie
 config_version: 2
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
-  license: "${file:/etc/senhub/license.jwt}"
 cache:
   retention_minutes: 5
 auto_update:
@@ -634,16 +646,13 @@ For `${secret:}` — storing values, the per-OS backends, and sealing inline sec
 ### Examples
 
 ```yaml
-agent:
-  license: "${file:/etc/senhub/license.jwt}"
-
 probes:
   - name: db
     type: mysql
     params:
       host: "${env:DB_HOST:-127.0.0.1}"
       username: monitor
-      password: "${file:/etc/senhub/secrets/db_password}"
+      password: "${file:/etc/senhub-agent/secrets/db_password}"
 ```
 
 A missing required reference (file not found, no default) **aborts agent boot** with the offending reference in the error message. An unset environment variable without a default substitutes to an empty string and does **not** abort — match POSIX shell behaviour.

@@ -1,6 +1,6 @@
 # OTLP / OpenTelemetry
 
-SenHub Agent can push metrics and logs natively over **OTLP/gRPC** to any
+SenHub Agent can push metrics, logs and traces natively over **OTLP/gRPC** to any
 OpenTelemetry receiver — an OTel collector, vmagent's OTLP endpoint, a
 direct VictoriaMetrics / VictoriaLogs ingest, Grafana Cloud OTLP, etc.
 
@@ -12,6 +12,17 @@ querying Prometheus today and switching to OTLP push tomorrow do not
 rewrite a single PromQL query.
 
 ## Quick start
+
+The fastest path is to provision OTLP at install time — one flag writes a
+ready-to-use `strategies.d/10-otlp.yaml`:
+
+```bash
+senhub-agent config init --otlp-endpoint otel-collector.internal:4317
+# direct to a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint:
+senhub-agent config init --otlp-endpoint vm.internal:4318 --otlp-protocol http
+```
+
+This enables metrics + logs export out of the box. To wire it by hand instead:
 
 1. Add an `otlp` storage block to your config:
 
@@ -54,10 +65,14 @@ storage:
       # Required: gRPC endpoint of the receiver (no scheme prefix).
       endpoint: "otel-collector.internal:4317"
 
+      # Optional multi-tenant routing: sugar for the X-Scope-OrgID header
+      # (the standard tenant key for Mimir / Loki / Tempo / VictoriaMetrics).
+      # "org_id" is accepted as an alias. Env-expandable.
+      tenant: "acme"
+
       # Optional headers (for example bearer auth at the gateway).
       headers:
         Authorization: "Bearer YOUR-INGEST-TOKEN"
-        X-Tenant-Id: "acme"
 
       # TLS — defaults to enabled. Disable explicitly for plaintext
       # localhost / lab environments.
@@ -87,6 +102,15 @@ storage:
           batch_size: 1000            # max records per gRPC export
           batch_timeout: 5s           # flush even if batch_size not reached
           buffer_size: 10000          # bounded queue; drop-oldest beyond
+        traces:
+          enabled: true               # default false — relays spans ingested by an
+                                      # otlp_receiver probe (signals: [traces])
+          batch_size: 512
+          batch_timeout: 5s
+          buffer_size: 2048           # bounded queue; drop beyond
+          sample_ratio: 1.0           # head sampling, 0.0-1.0
+          relay_enrichment: true      # default true; add agent correlation
+                                      # context to relayed spans (see below)
 
       # Resource attributes attached to every emitted batch. Defaults
       # are derived from agent identity if omitted.
@@ -97,6 +121,20 @@ storage:
         # Any additional keys are passed through as resource attributes.
         k8s.cluster.name: edge-01
 ```
+
+### `tenant` (optional multi-tenant routing)
+
+Sets the **`X-Scope-OrgID`** header — the standard tenant key used by Mimir,
+Loki, Tempo and VictoriaMetrics — on every signal. `org_id` is accepted as an
+alias; an explicit `X-Scope-OrgID` in `headers:` takes precedence. The value is
+env-expandable (`tenant: "${env:ORG_ID}"`).
+
+Ingest authentication is enforced at the **collector/edge** (a standard OTLP
+authenticator: bearer token, basic auth, OIDC or mTLS), not by the agent. A
+self-hosted edge trusts the agent's `tenant`; an untrusted multi-tenant edge
+re-derives it from the authenticated token. **Your agent license does not gate
+sending data** — it only governs which paid probes may collect; an unlicensed
+agent can still push over OTLP.
 
 ### `endpoint` (required)
 
@@ -126,6 +164,44 @@ OTel v1.0). Cumulative means counter values are reported as absolute
 totals since the agent start; consumers that prefer deltas (some
 Datadog setups, vmagent ingest) can set `temporality: delta`.
 
+### `signals.traces`
+
+The agent produces no spans of its own. The traces signal relays spans
+received by an [otlp_receiver probe](probes/otlp-receiver.md) configured
+with `signals: [traces]`; without such a probe there is nothing to
+export and the signal stays idle.
+
+**Correlation enrichment (`relay_enrichment`, default `true`).** Relayed
+spans keep the emitting application's own identity (`service.name`,
+`service.instance.id`, `host.*`) — the agent never overwrites it. On top of
+that, the agent inserts its own tenancy context so you can pivot from an app
+trace to the infrastructure telemetry of the same tenant: your `global_tags`
+(for example `tenant`, `site`) and `deployment.environment` are added **only
+if the application didn't already set that key**. Only standard /
+operator-defined attributes are used — no product-specific keys.
+
+Set `relay_enrichment: false` for a verbatim pass-through. When a single
+agent relays traffic for several clients (a shared gateway), assign each
+source its own tenant with per-source rules:
+
+```yaml
+        traces:
+          enabled: true
+          relay_tenant_overrides:
+            - match: { key: "service.namespace", value: "client-b" }
+              tags: { tenant: "client-b", site: "lyon" }
+```
+
+A rule applies to relayed spans whose resource attribute `key` equals
+`value`; its `tags` are inserted (only when absent) instead of the default
+`global_tags`.
+
+!!! note
+    `service.instance.id` is **not** a join key between the agent's own
+    metrics/logs and a relayed third-party trace — they are different
+    services. The reliable cross-signal pivot is **tenant/site**, i.e. "this
+    app trace is slow → show the infra telemetry of the same tenant".
+
 ### `signals.entities`
 
 Entity events (the infrastructure graph: hosts, interfaces, services and
@@ -139,6 +215,8 @@ endpoint or batch knobs of its own — it reuses the log transport.
       buffer_size: 256         # bounded queue; drop-oldest beyond
       depends_on_debounce: 3   # consecutive scrapes before an outbound
                                # dependency edge is emitted (>= 1, default 3)
+      redact_attributes: []    # attribute keys DROPPED from every entity
+                               # event before export (default: none)
 ```
 
 `depends_on_debounce` controls how durable an outbound connection must be
@@ -148,6 +226,37 @@ keeps ephemeral connections out of the graph. The latency to surface a
 dependency is `depends_on_debounce x interval` (so the default `3 x 60s` is
 about three minutes); lower it for a more responsive graph, raise it to
 filter out shorter-lived connections.
+
+`redact_attributes` lists descriptive attribute keys the agent removes
+from every entity event before export — useful when the entity stream
+transits a shared collector or a third-party OTLP pipeline that should
+not see inventory identifiers such as hardware serials or cloud account
+ids:
+
+```yaml
+      redact_attributes: [hw.serial_number, cloud.account.id]
+```
+
+The listed keys are **dropped, not masked**: they simply never appear on
+the wire (an entity state is a full snapshot, so absence is the clean
+form of redaction — a `***` placeholder would pollute the graph with a
+fake shared value). The filter applies to every entity this strategy
+emits — the host entity and probe-emitted entities alike — and is
+**per-strategy**: a second `otlp` strategy pointed at a trusted backend
+can keep the full attribute set while this one redacts.
+
+Two rules to know:
+
+- **Identity keys cannot be redacted.** Keys that identify an entity
+  (`host.id`, `service.instance.id`, `container.id`,
+  `network.device.id`, `db.instance.id`, `vmid`) are refused at config
+  load with an error — removing an entity's identity would destroy the
+  entity, not protect it. Any other key is accepted.
+- **Trade-off on `hw.serial_number`.** The hardware serial is the
+  evidence an entity backend uses to reconcile the in-band host entity
+  with an out-of-band BMC (Redfish) view of the same machine. Redacting
+  it disables that `same_as` reconciliation for this export — list it
+  only when the receiving backend must not see serials.
 
 ### `resource`
 
@@ -212,6 +321,14 @@ The OTLP strategy ships logs from these probe sources:
   `journalctl --output=json --follow` and emits a log per entry
   with `host.name`, `systemd.unit`, `syslog.appname`,
   `process.pid`, … See [linux_logs probe](probes/linux-logs.md).
+- **`filetail` probe** — each line tailed from a watched log file
+  becomes a log record.
+- **`windows_eventlog` probe** — each entry read from a subscribed
+  Windows Event Log channel becomes a log record.
+- **`snmp_trap` probe** — each received SNMP trap becomes a log
+  record.
+- **`otlp_receiver` probe** with `signals: [logs]` — relays log
+  records ingested over OTLP from other emitters.
 
 Probes still emit DataPoints to the existing PRTG/Nagios/event
 strategies; the logs path is **additive**.
@@ -317,7 +434,8 @@ otlp:
 
 Notes:
 
-- **One URL, one token, three signals.** Entity events ride the logs
+- **One URL, one token, four signals** (metrics, logs, traces,
+  entities). Entity events ride the logs
   transport — enabling `signals.entities` requires no extra endpoint.
 - The bearer token comes from the environment (`${env:}`) or a root-only
   file (`${file:/etc/senhub-agent/bearer.token}`); never inline it.
@@ -490,7 +608,9 @@ Verify:
 2. The collector pipeline includes the `otlp` receiver in the `logs:`
    pipeline (not just `metrics:`).
 3. The probes you expect to produce logs are configured: `syslog`,
-   `event`, or `linux_logs`. Other probes do not produce log records.
+   `event`, `linux_logs`, `filetail`, `windows_eventlog`, `snmp_trap`,
+   or an `otlp_receiver` with `signals: [logs]`. Other probes do not
+   produce log records.
 4. The receiver tolerates the OTel log data model; older versions of
    vmagent or Loki collectors may need a recent build.
 

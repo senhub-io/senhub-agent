@@ -32,8 +32,11 @@ func TestRouteDestFromIndex(t *testing.T) {
 		"10.0.0.0.255.255.255.0.0.10.0.0.254": "10.0.0.0/24",
 		"0.0.0.0.0.0.0.0.0.10.0.0.1":          "0.0.0.0/0", // default route
 		"10.20.0.0.255.255.0.0.0.10.0.0.254":  "10.20.0.0/16",
-		"10.0.0.0.255.0.255.0.0.10.0.0.1":     "", // non-canonical mask → reject
-		"10.0.0.0.255.255.255.0":              "", // short index → reject
+		// canonical identity: host bits reported set are zeroed, /32 explicit
+		"10.20.3.7.255.255.255.0.0.10.0.0.254": "10.20.3.0/24",
+		"192.0.2.1.255.255.255.255.0.10.0.0.1": "192.0.2.1/32",
+		"10.0.0.0.255.0.255.0.0.10.0.0.1":      "", // non-canonical mask → reject
+		"10.0.0.0.255.255.255.0":               "", // short index → reject
 	}
 	for idx, want := range cases {
 		if got := routeDestFromIndex(idx); got != want {

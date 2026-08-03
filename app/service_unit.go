@@ -48,3 +48,48 @@ func hardenedSystemdScript(serviceUser string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// rootSystemdScript is the template `install --user root` hands to
+// kardianos/service instead of its built-in one, which emits
+// StartLimitInterval=/StartLimitBurst= inside [Service] under their
+// legacy pre-v230 names — systemd only honours start-rate limiting
+// declared in [Unit] (#577) — and hardcodes RestartSec=120. No User=
+// line: the implicit root identity with full capabilities is the
+// point of --user root, so the capability-dropping directives of the
+// hardened unit are deliberately absent here.
+const rootSystemdScript = `[Unit]
+Description=SenHub Agent — infrastructure monitoring agent
+Documentation=https://github.com/senhub-io/senhub-agent
+After=network-online.target
+Wants=network-online.target
+# Start-rate limiting lives in [Unit]: systemd parses StartLimitIntervalSec/
+# StartLimitBurst here, ignoring them in [Service] (#577). The window pairs
+# with Restart=always so a crash-looping binary is throttled, not respun
+# forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart={{.Path|cmdEscape}}{{range .Arguments}} {{.|cmd}}{{end}}
+{{if .WorkingDirectory}}WorkingDirectory={{.WorkingDirectory|cmdEscape}}{{end}}
+# always (not on-failure): a self-update exits 0 to hand off to the new
+# binary, so systemd must restart on a clean exit too (#567). An explicit
+# systemctl stop is still honoured (no restart).
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+`
+
+// linuxSystemdScript selects the unit template the Linux installer
+// hands to kardianos/service. Both templates keep the start-rate
+// limiting in [Unit] (#577); falling back to kardianos's built-in
+// script is never correct for this agent.
+func linuxSystemdScript(serviceUser string) string {
+	if serviceUser == rootServiceUser {
+		return rootSystemdScript
+	}
+	return hardenedSystemdScript(serviceUser)
+}

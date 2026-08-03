@@ -15,7 +15,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -46,7 +45,6 @@ type VarnishProbe struct {
 	cfg          varnishConfig
 	moduleLogger *logger.ModuleLogger
 	entitySrc    *varnishEntitySource
-	unregister   func()
 }
 
 // NewVarnishProbe constructs the probe. Config errors surface here.
@@ -98,14 +96,10 @@ func (p *VarnishProbe) OnStart(_ chan struct{}) error {
 		Str("varnishstat_path", p.cfg.VarnishstatPath).
 		Str("instance_name", p.cfg.InstanceName).
 		Msg("starting varnish probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *VarnishProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	return nil
 }
 
