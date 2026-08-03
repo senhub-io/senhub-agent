@@ -18,7 +18,6 @@
 package hostnet
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -157,7 +156,13 @@ func parseProcRoute(data []byte) []hostRoute {
 		if prefix < 0 {
 			continue
 		}
-		cidr := fmt.Sprintf("%s/%d", dst, prefix)
+		// Canonical route.destination identity: explicit prefix, host bits
+		// zeroed (entity.CanonicalCIDR) — same rule as the SNMP-side routes, so
+		// the host and device views of one route derive byte-identical ids.
+		cidr, ok := entity.CanonicalCIDR(dst, prefix)
+		if !ok {
+			continue
+		}
 		if seen[cidr] {
 			continue
 		}
