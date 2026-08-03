@@ -1,6 +1,6 @@
 # Next — 0.5.3 (unreleased)
 
-:material-progress-clock: In progress — OTLP receiver handles logs and traces, file-based license, cleaner Windows uninstall, Redis mTLS.
+:material-progress-clock: In progress — OTLP receiver handles logs and traces, file-based license, OS Updates probe, multi-tenant OTLP export, host-scoped topology identities, cleaner Windows uninstall, Redis mTLS.
 
 <div class="rn-filter"></div>
 
@@ -84,12 +84,38 @@ health/degraded pair is collapsed to `senhub.vsphere_ha.vsan.objects` with an
 (In every case the pre-existing `senhub.<probe>.up` metric is unchanged.)
 
 
+## Changed
+
+### Topology entity identities re-keyed once on upgrade
+
+Two identity fixes land together in this release. Both cause a **one-time
+re-key** of existing topology entities: on the first run of 0.5.3 the new
+identities appear immediately, the old ones expire through normal liveness and
+their relationships follow. Expect a brief coexistence of old and new entries
+and a burst in the topology change feed for one cycle — no action is required,
+and history remains queryable under the old identities.
+
+- **Loopback and link-local endpoints are now host-scoped.** Dependency
+  endpoints on `127.0.0.0/8`, `::1`, `169.254.0.0/16` and `fe80::/10` gain a
+  fourth identity key (`host.id`), so host A's `127.0.0.1` — or the per-VM cloud
+  metadata endpoint `169.254.169.254` — no longer collapses onto the same node
+  as every other host's. These endpoints were previously dropped entirely;
+  real local dependencies are now visible without cross-host false joins.
+  Routable endpoints keep their existing identity unchanged. (#713)
+- **SNMP topology identities are canonicalized.** Route destinations are stored
+  as canonical CIDR (explicit prefix, host bits zeroed) and every IPv6 address
+  in an identity follows RFC 5952 (lowercase, `::` compression). (#239)
+
+
 ## New
 
 <ul class="rn">
 <li><span class="tag t-new">New</span> <span class="tag t-area">OTLP</span> The <strong>OTLP receiver</strong> probe now accepts <strong>logs and traces</strong>, not just metrics. A <code>signals</code> list (<code>metrics</code>, <code>logs</code>, <code>traces</code>) chooses what it ingests; logs and traces are relayed onward through a configured OTLP export strategy. This turns the agent into a single OTLP intake for every signal type. (#655)</li>
 <li><span class="tag t-new">New</span> <span class="tag t-area">License</span> The license now lives in its own <code>license.jwt</code> file next to <code>agent.yaml</code>. Hand a customer a single file to drop in place, then restart — no pasting a long token into YAML. <code>license activate</code> writes the file for you, and an existing inline license is moved into it automatically on the next start. (#639)</li>
 <li><span class="tag t-new">New</span> <span class="tag t-area">Probes</span> New free <strong>OS Updates</strong> probe (<code>type: os_updates</code>): pending updates, pending security updates and reboot-required status for the host, natively on Linux (apt, dnf/yum) and Windows (Windows Update Agent). Replaces hand-deployed apt-check exec scripts and finally covers Windows patch posture. (#603)</li>
+<li><span class="tag t-new">New</span> <span class="tag t-area">OTLP</span> The OTLP export strategy accepts a <code>tenant:</code> (alias <code>org_id:</code>) field that stamps the <code>X-Scope-OrgID</code> header on every signal, for multi-tenant backends such as Mimir, Loki or a tenant-aware collector. An explicitly configured header still wins. (#240)</li>
+<li><span class="tag t-new">New</span> <span class="tag t-area">Probes</span> <span class="tag t-area">Pro</span> The PowerStore probe gains opt-in <strong>per-volume performance metrics</strong> (<code>volume_perf</code>): latency, IOPS and bandwidth per volume, bounded so a large array cannot flood the output. (#628)</li>
+<li><span class="tag t-new">New</span> <span class="tag t-area">Entities</span> <code>signals.entities.redact_attributes</code> removes named attributes from every emitted entity before export — for deployments that must not ship hostnames, serial numbers or other identifying attributes to the backend. (#682)</li>
 </ul>
 
 
@@ -100,6 +126,13 @@ health/degraded pair is collapsed to `senhub.vsphere_ha.vsan.objects` with an
 <li><span class="tag t-improved">Improved</span> <span class="tag t-area">Windows</span> <span class="tag t-area">MSI</span> A plain uninstall now leaves a clean tree: the transient <code>logs\</code> and <code>update\</code> folders are removed, while configuration, the sealed secret store and the license are preserved. A full purge — including config and secrets — stays opt-in with <code>PURGE_DATA=1</code>. (#648)</li>
 <li><span class="tag t-improved">Improved</span> <span class="tag t-area">Observability</span> The <code>collect_errors_total</code> self-metric is now broken down by <code>probe</code> and <code>reason</code>, so collection failures are attributable per probe and per cause. (#646)</li>
 <li><span class="tag t-improved">Improved</span> <span class="tag t-area">Windows</span> Filesystem metrics now carry <code>system_filesystem_type</code> and <code>system_device</code> attributes, and the host name is a consistent lower-cased FQDN. (#627)</li>
+<li><span class="tag t-improved">Improved</span> <span class="tag t-area">Entities</span> The host entity now carries capacity and nameplate attributes: logical/physical CPU counts, nominal CPU frequency, total memory and disk, virtualization technology and chassis type. (#714)</li>
+<li><span class="tag t-improved">Improved</span> <span class="tag t-area">Entities</span> <span class="tag t-area">Cloud</span> On AWS, Azure and GCP instances the host entity is stamped with <code>host.type</code> (instance size), availability zone and cloud account id, read from the instance metadata service. (#536)</li>
+<li><span class="tag t-improved">Improved</span> <span class="tag t-area">Entities</span> The configured <code>deployment.environment</code> is now stamped on the host entity as well as the metrics resource, so environment-aware views and alert weighting work from a single config value. (#718)</li>
+<li><span class="tag t-improved">Improved</span> <span class="tag t-area">OTLP</span> Traces relayed through the OTLP receiver are stamped with vendor-neutral <code>telemetry.relay.*</code> attributes (relay host id/name and instance id), so a span can always be traced back to the agent that forwarded it. Existing attributes are never overwritten. (#698)</li>
+<li><span class="tag t-improved">Improved</span> <span class="tag t-area">OTLP</span> Metrics ingested with delta temporality are passed through faithfully instead of being re-accumulated, and the receiver's ingest self-metric is now published even while the receiver is idle — an agent that has received nothing is visibly at zero rather than absent. (#661, #688)</li>
+<li><span class="tag t-improved">Improved</span> <span class="tag t-area">CLI</span> <code>config init</code> accepts <code>--otlp-protocol grpc|http</code> alongside <code>--otlp-endpoint</code>, so a provisioning script can generate a working OTLP export config for either transport in one pass. (#701)</li>
+<li><span class="tag t-improved">Improved</span> <span class="tag t-area">Observability</span> The log-conduit probes (<code>filetail</code>, <code>linux_logs</code>, <code>windows_eventlog</code>) now publish <code>records_emitted</code> self-metrics, so a silent log pipeline is distinguishable from an idle one. (#701)</li>
 </ul>
 
 
@@ -109,6 +142,10 @@ health/degraded pair is collapsed to `senhub.vsphere_ha.vsan.objects` with an
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">Windows</span> <span class="tag t-area">Network</span> On multi-NIC Windows hosts, network adapters are now matched exactly instead of by a loose substring, and an adapter that matches no performance-counter instance still emits its counters rather than being dropped. (#643, #644)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">systemd</span> The <code>systemd</code> probe now emits its unit as a topology entity — the entity was previously built but never registered, so it never reached the backend. (#471)</li>
 <li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">systemd</span> <span class="tag t-area">CLI</span> <code>refresh-unit</code> now reconciles the service <code>ExecStart</code>, so a CLI-installed agent keeps its correct start command after a refresh. (#396)</li>
+<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">Probes</span> The <code>snmp_trap</code> probe's own health metrics (rejected community strings, decode panics) were silently dropped before reaching any output. They are now emitted like every other self-metric. (#701)</li>
+<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">Entities</span> Entity liveness slack is now sized on the effective re-emission cadence instead of the internal tick, so healthy hosts no longer transiently expire from the topology under normal operation. (#454)</li>
+<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">License</span> The <code>/license/status</code> API reported a hardcoded list of 4 Free-tier probes; it now reports the real Free tier. (#676)</li>
+<li><span class="tag t-fixed">Fixed</span> <span class="tag t-area">systemd</span> The generated root unit places <code>StartLimit*</code> settings in the correct <code>[Unit]</code> section and stages <code>ExecStart</code> properly, so restart rate-limiting actually applies. (#576, #577)</li>
 </ul>
 
 
@@ -116,4 +153,5 @@ health/degraded pair is collapsed to `senhub.vsphere_ha.vsan.objects` with an
 
 <ul class="rn">
 <li><span class="tag t-security">Security</span> <span class="tag t-area">Redis</span> The Redis probe now supports <strong>TLS client-certificate authentication (mTLS)</strong> via <code>tls_cert_file</code> / <code>tls_key_file</code>, plus a custom CA bundle with <code>tls_ca_file</code>. (#405)</li>
+<li><span class="tag t-security">Security</span> <span class="tag t-area">Dependencies</span> gRPC was bumped to 1.82.1 to address GO-2026-6061, and <code>golang.org/x/text</code> to 0.39.0 to address GO-2026-5970. <code>govulncheck</code> reports no known reachable vulnerabilities in this release.</li>
 </ul>
