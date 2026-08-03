@@ -479,3 +479,26 @@ func TestLogicalDiskProbe_String(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr)))
 }
+
+// TestNormalizeFSType pins the cross-platform filesystem-type form: the
+// Windows collector feeds GetVolumeInformation output ("NTFS", "ReFS")
+// through this normalization so system.filesystem.type matches the
+// lower-case tokens Linux reports natively (#627).
+func TestNormalizeFSType(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"NTFS", "ntfs"},
+		{"ReFS", "refs"},
+		{"FAT32", "fat32"},
+		{" exFAT ", "exfat"},
+		{"ext4", "ext4"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := normalizeFSType(tc.raw); got != tc.want {
+			t.Errorf("normalizeFSType(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}

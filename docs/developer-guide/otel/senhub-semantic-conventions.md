@@ -1394,7 +1394,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 **Stratégie :** aligner les noms sur `memcachedreceiver` quand le metric existe dans contrib (`memcached.network`, `memcached.operations`, `memcached.commands`, `memcached.cpu.usage`, `memcached.uptime`, `memcached.evictions`) ; extensions `memcached.*` locales pour les métriques sans équivalent contrib (`memcached.current.connections`, `memcached.connections.total`, `memcached.current.items`, `memcached.items.total`, `memcached.bytes`, `memcached.limit_maxbytes`). Pas de suffixe d'unité dans le nom. Unité canonique OTel dans `otel.unit`.
 
-#### 4.26.1 Métriques
+#### 4.31.1 Métriques
 
 | Métrique OTel | Unité | Type | Attributs | Source stats |
 |---|---|---|---|---|
@@ -1412,7 +1412,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 | `memcached.evictions` | `{eviction}` | counter | `server.address` | `evictions` |
 | `memcached.cpu.usage` | `s` | counter | `server.address`, `process.cpu.state` | `rusage_user` / `rusage_system` |
 
-#### 4.26.2 Collapses
+#### 4.31.2 Collapses
 
 | Métrique OTel | Valeurs de l'attribut discriminant |
 |---|---|
@@ -1423,7 +1423,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 `network.io.direction` suit la convention OTel (`transmit`/`receive`) — identique aux valeurs que `memcachedreceiver` contrib produit sur `memcached.network{direction}`.
 
-#### 4.26.3 DiscriminantTagsRegistry
+#### 4.31.3 DiscriminantTagsRegistry
 
 Tags discriminants déclarés dans `http_cache.go` : `result`, `command`, `state`, `direction`, `metric_type`.
 Le tag probe `direction` est renommé vers l'attribut OTel `network.io.direction` via `tag_to_attribute` — la discrimination dans le cache utilise le nom de tag d'origine (`direction`).
@@ -1460,7 +1460,7 @@ Probe Ubiquiti UniFi Controller — REST API stdlib HTTP, auth cookie. Une
 instance = un contrôleur. Métriques : disponibilité, inventaire par type,
 clients, débit WAN, CPU/RAM/satisfaction par AP.
 
-#### 4.26.1 Métriques
+#### 4.33.1 Métriques
 
 | Métrique OTel | Unité | Type | Attributs / Notes |
 |---|---|---|---|
@@ -1476,7 +1476,7 @@ clients, débit WAN, CPU/RAM/satisfaction par AP.
 | `unifi.ap.clients` | `{client}` | gauge | `unifi.device.name`, `unifi.site` |
 | `unifi.ap.satisfaction` | `1` | gauge | ratio 0..1 ; `unifi.device.name`, `unifi.site` |
 
-#### 4.26.2 Collapse `unifi.network.io` (#465)
+#### 4.33.2 Collapse `unifi.network.io` (#465)
 
 `unifi.network.tx_bytes` et `unifi.network.rx_bytes` (deux noms) ont été
 fusionnés en **`unifi.network.io`** discriminé par
@@ -1535,7 +1535,7 @@ pour l'affichage PRTG.
 - `sqlserver.database.io` : `db.namespace` (nom de la base), `direction` (`read`/`write`).
 - `sqlserver.database.status` : `db.namespace`.
 
-### 4.19 Probe `powerstore` (baie de stockage Dell PowerStore)
+### 4.36 Probe `powerstore` (baie de stockage Dell PowerStore)
 
 Aucune convention OTel semconv pour les baies de stockage — tout sous extensions
 `senhub.powerstore.*` (même statut que `senhub.veeam.*`). `hw.*` reste réservé aux
@@ -1544,7 +1544,7 @@ composants matériels d'un hôte, pas aux agrégats niveau baie. La baie est une
 `server.address` reste descriptif) — précédent redfish, elle est monitorée
 out-of-band via l'API REST donc pas de machine-id, ce n'est pas un `host`.
 
-#### 4.19.1 Extensions `senhub.powerstore.*`
+#### 4.36.1 Extensions `senhub.powerstore.*`
 
 | Métrique OTel | Type / unité | Attributs | Source REST |
 |---|---|---|---|
@@ -1578,7 +1578,7 @@ tout autre état (`Degraded`, `Failed`, `Unavailable`, `PoweredOff`…) est `fau
 **Auth** : Basic pour les GET ; le `POST /metrics/generate` rejoue le CSRF
 `DELL-EMC-TOKEN` capturé sur le premier GET + le cookie de session.
 
-#### 4.19.2 Séries par-ressource (multi-instance)
+#### 4.36.2 Séries par-ressource (multi-instance)
 
 En plus des agrégats niveau cluster ci-dessus, la probe émet une série par
 ressource. Chaque série porte un tag ressource (`volume`, `appliance`, `node`,
@@ -1590,6 +1590,9 @@ les instances s'écraseraient en OTLP/Prometheus (une seule série au lieu de N)
 | `senhub.powerstore.volume.state` | Gauge `1` | `senhub.powerstore.volume.name` | `/volume.state` (Ready=1, autre=0) |
 | `senhub.powerstore.volume.logical_used` | Gauge `By` | `…volume.name` | `/volume.logical_used` |
 | `senhub.powerstore.volume.size` | Gauge `By` | `…volume.name` | `/volume.size` (provisioned) |
+| `senhub.powerstore.volume.iops` | Gauge `{operation}/s` | `…volume.name` + `operation` (`read`/`write`/`total`) | `performance_metrics_by_volume` (opt-in, borné — voir `volume_perf`) |
+| `senhub.powerstore.volume.bandwidth` | Gauge `By/s` | `…volume.name` + `operation` | idem |
+| `senhub.powerstore.volume.latency` | Gauge `s` | `…volume.name` + `operation` | idem (ms → s via value_scale) |
 | `senhub.powerstore.drive.state` | Gauge `1` | `senhub.powerstore.drive.name` | `/hardware` (type=Drive) lifecycle (Healthy=1) |
 | `senhub.powerstore.appliance.state` | Gauge `1` | `senhub.powerstore.appliance.name` | `/appliance` lifecycle (Healthy=1) |
 | `senhub.powerstore.appliance.capacity.physical` | Gauge `By` | `…appliance.name` + `capacity.state` (`used`/`total`) | `space_metrics_by_appliance` |
@@ -1608,8 +1611,139 @@ suivi). Seules la capacité + l'état par-volume sont exposés. La perf par-appl
 et par-node réutilise la même forme `perfMetrics`/`spaceMetrics` (cardinalité
 faible : 1-4 appliances, 2-8 nœuds).
 
-> Note numérotation : deux sections portent `### 4.19` (snmp_trap et powerstore) —
-> collision historique à renuméroter lors d'une passe éditoriale.
+### 4.37 Probe `ad_hybrid` (Azure AD Connect Health)
+
+Santé de la synchronisation d'identité hybride (Azure AD Connect Health). Pas de
+semconv OTel pour ce domaine — métriques sous `senhub.ad_hybrid.*` (même statut
+que `senhub.veeam.*`). Émission : ids courts snake_case côté probe (enterprise
+`probes/ad_hybrid/`), noms/unités/types déclarés par le transformer
+`transformers/definitions/ad_hybrid.yaml`.
+
+| Métrique | Type / unit | Attributs | Notes |
+|---|---|---|---|
+| `senhub.ad_hybrid.up` | Gauge `1` | — | 1 si l'API a répondu ce cycle, sinon 0 |
+| `senhub.ad_hybrid.sync.health` | Gauge `1` | `senhub.ad_hybrid.service.name` | Healthy=2, Warning=1, Error/autre=0 |
+| `senhub.ad_hybrid.sync.agents.healthy` | Gauge `{agent}` | `…service.name` | agents de sync en état healthy |
+| `senhub.ad_hybrid.sync.agents.total` | Gauge `{agent}` | `…service.name` | agents de sync enregistrés |
+| `senhub.ad_hybrid.sync.export_errors` | Gauge `{error}` | `…service.name` + `senhub.ad_hybrid.error.bucket` | erreurs d'export d'annuaire par bucket |
+| `senhub.ad_hybrid.agent.last_seen` | Gauge `s` | `…service.name` + `senhub.ad_hybrid.agent.server` | secondes depuis le dernier report de l'agent |
+
+### 4.38 Probe `exchange_online` (Exchange Online)
+
+Flux de messagerie et santé de service Exchange Online (API reporting Microsoft
+365). Pas de semconv OTel — métriques sous `senhub.exchange_online.*`. Émission :
+ids courts snake_case côté probe (enterprise `probes/exchange_online/`), déclarés
+par le transformer `transformers/definitions/exchange_online.yaml`.
+
+| Métrique | Type / unit | Attributs | Notes |
+|---|---|---|---|
+| `senhub.exchange_online.up` | Gauge `1` | — | 1 si l'API a répondu ce cycle, sinon 0 |
+| `senhub.exchange_online.service.health` | Gauge `1` | `senhub.exchange_online.service.display_name` | Healthy=2, Degraded=1, Error/autre=0 |
+| `senhub.exchange_online.mail.sent` | Counter `{mail}` | — | messages envoyés (fenêtre de reporting) |
+| `senhub.exchange_online.mail.received` | Counter `{mail}` | — | messages reçus |
+| `senhub.exchange_online.mail.delivered` | Counter `{mail}` | — | messages délivrés |
+| `senhub.exchange_online.mail.failed` | Counter `{mail}` | — | messages en échec de délivrance |
+| `senhub.exchange_online.mailboxes` | Gauge `{mailbox}` | — | nombre total de boîtes aux lettres |
+| `senhub.exchange_online.mailboxes.active` | Gauge `{mailbox}` | — | boîtes actives |
+| `senhub.exchange_online.mailbox.storage.used` | Gauge `By` | — | stockage total consommé (tous mailboxes) |
+| `senhub.exchange_online.mailbox.quota_exceeded` | Gauge `{mailbox}` | — | boîtes ayant dépassé le quota d'avertissement |
+
+### 4.39 Probe `hyperv_ha`
+
+Hyper-V Replica and Windows Failover Cluster health, read from local WMI
+(`root\virtualization\v2`, `root\MSCluster`). No OTel semconv exists for
+Hyper-V HA; all metrics live under the `senhub.hyperv_ha.*` extension namespace.
+Cluster metrics are emitted only when the Failover Clustering feature is present.
+
+| Métrique | Type / unité | Attributs | Notes |
+|---|---|---|---|
+| `senhub.hyperv_ha.up` | Gauge `1` | — | 1 si le namespace WMU Replica a répondu ce cycle, sinon 0 |
+| `senhub.hyperv_ha.replica.health` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Santé de réplication (1 = Normal, 0 = Warning/Critical) |
+| `senhub.hyperv_ha.replica.state` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Valeur brute `ReplicationState` |
+| `senhub.hyperv_ha.replica.lag` | Gauge `s` | `senhub.hyperv_ha.vm.name` | Secondes depuis la dernière réplication réussie |
+| `senhub.hyperv_ha.cluster.node.state` | Gauge `1` | `senhub.hyperv_ha.cluster.node` | État du nœud (1 = Up, 0 = Down/Paused/Joining) |
+| `senhub.hyperv_ha.cluster.group.state` | Gauge `1` | `senhub.hyperv_ha.cluster.group` | État du groupe de ressources (1 = Online, 0 = Offline/Failed/Partial) |
+
+### 4.40 Probe `mssql_ha`
+
+Santé de réplication SQL Server AlwaysOn Availability Group. Pas de semconv OTel
+pour la réplication AG ; métriques sous `senhub.mssql_ha.*` (même statut que
+`senhub.veeam.*`). Complète la probe `mssql` (lecture seule, semconv `sqlserver.*`).
+
+| Métrique | Type / unité | Attributs | Notes |
+|---|---|---|---|
+| `senhub.mssql_ha.up` | Gauge `1` | — | 1 si le dernier ping a atteint le serveur ce cycle, sinon 0 |
+| `senhub.mssql_ha.replica.role` | Gauge `1` | `senhub.mssql_ha.ag.name`, `senhub.mssql_ha.replica.name` | Rôle du réplica (Primary=1, Secondary=0) |
+| `senhub.mssql_ha.replica.health` | Gauge `1` | `…ag.name`, `…replica.name` | Santé de synchronisation (Healthy=1, sinon 0) |
+| `senhub.mssql_ha.replica.connected` | Gauge `1` | `…ag.name`, `…replica.name` | Connectivité (Connected=1, Disconnected=0) |
+| `senhub.mssql_ha.database.lag` | Gauge `s` | `…ag.name`, `senhub.mssql_ha.database.name` | Lag estimé du réplica secondaire |
+| `senhub.mssql_ha.log_send_queue` | Gauge `By` | `…ag.name`, `…database.name` | Log sur le primaire pas encore envoyé au secondaire |
+| `senhub.mssql_ha.redo_queue` | Gauge `By` | `…ag.name`, `…database.name` | Log reçu par le secondaire pas encore rejoué |
+| `senhub.mssql_ha.log_send_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit d'envoi du log primaire → secondaire |
+| `senhub.mssql_ha.redo_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit de rejeu du log sur le secondaire |
+
+### 4.41 Probe `oracle_enterprise` (Oracle EE / Diagnostics Pack)
+
+Performance et disponibilité d'Oracle Database Enterprise Edition avec l'option
+Diagnostics Pack (vues v$sysmetric, v$active_session_history, gv$ RAC,
+v$dataguard_stats). Pas de semconv OTel — métriques sous
+`senhub.oracle_enterprise.*` (même statut que `senhub.veeam.*`). Émission : ids
+courts snake_case côté probe, déclarés par le transformer
+`transformers/definitions/oracle_enterprise.yaml`.
+
+| Métrique | Type / unité | Attributs | Notes |
+|---|---|---|---|
+| `senhub.oracle_enterprise.up` | Gauge `1` | — | 1 si l'instance a répondu ce cycle, sinon 0 |
+| `senhub.oracle_enterprise.awr.db_time` | Gauge `s` | — | DB time par seconde (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.db_cpu` | Gauge `s` | — | DB CPU par seconde |
+| `senhub.oracle_enterprise.awr.parse.hard` / `.soft` | Gauge `{parse}/s` | — | hard / soft parses par seconde |
+| `senhub.oracle_enterprise.awr.logical_reads` / `physical_reads` / `physical_writes` | Gauge `{read}/s` / `{write}/s` | — | reads / writes par seconde |
+| `senhub.oracle_enterprise.awr.executions` | Gauge `{execution}/s` | — | exécutions SQL par seconde |
+| `senhub.oracle_enterprise.ash.active_sessions` | Gauge `{session}` | `senhub.oracle_enterprise.wait_class` | sessions actives (5 min) par wait class |
+| `senhub.oracle_enterprise.ash.cpu_sessions` | Gauge `{session}` | — | sessions actives sur CPU (5 min) |
+| `senhub.oracle_enterprise.rac.instances` | Gauge `{instance}` | — | instances de cluster ouvertes (gv$instance) |
+| `senhub.oracle_enterprise.rac.network.io` | Counter `By` | `senhub.oracle_enterprise.rac.instance` | octets SQL*Net cumulés, par instance RAC |
+| `senhub.oracle_enterprise.rac.gc.blocks_received` | Counter `{block}` | `senhub.oracle_enterprise.rac.instance` | blocs global-cache CR reçus (cumul), par instance |
+| `senhub.oracle_enterprise.dataguard.apply_lag` / `transport_lag` | Gauge `s` | — | apply / transport lag du standby (v$dataguard_stats) |
+
+### 4.42 Probe `vsphere_ha` (VMware vSphere HA — vSAN + NSX-T)
+
+Santé HA vSphere depuis un vCenter : santé vSAN (govmomi vSAN health) et,
+optionnellement, état de l'overlay NSX-T (API REST du NSX manager). Pas de semconv
+OTel — métriques sous `senhub.vsphere_ha.*`. NSX-T n'est interrogé que si
+`nsx_endpoint` + `nsx_username` sont configurés.
+
+| Métrique | Type / unité | Attributs | Source |
+|---|---|---|---|
+| `senhub.vsphere_ha.up` | Gauge `1` | — | 1 si la session vCenter est vivante et vSAN a répondu, sinon 0 |
+| `senhub.vsphere_ha.vsan.health` | Gauge `1` | `senhub.vsphere_ha.cluster.name` | `overallHealth` (green=2, yellow=1, red/autre=0) |
+| `senhub.vsphere_ha.vsan.disk_groups` | Gauge `{group}` | `…cluster.name` | nombre de `physicalDisksHealth` |
+| `senhub.vsphere_ha.vsan.objects` | Gauge `{object}` | `senhub.vsphere_ha.vsan.object.state` (`healthy`/`degraded`) + `…cluster.name` | `objectHealth.objectHealthDetail` |
+| `senhub.vsphere_ha.vsan.resync` | Gauge `By` | `…cluster.name` | `totalBytesToSync` |
+| `senhub.vsphere_ha.nsx.manager.health` | Gauge `1` | — | `mgr_connectivity_status == CONNECTED` |
+| `senhub.vsphere_ha.nsx.transport_nodes.total` / `.up` | Gauge `{node}` | — | `/transport-nodes/status` |
+| `senhub.vsphere_ha.nsx.logical_switches` | Gauge `{switch}` | — | `/logical-switches.result_count` |
+| `senhub.vsphere_ha.nsx.edge_cluster.health` | Gauge `1` | `senhub.vsphere_ha.nsx.edge_cluster.id` | `/edge-clusters` (1 si tous membres UP, sinon 0) |
+
+### 4.43 Probe `os_updates` (free, #603)
+
+Posture de patching OS de la machine locale. Aucun receiver otelcol-contrib ne
+couvre ce domaine → namespace `senhub.os.updates.*`. Probe host-local
+cross-platform ; le backend natif interrogé (apt, dnf/yum, Windows Update Agent)
+est porté par l'attribut `os.package_manager` (`apt` | `dnf` | `yum` | `wua`),
+mappé depuis le tag `package_manager`. Requêtes read-only, sans escalade de
+privilèges.
+
+| Métrique OTel | Unité | Type | Source wire |
+|---|---|---|---|
+| `senhub.os.updates.up` | `1` | gauge | 1 quand le backend a répondu, 0 sinon (backend KO ou plateforme non supportée — darwin) |
+| `senhub.os.updates.pending` | `{update}` | gauge | apt-check / `apt-get -s upgrade` (lignes `Inst`) / `dnf -q updateinfo list` / WUA `Search("IsInstalled=0 and IsHidden=0 and Type='Software'")` |
+| `senhub.os.updates.pending.security` | `{update}` | gauge | volet security du même backend : champ 2 d'apt-check, origines `*-security`, `updateinfo list --security`, MsrcSeverity ou catégorie "Security Updates" (WUA) |
+| `senhub.os.updates.reboot_required` | `1` | gauge | `/var/run/reboot-required` (apt), `needs-restarting -r` exit 1 (dnf/yum), `Microsoft.Update.SystemInfo.RebootRequired` (WUA) |
+
+En échec backend, seul `senhub.os.updates.up=0` est émis — dégradation douce,
+la série ne disparaît pas. Remplace le workaround historique `exec` +
+script apt-check déployé à la main (et couvre enfin Windows).
 
 ## 6. Processus d'ajout d'une convention
 
@@ -1747,6 +1881,61 @@ est impossible par construction dans le modèle embarqué — c'est l'une des
 raisons du choix. Si un déploiement expose encore un filtre à deux
 marqueurs, il date de l'ancien modèle et peut être réduit au prédicat
 unique ci-dessus.
+
+## 6quater. Corrélation cross-signal — contexte agent (#294)
+
+Objectif : rendre métriques, logs et traces **joignables** dans les
+backends finaux. Les backends joignent au niveau **Resource** (attributs
+indexés). Trois signaux, deux régimes d'identité :
+
+- **Signaux propres de l'agent** (métriques, logs, spans générés par
+  l'agent) : partagent la **même Resource** — `host.id`, `host.name`,
+  `service.instance.id`, `deployment.environment`, + `global_tags`
+  (tenant/site/region). Corrélation forte, native.
+- **Traces relayées** (spans reçus d'apps tierces via le receiver OTLP,
+  réémis) : portent la Resource de **l'app émettrice** (son propre
+  `service.name`/`service.instance.id`/`host.*`). Identité étrangère,
+  **jamais écrasée**.
+
+### Enrichissement des traces relayées (`relay_enrichment`, défaut on)
+
+Au flush du relay, **merge-not-overwrite**, copy-on-write sur la Resource
+(les spans sont partagés, jamais mutés). **Clés standard / opérateur
+uniquement — aucun attribut à namespace produit** :
+
+| Attribut | Régime | Source |
+|---|---|---|
+| `tenant` / `site` / `region` | inséré **si absent** | `global_tags` de l'agent |
+| `deployment.environment` | inséré **si absent** | environnement de l'agent |
+
+`service.*` / `host.*` posés par l'app ne sont **jamais** touchés. Override
+par source : `signals.traces.relay_tenant_overrides` (`match: {key,value}` →
+`tags:`) pour le cas passerelle mono-agent multi-clients.
+
+> **Marqueur « relayé-par » différé.** Un marqueur d'identité de l'agent
+> relayeur (« quel agent a relayé cette trace ») serait utile pour joindre
+> la trace au nœud host dans le graphe topologie. Mais OTel n'a **aucune
+> clé ratifiée** pour l'identité d'un relais/collecteur sur de la télémétrie
+> pass-through, et on ne bake pas de nom produit dans un contrat qu'on veut
+> standard. Le nom de cette clé est donc à **aligner avec Toise + le SIG
+> Semconv** avant introduction (#698) — d'ici là, l'enrichissement reste
+> 100 % clés standard.
+
+### Vérité de corrélation (contrat de jointure)
+
+**`service.instance.id` n'est PAS une clé de jointure** entre la télémétrie
+de l'agent et une trace tierce relayée — ce sont des services différents.
+Un lien Grafana trace→metrics construit dessus renverra vide (correctement).
+La jointure réelle et utile : **tenant/site** — pivot « trace app lente →
+télémétrie d'infra du même tenant ». Les clés garanties cross-signal :
+`tenant`, `site`/`region`, `deployment.environment` (insert-only partout).
+La jointure par **host** entre agent et trace tierce nécessiterait un
+marqueur d'identité de l'agent relayeur, **différé** faute de clé standard
+(voir l'encart « marqueur relayé-par », #698).
+
+> Note : les *exemplars* (trace_id sur datapoints) sont le mécanisme OTel
+> natif metric→trace ; non applicable ici (les métriques de l'agent sont
+> collectées hors contexte de trace actif). Hors périmètre.
 
 ## 7. Versioning
 

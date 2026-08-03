@@ -4,6 +4,7 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -132,9 +133,16 @@ func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger
 		return nil, err
 	}
 
+	// PDH rate counters have no sample until PdhCollectQueryData has run
+	// twice, so PDH_NO_DATA here is expected on a freshly-booted host or a
+	// cold CI runner — failing construction on it broke probe startup
+	// (#590). Collect primes the query again before reading values.
 	if err := query.Collect(); err != nil {
-		collector.Close()
-		return nil, fmt.Errorf("failed initial collection: %v", err)
+		if !errors.Is(err, pdh.ErrNoData) {
+			collector.Close()
+			return nil, fmt.Errorf("failed initial collection: %w", err)
+		}
+		moduleLogger.Warn().Err(err).Msg("No PDH sample available at construction, deferring priming to first collection")
 	}
 
 	return collector, nil
@@ -163,8 +171,8 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 	defer w.mu.Unlock()
 
 	if !w.initialized {
-		if err := w.query.Collect(); err != nil {
-			return nil, fmt.Errorf("failed initial sample collection: %v", err)
+		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
+			return nil, fmt.Errorf("failed initial sample collection: %w", err)
 		}
 		time.Sleep(1 * time.Second)
 		w.initialized = true

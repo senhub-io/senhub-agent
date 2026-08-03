@@ -249,7 +249,7 @@ Monitor critical application storage:
 
 **Drive Identification:**
 - Drive letters: `C:`, `D:`, `E:`, etc.
-- Tag: `drive=C:`
+- Tags: `drive=C:`, `device=C:`, `fs_type=ntfs`
 
 **Default Filters:**
 - Includes: All drives (empty = all)
@@ -257,7 +257,7 @@ Monitor critical application storage:
 
 **Example Metrics:**
 ```
-disk_free_mb{drive="C:"} = 102400
+disk_free_mb{drive="C:",device="C:",fs_type="ntfs"} = 102400
 disk_free_percent{drive="C:"} = 45.2
 disk_reads_sec{drive="C:"} = 123.4
 disk_writes_sec{drive="C:"} = 87.6
@@ -343,7 +343,7 @@ fs_inodes_used_percent{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 0
 **Verify probe is enabled:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "name: logicaldisk" /etc/senhub/probes.d/
+grep -rA5 "name: logicaldisk" /etc/senhub-agent/probes.d/
 ```
 
 ### Windows: PDH Counter Errors

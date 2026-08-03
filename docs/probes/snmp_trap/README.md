@@ -16,7 +16,7 @@ reuses the same gosnmp engine. Part of the **Free tier**.
   params:
     bind_address: "0.0.0.0:162"
     version: "v2c"
-    community: "${file:/etc/senhub/snmp_community}"
+    community: "${file:/etc/senhub-agent/snmp_community}"
 
 # v3 (USM)
 - type: snmp_trap
@@ -28,9 +28,9 @@ reuses the same gosnmp engine. Part of the **Free tier**.
       users:
         - username: "trap_user"
           auth_protocol: "SHA"      # MD5|SHA|SHA224|SHA256|SHA384|SHA512
-          auth_password: "${file:/etc/senhub/trap_auth}"
+          auth_password: "${file:/etc/senhub-agent/trap_auth}"
           priv_protocol: "AES"      # DES|AES|AES192|AES256
-          priv_password: "${file:/etc/senhub/trap_priv}"
+          priv_password: "${file:/etc/senhub-agent/trap_priv}"
 ```
 
 | Key | Type | Default | Notes |
@@ -84,9 +84,9 @@ OID → name resolution has two layers:
 params:
   bind_address: "0.0.0.0:162"
   version: "v2c"
-  community: "${file:/etc/senhub/snmp_community}"
+  community: "${file:/etc/senhub-agent/snmp_community}"
   mib_paths:
-    - "/etc/senhub/mibs"          # drop your vendor .mib/.txt files here
+    - "/etc/senhub-agent/mibs"          # drop your vendor .mib/.txt files here
 ```
 
 The agent **NEVER fetches MIBs over the network** — it only loads the

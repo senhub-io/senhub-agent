@@ -22,7 +22,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -45,7 +44,6 @@ type ProxmoxProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *proxmoxEntitySource
-	unregister   func()
 }
 
 type probeConfig struct {
@@ -145,14 +143,10 @@ func (p *ProxmoxProbe) OnStart(_ chan struct{}) error {
 		Str("node_filter", p.cfg.Node).
 		Msg("starting proxmox probe")
 
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *ProxmoxProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

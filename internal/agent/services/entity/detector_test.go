@@ -58,12 +58,23 @@ func TestDetector_Reconcile_PublishesFoundation(t *testing.T) {
 		t.Errorf("service.instance relationships = %+v, want [runs_on → host]", svc.Relationships)
 	}
 
-	// The emitted Interval is slacked above the tick cadence so a late
-	// heartbeat does not expire a live entity.
-	wantInterval := time.Minute * livenessSlackFactor
+	// #454 regression: the emitted Interval must be sized against the EFFECTIVE
+	// re-emission cadence (reEmitTicks × tick), not the raw tick, with a 3×
+	// slack — so the consumer survives two consecutive missed re-emissions
+	// before expiring a live entity. At this test's 1-minute tick that is
+	// 3 × (2 × 1m) = 6m.
+	tick := time.Minute
+	reEmitCadence := reEmitTicks * tick
+	wantInterval := livenessSlackOverReEmit * reEmitCadence
+	if wantInterval != tick*livenessSlackFactor {
+		t.Fatalf("slack constants inconsistent: 3×effective=%v but tick×factor=%v", wantInterval, tick*livenessSlackFactor)
+	}
+	if wantInterval < 3*reEmitCadence {
+		t.Errorf("liveness window %v < 3× re-emit cadence %v — a second missed re-emission would flap (#454)", wantInterval, reEmitCadence)
+	}
 	for i, ev := range got {
 		if ev.Interval != wantInterval {
-			t.Errorf("event[%d].Interval = %v, want %v (cadence × slack)", i, ev.Interval, wantInterval)
+			t.Errorf("event[%d].Interval = %v, want %v (3× the %v re-emit cadence)", i, ev.Interval, wantInterval, reEmitCadence)
 		}
 	}
 }

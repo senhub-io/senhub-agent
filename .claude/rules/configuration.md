@@ -15,7 +15,7 @@ A single `agent-config.yaml` with top-level `probes:` and/or `storage:`. The ori
 ### Multi-file (default install layout from 0.2.x)
 
 ```
-/etc/senhub/                       # Windows: %PROGRAMDATA%\SenHub
+/etc/senhub-agent/                       # Windows: %PROGRAMDATA%\SenHub
 ├── agent.yaml                     # Global only: agent, cache, auto_update, log
 ├── probes.d/
 │   ├── 01-system.yaml             # YAML array of probe configs
@@ -90,6 +90,6 @@ When you add a config field, also update `checkConfig` (`cmd/agent/config.go`) s
 
 ## Secrets in config
 
-- For secrets, prefer `${file:/etc/senhub/secrets/<name>}` references over inline values — `agent config show --redact` masks them, file permissions limit blast radius, and rotation doesn't require an agent restart if combined with the watcher (future).
+- For secrets, prefer `${file:/etc/senhub-agent/secrets/<name>}` references over inline values — `agent config show --redact` masks them, file permissions limit blast radius, and rotation doesn't require an agent restart if combined with the watcher (future).
 - Inline secrets must never be logged. `LoadForShow` + `--redact` is the safe export path.
 - `agent.license` field carries a JWT — sensitive but operationally legitimate to log mask-only.

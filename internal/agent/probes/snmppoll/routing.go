@@ -3,9 +3,11 @@ package snmppoll
 import (
 	"fmt"
 	"net"
-	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strconv"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 )
 
 // IPv4 routing table — ipCidrRouteTable (RFC 2096). Most widely implemented
@@ -84,23 +86,28 @@ func parseRoutes(binds []snmpRawBind) []routeRow {
 }
 
 // routeDestFromIndex extracts the destination CIDR from an ipCidrRouteTable
-// entry index: dest(4).mask(4).tos(1).nextHop(4), octets in decimal. Returns
-// "" when the index is short or the mask is non-canonical.
+// entry index: dest(4).mask(4).tos(1).nextHop(4), octets in decimal. The
+// result is the canonical route.destination identity (entity.CanonicalCIDR —
+// explicit prefix, host bits zeroed even when the device reports them set).
+// Returns "" when the index is short or the mask is non-canonical.
 func routeDestFromIndex(rowKey string) string {
 	p := strings.Split(rowKey, ".")
 	if len(p) < 13 {
 		return ""
 	}
-	dest := net.ParseIP(strings.Join(p[0:4], ".")).To4()
 	mask := net.ParseIP(strings.Join(p[4:8], ".")).To4()
-	if dest == nil || mask == nil {
+	if mask == nil {
 		return ""
 	}
 	ones, bits := net.IPMask(mask).Size()
 	if bits == 0 { // non-canonical mask
 		return ""
 	}
-	return fmt.Sprintf("%s/%d", dest.String(), ones)
+	dest, ok := entity.CanonicalCIDR(strings.Join(p[0:4], "."), ones)
+	if !ok {
+		return ""
+	}
+	return dest
 }
 
 // usableNextHop keeps only next-hops that name a distinct remote device: a

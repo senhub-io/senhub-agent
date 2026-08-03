@@ -351,20 +351,257 @@ func TestBuildAggregation_TypeMapping(t *testing.T) {
 	now := time.Now()
 	rec := otelmapper.OtelRecord{Name: "x", Unit: "1", Value: 1}
 
-	if _, ok := buildAggregation("counter", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Sum[float64]); !ok {
+	if _, ok := buildAggregation("counter", "", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Sum[float64]); !ok {
 		t.Error("counter should be Sum")
 	}
-	if a := buildAggregation("counter", []otelmapper.OtelRecord{rec}, now, now); !a.(metricdata.Sum[float64]).IsMonotonic {
+	if a := buildAggregation("counter", "", []otelmapper.OtelRecord{rec}, now, now); !a.(metricdata.Sum[float64]).IsMonotonic {
 		t.Error("counter should be monotonic")
 	}
-	if a := buildAggregation("updowncounter", []otelmapper.OtelRecord{rec}, now, now); a.(metricdata.Sum[float64]).IsMonotonic {
+	if a := buildAggregation("updowncounter", "", []otelmapper.OtelRecord{rec}, now, now); a.(metricdata.Sum[float64]).IsMonotonic {
 		t.Error("updowncounter should NOT be monotonic")
 	}
-	if _, ok := buildAggregation("gauge", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Gauge[float64]); !ok {
+	if _, ok := buildAggregation("gauge", "", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Gauge[float64]); !ok {
 		t.Error("gauge should be Gauge")
 	}
+	// A histogram-typed record WITHOUT payload falls back to Gauge on the
+	// scalar count — better than dropping (native path needs the payload).
+	if _, ok := buildAggregation("histogram", "", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Gauge[float64]); !ok {
+		t.Error("payload-less histogram should fall back to Gauge")
+	}
 	// Unknown types fall back to Gauge — better than dropping.
-	if _, ok := buildAggregation("histogram", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Gauge[float64]); !ok {
+	if _, ok := buildAggregation("bogus", "", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Gauge[float64]); !ok {
 		t.Error("unknown type should fall back to Gauge")
+	}
+}
+
+func TestBuildAggregation_HistogramNative(t *testing.T) {
+	now := time.Unix(1700000010, 0)
+	start := time.Unix(1700000000, 0)
+	sum, minV, maxV := 4.2, 0.05, 0.9
+	rec := otelmapper.OtelRecord{
+		Name: "http.server.duration", Unit: "s", Type: "histogram", Value: 6,
+		Attributes: map[string]string{"probe_name": "edge_in"},
+		Histogram: &datapoint.HistogramValue{
+			Count:          6,
+			Sum:            &sum,
+			Min:            &minV,
+			Max:            &maxV,
+			BucketCounts:   []uint64{1, 2, 3},
+			ExplicitBounds: []float64{0.1, 0.5},
+		},
+	}
+
+	agg := buildAggregation("histogram", "", []otelmapper.OtelRecord{rec}, start, now)
+	h, ok := agg.(metricdata.Histogram[float64])
+	if !ok {
+		t.Fatalf("aggregation is %T, want Histogram[float64]", agg)
+	}
+	if h.Temporality != metricdata.CumulativeTemporality {
+		t.Errorf("temporality=%v, want cumulative", h.Temporality)
+	}
+	if len(h.DataPoints) != 1 {
+		t.Fatalf("DataPoints len=%d, want 1", len(h.DataPoints))
+	}
+	dp := h.DataPoints[0]
+	if dp.Count != 6 {
+		t.Errorf("Count=%d, want 6", dp.Count)
+	}
+	if dp.Sum != 4.2 {
+		t.Errorf("Sum=%v, want 4.2", dp.Sum)
+	}
+	if len(dp.Bounds) != 2 || dp.Bounds[0] != 0.1 || dp.Bounds[1] != 0.5 {
+		t.Errorf("Bounds=%v, want [0.1 0.5]", dp.Bounds)
+	}
+	if len(dp.BucketCounts) != 3 || dp.BucketCounts[0] != 1 || dp.BucketCounts[1] != 2 || dp.BucketCounts[2] != 3 {
+		t.Errorf("BucketCounts=%v, want [1 2 3] (per-bucket, non-cumulative)", dp.BucketCounts)
+	}
+	if v, ok := dp.Min.Value(); !ok || v != 0.05 {
+		t.Errorf("Min=%v ok=%v, want 0.05", v, ok)
+	}
+	if v, ok := dp.Max.Value(); !ok || v != 0.9 {
+		t.Errorf("Max=%v ok=%v, want 0.9", v, ok)
+	}
+	if !dp.StartTime.Equal(start) || !dp.Time.Equal(now) {
+		t.Errorf("StartTime/Time=%v/%v, want %v/%v", dp.StartTime, dp.Time, start, now)
+	}
+	if _, ok := dp.Attributes.Value(attribute.Key("probe_name")); !ok {
+		t.Error("probe_name attribute missing on histogram data point")
+	}
+}
+
+func TestBuildAggregation_HistogramOptionalsAbsent(t *testing.T) {
+	now := time.Now()
+	rec := otelmapper.OtelRecord{
+		Name: "h", Unit: "s", Type: "histogram", Value: 2,
+		Histogram: &datapoint.HistogramValue{Count: 2, BucketCounts: []uint64{2}},
+	}
+	h, ok := buildAggregation("histogram", "", []otelmapper.OtelRecord{rec}, now, now).(metricdata.Histogram[float64])
+	if !ok {
+		t.Fatal("want Histogram[float64]")
+	}
+	dp := h.DataPoints[0]
+	if dp.Sum != 0 {
+		t.Errorf("absent Sum should stay zero, got %v", dp.Sum)
+	}
+	if _, ok := dp.Min.Value(); ok {
+		t.Error("absent Min must not produce an Extrema value")
+	}
+	if _, ok := dp.Max.Value(); ok {
+		t.Error("absent Max must not produce an Extrema value")
+	}
+}
+
+func TestPushMetrics_NativeHistogramFromIngestedPoint(t *testing.T) {
+	// End-to-end over the OTLP strategy internals: an otlp_ingest datapoint
+	// carrying a histogram payload must come out of pushMetrics as a native
+	// metricdata.Histogram, not as a gauge on the count.
+	store := newMetricStore()
+	sum := 1.5
+	store.upsert(datapoint.DataPoint{
+		Name:  "http.server.duration",
+		Value: 3,
+		Tags: []tags.Tag{
+			{Key: "probe_name", Value: "edge_in"},
+			{Key: "probe_type", Value: "otlp_receiver"},
+			{Key: "metric_type", Value: otelmapper.MetricTypeOTLPIngest},
+			{Key: "otel_type", Value: "histogram"},
+			{Key: "unit", Value: "s"},
+		},
+		Histogram: &datapoint.HistogramValue{
+			Count:          3,
+			Sum:            &sum,
+			BucketCounts:   []uint64{2, 1},
+			ExplicitBounds: []float64{1},
+		},
+	})
+	defs := &fakeDefs{defs: map[string]*transformers.ProbeDefinition{}}
+
+	var captured *metricdata.ResourceMetrics
+	count, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
+		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil, nil,
+		func(_ context.Context, rm *metricdata.ResourceMetrics) error {
+			captured = rm
+			return nil
+		}, nil, 1)
+	if err != nil {
+		t.Fatalf("pushMetrics: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count=%d, want 1", count)
+	}
+	m := captured.ScopeMetrics[0].Metrics[0]
+	if m.Name != "http.server.duration" || m.Unit != "s" {
+		t.Errorf("metric=%+v", m)
+	}
+	h, ok := m.Data.(metricdata.Histogram[float64])
+	if !ok {
+		t.Fatalf("Data is %T, want Histogram[float64]", m.Data)
+	}
+	dp := h.DataPoints[0]
+	if dp.Count != 3 || dp.Sum != 1.5 {
+		t.Errorf("Count/Sum=%d/%v, want 3/1.5", dp.Count, dp.Sum)
+	}
+	if len(dp.Bounds) != 1 || dp.Bounds[0] != 1 {
+		t.Errorf("Bounds=%v, want [1]", dp.Bounds)
+	}
+	if len(dp.BucketCounts) != 2 || dp.BucketCounts[0] != 2 || dp.BucketCounts[1] != 1 {
+		t.Errorf("BucketCounts=%v, want [2 1]", dp.BucketCounts)
+	}
+}
+
+func TestBuildAggregation_DeltaTemporality(t *testing.T) {
+	now := time.Now()
+	rec := otelmapper.OtelRecord{Name: "x", Unit: "1", Value: 1}
+
+	delta := otelmapper.TemporalityDelta
+	if a := buildAggregation("counter", delta, []otelmapper.OtelRecord{rec}, now, now); a.(metricdata.Sum[float64]).Temporality != metricdata.DeltaTemporality {
+		t.Error("delta counter should carry DeltaTemporality")
+	}
+	if a := buildAggregation("updowncounter", delta, []otelmapper.OtelRecord{rec}, now, now); a.(metricdata.Sum[float64]).Temporality != metricdata.DeltaTemporality {
+		t.Error("delta updowncounter should carry DeltaTemporality")
+	}
+	hrec := otelmapper.OtelRecord{
+		Name: "h", Unit: "s", Type: "histogram", Value: 3,
+		Histogram: &datapoint.HistogramValue{Count: 3, BucketCounts: []uint64{2, 1}, ExplicitBounds: []float64{0.5}},
+	}
+	if a := buildAggregation("histogram", delta, []otelmapper.OtelRecord{hrec}, now, now); a.(metricdata.Histogram[float64]).Temporality != metricdata.DeltaTemporality {
+		t.Error("delta histogram should carry DeltaTemporality")
+	}
+	// Guard: anything but an explicit delta stays cumulative.
+	if a := buildAggregation("counter", "", []otelmapper.OtelRecord{rec}, now, now); a.(metricdata.Sum[float64]).Temporality != metricdata.CumulativeTemporality {
+		t.Error("unmarked counter should stay CumulativeTemporality")
+	}
+	if a := buildAggregation("counter", "bogus", []otelmapper.OtelRecord{rec}, now, now); a.(metricdata.Sum[float64]).Temporality != metricdata.CumulativeTemporality {
+		t.Error("unrecognised temporality should fall back to CumulativeTemporality")
+	}
+}
+
+// TestPushMetrics_DeltaTemporalityRoundTrip drives the full strategy-side
+// path (#661): otlp_ingest datapoints tagged otel_temporality=delta by
+// the receiver decoder must come out of pushMetrics as a delta Sum
+// (still a monotonic counter, not a gauge) and a delta Histogram, with
+// the control tag consumed rather than leaked as an attribute.
+func TestPushMetrics_DeltaTemporalityRoundTrip(t *testing.T) {
+	store := newMetricStore()
+	ingestTags := func(otelType string) []tags.Tag {
+		return []tags.Tag{
+			{Key: "probe_name", Value: "edge_in"},
+			{Key: "probe_type", Value: "otlp_receiver"},
+			{Key: "metric_type", Value: otelmapper.MetricTypeOTLPIngest},
+			{Key: "otel_type", Value: otelType},
+			{Key: "otel_temporality", Value: otelmapper.TemporalityDelta},
+			{Key: "unit", Value: "s"},
+		}
+	}
+	store.upsert(datapoint.DataPoint{
+		Name: "http.server.request.duration.sum", Value: 4, Tags: ingestTags("counter"),
+	})
+	store.upsert(datapoint.DataPoint{
+		Name: "http.server.request.duration", Value: 3, Tags: ingestTags("histogram"),
+		Histogram: &datapoint.HistogramValue{Count: 3, BucketCounts: []uint64{2, 1}, ExplicitBounds: []float64{0.5}},
+	})
+	defs := &fakeDefs{defs: map[string]*transformers.ProbeDefinition{}}
+
+	var captured *metricdata.ResourceMetrics
+	count, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
+		time.Now(), time.Now(), otelmapper.DefaultResolveOptions(), nil, nil,
+		func(_ context.Context, rm *metricdata.ResourceMetrics) error {
+			captured = rm
+			return nil
+		}, nil, 1)
+	if err != nil {
+		t.Fatalf("pushMetrics: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("count=%d, want 2", count)
+	}
+
+	byName := map[string]metricdata.Metrics{}
+	for _, m := range captured.ScopeMetrics[0].Metrics {
+		byName[m.Name] = m
+	}
+	sum, ok := byName["http.server.request.duration.sum"].Data.(metricdata.Sum[float64])
+	if !ok {
+		t.Fatalf("delta sum Data is %T, want Sum[float64] (must not degrade to gauge)", byName["http.server.request.duration.sum"].Data)
+	}
+	if sum.Temporality != metricdata.DeltaTemporality || !sum.IsMonotonic {
+		t.Errorf("delta sum temporality/monotonic = %v/%v, want Delta/true", sum.Temporality, sum.IsMonotonic)
+	}
+	hist, ok := byName["http.server.request.duration"].Data.(metricdata.Histogram[float64])
+	if !ok {
+		t.Fatalf("delta histogram Data is %T, want Histogram[float64]", byName["http.server.request.duration"].Data)
+	}
+	if hist.Temporality != metricdata.DeltaTemporality {
+		t.Errorf("delta histogram temporality = %v, want Delta", hist.Temporality)
+	}
+	for _, dp := range sum.DataPoints {
+		if _, leaked := dp.Attributes.Value(attribute.Key("otel_temporality")); leaked {
+			t.Error("otel_temporality control tag leaked as an attribute")
+		}
+	}
+	for _, dp := range hist.DataPoints {
+		if _, leaked := dp.Attributes.Value(attribute.Key("otel_temporality")); leaked {
+			t.Error("otel_temporality control tag leaked as a histogram attribute")
+		}
 	}
 }

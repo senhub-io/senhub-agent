@@ -31,12 +31,15 @@ type Probe interface {
 	// OnShutdown handles cleanup when probe is stopped
 	OnShutdown(ctx context.Context) error
 
-	// EntitySource returns the entity.Source this probe registers with the detector.
-	// Every probe MUST return a non-nil Source — the invariant test enforces this.
-	// The Source describes what this probe monitors (a db.redis instance, a web.server,
-	// etc.) so the entity detector can emit it into Toise topology. Host-level probes
-	// and log conduits inherit the default NoOpEntitySource from BaseProbe, which
-	// satisfies the invariant without polluting the entity graph.
+	// EntitySource returns the entity.Source the ProbePoller registers with the
+	// detector on Start (and unregisters on Shutdown) — the single source of
+	// truth for probe entity wiring; probes never call entity.RegisterSource
+	// themselves (#471). Every probe MUST return a non-nil Source — the
+	// invariant test enforces this. The Source describes what this probe
+	// monitors (a db.redis instance, a web.server, etc.) so the entity detector
+	// can emit it into Toise topology. Host-level probes and log conduits
+	// inherit the default NoOpEntitySource from BaseProbe, which satisfies the
+	// invariant and is skipped at registration time.
 	EntitySource() entity.Source
 }
 

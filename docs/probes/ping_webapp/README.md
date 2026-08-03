@@ -253,7 +253,7 @@ Monitor load balancer endpoints:
 **Verify probe is enabled:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "type: ping_webapp" /etc/senhub/probes.d/
+grep -rA5 "type: ping_webapp" /etc/senhub-agent/probes.d/
 ```
 
 **Common Issues:**

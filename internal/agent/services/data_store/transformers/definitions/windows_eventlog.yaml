@@ -1,0 +1,20 @@
+probe_name: "windows_eventlog"
+friendly_name: "Windows Event Log"
+version: "1.0.0"
+host_level: false
+
+# windows_eventlog is a log conduit: event records ride the OTLP log rail
+# (agentstate.PublishLog) and are NOT mapped here. Collect() emits only
+# the conduit's own throughput self-metric (#701).
+
+metrics:
+  - name: "senhub.windows_eventlog.records_emitted"
+    channel: "windows_eventlog_records_emitted"
+    display_name: "Windows Event Log Records Emitted"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of event records this probe has published to the log rail"
+    otel:
+      name: senhub.windows_eventlog.records_emitted
+      unit: "{record}"
+      type: counter

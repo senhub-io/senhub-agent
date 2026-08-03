@@ -257,13 +257,18 @@ func newLogsPump(p *logsPipeline, bufSize int) *logsPump {
 // drain goroutine. Idempotent — calling twice is a no-op (used to
 // keep Strategy.Start straightforward; second Start should not
 // re-subscribe).
+//
+// Routing-aware subscription (#294 rail B): the pump receives broadcast
+// log records plus records whose TargetStrategies name this strategy, so
+// the endpoints:/strategy routing that governs metrics now applies to
+// logs too.
 func (p *logsPump) start() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.subscribed != nil {
 		return
 	}
-	ch := agentstate.SubscribeLogs(p.bufSize)
+	ch := agentstate.SubscribeLogsFor(strategyName, p.bufSize)
 	p.subscribed = ch
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel

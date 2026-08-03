@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -35,15 +38,22 @@ type ProbePoller struct {
 	addDataPoint data_store.AddCallback    // Callback to store collected data
 	moduleLogger *logger.ModuleLogger
 	scheduler    periodic_scheduler.PeriodicScheduler
+	// unregisterEntitySource removes the probe's entity source from the
+	// detector registry. Set in Start, invoked in Shutdown; nil while the
+	// probe is not started or when the probe exposes the NoOp fallback.
+	unregisterEntitySource func()
 }
 
-// defaultStrategyRouter provides default routing to senhub and prtg strategies
-// for probes that don't implement custom routing
+// defaultStrategyRouter provides default routing for probes that don't
+// implement custom routing. Kept in sync with types.BaseProbe's default so a
+// probe reaching this fallback is not silently cut off from otlp/http — every
+// signal must be able to reach the OTLP sink (#701). No probe hits this today
+// (all embed *types.BaseProbe), but the two defaults must not diverge.
 type defaultStrategyRouter struct{}
 
 // GetTargetStrategies returns the default target strategies
 func (d *defaultStrategyRouter) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg"}
+	return []string{"senhub", "prtg", "http", "otlp"}
 }
 
 // GenerateProbeId creates a unique identifier for a probe configuration
@@ -179,7 +189,36 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 		return nil
 	}
 
-	return p.scheduler.Start(quitChannel)
+	if err := p.scheduler.Start(quitChannel); err != nil {
+		return err
+	}
+	p.registerEntitySource()
+	return nil
+}
+
+// registerEntitySource wires the probe's declared entity source into the
+// process-global detector registry. This is the ONLY registration path for
+// probe sources: probes declare their source with SetEntitySource in the
+// constructor and never call entity.RegisterSource themselves (enforced by
+// TestProbePackagesDoNotRegisterEntitySourcesDirectly), so the source the
+// registry invariant inspects via EntitySource() is by construction the one
+// the detector polls at runtime (#471). The NoOpEntitySource of host-level
+// probes and log conduits is skipped — the host entity is already emitted by
+// the detector foundation. Registration happens only after a successful
+// scheduler start, so a probe whose OnStart failed never heartbeats topology
+// it cannot observe.
+func (p *ProbePoller) registerEntitySource() {
+	if p.unregisterEntitySource != nil {
+		return
+	}
+	src := p.Probe.EntitySource()
+	if src == nil {
+		return
+	}
+	if _, isNoOp := src.(types.NoOpEntitySource); isNoOp {
+		return
+	}
+	p.unregisterEntitySource = entity.RegisterSource(src)
 }
 
 // collect gathers metrics from the probe and routes them to the appropriate
@@ -206,7 +245,7 @@ func (p *ProbePoller) collect() error {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		agentstate.IncrementCollectErrors()
+		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
 		agentstate.RecordProbeHealth(p.ProbeId, false)
 		return fmt.Errorf("collect failed: %v", err)
 	}
@@ -244,6 +283,21 @@ func (p *ProbePoller) probeType() string {
 	return "unknown"
 }
 
+// collectErrorReason classifies a Probe.Collect() error into the bounded
+// `reason` label of senhub.agent.collect.errors (#646). It never returns a
+// raw error string: a deadline/timeout maps to "timeout", everything else to
+// "collect". The routing-failure path passes "route" directly.
+func collectErrorReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout"
+	}
+	return "collect"
+}
+
 // getWrappedCallback returns a function that handles routing of collected data
 // to appropriate storage strategies for callback-based probes (syslog, event).
 //
@@ -265,7 +319,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 			err = p.addDataPoint(data, &defaultStrategyRouter{})
 		}
 		if err != nil {
-			agentstate.IncrementCollectErrors()
+			agentstate.IncrementCollectErrors(p.probeType(), "route")
 			agentstate.RecordProbeHealth(p.ProbeId, false)
 		} else {
 			agentstate.RecordProbeHealth(p.ProbeId, true)
@@ -274,9 +328,17 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 	}
 }
 
-// Shutdown gracefully stops the probe and cleans up resources
+// Shutdown gracefully stops the probe and cleans up resources. The entity
+// source is unregistered first so the detector stops polling a probe that is
+// tearing down its connections — leaving it registered would heartbeat the
+// cached topology of a stopped probe forever (dead targets never expire in
+// the consumer, reloads duplicate sources).
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
 	p.moduleLogger.Debug().Msg("Shutting down probe")
 
+	if p.unregisterEntitySource != nil {
+		p.unregisterEntitySource()
+		p.unregisterEntitySource = nil
+	}
 	return p.scheduler.Shutdown(ctx)
 }

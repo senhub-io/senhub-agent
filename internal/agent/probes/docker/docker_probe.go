@@ -23,7 +23,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -56,7 +55,6 @@ type dockerProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *dockerEntitySource
-	unregister   func()
 	// newClient allows tests to inject a replacement transport.
 	newClient func() *http.Client
 }
@@ -152,6 +150,9 @@ func NewDockerProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		entitySrc:    &dockerEntitySource{},
 	}
 	p.SetProbeType(ProbeType)
+	// Containers are distinct entities, not host-local: declare the real
+	// source so the poller registers it on Start.
+	p.SetEntitySource(p.entitySrc)
 	p.newClient = p.buildClient
 	p.client = p.buildClient()
 	return p, nil
@@ -222,14 +223,10 @@ func (p *dockerProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("socket", p.cfg.SocketPath).
 		Msg("Starting docker probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *dockerProbe) OnShutdown(ctx context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

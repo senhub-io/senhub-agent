@@ -90,7 +90,3 @@ func hostFromEndpoint(endpoint string) string {
 	}
 	return endpoint
 }
-
-// registerEntitySource is a thin indirection to allow unit tests to inject a
-// no-op. In production it calls entity.RegisterSource.
-var registerEntitySource = entity.RegisterSource

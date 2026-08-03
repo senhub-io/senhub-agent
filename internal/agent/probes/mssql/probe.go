@@ -23,7 +23,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -72,8 +71,6 @@ type MSSQLProbe struct {
 	entitySource *mssqlEntitySource
 
 	db *sql.DB
-
-	unregisterEntitySource func()
 }
 
 // NewMSSQLProbe builds an mssql probe from its raw params block. Config errors
@@ -176,7 +173,7 @@ func (p *MSSQLProbe) GetTargetStrategies() []string {
 func (p *MSSQLProbe) ShouldStart() bool          { return true }
 func (p *MSSQLProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
-// OnStart opens the connection pool and registers the entity source. A failed
+// OnStart opens the connection pool. A failed
 // open here marks the probe unhealthy; a failed ping is tolerated (the server
 // may be briefly down) — Collect reports it as senhub.db.up=0.
 func (p *MSSQLProbe) OnStart(_ chan struct{}) error {
@@ -189,7 +186,6 @@ func (p *MSSQLProbe) OnStart(_ chan struct{}) error {
 	db.SetConnMaxLifetime(30 * time.Minute)
 	p.db = db
 
-	p.unregisterEntitySource = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Str("host", p.cfg.Host).
 		Int("port", p.cfg.Port).
@@ -228,12 +224,8 @@ func (p *MSSQLProbe) Collect() ([]data_store.DataPoint, error) {
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
-// OnShutdown closes the pool and unregisters the entity source so a stopped or
-// reloaded probe stops heartbeating the cached entity (audit D4).
+// OnShutdown closes the pool.
 func (p *MSSQLProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	if p.db != nil {
 		if err := p.db.Close(); err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("error closing mssql connection")

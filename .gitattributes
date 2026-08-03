@@ -4,6 +4,11 @@
 *.mod text eol=lf
 *.sum text eol=lf
 
+# systemd units are Linux-only text embedded via go:embed; a CRLF checkout
+# on a Windows runner leaves a stray \r on every line and breaks the
+# unit-contract tests (packagedExecStartLine vs installedExecStart).
+*.service text eol=lf
+
 # Windows files
 *.{cmd,[cC][mM][dD]} text eol=crlf
 *.{bat,[bB][aA][tT]} text eol=crlf

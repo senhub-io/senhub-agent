@@ -202,7 +202,7 @@ Monitor memory health:
 **Verify probe is enabled:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "name: memory" /etc/senhub/probes.d/
+grep -rA5 "name: memory" /etc/senhub-agent/probes.d/
 ```
 
 ### Windows: PDH Counter Errors

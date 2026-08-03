@@ -25,7 +25,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -64,8 +63,7 @@ type mongoDBProbe struct {
 	fetchReplSetID func(ctx context.Context) (string, error)
 
 	// entitySrc feeds the Toise topology inventory (db entity).
-	entitySrc  *mongodbEntitySource
-	unregister func()
+	entitySrc *mongodbEntitySource
 }
 
 // NewMongoDBProbe builds a mongodb probe from its raw params block.
@@ -127,16 +125,12 @@ func (p *mongoDBProbe) OnStart(_ chan struct{}) error {
 		return fmt.Errorf("mongodb: connecting to %s: %w", p.instance, err)
 	}
 	p.client = client
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	p.moduleLogger.Info().Str("instance", p.instance).Msg("MongoDB probe started")
 	return nil
 }
 
 // OnShutdown closes the MongoDB client cleanly.
 func (p *mongoDBProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	if p.client == nil {
 		return nil
 	}
