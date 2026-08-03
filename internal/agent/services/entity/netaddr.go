@@ -2,6 +2,7 @@ package entity
 
 import (
 	"net"
+	"net/netip"
 	"strings"
 )
 
@@ -58,6 +59,31 @@ func IsContainerBridgeIface(name string) bool {
 		}
 	}
 	return false
+}
+
+// CanonicalHostScopedAddr classifies a peer address for network.endpoint
+// identity. It returns the address in its RFC 5952-canonical string form
+// (IPv4-mapped IPv6 unmapped so it classifies like its IPv4 self; an IPv6 zone
+// kept but lowercased, per the frozen Toise contract) and whether it is
+// HOST-SCOPED — loopback (127.0.0.0/8, ::1) or link-local UNICAST
+// (169.254.0.0/16, fe80::/10). A host-scoped address is only meaningful relative
+// to the observing host, so an endpoint on it must carry host.id in its identity
+// or unrelated hosts collapse onto one node (Toise ADR 0032). ok=false when the
+// address does not parse.
+//
+// Deliberately NARROWER than IsHostLocalAddress: wildcard, multicast and the
+// docker bridge are not host-scoped endpoints — they are filtered out entirely
+// upstream (resolvablePeer), never emitted.
+func CanonicalHostScopedAddr(s string) (canonical string, hostScoped, ok bool) {
+	a, err := netip.ParseAddr(s)
+	if err != nil {
+		return "", false, false
+	}
+	a = a.Unmap()
+	// netip String() is already RFC 5952 for IPv6 and appends the zone as
+	// %zone; ToLower normalizes an upper-cased zone (e.g. a Windows interface
+	// name) without affecting the address text.
+	return strings.ToLower(a.String()), a.IsLoopback() || a.IsLinkLocalUnicast(), true
 }
 
 // IsHostLocalAddressStr is the string convenience over IsHostLocalAddress: it
