@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# Authenticode-sign a SenHub MSI with the Certum SimplySign cloud certificate.
+# Authenticode-sign a SenHub release artifact (.msi or .exe) with the Certum
+# SimplySign cloud certificate. jsign signs MSI and PE files through the same
+# PKCS#11 path, so one script covers the installer and the bare binary (#622).
 #
 # Signing model (see docs): the private key lives in Certum's HSM and is reached
 # through the SimplySign PKCS#11 module. Authorisation is the OPEN SimplySign
@@ -10,10 +12,10 @@
 # The script is defensive on purpose: every precondition is checked and reported
 # before touching the artifact, and the signature is verified after signing.
 #
-#   usage:  sign-release-msi.sh <file.msi> [--in-place]
+#   usage:  sign-release-msi.sh <file.msi|file.exe> [--in-place]
 #
-# Without --in-place a signed COPY (<name>-signed.msi) is produced and the input
-# is left untouched. With --in-place the input file itself is signed.
+# Without --in-place a signed COPY (<name>-signed.<ext>) is produced and the
+# input is left untouched. With --in-place the input file itself is signed.
 #
 # Overridable via env: JSIGN_VERSION JSIGN_SHA256 PKCS11_MODULE TSA_URL
 #                      SIGN_NAME SIGN_URL JSIGN_JAR JAVA17_HOME
@@ -41,9 +43,9 @@ for arg in "$@"; do
     *)  MSI="$arg" ;;
   esac
 done
-[ -n "$MSI" ]     || die "usage: sign-release-msi.sh <file.msi> [--in-place]"
+[ -n "$MSI" ]     || die "usage: sign-release-msi.sh <file.msi|file.exe> [--in-place]"
 [ -f "$MSI" ]     || die "file not found: $MSI"
-case "$MSI" in *.msi) ;; *) die "expected a .msi file: $MSI" ;; esac
+case "$MSI" in *.msi|*.exe) ;; *) die "expected a .msi or .exe file: $MSI" ;; esac
 
 # --- 1. Java <=17 (jsign+PKCS#11 breaks on newer JDKs on macOS) --------------
 JAVA_BIN=""
@@ -97,7 +99,8 @@ trap 'rm -f "$CFG"' EXIT
 printf 'name = SimplySign\nlibrary = %s\nslotListIndex = 0\n' "$PKCS11_MODULE" > "$CFG"
 
 # --- 5. sign ------------------------------------------------------------------
-if [ "$IN_PLACE" = "1" ]; then OUT="$MSI"; else OUT="${MSI%.msi}-signed.msi"; cp -f "$MSI" "$OUT"; fi
+EXT="${MSI##*.}"
+if [ "$IN_PLACE" = "1" ]; then OUT="$MSI"; else OUT="${MSI%.*}-signed.$EXT"; cp -f "$MSI" "$OUT"; fi
 info "signing: $OUT"
 "$JAVA_BIN" -jar "$JSIGN_JAR" \
   --storetype PKCS11 \
