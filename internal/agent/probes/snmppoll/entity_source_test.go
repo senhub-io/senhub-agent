@@ -210,6 +210,47 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 	}
 }
 
+// TestBuildObservation_NoRetiredEdgeRelations pins the topology-as-entities
+// contract (#239): the retired device-to-device edges (adjacent_to, routes_via,
+// forwards_to) are never emitted — their facts ride entities — and every
+// emitted relation is bare (Toise's relationship descriptor drops edge
+// attributes, so a fact on an edge would be silently lost).
+func TestBuildObservation_NoRetiredEdgeRelations(t *testing.T) {
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
+	ifaces := []ifaceRow{{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp}}
+	topo := lldpTopology{Neighbors: []lldpNeighbor{{
+		LocalPortNum:     "1",
+		ChassisIdSubtype: subtypeMacAddress,
+		ChassisId:        []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+		PortIdSubtype:    portSubtypeIfName,
+		PortId:           []byte("Gi0/2"),
+		SysName:          "neigh",
+	}}}
+	routes := []routeRow{{Destination: "10.20.0.0/16", NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 5}}
+	addrs := []ipAddr{{IfIndex: "1", IP: "192.0.2.10"}}
+	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveDeviceID)
+
+	// The fixture exercises every relation family the source can emit.
+	want := map[string]bool{relHasInterface: false, relConnectedTo: false, relHasRoute: false, relBoundTo: false}
+	for _, r := range obs.Relations {
+		switch r.Type {
+		case relRetiredAdjacentTo, relRetiredRoutesVia, relRetiredForwardsTo:
+			t.Errorf("retired relation type emitted: %+v", r)
+		}
+		if len(r.Attributes) != 0 {
+			t.Errorf("relation %q must be bare (no edge attributes), got %v", r.Type, r.Attributes)
+		}
+		if _, ok := want[r.Type]; ok {
+			want[r.Type] = true
+		}
+	}
+	for typ, seen := range want {
+		if !seen {
+			t.Errorf("fixture did not exercise relation %q — retire-guard lost its coverage", typ)
+		}
+	}
+}
+
 func TestBuildObservation_NetworkInterface(t *testing.T) {
 	self := deviceIdentity{Serial: "S1", VendorPEN: "9"}
 	ifaces := []ifaceRow{
