@@ -262,10 +262,40 @@ a `-signed.msi` copy by default (pass `--in-place` to sign the file directly).
 > certificate`: that is only the Certum root missing from the OS trust store,
 > **not** a signing defect. The authoritative check is on Windows (below).
 
-### Verify a signed MSI
+### Sign the release EXEs (#622)
+
+The bare `senhub-agent.exe` inside the two Windows ZIPs (full + oss) is
+signed with the same certificate through the same local session. The
+signing round is a deliberate two-half flow so the minisign release key
+never leaves CI and the Authenticode credential never enters it:
+
+```bash
+# 1. after the release workflow has published the ZIPs, sign both exes
+#    locally and re-upload the ZIPs (SimplySign session open):
+packaging/windows/sign-windows-release-exe.sh <version>
+
+# 2. verify + re-minisign the ZIPs and rebuild the MSI so it embeds the
+#    SIGNED exe (unsigned MSI kept as a build artifact):
+gh workflow run publish-signed-exe.yml \
+  --repo senhub-io/senhub-agent-enterprise -f tag=<version>
+
+# 3. download the MSI artifact, sign it, upload it, publish:
+packaging/windows/sign-release-msi.sh senhub-agent-<version>-amd64.msi --in-place
+gh release upload <version> senhub-agent-<version>-amd64.msi --repo senhub-io/senhub-agent
+gh workflow run publish-signed-msi.yml \
+  --repo senhub-io/senhub-agent-enterprise -f tag=<version>
+```
+
+Between step 1 and step 2 the ZIPs' detached `.minisig` assets are stale;
+auto-updating agents fail safe (they refuse the archive and retry on the
+next check), so run the two steps back to back. One SimplySign session
+(2-hour window) comfortably covers the whole sequence.
+
+### Verify a signed MSI or EXE
 
 ```powershell
 Get-AuthenticodeSignature .\senhub-agent-<version>-amd64.msi | Format-List
+Get-AuthenticodeSignature .\senhub-agent.exe | Format-List
 ```
 
 Status `Valid` with the `SENSOR FACTORY SAS` publisher confirms the signature.
@@ -276,8 +306,8 @@ Status `Valid` with the `SENSOR FACTORY SAS` publisher confirms the signature.
   custom dialog) are a follow-up pending interactive validation; today the
   guided install lands the offline default and those are set via properties
   (silent install / MST).
-- The release pipeline still publishes the **unsigned** MSI; wiring it to
-  build unsigned + accept the locally-signed MSI (and its `.msi.minisig`) for
-  auto-update is the remaining step (issue #608).
+- Beta releases ship with unsigned exes by default (the signing round is a
+  local, per-release step); run `sign-windows-release-exe.sh <X.Y.Z-beta>` +
+  `publish-signed-exe.yml` on a beta tag when a signed beta matters.
 - 32-bit / ARM64 Windows are out of scope (amd64 only, per the
   distributed-binaries matrix).
