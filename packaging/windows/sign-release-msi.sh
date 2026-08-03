@@ -113,8 +113,10 @@ info "signing: $OUT"
 # --- 6. verify (local structural + digest check) -----------------------------
 if command -v osslsigncode >/dev/null 2>&1; then
   V="$(osslsigncode verify "$OUT" 2>/dev/null || true)"
-  CUR="$(echo "$V" | awk -F': ' '/Current DigitalSignature/{gsub(/ /,"",$2);print $2}')"
-  CAL="$(echo "$V" | awk -F': ' '/Calculated DigitalSignature/{gsub(/ /,"",$2);print $2}')"
+  # MSI prints "Current/Calculated DigitalSignature", PE (exe) prints
+  # "Current/Calculated message digest" — match either.
+  CUR="$(echo "$V" | awk -F': *' '/Current (DigitalSignature|message digest)/{gsub(/ /,"",$2);print $2}')"
+  CAL="$(echo "$V" | awk -F': *' '/Calculated (DigitalSignature|message digest)/{gsub(/ /,"",$2);print $2}')"
   [ -n "$CUR" ] && [ "$CUR" = "$CAL" ] || die "signature digest mismatch after signing — signature NOT trustworthy"
   SUBJ="$(echo "$V" | awk -F': ' '/^[[:space:]]*Subject:/{print $2; exit}')"
   ok "signature digest verified (embedded == computed)"
