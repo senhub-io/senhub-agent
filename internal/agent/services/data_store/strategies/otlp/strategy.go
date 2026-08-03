@@ -595,6 +595,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 			HostType:              hi.HostType,
 			ContainerRuntime:      hi.ContainerRuntime,
 			K8sNodeName:           hi.K8sNodeName,
+			Environment:           s.cfg.Resource.Environment,
 			Governance:            s.cfg.Entities.Governance.Attributes(),
 		}, nil
 	}

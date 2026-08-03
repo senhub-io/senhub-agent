@@ -107,6 +107,25 @@ func TestDetectFoundation_Governance(t *testing.T) {
 	}
 }
 
+// TestDetectFoundation_Environment pins that deployment.environment rides the
+// host entity (so a topology consumer's governance view sees it), alongside
+// governance, and is omitted when unset.
+func TestDetectFoundation_Environment(t *testing.T) {
+	h := HostIdentity{ID: "h-1", Environment: "staging", Governance: map[string]any{"service.criticality": "low"}}
+	host := DetectFoundation(h, AgentIdentity{InstanceID: "a"}).Entities[0]
+	if host.Attributes["deployment.environment"] != "staging" {
+		t.Errorf("deployment.environment = %v, want staging", host.Attributes["deployment.environment"])
+	}
+	if host.Attributes["service.criticality"] != "low" {
+		t.Errorf("governance must coexist with environment: %v", host.Attributes)
+	}
+
+	bare := DetectFoundation(HostIdentity{ID: "h-2"}, AgentIdentity{InstanceID: "a"}).Entities[0]
+	if _, present := bare.Attributes["deployment.environment"]; present {
+		t.Error("no environment configured → attribute omitted")
+	}
+}
+
 // TestDetectFoundation_CapacityVirtChassis pins the AT10-AT12 host attributes:
 // numeric capacity rides as int64, virtualization/chassis as strings, all
 // omitted when zero/empty.
