@@ -33,6 +33,7 @@ package hostdep
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
 	"sync"
@@ -330,6 +331,17 @@ func buildObservation(seen map[peerKey]dependant, streak map[peerKey]int, thresh
 			idKeyNetworkTransport: transportTCP,
 		}
 		epDedup := fmt.Sprintf("%s:%s/%s", d.addr, d.port, transportTCP)
+		if canon, hostScoped, ok := entity.CanonicalHostScopedAddr(d.addr); ok && hostScoped {
+			// Host-scoped address (loopback / link-local unicast): only meaningful
+			// relative to THIS host, so host.id joins the identity — otherwise host
+			// A's 127.0.0.1 (or the shared 169.254.169.254 metadata endpoint) would
+			// collapse onto host B's, wiring unrelated hosts together. The address
+			// is stored RFC 5952-canonical; routable peers keep their raw form (no
+			// churn). Toise host-scopes exactly this set on its side (ADR 0032).
+			epID[idKeyServerAddress] = canon
+			epID[idKeyHost] = hostID
+			epDedup = hostID + "|" + canon + ":" + d.port + "/" + transportTCP
+		}
 		if !epDone[epDedup] {
 			epDone[epDedup] = true
 			obs.Entities = append(obs.Entities, entity.Entity{
@@ -380,14 +392,18 @@ func processCreateTime(pid int32) (int64, bool) {
 	return ct, true
 }
 
-// resolvablePeer reports whether a peer IP is worth a dependency edge: a real
-// remote unicast address, not loopback/link-local/unspecified/multicast (a
-// service talking to itself locally is not topology).
+// resolvablePeer reports whether a peer IP is worth a dependency edge.
+// Loopback and link-local UNICAST are kept: they are emitted host-scoped
+// (host.id joins the endpoint identity in buildObservation), so a dependency on
+// a local service (127.0.0.1) or the cloud metadata endpoint (169.254.169.254)
+// is real, non-collapsing topology. Only the unspecified address and multicast
+// (incl. link-local multicast) are dropped as non-topology. netip parses an
+// IPv6 zone (fe80::1%eth0), which net.ParseIP rejects.
 func resolvablePeer(addr string) bool {
-	ip := net.ParseIP(addr)
-	if ip == nil {
+	a, err := netip.ParseAddr(addr)
+	if err != nil {
 		return false
 	}
-	return !(ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() || ip.IsMulticast())
+	a = a.Unmap()
+	return !(a.IsUnspecified() || a.IsMulticast())
 }
