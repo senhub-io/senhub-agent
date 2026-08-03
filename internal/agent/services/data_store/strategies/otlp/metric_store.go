@@ -51,6 +51,7 @@ type storedMetric struct {
 	value      float64
 	unit       string
 	tags       map[string]string
+	histogram  *datapoint.HistogramValue
 	observedAt time.Time
 }
 
@@ -169,6 +170,7 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		value:      dp.Value,
 		unit:       tagMap["unit"],
 		tags:       tagsCopy,
+		histogram:  dp.Histogram,
 		observedAt: when,
 	}
 	s.mu.Unlock()
@@ -199,6 +201,7 @@ func (s *metricStore) snapshotForCheckpoint() []entrySnapshot {
 			Value:      e.value,
 			Unit:       e.unit,
 			Tags:       e.tags,
+			Histogram:  e.histogram,
 			ObservedAt: e.observedAt,
 		})
 	}
@@ -228,6 +231,7 @@ func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
 			value:      e.Value,
 			unit:       e.Unit,
 			tags:       e.Tags,
+			histogram:  e.Histogram,
 			observedAt: e.ObservedAt,
 		}
 		s.probeCounts[e.ProbeName]++
@@ -252,6 +256,7 @@ func (s *metricStore) snapshot() ([]otelmapper.CacheMetric, []time.Time) {
 			Value:      e.value,
 			Unit:       e.unit,
 			Tags:       e.tags,
+			Histogram:  e.histogram,
 		})
 		times = append(times, e.observedAt)
 	}
@@ -302,11 +307,22 @@ func storeKey(probeName, probeType, metricName string, tagMap map[string]string)
 	b.WriteString(metricName)
 	for _, k := range keys {
 		b.WriteByte('|')
-		b.WriteString(k)
+		b.WriteString(escapeStoreKeyPart(k))
 		b.WriteByte('=')
-		b.WriteString(tagMap[k])
+		b.WriteString(escapeStoreKeyPart(tagMap[k]))
 	}
 	return b.String()
+}
+
+// escapeStoreKeyPart keeps storeKey injective under its `|`/`=` separators so
+// two distinct externally-controlled tag sets cannot alias onto one series.
+// The fast-path leaves separator-free values byte-identical, so ordinary keys
+// (and their checkpoint continuity) are unchanged.
+func escapeStoreKeyPart(s string) string {
+	if !strings.ContainsAny(s, `\|=`) {
+		return s
+	}
+	return strings.NewReplacer(`\`, `\\`, "|", `\|`, "=", `\=`).Replace(s)
 }
 
 // coerceToFloat64 mirrors the http strategy helper: we may receive

@@ -24,7 +24,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -76,7 +75,6 @@ type ChronyProbe struct {
 	moduleLogger *logger.ModuleLogger
 	run          runFunc
 	entitySrc    *chronyEntitySource
-	unregister   func()
 }
 
 // NewChronyProbe constructs the probe. All config defaults are applied
@@ -103,6 +101,7 @@ func NewChronyProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	p.SetProbeType(ProbeType)
 	p.run = p.runOnce
 	p.entitySrc = newChronyEntitySource()
+	p.SetEntitySource(p.entitySrc)
 	return p, nil
 }
 
@@ -117,14 +116,10 @@ func (p *ChronyProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Str("chronyc_path", p.cfg.ChronyPath).
 		Msg("Starting chrony probe")
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
 func (p *ChronyProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	return nil
 }
 

@@ -7,6 +7,62 @@ import (
 	"testing"
 )
 
+func TestWriteOTLPStrategyFragment(t *testing.T) {
+	t.Run("http protocol written", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := WriteOTLPStrategyFragment(dir, "vm.example:4318", "http"); err != nil {
+			t.Fatalf("WriteOTLPStrategyFragment: %v", err)
+		}
+		body, err := os.ReadFile(filepath.Join(dir, "strategies.d", "10-otlp.yaml"))
+		if err != nil {
+			t.Fatalf("read fragment: %v", err)
+		}
+		if !strings.Contains(string(body), "endpoint: vm.example:4318") || !strings.Contains(string(body), "protocol: http") {
+			t.Errorf("fragment missing endpoint/protocol:\n%s", body)
+		}
+	})
+
+	t.Run("empty protocol defaults to grpc", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := WriteOTLPStrategyFragment(dir, "otlp:4317", ""); err != nil {
+			t.Fatalf("WriteOTLPStrategyFragment: %v", err)
+		}
+		body, _ := os.ReadFile(filepath.Join(dir, "strategies.d", "10-otlp.yaml"))
+		if !strings.Contains(string(body), "protocol: grpc") {
+			t.Errorf("empty protocol should default to grpc:\n%s", body)
+		}
+	})
+
+	t.Run("invalid protocol rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := WriteOTLPStrategyFragment(dir, "otlp:4317", "thrift"); err == nil {
+			t.Error("invalid protocol must be rejected, not written")
+		}
+	})
+
+	// audit M3: an endpoint with YAML-breaking chars must be rejected, not
+	// concatenated raw into the fragment.
+	t.Run("endpoint injection rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := WriteOTLPStrategyFragment(dir, "collector:4317\n  insecure: true", "grpc"); err == nil {
+			t.Error("newline-injecting endpoint must be rejected")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "strategies.d", "10-otlp.yaml")); !os.IsNotExist(err) {
+			t.Error("no fragment should be written for a rejected endpoint")
+		}
+	})
+
+	t.Run("empty endpoint is a no-op", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := WriteOTLPStrategyFragment(dir, "", "grpc"); err != nil {
+			t.Fatalf("no-op should not error: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "strategies.d", "10-otlp.yaml")); !os.IsNotExist(err) {
+			t.Error("no fragment should be written for an empty endpoint")
+		}
+	})
+}
+
 func TestApplyInstallOverrides(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "agent.yaml")

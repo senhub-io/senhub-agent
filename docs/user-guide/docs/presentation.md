@@ -31,10 +31,13 @@ environments where no callback to the SenHub backend is allowed.
   Cloud OTLP. **Metric names, units and attributes match across
   all sinks**, so a query that works in Grafana today keeps working
   in your PRTG sensor template tomorrow.
-- **Tiered licensing.** A free tier ships the OS probes (CPU,
-  memory, disk, network, Linux logs). The Pro and Enterprise tiers
-  unlock the vendor probes — Citrix, NetScaler, Redfish, Veeam,
-  syslog, custom events, network synthetic checks.
+- **Tiered licensing.** The free tier ships the whole universal
+  collection tier — OS/host probes (CPU, memory, disk, network),
+  log collection, network checks, and the application, database
+  and broker probes (MySQL, PostgreSQL, Redis, Kafka, Docker, and
+  more). The Pro and Enterprise tiers unlock the deep vendor
+  integrations — Citrix, NetScaler, Redfish, Veeam, custom events,
+  network synthetic checks.
 - **Self-observability built in.** Process resources, OTLP push
   health, collect-cycle counters and a `system.processes.count`
   metric are emitted on every output so the agent stays

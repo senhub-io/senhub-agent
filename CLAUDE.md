@@ -11,9 +11,9 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 - **OTel semantic conventions (canonical)** → `docs/developer-guide/otel/senhub-semantic-conventions.md`
 - **Release notes** → `docs/releases/`
 
-## ⚠️ Temporary dependency fork
+## ⚠️ Temporary dependency fork (enterprise only)
 
-`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). Detailed rationale lives in the private companion repo `senhub-io/senhub-internal-docs` (`TEMPORARY-FORK-citrix-adc-nitro-go.md`). Quarterly review; revert when upstream merges.
+`github.com/citrix/adc-nitro-go` is replaced by `github.com/senhub-io/adc-nitro-go` (singleton stats panic fix, upstream PR #36 pending). The `citrix`/`netscaler` probes that depend on it live in `senhub-agent-enterprise`, so the `require` + `replace` now live **only in that repo's `go.mod`** — this OSS core no longer requires adc-nitro-go (pruned in #208). Detailed rationale lives in the private companion repo `senhub-io/senhub-internal-docs` (`TEMPORARY-FORK-citrix-adc-nitro-go.md`). Quarterly review; revert when upstream merges.
 
 ## Project-specific build conventions
 
@@ -70,8 +70,8 @@ See `docs/developer-guide/current-development.md` for the live roadmap.
 
 ## License system
 
-Tiers: **Free** (cpu, memory, logicaldisk, network, linux_logs), **Pro** (most observability probes), **Enterprise** (wildcard).
-Full reference: `docs/LICENSE-SYSTEM.md`. License code in `internal/agent/services/license/`.
+Tiers: **Free** (the universal collection tier — OS/host, logs, network checks, and the application/database/broker probes; everything except the paid set), **Pro** (16 deep vendor / HA / cloud / active-check probes: `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`), **Enterprise** (wildcard). The authoritative split is `freeTierProbes` / `paidProbes` in `internal/agent/services/license/` (`license.go` + `probe_catalog.go`).
+Full reference: `docs/LICENSE-SYSTEM.md`.
 
 ## Where to look for what
 

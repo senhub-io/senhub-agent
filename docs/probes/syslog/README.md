@@ -289,7 +289,7 @@ ss -tulpn | grep 514
 **Verify probe configuration:**
 ```bash
 # Check configuration (multi-file layout)
-grep -rA5 "type: syslog" /etc/senhub/probes.d/
+grep -rA5 "type: syslog" /etc/senhub-agent/probes.d/
 ```
 
 ### Permission Denied (Port < 1024)

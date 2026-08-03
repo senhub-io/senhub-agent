@@ -29,7 +29,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -62,7 +61,6 @@ type unifiProbe struct {
 	client       *http.Client
 
 	entitySource *unifiEntitySource
-	unregister   func()
 }
 
 // NewUnifiProbe builds a unifi probe from its raw params block.
@@ -143,11 +141,9 @@ func (p *unifiProbe) GetTargetStrategies() []string {
 func (p *unifiProbe) ShouldStart() bool          { return true }
 func (p *unifiProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
-// OnStart registers the entity source so the monitored controller folds
-// into the agent's entity snapshot. No connection is opened here: the
-// session is established per cycle in Collect.
+// OnStart opens no connection: the session is established per cycle in
+// Collect.
 func (p *unifiProbe) OnStart(_ chan struct{}) error {
-	p.unregister = entity.RegisterSource(p.entitySource)
 	p.moduleLogger.Info().
 		Str("endpoint", p.cfg.Endpoint).
 		Str("site", p.cfg.Site).
@@ -156,9 +152,6 @@ func (p *unifiProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *unifiProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	p.client.CloseIdleConnections()
 	return nil
 }

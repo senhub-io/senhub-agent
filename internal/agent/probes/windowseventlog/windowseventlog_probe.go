@@ -33,6 +33,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -109,6 +110,12 @@ type WindowsEventLogProbe struct {
 	reader *eventReader
 
 	quitOnce sync.Once
+
+	// emitted counts event records published to the log rail over the
+	// probe's lifetime. Lives on the probe (not the OS reader) and is
+	// surfaced through Collect as the conduit's throughput self-metric
+	// (#701).
+	emitted atomic.Uint64
 }
 
 // NewWindowsEventLogProbe constructs the probe. Returns an error only
@@ -183,11 +190,12 @@ func parseConfig(config map[string]interface{}) (WindowsEventLogProbeConfig, err
 	return parsed, nil
 }
 
-// GetTargetStrategies returns an empty list — this probe publishes to
-// the agentstate log channel directly, like linux_logs.
-func (p *WindowsEventLogProbe) GetTargetStrategies() []string {
-	return []string{}
-}
+// GetTargetStrategies is intentionally NOT overridden to []: the event
+// records ride the log rail (agentstate.PublishLog), but Collect() also
+// emits the conduit's throughput self-metric, which must route to the
+// metric sinks like any other probe. It inherits the BaseProbe default
+// (senhub, prtg, http, otlp). (Before #701 this returned []string{}, so a
+// datapoint from Collect would have been dropped to no sink.)
 
 // ShouldStart always returns true; the platform check happens in
 // OnStart so a non-Windows host fails loudly rather than silently
@@ -202,10 +210,14 @@ func (p *WindowsEventLogProbe) GetInterval() time.Duration {
 	return p.config.PollInterval
 }
 
-// Collect is a no-op. The wevtapi subscription pushes records onto the
-// agent log channel as they arrive.
+// Collect surfaces the conduit's throughput self-metric: the wevtapi
+// subscription pushes event records onto the log rail as they arrive, so
+// the only datapoint here is the cumulative count of records emitted (#701).
 func (p *WindowsEventLogProbe) Collect() ([]data_store.DataPoint, error) {
-	return nil, nil
+	points := []data_store.DataPoint{
+		{Name: "senhub.windows_eventlog.records_emitted", Value: float64(p.emitted.Load()), Timestamp: time.Now()},
+	}
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 // OnStart opens the wevtapi subscription and wires the quit channel.
@@ -221,7 +233,7 @@ func (p *WindowsEventLogProbe) OnStart(quitChannel chan struct{}) error {
 		Str("bookmark_path", p.config.BookmarkPath).
 		Msg("Starting windows_eventlog probe")
 
-	reader, err := newEventReader(p.config, p.moduleLogger, p.GetName())
+	reader, err := newEventReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
 	if err != nil {
 		return fmt.Errorf("start windows event log reader: %w", err)
 	}

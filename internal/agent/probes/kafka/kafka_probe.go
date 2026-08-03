@@ -32,7 +32,6 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -48,8 +47,7 @@ type kafkaProbe struct {
 	moduleLogger *logger.ModuleLogger
 
 	// entity rail (Toise topology)
-	entitySrc  *kafkaEntitySource
-	unregister func()
+	entitySrc *kafkaEntitySource
 
 	// seams for unit testing
 	newAdmin  adminFactory
@@ -125,17 +123,11 @@ func (p *kafkaProbe) ShouldStart() bool { return true }
 
 func (p *kafkaProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
-// OnStart registers the entity source with the global detector.
 func (p *kafkaProbe) OnStart(_ chan struct{}) error {
-	p.unregister = entity.RegisterSource(p.entitySrc)
 	return nil
 }
 
-// OnShutdown unregisters the entity source and closes any open connections.
 func (p *kafkaProbe) OnShutdown(_ context.Context) error {
-	if p.unregister != nil {
-		p.unregister()
-	}
 	return nil
 }
 

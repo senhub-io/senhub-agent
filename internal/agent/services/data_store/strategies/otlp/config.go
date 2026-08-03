@@ -18,6 +18,7 @@ package otlp
 import (
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -213,6 +214,14 @@ type EntitiesSignal struct {
 	// DependsOnExcludeCIDRs drops dependency flows whose peer address falls in
 	// any of these ranges (operator privacy filter).
 	DependsOnExcludeCIDRs []*net.IPNet
+	// RedactAttributes is the set of descriptive attribute keys DROPPED from
+	// every entity event before encoding (operator privacy filter, #682).
+	// Drop, not mask: entity.state is a full state, so a dropped key simply
+	// never appears on the wire — a literal placeholder would poison the
+	// graph with a fake shared value. Applies to Entity.Attributes only;
+	// identity keys are refused at parse time and relationship descriptors
+	// are untouched. Empty by default (all attributes ship).
+	RedactAttributes map[string]struct{}
 	// Governance is the operator metadata stamped on this host's entity
 	// (owner/criticality/location/lifecycle/labels). Empty by default.
 	Governance governance.Governance
@@ -231,6 +240,27 @@ type TracesSignal struct {
 	// SampleRatio is the head sampling ratio (0.0 = drop all, 1.0 =
 	// keep all). Applied via sdktrace.ParentBased(TraceIDRatioBased).
 	SampleRatio float64
+	// RelayEnrichment inserts the agent's tenancy context (tenant/site/
+	// deployment.environment, insert-if-absent, from global_tags) onto
+	// RELAYED spans so third-party app traces join the agent's own infra
+	// telemetry in the backend (#294). Standard / operator keys only — no
+	// product-namespaced attributes (a relayed-by marker is deferred to
+	// #698). Default true; set false for a verbatim pass-through relay.
+	// Never overwrites the emitting app's own identity attributes.
+	RelayEnrichment bool
+	// RelayTenantOverrides swap the default insert-if-absent tag set for
+	// relayed spans whose Resource matches a rule — the shared-gateway case
+	// where one agent relays traffic for several end-clients.
+	RelayTenantOverrides []TraceTenantOverride
+}
+
+// TraceTenantOverride assigns a tag set to relayed spans whose Resource
+// attribute MatchKey equals MatchValue (e.g. service.namespace = "client-b").
+// The tags are inserted only when the emitter didn't set the key.
+type TraceTenantOverride struct {
+	MatchKey   string
+	MatchValue string
+	Tags       map[string]string
 }
 
 // ResourceConfig holds the OTel Resource attributes attached to every
@@ -261,8 +291,15 @@ type Config struct {
 	// to all three signals — a per-signal override is not supported
 	// because mixing transports against one endpoint is a
 	// configuration mistake far more often than an intent.
-	Protocol    string
-	Headers     map[string]string
+	Protocol string
+	Headers  map[string]string
+	// Tenant is an ergonomic shortcut for the X-Scope-OrgID request header —
+	// the de-facto multi-tenant routing key across Mimir/Loki/Tempo and
+	// VictoriaMetrics (#240). It is applied to every signal. An explicit
+	// X-Scope-OrgID in `headers:` wins (the field is a shortcut, not an
+	// override). Independent of the license — ingest tenancy is an edge/auth
+	// concern, not a paid-probe gate.
+	Tenant      string
 	TLS         TLSConfig
 	Compression string
 	Timeout     time.Duration
@@ -362,6 +399,44 @@ func (t SignalTransport) ResolveHeaders(rootHeaders map[string]string) map[strin
 	return rootHeaders
 }
 
+// xScopeOrgIDHeader is the de-facto multi-tenant routing header used across
+// Mimir/Loki/Tempo and VictoriaMetrics. The `tenant` config field is sugar for
+// it (#240).
+const xScopeOrgIDHeader = "X-Scope-OrgID"
+
+// validateHeaderValue rejects control characters (CR/LF and other <0x20 / 0x7f)
+// that would break HTTP/gRPC header framing or allow header injection.
+func validateHeaderValue(v string) error {
+	for _, r := range v {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("value contains a control character (0x%02x); it must be a plain header token", r)
+		}
+	}
+	return nil
+}
+
+// withTenantHeader returns headers with X-Scope-OrgID set from tenant, unless an
+// explicit header of that name (case-insensitive) is already present — the
+// explicit header wins, the field is only a shortcut. The input map is never
+// mutated (a signal may share the root headers map); a copy is returned when
+// the header is added.
+func withTenantHeader(headers map[string]string, tenant string) map[string]string {
+	if tenant == "" {
+		return headers
+	}
+	for k := range headers {
+		if strings.EqualFold(k, xScopeOrgIDHeader) {
+			return headers
+		}
+	}
+	out := make(map[string]string, len(headers)+1)
+	for k, v := range headers {
+		out[k] = v
+	}
+	out[xScopeOrgIDHeader] = tenant
+	return out
+}
+
 // ResolveTLS returns the TLS config to use for this signal. When the
 // signal has its own TLS block (non-nil pointer), it fully overrides
 // the root TLS. Returns rootTLS otherwise.
@@ -406,13 +481,16 @@ func defaultConfig() Config {
 			DependsOnDebounce: DefaultDependsOnDebounce,
 		},
 		Traces: TracesSignal{
+			// RelayEnrichment default true — see parseSignals for the
+			// explicit-false override (defaults are applied before parse).
 			// Disabled by default — opt-in plumbing. Operators
 			// enable explicitly when they want span export.
-			Enabled:      false,
-			BatchSize:    DefaultTracesBatchSize,
-			BatchTimeout: DefaultTracesBatchTimeout,
-			BufferSize:   DefaultTracesBufferSize,
-			SampleRatio:  DefaultTracesSampleRatio,
+			Enabled:         false,
+			BatchSize:       DefaultTracesBatchSize,
+			BatchTimeout:    DefaultTracesBatchTimeout,
+			BufferSize:      DefaultTracesBufferSize,
+			SampleRatio:     DefaultTracesSampleRatio,
+			RelayEnrichment: true,
 		},
 		Resource: ResourceConfig{
 			ServiceName: DefaultServiceName,
@@ -543,6 +621,19 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 		// service env vars on Windows) instead of living in the config
 		// file in plaintext. Same syntax as the OTel collector.
 		cfg.Headers = expandEnvMap(hdrs)
+	}
+
+	// tenant / org_id: ergonomic shortcut for the X-Scope-OrgID header (#240).
+	// Accept either key; `tenant` wins if both are set.
+	if v, ok := params["tenant"].(string); ok && v != "" {
+		cfg.Tenant = expandEnv(v)
+	} else if v, ok := params["org_id"].(string); ok && v != "" {
+		cfg.Tenant = expandEnv(v)
+	}
+	if cfg.Tenant != "" {
+		if err := validateHeaderValue(cfg.Tenant); err != nil {
+			return cfg, fmt.Errorf("tenant: %w", err)
+		}
 	}
 
 	if err := parseTLS(params["tls"], &cfg.TLS); err != nil {
@@ -864,6 +955,13 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 			}
 			entities.DependsOnExcludeCIDRs = cidrs
 		}
+		if raw, ok := em["redact_attributes"]; ok {
+			set, err := parseRedactAttributes(raw)
+			if err != nil {
+				return fmt.Errorf("entities.redact_attributes: %w", err)
+			}
+			entities.RedactAttributes = set
+		}
 		if gov, err := governance.Parse(em["governance"]); err != nil {
 			return fmt.Errorf("entities.governance: %w", err)
 		} else {
@@ -894,11 +992,51 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 			}
 			traces.SampleRatio = v
 		}
+		if v, ok := tm["relay_enrichment"].(bool); ok {
+			traces.RelayEnrichment = v
+		}
+		if overrides, err := parseTraceTenantOverrides(tm["relay_tenant_overrides"]); err != nil {
+			return err
+		} else if overrides != nil {
+			traces.RelayTenantOverrides = overrides
+		}
 		if err := parseSignalTransport("traces", tm, &traces.SignalTransport); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// parseTraceTenantOverrides reads the signals.traces.relay_tenant_overrides
+// list: each entry has a `match: {key, value}` selector and a `tags` map to
+// insert-if-absent on matching relayed spans. Returns nil when absent.
+func parseTraceTenantOverrides(raw interface{}) ([]TraceTenantOverride, error) {
+	list, ok := raw.([]interface{})
+	if !ok || len(list) == 0 {
+		return nil, nil
+	}
+	out := make([]TraceTenantOverride, 0, len(list))
+	for i, item := range list {
+		m := readStringKeyedMap(item)
+		if m == nil {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: expected a map", i)
+		}
+		match := readStringKeyedMap(m["match"])
+		if match == nil {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: missing `match`", i)
+		}
+		key, _ := match["key"].(string)
+		value, _ := match["value"].(string)
+		if key == "" || value == "" {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: match.key and match.value are required", i)
+		}
+		tags := readStringMap(m["tags"])
+		if len(tags) == 0 {
+			return nil, fmt.Errorf("traces.relay_tenant_overrides[%d]: at least one tag is required", i)
+		}
+		out = append(out, TraceTenantOverride{MatchKey: key, MatchValue: value, Tags: tags})
+	}
+	return out, nil
 }
 
 // parseSignalTransport reads the optional endpoint/headers/tls fields
@@ -1011,6 +1149,78 @@ func readInt(raw interface{}) (int, bool) {
 		return int(v), true
 	}
 	return 0, false
+}
+
+// entityIdentityKeys are the attribute keys that carry entity IDENTITY
+// (Entity.ID) across the entity types the agent emits: host.id (host),
+// service.instance.id (service.instance), container.id (container),
+// network.device.id (network.device), db.instance.id (db) and vmid
+// (compute.vm, composite with host.id). There is no canonical set in the
+// entity package — identity keys are per-type map keys — so this list is
+// the enumeration of every key used in an Entity.ID today. Identity is
+// exact and immutable (entity/model.go); redacting it would destroy the
+// entity rather than protect it, so these keys are refused in
+// redact_attributes.
+var entityIdentityKeys = []string{
+	"container.id",
+	"db.instance.id",
+	"host.id",
+	"network.device.id",
+	"service.instance.id",
+	"vmid",
+}
+
+// parseRedactAttributes parses the redact_attributes YAML list of
+// attribute-key strings into a lookup set, rejecting identity keys — an
+// entity's identity must never be redactable. Non-identity keys are
+// free-form (probe entities carry an open vocabulary), so unknown keys
+// are accepted as written.
+func parseRedactAttributes(raw interface{}) (map[string]struct{}, error) {
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("must be a list of attribute-key strings")
+	}
+	out := make(map[string]struct{}, len(list))
+	for i, item := range list {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("entry %d is not a string", i)
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, fmt.Errorf("entry %d is empty", i)
+		}
+		if slices.Contains(entityIdentityKeys, s) {
+			return nil, fmt.Errorf("entry %d %q is an entity identity key and cannot be redacted (identity keys: %s)",
+				i, s, strings.Join(entityIdentityKeys, ", "))
+		}
+		out[s] = struct{}{}
+	}
+	return out, nil
+}
+
+// ValidateEntitiesRedactAttributes validates the
+// signals.entities.redact_attributes field of a raw otlp strategy params
+// map without running the full ParseConfig. Used by `agent config check`
+// to surface the identity-key rejection with the same message the agent
+// produces at boot. A nil error means the field is absent or valid.
+func ValidateEntitiesRedactAttributes(params configuration.StorageConfigParams) error {
+	signals := readStringKeyedMap(params["signals"])
+	if signals == nil {
+		return nil
+	}
+	em := readStringKeyedMap(signals["entities"])
+	if em == nil {
+		return nil
+	}
+	raw, ok := em["redact_attributes"]
+	if !ok {
+		return nil
+	}
+	if _, err := parseRedactAttributes(raw); err != nil {
+		return fmt.Errorf("signals.entities.redact_attributes: %w", err)
+	}
+	return nil
 }
 
 // parseCIDRStrings parses a YAML list of CIDR strings into IPNets, rejecting a

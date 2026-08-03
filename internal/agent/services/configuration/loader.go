@@ -100,6 +100,9 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		if err := Substitute(&data); err != nil {
 			return LocalConfigurationData{}, fmt.Errorf("substituting variables in %s: %w", configPath, err)
 		}
+		if err := applyLicenseSidecar(&data, configPath); err != nil {
+			return LocalConfigurationData{}, err
+		}
 		return data, nil
 	}
 
@@ -116,6 +119,9 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	merged := mergeConfigs(data, extraProbes, extraStrategies)
 	if err := Substitute(&merged); err != nil {
 		return LocalConfigurationData{}, fmt.Errorf("substituting variables: %w", err)
+	}
+	if err := applyLicenseSidecar(&merged, configPath); err != nil {
+		return LocalConfigurationData{}, err
 	}
 	return merged, nil
 }

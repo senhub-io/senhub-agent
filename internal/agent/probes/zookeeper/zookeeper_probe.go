@@ -17,7 +17,6 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
-	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -49,8 +48,7 @@ type ZookeeperProbe struct {
 	// dial is injectable for tests; matches net.DialTimeout signature.
 	dial func(network, address string, timeout time.Duration) (net.Conn, error)
 
-	entityObs              entityObserver
-	unregisterEntitySource func()
+	entityObs entityObserver
 }
 
 // fetchConf sends the "conf" four-letter-word to ZooKeeper and returns the
@@ -166,7 +164,6 @@ func (p *ZookeeperProbe) ShouldStart() bool          { return true }
 func (p *ZookeeperProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
 func (p *ZookeeperProbe) OnStart(_ chan struct{}) error {
-	p.unregisterEntitySource = entity.RegisterSource(&p.entityObs)
 	p.moduleLogger.Info().
 		Str("host", p.cfg.Host).
 		Int("port", p.cfg.Port).
@@ -175,9 +172,6 @@ func (p *ZookeeperProbe) OnStart(_ chan struct{}) error {
 }
 
 func (p *ZookeeperProbe) OnShutdown(_ context.Context) error {
-	if p.unregisterEntitySource != nil {
-		p.unregisterEntitySource()
-	}
 	return nil
 }
 
