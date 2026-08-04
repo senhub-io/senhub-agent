@@ -242,11 +242,11 @@ func (p *EventProbe) publishLog(event map[string]interface{}, timestamp time.Tim
 	}
 
 	agentstate.PublishLog(agentstate.LogRecord{
-		Timestamp:         timestamp,
-		Severity:          eventSeverityToOtel[severityStr],
-		SeverityText:      severityStr,
-		Body:              body,
-		Attributes:        attrs,
+		Timestamp:    timestamp,
+		Severity:     eventSeverityToOtel[severityStr],
+		SeverityText: severityStr,
+		Body:         body,
+		Attributes:   attrs,
 		// Fields carries the raw event map so the /event/insert converter
 		// (FromEventLog) rebuilds the exact legacy payload, structure
 		// included — the flat Attributes above cannot hold arrays/objects
