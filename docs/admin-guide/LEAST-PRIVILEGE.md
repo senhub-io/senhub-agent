@@ -55,10 +55,45 @@ exceptions, and how to grant exactly what they need:
 |---|---|---|
 | `cpu`, `memory`, `logicaldisk`, `network` | nothing | reads `/proc`, `/sys` — works as-is |
 | `linux_logs` | journal read | `systemd-journal` group (set in the shipped unit) |
+| `filetail` on `/var/log/syslog`, `auth.log` | read `adm`-owned files | `adm` group (joined by the installer, see below) |
 | `snmp_trap` on the default UDP **162** | bind a privileged port | `CAP_NET_BIND_SERVICE`, or use a high port |
 | `otlp_receiver` on 4317 / 4318 | nothing | ports are above 1024 |
 | ICMP / ping active checks | raw sockets | `CAP_NET_RAW` |
 | Remote probes (databases, NetScaler, Veeam, SNMP poll, …) | network + credentials | no host privilege; credentials in config |
+
+### Reading the system log files (`filetail`)
+
+The journal is covered by the shipped unit, but the classic log files are
+not readable by an unprivileged account: on Debian/Ubuntu
+`/var/log/syslog` and `/var/log/auth.log` are `syslog:adm 0640`. A
+`filetail` probe pointed at them collects nothing as `senhub`.
+
+The installer (`senhub-agent install`, and the `.deb` / `.rpm`
+postinstall) joins the service user to `adm` for this, so it works out of
+the box. `senhub-agent refresh-unit` performs the same join, which is how
+an install predating this behaviour is repaired. To do it by hand:
+
+```bash
+sudo usermod -aG adm senhub
+sudo systemctl restart senhub-agent.service
+```
+
+The membership is granted through the **user database**, not the unit's
+`SupplementaryGroups=`, on purpose: systemd honours the user's static
+groups, whereas a `SupplementaryGroups=` naming a group that does not
+exist on the distribution fails the unit at startup with `216/GROUP`.
+Where `adm` is absent, the join is skipped and the install still
+succeeds.
+
+> **Do not use `CAP_DAC_READ_SEARCH` for this.** It does make the logs
+> readable, which is why it gets reached for — but it bypasses *every*
+> file read permission check on the host, so the agent can then read
+> `/etc/shadow`, private keys and any customer data on the machine. The
+> `adm` group grants those log files and nothing else.
+
+> **Red Hat family:** `rsyslog` writes `/var/log/messages` as
+> `root:root 0600` there, so `adm` does not help. Read the journal with
+> `linux_logs` instead, which needs no extra grant.
 
 ### Prefer a high port over a capability
 
