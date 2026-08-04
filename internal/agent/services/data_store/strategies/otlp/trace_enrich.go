@@ -22,15 +22,15 @@ import (
 // "which agent relayed this span" and join it to the host node on the infra
 // graph (#698):
 //
-//   telemetry.relay.host.id  — the relaying agent's host.id, char-identical to
-//                              its host entity identity (gopsutil HostID, NOT
-//                              the operator-overridable Resource value, so the
-//                              strict join on the consumer holds).
-//   telemetry.relay.host.name — the relaying host name.
-//   telemetry.relay.instance.id — the relaying agent's service.instance.id,
-//                              the same value it sets as a Resource attribute
-//                              on its own entity emissions (the per-producer
-//                              reference key).
+//	telemetry.relay.host.id  — the relaying agent's host.id, char-identical to
+//	                           its host entity identity (gopsutil HostID, NOT
+//	                           the operator-overridable Resource value, so the
+//	                           strict join on the consumer holds).
+//	telemetry.relay.host.name — the relaying host name.
+//	telemetry.relay.instance.id — the relaying agent's service.instance.id,
+//	                           the same value it sets as a Resource attribute
+//	                           on its own entity emissions (the per-producer
+//	                           reference key).
 //
 // These keys are generic (any collector/gateway carries the same fact), so
 // they live in the neutral telemetry.* space, aligned with the topology
