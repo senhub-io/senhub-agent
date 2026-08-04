@@ -92,6 +92,9 @@ func installedServiceUser(unit string) string {
 // it yields the same hardened directives but User=root/Group=root, so a
 // legacy root agent keeps starting after a refresh.
 func canonicalUnitForUser(serviceUser string) string {
+	if serviceUser == rootServiceUser {
+		return canonicalRootUnit()
+	}
 	if serviceUser == defaultServiceUser {
 		return packagedSystemdUnit
 	}
@@ -105,6 +108,40 @@ func canonicalUnitForUser(serviceUser string) string {
 			out[i] = "Group=" + serviceUser
 		default:
 			out[i] = line
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// canonicalRootUnit renders rootSystemdScript — the very template
+// `install --user root` hands to kardianos/service — as a concrete unit
+// file, so a refresh produces what the install produced instead of a
+// second, disagreeing "canonical root unit" (#689).
+//
+// Refreshing a root install used to yield the hardened template with
+// User=root, which carries CapabilityBoundingSet=/AmbientCapabilities=
+// (all capabilities dropped). A refresh therefore stripped a --user root
+// install of the capabilities that are the whole reason to choose it —
+// raw ICMP sockets, privileged ports — and did it silently, since the
+// unit still started.
+//
+// Only two lines of the template are not literal unit syntax: ExecStart
+// carries kardianos placeholders, replaced here by the packaged
+// ExecStart so refreshedUnit can splice the installed one over it as it
+// does for every other user; and the {{if}}-wrapped WorkingDirectory,
+// dropped for the same reason (refreshedUnit re-inserts the installed
+// one alongside a non-canonical ExecStart).
+func canonicalRootUnit() string {
+	lines := strings.Split(rootSystemdScript, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "ExecStart="):
+			out = append(out, packagedExecStartLine())
+		case strings.HasPrefix(line, "{{if .WorkingDirectory}}"):
+			continue
+		default:
+			out = append(out, line)
 		}
 	}
 	return strings.Join(out, "\n")
