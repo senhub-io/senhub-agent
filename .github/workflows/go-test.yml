@@ -25,6 +25,20 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      # gofmt is the authoritative formatter, but nothing enforced it, so
+      # drift accumulated silently — five files by the time #717 was
+      # picked up, growing one at a time. `go vet` does not cover
+      # formatting, hence a dedicated step.
+      - name: Gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l ./app ./cmd ./internal ./probesdk)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-clean. Run: gofmt -w ./app ./cmd ./internal ./probesdk"
+            echo "$unformatted"
+            exit 1
+          fi
+
       - name: Build
         run: make build
       - name: Vet
