@@ -182,10 +182,67 @@ commands keep the root requirement:
 sudo senhub-agent install      # register + enable the service
 sudo senhub-agent start|stop|restart
 sudo senhub-agent uninstall
+sudo senhub-agent update <version>   # replaces binaries on disk
 ```
 
 Inspection commands (`version`, `status`, `config check`,
 `config show`) never require elevation.
+
+## The two binaries, and keeping them in sync
+
+A hardened install carries the agent binary twice:
+
+| Path | Owner | Role |
+|---|---|---|
+| `/usr/local/bin/senhub-agent` (or wherever you installed it) | `root` | the CLI operators invoke |
+| `/var/lib/senhub-agent/bin/senhub-agent` | `senhub` | the binary the unit execs (`ExecStart`) |
+
+This is a consequence of running the daemon unprivileged, not an
+accident. Self-update replaces a binary by writing a sibling file and
+renaming it over the target, so the daemon needs write access to its own
+binary **and** its directory. A root-owned binary under
+`/usr/local/bin` can never be replaced by a `senhub` process — and must
+not be, or the service account could plant a binary that root later
+executes. So the installer stages a copy the service owns, inside its
+`StateDirectory`, and the unit execs that one.
+
+The consequence is that the daemon updates only its own copy. Nothing
+lets it refresh the CLI copy, so the two drift as soon as auto-update
+runs — which is why the fleet routinely showed `senhub-agent --version`
+reporting an old release while the service ran a current one.
+
+Two behaviours close that gap:
+
+- **`sudo senhub-agent update <version>` reconciles both.** It runs as
+  root, so it is the one path that can write either file. After
+  replacing the CLI copy it copies the new release over the unit's
+  `ExecStart` target and hands ownership back to the unit's `User=`, so
+  the daemon can still self-update afterwards. The command names both
+  files it wrote. Re-running it is also the repair for a host whose
+  service copy fell behind.
+
+  It refuses one case: a service copy running a **newer** version than
+  the release being installed is left untouched and reported, rather
+  than silently downgraded (the daemon legitimately runs ahead of the
+  CLI).
+
+- **`senhub-agent --version` reports the skew.** When the service execs
+  a different build, the version output names it:
+
+  ```
+  Version: 0.5.3 (commit: a8e67f7)
+  Service binary: 0.5.4 (/var/lib/senhub-agent/bin/senhub-agent)
+  Note: the systemd service runs a different build than this CLI binary.
+        'sudo senhub-agent update <version>' updates both copies.
+  ```
+
+  The version is read from the other binary's build metadata; it is
+  never executed. Running a service-user-owned binary as root would
+  reintroduce exactly the escalation this layout prevents.
+
+A legacy root install whose unit execs the binary in `PATH` has a single
+copy, so neither behaviour has anything to reconcile and both stay
+silent.
 
 > **Windows:** the daemon still runs with administrator privileges;
 > the non-root work described here is Linux-specific.
