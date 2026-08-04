@@ -157,6 +157,19 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"edge_cluster_id", // per-NSX-edge-cluster health
 	},
 
+	// Conduit probes (#701/#703). These publish their records straight to
+	// the log rail; the only datapoints they hand to the cache are their own
+	// throughput/health counters, one per probe instance, carrying nothing
+	// but the systematic identity tags. The probe name is already part of
+	// every cache key, so two instances stay two series without any
+	// discriminant tag — an empty set is the correct declaration here, not a
+	// gap. Declaring it also silences the "not in DiscriminantTagsRegistry"
+	// warning these probes raised on every push (#724).
+	"filetail":         {},
+	"linux_logs":       {},
+	"windows_eventlog": {},
+	"snmp_trap":        {},
+
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
