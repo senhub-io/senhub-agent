@@ -107,24 +107,54 @@ func TestCanonicalUnitForUser(t *testing.T) {
 		t.Error("canonicalUnitForUser(senhub) must equal packagedSystemdUnit verbatim")
 	}
 
-	// Refreshing a root install must NOT reintroduce User=senhub — that
-	// is the 217/USER crash-loop the fix prevents (#575).
+	// A custom non-root user still gets the hardened unit, re-templated.
+	custom := canonicalUnitForUser("monitoring")
+	if !strings.Contains(custom, "User=monitoring") || !strings.Contains(custom, "Group=monitoring") {
+		t.Errorf("custom user must be templated into the hardened unit\n%s", custom)
+	}
+	if !strings.Contains(custom, "CapabilityBoundingSet=") {
+		t.Error("a non-root install keeps the hardening directives")
+	}
+}
+
+// A root install must come out of a refresh with the unit `install
+// --user root` writes — capabilities included. Refreshing used to yield
+// the hardened template with User=root, which drops every capability, so
+// a --user root install silently lost the raw sockets and privileged
+// ports it was chosen for (#689).
+//
+// This supersedes the previous expectation that the root unit was the
+// packaged one with User=/Group= re-templated: it now carries no User= at
+// all, root being implicit. The #575 property it guarded — a refresh must
+// never reintroduce User=senhub on a root install — is asserted below and
+// still holds.
+func TestCanonicalUnitForUser_RootConvergesWithInstall(t *testing.T) {
 	root := canonicalUnitForUser(rootServiceUser)
-	if !strings.Contains(root, "User=root") || !strings.Contains(root, "Group=root") {
-		t.Errorf("root unit must run as root\n%s", root)
-	}
+
 	if strings.Contains(root, "User=senhub") || strings.Contains(root, "Group=senhub") {
-		t.Errorf("root unit must not reference the senhub user\n%s", root)
+		t.Errorf("root unit must not reference the senhub user (#575)\n%s", root)
 	}
-	// Every hardening directive of the packaged unit survives — only
-	// User=/Group= are re-templated.
-	for _, line := range strings.Split(packagedSystemdUnit, "\n") {
-		if strings.HasPrefix(line, "User=") || strings.HasPrefix(line, "Group=") {
+	for _, dropped := range []string{"CapabilityBoundingSet=", "AmbientCapabilities=", "ProtectSystem=", "User="} {
+		if strings.Contains(root, dropped) {
+			t.Errorf("root unit must not carry %q — --user root exists to keep full privileges\n%s", dropped, root)
+		}
+	}
+
+	// Convergence with the install path, which is the acceptance
+	// criterion: identical to the template install --user root hands to
+	// kardianos, modulo the two templated lines.
+	installed := linuxSystemdScript(rootServiceUser)
+	for _, line := range strings.Split(installed, "\n") {
+		if strings.HasPrefix(line, "ExecStart=") || strings.HasPrefix(line, "{{if .WorkingDirectory}}") {
 			continue
 		}
 		if !strings.Contains(root, line) {
-			t.Errorf("root unit lost packaged line %q", line)
+			t.Errorf("refresh-unit root unit lost the install line %q", line)
 		}
+	}
+
+	if !strings.Contains(root, "ExecStart=") {
+		t.Error("root unit must carry a concrete ExecStart for refreshedUnit to splice over")
 	}
 }
 
@@ -240,16 +270,23 @@ func TestRefreshedUnit_NoExecStartFallsBackToCanonical(t *testing.T) {
 
 // A legacy root install keeps both its root identity (#575) and its
 // existing ExecStart (#396) through a refresh.
+//
+// Root identity is now expressed the way `install --user root` expresses
+// it — by the ABSENCE of a User= directive, systemd's default being root
+// — rather than by an explicit User=root on the hardened unit. That
+// change is the point of #689: the hardened unit drops every capability,
+// so writing it over a --user root install disarmed the very thing that
+// install was chosen for.
 func TestRefreshedUnit_RootInstallKeepsRootUserAndExecStart(t *testing.T) {
 	execLine := `ExecStart=/usr/local/bin/senhub-agent "run" "--config-path" "/etc/senhub-agent/agent.yaml"`
 	installed := cliInstalledUnit(rootServiceUser, execLine, "")
 	got := refreshedUnit(installed, binaryAlways(true))
 
-	if !strings.Contains(got, "User=root") || !strings.Contains(got, "Group=root") {
-		t.Errorf("root install must stay root\n%s", got)
+	if strings.Contains(got, "User=") || strings.Contains(got, "Group=") {
+		t.Errorf("a root unit carries no User=/Group= — root is systemd's default\n%s", got)
 	}
-	if strings.Contains(got, "User=senhub") || strings.Contains(got, "Group=senhub") {
-		t.Errorf("refresh must not switch a root install to the senhub user (#575)\n%s", got)
+	if strings.Contains(got, "AmbientCapabilities=") || strings.Contains(got, "CapabilityBoundingSet=") {
+		t.Errorf("refresh must not strip a root install of its capabilities (#689)\n%s", got)
 	}
 	if !strings.Contains(got, execLine) {
 		t.Errorf("root install ExecStart not preserved\n%s", got)
