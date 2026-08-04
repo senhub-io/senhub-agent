@@ -46,11 +46,11 @@ func TestCanonicalHostScopedAddr(t *testing.T) {
 		{"::1", "::1", true, true},
 		{"169.254.169.254", "169.254.169.254", true, true}, // cloud metadata
 		{"fe80::1", "fe80::1", true, true},
-		{"fe80::1%eth0", "fe80::1%eth0", true, true},       // zone kept
-		{"fe80::1%ETH0", "fe80::1%eth0", true, true},       // zone lowercased
-		{"::ffff:127.0.0.1", "127.0.0.1", true, true},      // IPv4-mapped unmapped → loopback
-		{"8.8.8.8", "8.8.8.8", false, true},                // routable
-		{"2001:db8::1", "2001:db8::1", false, true},        // routable v6
+		{"fe80::1%eth0", "fe80::1%eth0", true, true},         // zone kept
+		{"fe80::1%ETH0", "fe80::1%eth0", true, true},         // zone lowercased
+		{"::ffff:127.0.0.1", "127.0.0.1", true, true},        // IPv4-mapped unmapped → loopback
+		{"8.8.8.8", "8.8.8.8", false, true},                  // routable
+		{"2001:db8::1", "2001:db8::1", false, true},          // routable v6
 		{"2001:DB8:0:0:0:0:0:1", "2001:db8::1", false, true}, // RFC 5952 canonical
 		{"not-an-ip", "", false, false},
 		{"", "", false, false},

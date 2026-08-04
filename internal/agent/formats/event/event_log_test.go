@@ -76,8 +76,8 @@ func TestFromEventLog_ByteIdenticalAndStructurePreserved(t *testing.T) {
 	evt := map[string]any{
 		"host":     "app-7",
 		"message":  "deploy finished",
-		"severity": "Error", // a NAME, not 0..7 — the formatter maps it to Notice
-		"targets":  []any{"web", "db"},                    // structured — must survive
+		"severity": "Error",                                   // a NAME, not 0..7 — the formatter maps it to Notice
+		"targets":  []any{"web", "db"},                        // structured — must survive
 		"meta":     map[string]any{"build": "42", "ok": true}, // nested — must survive
 		"count":    3,
 	}
