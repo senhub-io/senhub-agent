@@ -12,12 +12,38 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
+// UpdateOption customises the update command.
+type UpdateOption func(*updateOptions)
+
+type updateOptions struct {
+	afterInstall func(newBinary string) (string, error)
+}
+
+// AfterInstall registers a hook run once the new binary is on disk and
+// before the operator-facing summary is printed. It receives the path the
+// new binary was written to and returns an extra path it reconciled, or
+// "" when it had nothing to do.
+//
+// The caller in app uses it to propagate the new binary to the
+// systemd-managed service copy: only that package knows about units, and
+// it cannot be called from here (app imports this package, not the
+// reverse). A failing hook fails the command — an update that left the
+// service on the old binary did not do what the operator asked (#723).
+func AfterInstall(hook func(newBinary string) (string, error)) UpdateOption {
+	return func(o *updateOptions) { o.afterInstall = hook }
+}
+
 // UpdateAgent handles the "update" CLI command.
 // With --list: lists available versions.
 // With a version argument: installs that version.
 // Without arguments: checks for newer version and prompts.
-func UpdateAgent(args *cliArgs.ParsedArgs) {
+func UpdateAgent(args *cliArgs.ParsedArgs, opts ...UpdateOption) {
 	log := logger.NewLogger(args)
+
+	options := updateOptions{}
+	for _, opt := range opts {
+		opt(&options)
+	}
 
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
 		Logger: log,
@@ -40,7 +66,7 @@ func UpdateAgent(args *cliArgs.ParsedArgs) {
 
 	// Explicit version requested
 	if args.WantedVersion != "" {
-		installVersion(updater, args, log)
+		installVersion(updater, args, log, options)
 		return
 	}
 
@@ -116,8 +142,19 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 	fmt.Println()
 }
 
-func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, log *logger.Logger) {
+func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, log *logger.Logger, options updateOptions) {
 	fmt.Printf("Updating from %s to %s...\n", cliArgs.Version, args.WantedVersion)
+
+	// Resolve our own path BEFORE the update. selfupdate replaces the
+	// binary by renaming the running file out of the way and writing the
+	// new one at this path, so afterwards os.Executable() (via
+	// /proc/self/exe) resolves to the renamed — and usually already
+	// deleted — old inode, not to the new release.
+	self, exeErr := os.Executable()
+	if exeErr != nil {
+		log.Error().Err(exeErr).Msg("Cannot resolve the running executable")
+		os.Exit(1)
+	}
 
 	updated, err := updater.Update(args.WantedVersion, args.UpdateRegistryUrl)
 	if err != nil {
@@ -125,9 +162,33 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		os.Exit(1)
 	}
 
-	if updated {
-		fmt.Println("Update installed. Restart the agent to use the new version (MSI-managed installs restart automatically).")
-	} else {
+	// The hook runs even when the binary was already at the wanted version:
+	// that is exactly the state a host lands in once the service copy has
+	// self-updated past the CLI one, and re-running `update` is how an
+	// operator repairs it. A dry run writes nothing, so it must not
+	// propagate the still-current binary either.
+	reconciled := ""
+	if options.afterInstall != nil && !args.DryRun {
+		reconciled, err = options.afterInstall(self)
+		if err != nil {
+			log.Error().Err(err).Msg("Updating the systemd-managed service binary failed")
+			os.Exit(1)
+		}
+	}
+
+	switch {
+	case updated && reconciled != "":
+		fmt.Println("Update installed:")
+		fmt.Printf("  %s (CLI)\n", self)
+		fmt.Printf("  %s (systemd service)\n", reconciled)
+		fmt.Println("Restart the agent to use the new version (MSI-managed installs restart automatically).")
+	case updated:
+		fmt.Printf("Update installed: %s\n", self)
+		fmt.Println("Restart the agent to use the new version (MSI-managed installs restart automatically).")
+	case reconciled != "":
+		fmt.Printf("Already up to date; the systemd service binary was stale and has been refreshed:\n  %s\n", reconciled)
+		fmt.Println("Restart the agent to use the new version.")
+	default:
 		fmt.Println("Already up to date.")
 	}
 }
