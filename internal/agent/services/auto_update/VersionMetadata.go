@@ -227,15 +227,27 @@ func FetchAllVersions(httpClient *http.Client, registryUrl string, includeBeta b
 	return all, nil
 }
 
-// GetLatestVersion returns the highest version from a list
+// GetLatestVersion returns the highest version from a list.
+//
+// Records are selected on the version they carry, never on the name of
+// the record. Each channel is published with an alias record first
+// ({"latest", "0.5.3"}, {"latest-beta", "0.5.3-beta"}) whose version is
+// the resolved one, and FetchAllVersions dedups by version keeping the
+// first — so for the newest release the alias record is usually the ONLY
+// one left. Skipping records named "latest" therefore hid the newest
+// stable release entirely, while the beta alias, named "latest-beta",
+// escaped the same filter and won: an include_beta host resolved
+// 'latest' to its own beta forever and never moved to the stable release
+// that superseded it (#730).
+//
+// A record that does not carry a parseable version (a server publishing
+// {"latest", "latest"}) is skipped by the parse below, which is the only
+// filter needed here.
 func GetLatestVersion(versions []VersionMetadata) *VersionMetadata {
 	var best *version.Version
 	var bestMeta *VersionMetadata
 
 	for i, v := range versions {
-		if v.Name == "latest" {
-			continue
-		}
 		parsed, err := version.NewVersion(v.Version)
 		if err != nil {
 			continue
