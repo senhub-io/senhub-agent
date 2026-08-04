@@ -125,7 +125,7 @@ func TestTraceEnricher_StampsRelayIdentity(t *testing.T) {
 func TestTraceEnricher_RelayFirstRelayWins(t *testing.T) {
 	e := testEnricher()
 	in := rsWithResource(map[string]string{
-		"service.name":   "checkout",
+		"service.name":     "checkout",
 		relayInstanceIDKey: "upstream-agent", // only one of the three present
 	})
 	out := e.enrich([]*tracepb.ResourceSpans{in})[0]

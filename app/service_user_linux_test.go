@@ -55,3 +55,28 @@ func TestInstallArtifactPaths(t *testing.T) {
 		}
 	})
 }
+
+// TestIsGroupMember pins the idempotence of the adm join (#732):
+// install and refresh-unit both run it, so an existing membership must
+// short-circuit instead of shelling out to usermod on every invocation.
+func TestIsGroupMember(t *testing.T) {
+	cases := []struct {
+		name string
+		gids []string
+		gid  string
+		want bool
+	}{
+		{"member", []string{"986", "999", "4"}, "4", true},
+		{"only group", []string{"4"}, "4", true},
+		{"not a member", []string{"986", "999"}, "4", false},
+		{"no groups", nil, "4", false},
+		{"substring must not match", []string{"40", "984"}, "4", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isGroupMember(tc.gids, tc.gid); got != tc.want {
+				t.Fatalf("isGroupMember(%v, %q) = %v, want %v", tc.gids, tc.gid, got, tc.want)
+			}
+		})
+	}
+}

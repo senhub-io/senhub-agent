@@ -43,3 +43,61 @@ func TestFetchVersionList_OKParsesArray(t *testing.T) {
 		t.Errorf("unexpected list: %+v", list)
 	}
 }
+
+// The release server publishes each channel with an alias record first,
+// carrying the resolved version:
+//
+//	stable: [{latest, 0.5.3}, {0.5.3, 0.5.3}, {0.5.2, 0.5.2}, …]
+//	beta:   [{latest-beta, 0.5.3-beta}, {0.5.3-beta, 0.5.3-beta}, …]
+//
+// FetchAllVersions dedups by version keeping the first record, so the
+// concrete 0.5.3 entry is dropped and the alias one survives. Discarding
+// alias records in GetLatestVersion then made the newest stable release
+// invisible, and the beta — whose alias is named "latest-beta" and so
+// escaped the same filter — won. An include_beta host stayed pinned to
+// its beta forever (#730).
+func TestGetLatestVersion_ChannelAliasRecordIsNotDiscarded(t *testing.T) {
+	merged := []VersionMetadata{
+		{Name: "latest", Version: "0.5.3"},
+		{Name: "0.5.2", Version: "0.5.2"},
+		{Name: "latest-beta", Version: "0.5.3-beta"},
+		{Name: "0.5.2-beta", Version: "0.5.2-beta"},
+	}
+
+	latest := GetLatestVersion(merged)
+	if latest == nil {
+		t.Fatal("GetLatestVersion() = nil, want the newest release")
+	}
+	if latest.Version != "0.5.3" {
+		t.Fatalf("GetLatestVersion() = %q, want %q — a stable release must not be hidden by the record that names its channel",
+			latest.Version, "0.5.3")
+	}
+}
+
+// A beta genuinely ahead of the newest stable must still win, otherwise
+// opting into betas would stop delivering them.
+func TestGetLatestVersion_NewerBetaStillWins(t *testing.T) {
+	merged := []VersionMetadata{
+		{Name: "latest", Version: "0.5.3"},
+		{Name: "latest-beta", Version: "0.5.4-beta"},
+	}
+
+	latest := GetLatestVersion(merged)
+	if latest == nil || latest.Version != "0.5.4-beta" {
+		t.Fatalf("GetLatestVersion() = %v, want 0.5.4-beta", latest)
+	}
+}
+
+// An alias record whose version is the literal channel name is not a
+// version; it must be ignored rather than crash or win.
+func TestGetLatestVersion_UnparseableRecordIsIgnored(t *testing.T) {
+	merged := []VersionMetadata{
+		{Name: "latest", Version: "latest"},
+		{Name: "0.5.3", Version: "0.5.3"},
+	}
+
+	latest := GetLatestVersion(merged)
+	if latest == nil || latest.Version != "0.5.3" {
+		t.Fatalf("GetLatestVersion() = %v, want 0.5.3", latest)
+	}
+}
