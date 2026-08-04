@@ -8,6 +8,7 @@ set -e
 
 SENHUB_USER="senhub"
 SENHUB_GROUP="senhub"
+LOG_READER_GROUP="adm"
 CONFIG_DIR="/etc/senhub-agent"
 STATE_DIR="/var/lib/senhub-agent"
 LOG_DIR="/var/log/senhub-agent"
@@ -34,6 +35,23 @@ if ! getent passwd "${SENHUB_USER}" >/dev/null 2>&1; then
         adduser --system --ingroup "${SENHUB_GROUP}" \
             --home "${STATE_DIR}" --no-create-home \
             --shell /usr/sbin/nologin "${SENHUB_USER}"
+    fi
+fi
+
+# 1b. System-log read access for the filetail probe. On Debian/Ubuntu
+#     /var/log/syslog and auth.log are syslog:adm 0640, so filetail reads
+#     nothing as an unprivileged user; the group grants exactly those
+#     files, unlike CAP_DAC_READ_SEARCH which bypasses every file read
+#     check on the host (#732). Journal reading is granted separately by
+#     the unit's SupplementaryGroups=, which is why this is not there:
+#     a SupplementaryGroups= naming a group absent from the distribution
+#     fails the unit at startup with 216/GROUP. Skipped where the group
+#     does not exist; never fatal.
+if getent group "${LOG_READER_GROUP}" >/dev/null 2>&1; then
+    if command -v usermod >/dev/null 2>&1; then
+        usermod -aG "${LOG_READER_GROUP}" "${SENHUB_USER}" || true
+    elif command -v gpasswd >/dev/null 2>&1; then
+        gpasswd -a "${SENHUB_USER}" "${LOG_READER_GROUP}" || true
     fi
 fi
 
