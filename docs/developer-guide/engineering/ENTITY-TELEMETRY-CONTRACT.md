@@ -229,6 +229,21 @@ Every metric, log record and span the agent emits carries, at minimum:
 Location and observer stay on the OTLP resource; `host.id` must never be
 duplicated as a per-datapoint tag.
 
+**Two tiers, not one rule with an exception** (frozen with Toise,
+2026-08-07 — both sides state it in these terms, because the two halves
+read as contradictory when quoted separately):
+
+1. the identity of the subject **described by the resource** — the agent's
+   own host — lives on the resource and never descends into a per-datapoint
+   label;
+2. the identity of a **remote target the agent observes** lives in a
+   per-datapoint attribute, because no resource describes it.
+
+A single `snmp_interface_*` series shows both tiers at once: `host_id` from
+the resource, naming the **observer**, and `network_device_id` per
+datapoint, naming the **observed**. The second tier is not an exception to
+the first; it is its other half.
+
 **Current reality, measured — this is an objective, not a description.**
 The three keys hold on the OTLP rail and nowhere else:
 
@@ -351,15 +366,39 @@ dashboard. `host` and `container` already ship both (`host_id`/`host_name`,
 type declaring **own-key** ships both. For `db`, the readable name is the
 operator's configured instance name when set, else `<db.system.name>@<host>`.
 
-### C6 — The declaration is enforced by a test
+### C6 — The identity string has one source, and equality is enforced
 
-A table maps every registered entity type to its C4 status and, for
-own-key types, to the attribute that must appear on its telemetry. A test
-walks the registry and fails when a type is missing from the table.
+The value stamped on the telemetry must be the **same string, byte for
+byte**, as the entity's identity. This is the silent failure mode: an
+entity keyed `postgresql:7459423122218342138` and a metric labelled
+`127.0.0.1:5432` never join, and nothing reports it — the query simply
+returns empty. A presence check does not catch it; only an equality check
+does.
+
+Two mechanisms, and the first is what makes the second cheap.
+
+**One resolution site.** The identity is resolved once, in the type's
+entity source, stored there, and *read* by the metric path — never
+recomputed. This is what makes `network.device` work today:
+`snmppoll/entity_source.go:194` pins `s.deviceID`, exposes it through a
+getter (`:155`), and `collect` receives it as a parameter and stamps it
+verbatim in `baseTags` (`collector.go:187-195`). Both the entity identity
+and the metric attribute derive from that one string, so divergence is not
+prevented by discipline — it is structurally impossible. Any type
+recomputing its identity on the metric path is a defect regardless of
+whether the two expressions currently agree.
+
+**One table, enforced.** A table maps every registered entity type to its
+C4 status and, for own-key types, to the attribute that must appear on its
+telemetry. A test walks the registry and fails when a type is missing from
+the table, when a declared attribute is absent from the type's emitted
+telemetry, **or when its value differs from the emitted entity identity**.
 
 This is the load-bearing rule. §5 was correct for fourteen months and drifted
 anyway, because nothing failed when it was ignored. A new entity type must
-not be able to ship without declaring where its telemetry is.
+not be able to ship without declaring where its telemetry is — and a type
+whose label drifts from its identity must fail in CI, not in a dashboard
+that quietly returns nothing.
 
 ## 5. Application
 
