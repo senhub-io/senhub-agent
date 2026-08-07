@@ -36,6 +36,13 @@ Agreed:
 - **Bi-temporal:** `event_time` = LogRecord timestamp; `recorded_at` set by
   the consumer (never sent).
 
+**Correlation with telemetry** — how an entity's identity is carried into
+the metrics/logs/traces that describe it, and on which rails the round trip
+is guaranteed — is specified in
+[`ENTITY-TELEMETRY-CONTRACT.md`](./ENTITY-TELEMETRY-CONTRACT.md) (reviewed
+with Toise 2026-08-07). §5 below states the rule; that document makes it
+enforceable.
+
 Open micro-points: (1) the agent→its-own-host edge: `runs_on`, `monitors`,
 or both. (2) `network.device` id — frozen at Lot 5. (The earlier relation
 discriminant point is closed: edges are embedded in `entity.relationships`,
@@ -72,7 +79,7 @@ Agreed identities:
 |---|---|---|
 | `host` | `host.id` | machine-id/UUID (gopsutil HostID). `host.name`, `os.type` are descriptive. |
 | `service.instance` | `service.instance.id` | the agent key. `service.name`, `service.version` descriptive. |
-| `db` | `db.instance.id` | **single composite string** e.g. `pg@10.0.1.5:5432`. `db.system.name`, `server.address`, `server.port` descriptive. |
+| `db` | `db.instance.id` | **single string derived from the database itself** — an id the technology reports and persists across restarts (`system_identifier`, `server_uuid`, cluster id…), or an operator-configured stable name. **Never a network address**: see §6b, and [`ENTITY-TELEMETRY-CONTRACT.md`](./ENTITY-TELEMETRY-CONTRACT.md) C2/C3 for the host-scoped fallback when the technology reports nothing. `db.system.name`, `server.address`, `server.port` descriptive. |
 | `network.device` | `network.device.id` | LLDP chassis-id, fallback mgmt IP. Frozen at Lot 5. |
 
 ### Relation (embedded)

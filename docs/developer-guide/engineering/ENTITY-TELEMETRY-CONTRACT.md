@@ -1,7 +1,8 @@
 # Entity ↔ telemetry correlation contract
 
-**Status:** proposed, 2026-08-04. Completes and makes enforceable the rule
-already stated in [`ENTITY-DETECTION.md`](./ENTITY-DETECTION.md) §5.
+**Status:** reviewed with the Toise team 2026-08-07; §6 and the appendix
+record what was agreed. Completes and makes enforceable the rule already
+stated in [`ENTITY-DETECTION.md`](./ENTITY-DETECTION.md) §5.
 **Audience:** SenHub agent maintainers, and the Toise team as the consumer.
 
 The SenHub agent is the single producer of the infrastructure graph. Every
@@ -84,9 +85,18 @@ The consequences are observable, not theoretical:
   itself records that two observers disagree about one node.
 - `telemetry_keys` on it returns `service.instance.id` and
   `service.name = shop-preprod` — the identity of **the observer**, not of
-  the database. When a subject has no identity of its own, the graph
-  silently substitutes whoever last spoke about it. A consumer that trusts
-  the answer queries the wrong machine's metrics.
+  the database. A consumer that trusts the answer queries the wrong
+  machine's metrics.
+
+  This symptom has **two causes, one on each side**, and the Toise review
+  found the second. Their `telemetry_keys` enriched an entity by following
+  *every* relation one hop and inheriting the neighbours' join keys, so an
+  entity with no key of its own inherited the agent's `service.name`
+  through `monitors`. The intent was ownership (`runs_on`); `monitors` is
+  an observation relation and `depends_on` a peer relation, and inheriting
+  through either is wrong. They restrict inheritance to ownership
+  relations. **The agent-side identity repair alone would not have removed
+  the symptom** — both fixes were required.
 - 122 of the last 6 hours' change events are these two entities alternating
   their `db.system.version` every ~5 minutes (`10.3.39-MariaDB` ↔
   `11.8.6-MariaDB`, `7.0.11` ↔ `8.0.5`). The real change signal is buried.
@@ -188,6 +198,17 @@ The db probes never did. They emit `db.system.name`, `server.address` and
 (`internal/agent/probes/redis/redis_probe.go:197`,
 `internal/agent/probes/mysql/probe.go:222`).
 
+The distinction matters enough to state plainly, because the Toise review
+asked for it directly — *which resource attribute do the db metrics
+carry?* — and the answer is **neither**. `db.instance.id` exists only in
+the probes' `entity_source.go` files, that is, on the entity rail. It is
+not a per-datapoint attribute, and it is not on the resource either: the
+resource always describes the agent's own host, never a remote target. So
+`db_instance_id` is not a label lost in transit — it is never emitted.
+
+The practical consequence for the consumer: adding `db.instance.id` to a
+join-key set is a no-op until the agent ships it.
+
 So this is not a contract to negotiate. It is a documented rule that half
 the code follows, with nothing in CI to notice the other half drifting. The
 missing piece is enforcement — which is why the rest of this document is
@@ -220,8 +241,32 @@ The three keys hold on the OTLP rail and nowhere else:
 | relayed traces | under another key | under another key | `telemetry.relay.host.id` / `.instance.id` |
 
 PRTG and Nagios are display formats with no label slot; they are out of
-scope and stay so. Prometheus is **not** — it feeds the same backend Toise
-pivots into, and it currently carries no host identity at all.
+scope and stay so.
+
+**Where the round trip is guaranteed (agreed with Toise, 2026-08-07).**
+"Round trip" means: read an entity, obtain a label set, query it, get its
+series. The guarantee is rail-dependent, and saying so is the contract —
+not a gap in it.
+
+| Path | Round trip | Realised by |
+|---|---|---|
+| OTLP rail → collector → VictoriaMetrics / VictoriaLogs | **guaranteed** | the resource, carried on every signal |
+| Prometheus-family backend fed by a collector | holds in practice | the collector's `resource_to_telemetry_conversion`, a **deployment choice** of the consumer — not a property of the wire |
+| The agent's own Prometheus scrape endpoint | **not guaranteed** | nothing today; `target_info` is the answer (#745) |
+
+The rule that identity keys never become per-datapoint labels **stands**,
+and Toise explicitly asked for it to stand: promoting them would impose
+cardinality on every operator, including those whose output is PRTG. The
+consumer that wants flat labels performs the flattening in its own
+collector, where the cost is paid knowingly and the decision is reversible.
+
+One correction the review produced: the agent *does* expose a native
+Prometheus endpoint (`http` strategy — `http_prometheus.go` and the
+`prometheus/` package). It has no resource concept, hence no host identity,
+so the third row above is a present gap rather than a hypothetical one. It
+is not filled with identity labels; `target_info` — one series per
+resource, joined on `(job, instance)` — is the low-cardinality mechanism
+for it, implemented by neither side today.
 
 ### C7 — One enrichment point per rail, converging on one
 
@@ -327,7 +372,7 @@ not be able to ship without declaring where its telemetry is.
 | `network.interface` | 50 | own-key | `network.interface.name` | shipped |
 | `db` | 7 | own-key | `db.instance.id` (per-metric) | **missing — needs C2/C3 first** |
 | `service.listener` | 305 | inherited via `runs_on` | — | works, undeclared |
-| `network.address` | 55 | graph-only | — | undeclared |
+| `network.address` | 55 | graph-only | — | undeclared; bare IP kept **by design** (#743) — it is the host-route ↔ SNMP-device join point |
 | `network.route` | 31 | graph-only | — | undeclared |
 | `network.endpoint` | 6 | graph-only | — | undeclared |
 
@@ -338,25 +383,45 @@ unique. Publishing `127.0.0.1:3306` as a join key would turn a gap a
 consumer can detect into a wrong answer a consumer cannot. Fix the identity
 first, stamp the label second.
 
-## 6. What this asks of Toise
+## 6. What was agreed with Toise
 
-One thing only: absorb a re-key of the `db` entities whose identity is
-currently a bare `address:port`, when the agent starts scoping them with
-`host.id`.
+Reviewed 2026-08-07. Toise measured the same production data independently
+and confirmed the findings: four distinct `postgresql:<system_identifier>`
+entities against a single `127.0.0.1:6379` carrying **three** incoming
+`monitors` edges and a single `127.0.0.1:3306` carrying two — five real
+databases collapsed into two nodes.
 
-- **Scope:** the collapsed entities only. The four PostgreSQL entities,
-  which already carry a technology-reported id, are untouched — as are all
-  other types.
-- **Precedent:** the same host-scoping was applied to `network.endpoint` in
-  0.5.3 (PR #713) and absorbed by the read layer without incident.
-- **Effect:** each collapsed entity splits into the two real databases it
-  was merging. Their history before the cutover describes two machines
-  interleaved and cannot be retroactively separated; the split point should
-  be recorded.
+**Re-keys are absorbed, without reservation and without consumer-side
+code changes** (`db`, and the constant identities of C2's critical row). A
+new identity is a new entity; the old one expires by liveness and leaves
+with `deleteSource=liveness_expiry`. The same transition was proven in
+production last month with the four-key loopback batch.
 
-What this does **not** ask: no new entity type, no change to the type
-vocabulary, no change to any identity that is already technology-derived,
-and no change to the relation model.
+**One requirement of form, which the agent already satisfies:** the new
+identity must be emitted *alongside*, never by mutating the identity of an
+existing entity. Their model forbids the second — identity is immutable,
+which is what makes history readable. Our lifecycle tracker is keyed on
+identity, so a re-key is structurally a new entity plus an extinction; the
+mutating case does not exist in our code.
+
+**The cutover point needs no freeze on their side** — the journal
+materialises it, and everything stays queryable `as_of`. What they offer is
+to annotate the outgoing nodes so a later reader knows their pre-cutover
+history describes several interleaved machines. That requires one thing
+from us: **the cutover date**.
+
+**Churn is not a concern**, including at fleet scale: a node splitting into
+N is N creations and one extinction, which their journal absorbs and
+heartbeat compaction settles. Their one piece of advice: **switch in a
+single cutover rather than in waves**, which is far more readable after the
+fact.
+
+**`network.address` is decided against scoping** — see §5 and the closed
+issue #743.
+
+What was **not** asked and did not change: no new entity type, no change to
+the type vocabulary, no change to any identity that is already
+technology-derived, and no change to the relation model or the wire shape.
 
 ## 7. References
 
@@ -368,25 +433,29 @@ and no change to the relation model.
 - #740 — db identity collapse (production evidence)
 - #741 — correlation coverage measurement (production evidence)
 - #742 — constant `service.instance.id` on `winservices` / `chrony` (critical)
-- #743 — `network.address` collides on RFC1918 (needs a Toise decision)
+- #743 — `network.address` on RFC1918 — **closed, by design** (§5)
+- #745 — `target_info` on the native Prometheus endpoint
 
-## Appendix — what to raise with Toise, in one sitting
+## Appendix — outcome of the Toise review
 
-Four items, one conversation, because they are the same question asked
-about four types:
+Four items were raised in one conversation, because they were the same
+question asked about four types. Their disposition:
 
-1. **`db` re-key** (#740) — apply ADR 0032's host-scoping to the degraded
-   fallback. Precedent already absorbed in 0.5.3 for `network.endpoint`.
-2. **`service.instance` re-key** (#742) — the constant-identity probes.
-   Same shape, no new rule; worth naming because the churn is fleet-wide.
-3. **`network.address` scope** (#743) — genuinely open, and the only one
-   needing a decision rather than a fix: the node is a deliberate join
-   point between host routes and SNMP topology, so scoping it changes a
-   contract rather than repairing one.
-4. **Retire the stale half of our own spec** — `ENTITY-DETECTION.md` §2
-   still says `db.instance.id` is a network-derived composite. Whoever
-   implements from it reproduces the bug.
+| # | Item | Outcome |
+|---|---|---|
+| 1 | **`db` re-key** (#740) | Absorbed. Emit the new identity alongside; give them the cutover date for annotation. |
+| 2 | **`service.instance` re-key** (#742) | Absorbed, same form. Single cutover, not waves. They cannot observe it — neither probe runs on their tenant. |
+| 3 | **`network.address` scope** (#743) | Decided: keep the bare IP. Tenant isolation makes the cross-customer join impossible; ADR 0032's criterion does not apply to an address that is shared *by construction*; and scoping would destroy the host-route ↔ SNMP-device join the node exists for. Limitation documented instead: a tenant must not span disjoint LANs with overlapping RFC1918 ranges. |
+| 4 | **Retire the stale half of our spec** | Ours to do — `ENTITY-DETECTION.md` §2 still describes `db.instance.id` as a network-derived composite. |
 
-What is **not** on the table: no new entity type, no change to the type
+Two findings the review added that neither side had before:
+
+- **The observer-identity symptom was half theirs** (§2). Our repair alone
+  would not have removed it.
+- **The transport guarantee is rail-dependent** (C1), and the agent's own
+  Prometheus endpoint — whose existence the review initially missed on both
+  sides — is a present gap, tracked as #745.
+
+Still not on the table: no new entity type, no change to the type
 vocabulary, no change to any technology-derived identity, no change to the
 relation model or the wire shape.
