@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/toise-dev/toise/pkg/emit/wire"
 	"go.opentelemetry.io/otel/log"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -20,17 +21,26 @@ import (
 // the target only (the source is the carrying entity). There are no separate
 // relation records and no edge delete — a relation a heartbeat stops listing
 // is retired by absence.
+// The wire vocabulary is not spelled here: it comes from the Toise SDK's
+// `wire` package, the single in-repo spelling shared by the SDK, the
+// conformance kit and the consumer's ingest boundary. Consuming it is what
+// stops producer and consumer drifting apart one literal at a time — the
+// same failure that let network.interface be named two ways (#748).
+//
+// `wire` is deliberately stdlib-only, so importing the vocabulary pulls no
+// protocol stack into the agent's module graph. This is the half of #455
+// worth adopting: the shared spelling, not the runtime encoder.
 const (
-	eventNameEntityState  = "entity.state"
-	eventNameEntityDelete = "entity.delete"
+	eventNameEntityState  = wire.EventEntityState
+	eventNameEntityDelete = wire.EventEntityDelete
 
-	attrEntityType           = "entity.type"
-	attrEntityID             = "entity.id"
-	attrEntityDescription    = "entity.description"
-	attrEntityReportInterval = "entity.report.interval"
+	attrEntityType           = wire.AttrEntityType
+	attrEntityID             = wire.AttrEntityID
+	attrEntityDescription    = wire.AttrEntityDescription
+	attrEntityReportInterval = wire.AttrEntityReportInterval
 
-	attrEntityRelationships = "entity.relationships"
-	attrRelationshipType    = "relationship.type"
+	attrEntityRelationships = wire.AttrEntityRelationships
+	attrRelationshipType    = wire.RelType
 )
 
 // buildEntityRecord encodes a neutral entity.Event into the OTel log Record
