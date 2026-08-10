@@ -509,6 +509,44 @@ What was **not** asked and did not change: no new entity type, no change to
 the type vocabulary, no change to any identity that is already
 technology-derived, and no change to the relation model or the wire shape.
 
+### 6b. Division of responsibility (agreed 2026-08-10)
+
+Recorded here, and in Toise's API stability policy on their side, because
+two statements that answer each other outlive an email thread.
+
+| Owned by | What | Why there |
+|---|---|---|
+| **Toise** | the type vocabulary and the wire form of an entity event | they apply it at ingest; their own boundary derives from the same registry |
+| **The agent** | the transport, and the verification that what is declared is what is emitted | our operational guarantees — batching, backpressure, retry, tenant propagation — live here, and only we can observe our own output |
+
+The principle: **responsibility follows the ability to check.** A party
+that cannot observe a fact cannot be accountable for it.
+
+Concretely, the agent consumes `pkg/emit/wire`, the SDK's stdlib-only
+spelling of the vocabulary, rather than spelling the literals locally. A
+literal written twice is how `network.interface` came to be named two ways
+(#748); a shared constant makes that spelling impossible. `wire` carries
+the event names and attribute keys today, and from `pkg/emit/v0.6.0` the
+entity and relation type vocabularies as well — at which point the agent's
+local `AllTypes` is deleted in favour of the SDK's, and a unilaterally
+invented type stops compiling on both sides.
+
+What the agent does **not** adopt is the SDK's runtime encoder. Its client
+owns its own gRPC connection and works in collector `pdata`, while entity
+events ride this agent's log rail; adopting it would put a second export
+path outside the batching, backpressure and tenant headers the strategy
+owns. The absence of drift that motivated #455 is obtained instead by
+comparing the two encoders in a test, which breaks the build on divergence
+without coupling the runtime.
+
+**What the pin guarantees, and what it does not.** `pkg/emit` is Toise's
+supported Go surface (their `internal/` packages are not): additive within
+a series, deprecation before removal. Before their 1.0, their policy still
+permits a break on a stable surface provided it is announced in the
+preceding release and journaled — so we are never surprised, but we are not
+promised immobility. Pin to an explicit version rather than tracking a
+branch.
+
 ## 7. References
 
 - [`ENTITY-DETECTION.md`](./ENTITY-DETECTION.md) §5 — the rule this
