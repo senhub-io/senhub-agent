@@ -62,14 +62,18 @@ db.instance.id = postgresql:7260015372444151839
 db.instance.id = postgresql:7459423139354528763
 ```
 
-One MariaDB and one Redis appear as **one entity each**, shared by two
+One MariaDB and one Redis appear as **one entity each**, shared by several
 machines, because neither reports such an id and the agent falls back to
 `address:port`:
 
 ```
 db.instance.id = 127.0.0.1:3306     ← two different servers
-db.instance.id = 127.0.0.1:6379     ← two different servers
+db.instance.id = 127.0.0.1:6379     ← three different servers
 ```
+
+Five real databases, two nodes. The count is read off the incoming
+`monitors` edges — see §6, where Toise measured the same thing
+independently.
 
 Same probe family, same address, opposite outcome. The variable is not the
 label — it is whether the identity is a property **of the thing** or a
@@ -135,11 +139,16 @@ ones. But a reader implementing from §2 would produce exactly the identity
 we now have in production. The drift began in the specification, and any
 contract that does not retire the stale half will let it happen again.
 
-The primary rationale documents cited for these decisions —
+The rationale documents this repository used to cite —
 `docs/audit/ENTITY-CONTRACT-DISCUSSION-TOISE.md` and
-`docs/audit/LOT5-TOISE-DISCUSSION.md` — **do not exist in the repository**;
-`docs/audit/` is gitignored and they were never committed. The frozen
-decisions survive only as prose scattered across four files.
+`docs/audit/LOT5-TOISE-DISCUSSION.md` — **do not exist**; `docs/audit/` is
+gitignored and they were never committed. Citing them was citing nothing.
+
+**The canonical references are ADR 0018 and ADR 0032**, committed and
+versioned in the Toise repository, which the Toise team has undertaken not
+to change without telling us (their standing contract-stability policy).
+Cite those. A frozen decision needs a durable address, and the one on our
+side was a dead link.
 
 ### 2d. `db` is one instance of a systemic class
 
@@ -350,8 +359,17 @@ Each registered entity type declares exactly one of:
   reaches one that does, and the declaration names the edge
   (`service.listener` → `runs_on` → `host`; verified working today,
   `telemetry_keys` returns the host's `host.id`/`host.name`);
-- **graph-only** — it has no telemetry and none is reachable
-  (`network.address`, `network.route`, `network.endpoint`).
+- **graph-only** — it has no telemetry of its own, and **no structural
+  edge reaches any** (`network.address`, `network.route`,
+  `network.endpoint`).
+
+`graph-only` is a statement about what the **producer** emits and what the
+**graph** carries. It does not mean no telemetry is reachable by any means:
+Toise's read overlay resolves a `network.endpoint` to the listener bound to
+it, or failing that to the host owning the address — 61 of 74 resolve on
+their production — and reaches the host's telemetry from there. That
+resolution is computed on the consumer side; it is not an edge we emit, and
+nothing in this contract obliges them to keep it.
 
 `graph-only` is a legitimate answer and must be stated, not left implicit.
 The failure mode this contract exists to remove is not the absence of a key;
@@ -408,12 +426,41 @@ that quietly returns nothing.
 | `container` | 61 | own-key | `container.id` | shipped |
 | `service.instance` | 30 | own-key | `service.instance.id` (resource) | shipped |
 | `network.device` | 1 | own-key | `network.device.id` (per-metric) | shipped |
-| `network.interface` | 50 | own-key | `network.interface.name` | shipped |
+| `network.interface` | 50 | own-key | `interface.name` (per-metric) | **half shipped — SNMP only (#748)** |
 | `db` | 7 | own-key | `db.instance.id` (per-metric) | **missing — needs C2/C3 first** |
 | `service.listener` | 305 | inherited via `runs_on` | — | works, undeclared |
 | `network.address` | 55 | graph-only | — | undeclared; bare IP kept **by design** (#743) — it is the host-route ↔ SNMP-device join point |
 | `network.route` | 31 | graph-only | — | undeclared |
 | `network.endpoint` | 6 | graph-only | — | undeclared |
+
+### `network.interface` — why the row moved from "shipped" to "half shipped"
+
+Toise verified the shipped rows against their backend and found this one
+false. It is worth recording here rather than only in #748, because it is
+the best available illustration of C6 — better than any constructed
+example.
+
+The same notion travels under two labels: `interface_name` carries the 63
+`snmp_interface_*` series, `network_interface_name` carries the 256
+`system_network_*` host series. The entity is keyed `interface.name`, so a
+consumer following the entity's own key finds the SNMP interfaces and
+misses every host interface.
+
+Underneath sits a second divergence, on values this time. On Windows the
+entity carries the connection name (`Ethernet`, `Ethernet 2`) while the
+metric carries the PDH instance name — the adapter description with PDH's
+dedup suffix (`Red Hat VirtIO Ethernet Adapter _2`). On Unix both derive
+from the same interface name and match. **The defect is invisible on Linux
+and total on Windows.**
+
+Two lessons the contract absorbs:
+
+- **A presence check would have passed.** A label named
+  `network_interface_name` exists, is populated, and joins nothing. This is
+  why C6 asserts equality, not presence.
+- **The row was declared shipped by reading the emitter, not the join.** A
+  declaration verified only against the code that writes it is not
+  verified. C6 must run against emitted output.
 
 ### Ordering constraint
 
@@ -474,6 +521,10 @@ technology-derived, and no change to the relation model or the wire shape.
 - #742 — constant `service.instance.id` on `winservices` / `chrony` (critical)
 - #743 — `network.address` on RFC1918 — **closed, by design** (§5)
 - #745 — `target_info` on the native Prometheus endpoint
+- #748 — `network.interface`: host interfaces unreachable from their entity
+- **ADR 0018** (observer-independent identity) and **ADR 0032**
+  (host-scoping) — committed and versioned in the Toise repository; the
+  canonical address for both frozen decisions
 
 ## Appendix — outcome of the Toise review
 
