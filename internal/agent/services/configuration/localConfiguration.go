@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -167,7 +168,8 @@ func (lc *LocalConfiguration) GetGlobalTags() map[string]string {
 	return lc.snapshot().Agent.GlobalTags
 }
 
-// GetAutoUpdateConfig returns the auto-update configuration
+// GetAutoUpdateConfig returns the auto-update configuration, with the
+// registry URL normalised.
 func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 	if lc.snapshot().AutoUpdate == nil {
 		// Return default configuration
@@ -176,7 +178,42 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 			URL:     "https://eu-west-1.intake.senhub.io",
 		}
 	}
-	return lc.snapshot().AutoUpdate
+	cfg := *lc.snapshot().AutoUpdate
+	if fixed, changed := NormalizeRegistryURL(cfg.URL); changed {
+		lc.logger.Warn().
+			Str("configured", cfg.URL).
+			Str("using", fixed).
+			Msg("auto_update.url carried a trailing /releases; the agent appends that path itself, so the configured value resolved to a doubled path and updates were failing silently. Using the corrected base URL — fix the config to stop this warning")
+		cfg.URL = fixed
+	}
+	return &cfg
+}
+
+// NormalizeRegistryURL strips what the agent appends itself from a configured
+// registry URL, and reports whether it had to.
+//
+// The agent builds the version-list URL with url.JoinPath(registry,
+// "/releases/releases.json"). A config whose url already ends in /releases —
+// which is what the installer scaffolded before #586 — therefore resolves to
+// .../releases/releases/releases.json, a 404. Auto-update then does nothing,
+// with `enabled: true` still in the file: the host silently stays on the
+// version it was installed with.
+//
+// Fixing the scaffold did nothing for the hosts already deployed, and those
+// are the ones running. Normalising on read repairs the whole fleet at the
+// next restart without anyone editing a file.
+func NormalizeRegistryURL(raw string) (normalized string, changed bool) {
+	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if trimmed == "" {
+		return raw, false
+	}
+	if strings.HasSuffix(trimmed, "/releases") {
+		trimmed = strings.TrimSuffix(trimmed, "/releases")
+	}
+	if trimmed == raw {
+		return raw, false
+	}
+	return trimmed, true
 }
 
 // GetCacheConfig returns the cache configuration
