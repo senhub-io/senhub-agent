@@ -1,6 +1,8 @@
 package network
 
 import (
+	"net"
+	"sort"
 	"testing"
 	"time"
 
@@ -42,6 +44,15 @@ func TestCollectStampsInterfaceNameForTheEntityJoin(t *testing.T) {
 		t.Skip("no interface datapoints on this host")
 	}
 
+	osInterfaceNames := map[string]bool{}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		t.Skipf("cannot enumerate host interfaces: %v", err)
+	}
+	for _, i := range ifaces {
+		osInterfaceNames[i.Name] = true
+	}
+
 	checked := 0
 	for _, p := range points {
 		var iface, identity string
@@ -62,16 +73,29 @@ func TestCollectStampsInterfaceNameForTheEntityJoin(t *testing.T) {
 			t.Fatalf("datapoint for interface %q carries no %s; the entity keyed "+
 				"on that name has no reachable telemetry (#748)", iface, interfaceNameTag)
 		}
-		// On Unix both derive from the same interface name. The assertion is
-		// deliberately on equality rather than presence: a populated tag that
-		// names something else is exactly the failure this regression covers.
-		if identity != iface {
-			t.Fatalf("%s = %q but interface = %q; the identity tag must carry the "+
-				"entity's name verbatim", interfaceNameTag, identity, iface)
+		// The assertion is on the identity SOURCE, not on the `interface` tag:
+		// on Windows the two legitimately differ — `interface` carries the PDH
+		// instance ("Microsoft Hyper-V Network Adapter _3") while the identity
+		// is the connection name ("Ethernet 3"), which is the whole point of
+		// the fix. What must hold on every platform is that the value equals
+		// the name the entity source keys on, i.e. a real net.Interface name.
+		if !osInterfaceNames[identity] {
+			t.Fatalf("%s = %q is not a net.Interface name on this host (%v); the "+
+				"entity is keyed on net.Interface.Name, so this value joins nothing",
+				interfaceNameTag, identity, keys(osInterfaceNames))
 		}
 	}
 
 	if checked == 0 {
 		t.Skip("no interface-scoped datapoints to check on this host")
 	}
+}
+
+func keys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
