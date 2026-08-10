@@ -396,6 +396,21 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 				Value:   interfaceInfo.connectionName,
 				Private: false,
 			})
+			// interface.name ties this series to its network.interface entity,
+			// which is keyed on the connection name (net.Interface.Name). The
+			// `interface` tag above carries the PDH instance — the adapter
+			// description with PDH's dedup suffix ("… Adapter _2") — which is
+			// useful diagnostically but is NOT the entity's identity, so a
+			// consumer joining on it gets nothing (#748).
+			//
+			// Omitted when the WMI match failed: without a connection name
+			// there is no entity to join to either, and an empty identity tag
+			// would be worse than none.
+			metricTags = append(metricTags, tags.Tag{
+				Key:     interfaceNameTag,
+				Value:   interfaceInfo.connectionName,
+				Private: false,
+			})
 		}
 
 		if interfaceInfo.ipv4 != "" {
