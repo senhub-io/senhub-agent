@@ -152,14 +152,7 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		Status:     StatusOwnKey,
 		SubjectKey: "interface.name",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "shipped for SNMP devices only. Host interfaces emit the tag " +
-			"`interface`, renamed to `network.interface.name` by the network " +
-			"transformer, while the entity is keyed `interface.name` — two keys " +
-			"for one notion. On Windows the values diverge as well: the entity " +
-			"carries the connection name, the metric the PDH instance name " +
-			"(the adapter description). Unix matches, which is why the gap was " +
-			"invisible (#748)",
+		Shipped:    true,
 	},
 	TypeNetworkAddress: {
 		Status:  StatusGraphOnly,
