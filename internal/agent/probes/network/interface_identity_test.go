@@ -2,6 +2,7 @@ package network
 
 import (
 	"net"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
@@ -55,18 +56,31 @@ func TestCollectStampsInterfaceNameForTheEntityJoin(t *testing.T) {
 
 	checked := 0
 	for _, p := range points {
-		var iface, identity string
-		var hasIface bool
+		var iface, identity, connection string
+		var hasIface, hasConnectionTag bool
 		for _, tag := range p.Tags {
 			switch tag.Key {
 			case "interface":
 				iface, hasIface = tag.Value, true
 			case interfaceNameTag:
 				identity = tag.Value
+			case "connection_name":
+				connection, hasConnectionTag = tag.Value, true
 			}
 		}
 		if !hasIface {
 			continue // not an interface-scoped series
+		}
+		// An adapter whose WMI match failed carries no connection name (#644).
+		// The probe deliberately emits no identity tag for it, because there is
+		// no entity to join to either — an empty identity would be worse than
+		// none. Windows CI runners have such adapters (Azure/Hyper-V synthetic
+		// NICs), so this is a real path, not a theoretical one.
+		if hasConnectionTag && connection == "" {
+			continue
+		}
+		if runtime.GOOS == "windows" && !hasConnectionTag {
+			continue
 		}
 		checked++
 		if identity == "" {
