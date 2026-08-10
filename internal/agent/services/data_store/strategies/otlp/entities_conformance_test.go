@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/toise-dev/toise/pkg/emit"
+	"github.com/toise-dev/toise/pkg/emit/wire"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/otel/log"
@@ -154,7 +155,7 @@ func TestEntityEncodingMatchesToiseSDK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
-	theirs := buildEmitReference(t, "entity.state", emit.Entity{
+	theirs := buildEmitReference(t, wire.EventEntityState, emit.Entity{
 		Type:       "network.interface",
 		ID:         map[string]string{"host.id": "h-1", "interface.name": iface},
 		Attributes: map[string]string{"interface.type": "ethernet"},
@@ -190,40 +191,80 @@ func TestEntityEncodingMatchesToiseSDK(t *testing.T) {
 	}
 }
 
-// The SDK cannot carry what the agent carries: emit.Entity's ID and
-// Attributes are map[string]string, ours are map[string]any with scalar
-// leaves. Adopting emit as the encoder outright (#455) would stringify every
-// numeric attribute — a wire-contract change for the consumer, not a
-// consolidation. This test pins the limitation so the day the SDK widens its
-// value type, it fails and tells us the swap is unblocked.
-func TestToiseSDKCannotCarryNonStringScalars(t *testing.T) {
+// Typed scalars survive both encoders identically.
+//
+// The agent carries descriptive attributes as map[string]any with scalar
+// leaves — a nominal CPU frequency is an integer, a virtualization flag a
+// boolean. The SDK takes those through Entity.RichAttributes, which lands in
+// the same entity.description map on the wire as the string-typed
+// Attributes. Both are checked here, because a stringified integer would be
+// a silent contract change for the consumer, not a formatting detail.
+func TestTypedScalarAttributesMatchToiseSDK(t *testing.T) {
+	attrs := map[string]any{
+		"host.cpu.frequency.nominal": int64(3_600_000_000),
+		"host.virtualization":        true,
+		"host.cpu.usage.ratio":       0.25,
+		"host.name":                  "shop-preprod",
+	}
 	ev := entity.Event{
 		Kind: entity.EntityState,
 		Time: time.Unix(1_700_000_000, 0),
 		Entity: &entity.Entity{
-			Type: "host",
-			ID:   map[string]any{"host.id": "h-1"},
-			Attributes: map[string]any{
-				"host.cpu.frequency.nominal": int64(3_600_000_000),
-				"host.virtualization":        true,
-			},
+			Type:       "host",
+			ID:         map[string]any{"host.id": "h-1"},
+			Attributes: attrs,
 		},
 	}
 	_, ours, err := buildEntityRecord(ev)
 	if err != nil {
 		t.Fatalf("buildEntityRecord: %v", err)
 	}
-	desc, ok := flattenOurs(ours)[attrEntityDescription].(map[string]any)
+	theirs := buildEmitReference(t, wire.EventEntityState, emit.Entity{
+		Type:           "host",
+		ID:             map[string]string{"host.id": "h-1"},
+		RichAttributes: attrs,
+	})
+
+	a := flattenOurs(ours)[attrEntityDescription]
+	b := flattenTheirs(theirs)[attrEntityDescription]
+	if !equalTree(a, b) {
+		t.Errorf("typed descriptive attributes diverge from the Toise SDK:\n"+
+			"  agent: %#v\n  SDK:   %#v", a, b)
+	}
+}
+
+// Identity stays string-formed on both sides, and that is deliberate rather
+// than a limitation.
+//
+// A typed identity value would give one logical identity two spellings — the
+// integer 443 and the string "443" — which do not hash alike and would
+// produce two entities for one thing. That is precisely the silent
+// divergence C6 exists to prevent, so the exact-match equality C6 asserts is
+// only applicable while identity has a single canonical form. Descriptive
+// attributes carry types; identity carries a form.
+func TestIdentityValuesStayStringFormed(t *testing.T) {
+	ev := entity.Event{
+		Kind: entity.EntityState,
+		Time: time.Unix(1_700_000_000, 0),
+		Entity: &entity.Entity{
+			Type: "service.listener",
+			ID:   map[string]any{"host.id": "h-1", "port": "443"},
+		},
+	}
+	_, ours, err := buildEntityRecord(ev)
+	if err != nil {
+		t.Fatalf("buildEntityRecord: %v", err)
+	}
+	id, ok := flattenOurs(ours)[attrEntityID].(map[string]any)
 	if !ok {
-		t.Fatalf("expected a description map, got %#v", flattenOurs(ours)[attrEntityDescription])
+		t.Fatalf("expected an identity map, got %#v", flattenOurs(ours)[attrEntityID])
 	}
-	if _, isInt := desc["host.cpu.frequency.nominal"].(int64); !isInt {
-		t.Errorf("agent no longer carries int64 attributes; if this is deliberate, "+
-			"the #455 swap is unblocked — got %#v", desc["host.cpu.frequency.nominal"])
-	}
-	if _, isBool := desc["host.virtualization"].(bool); !isBool {
-		t.Errorf("agent no longer carries bool attributes; if this is deliberate, "+
-			"the #455 swap is unblocked — got %#v", desc["host.virtualization"])
+	for k, v := range id {
+		if _, isStr := v.(string); !isStr {
+			t.Errorf("identity key %q carries a non-string value %#v; one logical "+
+				"identity would then have two spellings that do not hash alike, "+
+				"which is the divergence C6 exists to prevent", k, v)
+		}
 	}
 }
 
