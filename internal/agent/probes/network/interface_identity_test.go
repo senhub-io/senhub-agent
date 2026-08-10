@@ -28,7 +28,13 @@ func TestCollectStampsInterfaceNameForTheEntityJoin(t *testing.T) {
 		t.Skipf("no network collector on this host: %v", err)
 	}
 
-	points, err := c.Collect(time.Now())
+	// The Unix collector emits rates, so the first cycle only primes the
+	// counter cache and returns nothing. Collecting once would make this test
+	// silently vacuous — it would skip on every host and never assert.
+	if _, err := c.Collect(time.Now()); err != nil {
+		t.Skipf("collection unavailable on this host: %v", err)
+	}
+	points, err := c.Collect(time.Now().Add(time.Second))
 	if err != nil {
 		t.Skipf("collection unavailable on this host: %v", err)
 	}
