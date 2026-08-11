@@ -54,6 +54,7 @@ type probeConfig struct {
 	CollectStorage      bool
 	CollectQuotas       bool
 	CollectAutoscalers  bool
+	CollectEvents       bool
 	IncludeNamespaces   []string
 	ExcludeNamespaces   map[string]bool
 	Interval            time.Duration
@@ -71,7 +72,11 @@ type KubernetesProbe struct {
 	// clusterUID is the kube-system namespace UID: the cluster's stable,
 	// self-reported identity. Empty when it could not be read.
 	clusterUID string
-	entitySrc  *k8sEntitySource
+	// lastEventTime is the log-rail cursor: events at or before it have been
+	// published. Zero until the first cycle, which only sets it — see
+	// collectEvents for why the retention window is not replayed.
+	lastEventTime eventCursor
+	entitySrc     *k8sEntitySource
 }
 
 // NewKubernetesProbe constructs the probe. Config errors surface here.
@@ -129,6 +134,7 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		CollectStorage:      true,
 		CollectQuotas:       true,
 		CollectAutoscalers:  true,
+		CollectEvents:       true,
 		Interval:            defaultInterval,
 	}
 
@@ -176,6 +182,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		}
 		if v, ok := collect["autoscalers"].(bool); ok {
 			cfg.CollectAutoscalers = v
+		}
+		if v, ok := collect["events"].(bool); ok {
+			cfg.CollectEvents = v
 		}
 	}
 
@@ -329,6 +338,15 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 			up = 1
 		}
 		points = append(points, pts...)
+	}
+
+	// Events ride the log rail, not this datapoint slice: they are timestamped
+	// sentences, and counting them would keep the number and throw away the
+	// message, which is the part that explains the metric.
+	if p.cfg.CollectEvents {
+		if err := p.collectEvents(ctx, now); err != nil {
+			p.moduleLogger.Warn().Err(err).Msg("kubernetes: event collection partially failed")
+		}
 	}
 
 	points = append(points, data_store.DataPoint{
