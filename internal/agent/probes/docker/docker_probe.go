@@ -378,7 +378,13 @@ func (p *dockerProbe) matchesExclude(name string) bool {
 func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_store.DataPoint {
 	name := primaryName(res.container)
 	baseTags := []tags.Tag{
-		{Key: "container_id", Value: shortID(res.container.ID)},
+		// The FULL sha, not the 12-character form. Truncation is a CLI display
+		// convention chosen by the observer, and it is destructive: the entity
+		// is keyed on the full id, so a consumer querying by the entity's own
+		// identity got zero series while a near-identical value sat beside it.
+		// Measured on production: 64 characters on the entity rail, 12 on the
+		// metric rail (#758).
+		{Key: "container_id", Value: res.container.ID},
 		{Key: "container_name", Value: name},
 		{Key: "image", Value: res.container.Image},
 	}
@@ -619,7 +625,19 @@ func primaryName(c containerListItem) string {
 	return strings.TrimPrefix(c.Names[0], "/")
 }
 
-// shortID returns the first 12 characters of the Docker container ID — the
+// shortID returns the first 12 characters of the Docker container ID.
+//
+// Display only. It must never reach an identity-bearing tag: a truncated id
+// is not the container's identity, it is a convenience for reading. The one
+// caller left is the fallback name for an unnamed container, where a human
+// reads it.
+//
+// Historical note kept deliberately: this used to feed the container_id tag,
+// with a comment claiming the full id was preserved as the cache
+// discriminant. It was not — the discriminant is the tag value, so the full
+// id was nowhere on the metric rail at all.
+//
+// Previously documented as: returns the first 12 characters of the ID — the
 // conventional "short ID" used in docker ps output. The full 64-char ID
 // is preserved as the cache discriminant; the short form keeps log lines
 // readable.
