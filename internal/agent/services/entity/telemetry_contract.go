@@ -24,6 +24,8 @@ const (
 	TypeNetworkAddress   = "network.address"
 	TypeNetworkRoute     = "network.route"
 	TypeNetworkEndpoint  = "network.endpoint"
+	TypeProcess          = "process"
+	TypeComputeVM        = "compute.vm"
 )
 
 // AllTypes is every entity type the agent may emit. The C6 test walks it,
@@ -40,6 +42,8 @@ var AllTypes = []string{
 	TypeNetworkAddress,
 	TypeNetworkRoute,
 	TypeNetworkEndpoint,
+	TypeProcess,
+	TypeComputeVM,
 }
 
 // TelemetryStatus is the C4 classification: where a type's telemetry is, or
@@ -153,6 +157,28 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		SubjectKey: "interface.name",
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
+	},
+	TypeProcess: {
+		Status:     StatusOwnKey,
+		SubjectKey: "process.pid",
+		Carrier:    CarrierDatapoint,
+		Shipped:    false,
+		Gap: "the pid IS stamped on process metrics, but the identity it comes " +
+			"from is not host-scoped: {process.pid, process.creation.time} " +
+			"collides between two hosts that started a process with the same pid " +
+			"at the same instant. Publishing the pid as a join key before the " +
+			"identity is scoped would point a consumer at another machine's " +
+			"process — the ordering constraint again (contract §2d, #753)",
+	},
+	TypeComputeVM: {
+		Status:     StatusOwnKey,
+		SubjectKey: "vmid",
+		Carrier:    CarrierDatapoint,
+		Shipped:    false,
+		Gap: "vmid lives only on the entity rail (hyperv/entity_source.go); no " +
+			"hypervisor metric carries it, so a compute.vm entity reaches none " +
+			"of its own telemetry. Same shape as db (#741), found by comparing " +
+			"the vocabulary with Toise's registry (#753)",
 	},
 	TypeNetworkAddress: {
 		Status:  StatusGraphOnly,
