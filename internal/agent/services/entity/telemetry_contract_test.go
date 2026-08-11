@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/toise-dev/toise/pkg/emit/wire"
 	"gopkg.in/yaml.v3"
 )
 
@@ -253,4 +254,35 @@ func stampedTagKeys(t *testing.T) map[string]bool {
 		t.Fatalf("scanning probe sources under %s: %v", root, err)
 	}
 	return out
+}
+
+// The guarantee the SDK vocabulary is supposed to buy: we consume what the
+// consumer applies, not a copy kept in parallel.
+//
+// Toise derives their own ingest registry from the same wire package, with a
+// test comparing the two sets in both directions. This is our half of that
+// pairing — it fails if the SDK gains a type we have not declared, which is
+// how a vocabulary change reaches us as a build error instead of as entities
+// silently dropped at their boundary.
+func TestVocabularyIsTheSDKs(t *testing.T) {
+	sdk := wire.EntityTypes()
+	if len(sdk) == 0 {
+		t.Fatal("the SDK reports no entity types — the check would pass vacuously")
+	}
+
+	declared := make(map[string]bool, len(TelemetryContract))
+	for typ := range TelemetryContract {
+		declared[typ] = true
+	}
+	for _, typ := range sdk {
+		if !declared[typ] {
+			t.Errorf("the SDK registers %q and this contract does not declare it; "+
+				"a type the consumer accepts but we never describe has no stated "+
+				"telemetry, which is the gap C4 exists to close", typ)
+		}
+	}
+	if len(declared) != len(sdk) {
+		t.Errorf("contract declares %d types, the SDK registers %d — the two must "+
+			"be the same set, not merely overlap", len(declared), len(sdk))
+	}
 }
