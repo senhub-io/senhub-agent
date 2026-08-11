@@ -136,25 +136,70 @@ func containerRuntime(raw string) string {
 	return ""
 }
 
-// containerRunsOnNode is the container's placement edge.
+// podEntity turns a pod into a pod entity.
 //
-// The target is the NODE today and becomes the POD once the consumer publishes
-// that type: container → runs_on → pod → runs_on → host. They confirmed that
-// is an edge change rather than a re-key, so this can ship now and move later
-// without disturbing any identity.
+// Identity is the Kubernetes UID, never namespace/name: the pair is editable
+// and reused, so a pod deleted and recreated under the same name would inherit
+// the history of a different one. Same reasoning as the workloads, and as the
+// databases before them.
 //
-// runs_on propagates failure from target to source, which is the semantics
-// wanted here: a node going down takes its containers with it, and an impact
-// query answers transitively without extra code.
-func containerRunsOnNode(containerID, nodeMachineID string) (entity.Relation, bool) {
-	if containerID == "" || nodeMachineID == "" {
+// The type exists because the pod owns telemetry no container has — the
+// network namespace is shared, so network measurements belong to the pod and
+// to nothing else. That is what settled the question: a type with own-key
+// telemetry needs an entity to hang it on, which is C4 deciding rather than a
+// preference about what reads well.
+func podEntity(pod *corev1.Pod) (entity.Entity, bool) {
+	uid := strings.TrimSpace(string(pod.UID))
+	if uid == "" {
+		return entity.Entity{}, false
+	}
+	attrs := map[string]any{
+		"k8s.pod.name":       pod.Name,
+		"k8s.namespace.name": pod.Namespace,
+		"k8s.node.name":      pod.Spec.NodeName,
+	}
+	if pod.Spec.ServiceAccountName != "" {
+		attrs["k8s.serviceaccount.name"] = pod.Spec.ServiceAccountName
+	}
+	return entity.Entity{
+		Type:       entity.TypePod,
+		ID:         map[string]any{"k8s.pod.uid": uid},
+		Attributes: attrs,
+	}, true
+}
+
+// runsOn builds one placement edge.
+//
+// The chain is container → runs_on → pod → runs_on → host, which is the shape
+// agreed with the consumer. runs_on propagates failure from target to source,
+// so a node going down takes its pods, which take their containers: an impact
+// query answers transitively with no extra code. The consumer measured exactly
+// that on their test instance before publishing the type.
+//
+// An edge whose target identity is empty is skipped rather than emitted: a
+// relation whose target never materialises is buffered and then dropped by the
+// consumer, costing a warning and buying nothing.
+func runsOn(fromType string, fromID map[string]any, toType string, toID map[string]any) (entity.Relation, bool) {
+	if emptyID(fromID) || emptyID(toID) {
 		return entity.Relation{}, false
 	}
 	return entity.Relation{
 		Type:     entity.RelRunsOn,
-		FromType: entity.TypeContainer,
-		FromID:   map[string]any{"container.id": containerID},
-		ToType:   entity.TypeHost,
-		ToID:     map[string]any{"host.id": nodeMachineID},
+		FromType: fromType,
+		FromID:   fromID,
+		ToType:   toType,
+		ToID:     toID,
 	}, true
+}
+
+func emptyID(id map[string]any) bool {
+	if len(id) == 0 {
+		return true
+	}
+	for _, v := range id {
+		if s, ok := v.(string); !ok || strings.TrimSpace(s) == "" {
+			return true
+		}
+	}
+	return false
 }
