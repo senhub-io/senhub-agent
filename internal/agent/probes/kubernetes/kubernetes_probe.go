@@ -72,6 +72,14 @@ type KubernetesProbe struct {
 	// clusterUID is the kube-system namespace UID: the cluster's stable,
 	// self-reported identity. Empty when it could not be read.
 	clusterUID string
+	// pendingInventory accumulates the entity view during a cycle; it is
+	// published to the entity source at the end of Collect, replacing the
+	// previous set rather than merging into it.
+	pendingInventory clusterInventory
+	// nodeMachineIDs maps node name to the identity used for its host entity,
+	// so a container can be attached to the node it runs on without a second
+	// API read.
+	nodeMachineIDs map[string]string
 	// lastEventTime is the log-rail cursor: events at or before it have been
 	// published. Zero until the first cycle, which only sets it — see
 	// collectEvents for why the retention window is not replayed.
@@ -272,6 +280,12 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	defer cancel()
 
 	now := time.Now()
+	// Replace, never merge: an entity the cluster no longer reports must fall
+	// out of the observation so the consumer retires it by absence.
+	p.pendingInventory = clusterInventory{}
+	if p.nodeMachineIDs == nil {
+		p.nodeMachineIDs = map[string]string{}
+	}
 	up := float64(0)
 	var points []data_store.DataPoint
 	upTags := []tags.Tag{
@@ -349,6 +363,8 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
+	p.entitySrc.setInventory(p.pendingInventory)
+
 	points = append(points, data_store.DataPoint{
 		Name: metricUp, Value: up, Timestamp: now, Tags: upTags,
 	})
@@ -358,6 +374,7 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 
 // collectNodes lists all nodes and emits per-node metrics.
 func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
+	inv := &p.pendingInventory
 	nodes, err := p.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("listing nodes: %w", err)
@@ -417,6 +434,16 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 		}
 
 		points = append(points, nodeConditionPoints(n, now, baseTags)...)
+
+		// The node as a host entity, built from the list already fetched. A
+		// node whose MachineID is unreadable contributes nothing — see
+		// nodeEntity for why no fallback identity is minted.
+		if ent, ok := nodeEntity(n, p.clusterUID); ok {
+			inv.entities = append(inv.entities, ent)
+			p.nodeMachineIDs[nodeName] = ent.ID["host.id"].(string)
+		} else {
+			delete(p.nodeMachineIDs, nodeName)
+		}
 	}
 	return points, nil
 }
@@ -443,6 +470,7 @@ func (p *KubernetesProbe) collectPods(ctx context.Context, now time.Time) ([]dat
 			}
 			if p.cfg.CollectContainers {
 				points = append(points, p.buildContainerPoints(pod, now)...)
+				p.appendContainerEntities(pod)
 			}
 		}
 	}

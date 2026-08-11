@@ -22,8 +22,14 @@ type k8sEntitySource struct {
 	// good when RBAC denies the read, in which case the address-derived
 	// fallback applies.
 	clusterUID string
-	ready      bool
-	hostID     string // agent host id, target of the local-target runs_on edge
+	// inventory is the last observed set of nodes and containers, refreshed by
+	// the metric cycle. The entity source is polled independently of Collect,
+	// so it reports the last known state rather than reaching for the API on
+	// its own schedule — one API read per cycle, not two, and the two rails
+	// cannot disagree about what existed at a given instant.
+	inventory clusterInventory
+	ready     bool
+	hostID    string // agent host id, target of the local-target runs_on edge
 }
 
 func newK8sEntitySource(clusterEndpoint string) *k8sEntitySource {
@@ -61,7 +67,7 @@ func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
-				Type: "service.instance",
+				Type: entity.TypeServiceInstance,
 				ID:   svcID,
 				Attributes: map[string]any{
 					"service.name":    "kubernetes",
@@ -71,6 +77,10 @@ func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 			},
 		},
 	}
+	// The objects the cluster manages, as observed by the last metric cycle.
+	obs.Entities = append(obs.Entities, s.inventory.entities...)
+	obs.Relations = append(obs.Relations, s.inventory.relations...)
+
 	// monitors edge: agent → cluster, anchoring the entity to the agent's
 	// monitoring subgraph (else it floats — #506). Emitted only when the agent
 	// id is available; a non-materialised From would be buffered then dropped.
