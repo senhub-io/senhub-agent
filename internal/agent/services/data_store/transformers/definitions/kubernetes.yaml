@@ -83,14 +83,14 @@ metrics:
       k8s.node.name: k8s.node.name
       k8s.cluster.name: k8s.cluster.name
 
-  - name: "k8s.node.pods.allocated"
+  - name: "k8s.node.pods.allocatable"
     channel: "k8s_node_{k8s.node.name}_pods_allocated"
     display_name: "Node {k8s.node.name} Pods Allocatable"
     unit: "#"
     category: "node"
     description: "Number of pods that can still be scheduled on the node"
     otel:
-      name: k8s.node.pods.allocated
+      name: k8s.node.pods.allocatable
       unit: "{pod}"
       type: gauge
     tag_to_attribute:
@@ -219,3 +219,473 @@ metrics:
     tag_to_attribute:
       k8s.deployment.name: k8s.deployment.name
       k8s.namespace.name: k8s.namespace.name
+
+  # --- Node conditions (#756) — 1 means the pressure IS present ---
+
+  - name: "k8s.node.condition.memory_pressure"
+    channel: "k8s_node_{k8s.node.name}_memory_pressure"
+    display_name: "Node {k8s.node.name} Memory Pressure"
+    unit: "#"
+    category: "node"
+    description: "1 when the node reports the Memory Pressure condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
+    otel:
+      name: k8s.node.condition.memory_pressure
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  - name: "k8s.node.condition.disk_pressure"
+    channel: "k8s_node_{k8s.node.name}_disk_pressure"
+    display_name: "Node {k8s.node.name} Disk Pressure"
+    unit: "#"
+    category: "node"
+    description: "1 when the node reports the Disk Pressure condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
+    otel:
+      name: k8s.node.condition.disk_pressure
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  - name: "k8s.node.condition.pid_pressure"
+    channel: "k8s_node_{k8s.node.name}_pid_pressure"
+    display_name: "Node {k8s.node.name} PID Pressure"
+    unit: "#"
+    category: "node"
+    description: "1 when the node reports the PID Pressure condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
+    otel:
+      name: k8s.node.condition.pid_pressure
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  - name: "k8s.node.condition.network_unavailable"
+    channel: "k8s_node_{k8s.node.name}_network_unavailable"
+    display_name: "Node {k8s.node.name} Network Unavailable"
+    unit: "#"
+    category: "node"
+    description: "1 when the node reports the Network Unavailable condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
+    otel:
+      name: k8s.node.condition.network_unavailable
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      k8s.cluster.name: k8s.cluster.name
+
+  # --- Pod and container resource reservations (#756) ---
+
+  - name: "k8s.pod.cpu.request"
+    channel: "k8s_pod_{k8s.pod.name}_cpu_request"
+    display_name: "Pod {k8s.pod.name} CPU Request"
+    unit: "cores"
+    category: "resources"
+    description: "CPU Request summed over the pod's containers, init containers excluded (they do not hold their reservation for the pod's life)"
+    otel:
+      name: k8s.pod.cpu.request
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.pod.cpu.limit"
+    channel: "k8s_pod_{k8s.pod.name}_cpu_limit"
+    display_name: "Pod {k8s.pod.name} CPU Limit"
+    unit: "cores"
+    category: "resources"
+    description: "CPU Limit summed over the pod's containers, init containers excluded (they do not hold their reservation for the pod's life)"
+    otel:
+      name: k8s.pod.cpu.limit
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.pod.memory.request"
+    channel: "k8s_pod_{k8s.pod.name}_memory_request"
+    display_name: "Pod {k8s.pod.name} Memory Request"
+    unit: "bytes"
+    category: "resources"
+    description: "Memory Request summed over the pod's containers, init containers excluded"
+    otel:
+      name: k8s.pod.memory.request
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.pod.memory.limit"
+    channel: "k8s_pod_{k8s.pod.name}_memory_limit"
+    display_name: "Pod {k8s.pod.name} Memory Limit"
+    unit: "bytes"
+    category: "resources"
+    description: "Memory Limit summed over the pod's containers, init containers excluded"
+    otel:
+      name: k8s.pod.memory.limit
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.container.cpu.request"
+    channel: "k8s_container_{k8s.container.name}_cpu_request"
+    display_name: "Container {k8s.container.name} CPU Request"
+    unit: "cores"
+    category: "resources"
+    description: "CPU Request declared by this container"
+    otel:
+      name: k8s.container.cpu.request
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.container.name: k8s.container.name
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+
+  - name: "k8s.container.cpu.limit"
+    channel: "k8s_container_{k8s.container.name}_cpu_limit"
+    display_name: "Container {k8s.container.name} CPU Limit"
+    unit: "cores"
+    category: "resources"
+    description: "CPU Limit declared by this container"
+    otel:
+      name: k8s.container.cpu.limit
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.container.name: k8s.container.name
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+
+  - name: "k8s.container.memory.request"
+    channel: "k8s_container_{k8s.container.name}_memory_request"
+    display_name: "Container {k8s.container.name} Memory Request"
+    unit: "bytes"
+    category: "resources"
+    description: "Memory Request declared by this container"
+    otel:
+      name: k8s.container.memory.request
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.container.name: k8s.container.name
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+
+  - name: "k8s.container.memory.limit"
+    channel: "k8s_container_{k8s.container.name}_memory_limit"
+    display_name: "Container {k8s.container.name} Memory Limit"
+    unit: "bytes"
+    category: "resources"
+    description: "Memory Limit declared by this container"
+    otel:
+      name: k8s.container.memory.limit
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.container.name: k8s.container.name
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+
+  - name: "k8s.container.waiting"
+    channel: "k8s_container_{k8s.container.name}_waiting"
+    display_name: "Container {k8s.container.name} Waiting"
+    unit: "#"
+    category: "container"
+    description: "1 while the container is in a waiting state; the reason attribute distinguishes CrashLoopBackOff from ImagePullBackOff, which call for opposite reactions"
+    otel:
+      name: k8s.container.waiting
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.container.name: k8s.container.name
+      k8s.pod.name: k8s.pod.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.container.waiting.reason: k8s.container.waiting.reason
+
+  # --- Workload kinds beyond Deployment (#756) ---
+
+  - name: "k8s.statefulset.desired"
+    channel: "k8s_statefulset_{k8s.workload.name}_desired"
+    display_name: "Statefulset {k8s.workload.name} desired"
+    unit: "#"
+    category: "workload"
+    description: "desired count for this statefulset"
+    otel:
+      name: k8s.statefulset.desired
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.statefulset.ready"
+    channel: "k8s_statefulset_{k8s.workload.name}_ready"
+    display_name: "Statefulset {k8s.workload.name} ready"
+    unit: "#"
+    category: "workload"
+    description: "ready count for this statefulset"
+    otel:
+      name: k8s.statefulset.ready
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.statefulset.current"
+    channel: "k8s_statefulset_{k8s.workload.name}_current"
+    display_name: "Statefulset {k8s.workload.name} current"
+    unit: "#"
+    category: "workload"
+    description: "current count for this statefulset"
+    otel:
+      name: k8s.statefulset.current
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.statefulset.updated"
+    channel: "k8s_statefulset_{k8s.workload.name}_updated"
+    display_name: "Statefulset {k8s.workload.name} updated"
+    unit: "#"
+    category: "workload"
+    description: "updated count for this statefulset"
+    otel:
+      name: k8s.statefulset.updated
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.daemonset.desired_scheduled"
+    channel: "k8s_daemonset_{k8s.workload.name}_desired_scheduled"
+    display_name: "Daemonset {k8s.workload.name} desired scheduled"
+    unit: "#"
+    category: "workload"
+    description: "desired scheduled count for this daemonset"
+    otel:
+      name: k8s.daemonset.desired_scheduled
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.daemonset.current_scheduled"
+    channel: "k8s_daemonset_{k8s.workload.name}_current_scheduled"
+    display_name: "Daemonset {k8s.workload.name} current scheduled"
+    unit: "#"
+    category: "workload"
+    description: "current scheduled count for this daemonset"
+    otel:
+      name: k8s.daemonset.current_scheduled
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.daemonset.ready"
+    channel: "k8s_daemonset_{k8s.workload.name}_ready"
+    display_name: "Daemonset {k8s.workload.name} ready"
+    unit: "#"
+    category: "workload"
+    description: "ready count for this daemonset"
+    otel:
+      name: k8s.daemonset.ready
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.daemonset.misscheduled"
+    channel: "k8s_daemonset_{k8s.workload.name}_misscheduled"
+    display_name: "Daemonset {k8s.workload.name} misscheduled"
+    unit: "#"
+    category: "workload"
+    description: "misscheduled count for this daemonset"
+    otel:
+      name: k8s.daemonset.misscheduled
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.replicaset.desired"
+    channel: "k8s_replicaset_{k8s.workload.name}_desired"
+    display_name: "Replicaset {k8s.workload.name} desired"
+    unit: "#"
+    category: "workload"
+    description: "desired count for this replicaset"
+    otel:
+      name: k8s.replicaset.desired
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.replicaset.ready"
+    channel: "k8s_replicaset_{k8s.workload.name}_ready"
+    display_name: "Replicaset {k8s.workload.name} ready"
+    unit: "#"
+    category: "workload"
+    description: "ready count for this replicaset"
+    otel:
+      name: k8s.replicaset.ready
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.replicaset.available"
+    channel: "k8s_replicaset_{k8s.workload.name}_available"
+    display_name: "Replicaset {k8s.workload.name} available"
+    unit: "#"
+    category: "workload"
+    description: "available count for this replicaset"
+    otel:
+      name: k8s.replicaset.available
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.job.active"
+    channel: "k8s_job_{k8s.workload.name}_active"
+    display_name: "Job {k8s.workload.name} active"
+    unit: "#"
+    category: "workload"
+    description: "active count for this job"
+    otel:
+      name: k8s.job.active
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.job.succeeded"
+    channel: "k8s_job_{k8s.workload.name}_succeeded"
+    display_name: "Job {k8s.workload.name} succeeded"
+    unit: "#"
+    category: "workload"
+    description: "succeeded count for this job"
+    otel:
+      name: k8s.job.succeeded
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.job.failed"
+    channel: "k8s_job_{k8s.workload.name}_failed"
+    display_name: "Job {k8s.workload.name} failed"
+    unit: "#"
+    category: "workload"
+    description: "failed count for this job"
+    otel:
+      name: k8s.job.failed
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.job.desired_completions"
+    channel: "k8s_job_{k8s.workload.name}_desired_completions"
+    display_name: "Job {k8s.workload.name} desired completions"
+    unit: "#"
+    category: "workload"
+    description: "desired completions count for this job"
+    otel:
+      name: k8s.job.desired_completions
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.cronjob.active_jobs"
+    channel: "k8s_cronjob_{k8s.workload.name}_active_jobs"
+    display_name: "Cronjob {k8s.workload.name} active jobs"
+    unit: "#"
+    category: "workload"
+    description: "active jobs count for this cronjob"
+    otel:
+      name: k8s.cronjob.active_jobs
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
+
+  - name: "k8s.cronjob.suspended"
+    channel: "k8s_cronjob_{k8s.workload.name}_suspended"
+    display_name: "Cronjob {k8s.workload.name} suspended"
+    unit: "#"
+    category: "workload"
+    description: "suspended count for this cronjob"
+    otel:
+      name: k8s.cronjob.suspended
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.workload.kind: k8s.workload.kind
+      k8s.workload.name: k8s.workload.name
