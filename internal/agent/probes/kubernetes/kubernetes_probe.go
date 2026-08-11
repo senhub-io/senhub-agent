@@ -470,7 +470,7 @@ func (p *KubernetesProbe) collectPods(ctx context.Context, now time.Time) ([]dat
 			}
 			if p.cfg.CollectContainers {
 				points = append(points, p.buildContainerPoints(pod, now)...)
-				p.appendContainerEntities(pod)
+				p.appendPodEntities(pod)
 			}
 		}
 	}
