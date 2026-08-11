@@ -62,9 +62,13 @@ type KubernetesProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	clientset    kubernetes.Interface
-	// clusterEndpoint identifies this cluster in entity IDs.
+	// clusterEndpoint is the API server address — a display and fallback
+	// value, NOT the identity (see cluster_uid.go).
 	clusterEndpoint string
-	entitySrc       *k8sEntitySource
+	// clusterUID is the kube-system namespace UID: the cluster's stable,
+	// self-reported identity. Empty when it could not be read.
+	clusterUID string
+	entitySrc  *k8sEntitySource
 }
 
 // NewKubernetesProbe constructs the probe. Config errors surface here.
@@ -205,7 +209,17 @@ func (p *KubernetesProbe) OnStart(_ chan struct{}) error {
 	}
 	p.clientset = cs
 
-	p.entitySrc.setClusterEndpoint(p.clusterEndpoint)
+	// Identity before anything else: the entity must be keyed on something the
+	// cluster reports about itself, not on the address we happened to dial.
+	if uid, err := resolveClusterIdentity(cs, 10*time.Second); err != nil {
+		p.moduleLogger.Warn().Err(err).
+			Msg("kubernetes: could not read the kube-system namespace UID; the cluster entity falls back to an address-derived identity, which re-keys on any API endpoint change and collides between clusters sharing an address. Grant get on namespaces/kube-system to fix it")
+	} else {
+		p.clusterUID = uid
+		p.moduleLogger.Info().Str("k8s.cluster.uid", uid).Msg("kubernetes: cluster identity resolved")
+	}
+
+	p.entitySrc.setClusterIdentity(p.clusterEndpoint, p.clusterUID)
 
 	p.moduleLogger.Info().
 		Str("cluster", p.clusterEndpoint).

@@ -344,6 +344,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"k8s.namespace.name",  // namespace scopes pods, containers, deployments
 		"k8s.container.name",  // per-container metrics (k8s.container.*)
 		"k8s.deployment.name", // per-deployment metrics (k8s.deployment.*)
+		// Workload kinds beyond Deployment share one tag pair rather than one
+		// tag per kind, so a dashboard can group across kinds without knowing
+		// the list. Both are needed: two kinds may carry the same name in the
+		// same namespace (a Job and the CronJob that created it, commonly).
+		"k8s.workload.name", // statefulset/daemonset/replicaset/job/cronjob
+		"k8s.workload.kind",
+		// Without this, a container flipping between ImagePullBackOff and
+		// CrashLoopBackOff overwrites its own cache slot and the reason a
+		// dashboard shows is whichever arrived last.
+		"k8s.container.waiting.reason",
 	},
 
 	// Application server probes

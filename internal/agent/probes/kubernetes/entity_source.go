@@ -17,8 +17,13 @@ import (
 type k8sEntitySource struct {
 	mu              sync.Mutex
 	clusterEndpoint string
-	ready           bool
-	hostID          string // agent host id, target of the local-target runs_on edge
+	// clusterUID is the kube-system namespace UID — the cluster's stable,
+	// self-reported identity. Empty until OnStart resolves it, and empty for
+	// good when RBAC denies the read, in which case the address-derived
+	// fallback applies.
+	clusterUID string
+	ready      bool
+	hostID     string // agent host id, target of the local-target runs_on edge
 }
 
 func newK8sEntitySource(clusterEndpoint string) *k8sEntitySource {
@@ -29,10 +34,11 @@ func newK8sEntitySource(clusterEndpoint string) *k8sEntitySource {
 // resolves the API server host in OnStart. The endpoint is created with a
 // best-effort value at construction so EntitySource() is non-NoOp without a
 // live cluster (#482); OnStart narrows it to the real API server address.
-func (s *k8sEntitySource) setClusterEndpoint(clusterEndpoint string) {
+func (s *k8sEntitySource) setClusterIdentity(clusterEndpoint, clusterUID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clusterEndpoint = clusterEndpoint
+	s.clusterUID = clusterUID
 }
 
 // Observe returns the cluster entity. Always ok=true once initialised.
@@ -43,7 +49,14 @@ func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
-	clusterID := "kubernetes://" + s.clusterEndpoint
+	// The UID is what the cluster says about itself and survives every change
+	// of address. The address-derived form is a degraded fallback, kept so a
+	// cluster whose RBAC denies reading kube-system still appears in the graph
+	// — with the instability warned about at start.
+	clusterID := s.clusterUID
+	if clusterID == "" {
+		clusterID = "kubernetes://" + s.clusterEndpoint
+	}
 	svcID := map[string]any{"service.instance.id": clusterID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
@@ -53,6 +66,7 @@ func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 				Attributes: map[string]any{
 					"service.name":    "kubernetes",
 					"cluster.address": s.clusterEndpoint,
+					"k8s.cluster.uid": s.clusterUID,
 				},
 			},
 		},
