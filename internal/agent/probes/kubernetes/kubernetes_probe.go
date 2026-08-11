@@ -51,6 +51,9 @@ type probeConfig struct {
 	CollectReplicaSets  bool
 	CollectJobs         bool
 	CollectCronJobs     bool
+	CollectStorage      bool
+	CollectQuotas       bool
+	CollectAutoscalers  bool
 	IncludeNamespaces   []string
 	ExcludeNamespaces   map[string]bool
 	Interval            time.Duration
@@ -123,6 +126,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		CollectReplicaSets:  false,
 		CollectJobs:         true,
 		CollectCronJobs:     true,
+		CollectStorage:      true,
+		CollectQuotas:       true,
+		CollectAutoscalers:  true,
 		Interval:            defaultInterval,
 	}
 
@@ -161,6 +167,15 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		}
 		if v, ok := collect["cronjobs"].(bool); ok {
 			cfg.CollectCronJobs = v
+		}
+		if v, ok := collect["storage"].(bool); ok {
+			cfg.CollectStorage = v
+		}
+		if v, ok := collect["quotas"].(bool); ok {
+			cfg.CollectQuotas = v
+		}
+		if v, ok := collect["autoscalers"].(bool); ok {
+			cfg.CollectAutoscalers = v
 		}
 	}
 
@@ -295,6 +310,10 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		{p.cfg.CollectReplicaSets, "replicaset", p.collectReplicaSets},
 		{p.cfg.CollectJobs, "job", p.collectJobs},
 		{p.cfg.CollectCronJobs, "cronjob", p.collectCronJobs},
+		{p.cfg.CollectStorage, "persistentvolume", p.collectPersistentVolumes},
+		{p.cfg.CollectStorage, "persistentvolumeclaim", p.collectPersistentVolumeClaims},
+		{p.cfg.CollectQuotas, "resourcequota", p.collectResourceQuotas},
+		{p.cfg.CollectAutoscalers, "horizontalpodautoscaler", p.collectHorizontalPodAutoscalers},
 	} {
 		if !w.enabled {
 			continue

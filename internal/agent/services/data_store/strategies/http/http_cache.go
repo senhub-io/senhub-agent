@@ -354,6 +354,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// CrashLoopBackOff overwrites its own cache slot and the reason a
 		// dashboard shows is whichever arrived last.
 		"k8s.container.waiting.reason",
+		// Storage, quota and autoscaling scopes. `phase` in particular: the
+		// one-hot phase series share a metric name and differ only by it, so
+		// without this every phase of a volume overwrites the previous one and
+		// the cache reports whichever arrived last.
+		"k8s.persistentvolume.name",
+		"k8s.persistentvolumeclaim.name",
+		"phase",
+		"k8s.resourcequota.name",
+		"k8s.resourcequota.resource",
+		"k8s.hpa.name",
 	},
 
 	// Application server probes
