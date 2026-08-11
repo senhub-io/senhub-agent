@@ -129,25 +129,61 @@ func TestContainerEntity_CarriesTheCanonicalIdentity(t *testing.T) {
 	}
 }
 
-// The placement edge is skipped when the node contributed no host entity: a
-// relation whose target never materialises is buffered then dropped by the
-// consumer, costing a warning and buying nothing.
-func TestContainerRunsOnNode_SkippedWithoutATarget(t *testing.T) {
-	if _, ok := containerRunsOnNode("sha", ""); ok {
-		t.Error("no node identity must mean no edge")
+// The identity is the UID, never namespace/name: the pair is editable and
+// reused, so a pod recreated under the same name would inherit the history of
+// a different one.
+func TestPodEntity_KeyedOnTheUID(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "api-abc", Namespace: "prod", UID: "9c1f-uid"},
+		Spec:       corev1.PodSpec{NodeName: "node-1"},
 	}
-	if _, ok := containerRunsOnNode("", "machine-1"); ok {
-		t.Error("no container identity must mean no edge")
+	ent, ok := podEntity(pod)
+	if !ok {
+		t.Fatal("expected a pod entity")
+	}
+	if ent.Type != entity.TypePod {
+		t.Errorf("type = %q, want pod", ent.Type)
+	}
+	if got := ent.ID["k8s.pod.uid"]; got != "9c1f-uid" {
+		t.Errorf("identity = %v, want the UID", got)
+	}
+	if _, isID := ent.ID["k8s.pod.name"]; isID {
+		t.Error("the name must be descriptive, never part of the identity")
 	}
 
-	rel, ok := containerRunsOnNode("sha", "machine-1")
+	if _, ok := podEntity(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "x"}}); ok {
+		t.Error("a pod with no UID must produce no entity")
+	}
+}
+
+// The chain is container -> pod -> host. runs_on propagates failure from
+// target to source, so a node going down takes its pods, which take their
+// containers — an impact query answers transitively with no extra code.
+func TestRunsOn_BuildsTheChainAndSkipsEmptyTargets(t *testing.T) {
+	podID := map[string]any{"k8s.pod.uid": "uid-1"}
+	ctrID := map[string]any{"container.id": "sha"}
+	hostID := map[string]any{"host.id": "machine-1"}
+
+	rel, ok := runsOn(entity.TypeContainer, ctrID, entity.TypePod, podID)
 	if !ok {
-		t.Fatal("expected an edge")
+		t.Fatal("expected container -> pod")
+	}
+	if rel.FromType != entity.TypeContainer || rel.ToType != entity.TypePod {
+		t.Errorf("edge is %s -> %s, want container -> pod", rel.FromType, rel.ToType)
 	}
 	if rel.Type != entity.RelRunsOn {
 		t.Errorf("relation type = %q, want runs_on", rel.Type)
 	}
-	if rel.ToType != entity.TypeHost || rel.FromType != entity.TypeContainer {
-		t.Errorf("edge is %s -> %s, want container -> host", rel.FromType, rel.ToType)
+
+	if _, ok := runsOn(entity.TypePod, podID, entity.TypeHost, hostID); !ok {
+		t.Error("expected pod -> host")
+	}
+
+	// An edge whose target never materialises is buffered then dropped by the
+	// consumer: emitting it costs a warning and buys nothing.
+	for _, bad := range []map[string]any{nil, {}, {"host.id": ""}, {"host.id": "  "}} {
+		if _, ok := runsOn(entity.TypePod, podID, entity.TypeHost, bad); ok {
+			t.Errorf("edge to an empty identity %v must be skipped", bad)
+		}
 	}
 }
