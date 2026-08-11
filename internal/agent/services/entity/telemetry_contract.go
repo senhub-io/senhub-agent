@@ -1,5 +1,7 @@
 package entity
 
+import "github.com/toise-dev/toise/pkg/emit/wire"
+
 // Canonical entity-type vocabulary and the telemetry declaration each type
 // carries. Both halves of the entity/telemetry correlation contract live
 // here; see docs/developer-guide/engineering/ENTITY-TELEMETRY-CONTRACT.md.
@@ -11,40 +13,56 @@ package entity
 // host half joined nothing (#748) — a claim verified against the emitter
 // instead of against the join.
 
-// Entity types, frozen with the Toise team. A new type is a contract
-// change, not a local decision.
+// Entity types. The spelling is not ours: these alias the Toise SDK's `wire`
+// package, which is the single in-repo spelling shared by the SDK, the
+// conformance kit and the consumer's ingest boundary.
+//
+// Aliasing rather than redeclaring is the whole point. A constant declared
+// here would be a copy maintained in parallel, and a copy is what let
+// `process` and `compute.vm` be emitted for months while this file claimed
+// ten types (#753). Now a type the consumer does not register does not
+// compile.
+//
+// `wire` is stdlib-only, so consuming the vocabulary pulls no protocol stack
+// into the agent's module graph.
 const (
-	TypeHost             = "host"
-	TypeContainer        = "container"
-	TypeServiceInstance  = "service.instance"
-	TypeServiceListener  = "service.listener"
-	TypeDB               = "db"
-	TypeNetworkDevice    = "network.device"
-	TypeNetworkInterface = "network.interface"
-	TypeNetworkAddress   = "network.address"
-	TypeNetworkRoute     = "network.route"
-	TypeNetworkEndpoint  = "network.endpoint"
-	TypeProcess          = "process"
-	TypeComputeVM        = "compute.vm"
+	TypeHost             = wire.TypeHost
+	TypeProcess          = wire.TypeProcess
+	TypeContainer        = wire.TypeContainer
+	TypeComputeVM        = wire.TypeComputeVM
+	TypeServiceInstance  = wire.TypeServiceInstance
+	TypeServiceListener  = wire.TypeServiceListener
+	TypeDB               = wire.TypeDatabase
+	TypeNetworkDevice    = wire.TypeNetworkDevice
+	TypeNetworkInterface = wire.TypeNetworkInterface
+	TypeNetworkAddress   = wire.TypeNetworkAddress
+	TypeNetworkRoute     = wire.TypeNetworkRoute
+	TypeNetworkEndpoint  = wire.TypeNetworkEndpoint
 )
 
-// AllTypes is every entity type the agent may emit. The C6 test walks it,
-// so a type added here without a declaration below fails the build's tests
-// rather than shipping undeclared.
-var AllTypes = []string{
-	TypeHost,
-	TypeContainer,
-	TypeServiceInstance,
-	TypeServiceListener,
-	TypeDB,
-	TypeNetworkDevice,
-	TypeNetworkInterface,
-	TypeNetworkAddress,
-	TypeNetworkRoute,
-	TypeNetworkEndpoint,
-	TypeProcess,
-	TypeComputeVM,
-}
+// Relation types, same reasoning. The last three are registered but legacy:
+// the consumer's frontier still accepts them, producers emit the entity form
+// instead (topology-as-entities, ADR 0022).
+const (
+	RelRunsOn       = wire.RelTypeRunsOn
+	RelHasInterface = wire.RelTypeHasInterface
+	RelBoundTo      = wire.RelTypeBoundTo
+	RelNextHopVia   = wire.RelTypeNextHopVia
+	RelListensOn    = wire.RelTypeListensOn
+	RelMonitors     = wire.RelTypeMonitors
+	RelHasRoute     = wire.RelTypeHasRoute
+	RelConnectedTo  = wire.RelTypeConnectedTo
+	RelDependsOn    = wire.RelTypeDependsOn
+	RelSameAs       = wire.RelTypeSameAs
+)
+
+// AllTypes is every entity type the agent may emit — taken from the SDK, not
+// listed here. A locally-held list is a second source of truth, and the two
+// diverge the moment one of them is edited.
+var AllTypes = wire.EntityTypes()
+
+// AllRelationTypes is the relation vocabulary, same source.
+var AllRelationTypes = wire.RelationTypes()
 
 // TelemetryStatus is the C4 classification: where a type's telemetry is, or
 // an explicit statement that there is none.
