@@ -72,16 +72,16 @@ func (s *processEntitySource) Observe() (entity.Observation, bool) {
 			attrs["process.owner"] = p.owner
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type:       "process",
+			Type:       entity.TypeProcess,
 			ID:         id,
 			Attributes: attrs,
 		})
 		if s.hostID != nil {
 			obs.Relations = append(obs.Relations, entity.Relation{
-				Type:     "runs_on",
-				FromType: "process",
+				Type:     entity.RelRunsOn,
+				FromType: entity.TypeProcess,
 				FromID:   id,
-				ToType:   "host",
+				ToType:   entity.TypeHost,
 				ToID:     s.hostID,
 			})
 		}
