@@ -384,6 +384,43 @@ dashboard. `host` and `container` already ship both (`host_id`/`host_name`,
 type declaring **own-key** ships both. For `db`, the readable name is the
 operator's configured instance name when set, else `<db.system.name>@<host>`.
 
+### C6a — A check must run in the direction where the defect can hide
+
+Stated as a rule of its own because twice now the fact was present and the
+verification looked the wrong way.
+
+`network.interface` (#748) was declared shipped by reading the emitter that
+writes the label, never the join it is meant to serve. `process` and
+`compute.vm` (#753) were emitted for months while the vocabulary claimed ten
+types, because the test walked the list and confronted it with the
+declaration — nothing confronted the **code** with the list. Both times a
+claim was verified against itself, and both times the check passed.
+
+So every declaration in this contract names the direction of its check:
+
+| Declared | Checked against | Not against |
+|---|---|---|
+| the type vocabulary | the emitting code | a second list |
+| a subject key | emitted output | the emitter's source |
+| an identity value | the entity's own identity | a sibling label |
+
+The test for the second direction is the one worth writing, because the first
+is the one someone will write by reflex.
+
+Toise reached the same conclusion independently on their side: their
+accessors were checked against a list written in the test — two lists
+answering each other — while the direction that held was the comparison with
+the registry map the engine actually consults to accept or refuse. They now
+read their own package source for declared constants and fail when one is
+absent from the accessors.
+
+**A corollary, learned the expensive way.** A test is a guarantee only once
+it has been seen to fail without its fix. Three tests written for #748 were
+green and guarded nothing: one collected a single cycle and skipped on every
+host, one compared against a sibling tag that only agrees on Unix, one
+demanded a tag the probe deliberately omits. The code under test was correct
+throughout. Run the negative before believing the positive.
+
 ### C6 — The identity string has one source, and equality is enforced
 
 The value stamped on the telemetry must be the **same string, byte for
