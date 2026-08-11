@@ -152,7 +152,7 @@ func buildHypervObservation(
 		// asserted same_as is the ratified target, but its relation type is not
 		// registered yet (ADR 0020 grafts on later), so we emit the evidence
 		// attribute, not the edge.
-		vmEntityType := "compute.vm"
+		vmEntityType := entity.TypeComputeVM
 		vmEntityID := map[string]any{
 			"host.id": hypervHostID,
 			"vmid":    vm.GUID,
@@ -183,10 +183,10 @@ func buildHypervObservation(
 
 		// runs_on: the VM entity runs on the hypervisor host.
 		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     "runs_on",
+			Type:     entity.RelRunsOn,
 			FromType: vmEntityType,
 			FromID:   vmEntityID,
-			ToType:   "host",
+			ToType:   entity.TypeHost,
 			ToID:     hypervisorHostID,
 		})
 
