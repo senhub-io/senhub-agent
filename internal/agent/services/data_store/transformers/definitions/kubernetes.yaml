@@ -689,3 +689,178 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
       k8s.workload.kind: k8s.workload.kind
       k8s.workload.name: k8s.workload.name
+
+  # --- Storage, quotas, autoscaling (#756) ---
+
+  - name: "k8s.persistentvolume.capacity"
+    channel: "k8s_pv_{k8s.persistentvolume.name}_capacity"
+    display_name: "Volume {k8s.persistentvolume.name} Capacity"
+    unit: "bytes"
+    category: "storage"
+    description: "Declared capacity of the persistent volume"
+    otel:
+      name: k8s.persistentvolume.capacity
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.persistentvolume.name: k8s.persistentvolume.name
+      k8s.storageclass.name: k8s.storageclass.name
+
+  - name: "k8s.persistentvolume.phase"
+    channel: "k8s_pv_{k8s.persistentvolume.name}_phase_{phase}"
+    display_name: "Volume {k8s.persistentvolume.name} Phase {phase}"
+    unit: "#"
+    category: "storage"
+    description: "1 when the volume is in this lifecycle phase. One series per phase rather than an enum value, so an unknown phase lights none of them instead of mapping onto one"
+    otel:
+      name: k8s.persistentvolume.phase
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.persistentvolume.name: k8s.persistentvolume.name
+      k8s.storageclass.name: k8s.storageclass.name
+      phase: phase
+
+  - name: "k8s.persistentvolumeclaim.requested"
+    channel: "k8s_pvc_{k8s.persistentvolumeclaim.name}_requested"
+    display_name: "Claim {k8s.persistentvolumeclaim.name} Requested"
+    unit: "bytes"
+    category: "storage"
+    description: "Storage the claim asks for"
+    otel:
+      name: k8s.persistentvolumeclaim.requested
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.persistentvolumeclaim.name: k8s.persistentvolumeclaim.name
+
+  - name: "k8s.persistentvolumeclaim.capacity"
+    channel: "k8s_pvc_{k8s.persistentvolumeclaim.name}_capacity"
+    display_name: "Claim {k8s.persistentvolumeclaim.name} Capacity"
+    unit: "bytes"
+    category: "storage"
+    description: "Storage actually granted; can exceed the request when the storage class rounds up, and is absent while the claim is Pending"
+    otel:
+      name: k8s.persistentvolumeclaim.capacity
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.persistentvolumeclaim.name: k8s.persistentvolumeclaim.name
+
+  - name: "k8s.persistentvolumeclaim.phase"
+    channel: "k8s_pvc_{k8s.persistentvolumeclaim.name}_phase_{phase}"
+    display_name: "Claim {k8s.persistentvolumeclaim.name} Phase {phase}"
+    unit: "#"
+    category: "storage"
+    description: "1 when the claim is in this phase. A claim stuck Pending is why the pod that wants it never starts"
+    otel:
+      name: k8s.persistentvolumeclaim.phase
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.persistentvolumeclaim.name: k8s.persistentvolumeclaim.name
+      phase: phase
+
+  - name: "k8s.resourcequota.hard"
+    channel: "k8s_quota_{k8s.resourcequota.name}_{k8s.resourcequota.resource}_hard"
+    display_name: "Quota {k8s.resourcequota.name} {k8s.resourcequota.resource} Hard"
+    unit: "#"
+    category: "quota"
+    description: "The quota ceiling for this resource. CPU is in cores, memory and storage in bytes, counts are plain integers"
+    otel:
+      name: k8s.resourcequota.hard
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.resourcequota.name: k8s.resourcequota.name
+      k8s.resourcequota.resource: k8s.resourcequota.resource
+
+  - name: "k8s.resourcequota.used"
+    channel: "k8s_quota_{k8s.resourcequota.name}_{k8s.resourcequota.resource}_used"
+    display_name: "Quota {k8s.resourcequota.name} {k8s.resourcequota.resource} Used"
+    unit: "#"
+    category: "quota"
+    description: "Current use against the ceiling. A quota at 99 percent is why a deployment will not scale, and neither number alone says so"
+    otel:
+      name: k8s.resourcequota.used
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.resourcequota.name: k8s.resourcequota.name
+      k8s.resourcequota.resource: k8s.resourcequota.resource
+
+  - name: "k8s.hpa.current_replicas"
+    channel: "k8s_hpa_{k8s.hpa.name}_current_replicas"
+    display_name: "HPA {k8s.hpa.name} Current Replicas"
+    unit: "#"
+    category: "autoscaling"
+    description: "Current replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
+    otel:
+      name: k8s.hpa.current_replicas
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.hpa.name: k8s.hpa.name
+      k8s.hpa.target: k8s.hpa.target
+
+  - name: "k8s.hpa.desired_replicas"
+    channel: "k8s_hpa_{k8s.hpa.name}_desired_replicas"
+    display_name: "HPA {k8s.hpa.name} Desired Replicas"
+    unit: "#"
+    category: "autoscaling"
+    description: "Desired replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
+    otel:
+      name: k8s.hpa.desired_replicas
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.hpa.name: k8s.hpa.name
+      k8s.hpa.target: k8s.hpa.target
+
+  - name: "k8s.hpa.min_replicas"
+    channel: "k8s_hpa_{k8s.hpa.name}_min_replicas"
+    display_name: "HPA {k8s.hpa.name} Min Replicas"
+    unit: "#"
+    category: "autoscaling"
+    description: "Min replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
+    otel:
+      name: k8s.hpa.min_replicas
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.hpa.name: k8s.hpa.name
+      k8s.hpa.target: k8s.hpa.target
+
+  - name: "k8s.hpa.max_replicas"
+    channel: "k8s_hpa_{k8s.hpa.name}_max_replicas"
+    display_name: "HPA {k8s.hpa.name} Max Replicas"
+    unit: "#"
+    category: "autoscaling"
+    description: "Max replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
+    otel:
+      name: k8s.hpa.max_replicas
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      k8s.cluster.name: k8s.cluster.name
+      k8s.namespace.name: k8s.namespace.name
+      k8s.hpa.name: k8s.hpa.name
+      k8s.hpa.target: k8s.hpa.target
