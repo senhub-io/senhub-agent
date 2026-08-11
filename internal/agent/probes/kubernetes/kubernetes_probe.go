@@ -41,14 +41,19 @@ const (
 
 // probeConfig holds the parsed kubernetes probe configuration.
 type probeConfig struct {
-	Kubeconfig         string
-	CollectNodes       bool
-	CollectPods        bool
-	CollectContainers  bool
-	CollectDeployments bool
-	IncludeNamespaces  []string
-	ExcludeNamespaces  map[string]bool
-	Interval           time.Duration
+	Kubeconfig          string
+	CollectNodes        bool
+	CollectPods         bool
+	CollectContainers   bool
+	CollectDeployments  bool
+	CollectStatefulSets bool
+	CollectDaemonSets   bool
+	CollectReplicaSets  bool
+	CollectJobs         bool
+	CollectCronJobs     bool
+	IncludeNamespaces   []string
+	ExcludeNamespaces   map[string]bool
+	Interval            time.Duration
 }
 
 // KubernetesProbe collects metrics from a Kubernetes cluster.
@@ -105,11 +110,16 @@ func bestEffortClusterEndpoint(kubeconfig string) string {
 
 func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	cfg := probeConfig{
-		CollectNodes:       true,
-		CollectPods:        true,
-		CollectContainers:  true,
-		CollectDeployments: true,
-		Interval:           defaultInterval,
+		CollectNodes:        true,
+		CollectPods:         true,
+		CollectContainers:   true,
+		CollectDeployments:  true,
+		CollectStatefulSets: true,
+		CollectDaemonSets:   true,
+		CollectReplicaSets:  false,
+		CollectJobs:         true,
+		CollectCronJobs:     true,
+		Interval:            defaultInterval,
 	}
 
 	if v, ok := config["kubeconfig"].(string); ok {
@@ -132,6 +142,21 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		}
 		if v, ok := collect["deployments"].(bool); ok {
 			cfg.CollectDeployments = v
+		}
+		if v, ok := collect["statefulsets"].(bool); ok {
+			cfg.CollectStatefulSets = v
+		}
+		if v, ok := collect["daemonsets"].(bool); ok {
+			cfg.CollectDaemonSets = v
+		}
+		if v, ok := collect["replicasets"].(bool); ok {
+			cfg.CollectReplicaSets = v
+		}
+		if v, ok := collect["jobs"].(bool); ok {
+			cfg.CollectJobs = v
+		}
+		if v, ok := collect["cronjobs"].(bool); ok {
+			cfg.CollectCronJobs = v
 		}
 	}
 
@@ -246,6 +271,33 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, pts...)
 	}
 
+	for _, w := range []struct {
+		enabled bool
+		name    string
+		collect func(context.Context, time.Time) ([]data_store.DataPoint, error)
+	}{
+		{p.cfg.CollectStatefulSets, "statefulset", p.collectStatefulSets},
+		{p.cfg.CollectDaemonSets, "daemonset", p.collectDaemonSets},
+		{p.cfg.CollectReplicaSets, "replicaset", p.collectReplicaSets},
+		{p.cfg.CollectJobs, "job", p.collectJobs},
+		{p.cfg.CollectCronJobs, "cronjob", p.collectCronJobs},
+	} {
+		if !w.enabled {
+			continue
+		}
+		pts, err := w.collect(ctx, now)
+		// Partial results are kept: a namespace the agent cannot list must not
+		// discard the ones it can. The error is logged so a permission gap
+		// surfaces instead of presenting as an empty cluster.
+		if err != nil {
+			p.moduleLogger.Warn().Err(err).Str("kind", w.name).
+				Msg("kubernetes: workload collection partially failed")
+		} else if len(pts) > 0 {
+			up = 1
+		}
+		points = append(points, pts...)
+	}
+
 	points = append(points, data_store.DataPoint{
 		Name: metricUp, Value: up, Timestamp: now, Tags: upTags,
 	})
@@ -305,10 +357,15 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 		}
 		if pods := n.Status.Allocatable.Pods(); pods != nil {
 			alloc, _ := pods.AsInt64()
+			// k8s.node.pods.allocatable, NOT .allocated: this is the ceiling
+			// the scheduler may fill, not what is running on the node. The
+			// former name said one thing and carried another (#756).
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.allocated", Value: float64(alloc), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.allocatable", Value: float64(alloc), Timestamp: now, Tags: baseTags,
 			})
 		}
+
+		points = append(points, nodeConditionPoints(n, now, baseTags)...)
 	}
 	return points, nil
 }
@@ -367,11 +424,12 @@ func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_
 		totalRestarts += cs.RestartCount
 	}
 
-	return []data_store.DataPoint{
+	points := []data_store.DataPoint{
 		{Name: "k8s.pod.phase", Value: running, Timestamp: now, Tags: baseTags},
 		{Name: "k8s.pod.ready", Value: ready, Timestamp: now, Tags: baseTags},
 		{Name: "k8s.pod.restarts", Value: float64(totalRestarts), Timestamp: now, Tags: baseTags},
 	}
+	return append(points, podResourcePoints(pod, now, baseTags)...)
 }
 
 func (p *KubernetesProbe) buildContainerPoints(pod *corev1.Pod, now time.Time) []data_store.DataPoint {
@@ -393,6 +451,30 @@ func (p *KubernetesProbe) buildContainerPoints(pod *corev1.Pod, now time.Time) [
 			data_store.DataPoint{Name: "k8s.container.ready", Value: ready, Timestamp: now, Tags: baseTags},
 			data_store.DataPoint{Name: "k8s.container.restarts", Value: float64(cs.RestartCount), Timestamp: now, Tags: baseTags},
 		)
+
+		// A container stuck in CrashLoopBackOff is ready=0 with a rising
+		// restart count — but so is one still pulling its image, and the two
+		// call for opposite reactions. The waiting reason is the only thing
+		// that tells them apart, and it is what an operator actually looks up.
+		if w := cs.State.Waiting; w != nil {
+			waitTags := append(append([]tags.Tag{}, baseTags...),
+				tags.Tag{Key: "k8s.container.waiting.reason", Value: w.Reason})
+			points = append(points, data_store.DataPoint{
+				Name: "k8s.container.waiting", Value: 1, Timestamp: now, Tags: waitTags,
+			})
+		}
+
+		// Resources live on the spec, not the status; the status is what this
+		// loop walks. Matching by name is how the two halves of a container
+		// are joined — an init container never appears here, which is
+		// intentional (it does not hold its reservation for the pod's life).
+		for i := range pod.Spec.Containers {
+			if pod.Spec.Containers[i].Name != cs.Name {
+				continue
+			}
+			points = append(points, containerResourcePoints(&pod.Spec.Containers[i], now, baseTags)...)
+			break
+		}
 	}
 	return points
 }
