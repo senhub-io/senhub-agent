@@ -326,6 +326,7 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 			Msg("OTLP span relay export failed; batch dropped")
 		return
 	}
+	agentstate.IncrementOTLPSpansRelayed(spans)
 	r.logger.Debug().
 		Int("resource_spans", len(rs)).
 		Int("spans", spans).
