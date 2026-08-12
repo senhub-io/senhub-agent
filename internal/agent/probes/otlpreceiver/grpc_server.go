@@ -45,7 +45,7 @@ func (s *logsServiceServer) Export(
 	_ context.Context,
 	req *collectorlogspb.ExportLogsServiceRequest,
 ) (*collectorlogspb.ExportLogsServiceResponse, error) {
-	s.probe.ingestLogs(flattenResourceLogs(req.GetResourceLogs(), s.probe.GetName()))
+	s.probe.ingestLogs(req.GetResourceLogs())
 	return &collectorlogspb.ExportLogsServiceResponse{}, nil
 }
 

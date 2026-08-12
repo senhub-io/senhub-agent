@@ -189,6 +189,14 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of received spans forwarded verbatim by the trace relay. Pairs with the receiver's ingested{signal=traces} counter: equal totals mean every ingested span left the agent.",
 		},
 		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.relayed",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsRelayedTotal()),
+			Description: "Cumulative count of ingested log records forwarded verbatim, with the emitting application's Resource preserved. Distinct from logs.pushed, which counts records the agent itself produced.",
+		},
+		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.export.errors",
 			Unit:        "{error}",
 			Type:        "counter",

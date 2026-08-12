@@ -110,6 +110,17 @@ type OTLPSyncStrategy struct {
 	// active when Traces.Enabled. nil otherwise.
 	spansRelay *spansRelay
 
+	// logsRelay forwards INGESTED logs (otlp_receiver → agentstate verbatim
+	// log channel) to the logs endpoint with the emitting application's
+	// Resource intact. Runs alongside logsPump, which carries the agent's
+	// OWN records through the SDK pipeline; the two never see the same
+	// record. Active when Logs.Enabled, nil otherwise.
+	logsRelay *logsRelay
+
+	// enricher is the insert-if-absent relay enricher shared by both
+	// relays, built lazily by relayEnricher().
+	enricher *relayEnricher
+
 	// pushTicker drives the metrics push cadence. nil before Start, nil
 	// after Shutdown.
 	pushTicker *time.Ticker
@@ -332,23 +343,28 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)
 	}
 
+	// Verbatim relay for INGESTED logs, gated by the same signals.logs
+	// flag as the SDK pipeline above. Both run together and never see the
+	// same record: the pump skips receiver-produced records, which travel
+	// here instead so the emitting application's Resource survives.
+	// Build failure is non-fatal for the same reason as the span relay.
+	if s.cfg.Logs.Enabled {
+		relay, relayErr := newLogsRelay(s.cfg, s.relayEnricher(), s.logger)
+		if relayErr != nil {
+			s.logger.Warn().Err(relayErr).Msg("OTLP log relay unavailable; ingested logs will not be forwarded")
+		} else {
+			s.logsRelay = relay
+			relay.start()
+		}
+	}
+
 	// Relay for received spans, gated by the SAME signals.traces.enabled
 	// flag as the SDK pipeline (no separate config key). Build failure is
 	// non-fatal: the TLS/transport inputs were already validated by
 	// buildExporters above, so a failure here is exotic and must not take
 	// down the metrics/logs signals with it.
 	if s.cfg.Traces.Enabled {
-		// Relay identity for the telemetry.relay.* set (#698): sourced from the
-		// host identity (gopsutil), NOT the operator-overridable Resource, so
-		// relay.host.id is char-identical to this agent's host entity identity;
-		// instance.id is the agent's service.instance.id. A transient host-info
-		// failure yields an empty host.id and the relay set is simply omitted.
-		var relayHostID, relayHostName string
-		if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
-			relayHostID, relayHostName = hi.ID, hi.Name
-		}
-		enricher := buildRelayEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
-		relay, relayErr := newSpansRelay(s.cfg, enricher, s.logger)
+		relay, relayErr := newSpansRelay(s.cfg, s.relayEnricher(), s.logger)
 		if relayErr != nil {
 			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
 		} else {
@@ -734,6 +750,9 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	if s.spansRelay != nil {
 		s.spansRelay.stop(ctx)
 	}
+	if s.logsRelay != nil {
+		s.logsRelay.stop(ctx)
+	}
 
 	if s.exporters == nil {
 		return nil
@@ -788,4 +807,27 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 // resource attrs, etc.
 func (s *OTLPSyncStrategy) Config() Config {
 	return s.cfg
+}
+
+// relayEnricher builds the shared insert-if-absent enricher for BOTH relays,
+// once per strategy. Relay identity for the telemetry.relay.* set (#698) is
+// sourced from the host identity (gopsutil), NOT the operator-overridable
+// Resource, so relay.host.id is char-identical to this agent's host entity
+// identity; instance.id is the agent's service.instance.id. A transient
+// host-info failure yields an empty host.id and the relay set is simply
+// omitted.
+//
+// The on/off switch is still read from signals.traces.relay_enrichment
+// because that is where it was introduced; it now governs every relayed
+// signal, which the config key name no longer conveys (#766).
+func (s *OTLPSyncStrategy) relayEnricher() *relayEnricher {
+	if s.enricher != nil {
+		return s.enricher
+	}
+	var relayHostID, relayHostName string
+	if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
+		relayHostID, relayHostName = hi.ID, hi.Name
+	}
+	s.enricher = buildRelayEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
+	return s.enricher
 }
