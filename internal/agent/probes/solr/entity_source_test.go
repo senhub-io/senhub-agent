@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -150,11 +151,14 @@ func TestEntitySource_HostPortFallback(t *testing.T) {
 		t.Fatalf("got %d entities, want 1", len(obs.Entities))
 	}
 	gotID, _ := obs.Entities[0].ID["db.instance.id"].(string)
-	// Expect "host:port" — parse the server's addr from the test server URL.
+	// The test server binds loopback, so the fallback is host-scoped (#740):
+	// the port still identifies the instance, the address no longer does.
 	_, port := hostPort(srv.URL)
-	want := fmt.Sprintf("127.0.0.1:%d", port)
-	if gotID != want {
-		t.Errorf("db.instance.id = %q, want %q", gotID, want)
+	if gotID == fmt.Sprintf("127.0.0.1:%d", port) {
+		t.Error("db.instance.id kept the loopback address; two hosts would collapse")
+	}
+	if !strings.HasSuffix(gotID, fmt.Sprintf(":%d", port)) {
+		t.Errorf("db.instance.id = %q, want a host-scoped id ending in :%d", gotID, port)
 	}
 }
 
