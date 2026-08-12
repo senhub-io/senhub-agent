@@ -1373,7 +1373,7 @@ n'est exposée pour l'instant (suivi #394).
 
 ```
 type: db
-id:   {db.instance.id: "host:port"}
+id:   {db.instance.id: "<host.id>:port" en loopback, "adresse:port" sinon}
 attrs: {db.system.name: "redis", server.address: host, server.port: port,
         db.version: redis_version}
 ```
