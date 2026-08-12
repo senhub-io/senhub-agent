@@ -80,7 +80,17 @@ Run two instances to serve both protocols at once:
 - **Resource attributes become tags.** `host.name`, `service.name`
   and every other resource attribute is folded onto each datapoint,
   so downstream sinks can group by origin. Per-datapoint attributes
-  win on key collisions.
+  win on key collisions. This is what PRTG, Nagios, Prometheus, the web
+  UI and the cloud sink read, and it is unchanged.
+- **The OTLP output relays the original batch.** Those same points are
+  also forwarded verbatim on the OTLP export, under the **emitting
+  application's** resource rather than re-encoded under the agent's.
+  Without it a reserved identity key such as `service.name` would carry
+  two different values in one export — the agent's on the resource, the
+  application's on the datapoint — and the backend would silently keep
+  one. Agent context is added on top, never substituted, exactly as for
+  logs and traces. Only the OTLP output is affected; every other sink
+  keeps reading the tags above.
 - **All metric types.** Gauges and Sums map to one value each.
   Explicit-bucket histograms are ingested **natively**: re-exported over
   OTLP as a genuine histogram (buckets, sum, count, min/max preserved)
