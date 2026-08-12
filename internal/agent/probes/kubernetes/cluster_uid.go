@@ -60,3 +60,19 @@ func resolveClusterIdentity(cs kubernetes.Interface, timeout time.Duration) (str
 	defer cancel()
 	return clusterUID(ctx, cs)
 }
+
+// clusterIdentity is the value the cluster entity is keyed on — the
+// kube-system UID, or the address-derived fallback when it could not be read.
+//
+// Exposed so the pod anchor uses the SAME string the cluster entity carries.
+// Deriving it twice is how a relation ends up pointing at an entity that does
+// not exist, which the consumer buffers and then drops.
+func (p *KubernetesProbe) clusterIdentity() string {
+	if p.clusterUID != "" {
+		return p.clusterUID
+	}
+	if p.clusterEndpoint == "" {
+		return ""
+	}
+	return "kubernetes://" + p.clusterEndpoint
+}
