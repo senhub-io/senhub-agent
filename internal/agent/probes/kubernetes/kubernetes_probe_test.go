@@ -275,9 +275,16 @@ func TestBuildPodPoints_Running(t *testing.T) {
 
 			pts := p.buildPodPoints(pod, now)
 
-			// Expect exactly 3 metrics.
-			if len(pts) != 3 {
-				t.Fatalf("buildPodPoints returned %d points, want 3", len(pts))
+			// Named rather than counted: a raw count fails on every addition
+			// without saying which metric went missing, and the count is not
+			// the contract — the presence of each named series is.
+			for _, want := range []string{
+				"k8s.pod.phase", "k8s.pod.ready", "k8s.pod.restarts",
+				"k8s.pod.cpu.request", "k8s.pod.memory.request",
+			} {
+				if _, ok := findDP(pts, want); !ok {
+					t.Errorf("%s not emitted", want)
+				}
 			}
 
 			dpPhase, ok := findDP(pts, "k8s.pod.phase")
@@ -514,12 +521,12 @@ func TestCollectNodes_ReadyAndAllocatable(t *testing.T) {
 		t.Errorf("k8s.node.pods.capacity = %v, want 110", dpPodsCap.Value)
 	}
 
-	dpPodsAlloc, ok := findDP(pts, "k8s.node.pods.allocated")
+	dpPodsAlloc, ok := findDP(pts, "k8s.node.pods.allocatable")
 	if !ok {
-		t.Fatal("k8s.node.pods.allocated not emitted")
+		t.Fatal("k8s.node.pods.allocatable not emitted")
 	}
 	if dpPodsAlloc.Value != 110 {
-		t.Errorf("k8s.node.pods.allocated = %v, want 110", dpPodsAlloc.Value)
+		t.Errorf("k8s.node.pods.allocatable = %v, want 110", dpPodsAlloc.Value)
 	}
 }
 

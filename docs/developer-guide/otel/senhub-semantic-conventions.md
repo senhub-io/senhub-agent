@@ -1373,7 +1373,7 @@ n'est exposée pour l'instant (suivi #394).
 
 ```
 type: db
-id:   {db.instance.id: "host:port"}
+id:   {db.instance.id: "<host.id>:port" en loopback, "adresse:port" sinon}
 attrs: {db.system.name: "redis", server.address: host, server.port: port,
         db.version: redis_version}
 ```
@@ -1495,19 +1495,61 @@ par nœud, pod, conteneur ou déploiement selon la configuration.
 | Métrique OTel | Unité | Type | Attributs | Notes |
 |---|---|---|---|---|
 | `senhub.kubernetes.up` | `1` | gauge | `k8s.cluster.name` | 0 si l'API server est injoignable ; émis même en cas d'erreur totale (#469) |
-| `k8s.node.ready` | `1` | gauge | `k8s.node.name`, `k8s.cluster.name` | condition NodeReady |
+| `k8s.node.ready` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | condition NodeReady |
 | `k8s.node.cpu.allocatable` | `{core}` | gauge | `k8s.node.name`, `k8s.cluster.name` | cœurs CPU allouables |
 | `k8s.node.memory.allocatable` | `By` | gauge | `k8s.node.name`, `k8s.cluster.name` | mémoire allouable en octets |
 | `k8s.node.pods.capacity` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | capacité max en pods |
-| `k8s.node.pods.allocated` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | pods allouables restants |
-| `k8s.pod.phase` | `1` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | 1 si phase=Running |
-| `k8s.pod.ready` | `1` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | condition PodReady |
+| `k8s.node.pods.allocatable` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | plafond de pods que l'ordonnanceur peut placer. Renommé depuis `.allocated` (#756) : la valeur vient de `Status.Allocatable.Pods()`, c'est un plafond et non un décompte de ce qui tourne |
+| `k8s.pod.phase` | `{state}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | 1 si phase=Running |
+| `k8s.pod.ready` | `{state}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | condition PodReady |
 | `k8s.pod.restarts` | `{restart}` | counter | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | total redémarrages conteneurs |
-| `k8s.container.ready` | `1` | gauge | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | état ready du conteneur |
+| `k8s.container.ready` | `{state}` | gauge | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | état ready du conteneur |
 | `k8s.container.restarts` | `{restart}` | counter | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | redémarrages conteneur |
 | `k8s.deployment.available` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas disponibles |
 | `k8s.deployment.desired` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas désirés (spec.replicas) |
-| `k8s.deployment.ready` | `1` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | 1 si available ≥ desired |
+| `k8s.deployment.ready` | `{state}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | 1 si available ≥ desired |
+
+**Conditions de nœud (#756).** Polarité inverse de `k8s.node.ready` : ici **1 = la pression EST présente**. Les noms disent l'état compté plutôt qu'un « status » neutre, parce que mélanger les deux conventions sur un même tableau de bord est un piège réel. Une condition non rapportée sort à 0 pour qu'un lecteur ne confonde pas « pas de pression » avec « pas d'information » — sauf `network_unavailable`, que beaucoup de CNI ne renseignent jamais et où un 0 constant inventerait un fait.
+
+| Métrique OTel | Unité | Type | Attributs | Notes |
+|---|---|---|---|---|
+| `k8s.node.condition.memory_pressure` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | 1 = sous pression mémoire |
+| `k8s.node.condition.disk_pressure` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | 1 = sous pression disque ; le kubelet évince déjà alors que `ready` vaut encore 1 |
+| `k8s.node.condition.pid_pressure` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | 1 = sous pression PID |
+| `k8s.node.condition.network_unavailable` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | émis uniquement si le CNI rapporte la condition |
+
+**Réservations de ressources (#756).** Sans elles, impossible de dire si un cluster est sur-réservé. Les conteneurs d'init sont exclus des sommes de pod : ils ne conservent pas leur réservation pour la durée de vie du pod. Un pod **sans limite** est illimité — fait distinct d'une limite à zéro — donc aucune série de limite n'est émise plutôt qu'un 0 trompeur.
+
+| Métrique OTel | Unité | Type | Attributs | Notes |
+|---|---|---|---|---|
+| `k8s.pod.cpu.request` / `k8s.pod.cpu.limit` | `{cpu}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | somme sur les conteneurs du pod |
+| `k8s.pod.memory.request` / `k8s.pod.memory.limit` | `By` | gauge | idem | somme sur les conteneurs du pod |
+| `k8s.container.cpu.request` / `.limit` | `{cpu}` | gauge | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | par conteneur |
+| `k8s.container.memory.request` / `.limit` | `By` | gauge | idem | par conteneur |
+| `k8s.container.waiting` | `{state}` | gauge | + `k8s.container.waiting.reason` | 1 tant que le conteneur attend ; la raison sépare CrashLoopBackOff d'un téléchargement d'image en cours, deux situations aux réactions opposées |
+
+**Workloads au-delà de Deployment (#756).** Le type porte le tag `k8s.workload.kind` plutôt que d'être dans le nom, pour qu'un tableau de bord puisse regrouper sans connaître la liste. Chaque type émet le désiré face au réel, parce que l'écart est le chiffre qu'on lit pendant un déploiement.
+
+| Métrique OTel | Unité | Type | Attributs | Notes |
+|---|---|---|---|---|
+| `k8s.statefulset.desired` / `.ready` / `.current` / `.updated` | `{pod}` | gauge | `k8s.workload.name`, `k8s.workload.kind`, `k8s.namespace.name` | |
+| `k8s.daemonset.desired_scheduled` / `.current_scheduled` / `.ready` / `.misscheduled` | `{node}` | gauge | idem | `misscheduled` = placés là où ils ne devraient pas être |
+| `k8s.replicaset.desired` / `.ready` / `.available` | `{pod}` | gauge | idem | désactivé par défaut : un Deployment en possède un par révision |
+| `k8s.job.active` / `.succeeded` / `.failed` / `.desired_completions` | `{pod}` | gauge | idem | `failed` est le signal : un Job dont les pods échouent reste présent et paraît ordonnancé |
+| `k8s.cronjob.active_jobs` / `.suspended` | `{job}` / `{state}` | gauge | idem | un CronJob suspendu ne produit rien et ressemble à une planification qui n'a pas encore déclenché |
+
+**Stockage, quotas, autoscaling (#756).** Les phases sortent en **une série par phase** avec 0/1 plutôt qu'un entier d'énumération : une chaîne ne peut pas être une valeur, et numéroter les états fait qu'une phase ajoutée en amont devient silencieusement une phase existante. Ici une phase inconnue n'allume rien.
+
+| Métrique OTel | Unité | Type | Attributs | Notes |
+|---|---|---|---|---|
+| `k8s.persistentvolume.capacity` | `By` | gauge | `k8s.persistentvolume.name`, `k8s.storageclass.name` | les volumes sont cluster-scoped : le filtre de namespaces ne s'y applique pas |
+| `k8s.persistentvolume.phase` | `{state}` | gauge | + `phase` | une série par phase |
+| `k8s.persistentvolumeclaim.requested` / `.capacity` | `By` | gauge | `k8s.persistentvolumeclaim.name`, `k8s.namespace.name` | `capacity` peut dépasser `requested` si la classe de stockage arrondit ; absente tant que la demande est Pending |
+| `k8s.persistentvolumeclaim.phase` | `{state}` | gauge | + `phase` | une demande bloquée en Pending est la raison pour laquelle le pod qui l'attend ne démarre jamais |
+| `k8s.resourcequota.hard` / `.used` | `{resource}` | gauge | `k8s.resourcequota.name`, `k8s.resourcequota.resource`, `k8s.namespace.name` | unité selon la ressource : cœurs pour cpu, octets pour la mémoire, entiers pour les comptes |
+| `k8s.hpa.current_replicas` / `.desired_replicas` / `.min_replicas` / `.max_replicas` | `{pod}` | gauge | `k8s.hpa.name`, `k8s.hpa.target`, `k8s.namespace.name` | un autoscaler collé au max est le cluster qui refuse de grandir, invisible depuis les compteurs du workload |
+
+**Events (#756) — rail logs, pas métriques.** Les Events Kubernetes voyagent en enregistrements de log : ce sont des phrases datées, et les compter garderait le nombre en jetant le diagnostic. Un « Warning » Kubernetes est classé **Error** : Kubernetes n'a pas de niveau erreur, et un échec de téléchargement d'image y arrive au même niveau qu'un avertissement de routine. Attributs : `k8s.event.reason`, `.type`, `.object.kind`, `.object.name`, `.source`, `.count`, plus l'étiquette d'identité du sujet (`k8s.pod.name`, `k8s.node.name`, `k8s.workload.name`…) pour joindre l'événement aux séries qu'il explique.
 ### 4.35 Probe `mssql` (Microsoft SQL Server)
 
 Source canonique : [OTel Collector contrib `sqlserverreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/sqlserverreceiver).
