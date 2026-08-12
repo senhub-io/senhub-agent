@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,7 +17,7 @@ func TestNodeEntity_KeyedOnTheMachineID(t *testing.T) {
 	n := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
 		Status: corev1.NodeStatus{NodeInfo: corev1.NodeSystemInfo{
-			MachineID:       "5f2c1b8e4a7d",
+			MachineID:       "8b86170405bc4382b0577eac3df5e730",
 			SystemUUID:      "4C4C4544-0043",
 			OperatingSystem: "linux",
 			KubeletVersion:  "v1.31.2",
@@ -30,8 +31,11 @@ func TestNodeEntity_KeyedOnTheMachineID(t *testing.T) {
 	if ent.Type != entity.TypeHost {
 		t.Errorf("type = %q, want host — a Kubernetes node is a machine with its own OS", ent.Type)
 	}
-	if got := ent.ID["host.id"]; got != "5f2c1b8e4a7d" {
-		t.Errorf("host.id = %v, want the MachineID", got)
+	// The dashed form, not the raw file contents: gopsutil formats the same
+	// bytes as a UUID for the agent's own host.id, and two spellings of one
+	// machine are two entities.
+	if got := ent.ID["host.id"]; got != "8b861704-05bc-4382-b057-7eac3df5e730" {
+		t.Errorf("host.id = %v, want the dashed UUID form the agent emits", got)
 	}
 	// SystemUUID is descriptive, never the identity: it is absent or forged on
 	// several virtualisation platforms.
@@ -184,6 +188,41 @@ func TestRunsOn_BuildsTheChainAndSkipsEmptyTargets(t *testing.T) {
 	for _, bad := range []map[string]any{nil, {}, {"host.id": ""}, {"host.id": "  "}} {
 		if _, ok := runsOn(entity.TypePod, podID, entity.TypeHost, bad); ok {
 			t.Errorf("edge to an empty identity %v must be skipped", bad)
+		}
+	}
+}
+
+// The duplicate that nearly shipped.
+//
+// Kubernetes returns /etc/machine-id verbatim; gopsutil formats the same bytes
+// as a dashed UUID for the agent's own host.id. Measured on a real machine:
+// 8b86170405bc4382b0577eac3df5e730 against
+// 8b861704-05bc-4382-b057-7eac3df5e730. Same file, two spellings, and
+// therefore a silent duplicate for every node in every cluster.
+//
+// Checking that both sides read the same FILE was not enough. Only comparing
+// the emitted STRINGS caught it.
+func TestCanonicalMachineID_MatchesTheAgentSpelling(t *testing.T) {
+	const raw = "8b86170405bc4382b0577eac3df5e730"
+	const want = "8b861704-05bc-4382-b057-7eac3df5e730"
+
+	if got := canonicalMachineID(raw); got != want {
+		t.Errorf("canonicalMachineID(%q) = %q, want %q — the agent emits the "+
+			"dashed form, and a different spelling is a different entity", raw, got, want)
+	}
+	// Already dashed: left alone rather than mangled.
+	if got := canonicalMachineID(want); got != want {
+		t.Errorf("an already-canonical id must pass through unchanged, got %q", got)
+	}
+	// Uppercase hex normalises, since case is another way to spell one id twice.
+	if got := canonicalMachineID("8B86170405BC4382B0577EAC3DF5E730"); got != want {
+		t.Errorf("uppercase not normalised, got %q", got)
+	}
+	// An unexpected shape is NOT reformatted into a plausible-looking identity
+	// that would be wrong; it is returned as-is for the caller to judge.
+	for _, odd := range []string{"", "short", "not-hex-but-exactly-32-chars-xx!"} {
+		if got := canonicalMachineID(odd); got != strings.TrimSpace(odd) {
+			t.Errorf("canonicalMachineID(%q) = %q, want it returned unchanged", odd, got)
 		}
 	}
 }
