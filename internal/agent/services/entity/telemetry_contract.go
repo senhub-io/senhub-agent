@@ -38,6 +38,7 @@ const (
 	TypeNetworkAddress   = wire.TypeNetworkAddress
 	TypeNetworkRoute     = wire.TypeNetworkRoute
 	TypeNetworkEndpoint  = wire.TypeNetworkEndpoint
+	TypePod              = wire.TypePod
 )
 
 // Relation types, same reasoning. The last three are registered but legacy:
@@ -197,6 +198,18 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 			"hypervisor metric carries it, so a compute.vm entity reaches none " +
 			"of its own telemetry. Same shape as db (#741), found by comparing " +
 			"the vocabulary with Toise's registry (#753)",
+	},
+	TypePod: {
+		Status:     StatusOwnKey,
+		SubjectKey: "k8s.pod.uid",
+		Carrier:    CarrierDatapoint,
+		Shipped:    false,
+		Gap: "the pod owns telemetry no container has — the network namespace " +
+			"is shared, so network measurements belong to the pod and nothing " +
+			"else. That is the argument that settled the type with the consumer, " +
+			"and the metric side of it is not built yet: pod metrics carry " +
+			"k8s.pod.name, which is namespace-scoped and reusable, not the UID " +
+			"the entity is keyed on. Same shape as db (#756)",
 	},
 	TypeNetworkAddress: {
 		Status:  StatusGraphOnly,

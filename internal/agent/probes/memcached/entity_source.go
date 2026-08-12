@@ -1,7 +1,6 @@
 package memcached
 
 import (
-	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -42,7 +41,7 @@ type memcachedEntitySource struct {
 func newMemcachedEntitySource(host string, port int, instanceName string) *memcachedEntitySource {
 	id := instanceName
 	if id == "" {
-		id = host + ":" + strconv.FormatInt(int64(port), 10)
+		id = dbcommon.FallbackInstanceID(host, port, dbcommon.HostID())
 	}
 	return &memcachedEntitySource{
 		instanceID: id,
