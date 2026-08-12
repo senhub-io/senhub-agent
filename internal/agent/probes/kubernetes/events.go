@@ -97,9 +97,14 @@ func (p *KubernetesProbe) collectEvents(ctx context.Context, now time.Time) erro
 		p.moduleLogger.Info().
 			Msg("kubernetes: event cursor initialised; events from now on are published, the retention window already in the API is not replayed")
 	}
-	if published > 0 {
-		p.moduleLogger.Debug().Int("events", published).Msg("kubernetes: events published")
-	}
+	// Info, not Debug: without this line a rail publishing nothing and a rail
+	// publishing normally are indistinguishable from outside, so "no events
+	// arrived" cannot be told from "no events happened" without a debug build.
+	p.moduleLogger.Info().
+		Int("published", published).
+		Int("namespaces", len(namespaces)).
+		Int64("cursor_unix_nano", newest).
+		Msg("kubernetes: event cycle complete")
 	return firstErr
 }
 
