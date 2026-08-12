@@ -2,11 +2,13 @@ package swarm
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -22,22 +24,22 @@ import (
 func newTestProbe(t *testing.T, handler http.Handler) *swarmProbe {
 	t.Helper()
 
-	// NOT t.TempDir(): it embeds the test name in the path, and a Unix socket
-	// path is capped near 104 bytes on macOS and BSD. Every test in this file
-	// silently skipped on the author's machine before this was fixed — and a
-	// skipped test guards nothing while looking exactly like a passing one.
-	dir, err := os.MkdirTemp("/tmp", "sw")
+	sock, err := shortSocketPath(t)
 	if err != nil {
-		t.Fatalf("mkdtemp: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	sock := filepath.Join(dir, "d.sock")
-	if len(sock) > 100 {
-		t.Fatalf("socket path is %d bytes, too long for this platform: %s", len(sock), sock)
+		t.Fatalf("socket path: %v", err)
 	}
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
-		t.Fatalf("listen unix: %v", err)
+		// The probe dials a Unix socket, which is how the Docker Engine is
+		// reached on Linux and macOS. Windows exposes the Engine over a named
+		// pipe instead, so a platform without AF_UNIX is not a broken test —
+		// it is a platform this probe's transport does not serve. Skipping is
+		// stated with its reason rather than hidden, and only here: on every
+		// platform that does support it, a listen failure is a hard error.
+		if runtime.GOOS == "windows" {
+			t.Skipf("Unix sockets unavailable on this runner (%v); the swarm probe reaches Docker over a Unix socket, not a named pipe", err)
+		}
+		t.Fatalf("listen unix on %s: %v", sock, err)
 	}
 	srv := &httptest.Server{Listener: ln, Config: &http.Server{Handler: handler}}
 	srv.Start()
@@ -49,6 +51,39 @@ func newTestProbe(t *testing.T, handler http.Handler) *swarmProbe {
 		t.Fatalf("NewSwarmProbe: %v", err)
 	}
 	return p.(*swarmProbe)
+}
+
+// shortSocketPath returns a temp socket path under the platform's socket-name
+// limit, roughly 104 bytes on macOS and BSD and 108 on Linux.
+//
+// NOT t.TempDir(): it embeds the test name in the path, which pushed every
+// test in this file over the macOS limit and made them all skip — a skipped
+// test guards nothing while looking exactly like a passing one.
+//
+// The default temp root is tried first because it is the portable answer, and
+// "/tmp" only as a fallback for the platforms whose default root is long. A
+// hardcoded "/tmp" is not portable: it does not exist on Windows, which is how
+// this file went red in CI after being fixed for macOS.
+func shortSocketPath(t *testing.T) (string, error) {
+	t.Helper()
+	for _, root := range []string{"", "/tmp"} {
+		if root == "/tmp" {
+			if _, err := os.Stat(root); err != nil {
+				continue
+			}
+		}
+		dir, err := os.MkdirTemp(root, "sw")
+		if err != nil {
+			continue
+		}
+		sock := filepath.Join(dir, "d.sock")
+		if len(sock) <= 100 {
+			t.Cleanup(func() { _ = os.RemoveAll(dir) })
+			return sock, nil
+		}
+		_ = os.RemoveAll(dir)
+	}
+	return "", fmt.Errorf("no temp root produced a socket path under the platform limit")
 }
 
 // engine serves canned JSON per path; an absent path answers 404 so a test that
