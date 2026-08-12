@@ -347,7 +347,7 @@ func (s *OTLPSyncStrategy) Start() error {
 		if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
 			relayHostID, relayHostName = hi.ID, hi.Name
 		}
-		enricher := buildTraceEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
+		enricher := buildRelayEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
 		relay, relayErr := newSpansRelay(s.cfg, enricher, s.logger)
 		if relayErr != nil {
 			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
