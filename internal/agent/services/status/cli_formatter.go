@@ -258,6 +258,7 @@ func (f *CLIFormatter) FormatOTLPInfo(info *OTLPInfo) string {
 	output.WriteString(fmt.Sprintf("Metrics pushed:    %d\n", info.Pipeline.MetricsPushedTotal))
 	output.WriteString(fmt.Sprintf("Logs pushed:       %d\n", info.Pipeline.LogsPushedTotal))
 	output.WriteString(fmt.Sprintf("Spans relayed:     %d\n", info.Pipeline.SpansRelayedTotal))
+	output.WriteString(fmt.Sprintf("Logs relayed:      %d\n", info.Pipeline.LogsRelayedTotal))
 	output.WriteString(fmt.Sprintf("Export errors:     %d\n", info.Pipeline.ExportErrorsTotal))
 	output.WriteString(fmt.Sprintf("Dropped:           %d\n", info.Pipeline.DroppedTotal))
 	if len(info.Pipeline.DroppedByReason) > 0 {

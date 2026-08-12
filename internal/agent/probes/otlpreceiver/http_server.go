@@ -181,7 +181,7 @@ func (p *OTLPReceiverProbe) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.ingestLogs(flattenResourceLogs(req.GetResourceLogs(), p.GetName()))
+	p.ingestLogs(req.GetResourceLogs())
 
 	out, err := proto.Marshal(&collectorlogspb.ExportLogsServiceResponse{})
 	if err != nil {
