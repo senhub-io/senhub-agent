@@ -23,26 +23,40 @@ import (
 // never anchored. Redis has no tech id, so without instance_name a local redis
 // stays floating until its identity is host-scoped (Toise db-identity follow-up).
 func TestEntityObserver_LocalDBRunsOnHost(t *testing.T) {
-	runsOn := func(host, id string) bool {
-		o := newEntityObserver(probeConfig{Host: host, Port: 6379}, id)
-		o.hostID = func() string { return "h-1" }
-		o.update(probeConfig{Host: host, Port: 6379}, map[string]string{})
+	observe := func(host string) (string, bool) {
+		cfg := probeConfig{Host: host, Port: 6379}
+		o := newEntityObserver(cfg, func() string { return "h-1" })
+		o.update(cfg, map[string]string{})
 		got, _ := o.Observe()
+		id, _ := got.Entities[0].ID["db.instance.id"].(string)
 		for _, r := range got.Relations {
 			if r.Type == "runs_on" && r.FromType == "db" && r.ToID["host.id"] == "h-1" {
-				return true
+				return id, true
 			}
 		}
-		return false
+		return id, false
 	}
-	if !runsOn("127.0.0.1", "prod-cache") {
-		t.Error("loopback db with a host-unique id must emit runs_on→host")
+
+	// A local Redis is host-scoped, so it is unique per machine and can be
+	// anchored to the host it runs on. Before #740 it was keyed on the
+	// loopback address, which the collapse guard rightly refused to anchor —
+	// leaving every local Redis floating with no host.
+	id, anchored := observe("127.0.0.1")
+	if id != "h-1:6379" {
+		t.Errorf("local db.instance.id = %q, want h-1:6379", id)
 	}
-	if runsOn("127.0.0.1", "127.0.0.1:6379") {
-		t.Error("host:port identity must NOT emit runs_on on loopback (collapse guard)")
+	if !anchored {
+		t.Error("a host-scoped local db must emit runs_on→host")
 	}
-	if runsOn("10.0.0.5", "10.0.0.5:6379") {
-		t.Error("remote db must NOT emit runs_on→host")
+
+	// A remote target keeps its address as identity and must never claim to
+	// run on the agent's host.
+	id, anchored = observe("10.0.0.5")
+	if id != "10.0.0.5:6379" {
+		t.Errorf("remote db.instance.id = %q, want 10.0.0.5:6379", id)
+	}
+	if anchored {
+		t.Error("a remote db must NOT emit runs_on→host")
 	}
 }
 
@@ -947,7 +961,7 @@ func TestSeam_ConnectError(t *testing.T) {
 func TestEntityObserver_HostPortFallback(t *testing.T) {
 	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
 	hostPort := "10.0.0.1:6379"
-	obs := newEntityObserver(cfg, hostPort)
+	obs := newEntityObserver(cfg, func() string { return "h-1" })
 
 	// Before first update: ok=false.
 	if _, ok := obs.Observe(); ok {
@@ -989,8 +1003,7 @@ func TestEntityObserver_HostPortFallback(t *testing.T) {
 // set in config, it is used verbatim as db.instance.id instead of host:port.
 func TestEntityObserver_InstanceNameOverride(t *testing.T) {
 	cfg := probeConfig{Host: "10.0.0.1", Port: 6379, InstanceName: "prod-redis-primary"}
-	hostPort := "10.0.0.1:6379"
-	obs := newEntityObserver(cfg, hostPort)
+	obs := newEntityObserver(cfg, func() string { return "h-1" })
 	obs.update(cfg, map[string]string{})
 
 	got, ok := obs.Observe()
@@ -1014,8 +1027,7 @@ func TestEntityObserver_InstanceNameOverride(t *testing.T) {
 // does NOT change the pinned db.instance.id.
 func TestEntityObserver_IDImmutable(t *testing.T) {
 	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
-	hostPort := "10.0.0.1:6379"
-	obs := newEntityObserver(cfg, hostPort)
+	obs := newEntityObserver(cfg, func() string { return "h-1" })
 
 	obs.update(cfg, map[string]string{"redis_version": "7.0.0"})
 	first, _ := obs.Observe()
@@ -1035,7 +1047,7 @@ func TestEntityObserver_IDImmutable(t *testing.T) {
 // the probe has successfully collected at least once).
 func TestEntityObserver_NotOKBeforeFirstUpdate(t *testing.T) {
 	cfg := probeConfig{Host: "127.0.0.1", Port: 6379}
-	obs := newEntityObserver(cfg, "127.0.0.1:6379")
+	obs := newEntityObserver(cfg, func() string { return "h-1" })
 	if _, ok := obs.Observe(); ok {
 		t.Error("Observe should return ok=false before the first update")
 	}
@@ -1050,7 +1062,7 @@ func TestEntityObserver_MonitorsEdgePresent(t *testing.T) {
 
 	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
 	hostPort := "10.0.0.1:6379"
-	obs := newEntityObserver(cfg, hostPort)
+	obs := newEntityObserver(cfg, func() string { return "h-1" })
 	obs.update(cfg, map[string]string{})
 
 	got, _ := obs.Observe()
@@ -1081,7 +1093,7 @@ func TestEntityObserver_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 	agentstate.SetAgentInstanceID("")
 
 	cfg := probeConfig{Host: "10.0.0.1", Port: 6379}
-	obs := newEntityObserver(cfg, "10.0.0.1:6379")
+	obs := newEntityObserver(cfg, func() string { return "h-1" })
 	obs.update(cfg, map[string]string{})
 
 	got, _ := obs.Observe()

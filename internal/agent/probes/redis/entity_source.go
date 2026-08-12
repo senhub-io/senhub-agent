@@ -42,12 +42,21 @@ type entityObserver struct {
 
 // newEntityObserver builds the observer and pins the db.instance.id
 // immediately. It never returns nil.
-func newEntityObserver(cfg probeConfig, hostPort string) *entityObserver {
-	id := hostPort
-	if cfg.InstanceName != "" {
-		id = cfg.InstanceName
+// hostID resolves the agent host; it is a parameter rather than a package
+// call so the pinned identity is reproducible in tests — the id is frozen at
+// construction and a test cannot re-pin it afterwards.
+func newEntityObserver(cfg probeConfig, hostID func() string) *entityObserver {
+	if hostID == nil {
+		hostID = dbcommon.HostID
 	}
-	return &entityObserver{pinnedID: id, hostID: dbcommon.HostID}
+	id := cfg.InstanceName
+	if id == "" {
+		// Redis has no persistent server id, so this fallback is the norm
+		// rather than a degraded case: every default install listens on
+		// loopback and would otherwise share one identity fleet-wide (#740).
+		id = dbcommon.FallbackInstanceID(cfg.Host, cfg.Port, hostID())
+	}
+	return &entityObserver{pinnedID: id, hostID: hostID}
 }
 
 // Observe returns the last cached entity observation. ok is false before the
