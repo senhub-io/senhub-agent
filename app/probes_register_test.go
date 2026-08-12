@@ -72,6 +72,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"snmp_poll",
 		"snmp_trap",
 		"solr",
+		"swarm",
 		"syslog",
 		"systemd",
 		"tcp_dial",

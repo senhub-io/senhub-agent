@@ -458,6 +458,11 @@ var freeTierProbes = map[string]bool{
 	// docker: container monitoring with a free equivalent (cadvisor /
 	// telegraf docker input) — basic collection is commoditized, so free.
 	"docker": true,
+
+	// swarm: Docker Swarm cluster state — the same commoditized-collection
+	// argument as docker, and the wedge case: a small shop replacing PRTG
+	// must see its cluster without buying a tier.
+	"swarm": true,
 	// redis: Redis/Valkey health/throughput, parity with redis_exporter —
 	// free as the OTel/exporter baseline; deep Redis depth stays paid.
 	"redis": true,
