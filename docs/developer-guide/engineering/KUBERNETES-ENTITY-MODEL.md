@@ -45,17 +45,34 @@ duplicate. The cluster view contributes the scheduling facts, the in-guest
 agent contributes CPU, memory and disk, and they describe the same machine
 because they agree on its identity.
 
-**Caveat, stated rather than assumed.** gopsutil prefers `/etc/machine-id`
-but falls back to `/var/lib/dbus/machine-id` or the DMI product UUID when it
-is absent; Kubernetes reads `/etc/machine-id` via cadvisor. On a normal Linux
-node they agree. On a node without `/etc/machine-id` they will not, and the
-result is two entities for one machine — the duplicate we were trying to
-avoid. `SystemUUID` is available as a second attribute and is the natural
-`same_as` facet for that case; it should not be the identity, because it is
-absent or forged on many virtualisation platforms.
+**The caveat turned out to be the defect, and not for the reason stated.**
 
-This needs measuring on a real cluster before shipping, not reasoning. It is
-the first thing the k3s campaign should check.
+The paragraph that stood here worried about a node *without* `/etc/machine-id`.
+The real problem was on the nodes that have one. Measured (#762):
+
+```
+/etc/machine-id                     8b86170405bc4382b0577eac3df5e730
+agent host.id (emitted)             8b861704-05bc-4382-b057-7eac3df5e730
+```
+
+Kubernetes returns the file verbatim; gopsutil formats the same bytes as a
+dashed UUID. Same machine, same file, **two spellings** — so two entities, a
+silent duplicate for every node of every cluster, which is the precise
+opposite of what this model promises.
+
+The reasoning above was sound and the conclusion was wrong. Verifying that
+both sides read the same *file* is not verifying that both emit the same
+*string*. That is C6's equality requirement, and it was skipped because the
+derivation looked too obviously identical to check.
+
+The emitted value is now normalised to the agent's spelling. `SystemUUID`
+remains a descriptive attribute and the natural `same_as` facet — never the
+identity, being absent or forged on many virtualisation platforms.
+
+**What is still unproven:** that the two entities actually merge in the graph.
+That needs a node which is both a Kubernetes node and a machine running an
+agent. k3d cannot show it — its nodes are containers reporting an empty
+MachineID, so the lab run produced no node entities at all.
 
 ### Container → `container`, and it reconciles with the docker probe
 
