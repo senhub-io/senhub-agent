@@ -762,6 +762,7 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 		Pipeline: OTLPPipelineInfo{
 			MetricsPushedTotal: agentstate.GetOTLPMetricsPushedTotal(),
 			LogsPushedTotal:    agentstate.GetOTLPLogsPushedTotal(),
+			SpansRelayedTotal:  agentstate.GetOTLPSpansRelayedTotal(),
 			ExportErrorsTotal:  agentstate.GetOTLPExportErrorsTotal(),
 			DroppedTotal:       droppedTotal,
 			DroppedByReason:    droppedByReason,

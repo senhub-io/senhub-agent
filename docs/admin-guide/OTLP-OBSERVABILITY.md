@@ -58,7 +58,8 @@ Counter maps (`dropped_by_reason`, `checkpoint.errors_by_stage`) are always retu
 |---|---|---|---|
 | `metrics_pushed_total` | uint64 | `senhub.agent.otlp.metrics.pushed` | Number of metric data-points successfully accepted by the OTLP exporter since the agent started. Monotonic. |
 | `logs_pushed_total` | uint64 | `senhub.agent.otlp.logs.pushed` | Same, for log records. |
-| `export_errors_total` | uint64 | `senhub.agent.otlp.export.errors` | Number of failed OTLP export calls (after retry exhaustion). Signal independent — both metrics and logs failures count here. |
+| `spans_relayed_total` | uint64 | `senhub.agent.otlp.spans.relayed` | Spans received by the `otlp_receiver` probe and forwarded verbatim by the trace relay, counted after the collector accepted the batch. Pair it with the receiver's `ingested{signal="traces"}`: equal totals mean every ingested span left the agent, and a gap that does not close is the agent's side of the problem. The relay forwards raw proto outside the SDK exporters, so neither `metrics_pushed_total` nor `logs_pushed_total` covers this path. |
+| `export_errors_total` | uint64 | `senhub.agent.otlp.export.errors` | Number of failed OTLP export calls (after retry exhaustion). Signal independent — metrics, logs and relayed-span failures all count here. |
 | `dropped_total` | uint64 | sum of `dropped_by_reason` | Aggregate count of OTLP data-points discarded **before** the export call. |
 | `dropped_by_reason` | map[string]uint64 | `senhub.agent.otlp.dropped{reason=…}` | Per-reason breakdown. Reason set is a stable, small enum: |
 
