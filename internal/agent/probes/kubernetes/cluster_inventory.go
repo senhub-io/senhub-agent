@@ -38,7 +38,7 @@ import (
 // fallback: it is absent or forged on several virtualisation platforms, and it
 // is the natural same_as facet the day the consumer implements that overlay.
 func nodeEntity(n *corev1.Node, clusterUID string) (entity.Entity, bool) {
-	machineID := strings.TrimSpace(n.Status.NodeInfo.MachineID)
+	machineID := canonicalMachineID(n.Status.NodeInfo.MachineID)
 	if machineID == "" {
 		return entity.Entity{}, false
 	}
@@ -64,6 +64,40 @@ func nodeEntity(n *corev1.Node, clusterUID string) (entity.Entity, bool) {
 		ID:         map[string]any{"host.id": machineID},
 		Attributes: attrs,
 	}, true
+}
+
+// canonicalMachineID renders a machine-id the way the agent's own host entity
+// does, so the two spellings of one machine are one string.
+//
+// This is the trap that nearly shipped. Kubernetes returns /etc/machine-id
+// verbatim — 32 hex characters, no separators. gopsutil, which the agent uses
+// for its own host.id, formats the same bytes as a dashed UUID. Measured on a
+// real machine:
+//
+//	/etc/machine-id      8b86170405bc4382b0577eac3df5e730
+//	agent host.id        8b861704-05bc-4382-b057-7eac3df5e730
+//
+// Same machine, same file, two spellings — and therefore two entities, a
+// silent duplicate for every node in every cluster. Verifying that both sides
+// read the same FILE was not enough; only comparing the emitted STRINGS caught
+// it. That is C6's equality requirement, applied to a value nobody thought to
+// compare because the derivation looked obviously identical.
+//
+// Anything that is not a bare 32-character hex id is returned trimmed and
+// unchanged: a value already dashed is left alone, and an unexpected shape is
+// not reformatted into a plausible-looking identity that would be wrong.
+func canonicalMachineID(raw string) string {
+	id := strings.TrimSpace(raw)
+	if len(id) != 32 {
+		return id
+	}
+	for _, r := range id {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return id
+		}
+	}
+	id = strings.ToLower(id)
+	return id[0:8] + "-" + id[8:12] + "-" + id[12:16] + "-" + id[16:20] + "-" + id[20:32]
 }
 
 // containerEntity turns a container status into a container entity.
