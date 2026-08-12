@@ -1,8 +1,6 @@
 package mssql
 
 import (
-	"strconv"
-
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -38,7 +36,7 @@ type mssqlEntitySource struct {
 // db.instance.id encodes the same target the probe connects to, so metrics
 // tagged with server.address/server.port join to this entity in the consumer.
 func newEntitySource(host string, port int) *mssqlEntitySource {
-	instanceID := dbInstanceScheme + host + ":" + strconv.Itoa(port)
+	instanceID := dbInstanceScheme + dbcommon.FallbackInstanceID(host, port, dbcommon.HostID())
 	dbID := map[string]any{
 		idKeyDBInstance: instanceID,
 		idKeyDBSystem:   dbSystemMSSQL,

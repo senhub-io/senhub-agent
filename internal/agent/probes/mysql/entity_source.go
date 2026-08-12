@@ -74,10 +74,13 @@ func (s *mysqlEntitySource) pinServerUUID(uuid string) {
 		s.idPinned = true
 		return
 	}
-	// Degraded fallback: host:port when no stable tech id is available.
-	// MySQL always reports @@server_uuid on a healthy connection so this
-	// branch is reached only when the query itself failed.
-	s.pinnedID = fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
+	// Degraded fallback: address:port when no stable tech id is available,
+	// host-scoped on loopback so two local servers stay two entities.
+	//
+	// Not the rare branch it was assumed to be: MariaDB has no @@server_uuid
+	// at all, so every MariaDB install lands here — which is how two of them
+	// collapsed into one entity in production (#740).
+	s.pinnedID = dbcommon.FallbackInstanceID(s.cfg.Host, s.cfg.Port, s.hostID())
 	s.idPinned = true
 }
 
