@@ -21,13 +21,14 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	t.Cleanup(agentstate.ResetCollectErrorsForTest)
 
 	recs := BuildAgentRecords(snap)
-	// 31 records when neither build info nor http_requests is set and no
+	// 34 records when neither build info nor http_requests is set and no
 	// collect errors / OTLP drops / checkpoint errors have occurred yet:
 	//   6 core         (uptime, cache.entries, probes.{active,total,healthy},
 	//                   transformer.fallback)
-	//   9 OTLP push    (metrics.pushed, logs.pushed, export.errors,
-	//                   dropped_log_records, dropped_span_batches,
-	//                   buffer.fill_ratio, store_size,
+	//  12 OTLP push    (metrics.pushed, logs.pushed, spans.relayed,
+	//                   logs.relayed, metrics.relayed, export.errors,
+	//                   dropped_log_records,
+	//                   dropped_span_batches, buffer.fill_ratio, store_size,
 	//                   export.duration{window=last},
 	//                   export.duration{window=mean})
 	//   3 OTLP checkpoint (size, last_save_age, restored_entries)
@@ -43,8 +44,8 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	if len(recs) != 31 {
-		t.Fatalf("expected 31 records (no build info, no http requests, no collect errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
+	if len(recs) != 34 {
+		t.Fatalf("expected 34 records (no build info, no http requests, no collect errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -60,6 +61,9 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.transformer.fallback",
 		"senhub.agent.otlp.metrics.pushed",
 		"senhub.agent.otlp.logs.pushed",
+		"senhub.agent.otlp.spans.relayed",
+		"senhub.agent.otlp.logs.relayed",
+		"senhub.agent.otlp.metrics.relayed",
 		"senhub.agent.otlp.export.errors",
 		"senhub.agent.otlp.dropped_log_records",
 		"senhub.agent.otlp.dropped_span_batches",

@@ -45,7 +45,7 @@ func (s *logsServiceServer) Export(
 	_ context.Context,
 	req *collectorlogspb.ExportLogsServiceRequest,
 ) (*collectorlogspb.ExportLogsServiceResponse, error) {
-	s.probe.ingestLogs(flattenResourceLogs(req.GetResourceLogs(), s.probe.GetName()))
+	s.probe.ingestLogs(req.GetResourceLogs())
 	return &collectorlogspb.ExportLogsServiceResponse{}, nil
 }
 
@@ -62,6 +62,7 @@ func (s *metricsServiceServer) Export(
 	req *collectormetricspb.ExportMetricsServiceRequest,
 ) (*collectormetricspb.ExportMetricsServiceResponse, error) {
 	points, dropped := flattenResourceMetrics(req.GetResourceMetrics())
+	s.probe.publishMetricBatch(req.GetResourceMetrics())
 	if err := s.probe.ingest(points, dropped); err != nil {
 		return nil, err
 	}

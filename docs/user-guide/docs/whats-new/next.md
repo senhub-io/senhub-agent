@@ -3,7 +3,60 @@
 <div class="rn-filter"></div>
 
 
+## Changed
+
+### Telemetry ingested by `otlp_receiver` keeps the sending application's identity
+
+An application pushing to the agent's OTLP receiver sends its own resource —
+its `service.name`, its `host.name`. Until now the agent replaced that identity
+with its own on the way out, so several applications behind one agent arrived
+at the backend indistinguishable: a log sent with `service.name=my-app` was
+stored under the agent's `service.name`, and an ingested metric carried two
+different values for `service.name` in a single export — the agent's on the
+resource, the application's on the datapoint — leaving the backend to silently
+keep one.
+
+The three signals now honour one contract on the OTLP output: the emitting
+application's resource is forwarded as sent, and the agent's context (tenant,
+site, environment, and the `telemetry.relay.*` identity that names which agent
+relayed the data) is only ever **added** to keys the sender left unset. Traces
+already worked this way; logs and metrics now match them.
+
+**Nothing changes for PRTG, Nagios, Prometheus, the web UI or the SenHub
+cloud.** Those sinks read tags, not an OTLP resource, and ingested telemetry
+still reaches them exactly as before — the sending application's resource
+attributes keep arriving as tags.
+
+If a dashboard or query relies on ingested **logs** carrying the agent's
+`service.name`, point it at the agent's own logs, or at
+`telemetry.relay.instance.id`, which names the relaying agent without
+overwriting the sender. (#765, #767)
+
 ## New
+
+### The OTLP pipeline reports what it relays
+
+The relays had no success counter: an operator could watch
+`senhub_agent_otlp_receiver_ingested_total` climb with no way to tell telemetry
+the agent had forwarded from telemetry it had accepted and never sent. A field
+report spent half a day on that ambiguity — the agent was relaying correctly the
+whole time.
+
+Three counters close it, on `/info/otlp`, in `senhub-agent status --otlp` and on
+the Prometheus endpoint:
+
+- `senhub_agent_otlp_spans_relayed_total`
+- `senhub_agent_otlp_logs_relayed_total`
+- `senhub_agent_otlp_metrics_relayed_total`
+
+Each counts only what the collector accepted, never a refused export, and pairs
+with the receiver's ingest counter for the same signal: equal totals mean
+everything ingested left the agent.
+
+The HTTP receiver's startup log also names every route it serves. It previously
+logged only the metrics path even when the logs and traces handlers were mounted,
+which read as "traces is not wired" at exactly the moment an operator checks
+that. (#764)
 
 ### `snmp_poll` collects IPv6 routes
 
@@ -66,6 +119,10 @@ both behaviours stay silent when there is only one binary. (#723)
 - Hosts running `auto_update.include_beta: true` resolve `latest` to the newest
   beta and never move to the stable release that supersedes it. Stable hosts are
   unaffected. (#730)
+- Relay enrichment is configured under `signals.traces.relay_enrichment`, but now
+  governs relayed logs and metrics too; disabling it on the traces signal
+  silently disables it for all three. The setting will move to a relay-level
+  block, with the current key kept as a deprecated alias. (#766)
 
 ### `refresh-unit` no longer disarms a `--user root` install
 
