@@ -62,6 +62,7 @@ func (s *metricsServiceServer) Export(
 	req *collectormetricspb.ExportMetricsServiceRequest,
 ) (*collectormetricspb.ExportMetricsServiceResponse, error) {
 	points, dropped := flattenResourceMetrics(req.GetResourceMetrics())
+	s.probe.publishMetricBatch(req.GetResourceMetrics())
 	if err := s.probe.ingest(points, dropped); err != nil {
 		return nil, err
 	}

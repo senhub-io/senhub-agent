@@ -117,6 +117,12 @@ type OTLPSyncStrategy struct {
 	// record. Active when Logs.Enabled, nil otherwise.
 	logsRelay *logsRelay
 
+	// metricsRelay forwards INGESTED metrics (otlp_receiver → agentstate
+	// verbatim metric channel) with the emitting application's Resource
+	// intact. Its presence also switches AddDataPoints to skip
+	// receiver-produced points, so an ingested point is exported once.
+	metricsRelay *metricsRelay
+
 	// enricher is the insert-if-absent relay enricher shared by both
 	// relays, built lazily by relayEnricher().
 	enricher *relayEnricher
@@ -348,6 +354,19 @@ func (s *OTLPSyncStrategy) Start() error {
 	// same record: the pump skips receiver-produced records, which travel
 	// here instead so the emitting application's Resource survives.
 	// Build failure is non-fatal for the same reason as the span relay.
+	// Verbatim relay for INGESTED metrics, gated by signals.metrics. The
+	// DataStore path is untouched for every non-OTLP sink; this only
+	// changes what the OTLP output ships for received points.
+	if s.cfg.Metrics.Enabled {
+		relay, relayErr := newMetricsRelay(s.cfg, s.relayEnricher(), s.logger)
+		if relayErr != nil {
+			s.logger.Warn().Err(relayErr).Msg("OTLP metric relay unavailable; ingested metrics will be exported under the agent resource")
+		} else {
+			s.metricsRelay = relay
+			relay.start()
+		}
+	}
+
 	if s.cfg.Logs.Enabled {
 		relay, relayErr := newLogsRelay(s.cfg, s.relayEnricher(), s.logger)
 		if relayErr != nil {
@@ -558,9 +577,37 @@ func (s *OTLPSyncStrategy) warnMissingMappingOnce(m otelmapper.CacheMetric, err 
 // silently dropped (they cannot be routed through otelmapper).
 func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 	for _, dp := range data {
+		// Points ingested from a third-party application take the verbatim
+		// relay instead (metrics_relay.go), which ships them under the
+		// EMITTER's Resource. Storing them here as well would export the
+		// same point twice — once more under the agent's Resource, putting
+		// two values of service.name in one export. Skipped only when the
+		// relay is actually draining; with no relay the store stays the
+		// route, so nothing is lost.
+		if s.metricsRelay != nil && dataPointTag(dp, tagProbeType) == relayedProbeType {
+			continue
+		}
 		s.store.upsert(dp)
 	}
 	return nil
+}
+
+// tagProbeType is the datapoint tag carrying the producing probe's type,
+// set by BaseProbe.EnrichDataPointsWithProbeName.
+const tagProbeType = "probe_type"
+
+// relayedProbeType is the producer whose datapoints travel the verbatim
+// relay rather than this strategy's store.
+const relayedProbeType = "otlp_receiver"
+
+// dataPointTag returns the value of one tag, or "" when absent.
+func dataPointTag(dp datapoint.DataPoint, key string) string {
+	for _, t := range dp.Tags {
+		if t.Key == key {
+			return t.Value
+		}
+	}
+	return ""
 }
 
 // startEntityEmission wires the entity pump (consumer of the neutral
@@ -752,6 +799,9 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	}
 	if s.logsRelay != nil {
 		s.logsRelay.stop(ctx)
+	}
+	if s.metricsRelay != nil {
+		s.metricsRelay.stop(ctx)
 	}
 
 	if s.exporters == nil {

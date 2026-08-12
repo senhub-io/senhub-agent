@@ -5,6 +5,7 @@ import (
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
@@ -147,6 +148,29 @@ func (e *relayEnricher) enrichLogs(rl []*logspb.ResourceLogs) []*logspb.Resource
 			Resource:  newRes,
 			ScopeLogs: orig.ScopeLogs,
 			SchemaUrl: orig.SchemaUrl,
+		}
+	}
+	return out
+}
+
+// enrichMetrics is enrichSpans for the metric signal: same insert-if-absent
+// contract, same copy-on-write discipline. The ScopeMetrics are shared with
+// the input and never mutated — only the Resource is rebuilt.
+func (e *relayEnricher) enrichMetrics(rm []*metricpb.ResourceMetrics) []*metricpb.ResourceMetrics {
+	if !e.active() {
+		return rm
+	}
+	out := make([]*metricpb.ResourceMetrics, len(rm))
+	for i, orig := range rm {
+		newRes, changed := e.enrichResource(orig.GetResource())
+		if !changed {
+			out[i] = orig
+			continue
+		}
+		out[i] = &metricpb.ResourceMetrics{
+			Resource:     newRes,
+			ScopeMetrics: orig.ScopeMetrics,
+			SchemaUrl:    orig.SchemaUrl,
 		}
 	}
 	return out
