@@ -105,6 +105,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **mongodb** — MongoDB server monitoring via serverStatus + per-database dbStats. The most-deployed document database; free tier covers standalone, replica set and Atlas targets via URI. Deep auth topologies, replica-set health and Atlas-specific metrics are future paid extensions.
 - **redis** - Redis / Valkey health and throughput via the INFO command (memory, connections, throughput, cache hit/miss, keyspace, replication, persistence). Parity with redis_exporter — the open-source baseline is free; deep Redis depth stays paid.
 - **docker** - Docker container monitoring (per-container CPU, memory, network, block I/O, state). Basic container collection is commoditized (cadvisor / telegraf docker input), so it is free.
+- **swarm** - Docker Swarm cluster state (nodes and quorum, service convergence, task failures, overlay segments) read from a manager node. Same commoditized-collection argument as `docker`, and the wedge case: a small shop replacing PRTG must be able to see its cluster without buying a tier.
 - **wifi_signal_strength** - Host-local Wi-Fi signal strength of the machine the agent runs on. Niche host self-observability, same footing as cpu/memory/network.
 
 ### Pro Tier (License Required)

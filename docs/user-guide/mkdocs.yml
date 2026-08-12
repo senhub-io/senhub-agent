@@ -171,6 +171,7 @@ nav:
       - Apache Pulsar: probes/pulsar.md
       - Docker: probes/docker.md
       - Kubernetes: probes/kubernetes.md
+      - Docker Swarm: probes/swarm.md
       - Proxmox VE: probes/proxmox.md
       - Hyper-V: probes/hyperv.md
       - Ceph: probes/ceph.md

@@ -1486,6 +1486,63 @@ Valeur = débit octet-rate rapporté par le contrôleur (champ `tx_bytes-r`
 / `rx_bytes-r` du endpoint `stat/health`). La tag probe `direction` est
 mappée vers l'attribut OTel `network.io.direction` dans le YAML
 transformer (`tag_to_attribute`).
+
+### Docker Swarm (`swarm`)
+
+Espace de noms `swarm.*` **défini par SenHub** : OpenTelemetry n'a pas de
+receiver Swarm, donc aucun nom amont auquel s'aligner — contrairement à `k8s.*`.
+Toutes les séries portent `swarm.cluster.name` en plus des attributs listés.
+
+État lu depuis un nœud **manager** uniquement. `senhub.swarm.up` vaut 0 sur un
+worker, hors swarm ou socket injoignable ; `senhub.swarm.node_role_state` dit
+lequel des trois.
+
+| Métrique | Unité | Type | Attributs | Description |
+|---|---|---|---|---|
+| `senhub.swarm.up` | `1` | gauge | — | 1 when this node is a swarm manager and answered; 0 for worker, non-swarm or unreachable — the state series says which |
+| `senhub.swarm.node_role_state` | `{state}` | gauge | `state` | one-hot over manager / worker / not_in_swarm / unreachable: why the probe sees what it sees |
+| `swarm.cluster.nodes` | `{node}` | gauge | — | nodes known to the cluster |
+| `swarm.cluster.managers` | `{node}` | gauge | — | manager nodes |
+| `swarm.cluster.managers.reachable` | `{node}` | gauge | — | managers currently reachable by the Raft leader |
+| `swarm.cluster.workers` | `{node}` | gauge | — | worker nodes |
+| `swarm.cluster.quorum` | `{state}` | gauge | — | 1 when a strict majority of managers is reachable; 0 means the cluster accepts no change at all — no deploy, no rescheduling |
+| `swarm.cluster.tasks.orphaned` | `{task}` | gauge | — | tasks whose service no longer exists; invisible from every per-service view |
+| `swarm.cluster.networks` | `{network}` | gauge | — | swarm-scoped overlay segments |
+| `swarm.node.ready` | `{state}` | gauge | `swarm.node.name`, `swarm.node.role` | 1 when the node status is ready |
+| `swarm.node.state` | `{state}` | gauge | `swarm.node.name`, `swarm.node.role`, `state` | one-hot over ready / down / unknown / disconnected |
+| `swarm.node.availability` | `{state}` | gauge | `swarm.node.name`, `swarm.node.role`, `availability` | one-hot over active / pause / drain — the operator's intent, as opposed to the node's actual state |
+| `swarm.node.cpu.allocatable` | `{cpu}` | gauge | `swarm.node.name`, `swarm.node.role` | CPU cores the node advertises to the scheduler |
+| `swarm.node.memory.allocatable` | `By` | gauge | `swarm.node.name`, `swarm.node.role` | memory the node advertises to the scheduler |
+| `swarm.node.manager.leader` | `{state}` | gauge | `swarm.node.name`, `swarm.node.role` | 1 on the Raft leader |
+| `swarm.node.manager.reachable` | `{state}` | gauge | `swarm.node.name`, `swarm.node.role` | 1 when this manager is reachable by the leader |
+| `swarm.node.manager.reachability` | `{state}` | gauge | `swarm.node.name`, `swarm.node.role`, `reachability` | one-hot over reachable / unreachable / unknown |
+| `swarm.node.tasks.running` | `{task}` | gauge | `swarm.node.id` | running tasks placed on this node |
+| `swarm.service.replicas.desired` | `{task}` | gauge | `swarm.service.name`, `swarm.service.mode` | replicas asked for; for a global service, the tasks Swarm intends to run |
+| `swarm.service.replicas.running` | `{task}` | gauge | `swarm.service.name`, `swarm.service.mode` | replicas actually running, counted from tasks |
+| `swarm.service.converged` | `{state}` | gauge | `swarm.service.name`, `swarm.service.mode` | 1 when running replicas have caught up with the declared count |
+| `swarm.service.update.state` | `{state}` | gauge | `swarm.service.name`, `swarm.service.mode`, `state` | one-hot over the rolling-update lifecycle; a service stuck in paused is a deploy waiting for a human |
+| `swarm.service.tasks.failed` | `{task}` | gauge | `swarm.service.name` | tasks in a terminal failure state (failed, rejected, orphaned) |
+| `swarm.service.port.published` | `{port}` | gauge | `swarm.service.name`, `swarm.port.published`, `swarm.port.target`, `network.transport`, `swarm.port.mode` | one series per published port; in ingress mode the port answers on every node, not only where the service runs |
+| `swarm.task.state` | `{task}` | gauge | `swarm.service.name`, `state` | tasks per service per lifecycle state; separates 'not there yet' from 'will never get there' |
+| `swarm.service.network.attached` | `{state}` | gauge | `swarm.service.name`, `swarm.network.name`, `swarm.service.vip` | 1 per (service, overlay) pair — the reachability map: two services share a segment or they cannot talk |
+| `swarm.network.services` | `{service}` | gauge | `swarm.network.name`, `swarm.network.subnet` | services attached to this overlay |
+| `swarm.network.tasks` | `{task}` | gauge | `swarm.network.name`, `swarm.network.subnet` | task attachments on this overlay |
+| `swarm.network.ingress` | `{state}` | gauge | `swarm.network.name`, `swarm.network.subnet` | 1 on the routing-mesh segment that carries every published port |
+| `swarm.network.attachable` | `{state}` | gauge | `swarm.network.name`, `swarm.network.subnet` | 1 when standalone containers may join this overlay |
+| `swarm.network.internal` | `{state}` | gauge | `swarm.network.name`, `swarm.network.subnet` | 1 when the overlay has no external route |
+| `swarm.network.address.capacity` | `{address}` | gauge | `swarm.network.name`, `swarm.network.subnet` | assignable addresses in the overlay subnet; an overlay running out refuses new tasks with an error naming neither |
+
+**Ce qui n'est pas mesuré** : le volume de trafic entre deux services d'un même
+overlay. L'API Docker n'expose aucun compteur par pair, et les compteurs par
+conteneur sont indexés par nom d'interface (`eth0`) que l'API ne relie jamais à
+un réseau nommé. Une vraie matrice de flux demande conntrack ou eBPF sur chaque
+nœud. La sonde cartographie l'accessibilité, pas le débit.
+
+**Entités** : le cluster comme `service.instance` (`swarm://<cluster-id>`). Ni
+les nœuds (pas de `machine-id` côté Swarm — un hôte forgé depuis un nom d'hôte
+serait un doublon permanent) ni les overlays (aucun type enregistré pour un
+segment réseau) n'émettent d'entité.
+
 ### 4.34 kubernetes (free, #469)
 
 Aligné sur les noms OTel Kubernetes semconv (k8s.* namespace, semconv 1.30+).

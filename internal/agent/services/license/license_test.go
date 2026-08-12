@@ -146,6 +146,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"redis":                false,
 		"wifi_signal_strength": false,
 		"os_updates":           false,
+		"swarm":                false,
 	}
 
 	for _, probe := range probes {
