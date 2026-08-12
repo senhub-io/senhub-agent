@@ -56,7 +56,7 @@ type mongodbEntitySource struct {
 // only when the caller has determined that no stable tech id is available
 // (precedence 3). Precedence 2 (replset id) is handled via pinTechID.
 func newMongodbEntitySource(addr string, port int64, instanceName string) *mongodbEntitySource {
-	hp := hostPort(addr, port)
+	hp := dbcommon.FallbackInstanceID(addr, int(port), dbcommon.HostID())
 	s := &mongodbEntitySource{
 		hostPort: hp,
 		addr:     addr,

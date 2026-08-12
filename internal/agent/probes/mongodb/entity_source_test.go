@@ -2,6 +2,7 @@ package mongodb
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -376,11 +377,16 @@ func TestMaybeResolveEntityID_Standalone(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() returned ok=false after host:port fallback")
 	}
-	got := obs.Entities[0].ID["db.instance.id"]
-	// newProbeForTest uses uri "mongodb://localhost:27017".
-	const want = "localhost:27017"
-	if got != want {
-		t.Errorf("db.instance.id = %q, want %q (host:port fallback)", got, want)
+	// newProbeForTest uses uri "mongodb://localhost:27017". Since #740 the
+	// loopback fallback is scoped by the agent's host id, so the machine-
+	// independent "localhost:27017" — which named a different database on
+	// every host — must no longer appear.
+	got, _ := obs.Entities[0].ID["db.instance.id"].(string)
+	if got == "localhost:27017" {
+		t.Error("db.instance.id is the unscoped localhost form; two hosts would collapse")
+	}
+	if !strings.HasSuffix(got, ":27017") {
+		t.Errorf("db.instance.id = %q, want a host-scoped id ending in :27017", got)
 	}
 }
 
