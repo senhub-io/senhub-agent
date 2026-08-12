@@ -289,6 +289,15 @@ func (p *logsPump) drain(ctx context.Context, ch <-chan agentstate.LogRecord) {
 			if !ok {
 				return
 			}
+			// Records ingested from a third-party application take the
+			// verbatim relay instead (logs_relay.go), which preserves the
+			// emitter's Resource. Emitting them here as well would both
+			// duplicate them downstream and stamp the agent's Resource over
+			// the app's identity — the overwrite this rail must not do.
+			// The flat copy still exists for the non-OTLP consumers.
+			if rec.ProducerProbeType == relayedLogProbeType {
+				continue
+			}
 			p.pipeline.emit(ctx, rec)
 		}
 	}

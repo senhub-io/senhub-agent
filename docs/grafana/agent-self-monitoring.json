@@ -126,7 +126,10 @@
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "targets": [
         { "refId": "A", "expr": "rate(senhub_agent_otlp_metrics_pushed_total{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{service_name}} metrics" },
-        { "refId": "B", "expr": "rate(senhub_agent_otlp_logs_pushed_total{service_name=~\"$service\"}[$__rate_interval])",    "legendFormat": "{{service_name}} logs" }
+        { "refId": "B", "expr": "rate(senhub_agent_otlp_logs_pushed_total{service_name=~\"$service\"}[$__rate_interval])",    "legendFormat": "{{service_name}} logs" },
+        { "refId": "C", "expr": "rate(senhub_agent_otlp_spans_relayed_total{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{service_name}} spans relayed" },
+        { "refId": "D", "expr": "rate(senhub_agent_otlp_logs_relayed_total{service_name=~\"$service\"}[$__rate_interval])",  "legendFormat": "{{service_name}} logs relayed" },
+        { "refId": "E", "expr": "rate(senhub_agent_otlp_metrics_relayed_total{service_name=~\"$service\"}[$__rate_interval])", "legendFormat": "{{service_name}} metrics relayed" }
       ],
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
