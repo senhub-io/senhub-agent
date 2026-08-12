@@ -96,13 +96,27 @@ Run two instances to serve both protocols at once:
 - **Pass-through naming.** Ingested metric names are forwarded
   unchanged; nothing is renamed or prefixed.
 - **Logs are relayed.** With `signals: [logs]`, OTLP log records are
-  accepted (gRPC `LogsService`, or HTTP on `/v1/logs`) and handed to a
-  configured OTLP export strategy, which forwards them onward over OTLP
-  (an OTLP-in → OTLP-out relay). Severity, body, and attributes are
-  preserved; resource attributes are folded onto each record. The pull
-  sinks (Prometheus/PRTG/Nagios) are metrics-only, so **logs need an OTLP
+  accepted (gRPC `LogsService`, or HTTP on `/v1/logs`) and forwarded
+  verbatim by a configured OTLP export strategy (an OTLP-in → OTLP-out
+  relay). Severity, body, attributes **and the emitting application's
+  resource** are preserved: a record sent with `service.name=my-app`
+  arrives as `my-app`, so applications stay distinguishable at the
+  backend. Agent context (tenant, site, environment, the
+  `telemetry.relay.*` identity) is only ever **added on top** — an
+  attribute the sender already set is never replaced. The pull sinks
+  (Prometheus/PRTG/Nagios) are metrics-only, so **logs need an OTLP
   export strategy** — without one, ingested logs are discarded and the
   agent logs a throttled warning.
+
+    !!! note "Changed behaviour"
+        Before this release, ingested logs were re-emitted through the
+        agent's own log pipeline, which replaced the sender's resource
+        with the agent's — a record sent with `service.name=my-app` was
+        stored under the agent's `service.name`, making applications
+        indistinguishable by that attribute. If a dashboard or query
+        relies on ingested logs carrying the agent's `service.name`,
+        point it at the agent's own logs or at
+        `telemetry.relay.instance.id` instead.
 - **Traces are relayed.** With `signals: [traces]`, OTLP trace spans are
   accepted (gRPC `TracesService`, or HTTP on `/v1/traces`) and forwarded
   as a raw pass-through: spans are relayed verbatim — trace IDs, span

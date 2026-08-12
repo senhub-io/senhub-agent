@@ -29,6 +29,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -200,22 +201,46 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 	return nil
 }
 
-// ingestLogs publishes received OTLP log records on the agent log channel,
-// from which a log-capable strategy (the OTLP export pipeline) drains them.
-// The receiver only relays: the pull sinks are metrics-only, so with no OTLP
-// export strategy subscribed the records have nowhere to go and the operator
-// gets a throttled warning rather than a silent void.
-func (p *OTLPReceiverProbe) ingestLogs(records []agentstate.LogRecord) {
+// ingestLogs publishes received OTLP logs on BOTH agent log rails, because
+// the two carry different things and both have consumers:
+//
+//   - VERBATIM (raw ResourceLogs) for the OTLP log relay, which forwards the
+//     batch with the emitting application's Resource intact. This is the path
+//     that keeps an app's service.name attributable downstream; re-emitting
+//     through the agent's SDK pipeline would stamp the agent's Resource over
+//     it and make applications indistinguishable.
+//   - FLATTENED (agentstate.LogRecord) for the non-OTLP log consumers — the
+//     event strategy's /event/insert converter — which have no notion of an
+//     OTLP Resource and read the flat model. The OTLP logs pump skips records
+//     produced by this probe so an ingested record is never relayed twice.
+//
+// The pull sinks are metrics-only, so with neither rail subscribed the
+// records have nowhere to go and the operator gets a throttled warning
+// rather than a silent void.
+func (p *OTLPReceiverProbe) ingestLogs(resourceLogs []*logspb.ResourceLogs) {
+	if len(resourceLogs) == 0 {
+		return
+	}
+	records := flattenResourceLogs(resourceLogs, p.GetName())
 	if len(records) == 0 {
 		return
 	}
-	if agentstate.LogSubscriberCount() == 0 {
+
+	verbatimSubs := agentstate.LogBatchSubscriberCount()
+	flatSubs := agentstate.LogSubscriberCount()
+	if verbatimSubs == 0 && flatSubs == 0 {
 		agentstate.IncrementOTLPReceiverDropped(signalLogs, "no_sink", len(records))
 		p.warnNoLogSink(len(records))
 		return
 	}
-	for _, rec := range records {
-		agentstate.PublishLog(rec)
+
+	if verbatimSubs > 0 {
+		agentstate.PublishLogBatches(resourceLogs)
+	}
+	if flatSubs > 0 {
+		for _, rec := range records {
+			agentstate.PublishLog(rec)
+		}
 	}
 	agentstate.IncrementOTLPReceiverIngested(signalLogs, len(records))
 	p.moduleLogger.Debug().Int("records", len(records)).Msg("Ingested OTLP log records")

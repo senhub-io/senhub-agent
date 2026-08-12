@@ -18,6 +18,7 @@ var (
 	otlpMetricsPushed         atomic.Uint64
 	otlpLogsPushed            atomic.Uint64
 	otlpSpansRelayed          atomic.Uint64 // received spans forwarded verbatim by the trace relay
+	otlpLogsRelayed           atomic.Uint64 // ingested log records forwarded verbatim by the log relay
 	otlpExportErrors          atomic.Uint64
 	otlpStoreSize             atomic.Int64 // last reported gauge
 	otlpLastExportDurationNs  atomic.Int64 // duration of the last successful export
@@ -90,6 +91,19 @@ func IncrementOTLPSpansRelayed(n int) {
 	otlpSpansRelayed.Add(uint64(n))
 }
 
+// IncrementOTLPLogsRelayed records `n` ingested log records forwarded
+// verbatim after the collector accepted the batch. Distinct from
+// IncrementOTLPLogsPushed, which counts records the AGENT produced and
+// emitted through the SDK pipeline: the two paths carry different
+// Resources by design, so collapsing them would hide which identity a
+// record left with.
+func IncrementOTLPLogsRelayed(n int) {
+	if n <= 0 {
+		return
+	}
+	otlpLogsRelayed.Add(uint64(n))
+}
+
 // IncrementOTLPExportErrors records one failed export (after retry
 // exhaustion). Independent of which signal (metrics or logs) failed —
 // the operator alerts on "any export failure". Specific signal-level
@@ -104,6 +118,7 @@ func IncrementOTLPExportErrors() {
 func GetOTLPMetricsPushedTotal() uint64 { return otlpMetricsPushed.Load() }
 func GetOTLPLogsPushedTotal() uint64    { return otlpLogsPushed.Load() }
 func GetOTLPSpansRelayedTotal() uint64  { return otlpSpansRelayed.Load() }
+func GetOTLPLogsRelayedTotal() uint64   { return otlpLogsRelayed.Load() }
 func GetOTLPExportErrorsTotal() uint64  { return otlpExportErrors.Load() }
 
 // IncrementOTLPDropped records one OTLP datapoint dropped before the
