@@ -142,6 +142,7 @@ func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request
 	}
 
 	points, dropped := flattenResourceMetrics(req.GetResourceMetrics())
+	p.publishMetricBatch(req.GetResourceMetrics())
 	if ingestErr := p.ingest(points, dropped); ingestErr != nil {
 		http.Error(w, "failed to ingest datapoints", http.StatusInternalServerError)
 		return

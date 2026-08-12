@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc"
 
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -199,6 +200,28 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 	agentstate.IncrementOTLPReceiverIngested(signalMetrics, len(points))
 	p.moduleLogger.Debug().Int("datapoints", len(points)).Msg("Ingested OTLP datapoints")
 	return nil
+}
+
+// publishMetricBatch forwards the raw ResourceMetrics to the verbatim
+// metric channel, IN ADDITION to the flattened datapoints the caller
+// pushes through the probe callback.
+//
+// The flattened path feeds the DataStore and therefore every non-OTLP
+// sink (PRTG, Nagios, Prometheus, web UI, cloud), which read tags and have
+// no notion of an OTLP Resource — nothing changes for them. The verbatim
+// path exists for the OTLP output alone, where re-encoding an
+// application's points under the AGENT's Resource would put two different
+// values of a reserved identity key (service.name) in one export and let
+// the backend pick one silently.
+//
+// No no-sink accounting here: the flattened path always has the DataStore
+// behind it, so ingested metrics are never lost when no relay subscribes —
+// unlike logs and spans, which have the relay as their only route.
+func (p *OTLPReceiverProbe) publishMetricBatch(resourceMetrics []*metricpb.ResourceMetrics) {
+	if len(resourceMetrics) == 0 || agentstate.MetricBatchSubscriberCount() == 0 {
+		return
+	}
+	agentstate.PublishMetricBatches(resourceMetrics)
 }
 
 // ingestLogs publishes received OTLP logs on BOTH agent log rails, because
