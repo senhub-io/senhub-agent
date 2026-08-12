@@ -413,6 +413,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">Node, pod, deployment, PVC metrics via API server</span>
   </a>
 
+  <a href="swarm/" class="probe-card" data-family="containers" data-tier="free">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/docker" alt="" loading="lazy">
+    <span class="probe-name">Docker Swarm</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Nodes and quorum, service convergence, overlay segments</span>
+  </a>
+
   <a href="hyperv/" class="probe-card" data-family="containers" data-tier="free">
     <img class="probe-logo probe-logo-si" src="https://api.iconify.design/devicon/hyperv.svg" alt="" loading="lazy">
     <span class="probe-name">Hyper-V</span>

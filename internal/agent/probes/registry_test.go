@@ -252,6 +252,7 @@ func TestProbeRegistry(t *testing.T) {
 		"elasticsearch",
 		"opensearch",
 		"solr",
+		"swarm",
 		"influxdb",
 		"memcached",
 		"hyperv",

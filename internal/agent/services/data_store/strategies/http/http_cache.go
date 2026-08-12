@@ -366,6 +366,33 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"k8s.hpa.name",
 	},
 
+	// Docker Swarm — cluster-scoped series. Every one-hot family here shares a
+	// metric name and differs only by its state tag, so without those tags each
+	// state overwrites the previous and the cache reports whichever arrived
+	// last: a node would appear to be in exactly one of ready/down/unknown at
+	// random.
+	"swarm": {
+		"swarm.node.name",
+		"swarm.node.id", // per-node task placement, which carries no hostname
+		"swarm.node.role",
+		"swarm.service.name",
+		"swarm.service.mode",
+		"state",        // node state, task lifecycle, service update state
+		"availability", // active / pause / drain
+		"reachability", // manager reachability
+		// The overlay map: one series per (service, segment) pair, so both
+		// sides of the pair must split. Without the network tag a service on
+		// three overlays would report one attachment.
+		"swarm.network.name",
+		"swarm.network.subnet",
+		// Published ports: a service publishing 80 and 443 is two series, and
+		// the same port number can be published by tcp and udp at once.
+		"swarm.port.published",
+		"swarm.port.target",
+		"swarm.port.mode",
+		"network.transport",
+	},
+
 	// Application server probes
 	"tomcat": {
 		"connector", // HTTP/AJP connector (requests, bytes, threads, errors, processing_time)

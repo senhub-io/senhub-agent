@@ -73,6 +73,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/snmptrap"
 	_ "senhub-agent.go/internal/agent/probes/solr"
+	_ "senhub-agent.go/internal/agent/probes/swarm"
 	_ "senhub-agent.go/internal/agent/probes/syslog"
 	_ "senhub-agent.go/internal/agent/probes/systemd"
 	_ "senhub-agent.go/internal/agent/probes/tcpdial"
