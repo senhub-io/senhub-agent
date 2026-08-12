@@ -39,7 +39,7 @@ metrics:
     description: "1 when the node reports Ready condition True, 0 otherwise"
     otel:
       name: k8s.node.ready
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.node.name: k8s.node.name
@@ -111,7 +111,7 @@ metrics:
     description: "1 when the pod phase is Running, 0 otherwise"
     otel:
       name: k8s.pod.phase
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.pod.name: k8s.pod.name
@@ -126,7 +126,7 @@ metrics:
     description: "1 when the pod Ready condition is True"
     otel:
       name: k8s.pod.ready
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.pod.name: k8s.pod.name
@@ -158,7 +158,7 @@ metrics:
     description: "1 when the container is in a ready state"
     otel:
       name: k8s.container.ready
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.container.name: k8s.container.name
@@ -218,7 +218,7 @@ metrics:
     description: "1 when available replicas >= desired replicas, 0 otherwise"
     otel:
       name: k8s.deployment.ready
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.deployment.name: k8s.deployment.name
@@ -234,7 +234,7 @@ metrics:
     description: "1 when the node reports the Memory Pressure condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
     otel:
       name: k8s.node.condition.memory_pressure
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.node.name: k8s.node.name
@@ -248,7 +248,7 @@ metrics:
     description: "1 when the node reports the Disk Pressure condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
     otel:
       name: k8s.node.condition.disk_pressure
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.node.name: k8s.node.name
@@ -262,7 +262,7 @@ metrics:
     description: "1 when the node reports the PID Pressure condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
     otel:
       name: k8s.node.condition.pid_pressure
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.node.name: k8s.node.name
@@ -276,7 +276,7 @@ metrics:
     description: "1 when the node reports the Network Unavailable condition True, 0 otherwise. Note the polarity is the opposite of k8s.node.ready: here 1 is the bad state"
     otel:
       name: k8s.node.condition.network_unavailable
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.node.name: k8s.node.name
@@ -292,7 +292,7 @@ metrics:
     description: "CPU Request summed over the pod's containers, init containers excluded (they do not hold their reservation for the pod's life)"
     otel:
       name: k8s.pod.cpu.request
-      unit: "1"
+      unit: "{cpu}"
       type: gauge
     tag_to_attribute:
       k8s.pod.name: k8s.pod.name
@@ -307,7 +307,7 @@ metrics:
     description: "CPU Limit summed over the pod's containers, init containers excluded (they do not hold their reservation for the pod's life)"
     otel:
       name: k8s.pod.cpu.limit
-      unit: "1"
+      unit: "{cpu}"
       type: gauge
     tag_to_attribute:
       k8s.pod.name: k8s.pod.name
@@ -352,7 +352,7 @@ metrics:
     description: "CPU Request declared by this container"
     otel:
       name: k8s.container.cpu.request
-      unit: "1"
+      unit: "{cpu}"
       type: gauge
     tag_to_attribute:
       k8s.container.name: k8s.container.name
@@ -367,7 +367,7 @@ metrics:
     description: "CPU Limit declared by this container"
     otel:
       name: k8s.container.cpu.limit
-      unit: "1"
+      unit: "{cpu}"
       type: gauge
     tag_to_attribute:
       k8s.container.name: k8s.container.name
@@ -412,7 +412,7 @@ metrics:
     description: "1 while the container is in a waiting state; the reason attribute distinguishes CrashLoopBackOff from ImagePullBackOff, which call for opposite reactions"
     otel:
       name: k8s.container.waiting
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.container.name: k8s.container.name
@@ -430,7 +430,7 @@ metrics:
     description: "desired count for this statefulset"
     otel:
       name: k8s.statefulset.desired
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -446,7 +446,7 @@ metrics:
     description: "ready count for this statefulset"
     otel:
       name: k8s.statefulset.ready
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -462,7 +462,7 @@ metrics:
     description: "current count for this statefulset"
     otel:
       name: k8s.statefulset.current
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -478,7 +478,7 @@ metrics:
     description: "updated count for this statefulset"
     otel:
       name: k8s.statefulset.updated
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -494,7 +494,7 @@ metrics:
     description: "desired scheduled count for this daemonset"
     otel:
       name: k8s.daemonset.desired_scheduled
-      unit: "1"
+      unit: "{node}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -510,7 +510,7 @@ metrics:
     description: "current scheduled count for this daemonset"
     otel:
       name: k8s.daemonset.current_scheduled
-      unit: "1"
+      unit: "{node}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -526,7 +526,7 @@ metrics:
     description: "ready count for this daemonset"
     otel:
       name: k8s.daemonset.ready
-      unit: "1"
+      unit: "{node}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -542,7 +542,7 @@ metrics:
     description: "misscheduled count for this daemonset"
     otel:
       name: k8s.daemonset.misscheduled
-      unit: "1"
+      unit: "{node}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -558,7 +558,7 @@ metrics:
     description: "desired count for this replicaset"
     otel:
       name: k8s.replicaset.desired
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -574,7 +574,7 @@ metrics:
     description: "ready count for this replicaset"
     otel:
       name: k8s.replicaset.ready
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -590,7 +590,7 @@ metrics:
     description: "available count for this replicaset"
     otel:
       name: k8s.replicaset.available
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -606,7 +606,7 @@ metrics:
     description: "active count for this job"
     otel:
       name: k8s.job.active
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -622,7 +622,7 @@ metrics:
     description: "succeeded count for this job"
     otel:
       name: k8s.job.succeeded
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -638,7 +638,7 @@ metrics:
     description: "failed count for this job"
     otel:
       name: k8s.job.failed
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -654,7 +654,7 @@ metrics:
     description: "desired completions count for this job"
     otel:
       name: k8s.job.desired_completions
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -670,7 +670,7 @@ metrics:
     description: "active jobs count for this cronjob"
     otel:
       name: k8s.cronjob.active_jobs
-      unit: "1"
+      unit: "{job}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -686,7 +686,7 @@ metrics:
     description: "suspended count for this cronjob"
     otel:
       name: k8s.cronjob.suspended
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -719,7 +719,7 @@ metrics:
     description: "1 when the volume is in this lifecycle phase. One series per phase rather than an enum value, so an unknown phase lights none of them instead of mapping onto one"
     otel:
       name: k8s.persistentvolume.phase
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -765,7 +765,7 @@ metrics:
     description: "1 when the claim is in this phase. A claim stuck Pending is why the pod that wants it never starts"
     otel:
       name: k8s.persistentvolumeclaim.phase
-      unit: "1"
+      unit: "{state}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -781,7 +781,7 @@ metrics:
     description: "The quota ceiling for this resource. CPU is in cores, memory and storage in bytes, counts are plain integers"
     otel:
       name: k8s.resourcequota.hard
-      unit: "1"
+      unit: "{resource}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -797,7 +797,7 @@ metrics:
     description: "Current use against the ceiling. A quota at 99 percent is why a deployment will not scale, and neither number alone says so"
     otel:
       name: k8s.resourcequota.used
-      unit: "1"
+      unit: "{resource}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -813,7 +813,7 @@ metrics:
     description: "Current replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
     otel:
       name: k8s.hpa.current_replicas
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -829,7 +829,7 @@ metrics:
     description: "Desired replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
     otel:
       name: k8s.hpa.desired_replicas
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -845,7 +845,7 @@ metrics:
     description: "Min replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
     otel:
       name: k8s.hpa.min_replicas
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
@@ -861,7 +861,7 @@ metrics:
     description: "Max replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts"
     otel:
       name: k8s.hpa.max_replicas
-      unit: "1"
+      unit: "{pod}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name
