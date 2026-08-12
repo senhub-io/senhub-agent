@@ -23,11 +23,15 @@ func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
 		}
 		return false
 	}
-	if hasRunsOn("127.0.0.1") {
-		t.Error("host:port id must NOT emit runs_on on loopback (collapse guard)")
+	// Since #740 the loopback identity is host-scoped, so it is unique per
+	// machine and can be anchored. Previously it embedded the loopback
+	// address and the collapse guard refused the edge, leaving every local
+	// SQL Server with no host.
+	if !hasRunsOn("127.0.0.1") {
+		t.Error("a host-scoped local db must emit runs_on->host")
 	}
-	if hasRunsOn("localhost") {
-		t.Error("host:port id must NOT emit runs_on on localhost (collapse guard)")
+	if !hasRunsOn("localhost") {
+		t.Error("a host-scoped local db must emit runs_on->host for localhost too")
 	}
 	if hasRunsOn("10.0.0.5") {
 		t.Error("remote db must NOT emit runs_on→host")
