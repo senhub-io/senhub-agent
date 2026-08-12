@@ -110,6 +110,76 @@ func TestSpansRelay_GRPC(t *testing.T) {
 	}
 }
 
+// TestSpansRelay_CountsRelayedSpans pins the success-side self-metric:
+// a relayed batch must move senhub.agent.otlp.spans.relayed. Without it
+// an operator sees the receiver's ingest count rise with no way to tell
+// a relayed span from one the relay never flushed — the failure mode
+// that made a field report unfalsifiable (#764). Asserted as a delta so
+// the process-wide counter's prior state does not matter.
+func TestSpansRelay_CountsRelayedSpans(t *testing.T) {
+	capSrv, addr := startTracesGRPCServer(t)
+
+	before := agentstate.GetOTLPSpansRelayedTotal()
+
+	relay, err := newSpansRelay(relayTestConfig(addr, "grpc"), nil, testModuleLogger(t))
+	if err != nil {
+		t.Fatalf("newSpansRelay: %v", err)
+	}
+	relay.start()
+	defer relay.stop(context.Background())
+
+	agentstate.PublishSpans(relaySpanBatch("counted-span"))
+
+	select {
+	case <-capSrv.notify:
+	case <-time.After(5 * time.Second):
+		t.Fatal("mock TracesService received no export within 5s")
+	}
+
+	// The counter is bumped after forward returns, so allow the drain
+	// goroutine to finish the call it already made.
+	deadline := time.Now().Add(2 * time.Second)
+	var got uint64
+	for time.Now().Before(deadline) {
+		got = agentstate.GetOTLPSpansRelayedTotal() - before
+		if got > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got != 1 {
+		t.Errorf("relayed span delta = %d, want 1", got)
+	}
+}
+
+// TestSpansRelay_FailedExportDoesNotCount pins the other half of the
+// contract: a batch the collector refused must NOT inflate the relayed
+// counter, or the metric would report success the operator never got.
+func TestSpansRelay_FailedExportDoesNotCount(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+
+	before := agentstate.GetOTLPSpansRelayedTotal()
+
+	cfg := relayTestConfig(endpointOf(srv), "http")
+	cfg.Traces.BatchSize = 1
+	relay, err := newSpansRelay(cfg, nil, testModuleLogger(t))
+	if err != nil {
+		t.Fatalf("newSpansRelay: %v", err)
+	}
+	relay.start()
+	defer relay.stop(context.Background())
+
+	agentstate.PublishSpans(relaySpanBatch("refused-span"))
+
+	time.Sleep(500 * time.Millisecond)
+	if got := agentstate.GetOTLPSpansRelayedTotal() - before; got != 0 {
+		t.Errorf("relayed span delta = %d after a refused export, want 0", got)
+	}
+}
+
 // TestSpansRelay_GRPC_FlushOnBatchSize confirms the span-count trigger
 // flushes before the timer would.
 func TestSpansRelay_GRPC_FlushOnBatchSize(t *testing.T) {

@@ -17,6 +17,7 @@ import (
 var (
 	otlpMetricsPushed         atomic.Uint64
 	otlpLogsPushed            atomic.Uint64
+	otlpSpansRelayed          atomic.Uint64 // received spans forwarded verbatim by the trace relay
 	otlpExportErrors          atomic.Uint64
 	otlpStoreSize             atomic.Int64 // last reported gauge
 	otlpLastExportDurationNs  atomic.Int64 // duration of the last successful export
@@ -75,6 +76,20 @@ func IncrementOTLPLogsPushed() {
 	otlpLogsPushed.Add(1)
 }
 
+// IncrementOTLPSpansRelayed records `n` received spans forwarded by the
+// trace relay after the collector accepted the batch. Spans are the
+// only signal with no success counter otherwise: the relay forwards
+// raw proto outside the SDK exporters, so neither the metrics nor the
+// logs counter covers it. Without this, an operator sees the receiver's
+// ingest count rise with no way to tell a relayed span from one the
+// relay never flushed.
+func IncrementOTLPSpansRelayed(n int) {
+	if n <= 0 {
+		return
+	}
+	otlpSpansRelayed.Add(uint64(n))
+}
+
 // IncrementOTLPExportErrors records one failed export (after retry
 // exhaustion). Independent of which signal (metrics or logs) failed —
 // the operator alerts on "any export failure". Specific signal-level
@@ -84,10 +99,11 @@ func IncrementOTLPExportErrors() {
 }
 
 // GetOTLPMetricsPushedTotal / GetOTLPLogsPushedTotal /
-// GetOTLPExportErrorsTotal are scrape-time accessors. Read once per
-// scrape by the Prometheus bridge.
+// GetOTLPSpansRelayedTotal / GetOTLPExportErrorsTotal are scrape-time
+// accessors. Read once per scrape by the Prometheus bridge.
 func GetOTLPMetricsPushedTotal() uint64 { return otlpMetricsPushed.Load() }
 func GetOTLPLogsPushedTotal() uint64    { return otlpLogsPushed.Load() }
+func GetOTLPSpansRelayedTotal() uint64  { return otlpSpansRelayed.Load() }
 func GetOTLPExportErrorsTotal() uint64  { return otlpExportErrors.Load() }
 
 // IncrementOTLPDropped records one OTLP datapoint dropped before the

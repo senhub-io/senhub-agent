@@ -34,14 +34,21 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 	}
 
 	mux := http.NewServeMux()
+	// Collected as they are mounted so the startup log names every route
+	// actually served. Logging only the metrics path read as "traces is
+	// not wired" to an operator checking exactly that.
+	var mounted []string
 	if p.config.Signals.Metrics {
 		mux.HandleFunc(p.config.HTTPPath, p.handleMetrics)
+		mounted = append(mounted, p.config.HTTPPath)
 	}
 	if p.config.Signals.Logs {
 		mux.HandleFunc(httpLogsPath, p.handleLogs)
+		mounted = append(mounted, httpLogsPath)
 	}
 	if p.config.Signals.Traces {
 		mux.HandleFunc(httpTracesPath, p.handleTraces)
+		mounted = append(mounted, httpTracesPath)
 	}
 
 	server := &http.Server{
@@ -73,7 +80,7 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 
 	p.moduleLogger.Info().
 		Str("address", p.config.Address).
-		Str("path", p.config.HTTPPath).
+		Strs("paths", mounted).
 		Strs("signals", p.config.Signals.names()).
 		Msg("OTLP HTTP receiver started")
 	return nil
