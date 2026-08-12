@@ -17,6 +17,9 @@ import (
 var (
 	otlpMetricsPushed         atomic.Uint64
 	otlpLogsPushed            atomic.Uint64
+	otlpSpansRelayed          atomic.Uint64 // received spans forwarded verbatim by the trace relay
+	otlpLogsRelayed           atomic.Uint64 // ingested log records forwarded verbatim by the log relay
+	otlpMetricsRelayed        atomic.Uint64 // ingested metric points forwarded verbatim by the metric relay
 	otlpExportErrors          atomic.Uint64
 	otlpStoreSize             atomic.Int64 // last reported gauge
 	otlpLastExportDurationNs  atomic.Int64 // duration of the last successful export
@@ -75,6 +78,45 @@ func IncrementOTLPLogsPushed() {
 	otlpLogsPushed.Add(1)
 }
 
+// IncrementOTLPSpansRelayed records `n` received spans forwarded by the
+// trace relay after the collector accepted the batch. Spans are the
+// only signal with no success counter otherwise: the relay forwards
+// raw proto outside the SDK exporters, so neither the metrics nor the
+// logs counter covers it. Without this, an operator sees the receiver's
+// ingest count rise with no way to tell a relayed span from one the
+// relay never flushed.
+func IncrementOTLPSpansRelayed(n int) {
+	if n <= 0 {
+		return
+	}
+	otlpSpansRelayed.Add(uint64(n))
+}
+
+// IncrementOTLPLogsRelayed records `n` ingested log records forwarded
+// verbatim after the collector accepted the batch. Distinct from
+// IncrementOTLPLogsPushed, which counts records the AGENT produced and
+// emitted through the SDK pipeline: the two paths carry different
+// Resources by design, so collapsing them would hide which identity a
+// record left with.
+func IncrementOTLPLogsRelayed(n int) {
+	if n <= 0 {
+		return
+	}
+	otlpLogsRelayed.Add(uint64(n))
+}
+
+// IncrementOTLPMetricsRelayed records `n` ingested metric points forwarded
+// verbatim after the collector accepted the batch. Distinct from
+// IncrementOTLPMetricsPushed, which counts points the agent re-encoded from
+// its own store under the agent's Resource: an ingested point takes the
+// relay instead, so one counter could not tell the two identities apart.
+func IncrementOTLPMetricsRelayed(n int) {
+	if n <= 0 {
+		return
+	}
+	otlpMetricsRelayed.Add(uint64(n))
+}
+
 // IncrementOTLPExportErrors records one failed export (after retry
 // exhaustion). Independent of which signal (metrics or logs) failed —
 // the operator alerts on "any export failure". Specific signal-level
@@ -84,11 +126,14 @@ func IncrementOTLPExportErrors() {
 }
 
 // GetOTLPMetricsPushedTotal / GetOTLPLogsPushedTotal /
-// GetOTLPExportErrorsTotal are scrape-time accessors. Read once per
-// scrape by the Prometheus bridge.
-func GetOTLPMetricsPushedTotal() uint64 { return otlpMetricsPushed.Load() }
-func GetOTLPLogsPushedTotal() uint64    { return otlpLogsPushed.Load() }
-func GetOTLPExportErrorsTotal() uint64  { return otlpExportErrors.Load() }
+// GetOTLPSpansRelayedTotal / GetOTLPExportErrorsTotal are scrape-time
+// accessors. Read once per scrape by the Prometheus bridge.
+func GetOTLPMetricsPushedTotal() uint64  { return otlpMetricsPushed.Load() }
+func GetOTLPLogsPushedTotal() uint64     { return otlpLogsPushed.Load() }
+func GetOTLPSpansRelayedTotal() uint64   { return otlpSpansRelayed.Load() }
+func GetOTLPLogsRelayedTotal() uint64    { return otlpLogsRelayed.Load() }
+func GetOTLPMetricsRelayedTotal() uint64 { return otlpMetricsRelayed.Load() }
+func GetOTLPExportErrorsTotal() uint64   { return otlpExportErrors.Load() }
 
 // IncrementOTLPDropped records one OTLP datapoint dropped before the
 // export call, labelled by reason ("store_cap" today; future reasons
