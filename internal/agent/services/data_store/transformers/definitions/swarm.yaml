@@ -1,0 +1,505 @@
+probe_name: "swarm"
+friendly_name: "Docker Swarm"
+version: "1.0.0"
+host_level: false
+# Every tag that makes a metric a distinct PRTG instance. A tag missing here
+# does not split: every node would collapse into one sensor and every overlay
+# would overwrite the previous. Must track the discriminant registry in
+# http_cache.go — the two answer the same question for two sinks.
+multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role", "swarm.service.name", "swarm.service.mode", "swarm.network.name", "swarm.network.subnet", "swarm.port.published", "swarm.port.target", "swarm.port.mode", "network.transport", "state", "availability", "reachability"]
+
+# FREE probe — Docker Swarm cluster state read from a manager node.
+# Nodes and quorum, service convergence, task failures, and the overlay
+# segments that decide what can reach what.
+#
+# The swarm.* namespace is SenHub-defined: OpenTelemetry has no Swarm
+# receiver and therefore no upstream names to align with, unlike k8s.*.
+
+metrics:
+
+  # --- availability ---
+
+  - name: "senhub.swarm.up"
+    channel: "swarm_cluster_up"
+    display_name: "Senhub Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when this node is a swarm manager and answered; 0 for worker, non-swarm or unreachable — the state series says which"
+    otel:
+      name: senhub.swarm.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+  - name: "senhub.swarm.node_role_state"
+    channel: "swarm_cluster_state_{state}"
+    display_name: "Senhub Node_Role_State"
+    unit: "#"
+    category: "availability"
+    description: "one-hot over manager / worker / not_in_swarm / unreachable: why the probe sees what it sees"
+    otel:
+      name: senhub.swarm.node_role_state
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      state: state
+
+
+  # --- cluster ---
+
+  - name: "swarm.cluster.nodes"
+    channel: "swarm_cluster_nodes"
+    display_name: "Cluster Nodes"
+    unit: "#"
+    category: "cluster"
+    description: "nodes known to the cluster"
+    otel:
+      name: swarm.cluster.nodes
+      unit: "{node}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+  - name: "swarm.cluster.managers"
+    channel: "swarm_cluster_managers"
+    display_name: "Cluster Managers"
+    unit: "#"
+    category: "cluster"
+    description: "manager nodes"
+    otel:
+      name: swarm.cluster.managers
+      unit: "{node}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+  - name: "swarm.cluster.managers.reachable"
+    channel: "swarm_cluster_managers_reachable"
+    display_name: "Cluster Managers Reachable"
+    unit: "#"
+    category: "cluster"
+    description: "managers currently reachable by the Raft leader"
+    otel:
+      name: swarm.cluster.managers.reachable
+      unit: "{node}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+  - name: "swarm.cluster.workers"
+    channel: "swarm_cluster_workers"
+    display_name: "Cluster Workers"
+    unit: "#"
+    category: "cluster"
+    description: "worker nodes"
+    otel:
+      name: swarm.cluster.workers
+      unit: "{node}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+  - name: "swarm.cluster.quorum"
+    channel: "swarm_cluster_quorum"
+    display_name: "Cluster Quorum"
+    unit: "#"
+    category: "cluster"
+    description: "1 when a strict majority of managers is reachable; 0 means the cluster accepts no change at all — no deploy, no rescheduling"
+    otel:
+      name: swarm.cluster.quorum
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+  - name: "swarm.cluster.tasks.orphaned"
+    channel: "swarm_cluster_tasks_orphaned"
+    display_name: "Cluster Tasks Orphaned"
+    unit: "#"
+    category: "cluster"
+    description: "tasks whose service no longer exists; invisible from every per-service view"
+    otel:
+      name: swarm.cluster.tasks.orphaned
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+  - name: "swarm.cluster.networks"
+    channel: "swarm_cluster_networks"
+    display_name: "Cluster Networks"
+    unit: "#"
+    category: "cluster"
+    description: "swarm-scoped overlay segments"
+    otel:
+      name: swarm.cluster.networks
+      unit: "{network}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+
+
+  # --- node ---
+
+  - name: "swarm.node.ready"
+    channel: "swarm_node_{swarm.node.name}_ready"
+    display_name: "Node Ready"
+    unit: "#"
+    category: "node"
+    description: "1 when the node status is ready"
+    otel:
+      name: swarm.node.ready
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+
+  - name: "swarm.node.state"
+    channel: "swarm_node_{swarm.node.name}_state_{state}"
+    display_name: "Node State"
+    unit: "#"
+    category: "node"
+    description: "one-hot over ready / down / unknown / disconnected"
+    otel:
+      name: swarm.node.state
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+      state: state
+
+  - name: "swarm.node.availability"
+    channel: "swarm_node_{swarm.node.name}_availability_{availability}"
+    display_name: "Node Availability"
+    unit: "#"
+    category: "node"
+    description: "one-hot over active / pause / drain — the operator's intent, as opposed to the node's actual state"
+    otel:
+      name: swarm.node.availability
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+      availability: availability
+
+  - name: "swarm.node.cpu.allocatable"
+    channel: "swarm_node_{swarm.node.name}_cpu"
+    display_name: "Node Cpu Allocatable"
+    unit: "#"
+    category: "node"
+    description: "CPU cores the node advertises to the scheduler"
+    otel:
+      name: swarm.node.cpu.allocatable
+      unit: "{cpu}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+
+  - name: "swarm.node.memory.allocatable"
+    channel: "swarm_node_{swarm.node.name}_memory"
+    display_name: "Node Memory Allocatable"
+    unit: "#"
+    category: "node"
+    description: "memory the node advertises to the scheduler"
+    otel:
+      name: swarm.node.memory.allocatable
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+
+  - name: "swarm.node.manager.leader"
+    channel: "swarm_node_{swarm.node.name}_leader"
+    display_name: "Node Manager Leader"
+    unit: "#"
+    category: "node"
+    description: "1 on the Raft leader"
+    otel:
+      name: swarm.node.manager.leader
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+
+  - name: "swarm.node.manager.reachable"
+    channel: "swarm_node_{swarm.node.name}_manager_reachable"
+    display_name: "Node Manager Reachable"
+    unit: "#"
+    category: "node"
+    description: "1 when this manager is reachable by the leader"
+    otel:
+      name: swarm.node.manager.reachable
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+
+  - name: "swarm.node.manager.reachability"
+    channel: "swarm_node_{swarm.node.name}_reachability_{reachability}"
+    display_name: "Node Manager Reachability"
+    unit: "#"
+    category: "node"
+    description: "one-hot over reachable / unreachable / unknown"
+    otel:
+      name: swarm.node.manager.reachability
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.name: swarm.node.name
+      swarm.node.role: swarm.node.role
+      reachability: reachability
+
+  - name: "swarm.node.tasks.running"
+    channel: "swarm_node_{swarm.node.id}_tasks_running"
+    display_name: "Node Tasks Running"
+    unit: "#"
+    category: "node"
+    description: "running tasks placed on this node"
+    otel:
+      name: swarm.node.tasks.running
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.node.id: swarm.node.id
+
+
+  # --- service ---
+
+  - name: "swarm.service.replicas.desired"
+    channel: "swarm_service_{swarm.service.name}_desired"
+    display_name: "Service Replicas Desired"
+    unit: "#"
+    category: "service"
+    description: "replicas asked for; for a global service, the tasks Swarm intends to run"
+    otel:
+      name: swarm.service.replicas.desired
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+      swarm.service.mode: swarm.service.mode
+
+  - name: "swarm.service.replicas.running"
+    channel: "swarm_service_{swarm.service.name}_running"
+    display_name: "Service Replicas Running"
+    unit: "#"
+    category: "service"
+    description: "replicas actually running, counted from tasks"
+    otel:
+      name: swarm.service.replicas.running
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+      swarm.service.mode: swarm.service.mode
+
+  - name: "swarm.service.converged"
+    channel: "swarm_service_{swarm.service.name}_converged"
+    display_name: "Service Converged"
+    unit: "#"
+    category: "service"
+    description: "1 when running replicas have caught up with the declared count"
+    otel:
+      name: swarm.service.converged
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+      swarm.service.mode: swarm.service.mode
+
+  - name: "swarm.service.update.state"
+    channel: "swarm_service_{swarm.service.name}_update_{state}"
+    display_name: "Service Update State"
+    unit: "#"
+    category: "service"
+    description: "one-hot over the rolling-update lifecycle; a service stuck in paused is a deploy waiting for a human"
+    otel:
+      name: swarm.service.update.state
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+      swarm.service.mode: swarm.service.mode
+      state: state
+
+  - name: "swarm.service.tasks.failed"
+    channel: "swarm_service_{swarm.service.name}_tasks_failed"
+    display_name: "Service Tasks Failed"
+    unit: "#"
+    category: "service"
+    description: "tasks in a terminal failure state (failed, rejected, orphaned)"
+    otel:
+      name: swarm.service.tasks.failed
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+
+  - name: "swarm.service.port.published"
+    channel: "swarm_service_{swarm.service.name}_port_{swarm.port.published}"
+    display_name: "Service Port Published"
+    unit: "#"
+    category: "service"
+    description: "one series per published port; in ingress mode the port answers on every node, not only where the service runs"
+    otel:
+      name: swarm.service.port.published
+      unit: "{port}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+      swarm.port.published: swarm.port.published
+      swarm.port.target: swarm.port.target
+      network.transport: network.transport
+      swarm.port.mode: swarm.port.mode
+
+
+  # --- task ---
+
+  - name: "swarm.task.state"
+    channel: "swarm_service_{swarm.service.name}_task_{state}"
+    display_name: "Task State"
+    unit: "#"
+    category: "task"
+    description: "tasks per service per lifecycle state; separates 'not there yet' from 'will never get there'"
+    otel:
+      name: swarm.task.state
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+      state: state
+
+
+  # --- network ---
+
+  - name: "swarm.service.network.attached"
+    channel: "swarm_service_{swarm.service.name}_net_{swarm.network.name}"
+    display_name: "Service Network Attached"
+    unit: "#"
+    category: "network"
+    description: "1 per (service, overlay) pair — the reachability map: two services share a segment or they cannot talk"
+    otel:
+      name: swarm.service.network.attached
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.service.name: swarm.service.name
+      swarm.network.name: swarm.network.name
+      swarm.service.vip: swarm.service.vip
+
+  - name: "swarm.network.services"
+    channel: "swarm_net_{swarm.network.name}_services"
+    display_name: "Network Services"
+    unit: "#"
+    category: "network"
+    description: "services attached to this overlay"
+    otel:
+      name: swarm.network.services
+      unit: "{service}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.network.name: swarm.network.name
+      swarm.network.subnet: swarm.network.subnet
+
+  - name: "swarm.network.tasks"
+    channel: "swarm_net_{swarm.network.name}_tasks"
+    display_name: "Network Tasks"
+    unit: "#"
+    category: "network"
+    description: "task attachments on this overlay"
+    otel:
+      name: swarm.network.tasks
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.network.name: swarm.network.name
+      swarm.network.subnet: swarm.network.subnet
+
+  - name: "swarm.network.ingress"
+    channel: "swarm_net_{swarm.network.name}_ingress"
+    display_name: "Network Ingress"
+    unit: "#"
+    category: "network"
+    description: "1 on the routing-mesh segment that carries every published port"
+    otel:
+      name: swarm.network.ingress
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.network.name: swarm.network.name
+      swarm.network.subnet: swarm.network.subnet
+
+  - name: "swarm.network.attachable"
+    channel: "swarm_net_{swarm.network.name}_attachable"
+    display_name: "Network Attachable"
+    unit: "#"
+    category: "network"
+    description: "1 when standalone containers may join this overlay"
+    otel:
+      name: swarm.network.attachable
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.network.name: swarm.network.name
+      swarm.network.subnet: swarm.network.subnet
+
+  - name: "swarm.network.internal"
+    channel: "swarm_net_{swarm.network.name}_internal"
+    display_name: "Network Internal"
+    unit: "#"
+    category: "network"
+    description: "1 when the overlay has no external route"
+    otel:
+      name: swarm.network.internal
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.network.name: swarm.network.name
+      swarm.network.subnet: swarm.network.subnet
+
+  - name: "swarm.network.address.capacity"
+    channel: "swarm_net_{swarm.network.name}_capacity"
+    display_name: "Network Address Capacity"
+    unit: "#"
+    category: "network"
+    description: "assignable addresses in the overlay subnet; an overlay running out refuses new tasks with an error naming neither"
+    otel:
+      name: swarm.network.address.capacity
+      unit: "{address}"
+      type: gauge
+    tag_to_attribute:
+      swarm.cluster.name: swarm.cluster.name
+      swarm.network.name: swarm.network.name
+      swarm.network.subnet: swarm.network.subnet
+
