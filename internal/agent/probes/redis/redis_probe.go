@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -66,7 +67,7 @@ func NewRedisProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		tlsConfig:    tlsConfig,
 		instance:     instance,
 		moduleLogger: moduleLogger,
-		entityObs:    newEntityObserver(cfg, instance),
+		entityObs:    newEntityObserver(cfg, dbcommon.HostID),
 		dialFn:       net.DialTimeout,
 	}
 	probe.SetProbeType(ProbeType)
