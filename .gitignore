@@ -148,3 +148,6 @@ internal/agent/probes/ibmi/bridge/jt400runner
 # Claude Code scheduled wake-up lock (runtime artifact)
 .claude/scheduled_tasks.lock
 docs/user-guide/site/
+
+# Agent worktrees (transient, never part of the repo)
+.claude/worktrees/
