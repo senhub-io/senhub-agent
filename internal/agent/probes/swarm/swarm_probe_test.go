@@ -422,3 +422,36 @@ func TestParseConfig_Defaults(t *testing.T) {
 		}
 	}
 }
+
+// A list endpoint that fails must not be reported as an empty cluster.
+//
+// Found in the field, not by reading the code: killing a manager to break
+// quorum made the whole Engine API hang, which the probe reported correctly —
+// and looking at the adjacent case showed that a PARTIAL failure (swarm info
+// answers, /nodes does not) would emit swarm.cluster.nodes=0 and quorum=0.
+// Zero machines is a confident, wrong statement; it is the same healthy-looking
+// zero the worker path exists to avoid.
+func TestCollect_AFailedListIsNotAnEmptyCluster(t *testing.T) {
+	p := newTestProbe(t, engine(t, map[string]any{
+		"/swarm": map[string]any{"ID": "c1"},
+		"/nodes": errBody{http.StatusInternalServerError, "rpc error: the swarm does not have a leader"},
+		// services/tasks/networks are absent from the routes on purpose: the
+		// handler answers 404, which is also a failed read.
+	}))
+
+	points, err := p.Collect()
+	if err == nil {
+		t.Error("a failed list must surface as an error, not be swallowed")
+	}
+	if up, _ := value(t, points, "senhub.swarm.up", nil); up != 1 {
+		t.Error("the swarm itself answered, so up must stay 1 — the failure is per-endpoint")
+	}
+	for _, name := range []string{
+		"swarm.cluster.nodes", "swarm.cluster.managers", "swarm.cluster.quorum",
+		"swarm.service.replicas.desired", "swarm.network.services",
+	} {
+		if v, ok := value(t, points, name, nil); ok {
+			t.Errorf("%s was emitted as %v after a failed read; an unreadable cluster must emit nothing rather than zero", name, v)
+		}
+	}
+}

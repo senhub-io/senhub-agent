@@ -175,20 +175,35 @@ func (p *swarmProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
+	// A failed list is NOT an empty cluster. Passing nil through would emit
+	// swarm.cluster.nodes=0 and managers=0, which reads as "this swarm has no
+	// machines" — a confident, wrong statement, and the same healthy-looking
+	// zero the worker case is written to avoid. Emitting nothing leaves the
+	// last known value visible with its own staleness, next to up=0.
 	nodes, err := p.listNodes()
 	record(err)
-	points = append(points, p.nodePoints(nodes, clusterTags, now)...)
+	if err == nil {
+		points = append(points, p.nodePoints(nodes, clusterTags, now)...)
+	}
 
-	services, err := p.listServices()
-	record(err)
-	tasks, err := p.listTasks()
-	record(err)
-	points = append(points, p.servicePoints(services, tasks, clusterTags, now)...)
-	points = append(points, p.taskPoints(services, tasks, clusterTags, now)...)
+	// Same rule for the rest: a service list that failed to load must not be
+	// reported as "no services", and a task list that failed must not turn
+	// every service into 0 running replicas — which would read as a total
+	// outage caused by the probe's own read error.
+	services, servicesErr := p.listServices()
+	record(servicesErr)
+	tasks, tasksErr := p.listTasks()
+	record(tasksErr)
+	if servicesErr == nil && tasksErr == nil {
+		points = append(points, p.servicePoints(services, tasks, clusterTags, now)...)
+		points = append(points, p.taskPoints(services, tasks, clusterTags, now)...)
+	}
 
-	networks, err := p.listNetworks()
-	record(err)
-	points = append(points, p.overlayPoints(networks, services, tasks, clusterTags, now)...)
+	networks, networksErr := p.listNetworks()
+	record(networksErr)
+	if networksErr == nil && servicesErr == nil && tasksErr == nil {
+		points = append(points, p.overlayPoints(networks, services, tasks, clusterTags, now)...)
+	}
 
 	p.entitySrc.update(info.ID, info.Spec.Name, len(nodes), len(services))
 
