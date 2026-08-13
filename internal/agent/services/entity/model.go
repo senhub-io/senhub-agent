@@ -85,6 +85,17 @@ type Relationship struct {
 	Type       string         // relationship.type (runs_on, monitors, …)
 	TargetType string         // target entity.type
 	TargetID   map[string]any // target entity.id (exact identity)
+	// Attributes are the edge's own scalar properties. Most edges have none:
+	// runs_on and monitors are structural, and their meaning is entirely in
+	// the pair they connect.
+	//
+	// same_as is the exception and the reason this exists. The consumer treats
+	// an alias edge WITHOUT a valid confidence as inert — it collapses nothing
+	// (ADR 0020) — so basis and confidence are not decoration, they are what
+	// makes the edge do anything at all. Dropping them, which is what happened
+	// before this field, produced an edge that travelled the whole wire and
+	// then did nothing on arrival.
+	Attributes map[string]any
 }
 
 // Relation is a directed edge a Source reports, resolved by the exact identity
