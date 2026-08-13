@@ -146,12 +146,6 @@ func setupDebugLogShipper(args *cliArgs.ParsedArgs) (io.Writer, error) {
 func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	var logger *Logger
 
-	// Sub-second precision on the stored timestamp. Without it zerolog writes
-	// whole seconds and the rendered line shows a constant ".000" — three
-	// digits that claim a precision the value does not have, on exactly the
-	// lines where ordering matters: two events inside the same second.
-	zerolog.TimeFieldFormat = time.RFC3339Nano
-
 	// Create debug log shipper if configured
 	shipper, err := setupDebugLogShipper(args)
 	if err != nil {
@@ -385,6 +379,21 @@ var (
 	levelStateMu sync.Mutex
 	levelStatePo atomic.Pointer[levelState]
 )
+
+// Sub-second precision on the stored timestamp. Without it zerolog writes whole
+// seconds and every rendered line shows a constant ".000" — three digits
+// claiming a precision the value does not have, on exactly the lines where
+// ordering matters: two events inside the same second.
+//
+// Set here rather than in NewLogger, against this package's usual preference
+// for constructors, because it is a package global of a third-party library
+// that EVERY writer reads on every line. Assigning it from a constructor is a
+// write racing those reads — the race detector caught exactly that, with
+// ConsoleWriter reading it while a second NewLogger call wrote it. init runs
+// before any goroutine exists, so there is nothing to race with.
+func init() {
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+}
 
 func init() {
 	levelStatePo.Store(&levelState{
