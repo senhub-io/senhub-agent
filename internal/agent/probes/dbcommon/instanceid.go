@@ -52,3 +52,10 @@ func FallbackInstanceID(system, address string, port int, hostID string) string 
 	}
 	return fmt.Sprintf("%s:%d", address, port)
 }
+
+// legacyFallbackInstanceID is the pre-0.5.4 form: the bare address:port that
+// collapsed two local databases into one entity. Kept only so the re-key
+// announcement can name the node it retires — nothing emits it any more.
+func legacyFallbackInstanceID(address string, port int) string {
+	return fmt.Sprintf("%s:%d", address, port)
+}
