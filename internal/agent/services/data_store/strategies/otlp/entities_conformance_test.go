@@ -440,3 +440,43 @@ func TestConformance_EveryEmittedShapePasses(t *testing.T) {
 		})
 	}
 }
+
+// The consumer's v0.8.0 kit must reject the raw 32-hex machine-id spelling —
+// the trap that nearly doubled every Kubernetes node. Verifying their guard
+// actually bites is the point of running their kit at all: a check nobody
+// tested is a check nobody can rely on.
+func TestConformance_RejectsTheRawMachineIDSpelling(t *testing.T) {
+	raw := "8b86170405bc4382b0577eac3df5e730"        // /etc/machine-id, verbatim
+	dashed := "8b861704-05bc-4382-b057-7eac3df5e730" // what the agent emits
+
+	build := func(id string) []conformance.Problem {
+		_, rec, err := buildEntityRecord(entity.Event{
+			Kind: entity.EntityState,
+			Entity: &entity.Entity{
+				Type: entity.TypeHost,
+				ID:   map[string]any{"host.id": id},
+			},
+		})
+		if err != nil {
+			t.Fatalf("buildEntityRecord: %v", err)
+		}
+		return conformance.Check(asPdata(t, wire.EventEntityState, rec))
+	}
+
+	problems := build(raw)
+	if len(problems) == 0 {
+		t.Error("the kit accepted the raw machine-id spelling; the guard does not bite")
+	}
+	for _, p := range problems {
+		t.Logf("raw form reported: %s", p.String())
+		if p.Advisory {
+			t.Error("the host.id spelling is reported as advisory; it was agreed it must fail")
+		}
+	}
+
+	if got := build(dashed); len(got) != 0 {
+		for _, p := range got {
+			t.Errorf("the spelling we actually emit was rejected: %s", p.String())
+		}
+	}
+}
