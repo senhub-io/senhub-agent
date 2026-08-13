@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/kardianos/service"
 	"github.com/rs/zerolog"
@@ -145,6 +146,12 @@ func setupDebugLogShipper(args *cliArgs.ParsedArgs) (io.Writer, error) {
 func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	var logger *Logger
 
+	// Sub-second precision on the stored timestamp. Without it zerolog writes
+	// whole seconds and the rendered line shows a constant ".000" — three
+	// digits that claim a precision the value does not have, on exactly the
+	// lines where ordering matters: two events inside the same second.
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+
 	// Create debug log shipper if configured
 	shipper, err := setupDebugLogShipper(args)
 	if err != nil {
@@ -238,7 +245,7 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	// Default writer is console with masking
-	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
 	var writer io.Writer = NewMaskingWriter(consoleWriter)
 
 	// If debug log shipper is configured, create a multi-writer with masking
@@ -297,12 +304,12 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	}
 
 	// Define masked writers - start with log file
-	writers := []io.Writer{NewMaskingWriter(logRotator)}
+	writers := []io.Writer{NewMaskingWriter(fileWriter(logRotator, args))}
 
 	// Add console output in interactive mode (run command)
 	// This ensures logs are visible in console when using: ./agent run
 	if isInteractive {
-		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
 		log.Printf("Running in interactive mode - console output enabled")
 	}
@@ -327,6 +334,37 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		Logger()
 
 	return &logger
+}
+
+// consoleTimeFormat dates every console line too: a line pasted into a ticket
+// without its date is a line nobody can correlate with anything.
+const consoleTimeFormat = "2006-01-02 15:04:05.000"
+
+// fileWriter wraps the rotating file in the layout chosen by --log-format.
+//
+// The default is readable text, because a log file is read by a person opening
+// it during an incident. JSON was not merely dense: the masking writer
+// re-encodes each entry through a map, and Go marshals map keys in alphabetical
+// order, so the timestamp landed at the END of every line and the level sat in
+// the middle. Nothing aligned from one line to the next, which is what made the
+// file unusable rather than just verbose.
+//
+// The console writer sits BETWEEN the masker and the file: the masker still
+// receives structured JSON, so it masks fields rather than pattern-matching
+// text, and only the already-masked entry is rendered. Reversing the two would
+// hand the masker a formatted string and weaken the redaction.
+//
+// --log-format json restores the machine-parseable form for anyone shipping
+// the file to an aggregator.
+func fileWriter(rotator io.Writer, args *cliArgs.ParsedArgs) io.Writer {
+	if args != nil && args.LogFormat == cliArgs.LogFormatJSON {
+		return rotator
+	}
+	return zerolog.ConsoleWriter{
+		Out:        rotator,
+		NoColor:    true,
+		TimeFormat: "2006-01-02 15:04:05.000",
+	}
 }
 
 // levelState is the immutable snapshot of the module-level
