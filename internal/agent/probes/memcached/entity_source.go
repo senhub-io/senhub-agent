@@ -41,7 +41,7 @@ type memcachedEntitySource struct {
 func newMemcachedEntitySource(host string, port int, instanceName string) *memcachedEntitySource {
 	id := instanceName
 	if id == "" {
-		id = dbcommon.FallbackInstanceID(host, port, dbcommon.HostID())
+		id = dbcommon.FallbackInstanceID("memcached", host, port, dbcommon.HostID())
 	}
 	return &memcachedEntitySource{
 		instanceID: id,

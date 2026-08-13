@@ -54,7 +54,7 @@ func newEntityObserver(cfg probeConfig, hostID func() string) *entityObserver {
 		// Redis has no persistent server id, so this fallback is the norm
 		// rather than a degraded case: every default install listens on
 		// loopback and would otherwise share one identity fleet-wide (#740).
-		id = dbcommon.FallbackInstanceID(cfg.Host, cfg.Port, hostID())
+		id = dbcommon.FallbackInstanceID("redis", cfg.Host, cfg.Port, hostID())
 	}
 	return &entityObserver{pinnedID: id, hostID: hostID}
 }
