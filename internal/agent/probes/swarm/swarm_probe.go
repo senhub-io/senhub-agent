@@ -72,7 +72,7 @@ func NewSwarmProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	p := &swarmProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
-		moduleLogger: logger.NewModuleLogger(baseLogger, "probes.swarm"),
+		moduleLogger: logger.NewModuleLogger(baseLogger, "probe.swarm"),
 	}
 	p.SetProbeType(ProbeType)
 	p.entitySrc = newEntitySource()
