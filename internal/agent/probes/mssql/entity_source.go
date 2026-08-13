@@ -32,6 +32,9 @@ type mssqlEntitySource struct {
 	// the helper suppresses the runs_on even on loopback (the id is identical on
 	// every host) — the edge is wired for correctness but never materialises here.
 	hostID func() string
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *dbcommon.RekeyAnnouncer
 }
 
 // newEntitySource builds the source for the configured host:port target. The
@@ -43,6 +46,7 @@ func newEntitySource(host string, port int) *mssqlEntitySource {
 	// where it is the only thing distinguishing this id from another product's
 	// id on the same address and port.
 	instanceID := dbcommon.FallbackInstanceID(dbSystemMSSQL, host, port, dbcommon.HostID())
+	rekey := dbcommon.NewRekeyAnnouncer(dbSystemMSSQL, host, port, dbcommon.HostID())
 	if !strings.Contains(instanceID, "@") {
 		instanceID = dbInstanceScheme + instanceID
 	}
@@ -52,6 +56,7 @@ func newEntitySource(host string, port int) *mssqlEntitySource {
 	}
 	s := &mssqlEntitySource{
 		hostID: dbcommon.HostID,
+		rekey:  rekey,
 		obs: entity.Observation{
 			Entities: []entity.Entity{
 				{
@@ -61,9 +66,10 @@ func newEntitySource(host string, port int) *mssqlEntitySource {
 			},
 		},
 	}
-	// runs_on edge: db → host when the db is local (loopback). The host:port id
-	// embeds the loopback literal, so the collapse guard refuses it (it would
-	// false-join hosts); wired anyway so the gate alone decides correctness.
+	// runs_on edge: db → host when the db is local (loopback). Until #773 the
+	// address:port id embedded the loopback literal and the collapse guard
+	// refused this edge, so a local SQL Server had no host at all; the
+	// host-scoped identity clears the guard honestly.
 	if rel, ok := dbcommon.LocalHostRunsOn(dbID, host, s.hostID()); ok {
 		s.obs.Relations = append(s.obs.Relations, rel)
 	}
@@ -74,5 +80,14 @@ func newEntitySource(host string, port int) *mssqlEntitySource {
 // from config, independent of whether the server is reachable this cycle
 // (reachability rides the senhub.db.up metric, not the entity's presence).
 func (s *mssqlEntitySource) Observe() (entity.Observation, bool) {
+	// The 0.5.4 identity migration rides here rather than on the fixed
+	// observation built in the constructor: the announcement is per-cycle and
+	// self-limiting, so it cannot be baked into a value returned unchanged.
+	s.rekey.Announce()
+	if rel, ok := s.rekey.SameAs(); ok {
+		obs := s.obs
+		obs.Relations = append(append([]entity.Relation{}, obs.Relations...), rel)
+		return obs, true
+	}
 	return s.obs, true
 }
