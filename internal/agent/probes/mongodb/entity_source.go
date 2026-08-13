@@ -33,6 +33,9 @@ type mongodbEntitySource struct {
 	// hostID resolves the agent host id for a local-db runs_on edge.
 	// nil → dbcommon.HostID.
 	hostID func() string
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *dbcommon.RekeyAnnouncer
 
 	mu sync.RWMutex
 	// pinnedID is the resolved db.instance.id. Set once; never changed.
@@ -57,7 +60,9 @@ type mongodbEntitySource struct {
 // (precedence 3). Precedence 2 (replset id) is handled via pinTechID.
 func newMongodbEntitySource(addr string, port int64, instanceName string) *mongodbEntitySource {
 	hp := dbcommon.FallbackInstanceID("mongodb", addr, int(port), dbcommon.HostID())
+	rekey := dbcommon.NewRekeyAnnouncer("mongodb", addr, int(port), dbcommon.HostID())
 	s := &mongodbEntitySource{
+		rekey:    rekey,
 		hostPort: hp,
 		addr:     addr,
 		port:     port,
@@ -161,6 +166,14 @@ func (s *mongodbEntitySource) Observe() (entity.Observation, bool) {
 	// runs_on edge: db → host when the db is on the agent's own host (loopback).
 	// The collapse guard suppresses it for a host:port-derived id.
 	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.addr, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	s.rekey.Announce()
+	if rel, ok := s.rekey.SameAs(); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
 

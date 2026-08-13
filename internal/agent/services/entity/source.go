@@ -157,6 +157,7 @@ func (o Observation) foldRelationships() (entities []Entity, orphans []Relation)
 			Type:       r.Type,
 			TargetType: r.ToType,
 			TargetID:   r.ToID,
+			Attributes: r.Attributes,
 		})
 	}
 	return entities, orphans
