@@ -87,6 +87,7 @@ type StartSubcommandArgs struct {
 	DebugLogShipperUrl    string            `arg:"--debug-log-shipper-url,env:SENHUB_DEBUG_LOG_SHIPPER_URL" help:"URL of remote endpoint for shipping debug logs"`
 	DebugLogShipperTags   map[string]string `arg:"--debug-log-shipper-tags,env:SENHUB_DEBUG_LOG_SHIPPER_TAGS" help:"Tags to add to debug log entries (format: key1=value1,key2=value2)"`
 	DebugLogShipperBuffer int               `arg:"--debug-log-shipper-buffer,env:SENHUB_DEBUG_LOG_SHIPPER_BUFFER" help:"Buffer size for debug log shipper"`
+	LogFormat             string            `arg:"--log-format,env:SENHUB_LOG_FORMAT" help:"Log file format: text (default, human-readable) or json (machine-parseable)"`
 
 	ConfigPath string `arg:"--config-path" help:"Path to the agent configuration file"`
 
@@ -122,6 +123,11 @@ type ParsedArgs struct {
 	DebugLogShipperUrl    string
 	DebugLogShipperTags   map[string]string
 	DebugLogShipperBuffer int
+
+	// LogFormat selects the log FILE layout: "text" (default) or "json".
+	// The console always uses the readable form; the remote log shipper
+	// always uses JSON, since a machine reads it.
+	LogFormat string
 
 	ConfigPath string
 
@@ -356,6 +362,7 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		DebugLogShipperUrl:    args.DebugLogShipperUrl,
 		DebugLogShipperTags:   args.DebugLogShipperTags,
 		DebugLogShipperBuffer: args.DebugLogShipperBuffer,
+		LogFormat:             normalizeLogFormat(args.LogFormat),
 
 		ConfigPath: configPath,
 
@@ -390,4 +397,25 @@ func canonicalConfigPath() string {
 	// paths_<goos>.go to avoid sprinkling runtime.GOOS conditionals
 	// through this resolution path.
 	return canonicalConfigPathForOS()
+}
+
+// LogFormatText and LogFormatJSON are the accepted --log-format values.
+const (
+	LogFormatText = "text"
+	LogFormatJSON = "json"
+)
+
+// normalizeLogFormat defaults to the readable form and refuses to guess.
+//
+// Anything unrecognised falls back to text rather than erroring: a typo in a
+// log-format flag must not stop an agent from starting, and the readable form
+// is the safer thing to be wrong about — a human can still read JSON-less
+// output, while a parser that expected JSON fails loudly on its own terms.
+func normalizeLogFormat(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case LogFormatJSON:
+		return LogFormatJSON
+	default:
+		return LogFormatText
+	}
 }
