@@ -30,6 +30,9 @@ type mysqlEntitySource struct {
 	cfg          config
 	moduleLogger *logger.ModuleLogger
 	hostID       func() string // nil → dbcommon.HostID; resolves the agent host for a local-db runs_on
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *dbcommon.RekeyAnnouncer
 
 	mu          sync.Mutex
 	role        dbcommon.Role
@@ -81,6 +84,7 @@ func (s *mysqlEntitySource) pinServerUUID(uuid string) {
 	// at all, so every MariaDB install lands here — which is how two of them
 	// collapsed into one entity in production (#740).
 	s.pinnedID = dbcommon.FallbackInstanceID("mysql", s.cfg.Host, s.cfg.Port, s.hostID())
+	s.rekey = dbcommon.NewRekeyAnnouncer("mysql", s.cfg.Host, s.cfg.Port, s.hostID())
 	s.idPinned = true
 }
 
@@ -121,6 +125,7 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	idPinned := s.idPinned
 	rolePinned := s.rolePinned
 	pinnedID := s.pinnedID
+	rekey := s.rekey
 	s.mu.Unlock()
 
 	// When instance_name is set the id is pinned at construction; we still
@@ -170,6 +175,14 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	// runs_on edge: db → host when the db is local (loopback) — anchors a local
 	// db to the host it runs on (enterprise#36).
 	if rel, ok := dbcommon.LocalHostRunsOn(id, s.cfg.Host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	rekey.Announce()
+	if rel, ok := rekey.SameAs(); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
 
