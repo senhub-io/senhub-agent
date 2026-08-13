@@ -601,3 +601,44 @@ func TestSensor_SyncConfiguration_RejectsUnboundLicense(t *testing.T) {
 		t.Errorf("license bound to a different agent key was accepted during sync (tier=%v); want rejected (nil)", s.license.Tier)
 	}
 }
+
+// A probe with enabled:false must not start, and one with the key absent must,
+// so an existing configuration keeps behaving exactly as it did.
+func TestSensor_Start_DisabledProbeIsNotStarted(t *testing.T) {
+	off := false
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+	mockProvider := &MockConfigProvider{
+		config: configuration.ConfigurationData{
+			Probes: []configuration.ProbeConfig{
+				{Name: "off-cpu", Type: "cpu", Enabled: &off,
+					Params: map[string]interface{}{"interval": 30}},
+				{Name: "on-cpu", Type: "cpu",
+					Params: map[string]interface{}{"interval": 30}},
+			},
+		},
+	}
+	addDataPoint := func(data []datapoint.DataPoint, router data_store.StrategyRouter) error { return nil }
+
+	s := NewSensor(addDataPoint, mockProvider, baseLogger)
+	quitChannel := make(chan struct{})
+	if err := s.Start(quitChannel); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })
+
+	impl, ok := s.(*sensor)
+	if !ok {
+		t.Fatalf("unexpected Sensor implementation %T", s)
+	}
+	started := map[string]bool{}
+	for _, p := range impl.startedProbes {
+		started[p.Probe.GetName()] = true
+	}
+	if started["off-cpu"] {
+		t.Error("a probe with enabled:false was started")
+	}
+	if !started["on-cpu"] {
+		t.Error("a probe with no enabled key did not start; existing configs would go dark")
+	}
+}
