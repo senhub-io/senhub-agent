@@ -385,8 +385,8 @@ func TestMaybeResolveEntityID_Standalone(t *testing.T) {
 	if got == "localhost:27017" {
 		t.Error("db.instance.id is the unscoped localhost form; two hosts would collapse")
 	}
-	if !strings.HasSuffix(got, ":27017") {
-		t.Errorf("db.instance.id = %q, want a host-scoped id ending in :27017", got)
+	if !strings.Contains(got, "mongodb:27017@") {
+		t.Errorf("db.instance.id = %q, want the mongodb:27017@<host.id> form", got)
 	}
 }
 

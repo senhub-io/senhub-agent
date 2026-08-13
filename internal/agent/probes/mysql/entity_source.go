@@ -80,7 +80,7 @@ func (s *mysqlEntitySource) pinServerUUID(uuid string) {
 	// Not the rare branch it was assumed to be: MariaDB has no @@server_uuid
 	// at all, so every MariaDB install lands here — which is how two of them
 	// collapsed into one entity in production (#740).
-	s.pinnedID = dbcommon.FallbackInstanceID(s.cfg.Host, s.cfg.Port, s.hostID())
+	s.pinnedID = dbcommon.FallbackInstanceID("mysql", s.cfg.Host, s.cfg.Port, s.hostID())
 	s.idPinned = true
 }
 
