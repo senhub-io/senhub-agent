@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/toise-dev/toise/pkg/emit"
+	"github.com/toise-dev/toise/pkg/emit/conformance"
 	"github.com/toise-dev/toise/pkg/emit/wire"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -294,5 +295,148 @@ func equalTree(a, b any) bool {
 		return true
 	default:
 		return a == b
+	}
+}
+
+// --- The consumer's conformance kit, run over OUR payload -----------------
+//
+// Suggested by the consumer after we shipped an alias edge whose belief
+// attributes never reached the wire: their kit already flags a same_as with no
+// confidence, precisely because such an edge is stored and then ignored by the
+// canonical overlay — the cost of sending it and none of the effect.
+//
+// The differential tests above check that our encoding MATCHES theirs for the
+// cases we thought to write. This one checks that whatever we encode SATISFIES
+// their contract, including the cases nobody thought to write, and it is the
+// check that would have caught the dropped attributes on its own.
+
+// asPdata renders one of our records into the pdata shape the kit consumes.
+func asPdata(t *testing.T, eventName string, rec log.Record) plog.Logs {
+	t.Helper()
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	// The resource the OTLP strategy actually attaches. Omitting it made the
+	// kit report a missing service.instance.id — a fault in the harness, not in
+	// the payload: liveness is reference-counted per producer, so the real
+	// resource carries it and a bare harness would have reported a defect that
+	// production does not have.
+	rl.Resource().Attributes().PutStr("service.name", "senhub-agent")
+	rl.Resource().Attributes().PutStr("service.instance.id", "3b8d5f21-7c94-4e60-a1d3-6f2b8e05c7a9")
+	rl.Resource().Attributes().PutStr("host.id", "8b861704-05bc-4382-b057-7eac3df5e730")
+	sl := rl.ScopeLogs().AppendEmpty()
+	out := sl.LogRecords().AppendEmpty()
+	out.SetEventName(eventName)
+	rec.WalkAttributes(func(kv log.KeyValue) bool {
+		putValue(out.Attributes().PutEmpty(kv.Key), kv.Value)
+		return true
+	})
+	return ld
+}
+
+func putValue(dst pcommon.Value, v log.Value) {
+	switch v.Kind() {
+	case log.KindString:
+		dst.SetStr(v.AsString())
+	case log.KindInt64:
+		dst.SetInt(v.AsInt64())
+	case log.KindFloat64:
+		dst.SetDouble(v.AsFloat64())
+	case log.KindBool:
+		dst.SetBool(v.AsBool())
+	case log.KindMap:
+		m := dst.SetEmptyMap()
+		for _, kv := range v.AsMap() {
+			putValue(m.PutEmpty(kv.Key), kv.Value)
+		}
+	case log.KindSlice:
+		s := dst.SetEmptySlice()
+		for _, e := range v.AsSlice() {
+			putValue(s.AppendEmpty(), e)
+		}
+	}
+}
+
+// A re-key alias must satisfy the kit — which means carrying a usable
+// confidence. Without one the edge is inert: stored, then ignored.
+func TestConformance_RekeyAliasCarriesAUsableBelief(t *testing.T) {
+	_, rec, err := buildEntityRecord(entity.Event{
+		Kind: entity.EntityState,
+		Entity: &entity.Entity{
+			Type: entity.TypeDB,
+			ID:   map[string]any{"db.instance.id": "redis:6379@host-1"},
+			Attributes: map[string]any{
+				"db.system.name": "redis",
+			},
+			Relationships: []entity.Relationship{{
+				Type:       entity.RelSameAs,
+				TargetType: entity.TypeDB,
+				TargetID:   map[string]any{"db.instance.id": "127.0.0.1:6379"},
+				Attributes: map[string]any{"basis": "rekey", "confidence": 1.0},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildEntityRecord: %v", err)
+	}
+
+	for _, p := range conformance.Check(asPdata(t, wire.EventEntityState, rec)) {
+		t.Errorf("conformance: %s", p.String())
+	}
+}
+
+// The negative: an alias without its belief must be reported, so this test
+// fails loudly the day the attributes stop reaching the wire again.
+func TestConformance_FlagsAnAliasWithNoBelief(t *testing.T) {
+	_, rec, err := buildEntityRecord(entity.Event{
+		Kind: entity.EntityState,
+		Entity: &entity.Entity{
+			Type: entity.TypeDB,
+			ID:   map[string]any{"db.instance.id": "redis:6379@host-1"},
+			Relationships: []entity.Relationship{{
+				Type:       entity.RelSameAs,
+				TargetType: entity.TypeDB,
+				TargetID:   map[string]any{"db.instance.id": "127.0.0.1:6379"},
+				// no basis, no confidence — the pre-fix behaviour
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildEntityRecord: %v", err)
+	}
+
+	problems := conformance.Check(asPdata(t, wire.EventEntityState, rec))
+	if len(problems) == 0 {
+		t.Fatal("the kit accepted an alias with no confidence; it can no longer guard the regression it exists for")
+	}
+}
+
+// Every entity type this agent emits must pass the kit, not just the one that
+// happened to motivate wiring it in.
+func TestConformance_EveryEmittedShapePasses(t *testing.T) {
+	cases := []entity.Entity{
+		{Type: entity.TypeHost, ID: map[string]any{"host.id": "h-1"},
+			Attributes: map[string]any{"host.name": "box", "host.cpu.logical.count": int64(8)}},
+		{Type: entity.TypeContainer, ID: map[string]any{"container.id": "9fbff48f8bc0"},
+			Attributes: map[string]any{"container.name": "web"}},
+		{Type: entity.TypePod, ID: map[string]any{"k8s.pod.uid": "9383348c-ed92"},
+			Attributes: map[string]any{"k8s.pod.name": "api-1"},
+			Relationships: []entity.Relationship{{
+				Type: entity.RelRunsOn, TargetType: entity.TypeHost,
+				TargetID: map[string]any{"host.id": "h-1"},
+			}}},
+		{Type: entity.TypeServiceInstance, ID: map[string]any{"service.instance.id": "swarm://c1"},
+			Attributes: map[string]any{"service.name": "docker-swarm", "swarm.node.count": int64(3)}},
+	}
+	for _, e := range cases {
+		ent := e
+		t.Run(ent.Type, func(t *testing.T) {
+			_, rec, err := buildEntityRecord(entity.Event{Kind: entity.EntityState, Entity: &ent})
+			if err != nil {
+				t.Fatalf("buildEntityRecord: %v", err)
+			}
+			for _, p := range conformance.Check(asPdata(t, wire.EventEntityState, rec)) {
+				t.Errorf("conformance: %s", p.String())
+			}
+		})
 	}
 }
