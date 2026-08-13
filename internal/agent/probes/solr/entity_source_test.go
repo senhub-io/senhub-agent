@@ -157,8 +157,8 @@ func TestEntitySource_HostPortFallback(t *testing.T) {
 	if gotID == fmt.Sprintf("127.0.0.1:%d", port) {
 		t.Error("db.instance.id kept the loopback address; two hosts would collapse")
 	}
-	if !strings.HasSuffix(gotID, fmt.Sprintf(":%d", port)) {
-		t.Errorf("db.instance.id = %q, want a host-scoped id ending in :%d", gotID, port)
+	if !strings.Contains(gotID, fmt.Sprintf("solr:%d@", port)) {
+		t.Errorf("db.instance.id = %q, want the solr:%d@<host.id> form", gotID, port)
 	}
 }
 

@@ -47,7 +47,7 @@ type couchdbEntitySource struct {
 // so the entity is emitted on the very first cycle.
 func newCouchDBEntitySource(endpoint, instanceName string) *couchdbEntitySource {
 	addr, port := couchdbHostPortFromEndpoint(endpoint)
-	hp := dbcommon.FallbackInstanceID(addr, int(port), dbcommon.HostID())
+	hp := dbcommon.FallbackInstanceID("couchdb", addr, int(port), dbcommon.HostID())
 
 	s := &couchdbEntitySource{
 		hostPort: hp,

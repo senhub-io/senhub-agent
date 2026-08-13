@@ -42,8 +42,8 @@ func TestEntityObserver_LocalDBRunsOnHost(t *testing.T) {
 	// loopback address, which the collapse guard rightly refused to anchor —
 	// leaving every local Redis floating with no host.
 	id, anchored := observe("127.0.0.1")
-	if id != "h-1:6379" {
-		t.Errorf("local db.instance.id = %q, want h-1:6379", id)
+	if id != "redis:6379@h-1" {
+		t.Errorf("local db.instance.id = %q, want redis:6379@h-1", id)
 	}
 	if !anchored {
 		t.Error("a host-scoped local db must emit runs_on→host")

@@ -50,7 +50,7 @@ func newInfluxdbEntitySource(cfg probeConfig) *influxdbEntitySource {
 	if cfg.InstanceName != "" {
 		instanceID = cfg.InstanceName
 	} else {
-		instanceID = dbcommon.FallbackInstanceID(addr, int(port), dbcommon.HostID())
+		instanceID = dbcommon.FallbackInstanceID("influxdb", addr, int(port), dbcommon.HostID())
 	}
 
 	return &influxdbEntitySource{
