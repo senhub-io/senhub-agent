@@ -96,6 +96,26 @@ Each probe entry defines a monitoring target. The agent collects metrics at regu
 | `type` | Yes | Probe type (see Available Probe Types below) |
 | `params` | Yes | Probe-specific parameters |
 | `custom_tags` | No | Additional key-value tags attached to all metrics from this probe |
+| `enabled` | No | Set to `false` to stop the probe without deleting its configuration. Absent means enabled, so existing files are unaffected. A disabled probe collects nothing and reports no topology. |
+
+### Turning a probe off
+
+Set `enabled: false` rather than deleting the entry:
+
+```yaml
+probes:
+  - name: mysql-prod
+    type: mysql
+    enabled: false
+    params:
+      host: 127.0.0.1
+      user: monitor
+```
+
+Deleting the entry works too, but it takes the credentials, intervals and tags
+with it — which have to be retyped to turn the probe back on. `agent config
+check` lists disabled probes explicitly, so "why is this collecting nothing"
+has an answer that does not require reading the file.
 
 ### Available Probe Types
 
