@@ -1,6 +1,8 @@
 package mssql
 
 import (
+	"strings"
+
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -36,7 +38,14 @@ type mssqlEntitySource struct {
 // db.instance.id encodes the same target the probe connects to, so metrics
 // tagged with server.address/server.port join to this entity in the consumer.
 func newEntitySource(host string, port int) *mssqlEntitySource {
-	instanceID := dbInstanceScheme + dbcommon.FallbackInstanceID(host, port, dbcommon.HostID())
+	// The local form already names the system (mssql:1433@<host.id>), so the
+	// legacy "mssql://" prefix would say it twice. It stays on the remote form,
+	// where it is the only thing distinguishing this id from another product's
+	// id on the same address and port.
+	instanceID := dbcommon.FallbackInstanceID(dbSystemMSSQL, host, port, dbcommon.HostID())
+	if !strings.Contains(instanceID, "@") {
+		instanceID = dbInstanceScheme + instanceID
+	}
 	dbID := map[string]any{
 		idKeyDBInstance: instanceID,
 		idKeyDBSystem:   dbSystemMSSQL,
