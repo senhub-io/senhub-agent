@@ -176,8 +176,19 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			// Only specified modules will output debug logs
 			// All modules continue to output Info/Warn/Error
 
-			// Keep global level at INFO for non-module logs
-			zerolog.SetGlobalLevel(zerolog.InfoLevel)
+			// The global level is a hard floor in zerolog: should() drops
+			// any event below it before the logger's own level is even
+			// consulted. Pinning it to Info here — which is what this code
+			// did — vetoed every debug line the filter was supposed to let
+			// through, so --filter produced nothing at all, ever.
+			//
+			// The floor goes to Debug and the FILTERING moves where it can
+			// actually discriminate: the module gate in ModuleLogger.Debug().
+			// Non-module debug lines are kept quiet by the base logger's own
+			// level, set to Info just below.
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+			quiet := logger.Level(zerolog.InfoLevel)
+			logger = &quiet
 
 			// Enable debug only for specified modules
 			mutateLevelState(func(st *levelState) {
@@ -196,16 +207,19 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			// Full verbose mode: --verbose without --debug-modules
 			// All modules output debug logs (no filtering)
 
-			// Enable debug level globally
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+			verbose := logger.Level(zerolog.DebugLevel)
+			logger = &verbose
 
-			// Enable debug for all key modules
+			// No walk over the level map here. Raising the sixteen names it
+			// happened to contain is exactly what made --verbose look like it
+			// worked while every other module stayed silent: the map is a set
+			// of overrides, and clearing it is what lets every module follow
+			// the logger's level.
 			mutateLevelState(func(st *levelState) {
 				st.selective = false
 				st.debugModules = map[string]bool{}
-				for module := range st.levels {
-					st.levels[module] = zerolog.DebugLevel
-				}
+				st.levels = map[string]zerolog.Level{}
 			})
 
 			logger.Info().Msg("Full verbose mode enabled - debug logging for all modules")
@@ -487,23 +501,41 @@ func (m *ModuleLogger) Debug() *zerolog.Event {
 	// In selective debug mode, only allow debug logs for enabled modules (with prefix matching)
 	if st.selective {
 		if !isModuleEnabled(st, m.module) {
-			disabledLogger := m.Logger.Level(zerolog.Disabled)
-			return disabledLogger.Debug()
+			return m.disabled()
 		}
+		// Selective mode keeps the BASE logger at Info so that debug lines
+		// emitted outside any module stay out of the way. A selected module
+		// therefore has to raise its own copy, otherwise it inherits that
+		// Info level and the filter selects nothing at all.
+		lifted := m.Logger.Level(zerolog.DebugLevel)
+		return lifted.Debug()
 	}
 
-	// Check module log level (unknown modules default to Info, which
-	// keeps Debug disabled — same contract as GetModuleLogLevel).
-	level, ok := st.levels[m.module]
-	if !ok {
-		level = zerolog.InfoLevel
+	// st.levels is an OVERRIDE map, not an allowlist. A module absent from it
+	// defers to the logger's own level, so --verbose reaches every module.
+	//
+	// It used to default an absent module to Info and disable Debug on that
+	// basis, which made the map an allowlist of sixteen names while the code
+	// creates module loggers under more than a hundred. Every module written
+	// after that map was frozen — every probe added in the last two years —
+	// stayed silent under --verbose, with no way for an operator to tell that
+	// from "this code path logs nothing".
+	if level, ok := st.levels[m.module]; ok {
+		if level > zerolog.DebugLevel {
+			return m.disabled()
+		}
+		// An explicit debug override must win over a quieter base logger,
+		// which is how the runtime log-level endpoint raises one module.
+		lifted := m.Logger.Level(zerolog.DebugLevel)
+		return lifted.Debug()
 	}
-	if level <= zerolog.DebugLevel {
-		return m.Logger.Debug()
-	}
+	return m.Logger.Debug()
+}
 
-	disabledLogger := m.Logger.Level(zerolog.Disabled)
-	return disabledLogger.Debug()
+// disabled returns an event that will never be written.
+func (m *ModuleLogger) disabled() *zerolog.Event {
+	off := m.Logger.Level(zerolog.Disabled)
+	return off.Debug()
 }
 
 // Info logs an info message (always enabled for all modules)

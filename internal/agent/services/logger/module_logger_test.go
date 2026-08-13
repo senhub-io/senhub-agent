@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+
+	"senhub-agent.go/internal/agent/cliArgs"
 )
 
 func TestSetModuleLogLevel(t *testing.T) {
@@ -242,18 +244,38 @@ func TestLevelState_RaceTogglingUnderLoad(t *testing.T) {
 	wg.Wait()
 }
 
+// A module with no explicit override follows the surrounding levels rather
+// than being silenced for not appearing in a map.
+//
+// This test used to assert the opposite — that an unknown module has its debug
+// suppressed — which is exactly the defect: the override map held sixteen
+// names, the code creates module loggers under more than a hundred, and every
+// module written after that map was frozen stayed mute under --verbose. The
+// contract is now that quietness comes from the logger's level, and the map
+// only overrides it.
 func TestModuleLoggerWithUnknownModule(t *testing.T) {
-	// Create a base logger
+	withRestoredLogState(t)
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	mutateLevelState(func(st *levelState) {
+		st.selective = false
+		st.levels = map[string]zerolog.Level{}
+	})
+
 	var buf bytes.Buffer
-	baseLogger := zerolog.New(&buf).With().Timestamp().Logger()
-
-	// Create module logger for unknown module (should use InfoLevel default)
-	moduleLogger := NewModuleLogger(&baseLogger, "unknown.module")
-
-	// Test that debug message is filtered out (default level is INFO)
-	moduleLogger.Debug().Msg("This should not appear")
+	// Quiet base logger: no debug expected, and the reason is the level.
+	quiet := zerolog.New(&buf).Level(zerolog.InfoLevel).With().Timestamp().Logger()
+	NewModuleLogger(&quiet, "unknown.module").Debug().Msg("This should not appear")
 	if buf.Len() > 0 {
-		t.Error("Debug message should have been filtered out for unknown module")
+		t.Errorf("debug appeared through a logger set to Info: %q", buf.String())
+	}
+
+	// Verbose base logger: the same unknown module must now speak.
+	buf.Reset()
+	baseLogger := zerolog.New(&buf).Level(zerolog.DebugLevel).With().Timestamp().Logger()
+	moduleLogger := NewModuleLogger(&baseLogger, "unknown.module")
+	moduleLogger.Debug().Msg("This should appear under verbose")
+	if buf.Len() == 0 {
+		t.Error("an unknown module stayed silent under a debug-level logger")
 	}
 
 	// Test that info message appears
@@ -261,5 +283,137 @@ func TestModuleLoggerWithUnknownModule(t *testing.T) {
 	moduleLogger.Info().Msg("This should appear")
 	if buf.Len() == 0 {
 		t.Error("Info message should have appeared for unknown module")
+	}
+}
+
+// --- Debug mode, end to end through NewLogger -----------------------------
+//
+// These drive NewLogger rather than re-creating what it does. The previous
+// tests for selective mode set the level state by hand and passed, while the
+// feature had never emitted a single line in production — because the part
+// they did not copy was the one that broke it: NewLogger pinned zerolog's
+// global level to Info, and the global level is a hard floor that drops an
+// event before any per-module logic runs.
+
+func withRestoredLogState(t *testing.T) {
+	t.Helper()
+	orig := levelStatePo.Load()
+	origGlobal := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		levelStatePo.Store(orig)
+		zerolog.SetGlobalLevel(origGlobal)
+	})
+}
+
+// --verbose --filter <module> must leave the floor low enough for the module
+// gate to be the thing that decides.
+func TestNewLogger_SelectiveModeDoesNotVetoWithTheGlobalFloor(t *testing.T) {
+	withRestoredLogState(t)
+
+	_ = NewLogger(&cliArgs.ParsedArgs{
+		Env:          "development",
+		Verbose:      true,
+		DebugModules: []string{"probe"},
+	})
+
+	if zerolog.GlobalLevel() > zerolog.DebugLevel {
+		t.Fatalf("global level is %v: every debug event is dropped before the filter is consulted", zerolog.GlobalLevel())
+	}
+
+	st := levelStatePo.Load()
+	if !st.selective {
+		t.Error("selective mode was not recorded")
+	}
+	if !isModuleEnabled(st, "probe.veeam") {
+		t.Error("prefix filter 'probe' does not match probe.veeam")
+	}
+}
+
+// The selected module emits even though selective mode deliberately keeps the
+// base logger quiet, and an unselected one stays silent.
+func TestSelectiveMode_SelectedModuleEmitsThroughAQuietBaseLogger(t *testing.T) {
+	withRestoredLogState(t)
+
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	mutateLevelState(func(st *levelState) {
+		st.selective = true
+		st.debugModules = map[string]bool{"probe": true}
+	})
+
+	var buf bytes.Buffer
+	// Info, as NewLogger leaves it in selective mode.
+	base := zerolog.New(&buf).Level(zerolog.InfoLevel)
+
+	NewModuleLogger(&base, "probe.veeam").Debug().Msg("selected")
+	if buf.Len() == 0 {
+		t.Fatal("the selected module emitted nothing: --filter selects nothing at all")
+	}
+
+	buf.Reset()
+	NewModuleLogger(&base, "strategy.http").Debug().Msg("not selected")
+	if buf.Len() != 0 {
+		t.Errorf("an unselected module emitted %q", buf.String())
+	}
+}
+
+// --verbose alone must reach EVERY module, including the ones added after the
+// default level map was written — which is all but sixteen of them.
+func TestVerboseMode_ReachesAModuleAbsentFromTheDefaultMap(t *testing.T) {
+	withRestoredLogState(t)
+
+	_ = NewLogger(&cliArgs.ParsedArgs{Env: "development", Verbose: true})
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+
+	for _, module := range []string{"probes.swarm", "probes.kubernetes", "probe.veeam", "cache"} {
+		buf.Reset()
+		NewModuleLogger(&base, module).Debug().Msg("verbose")
+		if buf.Len() == 0 {
+			t.Errorf("module %q emitted nothing under --verbose", module)
+		}
+	}
+}
+
+// Without any flag, debug stays off — the floor is what enforces it.
+func TestNewLogger_QuietByDefault(t *testing.T) {
+	withRestoredLogState(t)
+
+	_ = NewLogger(&cliArgs.ParsedArgs{Env: "development"})
+	// buildDevelopmentLogger raises the floor for local work; the production
+	// path is the one that must stay quiet.
+	_ = NewLogger(&cliArgs.ParsedArgs{Env: "production"})
+
+	if zerolog.GlobalLevel() < zerolog.InfoLevel {
+		t.Errorf("global level is %v with no verbose flag, want Info or higher", zerolog.GlobalLevel())
+	}
+}
+
+// An explicit per-module override must beat a quieter base logger, which is
+// how the runtime log-level endpoint raises one module on a running agent.
+func TestModuleOverride_BeatsAQuieterBaseLogger(t *testing.T) {
+	withRestoredLogState(t)
+
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	mutateLevelState(func(st *levelState) {
+		st.selective = false
+		st.levels = map[string]zerolog.Level{"probe.veeam": zerolog.DebugLevel}
+	})
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.InfoLevel)
+	NewModuleLogger(&base, "probe.veeam").Debug().Msg("raised at runtime")
+	if buf.Len() == 0 {
+		t.Fatal("a module raised to debug at runtime emitted nothing")
+	}
+
+	// And an override ABOVE debug still silences it.
+	mutateLevelState(func(st *levelState) {
+		st.levels["probe.veeam"] = zerolog.ErrorLevel
+	})
+	buf.Reset()
+	NewModuleLogger(&base, "probe.veeam").Debug().Msg("should be silenced")
+	if buf.Len() != 0 {
+		t.Errorf("an error-level override still emitted debug: %q", buf.String())
 	}
 }
