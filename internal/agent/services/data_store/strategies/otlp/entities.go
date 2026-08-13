@@ -130,11 +130,33 @@ func relationshipsValue(rels []entity.Relationship) (log.KeyValue, error) {
 		if err != nil {
 			return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
 		}
-		vals = append(vals, log.MapValue(
+		kvs := []log.KeyValue{
 			log.String(attrRelationshipType, rel.Type),
 			log.String(attrEntityType, rel.TargetType),
 			log.Map(attrEntityID, idKVs...),
-		))
+		}
+		// Edge attributes ride beside the structural keys. The consumer reads
+		// confidence and basis off a same_as edge and treats one without a
+		// valid confidence as inert, so dropping these — which is what this
+		// encoder did — shipped an edge that did nothing on arrival.
+		//
+		// Reserved keys are refused rather than silently overwritten: an edge
+		// attribute named relationship.type would otherwise shadow the edge's
+		// own type and produce a well-formed record meaning something else.
+		if len(rel.Attributes) > 0 {
+			attrKVs, err := scalarKVs(rel.Attributes)
+			if err != nil {
+				return log.KeyValue{}, fmt.Errorf("%s[%s→%s] attributes: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
+			}
+			for _, kv := range attrKVs {
+				switch kv.Key {
+				case attrRelationshipType, attrEntityType, attrEntityID:
+					return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: attribute %q collides with a structural relationship key", attrEntityRelationships, rel.Type, rel.TargetType, kv.Key)
+				}
+				kvs = append(kvs, kv)
+			}
+		}
+		vals = append(vals, log.MapValue(kvs...))
 	}
 	return log.Slice(attrEntityRelationships, vals...), nil
 }
