@@ -321,7 +321,20 @@ func checkConfig(configPath string) {
 		fmt.Println("  [WARN] No probes configured")
 		warnings++
 	} else {
-		fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
+		disabled := 0
+		for _, p := range config.Probes {
+			if !p.IsEnabled() {
+				disabled++
+			}
+		}
+		if disabled > 0 {
+			// Stated up front rather than buried per probe: "n configured" and
+			// "n collecting" being different numbers is the first thing an
+			// operator needs to know when data is missing.
+			fmt.Printf("  [OK]   %d probe(s) configured, %d disabled\n", len(config.Probes), disabled)
+		} else {
+			fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
+		}
 		registeredProbes := probes.GetRegisteredProbeTypes()
 		for _, p := range config.Probes {
 			if p.Name == "" {
@@ -339,7 +352,11 @@ func checkConfig(configPath string) {
 				errors++
 				continue
 			}
-			fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+			if !p.IsEnabled() {
+				fmt.Printf("  [OFF]  Probe %q (type: %s) - disabled, will not collect\n", p.Name, p.Type)
+			} else {
+				fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+			}
 
 			// Validate required params per probe type
 			e, w := validateProbeParams(p.Name, p.Type, p.Params)
