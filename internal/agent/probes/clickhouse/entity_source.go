@@ -51,7 +51,7 @@ func newClickhouseEntitySource(instanceName, endpoint string) *clickhouseEntityS
 	addr, port := hostPortFromEndpoint(endpoint)
 	s := &clickhouseEntitySource{
 		instanceName: instanceName,
-		fallbackID:   dbcommon.FallbackInstanceID(addr, int(port), dbcommon.HostID()),
+		fallbackID:   dbcommon.FallbackInstanceID("clickhouse", addr, int(port), dbcommon.HostID()),
 		host:         addr,
 		port:         port,
 		hostID:       dbcommon.HostID,

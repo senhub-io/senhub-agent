@@ -120,7 +120,7 @@ func (s *solrEntitySource) tryPinClusterIDOrHostPort(ctx context.Context) {
 	// as the documented db degraded fallback. This is a one-way latch.
 	s.mu.Lock()
 	if !s.pinned {
-		s.instanceID = dbcommon.FallbackInstanceID(s.host, int(s.port), dbcommon.HostID())
+		s.instanceID = dbcommon.FallbackInstanceID("solr", s.host, int(s.port), dbcommon.HostID())
 		s.pinned = true
 	}
 	s.mu.Unlock()
