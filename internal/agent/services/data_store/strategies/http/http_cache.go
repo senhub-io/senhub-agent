@@ -378,6 +378,15 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"reason",
 	},
 
+	// ntp — same one-hot reason series as chrony, plus the server tag: a host
+	// measured against two references produces two of every series, and
+	// without the discriminant the second would overwrite the first, hiding
+	// the disagreement that is the whole point of naming more than one.
+	"ntp": {
+		"reason",
+		"server",
+	},
+
 	"swarm": {
 		"swarm.node.name",
 		"swarm.node.id", // per-node task placement, which carries no hostname
