@@ -1,8 +1,10 @@
 # Next (unreleased)
 
-Local database identities are re-keyed once on upgrade, a Docker Swarm probe
-arrives, Kubernetes coverage triples and gains cluster events, debug logging
-works for the first time, and the log file is written for a person to read.
+Three topology identities are re-keyed once on upgrade, overlay networks become
+part of the topology, every entity type can finally be found in its own
+telemetry, a Docker Swarm probe arrives, Kubernetes coverage triples and gains
+cluster events, debug logging works for the first time, and the log file is
+written for a person to read.
 
 
 <div class="rn-filter"></div>
@@ -74,6 +76,35 @@ across forty others.
 
 Dashboards and alerts querying the affected series need the suffix removed.
 
+
+### Two more topology identities are re-keyed once on upgrade
+
+Same family as the database re-key above, and the same one-time effect: the old
+node is retired explicitly, a new one appears, and an alias edge links them so
+both timelines stay joinable.
+
+**`winservices` and `chrony`** pinned a constant as their identity —
+`winservices://localhost` and `chrony://localhost`. Neither contains any host
+component, so the value was byte-identical on every machine: every host running
+the probe collapsed onto **one** node. Worse than a merge, because each host
+still drew its own edge to itself, so that single node fanned out to the whole
+fleet and joined the hosts transitively through it. The identity is now
+`winservices@<host.id>`, following the contract for a local thing with no stable
+id of its own.
+
+**Monitored processes** were keyed on `{process.pid, process.creation.time}` —
+unique on one machine, colliding the moment two hosts start a process with the
+same pid at the same second, which is what a fleet booted from one image does.
+The identity gains `host.id`.
+
+Neither has any entity in our own production graph, so for us these are mines
+defused rather than migrations. A fleet that runs `winservices` on Windows
+estates will see the re-key.
+
+Without a host id, neither probe now emits anything at all: the identity is
+built from it, and inventing one is what produced the collapse. A visible gap
+beats a node that is wrong on every machine.
+
 ## Changed
 
 ### The log file is written for a person to read
@@ -136,6 +167,67 @@ If a dashboard or query relies on ingested **logs** carrying the agent's
 overwriting the sender. (#765, #767)
 
 ## New
+
+### Overlay networks are topology, not just labels
+
+A Docker Swarm overlay is the reachability boundary: two workloads on the same
+segment address each other by name, two on different segments cannot, whatever
+the firewall says. Until now it rode as metric labels — queryable, not
+traversable — so "can A reach B" meant reading several `docker network inspect`
+outputs on the right node.
+
+Overlays are now emitted as `network.segment` entities, declared by the cluster
+that owns them and joined by the workloads on them:
+
+```
+service.instance --has_segment--> network.segment    (the manager declares)
+container        --attached_to--> network.segment    (the node observes)
+```
+
+The manager sees which segments exist; the nodes see who is on them, so a
+complete picture needs the `swarm` and `docker` probes both running. A
+manager-only deployment reports segments with no attachments, which is a stable
+state and not a defect.
+
+Only swarm-scoped overlays produce an attachment. A `bridge` network is local to
+one engine and identically named on every host, so a segment built from it would
+be a node shared by the whole fleet.
+
+Membership is a **necessary and not sufficient** condition for reachability:
+network policies restrict on top of it, and the probe still measures attachment,
+never traffic.
+
+### Every entity type can now be found in its own telemetry
+
+An entity you cannot pivot to telemetry is a picture, not a tool. Measured on a
+real graph at the start of this cycle, that pivot worked for three entity types
+out of ten.
+
+It now works for all of them. Each type either stamps the identity it is keyed
+on onto the datapoints that describe it — `db.instance.id` on database metrics,
+`k8s.pod.uid` alongside the pod name, the VM GUID as `vmid`, the process pid
+with its creation instant, `network.segment.id` on segment metrics — or is
+explicitly declared as having no telemetry of its own, so a consumer stops
+looking instead of guessing.
+
+Identity labels are omitted while unresolved rather than emitted blank: an empty
+label and the real one are two series for one subject.
+
+### Containers and pods say what they are, not just what they are called
+
+A host carries its full nameplate. A container carried four attributes and a pod
+three — findable by name, described by almost nothing.
+
+Containers now carry what their orchestrator states about them: the Swarm service
+and task, the Compose project and service, and their creation time. Pods carry
+the workload that owns them, read from the owner reference rather than parsed out
+of the name, with a ReplicaSet reported as the Deployment above it — nobody
+thinks in ReplicaSets.
+
+Container labels are read through a whitelist, never copied wholesale: they are
+arbitrary operator input, and passing them through would let anyone inflate the
+graph with unbounded keys.
+
 
 ### Docker Swarm cluster probe
 
@@ -315,28 +407,6 @@ it. Nothing changes for a single-copy install (legacy root unit, Windows, MSI):
 both behaviours stay silent when there is only one binary. (#723)
 
 
-## Known follow-ups
-
-- The `swarm` and `docker` probes reach the Docker Engine over a Unix socket and
-  have no named-pipe support, so neither works against Docker on Windows.
-- Overlay segments ride as metric labels rather than topology entities: the
-  consumer has no registered type for a network segment yet. Transitional, not a
-  design choice — the type is being specified. (#757)
-- Default probe configuration still covers four host probes; everything else on
-  a machine is collected by nobody until someone writes YAML. (#777)
-- A probe can be disabled but not started or stopped at runtime — that needs a
-  restart or a config reload. (#775)
-- `winservices` and `chrony` still emit a constant `service.instance.id`, so
-  every host running them would collapse onto one topology node. Not currently
-  observed in the field because neither probe is deployed. (#742)
-
-- Hosts running `auto_update.include_beta: true` resolve `latest` to the newest
-  beta and never move to the stable release that supersedes it. Stable hosts are
-  unaffected. (#730)
-- Relay enrichment is configured under `signals.traces.relay_enrichment`, but now
-  governs relayed logs and metrics too; disabling it on the traces signal
-  silently disables it for all three. The setting will move to a relay-level
-  block, with the current key kept as a deprecated alias. (#766)
 
 ### `refresh-unit` no longer disarms a `--user root` install
 
@@ -421,3 +491,28 @@ correct shape rather than a gap: these counters carry no per-instance tag, and
 the probe name is already part of every cache key — so two `filetail` probes
 have always produced two distinct series, and still do. Only the log noise
 changes. (#724)
+
+
+## Security
+
+<ul class="rn">
+<li><span class="tag t-security">Security</span> <span class="tag t-area">Dependencies</span> Built on Go <strong>1.26.6</strong>, which clears seven vulnerabilities in the standard library, all with reachable call traces from this agent: quadratic complexity in <code>net/url</code>, an unbounded count of post-handshake TLS messages, <code>ReadHeaderTimeout</code> not applied on the unencrypted HTTP/2 check, and missing recursion guards in <code>encoding/xml</code> and <code>encoding/asn1</code>. <code>govulncheck</code> reports no known reachable vulnerabilities in this release.</li>
+</ul>
+
+## Known follow-ups
+
+- The `swarm` and `docker` probes reach the Docker Engine over a Unix socket and
+  have no named-pipe support, so neither works against Docker on Windows.
+- Default probe configuration still covers four host probes; everything else on
+  a machine is collected by nobody until someone writes YAML. (#777)
+- A probe can be disabled but not started or stopped at runtime — that needs a
+  restart or a config reload. (#775)
+
+- Hosts running `auto_update.include_beta: true` resolve `latest` to the newest
+  beta and never move to the stable release that supersedes it. Stable hosts are
+  unaffected. (#730)
+- Relay enrichment is configured under `signals.traces.relay_enrichment`, but now
+  governs relayed logs and metrics too; disabling it on the traces signal
+  silently disables it for all three. The setting will move to a relay-level
+  block, with the current key kept as a deprecated alias. (#766)
+
