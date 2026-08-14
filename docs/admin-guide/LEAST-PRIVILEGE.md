@@ -37,14 +37,46 @@ ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/lib/senhub-agent /var/log/senhub-agent
+NoExecPaths=/var/lib/senhub-agent /var/log/senhub-agent
 CapabilityBoundingSet=
 AmbientCapabilities=
 SupplementaryGroups=systemd-journal
+
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+UMask=0077
+
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ```
 
 All Linux capabilities are dropped by default; the agent joins the
 `systemd-journal` group so the `linux_logs` probe can read the journal
 without root.
+
+Two of those deserve a word. `RestrictAddressFamilies` allows only the
+four families the agent actually opens — notably **not** `AF_PACKET`,
+which is the one a compromised monitoring agent would want most, since
+it is raw frame capture on every interface. And `NoExecPaths` marks the
+agent's own directories non-executable: the agent must be able to write
+its state and its logs, and this stops that necessary write access from
+doubling as a place to drop a payload and run it.
+
+See [Verifying the security posture](#verifying-the-security-posture)
+for how to check all of this on your own host rather than taking this
+page's word for it.
 
 ## Per-probe privilege map
 
@@ -182,67 +214,151 @@ commands keep the root requirement:
 sudo senhub-agent install      # register + enable the service
 sudo senhub-agent start|stop|restart
 sudo senhub-agent uninstall
-sudo senhub-agent update <version>   # replaces binaries on disk
+sudo senhub-agent update <version>   # installs the binary (the daemon cannot)
 ```
 
 Inspection commands (`version`, `status`, `config check`,
 `config show`) never require elevation.
 
-## The two binaries, and keeping them in sync
+## One binary, which the daemon cannot write
 
-A hardened install carries the agent binary twice:
+The agent is on disk **once**, at a root-owned path:
 
-| Path | Owner | Role |
+| Layout | Path | Owner |
 |---|---|---|
-| `/usr/local/bin/senhub-agent` (or wherever you installed it) | `root` | the CLI operators invoke |
-| `/var/lib/senhub-agent/bin/senhub-agent` | `senhub` | the binary the unit execs (`ExecStart`) |
+| `senhub-agent install` (ZIP / tarball) | `/usr/local/bin/senhub-agent` | `root` |
+| `.deb` / `.rpm` / `.zypper` package | `/usr/bin/senhub-agent` | `root` |
 
-This is a consequence of running the daemon unprivileged, not an
-accident. Self-update replaces a binary by writing a sibling file and
-renaming it over the target, so the daemon needs write access to its own
-binary **and** its directory. A root-owned binary under
-`/usr/local/bin` can never be replaced by a `senhub` process — and must
-not be, or the service account could plant a binary that root later
-executes. So the installer stages a copy the service owns, inside its
-`StateDirectory`, and the unit execs that one.
+Both sit inside `ProtectSystem=full`'s read-only tree, so the `senhub`
+service account cannot modify the binary systemd executes. That is
+deliberate, and it is the reason the daemon no longer updates itself on
+Linux.
 
-The consequence is that the daemon updates only its own copy. Nothing
-lets it refresh the CLI copy, so the two drift as soon as auto-update
-runs — which is why the fleet routinely showed `senhub-agent --version`
-reporting an old release while the service ran a current one.
+**Why.** The daemon is the part of the agent exposed to input you do not
+control: OTLP arriving over the network, SNMP traps, syslog, tailed log
+files, and the responses of every target it probes. It is therefore the
+component most likely to be compromised. A daemon able to rewrite its
+own executable hands whoever compromises it *persistence across
+restarts* — on an agent that runs everywhere and restarts itself, that
+is the outcome worth attacking for.
 
-Two behaviours close that gap:
+The signature check does not close that gap. It runs inside the same
+process, so an attacker who controls the daemon controls the code doing
+the checking. Verification performed by the party that may be
+compromised is not verification.
 
-- **`sudo senhub-agent update <version>` reconciles both.** It runs as
-  root, so it is the one path that can write either file. After
-  replacing the CLI copy it copies the new release over the unit's
-  `ExecStart` target and hands ownership back to the unit's `User=`, so
-  the daemon can still self-update afterwards. The command names both
-  files it wrote. Re-running it is also the repair for a host whose
-  service copy fell behind.
+So installation is left to something the daemon cannot influence.
 
-  It refuses one case: a service copy running a **newer** version than
-  the release being installed is left untouched and reported, rather
-  than silently downgraded (the daemon legitimately runs ahead of the
-  CLI).
+### Updating
 
-- **`senhub-agent --version` reports the skew.** When the service execs
-  a different build, the version output names it:
+```bash
+sudo senhub-agent update <version>     # today
+sudo apt upgrade senhub-agent          # once packages are published
+```
 
-  ```
-  Version: 0.5.3 (commit: a8e67f7)
-  Service binary: 0.5.4 (/var/lib/senhub-agent/bin/senhub-agent)
-  Note: the systemd service runs a different build than this CLI binary.
-        'sudo senhub-agent update <version>' updates both copies.
-  ```
+The daemon still **checks** for new versions when `auto_update.enabled`
+is set. It reports what it finds and names the command that applies it;
+it does not install. In the journal:
 
-  The version is read from the other binary's build metadata; it is
-  never executed. Running a service-user-owned binary as root would
-  reintroduce exactly the escalation this layout prevents.
+```
+A newer version is available. The agent does not install it itself on Linux:
+the binary is root-owned so the service account cannot rewrite it.
+Apply it with 'sudo senhub-agent update', ...
+```
 
-A legacy root install whose unit execs the binary in `PATH` has a single
-copy, so neither behaviour has anything to reconcile and both stay
-silent.
+This is what package-managed agents do, and it is the shape the `.deb` /
+`.rpm` / SUSE packages slot into unchanged: the package manager verifies
+against the system keyring, installs as root, and records what it
+installed so `debsums` or `rpm -V` can verify it afterwards.
+
+> **Windows is different and keeps in-process updates.** An MSI install
+> stages a signed MSI and hands the upgrade to `msiexec`, a privileged
+> installer outside the agent — the same separation described above,
+> reached by a different road. A ZIP install replaces its own binary,
+> which escalates nothing there because the service runs as LocalSystem
+> and already holds the highest privilege on the machine.
+
+### Upgrading from a pre-0.5.4 install
+
+Earlier versions carried the agent **twice**: the copy you ran, and a
+`senhub`-owned copy under `/var/lib/senhub-agent/bin` that the unit
+executed so the daemon could replace it during auto-update. The two
+drifted apart as soon as auto-update ran.
+
+`sudo senhub-agent install` (or `sudo senhub-agent refresh-unit`) moves
+such a host to the single-binary layout: it installs the root-owned
+binary, repoints `ExecStart`, and removes the old directory.
+
+Two things to know before you upgrade a host:
+
+- **The unit and the binary move together.** `NoExecPaths` makes
+  anything under `/var/lib/senhub-agent` non-executable, so a host that
+  receives the new unit while its `ExecStart` still points at the old
+  copy fails to start with `203/EXEC` and restarts until the start
+  limiter stops it. `install` and `refresh-unit` rewrite both at once;
+  do not hand-copy one without the other.
+- **`refresh-unit` normally preserves a custom `ExecStart`**, so that a
+  path you chose survives a refresh. The old
+  `/var/lib/senhub-agent/bin/senhub-agent` is the single exception: it
+  is recognised by name and repointed even though the file is still
+  there, because it is not a path anyone chose — it is a layout we
+  shipped and are migrating off. A genuinely custom path, such as
+  `/opt/senhub/bin/senhub-agent`, is still left alone.
+
+## Verifying the security posture
+
+Do not take this page's word for it. `systemd-analyze` scores the
+running unit against the full set of systemd restrictions:
+
+```bash
+systemd-analyze security senhub-agent
+```
+
+Measured on Ubuntu 26.04 (systemd 259), with the shipped unit and no
+site-local drop-ins:
+
+| Unit | Exposure |
+|---|---|
+| Before 0.5.4 | **5.9 MEDIUM** |
+| 0.5.4 | **2.0 OK** |
+
+The remaining exposure is mostly intrinsic to what a monitoring agent
+is, and the score will not reach zero without removing the product:
+
+| Still open | Why it stays |
+|---|---|
+| `AF_INET` / `AF_INET6` / `AF_UNIX` / `AF_NETLINK` sockets | probes talk to targets; host network metrics come from netlink |
+| `ProtectProc=` / `ProcSubset=` | the `process` probe reports on the process tree it would hide |
+| `PrivateDevices=` / `DeviceAllow=` | `smart`, `nvidia` and `ipmi` read `/dev/sd*`, `/dev/nvme*`, `/dev/ipmi0` |
+| `SupplementaryGroups=` | `systemd-journal` for `linux_logs`, `adm` for `filetail` on syslog |
+
+If you run **none** of the hardware probes, adding
+`PrivateDevices=true` in a drop-in is safe and buys 0.2.
+
+### What raises your exposure, and by how much
+
+Anything you add in a drop-in is yours to justify. The two that cost the
+most:
+
+| Addition | Cost | What it actually grants |
+|---|---|---|
+| `CAP_SYS_PTRACE` | 0.3 | attach a debugger to other processes |
+| `CAP_DAC_READ_SEARCH` | 0.2 | **bypass every file read permission check on the host** — `/etc/shadow`, private keys, customer data included |
+
+`CAP_DAC_READ_SEARCH` deserves the emphasis. It is not "read a few more
+log files"; it is unrestricted read of the filesystem, granted to a
+process that parses untrusted network input.
+
+Two features ask for it, and both are opt-in and off by default:
+
+- **Socket-to-process attribution** (the host dependency source) needs
+  `CAP_SYS_PTRACE` **and** `CAP_DAC_READ_SEARCH` together, to read
+  `/proc/<pid>/fd` of processes owned by other users. Enabling it means
+  accepting that trade; on a host where it is not worth it, leave the
+  dependency source off.
+- **Reading `/var/log/syslog` with `filetail`** does *not* need it — use
+  the `adm` group instead, which grants exactly those files and nothing
+  else. See [above](#reading-the-system-log-files-filetail).
 
 > **Windows:** the daemon still runs with administrator privileges;
 > the non-root work described here is Linux-specific.
