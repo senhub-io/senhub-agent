@@ -223,6 +223,16 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		{Key: "server.address", Value: p.cfg.Host},
 		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 	}
+	// The identity of the entity these metrics describe (#741). Without it a
+	// consumer holding a db entity has no key that matches any series: it can
+	// only guess from db.system.name plus an address, which stops working the
+	// moment two databases of the same kind share a host — the collapse #740
+	// was about. Omitted while the id is unresolved (MySQL pins it from
+	// @@server_uuid on the first successful cycle) rather than emitted empty,
+	// since a blank label and the real one are two series for one database.
+	if id := p.entitySrc.instanceID(); id != "" {
+		commonTags = append(commonTags, tags.Tag{Key: "db.instance.id", Value: id})
+	}
 
 	// Always emit up=0 first; overwritten to 1 if queries succeed.
 	up := float64(0)

@@ -157,13 +157,7 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		Status:     StatusOwnKey,
 		SubjectKey: "db.instance.id",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "db.instance.id lives only on the entity rail; no db probe stamps " +
-			"it on its metrics, and it is not on the resource either (the " +
-			"resource describes the agent's host, never a remote target). " +
-			"Blocked behind the identity repair: the address:port fallback " +
-			"collapses distinct servers, so publishing it as a join key would " +
-			"turn a detectable gap into an undetectable wrong answer (#740, #741)",
+		Shipped:    true,
 	},
 	TypeNetworkDevice: {
 		Status:     StatusOwnKey,
@@ -193,23 +187,13 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		Status:     StatusOwnKey,
 		SubjectKey: "vmid",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "vmid lives only on the entity rail (hyperv/entity_source.go); no " +
-			"hypervisor metric carries it, so a compute.vm entity reaches none " +
-			"of its own telemetry. Same shape as db (#741), found by comparing " +
-			"the vocabulary with Toise's registry (#753)",
+		Shipped:    true,
 	},
 	TypePod: {
 		Status:     StatusOwnKey,
 		SubjectKey: "k8s.pod.uid",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "the pod owns telemetry no container has — the network namespace " +
-			"is shared, so network measurements belong to the pod and nothing " +
-			"else. That is the argument that settled the type with the consumer, " +
-			"and the metric side of it is not built yet: pod metrics carry " +
-			"k8s.pod.name, which is namespace-scoped and reusable, not the UID " +
-			"the entity is keyed on. Same shape as db (#756)",
+		Shipped:    true,
 	},
 	TypeNetworkAddress: {
 		Status:  StatusGraphOnly,

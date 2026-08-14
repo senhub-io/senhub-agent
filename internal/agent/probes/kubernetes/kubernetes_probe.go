@@ -484,6 +484,14 @@ func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_
 		{Key: "k8s.node.name", Value: pod.Spec.NodeName},
 		{Key: "metric_type", Value: "pod"},
 	}
+	// The identity of the pod entity these metrics describe (#741). The name is
+	// editable and reused — a pod deleted and recreated under the same name is
+	// a different pod — so the entity is keyed on the UID, and without the UID
+	// here a consumer holding a pod entity has nothing that matches a series.
+	// Name and namespace stay: they are what a human reads.
+	if uid := strings.TrimSpace(string(pod.UID)); uid != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "k8s.pod.uid", Value: uid})
+	}
 
 	running := float64(0)
 	if pod.Status.Phase == corev1.PodRunning {
