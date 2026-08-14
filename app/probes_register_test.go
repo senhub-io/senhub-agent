@@ -55,6 +55,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"mongodb",
 		"network",
 		"nginx",
+		"ntp",
 		"opensearch",
 		"nvidia",
 		"oracle",
