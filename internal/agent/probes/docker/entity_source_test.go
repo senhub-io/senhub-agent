@@ -110,3 +110,59 @@ func TestDockerEntitySource_NotReadyBeforeFirstUpdate(t *testing.T) {
 		t.Error("Observe() must be ok=false before the first update")
 	}
 }
+
+// A container joining a swarm overlay must carry the edge that places it on
+// that segment — the attachment is the only place a segment is observable per
+// workload (ADR 0034).
+func TestUpdate_AttachesContainersToSwarmOverlays(t *testing.T) {
+	s := &dockerEntitySource{hostID: func() string { return "h-1" }}
+	c := containerListItem{ID: "abc123", Names: []string{"/web"}, Image: "nginx", State: "running"}
+	c.NetworkSettings.Networks = map[string]struct {
+		NetworkID string `json:"NetworkID"`
+	}{
+		"frontend": {NetworkID: "u2n5w4y1c3k7q9r0t8v6x2z4a"}, // 25 chars: swarm
+		"bridge":   {NetworkID: "0123456789abcdef"},          // engine built-in
+	}
+	s.update([]containerListItem{c})
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false")
+	}
+	var attached []string
+	for _, rel := range obs.Relations {
+		if rel.Type == relAttachedTo {
+			id, _ := rel.ToID["network.segment.id"].(string)
+			attached = append(attached, id)
+		}
+	}
+	if len(attached) != 1 {
+		t.Fatalf("attached to %v, want exactly the swarm overlay", attached)
+	}
+	if attached[0] != "swarm:u2n5w4y1c3k7q9r0t8v6x2z4a" {
+		t.Errorf("segment id = %q, want the subtype-prefixed swarm id", attached[0])
+	}
+}
+
+// The engine's built-in networks must never produce an edge. A bridge is local
+// to one machine and identically named on every host, so a segment node built
+// from it would be shared by the whole fleet — the collapse family this project
+// keeps paying for.
+func TestUpdate_IgnoresLocalNetworks(t *testing.T) {
+	s := &dockerEntitySource{hostID: func() string { return "h-1" }}
+	c := containerListItem{ID: "abc123", Names: []string{"/web"}, State: "running"}
+	c.NetworkSettings.Networks = map[string]struct {
+		NetworkID string `json:"NetworkID"`
+	}{
+		"bridge": {NetworkID: "0123456789abcdef"},
+		"host":   {NetworkID: "fedcba9876543210"},
+	}
+	s.update([]containerListItem{c})
+
+	obs, _ := s.Observe()
+	for _, rel := range obs.Relations {
+		if rel.Type == relAttachedTo {
+			t.Errorf("a local network produced an attachment edge: %+v", rel.ToID)
+		}
+	}
+}

@@ -66,6 +66,15 @@ type containerListItem struct {
 	Image        string   `json:"Image"`
 	State        string   `json:"State"`
 	RestartCount int      `json:"RestartCount"`
+	// NetworkSettings carries which networks this container joined. Present in
+	// the same response all along and simply not decoded until the network
+	// segment became an entity: an overlay is the reachability boundary, and
+	// the attachment is the only place it is observable per workload.
+	NetworkSettings struct {
+		Networks map[string]struct {
+			NetworkID string `json:"NetworkID"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
 }
 
 // blkioEntry is a single entry in Docker's blkio recursive arrays.

@@ -18,6 +18,7 @@ const (
 	attrContainerRuntime = "container.runtime"
 	attrContainerStatus  = "status"
 	relRunsOn            = "runs_on"
+	relAttachedTo        = entity.RelAttachedTo
 )
 
 // containerStatus normalizes the Docker container State to the canonical
@@ -107,6 +108,29 @@ func (s *dockerEntitySource) update(containers []containerListItem) {
 				ToID:     map[string]any{idKeyHost: hostID},
 			})
 		}
+
+		// attached_to container→segment, for the overlay networks this
+		// container joined (ADR 0034). The attachment is the only place a
+		// segment is observable per workload: the manager knows the segments
+		// exist, the nodes know who is on them, so a complete graph needs both
+		// probes — which is why the consumer's ADR records the split.
+		//
+		// Only swarm-scoped overlays produce an edge. A bridge network is
+		// local to one engine and identical in name on every host, so an edge
+		// to it would either name nothing or false-join hosts through a shared
+		// node — the collapse family this project keeps paying for.
+		for name, n := range c.NetworkSettings.Networks {
+			if !isSwarmOverlayName(name, n.NetworkID) {
+				continue
+			}
+			obs.Relations = append(obs.Relations, entity.Relation{
+				Type:     relAttachedTo,
+				FromType: entityTypeContainer,
+				FromID:   cID,
+				ToType:   entity.TypeNetworkSegment,
+				ToID:     map[string]any{"network.segment.id": "swarm:" + n.NetworkID},
+			})
+		}
 	}
 
 	s.mu.Lock()
@@ -122,4 +146,23 @@ func (s *dockerEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cache, s.ready
+}
+
+// isSwarmOverlayName reports whether a container network attachment names a
+// swarm-scoped overlay segment.
+//
+// The container list does not say which driver a network uses, so the decision
+// is made on what it does say. A swarm network id is the 25-character
+// cluster-assigned string; bridge, host and none are the engine's built-ins and
+// are local to one machine.
+//
+// Conservative on purpose: a missed attachment is a thinner graph, while a
+// wrong one draws an edge to a segment that does not exist or, worse, to a node
+// shared by every host in the fleet.
+func isSwarmOverlayName(name, networkID string) bool {
+	switch name {
+	case "bridge", "host", "none", "":
+		return false
+	}
+	return len(networkID) == 25
 }

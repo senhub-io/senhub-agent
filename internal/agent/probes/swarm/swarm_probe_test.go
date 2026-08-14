@@ -15,6 +15,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -390,13 +391,46 @@ func TestCollect_ManagerReportsTheClusterItSees(t *testing.T) {
 		t.Errorf("overlay capacity = %v, want 254", v)
 	}
 
-	// The cluster entity must appear once the manager cycle succeeded.
+	// The cluster entity and the overlay segment it declares.
 	obs, ok := p.entitySrc.Observe()
-	if !ok || len(obs.Entities) != 1 {
+	if !ok {
+		t.Fatal("no observation after a successful manager cycle")
+	}
+	var cluster, segment *entity.Entity
+	for i := range obs.Entities {
+		switch obs.Entities[i].Type {
+		case entity.TypeServiceInstance:
+			cluster = &obs.Entities[i]
+		case entity.TypeNetworkSegment:
+			segment = &obs.Entities[i]
+		}
+	}
+	if cluster == nil {
 		t.Fatal("the cluster entity is missing after a successful manager cycle")
 	}
-	if id, _ := obs.Entities[0].ID["service.instance.id"].(string); id != "swarm://cluster-xyz" {
+	if id, _ := cluster.ID["service.instance.id"].(string); id != "swarm://cluster-xyz" {
 		t.Errorf("cluster identity = %q, want swarm://cluster-xyz", id)
+	}
+	if segment == nil {
+		t.Fatal("the overlay segment is missing")
+	}
+	// Subtype-prefixed: a bare network id says nothing about which authority
+	// assigned it, and only swarm: is frozen (ADR 0034).
+	if id, _ := segment.ID["network.segment.id"].(string); id != "swarm:netA" {
+		t.Errorf("segment identity = %q, want swarm:netA", id)
+	}
+
+	// A segment must never travel without the edge that says whose it is.
+	var declared bool
+	for _, rel := range obs.Relations {
+		if rel.Type == entity.RelHasSegment &&
+			rel.FromID["service.instance.id"] == "swarm://cluster-xyz" &&
+			rel.ToID["network.segment.id"] == "swarm:netA" {
+			declared = true
+		}
+	}
+	if !declared {
+		t.Error("the segment carries no has_segment edge; nobody can say which cluster it belongs to")
 	}
 }
 
