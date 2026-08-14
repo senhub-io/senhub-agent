@@ -68,6 +68,11 @@ func newEntityObserver(cfg probeConfig, hostID func() string) *entityObserver {
 	}
 }
 
+// instanceID returns the db.instance.id this observer pinned at construction.
+// Read by the metric path so every datapoint carries the identity of the entity
+// it describes.
+func (e *entityObserver) instanceID() string { return e.pinnedID }
+
 // Observe returns the last cached entity observation. ok is false before the
 // first successful collect cycle.
 func (e *entityObserver) Observe() (entity.Observation, bool) {

@@ -25,6 +25,7 @@ package hyperv
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/yusufpapurcu/wmi"
@@ -273,6 +274,15 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 			tags.Tag{Key: "hyperv.vm.name", Value: name},
 			tags.Tag{Key: "metric_type", Value: "vm"},
 		)
+		// The identity of the compute.vm entity these metrics describe (#741).
+		// vm.Name is the immutable GUID — the friendly name above comes from
+		// SummaryInformation and can be changed by an operator at any time.
+		// Paired with the host.id that withHost already stamps, this is the
+		// entity's full composite identity, so a consumer holding the entity
+		// can find its series instead of matching on a renameable label.
+		if guid := strings.TrimSpace(vm.Name); guid != "" {
+			vmTags = append(vmTags, tags.Tag{Key: "vmid", Value: guid})
+		}
 
 		// hyperv.vm.state — 1 when the VM is running, 0 otherwise.
 		stateVal := float64(0)

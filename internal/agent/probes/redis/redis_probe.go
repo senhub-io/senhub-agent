@@ -193,13 +193,23 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 
 // baseTags returns the common tags emitted on every datapoint.
 func (p *redisProbe) baseTags(metricType string) []tags.Tag {
-	return []tags.Tag{
+	t := []tags.Tag{
 		{Key: "instance", Value: p.instance},
 		{Key: "db.system.name", Value: "redis"},
 		{Key: "server.address", Value: p.cfg.Host},
 		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 		{Key: "metric_type", Value: metricType},
 	}
+	// The identity of the entity these metrics describe (#741). Without it a
+	// consumer holding a db entity has no key that matches any series: it can
+	// only guess from db.system.name plus an address, which stops working the
+	// moment two databases of the same kind share a host — the collapse #740
+	// was about. Omitted while the id is unresolved rather than emitted empty,
+	// since a blank label and the real one are two series for one database.
+	if id := p.entityObs.instanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+	return t
 }
 
 func (p *redisProbe) addGauge(out *[]data_store.DataPoint, name string, value float64, ts time.Time, metricType string, extra ...tags.Tag) {

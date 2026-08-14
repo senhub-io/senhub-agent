@@ -57,6 +57,23 @@ func newMysqlEntitySource(cfg config, log *logger.ModuleLogger) *mysqlEntitySour
 // isIDPinned reports whether the entity id has already been pinned (either via
 // operator instance_name or via a previous pinServerUUID call). The probe uses
 // this to skip the one-time @@server_uuid query after the id is locked in.
+// instanceID returns the pinned db.instance.id, or "" while it is still being
+// resolved.
+//
+// Read by the metric path so every datapoint can carry the identity of the
+// entity it describes. Empty until pinned, and the caller omits the tag rather
+// than emitting a blank one: a series labelled with an empty identity and the
+// same series labelled with the real one are two different series for one
+// database, which is worse than a label that appears one cycle late.
+func (s *mysqlEntitySource) instanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.idPinned {
+		return ""
+	}
+	return s.pinnedID
+}
+
 func (s *mysqlEntitySource) isIDPinned() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
