@@ -1,0 +1,131 @@
+probe_name: "ntp"
+friendly_name: "NTP (direct measurement)"
+version: "1.0.0"
+host_level: true
+
+# Free host-local probe: measures the local clock against reference servers the
+# operator names, by exchanging NTP packets directly. Independent of any local
+# time daemon, so it works identically on Linux, Windows and macOS.
+#
+# All time values are emitted in milliseconds on the wire; the OTel value_scale
+# converts to seconds. Metric names are shared with the chrony probe on purpose:
+# the two measure the same quantities by different means, and comparing them is
+# how a daemon synchronised to a wrong source becomes visible.
+
+metrics:
+  - name: "senhub.ntp.up"
+    channel: "ntp_up_{server}"
+    display_name: "NTP Up ({server})"
+    unit: "#"
+    category: "time_sync"
+    multi_instance_labels: ["server"]
+    description: "1 when the server answered with a usable measurement, 0 otherwise"
+    otel:
+      name: senhub.ntp.up
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      server: server.address
+
+  - name: "senhub.ntp.state"
+    channel: "ntp_state_{server}_{reason}"
+    display_name: "NTP State ({server}: {reason})"
+    unit: "#"
+    category: "time_sync"
+    multi_instance_labels: ["server", "reason"]
+    description: "one-hot over ok / unreachable / refused / unsynchronised / invalid_response — says WHY up has its value, so a filtered UDP 123 is distinguishable from a server that refuses us or one whose own clock is adrift"
+    otel:
+      name: senhub.ntp.state
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      server: server.address
+      reason: reason
+
+  - name: "ntp.time.offset"
+    channel: "ntp_offset_{server}"
+    display_name: "NTP Time Offset ({server})"
+    unit: "ms"
+    category: "time_sync"
+    multi_instance_labels: ["server"]
+    description: "Measured error of the system clock against this reference (positive = the local clock is ahead, negative = behind)"
+    otel:
+      name: ntp.time.offset
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      server: server.address
+
+  - name: "ntp.round_trip.delay"
+    channel: "ntp_round_trip_delay_{server}"
+    display_name: "NTP Round Trip Delay ({server})"
+    unit: "ms"
+    category: "time_sync"
+    multi_instance_labels: ["server"]
+    description: "Time the measurement exchange spent in flight. It is the confidence attached to the offset beside it: the offset assumes both directions took equally long, so a large or unstable round trip means a coarse offset"
+    otel:
+      name: ntp.round_trip.delay
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      server: server.address
+
+  - name: "ntp.stratum"
+    channel: "ntp_stratum_{server}"
+    display_name: "NTP Stratum ({server})"
+    unit: "#"
+    category: "time_sync"
+    multi_instance_labels: ["server"]
+    description: "Stratum of the reference server (1 = directly attached to a reference clock)"
+    otel:
+      name: ntp.stratum
+      unit: "{stratum}"
+      type: gauge
+    tag_to_attribute:
+      server: server.address
+
+  - name: "ntp.root.delay"
+    channel: "ntp_root_delay_{server}"
+    display_name: "NTP Root Delay ({server})"
+    unit: "ms"
+    category: "time_sync"
+    multi_instance_labels: ["server"]
+    description: "Round-trip delay from the reference server up to its own stratum-1 source"
+    otel:
+      name: ntp.root.delay
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      server: server.address
+
+  - name: "ntp.root.dispersion"
+    channel: "ntp_root_dispersion_{server}"
+    display_name: "NTP Root Dispersion ({server})"
+    unit: "ms"
+    category: "time_sync"
+    multi_instance_labels: ["server"]
+    description: "Maximum clock error the reference server itself accumulates relative to its stratum-1 source"
+    otel:
+      name: ntp.root.dispersion
+      unit: "s"
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      server: server.address
+
+  - name: "ntp.leap_status"
+    channel: "ntp_leap_status_{server}"
+    display_name: "NTP Leap Status ({server})"
+    unit: "#"
+    category: "time_sync"
+    multi_instance_labels: ["server"]
+    description: "Leap indicator the reference server announces: 0=normal, 1=last minute has 61 seconds, 2=last minute has 59 seconds"
+    otel:
+      name: ntp.leap_status
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      server: server.address
