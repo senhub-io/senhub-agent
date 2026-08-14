@@ -17,7 +17,7 @@ metrics:
     description: "1 when the ZooKeeper node answered the mntr command, 0 otherwise"
     otel:
       name: senhub.zookeeper.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "zookeeper.latency.avg"
@@ -204,7 +204,7 @@ metrics:
     description: "Always 1; the 'state' attribute carries the role: leader, follower, or standalone"
     otel:
       name: zookeeper.server_state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       state: zookeeper.server_state

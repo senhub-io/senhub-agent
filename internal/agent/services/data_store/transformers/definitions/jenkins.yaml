@@ -21,7 +21,7 @@ metrics:
     description: "1 when the last cycle reached the Jenkins controller, 0 otherwise"
     otel:
       name: senhub.jenkins.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "senhub.jenkins.job.count"

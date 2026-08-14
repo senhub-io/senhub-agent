@@ -18,7 +18,7 @@ metrics:
     description: "1 when the Jolokia endpoint responded successfully, 0 otherwise"
     otel:
       name: senhub.activemq.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "activemq.producer.count"

@@ -21,7 +21,7 @@ metrics:
     description: "1 when the last ping reached the SQL Server this cycle, else 0"
     otel:
       name: senhub.mssql_ha.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
@@ -36,7 +36,7 @@ metrics:
     description: "Availability-group replica role (Primary=1, Secondary=0)"
     otel:
       name: senhub.mssql_ha.replica.role
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       ag_name: senhub.mssql_ha.ag.name
@@ -51,7 +51,7 @@ metrics:
     description: "Replica synchronization health (Healthy=1, otherwise 0)"
     otel:
       name: senhub.mssql_ha.replica.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       ag_name: senhub.mssql_ha.ag.name
@@ -66,7 +66,7 @@ metrics:
     description: "Replica connectivity state (Connected=1, Disconnected=0)"
     otel:
       name: senhub.mssql_ha.replica.connected
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       ag_name: senhub.mssql_ha.ag.name

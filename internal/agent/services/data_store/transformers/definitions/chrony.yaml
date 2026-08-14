@@ -16,7 +16,7 @@ metrics:
     description: "1 when chronyc returned a valid tracking response, 0 when chronyc failed or is not installed"
     otel:
       name: senhub.chrony.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "senhub.chrony.state"
@@ -110,5 +110,5 @@ metrics:
     description: "Leap-second status reported by chrony: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised"
     otel:
       name: ntp.leap_status
-      unit: "1"
+      unit: "{status}"
       type: gauge

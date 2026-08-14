@@ -22,7 +22,7 @@ metrics:
     description: "1 when the server answered with a usable measurement, 0 otherwise"
     otel:
       name: senhub.ntp.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       server: server.address
@@ -125,7 +125,7 @@ metrics:
     description: "Leap indicator the reference server announces: 0=normal, 1=last minute has 61 seconds, 2=last minute has 59 seconds"
     otel:
       name: ntp.leap_status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       server: server.address

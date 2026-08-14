@@ -19,7 +19,7 @@ metrics:
     description: "1 when the Cassandra Jolokia endpoint is reachable, 0 otherwise"
     otel:
       name: senhub.cassandra.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "cassandra.client.connections"

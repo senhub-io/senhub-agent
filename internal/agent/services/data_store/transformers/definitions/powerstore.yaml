@@ -22,7 +22,7 @@ metrics:
     lookup: "senhub.powerstore.up"
     otel:
       name: senhub.powerstore.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "powerstore_cluster_state"
@@ -35,7 +35,7 @@ metrics:
     lookup: "senhub.powerstore.cluster.state"
     otel:
       name: senhub.powerstore.cluster.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       cluster_state: senhub.powerstore.cluster.config_state
@@ -84,7 +84,7 @@ metrics:
     lookup: "senhub.powerstore.health"
     otel:
       name: senhub.powerstore.drive.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       drive: senhub.powerstore.drive.name
@@ -102,7 +102,7 @@ metrics:
     lookup: "senhub.powerstore.health"
     otel:
       name: senhub.powerstore.appliance.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       appliance: senhub.powerstore.appliance.name
@@ -568,7 +568,7 @@ metrics:
     lookup: "senhub.powerstore.replication.state"
     otel:
       name: senhub.powerstore.replication.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       session: senhub.powerstore.replication.session_id
@@ -613,7 +613,7 @@ metrics:
     lookup: "senhub.powerstore.volume.state"
     otel:
       name: senhub.powerstore.volume.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       volume: senhub.powerstore.volume.name
