@@ -48,6 +48,54 @@ ReadWritePaths=/var/lib/senhub-agent /var/log/senhub-agent
 CapabilityBoundingSet=
 AmbientCapabilities=
 
+# Kernel and system surfaces the agent reads but must never change. It
+# reports the clock, the hostname and cgroup usage; it has no reason to be
+# able to write any of them.
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+# Process-level restrictions. None of these are used by any probe: the agent
+# does not create namespaces, does not need SUID files, does not change its
+# ABI personality, and generates no executable memory (Go does not JIT).
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+UMask=0077
+
+# System calls: the standard service set, on this machine's ABI only.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+# Socket families the agent actually uses: unix (docker/containerd), inet and
+# inet6 (probes, OTLP, receivers), netlink (host network metrics). Notably NOT
+# AF_PACKET — the agent never captures raw frames, and that is the family a
+# compromised monitoring agent would want most.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+# The agent's own directories are the only places it can write. Marking them
+# non-executable means a compromised agent cannot write a payload and then run
+# it — the write access it legitimately needs stops being a foothold.
+NoExecPaths=/var/lib/senhub-agent /var/log/senhub-agent
+
+# Deliberately NOT set, with reasons, so nobody adds them without knowing:
+#
+#   PrivateDevices=true  would hide /dev/sd*, /dev/nvme* and /dev/ipmi0, which
+#                        the smart, nvidia and ipmi probes read. Safe to add on
+#                        a host running none of them.
+#   ProtectProc=invisible / ProcSubset=pid
+#                        would hide other processes' /proc entries, which is
+#                        precisely what the process probe reports on.
+#   IPAddressDeny=any    a monitoring agent talks to arbitrary targets by
+#                        definition; an allow-list here would have to be
+#                        rebuilt every time a probe is added.
+
 # linux_logs reads the systemd journal; the journal is group-readable
 # by systemd-journal, so the agent joins that group instead of running
 # as root. Harmless if linux_logs is not enabled.
