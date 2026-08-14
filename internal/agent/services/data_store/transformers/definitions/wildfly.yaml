@@ -17,7 +17,7 @@ metrics:
     description: "1 when the WildFly Management API responded successfully; 0 otherwise"
     otel:
       name: senhub.wildfly.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # JVM memory (OTel semconv: jvm.memory.*)

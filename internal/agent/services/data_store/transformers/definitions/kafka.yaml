@@ -19,7 +19,7 @@ metrics:
     description: "1 when the last collection cycle reached the Kafka cluster, 0 otherwise"
     otel:
       name: senhub.kafka.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "kafka.brokers"

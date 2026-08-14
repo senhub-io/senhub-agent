@@ -84,7 +84,7 @@ metrics:
     description: "Power supply status: 1 = ok, 0 = fault or not available"
     otel:
       name: hw.status
-      unit: "1"
+      unit: "{status}"
       type: gauge
       attributes:
         hw.type: power_supply
@@ -104,7 +104,7 @@ metrics:
     description: "Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable"
     otel:
       name: hw.status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       hardware.component: hw.id
@@ -121,7 +121,7 @@ metrics:
     description: "1 when ipmitool ran successfully and the BMC responded, 0 otherwise"
     otel:
       name: senhub.ipmi.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
 tag_metadata:

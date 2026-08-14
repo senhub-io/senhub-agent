@@ -16,7 +16,7 @@ metrics:
     description: "1 when the NATS management API (/varz) responds with HTTP 200"
     otel:
       name: senhub.nats.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "nats.connections.count"

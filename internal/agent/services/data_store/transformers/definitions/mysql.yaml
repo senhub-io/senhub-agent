@@ -28,7 +28,7 @@ metrics:
     lookup: "senhub.db.up"
     otel:
       name: senhub.db.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "mysql.uptime"
@@ -50,7 +50,7 @@ metrics:
     description: "Engine version banner — value=1, version string carried in attribute db.system.version"
     otel:
       name: senhub.db.version.info
-      unit: "1"
+      unit: "{info}"
       type: gauge
     tag_to_attribute:
       version: db.system.version
@@ -372,7 +372,7 @@ metrics:
     lookup: "senhub.db.replication.role"
     otel:
       name: senhub.db.replication.role
-      unit: "1"
+      unit: "{status}"
       type: gauge
       expand:
         attribute: role
@@ -389,7 +389,7 @@ metrics:
     description: "Composite gauge: 1 if replication looks healthy (or instance is standalone), 0 if degraded"
     otel:
       name: senhub.db.replication.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "senhub.db.replication.replicas.connected"
@@ -422,7 +422,7 @@ metrics:
     description: "On replica: 1 if Slave_IO_Running='Yes', 0 otherwise"
     otel:
       name: senhub.db.mysql.replica.io_thread.running
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "senhub.db.mysql.replica.sql_thread.running"
@@ -433,7 +433,7 @@ metrics:
     description: "On replica: 1 if Slave_SQL_Running='Yes', 0 otherwise"
     otel:
       name: senhub.db.mysql.replica.sql_thread.running
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
