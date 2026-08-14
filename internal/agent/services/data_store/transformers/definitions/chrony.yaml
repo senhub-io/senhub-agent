@@ -19,6 +19,20 @@ metrics:
       unit: "1"
       type: gauge
 
+  - name: "senhub.chrony.state"
+    channel: "chrony_state_{reason}"
+    display_name: "Chrony State ({reason})"
+    unit: "#"
+    category: "time_sync"
+    multi_instance_labels: ["reason"]
+    description: "one-hot over ok / not_installed / exec_failed / parse_failed — says WHY up has its value, so a host without chrony is distinguishable from a probe that cannot read the chrony it has"
+    otel:
+      name: senhub.chrony.state
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      reason: reason
+
   - name: "ntp.time.offset"
     channel: "ntp_time_offset"
     display_name: "NTP Time Offset"
