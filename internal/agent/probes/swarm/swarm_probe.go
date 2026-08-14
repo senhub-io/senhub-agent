@@ -156,7 +156,7 @@ func (p *swarmProbe) Collect() ([]data_store.DataPoint, error) {
 		p.explainOnce(state, err)
 		// Withdraw the entity: a node that cannot see the cluster must not
 		// keep publishing the last snapshot it saw as if it were current.
-		p.entitySrc.update("", "", 0, 0)
+		p.entitySrc.update("", "", 0, 0, nil)
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	p.notManagerLogged.Store(false)
@@ -205,7 +205,7 @@ func (p *swarmProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, p.overlayPoints(networks, services, tasks, clusterTags, now)...)
 	}
 
-	p.entitySrc.update(info.ID, info.Spec.Name, len(nodes), len(services))
+	p.entitySrc.update(info.ID, info.Spec.Name, len(nodes), len(services), segmentFactsOf(networks))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), firstErr
 }

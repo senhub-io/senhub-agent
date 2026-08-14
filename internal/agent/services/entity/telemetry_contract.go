@@ -39,6 +39,7 @@ const (
 	TypeNetworkRoute     = wire.TypeNetworkRoute
 	TypeNetworkEndpoint  = wire.TypeNetworkEndpoint
 	TypePod              = wire.TypePod
+	TypeNetworkSegment   = wire.TypeNetworkSegment
 )
 
 // Relation types, same reasoning. The last three are registered but legacy:
@@ -55,6 +56,8 @@ const (
 	RelConnectedTo  = wire.RelTypeConnectedTo
 	RelDependsOn    = wire.RelTypeDependsOn
 	RelSameAs       = wire.RelTypeSameAs
+	RelAttachedTo   = wire.RelTypeAttachedTo
+	RelHasSegment   = wire.RelTypeHasSegment
 )
 
 // AllTypes is every entity type the agent may emit — taken from the SDK, not
@@ -186,6 +189,12 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 	TypePod: {
 		Status:     StatusOwnKey,
 		SubjectKey: "k8s.pod.uid",
+		Carrier:    CarrierDatapoint,
+		Shipped:    true,
+	},
+	TypeNetworkSegment: {
+		Status:     StatusOwnKey,
+		SubjectKey: "network.segment.id",
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
 	},
