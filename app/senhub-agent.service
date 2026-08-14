@@ -22,9 +22,10 @@ Group=senhub
 # apt/dnf/zypper tomorrow. A distro package installs to /usr/bin instead and
 # ships a unit pointing there; /usr/local is reserved for the local admin.
 ExecStart=/usr/local/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
-# always (not on-failure): a self-update exits 0 to hand off to the new
-# binary, so systemd must restart on a clean exit too (#567). An explicit
-# `systemctl stop` is still honoured (no restart).
+# always (not on-failure): the agent may exit 0 deliberately and still need
+# to come back — historically to hand off to a self-installed binary (#567),
+# and today for any clean shutdown that is not an operator stopping the unit.
+# An explicit `systemctl stop` is still honoured (no restart).
 Restart=always
 RestartSec=5
 

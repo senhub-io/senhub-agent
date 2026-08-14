@@ -106,6 +106,15 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 		}
 	}
 
+	// The pre-0.5.4 second copy of the binary (#794). Uninstalling must not
+	// leave behind an executable owned by a service user that is about to be
+	// orphaned: nothing runs it any more, but it is still a writable binary
+	// sitting in a state directory, which is exactly the shape this release
+	// removed.
+	if _, err := os.Stat(legacyManagedBinaryDir); err == nil {
+		dirsToRemove = append(dirsToRemove, legacyManagedBinaryDir)
+	}
+
 	// Remove files
 	for _, file := range filesToRemove {
 		if err := os.Remove(file); err != nil {
