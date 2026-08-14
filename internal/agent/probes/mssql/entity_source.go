@@ -34,7 +34,7 @@ type mssqlEntitySource struct {
 	hostID func() string
 	// rekey announces the 0.5.4 identity migration for a local instance whose
 	// id was host-scoped. nil when nothing was re-keyed (remote target).
-	rekey *dbcommon.RekeyAnnouncer
+	rekey *entity.RekeyAnnouncer
 }
 
 // newEntitySource builds the source for the configured host:port target. The

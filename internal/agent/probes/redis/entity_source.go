@@ -36,7 +36,7 @@ type entityObserver struct {
 	hostID func() string
 	// rekey announces the 0.5.4 identity migration for a local instance whose
 	// id was host-scoped. nil when nothing was re-keyed (remote target).
-	rekey *dbcommon.RekeyAnnouncer
+	rekey *entity.RekeyAnnouncer
 
 	mu  sync.Mutex
 	obs entity.Observation
@@ -136,7 +136,7 @@ func (e *entityObserver) update(cfg probeConfig, info map[string]string) {
 // uses the host-scoped fallback. An operator-supplied instance_name was never
 // keyed on address:port, so announcing a retirement for it would name a node
 // the consumer has never seen.
-func rekeyFor(cfg probeConfig, hostID func() string) *dbcommon.RekeyAnnouncer {
+func rekeyFor(cfg probeConfig, hostID func() string) *entity.RekeyAnnouncer {
 	if cfg.InstanceName != "" {
 		return nil
 	}

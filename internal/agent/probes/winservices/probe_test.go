@@ -7,6 +7,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -177,25 +178,14 @@ func TestCollect_EnrichesProbeName(t *testing.T) {
 	}
 }
 
-func TestEntitySource_EmitsServiceInstance(t *testing.T) {
+func TestEntitySource_EmitsNothingWithoutAHostID(t *testing.T) {
 	s := newEntitySource()
 	obs, ok := s.Observe()
-	if !ok {
-		t.Fatal("Observe ok = false, want true")
-	}
-	if len(obs.Entities) != 1 {
-		t.Fatalf("Entities = %d, want 1", len(obs.Entities))
-	}
-	e := obs.Entities[0]
-	if e.Type != entityTypeServiceInstance {
-		t.Errorf("Type = %q, want %q", e.Type, entityTypeServiceInstance)
-	}
-	if e.ID[idKeyServiceInstanceID] != serviceInstanceID {
-		t.Errorf("id = %v, want %q", e.ID[idKeyServiceInstanceID], serviceInstanceID)
-	}
-	// No host ID yet — relation must be absent.
-	if len(obs.Relations) != 0 {
-		t.Errorf("Relations = %d, want 0 when hostID is empty", len(obs.Relations))
+	// Nothing at all without a host id. The identity is built from it since
+	// #742, and the previous behaviour — emitting a constant id with no
+	// relation — is exactly what collapsed every Windows host onto one node.
+	if ok {
+		t.Errorf("Observe returned an entity with no host id: %+v", obs)
 	}
 }
 
@@ -207,10 +197,16 @@ func TestEntitySource_RunsOnRelation(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe ok = false, want true")
 	}
-	if len(obs.Relations) != 1 {
-		t.Fatalf("Relations = %d, want 1", len(obs.Relations))
+	// runs_on plus the one-off same_as that retires the collapsed identity.
+	var r entity.Relation
+	for _, rel := range obs.Relations {
+		if rel.Type == relRunsOn {
+			r = rel
+		}
 	}
-	r := obs.Relations[0]
+	if r.Type != relRunsOn {
+		t.Fatalf("no runs_on among %d relations", len(obs.Relations))
+	}
 	if r.Type != relRunsOn {
 		t.Errorf("Relation.Type = %q, want %q", r.Type, relRunsOn)
 	}
@@ -223,8 +219,57 @@ func TestEntitySource_RunsOnRelation(t *testing.T) {
 	if r.ToID[idKeyHost] != "test-host-uuid" {
 		t.Errorf("ToID[host.id] = %v, want %q", r.ToID[idKeyHost], "test-host-uuid")
 	}
-	// FromID must match the service.instance entity's ID exactly.
-	if r.FromID[idKeyServiceInstanceID] != serviceInstanceID {
-		t.Errorf("FromID[service.instance.id] = %v, want %q", r.FromID[idKeyServiceInstanceID], serviceInstanceID)
+	// FromID must match the service.instance entity's ID exactly, and that id
+	// must carry the host — a constant here is what #742 fixed.
+	want := "winservices@test-host-uuid"
+	if r.FromID[idKeyServiceInstanceID] != want {
+		t.Errorf("FromID[service.instance.id] = %v, want %q", r.FromID[idKeyServiceInstanceID], want)
+	}
+	if obs.Entities[0].ID[idKeyServiceInstanceID] != want {
+		t.Errorf("entity id = %v, want %q", obs.Entities[0].ID[idKeyServiceInstanceID], want)
+	}
+}
+
+// Two hosts must not share one node. That is the whole defect: the id carried
+// no host component, so every Windows machine in a fleet collapsed onto a
+// single service.instance which then fanned out to all of them.
+func TestEntitySource_IdentityIsUniquePerHost(t *testing.T) {
+	idFor := func(host string) any {
+		s := newEntitySource()
+		s.setHostID(host)
+		obs, ok := s.Observe()
+		if !ok {
+			t.Fatalf("Observe ok=false for host %q", host)
+		}
+		return obs.Entities[0].ID[idKeyServiceInstanceID]
+	}
+	if a, b := idFor("host-a"), idFor("host-b"); a == b {
+		t.Fatalf("two hosts produced the same identity %v", a)
+	}
+}
+
+// The retired identity is announced explicitly rather than left to expire, so
+// the consumer reads a decision instead of a producer going silent.
+func TestEntitySource_AnnouncesTheRetiredIdentity(t *testing.T) {
+	s := newEntitySource()
+	s.setHostID("host-a")
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false")
+	}
+	var alias *entity.Relation
+	for i := range obs.Relations {
+		if obs.Relations[i].Type == entity.RelSameAs {
+			alias = &obs.Relations[i]
+		}
+	}
+	if alias == nil {
+		t.Fatal("no same_as edge to the retired identity")
+	}
+	if alias.ToID[idKeyServiceInstanceID] != legacyServiceInstanceID {
+		t.Errorf("alias points at %v, want %q", alias.ToID[idKeyServiceInstanceID], legacyServiceInstanceID)
+	}
+	if alias.Attributes["confidence"] != 1.0 {
+		t.Errorf("confidence = %v; without it the consumer treats the alias as inert", alias.Attributes["confidence"])
 	}
 }
