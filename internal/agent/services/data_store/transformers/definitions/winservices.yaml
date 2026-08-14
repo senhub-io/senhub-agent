@@ -18,7 +18,7 @@ metrics:
     description: "1 when the Service Control Manager is reachable and the probe completed its cycle"
     otel:
       name: senhub.winservices.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "windows.service.state"
@@ -29,7 +29,7 @@ metrics:
     description: "1 when the service is in the Running state, 0 otherwise"
     otel:
       name: windows.service.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       windows.service.name: windows.service.name

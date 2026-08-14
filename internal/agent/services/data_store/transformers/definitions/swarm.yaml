@@ -27,7 +27,7 @@ metrics:
     description: "1 when this node is a swarm manager and answered; 0 for worker, non-swarm or unreachable — the state series says which"
     otel:
       name: senhub.swarm.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       swarm.cluster.name: swarm.cluster.name

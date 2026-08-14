@@ -20,7 +20,7 @@ metrics:
     description: "1 when the CouchDB node answered the stats endpoint, 0 otherwise"
     otel:
       name: senhub.couchdb.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # Total HTTP requests

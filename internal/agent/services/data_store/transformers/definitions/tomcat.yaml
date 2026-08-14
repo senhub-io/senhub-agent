@@ -18,7 +18,7 @@ metrics:
     description: "1 when Jolokia is reachable, 0 otherwise"
     otel:
       name: senhub.tomcat.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "tomcat.sessions.active"

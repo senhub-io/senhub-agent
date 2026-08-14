@@ -8,7 +8,7 @@ groups:
   - name: senhub-active-checks
     rules:
       - alert: IcmpTargetDown
-        expr: senhub_icmp_up_ratio == 0
+        expr: senhub_icmp_up == 0
         for: 3m
         labels:
           severity: critical
@@ -26,7 +26,7 @@ groups:
           description: "More than 20% packet loss for 5 minutes."
 
       - alert: HttpCheckDown
-        expr: senhub_httpcheck_up_ratio == 0
+        expr: senhub_httpcheck_up == 0
         for: 3m
         labels:
           severity: critical
@@ -60,7 +60,7 @@ groups:
           description: "Immediate renewal required."
 
       - alert: TcpPortDown
-        expr: senhub_tcpdial_up_ratio == 0
+        expr: senhub_tcpdial_up == 0
         for: 3m
         labels:
           severity: critical
@@ -69,7 +69,7 @@ groups:
           description: "Connect refused or timed out for 3 minutes."
 
       - alert: DnsLookupFailing
-        expr: senhub_dns_up_ratio == 0
+        expr: senhub_dns_up == 0
         for: 3m
         labels:
           severity: critical

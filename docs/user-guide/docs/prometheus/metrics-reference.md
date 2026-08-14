@@ -166,7 +166,7 @@ measurement (`up = 0`), never a missing series. Durations are seconds.
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_icmp_up_ratio` | gauge | bool 0/1 | `icmp_target`, `icmp_target_ip` |
+| `senhub_icmp_up` | gauge | bool 0/1 | `icmp_target`, `icmp_target_ip` |
 | `senhub_icmp_packet_loss_ratio` | gauge | 1 (0-1) | `icmp_target` |
 | `senhub_icmp_packets_sent` / `_received` | gauge | {packet} | `icmp_target` |
 | `senhub_icmp_rtt_min_seconds` / `_avg_` / `_max_` / `_stddev_` | gauge | s | `icmp_target` |
@@ -175,19 +175,19 @@ measurement (`up = 0`), never a missing series. Durations are seconds.
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_httpcheck_up_ratio` | gauge | bool 0/1 | `httpcheck_target` |
+| `senhub_httpcheck_up` | gauge | bool 0/1 | `httpcheck_target` |
 | `senhub_httpcheck_status_code` | gauge | {code} | `httpcheck_target` |
 | `senhub_httpcheck_duration_seconds` | gauge | s | `httpcheck_target` |
 | `senhub_httpcheck_duration_dns_seconds` / `_connect_` / `_tls_` / `_ttfb_` | gauge | s | `httpcheck_target` |
 | `senhub_httpcheck_response_size_bytes` | gauge | By | `httpcheck_target` |
 | `senhub_httpcheck_tls_expiry` | gauge | days (negative once expired) | `httpcheck_target` (TLS targets only) |
-| `senhub_httpcheck_content_match_ratio` | gauge | bool 0/1 | `httpcheck_target` (only with `content_match`) |
+| `senhub_httpcheck_content_match` | gauge | bool 0/1 | `httpcheck_target` (only with `content_match`) |
 
 ### TCP Dial (`type: tcp_dial`)
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_tcpdial_up_ratio` | gauge | bool 0/1 | `tcpdial_target` |
+| `senhub_tcpdial_up` | gauge | bool 0/1 | `tcpdial_target` |
 | `senhub_tcpdial_duration_seconds` | gauge | s | `tcpdial_target` |
 
 ### DNS Latency (`type: dns_latency`)
@@ -196,7 +196,7 @@ One series per (name x resolver) pair.
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_dns_up_ratio` | gauge | bool 0/1 | `dns_question_name`, `dns_resolver` |
+| `senhub_dns_up` | gauge | bool 0/1 | `dns_question_name`, `dns_resolver` |
 | `senhub_dns_lookup_duration_seconds` | gauge | s | `dns_question_name`, `dns_resolver` |
 | `senhub_dns_answers` | gauge | {answer} | `dns_question_name`, `dns_resolver` |
 
@@ -210,7 +210,7 @@ backend (`rate(...[5m])`).
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_snmp_up_ratio` | gauge | bool 0/1 | `snmp_target` |
+| `senhub_snmp_up` | gauge | bool 0/1 | `snmp_target` |
 | `senhub_snmp_poll_duration_seconds` | gauge | s | `snmp_target` |
 | `senhub_snmp_sys_uptime` | gauge | centiseconds (native SNMP unit) | `snmp_target` |
 | `senhub_snmp_interface_in_octets_bytes_total` / `_out_` | counter | By | `snmp_target`, `network_interface_index` |
@@ -242,7 +242,7 @@ gain `_total` if absent). Self-metrics:
 
 | Prometheus name | Type | Unit | Key labels |
 |---|---|---|---|
-| `senhub_promscrape_up_ratio` | gauge | bool 0/1 | `promscrape_target` |
+| `senhub_promscrape_up` | gauge | bool 0/1 | `promscrape_target` |
 | `senhub_promscrape_scrape_duration_seconds` | gauge | s | `promscrape_target` |
 | `senhub_promscrape_samples` | gauge | {sample} | `promscrape_target` |
 | `senhub_promscrape_dropped` | gauge | {sample} (histogram/summary series) | `promscrape_target` |
@@ -257,8 +257,8 @@ seconds and bytes to bytes. Self-metrics:
 |---|---|---|---|
 | `senhub_exec_status` | gauge | 0 ok / 1 warning / 2 critical / 3 unknown | – |
 | `senhub_exec_duration_seconds` | gauge | s | – |
-| `senhub_exec_timeout_ratio` | gauge | bool 0/1 | – |
-| `senhub_exec_skipped_ratio` | gauge | bool 0/1 (overlap guard) | – |
+| `senhub_exec_timeout` | gauge | bool 0/1 | – |
+| `senhub_exec_skipped` | gauge | bool 0/1 (overlap guard) | – |
 
 ## Event-conduit probes (skipped)
 
@@ -295,7 +295,7 @@ the same metric (independent of overall health).
 | `senhub_hw_logical_disk_utilization_ratio` | gauge | 1 | with `hw_logical_disk_state` |
 | `senhub_hardware_logical_disk_io_operations_total` | counter | {operation} | `disk_io_direction` ∈ {read, write} |
 | `senhub_hardware_logical_disk_io_bytes_total` | counter | By | `disk_io_direction` |
-| `senhub_hardware_logical_disk_encrypted_ratio` | gauge | 1 | bool 0/1 |
+| `senhub_hardware_logical_disk_encrypted` | gauge | 1 | bool 0/1 |
 | `senhub_hardware_storage_pool_usage_bytes` | updowncounter | By | `senhub_hardware_storage_pool_state` ∈ {allocated, used} |
 | `senhub_hardware_storage_pool_utilization_ratio` | gauge | 1 | `senhub_hardware_storage_pool_state` ∈ {free, used} |
 | `senhub_hardware_storage_pool_io_operations_total` | counter | {operation} | `disk_io_direction` |
@@ -303,8 +303,8 @@ the same metric (independent of overall health).
 | `senhub_hardware_physical_disk_link_speed_bits_per_second` | gauge | bit/s | per drive (Gbps × 1e9) |
 | `senhub_hardware_physical_disk_block_size_bytes` | gauge | By | per drive |
 | `senhub_hardware_physical_disk_operation_progress_ratio` | gauge | 1 | per drive (mapper ÷100) |
-| `senhub_hardware_physical_disk_has_active_operations_ratio` | gauge | 1 | bool |
-| `senhub_hardware_physical_disk_location_indicator_active_ratio` | gauge | 1 | bool |
+| `senhub_hardware_physical_disk_has_active_operations` | gauge | 1 | bool |
+| `senhub_hardware_physical_disk_location_indicator_active` | gauge | 1 | bool |
 
 ### System / controllers / redundancy
 
@@ -354,7 +354,7 @@ All metrics under `senhub.veeam.*` (no OTel semconv for backup).
 | `senhub_veeam_proxy_status` | updowncounter | expand: `senhub_veeam_proxy_state` ∈ {disabled, offline, online} |
 | `senhub_veeam_proxies` | gauge | `senhub_veeam_proxies_state` ∈ {total, enabled, disabled} |
 | `senhub_veeam_object_restore_points` | gauge | per object |
-| `senhub_veeam_object_last_run_failed_ratio` | gauge | bool |
+| `senhub_veeam_object_last_run_failed` | gauge | bool |
 | `senhub_veeam_objects` | gauge | `senhub_veeam_objects_state` ∈ {total, failed} |
 | `senhub_veeam_server_status` | updowncounter | expand: `senhub_veeam_server_state` ∈ {unavailable, available} |
 | `senhub_veeam_servers` | gauge | `senhub_veeam_servers_state` ∈ {total, available, unavailable} |
@@ -377,7 +377,7 @@ All metrics under `senhub.citrix.*` (no Citrix CVAD OTel convention; design from
 | `senhub_citrix_license_peak_concurrent_users` | gauge | – |
 | `senhub_citrix_license_unique_users` | gauge | – |
 | `senhub_citrix_license_grace_sessions_remaining` | gauge | – |
-| `senhub_citrix_license_grace_active_ratio` | gauge | bool |
+| `senhub_citrix_license_grace_active` | gauge | bool |
 | `senhub_citrix_license_grace_time_remaining_seconds` | gauge | – (mapper hours × 3600) |
 
 ### Logon performance

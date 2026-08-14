@@ -8,7 +8,7 @@ groups:
   - name: senhub-snmp
     rules:
       - alert: SnmpDeviceDown
-        expr: senhub_snmp_up_ratio == 0
+        expr: senhub_snmp_up == 0
         for: 5m
         labels:
           severity: critical
