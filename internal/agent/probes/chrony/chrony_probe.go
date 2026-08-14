@@ -5,7 +5,7 @@
 // that has fallen out of sync.
 //
 // The probe shells out to `chronyc -c tracking` (machine-readable CSV)
-// once per interval and parses the 13 comma-separated fields. If
+// once per interval and parses the 14 comma-separated fields. If
 // chronyc is not found or returns a non-zero exit, senhub.chrony.up=0
 // is emitted and all other metrics are suppressed for that cycle.
 //
@@ -37,7 +37,7 @@ const (
 	maxOutputBytes  = 4 * 1024
 )
 
-// leapStatus values returned by chronyc -c tracking (field 12).
+// leapStatus values returned by chronyc -c tracking (fieldLeapStatus).
 const (
 	leapNormal    = "Normal"
 	leapInsert    = "Insert second"
@@ -260,21 +260,7 @@ func (p *ChronyProbe) runOnce() trackingResult {
 }
 
 // parseTracking converts one chronyc -c tracking CSV line into a
-// trackingResult. Field order per chrony documentation:
-//
-//	0  reference_id
-//	1  stratum
-//	2  ref_time
-//	3  system_time     (seconds, + = fast, - = slow)
-//	4  last_offset
-//	5  rms_offset
-//	6  freq_ppm
-//	7  residual_freq
-//	8  skew
-//	9  root_delay      (seconds)
-//	10 root_dispersion (seconds)
-//	11 update_interval
-//	12 leap_status
+// trackingResult.
 //
 // Field positions in `chronyc -c tracking`, which emits FOURTEEN
 // comma-separated values:
@@ -285,14 +271,14 @@ func (p *ChronyProbe) runOnce() trackingResult {
 //
 // Every index here used to be one lower, and the length check demanded 13
 // instead of 14 — so the parser read the reference ADDRESS as the stratum and
-// every subsequent value off by one. The probe therefore never worked against
-// real chronyc output: it failed with "parsing stratum: invalid syntax" naming
-// an IP address, and only on a host whose clock was actually synchronised,
-// because an unsynchronised chrony leaves the address empty.
+// every subsequent value off by one. No ntp.* series was ever emitted by this
+// probe on any host: a synchronised chrony failed with "parsing stratum:
+// invalid syntax" naming an IP address, and an unsynchronised one leaves the
+// address column empty, which failed on the empty string just the same.
 //
 // The test that should have caught it invented a 13-field line with no address
 // column at all, so it proved the parser matched the invention rather than the
-// tool. The fixture is now a verbatim capture from chrony 4.5 (#chrony-parse).
+// tool. The fixture is now a verbatim capture from chrony 4.5 (#787).
 const (
 	fieldStratum        = 2
 	fieldSystemTime     = 4
