@@ -48,6 +48,9 @@ func UpdateAgent(args *cliArgs.ParsedArgs, opts ...UpdateOption) {
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
 		Logger: log,
 		DryRun: args.DryRun,
+		// This is the operator running `sudo senhub-agent update`, the only
+		// path allowed to install the binary on Linux (#794).
+		OperatorDriven: true,
 	})
 
 	// Read include_beta from config file

@@ -237,20 +237,64 @@ func TestRefreshedUnit_PreservesWorkingDirectory(t *testing.T) {
 }
 
 // An ExecStart whose binary vanished (installer invoked from /tmp, #576)
-// is repointed at the staged managed binary, keeping the rendered
-// arguments — refresh-unit stays the documented repair for 203/EXEC.
-func TestRefreshedUnit_MissingBinaryRepointsAtStagedBinary(t *testing.T) {
+// is repointed at the system binary, keeping the rendered arguments —
+// refresh-unit stays the documented repair for 203/EXEC.
+func TestRefreshedUnit_MissingBinaryRepointsAtSystemBinary(t *testing.T) {
 	installed := cliInstalledUnit(defaultServiceUser,
 		`ExecStart=/tmp/senhub-agent "run" "--config-path" "/custom/agent.yaml"`,
 		"WorkingDirectory=/tmp")
 	got := refreshedUnit(installed, binaryAlways(false))
 
-	want := `ExecStart=/var/lib/senhub-agent/bin/senhub-agent "run" "--config-path" "/custom/agent.yaml"`
+	want := `ExecStart=/usr/local/bin/senhub-agent "run" "--config-path" "/custom/agent.yaml"`
 	if !strings.Contains(got, want) {
 		t.Errorf("expected repointed ExecStart %q\n%s", want, got)
 	}
 	if strings.Contains(got, "/tmp") {
 		t.Errorf("vanished /tmp path must not survive the refresh\n%s", got)
+	}
+}
+
+// The migration, and the one case where an ExecStart whose binary EXISTS is
+// still repointed (#794).
+//
+// Every host installed before 0.5.4 execs /var/lib/senhub-agent/bin/senhub-agent,
+// a service-user-owned copy the daemon could rewrite. That file is still there
+// and still runs, so refresh-unit's preservation rule — which exists to respect
+// an ExecStart an operator chose (#396) — would keep it forever and the
+// migration would silently never happen on a single host.
+//
+// The distinction is that the old path is not a choice anyone made: it is a
+// layout we shipped and are moving off.
+func TestRefreshedUnit_LegacyManagedPathIsMigratedEvenThoughItExists(t *testing.T) {
+	installed := cliInstalledUnit(defaultServiceUser,
+		`ExecStart=/var/lib/senhub-agent/bin/senhub-agent "run" "--config-path" "/etc/senhub-agent/agent.yaml"`,
+		"WorkingDirectory=/var/lib/senhub-agent/bin")
+
+	// binaryAlways(true): the old copy is still present on disk. That must not
+	// save it.
+	got := refreshedUnit(installed, binaryAlways(true))
+
+	want := `ExecStart=/usr/local/bin/senhub-agent "run" "--config-path" "/etc/senhub-agent/agent.yaml"`
+	if !strings.Contains(got, want) {
+		t.Errorf("the pre-0.5.4 managed path must be migrated to the system binary; want %q\n%s", want, got)
+	}
+	if strings.Contains(got, legacyManagedBinaryDir) {
+		t.Errorf("the refreshed unit still references the service-user-owned directory %s — "+
+			"the daemon would keep write access to what systemd executes\n%s", legacyManagedBinaryDir, got)
+	}
+}
+
+// A path the operator genuinely chose is still preserved. The migration rule
+// above must not become "repoint anything that is not canonical", which is the
+// behaviour #396 exists to prevent.
+func TestRefreshedUnit_OperatorChosenPathSurvivesTheMigrationRule(t *testing.T) {
+	installed := cliInstalledUnit(defaultServiceUser,
+		`ExecStart=/opt/senhub/bin/senhub-agent "run" "--config-path" "/opt/senhub/agent.yaml"`,
+		"WorkingDirectory=/opt/senhub/bin")
+	got := refreshedUnit(installed, binaryAlways(true))
+
+	if !strings.Contains(got, `ExecStart=/opt/senhub/bin/senhub-agent`) {
+		t.Errorf("a custom ExecStart whose binary exists must be preserved (#396)\n%s", got)
 	}
 }
 
