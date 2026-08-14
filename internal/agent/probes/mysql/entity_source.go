@@ -32,7 +32,7 @@ type mysqlEntitySource struct {
 	hostID       func() string // nil → dbcommon.HostID; resolves the agent host for a local-db runs_on
 	// rekey announces the 0.5.4 identity migration for a local instance whose
 	// id was host-scoped. nil when nothing was re-keyed (remote target).
-	rekey *dbcommon.RekeyAnnouncer
+	rekey *entity.RekeyAnnouncer
 
 	mu          sync.Mutex
 	role        dbcommon.Role

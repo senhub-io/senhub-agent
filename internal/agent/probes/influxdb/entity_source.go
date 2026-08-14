@@ -34,7 +34,7 @@ type influxdbEntitySource struct {
 	hostID func() string
 	// rekey announces the 0.5.4 identity migration for a local instance whose
 	// id was host-scoped. nil when nothing was re-keyed (remote target).
-	rekey *dbcommon.RekeyAnnouncer
+	rekey *entity.RekeyAnnouncer
 
 	mu    sync.RWMutex
 	up    bool
@@ -52,7 +52,7 @@ func newInfluxdbEntitySource(cfg probeConfig) *influxdbEntitySource {
 	var instanceID string
 	// The announcer is built only when the fallback applies: an operator-named
 	// instance was never keyed on address:port, so there is no node to retire.
-	var rekey *dbcommon.RekeyAnnouncer
+	var rekey *entity.RekeyAnnouncer
 	if cfg.InstanceName != "" {
 		instanceID = cfg.InstanceName
 	} else {
