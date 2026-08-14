@@ -147,6 +147,28 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 		{Name: "senhub.chrony.up", Value: upValue, Timestamp: now, Tags: baseTags},
 	}
 
+	// Why up is 0, as its own series.
+	//
+	// Reported by an operator: chronyc absent and chronyc unreadable produced
+	// the identical observable — a probe listed as active emitting only its own
+	// up=0 — so "there is no chrony here" and "the probe cannot read chrony"
+	// were indistinguishable without opening the agent log. One of those needs
+	// action and the other does not.
+	//
+	// One-hot rather than an enum value: a reason is a string, a string cannot
+	// be a metric value, and a dashboard should be able to count hosts in a
+	// state without decoding a number.
+	for _, r := range []string{reasonOK, reasonNotInstalled, reasonExecFailed, reasonParseFailed} {
+		v := float64(0)
+		if r == reasonOf(res.err) {
+			v = 1
+		}
+		t := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "reason", Value: r})
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.chrony.state", Value: v, Timestamp: now, Tags: t,
+		})
+	}
+
 	if res.err != nil {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
@@ -253,48 +275,89 @@ func (p *ChronyProbe) runOnce() trackingResult {
 //	10 root_dispersion (seconds)
 //	11 update_interval
 //	12 leap_status
+//
+// Field positions in `chronyc -c tracking`, which emits FOURTEEN
+// comma-separated values:
+//
+//	65D8456C,2620:2d:4000:1::3123,3,1786708478.06,0.000106,-0.000040,…,Normal
+//	   0              1           2       3           4        5
+//	 refid        address     stratum  ref time  system time  last offset
+//
+// Every index here used to be one lower, and the length check demanded 13
+// instead of 14 — so the parser read the reference ADDRESS as the stratum and
+// every subsequent value off by one. The probe therefore never worked against
+// real chronyc output: it failed with "parsing stratum: invalid syntax" naming
+// an IP address, and only on a host whose clock was actually synchronised,
+// because an unsynchronised chrony leaves the address empty.
+//
+// The test that should have caught it invented a 13-field line with no address
+// column at all, so it proved the parser matched the invention rather than the
+// tool. The fixture is now a verbatim capture from chrony 4.5 (#chrony-parse).
+const (
+	fieldStratum        = 2
+	fieldSystemTime     = 4
+	fieldFreqPPM        = 7
+	fieldSkew           = 9
+	fieldRootDelay      = 10
+	fieldRootDispersion = 11
+	fieldLeapStatus     = 13
+	trackingFieldCount  = 14
+)
+
 func parseTracking(line string) trackingResult {
 	fields := strings.Split(line, ",")
-	if len(fields) < 13 {
+	if len(fields) < trackingFieldCount {
 		return trackingResult{
-			err: fmt.Errorf("chronyc tracking: expected 13 fields, got %d (line: %q)", len(fields), line),
+			err: fmt.Errorf("chronyc tracking: expected %d fields, got %d (line: %q)", trackingFieldCount, len(fields), line),
 		}
 	}
 
-	stratum, err := strconv.ParseFloat(strings.TrimSpace(fields[1]), 64)
-	if err != nil {
-		return trackingResult{err: fmt.Errorf("chronyc: parsing stratum: %w", err)}
+	num := func(idx int, name string) (float64, error) {
+		v, err := strconv.ParseFloat(strings.TrimSpace(fields[idx]), 64)
+		if err != nil {
+			// The offending value rides in the message. That is what made this
+			// defect diagnosable from a single log line by the operator who
+			// reported it: "parsing stratum" naming an IP address says
+			// immediately that the column is wrong, not the data.
+			return 0, fmt.Errorf("chronyc: parsing %s from field %d (%q): %w", name, idx, strings.TrimSpace(fields[idx]), err)
+		}
+		return v, nil
 	}
-	systemTime, err := strconv.ParseFloat(strings.TrimSpace(fields[3]), 64)
+
+	stratum, err := num(fieldStratum, "stratum")
 	if err != nil {
-		return trackingResult{err: fmt.Errorf("chronyc: parsing system_time: %w", err)}
+		return trackingResult{err: err}
 	}
-	freqPPM, err := strconv.ParseFloat(strings.TrimSpace(fields[6]), 64)
+	systemTime, err := num(fieldSystemTime, "system_time")
 	if err != nil {
-		return trackingResult{err: fmt.Errorf("chronyc: parsing freq_ppm: %w", err)}
+		return trackingResult{err: err}
 	}
-	skew, err := strconv.ParseFloat(strings.TrimSpace(fields[8]), 64)
+	freqPPM, err := num(fieldFreqPPM, "freq_ppm")
 	if err != nil {
-		return trackingResult{err: fmt.Errorf("chronyc: parsing skew: %w", err)}
+		return trackingResult{err: err}
 	}
-	rootDelay, err := strconv.ParseFloat(strings.TrimSpace(fields[9]), 64)
+	skew, err := num(fieldSkew, "skew")
 	if err != nil {
-		return trackingResult{err: fmt.Errorf("chronyc: parsing root_delay: %w", err)}
+		return trackingResult{err: err}
 	}
-	rootDisp, err := strconv.ParseFloat(strings.TrimSpace(fields[10]), 64)
+	rootDelay, err := num(fieldRootDelay, "root_delay")
 	if err != nil {
-		return trackingResult{err: fmt.Errorf("chronyc: parsing root_dispersion: %w", err)}
+		return trackingResult{err: err}
+	}
+	rootDisp, err := num(fieldRootDispersion, "root_dispersion")
+	if err != nil {
+		return trackingResult{err: err}
 	}
 
 	return trackingResult{
 		raw:             fields,
-		stratum:         float64(stratum),
+		stratum:         stratum,
 		systemTimeS:     systemTime,
 		freqPPM:         freqPPM,
 		skewPPM:         skew,
 		rootDelayS:      rootDelay,
 		rootDispersionS: rootDisp,
-		leapStatus:      strings.TrimSpace(fields[12]),
+		leapStatus:      strings.TrimSpace(fields[fieldLeapStatus]),
 	}
 }
 
@@ -313,4 +376,34 @@ func (w *cappedWriter) Write(p []byte) (int, error) {
 		}
 	}
 	return len(p), nil
+}
+
+// Reasons a chrony reading failed, as one-hot state series.
+const (
+	reasonOK           = "ok"
+	reasonNotInstalled = "not_installed"
+	reasonExecFailed   = "exec_failed"
+	reasonParseFailed  = "parse_failed"
+)
+
+// reasonOf classifies a collection failure so an operator can tell a host
+// without chrony from a host whose chrony cannot be read.
+//
+// The distinction matters because only one of them is a defect: a machine with
+// no NTP daemon is a deployment choice, while a parse failure means the agent
+// is looking at output it does not understand — which is how the field-offset
+// bug stayed invisible, since both looked like "up=0" from outside.
+func reasonOf(err error) string {
+	if err == nil {
+		return reasonOK
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "executable file not found"), strings.Contains(msg, "no such file"):
+		return reasonNotInstalled
+	case strings.Contains(msg, "chronyc tracking:"), strings.Contains(msg, "chronyc: parsing"):
+		return reasonParseFailed
+	default:
+		return reasonExecFailed
+	}
 }
