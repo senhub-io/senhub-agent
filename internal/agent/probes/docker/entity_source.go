@@ -17,6 +17,7 @@ const (
 	attrContainerImage   = "container.image.name"
 	attrContainerRuntime = "container.runtime"
 	attrContainerStatus  = "status"
+	attrContainerCreated = "container.created.time"
 	relRunsOn            = "runs_on"
 	relAttachedTo        = entity.RelAttachedTo
 )
@@ -88,6 +89,16 @@ func (s *dockerEntitySource) update(containers []containerListItem) {
 		// is a state change in the consumer, not a silent update (#514, AT5).
 		if st := containerStatus(c.State); st != "" {
 			attrs[attrContainerStatus] = st
+		}
+		if c.Created > 0 {
+			attrs[attrContainerCreated] = c.Created
+		}
+		// What the container IS, as its orchestrator states it. A name and an
+		// image say how it was started; these say what it belongs to, which is
+		// what an operator groups by when something is wrong with "the api
+		// service" rather than with one container.
+		for k, v := range orchestratorFacts(c.Labels) {
+			attrs[k] = v
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type:       entityTypeContainer,
@@ -165,4 +176,42 @@ func isSwarmOverlayName(name, networkID string) bool {
 		return false
 	}
 	return len(networkID) == 25
+}
+
+// orchestratorFacts extracts the stable facts an orchestrator stamps on a
+// container as labels.
+//
+// A whitelist, not a passthrough: container labels are arbitrary operator
+// input, so copying them wholesale would let anyone inflate the graph with
+// unbounded keys — and one of them would eventually collide with a real
+// attribute name. Only the two orchestrators we support are read, under names
+// that say which one spoke.
+//
+// The Swarm service name is the link this agent could not draw before: the
+// swarm probe sees services from the manager, the docker probe sees containers
+// on each node, and nothing connected the two. It stays an ATTRIBUTE rather
+// than becoming an entity with an edge, because no relation in the vocabulary
+// means "belongs to a service": a container does not run ON a service, and
+// stretching runs_on to mean it is the overload we refused for network
+// segments. Kubernetes is treated the same way here — a Deployment is not an
+// entity either, its name rides on what belongs to it.
+func orchestratorFacts(labels map[string]string) map[string]any {
+	if len(labels) == 0 {
+		return nil
+	}
+	out := map[string]any{}
+	for label, attr := range map[string]string{
+		"com.docker.swarm.service.name": "swarm.service.name",
+		"com.docker.swarm.task.name":    "swarm.task.name",
+		"com.docker.compose.project":    "compose.project",
+		"com.docker.compose.service":    "compose.service",
+	} {
+		if v := strings.TrimSpace(labels[label]); v != "" {
+			out[attr] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
