@@ -146,7 +146,7 @@ Valeurs officielles OTel : `buffers, cached, free, used`
 
 **Extensions `system.memory.state`** (Windows-specific, non OTel-standard) :
 
-| Valeur | Source | Description |
+| Value | Source | Description |
 |---|---|---|
 | `committed` | `memory_committed` | Virtual memory committed by the memory manager |
 | `modified` | `memory_modified_page_list` | Memory modified but not yet written to disk |
@@ -161,7 +161,7 @@ Valeurs : `used, free`. Le **swap Linux** (`swap_used`/`swap_free`) est le penda
 
 **Justification :** notre probe expose les paging Windows sous forme de **rates instantanés** depuis Perfmon. OTEP 0119 propose `system.paging.faults` et `system.paging.operations` en counters. Nous créons des variantes `_per_second` en gauge le temps de la migration. À aligner sur OTel standard lors de la refonte de la probe (counter cumulatif). `senhub.system.paging.limit` couvre le total swap (`swap_total`), pour lequel OTel n'expose aucun équivalent (miroir de `system.memory.limit` pour la RAM).
 
-| Senhub metric | Unit | Type | Attributs |
+| Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.system.paging.faults` | `1/s` | Gauge | – |
 | `senhub.system.paging.operations` | `1/s` | Gauge | `direction: in` ou `out` |
@@ -217,7 +217,7 @@ Valeurs officielles OTel : `free, reserved, used`
 
 **Justification :** OTel `system.filesystem.*` est centré sur l'octet. node_exporter expose `node_filesystem_files` (total inodes) et `node_filesystem_files_free`. Nous créons un sous-espace inode miroir de `system.filesystem.*` pour cohérence.
 
-| Senhub metric | Unit | Type | Attributs |
+| Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.system.filesystem.inode.limit` | `{inode}` | UpDownCounter | – |
 | `senhub.system.filesystem.inode.usage` | `{inode}` | UpDownCounter | `system.filesystem.state: free` ou `used` |
@@ -227,7 +227,7 @@ Valeurs officielles OTel : `free, reserved, used`
 
 **Justification :** OTel `system.disk.*` définit des counters cumulatifs (`system.disk.operations`, `system.disk.io`). Notre probe Windows capture des **rates instantanés** depuis Perfmon (`\LogicalDisk\Disk Reads/sec` etc.). Extensions `_per_second` en gauge — alignement OTel complet possible après refonte probe (V2).
 
-| Senhub metric | Unit | Type | Attributs |
+| Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.system.disk.operations` | `1/s` | Gauge | `disk.io.direction: read` ou `write` |
 | `senhub.system.disk.io` | `By/s` | Gauge | `disk.io.direction: read` ou `write` |
@@ -251,7 +251,7 @@ Valeurs officielles OTel : `free, reserved, used`
 
 #### 4.5.1 Extensions `senhub.*`
 
-| Senhub metric | Unit | Type | Attributs |
+| Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.probe.icmp.duration_seconds` | `s` | Gauge | `url.full` *(optionnel — présent pour ping_webapp, absent pour ping_gateway)* |
 | `senhub.probe.icmp.packet_loss_ratio` | `1` | Gauge | `url.full` *(optionnel)* |
@@ -267,13 +267,13 @@ Distinction ping_gateway vs ping_webapp : même nom de métrique, ping_gateway n
 
 #### 4.6.1 Extension `senhub.probe.http.*`
 
-| Senhub metric | Unit | Type | Attributs |
+| Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.probe.http.duration_seconds` | `s` | Gauge | `phase`, `url.full` |
 
 **Valeurs `phase`** (aligné blackbox_exporter + extension `total`) :
 
-| Valeur | Signification |
+| Value | Signification |
 |---|---|
 | `resolve` | Résolution DNS |
 | `connect` | Établissement TCP |
@@ -292,7 +292,7 @@ Extension complète sous namespace `senhub.system.network.wifi.*`.
 
 #### 4.7.1 Extensions `senhub.*`
 
-| Senhub metric | Unit | Type | Attributs |
+| Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.system.network.wifi.signal_strength.dbm` | `dBm` | Gauge | `senhub.network.wifi.ssid`, `senhub.network.wifi.bssid` |
 | `senhub.system.network.wifi.quality_ratio` | `1` | Gauge | `senhub.network.wifi.ssid`, `senhub.network.wifi.bssid` *(÷100)* |
@@ -636,7 +636,7 @@ Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (
 
 **Extensions `senhub.db.*` (cross-engine, 5) :**
 
-| Métrique | OTel name | Unit | Type | Attributes |
+| Metric | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Probe heartbeat (DB reachable) | `senhub.db.up` | `1` | gauge | (none) |
 | Version banner | `senhub.db.version.info` | `1` | gauge | `db.system.version`=<str> |
@@ -646,7 +646,7 @@ Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (
 
 **Extensions `senhub.db.mysql.*` (12) :**
 
-| Métrique | OTel name | Unit | Type | Attributes |
+| Metric | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Max connections (gauge, distinct du counter contrib `mysql.connection.count`) | `senhub.db.mysql.connection.max` | `{connection}` | gauge | (none) |
 | Transaction count | `senhub.db.mysql.transaction.count` | `{transaction}` | counter | `state=committed\|rolled_back` |
@@ -663,7 +663,7 @@ Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (
 
 **Extensions `senhub.db.*` réplication (3, partagées avec postgres) :**
 
-| Métrique | OTel name | Unit | Type | Attributes |
+| Metric | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Role | `senhub.db.replication.role` | `1` | gauge | `role=primary\|replica\|standalone` (via `otel.expand`) |
 | Composite health | `senhub.db.replication.health` | `1` | gauge | (none) |
@@ -688,7 +688,7 @@ Le tag agent `probe_type=mysql\|postgresql` reste émis comme metric attribute (
 
 **Extensions `senhub.db.postgresql.*` (7) :**
 
-| Métrique | OTel name | Unit | Type | Attributes |
+| Metric | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Uptime | `senhub.db.postgresql.uptime` | `s` | gauge | (none) — `pg_postmaster_start_time` (contrib n'expose pas l'uptime) |
 | Buffer hit ratio (dérivé blocks_hit/blocks_read) | `senhub.db.postgresql.buffer.hit_ratio` | `1` | gauge | (none) |
@@ -746,7 +746,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Système (CPU, mémoire, ASP, disque) — 9 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | CPU utilisation | `senhub.ibmi.cpu.utilization` | `1` | gauge | — |
 | CPU configured count | `senhub.ibmi.cpu.configured` | `{cpu}` | gauge | — |
@@ -761,7 +761,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Jobs (aggregate + per-job top-N) — 17 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Total jobs | `senhub.ibmi.jobs.total` | `{job}` | gauge | — |
 | Active jobs | `senhub.ibmi.jobs.active` | `{job}` | gauge | — |
@@ -783,7 +783,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Job queues & scheduled — 8 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Job queue — active | `senhub.ibmi.job_queue.active` | `{job}` | gauge | `ibmi.queue.library`, `ibmi.queue.name` |
 | Job queue — held | `senhub.ibmi.job_queue.held` | `{job}` | gauge | id. |
@@ -796,7 +796,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Memory pools — 3 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Pool size | `senhub.ibmi.memory_pool.size` | `By` | gauge | `ibmi.pool.id`, `ibmi.pool.name` |
 | Pool current threads | `senhub.ibmi.memory_pool.threads` | `{thread}` | gauge | id. |
@@ -804,7 +804,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Spool & user storage — 8 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Output queue files | `senhub.ibmi.output_queue.files` | `{file}` | gauge | `ibmi.queue.library`, `ibmi.queue.name` |
 | Output queue spooled total | `senhub.ibmi.output_queue.spooled_files` | `{file}` | gauge | — |
@@ -817,7 +817,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Database — tables & index advisor — 9 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Rows | `senhub.ibmi.table.rows` | `{row}` | gauge | `ibmi.table.schema`, `ibmi.table.name` |
 | Logical reads | `senhub.ibmi.table.logical_reads` | `{read}` | counter | id. |
@@ -831,7 +831,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Journals — 5 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Journal active flag | `senhub.ibmi.journal.active` | `1` | gauge | `ibmi.journal.name`, `ibmi.journal.library` |
 | Receivers total size | `senhub.ibmi.journal.receivers_size` | `By` | gauge | id. |
@@ -841,7 +841,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Réseau (TCP, netstat, HTTP server) — 11 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | TCP connections established | `senhub.ibmi.tcp.connections.established` | `{connection}` | gauge | — |
 | Netstat connections total | `senhub.ibmi.netstat.connections` | `{connection}` | gauge | — |
@@ -857,7 +857,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Hardware — 3 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Hardware count (by category & status) | `senhub.ibmi.hardware.count` | `{resource}` | gauge | `ibmi.hardware.category`, `ibmi.hardware.status` |
 | Hardware total | `senhub.ibmi.hardware.total` | `{resource}` | gauge | — |
@@ -865,7 +865,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Sécurité (users, sysval) — 6 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Users total | `senhub.ibmi.user_profile.count` | `{user}` | gauge | — |
 | Users by status | `senhub.ibmi.user_profile.by_status` | `{user}` | gauge | `ibmi.user.status` |
@@ -876,7 +876,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Configuration & compliance (library, license, PTF, watch) — 7 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Library list position | `senhub.ibmi.library_list.position` | `1` | gauge | `ibmi.library.name`, `ibmi.library.type` |
 | Licensed users | `senhub.ibmi.license.licensed_users` | `{user}` | gauge | `ibmi.license.product_id`, `ibmi.license.feature_id` |
@@ -887,7 +887,7 @@ Tous les probes sont mappés. La phase 0.5 est terminée.
 
 **Self-observability (collector health) — 4 métriques :**
 
-| Notre métrique | OTel name | Unit | Type | Attributs |
+| Notre métrique | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Collector success total | `senhub.ibmi.collector.success` | `{collection}` | counter | `ibmi.collector` |
 | Collector failure total | `senhub.ibmi.collector.failure` | `{collection}` | counter | `ibmi.collector` |
@@ -1134,7 +1134,7 @@ v3 USM best-effort (gosnmp listener = une identité USM, v3-trap flaggé unrelia
 
 Aucun receiver otelcol-contrib ne couvre l'ICMP actif → namespace `senhub.icmp.*`. Une série par cible (attributs `icmp.target` + `icmp.target.ip`).
 
-| Métrique OTel | Unité | Type | Source wire |
+| OTel metric | Unit | Type | Source wire |
 |---|---|---|---|
 | `senhub.icmp.up` | `1` | gauge | reachability du cycle (≥1 réponse) |
 | `senhub.icmp.packet_loss` | `1` | gauge | wire en % → ratio côté mapper |
@@ -1148,7 +1148,7 @@ Modes privilégié (raw ICMP) / non-privilégié (datagram, sysctl `ping_group_r
 
 Aligné sur le receiver otelcol-contrib httpcheck quand la métrique existe (`httpcheck.duration`) ; extensions `senhub.httpcheck.*` sinon. Une série par cible (attribut `httpcheck.target`).
 
-| Métrique OTel | Unité | Type | Source wire |
+| OTel metric | Unit | Type | Source wire |
 |---|---|---|---|
 | `senhub.httpcheck.up` | `1` | gauge | statut attendu (+ content_match) |
 | `senhub.httpcheck.status.code` | `{code}` | gauge | code HTTP (unité-annotation : pas de suffixe `_ratio` côté Prometheus) |
@@ -1164,7 +1164,7 @@ Redirections rapportées non suivies ; keep-alive désactivé (chaque cycle mesu
 
 Mêmes principes que §4.20/4.21 (châssis actif, wire ms → `value_scale: 0.001`, échec = mesure up=0).
 
-| Métrique OTel | Unité | Type | Attributs |
+| OTel metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.tcpdial.up` / `.duration` | `1` / `s` | gauge | `tcpdial.target` |
 | `senhub.dns.up` / `.lookup.duration` / `.answers` | `1` / `s` / `{answer}` | gauge | `dns.question.name` (semconv DNS), `dns.resolver` (`system` = resolver OS) |
@@ -1179,7 +1179,7 @@ droppés et comptés (contrat scalaires-seulement, identique à
 otlp_receiver). Pas d'énumération YAML possible — seules les
 self-metrics sont définies :
 
-| Métrique OTel | Unité | Type | Attributs |
+| OTel metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.promscrape.up` | `1` | gauge | `promscrape.target` |
 | `senhub.promscrape.scrape.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
@@ -1194,7 +1194,7 @@ même mécanisme que prometheus_scrape §4.23). Normalisation perfdata :
 temps → secondes, octets → bytes, UOM `c` → counter. Self-metrics
 définies en YAML :
 
-| Métrique OTel | Unité | Type | Notes |
+| OTel metric | Unit | Type | Notes |
 |---|---|---|---|
 | `senhub.exec.status` | `{status}` | gauge | unité-annotation, pas de suffixe `_ratio` |
 | `senhub.exec.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
@@ -1208,7 +1208,7 @@ sans table semconv, le YAML transformer était la seule source.
 Modules built-in (MIB-2, IF-MIB) — une série par device (`snmp.target`),
 les métriques d'interface ajoutent `network.interface.index` :
 
-| Métrique OTel | Unité | Type | Source MIB |
+| OTel metric | Unit | Type | Source MIB |
 |---|---|---|---|
 | `senhub.snmp.up` | `1` | gauge | joignabilité du cycle |
 | `senhub.snmp.poll.duration` | `s` | gauge | wall-clock du poll |
@@ -1226,7 +1226,7 @@ typé (tag `otel_type`) — pas d'énumération ici par construction.
 
 Aligné sur le receiver otelcol-contrib `apachereceiver`. `senhub.apache.up` est une extension SenHub (aucun équivalent dans le receiver contrib). Source : mod_status endpoint `?auto`. Attributs communs : `instance` (host:port), `server.address`, `server.port`.
 
-| Métrique OTel | Unité | Type | Source mod_status |
+| OTel metric | Unit | Type | Source mod_status |
 |---|---|---|---|
 | `senhub.apache.up` | `1` | gauge | joignabilité du cycle (1 = succès, 0 = échec) |
 | `apache.uptime` | `s` | counter | Uptime |
@@ -1242,7 +1242,7 @@ Aligné sur le receiver otelcol-contrib haproxy quand le nom existe ; une
 série par paire `(proxy, component)` (attributs `haproxy.proxy.name` +
 `haproxy.component`).
 
-| Métrique OTel | Unité | Type | Source CSV |
+| OTel metric | Unit | Type | Source CSV |
 |---|---|---|---|
 | `senhub.haproxy.up` | `1` | gauge | joignabilité de l'endpoint stats |
 | `haproxy.sessions.count` | `{session}` | gauge | scur — sessions actives courantes |
@@ -1267,7 +1267,7 @@ séries.
 
 **Stratégie :** les noms adoptés sont ceux du `kafkametricsreceiver` (`kafka.brokers`, `kafka.topic.partitions`, `kafka.partition.*`, `kafka.consumer_group.*`). Seule l'exception `senhub.kafka.up` (indicateur de joignabilité du cycle) est sous namespace propriétaire.
 
-| Métrique OTel | Unité | Type | Attributs | Notes |
+| OTel metric | Unit | Type | Attributes | Notes |
 |---|---|---|---|---|
 | `senhub.kafka.up` | `1` | gauge | — | 1 = cluster joignable ce cycle |
 | `kafka.brokers` | `{broker}` | gauge | — | |
@@ -1340,7 +1340,7 @@ n'est exposée pour l'instant (suivi #394).
 
 **Métriques émises** (séries par instance `host:port`) :
 
-| Métrique OTel | Unité | Type | Source INFO |
+| OTel metric | Unit | Type | Source INFO |
 |---|---|---|---|
 | `senhub.db.up` | `1` | gauge | joignabilité du cycle |
 | `redis.uptime` | `s` | counter | `uptime_in_seconds` |
@@ -1397,7 +1397,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 #### 4.31.1 Métriques
 
-| Métrique OTel | Unité | Type | Attributs | Source stats |
+| OTel metric | Unit | Type | Attributes | Source stats |
 |---|---|---|---|---|
 | `senhub.memcached.up` | `1` | gauge | `server.address` | (synthétique) |
 | `memcached.uptime` | `s` | counter | `server.address` | `uptime` |
@@ -1415,7 +1415,7 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 
 #### 4.31.2 Collapses
 
-| Métrique OTel | Valeurs de l'attribut discriminant |
+| OTel metric | Valeurs de l'attribut discriminant |
 |---|---|
 | `memcached.network` | `network.io.direction` = `transmit` (bytes_written) / `receive` (bytes_read) |
 | `memcached.operations` | `memcached.operation.result` = `hit` / `miss` |
@@ -1435,7 +1435,7 @@ stockage. Authentification via PVE API token (header `Authorization:
 PVEAPIToken`). Espace de noms `proxmox.*` (vendor-specific) +
 `senhub.proxmox.*` pour les extensions SenHub.
 
-| Métrique OTel | Unité | Type | Notes |
+| OTel metric | Unit | Type | Notes |
 |---|---|---|---|
 | `senhub.proxmox.up` | `1` | gauge | 1 = API répond ; 0 = toute erreur de connexion ou d'authentification. Toujours émis, y compris en cas d'échec. |
 | `proxmox.node.cpu.utilization` | `1` | gauge | ratio CPU du nœud (0–1) |
@@ -1463,7 +1463,7 @@ clients, débit WAN, CPU/RAM/satisfaction par AP.
 
 #### 4.33.1 Métriques
 
-| Métrique OTel | Unité | Type | Attributs / Notes |
+| OTel metric | Unit | Type | Attributs / Notes |
 |---|---|---|---|
 | `senhub.unifi.up` | `1` | gauge | `unifi.endpoint`, `unifi.site` |
 | `unifi.devices.total` | `{device}` | gauge | `unifi.device.type` (`uap`/`usw`/`ugw`) |
@@ -1490,15 +1490,15 @@ transformer (`tag_to_attribute`).
 
 ### Docker Swarm (`swarm`)
 
-Espace de noms `swarm.*` **défini par SenHub** : OpenTelemetry n'a pas de
-receiver Swarm, donc aucun nom amont auquel s'aligner — contrairement à `k8s.*`.
-Toutes les séries portent `swarm.cluster.name` en plus des attributs listés.
+The `swarm.*` namespace is **SenHub-defined**: OpenTelemetry has no Swarm
+receiver, so there are no upstream names to align with — unlike `k8s.*`. Every
+series carries `swarm.cluster.name` in addition to the attributes listed.
 
-État lu depuis un nœud **manager** uniquement. `senhub.swarm.up` vaut 0 sur un
-worker, hors swarm ou socket injoignable ; `senhub.swarm.node_role_state` dit
-lequel des trois.
+State is read from a **manager** node only. `senhub.swarm.up` is 0 on a worker,
+outside a swarm, or when the socket does not answer; `senhub.swarm.node_role_state`
+says which of the three.
 
-| Métrique | Unité | Type | Attributs | Description |
+| Metric | Unit | Type | Attributes | Description |
 |---|---|---|---|---|
 | `senhub.swarm.up` | `1` | gauge | — | 1 when this node is a swarm manager and answered; 0 for worker, non-swarm or unreachable — the state series says which |
 | `senhub.swarm.node_role_state` | `{state}` | gauge | `state` | one-hot over manager / worker / not_in_swarm / unreachable: why the probe sees what it sees |
@@ -1533,79 +1533,79 @@ lequel des trois.
 | `swarm.network.internal` | `{state}` | gauge | `swarm.network.name`, `swarm.network.subnet` | 1 when the overlay has no external route |
 | `swarm.network.address.capacity` | `{address}` | gauge | `swarm.network.name`, `swarm.network.subnet` | assignable addresses in the overlay subnet; an overlay running out refuses new tasks with an error naming neither |
 
-**Ce qui n'est pas mesuré** : le volume de trafic entre deux services d'un même
-overlay. L'API Docker n'expose aucun compteur par pair, et les compteurs par
-conteneur sont indexés par nom d'interface (`eth0`) que l'API ne relie jamais à
-un réseau nommé. Une vraie matrice de flux demande conntrack ou eBPF sur chaque
-nœud. La sonde cartographie l'accessibilité, pas le débit.
+**What is NOT measured**: traffic volume between two services on the same
+overlay. The Docker API exposes no per-peer counters, and per-container counters
+are keyed by interface name (`eth0`), which the API never maps back to a named
+network. A real flow matrix needs conntrack or eBPF on every node. The probe
+maps reachability, not throughput.
 
-**Entités** : le cluster comme `service.instance` (`swarm://<cluster-id>`). Ni
-les nœuds (pas de `machine-id` côté Swarm — un hôte forgé depuis un nom d'hôte
-serait un doublon permanent) ni les overlays (aucun type enregistré pour un
-segment réseau) n'émettent d'entité.
+**Entities**: the cluster as a `service.instance` (`swarm://<cluster-id>`).
+Neither the nodes (Swarm reports no `machine-id` — a host minted from a hostname
+would be a permanent duplicate) nor the overlays (no registered type for a
+network segment) emit an entity.
 
 ### 4.34 kubernetes (free, #469)
 
-Aligné sur les noms OTel Kubernetes semconv (k8s.* namespace, semconv 1.30+).
-Une série d'availability par cluster (`k8s.cluster.name`), puis des séries
-par nœud, pod, conteneur ou déploiement selon la configuration.
+Aligned with the OTel Kubernetes semantic conventions (`k8s.*` namespace,
+semconv 1.30+). One availability series per cluster (`k8s.cluster.name`), then
+series per node, pod, container or deployment depending on the configuration.
 
-| Métrique OTel | Unité | Type | Attributs | Notes |
+| OTel metric | Unit | Type | Attributes | Notes |
 |---|---|---|---|---|
-| `senhub.kubernetes.up` | `1` | gauge | `k8s.cluster.name` | 0 si l'API server est injoignable ; émis même en cas d'erreur totale (#469) |
-| `k8s.node.ready` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | condition NodeReady |
-| `k8s.node.cpu.allocatable` | `{core}` | gauge | `k8s.node.name`, `k8s.cluster.name` | cœurs CPU allouables |
+| `senhub.kubernetes.up` | `1` | gauge | `k8s.cluster.name` | 0 when the API server is unreachable; emitted even on a total failure (#469) |
+| `k8s.node.ready` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | NodeReady condition |
+| `k8s.node.cpu.allocatable` | `{core}` | gauge | `k8s.node.name`, `k8s.cluster.name` | allocatable CPU cores |
 | `k8s.node.memory.allocatable` | `By` | gauge | `k8s.node.name`, `k8s.cluster.name` | mémoire allouable en octets |
 | `k8s.node.pods.capacity` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | capacité max en pods |
-| `k8s.node.pods.allocatable` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | plafond de pods que l'ordonnanceur peut placer. Renommé depuis `.allocated` (#756) : la valeur vient de `Status.Allocatable.Pods()`, c'est un plafond et non un décompte de ce qui tourne |
-| `k8s.pod.phase` | `{state}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | 1 si phase=Running |
+| `k8s.node.pods.allocatable` | `{pod}` | gauge | `k8s.node.name`, `k8s.cluster.name` | ceiling of pods the scheduler may place. Renamed from `.allocated` (#756): the value comes from `Status.Allocatable.Pods()`, which is a ceiling and not a count of what is running |
+| `k8s.pod.phase` | `{state}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | 1 when phase=Running |
 | `k8s.pod.ready` | `{state}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | condition PodReady |
 | `k8s.pod.restarts` | `{restart}` | counter | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | total redémarrages conteneurs |
 | `k8s.container.ready` | `{state}` | gauge | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | état ready du conteneur |
 | `k8s.container.restarts` | `{restart}` | counter | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | redémarrages conteneur |
 | `k8s.deployment.available` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas disponibles |
 | `k8s.deployment.desired` | `{pod}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | réplicas désirés (spec.replicas) |
-| `k8s.deployment.ready` | `{state}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | 1 si available ≥ desired |
+| `k8s.deployment.ready` | `{state}` | gauge | `k8s.deployment.name`, `k8s.namespace.name` | 1 when available >= desired |
 
 **Conditions de nœud (#756).** Polarité inverse de `k8s.node.ready` : ici **1 = la pression EST présente**. Les noms disent l'état compté plutôt qu'un « status » neutre, parce que mélanger les deux conventions sur un même tableau de bord est un piège réel. Une condition non rapportée sort à 0 pour qu'un lecteur ne confonde pas « pas de pression » avec « pas d'information » — sauf `network_unavailable`, que beaucoup de CNI ne renseignent jamais et où un 0 constant inventerait un fait.
 
-| Métrique OTel | Unité | Type | Attributs | Notes |
+| OTel metric | Unit | Type | Attributes | Notes |
 |---|---|---|---|---|
 | `k8s.node.condition.memory_pressure` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | 1 = sous pression mémoire |
-| `k8s.node.condition.disk_pressure` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | 1 = sous pression disque ; le kubelet évince déjà alors que `ready` vaut encore 1 |
+| `k8s.node.condition.disk_pressure` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | 1 = under disk pressure; the kubelet is already evicting while `ready` is still 1 |
 | `k8s.node.condition.pid_pressure` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | 1 = sous pression PID |
-| `k8s.node.condition.network_unavailable` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | émis uniquement si le CNI rapporte la condition |
+| `k8s.node.condition.network_unavailable` | `{state}` | gauge | `k8s.node.name`, `k8s.cluster.name` | emitted only when the CNI reports the condition |
 
 **Réservations de ressources (#756).** Sans elles, impossible de dire si un cluster est sur-réservé. Les conteneurs d'init sont exclus des sommes de pod : ils ne conservent pas leur réservation pour la durée de vie du pod. Un pod **sans limite** est illimité — fait distinct d'une limite à zéro — donc aucune série de limite n'est émise plutôt qu'un 0 trompeur.
 
-| Métrique OTel | Unité | Type | Attributs | Notes |
+| OTel metric | Unit | Type | Attributes | Notes |
 |---|---|---|---|---|
-| `k8s.pod.cpu.request` / `k8s.pod.cpu.limit` | `{cpu}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | somme sur les conteneurs du pod |
-| `k8s.pod.memory.request` / `k8s.pod.memory.limit` | `By` | gauge | idem | somme sur les conteneurs du pod |
-| `k8s.container.cpu.request` / `.limit` | `{cpu}` | gauge | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | par conteneur |
-| `k8s.container.memory.request` / `.limit` | `By` | gauge | idem | par conteneur |
-| `k8s.container.waiting` | `{state}` | gauge | + `k8s.container.waiting.reason` | 1 tant que le conteneur attend ; la raison sépare CrashLoopBackOff d'un téléchargement d'image en cours, deux situations aux réactions opposées |
+| `k8s.pod.cpu.request` / `k8s.pod.cpu.limit` | `{cpu}` | gauge | `k8s.pod.name`, `k8s.namespace.name`, `k8s.node.name` | summed over the pod's containers |
+| `k8s.pod.memory.request` / `k8s.pod.memory.limit` | `By` | gauge | idem | summed over the pod's containers |
+| `k8s.container.cpu.request` / `.limit` | `{cpu}` | gauge | `k8s.container.name`, `k8s.pod.name`, `k8s.namespace.name` | per container |
+| `k8s.container.memory.request` / `.limit` | `By` | gauge | idem | per container |
+| `k8s.container.waiting` | `{state}` | gauge | + `k8s.container.waiting.reason` | 1 while the container is waiting; the reason separates CrashLoopBackOff from an image still downloading, two situations calling for opposite reactions |
 
 **Workloads au-delà de Deployment (#756).** Le type porte le tag `k8s.workload.kind` plutôt que d'être dans le nom, pour qu'un tableau de bord puisse regrouper sans connaître la liste. Chaque type émet le désiré face au réel, parce que l'écart est le chiffre qu'on lit pendant un déploiement.
 
-| Métrique OTel | Unité | Type | Attributs | Notes |
+| OTel metric | Unit | Type | Attributes | Notes |
 |---|---|---|---|---|
 | `k8s.statefulset.desired` / `.ready` / `.current` / `.updated` | `{pod}` | gauge | `k8s.workload.name`, `k8s.workload.kind`, `k8s.namespace.name` | |
 | `k8s.daemonset.desired_scheduled` / `.current_scheduled` / `.ready` / `.misscheduled` | `{node}` | gauge | idem | `misscheduled` = placés là où ils ne devraient pas être |
-| `k8s.replicaset.desired` / `.ready` / `.available` | `{pod}` | gauge | idem | désactivé par défaut : un Deployment en possède un par révision |
-| `k8s.job.active` / `.succeeded` / `.failed` / `.desired_completions` | `{pod}` | gauge | idem | `failed` est le signal : un Job dont les pods échouent reste présent et paraît ordonnancé |
-| `k8s.cronjob.active_jobs` / `.suspended` | `{job}` / `{state}` | gauge | idem | un CronJob suspendu ne produit rien et ressemble à une planification qui n'a pas encore déclenché |
+| `k8s.replicaset.desired` / `.ready` / `.available` | `{pod}` | gauge | idem | disabled by default: a Deployment owns one per revision |
+| `k8s.job.active` / `.succeeded` / `.failed` / `.desired_completions` | `{pod}` | gauge | idem | `failed` is the signal: a Job whose pods fail stays present and looks scheduled |
+| `k8s.cronjob.active_jobs` / `.suspended` | `{job}` / `{state}` | gauge | idem | a suspended CronJob produces nothing and looks like a schedule that has not fired yet |
 
-**Stockage, quotas, autoscaling (#756).** Les phases sortent en **une série par phase** avec 0/1 plutôt qu'un entier d'énumération : une chaîne ne peut pas être une valeur, et numéroter les états fait qu'une phase ajoutée en amont devient silencieusement une phase existante. Ici une phase inconnue n'allume rien.
+**Stockage, quotas, autoscaling (#756).** Les phases sortent en **one series per phase** avec 0/1 plutôt qu'un entier d'énumération : une chaîne ne peut pas être une valeur, et numéroter les états fait qu'une phase ajoutée en amont devient silencieusement une phase existante. Ici une phase inconnue n'allume rien.
 
-| Métrique OTel | Unité | Type | Attributs | Notes |
+| OTel metric | Unit | Type | Attributes | Notes |
 |---|---|---|---|---|
-| `k8s.persistentvolume.capacity` | `By` | gauge | `k8s.persistentvolume.name`, `k8s.storageclass.name` | les volumes sont cluster-scoped : le filtre de namespaces ne s'y applique pas |
-| `k8s.persistentvolume.phase` | `{state}` | gauge | + `phase` | une série par phase |
-| `k8s.persistentvolumeclaim.requested` / `.capacity` | `By` | gauge | `k8s.persistentvolumeclaim.name`, `k8s.namespace.name` | `capacity` peut dépasser `requested` si la classe de stockage arrondit ; absente tant que la demande est Pending |
-| `k8s.persistentvolumeclaim.phase` | `{state}` | gauge | + `phase` | une demande bloquée en Pending est la raison pour laquelle le pod qui l'attend ne démarre jamais |
-| `k8s.resourcequota.hard` / `.used` | `{resource}` | gauge | `k8s.resourcequota.name`, `k8s.resourcequota.resource`, `k8s.namespace.name` | unité selon la ressource : cœurs pour cpu, octets pour la mémoire, entiers pour les comptes |
-| `k8s.hpa.current_replicas` / `.desired_replicas` / `.min_replicas` / `.max_replicas` | `{pod}` | gauge | `k8s.hpa.name`, `k8s.hpa.target`, `k8s.namespace.name` | un autoscaler collé au max est le cluster qui refuse de grandir, invisible depuis les compteurs du workload |
+| `k8s.persistentvolume.capacity` | `By` | gauge | `k8s.persistentvolume.name`, `k8s.storageclass.name` | volumes are cluster-scoped: the namespace filter does not apply to them |
+| `k8s.persistentvolume.phase` | `{state}` | gauge | + `phase` | one series per phase |
+| `k8s.persistentvolumeclaim.requested` / `.capacity` | `By` | gauge | `k8s.persistentvolumeclaim.name`, `k8s.namespace.name` | `capacity` may exceed `requested` when the storage class rounds up; absent while the claim is Pending |
+| `k8s.persistentvolumeclaim.phase` | `{state}` | gauge | + `phase` | a claim stuck Pending is why the pod waiting on it never starts |
+| `k8s.resourcequota.hard` / `.used` | `{resource}` | gauge | `k8s.resourcequota.name`, `k8s.resourcequota.resource`, `k8s.namespace.name` | unit depends on the resource: cores for cpu, bytes for memory, integers for counts |
+| `k8s.hpa.current_replicas` / `.desired_replicas` / `.min_replicas` / `.max_replicas` | `{pod}` | gauge | `k8s.hpa.name`, `k8s.hpa.target`, `k8s.namespace.name` | an autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counters |
 
 **Events (#756) — rail logs, pas métriques.** Les Events Kubernetes voyagent en enregistrements de log : ce sont des phrases datées, et les compter garderait le nombre en jetant le diagnostic. Un « Warning » Kubernetes est classé **Error** : Kubernetes n'a pas de niveau erreur, et un échec de téléchargement d'image y arrive au même niveau qu'un avertissement de routine. Attributs : `k8s.event.reason`, `.type`, `.object.kind`, `.object.name`, `.source`, `.count`, plus l'étiquette d'identité du sujet (`k8s.pod.name`, `k8s.node.name`, `k8s.workload.name`…) pour joindre l'événement aux séries qu'il explique.
 ### 4.35 Probe `mssql` (Microsoft SQL Server)
@@ -1613,7 +1613,7 @@ par nœud, pod, conteneur ou déploiement selon la configuration.
 Source canonique : [OTel Collector contrib `sqlserverreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/sqlserverreceiver).
 Quand le receiver contrib expose la métrique, l'agent adopte son nom et ses attributs pour une interopérabilité directe. `senhub.db.up` est l'exception cross-engine partagée avec mysql/postgresql.
 
-| Métrique OTel | Unité | Type | Source SQL |
+| OTel metric | Unit | Type | Source SQL |
 |---|---|---|---|
 | `senhub.db.up` | `1` | gauge | heartbeat de connectivité |
 | `sqlserver.batch_request.rate` | `{request}/s` | gauge | `Batch Requests/sec` (dm_os_performance_counters) |
@@ -1646,7 +1646,7 @@ out-of-band via l'API REST donc pas de machine-id, ce n'est pas un `host`.
 
 #### 4.36.1 Extensions `senhub.powerstore.*`
 
-| Métrique OTel | Type / unité | Attributs | Source REST |
+| OTel metric | Type / unité | Attributes | Source REST |
 |---|---|---|---|
 | `senhub.powerstore.up` | Gauge `1` | — | reachability du `/cluster` |
 | `senhub.powerstore.cluster.state` | Gauge `1` | `senhub.powerstore.cluster.config_state` | `/cluster.state` (Configured=2, Unconfigured=1, autre=0) |
@@ -1685,7 +1685,7 @@ ressource. Chaque série porte un tag ressource (`volume`, `appliance`, `node`,
 `drive`, `session`) **mappé en attribut OTel via `tag_to_attribute`** — sans quoi
 les instances s'écraseraient en OTLP/Prometheus (une seule série au lieu de N).
 
-| Métrique OTel | Type / unité | Attribut ressource (+ autres) | Source REST |
+| OTel metric | Type / unité | Attribut ressource (+ autres) | Source REST |
 |---|---|---|---|
 | `senhub.powerstore.volume.state` | Gauge `1` | `senhub.powerstore.volume.name` | `/volume.state` (Ready=1, autre=0) |
 | `senhub.powerstore.volume.logical_used` | Gauge `By` | `…volume.name` | `/volume.logical_used` |
@@ -1719,7 +1719,7 @@ que `senhub.veeam.*`). Émission : ids courts snake_case côté probe (enterpris
 `probes/ad_hybrid/`), noms/unités/types déclarés par le transformer
 `transformers/definitions/ad_hybrid.yaml`.
 
-| Métrique | Type / unit | Attributs | Notes |
+| Metric | Type / unit | Attributes | Notes |
 |---|---|---|---|
 | `senhub.ad_hybrid.up` | Gauge `1` | — | 1 si l'API a répondu ce cycle, sinon 0 |
 | `senhub.ad_hybrid.sync.health` | Gauge `1` | `senhub.ad_hybrid.service.name` | Healthy=2, Warning=1, Error/autre=0 |
@@ -1735,7 +1735,7 @@ Flux de messagerie et santé de service Exchange Online (API reporting Microsoft
 ids courts snake_case côté probe (enterprise `probes/exchange_online/`), déclarés
 par le transformer `transformers/definitions/exchange_online.yaml`.
 
-| Métrique | Type / unit | Attributs | Notes |
+| Metric | Type / unit | Attributes | Notes |
 |---|---|---|---|
 | `senhub.exchange_online.up` | Gauge `1` | — | 1 si l'API a répondu ce cycle, sinon 0 |
 | `senhub.exchange_online.service.health` | Gauge `1` | `senhub.exchange_online.service.display_name` | Healthy=2, Degraded=1, Error/autre=0 |
@@ -1755,7 +1755,7 @@ Hyper-V Replica and Windows Failover Cluster health, read from local WMI
 Hyper-V HA; all metrics live under the `senhub.hyperv_ha.*` extension namespace.
 Cluster metrics are emitted only when the Failover Clustering feature is present.
 
-| Métrique | Type / unité | Attributs | Notes |
+| Metric | Type / unité | Attributes | Notes |
 |---|---|---|---|
 | `senhub.hyperv_ha.up` | Gauge `1` | — | 1 si le namespace WMU Replica a répondu ce cycle, sinon 0 |
 | `senhub.hyperv_ha.replica.health` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Santé de réplication (1 = Normal, 0 = Warning/Critical) |
@@ -1770,7 +1770,7 @@ Santé de réplication SQL Server AlwaysOn Availability Group. Pas de semconv OT
 pour la réplication AG ; métriques sous `senhub.mssql_ha.*` (même statut que
 `senhub.veeam.*`). Complète la probe `mssql` (lecture seule, semconv `sqlserver.*`).
 
-| Métrique | Type / unité | Attributs | Notes |
+| Metric | Type / unité | Attributes | Notes |
 |---|---|---|---|
 | `senhub.mssql_ha.up` | Gauge `1` | — | 1 si le dernier ping a atteint le serveur ce cycle, sinon 0 |
 | `senhub.mssql_ha.replica.role` | Gauge `1` | `senhub.mssql_ha.ag.name`, `senhub.mssql_ha.replica.name` | Rôle du réplica (Primary=1, Secondary=0) |
@@ -1791,7 +1791,7 @@ v$dataguard_stats). Pas de semconv OTel — métriques sous
 courts snake_case côté probe, déclarés par le transformer
 `transformers/definitions/oracle_enterprise.yaml`.
 
-| Métrique | Type / unité | Attributs | Notes |
+| Metric | Type / unité | Attributes | Notes |
 |---|---|---|---|
 | `senhub.oracle_enterprise.up` | Gauge `1` | — | 1 si l'instance a répondu ce cycle, sinon 0 |
 | `senhub.oracle_enterprise.awr.db_time` | Gauge `s` | — | DB time par seconde (v$sysmetric) |
@@ -1813,7 +1813,7 @@ optionnellement, état de l'overlay NSX-T (API REST du NSX manager). Pas de semc
 OTel — métriques sous `senhub.vsphere_ha.*`. NSX-T n'est interrogé que si
 `nsx_endpoint` + `nsx_username` sont configurés.
 
-| Métrique | Type / unité | Attributs | Source |
+| Metric | Type / unité | Attributes | Source |
 |---|---|---|---|
 | `senhub.vsphere_ha.up` | Gauge `1` | — | 1 si la session vCenter est vivante et vSAN a répondu, sinon 0 |
 | `senhub.vsphere_ha.vsan.health` | Gauge `1` | `senhub.vsphere_ha.cluster.name` | `overallHealth` (green=2, yellow=1, red/autre=0) |
@@ -1834,7 +1834,7 @@ est porté par l'attribut `os.package_manager` (`apt` | `dnf` | `yum` | `wua`),
 mappé depuis le tag `package_manager`. Requêtes read-only, sans escalade de
 privilèges.
 
-| Métrique OTel | Unité | Type | Source wire |
+| OTel metric | Unit | Type | Source wire |
 |---|---|---|---|
 | `senhub.os.updates.up` | `1` | gauge | 1 quand le backend a répondu, 0 sinon (backend KO ou plateforme non supportée — darwin) |
 | `senhub.os.updates.pending` | `{update}` | gauge | apt-check / `apt-get -s upgrade` (lignes `Inst`) / `dnf -q updateinfo list` / WUA `Search("IsInstalled=0 and IsHidden=0 and Type='Software'")` |
