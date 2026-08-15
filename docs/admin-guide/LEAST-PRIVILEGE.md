@@ -89,6 +89,8 @@ exceptions, and how to grant exactly what they need:
 | `linux_logs` | journal read | `systemd-journal` group (set in the shipped unit) |
 | `filetail` on `/var/log/syslog`, `auth.log` | read `adm`-owned files | `adm` group (joined by the installer, see below) |
 | `smart` | read `/dev/sd*`, `/dev/nvme*` | the `disk` group — see below |
+| `docker` | the docker socket | the `docker` group — **read the warning below first** |
+| `process` file-descriptor counts for **other users'** processes | read `/proc/<pid>/fd` | `CAP_DAC_READ_SEARCH` — usually not worth it, see below |
 | `snmp_trap` on the default UDP **162** | bind a privileged port | `CAP_NET_BIND_SERVICE`, or use a high port |
 | `otlp_receiver` on 4317 / 4318 | nothing | ports are above 1024 |
 | ICMP / ping active checks | raw sockets | `CAP_NET_RAW` |
@@ -118,6 +120,35 @@ off — the other host probes need none of this.
 > **Do not use `CAP_SYS_RAWIO` for this.** It grants raw I/O port and
 > memory access process-wide, which is a considerably wider grant than
 > the group.
+
+### What a non-root daemon does not see
+
+Running unprivileged costs visibility in exactly three places. Everything
+else — CPU, memory, network, filesystems, process counts, CPU and memory
+per process, the journal, the syslog files, and every remote probe —
+works with no grant at all.
+
+Measured on a default hardened install (Ubuntu 26.04, service account
+`senhub` in `adm` and `systemd-journal`):
+
+| What | Why | Cost of fixing it |
+|---|---|---|
+| `smart` disk health | `/dev/sda` is `root:disk 0660` | `disk` group — read/write on every block device |
+| `docker` probe | `/var/run/docker.sock` is `root:docker 0660` | `docker` group — **equivalent to root**, see below |
+| `process.open_file_descriptors` for processes owned by other users | `/proc/<pid>/fd` is owner-only | `CAP_DAC_READ_SEARCH` — bypasses every file read check on the host |
+
+Per-process CPU, memory, thread count and uptime are **not** affected:
+`/proc/<pid>/stat` and `/proc/<pid>/status` are world-readable, so those
+are correct for every process regardless of owner. Only the
+file-descriptor count needs the extra grant.
+
+> **The `docker` group is not a small grant.** Anyone who can talk to the
+> docker socket can start a container that mounts the host filesystem —
+> which is root on the host, by a different route. That is why the
+> installer joins `adm` for you but never joins `docker`: it has to be a
+> decision you make, not a side effect of installing a monitoring agent.
+> If you want container metrics without that, run the `docker` probe
+> under a root install, or scrape the container runtime some other way.
 
 ### Reading the system log files (`filetail`)
 
