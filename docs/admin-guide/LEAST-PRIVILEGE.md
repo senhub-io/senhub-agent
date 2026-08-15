@@ -147,8 +147,23 @@ file-descriptor count needs the extra grant.
 > which is root on the host, by a different route. That is why the
 > installer joins `adm` for you but never joins `docker`: it has to be a
 > decision you make, not a side effect of installing a monitoring agent.
-> If you want container metrics without that, run the `docker` probe
-> under a root install, or scrape the container runtime some other way.
+
+Peer agents document the same grant — Telegraf and the Datadog agent both
+tell you to add their service user to `docker` — so it is the common
+answer, not an unusual one. It is still root-equivalent, which is why an
+entire category of tooling exists to avoid it.
+
+If you would rather not grant it, two options:
+
+- **A docker socket proxy.** A small HAProxy in front of the socket that
+  allow-lists only the read endpoints the agent uses and returns `403`
+  for everything else. The agent gets container metadata; nobody gets
+  container creation. [Tecnativa/docker-socket-proxy][dsp] is the usual
+  implementation.
+- **Run the `docker` probe under a root install**, and keep the hardened
+  non-root unit for the rest of the fleet.
+
+[dsp]: https://github.com/Tecnativa/docker-socket-proxy
 
 ### Reading the system log files (`filetail`)
 
