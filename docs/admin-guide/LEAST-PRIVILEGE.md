@@ -88,10 +88,36 @@ exceptions, and how to grant exactly what they need:
 | `cpu`, `memory`, `logicaldisk`, `network` | nothing | reads `/proc`, `/sys` — works as-is |
 | `linux_logs` | journal read | `systemd-journal` group (set in the shipped unit) |
 | `filetail` on `/var/log/syslog`, `auth.log` | read `adm`-owned files | `adm` group (joined by the installer, see below) |
+| `smart` | read `/dev/sd*`, `/dev/nvme*` | the `disk` group — see below |
 | `snmp_trap` on the default UDP **162** | bind a privileged port | `CAP_NET_BIND_SERVICE`, or use a high port |
 | `otlp_receiver` on 4317 / 4318 | nothing | ports are above 1024 |
 | ICMP / ping active checks | raw sockets | `CAP_NET_RAW` |
 | Remote probes (databases, NetScaler, Veeam, SNMP poll, …) | network + credentials | no host privilege; credentials in config |
+
+### Reading disk health (`smart`)
+
+`/dev/sda` and friends are `root:disk`, mode `0660`, so the `senhub`
+service account cannot open them and `smartctl` fails with
+`Permission denied`. This has nothing to do with the hardening
+directives — it is plain Unix file permissions, and it applies to any
+non-root install.
+
+Grant the `disk` group, the same pattern as `adm` for the syslog files:
+
+```bash
+sudo usermod -aG disk senhub
+sudo systemctl restart senhub-agent
+```
+
+`disk` grants read **and write** on every block device, which is a
+larger grant than `adm` on log files: it is enough to read raw disk
+contents, bypassing file permissions. If that is more than you want to
+give, run the `smart` probe under a root install instead, or leave it
+off — the other host probes need none of this.
+
+> **Do not use `CAP_SYS_RAWIO` for this.** It grants raw I/O port and
+> memory access process-wide, which is a considerably wider grant than
+> the group.
 
 ### Reading the system log files (`filetail`)
 
@@ -285,9 +311,12 @@ Earlier versions carried the agent **twice**: the copy you ran, and a
 executed so the daemon could replace it during auto-update. The two
 drifted apart as soon as auto-update ran.
 
-`sudo senhub-agent install` (or `sudo senhub-agent refresh-unit`) moves
-such a host to the single-binary layout: it installs the root-owned
-binary, repoints `ExecStart`, and removes the old directory.
+`sudo senhub-agent refresh-unit` moves such a host to the single-binary
+layout in one step: it promotes the binary to the root-owned system path
+if nothing is there yet, repoints `ExecStart`, and removes the old
+directory. It does the binary first on purpose — if that failed after the
+unit had been rewritten, the service would come back as `203/EXEC`, so a
+failure aborts with the old, working unit still in place.
 
 Two things to know before you upgrade a host:
 

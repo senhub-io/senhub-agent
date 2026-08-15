@@ -86,6 +86,16 @@ func runRefreshUnit() {
 		}
 	}
 
+	// Move the binary BEFORE rewriting the unit. The refreshed unit points at
+	// the system path, so if that file is missing the service would come back
+	// as 203/EXEC — a refresh that takes a working host down. Doing it first
+	// means a failure here aborts with the old, working unit still in place.
+	if err := migrateLegacyBinary(string(installed)); err != nil {
+		fmt.Fprintf(os.Stderr, "migrating the binary to %s: %v\n", systemBinaryDir, err)
+		fmt.Fprintln(os.Stderr, "The unit was NOT changed; the service is untouched.")
+		os.Exit(1)
+	}
+
 	if err := os.WriteFile(installedUnitPath, []byte(refreshed), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "writing unit file: %v\n", err)
 		os.Exit(1)
@@ -97,4 +107,48 @@ func runRefreshUnit() {
 	}
 
 	fmt.Println("Unit updated. Run 'senhub-agent restart' to apply the new unit to the running service.")
+}
+
+// migrateLegacyBinary brings a pre-0.5.4 host to the single-binary layout so
+// the refreshed unit has something to exec (#794).
+//
+// Such a host runs ExecStart=/var/lib/senhub-agent/bin/senhub-agent, a
+// service-user-owned copy. The refreshed unit points at the root-owned system
+// path instead — and on a host installed by running the installer from /tmp
+// (#576) that path may hold nothing at all, because the copy the operator ran
+// is long gone. Repointing blindly would turn a working service into 203/EXEC.
+//
+// So the legacy binary is promoted to the system path first, root-owned, and
+// only then is the old directory removed. A no-op on any host that is not in
+// the legacy layout.
+func migrateLegacyBinary(installedUnit string) error {
+	execLine, _ := installedExecStart(installedUnit)
+	binPath, _ := splitExecStartLine(execLine)
+	if unescapeSystemdPath(binPath) != legacyManagedBinaryPath() {
+		return nil
+	}
+
+	legacy := legacyManagedBinaryPath()
+	if _, err := os.Stat(legacy); err != nil {
+		// The unit names it but it is gone: nothing to promote. The refreshed
+		// unit still repoints, which is the documented 203/EXEC repair.
+		return nil
+	}
+
+	target := systemBinaryUnitPath()
+	if _, err := os.Stat(target); err != nil {
+		fmt.Printf("Installing the agent binary at %s (it was only present under %s)\n", target, legacyManagedBinaryDir)
+		if _, err := installSystemBinary(legacy); err != nil {
+			return err
+		}
+	}
+
+	if err := removeLegacyManagedBinary(); err != nil {
+		// Not fatal: the host is correct once the unit points at the system
+		// binary. Say so rather than failing a migration over cleanup.
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+		return nil
+	}
+	fmt.Printf("Removed the previous service-owned copy under %s\n", legacyManagedBinaryDir)
+	return nil
 }
