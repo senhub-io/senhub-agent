@@ -86,6 +86,13 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 			log.String(attrEntityType, e.Type),
 			id,
 		}
+		// Why THIS PRODUCER retired the entity — a distinct axis from the
+		// consumer's delete_source, which answers who decided (#806). Carried
+		// on deletes only, and only when the detector could explain the
+		// disappearance; an unexplained one is a plain termination.
+		if ev.Kind == entity.EntityDelete && ev.DeleteReason != "" {
+			attrs = append(attrs, log.String(wire.AttrEntityDeleteReason, ev.DeleteReason))
+		}
 		if ev.Kind == entity.EntityState && len(e.Attributes) > 0 {
 			a, err := scalarMap(attrEntityDescription, e.Attributes)
 			if err != nil {
