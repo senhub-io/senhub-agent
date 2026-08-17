@@ -848,7 +848,7 @@ unit with no site drop-ins:
 | 0.5.4 | **2.0 OK** |
 
 Run it yourself: `systemd-analyze security senhub-agent`. The
-[least-privilege guide](../../admin-guide/LEAST-PRIVILEGE.md) documents the
+[least-privilege guide](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/LEAST-PRIVILEGE.md) documents the
 exposure that **remains** and why each item stays — sockets, the process tree,
 device access — because a page claiming an agent is hardened is worth less than
 the command that proves it, and a reader who runs that command and finds
