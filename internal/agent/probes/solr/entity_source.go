@@ -42,7 +42,7 @@ type solrEntitySource struct {
 	hostID func() string
 	// rekey announces the 0.5.4 identity migration for a local instance whose
 	// id was host-scoped. nil when nothing was re-keyed (remote target).
-	rekey *dbcommon.RekeyAnnouncer
+	rekey *entity.RekeyAnnouncer
 
 	// client and endpoint are used to fetch the SolrCloud cluster id on the
 	// first successful collect. client is the probe's shared HTTP client.
