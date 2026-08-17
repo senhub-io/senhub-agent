@@ -261,8 +261,11 @@ func stringKV(k, v string) *commonpb.KeyValue {
 // relayHostID/Name MUST come from the host identity (gopsutil), NOT the
 // operator-overridable Resource, and relayInstanceID from the agent's
 // service.instance.id (see #698).
-func buildRelayEnricher(cfg TracesSignal, globalTags map[string]string, environment, relayHostID, relayHostName, relayInstanceID string) *relayEnricher {
-	if !cfg.RelayEnrichment {
+// enabled is passed in rather than read off cfg: the switch is resolved from
+// the relay-level key with the deprecated per-signal one as a fallback (#766),
+// and that resolution belongs in config parsing, not here.
+func buildRelayEnricher(enabled bool, cfg TracesSignal, globalTags map[string]string, environment, relayHostID, relayHostName, relayInstanceID string) *relayEnricher {
+	if !enabled {
 		return &relayEnricher{enabled: false}
 	}
 
