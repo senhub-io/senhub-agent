@@ -26,7 +26,7 @@ func TestDropOrphanEntities(t *testing.T) {
 	}
 
 	var dropped []Entity
-	kept := dropOrphanEntities(entities, func(d []Entity) { dropped = d })
+	kept, _ := dropOrphanEntities(entities, func(d []Entity) { dropped = d })
 
 	keptTypes := map[string]bool{}
 	for _, e := range kept {

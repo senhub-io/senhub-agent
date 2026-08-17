@@ -480,3 +480,76 @@ func TestConformance_RejectsTheRawMachineIDSpelling(t *testing.T) {
 		}
 	}
 }
+
+// TestDeleteReasonRidesTheWire pins the producer-side motive on the delete
+// record (#806). It is a distinct axis from Toise's delete_source — that one
+// says who decided, this one says why we did — so it travels on our records or
+// the consumer cannot tell a resource that ended from one we merely stopped
+// watching.
+func TestDeleteReasonRidesTheWire(t *testing.T) {
+	del := entity.Event{
+		Kind:         entity.EntityDelete,
+		Time:         time.Unix(1_700_000_000, 0),
+		DeleteReason: entity.ReasonUnmonitored,
+		Entity: &entity.Entity{
+			Type: "db",
+			ID:   map[string]any{"db.instance.id": "postgresql:5432@h-1"},
+		},
+	}
+	_, rec, err := buildEntityRecord(del)
+	if err != nil {
+		t.Fatalf("buildEntityRecord: %v", err)
+	}
+	got := flattenOurs(rec)
+	if got[wire.AttrEntityDeleteReason] != entity.ReasonUnmonitored {
+		t.Errorf("%s = %v, want %q", wire.AttrEntityDeleteReason,
+			got[wire.AttrEntityDeleteReason], entity.ReasonUnmonitored)
+	}
+	if rec.EventName() != wire.EventEntityDelete {
+		t.Errorf("EventName = %q, want %q", rec.EventName(), wire.EventEntityDelete)
+	}
+}
+
+// TestDeleteReasonAbsentWhenUnexplained: the attribute is optional, and a
+// delete the detector could not explain must not carry an empty one — an empty
+// string is a value on the wire, and a consumer would have to special-case it.
+func TestDeleteReasonAbsentWhenUnexplained(t *testing.T) {
+	del := entity.Event{
+		Kind: entity.EntityDelete,
+		Time: time.Unix(1_700_000_000, 0),
+		Entity: &entity.Entity{
+			Type: "db",
+			ID:   map[string]any{"db.instance.id": "postgresql:5432@h-1"},
+		},
+	}
+	_, rec, err := buildEntityRecord(del)
+	if err != nil {
+		t.Fatalf("buildEntityRecord: %v", err)
+	}
+	if _, present := flattenOurs(rec)[wire.AttrEntityDeleteReason]; present {
+		t.Errorf("%s emitted on a delete with no reason set", wire.AttrEntityDeleteReason)
+	}
+}
+
+// TestStateNeverCarriesADeleteReason: the attribute is meaningful on
+// entity.delete only. A state event carrying it would be nonsense the
+// consumer has to ignore.
+func TestStateNeverCarriesADeleteReason(t *testing.T) {
+	st := entity.Event{
+		Kind:         entity.EntityState,
+		Time:         time.Unix(1_700_000_000, 0),
+		Interval:     90 * time.Second,
+		DeleteReason: entity.ReasonTerminated, // set in error by a caller
+		Entity: &entity.Entity{
+			Type: "host",
+			ID:   map[string]any{"host.id": "h-1"},
+		},
+	}
+	_, rec, err := buildEntityRecord(st)
+	if err != nil {
+		t.Fatalf("buildEntityRecord: %v", err)
+	}
+	if _, present := flattenOurs(rec)[wire.AttrEntityDeleteReason]; present {
+		t.Errorf("%s leaked onto an entity.state record", wire.AttrEntityDeleteReason)
+	}
+}
