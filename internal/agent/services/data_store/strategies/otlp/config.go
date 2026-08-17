@@ -277,8 +277,31 @@ type ResourceConfig struct {
 
 // Config is the fully-parsed, validated configuration for the OTLP strategy.
 // Populated by ParseConfig; consumed by the strategy and exporter wiring.
+// RelayConfig groups the settings that govern telemetry the agent RELAYS —
+// what an application pushed into the otlp_receiver and the agent forwards —
+// as opposed to telemetry the agent produces itself.
+//
+// It exists because the enrichment switch was introduced under
+// signals.traces.relay_enrichment, back when only traces were relayed. Logs and
+// metrics were added to the same contract later, so that key silently governs
+// all three: turning it off "for traces" turned it off for everything (#766).
+// A setting whose name names one signal must not decide three.
+type RelayConfig struct {
+	// Enrichment inserts the agent's tenancy context (tenant, site,
+	// deployment.environment) and the telemetry.relay.* identity onto relayed
+	// telemetry, insert-if-absent, never overwriting the sender's own
+	// identity. Default true; set false for a verbatim pass-through relay.
+	Enrichment bool
+	// enrichmentSet records whether the operator stated a value here, so the
+	// deprecated signals.traces.relay_enrichment only applies when they did
+	// not.
+	enrichmentSet bool
+}
+
 type Config struct {
 	Endpoint string
+	// Relay governs telemetry the agent forwards on behalf of an application.
+	Relay RelayConfig
 	// FallbackEndpoints are standby OTLP ingresses tried in order when the
 	// primary Endpoint is failing (#217 resilience layer 2). Empty = no
 	// failover (single endpoint). The agent prefers the primary and falls
@@ -645,6 +668,13 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
 		return cfg, fmt.Errorf("signals: %w", err)
 	}
+	if err := parseRelay(params["relay"], &cfg.Relay); err != nil {
+		return cfg, fmt.Errorf("relay: %w", err)
+	}
+	// Reconcile the relay-level switch with the deprecated per-signal one.
+	// Must run AFTER both parses: the traces default is true, so reading it
+	// before parseRelay would make "unset" indistinguishable from "on".
+	cfg.Relay.Enrichment = resolveRelayEnrichment(cfg.Relay, cfg.Traces)
 	if err := parseResource(params["resource"], &cfg.Resource); err != nil {
 		return cfg, fmt.Errorf("resource: %w", err)
 	}
@@ -1243,4 +1273,42 @@ func parseCIDRStrings(raw interface{}) ([]*net.IPNet, error) {
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// parseRelay reads the relay-level block:
+//
+//	relay:
+//	  enrichment: false
+func parseRelay(raw interface{}, relay *RelayConfig) error {
+	relay.Enrichment = true // default on, matching the key it replaces
+	if raw == nil {
+		return nil
+	}
+	m, ok := raw.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("expected a map, got %T", raw)
+	}
+	if v, ok := m["enrichment"]; ok {
+		b, ok := v.(bool)
+		if !ok {
+			return fmt.Errorf("enrichment must be true or false, got %T", v)
+		}
+		relay.Enrichment = b
+		relay.enrichmentSet = true
+	}
+	return nil
+}
+
+// resolveRelayEnrichment decides the effective switch from the two keys.
+//
+// The relay-level key wins when the operator set it. Otherwise the deprecated
+// signals.traces.relay_enrichment still applies, because a host that turned it
+// off there today did so meaning "do not enrich what I relay" — honouring that
+// is the whole point of keeping the alias. An operator who set neither gets the
+// default, on.
+func resolveRelayEnrichment(relay RelayConfig, traces TracesSignal) bool {
+	if relay.enrichmentSet {
+		return relay.Enrichment
+	}
+	return traces.RelayEnrichment
 }
