@@ -1954,6 +1954,39 @@ signal; there is **no separate relation event**.
 | LogRecord | `EventName` | `entity.state` \| `entity.delete` |
 | LogRecord | bare attributes | `entity.type`, `entity.id.*`, `entity.description.*`, `entity.report.interval` |
 | LogRecord | `entity.relationships` | an embedded array of bare descriptors `{relationship.type, entity.type, entity.id}` |
+| LogRecord | `entity.delete.reason` | on `entity.delete` only — see below |
+
+### Why a delete happened (#806)
+
+`entity.delete.reason` says why **this producer** retired an entity. It is a
+distinct axis from Toise's `delete_source`, which says *who* decided: the
+consumer writes that one and already holds it, so restating it here would give
+one fact two spellings that drift the moment Toise gains a source we do not
+model.
+
+The line that matters runs between "the resource ended" and "the observation
+ended":
+
+| Value | Meaning | Emitted when |
+|---|---|---|
+| `terminated` | the resource ended | the source answered and stopped listing the entity (an empty observation with `ok=true` is the legitimate way to say everything it watched is gone) |
+| `parent_removed` | the resource ended | the entity lost its anchoring relation and is no longer reachable in the graph |
+| `unmonitored` | **the observation ended — the resource may still be running** | the source was unregistered (its probe stopped, or was removed from the configuration), or it failed for longer than `lastGoodTTL` |
+
+`unmonitored` is the one that earns the attribute. A `db` entity that vanishes
+because someone edited a probe list must never read as "the database is gone" —
+that reading is what causes an incident. It is the producer-side mirror of
+`liveness_expiry`: there the consumer says it stopped hearing, here we say we
+stopped looking.
+
+Note `parent_removed`, deliberately not `cascade`: that word belongs to the
+`delete_source` axis and means the consumer retired an edge whose far end died.
+
+The enum is open on the wire and the consumer never rejects an unrecognised
+value. The reason is decided in the detector, which knows whether a source
+answered, went quiet or stopped existing; the tracker only sees absence and
+carries what it is given. A delete the detector cannot explain carries no
+attribute at all rather than an empty one.
 
 Relations live **inside** the `entity.state` event of their source entity; a
 relation the source stops listing is removed (removal-by-absence). There is
