@@ -30,13 +30,13 @@ func TestTracker_DeletesDisappearedItems(t *testing.T) {
 	}}
 
 	// Cycle 1: host A (→ monitors B) + db B present.
-	tr.Reconcile([]Event{hostAB, dbB}, t1)
+	tr.Reconcile([]Event{hostAB, dbB}, t1, nil)
 
 	// Cycle 2: only host A remains, and it no longer lists the monitors edge.
 	// B disappears → explicit entity delete; the edge is retired by absence
 	// (it simply isn't on A's heartbeat anymore — no edge delete on the wire).
 	got = nil
-	tr.Reconcile([]Event{hostState("A", "a", t2)}, t2)
+	tr.Reconcile([]Event{hostState("A", "a", t2)}, t2, nil)
 
 	if len(got) != 2 {
 		t.Fatalf("cycle 2 published %d events, want 2 (A state + B delete)", len(got))
@@ -80,14 +80,14 @@ func TestTracker_ScopeRidesStateAndDelete(t *testing.T) {
 		Scope: ScopeSNMPRoute,
 	}}
 
-	tr.Reconcile([]Event{route}, t1)
+	tr.Reconcile([]Event{route}, t1, nil)
 	if len(got) != 1 || got[0].Entity.Scope != ScopeSNMPRoute {
 		t.Fatalf("state must carry scope %q, got %+v", ScopeSNMPRoute, got)
 	}
 
 	// Cycle 2: the route disappears → absence-delete must keep the scope.
 	got = nil
-	tr.Reconcile(nil, t2)
+	tr.Reconcile(nil, t2, nil)
 	if len(got) != 1 || got[0].Kind != EntityDelete {
 		t.Fatalf("got %d events, want 1 delete", len(got))
 	}
@@ -104,9 +104,9 @@ func TestTracker_StableIdentityNoSpuriousDelete(t *testing.T) {
 
 	// Same entity, changed descriptive attribute between cycles. Identity is
 	// unchanged → it is a heartbeat update, never a delete + recreate.
-	tr.Reconcile([]Event{hostState("A", "old-name", t1)}, t1)
+	tr.Reconcile([]Event{hostState("A", "old-name", t1)}, t1, nil)
 	got = nil
-	tr.Reconcile([]Event{hostState("A", "new-name", t2)}, t2)
+	tr.Reconcile([]Event{hostState("A", "new-name", t2)}, t2, nil)
 
 	if len(got) != 1 {
 		t.Fatalf("got %d events, want 1 (heartbeat state only, no delete)", len(got))
@@ -132,35 +132,35 @@ func TestTracker_SuppressesUnchangedHeartbeats(t *testing.T) {
 	}
 
 	t0 := time.Unix(1000, 0).UTC()
-	tr.Reconcile([]Event{state("a", t0)}, t0)
+	tr.Reconcile([]Event{state("a", t0)}, t0, nil)
 	if len(got) != 1 {
 		t.Fatalf("first state must publish, got %d", len(got))
 	}
 
 	// Same content 10s later: suppressed.
-	tr.Reconcile([]Event{state("a", t0.Add(10*time.Second))}, t0.Add(10*time.Second))
+	tr.Reconcile([]Event{state("a", t0.Add(10*time.Second))}, t0.Add(10*time.Second), nil)
 	if len(got) != 1 {
 		t.Fatalf("unchanged state within refresh must be suppressed, got %d events", len(got))
 	}
 
 	// Changed content: published immediately.
-	tr.Reconcile([]Event{state("b", t0.Add(20*time.Second))}, t0.Add(20*time.Second))
+	tr.Reconcile([]Event{state("b", t0.Add(20*time.Second))}, t0.Add(20*time.Second), nil)
 	if len(got) != 2 {
 		t.Fatalf("changed state must publish, got %d events", len(got))
 	}
 
 	// Unchanged but refresh elapsed: published (liveness heartbeat).
-	tr.Reconcile([]Event{state("b", t0.Add(2*time.Minute))}, t0.Add(2*time.Minute))
+	tr.Reconcile([]Event{state("b", t0.Add(2*time.Minute))}, t0.Add(2*time.Minute), nil)
 	if len(got) != 3 {
 		t.Fatalf("unchanged state past refresh must republish, got %d events", len(got))
 	}
 
 	// Disappears: delete fires; reappearing publishes again at once.
-	tr.Reconcile(nil, t0.Add(3*time.Minute))
+	tr.Reconcile(nil, t0.Add(3*time.Minute), nil)
 	if countKind(got, EntityDelete) != 1 {
 		t.Fatalf("absence must delete, got %+v", got)
 	}
-	tr.Reconcile([]Event{state("b", t0.Add(4*time.Minute))}, t0.Add(4*time.Minute))
+	tr.Reconcile([]Event{state("b", t0.Add(4*time.Minute))}, t0.Add(4*time.Minute), nil)
 	if countKind(got, EntityState) != 4 {
 		t.Fatalf("reappearance must publish immediately, got %+v", got)
 	}
