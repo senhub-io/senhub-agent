@@ -23,20 +23,23 @@ import (
 //     avoided by refusing to emit a node without its MachineID. The right fix
 //     is an agent inside the node, which then emits the real host itself.
 //
-//   - Overlay NETWORKS as entities. There is no registered type for a network
-//     segment in the consumer's vocabulary — network.device, .interface,
-//     .address, .route and .endpoint all name something else. Inventing a type
-//     name would have it rejected at the frontier and silently dropped, which
-//     is worse than not sending it. Asking the consumer to register one is the
-//     open question; until it is answered the segments live as metric labels,
-//     where they are queryable but not traversable.
-//
 //   - Swarm SERVICES as service.instance entities. Tempting, since a service
-//     is exactly that — but its tasks are containers the `docker` probe
-//     already emits on each node, and a service entity built here would have
-//     no relation to them (this probe cannot see container ids per node with
-//     any stability). A service that runs on nothing is a floating node; the
+//     is exactly that — but its tasks are containers the `docker` probe already
+//     emits on each node, and a service entity built here would have no
+//     relation to them (this probe cannot see container ids per node with any
+//     stability). A service that runs on nothing is a floating node; the
 //     relation has to exist before the entity is worth emitting.
+//
+// Overlay SEGMENTS are emitted, since ADR 0034 registered the type. Each is
+// declared by the cluster that owns it:
+//
+//	service.instance --has_segment--> network.segment
+//
+// The edge is not decoration. A segment nobody can attribute has no business
+// in the graph, and the consumer's rule is provenance: a segment is emitted
+// with its cluster edge or not at all. It also happens to satisfy this agent's
+// own anti-orphan guard, which keeps an entity that something else targets —
+// so no special case is needed anywhere.
 type entitySource struct {
 	mu        sync.Mutex
 	clusterID string
@@ -44,6 +47,19 @@ type entitySource struct {
 	ready     bool
 	nodes     int
 	services  int
+	// segments are the overlay networks this cluster declares, snapshotted
+	// each successful manager cycle.
+	segments []segmentFacts
+}
+
+// segmentFacts is one overlay network reduced to what the graph carries: its
+// identity and the descriptive facts, never the measurements.
+type segmentFacts struct {
+	id       string
+	name     string
+	subnet   string
+	ingress  bool
+	internal bool
 }
 
 func newEntitySource() *entitySource { return &entitySource{} }
@@ -51,13 +67,14 @@ func newEntitySource() *entitySource { return &entitySource{} }
 // update records the cluster identity after a successful manager cycle.
 // Called with an empty clusterID when the node cannot see the cluster, which
 // withdraws the entity rather than freezing the last good snapshot.
-func (s *entitySource) update(clusterID, name string, nodes, services int) {
+func (s *entitySource) update(clusterID, name string, nodes, services int, segments []segmentFacts) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clusterID = clusterID
 	s.name = name
 	s.nodes = nodes
 	s.services = services
+	s.segments = segments
 	s.ready = clusterID != ""
 }
 
@@ -86,6 +103,35 @@ func (s *entitySource) Observe() (entity.Observation, bool) {
 			ID:         svcID,
 			Attributes: attrs,
 		}},
+	}
+
+	// The overlay segments this cluster declares. Emitted with their cluster
+	// edge or not at all: a segment nobody can attribute has no business in the
+	// graph, and the edge is what makes its provenance explicit.
+	for _, seg := range s.segments {
+		segID := map[string]any{"network.segment.id": seg.id}
+		segAttrs := map[string]any{"network.segment.name": seg.name}
+		if seg.subnet != "" {
+			segAttrs["network.segment.subnet"] = seg.subnet
+		}
+		// Ingress and internal are descriptive, never identity: an operator can
+		// create an internal overlay today and a routable one tomorrow, and it
+		// is the same segment throughout.
+		segAttrs["network.segment.ingress"] = seg.ingress
+		segAttrs["network.segment.internal"] = seg.internal
+
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type:       entity.TypeNetworkSegment,
+			ID:         segID,
+			Attributes: segAttrs,
+		})
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     entity.RelHasSegment,
+			FromType: entity.TypeServiceInstance,
+			FromID:   svcID,
+			ToType:   entity.TypeNetworkSegment,
+			ToID:     segID,
+		})
 	}
 
 	// monitors edge: agent → cluster. Without it the cluster floats with no

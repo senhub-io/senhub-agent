@@ -7,11 +7,24 @@ import (
 )
 
 // processEntitySource feeds the Toise entity rail with one "process" node per
-// monitored process plus a runs_on edge to the host. Identity is the Toise
-// contract pair {process.pid, process.creation.time}: a PID reused after the
-// original process exits is a *different* entity (the tracker emits a delete
-// for the old one and a state for the new), so the creation time is part of
-// the key, never an attribute.
+// monitored process plus a runs_on edge to the host.
+//
+// Identity is {host.id, process.pid, process.creation.time}. The pair without
+// the host was the contract until #741: a pid plus a creation instant is unique
+// on ONE machine, and collides the moment two hosts start a process with the
+// same pid at the same second — which is not exotic on a fleet booted from the
+// same image, where early pids are assigned in the same order at the same time.
+//
+// Scoping by host is the same repair applied to loopback endpoints (#713) and
+// to local databases (#740): an identity narrower than the observation domain
+// silently merges distinct things. It is also what lets the pid be published as
+// a telemetry join key at all — pointing a consumer at a pid that might belong
+// to another machine is a confident wrong answer, so the key waited for the
+// scope.
+//
+// The creation time stays in the key: a PID reused after the original process
+// exits is a *different* entity (the tracker emits a delete for the old one and
+// a state for the new), so it is part of the identity, never an attribute.
 //
 // It is only wired in inventory mode — when the operator named the processes
 // to watch (by_name / by_user). A pure top_n or unfiltered view is a resource
@@ -61,9 +74,18 @@ func (s *processEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
+	// No host id, no entities. The identity is scoped by it, and an unscoped
+	// process node is the collision this fixes — better a visible gap than
+	// nodes that merge across machines.
+	hostID, _ := s.hostID["host.id"].(string)
+	if hostID == "" {
+		return entity.Observation{}, false
+	}
+
 	obs := entity.Observation{}
 	for _, p := range s.procs {
 		id := map[string]any{
+			"host.id":               hostID,
 			"process.pid":           int64(p.pid),
 			"process.creation.time": p.createTime,
 		}
@@ -76,15 +98,13 @@ func (s *processEntitySource) Observe() (entity.Observation, bool) {
 			ID:         id,
 			Attributes: attrs,
 		})
-		if s.hostID != nil {
-			obs.Relations = append(obs.Relations, entity.Relation{
-				Type:     entity.RelRunsOn,
-				FromType: entity.TypeProcess,
-				FromID:   id,
-				ToType:   entity.TypeHost,
-				ToID:     s.hostID,
-			})
-		}
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     entity.RelRunsOn,
+			FromType: entity.TypeProcess,
+			FromID:   id,
+			ToType:   entity.TypeHost,
+			ToID:     s.hostID,
+		})
 	}
 	return obs, true
 }

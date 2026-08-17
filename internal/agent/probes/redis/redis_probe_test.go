@@ -1101,3 +1101,44 @@ func TestEntityObserver_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 		t.Errorf("expected no relations when agentID empty, got %d", len(got.Relations))
 	}
 }
+
+// Every datapoint must carry the identity of the entity it describes (#741).
+//
+// Without it a consumer holding a db entity has no key matching any series: it
+// can only guess from db.system.name plus an address, which stops working the
+// moment two databases of the same kind share a host — which is exactly the
+// collapse #740 was about.
+func TestBaseTags_CarryTheEntityIdentity(t *testing.T) {
+	p := &redisProbe{
+		cfg:       probeConfig{Host: "127.0.0.1", Port: 6379},
+		instance:  "127.0.0.1:6379",
+		entityObs: newEntityObserver(probeConfig{Host: "127.0.0.1", Port: 6379}, func() string { return "h-1" }),
+	}
+
+	var got string
+	for _, tag := range p.baseTags("overview") {
+		if tag.Key == "db.instance.id" {
+			got = tag.Value
+		}
+	}
+	if got == "" {
+		t.Fatal("no db.instance.id tag; a db entity cannot be joined to its series")
+	}
+	if want := p.entityObs.instanceID(); got != want {
+		t.Errorf("tag = %q, entity id = %q — the label must match the entity exactly", got, want)
+	}
+}
+
+// A blank identity must not be emitted: an empty label and the real one are two
+// series for one database.
+func TestBaseTags_OmitTheIdentityUntilItIsKnown(t *testing.T) {
+	p := &redisProbe{
+		cfg:       probeConfig{Host: "127.0.0.1", Port: 6379},
+		entityObs: &entityObserver{}, // nothing pinned
+	}
+	for _, tag := range p.baseTags("overview") {
+		if tag.Key == "db.instance.id" {
+			t.Errorf("emitted an empty identity tag: %+v", tag)
+		}
+	}
+}
