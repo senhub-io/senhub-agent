@@ -8,28 +8,36 @@ import (
 	"strings"
 )
 
-// managedBinaryUnitPath is the staged managed-binary path as it must appear
-// in a systemd ExecStart line: always a forward-slash Linux path, independent
-// of the build platform's separator. filepath.Join would yield backslashes on
-// a Windows test runner and corrupt the unit contract.
-func managedBinaryUnitPath() string { return managedBinaryDir + "/senhub-agent" }
+// systemBinaryUnitPath is the installed binary path as it must appear in a
+// systemd ExecStart line: always a forward-slash Linux path, independent of the
+// build platform's separator. filepath.Join would yield backslashes on a Windows
+// test runner and corrupt the unit contract.
+func systemBinaryUnitPath() string { return systemBinaryDir + "/" + systemBinaryName }
 
 // refreshedUnit renders the unit refresh-unit writes over the installed
-// one. It is the packaged hardened unit with three things reconciled
-// against what is already on disk:
+// one. It is the packaged hardened unit with the ExecStart reconciled against
+// what is already on disk, by four rules in order:
 //
 //   - User=/Group= are preserved: a legacy root install stays root
 //     instead of being switched to a possibly missing senhub user
 //     (217/USER crash loop, #575).
-//   - A non-canonical ExecStart whose binary still exists is preserved
+//   - An ExecStart pointing at the pre-0.5.4 managed binary is repointed at the
+//     system binary EVEN THOUGH that file still exists (#794). This is the one
+//     case where an existing binary is not respected, and it needs saying: the
+//     old path is not somewhere an operator chose, it is a layout we shipped and
+//     are migrating off. Without this rule every upgraded host would keep
+//     running the service-user-owned copy forever and the migration would
+//     silently never happen — refresh-unit's own preservation rule would see to
+//     that.
+//   - Any other non-canonical ExecStart whose binary still exists is preserved
 //     verbatim (with its WorkingDirectory=): CLI installs render their
 //     own ExecStart (custom binary path, --config-path, flags) and a
 //     refresh must not silently repoint them at the packaging path
 //     (#396).
 //   - A non-canonical ExecStart whose binary is gone (e.g. an installer
-//     invoked from /tmp, #576) is repointed at the staged managed
-//     binary while keeping its arguments, so refresh-unit remains the
-//     documented repair for a 203/EXEC unit.
+//     invoked from /tmp, #576) is repointed at the system binary while keeping
+//     its arguments, so refresh-unit remains the documented repair for a
+//     203/EXEC unit.
 //
 // binaryExists abstracts the filesystem check so the decision logic is
 // unit-testable.
@@ -43,11 +51,18 @@ func refreshedUnit(installed string, binaryExists func(string) bool) string {
 	}
 
 	binPath, args := splitExecStartLine(execLine)
-	if !binaryExists(unescapeSystemdPath(binPath)) {
+	switch {
+	case unescapeSystemdPath(binPath) == legacyManagedBinaryPath():
 		if args == "" {
 			return unit
 		}
-		execLine = "ExecStart=" + managedBinaryUnitPath() + " " + args
+		execLine = "ExecStart=" + systemBinaryUnitPath() + " " + args
+		workDir = ""
+	case !binaryExists(unescapeSystemdPath(binPath)):
+		if args == "" {
+			return unit
+		}
+		execLine = "ExecStart=" + systemBinaryUnitPath() + " " + args
 		workDir = ""
 	}
 

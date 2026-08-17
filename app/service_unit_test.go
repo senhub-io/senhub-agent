@@ -162,15 +162,19 @@ func TestHardenedSystemdScript_StartLimitDirectivesLiveInUnitSection(t *testing.
 	}
 }
 
-// The packaged ExecStart must reference the staged managed binary — the
-// path install stages to and auto-update replaces in place — never an
-// invocation path that can vanish (203/EXEC, #576). This also keeps
-// package installs and refresh-unit's fallback path converged (#396).
-func TestPackagedUnit_ExecStartPointsAtManagedBinary(t *testing.T) {
+// The packaged ExecStart must reference the installed system binary — a
+// root-owned path the daemon cannot write (#794) — never an invocation path
+// that can vanish (203/EXEC, #576). This also keeps package installs and
+// refresh-unit's fallback path converged (#396).
+func TestPackagedUnit_ExecStartPointsAtSystemBinary(t *testing.T) {
 	binPath, _ := splitExecStartLine(packagedExecStartLine())
-	want := managedBinaryUnitPath()
+	want := systemBinaryUnitPath()
 	if binPath != want {
-		t.Errorf("packaged ExecStart binary = %q, want the staged managed path %q", binPath, want)
+		t.Errorf("packaged ExecStart binary = %q, want the system binary path %q", binPath, want)
+	}
+	if strings.HasPrefix(binPath, "/var/lib/") {
+		t.Errorf("packaged ExecStart points into the state directory (%q): the daemon can write there, "+
+			"so it could replace what systemd executes and persist across a restart (#794)", binPath)
 	}
 }
 
@@ -190,9 +194,9 @@ func TestLinuxSystemdScript_SelectsTemplatePerUser(t *testing.T) {
 func TestRootSystemdScript_StartLimitDirectivesLiveInUnitSection(t *testing.T) {
 	unit := renderSystemdScript(t,
 		rootSystemdScript,
-		managedBinaryUnitPath(),
+		systemBinaryUnitPath(),
 		[]string{"run", "--config-path", "/etc/senhub-agent/agent-config.yaml"},
-		managedBinaryDir,
+		systemBinaryDir,
 	)
 	sections := unitSections(unit)
 	for _, directive := range []string{"StartLimitIntervalSec=", "StartLimitBurst="} {
@@ -220,9 +224,9 @@ func TestRootSystemdScript_StartLimitDirectivesLiveInUnitSection(t *testing.T) {
 func TestRootSystemdScript_NoUserDirectiveAndNoCapabilityDrops(t *testing.T) {
 	unit := renderSystemdScript(t,
 		rootSystemdScript,
-		managedBinaryUnitPath(),
+		systemBinaryUnitPath(),
 		[]string{"run"},
-		managedBinaryDir,
+		systemBinaryDir,
 	)
 	for _, line := range strings.Split(unit, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -237,22 +241,22 @@ func TestRootSystemdScript_NoUserDirectiveAndNoCapabilityDrops(t *testing.T) {
 	}
 }
 
-// After install stages the binary (#576), the unit rendered for BOTH
-// service users references the staged /var/lib path — never the
-// installer's invocation path.
-func TestInstallUnit_ExecStartPointsAtStagedBinary_BothUsers(t *testing.T) {
-	staged := managedBinaryUnitPath()
+// After install places the binary (#576, #794), the unit rendered for BOTH
+// service users references the root-owned system path — never the installer's
+// invocation path, and never a directory the daemon can write.
+func TestInstallUnit_ExecStartPointsAtSystemBinary_BothUsers(t *testing.T) {
+	staged := systemBinaryUnitPath()
 	args := []string{"run", "--config-path", "/etc/senhub-agent/agent-config.yaml"}
 	for _, user := range []string{defaultServiceUser, rootServiceUser} {
 		t.Run(user, func(t *testing.T) {
-			unit := renderSystemdScript(t, linuxSystemdScript(user), staged, args, managedBinaryDir)
+			unit := renderSystemdScript(t, linuxSystemdScript(user), staged, args, systemBinaryDir)
 			execLine, workDir := installedExecStart(unit)
 			binPath, _ := splitExecStartLine(execLine)
 			if binPath != staged {
-				t.Errorf("ExecStart binary = %q, want the staged managed path %q", binPath, staged)
+				t.Errorf("ExecStart binary = %q, want the system binary path %q", binPath, staged)
 			}
-			if workDir != "WorkingDirectory="+managedBinaryDir {
-				t.Errorf("WorkingDirectory = %q, want %q", workDir, "WorkingDirectory="+managedBinaryDir)
+			if workDir != "WorkingDirectory="+systemBinaryDir {
+				t.Errorf("WorkingDirectory = %q, want %q", workDir, "WorkingDirectory="+systemBinaryDir)
 			}
 		})
 	}
