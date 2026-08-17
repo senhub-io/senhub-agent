@@ -251,7 +251,7 @@ assert cache.timeSeries[keyB] exists
 assert keyA != keyB
 
 // Endpoint belongs in metadata, not in the key
-assert cache.timeSeries[keyA].Tags["endpoint"] == "https://lb-me5024mgmt1.batistyl.fr"
+assert cache.timeSeries[keyA].Tags["endpoint"] == "https://redfish-controller-1.example.com"
 ```
 
 ---
@@ -264,12 +264,12 @@ probes:
   - name: array_production    # Probe 1
     type: redfish
     params:
-      endpoint: "https://lb-me5024mgmt1.batistyl.fr"
+      endpoint: "https://redfish-controller-1.example.com"
 
   - name: array_backup        # Probe 2 (FUTURE — a different device)
     type: redfish
     params:
-      endpoint: "https://lb-me5024mgmt2.batistyl.fr"  # A different endpoint
+      endpoint: "https://redfish-controller-2.example.com"  # A different endpoint
 ```
 
 **Uniqueness question:**
@@ -292,8 +292,8 @@ assert len(cache.timeSeries) == 48
 // The keys are distinct per probe name
 keyProd := "array_production:hardware.storage.drive.health:controller=A:drive_id=0"
 keyBackup := "array_backup:hardware.storage.drive.health:controller=A:drive_id=0"
-assert cache.timeSeries[keyProd].Tags["endpoint"] == "https://lb-me5024mgmt1.batistyl.fr"
-assert cache.timeSeries[keyBackup].Tags["endpoint"] == "https://lb-me5024mgmt2.batistyl.fr"
+assert cache.timeSeries[keyProd].Tags["endpoint"] == "https://redfish-controller-1.example.com"
+assert cache.timeSeries[keyBackup].Tags["endpoint"] == "https://redfish-controller-2.example.com"
 ```
 
 ---
