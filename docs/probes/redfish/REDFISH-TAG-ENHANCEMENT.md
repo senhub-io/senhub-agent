@@ -37,7 +37,7 @@ Every metric now includes a `collection` tag that categorizes metrics into logic
     "controller_id": "controller_a", 
     "controller_name": "controller_a",
     "serial_number": "CN0TYNP0SGW004AS000NA00",
-    "endpoint": "https://lb-me5024mgmt1.batistyl.fr"
+    "endpoint": "https://redfish-controller-1.example.com"
   }
 }
 ```
@@ -50,7 +50,7 @@ Every metric now includes a `collection` tag that categorizes metrics into logic
     "collection": "thermal",
     "sensor_name": "Controller A Sensor 4",
     "controller": "A",
-    "endpoint": "https://lb-me5024mgmt1.batistyl.fr"
+    "endpoint": "https://redfish-controller-1.example.com"
   }
 }
 ```
