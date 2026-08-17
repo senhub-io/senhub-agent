@@ -73,6 +73,7 @@ func attrMap(rs *tracepb.ResourceSpans) map[string]string {
 
 func testEnricher() *relayEnricher {
 	return buildRelayEnricher(
+		true,
 		TracesSignal{RelayEnrichment: true},
 		map[string]string{"tenant": "acme", "site": "paris"},
 		"prod",
@@ -141,7 +142,7 @@ func TestTraceEnricher_RelayFirstRelayWins(t *testing.T) {
 // TestTraceEnricher_ActiveWithRelayOnly: relay identity alone (no global_tags)
 // keeps the enricher active and stamps the relay set — the active() fix (#698).
 func TestTraceEnricher_ActiveWithRelayOnly(t *testing.T) {
-	e := buildRelayEnricher(TracesSignal{RelayEnrichment: true}, nil, "", "agent-host-id", "agent-host", "agent-instance-1")
+	e := buildRelayEnricher(true, TracesSignal{RelayEnrichment: true}, nil, "", "agent-host-id", "agent-host", "agent-instance-1")
 	if !e.active() {
 		t.Fatal("enricher with relay identity but no global_tags must be active")
 	}
@@ -154,7 +155,7 @@ func TestTraceEnricher_ActiveWithRelayOnly(t *testing.T) {
 // TestTraceEnricher_RelayOmittedWhenHostIDEmpty: a transient host-info failure
 // (empty host.id) omits the relay set rather than stamping an empty join key.
 func TestTraceEnricher_RelayOmittedWhenHostIDEmpty(t *testing.T) {
-	e := buildRelayEnricher(TracesSignal{RelayEnrichment: true}, nil, "", "", "agent-host", "agent-instance-1")
+	e := buildRelayEnricher(true, TracesSignal{RelayEnrichment: true}, nil, "", "", "agent-host", "agent-instance-1")
 	out := e.enrichSpans([]*tracepb.ResourceSpans{rsWithResource(map[string]string{"service.name": "checkout"})})
 	got := attrMap(out[0])
 	if _, ok := got[relayHostIDKey]; ok {
@@ -188,6 +189,7 @@ func TestTraceEnricher_NeverOverwritesEmitterValues(t *testing.T) {
 
 func TestTraceEnricher_PerSourceOverride(t *testing.T) {
 	e := buildRelayEnricher(
+		true,
 		TracesSignal{
 			RelayEnrichment: true,
 			RelayTenantOverrides: []TraceTenantOverride{
@@ -211,7 +213,7 @@ func TestTraceEnricher_PerSourceOverride(t *testing.T) {
 }
 
 func TestTraceEnricher_DisabledIsVerbatimNoCopy(t *testing.T) {
-	e := buildRelayEnricher(TracesSignal{RelayEnrichment: false}, map[string]string{"tenant": "acme"}, "", "agent-host-id", "agent-host", "agent-instance-1")
+	e := buildRelayEnricher(false, TracesSignal{RelayEnrichment: false}, map[string]string{"tenant": "acme"}, "", "agent-host-id", "agent-host", "agent-instance-1")
 	in := []*tracepb.ResourceSpans{rsWithResource(map[string]string{"service.name": "x"})}
 	out := e.enrichSpans(in)
 	// Same slice, same backing elements — no allocation, true pass-through.

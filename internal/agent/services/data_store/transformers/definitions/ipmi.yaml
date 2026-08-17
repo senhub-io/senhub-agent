@@ -84,8 +84,8 @@ metrics:
     description: "Power supply status: 1 = ok, 0 = fault or not available"
     otel:
       name: hw.status
-      unit: "{status}"
-      type: gauge
+      unit: "1"
+      type: updowncounter
       attributes:
         hw.type: power_supply
     tag_to_attribute:
@@ -104,8 +104,8 @@ metrics:
     description: "Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable"
     otel:
       name: hw.status
-      unit: "{status}"
-      type: gauge
+      unit: "1"
+      type: updowncounter
     tag_to_attribute:
       hardware.component: hw.id
 
