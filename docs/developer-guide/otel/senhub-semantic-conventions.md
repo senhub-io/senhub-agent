@@ -1,74 +1,74 @@
 # SenHub OpenTelemetry Semantic Conventions
 
-**Statut :** WIP — document vivant, mis à jour à chaque lot de probes
-**Dernière mise à jour :** 2026-05-14 (Lot 5: databases)
-**Audience :** développeurs de probes, mainteneurs des mappers
+**Status:** WIP — a living document, updated with each batch of probes
+**Last updated:** 2026-05-14 (batch 5: databases)
+**Audience:** probe developers, mapper maintainers
 
-## 0. Objet
+## 0. Purpose
 
-Ce document liste les **conventions de nommage OTel** adoptées par SenHub Agent pour chaque métrique exposée. Il couvre :
+This document lists the **OTel naming conventions** SenHub Agent adopts for every metric it exposes. It covers:
 
-1. Les métriques qui adoptent **telles quelles** les conventions OTel officielles (namespace `system.*`, `http.*`, etc.)
-2. Les extensions propriétaires sous namespace **`senhub.*`** pour les domaines non couverts (netscaler, citrix, veeam…) ou les métriques spécifiques (Windows Perfmon, Linux-specific…) avec justification et références consultées
-3. Les harmonisations (ex: `cpu.mode=system` partagé Linux `system` et Windows `privileged`)
+1. Metrics that adopt the official OTel conventions **as they are** (`system.*`, `http.*` namespaces, and so on)
+2. Proprietary extensions under the **`senhub.*`** namespace for domains OTel does not cover (netscaler, citrix, veeam…) or for platform-specific metrics (Windows Perfmon, Linux-specific…), each with its justification and the references consulted
+3. Harmonisations (e.g. `cpu.mode=system` shared between Linux `system` and Windows `privileged`)
 
-**Principes directeurs :**
-- **OTel first** : adopter une convention existante plutôt que créer. Vérifier semconv officiel, OTel Collector contrib receivers, conventions vendeurs de facto (Grafana Labs, VictoriaMetrics, prometheus-community) avant de définir.
-- **Stabilité** : une fois publiée, une convention ne bouge plus (les dashboards en dépendent). Évolutions = major version.
-- **Traçabilité** : chaque extension `senhub.*` documentée ici avec justification + lien(s).
+**Guiding principles:**
+- **OTel first**: adopt an existing convention rather than invent one. Check the official semconv, the OTel Collector contrib receivers, and de-facto vendor conventions (Grafana Labs, VictoriaMetrics, prometheus-community) before defining anything.
+- **Stability**: once published, a convention does not move — dashboards depend on it. Changes mean a major version.
+- **Traceability**: every `senhub.*` extension is documented here with its justification and links.
 
-## 1. Sources de référence
+## 1. Reference sources
 
-Consultées pour chaque décision :
+Consulted for each decision:
 
-- [OTel Semantic Conventions](https://github.com/open-telemetry/semantic-conventions) (officiel)
-- [OTEP 0119 - Standard System Metrics](https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md) (pour OS-specific)
+- [OTel Semantic Conventions](https://github.com/open-telemetry/semantic-conventions) (official)
+- [OTEP 0119 - Standard System Metrics](https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md) (for OS-specific metrics)
 - [OTel Collector contrib receivers](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver)
 - [prometheus-community exporters](https://github.com/prometheus-community) (node_exporter, windows_exporter, redfish_exporter…)
-- Documentation vendeurs (Grafana Labs integrations, VictoriaMetrics, DataDog)
+- Vendor documentation (Grafana Labs integrations, VictoriaMetrics, DataDog)
 
-## 2. Règles de conversion OTel → Prometheus
+## 2. OTel → Prometheus conversion rules
 
-Appliquées par le mapper Prometheus conformément à la [spec OTel compatibility](https://opentelemetry.io/docs/specs/otel/compatibility/prometheus_and_openmetrics/) :
+Applied by the Prometheus mapper per the [OTel compatibility spec](https://opentelemetry.io/docs/specs/otel/compatibility/prometheus_and_openmetrics/):
 
-1. Préfixe `senhub_` ajouté au nom (tous namespaces confondus)
-2. Dots → underscores dans noms et attributs
-3. Caractères non conformes à `[a-zA-Z_:][a-zA-Z0-9_:]*` remplacés par `_`, underscores consécutifs dédupliqués
-4. Suffixe d'unité : `s` → `_seconds`, `By` → `_bytes`, `Hz` → `_hertz`, `1` → `_ratio`, unités `{...}` en accolades → supprimées, `foo/bar` → `_foo_per_bar`
-5. Counter reçoit `_total` si absent
-6. Utilisation (`unit: 1`) : le mapper **convertit automatiquement** les valeurs 0-100 du cache en ratio 0-1
+1. `senhub_` prefix added to the name (all namespaces)
+2. dots → underscores, in names and attributes
+3. characters outside `[a-zA-Z_:][a-zA-Z0-9_:]*` replaced by `_`, consecutive underscores collapsed
+4. unit suffix: `s` → `_seconds`, `By` → `_bytes`, `Hz` → `_hertz`, `1` → `_ratio`, annotation units in braces `{...}` → dropped, `foo/bar` → `_foo_per_bar`
+5. a counter gets `_total` if it does not already end in it
+6. utilisation (`unit: 1`): the mapper **converts automatically**, turning the cache's 0-100 values into a 0-1 ratio
 
-Exemples :
+Examples:
 | OTel | Prometheus |
 |---|---|
 | `system.cpu.time` / counter / `s` / `cpu.mode=user` | `senhub_system_cpu_time_seconds_total{cpu_mode="user"}` |
-| `system.cpu.utilization` / gauge / `1` / `cpu.mode=user` | `senhub_system_cpu_utilization_ratio{cpu_mode="user"}` (valeur ÷ 100) |
+| `system.cpu.utilization` / gauge / `1` / `cpu.mode=user` | `senhub_system_cpu_utilization_ratio{cpu_mode="user"}` (value ÷ 100) |
 | `senhub.system.cpu.queue_length` / gauge / `{thread}` | `senhub_system_cpu_queue_length` |
 | `system.linux.cpu.load_1m` / gauge / `{thread}` | `senhub_system_linux_cpu_load_1m` |
 
-## 2bis. Conformité OTel stricte — principe "mapper-side"
+## 2bis. Strict OTel compliance — the "mapper-side" principle
 
-**La conformité OTel vit dans le mapper, pas dans le cache.** Quand le probe émet un data point dont la sémantique OTel stricte nécessite un **autre format** en sortie (ex: un enum encodé en valeur numérique doit devenir N data points per-state), le mapper effectue la transformation **au moment de la sérialisation vers le format cible** (Prometheus aujourd'hui, OTLP native demain).
+**OTel compliance lives in the mapper, not in the cache.** When a probe emits a data point whose strict OTel semantics require a **different shape** on the way out — an enum encoded as a numeric value has to become N per-state data points, for instance — the mapper performs that transformation **at serialization time, towards the target format** (Prometheus today, native OTLP tomorrow).
 
-**Conséquence pour les futurs exports** : quand un mapper OTLP native sera ajouté (Phase 3), il émettra du strict OTel **sans aucune correction à faire** — les déviations sont déjà corrigées en amont par la logique du mapper, qui est partagée entre les formats OTel-aware (Prometheus, OTLP, Zabbix-OTel, etc.).
+**What this buys future exports**: when a native OTLP mapper is added (Phase 3) it will emit strict OTel **with nothing to correct** — the deviations are already handled upstream by mapper logic shared across the OTel-aware formats (Prometheus, OTLP, Zabbix-OTel, and so on).
 
-**Mécanisme documenté** : le bloc `otel.expand` dans les YAML transformers déclare une expansion enum → per-state. Le mapper lit cette directive et produit les N data points appropriés à chaque scrape. Voir `IMPLEMENTATION-PLAN.md §4` pour le schéma exact.
+**The documented mechanism**: the `otel.expand` block in the YAML transformers declares an enum → per-state expansion. The mapper reads that directive and produces the appropriate N data points on each scrape. See `IMPLEMENTATION-PLAN.md §4` for the exact schema.
 
-Cas typique : toutes les métriques `hw.status` (santé hardware) suivent ce pattern — 1 data point dans le cache (code enum depuis lookup) → N data points à la sérialisation, un par valeur de `hw.state`.
+The typical case: every `hw.status` metric (hardware health) follows this pattern — 1 data point in the cache (an enum code from a lookup) → N data points at serialization, one per `hw.state` value.
 
-## 3. Labels systématiques
+## 3. Labels present on everything
 
-Sur **toute** métrique émise par une probe, le mapper Prometheus ajoute :
+On **every** metric a probe emits, the Prometheus mapper adds:
 
 | Label | Source | Exemple |
 |---|---|---|
-| `probe_name` | nom d'instance (config) | `cpu-linux-primary` |
-| `probe_type` | type registry | `cpu` |
-| *labels custom_tags* | si `include_probe_tags: true` | `env=prod, site=paris` |
+| `probe_name` | instance name (config) | `cpu-linux-primary` |
+| `probe_type` | registry type | `cpu` |
+| *custom_tags labels* | when `include_probe_tags: true` | `env=prod, site=paris` |
 
-Le label `instance` (réservé scrape Prometheus) n'est **jamais** émis par l'agent.
+The `instance` label (reserved by the Prometheus scrape) is **never** emitted by the agent.
 
-## 4. Conventions adoptées par probe
+## 4. Conventions adopted, per probe
 
 ### 4.1 Probe `cpu` (système)
 
