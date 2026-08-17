@@ -11,7 +11,7 @@ J'ai créé une collection Postman pour tester l'API Redfish. Cette collection v
 
 1. Importez le fichier `redfish_postman_collection.json` dans Postman
 2. Dans la collection, modifiez les variables suivantes:
-   - `hostname` : l'adresse de votre serveur (par exemple `lb-me5024mgmt1.batistyl.fr`)
+   - `hostname` : l'adresse de votre serveur (par exemple `redfish-controller-1.example.com`)
    - `username` : votre nom d'utilisateur pour l'authentification
    - `password` : votre mot de passe
 

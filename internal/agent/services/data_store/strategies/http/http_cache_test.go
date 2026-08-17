@@ -349,7 +349,7 @@ func TestNoCollisionsInRealisticScenarios(t *testing.T) {
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"}, // Different probe name
 				{Key: "drive_id", Value: "disk.bay.0"},
-				{Key: "endpoint", Value: "https://lb-me5024mgmt1.batistyl.fr"},
+				{Key: "endpoint", Value: "https://redfish-controller-1.example.com"},
 			},
 		},
 		// Probe 2: "baie_production"
@@ -359,7 +359,7 @@ func TestNoCollisionsInRealisticScenarios(t *testing.T) {
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "baie_production"}, // Different probe name
 				{Key: "drive_id", Value: "disk.bay.0"},
-				{Key: "endpoint", Value: "https://lb-me5024mgmt1.batistyl.fr"}, // Same endpoint
+				{Key: "endpoint", Value: "https://redfish-controller-1.example.com"}, // Same endpoint
 			},
 		},
 	}
