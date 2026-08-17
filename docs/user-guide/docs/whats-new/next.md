@@ -633,6 +633,39 @@ only meaningful inside one scope and would collide with its unzoned twin.
 
 ## Fixed
 
+### Outbound dependency discovery needs root, and now says so
+
+`entities.depends_on_enabled` derives "service A depends on B:5432" by mapping
+each outbound socket to the process that owns it. On Linux that mapping reads
+`/proc/<pid>/fd`, which only the owner may read — so the non-root daemon this
+release makes standard sees every other service's connections with no owner at
+all, and can emit nothing for them.
+
+Measured on a host with the agent running as `senhub`:
+
+| Established sockets | Attributed to a process |
+|---|---|
+| 45, seen as root | 45 |
+| 45, seen as the service account | 0 |
+
+The rail did not fail — it reported that nothing depended on anything, and a
+topology consumer retires dependencies by absence, so upgrading with this option
+enabled would have removed every dependency edge the consumer held.
+
+Three things changed. A scrape that can attribute no socket but the agent's own
+is now reported as a **failed** observation rather than an empty one, so the
+consumer keeps its last good view instead of being told the dependencies ended;
+what eventually expires is marked `unmonitored`, not `terminated`. The agent
+logs the situation once at startup, naming the cause and the remedy. And the
+debounce became symmetric: an edge that takes three scrapes to appear now
+survives three missed ones, where a single miss used to retract it — which is
+what made an occasional missed observation reach the graph as an edge flapping
+in and out.
+
+If you run this option and want the whole host's dependencies, the agent has to
+run as root. Left as-is on a non-root install, the rail reports only the agent's
+own outbound dependencies, and says so in the log rather than silently. (#808)
+
 ### `chrony` produced no measurement at all, on any host
 
 Reported from the field on 0.5.3:
