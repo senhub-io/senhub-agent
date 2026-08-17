@@ -20,6 +20,11 @@ import (
 // rather than failing, so a single misconfigured probe doesn't break the
 // whole /metrics output.
 //
+// resource carries the agent's resource attributes, emitted once as the
+// standard target_info series so an entity in the topology graph can be pivoted
+// to the series scraped straight from this agent (#745). Nil for callers that
+// have no resource to declare.
+//
 // Returns the number of OtelRecord lines written and the first error from
 // the io.Writer (if any).
 func WriteExposition(
@@ -29,6 +34,7 @@ func WriteExposition(
 	opts otelmapper.ResolveOptions,
 	w io.Writer,
 	errorHandler func(metric otelmapper.CacheMetric, err error),
+	resource map[string]string,
 ) (int, error) {
 	metrics := reader.GetAll()
 	// Capacity is a lower-bound estimate; expand directives can multiply this
@@ -52,7 +58,7 @@ func WriteExposition(
 		allRecords = append(allRecords, recs...)
 	}
 
-	if err := SerializeToTextExposition(allRecords, w, SerializeOptions{}); err != nil {
+	if err := SerializeToTextExposition(allRecords, w, SerializeOptions{Resource: resource}); err != nil {
 		return len(allRecords), err
 	}
 	return len(allRecords), nil

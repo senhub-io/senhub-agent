@@ -867,9 +867,10 @@ func (s *OTLPSyncStrategy) Config() Config {
 // host-info failure yields an empty host.id and the relay set is simply
 // omitted.
 //
-// The on/off switch is still read from signals.traces.relay_enrichment
-// because that is where it was introduced; it now governs every relayed
-// signal, which the config key name no longer conveys (#766).
+// The on/off switch comes from the relay-level `relay.enrichment` key, which
+// names what it actually governs. `signals.traces.relay_enrichment` is still
+// honoured when the relay key is unset, because a host that turned it off there
+// meant "do not enrich what I relay" and that intent survives the rename (#766).
 func (s *OTLPSyncStrategy) relayEnricher() *relayEnricher {
 	if s.enricher != nil {
 		return s.enricher
@@ -878,6 +879,6 @@ func (s *OTLPSyncStrategy) relayEnricher() *relayEnricher {
 	if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
 		relayHostID, relayHostName = hi.ID, hi.Name
 	}
-	s.enricher = buildRelayEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
+	s.enricher = buildRelayEnricher(s.cfg.Relay.Enrichment, s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
 	return s.enricher
 }

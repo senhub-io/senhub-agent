@@ -19,6 +19,15 @@ type SerializeOptions struct {
 	// to each metric line. Most Prometheus users want this OFF (the scraper
 	// records scrape time). OFF by default.
 	IncludeTimestamp bool
+	// Resource carries the agent's resource attributes, emitted once as the
+	// standard target_info series so a scraped metric can be joined back to
+	// the host and agent that produced it (#745). Empty = no target_info.
+	//
+	// These are deliberately NOT added as per-datapoint labels: the
+	// entity/telemetry contract keeps identity on the resource, and promoting
+	// it would put that cardinality on every series of every operator who
+	// scrapes the agent.
+	Resource map[string]string
 }
 
 // SerializeToTextExposition writes the Prometheus text exposition format v0.0.4.
@@ -28,6 +37,9 @@ type SerializeOptions struct {
 //
 // Reference: https://prometheus.io/docs/instrumenting/exposition_formats/
 func SerializeToTextExposition(records []otelmapper.OtelRecord, w io.Writer, opts SerializeOptions) error {
+	if err := writeTargetInfo(w, opts.Resource); err != nil {
+		return err
+	}
 	// Group records by their final Prometheus metric name. Two OTel metrics
 	// collapsed into the same name (common pattern — e.g. hw.status emitted
 	// from drive.health AND drive.failure_predicted) are merged here.
