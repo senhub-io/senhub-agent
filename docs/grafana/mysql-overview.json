@@ -12,7 +12,7 @@
         "label": "Instance",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-        "query": "label_values(senhub_db_up_ratio{db_system_name=\"mysql\"}, instance)",
+        "query": "label_values(senhub_db_up{db_system_name=\"mysql\"}, instance)",
         "refresh": 1,
         "multi": true,
         "includeAll": true,
@@ -26,7 +26,7 @@
       "type": "stat", "id": 10, "title": "Up",
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "min(senhub_db_up_ratio{db_system_name=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "min(senhub_db_up{db_system_name=\"mysql\",instance=~\"$instance\"})", "instant": true }],
       "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
     },
@@ -50,7 +50,7 @@
       "type": "stat", "id": 13, "title": "Replication health",
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "min(senhub_db_replication_health_ratio{db_system_name=\"mysql\",instance=~\"$instance\"})", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "min(senhub_db_replication_health{db_system_name=\"mysql\",instance=~\"$instance\"})", "instant": true }],
       "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "UNHEALTHY", "color": "red" }, "1": { "text": "HEALTHY", "color": "green" } } }] } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background" }
     },

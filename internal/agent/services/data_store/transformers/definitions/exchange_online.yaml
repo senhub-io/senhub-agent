@@ -19,7 +19,7 @@ metrics:
     description: "1 when the Microsoft 365 reporting API answered this cycle, else 0"
     otel:
       name: senhub.exchange_online.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "exchange_online_service_health"
@@ -31,7 +31,7 @@ metrics:
     description: "Exchange service-health status (Healthy=2, Degraded=1, Error/other=0)"
     otel:
       name: senhub.exchange_online.service.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       service_display_name: senhub.exchange_online.service.display_name

@@ -22,7 +22,7 @@ metrics:
     lookup: "smart.disk.health"
     otel:
       name: smart.disk.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       smart.device: smart.disk.device

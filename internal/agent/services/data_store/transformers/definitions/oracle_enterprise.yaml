@@ -21,7 +21,7 @@ metrics:
     description: "1 when the Oracle instance answered this cycle, else 0"
     otel:
       name: senhub.oracle_enterprise.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════

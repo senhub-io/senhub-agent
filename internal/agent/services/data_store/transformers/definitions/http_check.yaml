@@ -19,7 +19,7 @@ metrics:
     description: "1 when the target answered with the expected status (and content, if configured)"
     otel:
       name: senhub.httpcheck.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       target: httpcheck.target
@@ -143,7 +143,7 @@ metrics:
     description: "1 when the leaf TLS certificate is currently valid (not expired), 0 otherwise"
     otel:
       name: senhub.httpcheck.tls.valid
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       target: httpcheck.target
@@ -158,7 +158,7 @@ metrics:
     description: "1 when the configured content_match regexp matched the response body"
     otel:
       name: senhub.httpcheck.content.match
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       target: httpcheck.target

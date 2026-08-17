@@ -19,7 +19,7 @@ metrics:
     description: "1 when the package backend (apt, dnf/yum, Windows Update Agent) answered the update query, 0 when it failed or the platform is unsupported"
     otel:
       name: senhub.os.updates.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       package_manager: os.package_manager
@@ -58,7 +58,7 @@ metrics:
     description: "1 when the OS reports a pending reboot (package-triggered on Linux, Windows Update pending reboot on Windows), 0 otherwise"
     otel:
       name: senhub.os.updates.reboot_required
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       package_manager: os.package_manager

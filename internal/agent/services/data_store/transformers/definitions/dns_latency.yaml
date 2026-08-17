@@ -16,7 +16,7 @@ metrics:
     description: "1 when the lookup returned at least one answer within the timeout"
     otel:
       name: senhub.dns.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       name: dns.question.name

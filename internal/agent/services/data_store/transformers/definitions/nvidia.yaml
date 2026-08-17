@@ -20,7 +20,7 @@ metrics:
     description: "1 when nvidia-smi returned data for this GPU, 0 when nvidia-smi is absent or failed"
     otel:
       name: senhub.nvidia.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       gpu.index: gpu.index
