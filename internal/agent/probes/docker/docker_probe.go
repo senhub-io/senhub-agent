@@ -57,6 +57,12 @@ type dockerProbe struct {
 	entitySrc    *dockerEntitySource
 	// newClient allows tests to inject a replacement transport.
 	newClient func() *http.Client
+	// cgroups reads container counters straight from the kernel when the
+	// socket is unavailable (#797). Nil disables the fallback.
+	cgroups *cgroupReader
+	// socketWarned keeps the "falling back to cgroups" explanation to once per
+	// probe lifetime instead of once per cycle.
+	socketWarned bool
 }
 
 // containerListItem is the shape of one element in GET /containers/json.
@@ -169,6 +175,7 @@ func NewDockerProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		entitySrc:    &dockerEntitySource{},
 	}
 	p.SetProbeType(ProbeType)
+	p.cgroups = newCgroupReader("")
 	// Containers are distinct entities, not host-local: declare the real
 	// source so the poller registers it on Start.
 	p.SetEntitySource(p.entitySrc)
@@ -257,13 +264,16 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	containers, socketOK, err := p.listContainers()
-	if err != nil {
-		// Socket unreachable — not a fatal collection error: emit nothing and
-		// let the scheduler retry. The absence of series tells PRTG the sensor
-		// is down; a persistent failure will show in the agent's self-metrics.
-		return nil, fmt.Errorf("docker: listing containers: %w", err)
-	}
-	if !socketOK {
+	if err != nil || !socketOK {
+		// The socket is unreachable. On a hardened non-root install that is the
+		// NORMAL state — /var/run/docker.sock is root:docker 0660 — so before
+		// giving up, read what the kernel exposes without any privilege.
+		if points, ok := p.collectFromCgroups(now, err); ok {
+			return points, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("docker: listing containers: %w", err)
+		}
 		return nil, nil
 	}
 
@@ -288,7 +298,7 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 	// Update entity cache from the live container list (no extra API call needed).
 	p.entitySrc.update(containers)
 
-	var points []data_store.DataPoint
+	points := p.sourcePoints(sourceSocket, now)
 	for _, res := range results {
 		points = append(points, p.buildDatapoints(res, now)...)
 	}

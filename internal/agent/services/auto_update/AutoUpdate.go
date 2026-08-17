@@ -60,6 +60,11 @@ type AutoUpdateConfig struct {
 	ConfigSource ConfigSource
 	Logger       *logger.Logger
 	DryRun       bool
+	// OperatorDriven marks an updater built by the `senhub-agent update` CLI,
+	// which runs as root at the operator's request. Only such an updater may
+	// replace the binary on Linux; the in-process periodic checker inside the
+	// daemon must not (#794).
+	OperatorDriven bool
 }
 
 type autoUpdate struct {
@@ -68,6 +73,9 @@ type autoUpdate struct {
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
 	dryRun       bool
+	// operatorDriven is true for the root-run `senhub-agent update` CLI and
+	// false for the daemon's periodic checker. See selfApplyRefusal.
+	operatorDriven bool
 	// msiUpgradeLaunched is set when an MSI-managed update handed the upgrade
 	// to msiexec. msiexec stops+restarts the service itself, so the periodic
 	// checker must NOT self-exit (which would race the installer). Accessed by
@@ -108,6 +116,8 @@ func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
 		logger:       moduleLogger,
 		httpClient:   httpClient,
 		dryRun:       config.DryRun,
+
+		operatorDriven: config.OperatorDriven,
 	}
 }
 
@@ -287,6 +297,17 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 			Err(err).
 			Msg("Failed to generate binary URL")
 		return false, err
+	}
+
+	// Refuse to replace the binary from inside the daemon where the platform
+	// does not allow it. Checked BEFORE the download: there is no point
+	// fetching an artifact we will not install, and an hourly download that
+	// always ends in a permission error is the failure #377 described.
+	if refusal := a.selfApplyRefusal(); refusal != "" {
+		a.logger.Info().
+			Str("available_version", expectedVersion).
+			Msg(refusal)
+		return false, nil
 	}
 
 	a.logger.Debug().
