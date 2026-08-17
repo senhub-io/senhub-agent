@@ -83,6 +83,7 @@ func (p *swarmProbe) overlayPoints(networks []network, services []service, allTa
 				tags.Tag{Key: "swarm.service.name", Value: s.Spec.Name},
 				tags.Tag{Key: "swarm.network.id", Value: n.ID},
 				tags.Tag{Key: "swarm.network.name", Value: n.Name},
+				tags.Tag{Key: "network.segment.id", Value: segmentID(n.ID)},
 				tags.Tag{Key: "metric_type", Value: "network"},
 			)
 			// The service's virtual IP on this segment is what its name
@@ -101,6 +102,10 @@ func (p *swarmProbe) overlayPoints(networks []network, services []service, allTa
 			tags.Tag{Key: "swarm.network.id", Value: n.ID},
 			tags.Tag{Key: "swarm.network.name", Value: n.Name},
 			tags.Tag{Key: "swarm.network.subnet", Value: primarySubnet(n)},
+			// The identity of the network.segment entity these metrics
+			// describe. The bare Swarm id stays too: it is what an operator
+			// reads in `docker network ls`.
+			tags.Tag{Key: "network.segment.id", Value: segmentID(n.ID)},
 			tags.Tag{Key: "metric_type", Value: "network"},
 		)
 		points = append(points,
@@ -233,4 +238,36 @@ func subnetCapacity(cidr string) int64 {
 		size -= 2
 	}
 	return size
+}
+
+// segmentID renders a Swarm network id as the consumer's subtype-prefixed
+// segment identity.
+//
+// The prefix is not decoration: the identity scale is by precedence, and only
+// `swarm:` is frozen (ADR 0034). A bare network id would say nothing about
+// which authority assigned it, and the day a second subtype arrives there
+// would be no way to tell the two apart — the mistake the consumer refused to
+// make for `vlan:` and `k8s:`, where no assigned identifier exists at all.
+func segmentID(networkID string) string {
+	return "swarm:" + networkID
+}
+
+// segmentFactsOf reduces the overlay networks to what the graph carries: the
+// identity and the descriptive facts, never the measurements. The counts and
+// the address capacity stay on the metric rail — they change every cycle, and
+// an entity that churns on every heartbeat is noise in a topology feed.
+func segmentFactsOf(networks []network) []segmentFacts {
+	overlays := overlayNetworks(networks)
+	out := make([]segmentFacts, 0, len(overlays))
+	for i := range overlays {
+		n := &overlays[i]
+		out = append(out, segmentFacts{
+			id:       segmentID(n.ID),
+			name:     n.Name,
+			subnet:   primarySubnet(n),
+			ingress:  n.Ingress,
+			internal: n.Internal,
+		})
+	}
+	return out
 }

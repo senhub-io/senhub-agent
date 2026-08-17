@@ -157,6 +157,15 @@ func buildProcessTags(baseTags []tags.Tag, snap processSnapshot, hostname string
 		tags.Tag{Key: "process.pid", Value: strconv.Itoa(int(snap.pid))},
 		tags.Tag{Key: "process.name", Value: snap.name},
 	)
+	// The second half of the entity's identity (#741). A pid alone is ambiguous
+	// across reuse: the process that held pid 4242 this morning and the one
+	// holding it now are different entities, and the creation instant is what
+	// separates them — which is why it sits in the identity rather than in the
+	// attributes. Stamping only the pid would ship a key that is right until a
+	// process restarts, which is the worst moment to be wrong.
+	if snap.createTime > 0 {
+		pt = append(pt, tags.Tag{Key: "process.creation.time", Value: strconv.FormatInt(snap.createTime, 10)})
+	}
 	if snap.owner != "" {
 		pt = append(pt, tags.Tag{Key: "process.owner", Value: snap.owner})
 	}

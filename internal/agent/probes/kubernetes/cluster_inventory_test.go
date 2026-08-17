@@ -226,3 +226,56 @@ func TestCanonicalMachineID_MatchesTheAgentSpelling(t *testing.T) {
 		}
 	}
 }
+
+// A pod's owning workload is the first thing anyone wants to know about it, and
+// it is read from the owner reference rather than parsed out of the pod name —
+// the name's shape is a convention, not a contract.
+func TestPodOwner_ReportsTheDeploymentNotTheReplicaSet(t *testing.T) {
+	ctrl := true
+	pod := &corev1.Pod{}
+	pod.OwnerReferences = []metav1.OwnerReference{
+		{Kind: "ReplicaSet", Name: "api-7d75d55c8f", Controller: &ctrl},
+	}
+	// Nobody thinks in ReplicaSets: Kubernetes inserts one between a Deployment
+	// and its pods, and an operator asks about the Deployment.
+	if kind, name := podOwner(pod); kind != "Deployment" || name != "api" {
+		t.Errorf("owner = %s/%s, want Deployment/api", kind, name)
+	}
+}
+
+// A workload that owns its pods directly is reported as itself.
+func TestPodOwner_KeepsDirectOwners(t *testing.T) {
+	ctrl := true
+	for _, c := range []struct{ kind, name string }{
+		{"StatefulSet", "db"},
+		{"DaemonSet", "node-exporter"},
+		{"Job", "migrate"},
+	} {
+		pod := &corev1.Pod{}
+		pod.OwnerReferences = []metav1.OwnerReference{{Kind: c.kind, Name: c.name, Controller: &ctrl}}
+		if kind, name := podOwner(pod); kind != c.kind || name != c.name {
+			t.Errorf("owner = %s/%s, want %s/%s", kind, name, c.kind, c.name)
+		}
+	}
+}
+
+// A hand-made ReplicaSet must keep its own name rather than being renamed into
+// a Deployment that does not exist.
+func TestPodOwner_DoesNotInventADeployment(t *testing.T) {
+	ctrl := true
+	pod := &corev1.Pod{}
+	pod.OwnerReferences = []metav1.OwnerReference{
+		{Kind: "ReplicaSet", Name: "standalone", Controller: &ctrl},
+	}
+	if kind, name := podOwner(pod); kind != "ReplicaSet" || name != "standalone" {
+		t.Errorf("owner = %s/%s, want ReplicaSet/standalone", kind, name)
+	}
+}
+
+// A pod created directly has no owner, and inventing one would be worse than
+// saying nothing.
+func TestPodOwner_EmptyWhenThereIsNone(t *testing.T) {
+	if kind, name := podOwner(&corev1.Pod{}); kind != "" || name != "" {
+		t.Errorf("owner = %s/%s, want empty", kind, name)
+	}
+}
