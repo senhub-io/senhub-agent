@@ -226,6 +226,7 @@ func (p *smartProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	var points []data_store.DataPoint
+	readable := 0
 	for _, dev := range devices {
 		if p.cfg.ExcludeDevices[dev] {
 			continue
@@ -235,9 +236,76 @@ func (p *smartProbe) Collect() ([]data_store.DataPoint, error) {
 			p.moduleLogger.Warn().Err(err).Str("device", dev).Msg("smart: device query failed; skipping")
 			continue
 		}
+		readable++
 		points = append(points, dp...)
 	}
+
+	// Say what happened, as data. Until now a cycle that read nothing emitted
+	// nothing and reported success, so "this host has no disks the agent can
+	// see" and "the agent could not open the disks it found" were the same
+	// observable: an empty result. Reported from the field, and it is the same
+	// ambiguity chrony (#787) and ntp (#788) now answer with a state series.
+	//
+	// The common cause is not exotic: /dev/sd* is root:disk 0660, so a
+	// non-root install cannot open it whatever the sandbox allows. That is a
+	// group grant the operator has to make deliberately, and they cannot make
+	// it if nothing tells them it is needed.
+	points = append(points, p.statePoints(len(devices), readable, hostTags, now)...)
+
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// Reasons senhub.smart.state can carry, exactly one set to 1 per cycle.
+const (
+	smartStateOK         = "ok"
+	smartStateNoDevices  = "no_devices"
+	smartStateUnreadable = "devices_unreadable"
+	smartStatePartial    = "partially_readable"
+)
+
+var smartStates = []string{smartStateOK, smartStateNoDevices, smartStateUnreadable, smartStatePartial}
+
+// statePoints emits senhub.smart.up plus the one-hot explaining its value.
+func (p *smartProbe) statePoints(found, readable int, hostTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	state := smartStateOK
+	switch {
+	case found == 0:
+		state = smartStateNoDevices
+	case readable == 0:
+		state = smartStateUnreadable
+	case readable < found:
+		state = smartStatePartial
+	}
+
+	base := append(append([]tags.Tag{}, hostTags...), tags.Tag{Key: "metric_type", Value: "status"})
+
+	up := float64(1)
+	if readable == 0 {
+		up = 0
+	}
+	points := []data_store.DataPoint{
+		{Name: "senhub.smart.up", Value: up, Timestamp: ts, Tags: base},
+		{Name: "senhub.smart.devices.found", Value: float64(found), Timestamp: ts, Tags: base},
+		{Name: "senhub.smart.devices.readable", Value: float64(readable), Timestamp: ts, Tags: base},
+	}
+	for _, st := range smartStates {
+		v := float64(0)
+		if st == state {
+			v = 1
+		}
+		t := append(append([]tags.Tag{}, base...), tags.Tag{Key: "reason", Value: st})
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.smart.state", Value: v, Timestamp: ts, Tags: t,
+		})
+	}
+
+	if readable == 0 && found > 0 {
+		p.moduleLogger.Warn().
+			Int("devices_found", found).
+			Msg("smart: every device was found but none could be read — on a non-root install /dev/sd* is root:disk 0660; " +
+				"add the service user to the 'disk' group or run this probe under a root install")
+	}
+	return points
 }
 
 // newExecContext returns a context with the configured per-invocation
