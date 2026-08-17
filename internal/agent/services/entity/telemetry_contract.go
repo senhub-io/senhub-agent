@@ -39,6 +39,7 @@ const (
 	TypeNetworkRoute     = wire.TypeNetworkRoute
 	TypeNetworkEndpoint  = wire.TypeNetworkEndpoint
 	TypePod              = wire.TypePod
+	TypeNetworkSegment   = wire.TypeNetworkSegment
 )
 
 // Relation types, same reasoning. The last three are registered but legacy:
@@ -55,6 +56,8 @@ const (
 	RelConnectedTo  = wire.RelTypeConnectedTo
 	RelDependsOn    = wire.RelTypeDependsOn
 	RelSameAs       = wire.RelTypeSameAs
+	RelAttachedTo   = wire.RelTypeAttachedTo
+	RelHasSegment   = wire.RelTypeHasSegment
 )
 
 // AllTypes is every entity type the agent may emit — taken from the SDK, not
@@ -157,13 +160,7 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		Status:     StatusOwnKey,
 		SubjectKey: "db.instance.id",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "db.instance.id lives only on the entity rail; no db probe stamps " +
-			"it on its metrics, and it is not on the resource either (the " +
-			"resource describes the agent's host, never a remote target). " +
-			"Blocked behind the identity repair: the address:port fallback " +
-			"collapses distinct servers, so publishing it as a join key would " +
-			"turn a detectable gap into an undetectable wrong answer (#740, #741)",
+		Shipped:    true,
 	},
 	TypeNetworkDevice: {
 		Status:     StatusOwnKey,
@@ -181,35 +178,25 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		Status:     StatusOwnKey,
 		SubjectKey: "process.pid",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "the pid IS stamped on process metrics, but the identity it comes " +
-			"from is not host-scoped: {process.pid, process.creation.time} " +
-			"collides between two hosts that started a process with the same pid " +
-			"at the same instant. Publishing the pid as a join key before the " +
-			"identity is scoped would point a consumer at another machine's " +
-			"process — the ordering constraint again (contract §2d, #753)",
+		Shipped:    true,
 	},
 	TypeComputeVM: {
 		Status:     StatusOwnKey,
 		SubjectKey: "vmid",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "vmid lives only on the entity rail (hyperv/entity_source.go); no " +
-			"hypervisor metric carries it, so a compute.vm entity reaches none " +
-			"of its own telemetry. Same shape as db (#741), found by comparing " +
-			"the vocabulary with Toise's registry (#753)",
+		Shipped:    true,
 	},
 	TypePod: {
 		Status:     StatusOwnKey,
 		SubjectKey: "k8s.pod.uid",
 		Carrier:    CarrierDatapoint,
-		Shipped:    false,
-		Gap: "the pod owns telemetry no container has — the network namespace " +
-			"is shared, so network measurements belong to the pod and nothing " +
-			"else. That is the argument that settled the type with the consumer, " +
-			"and the metric side of it is not built yet: pod metrics carry " +
-			"k8s.pod.name, which is namespace-scoped and reusable, not the UID " +
-			"the entity is keyed on. Same shape as db (#756)",
+		Shipped:    true,
+	},
+	TypeNetworkSegment: {
+		Status:     StatusOwnKey,
+		SubjectKey: "network.segment.id",
+		Carrier:    CarrierDatapoint,
+		Shipped:    true,
 	},
 	TypeNetworkAddress: {
 		Status:  StatusGraphOnly,

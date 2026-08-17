@@ -66,6 +66,25 @@ type containerListItem struct {
 	Image        string   `json:"Image"`
 	State        string   `json:"State"`
 	RestartCount int      `json:"RestartCount"`
+	// Created is the Unix second the container was created. Stable for its
+	// whole life, so it is nameplate rather than measurement: it separates a
+	// container restarted this morning from one running since March, which the
+	// state alone never says.
+	Created int64 `json:"Created"`
+	// Labels are how an orchestrator says what a container IS rather than what
+	// it is called. Docker Swarm stamps the service it belongs to here, and
+	// Compose the project and service — the facts an operator actually groups
+	// by, and which no other field carries.
+	Labels map[string]string `json:"Labels"`
+	// NetworkSettings carries which networks this container joined. Present in
+	// the same response all along and simply not decoded until the network
+	// segment became an entity: an overlay is the reachability boundary, and
+	// the attachment is the only place it is observable per workload.
+	NetworkSettings struct {
+		Networks map[string]struct {
+			NetworkID string `json:"NetworkID"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
 }
 
 // blkioEntry is a single entry in Docker's blkio recursive arrays.

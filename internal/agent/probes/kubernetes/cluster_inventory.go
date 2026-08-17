@@ -195,6 +195,21 @@ func podEntity(pod *corev1.Pod) (entity.Entity, bool) {
 	if pod.Spec.ServiceAccountName != "" {
 		attrs["k8s.serviceaccount.name"] = pod.Spec.ServiceAccountName
 	}
+	// The workload this pod belongs to — the first thing anyone wants to know
+	// looking at a pod, and until now absent from the graph entirely. A pod
+	// named api-7d75d55c8f-vmj8z says nothing on its own; that it belongs to
+	// the api Deployment says everything.
+	//
+	// Read from the owner reference rather than parsed out of the name: the
+	// name's shape is a convention, not a contract, and a pod created directly
+	// has no owner at all. The workload is an attribute and not an entity for
+	// the same reason a Swarm service is not one — no relation in the
+	// vocabulary means "belongs to", and stretching runs_on to mean it is the
+	// overload refused for network segments.
+	if kind, name := podOwner(pod); name != "" {
+		attrs["k8s.workload.kind"] = kind
+		attrs["k8s.workload.name"] = name
+	}
 	return entity.Entity{
 		Type:       entity.TypePod,
 		ID:         map[string]any{"k8s.pod.uid": uid},
@@ -236,4 +251,47 @@ func emptyID(id map[string]any) bool {
 		}
 	}
 	return false
+}
+
+// podOwner returns the kind and name of the workload that created this pod.
+//
+// A ReplicaSet is reported as the Deployment that owns it when the name allows
+// it: Kubernetes inserts a ReplicaSet between a Deployment and its pods, and
+// nobody thinks in ReplicaSets — an operator asks about the Deployment. The
+// generated suffix is stripped only when it looks like one, so a ReplicaSet
+// created directly keeps its own name rather than being renamed into a
+// Deployment that does not exist.
+func podOwner(pod *corev1.Pod) (kind, name string) {
+	for _, ref := range pod.OwnerReferences {
+		if ref.Controller == nil || !*ref.Controller {
+			continue
+		}
+		if ref.Kind == "ReplicaSet" {
+			if base, ok := deploymentNameOf(ref.Name); ok {
+				return "Deployment", base
+			}
+		}
+		return ref.Kind, ref.Name
+	}
+	return "", ""
+}
+
+// deploymentNameOf strips the ReplicaSet's pod-template hash suffix. Returns
+// ok=false when the trailing segment does not look like a generated hash, so a
+// hand-made ReplicaSet is never reported as a Deployment.
+func deploymentNameOf(rsName string) (string, bool) {
+	i := strings.LastIndex(rsName, "-")
+	if i <= 0 || i == len(rsName)-1 {
+		return "", false
+	}
+	suffix := rsName[i+1:]
+	if len(suffix) < 5 || len(suffix) > 10 {
+		return "", false
+	}
+	for _, r := range suffix {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'z')) {
+			return "", false
+		}
+	}
+	return rsName[:i], true
 }
