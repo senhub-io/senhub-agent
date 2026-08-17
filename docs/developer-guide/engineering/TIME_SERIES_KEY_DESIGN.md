@@ -49,21 +49,21 @@ Cardinality = number of metrics × number of unique label combinations
 
 ### 3. The high-cardinality problem
 
-**Cardinalité explosive :**
+**Exploding cardinality:**
 ```
 # Bad: endpoint in the key
 redfish:hardware.storage.drive.health:endpoint=https://192.168.1.100,drive_id=0
-redfish:hardware.storage.drive.health:endpoint=https://192.168.1.101,drive_id=0  ← Nouvelle série !
+redfish:hardware.storage.drive.health:endpoint=https://192.168.1.101,drive_id=0  ← A new series!
 
-# Si l'IP change → nouvelle série → perte d'historique
-# Si 1000 équipements → 1000 × 12 drives = 12000 séries
+# If the IP changes → a new series → history lost
+# For 1000 devices → 1000 × 12 drives = 12000 series
 ```
 
-**Cardinalité optimale :**
+**Optimal cardinality:**
 ```
 # Good: endpoint in the metadata, not in the key
-baie_prod:hardware.storage.drive.health:drive_id=0  # metadata: {endpoint: "https://..."}
-baie_prod:hardware.storage.drive.health:drive_id=1
+array_prod:hardware.storage.drive.health:drive_id=0  # metadata: {endpoint: "https://..."}
+array_prod:hardware.storage.drive.health:drive_id=1
 
 # The IP can change → same series → history preserved
 # For 1000 devices with unique names → 1000 × 12 = 12000 series (same count, but stable)
@@ -73,11 +73,11 @@ baie_prod:hardware.storage.drive.health:drive_id=1
 
 ## 🔑 The universal uniqueness rule (UUR)
 
-### Définition
+### Definition
 
 > **A time-series key MUST be unique IF AND ONLY IF the metric values collected at that instant can DIFFER.**
 
-### Formulation mathématique
+### Mathematical formulation
 
 ```
 ts_key = f(probe_name, metric_name, discriminant_tags)
@@ -88,14 +88,14 @@ Where discriminant_tags = { the tags that tell instances of one metric apart }
 ### The collision case (to avoid)
 
 ```
-❌ COLLISION si :
-   ts_key₁ = ts_key₂  ET  metric_value₁ ≠ metric_value₂
+❌ COLLISION if:
+   ts_key₁ = ts_key₂  AND  metric_value₁ ≠ metric_value₂
 ```
 
 ### The over-granularity case (to avoid)
 
 ```
-❌ PERTE DE GRANULARITÉ si :
+❌ GRANULARITY LOSS if:
    ts_key₁ ≠ ts_key₂  BUT  they represent the same physical resource
 ```
 
@@ -150,8 +150,8 @@ Our system sorts tags into 3 categories:
 
 **Metrics:**
 ```
-cpu.usage → Mesurée PAR CORE
-cpu.frequency → Mesurée PAR CORE
+cpu.usage → measured PER CORE
+cpu.frequency → measured PER CORE
 ```
 
 **Uniqueness question:**
@@ -193,12 +193,12 @@ network.packets_received → measured PER INTERFACE
 ✅ network:network.bytes_sent:interface=eth0
 ✅ network:network.bytes_sent:interface=wlan0
 
-❌ network:network.bytes_sent  ← COLLISION !
+❌ network:network.bytes_sent  ← COLLISION!
 ```
 
-**Test de non-régression :**
+**Regression test:**
 ```go
-// 2 interfaces doivent créer 2 clés différentes
+// 2 interfaces must create 2 distinct keys
 assert len(cache.timeSeries) == 2
 assert cache.timeSeries["network:network.bytes_sent:interface=eth0"].Value !=
        cache.timeSeries["network:network.bytes_sent:interface=wlan0"].Value
@@ -206,22 +206,22 @@ assert cache.timeSeries["network:network.bytes_sent:interface=eth0"].Value !=
 
 ---
 
-### Test 3: Redfish Probe (complexe)
+### Test 3: Redfish Probe (complex)
 
 **Metrics:**
 ```
-hardware.storage.drive.health → Mesurée PAR DRIVE PAR CONTROLLER
-hardware.storage.pool.capacity → Mesurée PAR POOL PAR CONTROLLER
-hardware.power.health → Mesurée PAR PSU
+hardware.storage.drive.health → measured PER DRIVE PER CONTROLLER
+hardware.storage.pool.capacity → measured PER POOL PER CONTROLLER
+hardware.power.health → measured PER PSU
 ```
 
-**Questions d'unicité :**
+**Uniqueness questions:**
 
-1. **Drives :**
+1. **Drives:**
    > "Can Drive 0 of controller A differ from Drive 0 of controller B?"
    > **YES (physically these are 2 different disks)** → `controller` + `drive_id` are discriminant
 
-2. **Endpoint :**
+2. **Endpoint:**
    > "If I change the controller IP from 192.168.1.100 to 192.168.1.200, is it the same disk?"
    > **YES** → `endpoint` is NOT discriminant, it is context
 
@@ -232,18 +232,18 @@ hardware.power.health → Mesurée PAR PSU
 ✅ redfish:hardware.storage.pool.capacity:controller=A:pool_name=A
 
 ❌ redfish:hardware.storage.drive.health:drive_id=0
-   ← COLLISION ! Controller A et B écrasent
+   ← COLLISION! Controllers A and B overwrite each other
 
 ❌ redfish:hardware.storage.drive.health:endpoint=https://...:drive_id=0
-   ← Changement IP = perte historique
+   ← An IP change loses the history
 ```
 
-**Test de non-régression :**
+**Regression test:**
 ```go
-// 2 controllers × 12 drives = 24 clés différentes
+// 2 controllers × 12 drives = 24 distinct keys
 assert len(cache.timeSeries) == 24
 
-// Drive 0 du controller A ≠ Drive 0 du controller B
+// Drive 0 of controller A ≠ Drive 0 of controller B
 keyA := "redfish:hardware.storage.drive.health:controller=A:drive_id=0"
 keyB := "redfish:hardware.storage.drive.health:controller=B:drive_id=0"
 assert cache.timeSeries[keyA] exists
@@ -256,20 +256,20 @@ assert cache.timeSeries[keyA].Tags["endpoint"] == "https://lb-me5024mgmt1.batist
 
 ---
 
-### Test 4: Deux probes Redfish vers même endpoint
+### Test 4: two Redfish probes against the same endpoint
 
-**Configuration :**
+**Configuration:**
 ```yaml
 probes:
-  - name: baie_production    # Probe 1
+  - name: array_production    # Probe 1
     type: redfish
     params:
       endpoint: "https://lb-me5024mgmt1.batistyl.fr"
 
-  - name: baie_backup        # Probe 2 (FUTURE - autre équipement)
+  - name: array_backup        # Probe 2 (FUTURE — a different device)
     type: redfish
     params:
-      endpoint: "https://lb-me5024mgmt2.batistyl.fr"  # Endpoint différent
+      endpoint: "https://lb-me5024mgmt2.batistyl.fr"  # A different endpoint
 ```
 
 **Uniqueness question:**
@@ -278,27 +278,27 @@ probes:
 
 **Correct keys:**
 ```
-✅ baie_production:hardware.storage.drive.health:controller=A:drive_id=0
-✅ baie_backup:hardware.storage.drive.health:controller=A:drive_id=0
+✅ array_production:hardware.storage.drive.health:controller=A:drive_id=0
+✅ array_backup:hardware.storage.drive.health:controller=A:drive_id=0
 
 These 2 keys differ thanks to probe_name!
 ```
 
-**Test de non-régression :**
+**Regression test:**
 ```go
-// 2 probes × 24 drives = 48 clés différentes
+// 2 probes × 24 drives = 48 distinct keys
 assert len(cache.timeSeries) == 48
 
 // The keys are distinct per probe name
-keyProd := "baie_production:hardware.storage.drive.health:controller=A:drive_id=0"
-keyBackup := "baie_backup:hardware.storage.drive.health:controller=A:drive_id=0"
+keyProd := "array_production:hardware.storage.drive.health:controller=A:drive_id=0"
+keyBackup := "array_backup:hardware.storage.drive.health:controller=A:drive_id=0"
 assert cache.timeSeries[keyProd].Tags["endpoint"] == "https://lb-me5024mgmt1.batistyl.fr"
 assert cache.timeSeries[keyBackup].Tags["endpoint"] == "https://lb-me5024mgmt2.batistyl.fr"
 ```
 
 ---
 
-## 🎯 Algorithme de Génération de Clé
+## 🎯 Key generation algorithm
 
 ### Pseudocode
 
@@ -331,13 +331,13 @@ def generate_ts_key(probe_name, metric_name, all_tags):
 
 ```go
 var DiscriminantTagsRegistry = map[string][]string{
-    // Probes système
+    // System probes
     "cpu":         {"core"},
-    "memory":      {},  // Pas de tags discriminants (métrique système globale)
+    "memory":      {},  // No discriminant tags (a host-wide system metric)
     "network":     {"interface", "adapter"},
     "logicaldisk": {"drive", "mount_point", "device"},
 
-    // Probes applicatifs
+    // Application probes
     "citrix":      {"metric_type", "failure_category"},
     "webapp":      {"url"},
 
@@ -362,63 +362,63 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 ## ✅ Checklist de Validation
 
-Avant d'implémenter un changement de clé, vérifier :
+Before implementing a key change, verify:
 
-### 1. Test d'unicité
+### 1. Uniqueness test
 ```
 □ For each probe, identify EVERY multi-instance metric
 □ For each metric, identify the tags that make it unique
 □ Verify that no collision can occur
 ```
 
-### 2. Test de stabilité
+### 2. Stability test
 ```
 □ If the endpoint changes, does the key stay the same? (YES required)
 □ If the hostname changes, does the key stay the same? (YES required)
 □ If the IP changes, does the key stay the same? (YES required)
 ```
 
-### 3. Test de cardinalité
+### 3. Cardinality test
 ```
 □ Series count as expected? (no explosion)
-□ Nombre de séries × rétention × fréquence = mémoire acceptable ?
+□ Series count × retention × frequency = acceptable memory?
 ```
 
-### 4. Test de filtrage
+### 4. Filtering test
 ```
 □ Are contextual tags (endpoint, etc.) in metric.Tags? (YES required)
 □ Can the web interface filter by endpoint? (YES required)
 □ Does the /info/tags API return every tag? (YES required)
 ```
 
-### 5. Test de migration
+### 5. Migration test
 ```
 □ Are the old keys compatible? (if migrating)
 □ Is there a transition period? (if migrating)
-□ Les dashboards externes continuent-ils de fonctionner ? (OUI requis)
+□ Do the external dashboards keep working? (YES required)
 ```
 
 ---
 
-## 🚨 Cas d'Erreur Fréquents
+## 🚨 Common failure cases
 
-### Erreur 1: Oubli d'un tag discriminant
+### Mistake 1: a forgotten discriminant tag
 
 **Symptom:** metrics overwriting one another
 
 **Example:**
 ```go
-// ❌ MAUVAIS : Oubli de "controller"
+// ❌ WRONG: "controller" forgotten
 tsKey := fmt.Sprintf("%s:%s:drive_id=%s", probe, metric, driveID)
 // Result: Drive 0 of controller A overwrites Drive 0 of controller B
 
-// ✅ BON
+// ✅ RIGHT
 tsKey := fmt.Sprintf("%s:%s:controller=%s:drive_id=%s", probe, metric, controller, driveID)
 ```
 
-**Détection :**
+**Detection:**
 ```go
-// Test unitaire
+// Unit test
 func TestNoCollision(t *testing.T) {
     cache := NewCache()
 
@@ -426,7 +426,7 @@ func TestNoCollision(t *testing.T) {
     cache.Add(DataPoint{Name: "metric", Tags: {controller: "B", drive: "0"}, Value: 20})
 
     // ❌ On collision, len == 1 (the 2nd value overwrites the 1st)
-    // ✅ Si OK, len == 2
+    // ✅ When correct, len == 2
     assert.Equal(t, 2, len(cache.timeSeries))
 }
 ```
@@ -435,7 +435,7 @@ func TestNoCollision(t *testing.T) {
 
 ### Mistake 2: a contextual tag in the key
 
-**Symptôme :** Perte d'historique lors d'un changement d'infrastructure
+**Symptom:** history lost when the infrastructure changes
 
 **Example:**
 ```go
@@ -448,9 +448,9 @@ tsKey := fmt.Sprintf("%s:%s:drive_id=%s", probe, metric, driveID)
 metadata := CachedMetric{..., Tags: {endpoint: endpoint, drive_id: driveID}}
 ```
 
-**Détection :**
+**Detection:**
 ```go
-// Test de stabilité
+// Stability test
 func TestStability(t *testing.T) {
     cache := NewCache()
 
@@ -474,54 +474,54 @@ func TestStability(t *testing.T) {
     // ✅ With endpoint in metadata: same key, value updated
     assert.Equal(t, 1, len(cache.timeSeries))
     assert.Equal(t, initialKey, cache.GetKeys()[0])
-    assert.Equal(t, 20, cache.timeSeries[initialKey].Value)  // Valeur mise à jour
+    assert.Equal(t, 20, cache.timeSeries[initialKey].Value)  // Value updated
     assert.Equal(t, "https://192.168.1.200", cache.timeSeries[initialKey].Tags["endpoint"])
 }
 ```
 
 ---
 
-## 📊 Exemples de Cardinalité
+## 📊 Cardinality examples
 
 ### Worked example for a typical environment
 
-**Scénario : 100 serveurs surveillés**
+**Scenario: 100 monitored servers**
 
 ```
-Probes actifs:
-- CPU (4 cores/serveur)
-- Memory (1 métrique globale)
-- Network (2 interfaces/serveur)
-- LogicalDisk (3 disques/serveur)
+Active probes:
+- CPU (4 cores/server)
+- Memory (1 host-wide metric)
+- Network (2 interfaces/server)
+- LogicalDisk (3 disks/server)
 - Redfish (50 servers with 12 drives each)
 
 Cardinality per probe:
-- CPU:         100 servers × 4 cores × 2 metrics = 800 séries
-- Memory:      100 servers × 1 metric = 100 séries
-- Network:     100 servers × 2 interfaces × 4 metrics = 800 séries
-- LogicalDisk: 100 servers × 3 drives × 3 metrics = 900 séries
-- Redfish:     50 servers × 12 drives × 8 metrics = 4800 séries
+- CPU:         100 servers × 4 cores × 2 metrics = 800 series
+- Memory:      100 servers × 1 metric = 100 series
+- Network:     100 servers × 2 interfaces × 4 metrics = 800 series
+- LogicalDisk: 100 servers × 3 drives × 3 metrics = 900 series
+- Redfish:     50 servers × 12 drives × 8 metrics = 4800 series
 
-TOTAL: ~7400 séries temporelles
+TOTAL: ~7400 time series
 
 Estimated memory (5 min retention, 1 point/30 s):
-- Points/série: 10 points
-- Taille/point: ~200 bytes (métadonnées + valeur)
-- Mémoire: 7400 séries × 10 points × 200 bytes ≈ 15 MB
+- Points per series: 10 points
+- Size per point: ~200 bytes (metadata + value)
+- Memory: 7400 series × 10 points × 200 bytes ≈ 15 MB
 
 ✅ Acceptable
 ```
 
-**Impact du changement de clé :**
+**Impact of the key change:**
 ```
 BEFORE (endpoint in the key):
-- Si endpoint change → nouvelle série → cardinalité × 2
-- 7400 → 14800 séries temporelles = 30 MB
+- If the endpoint changes → a new series → cardinality × 2
+- 7400 → 14800 time series = 30 MB
 
 AFTER (endpoint in metadata):
-- Endpoint change → même série → cardinalité stable
-- 7400 séries temporelles = 15 MB
-- ✅ 50% de réduction mémoire en cas de changements infrastructure
+- Endpoint changes → same series → cardinality stable
+- 7400 time series = 15 MB
+- ✅ 50% less memory when the infrastructure changes
 ```
 
 ---
@@ -535,16 +535,16 @@ AFTER (endpoint in metadata):
 ### SOLID principles for keys
 
 1. **S**table: the key does not change when the infrastructure does
-2. **U**nique: Pas de collision entre séries différentes
+2. **U**nique: no collision between distinct series
 3. **M**inimal: discriminant tags only
 4. **M**etadata: contextual tags live in CachedMetric.Tags
-5. **A**uditable: Tests automatiques de non-régression
-6. **R**eproducible: Même données → même clé
-7. **Y**ielding: Cardinalité maîtrisée
+5. **A**uditable: automated regression tests
+6. **R**eproducible: same data → same key
+7. **Y**ielding: cardinality kept under control
 
 ---
 
-## 📚 Références
+## 📚 References
 
 - **VictoriaMetrics:** https://docs.victoriametrics.com/keyConcepts.html#time-series
 - **Prometheus Best Practices:** https://prometheus.io/docs/practices/naming/
@@ -554,5 +554,5 @@ AFTER (endpoint in metadata):
 ---
 
 **Document written by:** Claude Code
-**Reviewer requis:** Matthieu (User)
-**Approbation:** ⏳ En attente
+**Reviewer required:** Matthieu (User)
+**Approval:** ⏳ Pending
