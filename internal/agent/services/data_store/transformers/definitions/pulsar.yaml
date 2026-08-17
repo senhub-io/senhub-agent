@@ -17,7 +17,7 @@ metrics:
     description: "1 when the broker answered /admin/v2/brokers/ready with HTTP 200"
     otel:
       name: senhub.pulsar.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       endpoint: pulsar.endpoint

@@ -19,7 +19,7 @@ metrics:
     description: "1 when the Hyper-V replica WMI namespace answered this cycle, else 0"
     otel:
       name: senhub.hyperv_ha.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
@@ -34,7 +34,7 @@ metrics:
     description: "Replication health (1 = Normal, 0 = Warning/Critical)"
     otel:
       name: senhub.hyperv_ha.replica.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       vm_name: senhub.hyperv_ha.vm.name
@@ -48,7 +48,7 @@ metrics:
     description: "Raw Msvm_ReplicationRelationship ReplicationState numeric value"
     otel:
       name: senhub.hyperv_ha.replica.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       vm_name: senhub.hyperv_ha.vm.name
@@ -79,7 +79,7 @@ metrics:
     description: "Failover Cluster node state (1 = Up, 0 = Down/Paused/Joining)"
     otel:
       name: senhub.hyperv_ha.cluster.node.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       node: senhub.hyperv_ha.cluster.node
@@ -93,7 +93,7 @@ metrics:
     description: "Failover Cluster resource-group state (1 = Online, 0 = Offline/Failed/Partial)"
     otel:
       name: senhub.hyperv_ha.cluster.group.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       group: senhub.hyperv_ha.cluster.group

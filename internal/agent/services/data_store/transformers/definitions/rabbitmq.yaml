@@ -19,7 +19,7 @@ metrics:
     description: "1 when the Management API answered successfully, 0 otherwise"
     otel:
       name: senhub.rabbitmq.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ── Overview: message counters ─────────────────────────────────────────────
@@ -192,7 +192,7 @@ metrics:
     multi_instance_labels: ["node"]
     otel:
       name: rabbitmq.node.running
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       node: rabbitmq.node.name

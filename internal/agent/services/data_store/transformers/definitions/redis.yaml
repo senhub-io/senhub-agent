@@ -14,7 +14,7 @@ metrics:
     lookup: "senhub.db.up"
     otel:
       name: senhub.db.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "redis.uptime"
@@ -36,7 +36,7 @@ metrics:
     description: "Redis version banner — value=1, version string carried in attribute db.system.version"
     otel:
       name: senhub.db.version.info
-      unit: "1"
+      unit: "{info}"
       type: gauge
     tag_to_attribute:
       version: db.system.version
@@ -243,7 +243,7 @@ metrics:
     lookup: "redis.replication.role"
     otel:
       name: redis.replication.role
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "redis.replication.offset"
@@ -298,7 +298,7 @@ metrics:
     description: "1 when AOF persistence is enabled (aof_enabled)"
     otel:
       name: redis.aof.enabled
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "redis.rdb.last_bgsave.duration"
@@ -465,7 +465,7 @@ metrics:
     lookup: "redis.cluster.state"
     otel:
       name: redis.cluster.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "redis.cluster.slots.assigned"

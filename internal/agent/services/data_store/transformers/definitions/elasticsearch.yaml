@@ -18,7 +18,7 @@ metrics:
     description: "1 when the cluster health endpoint is reachable, 0 otherwise"
     otel:
       name: senhub.elasticsearch.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "elasticsearch.cluster.health"
@@ -30,7 +30,7 @@ metrics:
     lookup: "elasticsearch.cluster.health"
     otel:
       name: elasticsearch.cluster.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "elasticsearch.cluster.nodes"

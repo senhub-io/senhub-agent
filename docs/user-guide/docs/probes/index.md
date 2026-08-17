@@ -105,6 +105,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">NTP sync health: offset, frequency, skew, stratum</span>
   </a>
 
+  <a href="ntp/" class="probe-card" data-family="os-host" data-tier="free">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/clock-check-outline.svg?color=%23666" alt="" loading="lazy">
+    <span class="probe-name">NTP (direct)</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Clock error measured against a reference server, no daemon needed</span>
+  </a>
+
   <a href="os-updates/" class="probe-card" data-family="os-host" data-tier="free">
     <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/update.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">OS Updates</span>

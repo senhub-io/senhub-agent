@@ -16,7 +16,7 @@ metrics:
     description: "1 when GET /health returns status=pass, 0 otherwise"
     otel:
       name: senhub.influxdb.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "influxdb.storage.reads"

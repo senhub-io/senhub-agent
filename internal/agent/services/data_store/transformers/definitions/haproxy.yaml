@@ -18,7 +18,7 @@ metrics:
     description: "1 when the HAProxy stats endpoint is reachable and returns valid CSV"
     otel:
       name: senhub.haproxy.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "haproxy.sessions.count"

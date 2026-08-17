@@ -15,7 +15,7 @@ metrics:
     description: "1 when the TCP connect completed within the timeout"
     otel:
       name: senhub.tcpdial.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       target: tcpdial.target
