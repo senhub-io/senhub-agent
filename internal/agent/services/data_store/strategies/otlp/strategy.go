@@ -3,6 +3,9 @@ package otlp
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/user"
+	"strconv"
 	"sync"
 	"time"
 
@@ -698,8 +701,23 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	// mapping a host's connections can be privacy-sensitive (#213). When
 	// enabled, an operator CIDR deny-list filters out sensitive peers.
 	if s.cfg.Entities.DependsOnEnabled {
-		s.entitySourceUnregisters = append(s.entitySourceUnregisters,
-			entity.RegisterSource(hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce, s.cfg.Entities.DependsOnExcludeCIDRs)))
+		dep := hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce, s.cfg.Entities.DependsOnExcludeCIDRs)
+		// Mapping a socket to its owning process reads /proc/<pid>/fd, which is
+		// owner-only: a non-root daemon sees every other service's connections
+		// with no owner and can emit nothing for them (#808). Say so once, with
+		// the counts, rather than let the operator read an empty rail as "this
+		// host depends on nothing".
+		dep.OnBlind(func(observed, unattributable int) {
+			s.logger.Warn().
+				Int("outbound_sockets", observed).
+				Int("unattributable", unattributable).
+				Str("running_as", processUsername()).
+				Msg("depends_on is enabled but this agent cannot attribute any socket to its owning process; " +
+					"mapping a socket to its owner reads /proc/<pid>/fd, which only the owner may read. " +
+					"No dependency edge can be produced for services owned by another user. " +
+					"Run the agent as root for this rail, or leave entities.depends_on_enabled off")
+		})
+		s.entitySourceUnregisters = append(s.entitySourceUnregisters, entity.RegisterSource(dep))
 	}
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
@@ -881,4 +899,14 @@ func (s *OTLPSyncStrategy) relayEnricher() *relayEnricher {
 	}
 	s.enricher = buildRelayEnricher(s.cfg.Relay.Enrichment, s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
 	return s.enricher
+}
+
+// processUsername names the account the daemon runs under, for the operator
+// message that explains why a rail is empty. Best effort: an unresolvable uid
+// is reported as the number, which still tells the operator it is not root.
+func processUsername() string {
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+	return strconv.Itoa(os.Getuid())
 }

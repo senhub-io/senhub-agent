@@ -75,6 +75,28 @@ type peerKey struct {
 	svcID, addr, port string
 }
 
+// streakState is a peer endpoint's debounce position. hits is how many scrapes
+// have confirmed it (capped at the threshold); misses is how many consecutive
+// scrapes have not.
+//
+// The two are separate because the debounce must not be one-sided. An edge that
+// took `threshold` scrapes to assert used to be retracted by ONE missed scrape:
+// the streak map was rebuilt from what the scrape saw, so anything absent lost
+// its progress outright. Since depends_on is retired by absence at the
+// consumer, that turned a single missed observation into a removed edge and
+// back again — visible as flapping, and as two independent consumers of the
+// same fan-out disagreeing on which edges exist (#808).
+//
+// An observation is worth as much when it is missing as when it arrives, so the
+// tolerance for going away is the same as the requirement for appearing.
+type streakState struct {
+	hits, misses int
+	// dep is the last observation of this peer, kept so an edge inside the miss
+	// tolerance can still be emitted: the point of tolerating a miss is that the
+	// edge stays on the wire, and an edge cannot be rebuilt from a key alone.
+	dep dependant
+}
+
 // dependant is the minted dependent plus the peer it depends on. foundation is
 // set when the dependent is the agent's own process: its identity is the
 // foundation service.instance (the agent key), which the foundation detector
@@ -104,9 +126,13 @@ type Source struct {
 	selfPID     func() int32                                // nil → os.Getpid
 	threshold   int
 	exclude     []*net.IPNet // peer endpoints in these ranges are dropped (privacy)
+	// onBlind is called once, the first time the source finds it cannot
+	// attribute any socket but its own. Nil-safe.
+	onBlind  func(observed, unattributable int)
+	blindOne sync.Once
 
 	mu     sync.Mutex
-	streak map[peerKey]int // consecutive scrapes a peer endpoint has been seen
+	streak map[peerKey]streakState // debounce position per peer endpoint
 
 	// nameLRU caches pid→name across scrapes so a busy host's stable owning
 	// processes (a handful of servers owning thousands of sockets) are named
@@ -129,10 +155,16 @@ func New(hostID func() string, threshold int, exclude []*net.IPNet) *Source {
 		hostID:    hostID,
 		threshold: threshold,
 		exclude:   exclude,
-		streak:    map[peerKey]int{},
+		streak:    map[peerKey]streakState{},
 		nameLRU:   map[int32]nameEntry{},
 	}
 }
+
+// OnBlind registers a callback invoked once, the first time the source observes
+// outbound sockets it cannot attribute to any process but its own — the shape a
+// non-root daemon sees, since mapping a socket to its owner reads
+// /proc/<pid>/fd and that is owner-only. Nil-safe; call before Observe.
+func (s *Source) OnBlind(fn func(observed, unattributable int)) { s.onBlind = fn }
 
 // excluded reports whether a peer IP falls in any operator-excluded range.
 func (s *Source) excluded(ip string) bool {
@@ -173,35 +205,79 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	deps, nextLRU := s.scrape(conns, hostID, s.nameLRU)
+	deps, nextLRU, unattributable := s.scrape(conns, hostID, s.nameLRU)
 	// Replace the LRU with only the pids named this scrape: a vanished pid drops
 	// out, keeping the cache bounded by the live socket table.
 	s.nameLRU = nextLRU
 
-	// Advance streaks: increment what we saw this scrape, drop what we did not
-	// (a vanished connection resets to zero so its edge leaves the snapshot).
+	// Blind: outbound sockets exist, and not one of them belongs to a process
+	// this agent can name — the shape a non-root daemon sees, because mapping a
+	// socket to its owner reads /proc/<pid>/fd and that is owner-only (#808).
+	// Reporting an empty observation as a SUCCESS here would be a lie with
+	// consequences: the tracker would read the absence as "nothing depends on
+	// anything any more" and retire every dependency the consumer holds. Say the
+	// view failed instead, which is what it did. The detector then serves the
+	// last good one until its TTL, and what finally goes is marked unmonitored
+	// rather than terminated (#806) — we stopped being able to look, the
+	// dependencies did not end.
+	if unattributable > 0 && !hasAttributableDependant(deps) {
+		s.blindOne.Do(func() {
+			if s.onBlind != nil {
+				s.onBlind(unattributable+len(deps), unattributable)
+			}
+		})
+		return entity.Observation{}, false
+	}
+
+	// Advance the debounce. A peer seen this scrape gains a hit and clears its
+	// misses; one that is absent gains a miss and keeps its hits, so an edge
+	// asserted over `threshold` scrapes survives up to `threshold` missed ones
+	// before it is given up. Past that it is dropped entirely and must earn its
+	// way back.
 	seen := make(map[peerKey]dependant, len(deps))
 	for _, d := range deps {
 		seen[peerKey{d.svcID, d.addr, d.port}] = d
 	}
-	next := make(map[peerKey]int, len(seen))
-	for k := range seen {
-		n := s.streak[k] + 1
-		if n > s.threshold {
-			n = s.threshold
+	next := make(map[peerKey]streakState, len(s.streak)+len(seen))
+	for k, st := range s.streak {
+		if _, present := seen[k]; present {
+			continue // handled below, with its hit
 		}
-		next[k] = n
+		if st.misses+1 > s.threshold {
+			continue // gone for as long as it took to appear: drop it
+		}
+		next[k] = streakState{hits: st.hits, misses: st.misses + 1, dep: st.dep}
+	}
+	for k, d := range seen {
+		hits := s.streak[k].hits + 1
+		if hits > s.threshold {
+			hits = s.threshold
+		}
+		next[k] = streakState{hits: hits, dep: d}
 	}
 	s.streak = next
 
-	return buildObservation(seen, next, s.threshold, hostID).WithScope(entity.ScopeHostDep), true
+	return buildObservation(next, s.threshold, hostID).WithScope(entity.ScopeHostDep), true
+}
+
+// hasAttributableDependant reports whether the scrape named at least one owning
+// process other than the agent itself. The agent can always name its own
+// sockets — it owns them — so its presence alone does not mean attribution
+// works on this host.
+func hasAttributableDependant(deps []dependant) bool {
+	for i := range deps {
+		if !deps[i].foundation {
+			return true
+		}
+	}
+	return false
 }
 
 // scrape classifies one socket-table read into candidate outbound dependants.
 // priorLRU is the previous scrape's pid→name cache; scrape returns the cache to
 // keep (only the pids it named this scrape), which the caller swaps in under the
 // lock.
-func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map[int32]nameEntry) ([]dependant, map[int32]nameEntry) {
+func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map[int32]nameEntry) (deps []dependant, lru map[int32]nameEntry, unattributable int) {
 	listenPorts := map[uint32]bool{}
 	for _, c := range conns {
 		if c.Status == statusListen {
@@ -259,11 +335,16 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 			d.svcID = name + "@" + hostID
 			d.svcName = name
 		default:
-			continue // cannot name the dependent → do not fabricate a service.instance
+			// Cannot name the dependent: do not fabricate a service.instance.
+			// Counted, because the difference between "this host has no
+			// outbound dependencies" and "this agent is not allowed to see
+			// them" is the whole of #808, and it is invisible downstream.
+			unattributable++
+			continue
 		}
 		out = append(out, d)
 	}
-	return out, nextLRU
+	return out, nextLRU, unattributable
 }
 
 // cachedName resolves a pid's name through the cross-scrape LRU. A hit requires
@@ -296,15 +377,16 @@ func cachedName(pid int32, nameFn func(int32) string, createdFn func(int32) (int
 // not re-emitted — mirroring hostsvc's listener runs_on); without it the minted
 // dependents would float, unattached to the host they run on. Each
 // service.instance and each endpoint is emitted once.
-func buildObservation(seen map[peerKey]dependant, streak map[peerKey]int, threshold int, hostID string) entity.Observation {
+func buildObservation(streak map[peerKey]streakState, threshold int, hostID string) entity.Observation {
 	obs := entity.Observation{}
 	hostKey := map[string]any{idKeyHost: hostID}
 	svcDone := map[string]bool{}
 	epDone := map[string]bool{}
-	for k, d := range seen {
-		if streak[k] < threshold {
+	for _, st := range streak {
+		if st.hits < threshold {
 			continue
 		}
+		d := st.dep
 		svcKey := map[string]any{idKeyServiceInstanceID: d.svcID}
 		if !svcDone[d.svcID] {
 			svcDone[d.svcID] = true
