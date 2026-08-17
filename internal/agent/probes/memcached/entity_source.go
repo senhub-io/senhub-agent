@@ -34,7 +34,7 @@ type memcachedEntitySource struct {
 	hostID func() string
 	// rekey announces the 0.5.4 identity migration for a local instance whose
 	// id was host-scoped. nil when nothing was re-keyed (remote target).
-	rekey *dbcommon.RekeyAnnouncer
+	rekey *entity.RekeyAnnouncer
 }
 
 // newMemcachedEntitySource constructs the entity source, pinning the
@@ -45,7 +45,7 @@ func newMemcachedEntitySource(host string, port int, instanceName string) *memca
 	id := instanceName
 	// The announcer is built only when the fallback applies: an operator-named
 	// instance was never keyed on address:port, so there is no node to retire.
-	var rekey *dbcommon.RekeyAnnouncer
+	var rekey *entity.RekeyAnnouncer
 	if id == "" {
 		id = dbcommon.FallbackInstanceID("memcached", host, port, dbcommon.HostID())
 		rekey = dbcommon.NewRekeyAnnouncer("memcached", host, port, dbcommon.HostID())
