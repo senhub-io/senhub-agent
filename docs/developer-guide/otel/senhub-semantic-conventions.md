@@ -72,77 +72,77 @@ The `instance` label (reserved by the Prometheus scrape) is **never** emitted by
 
 ### 4.1 Probe `cpu` (système)
 
-**Source principale :** [OTel system metrics — CPU](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/)
-**Source secondaire :** [windows_exporter collector.cpu](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.cpu.md), [OTEP 0119](https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md)
+**Primary source:** [OTel system metrics — CPU](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/)
+**Secondary source:** [windows_exporter collector.cpu](https://github.com/prometheus-community/windows_exporter/blob/master/docs/collector.cpu.md), [OTEP 0119](https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md)
 
-#### 4.1.1 Métriques OTel natives utilisées
+#### 4.1.1 Native OTel metrics used
 
-| OTel metric | Unit | Type | Notre usage |
+| OTel metric | Unit | Type | How we use it |
 |---|---|---|---|
-| `system.cpu.time` | `s` | Counter | Temps CPU cumulatif par mode (Linux: `/proc/stat`) |
-| `system.cpu.utilization` | `1` | Gauge | Utilisation instantanée (%) normalisée en ratio par le mapper |
+| `system.cpu.time` | `s` | Counter | Cumulative CPU time per mode (Linux: `/proc/stat`) |
+| `system.cpu.utilization` | `1` | Gauge | Instantaneous utilisation (%), normalised to a ratio by the mapper |
 
-**Attributs utilisés :**
+**Attributes used:**
 
-- `cpu.mode` (OTel bien-connu) — valeurs :
-  - `user` — temps user-space (Linux cpu_user, Windows user_time)
-  - `system` — temps kernel (Linux cpu_system, Windows privileged_time) **[harmonisé]**
-  - `idle` — temps idle (Linux cpu_idle)
+- `cpu.mode` (well-known OTel) — values:
+  - `user` — user-space time (Linux cpu_user, Windows user_time)
+  - `system` — kernel time (Linux cpu_system, Windows privileged_time) **[harmonised]**
+  - `idle` — idle time (Linux cpu_idle)
   - `nice` — low-priority user (Linux cpu_nice)
-  - `iowait` — attente I/O (Linux cpu_iowait)
-  - `interrupt` — temps interrupts matériels (Linux cpu_irq, Windows interrupt_time)
-  - `softirq` — interrupts logiciels (Linux cpu_softirq) — extension bien-connue
-  - `steal` — volé par hyperviseur (Linux cpu_steal)
-  - `dpc` — Deferred Procedure Calls (Windows dpc_time) — **extension, alignée windows_exporter**
-- `cpu.logical_number` (OTel bien-connu) — numéro du core logique en string (`"0"`, `"1"`, …)
+  - `iowait` — I/O wait (Linux cpu_iowait)
+  - `interrupt` — hardware interrupt time (Linux cpu_irq, Windows interrupt_time)
+  - `softirq` — software interrupts (Linux cpu_softirq) — well-known extension
+  - `steal` — stolen by the hypervisor (Linux cpu_steal)
+  - `dpc` — Deferred Procedure Calls (Windows dpc_time) — **extension, aligned with windows_exporter**
+- `cpu.logical_number` (well-known OTel) — the logical core number as a string (`"0"`, `"1"`, …)
 
-**Harmonisation `system` ↔ `privileged`** : OTel accepte `kernel` ou `system`. Nous harmonisons sur `system` pour que dashboards cross-OS interrogent un seul mode et obtiennent Linux kernel time ET Windows privileged time.
+**Harmonising `system` ↔ `privileged`**: OTel accepts either `kernel` or `system`. We settle on `system` so a cross-OS dashboard queries one mode and gets both Linux kernel time AND Windows privileged time.
 
-#### 4.1.2 Métriques OTEP 0119 (load average)
+#### 4.1.2 OTEP 0119 metrics (load average)
 
-| OTel metric | Unit | Type | Notre usage |
+| OTel metric | Unit | Type | How we use it |
 |---|---|---|---|
 | `system.linux.cpu.load_1m` | `{thread}` | Gauge | cpu_load1 |
 | `system.linux.cpu.load_5m` | `{thread}` | Gauge | cpu_load5 |
 | `system.linux.cpu.load_15m` | `{thread}` | Gauge | cpu_load15 |
 
-Préfixe `linux` indique explicitement la spécificité OS conformément à l'OTEP 0119. Non émis sur Windows.
+The `linux` prefix states the OS specificity explicitly, per OTEP 0119. Not emitted on Windows.
 
-#### 4.1.3 Extensions `senhub.*` (Windows-specific)
+#### 4.1.3 `senhub.*` extensions (Windows-specific)
 
-**Justification :** windows_exporter expose ces métriques en counters (totals depuis boot). Notre probe les capture sous forme de **rates instantanés** depuis Perfmon (DPCs/sec, Interrupts/sec). OTel ne définit pas de convention pour ces rates — extension créée.
+**Rationale:** windows_exporter exposes these as counters (totals since boot). Our probe captures them as **instantaneous rates** from Perfmon (DPCs/sec, Interrupts/sec). OTel defines no convention for those rates, so an extension was created.
 
-| Senhub metric | Unit | Type | Source probe | Équiv. windows_exporter |
+| Senhub metric | Unit | Type | Probe source | windows_exporter equivalent |
 |---|---|---|---|---|
 | `senhub.system.cpu.dpcs` | `1/s` | Gauge | cpu_dpc_rate, dpc_rate | `windows_cpu_dpcs_total` (counter) — rate = `rate(...)` |
-| `senhub.system.cpu.dpcs_queued` | `1/s` | Gauge | cpu_dpc_queued, dpc_queued | *(aucun, Perfmon-specific)* |
+| `senhub.system.cpu.dpcs_queued` | `1/s` | Gauge | cpu_dpc_queued, dpc_queued | *(none, Perfmon-specific)* |
 | `senhub.system.cpu.interrupts` | `1/s` | Gauge | cpu_interrupts, interrupt_sec | `windows_cpu_interrupts_total` (counter) — rate = `rate(...)` |
-| `senhub.system.cpu.queue_length` | `{thread}` | Gauge | cpu_queue_length, processor_queue_length | *(aucun)* |
+| `senhub.system.cpu.queue_length` | `{thread}` | Gauge | cpu_queue_length, processor_queue_length | *(none)* |
 
-Attributs: `cpu.logical_number` (optionnel, présent si mesuré par core).
+Attributes: `cpu.logical_number` (optional, present when measured per core).
 
-> **Évolution V2 possible** : refactorer la probe pour émettre en counter cumulatif et aligner pleinement sur windows_exporter (`senhub_system_cpu_dpcs_total` etc.). Discuté plus tard.
+> **Possible V2 evolution**: refactor the probe to emit cumulative counters and align fully with windows_exporter (`senhub_system_cpu_dpcs_total` and so on). To be discussed later.
 
-### 4.2 Probe `memory` (système)
+### 4.2 `memory` probe (system)
 
-**Source principale :** [OTel system metrics — Memory](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/)
-**Source secondaire :** [OTEP 0119 §Paging](https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md) *(draft — adopté avec risque de migration si l'OTEP est renommé)*
+**Primary source:** [OTel system metrics — Memory](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/)
+**Secondary source:** [OTEP 0119 §Paging](https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md) *(draft — adopted knowing a rename of the OTEP would force a migration)*
 
-#### 4.2.1 Métriques OTel natives utilisées
+#### 4.2.1 Native OTel metrics used
 
-| OTel metric | Unit | Type | Notre usage |
+| OTel metric | Unit | Type | How we use it |
 |---|---|---|---|
-| `system.memory.limit` | `By` | UpDownCounter | Total RAM installée (Win `memory_total`) |
-| `system.memory.usage` | `By` | UpDownCounter | Occupation RAM par état (attribut `system.memory.state`) |
+| `system.memory.limit` | `By` | UpDownCounter | Total RAM installed (Win `memory_total`) |
+| `system.memory.usage` | `By` | UpDownCounter | RAM in use, per state (`system.memory.state` attribute) |
 | `system.memory.utilization` | `1` | Gauge | % RAM utilisée (cross-platform, `memory_used_percent`) |
-| `system.paging.usage` | `By` | UpDownCounter | Occupation swap par état (attribut `system.paging.state`) — Linux `swap_used`/`swap_free` |
+| `system.paging.usage` | `By` | UpDownCounter | Swap in use, per state (`system.paging.state` attribute) — Linux `swap_used`/`swap_free` |
 | `system.paging.utilization` | `1` | Gauge | % pagefile (`pagefile_usage`) + % swap (`swap_used_percent`) — attribut `system.paging.state`, OTEP 0119 draft |
 
 **Attribut `system.memory.state`**
 
 Valeurs officielles OTel : `buffers, cached, free, used`
 
-**Harmonisation Windows `available` → `free`** : les deux désignent la mémoire immédiatement disponible pour allocation. Simplifie les dashboards cross-OS.
+**Harmonising Windows `available` → `free`**: both mean memory immediately available for allocation. It keeps cross-OS dashboards simple.
 
 **Extensions `system.memory.state`** (Windows-specific, non OTel-standard) :
 
@@ -155,164 +155,164 @@ Valeurs officielles OTel : `buffers, cached, free, used`
 
 **Attribut `system.paging.state`**
 
-Valeurs : `used, free`. Le **swap Linux** (`swap_used`/`swap_free`) est le pendant du **pagefile Windows** : OTel modélise les deux sous `system.paging.*`. Ils ne se confondent pas — l'OS de l'hôte (attribut ressource) sépare les séries — et l'harmonisation rend les dashboards de pagination cross-OS (même logique que `available → free` pour la RAM).
+Values: `used, free`. **Linux swap** (`swap_used`/`swap_free`) is the counterpart of the **Windows pagefile**: OTel models both under `system.paging.*`. They do not get confused — the host OS (a resource attribute) separates the series — and the harmonisation makes paging dashboards cross-OS, on the same logic as `available → free` for RAM.
 
-#### 4.2.2 Extensions `senhub.*` (paging)
+#### 4.2.2 `senhub.*` extensions (paging)
 
-**Justification :** notre probe expose les paging Windows sous forme de **rates instantanés** depuis Perfmon. OTEP 0119 propose `system.paging.faults` et `system.paging.operations` en counters. Nous créons des variantes `_per_second` en gauge le temps de la migration. À aligner sur OTel standard lors de la refonte de la probe (counter cumulatif). `senhub.system.paging.limit` couvre le total swap (`swap_total`), pour lequel OTel n'expose aucun équivalent (miroir de `system.memory.limit` pour la RAM).
+**Rationale:** our probe exposes Windows paging as **instantaneous rates** from Perfmon. OTEP 0119 proposes `system.paging.faults` and `system.paging.operations` as counters. We create `_per_second` gauge variants for the duration of the migration, to be aligned with the OTel standard when the probe is reworked to cumulative counters. `senhub.system.paging.limit` covers total swap (`swap_total`), for which OTel has no equivalent — it mirrors `system.memory.limit` for RAM.
 
 | Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.system.paging.faults` | `1/s` | Gauge | – |
 | `senhub.system.paging.operations` | `1/s` | Gauge | `direction: in` ou `out` |
-| `senhub.system.paging.utilization_peak` | `1` | Gauge | – *(pas d'équivalent OTEP 0119)* |
-| `senhub.system.paging.limit` | `By` | UpDownCounter | – Total swap configuré (`swap_total`) ; *(pas d'équivalent OTEP 0119)* |
+| `senhub.system.paging.utilization_peak` | `1` | Gauge | – *(no OTEP 0119 equivalent)* |
+| `senhub.system.paging.limit` | `By` | UpDownCounter | – Total configured swap (`swap_total`); *(no OTEP 0119 equivalent)* |
 
 ### 4.3 Probe `network` (système)
 
-**Source principale :** [OTel system metrics — Network](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/)
+**Primary source:** [OTel system metrics — Network](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/)
 
 **Alignement 100 % OTel natif** — aucune extension `senhub.*` introduite.
 
 #### 4.3.1 Métriques OTel utilisées
 
-| OTel metric | Unit | Type | Notre usage |
+| OTel metric | Unit | Type | How we use it |
 |---|---|---|---|
 | `system.network.io` | `By` | Counter | Bytes transmis/reçus (total cumulatif) |
 | `system.network.packet.count` | `{packet}` | Counter | Paquets transmis/reçus |
 | `system.network.errors` | `{error}` | Counter | Erreurs de transmission/réception |
 | `system.network.packet.dropped` | `{packet}` | Counter | Paquets rejetés volontairement (discards) |
 
-**Attributs utilisés :**
+**Attributes used:**
 
 - `network.io.direction` — valeurs officielles : `receive`, `transmit`
 - `network.interface.name` — nom de l'interface (`eth0`, `ens1`, `Ethernet 2`, …)
 
 ### 4.4 Probe `logicaldisk` (filesystem + disk I/O)
 
-**Source principale :** [OTel system-metrics §Filesystem](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/) et `§Disk`
-**Source secondaire :** [node_exporter filesystem_*](https://github.com/prometheus/node_exporter) (inode conventions)
+**Primary source:** [OTel system-metrics §Filesystem](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/) and `§Disk`
+**Secondary source:** [node_exporter filesystem_*](https://github.com/prometheus/node_exporter) (inode conventions)
 
-**Note terminologique :** le type de probe en config reste `logicaldisk` (nom historique, compat JWT license + Windows Perfmon `\LogicalDisk\`). Les métriques exposées suivent le namespace OTel `system.filesystem.*` (capacity) et `senhub.system.disk.*` (I/O rates Windows). C'est le namespace OTel qui est visible côté dashboards.
+**A note on terminology:** the probe type in the config stays `logicaldisk` — a historical name, kept for JWT licence compatibility and to match Windows Perfmon `\LogicalDisk\`. The metrics it exposes follow the OTel `system.filesystem.*` namespace (capacity) and `senhub.system.disk.*` (Windows I/O rates). It is the OTel namespace that dashboards see.
 
-#### 4.4.1 Métriques OTel natives utilisées
+#### 4.4.1 Native OTel metrics used
 
-| OTel metric | Unit | Type | Notre usage |
+| OTel metric | Unit | Type | How we use it |
 |---|---|---|---|
-| `system.filesystem.limit` | `By` | UpDownCounter | Capacité totale (`fs_total_bytes`) |
-| `system.filesystem.usage` | `By` | UpDownCounter | Occupation par état (attribut `system.filesystem.state`) |
-| `system.filesystem.utilization` | `1` | Gauge | Ratio d'occupation (attribut `system.filesystem.state`) |
+| `system.filesystem.limit` | `By` | UpDownCounter | Total capacity (`fs_total_bytes`) |
+| `system.filesystem.usage` | `By` | UpDownCounter | In use, per state (attribute `system.filesystem.state`) |
+| `system.filesystem.utilization` | `1` | Gauge | Occupancy ratio (`system.filesystem.state` attribute) |
 
-**Attribut `system.filesystem.state`**
+**The `system.filesystem.state` attribute**
 
-Valeurs officielles OTel : `free, reserved, used`
+Official OTel values: `free, reserved, used`
 
-**Extension `system.filesystem.state=available`** — Linux `statfs` expose `f_bavail` (espace disponible aux processus non-root, distinct de `f_bfree`). Mappé à `available` pour préserver l'info.
+**Extension `system.filesystem.state=available`** — Linux `statfs` exposes `f_bavail`, the space available to non-root processes, which is distinct from `f_bfree`. Mapped to `available` so the distinction is not lost.
 
-**Unit conversions par le mapper :**
-- Windows `disk_free_mb` (MB) → OTel unit `By` (bytes) : **mapper ×1048576** (MiB).
-- Pourcentages (0-100) → OTel ratio (0-1) : **mapper ÷100**.
+**Unit conversions applied by the mapper:**
+- Windows `disk_free_mb` (MB) → OTel unit `By` (bytes): **mapper ×1048576** (MiB).
+- Percentages (0-100) → OTel ratio (0-1): **mapper ÷100**.
 
-#### 4.4.2 Extensions `senhub.*` (inodes — Linux)
+#### 4.4.2 `senhub.*` extensions (inodes — Linux)
 
-**Justification :** OTel `system.filesystem.*` est centré sur l'octet. node_exporter expose `node_filesystem_files` (total inodes) et `node_filesystem_files_free`. Nous créons un sous-espace inode miroir de `system.filesystem.*` pour cohérence.
+**Rationale:** OTel `system.filesystem.*` is byte-centric. node_exporter exposes `node_filesystem_files` (total inodes) and `node_filesystem_files_free`. We mirror `system.filesystem.*` with an inode sub-namespace, for consistency.
 
 | Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.system.filesystem.inode.limit` | `{inode}` | UpDownCounter | – |
-| `senhub.system.filesystem.inode.usage` | `{inode}` | UpDownCounter | `system.filesystem.state: free` ou `used` |
+| `senhub.system.filesystem.inode.usage` | `{inode}` | UpDownCounter | `system.filesystem.state: free` or `used` |
 | `senhub.system.filesystem.inode.utilization` | `1` | Gauge | `system.filesystem.state: used` |
 
-#### 4.4.3 Extensions `senhub.*` (disk I/O rates — Windows)
+#### 4.4.3 `senhub.*` extensions (disk I/O rates — Windows)
 
-**Justification :** OTel `system.disk.*` définit des counters cumulatifs (`system.disk.operations`, `system.disk.io`). Notre probe Windows capture des **rates instantanés** depuis Perfmon (`\LogicalDisk\Disk Reads/sec` etc.). Extensions `_per_second` en gauge — alignement OTel complet possible après refonte probe (V2).
+**Rationale:** OTel `system.disk.*` defines cumulative counters (`system.disk.operations`, `system.disk.io`). Our Windows probe captures **instantaneous rates** from Perfmon (`\LogicalDisk\Disk Reads/sec` and so on). Hence `_per_second` gauge extensions — full OTel alignment becomes possible once the probe is reworked (V2).
 
 | Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
-| `senhub.system.disk.operations` | `1/s` | Gauge | `disk.io.direction: read` ou `write` |
-| `senhub.system.disk.io` | `By/s` | Gauge | `disk.io.direction: read` ou `write` |
+| `senhub.system.disk.operations` | `1/s` | Gauge | `disk.io.direction: read` or `write` |
+| `senhub.system.disk.io` | `By/s` | Gauge | `disk.io.direction: read` or `write` |
 | `senhub.system.disk.queue_length` | `{operation}` | Gauge | – |
 
-#### 4.4.4 Attributs (tag → attribute mapping)
+#### 4.4.4 Attributes (tag → attribute mapping)
 
-| Tag interne | Attribut OTel |
+| Internal tag | OTel attribute |
 |---|---|
-| `device` | `system.device` (ex: `/dev/sda1`) |
+| `device` | `system.device` (e.g. `/dev/sda1`) |
 | `mount_point` | `system.filesystem.mountpoint` (ex: `/`, `/var`) |
 | `drive` (Windows) | `system.filesystem.mountpoint` (ex: `C:`, `D:`) — harmonisé Linux/Windows |
 | `fs_type` | `system.filesystem.type` (ex: `ext4`, `ntfs`) |
 
-### 4.5 Probes `ping_gateway` et `ping_webapp` (ICMP connectivité)
+### 4.5 `ping_gateway` and `ping_webapp` probes (ICMP connectivity)
 
-**Source principale :** aucune OTel (pas de semconv ICMP)
-**Source secondaire :** [Prometheus blackbox_exporter](https://github.com/prometheus/blackbox_exporter) (`probe_icmp_*` convention)
+**Primary source:** none in OTel (no ICMP semconv)
+**Secondary source:** [Prometheus blackbox_exporter](https://github.com/prometheus/blackbox_exporter) (`probe_icmp_*` convention)
 
-**Note :** nos probes ICMP font de la **mesure continue agrégée** (moyennes sur fenêtre), pas des probes ponctuelles comme blackbox_exporter. Les noms sont adaptés en conséquence sous namespace `senhub.probe.*`.
+**Note:** our ICMP probes take **continuous aggregated measurements** (windowed averages), not one-shot probes like blackbox_exporter. The names are adapted accordingly, under the `senhub.probe.*` namespace.
 
-#### 4.5.1 Extensions `senhub.*`
+#### 4.5.1 `senhub.*` extensions
 
 | Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
-| `senhub.probe.icmp.duration_seconds` | `s` | Gauge | `url.full` *(optionnel — présent pour ping_webapp, absent pour ping_gateway)* |
-| `senhub.probe.icmp.packet_loss_ratio` | `1` | Gauge | `url.full` *(optionnel)* |
+| `senhub.probe.icmp.duration_seconds` | `s` | Gauge | `url.full` *(optional — present for ping_webapp, absent for ping_gateway)* |
+| `senhub.probe.icmp.packet_loss_ratio` | `1` | Gauge | `url.full` *(optional)* |
 
-**Unit conversions par le mapper :** ms → s (÷1000) pour latency ; % → ratio (÷100) pour packet loss.
+**Unit conversions applied by the mapper:** ms → s (÷1000) for latency; % → ratio (÷100) for packet loss.
 
-Distinction ping_gateway vs ping_webapp : même nom de métrique, ping_gateway n'émet **pas** le label `url.full` (cible = default gateway détectée au runtime).
+ping_gateway vs ping_webapp: same metric name, but ping_gateway does **not** emit the `url.full` label — its target is the default gateway, detected at runtime.
 
-### 4.6 Probe `load_webapp` (HTTP phase timing)
+### 4.6 `load_webapp` probe (HTTP phase timing)
 
-**Source principale :** aucune OTel directement applicable (`http.client.*` est orienté histogramme sur requêtes ponctuelles — notre modèle est continu avec moyennes)
-**Source secondaire :** [blackbox_exporter](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) — `probe_http_duration_seconds{phase=…}` avec phases `resolve, connect, tls, processing, transfer`
+**Primary source:** nothing in OTel applies directly (`http.client.*` is histogram-oriented over one-shot requests; our model is continuous, with averages)
+**Secondary source:** [blackbox_exporter](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) — `probe_http_duration_seconds{phase=…}` with phases `resolve, connect, tls, processing, transfer`
 
-#### 4.6.1 Extension `senhub.probe.http.*`
+#### 4.6.1 The `senhub.probe.http.*` extension
 
 | Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.probe.http.duration_seconds` | `s` | Gauge | `phase`, `url.full` |
 
-**Valeurs `phase`** (aligné blackbox_exporter + extension `total`) :
+**`phase` values** (aligned with blackbox_exporter, plus a `total` extension):
 
-| Value | Signification |
+| Value | Meaning |
 |---|---|
-| `resolve` | Résolution DNS |
-| `connect` | Établissement TCP |
+| `resolve` | DNS resolution |
+| `connect` | TCP establishment |
 | `tls` | Handshake TLS |
 | `processing` | Time To First Byte (TTFB) |
-| `total` | Durée complète request → full response *(extension — blackbox utilise `probe_duration_seconds` séparément)* |
+| `total` | Full request → full response duration *(extension — blackbox exposes `probe_duration_seconds` separately)* |
 
-**Unit conversion :** ms → s (÷1000) par le mapper.
+**Unit conversion:** ms → s (÷1000), by the mapper.
 
-### 4.7 Probe `wifi_signal_strength` (connectivité WiFi)
+### 4.7 `wifi_signal_strength` probe (WiFi connectivity)
 
-**Source principale :** aucune OTel (pas de semconv wifi)
-**Source secondaire :** aucune convention communautaire établie
+**Primary source:** none in OTel (no wifi semconv)
+**Secondary source:** no established community convention
 
-Extension complète sous namespace `senhub.system.network.wifi.*`.
+A full extension under the `senhub.system.network.wifi.*` namespace.
 
-#### 4.7.1 Extensions `senhub.*`
+#### 4.7.1 `senhub.*` extensions
 
 | Senhub metric | Unit | Type | Attributes |
 |---|---|---|---|
 | `senhub.system.network.wifi.signal_strength.dbm` | `dBm` | Gauge | `senhub.network.wifi.ssid`, `senhub.network.wifi.bssid` |
 | `senhub.system.network.wifi.quality_ratio` | `1` | Gauge | `senhub.network.wifi.ssid`, `senhub.network.wifi.bssid` *(÷100)* |
 
-**Attributs :**
+**Attributes:**
 
-| Attribut | Source | Description |
+| Attribute | Source | Description |
 |---|---|---|
-| `senhub.network.wifi.ssid` | tag `ssid` | Nom du réseau (ESSID) |
-| `senhub.network.wifi.bssid` | tag `bssid` | Adresse MAC du point d'accès (BSSID) |
+| `senhub.network.wifi.ssid` | `ssid` tag | Network name (ESSID) |
+| `senhub.network.wifi.bssid` | `bssid` tag | Access-point MAC address (BSSID) |
 
-> Pas de YAML transformer existant pour `wifi_signal_strength` — créé lors du lot 2.
+> There was no YAML transformer for `wifi_signal_strength` — created in batch 2.
 
-### 4.8 Probes `syslog`, `event` (conduits de flux log)
+### 4.8 `syslog` and `event` probes (log conduits)
 
-**Nature :** ces probes sont des **conduits de flux log** (collecte + retransmission), pas des collecteurs de métriques. Elles reçoivent des événements/logs et les relaient vers des consommateurs (cloud SenHub, OTLP log export, etc.). Ce ne sont pas des sources de signaux Prometheus.
+**Nature:** these probes are **log conduits** — they collect and forward — not metric collectors. They receive events and logs and relay them to consumers (the SenHub cloud, OTLP log export, and so on). They are not sources of Prometheus signals.
 
-> **Note 2026-05-12 :** la probe `otel` (réception OTLP) a été retirée de la registry — implémentation stub jamais terminée. Une réimplementation complète (vrai serveur OTLP gRPC/HTTP) est nécessaire avant réactivation.
+> **Note, 2026-05-12:** the `otel` probe (OTLP reception) was removed from the registry — a stub implementation that was never finished. A full reimplementation (a real OTLP gRPC/HTTP server) is required before it comes back.
 
-**Décision :** aucune métrique métier exposée via l'endpoint `/metrics`. Déclaration explicite par `otel.skip: true` dans les YAML pour respecter le contrat "pas de métrique sans mapping" (le skip EST un mapping explicite, documenté et auditable).
+**Decision:** no business metric is exposed on the `/metrics` endpoint. This is declared explicitly with `otel.skip: true` in the YAML, to honour the "no metric without a mapping" contract — the skip IS an explicit mapping, documented and auditable.
 
 #### 4.8.1 Schéma `otel.skip`
 
@@ -322,52 +322,52 @@ otel:
   reason: "<explication obligatoire pour la revue>"
 ```
 
-Le mapper Prometheus ignore ces métriques ; elles n'apparaissent pas dans `/metrics`. Les champs `prtg:` / `nagios:` restent fonctionnels (retro-compat).
+The Prometheus mapper ignores these metrics; they do not appear in `/metrics`. The `prtg:` / `nagios:` fields keep working (backwards compatibility).
 
-#### 4.8.2 Évolution future — instrumentation opérationnelle
+#### 4.8.2 Future evolution — operational instrumentation
 
-Ces probes pourront être **outillées** (chantier dédié, hors scope du mapping OTel-first actuel) pour exposer leurs propres **métriques opérationnelles** :
+These probes could later be **instrumented** (a dedicated piece of work, outside the scope of the current OTel-first mapping) to expose their own **operational metrics**:
 
-| Candidat futur | Unit | Type |
+| Future candidate | Unit | Type |
 |---|---|---|
 | `senhub.probe.syslog.events_received` | `{event}` | Counter |
 | `senhub.probe.syslog.events_dropped` | `{event}` | Counter |
 | `senhub.probe.syslog.buffer_fill_ratio` | `1` | Gauge |
 | `senhub.probe.event.events_received` | `{event}` | Counter |
 
-Ces métriques nécessitent une refonte du code probe pour maintenir des compteurs internes. Séparé.
+These would require reworking the probe code to maintain internal counters. Separate work.
 
-#### 4.8.3 Probes concernées
+#### 4.8.3 Probes concerned
 
-- **syslog** : métrique `syslog_event` marquée `skip: true`.
-- **event** : YAML créé avec métrique `event_event` marquée `skip: true`.
+- **syslog**: the `syslog_event` metric is marked `skip: true`.
+- **event**: YAML created, with the `event_event` metric marked `skip: true`.
 
-### 4.9 Probe `redfish` (monitoring hardware serveur)
+### 4.9 `redfish` probe (server hardware monitoring)
 
-**Source principale :** [OTel hardware namespace](https://opentelemetry.io/docs/specs/semconv/hardware/) — 16 catégories (power_supply, physical_disk, logical_disk, disk_controller, enclosure, etc.)
-**Source secondaire :** [jenningsloy318/redfish_exporter](https://github.com/jenningsloy318/redfish_exporter) (référence pattern Prometheus)
+**Primary source:** [OTel hardware namespace](https://opentelemetry.io/docs/specs/semconv/hardware/) — 16 categories (power_supply, physical_disk, logical_disk, disk_controller, enclosure, and others)
+**Secondary source:** [jenningsloy318/redfish_exporter](https://github.com/jenningsloy318/redfish_exporter) (reference for the Prometheus pattern)
 
-#### 4.9.1 Métriques OTel natives utilisées
+#### 4.9.1 Native OTel metrics used
 
-| OTel metric | Unit | Type | Notre usage |
+| OTel metric | Unit | Type | How we use it |
 |---|---|---|---|
-| `hw.status` | `1` | UpDownCounter | Santé avec `hw.type` ∈ {power_supply, physical_disk, logical_disk, disk_controller, enclosure} — pattern expand sur `hw.state` |
-| `hw.physical_disk.size` | `By` | UpDownCounter | Capacité totale drive |
-| `hw.logical_disk.limit` | `By` | UpDownCounter | Capacité totale volume |
-| `hw.logical_disk.usage` | `By` | UpDownCounter | Occupation volume (allocated/free) avec `hw.logical_disk.state` |
-| `hw.logical_disk.utilization` | `1` | Gauge | Ratio d'occupation volume |
+| `hw.status` | `1` | UpDownCounter | Health, with `hw.type` ∈ {power_supply, physical_disk, logical_disk, disk_controller, enclosure} — expand pattern over `hw.state` |
+| `hw.physical_disk.size` | `By` | UpDownCounter | Total drive capacity |
+| `hw.logical_disk.limit` | `By` | UpDownCounter | Total volume capacity |
+| `hw.logical_disk.usage` | `By` | UpDownCounter | Volume in use (allocated/free), with `hw.logical_disk.state` |
+| `hw.logical_disk.utilization` | `1` | Gauge | Volume occupancy ratio |
 
-**Attribut `hw.state`** — valeurs émises via expansion:
-- Officielles OTel : `ok`, `degraded`, `failed`, `predicted_failure`
-- **Extension `unknown`** — pour le code Redfish 3 (Unknown) qui n'existe pas en OTel standard. Valeur honnête : "Redfish n'a pas pu déterminer l'état".
+**The `hw.state` attribute** — values emitted through the expansion:
+- official OTel: `ok`, `degraded`, `failed`, `predicted_failure`
+- **`unknown` extension** — for Redfish code 3 (Unknown), which has no standard OTel equivalent. An honest value: "Redfish could not determine the state".
 
-**Mapping des codes lookup `sfs.redfish.health`** :
+**Mapping of the `sfs.redfish.health` lookup codes:**
 - 0 (OK) → `hw.state=ok`
 - 1 (Warning) → `hw.state=degraded`
 - 2 (Critical) → `hw.state=failed`
 - 3 (Unknown) → `hw.state=unknown` *(extension)*
 
-#### 4.9.2 Extensions `senhub.*`
+#### 4.9.2 `senhub.*` extensions
 
 Extensions créées pour les concepts absents du namespace OTel hardware officiel :
 
@@ -404,8 +404,8 @@ Alignement OTel quand possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `hw
 
 ### 4.10 Probe `veeam` (backup & replication)
 
-**Source principale :** aucune convention OTel pour backup
-**Source secondaire :** [peekjef72/veeam_exporter](https://github.com/peekjef72/veeam_exporter) et variantes communautaires (patterns convergents sur job states, repo capacity)
+**Primary source:** aucune convention OTel pour backup
+**Secondary source:** [peekjef72/veeam_exporter](https://github.com/peekjef72/veeam_exporter) et variantes communautaires (patterns convergents sur job states, repo capacity)
 
 **Décision :** toutes les métriques sous extensions `senhub.veeam.*`. Stratégie de collapse systématique (totaux/counts en labels de state plutôt que noms de métriques séparés).
 
@@ -474,8 +474,8 @@ Alignement OTel quand possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `hw
 
 ### 4.11 Probe `citrix` (Virtual Apps and Desktops)
 
-**Source principale :** aucune convention OTel pour Citrix CVAD
-**Source secondaire :** aucun exporter Prometheus standard (Dynatrace, ControlUp, Nexthink sont propriétaires) — design from scratch cohérent avec nos conventions
+**Primary source:** aucune convention OTel pour Citrix CVAD
+**Secondary source:** aucun exporter Prometheus standard (Dynatrace, ControlUp, Nexthink sont propriétaires) — design from scratch cohérent avec nos conventions
 
 Toutes les métriques sous `senhub.citrix.*`. Collapse systématique par catégorie fonctionnelle.
 
@@ -522,8 +522,8 @@ Conversions côté mapper : `%` → ratio (÷100) pour load_index ; heures → s
 
 ### 4.12 Probe `netscaler` (Citrix ADC)
 
-**Source principale :** aucune convention OTel pour NITRO/NetScaler
-**Source secondaire :** [citrix-adc-metrics-exporter officiel](https://github.com/netscaler/netscaler-adc-metrics-exporter) (`citrixadc_*` pattern) — transposé sous `senhub.netscaler.*`
+**Primary source:** aucune convention OTel pour NITRO/NetScaler
+**Secondary source:** [citrix-adc-metrics-exporter officiel](https://github.com/netscaler/netscaler-adc-metrics-exporter) (`citrixadc_*` pattern) — transposé sous `senhub.netscaler.*`
 
 Scope massif (100 métriques) organisé par **16 entités NITRO** :
 system, ns, ssl (global), lbvserver, service, servicegroup, ssl.certificate, ha, disk, interface, cs (vserver+policy), gslb (vserver+site+service), cache, compression, aaa, vpn, appfw.
@@ -1316,7 +1316,7 @@ Unit embedded in the name is forbidden per the OTel-first rule; the unit lives i
 **Discriminant tag:** `instance` (= `server.address`) — registered in `DiscriminantTagsRegistry["clickhouse"]` (#459).
 ### 4.30 Probe redis (Redis / Valkey)
 
-Probe payante (Pro). Connexion TCP brute (optionnellement TLS) au port RESP
+Probe payante (Pro). Connexion TCP brute (optionallement TLS) au port RESP
 (défaut 6379) — aucune dépendance Go externe. Séquence : `AUTH` si mot de
 passe configuré, puis `INFO all`. La réponse bulk string RESP est parsée
 section par section en une map plate `key→value`.
@@ -1432,7 +1432,7 @@ Le tag probe `direction` est renommé vers l'attribut OTel `network.io.direction
 
 Probe REST API Proxmox VE : nodes, VMs QEMU, conteneurs LXC, pools de
 stockage. Authentification via PVE API token (header `Authorization:
-PVEAPIToken`). Espace de noms `proxmox.*` (vendor-specific) +
+PVEAPIToken`). The `proxmox.*` namespace (vendor-specific) +
 `senhub.proxmox.*` pour les extensions SenHub.
 
 | OTel metric | Unit | Type | Notes |
@@ -1666,7 +1666,7 @@ out-of-band via l'API REST donc pas de machine-id, ce n'est pas un `host`.
 | `senhub.powerstore.volumes.not_ready` | Gauge `{volume}` | — | `/volume.state != Ready` |
 | `senhub.powerstore.alerts.active` | Gauge `{alert}` | `senhub.powerstore.alert.severity` (`Critical`/`Major`/`Minor`/`Info`) | `/alert.state == ACTIVE` |
 
-**État de santé (`hw.state` sur l'entité)** — dérivé chaque cycle : un composant
+**Health state (`hw.state` on the entity)** — derived each cycle: a component
 `faulted` ou une alerte `Critical` active ⇒ `failed` ; une alerte `Major` active
 ⇒ `degraded` ; sinon `ok`. Une transition émet un `entity.state_changed`.
 
@@ -1713,7 +1713,7 @@ faible : 1-4 appliances, 2-8 nœuds).
 
 ### 4.37 Probe `ad_hybrid` (Azure AD Connect Health)
 
-Santé de la synchronisation d'identité hybride (Azure AD Connect Health). Pas de
+Hybrid identity synchronisation health (Azure AD Connect Health). No
 semconv OTel pour ce domaine — métriques sous `senhub.ad_hybrid.*` (même statut
 que `senhub.veeam.*`). Émission : ids courts snake_case côté probe (enterprise
 `probes/ad_hybrid/`), noms/unités/types déclarés par le transformer
@@ -1758,15 +1758,15 @@ Cluster metrics are emitted only when the Failover Clustering feature is present
 | Metric | Type / unité | Attributes | Notes |
 |---|---|---|---|
 | `senhub.hyperv_ha.up` | Gauge `1` | — | 1 si le namespace WMU Replica a répondu ce cycle, sinon 0 |
-| `senhub.hyperv_ha.replica.health` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Santé de réplication (1 = Normal, 0 = Warning/Critical) |
+| `senhub.hyperv_ha.replica.health` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Replication health (1 = Normal, 0 = Warning/Critical) |
 | `senhub.hyperv_ha.replica.state` | Gauge `1` | `senhub.hyperv_ha.vm.name` | Valeur brute `ReplicationState` |
 | `senhub.hyperv_ha.replica.lag` | Gauge `s` | `senhub.hyperv_ha.vm.name` | Secondes depuis la dernière réplication réussie |
-| `senhub.hyperv_ha.cluster.node.state` | Gauge `1` | `senhub.hyperv_ha.cluster.node` | État du nœud (1 = Up, 0 = Down/Paused/Joining) |
-| `senhub.hyperv_ha.cluster.group.state` | Gauge `1` | `senhub.hyperv_ha.cluster.group` | État du groupe de ressources (1 = Online, 0 = Offline/Failed/Partial) |
+| `senhub.hyperv_ha.cluster.node.state` | Gauge `1` | `senhub.hyperv_ha.cluster.node` | Node state (1 = Up, 0 = Down/Paused/Joining) |
+| `senhub.hyperv_ha.cluster.group.state` | Gauge `1` | `senhub.hyperv_ha.cluster.group` | Resource-group state (1 = Online, 0 = Offline/Failed/Partial) |
 
 ### 4.40 Probe `mssql_ha`
 
-Santé de réplication SQL Server AlwaysOn Availability Group. Pas de semconv OTel
+SQL Server AlwaysOn Availability Group replication health. No OTel semconv
 pour la réplication AG ; métriques sous `senhub.mssql_ha.*` (même statut que
 `senhub.veeam.*`). Complète la probe `mssql` (lecture seule, semconv `sqlserver.*`).
 
@@ -1774,13 +1774,13 @@ pour la réplication AG ; métriques sous `senhub.mssql_ha.*` (même statut que
 |---|---|---|---|
 | `senhub.mssql_ha.up` | Gauge `1` | — | 1 si le dernier ping a atteint le serveur ce cycle, sinon 0 |
 | `senhub.mssql_ha.replica.role` | Gauge `1` | `senhub.mssql_ha.ag.name`, `senhub.mssql_ha.replica.name` | Rôle du réplica (Primary=1, Secondary=0) |
-| `senhub.mssql_ha.replica.health` | Gauge `1` | `…ag.name`, `…replica.name` | Santé de synchronisation (Healthy=1, sinon 0) |
+| `senhub.mssql_ha.replica.health` | Gauge `1` | `…ag.name`, `…replica.name` | Synchronisation health (Healthy=1, otherwise 0) |
 | `senhub.mssql_ha.replica.connected` | Gauge `1` | `…ag.name`, `…replica.name` | Connectivité (Connected=1, Disconnected=0) |
 | `senhub.mssql_ha.database.lag` | Gauge `s` | `…ag.name`, `senhub.mssql_ha.database.name` | Lag estimé du réplica secondaire |
 | `senhub.mssql_ha.log_send_queue` | Gauge `By` | `…ag.name`, `…database.name` | Log sur le primaire pas encore envoyé au secondaire |
 | `senhub.mssql_ha.redo_queue` | Gauge `By` | `…ag.name`, `…database.name` | Log reçu par le secondaire pas encore rejoué |
-| `senhub.mssql_ha.log_send_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit d'envoi du log primaire → secondaire |
-| `senhub.mssql_ha.redo_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Débit de rejeu du log sur le secondaire |
+| `senhub.mssql_ha.log_send_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Log send rate, primary → secondary |
+| `senhub.mssql_ha.redo_rate` | Gauge `By/s` | `…ag.name`, `…database.name` | Log redo rate on the secondary |
 
 ### 4.41 Probe `oracle_enterprise` (Oracle EE / Diagnostics Pack)
 
@@ -1808,7 +1808,7 @@ courts snake_case côté probe, déclarés par le transformer
 
 ### 4.42 Probe `vsphere_ha` (VMware vSphere HA — vSAN + NSX-T)
 
-Santé HA vSphere depuis un vCenter : santé vSAN (govmomi vSAN health) et,
+vSphere HA health from a vCenter: vSAN health (govmomi vSAN health) and,
 optionnellement, état de l'overlay NSX-T (API REST du NSX manager). Pas de semconv
 OTel — métriques sous `senhub.vsphere_ha.*`. NSX-T n'est interrogé que si
 `nsx_endpoint` + `nsx_username` sont configurés.
