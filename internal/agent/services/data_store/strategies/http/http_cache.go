@@ -191,7 +191,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// consul: health.checks emits one series per state (critical/warning/passing).
 	"consul":      {"metric_type", "state"},
 	"dns_latency": {"name", "resolver", "metric_type"},
-	"docker":      {"container_id", "container_name", "metric_type", "core"},
+	"docker":      {"container_id", "container_name", "metric_type", "core", "source"},
 	"http_check":  {"target", "metric_type"},
 	"icmp_check":  {"target", "metric_type"},
 	"tcp_dial":    {"target", "metric_type"},

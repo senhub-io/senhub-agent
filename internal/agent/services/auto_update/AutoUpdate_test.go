@@ -32,9 +32,9 @@ func TestAutoUpdate_GetName(t *testing.T) {
 	remoteConfig := configuration.NewMockConfiguration("http://localhost:8080", "")
 
 	au := NewAutoUpdate(AutoUpdateConfig{
-		remoteConfig,
-		baseLogger,
-		false,
+		ConfigSource: remoteConfig,
+		Logger:       baseLogger,
+		DryRun:       false,
 	})
 
 	if au.GetName() != "AutoUpdate" {
