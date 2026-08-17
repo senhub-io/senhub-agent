@@ -421,11 +421,11 @@ func Main() {
 		return
 	case "config":
 		if len(os.Args) > 2 && os.Args[2] == "check" {
-			configPath := ""
-			if len(os.Args) > 3 {
-				configPath = os.Args[3]
+			configPath, err := parseConfigPathArgs(os.Args[3:])
+			if err != nil {
+				fatalf("config check: %v", err)
 			}
-			if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
+			if resolved, resErr := cliArgs.GetAbsoluteConfigPath(configPath); resErr == nil {
 				configPath = resolved
 			}
 			checkConfig(configPath)
