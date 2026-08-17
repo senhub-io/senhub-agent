@@ -79,7 +79,7 @@ func TestRekeyAnnouncer_StopsAfterItsWindow(t *testing.T) {
 	ch := entity.SubscribeEvents(32)
 	defer entity.UnsubscribeEvents(ch)
 
-	for i := 0; i < rekeyAnnounceCycles+4; i++ {
+	for i := 0; i < entity.RekeyAnnounceCycles+4; i++ {
 		a.Announce()
 	}
 
@@ -93,8 +93,8 @@ func TestRekeyAnnouncer_StopsAfterItsWindow(t *testing.T) {
 		}
 		break
 	}
-	if published != rekeyAnnounceCycles {
-		t.Errorf("published %d deletes, want exactly %d", published, rekeyAnnounceCycles)
+	if published != entity.RekeyAnnounceCycles {
+		t.Errorf("published %d deletes, want exactly %d", published, entity.RekeyAnnounceCycles)
 	}
 	if _, ok := a.SameAs(); ok {
 		t.Error("the alias edge is still offered after the window closed")
