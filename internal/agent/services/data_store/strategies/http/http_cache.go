@@ -184,7 +184,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Observability / messaging probes — one series per broker endpoint
 	"pulsar": {"endpoint"}, // Apache Pulsar: one broker per endpoint URL
 	// Storage probes — one series per physical device.
-	"smart": {"smart.device"}, // S.M.A.R.T.: one series per disk (sata/nvme)
+	"smart": {"smart.device", "reason"}, // S.M.A.R.T.: one series per disk (sata/nvme)
 
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
