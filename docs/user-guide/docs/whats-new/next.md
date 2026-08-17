@@ -69,12 +69,236 @@ replica count as `k8s_statefulset_ready_ratio`. Both are plain integers.
 
 Counts now declare a unit naming what is counted (`{pod}`, `{node}`, `{job}`,
 `{cpu}`, `{resource}`) and one-hot state series declare `{state}`; annotation
-units carry no Prometheus suffix. `senhub_kubernetes_up_ratio` is deliberately
-unchanged — every probe's `up` metric declares unit `1`, and breaking that
-alignment for one probe would trade a naming defect for a naming inconsistency
-across forty others.
+units carry no Prometheus suffix.
+
+`senhub_kubernetes_up_ratio` was left alone at first, on the grounds that every
+probe's `up` declared unit `1` and breaking that alignment for one probe would
+trade a naming defect for a naming inconsistency across forty others. That
+reasoning was right, and it pointed at the real fix rather than at leaving it —
+so the whole set moved together instead. See
+[Boolean and enum metrics lose their `_ratio` suffix](#boolean-and-enum-metrics-lose-their-ratio-suffix)
+below.
 
 Dashboards and alerts querying the affected series need the suffix removed.
+
+
+### The agent is on disk once, and the daemon cannot write it
+
+A hardened Linux install carried the agent binary **twice**: the copy you ran,
+and a `senhub`-owned copy under `/var/lib/senhub-agent/bin` that the unit
+execed. The second existed so the unprivileged daemon could rename a new binary
+over itself during auto-update.
+
+It worked, and the shape was wrong — not because of the duplication, but because
+of what the duplication was for. The daemon is the part of the agent exposed to
+input you do not control: OTLP over the network, SNMP traps, syslog, tailed
+files, the responses of every target it probes. It is therefore the component
+most likely to be compromised, and it owned the executable systemd runs.
+Whoever compromised it got **persistence across restarts**.
+
+The signature check did not close that. It ran inside the same process, so an
+attacker controlling the daemon controlled the code doing the checking.
+Verification performed by the party that may be compromised is not verification.
+
+**What changes.** One binary, root-owned, at `/usr/local/bin/senhub-agent`
+(`/usr/bin` for future distro packages), inside `ProtectSystem=full`'s read-only
+tree. The daemon no longer installs anything on Linux. It still **checks** for
+new versions when `auto_update.enabled` is set — it reports what it finds and
+names the command that applies it:
+
+```
+A newer version is available. The agent does not install it itself on Linux:
+the binary is root-owned so the service account cannot rewrite it.
+Apply it with 'sudo senhub-agent update', ...
+```
+
+Updating is `sudo senhub-agent update <version>` today, and `apt`/`dnf`/`zypper`
+once the packages are published. This is what package-managed agents do, and the
+package manager verifies against the system keyring and records what it
+installed.
+
+**Upgrading a host.** `sudo senhub-agent refresh-unit` does it in one step:
+promotes the binary to the system path if nothing is there yet, repoints
+`ExecStart`, removes the old directory. It does the binary first on purpose — if
+that failed after the unit had been rewritten the service would come back as
+`203/EXEC`, so a failure aborts with the old, working unit still in place.
+
+Two things to know:
+
+- **The unit and the binary move together.** The hardened unit marks
+  `/var/lib/senhub-agent` non-executable, so a host that receives the new unit
+  while its `ExecStart` still points at the old copy fails to start. `install`
+  and `refresh-unit` rewrite both at once; do not hand-copy one without the
+  other.
+- **`refresh-unit` normally preserves a custom `ExecStart`** so a path you chose
+  survives a refresh. The old `/var/lib/senhub-agent/bin/senhub-agent` is the
+  single exception — it is recognised by name and repointed even though the file
+  is still there, because it is not a path anyone chose. A genuinely custom path
+  such as `/opt/senhub/bin/senhub-agent` is still left alone.
+
+**Windows is unaffected** and keeps in-process updates: an MSI install stages a
+signed MSI and hands the upgrade to `msiexec`, a privileged installer outside
+the agent — the same separation, reached by a different road. A ZIP install
+replaces its own binary, which escalates nothing there because the service runs
+as LocalSystem. (#794)
+
+
+### Boolean and enum metrics lose their `_ratio` suffix
+
+The OTel-to-Prometheus rule appends `_ratio` for the dimensionless unit `1`,
+which is correct for a utilisation gauge in [0,1]. Every availability and state
+gauge in the agent declared that unit, so the endpoint exposed
+`senhub_cassandra_up_ratio`, `senhub_db_up_ratio`,
+`senhub_windows_service_state_ratio` and a hundred others. They are booleans and
+enumerations, not fractions.
+
+The mapper already had the instinct — it skips `_ratio` for counters, with a
+comment saying enumerated booleans would mislead — but gauges fell through, and
+that is where all of these live.
+
+**118 Prometheus series are renamed.** Percentages are unaffected: they declare
+the source unit `%`, the mapper divides by 100, and they really are fractions.
+Verified across all 250 declarations — not one describes a percentage without
+carrying `%`. Genuinely dimensionless quantities keep `_ratio` too: cache hit
+rates, compression and data-reduction ratios, memory fragmentation, AP
+satisfaction.
+
+**Nothing changes for PRTG, Nagios, the web UI or the SenHub cloud** — they read
+channels, not an OTel unit.
+
+The three consumers shipped with the agent move in the same release. The one
+that mattered most is `packs/alerts/vmalert/`, which carried
+`senhub_icmp_up_ratio == 0` and friends: **a rule matching a name that no longer
+exists stops firing in silence**, which is the worst outcome available for an
+alert rule. The Grafana dashboards and the Prometheus metrics reference follow.
+
+<details>
+<summary>All 118 renamed series</summary>
+
+| Before | After |
+|---|---|
+| `senhub_activemq_up_ratio` | `senhub_activemq_up` |
+| `senhub_ad_hybrid_sync_health_ratio` | `senhub_ad_hybrid_sync_health` |
+| `senhub_ad_hybrid_up_ratio` | `senhub_ad_hybrid_up` |
+| `senhub_apache_up_ratio` | `senhub_apache_up` |
+| `senhub_cassandra_up_ratio` | `senhub_cassandra_up` |
+| `senhub_ceph_health_status_ratio` | `senhub_ceph_health_status` |
+| `senhub_ceph_up_ratio` | `senhub_ceph_up` |
+| `senhub_chrony_up_ratio` | `senhub_chrony_up` |
+| `senhub_citrix_license_grace_active_ratio` | `senhub_citrix_license_grace_active` |
+| `senhub_clickhouse_up_ratio` | `senhub_clickhouse_up` |
+| `senhub_consul_leader_ratio` | `senhub_consul_leader` |
+| `senhub_consul_up_ratio` | `senhub_consul_up` |
+| `senhub_couchdb_up_ratio` | `senhub_couchdb_up` |
+| `senhub_db_mysql_replica_io_thread_running_ratio` | `senhub_db_mysql_replica_io_thread_running` |
+| `senhub_db_mysql_replica_sql_thread_running_ratio` | `senhub_db_mysql_replica_sql_thread_running` |
+| `senhub_db_postgresql_replica_io_running_ratio` | `senhub_db_postgresql_replica_io_running` |
+| `senhub_db_replication_health_ratio` | `senhub_db_replication_health` |
+| `senhub_db_replication_role_ratio` | `senhub_db_replication_role` |
+| `senhub_db_up_ratio` | `senhub_db_up` |
+| `senhub_db_version_info_ratio` | `senhub_db_version_info` |
+| `senhub_dns_up_ratio` | `senhub_dns_up` |
+| `senhub_docker_up_ratio` | `senhub_docker_up` |
+| `senhub_elasticsearch_cluster_health_ratio` | `senhub_elasticsearch_cluster_health` |
+| `senhub_elasticsearch_up_ratio` | `senhub_elasticsearch_up` |
+| `senhub_envoy_up_ratio` | `senhub_envoy_up` |
+| `senhub_exchange_online_service_health_ratio` | `senhub_exchange_online_service_health` |
+| `senhub_exchange_online_up_ratio` | `senhub_exchange_online_up` |
+| `senhub_exec_skipped_ratio` | `senhub_exec_skipped` |
+| `senhub_exec_timeout_ratio` | `senhub_exec_timeout` |
+| `senhub_haproxy_up_ratio` | `senhub_haproxy_up` |
+| `senhub_hardware_logical_disk_encrypted_ratio` | `senhub_hardware_logical_disk_encrypted` |
+| `senhub_hardware_physical_disk_has_active_operations_ratio` | `senhub_hardware_physical_disk_has_active_operations` |
+| `senhub_hardware_physical_disk_location_indicator_active_ratio` | `senhub_hardware_physical_disk_location_indicator_active` |
+| `senhub_httpcheck_content_match_ratio` | `senhub_httpcheck_content_match` |
+| `senhub_httpcheck_tls_valid_ratio` | `senhub_httpcheck_tls_valid` |
+| `senhub_httpcheck_up_ratio` | `senhub_httpcheck_up` |
+| `senhub_hyperv_ha_cluster_group_state_ratio` | `senhub_hyperv_ha_cluster_group_state` |
+| `senhub_hyperv_ha_cluster_node_state_ratio` | `senhub_hyperv_ha_cluster_node_state` |
+| `senhub_hyperv_ha_replica_health_ratio` | `senhub_hyperv_ha_replica_health` |
+| `senhub_hyperv_ha_replica_state_ratio` | `senhub_hyperv_ha_replica_state` |
+| `senhub_hyperv_ha_up_ratio` | `senhub_hyperv_ha_up` |
+| `senhub_hyperv_up_ratio` | `senhub_hyperv_up` |
+| `senhub_hyperv_vm_state_ratio` | `senhub_hyperv_vm_state` |
+| `senhub_ibmi_job_priority_ratio` | `senhub_ibmi_job_priority` |
+| `senhub_ibmi_jobs_topn_cap_hit_ratio` | `senhub_ibmi_jobs_topn_cap_hit` |
+| `senhub_ibmi_journal_active_ratio` | `senhub_ibmi_journal_active` |
+| `senhub_ibmi_library_list_position_ratio` | `senhub_ibmi_library_list_position` |
+| `senhub_ibmi_license_usage_limit_ratio` | `senhub_ibmi_license_usage_limit` |
+| `senhub_ibmi_netstat_interface_up_ratio` | `senhub_ibmi_netstat_interface_up` |
+| `senhub_ibmi_netstat_listener_up_ratio` | `senhub_ibmi_netstat_listener_up` |
+| `senhub_ibmi_ptf_group_installed_ratio` | `senhub_ibmi_ptf_group_installed` |
+| `senhub_ibmi_ptf_group_level_ratio` | `senhub_ibmi_ptf_group_level` |
+| `senhub_ibmi_sysval_audit_level_ratio` | `senhub_ibmi_sysval_audit_level` |
+| `senhub_ibmi_sysval_security_level_ratio` | `senhub_ibmi_sysval_security_level` |
+| `senhub_ibmi_watch_session_active_ratio` | `senhub_ibmi_watch_session_active` |
+| `senhub_icmp_up_ratio` | `senhub_icmp_up` |
+| `senhub_influxdb_up_ratio` | `senhub_influxdb_up` |
+| `senhub_ipmi_up_ratio` | `senhub_ipmi_up` |
+| `senhub_jenkins_up_ratio` | `senhub_jenkins_up` |
+| `senhub_kafka_up_ratio` | `senhub_kafka_up` |
+| `senhub_kubernetes_up_ratio` | `senhub_kubernetes_up` |
+| `senhub_memcached_up_ratio` | `senhub_memcached_up` |
+| `senhub_modbus_register_value_ratio` | `senhub_modbus_register_value` |
+| `senhub_modbus_up_ratio` | `senhub_modbus_up` |
+| `senhub_mongodb_up_ratio` | `senhub_mongodb_up` |
+| `senhub_mssql_ha_replica_connected_ratio` | `senhub_mssql_ha_replica_connected` |
+| `senhub_mssql_ha_replica_health_ratio` | `senhub_mssql_ha_replica_health` |
+| `senhub_mssql_ha_replica_role_ratio` | `senhub_mssql_ha_replica_role` |
+| `senhub_mssql_ha_up_ratio` | `senhub_mssql_ha_up` |
+| `senhub_nats_up_ratio` | `senhub_nats_up` |
+| `senhub_nginx_up_ratio` | `senhub_nginx_up` |
+| `senhub_ntp_leap_status_ratio` | `senhub_ntp_leap_status` |
+| `senhub_ntp_up_ratio` | `senhub_ntp_up` |
+| `senhub_nvidia_up_ratio` | `senhub_nvidia_up` |
+| `senhub_opensearch_cluster_health_ratio` | `senhub_opensearch_cluster_health` |
+| `senhub_opensearch_up_ratio` | `senhub_opensearch_up` |
+| `senhub_oracle_enterprise_up_ratio` | `senhub_oracle_enterprise_up` |
+| `senhub_os_updates_reboot_required_ratio` | `senhub_os_updates_reboot_required` |
+| `senhub_os_updates_up_ratio` | `senhub_os_updates_up` |
+| `senhub_phpfpm_up_ratio` | `senhub_phpfpm_up` |
+| `senhub_powerstore_appliance_state_ratio` | `senhub_powerstore_appliance_state` |
+| `senhub_powerstore_cluster_state_ratio` | `senhub_powerstore_cluster_state` |
+| `senhub_powerstore_drive_state_ratio` | `senhub_powerstore_drive_state` |
+| `senhub_powerstore_replication_state_ratio` | `senhub_powerstore_replication_state` |
+| `senhub_powerstore_up_ratio` | `senhub_powerstore_up` |
+| `senhub_powerstore_volume_state_ratio` | `senhub_powerstore_volume_state` |
+| `senhub_promscrape_up_ratio` | `senhub_promscrape_up` |
+| `senhub_proxmox_node_status_ratio` | `senhub_proxmox_node_status` |
+| `senhub_proxmox_up_ratio` | `senhub_proxmox_up` |
+| `senhub_proxmox_vm_status_ratio` | `senhub_proxmox_vm_status` |
+| `senhub_pulsar_up_ratio` | `senhub_pulsar_up` |
+| `senhub_rabbitmq_node_running_ratio` | `senhub_rabbitmq_node_running` |
+| `senhub_rabbitmq_up_ratio` | `senhub_rabbitmq_up` |
+| `senhub_redis_aof_enabled_ratio` | `senhub_redis_aof_enabled` |
+| `senhub_redis_cluster_state_ratio` | `senhub_redis_cluster_state` |
+| `senhub_redis_replication_role_ratio` | `senhub_redis_replication_role` |
+| `senhub_smart_disk_health_ratio` | `senhub_smart_disk_health` |
+| `senhub_snmp_up_ratio` | `senhub_snmp_up` |
+| `senhub_solr_up_ratio` | `senhub_solr_up` |
+| `senhub_sqlserver_database_status_ratio` | `senhub_sqlserver_database_status` |
+| `senhub_swarm_up_ratio` | `senhub_swarm_up` |
+| `senhub_systemd_unit_active_state_ratio` | `senhub_systemd_unit_active_state` |
+| `senhub_systemd_unit_load_state_ratio` | `senhub_systemd_unit_load_state` |
+| `senhub_systemd_unit_sub_state_ratio` | `senhub_systemd_unit_sub_state` |
+| `senhub_tcpdial_up_ratio` | `senhub_tcpdial_up` |
+| `senhub_tomcat_up_ratio` | `senhub_tomcat_up` |
+| `senhub_unifi_up_ratio` | `senhub_unifi_up` |
+| `senhub_varnish_up_ratio` | `senhub_varnish_up` |
+| `senhub_veeam_object_last_run_failed_ratio` | `senhub_veeam_object_last_run_failed` |
+| `senhub_vsphere_ha_nsx_edge_cluster_health_ratio` | `senhub_vsphere_ha_nsx_edge_cluster_health` |
+| `senhub_vsphere_ha_nsx_manager_health_ratio` | `senhub_vsphere_ha_nsx_manager_health` |
+| `senhub_vsphere_ha_up_ratio` | `senhub_vsphere_ha_up` |
+| `senhub_vsphere_ha_vsan_health_ratio` | `senhub_vsphere_ha_vsan_health` |
+| `senhub_wildfly_up_ratio` | `senhub_wildfly_up` |
+| `senhub_windows_service_state_ratio` | `senhub_windows_service_state` |
+| `senhub_winservices_up_ratio` | `senhub_winservices_up` |
+| `senhub_zookeeper_server_state_ratio` | `senhub_zookeeper_server_state` |
+| `senhub_zookeeper_up_ratio` | `senhub_zookeeper_up` |
+
+</details>
+
+(#791)
 
 
 ### Two more topology identities are re-keyed once on upgrade
@@ -167,6 +391,77 @@ If a dashboard or query relies on ingested **logs** carrying the agent's
 overwriting the sender. (#765, #767)
 
 ## New
+
+### `ntp` measures the clock against a reference, with no time daemon involved
+
+A new free `ntp` probe reports how wrong the local clock is, by exchanging NTP
+packets directly with reference servers you name. It reads no local time daemon
+and does not need one.
+
+Until now the only answer was the `chrony` probe, which covers hosts running
+chrony and reports what the daemon *believes* about the clock it steers. A host
+on systemd-timesyncd, ntpd, the Windows Time service or nothing at all reported
+nothing — and a daemon synchronised to a wrong source reports an offset near
+zero with complete confidence.
+
+```yaml
+- name: ntp
+  type: ntp
+  params:
+    servers:
+      - ntp1.example.internal
+      - ntp2.example.internal
+```
+
+Works on Linux, Windows and macOS, needs no software on the host and no
+privileges. It emits `ntp.time.offset` alongside `ntp.round_trip.delay` — the
+delay is the confidence attached to the offset beside it, because the
+measurement assumes both directions of the exchange took equally long.
+
+`senhub.ntp.state` names why a measurement is missing: `unreachable`, `refused`,
+`unsynchronised` or `invalid_response`. The common real failure is not a
+drifting clock but a firewall closing on outbound UDP 123, which arrives as
+`unreachable` — so alert on the state, not only on the offset.
+
+There is no default server and the probe is not enabled by default. A default
+would point every agent at somebody else's infrastructure, and it would be the
+wrong measurement anyway: the useful comparison is against the reference the
+host is meant to follow. The default interval is five minutes and samples are
+capped, for the same reason.
+
+The probe page documents what the measurement supports and what it does not. It
+reliably answers "is this clock wrong enough to break something", at the scale
+of tens of milliseconds and up; it is not a precision instrument. (#788)
+
+### Container metrics without granting host root
+
+The `docker` probe needs `/var/run/docker.sock`, which is `root:docker 0660`, so
+on a hardened non-root install it collected nothing. The usual remedy — join the
+`docker` group — is root on the host by another route, since anyone who reaches
+the socket can start a container that mounts `/`.
+
+The kernel exposes most of it without any of that. When the socket is
+unavailable the probe now reads container counters straight from cgroups: **26
+of its 31 metrics on a default hardened install, with no group, no capability
+and no path to root.** CPU, memory, block I/O and process counts all come from
+world-readable files.
+
+What the fallback cannot provide, and does not invent:
+
+- **per-container network counters**, which live in the container's network
+  namespace rather than its cgroup — reading them means entering that namespace
+  or asking the daemon;
+- the restart count, which is daemon bookkeeping;
+- names, images, labels and state, so containers are identified by id alone.
+
+`senhub.docker.source` says which source produced each cycle, `socket` or
+`cgroup`, because the two do not carry the same fields and an operator comparing
+container bandwidth across hosts needs to know which of them cannot report it at
+all.
+
+cgroup v1 splits controllers across sibling trees and needs a different reader;
+there the fallback declines rather than publishing half the picture, and says so.
+(#797)
 
 ### Overlay networks are topology, not just labels
 
@@ -338,6 +633,43 @@ only meaningful inside one scope and would collide with its unzoned twin.
 
 ## Fixed
 
+### `chrony` produced no measurement at all, on any host
+
+Reported from the field on 0.5.3:
+
+```
+chronyc: parsing stratum: strconv.ParseFloat: parsing "109.190.177.205": invalid syntax
+```
+
+`chronyc -c tracking` emits fourteen comma-separated fields, with the reference
+address at index 1 and the stratum at index 2. Every index in the parser was one
+position too low, and the length check demanded thirteen fields instead of
+fourteen — so it read the reference address as the stratum and shifted every
+value after it.
+
+The report noted the failure appeared only once a host was **synchronised**,
+which is accurate and was the clue: an unsynchronised chrony leaves the address
+column empty, so there is nothing to misread. The impact is wider. On an
+unsynchronised host the parser read that empty column as the stratum and failed
+just the same. **No `ntp.*` series was ever emitted by this probe, in any state,
+on any host** — `senhub.chrony.up=0` was its only output.
+
+The test that should have caught this used a hand-written thirteen-field line
+with no address column, a shape `chronyc` does not produce. It proved the parser
+matched the invention rather than the tool. The fixture is now a verbatim
+capture from chrony 4.5, the two reported cases are regression tests, and a
+thirteen-field line is rejected instead of misread. Parse errors name the field
+index and the offending value.
+
+The report also observed that nothing distinguished "this host has no chrony"
+from "the probe cannot read the chrony it has" — one needs action, the other
+does not. `senhub.chrony.state` answers it, one series per reason with exactly
+one set to 1: `ok`, `not_installed`, `exec_failed`, `parse_failed`.
+
+The probe page gains the parameters it always accepted but never documented
+(`chronyc_path`, `interval`), offset thresholds tied to what actually breaks at
+each one, and a troubleshooting table per state. (#787)
+
 ### Debug logging never produced what it advertised
 
 Two independent defects, either one enough to make the feature useless, both
@@ -374,25 +706,17 @@ debug on a running agent hit the same floor. (#772)
 </ul>
 
 
-### `update` now refreshes the binary the service actually runs
+### `update` reconciles a pre-0.5.4 host that still has two binaries
 
-On a hardened Linux install the agent is on disk twice: the CLI copy in
-`PATH`, and the copy the systemd unit execs
-(`/var/lib/senhub-agent/bin/senhub-agent`), which the unprivileged daemon owns
-so it can replace it during auto-update. `sudo senhub-agent update <version>`
+Before this release a hardened Linux install carried the agent twice: the CLI
+copy in `PATH`, and the copy the systemd unit execed
+(`/var/lib/senhub-agent/bin/senhub-agent`), owned by the unprivileged daemon so
+it could replace itself during auto-update. `sudo senhub-agent update <version>`
 only ever replaced the copy it ran from, so the service kept running the old
 release while the CLI reported the new one — and the closing "Restart the agent
 to use the new version" made it look like the upgrade had landed.
 
-`update` now reconciles both copies and names each file it wrote. Ownership of
-the service copy is handed back to the unit's `User=`, so the daemon can still
-self-update afterwards. Re-running the command is also the repair for a host
-whose service copy already fell behind.
-
-A service copy running a **newer** release than the one being installed is
-reported and left untouched rather than downgraded — the daemon legitimately
-runs ahead of the CLI.
-
+`update` now reconciles both copies and names each file it wrote, and
 `senhub-agent --version` reports the skew instead of hiding it:
 
 ```
@@ -402,9 +726,15 @@ Note: the systemd service runs a different build than this CLI binary.
       'sudo senhub-agent update <version>' updates both copies.
 ```
 
-The other binary's version is read from its build metadata, never by executing
-it. Nothing changes for a single-copy install (legacy root unit, Windows, MSI):
-both behaviours stay silent when there is only one binary. (#723)
+A service copy running a **newer** release than the one being installed is
+reported and left untouched rather than downgraded.
+
+This matters for the upgrade itself and then stops mattering: **0.5.4 removes
+the second copy entirely** (see
+[The agent is on disk once](#the-agent-is-on-disk-once-and-the-daemon-cannot-write-it)).
+Once a host has migrated there is nothing left to reconcile and both behaviours
+go quiet, exactly as they always have on a single-copy install — legacy root
+unit, Windows, MSI. (#723)
 
 
 
@@ -495,6 +825,51 @@ changes. (#724)
 
 ## Security
 
+### The systemd unit is hardened, and you can check it yourself
+
+The hardened unit stopped at dropped capabilities and `ProtectSystem`. It now
+carries the standard systemd restriction set: kernel tunables, modules, logs,
+cgroups and the clock become read-only; namespaces, SUID creation, realtime,
+personality changes and writable-executable memory are refused; system calls are
+limited to `@system-service` on the native ABI.
+
+Socket families are narrowed to the four the agent actually opens — notably
+**excluding `AF_PACKET`**, which is raw frame capture on every interface and the
+family a compromised monitoring agent would want most. `NoExecPaths` covers the
+agent's own directories, so the write access it legitimately needs stops being a
+place to drop a payload and run it.
+
+Measured with `systemd-analyze security` on Ubuntu 26.04 / systemd 259, shipped
+unit with no site drop-ins:
+
+| | Exposure |
+|---|---|
+| 0.5.3 | **5.9 MEDIUM** |
+| 0.5.4 | **2.0 OK** |
+
+Run it yourself: `systemd-analyze security senhub-agent`. The
+[least-privilege guide](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/LEAST-PRIVILEGE.md) documents the
+exposure that **remains** and why each item stays — sockets, the process tree,
+device access — because a page claiming an agent is hardened is worth less than
+the command that proves it, and a reader who runs that command and finds
+unmentioned items would be right to distrust the rest.
+
+Three directives are deliberately absent, with the reason written in the unit:
+`PrivateDevices` would hide the devices `smart`, `nvidia` and `ipmi` read;
+`ProtectProc`/`ProcSubset` would hide the process tree the `process` probe
+reports on; an `IPAddressDeny` allow-list would have to be rebuilt every time a
+probe is added.
+
+Verified live rather than asserted: every probe on the test host kept collecting
+under the new restrictions, `snmp_trap` still binds UDP/162 with
+`CAP_NET_BIND_SERVICE`, and `icmp_check` still completes raw-socket pings with
+`CAP_NET_RAW`.
+
+The guide also gains a measured account of **what a non-root daemon does not
+see** — three things, and everything else works — and what raising that costs,
+with `CAP_DAC_READ_SEARCH` named for what it is: unrestricted read of the
+filesystem, granted to a process that parses untrusted network input. (#794)
+
 <ul class="rn">
 <li><span class="tag t-security">Security</span> <span class="tag t-area">Dependencies</span> Built on Go <strong>1.26.6</strong>, which clears seven vulnerabilities in the standard library, all with reachable call traces from this agent: quadratic complexity in <code>net/url</code>, an unbounded count of post-handshake TLS messages, <code>ReadHeaderTimeout</code> not applied on the unencrypted HTTP/2 check, and missing recursion guards in <code>encoding/xml</code> and <code>encoding/asn1</code>. <code>govulncheck</code> reports no known reachable vulnerabilities in this release.</li>
 </ul>
@@ -508,6 +883,15 @@ changes. (#724)
 - A probe can be disabled but not started or stopped at runtime — that needs a
   restart or a config reload. (#775)
 
+- The `smart` probe reports a clean cycle while reading nothing on a non-root
+  install: `/dev/sda` is `root:disk 0660`, so it cannot open the device, and no
+  warning names it. The `disk` group is the remedy and is documented; the silent
+  success is not yet fixed. (#795)
+- `process.open_file_descriptors` is absent, correctly rather than zeroed, for
+  processes owned by other users — `/proc/<pid>/fd` is owner-only. The omission
+  is never explained in the log. (#796)
+- The `docker` cgroup fallback covers cgroup v2 only; on a v1 host the probe
+  still needs the socket. (#797)
 - Hosts running `auto_update.include_beta: true` resolve `latest` to the newest
   beta and never move to the stable release that supersedes it. Stable hosts are
   unaffected. (#730)
