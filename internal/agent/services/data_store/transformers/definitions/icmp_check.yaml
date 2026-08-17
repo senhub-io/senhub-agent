@@ -18,7 +18,7 @@ metrics:
     description: "1 when the target answered at least one echo request in the last cycle, 0 otherwise"
     otel:
       name: senhub.icmp.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       target: icmp.target

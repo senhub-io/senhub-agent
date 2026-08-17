@@ -17,7 +17,7 @@ metrics:
     description: "1 when the Consul agent HTTP API is reachable and responding"
     otel:
       name: senhub.consul.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "consul.catalog.services"
@@ -96,5 +96,5 @@ metrics:
     description: "1 when this Consul agent is the current Raft leader"
     otel:
       name: consul.leader
-      unit: "1"
+      unit: "{status}"
       type: gauge

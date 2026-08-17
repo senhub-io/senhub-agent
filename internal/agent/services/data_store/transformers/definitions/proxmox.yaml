@@ -20,7 +20,7 @@ metrics:
     description: "1 when the Proxmox REST API answered successfully, 0 on any connection or authentication failure"
     otel:
       name: senhub.proxmox.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ── Node metrics ─────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ metrics:
     description: "1 when the node is online, 0 otherwise"
     otel:
       name: proxmox.node.status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       proxmox.node: proxmox.node
@@ -199,7 +199,7 @@ metrics:
     description: "1 when the VM or container is running, 0 otherwise"
     otel:
       name: proxmox.vm.status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       proxmox.vmid: proxmox.vmid

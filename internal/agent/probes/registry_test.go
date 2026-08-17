@@ -221,6 +221,7 @@ func TestProbeRegistry(t *testing.T) {
 		"cassandra",
 		"couchdb",
 		"chrony",
+		"ntp",
 		"wifi_signal_strength",
 		"memory",
 		"cpu",

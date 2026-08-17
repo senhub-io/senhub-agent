@@ -24,7 +24,7 @@ metrics:
     description: "1 when at least one API list succeeded this cycle, 0 when the API server was unreachable or returned an error"
     otel:
       name: senhub.kubernetes.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       k8s.cluster.name: k8s.cluster.name

@@ -22,7 +22,7 @@ metrics:
     description: "1 when the Envoy admin interface answered /stats?format=prometheus successfully"
     otel:
       name: senhub.envoy.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "envoy.server.uptime"

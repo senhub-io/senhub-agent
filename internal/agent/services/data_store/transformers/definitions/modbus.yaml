@@ -19,7 +19,7 @@ metrics:
     description: "Decoded value of the Modbus Holding Register"
     otel:
       name: modbus.register.value
-      unit: "1"
+      unit: "{value}"
       type: gauge
     tag_to_attribute:
       register.name: register.name
@@ -34,7 +34,7 @@ metrics:
     description: "1 when the Modbus TCP device answered all register reads in the last cycle"
     otel:
       name: modbus.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       host: modbus.host

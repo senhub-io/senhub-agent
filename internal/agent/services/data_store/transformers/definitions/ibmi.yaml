@@ -191,7 +191,7 @@ metrics:
     description: "1 = active_job SQL hit the row cap, counts may be undercounts"
     otel:
       name: senhub.ibmi.jobs.topn_cap_hit
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ============================================================
@@ -343,7 +343,7 @@ metrics:
     multi_instance_labels: ["job_name"]
     otel:
       name: senhub.ibmi.job.priority
-      unit: "1"
+      unit: "{priority}"
       type: gauge
     tag_to_attribute:
       job_name: ibmi.job.name
@@ -892,7 +892,7 @@ metrics:
     multi_instance_labels: ["journal", "journal_library"]
     otel:
       name: senhub.ibmi.journal.active
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       journal: ibmi.journal.name
@@ -994,7 +994,7 @@ metrics:
     multi_instance_labels: ["local_port", "port_name", "protocol"]
     otel:
       name: senhub.ibmi.netstat.listener.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       local_port: ibmi.net.local_port
@@ -1033,7 +1033,7 @@ metrics:
     multi_instance_labels: ["address", "line_description"]
     otel:
       name: senhub.ibmi.netstat.interface.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       address: ibmi.net.address
@@ -1191,7 +1191,7 @@ metrics:
     category: "security"
     otel:
       name: senhub.ibmi.sysval.security_level
-      unit: "1"
+      unit: "{level}"
       type: gauge
 
   - name: "ibmi.sysval.audit_level"
@@ -1201,7 +1201,7 @@ metrics:
     category: "security"
     otel:
       name: senhub.ibmi.sysval.audit_level
-      unit: "1"
+      unit: "{level}"
       type: gauge
 
   # ============================================================
@@ -1215,7 +1215,7 @@ metrics:
     multi_instance_labels: ["library", "type"]
     otel:
       name: senhub.ibmi.library_list.position
-      unit: "1"
+      unit: "{position}"
       type: gauge
     tag_to_attribute:
       library: ibmi.library.name
@@ -1246,7 +1246,7 @@ metrics:
     multi_instance_labels: ["product_id", "feature_id"]
     otel:
       name: senhub.ibmi.license.usage_limit
-      unit: "1"
+      unit: "{limit}"
       type: gauge
     tag_to_attribute:
       product_id: ibmi.license.product_id
@@ -1263,7 +1263,7 @@ metrics:
     multi_instance_labels: ["group"]
     otel:
       name: senhub.ibmi.ptf_group.installed
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       group: ibmi.ptf.group
@@ -1276,7 +1276,7 @@ metrics:
     multi_instance_labels: ["group"]
     otel:
       name: senhub.ibmi.ptf_group.level
-      unit: "1"
+      unit: "{level}"
       type: gauge
     tag_to_attribute:
       group: ibmi.ptf.group
@@ -1292,7 +1292,7 @@ metrics:
     multi_instance_labels: ["session_id", "program"]
     otel:
       name: senhub.ibmi.watch.session_active
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       session_id: ibmi.watch.session_id

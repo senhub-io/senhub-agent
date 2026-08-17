@@ -21,7 +21,7 @@ metrics:
     description: "1 when the ClickHouse /metrics endpoint answered successfully, 0 otherwise"
     otel:
       name: senhub.clickhouse.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       instance: server.address

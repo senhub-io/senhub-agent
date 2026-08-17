@@ -20,7 +20,7 @@ metrics:
     description: "1 when varnishstat completed successfully, 0 otherwise"
     otel:
       name: senhub.varnish.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # Cache operations — collapsed via result tag (hit / miss / hitpass)

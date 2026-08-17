@@ -19,7 +19,7 @@ metrics:
     description: "1 when the container is running, 0 otherwise"
     otel:
       name: senhub.docker.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       container_id: container.id

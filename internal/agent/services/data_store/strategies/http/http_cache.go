@@ -371,6 +371,22 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// state overwrites the previous and the cache reports whichever arrived
 	// last: a node would appear to be in exactly one of ready/down/unknown at
 	// random.
+	// chrony — the one-hot state series share a metric name and differ only by
+	// their reason, so without this each reason would overwrite the previous in
+	// the cache and the endpoint would report whichever arrived last.
+	"chrony": {
+		"reason",
+	},
+
+	// ntp — same one-hot reason series as chrony, plus the server tag: a host
+	// measured against two references produces two of every series, and
+	// without the discriminant the second would overwrite the first, hiding
+	// the disagreement that is the whole point of naming more than one.
+	"ntp": {
+		"reason",
+		"server",
+	},
+
 	"swarm": {
 		"swarm.node.name",
 		"swarm.node.id", // per-node task placement, which carries no hostname

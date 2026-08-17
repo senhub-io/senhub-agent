@@ -20,7 +20,7 @@ metrics:
     description: "1 when the controller answered login and the stat endpoints this cycle, 0 otherwise"
     otel:
       name: senhub.unifi.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       endpoint: unifi.endpoint
