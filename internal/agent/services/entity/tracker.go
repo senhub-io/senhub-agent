@@ -59,7 +59,12 @@ func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 // window elapsed, then a delete for every previously seen entity absent from
 // current. Deletes are stamped with now. current is expected to carry only
 // EntityState events.
-func (t *Tracker) Reconcile(current []Event, now time.Time) {
+//
+// reasons maps an entity key to the Reason* value to stamp on its delete, for
+// the entities whose disappearance the caller can explain. A key with no entry
+// gets ReasonTerminated: the source answered and stopped listing the entity.
+// nil is fine and means every delete this cycle is a plain termination.
+func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]string) {
 	cur := make(map[string]bool, len(current))
 	for _, ev := range current {
 		k := eventKey(ev)
@@ -78,6 +83,14 @@ func (t *Tracker) Reconcile(current []Event, now time.Time) {
 			continue
 		}
 		del.Time = now
+		// Absence alone does not say why. The reason is decided upstream, in
+		// the detector, which knows whether the source answered, went quiet or
+		// stopped existing; here it is only carried. Absent from the map means
+		// the source answered and dropped the entity.
+		del.DeleteReason = ReasonTerminated
+		if r, ok := reasons[k]; ok && r != "" {
+			del.DeleteReason = r
+		}
 		t.publish(del)
 		delete(t.seen, k)
 		delete(t.pub, k)
