@@ -1,28 +1,28 @@
 # Prometheus Export — Implementation Plan
 
-**Statut :** Phase 0 (audit + plan), en attente de validation
-**Spec :** [SPEC-prometheus-integration.md](./SPEC-prometheus-integration.md)
-**Auteur :** Matthieu Noirbusson
-**Date :** 2026-04-18
+**Status:** delivered. Kept as the design record for the OTel-first mapper architecture it introduced; the five phases shipped, so the plan itself is historical.
+**Spec:** [SPEC-prometheus-integration.md](./SPEC-prometheus-integration.md)
+**Author:** Matthieu Noirbusson
+**Date:** 2026-04-18
 
-## 0. Résumé exécutif
+## 0. Executive summary
 
-**Ambition long terme : SenHub Agent OTel-first**. Le modèle sémantique interne devient OpenTelemetry ; toutes les sorties (PRTG, Nagios, Prometheus, demain Zabbix, OTLP) sont des **mappers** qui traduisent OTel → format cible. Retro-compat PRTG/Nagios assurée par le YAML qui mappe le nom OTel vers les noms de channels existants.
+**The long-term ambition: an OTel-first SenHub Agent.** The internal semantic model becomes OpenTelemetry; every output (PRTG, Nagios, Prometheus, Zabbix tomorrow, OTLP) becomes a **mapper** translating OTel into the target format. PRTG/Nagios backwards compatibility is carried by the YAML, which maps the OTel name onto the existing channel names.
 
-**Livrable présent (Prometheus endpoint)** : premier mapper OTel → Prometheus, path pragmatique qui introduit l'architecture mappers sans casser les probes existantes.
+**The deliverable here (the Prometheus endpoint)**: the first OTel → Prometheus mapper — a pragmatic path that introduces the mapper architecture without breaking the existing probes.
 
-La sortie Prometheus s'intègre comme **endpoint** de la strategy HTTP existante (pas une nouvelle strategy). Le handler lit le cache partagé (`MetricCache`) et sérialise en text exposition à la volée, sans cache intermédiaire.
+The Prometheus output slots in as an **endpoint** of the existing HTTP strategy, not as a new strategy. The handler reads the shared cache (`MetricCache`) and serialises text exposition on the fly, with no intermediate cache.
 
-Découvertes d'audit qui simplifient le travail :
+Audit findings that make the work smaller:
 
 | Élément | État actuel |
 |---|---|
 | Route `/api/{key}/prometheus/metrics` | **Déjà enregistrée**, handler stub → 501 |
-| Endpoint `prometheus` dans `validEndpoints` | **Déjà présent** (`http_config.go:154-162`) |
-| Cache des data points | **Complet** (`CachedMetric.Tags` thread-safe, TTL dynamique) |
-| Transformers par probe | **YAML par probe** avec `name`, `channel`, `unit`, `multi_instance_labels` — extensible |
+| The `prometheus` endpoint in `validEndpoints` | **Already there** (`http_config.go:154-162`) |
+| Data point cache | **Complete** (`CachedMetric.Tags` thread-safe, dynamic TTL) |
+| Per-probe transformers | **One YAML per probe** with `name`, `channel`, `unit`, `multi_instance_labels` — extensible |
 
-→ Pas de refacto profond, pas de nouvelle strategy. Travail principal : sérialiseur + tables de nommage.
+→ No deep refactor and no new strategy. The main work is the serialiser and the naming tables.
 
 ## 1. Architecture cible
 
@@ -53,9 +53,9 @@ Découvertes d'audit qui simplifient le travail :
 ```
 
 **Principes :**
-- Zéro cache spécifique Prometheus : sérialisation à la volée depuis `MetricCache`.
-- Pas de strategy `prometheus` : c'est un endpoint de la strategy `http`.
-- Mapping clé interne → Prom name : dans les YAML `transformers/definitions/<probe>.yaml`, via une section additionnelle `prometheus:` par métrique.
+- No Prometheus-specific cache: serialisation happens on the fly from `MetricCache`.
+- No `prometheus` strategy: it is an endpoint of the `http` strategy.
+- Internal key → Prometheus name mapping lives in `transformers/definitions/<probe>.yaml`, in an additional `prometheus:` section per metric.
 
 ## 2. Routes
 
@@ -63,12 +63,12 @@ Dual-route, même handler :
 
 | Route | Auth | Usage |
 |---|---|---|
-| `GET /api/{agentkey}/prometheus/metrics` | AgentKey (pattern SenHub) | Cohérence avec PRTG/Nagios |
+| `GET /api/{agentkey}/prometheus/metrics` | AgentKey (the SenHub pattern) | Consistency with PRTG/Nagios |
 | `GET /metrics` | Bearer `{agentkey}` *(header)* ou `?token={agentkey}` *(query param)* | Standard Prom/vmagent |
 
-La route `/metrics` **sans** `/api/{key}/` respecte la convention Prom. Token validé constant-time, comparaison au `authentication_key` existant.
+The `/metrics` route **without** `/api/{key}/` honours the Prometheus convention. The token is validated in constant time against the existing `authentication_key`.
 
-**Activation :** seule l'activation de l'endpoint `prometheus` dans la config monte les deux routes.
+**Enabling it:** only enabling the `prometheus` endpoint in the config mounts the two routes.
 
 ## 3. Config
 
@@ -78,19 +78,19 @@ Extension du format v2 existant, **strictement additive** :
 storage:
   - name: http
     params:
-      endpoints: [prtg, web, nagios, prometheus]   # ← "prometheus" suffit pour activer
+      endpoints: [prtg, web, nagios, prometheus]   # ← "prometheus" alone enables it
       prometheus:                                  # bloc optionnel, défauts raisonnables
         include_probe_tags: true                   # default: true (custom_tags → labels)
         expose_host_metrics: true                  # default: true (cpu/memory host via probes)
 ```
 
-> Note : le préfixe `senhub_` est figé (non configurable). Voir §12 point 5.
+> Note: the `senhub_` prefix is fixed and not configurable. See §12, point 5.
 
-Validation gérée par `ConfigurationManager.ValidateConfigParams()` (déjà en place pour la liste `endpoints`).
+Validation is handled by `ConfigurationManager.ValidateConfigParams()`, already in place for the `endpoints` list.
 
 ## 4. YAML transformers — modèle OTel-first
 
-**Décision architecturale** : les fichiers `internal/agent/services/data_store/transformers/definitions/<probe>.yaml` portent un bloc **`otel:`** par métrique comme source de vérité sémantique. Les sorties sont des mappers dérivés ou explicites.
+**Architectural decision**: the `internal/agent/services/data_store/transformers/definitions/<probe>.yaml` files carry an **`otel:`** block per metric as the semantic source of truth. The outputs are mappers, derived or explicit.
 
 **Shape cible :**
 
@@ -99,17 +99,17 @@ probe_name: netscaler
 metrics:
   # Section OTel = source de vérité sémantique
   - otel:
-      name: senhub.netscaler.vserver.connections.active   # espace senhub.* pour domaines hors OTel
+      name: senhub.netscaler.vserver.connections.active   # the senhub.* space, for domains OTel does not cover
       unit: "{connection}"
       type: gauge
       attributes: {}                                      # attributs statiques (constants)
 
-    # Transition: noms internes actuels émis par la probe (legacy keys).
-    # Disparaît quand la probe est refactorée pour émettre OTel nativement.
+    # Transitional: the current internal names the probe emits (legacy keys).
+    # Goes away once the probe is reworked to emit OTel natively.
     source_keys: ["netscaler.vserver.client.connections"]
 
-    # Mapping dynamique: tags de la probe → attributs OTel.
-    # Les tags présents sur le data point en cache sont traduits en attributs OTel.
+    # Dynamic mapping: probe tags → OTel attributes.
+    # Tags present on the cached data point are translated into OTel attributes.
     tag_to_attribute:
       vserver: network.vserver.name                       # tag existant → attribut OTel
 
@@ -123,21 +123,21 @@ metrics:
     # Retro-compat Nagios (TBD lors de l'audit Nagios)
     nagios: {}
 
-    # Prometheus : AUCUNE section. Dérivé automatiquement des règles OTel→Prom
+    # Prometheus: NO section at all. Derived automatically from the OTel→Prom rules
     # (§5). Ex. ici : senhub_netscaler_vserver_connections_active{network_vserver_name="lb_app1"}
 ```
 
 **Règles :**
-- `otel.name` : clé unique, suit semconv OTel pour domaines couverts (`system.*`) ou extension `senhub.*` pour domaines propriétaires (netscaler, citrix, veeam…).
-- `otel.unit` : unité UCUM (`s`, `By`, `{connection}`, `1` pour ratio, etc.).
+- `otel.name`: the unique key. It follows the OTel semconv for covered domains (`system.*`), or the `senhub.*` extension for proprietary ones (netscaler, citrix, veeam…).
+- `otel.unit`: the UCUM unit (`s`, `By`, `{connection}`, `1` for a ratio, and so on).
 - `otel.type` : `counter`, `gauge`, `updowncounter`, `histogram` (V1: gauge/counter).
 - `otel.attributes` : attributs constants (ex: `cpu.mode: user`).
-- `source_keys` : liste des clés bus internes actuellement émises par la probe qui alimentent cette métrique OTel. **Transitoire** — supprimé quand la probe émet OTel nativement.
-- `tag_to_attribute` : mapping tag probe → attribut OTel. Les valeurs de tags sont propagées comme valeurs d'attributs.
-- `prtg`, `nagios` : champs inchangés par rapport au format actuel (retro-compat stricte).
-- Si `otel:` est absent sur une métrique → elle est **silencieusement non émise** dans `/metrics`, un **WARN loggé une seule fois** par (probe_type, metric_name). L'endpoint reste fonctionnel, l'agent ne bloque pas (Q4 §12, révisée 2026-04-21).
+- `source_keys`: the internal bus keys the probe currently emits that feed this OTel metric. **Transitional** — removed once the probe emits OTel natively.
+- `tag_to_attribute`: probe tag → OTel attribute mapping. Tag values are propagated as attribute values.
+- `prtg`, `nagios`: unchanged from the current format (strict backwards compatibility).
+- When `otel:` is absent from a metric, it is **silently not emitted** in `/metrics`, with a **WARN logged once** per (probe_type, metric_name). The endpoint keeps working and the agent does not block (Q4 §12, revised 2026-04-21).
 
-**Opt-out explicite `otel.skip`** — certaines métriques ne doivent PAS être exposées en Prometheus (probes de flux log/events qui n'émettent pas de métriques sémantiques) :
+**The explicit `otel.skip` opt-out** — some metrics must NOT be exposed in Prometheus: the log/event conduit probes, which emit no semantic metrics.
 
 ```yaml
 otel:
@@ -145,9 +145,9 @@ otel:
   reason: "Event conduit probe — relayed events, not metrics. Future: OTLP log export."
 ```
 
-Le mapper Prometheus ignore ces métriques. Les champs `prtg:` / `nagios:` restent actifs (retro-compat). Le contrat "pas de métrique sans mapping" reste respecté : `skip` est un mapping explicite, documenté et auditable.
+The Prometheus mapper ignores these metrics. The `prtg:` / `nagios:` fields stay active for backwards compatibility. The "no metric without a mapping" contract still holds: `skip` IS an explicit mapping, documented and auditable.
 
-**Expansion enum `otel.expand`** — pour les métriques "health/state" dont la valeur est un enum numérique (via lookup) qui doit être émis en strict OTel comme 1 data point par état (`hw.status` par ex.), le mapper **expand** automatiquement:
+**The `otel.expand` enum expansion** — for "health/state" metrics whose value is a numeric enum (from a lookup) that strict OTel requires as one data point per state (`hw.status`, for example), the mapper **expands** automatically:
 
 ```yaml
 otel:
@@ -165,8 +165,8 @@ otel:
       unknown: 3              # value 3 (Unknown) → unknown=1 (extension value)
 ```
 
-**Comportement à l'émission :** pour chaque data point du cache (value = code enum via lookup), le mapper émet **N data points** (un par entrée de `mapping`) avec:
-- value = **1** si le code courant matche la valeur associée au state
+**Emission behaviour:** for each cached data point (whose value is the enum code from the lookup), the mapper emits **N data points**, one per `mapping` entry:
+- value = **1** when the current code matches the value associated with that state
 - value = **0** sinon
 - attribut `<attribute>` = nom du state
 
@@ -178,11 +178,11 @@ senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="failed"} 0
 senhub_hw_status{hw_id="disk1",hw_type="physical_disk",hw_state="predicted_failure"} 0
 ```
 
-**Rationale** : la conformité OTel vit dans le mapper. Les exports futurs (OTLP native vers VictoriaMetrics OTel, Grafana OTel) n'ont aucune correction à faire — la donnée est déjà strict OTel en sortie.
+**Rationale**: OTel compliance lives in the mapper. Future exports — native OTLP to VictoriaMetrics OTel, Grafana OTel — have nothing to correct, because the data is already strict OTel on the way out.
 
 ## 4bis. Convention OTel sémantique SenHub
 
-Pour les domaines non couverts par OTel semconv (netscaler, citrix, veeam, redfish, webapp probes…), on **crée une extension sous namespace `senhub.*`** documentée dans `docs/developer-guide/otel/senhub-semantic-conventions.md`.
+For domains the OTel semconv does not cover (netscaler, citrix, veeam, redfish, the webapp probes…), we **create an extension under the `senhub.*` namespace**, documented in `docs/developer-guide/otel/senhub-semantic-conventions.md`.
 
 Exemples de noms cibles :
 - `system.cpu.time`, `system.memory.usage`, `system.network.io` (OTel natif)
@@ -191,17 +191,17 @@ Exemples de noms cibles :
 - `senhub.veeam.job.status`, `senhub.veeam.repository.capacity.bytes`
 - `senhub.redfish.drive.temperature.celsius`, `senhub.redfish.psu.power.watts`
 
-**Attributs** : on aligne sur OTel quand possible (`network.interface.name`, `system.device`) et on étend en `senhub.*` sinon (`senhub.vserver.name`, `senhub.citrix.delivery_group.name`).
+**Attributes**: aligned with OTel where possible (`network.interface.name`, `system.device`), extended under `senhub.*` otherwise (`senhub.vserver.name`, `senhub.citrix.delivery_group.name`).
 
-Ce doc sera rédigé en parallèle de la Phase 0.5 comme référence.
+That document was written alongside Phase 0.5, as the reference.
 
 ## 5. Règles de conversion OTel → Prometheus
 
-Conformes à la [spec OTel compatibility](https://opentelemetry.io/docs/specs/otel/compatibility/prometheus_and_openmetrics/) :
+Per the [OTel compatibility spec](https://opentelemetry.io/docs/specs/otel/compatibility/prometheus_and_openmetrics/):
 
 1. **Préfixe `senhub_`** préfixé au nom OTel (indépendant du namespace OTel `system.` ou `senhub.`).
-2. **Dots → underscores** dans le nom et les attributs (`system.cpu.time` → `system_cpu_time`, `cpu.mode` → `cpu_mode`).
-3. **Caractères non autorisés** (regex Prom `[a-zA-Z_:][a-zA-Z0-9_:]*`) remplacés par `_`, underscores consécutifs dédupliqués.
+2. **Dots → underscores** in the name and the attributes (`system.cpu.time` → `system_cpu_time`, `cpu.mode` → `cpu_mode`).
+3. **Disallowed characters** (the Prometheus regex `[a-zA-Z_:][a-zA-Z0-9_:]*`) replaced by `_`, with consecutive underscores collapsed.
 4. **Suffixe d'unité** :
    - `s` → `_seconds`
    - `By` → `_bytes`
@@ -209,8 +209,8 @@ Conformes à la [spec OTel compatibility](https://opentelemetry.io/docs/specs/ot
    - `1` (ratio) → `_ratio`
    - `{connection}`, `{packet}` et unités entre accolades → supprimées
    - `foo/bar` → `_foo_per_bar`
-5. **Suffixe counter** : counters reçoivent `_total` si pas déjà présent (`system_cpu_time_seconds_total`).
-6. **Attributs OTel → labels Prom** : tous les attributs du data point + `cpu.mode` → `cpu_mode` etc.
+5. **Counter suffix**: counters get `_total` when they do not already end in it (`system_cpu_time_seconds_total`).
+6. **OTel attributes → Prometheus labels**: every data point attribute, with `cpu.mode` → `cpu_mode` and so on.
 
 Exemples déterministes :
 | OTel | Prometheus |
@@ -222,27 +222,27 @@ Exemples déterministes :
 
 ## 5bis. Labels systématiques de probe
 
-Sur toute métrique de probe, on **ajoute** en plus des attributs OTel :
+On every probe metric we **add**, on top of the OTel attributes:
 
 | Label | Source | Exemple |
 |---|---|---|
 | `probe_name` | nom d'instance (config) | `citrix-prod-paris` |
-| `probe_type` | type dans la registry | `citrix` |
-| *labels custom_tags* | `custom_tags` de la probe si `include_probe_tags: true` | `env=prod, site=paris` |
+| `probe_type` | the registry type | `citrix` |
+| *custom_tags labels* | the probe's `custom_tags`, when `include_probe_tags: true` | `env=prod, site=paris` |
 
-Le label réservé `instance` de Prometheus est jamais émis par l'agent (conflit avec le label de scrape target).
+Prometheus's reserved `instance` label is never emitted by the agent — it would clash with the scrape target's own.
 
 ## 6. Source de vérité = OTel
 
-Voir §4 et §4bis. Plus de label `group`/`subgroup` génériques : les attributs OTel portent l'information sémantique (`cpu.mode`, `network.vserver.name`, etc.).
+See §4 and §4bis. No more generic `group`/`subgroup` labels: the OTel attributes carry the semantic information (`cpu.mode`, `network.vserver.name`, and so on).
 
 ## 7. Sérialisation
 
-**Choix :** sérialisation manuelle (pas de `client_golang/prometheus`).
-- Dépendance évitée (pas déjà dans `go.mod`).
+**Choice:** manual serialisation, not `client_golang/prometheus`.
+- Avoids a dependency that was not already in `go.mod`.
 - Text exposition v0.0.4 trivial à écrire correctement.
-- Contrôle total sur ordre, grouping, HELP/TYPE.
-- Test automatique : round-trip parsing via `github.com/prometheus/common/expfmt` *(test-only, pas de dep runtime)*.
+- Full control over ordering, grouping and HELP/TYPE.
+- Automated test: round-trip parsing via `github.com/prometheus/common/expfmt` *(test-only, not a runtime dependency)*.
 
 **Package cible :** `internal/agent/services/data_store/strategies/http/prometheus/`
 - `serializer.go` — conversion `CachedMetric` → lignes text exposition
@@ -251,20 +251,20 @@ Voir §4 et §4bis. Plus de label `group`/`subgroup` génériques : les attribut
 - `auth.go` — validation Bearer + query param
 - `serializer_test.go`, `names_test.go`, `handler_test.go`
 
-## 8. Gestion des métriques textuelles
+## 8. Handling textual metrics
 
 La spec §5.5 précise 3 stratégies. Décision :
 
 | Source | Traitement |
 |---|---|
 | Valeur numérique (float, int, bool) | Émise directement (bool → 0/1) |
-| Valeur string identifiée comme état (`Up/Down`, `Running/Stopped`…) | Convertie via `lookup:` de la YAML → `senhub_*_state{state="up"} 1` |
+| A string value identified as a state (`Up/Down`, `Running/Stopped`…) | Converted through the YAML's `lookup:` → `senhub_*_state{state="up"} 1` |
 | Valeur string version/firmware | Info metric `senhub_probe_info{version="..."} 1` si déclaré `prometheus.type: info` |
-| Autre string non convertible | Ignorée silencieusement + log debug (pas d'erreur de scrape) |
+| Any other non-convertible string | Silently ignored, with a debug log — never a scrape error |
 
 ## 9. Métriques d'agent (host-level)
 
-En plus des métriques des probes, l'agent expose ses propres métriques opérationnelles :
+Beyond the probe metrics, the agent exposes its own operational metrics:
 
 | Nom | Type | Description |
 |---|---|---|
@@ -272,67 +272,67 @@ En plus des métriques des probes, l'agent expose ses propres métriques opérat
 | `senhub_agent_probes_total` | gauge | Nombre d'instances de probe configurées |
 | `senhub_agent_probes_healthy` | gauge | Nombre d'instances en état sain |
 | `senhub_agent_collect_errors_total` | counter | Total erreurs de collecte |
-| `senhub_agent_http_requests_total{endpoint=…}` | counter | Requêtes HTTP servies par endpoint |
-| `senhub_agent_cache_entries` | gauge | Nombre d'entrées dans le cache |
+| `senhub_agent_http_requests_total{endpoint=…}` | counter | HTTP requests served, per endpoint |
+| `senhub_agent_cache_entries` | gauge | Number of entries in the cache |
 | `senhub_agent_build_info{version=…, branch=…}` | gauge (valeur=1) | Info build |
 
-Pas de label `probe_*` dessus. Ces métriques sont **toujours** émises si `prometheus` actif.
+No `probe_*` label on these. They are **always** emitted when `prometheus` is enabled.
 
 ## 10. Phases d'implémentation
 
-### Phase 0 — Plan validé *(on est ici)*
+### Phase 0 — Plan approved
 - [x] Audit structure cache + transformers + routes
 - [x] Architecture cible, config schema, vocabulaire group/subgroup
-- [ ] **Table de nommage complète pour les 15 probes** *(livrable 0.5)*
+- [ ] **Complete naming table for the 15 probes** *(deliverable 0.5)*
 - [ ] Validation utilisateur
 
 ### Phase 0.5 — Tables OTel + mapping retro-compat *(bloquant avant Phase 1)*
 
 **Étape 0.5.a — Veille OTel communautaire** *(préalable obligatoire à chaque probe)*
 
-Avant de définir une extension `senhub.*`, vérifier systématiquement si une convention existe déjà :
+Before defining a `senhub.*` extension, always check whether a convention already exists:
 - **OTel semconv officiel** : [specs/semconv](https://github.com/open-telemetry/semantic-conventions) (système, HTTP, database, RPC, messaging, faas, etc.)
 - **OTel Collector contrib** : [receivers](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver) (citrix : aucun à ce jour ; netscaler : aucun ; veeam : aucun ; redfish : existe → **aligner dessus**)
 - **Conventions de facto vendeurs** : documentation Grafana Labs, VictoriaMetrics, ObservIQ, DataDog integrations
-- **Prometheus exporters officiels** : [prometheus/community](https://github.com/prometheus-community) — exporters historiques (redfish_exporter, etc.) dont les conventions peuvent inspirer notre namespace
+- **Official Prometheus exporters**: [prometheus/community](https://github.com/prometheus-community) — long-standing exporters (redfish_exporter and others) whose conventions can inform our namespace
 
-Si convention existe : adopter telle quelle (attributs, unités, types). Si partielle : étendre en respectant les préfixes existants. Si inexistante : créer sous `senhub.*` en s'inspirant du style OTel officiel.
+If a convention exists: adopt it as it is — attributes, units, types. If it is partial: extend it, honouring the existing prefixes. If none exists: create one under `senhub.*`, in the style of the official OTel conventions.
 
-Chaque choix est tracé dans `senhub-semantic-conventions.md` avec la justification et le(s) lien(s) consulté(s).
+Every choice is traced in `senhub-semantic-conventions.md`, with its justification and the links consulted.
 
-**Étape 0.5.b — Remplissage YAML par lot**
+**Step 0.5.b — filling the YAML, batch by batch**
 
 Pour **chaque** métrique de **chaque** probe (15), rédiger :
 1. Le bloc `otel:` (name, unit, type, attributes statiques)
-2. Le `source_keys` (mapping vers les clés internes actuelles)
+2. `source_keys` (the mapping onto the current internal keys)
 3. Le `tag_to_attribute` (translation tags existants → attributs OTel)
 4. Les blocs `prtg:`/`nagios:` inchangés (retro-compat)
 
-Aucun fallback — toute métrique non mappée est silencieusement non émise dans `/metrics`, avec un WARN loggé une fois par (probe_type, metric_name). L'endpoint reste fonctionnel (Q4 révisée — voir §12).
+No fallback — an unmapped metric is silently not emitted in `/metrics`, with a WARN logged once per (probe_type, metric_name). The endpoint keeps working (Q4 revised — see §12).
 
-Lots de revue (ordre recommandé, revue user probe par probe) :
-1. **Système léger** (4 probes) : `cpu`, `memory`, `network`, `logicaldisk` — couverts par OTel semconv officiel
-2. **Réseau** (4 probes) : `ping_gateway`, `ping_webapp`, `load_webapp`, `wifi_signal_strength` — partiellement couverts par HTTP semconv
+Review batches (the recommended order, reviewed probe by probe):
+1. **Light system** (4 probes): `cpu`, `memory`, `network`, `logicaldisk` — covered by the official OTel semconv
+2. **Network** (4 probes): `ping_gateway`, `ping_webapp`, `load_webapp`, `wifi_signal_strength` — partially covered by the HTTP semconv
 3. **Events** (2 probes) : `syslog`, `event` — voir [log semconv](https://opentelemetry.io/docs/specs/semconv/logs/)
-4. **Métier lourd** (4 probes) : `netscaler`, `citrix`, `redfish`, `veeam` — prioriser la veille communautaire (redfish a un exporter Prom reconnu)
+4. **Heavy domain** (4 probes): `netscaler`, `citrix`, `redfish`, `veeam` — lead with the community survey (redfish has a well-known Prometheus exporter)
 
 À chaque lot : veille OTel → PR YAML + mise à jour `senhub-semantic-conventions.md` → revue nommage → validation user → merge → lot suivant.
 
 ### Phase 1 — Règles OTel→Prom + sérialiseur
-- `otel_to_prom.go` : application déterministe des règles §5 (dots→underscores, suffixes unités, `_total`, préfixe `senhub_`, etc.)
-- `resolver.go` : résolution des data points du cache → OTel metric via `source_keys` + `tag_to_attribute` des YAML
+- `otel_to_prom.go`: deterministic application of the §5 rules (dots→underscores, unit suffixes, `_total`, the `senhub_` prefix, and so on)
+- `resolver.go`: resolving cached data points into an OTel metric via the YAML's `source_keys` and `tag_to_attribute`
 - `serializer.go` : sérialisation text exposition (HELP/TYPE/metric)
-- Injection des labels systématiques (`probe_name`, `probe_type`, custom_tags)
+- Injecting the labels present on everything (`probe_name`, `probe_type`, custom_tags)
 - Filtrage métriques textuelles non convertibles
-- Tests : round-trip `expfmt.TextParser`, règles OTel→Prom sur 50+ cas, cardinalité, cas limites
+- Tests: `expfmt.TextParser` round-trip, the OTel→Prom rules over 50+ cases, cardinality, edge cases
 
 ### Phase 2 — Handler HTTP + routes
-- Implémentation `handlePrometheusMetricsGET()` (remplace le stub 501)
-- Ajout route `/metrics` (sans `/api/{key}/`) avec auth Bearer
+- Implement `handlePrometheusMetricsGET()`, replacing the 501 stub
+- Add the `/metrics` route (without `/api/{key}/`), with Bearer auth
 - Tests d'intégration : bus → cache → GET → body parsable
 
 ### Phase 3 — Métriques d'agent + config
-- Collecteur `AgentMetrics` pour §9
+- An `AgentMetrics` collector for §9
 - Parse `storage[].params.prometheus` (défauts)
 - Wiring au démarrage, non-régression PRTG/Nagios
 - Test end-to-end : config activée → curl `/metrics` → grep `senhub_`
@@ -343,46 +343,46 @@ Lots de revue (ordre recommandé, revue user probe par probe) :
 - Alerting rules de démonstration
 
 ### Phase 5 — Documentation + revue de code + CHANGELOG *(bloquant avant merge)*
-- **Doc utilisateur complète** : `docs/user-guide/content/docs/prometheus/_index.md` (guide intégration), `metrics-reference.md` (table complète des 15 probes avec nom, type, group, labels, description), scrape config examples
+- **Complete user documentation**: `docs/user-guide/content/docs/prometheus/_index.md` (the integration guide), `metrics-reference.md` (the complete table of the 15 probes with name, type, group, labels and description), and scrape config examples
 - **Revue de code exhaustive** du package `prometheus/` (agent `pr-review-toolkit:code-reviewer` + revue user)
-- **Non-régression** : PRTG/Nagios inchangés (test auto + validation manuelle sur déploiements production)
+- **Non-regression**: PRTG/Nagios unchanged (automated test plus manual validation on production deployments)
 - CHANGELOG + release notes 0.1.88 (feat majeur)
 
 ## 11. Critères de done
 
-- [ ] `GET /metrics` renvoie body parsable par `expfmt.TextParser` (test auto)
+- [ ] `GET /metrics` returns a body parsable by `expfmt.TextParser` (automated test)
 - [ ] Métriques `senhub_agent_*` présentes
-- [ ] Métriques probes avec noms et attributs conformes aux règles OTel→Prom §5
-- [ ] Toute extension `senhub.*` documentée dans `senhub-semantic-conventions.md`
+- [ ] Probe metrics carry names and attributes conforming to the §5 OTel→Prom rules
+- [ ] Every `senhub.*` extension documented in `senhub-semantic-conventions.md`
 - [ ] Labels `probe_name`/`probe_type` systématiques
 - [ ] `custom_tags` propagés comme labels si `include_probe_tags: true`
-- [ ] Métriques textuelles non convertibles ignorées (pas d'erreur scrape)
+- [ ] Non-convertible textual metrics ignored, with no scrape error
 - [ ] PRTG et Nagios inchangés (non-régression auto + validation manuelle)
 - [ ] Couverture package `prometheus/` ≥ 80%
-- [ ] Scrape réussi par vmagent, visible dans Grafana
+- [ ] Successfully scraped by vmagent and visible in Grafana
 - [ ] Docs + changelog livrés
 
 ## 12. Décisions (questions tranchées)
 
-1. **Route `/metrics` sans agentkey dans l'URL** → **OUI**, dual route implémentée. Auth Bearer (header) ou `?token=` (query param), validation constant-time contre `authentication_key`. Impact UI: Sensor Builder doit gagner un onglet Prometheus (PromQL + config scrape copy-paste) — ajouté à la roadmap web-ui refactoring.
+1. **A `/metrics` route without the agentkey in the URL** → **yes**, a dual route is implemented. Bearer auth (header) or `?token=` (query parameter), validated in constant time against `authentication_key`. UI impact: Sensor Builder needs a Prometheus tab (PromQL plus a copy-paste scrape config) — added to the web-ui refactoring roadmap.
 
-2. **`expose_host_metrics`** → **`true` par défaut, configurable**. Si l'utilisateur a un node_exporter en parallèle et veut éviter le doublon, il peut passer à `false`.
+2. **`expose_host_metrics`** → **`true` by default, configurable**. An operator running node_exporter alongside, who wants to avoid the duplication, can set it to `false`.
 
-3. **Métriques info (version/firmware)** → déclaration **explicite** via `prometheus.type: info` dans le YAML. Pas de détection auto.
+3. **Info metrics (version/firmware)** → declared **explicitly** with `prometheus.type: info` in the YAML. No auto-detection.
 
-4. **Fallback nommage** → **AUCUN**, mais **pas bloquant** *(Q4 révisée 2026-04-21)*.
-   - Une métrique sans bloc `otel:` n'est **pas émise** dans `/metrics`
-   - Un **WARN est loggé** avec `probe_name`, `probe_type`, `metric_name` et un message actionnable ("Add an `otel:` block or `otel.skip: true`")
-   - **Dédupliqué** par (probe_type, metric_name) sur la durée de vie de l'agent — pas de spam à chaque scrape
-   - L'endpoint `/metrics` **continue de servir** les autres métriques normalement
+4. **A naming fallback** → **none**, but **not blocking** *(Q4 revised 2026-04-21)*.
+   - A metric with no `otel:` block is **not emitted** in `/metrics`
+   - A **WARN is logged** with `probe_name`, `probe_type`, `metric_name` and an actionable message ("Add an `otel:` block or `otel.skip: true`")
+   - **De-duplicated** per (probe_type, metric_name) for the agent's lifetime — no spam on every scrape
+   - The `/metrics` endpoint **keeps serving** the other metrics normally
    - L'agent **ne refuse jamais de démarrer** à cause d'un mapping manquant
-   - Livraison attendue (cible qualité, pas blocage) :
+   - Expected delivery (a quality target, not a gate):
      - Documentation utilisateur complète (`/docs/prometheus/_index.md` + `metrics-reference.md`)
      - Revue de code complète du package `prometheus/`
      - Non-régression PRTG/Nagios validée
-   - **Rationale** : ne jamais bloquer la prod sur un oubli de YAML. Les noms émis restent contractuels (aucun fallback auto-généré qui polluerait le namespace) — le warning trace l'oubli sans casser l'endpoint.
+   - **Rationale**: never block production over a forgotten YAML entry. The emitted names stay contractual — no auto-generated fallback polluting the namespace — and the warning records the omission without breaking the endpoint.
 
-5. **Préfixe configurable** → **figé à `senhub_`**. Pas d'option `metric_prefix` dans la config. Changer le préfixe casserait systématiquement les dashboards utilisateurs.
+5. **A configurable prefix** → **fixed at `senhub_`**. There is no `metric_prefix` option in the config: changing the prefix would break user dashboards every time.
 
 ## Annexe — Liens de référence
 
