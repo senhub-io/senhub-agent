@@ -231,5 +231,5 @@ Pour vérifier que les métriques sont correctement calculées :
 Pour extraire les données complètes de l'API Redfish d'un système PowerVault ME5024, utilisez l'outil `redfish-explorer` :
 
 ```bash
-./redfish-explorer -endpoint https://lb-me5024mgmt1.batistyl.fr -username admin -password password -export me5024_data
+./redfish-explorer -endpoint https://redfish-controller-1.example.com -username admin -password password -export me5024_data
 ```
