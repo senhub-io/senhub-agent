@@ -1114,25 +1114,25 @@ Re-exported as `gauge` — the incoming gauge/sum distinction is not preserved o
 | `source_ip` | `*net.UDPAddr` de l'émetteur | clé mandatée #161 |
 | `snmp_version` | v1/v2c/v3 | |
 | `sysuptime` | `sysUpTime.0` | |
-| `varbind.<oid>` | une par binding (hors snmpTrapOID/sysUpTime) | valeur formatée |
+| `varbind.<oid>` | one per binding (excluding snmpTrapOID/sysUpTime) | formatted value |
 | `senhub.probe.name` / `senhub.probe.type` | framework | `senhub.probe.type = "snmp_trap"` |
 
 #### 4.19.2 Severity & body
 
-- **Severity** : heuristique fixe (pas de champ severity dans un trap). `linkDown`/`authenticationFailure`/`egpNeighborLoss` → WARN ; reste → INFO.
+- **Severity**: a fixed heuristic, since a trap carries no severity field. `linkDown`/`authenticationFailure`/`egpNeighborLoss` → WARN; everything else → INFO.
 - **Body** : `SNMP trap <name> (<oid>) from <ip> with N varbind(s)`.
 
 #### 4.19.3 Résolution de noms (MIBs LOCALES, jamais fetchées)
 
-Deux couches : (1) table compilée des 6 traps génériques SNMPv2-MIB ; (2) **MIBs locales fournies par l'opérateur** via `mib_paths`, parsées au démarrage par le package partagé `internal/agent/services/snmpmib/` (basé sur `gosmi`), qui résout `trap_oid` ET les OIDs de varbinds (`varbind.ifOperStatus.3` au lieu du numérique). Distinction clé : **jamais de fetch réseau** — uniquement les fichiers locaux déposés par l'opérateur (le fetch runtime depuis une URL est l'anti-pattern documenté). Un OID sans MIB chargée reste numérique (`trap_name=unknown`). `snmpmib` est réutilisable par les autres probes SNMP (snmp_poll Lot 2).
+Two layers: (1) a compiled table of the 6 generic SNMPv2-MIB traps; (2) **local MIBs supplied by the operator** through `mib_paths`, parsed at startup by the shared `internal/agent/services/snmpmib/` package (built on `gosmi`), which resolves both `trap_oid` AND the varbind OIDs (`varbind.ifOperStatus.3` rather than the numeric form). The key distinction: **never a network fetch** — only the local files the operator placed there, since fetching at runtime from a URL is the documented anti-pattern. An OID with no MIB loaded stays numeric (`trap_name=unknown`). `snmpmib` is reusable by the other SNMP probes (snmp_poll, batch 2).
 
 #### 4.19.4 Limites
 
-v3 USM best-effort (gosnmp listener = une identité USM, v3-trap flaggé unreliable upstream) ; v2c solide. Port 162 privilégié → root/CAP_NET_BIND_SERVICE (#223). Free tier.
+v3 USM is best-effort — the gosnmp listener holds a single USM identity, and v3 traps are flagged unreliable upstream; v2c is solid. Port 162 is privileged → root or CAP_NET_BIND_SERVICE (#223). Free tier.
 
 ### 4.20 icmp_check (free, #299)
 
-Aucun receiver otelcol-contrib ne couvre l'ICMP actif → namespace `senhub.icmp.*`. Une série par cible (attributs `icmp.target` + `icmp.target.ip`).
+No otelcol-contrib receiver covers active ICMP, hence the `senhub.icmp.*` namespace. One series per target (`icmp.target` + `icmp.target.ip` attributes).
 
 | OTel metric | Unit | Type | Source wire |
 |---|---|---|---|
@@ -1141,17 +1141,17 @@ Aucun receiver otelcol-contrib ne couvre l'ICMP actif → namespace `senhub.icmp
 | `senhub.icmp.packets.sent` / `.received` | `{packet}` | gauge | comptes du cycle |
 | `senhub.icmp.rtt.min/.avg/.max/.stddev` | `s` | gauge | wire en ms, `value_scale: 0.001` ; émis seulement si ≥1 réponse |
 
-Modes privilégié (raw ICMP) / non-privilégié (datagram, sysctl `ping_group_range` sous Linux) ; défaut privilégié sur Windows uniquement. Châssis multi-cibles réutilisable par tcp_dial (#159) / dns_latency (#158).
+Privileged mode (raw ICMP) and unprivileged mode (datagram, via the `ping_group_range` sysctl on Linux); privileged is the default on Windows only. The multi-target chassis is reusable by tcp_dial (#159) and dns_latency (#158).
 
 
 ### 4.21 http_check (free, #300)
 
-Aligné sur le receiver otelcol-contrib httpcheck quand la métrique existe (`httpcheck.duration`) ; extensions `senhub.httpcheck.*` sinon. Une série par cible (attribut `httpcheck.target`).
+Aligned with the otelcol-contrib httpcheck receiver wherever the metric exists (`httpcheck.duration`); `senhub.httpcheck.*` extensions otherwise. One series per target (`httpcheck.target` attribute).
 
 | OTel metric | Unit | Type | Source wire |
 |---|---|---|---|
 | `senhub.httpcheck.up` | `1` | gauge | statut attendu (+ content_match) |
-| `senhub.httpcheck.status.code` | `{code}` | gauge | code HTTP (unité-annotation : pas de suffixe `_ratio` côté Prometheus) |
+| `senhub.httpcheck.status.code` | `{code}` | gauge | HTTP code (annotation unit: no `_ratio` suffix on the Prometheus side) |
 | `httpcheck.duration` | `s` | gauge | total, wire ms `value_scale: 0.001` (nom contrib) |
 | `senhub.httpcheck.duration.{dns,connect,tls,ttfb}` | `s` | gauge | phases httptrace, wire ms |
 | `senhub.httpcheck.response.size` | `By` | gauge | corps lu (cap 1 MiB) |
@@ -1162,7 +1162,7 @@ Redirections rapportées non suivies ; keep-alive désactivé (chaque cycle mesu
 
 ### 4.22 tcp_dial + dns_latency (free, #159/#158)
 
-Mêmes principes que §4.20/4.21 (châssis actif, wire ms → `value_scale: 0.001`, échec = mesure up=0).
+Same principles as §4.20/4.21: the active chassis, wire milliseconds → `value_scale: 0.001`, and a failure is a measurement (up=0).
 
 | OTel metric | Unit | Type | Attributes |
 |---|---|---|---|
@@ -1171,13 +1171,13 @@ Mêmes principes que §4.20/4.21 (châssis actif, wire ms → `value_scale: 0.00
 
 ### 4.23 prometheus_scrape (free, #304)
 
-Ingestion pull : chaque sample scrapé est un **pass-through typé** —
-nom et labels conservés tels quels, le tag `otel_type` porte la
-sémantique counter/gauge vers le mapper (même mécanisme que les OIDs
+Pull ingestion: each scraped sample is a **typed pass-through** — name
+and labels kept as they are, with the `otel_type` tag carrying the
+counter/gauge semantics to the mapper (the same mechanism as the OIDs
 dynamiques de snmp_poll, #207). Untyped → gauge. Histogram et summary
 droppés et comptés (contrat scalaires-seulement, identique à
-otlp_receiver). Pas d'énumération YAML possible — seules les
-self-metrics sont définies :
+otlp_receiver). No YAML enumeration is possible — only the
+self-metrics are defined:
 
 | OTel metric | Unit | Type | Attributes |
 |---|---|---|---|
@@ -1190,23 +1190,23 @@ self-metrics sont définies :
 Probe de checks custom : code de sortie Nagios → `senhub.exec.status`
 (0 ok / 1 warning / 2 critical / 3 unknown), perfdata et contrat JSON
 en **pass-through typé** sous `senhub.exec.<label>` (tag `otel_type`,
-même mécanisme que prometheus_scrape §4.23). Normalisation perfdata :
+the same mechanism as prometheus_scrape, §4.23). Perfdata normalisation:
 temps → secondes, octets → bytes, UOM `c` → counter. Self-metrics
 définies en YAML :
 
 | OTel metric | Unit | Type | Notes |
 |---|---|---|---|
-| `senhub.exec.status` | `{status}` | gauge | unité-annotation, pas de suffixe `_ratio` |
+| `senhub.exec.status` | `{status}` | gauge | annotation unit, no `_ratio` suffix |
 | `senhub.exec.duration` | `s` | gauge | wire ms, `value_scale: 0.001` |
 | `senhub.exec.timeout` / `.skipped` | `1` | gauge | booléens |
 
 ### 4.25 snmp_poll (free, #156) — backfill
 
-Section ajoutée a posteriori (#345) : la probe a livré ses lots 1a/1b
-sans table semconv, le YAML transformer était la seule source.
+Section added after the fact (#345): the probe shipped batches 1a/1b
+without a semconv table, leaving the YAML transformer as the only source.
 
-Modules built-in (MIB-2, IF-MIB) — une série par device (`snmp.target`),
-les métriques d'interface ajoutent `network.interface.index` :
+Built-in modules (MIB-2, IF-MIB) — one series per device (`snmp.target`),
+with interface metrics adding `network.interface.index`:
 
 | OTel metric | Unit | Type | Source MIB |
 |---|---|---|---|
@@ -1217,14 +1217,14 @@ les métriques d'interface ajoutent `network.interface.index` :
 | `snmp.interface.in_errors` / `out_errors` | `{error}` | counter | ifInErrors / ifOutErrors |
 | `snmp.interface.in_discards` / `out_discards` | `{packet}` | counter | ifInDiscards / ifOutDiscards |
 | `snmp.interface.speed` | `bit/s` | gauge | ifSpeed |
-| `snmp.interface.admin_status` / `oper_status` | `{status}` | gauge | ifAdminStatus / ifOperStatus (enums IF-MIB 1..7 ; unité-annotation depuis #344, pas de suffixe `_ratio`) |
+| `snmp.interface.admin_status` / `oper_status` | `{status}` | gauge | ifAdminStatus / ifOperStatus (IF-MIB enums 1..7; annotation unit since #344, so no `_ratio` suffix) |
 
-Les `custom_mappings` et OIDs dynamiques passent par le pass-through
-typé (tag `otel_type`) — pas d'énumération ici par construction.
+`custom_mappings` and dynamic OIDs go through the typed pass-through
+(the `otel_type` tag) — by construction there is nothing to enumerate here.
 
 ### 4.26 apache (free, #465)
 
-Aligné sur le receiver otelcol-contrib `apachereceiver`. `senhub.apache.up` est une extension SenHub (aucun équivalent dans le receiver contrib). Source : mod_status endpoint `?auto`. Attributs communs : `instance` (host:port), `server.address`, `server.port`.
+Aligned with the otelcol-contrib `apachereceiver`. `senhub.apache.up` is a SenHub extension, with no equivalent in the contrib receiver. Source: the mod_status `?auto` endpoint. Common attributes: `instance` (host:port), `server.address`, `server.port`.
 
 | OTel metric | Unit | Type | Source mod_status |
 |---|---|---|---|
@@ -1238,8 +1238,9 @@ Aligné sur le receiver otelcol-contrib `apachereceiver`. `senhub.apache.up` est
 Référence receiver contrib : [opentelemetry-collector-contrib/receiver/apachereceiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/apachereceiver).
 ### 4.27 haproxy (free, #464)
 
-Aligné sur le receiver otelcol-contrib haproxy quand le nom existe ; une
-série par paire `(proxy, component)` (attributs `haproxy.proxy.name` +
+Aligned with the otelcol-contrib haproxy receiver wherever the name
+exists; one series per `(proxy, component)` pair (attributes
+`haproxy.proxy.name` +
 `haproxy.component`).
 
 | OTel metric | Unit | Type | Source CSV |
@@ -1255,17 +1256,17 @@ série par paire `(proxy, component)` (attributs `haproxy.proxy.name` +
 | `haproxy.requests.rate` | `{request}/s` | gauge | req_rate — taux courant (frontends) |
 
 Les métriques cumulatives (`haproxy.sessions.total`, `haproxy.bytes.*`,
-`haproxy.*.errors`) sont de type `counter` (monotone croissant) — ce qui
-produit le suffixe `_total` côté Prometheus et le bon comportement
-monotone en OTLP. Utiliser `rate()` / `increase()` directement sur ces
+`haproxy.*.errors`) are of type `counter` (monotonically increasing),
+which produces the `_total` suffix on the Prometheus side and the correct
+monotonic behaviour in OTLP. Use `rate()` / `increase()` directly on those
 séries.
 ### 4.28 Probe `kafka` (broker / topic / consumer-group monitoring)
 
 **Sources principales :**
-- [OTel Collector contrib — `kafkametricsreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/kafkametricsreceiver) — référence canonique pour les noms et unités.
+- [OTel Collector contrib — `kafkametricsreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/kafkametricsreceiver) — the canonical reference for names and units.
 - [Apache Kafka documentation — Replication](https://kafka.apache.org/documentation/#replication) — ISR semantics.
 
-**Stratégie :** les noms adoptés sont ceux du `kafkametricsreceiver` (`kafka.brokers`, `kafka.topic.partitions`, `kafka.partition.*`, `kafka.consumer_group.*`). Seule l'exception `senhub.kafka.up` (indicateur de joignabilité du cycle) est sous namespace propriétaire.
+**Strategy:** the names adopted are those of `kafkametricsreceiver` (`kafka.brokers`, `kafka.topic.partitions`, `kafka.partition.*`, `kafka.consumer_group.*`). The one exception, `senhub.kafka.up` — a per-cycle reachability indicator — sits under our own namespace.
 
 | OTel metric | Unit | Type | Attributes | Notes |
 |---|---|---|---|---|
@@ -1281,7 +1282,7 @@ séries.
 | `kafka.consumer_group.lag` | `{item}` | gauge | id. | plancher à 0 (never negative) |
 | `kafka.consumer_group.lag_sum` | `{item}` | gauge | group + topic | somme lag toutes partitions |
 
-`kafka.partition.replicas_in_sync` est émis par `client.InSyncReplicas(topic, partition)` (sarama). Une erreur par partition est loguée en `Warn` et la métrique est omise pour ce cycle ; `kafka.partition.replicas` reste toujours émis. Condition d'alerte typique : `replicas_in_sync < replicas`.
+`kafka.partition.replicas_in_sync` comes from `client.InSyncReplicas(topic, partition)` (sarama). A per-partition error is logged at `Warn` and the metric omitted for that cycle; `kafka.partition.replicas` is always emitted. A typical alert condition: `replicas_in_sync < replicas`.
 ### 4.29 Probe `clickhouse` (free, #465)
 
 Scrapes the ClickHouse `/metrics` Prometheus-text endpoint (available since ClickHouse 20.1)
@@ -1318,27 +1319,28 @@ Unit embedded in the name is forbidden per the OTel-first rule; the unit lives i
 
 Probe payante (Pro). Connexion TCP brute (optionallement TLS) au port RESP
 (défaut 6379) — aucune dépendance Go externe. Séquence : `AUTH` si mot de
-passe configuré, puis `INFO all`. La réponse bulk string RESP est parsée
-section par section en une map plate `key→value`.
+the configured password, then `INFO all`. The RESP bulk-string response is
+parsed section by section into a flat `key→value` map.
 
 **Source de référence** : OTel Collector contrib
 [`redisreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/redisreceiver).
-Quand le receiver contrib expose la métrique, on suit son nom et ses attributs
-(interopérabilité directe avec les dashboards Grafana, alertes standard OTel).
+Where the contrib receiver exposes the metric, we follow its name and attributes
+(direct interoperability with Grafana dashboards and standard OTel alerts).
 Extensions sous `senhub.db.*` quand aucun équivalent contrib n'existe.
 
 **Compatibilité Redis 7** : `slave_repl_offset` a été renommé en
-`replica_repl_offset` en Redis 7. Le probe lit les deux champs avec fallback.
+`replica_repl_offset` in Redis 7. The probe reads both fields, with a fallback.
 
-**Pas de dépendance externe** : le RESP de `INFO all` est parsé en stdlib
-pur (`bufio`, `net`, `crypto/tls`). Pas de client redis Go. La règle est
-invariante — toute PR ajoutant un import tiers sur ce package est rejetée.
+**No external dependency**: the RESP from `INFO all` is parsed with the
+standard library alone (`bufio`, `net`, `crypto/tls`). No Go redis client.
+The rule is invariant — any PR adding a third-party import to this package
+is rejected.
 
-**TLS** : `tls: true` dans la config enveloppe le `net.Conn` avec
-`crypto/tls.Client` après le dial ; aucune configuration de certificat client
-n'est exposée pour l'instant (suivi #394).
+**TLS**: `tls: true` in the config wraps the `net.Conn` with
+`crypto/tls.Client` after the dial; no client-certificate configuration is
+exposed yet (tracked in #394).
 
-**Métriques émises** (séries par instance `host:port`) :
+**Metrics emitted** (one series per `host:port` instance):
 
 | OTel metric | Unit | Type | Source INFO |
 |---|---|---|---|
@@ -1379,21 +1381,21 @@ attrs: {db.system.name: "redis", server.address: host, server.port: port,
         db.version: redis_version}
 ```
 
-Correspondance avec le `redisreceiver` OTel contrib : les noms `redis.*`
+Correspondence with the OTel contrib `redisreceiver`: the `redis.*` names
 correspondent aux noms contrib 1:1. Les métriques `senhub.db.*` (up, version)
-sont des extensions qui n'ont pas d'équivalent contrib.
+are extensions with no contrib equivalent.
 
-**Précision float32 sur les grands compteurs** : `used_memory`,
-`total_net_input_bytes` etc. peuvent dépasser 16 MiB sur un serveur chargé,
-au-delà duquel la mantisse float32 perd de la précision. Défaut partagé avec
-les autres probes DB (#258). La valeur est émise telle quelle.
+**float32 precision on large counters**: `used_memory`,
+`total_net_input_bytes` and others can exceed 16 MiB on a busy server, past
+which the float32 mantissa loses precision. A defect shared with the other DB
+probes (#258). The value is emitted as it is.
 ### 4.31 Probe `memcached` (Memcached cache server)
 
 **Sources principales :**
-- [otelcol-contrib `memcachedreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/memcachedreceiver) — référence canonique pour les noms et attributs
+- [otelcol-contrib `memcachedreceiver`](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/memcachedreceiver) — the canonical reference for names and attributes
 - Protocole texte Memcached `stats\r\n` (RFC informelle — [Memcached protocol.txt](https://github.com/memcached/memcached/blob/master/doc/protocol.txt))
 
-**Stratégie :** aligner les noms sur `memcachedreceiver` quand le metric existe dans contrib (`memcached.network`, `memcached.operations`, `memcached.commands`, `memcached.cpu.usage`, `memcached.uptime`, `memcached.evictions`) ; extensions `memcached.*` locales pour les métriques sans équivalent contrib (`memcached.current.connections`, `memcached.connections.total`, `memcached.current.items`, `memcached.items.total`, `memcached.bytes`, `memcached.limit_maxbytes`). Pas de suffixe d'unité dans le nom. Unité canonique OTel dans `otel.unit`.
+**Strategy:** follow the `memcachedreceiver` names wherever contrib has the metric (`memcached.network`, `memcached.operations`, `memcached.commands`, `memcached.cpu.usage`, `memcached.uptime`, `memcached.evictions`); use local `memcached.*` extensions for metrics with no contrib equivalent (`memcached.current.connections`, `memcached.connections.total`, `memcached.current.items`, `memcached.items.total`, `memcached.bytes`, `memcached.limit_maxbytes`). No unit suffix in the name — the canonical OTel unit lives in `otel.unit`.
 
 #### 4.31.1 Métriques
 
@@ -1422,35 +1424,35 @@ les autres probes DB (#258). La valeur est émise telle quelle.
 | `memcached.commands` | `memcached.command` = `get` / `set` / `flush` |
 | `memcached.cpu.usage` | `process.cpu.state` = `user` / `system` |
 
-`network.io.direction` suit la convention OTel (`transmit`/`receive`) — identique aux valeurs que `memcachedreceiver` contrib produit sur `memcached.network{direction}`.
+`network.io.direction` follows the OTel convention (`transmit`/`receive`) — the same values contrib's `memcachedreceiver` produces on `memcached.network{direction}`.
 
 #### 4.31.3 DiscriminantTagsRegistry
 
-Tags discriminants déclarés dans `http_cache.go` : `result`, `command`, `state`, `direction`, `metric_type`.
-Le tag probe `direction` est renommé vers l'attribut OTel `network.io.direction` via `tag_to_attribute` — la discrimination dans le cache utilise le nom de tag d'origine (`direction`).
+Discriminant tags declared in `http_cache.go`: `result`, `command`, `state`, `direction`, `metric_type`.
+The probe's `direction` tag is renamed to the OTel attribute `network.io.direction` via `tag_to_attribute` — cache discrimination uses the original tag name (`direction`).
 ### 4.32 proxmox (free)
 
 Probe REST API Proxmox VE : nodes, VMs QEMU, conteneurs LXC, pools de
 stockage. Authentification via PVE API token (header `Authorization:
 PVEAPIToken`). The `proxmox.*` namespace (vendor-specific) +
-`senhub.proxmox.*` pour les extensions SenHub.
+`senhub.proxmox.*` for the SenHub extensions.
 
 | OTel metric | Unit | Type | Notes |
 |---|---|---|---|
 | `senhub.proxmox.up` | `1` | gauge | 1 = API répond ; 0 = toute erreur de connexion ou d'authentification. Toujours émis, y compris en cas d'échec. |
 | `proxmox.node.cpu.utilization` | `1` | gauge | ratio CPU du nœud (0–1) |
-| `proxmox.node.memory.used` | `By` | gauge | mémoire utilisée sur le nœud |
-| `proxmox.node.memory.total` | `By` | gauge | mémoire totale installée sur le nœud |
+| `proxmox.node.memory.used` | `By` | gauge | Memory used on the node |
+| `proxmox.node.memory.total` | `By` | gauge | Total memory installed on the node |
 | `proxmox.node.status` | `1` | gauge | 1 = online, 0 = offline |
 | `proxmox.vm.cpu.utilization` | `1` | gauge | ratio CPU VM/LXC (0–1) |
-| `proxmox.vm.memory.used` | `By` | gauge | mémoire utilisée par la VM/conteneur |
-| `proxmox.vm.memory.total` | `By` | gauge | mémoire allouée à la VM/conteneur |
-| `proxmox.vm.disk.read` | `By` | counter | octets lus depuis le démarrage |
-| `proxmox.vm.disk.write` | `By` | counter | octets écrits depuis le démarrage |
-| `proxmox.vm.network.in` | `By` | counter | octets reçus sur tous les vNICs |
-| `proxmox.vm.network.out` | `By` | counter | octets émis sur tous les vNICs |
+| `proxmox.vm.memory.used` | `By` | gauge | Memory used by the VM/container |
+| `proxmox.vm.memory.total` | `By` | gauge | Memory allocated to the VM/container |
+| `proxmox.vm.disk.read` | `By` | counter | Bytes read since boot |
+| `proxmox.vm.disk.write` | `By` | counter | Bytes written since boot |
+| `proxmox.vm.network.in` | `By` | counter | Bytes received on all vNICs |
+| `proxmox.vm.network.out` | `By` | counter | Bytes sent on all vNICs |
 | `proxmox.vm.status` | `1` | gauge | 1 = running, 0 = arrêtée |
-| `proxmox.storage.used` | `By` | gauge | octets utilisés sur le pool |
+| `proxmox.storage.used` | `By` | gauge | Bytes used in the pool |
 | `proxmox.storage.total` | `By` | gauge | capacité totale du pool |
 
 Attributs discriminants (via `tag_to_attribute`) : `proxmox.node`,
@@ -1458,8 +1460,8 @@ Attributs discriminants (via `tag_to_attribute`) : `proxmox.node`,
 ### 4.33 Probe `unifi` (free, #465)
 
 Probe Ubiquiti UniFi Controller — REST API stdlib HTTP, auth cookie. Une
-instance = un contrôleur. Métriques : disponibilité, inventaire par type,
-clients, débit WAN, CPU/RAM/satisfaction par AP.
+one instance = one controller. Metrics: availability, inventory by type,
+clients, WAN throughput, and per-AP CPU/RAM/satisfaction.
 
 #### 4.33.1 Métriques
 
@@ -1480,10 +1482,10 @@ clients, débit WAN, CPU/RAM/satisfaction par AP.
 #### 4.33.2 Collapse `unifi.network.io` (#465)
 
 `unifi.network.tx_bytes` et `unifi.network.rx_bytes` (deux noms) ont été
-fusionnés en **`unifi.network.io`** discriminé par
-`network.io.direction` (`transmit` / `receive`), aligné sur la convention
+merged into **`unifi.network.io`**, discriminated by
+`network.io.direction` (`transmit` / `receive`), aligned with the convention
 OTel `system.network.io` (§4.3) et `senhub.db.mysql.io{io.direction}`.
-Valeur = débit octet-rate rapporté par le contrôleur (champ `tx_bytes-r`
+The value is the byte-rate the controller reports (the `tx_bytes-r` field
 / `rx_bytes-r` du endpoint `stat/health`). La tag probe `direction` est
 mappée vers l'attribut OTel `network.io.direction` dans le YAML
 transformer (`tag_to_attribute`).
