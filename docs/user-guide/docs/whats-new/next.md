@@ -877,7 +877,8 @@ filesystem, granted to a process that parses untrusted network input. (#794)
 ## Known follow-ups
 
 - The `swarm` and `docker` probes reach the Docker Engine over a Unix socket and
-  have no named-pipe support, so neither works against Docker on Windows.
+  have no named-pipe support, so neither works against Docker on Windows — the
+  platform most customers run. (#801)
 - Default probe configuration still covers four host probes; everything else on
   a machine is collected by nobody until someone writes YAML. (#777)
 - A probe can be disabled but not started or stopped at runtime — that needs a
@@ -892,9 +893,6 @@ filesystem, granted to a process that parses untrusted network input. (#794)
   is never explained in the log. (#796)
 - The `docker` cgroup fallback covers cgroup v2 only; on a v1 host the probe
   still needs the socket. (#797)
-- Hosts running `auto_update.include_beta: true` resolve `latest` to the newest
-  beta and never move to the stable release that supersedes it. Stable hosts are
-  unaffected. (#730)
 - Relay enrichment is configured under `signals.traces.relay_enrichment`, but now
   governs relayed logs and metrics too; disabling it on the traces signal
   silently disables it for all three. The setting will move to a relay-level
