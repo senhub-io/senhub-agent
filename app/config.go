@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -103,6 +104,15 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 		if _, err := os.Stat(logPath); err == nil {
 			dirsToRemove = append(dirsToRemove, logPath)
 		}
+	}
+
+	// The pre-0.5.4 second copy of the binary (#794). Uninstalling must not
+	// leave behind an executable owned by a service user that is about to be
+	// orphaned: nothing runs it any more, but it is still a writable binary
+	// sitting in a state directory, which is exactly the shape this release
+	// removed.
+	if _, err := os.Stat(legacyManagedBinaryDir); err == nil {
+		dirsToRemove = append(dirsToRemove, legacyManagedBinaryDir)
 	}
 
 	// Remove files
@@ -321,7 +331,20 @@ func checkConfig(configPath string) {
 		fmt.Println("  [WARN] No probes configured")
 		warnings++
 	} else {
-		fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
+		disabled := 0
+		for _, p := range config.Probes {
+			if !p.IsEnabled() {
+				disabled++
+			}
+		}
+		if disabled > 0 {
+			// Stated up front rather than buried per probe: "n configured" and
+			// "n collecting" being different numbers is the first thing an
+			// operator needs to know when data is missing.
+			fmt.Printf("  [OK]   %d probe(s) configured, %d disabled\n", len(config.Probes), disabled)
+		} else {
+			fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
+		}
 		registeredProbes := probes.GetRegisteredProbeTypes()
 		for _, p := range config.Probes {
 			if p.Name == "" {
@@ -339,7 +362,11 @@ func checkConfig(configPath string) {
 				errors++
 				continue
 			}
-			fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+			if !p.IsEnabled() {
+				fmt.Printf("  [OFF]  Probe %q (type: %s) - disabled, will not collect\n", p.Name, p.Type)
+			} else {
+				fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+			}
 
 			// Validate required params per probe type
 			e, w := validateProbeParams(p.Name, p.Type, p.Params)
@@ -371,13 +398,20 @@ func checkConfig(configPath string) {
 		}
 	}
 
-	// Auto-update: warn when enabled but the running binary can't be
-	// replaced in place (root-owned binary under the hardened non-root
-	// unit would fail every update cycle — #377).
-	if config.AutoUpdate != nil && config.AutoUpdate.Enabled {
-		if warn := checkAutoUpdateWritability(); warn != "" {
-			fmt.Printf("  [WARN] %s\n", warn)
-			warnings++
+	// Binary writability. What is correct differs per platform: on Linux the
+	// daemon must NOT be able to write its own executable (#794), everywhere
+	// else the in-process updater needs to (#377). checkAutoUpdateWritability
+	// reports whichever is wrong for the platform it runs on.
+	//
+	// Checked whenever the agent is configured, not only when auto_update is
+	// enabled: on Linux a writable binary is a security finding on its own, and
+	// turning auto-update off does not make it safe.
+	if warn := checkAutoUpdateWritability(); warn != "" {
+		fmt.Printf("  [WARN] %s\n", warn)
+		warnings++
+	} else if config.AutoUpdate != nil && config.AutoUpdate.Enabled {
+		if runtime.GOOS == "linux" {
+			fmt.Println("  [OK]   auto_update.enabled: new versions are reported; install them with 'sudo senhub-agent update'")
 		} else {
 			fmt.Println("  [OK]   auto_update.enabled: binary is replaceable in place")
 		}

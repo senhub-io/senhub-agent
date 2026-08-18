@@ -129,7 +129,7 @@ metrics:
     lookup: "sfs.generic.boolean"
     otel:
       name: senhub.hardware.physical_disk.has_active_operations
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       drive_id: hw.id
@@ -181,7 +181,7 @@ metrics:
     lookup: "sfs.generic.boolean"
     otel:
       name: senhub.hardware.physical_disk.location_indicator_active
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       drive_id: hw.id
@@ -382,7 +382,7 @@ metrics:
     lookup: "sfs.generic.boolean"
     otel:
       name: senhub.hardware.logical_disk.encrypted
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       volume_id: hw.id

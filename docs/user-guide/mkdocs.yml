@@ -110,6 +110,7 @@ nav:
       - Systemd Units: probes/systemd.md
       - Windows Services: probes/windows-services.md
       - Chrony (NTP): probes/chrony.md
+      - NTP (direct): probes/ntp.md
       - OS Updates: probes/os-updates.md
       - S.M.A.R.T. Disk Health: probes/smart.md
       - IPMI / BMC Sensors: probes/ipmi.md
@@ -171,6 +172,7 @@ nav:
       - Apache Pulsar: probes/pulsar.md
       - Docker: probes/docker.md
       - Kubernetes: probes/kubernetes.md
+      - Docker Swarm: probes/swarm.md
       - Proxmox VE: probes/proxmox.md
       - Hyper-V: probes/hyperv.md
       - Ceph: probes/ceph.md
@@ -182,6 +184,7 @@ nav:
   - What's new:
       - Overview: whats-new/index.md
       - Next (unreleased): whats-new/next.md
+      - 0.5.4: whats-new/0.5.4.md
       - 0.5.3: whats-new/0.5.3.md
       - 0.5.2: whats-new/0.5.2.md
       - 0.5.1: whats-new/0.5.1.md

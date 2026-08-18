@@ -107,24 +107,54 @@ func TestCanonicalUnitForUser(t *testing.T) {
 		t.Error("canonicalUnitForUser(senhub) must equal packagedSystemdUnit verbatim")
 	}
 
-	// Refreshing a root install must NOT reintroduce User=senhub — that
-	// is the 217/USER crash-loop the fix prevents (#575).
+	// A custom non-root user still gets the hardened unit, re-templated.
+	custom := canonicalUnitForUser("monitoring")
+	if !strings.Contains(custom, "User=monitoring") || !strings.Contains(custom, "Group=monitoring") {
+		t.Errorf("custom user must be templated into the hardened unit\n%s", custom)
+	}
+	if !strings.Contains(custom, "CapabilityBoundingSet=") {
+		t.Error("a non-root install keeps the hardening directives")
+	}
+}
+
+// A root install must come out of a refresh with the unit `install
+// --user root` writes — capabilities included. Refreshing used to yield
+// the hardened template with User=root, which drops every capability, so
+// a --user root install silently lost the raw sockets and privileged
+// ports it was chosen for (#689).
+//
+// This supersedes the previous expectation that the root unit was the
+// packaged one with User=/Group= re-templated: it now carries no User= at
+// all, root being implicit. The #575 property it guarded — a refresh must
+// never reintroduce User=senhub on a root install — is asserted below and
+// still holds.
+func TestCanonicalUnitForUser_RootConvergesWithInstall(t *testing.T) {
 	root := canonicalUnitForUser(rootServiceUser)
-	if !strings.Contains(root, "User=root") || !strings.Contains(root, "Group=root") {
-		t.Errorf("root unit must run as root\n%s", root)
-	}
+
 	if strings.Contains(root, "User=senhub") || strings.Contains(root, "Group=senhub") {
-		t.Errorf("root unit must not reference the senhub user\n%s", root)
+		t.Errorf("root unit must not reference the senhub user (#575)\n%s", root)
 	}
-	// Every hardening directive of the packaged unit survives — only
-	// User=/Group= are re-templated.
-	for _, line := range strings.Split(packagedSystemdUnit, "\n") {
-		if strings.HasPrefix(line, "User=") || strings.HasPrefix(line, "Group=") {
+	for _, dropped := range []string{"CapabilityBoundingSet=", "AmbientCapabilities=", "ProtectSystem=", "User="} {
+		if strings.Contains(root, dropped) {
+			t.Errorf("root unit must not carry %q — --user root exists to keep full privileges\n%s", dropped, root)
+		}
+	}
+
+	// Convergence with the install path, which is the acceptance
+	// criterion: identical to the template install --user root hands to
+	// kardianos, modulo the two templated lines.
+	installed := linuxSystemdScript(rootServiceUser)
+	for _, line := range strings.Split(installed, "\n") {
+		if strings.HasPrefix(line, "ExecStart=") || strings.HasPrefix(line, "{{if .WorkingDirectory}}") {
 			continue
 		}
 		if !strings.Contains(root, line) {
-			t.Errorf("root unit lost packaged line %q", line)
+			t.Errorf("refresh-unit root unit lost the install line %q", line)
 		}
+	}
+
+	if !strings.Contains(root, "ExecStart=") {
+		t.Error("root unit must carry a concrete ExecStart for refreshedUnit to splice over")
 	}
 }
 
@@ -207,20 +237,64 @@ func TestRefreshedUnit_PreservesWorkingDirectory(t *testing.T) {
 }
 
 // An ExecStart whose binary vanished (installer invoked from /tmp, #576)
-// is repointed at the staged managed binary, keeping the rendered
-// arguments — refresh-unit stays the documented repair for 203/EXEC.
-func TestRefreshedUnit_MissingBinaryRepointsAtStagedBinary(t *testing.T) {
+// is repointed at the system binary, keeping the rendered arguments —
+// refresh-unit stays the documented repair for 203/EXEC.
+func TestRefreshedUnit_MissingBinaryRepointsAtSystemBinary(t *testing.T) {
 	installed := cliInstalledUnit(defaultServiceUser,
 		`ExecStart=/tmp/senhub-agent "run" "--config-path" "/custom/agent.yaml"`,
 		"WorkingDirectory=/tmp")
 	got := refreshedUnit(installed, binaryAlways(false))
 
-	want := `ExecStart=/var/lib/senhub-agent/bin/senhub-agent "run" "--config-path" "/custom/agent.yaml"`
+	want := `ExecStart=/usr/local/bin/senhub-agent "run" "--config-path" "/custom/agent.yaml"`
 	if !strings.Contains(got, want) {
 		t.Errorf("expected repointed ExecStart %q\n%s", want, got)
 	}
 	if strings.Contains(got, "/tmp") {
 		t.Errorf("vanished /tmp path must not survive the refresh\n%s", got)
+	}
+}
+
+// The migration, and the one case where an ExecStart whose binary EXISTS is
+// still repointed (#794).
+//
+// Every host installed before 0.5.4 execs /var/lib/senhub-agent/bin/senhub-agent,
+// a service-user-owned copy the daemon could rewrite. That file is still there
+// and still runs, so refresh-unit's preservation rule — which exists to respect
+// an ExecStart an operator chose (#396) — would keep it forever and the
+// migration would silently never happen on a single host.
+//
+// The distinction is that the old path is not a choice anyone made: it is a
+// layout we shipped and are moving off.
+func TestRefreshedUnit_LegacyManagedPathIsMigratedEvenThoughItExists(t *testing.T) {
+	installed := cliInstalledUnit(defaultServiceUser,
+		`ExecStart=/var/lib/senhub-agent/bin/senhub-agent "run" "--config-path" "/etc/senhub-agent/agent.yaml"`,
+		"WorkingDirectory=/var/lib/senhub-agent/bin")
+
+	// binaryAlways(true): the old copy is still present on disk. That must not
+	// save it.
+	got := refreshedUnit(installed, binaryAlways(true))
+
+	want := `ExecStart=/usr/local/bin/senhub-agent "run" "--config-path" "/etc/senhub-agent/agent.yaml"`
+	if !strings.Contains(got, want) {
+		t.Errorf("the pre-0.5.4 managed path must be migrated to the system binary; want %q\n%s", want, got)
+	}
+	if strings.Contains(got, legacyManagedBinaryDir) {
+		t.Errorf("the refreshed unit still references the service-user-owned directory %s — "+
+			"the daemon would keep write access to what systemd executes\n%s", legacyManagedBinaryDir, got)
+	}
+}
+
+// A path the operator genuinely chose is still preserved. The migration rule
+// above must not become "repoint anything that is not canonical", which is the
+// behaviour #396 exists to prevent.
+func TestRefreshedUnit_OperatorChosenPathSurvivesTheMigrationRule(t *testing.T) {
+	installed := cliInstalledUnit(defaultServiceUser,
+		`ExecStart=/opt/senhub/bin/senhub-agent "run" "--config-path" "/opt/senhub/agent.yaml"`,
+		"WorkingDirectory=/opt/senhub/bin")
+	got := refreshedUnit(installed, binaryAlways(true))
+
+	if !strings.Contains(got, `ExecStart=/opt/senhub/bin/senhub-agent`) {
+		t.Errorf("a custom ExecStart whose binary exists must be preserved (#396)\n%s", got)
 	}
 }
 
@@ -240,16 +314,23 @@ func TestRefreshedUnit_NoExecStartFallsBackToCanonical(t *testing.T) {
 
 // A legacy root install keeps both its root identity (#575) and its
 // existing ExecStart (#396) through a refresh.
+//
+// Root identity is now expressed the way `install --user root` expresses
+// it — by the ABSENCE of a User= directive, systemd's default being root
+// — rather than by an explicit User=root on the hardened unit. That
+// change is the point of #689: the hardened unit drops every capability,
+// so writing it over a --user root install disarmed the very thing that
+// install was chosen for.
 func TestRefreshedUnit_RootInstallKeepsRootUserAndExecStart(t *testing.T) {
 	execLine := `ExecStart=/usr/local/bin/senhub-agent "run" "--config-path" "/etc/senhub-agent/agent.yaml"`
 	installed := cliInstalledUnit(rootServiceUser, execLine, "")
 	got := refreshedUnit(installed, binaryAlways(true))
 
-	if !strings.Contains(got, "User=root") || !strings.Contains(got, "Group=root") {
-		t.Errorf("root install must stay root\n%s", got)
+	if strings.Contains(got, "User=") || strings.Contains(got, "Group=") {
+		t.Errorf("a root unit carries no User=/Group= — root is systemd's default\n%s", got)
 	}
-	if strings.Contains(got, "User=senhub") || strings.Contains(got, "Group=senhub") {
-		t.Errorf("refresh must not switch a root install to the senhub user (#575)\n%s", got)
+	if strings.Contains(got, "AmbientCapabilities=") || strings.Contains(got, "CapabilityBoundingSet=") {
+		t.Errorf("refresh must not strip a root install of its capabilities (#689)\n%s", got)
 	}
 	if !strings.Contains(got, execLine) {
 		t.Errorf("root install ExecStart not preserved\n%s", got)

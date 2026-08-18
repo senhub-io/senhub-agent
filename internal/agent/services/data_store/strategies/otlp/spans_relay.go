@@ -183,7 +183,7 @@ func (f *httpSpanForwarder) close() error {
 type spansRelay struct {
 	cfg       Config
 	forwarder spanForwarder
-	enricher  *traceEnricher
+	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
 
 	mu         sync.Mutex
@@ -192,7 +192,7 @@ type spansRelay struct {
 	wg         sync.WaitGroup
 }
 
-func newSpansRelay(cfg Config, enricher *traceEnricher, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
+func newSpansRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
 	var fwd spanForwarder
 	var err error
 	if cfg.Protocol == "http" {
@@ -315,7 +315,7 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 	// Add the agent's correlation context (copy-on-write on the Resource,
 	// spans shared) so relayed third-party traces join the agent's infra
 	// telemetry in the backend (#294). No-op when enrichment is disabled.
-	rs = r.enricher.enrich(rs)
+	rs = r.enricher.enrichSpans(rs)
 
 	if err := r.forwarder.forward(ctx, rs); err != nil {
 		agentstate.IncrementOTLPExportErrors()
@@ -326,6 +326,7 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 			Msg("OTLP span relay export failed; batch dropped")
 		return
 	}
+	agentstate.IncrementOTLPSpansRelayed(spans)
 	r.logger.Debug().
 		Int("resource_spans", len(rs)).
 		Int("spans", spans).

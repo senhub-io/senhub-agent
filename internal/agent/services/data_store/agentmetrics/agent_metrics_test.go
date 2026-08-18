@@ -1,6 +1,7 @@
 package agentmetrics
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -21,13 +22,14 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	t.Cleanup(agentstate.ResetCollectErrorsForTest)
 
 	recs := BuildAgentRecords(snap)
-	// 31 records when neither build info nor http_requests is set and no
+	// 34 records when neither build info nor http_requests is set and no
 	// collect errors / OTLP drops / checkpoint errors have occurred yet:
 	//   6 core         (uptime, cache.entries, probes.{active,total,healthy},
 	//                   transformer.fallback)
-	//   9 OTLP push    (metrics.pushed, logs.pushed, export.errors,
-	//                   dropped_log_records, dropped_span_batches,
-	//                   buffer.fill_ratio, store_size,
+	//  12 OTLP push    (metrics.pushed, logs.pushed, spans.relayed,
+	//                   logs.relayed, metrics.relayed, export.errors,
+	//                   dropped_log_records,
+	//                   dropped_span_batches, buffer.fill_ratio, store_size,
 	//                   export.duration{window=last},
 	//                   export.duration{window=mean})
 	//   3 OTLP checkpoint (size, last_save_age, restored_entries)
@@ -43,8 +45,8 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	if len(recs) != 31 {
-		t.Fatalf("expected 31 records (no build info, no http requests, no collect errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
+	if len(recs) != 34 {
+		t.Fatalf("expected 34 records (no build info, no http requests, no collect errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -60,6 +62,9 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.transformer.fallback",
 		"senhub.agent.otlp.metrics.pushed",
 		"senhub.agent.otlp.logs.pushed",
+		"senhub.agent.otlp.spans.relayed",
+		"senhub.agent.otlp.logs.relayed",
+		"senhub.agent.otlp.metrics.relayed",
 		"senhub.agent.otlp.export.errors",
 		"senhub.agent.otlp.dropped_log_records",
 		"senhub.agent.otlp.dropped_span_batches",
@@ -285,5 +290,28 @@ func TestBuildAgentRecords_NoHTTPRecordsWhenMapEmpty(t *testing.T) {
 		if r.Name == "senhub.agent.http.requests" {
 			t.Errorf("expected no http.requests records when map is empty/nil")
 		}
+	}
+}
+
+// TestSelfMetricsDeclareNoFalseRatios guards the naming rule 0.5.4 applied to
+// the probes but missed on two of the agent's own metrics: a dimensionless unit
+// of "1" on a gauge makes the OTel→Prometheus rule append _ratio, which is right
+// for a fraction and wrong for anything else. An endpoint INDEX reached
+// Prometheus as senhub_agent_otlp_active_endpoint_index_ratio, and a boolean as
+// ..._license_invalid_ratio.
+//
+// A name ending in _ratio is exempt: it already says what it is.
+func TestSelfMetricsDeclareNoFalseRatios(t *testing.T) {
+	for _, r := range BuildAgentRecords(AgentMetricsSnapshot{}) {
+		if r.Unit != "1" {
+			continue
+		}
+		if strings.HasSuffix(r.Name, ".ratio") || strings.HasSuffix(r.Name, "_ratio") ||
+			strings.Contains(r.Name, "utilization") {
+			continue
+		}
+		t.Errorf("%s declares unit \"1\" and is not a ratio: Prometheus will name it %s_ratio. "+
+			"Use an annotation unit such as {index}, {status} or {connection}",
+			r.Name, strings.ReplaceAll(r.Name, ".", "_"))
 	}
 }

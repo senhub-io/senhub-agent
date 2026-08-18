@@ -160,7 +160,7 @@ func TestWriteExposition_EndToEnd(t *testing.T) {
 	var handlerErrors []error
 	count, err := WriteExposition(reader, defs, nil, otelmapper.DefaultResolveOptions(), &buf, func(m otelmapper.CacheMetric, err error) {
 		handlerErrors = append(handlerErrors, err)
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("WriteExposition err: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestWriteExposition_UnknownProbe(t *testing.T) {
 	var errs []string
 	count, err := WriteExposition(reader, defs, nil, otelmapper.DefaultResolveOptions(), &buf, func(m otelmapper.CacheMetric, err error) {
 		errs = append(errs, err.Error())
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("WriteExposition err: %v", err)
 	}

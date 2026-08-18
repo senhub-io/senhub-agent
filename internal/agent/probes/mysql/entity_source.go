@@ -30,6 +30,9 @@ type mysqlEntitySource struct {
 	cfg          config
 	moduleLogger *logger.ModuleLogger
 	hostID       func() string // nil → dbcommon.HostID; resolves the agent host for a local-db runs_on
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *entity.RekeyAnnouncer
 
 	mu          sync.Mutex
 	role        dbcommon.Role
@@ -54,6 +57,23 @@ func newMysqlEntitySource(cfg config, log *logger.ModuleLogger) *mysqlEntitySour
 // isIDPinned reports whether the entity id has already been pinned (either via
 // operator instance_name or via a previous pinServerUUID call). The probe uses
 // this to skip the one-time @@server_uuid query after the id is locked in.
+// instanceID returns the pinned db.instance.id, or "" while it is still being
+// resolved.
+//
+// Read by the metric path so every datapoint can carry the identity of the
+// entity it describes. Empty until pinned, and the caller omits the tag rather
+// than emitting a blank one: a series labelled with an empty identity and the
+// same series labelled with the real one are two different series for one
+// database, which is worse than a label that appears one cycle late.
+func (s *mysqlEntitySource) instanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.idPinned {
+		return ""
+	}
+	return s.pinnedID
+}
+
 func (s *mysqlEntitySource) isIDPinned() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -74,10 +94,14 @@ func (s *mysqlEntitySource) pinServerUUID(uuid string) {
 		s.idPinned = true
 		return
 	}
-	// Degraded fallback: host:port when no stable tech id is available.
-	// MySQL always reports @@server_uuid on a healthy connection so this
-	// branch is reached only when the query itself failed.
-	s.pinnedID = fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
+	// Degraded fallback: address:port when no stable tech id is available,
+	// host-scoped on loopback so two local servers stay two entities.
+	//
+	// Not the rare branch it was assumed to be: MariaDB has no @@server_uuid
+	// at all, so every MariaDB install lands here — which is how two of them
+	// collapsed into one entity in production (#740).
+	s.pinnedID = dbcommon.FallbackInstanceID("mysql", s.cfg.Host, s.cfg.Port, s.hostID())
+	s.rekey = dbcommon.NewRekeyAnnouncer("mysql", s.cfg.Host, s.cfg.Port, s.hostID())
 	s.idPinned = true
 }
 
@@ -118,6 +142,7 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	idPinned := s.idPinned
 	rolePinned := s.rolePinned
 	pinnedID := s.pinnedID
+	rekey := s.rekey
 	s.mu.Unlock()
 
 	// When instance_name is set the id is pinned at construction; we still
@@ -167,6 +192,14 @@ func (s *mysqlEntitySource) Observe() (entity.Observation, bool) {
 	// runs_on edge: db → host when the db is local (loopback) — anchors a local
 	// db to the host it runs on (enterprise#36).
 	if rel, ok := dbcommon.LocalHostRunsOn(id, s.cfg.Host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	rekey.Announce()
+	if rel, ok := rekey.SameAs(); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
 

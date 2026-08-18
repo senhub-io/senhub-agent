@@ -140,6 +140,17 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			Value:   counter.Name,
 			Private: false,
 		})
+		// interface.name ties this series to its network.interface entity,
+		// which is keyed on the same name. On Unix it holds the same value as
+		// `interface` above; both are emitted because the entity join must not
+		// depend on which platform produced the series (#748), and because
+		// `interface` is renamed to network.interface.name downstream while
+		// the identity key must survive verbatim.
+		interfaceTags = append(interfaceTags, tags.Tag{
+			Key:     interfaceNameTag,
+			Value:   counter.Name,
+			Private: false,
+		})
 
 		// Add the primary IP address as a tag. Earlier versions emitted
 		// every IP via positional ip_1, ip_2, ... ip_N labels — interfaces

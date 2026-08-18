@@ -18,7 +18,7 @@ metrics:
     description: "1 when the Ceph REST API is reachable and authentication succeeds"
     otel:
       name: senhub.ceph.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       instance: server.address
@@ -32,7 +32,7 @@ metrics:
     description: "Cluster health: 2=HEALTH_OK, 1=HEALTH_WARN, 0=HEALTH_ERR"
     otel:
       name: ceph.health.status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       instance: server.address

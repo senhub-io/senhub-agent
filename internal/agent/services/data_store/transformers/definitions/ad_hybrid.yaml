@@ -19,7 +19,7 @@ metrics:
     description: "1 when the Azure AD Connect Health API answered this cycle, else 0"
     otel:
       name: senhub.ad_hybrid.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
@@ -34,7 +34,7 @@ metrics:
     description: "Sync service health (Healthy=2, Warning=1, Error/other=0)"
     otel:
       name: senhub.ad_hybrid.sync.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       service_name: senhub.ad_hybrid.service.name

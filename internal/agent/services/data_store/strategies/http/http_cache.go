@@ -157,6 +157,19 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"edge_cluster_id", // per-NSX-edge-cluster health
 	},
 
+	// Conduit probes (#701/#703). These publish their records straight to
+	// the log rail; the only datapoints they hand to the cache are their own
+	// throughput/health counters, one per probe instance, carrying nothing
+	// but the systematic identity tags. The probe name is already part of
+	// every cache key, so two instances stay two series without any
+	// discriminant tag — an empty set is the correct declaration here, not a
+	// gap. Declaring it also silences the "not in DiscriminantTagsRegistry"
+	// warning these probes raised on every push (#724).
+	"filetail":         {},
+	"linux_logs":       {},
+	"windows_eventlog": {},
+	"snmp_trap":        {},
+
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	"syslog":    {"event_id", "source"}, // Syslog events
@@ -171,14 +184,14 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Observability / messaging probes — one series per broker endpoint
 	"pulsar": {"endpoint"}, // Apache Pulsar: one broker per endpoint URL
 	// Storage probes — one series per physical device.
-	"smart": {"smart.device"}, // S.M.A.R.T.: one series per disk (sata/nvme)
+	"smart": {"smart.device", "reason"}, // S.M.A.R.T.: one series per disk (sata/nvme)
 
 	// SNMP polling — one series per (target, interface row); metric_type
 	// separates interface / system / status families.
 	// consul: health.checks emits one series per state (critical/warning/passing).
 	"consul":      {"metric_type", "state"},
 	"dns_latency": {"name", "resolver", "metric_type"},
-	"docker":      {"container_id", "container_name", "metric_type", "core"},
+	"docker":      {"container_id", "container_name", "metric_type", "core", "source"},
 	"http_check":  {"target", "metric_type"},
 	"icmp_check":  {"target", "metric_type"},
 	"tcp_dial":    {"target", "metric_type"},
@@ -331,6 +344,69 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"k8s.namespace.name",  // namespace scopes pods, containers, deployments
 		"k8s.container.name",  // per-container metrics (k8s.container.*)
 		"k8s.deployment.name", // per-deployment metrics (k8s.deployment.*)
+		// Workload kinds beyond Deployment share one tag pair rather than one
+		// tag per kind, so a dashboard can group across kinds without knowing
+		// the list. Both are needed: two kinds may carry the same name in the
+		// same namespace (a Job and the CronJob that created it, commonly).
+		"k8s.workload.name", // statefulset/daemonset/replicaset/job/cronjob
+		"k8s.workload.kind",
+		// Without this, a container flipping between ImagePullBackOff and
+		// CrashLoopBackOff overwrites its own cache slot and the reason a
+		// dashboard shows is whichever arrived last.
+		"k8s.container.waiting.reason",
+		// Storage, quota and autoscaling scopes. `phase` in particular: the
+		// one-hot phase series share a metric name and differ only by it, so
+		// without this every phase of a volume overwrites the previous one and
+		// the cache reports whichever arrived last.
+		"k8s.persistentvolume.name",
+		"k8s.persistentvolumeclaim.name",
+		"phase",
+		"k8s.resourcequota.name",
+		"k8s.resourcequota.resource",
+		"k8s.hpa.name",
+	},
+
+	// Docker Swarm — cluster-scoped series. Every one-hot family here shares a
+	// metric name and differs only by its state tag, so without those tags each
+	// state overwrites the previous and the cache reports whichever arrived
+	// last: a node would appear to be in exactly one of ready/down/unknown at
+	// random.
+	// chrony — the one-hot state series share a metric name and differ only by
+	// their reason, so without this each reason would overwrite the previous in
+	// the cache and the endpoint would report whichever arrived last.
+	"chrony": {
+		"reason",
+	},
+
+	// ntp — same one-hot reason series as chrony, plus the server tag: a host
+	// measured against two references produces two of every series, and
+	// without the discriminant the second would overwrite the first, hiding
+	// the disagreement that is the whole point of naming more than one.
+	"ntp": {
+		"reason",
+		"server",
+	},
+
+	"swarm": {
+		"swarm.node.name",
+		"swarm.node.id", // per-node task placement, which carries no hostname
+		"swarm.node.role",
+		"swarm.service.name",
+		"swarm.service.mode",
+		"state",        // node state, task lifecycle, service update state
+		"availability", // active / pause / drain
+		"reachability", // manager reachability
+		// The overlay map: one series per (service, segment) pair, so both
+		// sides of the pair must split. Without the network tag a service on
+		// three overlays would report one attachment.
+		"swarm.network.name",
+		"swarm.network.subnet",
+		// Published ports: a service publishing 80 and 443 is two series, and
+		// the same port number can be published by tcp and udp at once.
+		"swarm.port.published",
+		"swarm.port.target",
+		"swarm.port.mode",
+		"network.transport",
 	},
 
 	// Application server probes

@@ -13,6 +13,18 @@ import (
 	"time"
 )
 
+// interfaceNameTag is the identity key of the network.interface entity, and
+// therefore the tag a consumer joins a host-interface series to its entity
+// with. It must stay byte-identical to the value the entity source puts in
+// entity.ID (hostiface: net.Interface.Name), and it must not be renamed by a
+// transformer — a subject key that survives only under another spelling
+// joins nothing, which is what #748 was.
+//
+// It is spelled the same as the SNMP side (snmppoll stamps interface.name on
+// every polled-device interface metric), so one query shape reaches both
+// planes.
+const interfaceNameTag = "interface.name"
+
 // networkProbe représente le collecteur de métriques réseau
 type networkProbe struct {
 	*types.BaseProbe

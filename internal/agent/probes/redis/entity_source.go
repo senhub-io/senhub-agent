@@ -34,6 +34,9 @@ type entityObserver struct {
 	pinnedID string
 	// hostID resolves the agent host for a local-db runs_on; nil → dbcommon.HostID.
 	hostID func() string
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *entity.RekeyAnnouncer
 
 	mu  sync.Mutex
 	obs entity.Observation
@@ -42,13 +45,33 @@ type entityObserver struct {
 
 // newEntityObserver builds the observer and pins the db.instance.id
 // immediately. It never returns nil.
-func newEntityObserver(cfg probeConfig, hostPort string) *entityObserver {
-	id := hostPort
-	if cfg.InstanceName != "" {
-		id = cfg.InstanceName
+// hostID resolves the agent host; it is a parameter rather than a package
+// call so the pinned identity is reproducible in tests — the id is frozen at
+// construction and a test cannot re-pin it afterwards.
+func newEntityObserver(cfg probeConfig, hostID func() string) *entityObserver {
+	if hostID == nil {
+		hostID = dbcommon.HostID
 	}
-	return &entityObserver{pinnedID: id, hostID: dbcommon.HostID}
+	id := cfg.InstanceName
+	if id == "" {
+		// Redis has no persistent server id, so this fallback is the norm
+		// rather than a degraded case: every default install listens on
+		// loopback and would otherwise share one identity fleet-wide (#740).
+		id = dbcommon.FallbackInstanceID("redis", cfg.Host, cfg.Port, hostID())
+	}
+	return &entityObserver{
+		pinnedID: id,
+		hostID:   hostID,
+		// Only when the fallback applies: an operator-named instance was never
+		// keyed on address:port, so it has nothing to retire.
+		rekey: rekeyFor(cfg, hostID),
+	}
 }
+
+// instanceID returns the db.instance.id this observer pinned at construction.
+// Read by the metric path so every datapoint carries the identity of the entity
+// it describes.
+func (e *entityObserver) instanceID() string { return e.pinnedID }
 
 // Observe returns the last cached entity observation. ok is false before the
 // first successful collect cycle.
@@ -100,8 +123,27 @@ func (e *entityObserver) update(cfg probeConfig, info map[string]string) {
 		obs.Relations = append(obs.Relations, rel)
 	}
 
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	e.rekey.Announce()
+	if rel, ok := e.rekey.SameAs(); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
 	e.mu.Lock()
 	e.obs = obs
 	e.ok = true
 	e.mu.Unlock()
+}
+
+// rekeyFor builds the migration announcer only when this observer actually
+// uses the host-scoped fallback. An operator-supplied instance_name was never
+// keyed on address:port, so announcing a retirement for it would name a node
+// the consumer has never seen.
+func rekeyFor(cfg probeConfig, hostID func() string) *entity.RekeyAnnouncer {
+	if cfg.InstanceName != "" {
+		return nil
+	}
+	return dbcommon.NewRekeyAnnouncer("redis", cfg.Host, cfg.Port, hostID())
 }

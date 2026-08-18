@@ -18,7 +18,7 @@ metrics:
     description: "1 when the Memcached server is reachable and responding to stats, 0 otherwise"
     otel:
       name: senhub.memcached.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       instance: server.address

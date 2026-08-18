@@ -57,6 +57,12 @@ type dockerProbe struct {
 	entitySrc    *dockerEntitySource
 	// newClient allows tests to inject a replacement transport.
 	newClient func() *http.Client
+	// cgroups reads container counters straight from the kernel when the
+	// socket is unavailable (#797). Nil disables the fallback.
+	cgroups *cgroupReader
+	// socketWarned keeps the "falling back to cgroups" explanation to once per
+	// probe lifetime instead of once per cycle.
+	socketWarned bool
 }
 
 // containerListItem is the shape of one element in GET /containers/json.
@@ -66,6 +72,25 @@ type containerListItem struct {
 	Image        string   `json:"Image"`
 	State        string   `json:"State"`
 	RestartCount int      `json:"RestartCount"`
+	// Created is the Unix second the container was created. Stable for its
+	// whole life, so it is nameplate rather than measurement: it separates a
+	// container restarted this morning from one running since March, which the
+	// state alone never says.
+	Created int64 `json:"Created"`
+	// Labels are how an orchestrator says what a container IS rather than what
+	// it is called. Docker Swarm stamps the service it belongs to here, and
+	// Compose the project and service — the facts an operator actually groups
+	// by, and which no other field carries.
+	Labels map[string]string `json:"Labels"`
+	// NetworkSettings carries which networks this container joined. Present in
+	// the same response all along and simply not decoded until the network
+	// segment became an entity: an overlay is the reachability boundary, and
+	// the attachment is the only place it is observable per workload.
+	NetworkSettings struct {
+		Networks map[string]struct {
+			NetworkID string `json:"NetworkID"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
 }
 
 // blkioEntry is a single entry in Docker's blkio recursive arrays.
@@ -150,6 +175,7 @@ func NewDockerProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		entitySrc:    &dockerEntitySource{},
 	}
 	p.SetProbeType(ProbeType)
+	p.cgroups = newCgroupReader("")
 	// Containers are distinct entities, not host-local: declare the real
 	// source so the poller registers it on Start.
 	p.SetEntitySource(p.entitySrc)
@@ -238,13 +264,21 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	containers, socketOK, err := p.listContainers()
-	if err != nil {
-		// Socket unreachable — not a fatal collection error: emit nothing and
-		// let the scheduler retry. The absence of series tells PRTG the sensor
-		// is down; a persistent failure will show in the agent's self-metrics.
-		return nil, fmt.Errorf("docker: listing containers: %w", err)
-	}
-	if !socketOK {
+	if err != nil || !socketOK {
+		// The socket is unreachable. On a hardened non-root install that is the
+		// NORMAL state — /var/run/docker.sock is root:docker 0660 — so before
+		// giving up, read what the kernel exposes without any privilege.
+		if points, ok := p.collectFromCgroups(now, err); ok {
+			// Same enrichment as the socket path below. Without it every
+			// datapoint reaches the data store with no probe_name and no
+			// probe_type, so the transformer registry cannot resolve a
+			// definition for it and the whole fallback produces nothing —
+			// silently, on the install shape the fallback exists to serve.
+			return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("docker: listing containers: %w", err)
+		}
 		return nil, nil
 	}
 
@@ -269,7 +303,7 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 	// Update entity cache from the live container list (no extra API call needed).
 	p.entitySrc.update(containers)
 
-	var points []data_store.DataPoint
+	points := p.sourcePoints(sourceSocket, now)
 	for _, res := range results {
 		points = append(points, p.buildDatapoints(res, now)...)
 	}
@@ -378,7 +412,13 @@ func (p *dockerProbe) matchesExclude(name string) bool {
 func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_store.DataPoint {
 	name := primaryName(res.container)
 	baseTags := []tags.Tag{
-		{Key: "container_id", Value: shortID(res.container.ID)},
+		// The FULL sha, not the 12-character form. Truncation is a CLI display
+		// convention chosen by the observer, and it is destructive: the entity
+		// is keyed on the full id, so a consumer querying by the entity's own
+		// identity got zero series while a near-identical value sat beside it.
+		// Measured on production: 64 characters on the entity rail, 12 on the
+		// metric rail (#758).
+		{Key: "container_id", Value: res.container.ID},
 		{Key: "container_name", Value: name},
 		{Key: "image", Value: res.container.Image},
 	}
@@ -619,7 +659,19 @@ func primaryName(c containerListItem) string {
 	return strings.TrimPrefix(c.Names[0], "/")
 }
 
-// shortID returns the first 12 characters of the Docker container ID — the
+// shortID returns the first 12 characters of the Docker container ID.
+//
+// Display only. It must never reach an identity-bearing tag: a truncated id
+// is not the container's identity, it is a convenience for reading. The one
+// caller left is the fallback name for an unnamed container, where a human
+// reads it.
+//
+// Historical note kept deliberately: this used to feed the container_id tag,
+// with a comment claiming the full id was preserved as the cache
+// discriminant. It was not — the discriminant is the tag value, so the full
+// id was nowhere on the metric rail at all.
+//
+// Previously documented as: returns the first 12 characters of the ID — the
 // conventional "short ID" used in docker ps output. The full 64-char ID
 // is preserved as the cache discriminant; the short form keeps log lines
 // readable.

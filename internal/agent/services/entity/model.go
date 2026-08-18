@@ -30,6 +30,42 @@ const (
 	EntityDelete
 )
 
+// Delete reasons — why THIS PRODUCER decided to retire an entity. A distinct
+// axis from Toise's delete_source, which answers who decided: the consumer
+// writes that one and already holds it. Restating it here would give the same
+// fact two spellings that drift the moment Toise gains a source we do not
+// model (a retention purge, an operator removal).
+//
+// The split that matters is between "the resource ended" and "the observation
+// ended". Everything above ReasonUnmonitored asserts something about the
+// resource; ReasonUnmonitored asserts nothing — the resource may well still be
+// running, we simply stopped seeing it. A db entity that vanishes because
+// someone edited a probe list must never read as "the database is gone": that
+// reading is what causes an incident. It is the producer-side mirror of
+// liveness_expiry — there the consumer says it stopped hearing, here we say we
+// stopped looking.
+//
+// The enum is open on the wire; these are the core agreed with Toise. They
+// live here rather than in the SDK's wire package because that package pins
+// the KEY (wire.AttrEntityDeleteReason) and, as of pkg/emit v0.9.0, no value
+// constants. Move them when it does.
+const (
+	// ReasonTerminated: the source reported successfully and no longer lists
+	// the entity. An empty observation with ok=true is the legitimate way for a
+	// source to say everything it watched is gone.
+	ReasonTerminated = "terminated"
+	// ReasonParentRemoved: the entity lost its anchoring relation, so it is no
+	// longer reachable in the graph. Deliberately not spelled "cascade" — that
+	// word belongs to the delete_source axis and means the consumer retired an
+	// edge whose far end died. Reusing it would recreate one level down the
+	// ambiguity the two axes exist to remove.
+	ReasonParentRemoved = "parent_removed"
+	// ReasonUnmonitored: WE stopped observing. The source was unregistered (its
+	// probe stopped, or was removed from the configuration), or it failed for
+	// longer than lastGoodTTL. Says nothing about the resource.
+	ReasonUnmonitored = "unmonitored"
+)
+
 // Entity is a node: a thing in the infrastructure the agent reports on.
 //
 // ID is the identifying attribute set — it MUST be exact and immutable for
@@ -85,6 +121,17 @@ type Relationship struct {
 	Type       string         // relationship.type (runs_on, monitors, …)
 	TargetType string         // target entity.type
 	TargetID   map[string]any // target entity.id (exact identity)
+	// Attributes are the edge's own scalar properties. Most edges have none:
+	// runs_on and monitors are structural, and their meaning is entirely in
+	// the pair they connect.
+	//
+	// same_as is the exception and the reason this exists. The consumer treats
+	// an alias edge WITHOUT a valid confidence as inert — it collapses nothing
+	// (ADR 0020) — so basis and confidence are not decoration, they are what
+	// makes the edge do anything at all. Dropping them, which is what happened
+	// before this field, produced an edge that travelled the whole wire and
+	// then did nothing on arrival.
+	Attributes map[string]any
 }
 
 // Relation is a directed edge a Source reports, resolved by the exact identity
@@ -110,4 +157,7 @@ type Event struct {
 	Entity   *Entity
 	Time     time.Time
 	Interval time.Duration
+	// DeleteReason is why this producer retired the entity (a Reason*
+	// constant). Only meaningful on EntityDelete; empty elsewhere.
+	DeleteReason string
 }

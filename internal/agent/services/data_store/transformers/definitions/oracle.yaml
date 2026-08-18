@@ -22,7 +22,7 @@ metrics:
     lookup: "senhub.db.up"
     otel:
       name: senhub.db.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════
