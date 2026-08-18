@@ -930,4 +930,11 @@ filesystem, granted to a process that parses untrusted network input. (#794)
   governs relayed logs and metrics too; disabling it on the traces signal
   silently disables it for all three. The setting will move to a relay-level
   block, with the current key kept as a deprecated alias. (#766)
+- A metric point is stamped with the moment it is exported, not the moment it
+  was observed. A series in the store is re-published every push cycle until it
+  is evicted, so for up to one `staleness_ttl` window — ten minutes by default —
+  an old measurement is presented as a current one. Eviction bounds how long
+  that lasts; it does not stop it. In the same area, eviction runs only on the
+  metrics push path, so with `signals.metrics.enabled: false` and persistence
+  on, the checkpoint accumulates series with no producer indefinitely. (#812)
 
