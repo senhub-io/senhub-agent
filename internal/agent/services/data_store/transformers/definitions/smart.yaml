@@ -11,6 +11,53 @@ multi_instance_labels: ["smart.device"]
 # smart.device tag. smart.type distinguishes sata from nvme.
 
 metrics:
+  - name: "senhub.smart.up"
+    channel: "smart_up"
+    display_name: "S.M.A.R.T. Up"
+    unit: "#"
+    category: "status"
+    description: "1 when at least one disk could be read, 0 when none could"
+    otel:
+      name: senhub.smart.up
+      unit: "{status}"
+      type: gauge
+
+  - name: "senhub.smart.state"
+    channel: "smart_state_{reason}"
+    display_name: "S.M.A.R.T. State ({reason})"
+    unit: "#"
+    category: "status"
+    multi_instance_labels: ["reason"]
+    description: "one-hot over ok / no_devices / devices_unreadable / partially_readable — says WHY up has its value, so a host with no disks is distinguishable from one whose disks the agent cannot open"
+    otel:
+      name: senhub.smart.state
+      unit: "{state}"
+      type: gauge
+    tag_to_attribute:
+      reason: reason
+
+  - name: "senhub.smart.devices.found"
+    channel: "smart_devices_found"
+    display_name: "S.M.A.R.T. Devices Found"
+    unit: "#"
+    category: "status"
+    description: "Devices the scan reported, whether or not they could be read"
+    otel:
+      name: senhub.smart.devices.found
+      unit: "{device}"
+      type: gauge
+
+  - name: "senhub.smart.devices.readable"
+    channel: "smart_devices_readable"
+    display_name: "S.M.A.R.T. Devices Readable"
+    unit: "#"
+    category: "status"
+    description: "Devices the agent could actually query; below devices.found means a permission or hardware problem"
+    otel:
+      name: senhub.smart.devices.readable
+      unit: "{device}"
+      type: gauge
+
   # ── Shared (SATA/SAS + NVMe) ──────────────────────────────────────────────
 
   - name: "smart.disk.health"
@@ -22,7 +69,7 @@ metrics:
     lookup: "smart.disk.health"
     otel:
       name: smart.disk.health
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       smart.device: smart.disk.device

@@ -27,7 +27,7 @@ metrics:
     lookup: "senhub.db.up"
     otel:
       name: senhub.mongodb.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "mongodb.uptime"

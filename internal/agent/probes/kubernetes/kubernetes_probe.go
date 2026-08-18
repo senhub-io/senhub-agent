@@ -41,14 +41,23 @@ const (
 
 // probeConfig holds the parsed kubernetes probe configuration.
 type probeConfig struct {
-	Kubeconfig         string
-	CollectNodes       bool
-	CollectPods        bool
-	CollectContainers  bool
-	CollectDeployments bool
-	IncludeNamespaces  []string
-	ExcludeNamespaces  map[string]bool
-	Interval           time.Duration
+	Kubeconfig          string
+	CollectNodes        bool
+	CollectPods         bool
+	CollectContainers   bool
+	CollectDeployments  bool
+	CollectStatefulSets bool
+	CollectDaemonSets   bool
+	CollectReplicaSets  bool
+	CollectJobs         bool
+	CollectCronJobs     bool
+	CollectStorage      bool
+	CollectQuotas       bool
+	CollectAutoscalers  bool
+	CollectEvents       bool
+	IncludeNamespaces   []string
+	ExcludeNamespaces   map[string]bool
+	Interval            time.Duration
 }
 
 // KubernetesProbe collects metrics from a Kubernetes cluster.
@@ -57,9 +66,25 @@ type KubernetesProbe struct {
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
 	clientset    kubernetes.Interface
-	// clusterEndpoint identifies this cluster in entity IDs.
+	// clusterEndpoint is the API server address — a display and fallback
+	// value, NOT the identity (see cluster_uid.go).
 	clusterEndpoint string
-	entitySrc       *k8sEntitySource
+	// clusterUID is the kube-system namespace UID: the cluster's stable,
+	// self-reported identity. Empty when it could not be read.
+	clusterUID string
+	// pendingInventory accumulates the entity view during a cycle; it is
+	// published to the entity source at the end of Collect, replacing the
+	// previous set rather than merging into it.
+	pendingInventory clusterInventory
+	// nodeMachineIDs maps node name to the identity used for its host entity,
+	// so a container can be attached to the node it runs on without a second
+	// API read.
+	nodeMachineIDs map[string]string
+	// lastEventTime is the log-rail cursor: events at or before it have been
+	// published. Zero until the first cycle, which only sets it — see
+	// collectEvents for why the retention window is not replayed.
+	lastEventTime eventCursor
+	entitySrc     *k8sEntitySource
 }
 
 // NewKubernetesProbe constructs the probe. Config errors surface here.
@@ -105,11 +130,20 @@ func bestEffortClusterEndpoint(kubeconfig string) string {
 
 func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	cfg := probeConfig{
-		CollectNodes:       true,
-		CollectPods:        true,
-		CollectContainers:  true,
-		CollectDeployments: true,
-		Interval:           defaultInterval,
+		CollectNodes:        true,
+		CollectPods:         true,
+		CollectContainers:   true,
+		CollectDeployments:  true,
+		CollectStatefulSets: true,
+		CollectDaemonSets:   true,
+		CollectReplicaSets:  false,
+		CollectJobs:         true,
+		CollectCronJobs:     true,
+		CollectStorage:      true,
+		CollectQuotas:       true,
+		CollectAutoscalers:  true,
+		CollectEvents:       true,
+		Interval:            defaultInterval,
 	}
 
 	if v, ok := config["kubeconfig"].(string); ok {
@@ -132,6 +166,33 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		}
 		if v, ok := collect["deployments"].(bool); ok {
 			cfg.CollectDeployments = v
+		}
+		if v, ok := collect["statefulsets"].(bool); ok {
+			cfg.CollectStatefulSets = v
+		}
+		if v, ok := collect["daemonsets"].(bool); ok {
+			cfg.CollectDaemonSets = v
+		}
+		if v, ok := collect["replicasets"].(bool); ok {
+			cfg.CollectReplicaSets = v
+		}
+		if v, ok := collect["jobs"].(bool); ok {
+			cfg.CollectJobs = v
+		}
+		if v, ok := collect["cronjobs"].(bool); ok {
+			cfg.CollectCronJobs = v
+		}
+		if v, ok := collect["storage"].(bool); ok {
+			cfg.CollectStorage = v
+		}
+		if v, ok := collect["quotas"].(bool); ok {
+			cfg.CollectQuotas = v
+		}
+		if v, ok := collect["autoscalers"].(bool); ok {
+			cfg.CollectAutoscalers = v
+		}
+		if v, ok := collect["events"].(bool); ok {
+			cfg.CollectEvents = v
 		}
 	}
 
@@ -180,7 +241,17 @@ func (p *KubernetesProbe) OnStart(_ chan struct{}) error {
 	}
 	p.clientset = cs
 
-	p.entitySrc.setClusterEndpoint(p.clusterEndpoint)
+	// Identity before anything else: the entity must be keyed on something the
+	// cluster reports about itself, not on the address we happened to dial.
+	if uid, err := resolveClusterIdentity(cs, 10*time.Second); err != nil {
+		p.moduleLogger.Warn().Err(err).
+			Msg("kubernetes: could not read the kube-system namespace UID; the cluster entity falls back to an address-derived identity, which re-keys on any API endpoint change and collides between clusters sharing an address. Grant get on namespaces/kube-system to fix it")
+	} else {
+		p.clusterUID = uid
+		p.moduleLogger.Info().Str("k8s.cluster.uid", uid).Msg("kubernetes: cluster identity resolved")
+	}
+
+	p.entitySrc.setClusterIdentity(p.clusterEndpoint, p.clusterUID)
 
 	p.moduleLogger.Info().
 		Str("cluster", p.clusterEndpoint).
@@ -209,6 +280,12 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	defer cancel()
 
 	now := time.Now()
+	// Replace, never merge: an entity the cluster no longer reports must fall
+	// out of the observation so the consumer retires it by absence.
+	p.pendingInventory = clusterInventory{}
+	if p.nodeMachineIDs == nil {
+		p.nodeMachineIDs = map[string]string{}
+	}
 	up := float64(0)
 	var points []data_store.DataPoint
 	upTags := []tags.Tag{
@@ -246,6 +323,48 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, pts...)
 	}
 
+	for _, w := range []struct {
+		enabled bool
+		name    string
+		collect func(context.Context, time.Time) ([]data_store.DataPoint, error)
+	}{
+		{p.cfg.CollectStatefulSets, "statefulset", p.collectStatefulSets},
+		{p.cfg.CollectDaemonSets, "daemonset", p.collectDaemonSets},
+		{p.cfg.CollectReplicaSets, "replicaset", p.collectReplicaSets},
+		{p.cfg.CollectJobs, "job", p.collectJobs},
+		{p.cfg.CollectCronJobs, "cronjob", p.collectCronJobs},
+		{p.cfg.CollectStorage, "persistentvolume", p.collectPersistentVolumes},
+		{p.cfg.CollectStorage, "persistentvolumeclaim", p.collectPersistentVolumeClaims},
+		{p.cfg.CollectQuotas, "resourcequota", p.collectResourceQuotas},
+		{p.cfg.CollectAutoscalers, "horizontalpodautoscaler", p.collectHorizontalPodAutoscalers},
+	} {
+		if !w.enabled {
+			continue
+		}
+		pts, err := w.collect(ctx, now)
+		// Partial results are kept: a namespace the agent cannot list must not
+		// discard the ones it can. The error is logged so a permission gap
+		// surfaces instead of presenting as an empty cluster.
+		if err != nil {
+			p.moduleLogger.Warn().Err(err).Str("kind", w.name).
+				Msg("kubernetes: workload collection partially failed")
+		} else if len(pts) > 0 {
+			up = 1
+		}
+		points = append(points, pts...)
+	}
+
+	// Events ride the log rail, not this datapoint slice: they are timestamped
+	// sentences, and counting them would keep the number and throw away the
+	// message, which is the part that explains the metric.
+	if p.cfg.CollectEvents {
+		if err := p.collectEvents(ctx, now); err != nil {
+			p.moduleLogger.Warn().Err(err).Msg("kubernetes: event collection partially failed")
+		}
+	}
+
+	p.entitySrc.setInventory(p.pendingInventory)
+
 	points = append(points, data_store.DataPoint{
 		Name: metricUp, Value: up, Timestamp: now, Tags: upTags,
 	})
@@ -255,6 +374,7 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 
 // collectNodes lists all nodes and emits per-node metrics.
 func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
+	inv := &p.pendingInventory
 	nodes, err := p.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("listing nodes: %w", err)
@@ -305,9 +425,24 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 		}
 		if pods := n.Status.Allocatable.Pods(); pods != nil {
 			alloc, _ := pods.AsInt64()
+			// k8s.node.pods.allocatable, NOT .allocated: this is the ceiling
+			// the scheduler may fill, not what is running on the node. The
+			// former name said one thing and carried another (#756).
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.allocated", Value: float64(alloc), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.allocatable", Value: float64(alloc), Timestamp: now, Tags: baseTags,
 			})
+		}
+
+		points = append(points, nodeConditionPoints(n, now, baseTags)...)
+
+		// The node as a host entity, built from the list already fetched. A
+		// node whose MachineID is unreadable contributes nothing — see
+		// nodeEntity for why no fallback identity is minted.
+		if ent, ok := nodeEntity(n, p.clusterUID); ok {
+			inv.entities = append(inv.entities, ent)
+			p.nodeMachineIDs[nodeName] = ent.ID["host.id"].(string)
+		} else {
+			delete(p.nodeMachineIDs, nodeName)
 		}
 	}
 	return points, nil
@@ -335,6 +470,7 @@ func (p *KubernetesProbe) collectPods(ctx context.Context, now time.Time) ([]dat
 			}
 			if p.cfg.CollectContainers {
 				points = append(points, p.buildContainerPoints(pod, now)...)
+				p.appendPodEntities(pod)
 			}
 		}
 	}
@@ -347,6 +483,14 @@ func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_
 		{Key: "k8s.namespace.name", Value: pod.Namespace},
 		{Key: "k8s.node.name", Value: pod.Spec.NodeName},
 		{Key: "metric_type", Value: "pod"},
+	}
+	// The identity of the pod entity these metrics describe (#741). The name is
+	// editable and reused — a pod deleted and recreated under the same name is
+	// a different pod — so the entity is keyed on the UID, and without the UID
+	// here a consumer holding a pod entity has nothing that matches a series.
+	// Name and namespace stay: they are what a human reads.
+	if uid := strings.TrimSpace(string(pod.UID)); uid != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "k8s.pod.uid", Value: uid})
 	}
 
 	running := float64(0)
@@ -367,11 +511,12 @@ func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_
 		totalRestarts += cs.RestartCount
 	}
 
-	return []data_store.DataPoint{
+	points := []data_store.DataPoint{
 		{Name: "k8s.pod.phase", Value: running, Timestamp: now, Tags: baseTags},
 		{Name: "k8s.pod.ready", Value: ready, Timestamp: now, Tags: baseTags},
 		{Name: "k8s.pod.restarts", Value: float64(totalRestarts), Timestamp: now, Tags: baseTags},
 	}
+	return append(points, podResourcePoints(pod, now, baseTags)...)
 }
 
 func (p *KubernetesProbe) buildContainerPoints(pod *corev1.Pod, now time.Time) []data_store.DataPoint {
@@ -393,6 +538,30 @@ func (p *KubernetesProbe) buildContainerPoints(pod *corev1.Pod, now time.Time) [
 			data_store.DataPoint{Name: "k8s.container.ready", Value: ready, Timestamp: now, Tags: baseTags},
 			data_store.DataPoint{Name: "k8s.container.restarts", Value: float64(cs.RestartCount), Timestamp: now, Tags: baseTags},
 		)
+
+		// A container stuck in CrashLoopBackOff is ready=0 with a rising
+		// restart count — but so is one still pulling its image, and the two
+		// call for opposite reactions. The waiting reason is the only thing
+		// that tells them apart, and it is what an operator actually looks up.
+		if w := cs.State.Waiting; w != nil {
+			waitTags := append(append([]tags.Tag{}, baseTags...),
+				tags.Tag{Key: "k8s.container.waiting.reason", Value: w.Reason})
+			points = append(points, data_store.DataPoint{
+				Name: "k8s.container.waiting", Value: 1, Timestamp: now, Tags: waitTags,
+			})
+		}
+
+		// Resources live on the spec, not the status; the status is what this
+		// loop walks. Matching by name is how the two halves of a container
+		// are joined — an init container never appears here, which is
+		// intentional (it does not hold its reservation for the pod's life).
+		for i := range pod.Spec.Containers {
+			if pod.Spec.Containers[i].Name != cs.Name {
+				continue
+			}
+			points = append(points, containerResourcePoints(&pod.Spec.Containers[i], now, baseTags)...)
+			break
+		}
 	}
 	return points
 }

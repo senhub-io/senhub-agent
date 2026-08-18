@@ -66,6 +66,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/nats"
 	_ "senhub-agent.go/internal/agent/probes/network"
 	_ "senhub-agent.go/internal/agent/probes/nginx"
+	_ "senhub-agent.go/internal/agent/probes/ntp"
 	_ "senhub-agent.go/internal/agent/probes/nvidia"
 	_ "senhub-agent.go/internal/agent/probes/opensearch"
 	_ "senhub-agent.go/internal/agent/probes/oracle"
@@ -83,6 +84,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/snmppoll"
 	_ "senhub-agent.go/internal/agent/probes/snmptrap"
 	_ "senhub-agent.go/internal/agent/probes/solr"
+	_ "senhub-agent.go/internal/agent/probes/swarm"
 	_ "senhub-agent.go/internal/agent/probes/syslog"
 	_ "senhub-agent.go/internal/agent/probes/systemd"
 	_ "senhub-agent.go/internal/agent/probes/tcpdial"
@@ -219,6 +221,7 @@ var probeConfigFixtures = map[string]map[string]interface{}{
 	"dns_latency":       {"names": []interface{}{"example.com"}},
 	"http_check":        {"targets": []interface{}{"http://192.0.2.1/"}},
 	"icmp_check":        {"targets": []interface{}{"192.0.2.1"}},
+	"ntp":               {"servers": []interface{}{"192.0.2.1"}},
 	"prometheus_scrape": {"targets": []interface{}{"http://192.0.2.1:9100/metrics"}},
 	"tcp_dial":          {"targets": []interface{}{"192.0.2.1:80"}},
 	"windows_eventlog":  {"channels": []interface{}{"System"}},
@@ -294,6 +297,10 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 		"exec": true, "otlp_receiver": true, "snmp_trap": true,
 		"prometheus_scrape": true,
 		"http_check":        true, "icmp_check": true, "tcp_dial": true, "dns_latency": true,
+		// ntp measures THIS host's clock error; the server it asks is a
+		// reference, not a monitored system, and its only stable identity
+		// would be an address — which the contract forbids as an identity.
+		"ntp": true,
 		// host-scoped inventory probes that are NoOp on a bare config: process
 		// emits process entities only in opt-in inventory mode; systemd builds
 		// its unit source in the linux constructor only (the non-linux stub is

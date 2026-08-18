@@ -157,6 +157,7 @@ func (o Observation) foldRelationships() (entities []Entity, orphans []Relation)
 			Type:       r.Type,
 			TargetType: r.ToType,
 			TargetID:   r.ToID,
+			Attributes: r.Attributes,
 		})
 	}
 	return entities, orphans
@@ -172,15 +173,14 @@ func (o Observation) foldRelationships() (entities []Entity, orphans []Relation)
 // is legitimately standalone on a host-only agent and is otherwise referenced by
 // its children (process/db/... runs_on host). Dropped entities are reported to
 // onOrphan (when set) so the drop is observable, never silent.
-func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) []Entity {
+func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) (kept, dropped []Entity) {
 	referenced := make(map[string]bool, len(entities))
 	for i := range entities {
 		for _, rel := range entities[i].Relationships {
 			referenced[entityKey(rel.TargetType, rel.TargetID)] = true
 		}
 	}
-	kept := make([]Entity, 0, len(entities))
-	var dropped []Entity
+	kept = make([]Entity, 0, len(entities))
 	for i := range entities {
 		e := entities[i]
 		if e.Type == "host" || len(e.Relationships) > 0 || referenced[entityKey(e.Type, e.ID)] {
@@ -192,7 +192,7 @@ func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) []Entity {
 	if len(dropped) > 0 && onOrphan != nil {
 		onOrphan(dropped)
 	}
-	return kept
+	return kept, dropped
 }
 
 // stateEvents stamps entities into state events at instant ts with the given

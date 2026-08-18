@@ -1,6 +1,6 @@
 module senhub-agent.go
 
-go 1.26.5
+go 1.26.6
 
 require (
 	filippo.io/age v1.3.1
@@ -52,6 +52,8 @@ require (
 require (
 	github.com/billgraziano/dpapi v0.5.0
 	github.com/sijms/go-ora/v2 v2.9.0
+	github.com/toise-dev/toise/pkg/emit v0.9.0
+	go.opentelemetry.io/collector/pdata v1.59.0
 )
 
 require (
@@ -126,6 +128,8 @@ require (
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
+	go.opentelemetry.io/collector/featuregate v1.59.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 )
 
 require (

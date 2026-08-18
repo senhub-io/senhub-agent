@@ -496,7 +496,7 @@ metrics:
     description: "1 if last backup run failed, 0 otherwise"
     otel:
       name: senhub.veeam.object.last_run_failed
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       object_name: senhub.veeam.object.name

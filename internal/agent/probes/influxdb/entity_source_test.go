@@ -139,8 +139,12 @@ func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
 	if !runsOn("http://127.0.0.1:8086", "prod-influx") {
 		t.Error("loopback db with a host-unique id must emit runs_on→host")
 	}
-	if runsOn("http://127.0.0.1:8086", "") {
-		t.Error("host:port identity must NOT emit runs_on on loopback (collapse guard)")
+	// Without an operator name the id is the host-scoped fallback, which is
+	// unique per machine — so it anchors like any other local db. Before #740
+	// it embedded the loopback address and the collapse guard refused it,
+	// leaving every local instance with no host at all.
+	if !runsOn("http://127.0.0.1:8086", "") {
+		t.Error("a host-scoped local db must emit runs_on->host")
 	}
 	if runsOn("http://10.0.0.5:8086", "") {
 		t.Error("remote db must NOT emit runs_on→host")

@@ -1,5 +1,5 @@
 # Next (unreleased)
 
-:material-progress-clock: Nothing released here yet — changes merged to `dev` after 0.5.3 accumulate on this page.
+Nothing released yet since 0.5.4. Changes land here as they are merged to `dev`.
 
 <div class="rn-filter"></div>

@@ -144,6 +144,12 @@ default** for this field — silently shipping data to localhost when
 the operator forgets to set it would be a worse failure mode than
 refusing to start.
 
+A standby ingress can be listed under `fallback_endpoints`: the agent prefers
+the primary, switches on a failed export and returns on its own once the
+primary recovers. See
+[the backpressure guide](https://github.com/senhub-io/senhub-agent/blob/master/docs/admin-guide/BACKPRESSURE.md)
+for the shape and the trade-offs.
+
 ### `tls`
 
 Default is `enabled: true`. For **production push to a remote
@@ -213,11 +219,53 @@ endpoint or batch knobs of its own — it reuses the log transport.
       enabled: true            # opt-in (default false)
       interval: 60s            # heartbeat cadence; also the liveness backstop
       buffer_size: 256         # bounded queue; drop-oldest beyond
+      depends_on_enabled: false  # opt-in (default false): outbound dependency
+                                 # edges. Needs root — see below
       depends_on_debounce: 3   # consecutive scrapes before an outbound
                                # dependency edge is emitted (>= 1, default 3)
+      depends_on_exclude_cidrs: []  # peer ranges dropped before anything is
+                                    # emitted (operator privacy filter)
       redact_attributes: []    # attribute keys DROPPED from every entity
                                # event before export (default: none)
+      governance:              # operator-asserted ownership / criticality /
+        criticality: low       # location / lifecycle, stamped on the entities
+        lifecycle: active      # this agent emits (default: none)
+        owner:
+          team: sre
+          contact: sre@example.com
+        location:
+          site: paris
+          rack: R12
+        labels:
+          environment: staging
 ```
+
+`governance` stamps operator-asserted facts on the entities this agent emits —
+who owns them, how critical they are, where they physically sit, and where they
+are in their lifecycle. The agent cannot discover any of it; it comes from you.
+A topology consumer can then filter or group on those keys, so an incident view
+can be narrowed to one team's critical estate without touching the agent
+configuration on every host.
+
+`criticality` takes `critical` / `high` / `medium` / `low`, and `lifecycle`
+takes `active` / `maintenance` / `decommissioning` / `retired`. `labels` is a
+free key/value map for anything that is yours alone.
+
+`depends_on_enabled` turns on outbound dependency discovery — the edges that
+say "this service talks to that endpoint". It is off by default because mapping
+a host's connections can be privacy-sensitive.
+
+!!! warning "Outbound dependency discovery needs root"
+
+    Mapping a socket to the process that owns it reads `/proc/<pid>/fd`, and
+    only the owner may read it. The agent runs as a service account by
+    default, so it can attribute its **own** connections and nothing else —
+    every other service's dependencies are invisible.
+
+    On a non-root install the agent says so once at startup, naming the
+    counts and the account, and reports its view as failed rather than
+    reporting an empty graph as fact. Leave the option off, or run the agent
+    as root if you want the whole host's dependencies.
 
 `depends_on_debounce` controls how durable an outbound connection must be
 before it appears as a `depends_on` edge: a peer endpoint must be seen on
@@ -226,6 +274,12 @@ keeps ephemeral connections out of the graph. The latency to surface a
 dependency is `depends_on_debounce x interval` (so the default `3 x 60s` is
 about three minutes); lower it for a more responsive graph, raise it to
 filter out shorter-lived connections.
+
+The tolerance is symmetric: an edge that took `depends_on_debounce` scrapes to
+appear survives the same number of missed ones before it is given up. A
+long-lived connection the socket table happens to miss once is not a dependency
+that ended, and retracting it on a single miss would reach a topology consumer
+as an edge flapping in and out.
 
 `redact_attributes` lists descriptive attribute keys the agent removes
 from every entity event before export — useful when the entity stream

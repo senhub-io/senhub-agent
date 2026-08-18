@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -41,6 +40,9 @@ type solrEntitySource struct {
 	// hostID resolves the agent host id for a local-db runs_on edge.
 	// nil → dbcommon.HostID.
 	hostID func() string
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *entity.RekeyAnnouncer
 
 	// client and endpoint are used to fetch the SolrCloud cluster id on the
 	// first successful collect. client is the probe's shared HTTP client.
@@ -121,7 +123,10 @@ func (s *solrEntitySource) tryPinClusterIDOrHostPort(ctx context.Context) {
 	// as the documented db degraded fallback. This is a one-way latch.
 	s.mu.Lock()
 	if !s.pinned {
-		s.instanceID = s.host + ":" + strconv.FormatInt(s.port, 10)
+		s.instanceID = dbcommon.FallbackInstanceID("solr", s.host, int(s.port), dbcommon.HostID())
+		// Built here rather than at construction: this is the branch where the
+		// fallback actually applies, so it is the only one with a node to retire.
+		s.rekey = dbcommon.NewRekeyAnnouncer("solr", s.host, int(s.port), dbcommon.HostID())
 		s.pinned = true
 	}
 	s.mu.Unlock()
@@ -213,6 +218,14 @@ func (s *solrEntitySource) Observe() (entity.Observation, bool) {
 	// runs_on edge: db → host when the db is on the agent's own host (loopback).
 	// The collapse guard suppresses it for a host:port-derived id.
 	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	s.rekey.Announce()
+	if rel, ok := s.rekey.SameAs(); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
 

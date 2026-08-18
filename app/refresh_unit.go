@@ -8,28 +8,36 @@ import (
 	"strings"
 )
 
-// managedBinaryUnitPath is the staged managed-binary path as it must appear
-// in a systemd ExecStart line: always a forward-slash Linux path, independent
-// of the build platform's separator. filepath.Join would yield backslashes on
-// a Windows test runner and corrupt the unit contract.
-func managedBinaryUnitPath() string { return managedBinaryDir + "/senhub-agent" }
+// systemBinaryUnitPath is the installed binary path as it must appear in a
+// systemd ExecStart line: always a forward-slash Linux path, independent of the
+// build platform's separator. filepath.Join would yield backslashes on a Windows
+// test runner and corrupt the unit contract.
+func systemBinaryUnitPath() string { return systemBinaryDir + "/" + systemBinaryName }
 
 // refreshedUnit renders the unit refresh-unit writes over the installed
-// one. It is the packaged hardened unit with three things reconciled
-// against what is already on disk:
+// one. It is the packaged hardened unit with the ExecStart reconciled against
+// what is already on disk, by four rules in order:
 //
 //   - User=/Group= are preserved: a legacy root install stays root
 //     instead of being switched to a possibly missing senhub user
 //     (217/USER crash loop, #575).
-//   - A non-canonical ExecStart whose binary still exists is preserved
+//   - An ExecStart pointing at the pre-0.5.4 managed binary is repointed at the
+//     system binary EVEN THOUGH that file still exists (#794). This is the one
+//     case where an existing binary is not respected, and it needs saying: the
+//     old path is not somewhere an operator chose, it is a layout we shipped and
+//     are migrating off. Without this rule every upgraded host would keep
+//     running the service-user-owned copy forever and the migration would
+//     silently never happen — refresh-unit's own preservation rule would see to
+//     that.
+//   - Any other non-canonical ExecStart whose binary still exists is preserved
 //     verbatim (with its WorkingDirectory=): CLI installs render their
 //     own ExecStart (custom binary path, --config-path, flags) and a
 //     refresh must not silently repoint them at the packaging path
 //     (#396).
 //   - A non-canonical ExecStart whose binary is gone (e.g. an installer
-//     invoked from /tmp, #576) is repointed at the staged managed
-//     binary while keeping its arguments, so refresh-unit remains the
-//     documented repair for a 203/EXEC unit.
+//     invoked from /tmp, #576) is repointed at the system binary while keeping
+//     its arguments, so refresh-unit remains the documented repair for a
+//     203/EXEC unit.
 //
 // binaryExists abstracts the filesystem check so the decision logic is
 // unit-testable.
@@ -43,11 +51,18 @@ func refreshedUnit(installed string, binaryExists func(string) bool) string {
 	}
 
 	binPath, args := splitExecStartLine(execLine)
-	if !binaryExists(unescapeSystemdPath(binPath)) {
+	switch {
+	case unescapeSystemdPath(binPath) == legacyManagedBinaryPath():
 		if args == "" {
 			return unit
 		}
-		execLine = "ExecStart=" + managedBinaryUnitPath() + " " + args
+		execLine = "ExecStart=" + systemBinaryUnitPath() + " " + args
+		workDir = ""
+	case !binaryExists(unescapeSystemdPath(binPath)):
+		if args == "" {
+			return unit
+		}
+		execLine = "ExecStart=" + systemBinaryUnitPath() + " " + args
 		workDir = ""
 	}
 
@@ -92,6 +107,9 @@ func installedServiceUser(unit string) string {
 // it yields the same hardened directives but User=root/Group=root, so a
 // legacy root agent keeps starting after a refresh.
 func canonicalUnitForUser(serviceUser string) string {
+	if serviceUser == rootServiceUser {
+		return canonicalRootUnit()
+	}
 	if serviceUser == defaultServiceUser {
 		return packagedSystemdUnit
 	}
@@ -105,6 +123,40 @@ func canonicalUnitForUser(serviceUser string) string {
 			out[i] = "Group=" + serviceUser
 		default:
 			out[i] = line
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// canonicalRootUnit renders rootSystemdScript — the very template
+// `install --user root` hands to kardianos/service — as a concrete unit
+// file, so a refresh produces what the install produced instead of a
+// second, disagreeing "canonical root unit" (#689).
+//
+// Refreshing a root install used to yield the hardened template with
+// User=root, which carries CapabilityBoundingSet=/AmbientCapabilities=
+// (all capabilities dropped). A refresh therefore stripped a --user root
+// install of the capabilities that are the whole reason to choose it —
+// raw ICMP sockets, privileged ports — and did it silently, since the
+// unit still started.
+//
+// Only two lines of the template are not literal unit syntax: ExecStart
+// carries kardianos placeholders, replaced here by the packaged
+// ExecStart so refreshedUnit can splice the installed one over it as it
+// does for every other user; and the {{if}}-wrapped WorkingDirectory,
+// dropped for the same reason (refreshedUnit re-inserts the installed
+// one alongside a non-canonical ExecStart).
+func canonicalRootUnit() string {
+	lines := strings.Split(rootSystemdScript, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "ExecStart="):
+			out = append(out, packagedExecStartLine())
+		case strings.HasPrefix(line, "{{if .WorkingDirectory}}"):
+			continue
+		default:
+			out = append(out, line)
 		}
 	}
 	return strings.Join(out, "\n")

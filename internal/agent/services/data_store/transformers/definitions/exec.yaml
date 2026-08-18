@@ -41,7 +41,7 @@ metrics:
     description: "1 when the run was killed on the hard timeout"
     otel:
       name: senhub.exec.timeout
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "senhub.exec.skipped"
@@ -52,5 +52,5 @@ metrics:
     description: "1 when a cycle was skipped because the previous run was still going"
     otel:
       name: senhub.exec.skipped
-      unit: "1"
+      unit: "{status}"
       type: gauge

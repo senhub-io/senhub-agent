@@ -89,6 +89,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **hyperv** - Hyper-V VM monitoring via WMI (Windows Server only). Reports per-VM CPU, memory and state for virtual machines co-hosted with the agent. Host-local virtualization observability, same tier rationale as cpu/memory/network.
 - **proxmox** - Proxmox VE cluster monitoring via REST API: nodes (CPU, memory, status), virtual machines (QEMU) and LXC containers (CPU, memory, I/O, network, status), and storage pools. Proxmox VE is open-source hypervisor infrastructure; basic observability is equivalent to the host-monitoring role and belongs in the open-core wedge.
 - **chrony** - NTP synchronisation health via chronyc: time offset, frequency offset, skew, root delay/dispersion, stratum, leap status (host-local, Linux/macOS)
+- **ntp** - Direct measurement of the local clock against reference servers you name, independent of any time daemon: offset, round-trip delay, stratum (host-local, all platforms)
 - **smart** - S.M.A.R.T. Disk Health monitoring via smartctl (smartmontools, operator-installed prerequisite). Reads SATA/SAS and NVMe drive health from the local machine — host-local observability on the same footing as cpu/memory/logicaldisk.
 - **ipmi** - IPMI / BMC hardware sensors (temperatures, fans, voltages, power supply status) via ipmitool. Host-local: the agent reads the machine's own baseboard management controller, not a remote system. Linux only (requires the OpenIPMI kernel driver).
 - **nvidia** - NVIDIA GPU monitoring via nvidia-smi (utilization, memory, temperature, power, encoder/decoder, fan speed). Host-local: the GPU is part of the machine, like cpu/memory/logicaldisk.
@@ -105,6 +106,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **mongodb** — MongoDB server monitoring via serverStatus + per-database dbStats. The most-deployed document database; free tier covers standalone, replica set and Atlas targets via URI. Deep auth topologies, replica-set health and Atlas-specific metrics are future paid extensions.
 - **redis** - Redis / Valkey health and throughput via the INFO command (memory, connections, throughput, cache hit/miss, keyspace, replication, persistence). Parity with redis_exporter — the open-source baseline is free; deep Redis depth stays paid.
 - **docker** - Docker container monitoring (per-container CPU, memory, network, block I/O, state). Basic container collection is commoditized (cadvisor / telegraf docker input), so it is free.
+- **swarm** - Docker Swarm cluster state (nodes and quorum, service convergence, task failures, overlay segments) read from a manager node. Same commoditized-collection argument as `docker`, and the wedge case: a small shop replacing PRTG must be able to see its cluster without buying a tier.
 - **wifi_signal_strength** - Host-local Wi-Fi signal strength of the machine the agent runs on. Niche host self-observability, same footing as cpu/memory/network.
 
 ### Pro Tier (License Required)

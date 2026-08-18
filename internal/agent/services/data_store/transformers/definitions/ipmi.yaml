@@ -85,7 +85,7 @@ metrics:
     otel:
       name: hw.status
       unit: "1"
-      type: gauge
+      type: updowncounter
       attributes:
         hw.type: power_supply
     tag_to_attribute:
@@ -105,7 +105,7 @@ metrics:
     otel:
       name: hw.status
       unit: "1"
-      type: gauge
+      type: updowncounter
     tag_to_attribute:
       hardware.component: hw.id
 
@@ -121,7 +121,7 @@ metrics:
     description: "1 when ipmitool ran successfully and the BMC responded, 0 otherwise"
     otel:
       name: senhub.ipmi.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
 tag_metadata:

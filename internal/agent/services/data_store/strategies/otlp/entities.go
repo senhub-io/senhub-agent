@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/toise-dev/toise/pkg/emit/wire"
 	"go.opentelemetry.io/otel/log"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -20,17 +21,26 @@ import (
 // the target only (the source is the carrying entity). There are no separate
 // relation records and no edge delete — a relation a heartbeat stops listing
 // is retired by absence.
+// The wire vocabulary is not spelled here: it comes from the Toise SDK's
+// `wire` package, the single in-repo spelling shared by the SDK, the
+// conformance kit and the consumer's ingest boundary. Consuming it is what
+// stops producer and consumer drifting apart one literal at a time — the
+// same failure that let network.interface be named two ways (#748).
+//
+// `wire` is deliberately stdlib-only, so importing the vocabulary pulls no
+// protocol stack into the agent's module graph. This is the half of #455
+// worth adopting: the shared spelling, not the runtime encoder.
 const (
-	eventNameEntityState  = "entity.state"
-	eventNameEntityDelete = "entity.delete"
+	eventNameEntityState  = wire.EventEntityState
+	eventNameEntityDelete = wire.EventEntityDelete
 
-	attrEntityType           = "entity.type"
-	attrEntityID             = "entity.id"
-	attrEntityDescription    = "entity.description"
-	attrEntityReportInterval = "entity.report.interval"
+	attrEntityType           = wire.AttrEntityType
+	attrEntityID             = wire.AttrEntityID
+	attrEntityDescription    = wire.AttrEntityDescription
+	attrEntityReportInterval = wire.AttrEntityReportInterval
 
-	attrEntityRelationships = "entity.relationships"
-	attrRelationshipType    = "relationship.type"
+	attrEntityRelationships = wire.AttrEntityRelationships
+	attrRelationshipType    = wire.RelType
 )
 
 // buildEntityRecord encodes a neutral entity.Event into the OTel log Record
@@ -76,6 +86,13 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 			log.String(attrEntityType, e.Type),
 			id,
 		}
+		// Why THIS PRODUCER retired the entity — a distinct axis from the
+		// consumer's delete_source, which answers who decided (#806). Carried
+		// on deletes only, and only when the detector could explain the
+		// disappearance; an unexplained one is a plain termination.
+		if ev.Kind == entity.EntityDelete && ev.DeleteReason != "" {
+			attrs = append(attrs, log.String(wire.AttrEntityDeleteReason, ev.DeleteReason))
+		}
 		if ev.Kind == entity.EntityState && len(e.Attributes) > 0 {
 			a, err := scalarMap(attrEntityDescription, e.Attributes)
 			if err != nil {
@@ -120,11 +137,33 @@ func relationshipsValue(rels []entity.Relationship) (log.KeyValue, error) {
 		if err != nil {
 			return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
 		}
-		vals = append(vals, log.MapValue(
+		kvs := []log.KeyValue{
 			log.String(attrRelationshipType, rel.Type),
 			log.String(attrEntityType, rel.TargetType),
 			log.Map(attrEntityID, idKVs...),
-		))
+		}
+		// Edge attributes ride beside the structural keys. The consumer reads
+		// confidence and basis off a same_as edge and treats one without a
+		// valid confidence as inert, so dropping these — which is what this
+		// encoder did — shipped an edge that did nothing on arrival.
+		//
+		// Reserved keys are refused rather than silently overwritten: an edge
+		// attribute named relationship.type would otherwise shadow the edge's
+		// own type and produce a well-formed record meaning something else.
+		if len(rel.Attributes) > 0 {
+			attrKVs, err := scalarKVs(rel.Attributes)
+			if err != nil {
+				return log.KeyValue{}, fmt.Errorf("%s[%s→%s] attributes: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
+			}
+			for _, kv := range attrKVs {
+				switch kv.Key {
+				case attrRelationshipType, attrEntityType, attrEntityID:
+					return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: attribute %q collides with a structural relationship key", attrEntityRelationships, rel.Type, rel.TargetType, kv.Key)
+				}
+				kvs = append(kvs, kv)
+			}
+		}
+		vals = append(vals, log.MapValue(kvs...))
 	}
 	return log.Slice(attrEntityRelationships, vals...), nil
 }

@@ -218,6 +218,22 @@ func (s *sensor) SyncConfiguration() error {
 		}
 		processedNames[probeConfig.Name] = true
 
+		// A disabled probe is deliberately absent from validProbeIds, so phase
+		// 2 stops it if it was running: flipping enabled to false in a config
+		// reload must take effect without restarting the agent.
+		//
+		// Logged at Info, not Debug: "this probe collects nothing" is exactly
+		// the question an operator asks the log, and answering it only under a
+		// debug build is how a deliberate silence becomes indistinguishable
+		// from a broken one.
+		if !probeConfig.IsEnabled() {
+			s.moduleLogger.Info().
+				Str("probe_name", probeConfig.Name).
+				Str("probe_type", probeConfig.Type).
+				Msg("Probe disabled by configuration (enabled: false) - not started")
+			continue
+		}
+
 		probeId := probes.GenerateProbeId(probeConfig)
 		validProbeIds = append(validProbeIds, probeId)
 		probeLogger := s.getLoggerForProbe(probeConfig)

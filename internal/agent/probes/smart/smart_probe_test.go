@@ -3,6 +3,7 @@ package smart
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -254,6 +255,16 @@ func TestCollect_DeviceTagPresent(t *testing.T) {
 		if !hasProbeType {
 			t.Errorf("datapoint %q missing probe_type tag", dp.Name)
 		}
+		// The senhub.smart.* series describe the PROBE — how many devices it
+		// found, how many it could read, and why (#795). They are deliberately
+		// not per-device: attaching one device's name to "0 of 4 readable"
+		// would misattribute a host-wide permission problem to a single disk.
+		if strings.HasPrefix(dp.Name, "senhub.smart.") {
+			if hasDevice {
+				t.Errorf("probe-level datapoint %q must not carry a smart.device tag", dp.Name)
+			}
+			continue
+		}
 		if !hasDevice {
 			t.Errorf("datapoint %q missing smart.device tag", dp.Name)
 		}
@@ -346,4 +357,73 @@ func TestHealthGauge_Failed(t *testing.T) {
 		}
 	}
 	t.Error("smart.disk.health metric not found")
+}
+
+// The reported ambiguity (#795): a cycle that reads nothing used to emit
+// nothing and report success, so "no disks here" and "cannot open the disks"
+// were the same observable — an empty result.
+func TestSmartStateDistinguishesNothingFromUnreadable(t *testing.T) {
+	cases := []struct {
+		name      string
+		found     int
+		readable  int
+		wantState string
+		wantUp    float64
+	}{
+		{"host with no disks", 0, 0, smartStateNoDevices, 0},
+		{"disks found, none readable", 2, 0, smartStateUnreadable, 0},
+		{"some readable", 3, 1, smartStatePartial, 1},
+		{"all readable", 2, 2, smartStateOK, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &smartProbe{BaseProbe: &types.BaseProbe{}, moduleLogger: logger.NewModuleLogger(testBaseLogger(), "probe.smart")}
+			points := p.statePoints(tc.found, tc.readable, nil, time.Now())
+
+			var up float64
+			states := map[string]float64{}
+			for _, pt := range points {
+				switch pt.Name {
+				case "senhub.smart.up":
+					up = pt.Value
+				case "senhub.smart.state":
+					for _, tag := range pt.Tags {
+						if tag.Key == "reason" {
+							states[tag.Value] = pt.Value
+						}
+					}
+				}
+			}
+			if up != tc.wantUp {
+				t.Errorf("up = %v, want %v", up, tc.wantUp)
+			}
+			for _, st := range smartStates {
+				want := float64(0)
+				if st == tc.wantState {
+					want = 1
+				}
+				if states[st] != want {
+					t.Errorf("state[%s] = %v, want %v", st, states[st], want)
+				}
+			}
+		})
+	}
+}
+
+// found and readable are published as their own counters: "2 found, 0 readable"
+// is a permission problem an operator can act on, where a bare up=0 is not.
+func TestSmartPublishesFoundAndReadableCounts(t *testing.T) {
+	p := &smartProbe{BaseProbe: &types.BaseProbe{}, moduleLogger: logger.NewModuleLogger(testBaseLogger(), "probe.smart")}
+	points := p.statePoints(4, 1, nil, time.Now())
+
+	got := map[string]float64{}
+	for _, pt := range points {
+		got[pt.Name] = pt.Value
+	}
+	if got["senhub.smart.devices.found"] != 4 {
+		t.Errorf("devices.found = %v, want 4", got["senhub.smart.devices.found"])
+	}
+	if got["senhub.smart.devices.readable"] != 1 {
+		t.Errorf("devices.readable = %v, want 1", got["senhub.smart.devices.readable"])
+	}
 }

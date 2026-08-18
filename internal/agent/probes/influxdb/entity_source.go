@@ -32,6 +32,9 @@ type influxdbEntitySource struct {
 	// hostID resolves the agent host id for a local-db runs_on edge.
 	// nil → dbcommon.HostID.
 	hostID func() string
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *entity.RekeyAnnouncer
 
 	mu    sync.RWMutex
 	up    bool
@@ -47,10 +50,14 @@ func newInfluxdbEntitySource(cfg probeConfig) *influxdbEntitySource {
 	port, _ := strconv.ParseInt(portStr, 10, 64)
 
 	var instanceID string
+	// The announcer is built only when the fallback applies: an operator-named
+	// instance was never keyed on address:port, so there is no node to retire.
+	var rekey *entity.RekeyAnnouncer
 	if cfg.InstanceName != "" {
 		instanceID = cfg.InstanceName
 	} else {
-		instanceID = addr + ":" + strconv.FormatInt(port, 10)
+		instanceID = dbcommon.FallbackInstanceID("influxdb", addr, int(port), dbcommon.HostID())
+		rekey = dbcommon.NewRekeyAnnouncer("influxdb", addr, int(port), dbcommon.HostID())
 	}
 
 	return &influxdbEntitySource{
@@ -58,6 +65,7 @@ func newInfluxdbEntitySource(cfg probeConfig) *influxdbEntitySource {
 		host:       addr,
 		port:       port,
 		hostID:     dbcommon.HostID,
+		rekey:      rekey,
 	}
 }
 
@@ -114,6 +122,14 @@ func (s *influxdbEntitySource) Observe() (entity.Observation, bool) {
 	// runs_on edge: db → host when the db is on the agent's own host (loopback).
 	// The collapse guard suppresses it for a host:port-derived id (no tech id).
 	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	s.rekey.Announce()
+	if rel, ok := s.rekey.SameAs(); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
 

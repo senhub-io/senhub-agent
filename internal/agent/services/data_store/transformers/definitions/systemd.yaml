@@ -18,7 +18,7 @@ metrics:
     description: "1 when the unit active state is 'active', 0 otherwise"
     otel:
       name: systemd.unit.active_state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       systemd.unit: systemd.unit
@@ -32,7 +32,7 @@ metrics:
     description: "1 when the unit sub state is 'running' or 'listening', 0 otherwise. The sub_state tag carries the raw sub state value."
     otel:
       name: systemd.unit.sub_state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       systemd.unit: systemd.unit
@@ -47,7 +47,7 @@ metrics:
     description: "1 when the unit load state is 'loaded', 0 otherwise (not-found, error, masked)"
     otel:
       name: systemd.unit.load_state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       systemd.unit: systemd.unit

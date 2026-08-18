@@ -86,10 +86,11 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// corrected template too.
 		svcConfig.Option["SystemdScript"] = linuxSystemdScript(serviceUser)
 
-		// Stage the binary where the daemon can replace it in place
-		// during auto-update (#571): a service-user-owned dir under the
-		// StateDirectory, writable + outside ProtectSystem=full. The
-		// unit's ExecStart then points there.
+		// Install the ONE binary at a root-owned system path and point
+		// ExecStart there (#794). The daemon must not be able to write
+		// the executable systemd runs: it is the process exposed to
+		// untrusted input, and write access to its own binary is
+		// persistence across restarts for whoever compromises it.
 		if command == "install" {
 			// The dedicated user must exist before installManagedBinary
 			// chowns the staged binary to it, and before systemd
@@ -100,20 +101,31 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				os.Exit(1)
 			}
 
-			// ExecStart MUST point at the staged /var/lib binary, never
+			// ExecStart MUST point at the installed system binary, never
 			// at the installer's invocation path (which may be /tmp and
 			// vanish, leaving systemd with 203/EXEC — #576). This holds
-			// for the root unit as well. A staging failure is fatal: a
-			// unit written with the temp path would crash-loop, which is
+			// for the root unit as well. An install failure here is fatal:
+			// a unit written with the temp path would crash-loop, which is
 			// worse than aborting the install.
-			managed, err := installManagedBinary(executablePath, serviceUser)
+			installed, err := installSystemBinary(executablePath)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: could not stage the managed binary to %s: %v\n", managedBinaryDir, err)
+				fmt.Fprintf(os.Stderr, "Error: could not install the agent binary to %s: %v\n", systemBinaryDir, err)
 				fmt.Fprintln(os.Stderr, "The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
 				os.Exit(1)
 			}
-			svcConfig.Executable = managed
-			svcConfig.WorkingDirectory = managedBinaryDir
+			svcConfig.Executable = installed
+			svcConfig.WorkingDirectory = systemBinaryDir
+
+			// A host upgrading from the pre-0.5.4 layout still carries the
+			// service-user-owned second copy. Leaving it behind would leave
+			// an executable the daemon can write, which is what this change
+			// exists to remove. Cleanup failure is reported, not fatal: the
+			// unit already points at the system binary, so the host is in
+			// the right shape and an orphan file is untidy, not dangerous.
+			if err := removeLegacyManagedBinary(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Remove %s by hand: it is no longer executed, but it is writable by the service user.\n", legacyManagedBinaryDir)
+			}
 		}
 	}
 

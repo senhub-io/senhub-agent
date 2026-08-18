@@ -348,8 +348,17 @@ func Main() {
 	// `run` and silently spawned a second agent, surfacing as a
 	// "bind: address already in use" only after the second process
 	// raced the systemd-managed one for the listener (issue #134).
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
+	//
+	// `version` is short-circuited here too, not left to the arg parser:
+	// both spellings must report the systemd service's binary when it runs
+	// a different build than this one, and the parser lives in cliArgs,
+	// below the layer that knows about units (#723).
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
 		cliArgs.PrintVersion()
+		serviceBinary := installedServiceBinary()
+		if note := serviceBinarySkewNote(cliArgs.Version, binaryVersion(serviceBinary), serviceBinary); note != "" {
+			fmt.Print(note)
+		}
 		return
 	}
 
@@ -412,11 +421,11 @@ func Main() {
 		return
 	case "config":
 		if len(os.Args) > 2 && os.Args[2] == "check" {
-			configPath := ""
-			if len(os.Args) > 3 {
-				configPath = os.Args[3]
+			configPath, err := parseConfigPathArgs(os.Args[3:])
+			if err != nil {
+				fatalf("config check: %v", err)
 			}
-			if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
+			if resolved, resErr := cliArgs.GetAbsoluteConfigPath(configPath); resErr == nil {
 				configPath = resolved
 			}
 			checkConfig(configPath)
@@ -485,7 +494,12 @@ func Main() {
 		if err != nil {
 			fatalf("update: %v", err)
 		}
-		agent.UpdateAgent(parsed)
+		// The updater replaces the binary it runs from — the CLI copy. On a
+		// hardened install the systemd unit execs a second, service-owned
+		// copy the unprivileged daemon can replace itself; nothing else
+		// keeps them in sync, so `update` (which runs as root) reconciles
+		// it here (#723).
+		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary))
 		return
 	case "refresh-unit":
 		runRefreshUnit()

@@ -60,7 +60,7 @@ probe instances and the resource is batch-level.
 ## Compression, TLS, retries
 
 - Compression: `gzip` is the default; `none` is allowed for debugging.
-- TLS: defaults to insecure for `127.0.0.1:4317` style targets; production collectors should use mTLS. The strategy supports `tls.enabled`, `tls.ca_file`, `tls.cert_file`, `tls.key_file`, `tls.skip_verify`.
+- TLS: defaults to insecure for `127.0.0.1:4317` style targets; production collectors should use mTLS. The strategy supports `tls.enabled`, `tls.ca_file`, `tls.cert_file`, `tls.key_file`, `tls.insecure_skip_verify`.
 - Retries: handled by the OTel SDK retry config (`retry.initial_interval`, `retry.max_interval`, `retry.max_elapsed_time`). Don't reimplement.
 
 ## Signal config
