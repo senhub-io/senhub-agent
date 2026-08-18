@@ -279,3 +279,43 @@ func newProbeForFallbackTest(t *testing.T) *dockerProbe {
 	}
 	return p.(*dockerProbe)
 }
+
+// TestCollectCgroupFallbackEnrichesIdentityTags is the regression guard for the
+// defect the 0.5.4 field validation surfaced: the fallback returned its points
+// straight out of Collect, skipping the enrichment the socket path applies, so
+// every datapoint arrived at the data store with no probe_name and no
+// probe_type. The transformer registry then had nothing to resolve a definition
+// by, fell back to definitions/unknown.yaml, and the whole rail produced
+// nothing — on a host with seven running containers, and only on the install
+// shape the fallback exists to serve.
+func TestCollectCgroupFallbackEnrichesIdentityTags(t *testing.T) {
+	root := writeCgroupFixture(t)
+	p := newProbeForFallbackTest(t)
+	p.SetName("docker-preprod")
+	p.cgroups = newCgroupReader(root)
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(points) == 0 {
+		t.Fatal("the fixture has a container: the fallback must publish something")
+	}
+	for _, pt := range points {
+		var name, typ string
+		for _, tag := range pt.Tags {
+			switch tag.Key {
+			case "probe_name":
+				name = tag.Value
+			case "probe_type":
+				typ = tag.Value
+			}
+		}
+		if name != "docker-preprod" {
+			t.Errorf("datapoint %q: probe_name = %q, want docker-preprod", pt.Name, name)
+		}
+		if typ != ProbeType {
+			t.Errorf("datapoint %q: probe_type = %q, want %q", pt.Name, typ, ProbeType)
+		}
+	}
+}

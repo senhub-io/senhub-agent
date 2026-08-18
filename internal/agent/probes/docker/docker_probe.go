@@ -269,7 +269,12 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 		// NORMAL state — /var/run/docker.sock is root:docker 0660 — so before
 		// giving up, read what the kernel exposes without any privilege.
 		if points, ok := p.collectFromCgroups(now, err); ok {
-			return points, nil
+			// Same enrichment as the socket path below. Without it every
+			// datapoint reaches the data store with no probe_name and no
+			// probe_type, so the transformer registry cannot resolve a
+			// definition for it and the whole fallback produces nothing —
+			// silently, on the install shape the fallback exists to serve.
+			return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 		}
 		if err != nil {
 			return nil, fmt.Errorf("docker: listing containers: %w", err)
