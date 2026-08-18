@@ -302,7 +302,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	for reason, n := range agentstate.GetLicenseInvalidByReason() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.license.invalid",
-			Unit:        "1",
+			Unit:        "{status}",
 			Type:        "gauge",
 			Attributes:  map[string]string{"reason": reason},
 			Value:       float64(n),
@@ -438,7 +438,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		},
 		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.active_endpoint_index",
-			Unit:        "1",
+			Unit:        "{index}",
 			Type:        "gauge",
 			Attributes:  map[string]string{},
 			Value:       float64(agentstate.GetOTLPActiveEndpointIndex()),
