@@ -27,6 +27,7 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 | Version | Date | Headline |
 |---|---|---|
 | [**Next (unreleased)**](next.md) | in progress | — |
+| [**0.5.4**](0.5.4.md) | 2026-08-18 | Non-root daemon and a single binary on disk, Swarm probe, `ntp` without a time daemon, container metrics without host root, Kubernetes coverage tripled, overlay networks in the topology |
 | [**0.5.3**](0.5.3.md) | 2026-08-03 | OTLP logs & traces everywhere, OS Updates probe, file-based license, signed Windows binaries, host-scoped topology |
 | [**0.5.2**](0.5.2.md) | 2026-07-10 | PowerStore depth, Veeam plugin jobs, pull-view ratio fix |
 | [**0.5.1**](0.5.1.md) | 2026-07-06 | Dell PowerStore probe |
