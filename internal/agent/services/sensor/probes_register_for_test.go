@@ -23,5 +23,6 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
 	_ "senhub-agent.go/internal/agent/probes/memory"
 	_ "senhub-agent.go/internal/agent/probes/network"
+	_ "senhub-agent.go/internal/agent/probes/ntp"
 	_ "senhub-agent.go/internal/agent/probes/syslog"
 )

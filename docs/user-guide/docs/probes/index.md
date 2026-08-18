@@ -105,6 +105,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">NTP sync health: offset, frequency, skew, stratum</span>
   </a>
 
+  <a href="ntp/" class="probe-card" data-family="os-host" data-tier="free">
+    <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/clock-check-outline.svg?color=%23666" alt="" loading="lazy">
+    <span class="probe-name">NTP (direct)</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Clock error measured against a reference server, no daemon needed</span>
+  </a>
+
   <a href="os-updates/" class="probe-card" data-family="os-host" data-tier="free">
     <img class="probe-logo probe-logo-mdi" src="https://api.iconify.design/mdi/update.svg?color=%23666" alt="" loading="lazy">
     <span class="probe-name">OS Updates</span>
@@ -411,6 +418,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-name">Kubernetes</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Node, pod, deployment, PVC metrics via API server</span>
+  </a>
+
+  <a href="swarm/" class="probe-card" data-family="containers" data-tier="free">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/docker" alt="" loading="lazy">
+    <span class="probe-name">Docker Swarm</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">Nodes and quorum, service convergence, overlay segments</span>
   </a>
 
   <a href="hyperv/" class="probe-card" data-family="containers" data-tier="free">

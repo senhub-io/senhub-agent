@@ -181,6 +181,30 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of log records emitted via OTLP/gRPC.",
 		},
 		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.spans.relayed",
+			Unit:        "{span}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPSpansRelayedTotal()),
+			Description: "Cumulative count of received spans forwarded verbatim by the trace relay. Pairs with the receiver's ingested{signal=traces} counter: equal totals mean every ingested span left the agent.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.logs.relayed",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPLogsRelayedTotal()),
+			Description: "Cumulative count of ingested log records forwarded verbatim, with the emitting application's Resource preserved. Distinct from logs.pushed, which counts records the agent itself produced.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.metrics.relayed",
+			Unit:        "{point}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPMetricsRelayedTotal()),
+			Description: "Cumulative count of ingested metric points forwarded verbatim, with the emitting application's Resource preserved. Distinct from metrics.pushed, which counts points re-encoded from the agent's own store.",
+		},
+		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.export.errors",
 			Unit:        "{error}",
 			Type:        "counter",
@@ -278,7 +302,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	for reason, n := range agentstate.GetLicenseInvalidByReason() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.license.invalid",
-			Unit:        "1",
+			Unit:        "{status}",
 			Type:        "gauge",
 			Attributes:  map[string]string{"reason": reason},
 			Value:       float64(n),
@@ -414,7 +438,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		},
 		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.active_endpoint_index",
-			Unit:        "1",
+			Unit:        "{index}",
 			Type:        "gauge",
 			Attributes:  map[string]string{},
 			Value:       float64(agentstate.GetOTLPActiveEndpointIndex()),

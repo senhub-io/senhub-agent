@@ -1,7 +1,6 @@
 package memcached
 
 import (
-	"strconv"
 	"sync"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -33,6 +32,9 @@ type memcachedEntitySource struct {
 	// hostID resolves the agent host id for a local-db runs_on edge.
 	// nil → dbcommon.HostID.
 	hostID func() string
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *entity.RekeyAnnouncer
 }
 
 // newMemcachedEntitySource constructs the entity source, pinning the
@@ -41,14 +43,19 @@ type memcachedEntitySource struct {
 //   - else host:port (Memcached has no stable server-reported id).
 func newMemcachedEntitySource(host string, port int, instanceName string) *memcachedEntitySource {
 	id := instanceName
+	// The announcer is built only when the fallback applies: an operator-named
+	// instance was never keyed on address:port, so there is no node to retire.
+	var rekey *entity.RekeyAnnouncer
 	if id == "" {
-		id = host + ":" + strconv.FormatInt(int64(port), 10)
+		id = dbcommon.FallbackInstanceID("memcached", host, port, dbcommon.HostID())
+		rekey = dbcommon.NewRekeyAnnouncer("memcached", host, port, dbcommon.HostID())
 	}
 	return &memcachedEntitySource{
 		instanceID: id,
 		host:       host,
 		port:       int64(port),
 		hostID:     dbcommon.HostID,
+		rekey:      rekey,
 	}
 }
 
@@ -108,6 +115,14 @@ func (s *memcachedEntitySource) Observe() (entity.Observation, bool) {
 	// runs_on edge: db → host when the db is on the agent's own host (loopback).
 	// The collapse guard suppresses it for a host:port-derived id (no tech id).
 	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	s.rekey.Announce()
+	if rel, ok := s.rekey.SameAs(); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
 

@@ -349,7 +349,7 @@ func TestNoCollisionsInRealisticScenarios(t *testing.T) {
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "redfish"}, // Different probe name
 				{Key: "drive_id", Value: "disk.bay.0"},
-				{Key: "endpoint", Value: "https://lb-me5024mgmt1.batistyl.fr"},
+				{Key: "endpoint", Value: "https://redfish-controller-1.example.com"},
 			},
 		},
 		// Probe 2: "baie_production"
@@ -359,7 +359,7 @@ func TestNoCollisionsInRealisticScenarios(t *testing.T) {
 			Tags: []tags.Tag{
 				{Key: "probe_name", Value: "baie_production"}, // Different probe name
 				{Key: "drive_id", Value: "disk.bay.0"},
-				{Key: "endpoint", Value: "https://lb-me5024mgmt1.batistyl.fr"}, // Same endpoint
+				{Key: "endpoint", Value: "https://redfish-controller-1.example.com"}, // Same endpoint
 			},
 		},
 	}
@@ -643,4 +643,41 @@ func indexOfSubstring(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+// The conduit probes (#701/#703) hand the cache nothing but their own
+// throughput counters, which carry only the systematic identity tags.
+// They were absent from DiscriminantTagsRegistry, so every HTTP push
+// logged "Probe type not in DiscriminantTagsRegistry" for each of them
+// (#724). Declaring an empty discriminant set is the correct shape, not a
+// gap: the probe name is already part of the key.
+func TestDiscriminantTags_ConduitProbesAreDeclared(t *testing.T) {
+	for _, probeType := range []string{"filetail", "linux_logs", "windows_eventlog", "snmp_trap"} {
+		t.Run(probeType, func(t *testing.T) {
+			tags, declared := DiscriminantTagsRegistry[probeType]
+			if !declared {
+				t.Fatalf("%q is not in DiscriminantTagsRegistry — every push warns for it", probeType)
+			}
+			if len(tags) != 0 {
+				t.Fatalf("%q declares %v; the self-metrics carry no per-instance tag", probeType, tags)
+			}
+		})
+	}
+}
+
+// Two conduit probes of the same type must not collapse onto one series.
+// They carry no discriminant tag, so this holds only because the probe
+// name is part of the key — pin it.
+func TestGenerateTimeSeriesKey_ConduitInstancesStayDistinct(t *testing.T) {
+	cache := NewMetricCache(5*time.Minute, createTestModuleLogger())
+
+	const metric = "senhub.filetail.records_emitted"
+	tags := map[string]string{"probe_type": "filetail"}
+
+	syslogKey := cache.generateTimeSeriesKey("filetail_syslog", "filetail", metric, tags)
+	appKey := cache.generateTimeSeriesKey("filetail_app", "filetail", metric, tags)
+
+	if syslogKey == appKey {
+		t.Fatalf("two filetail instances collapsed onto one series: %s", syslogKey)
+	}
 }

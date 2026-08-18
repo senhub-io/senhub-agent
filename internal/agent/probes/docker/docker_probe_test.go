@@ -178,8 +178,11 @@ func makeRunningStats() *containerStats {
 	return s
 }
 
-// TestCollect_EmptyDaemon verifies that an empty container list produces zero
-// datapoints without error.
+// TestCollect_EmptyDaemon verifies that an empty container list produces no
+// container metrics — only the source one-hot, which is emitted on every cycle
+// so that "the socket answered and there are no containers" is distinguishable
+// from "the socket did not answer" (#797). Before the cgroup fallback existed
+// both produced an empty result.
 func TestCollect_EmptyDaemon(t *testing.T) {
 	srv := makeTestServer(t, nil, nil)
 	defer srv.Close()
@@ -189,9 +192,35 @@ func TestCollect_EmptyDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: unexpected error: %v", err)
 	}
-	if len(points) != 0 {
-		t.Errorf("expected 0 datapoints for empty daemon, got %d", len(points))
+	for _, pt := range points {
+		if pt.Name != "senhub.docker.source" {
+			t.Errorf("empty daemon produced a container metric %q", pt.Name)
+		}
 	}
+	if got := sourceValue(t, points, "socket"); got != 1 {
+		t.Errorf("source[socket] = %v, want 1 — the socket answered", got)
+	}
+	if got := sourceValue(t, points, "cgroup"); got != 0 {
+		t.Errorf("source[cgroup] = %v, want 0", got)
+	}
+}
+
+// sourceValue returns the value of the senhub.docker.source series carrying the
+// given source tag.
+func sourceValue(t *testing.T, points []data_store.DataPoint, source string) float64 {
+	t.Helper()
+	for _, pt := range points {
+		if pt.Name != "senhub.docker.source" {
+			continue
+		}
+		for _, tag := range pt.Tags {
+			if tag.Key == "source" && tag.Value == source {
+				return pt.Value
+			}
+		}
+	}
+	t.Fatalf("no senhub.docker.source series tagged %q among %d points", source, len(points))
+	return 0
 }
 
 // TestCollect_OneRunningContainer verifies all metric families for a single

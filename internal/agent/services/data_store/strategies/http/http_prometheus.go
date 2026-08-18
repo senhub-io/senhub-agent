@@ -10,6 +10,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store/agentmetrics"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http/prometheus"
@@ -194,7 +195,7 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 			Str("probe_type", m.ProbeType).
 			Str("metric_name", m.MetricName).
 			Msg("Metric has no OTel mapping - not exposed in /metrics. Add an otel: block to the probe YAML or otel.skip: true to silence.")
-	})
+	}, prometheusTargetResource())
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to write Prometheus exposition")
 		return
@@ -226,4 +227,37 @@ func resetPrometheusWarnedMetricsForTest() {
 		prometheusWarnedMetrics.Delete(k)
 		return true
 	})
+}
+
+// prometheusTargetResource builds the resource attributes exposed once as the
+// standard target_info series (#745).
+//
+// The scrape endpoint has no resource concept, so without this there is no
+// host.id and no service.instance.id anywhere in the output and an entity in
+// the topology graph cannot be pivoted to the series scraped straight from this
+// agent. Promoting those keys to per-datapoint labels is what the
+// entity/telemetry contract forbids, and would put the cardinality on every
+// series of every operator who scrapes us; target_info costs one series total.
+//
+// Identity comes from the host identity rather than an operator-overridable
+// resource, so host.id is character-identical to this agent's host entity — the
+// join has to land on the same string the graph is keyed on. A transient
+// host-info failure yields an empty map and no target_info, rather than a
+// series carrying a half-identity.
+func prometheusTargetResource() map[string]string {
+	res := map[string]string{}
+	if hi, err := common.GetHostIdentity(); err == nil {
+		if hi.ID != "" {
+			res["host.id"] = hi.ID
+		}
+		if hi.Name != "" {
+			res["host.name"] = hi.Name
+		}
+	}
+	if id := agentstate.GetAgentInstanceID(); id != "" {
+		res["service.instance.id"] = id
+	}
+	res["service.name"] = "senhub-agent"
+	res["service.version"] = agentBuildVersion()
+	return res
 }

@@ -31,6 +31,24 @@ type ProbeConfig struct {
 	// they override agent global_tags (and built-in probe tags) on a key
 	// conflict. Matched to datapoints by probe name in the data store.
 	CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
+	// Enabled turns a probe off without deleting its configuration.
+	//
+	// A POINTER on purpose: absent must stay distinguishable from an explicit
+	// `enabled: false`. With a plain bool the zero value is false, so every
+	// existing configuration — none of which carries the field — would go dark
+	// on the upgrade that introduced it.
+	//
+	// Before this existed the only switch was presence in the file, so muting a
+	// probe meant deleting its entry and with it the credentials, intervals and
+	// custom tags that took effort to get right.
+	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+}
+
+// IsEnabled reports whether the probe should run. An absent `enabled` key means
+// yes, which is what keeps every pre-existing configuration behaving exactly as
+// it did.
+func (p ProbeConfig) IsEnabled() bool {
+	return p.Enabled == nil || *p.Enabled
 }
 
 // AgentConfig is the small "identity" block (key, license, version,

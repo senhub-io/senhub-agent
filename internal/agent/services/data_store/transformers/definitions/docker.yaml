@@ -11,6 +11,20 @@ multi_instance_labels: ["container_name", "core"]
 # (type: counter); the mapper handles them as OTel monotonic sums.
 
 metrics:
+  - name: "senhub.docker.source"
+    channel: "docker_source_{source}"
+    display_name: "Docker Metric Source ({source})"
+    unit: "#"
+    category: "status"
+    multi_instance_labels: ["source"]
+    description: "one-hot over socket / cgroup — which source produced this cycle. The cgroup fallback works without the docker group but reports no per-container network counters, restart counts or container names"
+    otel:
+      name: senhub.docker.source
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      source: source
+
   - name: "senhub.docker.up"
     channel: "docker_{container_name}_up"
     display_name: "Docker {container_name} Up"
@@ -19,7 +33,7 @@ metrics:
     description: "1 when the container is running, 0 otherwise"
     otel:
       name: senhub.docker.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       container_id: container.id

@@ -17,7 +17,7 @@ metrics:
     description: "1 when the Hyper-V WMI namespace is reachable, 0 otherwise"
     otel:
       name: senhub.hyperv.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "hyperv.vm.cpu.usage"
@@ -57,7 +57,7 @@ metrics:
     description: "1 when the VM is in running state, 0 otherwise"
     otel:
       name: hyperv.vm.state
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       hyperv.vm.name: hyperv.vm.name

@@ -3,6 +3,9 @@ package otlp
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/user"
+	"strconv"
 	"sync"
 	"time"
 
@@ -109,6 +112,23 @@ type OTLPSyncStrategy struct {
 	// tracesPipeline above (which exports the agent's own spans); both are
 	// active when Traces.Enabled. nil otherwise.
 	spansRelay *spansRelay
+
+	// logsRelay forwards INGESTED logs (otlp_receiver → agentstate verbatim
+	// log channel) to the logs endpoint with the emitting application's
+	// Resource intact. Runs alongside logsPump, which carries the agent's
+	// OWN records through the SDK pipeline; the two never see the same
+	// record. Active when Logs.Enabled, nil otherwise.
+	logsRelay *logsRelay
+
+	// metricsRelay forwards INGESTED metrics (otlp_receiver → agentstate
+	// verbatim metric channel) with the emitting application's Resource
+	// intact. Its presence also switches AddDataPoints to skip
+	// receiver-produced points, so an ingested point is exported once.
+	metricsRelay *metricsRelay
+
+	// enricher is the insert-if-absent relay enricher shared by both
+	// relays, built lazily by relayEnricher().
+	enricher *relayEnricher
 
 	// pushTicker drives the metrics push cadence. nil before Start, nil
 	// after Shutdown.
@@ -332,23 +352,41 @@ func (s *OTLPSyncStrategy) Start() error {
 		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)
 	}
 
+	// Verbatim relay for INGESTED logs, gated by the same signals.logs
+	// flag as the SDK pipeline above. Both run together and never see the
+	// same record: the pump skips receiver-produced records, which travel
+	// here instead so the emitting application's Resource survives.
+	// Build failure is non-fatal for the same reason as the span relay.
+	// Verbatim relay for INGESTED metrics, gated by signals.metrics. The
+	// DataStore path is untouched for every non-OTLP sink; this only
+	// changes what the OTLP output ships for received points.
+	if s.cfg.Metrics.Enabled {
+		relay, relayErr := newMetricsRelay(s.cfg, s.relayEnricher(), s.logger)
+		if relayErr != nil {
+			s.logger.Warn().Err(relayErr).Msg("OTLP metric relay unavailable; ingested metrics will be exported under the agent resource")
+		} else {
+			s.metricsRelay = relay
+			relay.start()
+		}
+	}
+
+	if s.cfg.Logs.Enabled {
+		relay, relayErr := newLogsRelay(s.cfg, s.relayEnricher(), s.logger)
+		if relayErr != nil {
+			s.logger.Warn().Err(relayErr).Msg("OTLP log relay unavailable; ingested logs will not be forwarded")
+		} else {
+			s.logsRelay = relay
+			relay.start()
+		}
+	}
+
 	// Relay for received spans, gated by the SAME signals.traces.enabled
 	// flag as the SDK pipeline (no separate config key). Build failure is
 	// non-fatal: the TLS/transport inputs were already validated by
 	// buildExporters above, so a failure here is exotic and must not take
 	// down the metrics/logs signals with it.
 	if s.cfg.Traces.Enabled {
-		// Relay identity for the telemetry.relay.* set (#698): sourced from the
-		// host identity (gopsutil), NOT the operator-overridable Resource, so
-		// relay.host.id is char-identical to this agent's host entity identity;
-		// instance.id is the agent's service.instance.id. A transient host-info
-		// failure yields an empty host.id and the relay set is simply omitted.
-		var relayHostID, relayHostName string
-		if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
-			relayHostID, relayHostName = hi.ID, hi.Name
-		}
-		enricher := buildTraceEnricher(s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
-		relay, relayErr := newSpansRelay(s.cfg, enricher, s.logger)
+		relay, relayErr := newSpansRelay(s.cfg, s.relayEnricher(), s.logger)
 		if relayErr != nil {
 			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
 		} else {
@@ -542,9 +580,37 @@ func (s *OTLPSyncStrategy) warnMissingMappingOnce(m otelmapper.CacheMetric, err 
 // silently dropped (they cannot be routed through otelmapper).
 func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 	for _, dp := range data {
+		// Points ingested from a third-party application take the verbatim
+		// relay instead (metrics_relay.go), which ships them under the
+		// EMITTER's Resource. Storing them here as well would export the
+		// same point twice — once more under the agent's Resource, putting
+		// two values of service.name in one export. Skipped only when the
+		// relay is actually draining; with no relay the store stays the
+		// route, so nothing is lost.
+		if s.metricsRelay != nil && dataPointTag(dp, tagProbeType) == relayedProbeType {
+			continue
+		}
 		s.store.upsert(dp)
 	}
 	return nil
+}
+
+// tagProbeType is the datapoint tag carrying the producing probe's type,
+// set by BaseProbe.EnrichDataPointsWithProbeName.
+const tagProbeType = "probe_type"
+
+// relayedProbeType is the producer whose datapoints travel the verbatim
+// relay rather than this strategy's store.
+const relayedProbeType = "otlp_receiver"
+
+// dataPointTag returns the value of one tag, or "" when absent.
+func dataPointTag(dp datapoint.DataPoint, key string) string {
+	for _, t := range dp.Tags {
+		if t.Key == key {
+			return t.Value
+		}
+	}
+	return ""
 }
 
 // startEntityEmission wires the entity pump (consumer of the neutral
@@ -635,8 +701,23 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	// mapping a host's connections can be privacy-sensitive (#213). When
 	// enabled, an operator CIDR deny-list filters out sensitive peers.
 	if s.cfg.Entities.DependsOnEnabled {
-		s.entitySourceUnregisters = append(s.entitySourceUnregisters,
-			entity.RegisterSource(hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce, s.cfg.Entities.DependsOnExcludeCIDRs)))
+		dep := hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce, s.cfg.Entities.DependsOnExcludeCIDRs)
+		// Mapping a socket to its owning process reads /proc/<pid>/fd, which is
+		// owner-only: a non-root daemon sees every other service's connections
+		// with no owner and can emit nothing for them (#808). Say so once, with
+		// the counts, rather than let the operator read an empty rail as "this
+		// host depends on nothing".
+		dep.OnBlind(func(observed, unattributable int) {
+			s.logger.Warn().
+				Int("outbound_sockets", observed).
+				Int("unattributable", unattributable).
+				Str("running_as", processUsername()).
+				Msg("depends_on is enabled but this agent cannot attribute any socket to its owning process; " +
+					"mapping a socket to its owner reads /proc/<pid>/fd, which only the owner may read. " +
+					"No dependency edge can be produced for services owned by another user. " +
+					"Run the agent as root for this rail, or leave entities.depends_on_enabled off")
+		})
+		s.entitySourceUnregisters = append(s.entitySourceUnregisters, entity.RegisterSource(dep))
 	}
 
 	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
@@ -734,6 +815,12 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	if s.spansRelay != nil {
 		s.spansRelay.stop(ctx)
 	}
+	if s.logsRelay != nil {
+		s.logsRelay.stop(ctx)
+	}
+	if s.metricsRelay != nil {
+		s.metricsRelay.stop(ctx)
+	}
 
 	if s.exporters == nil {
 		return nil
@@ -788,4 +875,38 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 // resource attrs, etc.
 func (s *OTLPSyncStrategy) Config() Config {
 	return s.cfg
+}
+
+// relayEnricher builds the shared insert-if-absent enricher for BOTH relays,
+// once per strategy. Relay identity for the telemetry.relay.* set (#698) is
+// sourced from the host identity (gopsutil), NOT the operator-overridable
+// Resource, so relay.host.id is char-identical to this agent's host entity
+// identity; instance.id is the agent's service.instance.id. A transient
+// host-info failure yields an empty host.id and the relay set is simply
+// omitted.
+//
+// The on/off switch comes from the relay-level `relay.enrichment` key, which
+// names what it actually governs. `signals.traces.relay_enrichment` is still
+// honoured when the relay key is unset, because a host that turned it off there
+// meant "do not enrich what I relay" and that intent survives the rename (#766).
+func (s *OTLPSyncStrategy) relayEnricher() *relayEnricher {
+	if s.enricher != nil {
+		return s.enricher
+	}
+	var relayHostID, relayHostName string
+	if hi, hiErr := common.GetHostIdentity(); hiErr == nil {
+		relayHostID, relayHostName = hi.ID, hi.Name
+	}
+	s.enricher = buildRelayEnricher(s.cfg.Relay.Enrichment, s.cfg.Traces, s.globalTags, s.cfg.Resource.Environment, relayHostID, relayHostName, s.cfg.Resource.ServiceInstance)
+	return s.enricher
+}
+
+// processUsername names the account the daemon runs under, for the operator
+// message that explains why a rail is empty. Best effort: an unresolvable uid
+// is reported as the number, which still tells the operator it is not root.
+func processUsername() string {
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+	return strconv.Itoa(os.Getuid())
 }

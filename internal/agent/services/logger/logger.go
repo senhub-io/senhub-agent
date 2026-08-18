@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/kardianos/service"
 	"github.com/rs/zerolog"
@@ -176,8 +177,19 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			// Only specified modules will output debug logs
 			// All modules continue to output Info/Warn/Error
 
-			// Keep global level at INFO for non-module logs
-			zerolog.SetGlobalLevel(zerolog.InfoLevel)
+			// The global level is a hard floor in zerolog: should() drops
+			// any event below it before the logger's own level is even
+			// consulted. Pinning it to Info here — which is what this code
+			// did — vetoed every debug line the filter was supposed to let
+			// through, so --filter produced nothing at all, ever.
+			//
+			// The floor goes to Debug and the FILTERING moves where it can
+			// actually discriminate: the module gate in ModuleLogger.Debug().
+			// Non-module debug lines are kept quiet by the base logger's own
+			// level, set to Info just below.
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+			quiet := logger.Level(zerolog.InfoLevel)
+			logger = &quiet
 
 			// Enable debug only for specified modules
 			mutateLevelState(func(st *levelState) {
@@ -196,16 +208,19 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 			// Full verbose mode: --verbose without --debug-modules
 			// All modules output debug logs (no filtering)
 
-			// Enable debug level globally
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+			verbose := logger.Level(zerolog.DebugLevel)
+			logger = &verbose
 
-			// Enable debug for all key modules
+			// No walk over the level map here. Raising the sixteen names it
+			// happened to contain is exactly what made --verbose look like it
+			// worked while every other module stayed silent: the map is a set
+			// of overrides, and clearing it is what lets every module follow
+			// the logger's level.
 			mutateLevelState(func(st *levelState) {
 				st.selective = false
 				st.debugModules = map[string]bool{}
-				for module := range st.levels {
-					st.levels[module] = zerolog.DebugLevel
-				}
+				st.levels = map[string]zerolog.Level{}
 			})
 
 			logger.Info().Msg("Full verbose mode enabled - debug logging for all modules")
@@ -224,7 +239,7 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	// Default writer is console with masking
-	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
 	var writer io.Writer = NewMaskingWriter(consoleWriter)
 
 	// If debug log shipper is configured, create a multi-writer with masking
@@ -283,12 +298,12 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	}
 
 	// Define masked writers - start with log file
-	writers := []io.Writer{NewMaskingWriter(logRotator)}
+	writers := []io.Writer{NewMaskingWriter(fileWriter(logRotator, args))}
 
 	// Add console output in interactive mode (run command)
 	// This ensures logs are visible in console when using: ./agent run
 	if isInteractive {
-		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
 		log.Printf("Running in interactive mode - console output enabled")
 	}
@@ -315,6 +330,37 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	return &logger
 }
 
+// consoleTimeFormat dates every console line too: a line pasted into a ticket
+// without its date is a line nobody can correlate with anything.
+const consoleTimeFormat = "2006-01-02 15:04:05.000"
+
+// fileWriter wraps the rotating file in the layout chosen by --log-format.
+//
+// The default is readable text, because a log file is read by a person opening
+// it during an incident. JSON was not merely dense: the masking writer
+// re-encodes each entry through a map, and Go marshals map keys in alphabetical
+// order, so the timestamp landed at the END of every line and the level sat in
+// the middle. Nothing aligned from one line to the next, which is what made the
+// file unusable rather than just verbose.
+//
+// The console writer sits BETWEEN the masker and the file: the masker still
+// receives structured JSON, so it masks fields rather than pattern-matching
+// text, and only the already-masked entry is rendered. Reversing the two would
+// hand the masker a formatted string and weaken the redaction.
+//
+// --log-format json restores the machine-parseable form for anyone shipping
+// the file to an aggregator.
+func fileWriter(rotator io.Writer, args *cliArgs.ParsedArgs) io.Writer {
+	if args != nil && args.LogFormat == cliArgs.LogFormatJSON {
+		return rotator
+	}
+	return zerolog.ConsoleWriter{
+		Out:        rotator,
+		NoColor:    true,
+		TimeFormat: "2006-01-02 15:04:05.000",
+	}
+}
+
 // levelState is the immutable snapshot of the module-level
 // configuration. Readers load it atomically on every Debug() call
 // (allocation-free); writers copy-on-write under levelStateMu and swap
@@ -333,6 +379,21 @@ var (
 	levelStateMu sync.Mutex
 	levelStatePo atomic.Pointer[levelState]
 )
+
+// Sub-second precision on the stored timestamp. Without it zerolog writes whole
+// seconds and every rendered line shows a constant ".000" — three digits
+// claiming a precision the value does not have, on exactly the lines where
+// ordering matters: two events inside the same second.
+//
+// Set here rather than in NewLogger, against this package's usual preference
+// for constructors, because it is a package global of a third-party library
+// that EVERY writer reads on every line. Assigning it from a constructor is a
+// write racing those reads — the race detector caught exactly that, with
+// ConsoleWriter reading it while a second NewLogger call wrote it. init runs
+// before any goroutine exists, so there is nothing to race with.
+func init() {
+	zerolog.TimeFieldFormat = time.RFC3339Nano
+}
 
 func init() {
 	levelStatePo.Store(&levelState{
@@ -487,23 +548,41 @@ func (m *ModuleLogger) Debug() *zerolog.Event {
 	// In selective debug mode, only allow debug logs for enabled modules (with prefix matching)
 	if st.selective {
 		if !isModuleEnabled(st, m.module) {
-			disabledLogger := m.Logger.Level(zerolog.Disabled)
-			return disabledLogger.Debug()
+			return m.disabled()
 		}
+		// Selective mode keeps the BASE logger at Info so that debug lines
+		// emitted outside any module stay out of the way. A selected module
+		// therefore has to raise its own copy, otherwise it inherits that
+		// Info level and the filter selects nothing at all.
+		lifted := m.Logger.Level(zerolog.DebugLevel)
+		return lifted.Debug()
 	}
 
-	// Check module log level (unknown modules default to Info, which
-	// keeps Debug disabled — same contract as GetModuleLogLevel).
-	level, ok := st.levels[m.module]
-	if !ok {
-		level = zerolog.InfoLevel
+	// st.levels is an OVERRIDE map, not an allowlist. A module absent from it
+	// defers to the logger's own level, so --verbose reaches every module.
+	//
+	// It used to default an absent module to Info and disable Debug on that
+	// basis, which made the map an allowlist of sixteen names while the code
+	// creates module loggers under more than a hundred. Every module written
+	// after that map was frozen — every probe added in the last two years —
+	// stayed silent under --verbose, with no way for an operator to tell that
+	// from "this code path logs nothing".
+	if level, ok := st.levels[m.module]; ok {
+		if level > zerolog.DebugLevel {
+			return m.disabled()
+		}
+		// An explicit debug override must win over a quieter base logger,
+		// which is how the runtime log-level endpoint raises one module.
+		lifted := m.Logger.Level(zerolog.DebugLevel)
+		return lifted.Debug()
 	}
-	if level <= zerolog.DebugLevel {
-		return m.Logger.Debug()
-	}
+	return m.Logger.Debug()
+}
 
-	disabledLogger := m.Logger.Level(zerolog.Disabled)
-	return disabledLogger.Debug()
+// disabled returns an event that will never be written.
+func (m *ModuleLogger) disabled() *zerolog.Event {
+	off := m.Logger.Level(zerolog.Disabled)
+	return off.Debug()
 }
 
 // Info logs an info message (always enabled for all modules)

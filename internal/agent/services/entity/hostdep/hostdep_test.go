@@ -232,17 +232,34 @@ func TestDependentAnchoredToHostWithRunsOn(t *testing.T) {
 	}
 }
 
-func TestVanishedConnectionResetsStreak(t *testing.T) {
+// TestVanishedConnectionSurvivesTheMissTolerance pins the symmetric debounce
+// (#808). This test previously asserted the opposite — that ONE missed scrape
+// drops the edge — which is the defect: an edge that took three scrapes to
+// assert was retracted by a single missed observation, and since depends_on is
+// retired by absence at the consumer, that reached the graph as a removed edge
+// and back again. A long-lived connection the socket table happens to miss once
+// is not a dependency that ended.
+func TestVanishedConnectionSurvivesTheMissTolerance(t *testing.T) {
 	live := []gnet.ConnectionStat{conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100)}
 	s := newTestSource(live)
 	for i := 0; i < 3; i++ {
 		s.Observe()
 	}
-	// Connection gone this scrape → edge leaves the snapshot, streak resets.
+	// Missed scrapes inside the tolerance: the edge stays on the wire.
 	s.connections = fakeConns(nil)
+	for i := 1; i <= 3; i++ {
+		obs, ok := s.Observe()
+		if !ok {
+			t.Fatalf("miss %d: observation must stay trustworthy", i)
+		}
+		if relCount(obs, relDependsOn) != 1 {
+			t.Fatalf("miss %d of 3: edge must survive the tolerance, got %+v", i, obs.Relations)
+		}
+	}
+	// Gone for as long as it took to appear: given up.
 	obs, _ := s.Observe()
 	if len(obs.Relations) != 0 {
-		t.Fatalf("edge should drop once the connection vanishes: %+v", obs)
+		t.Fatalf("edge must drop once the miss tolerance is exhausted: %+v", obs)
 	}
 	// Reappears: must debounce again from zero, not resurrect instantly.
 	s.connections = fakeConns(live)
@@ -409,8 +426,17 @@ func TestNameLRU_RecycledPidIsReResolved(t *testing.T) {
 	if !hasService(obs, "new-proc@h-1") {
 		t.Errorf("recycled pid must be re-resolved, not served the stale name: %+v", obs.Entities)
 	}
+	// The old dependent is not re-derived from the cache — it is inside its miss
+	// tolerance, the same grace every dependency now gets (#808). What must not
+	// happen is the stale name being SERVED for the live socket, and it is not:
+	// the socket resolves to new-proc. One more missed scrape retires the old
+	// one, since the tolerance here is the threshold, 1.
+	obs, _ = s.Observe()
 	if hasService(obs, "old-proc@h-1") {
-		t.Errorf("stale name must not survive a pid recycle: %+v", obs.Entities)
+		t.Errorf("the recycled pid's old dependent must not outlive its miss tolerance: %+v", obs.Entities)
+	}
+	if !hasService(obs, "new-proc@h-1") {
+		t.Errorf("the live dependent must remain: %+v", obs.Entities)
 	}
 }
 
@@ -421,4 +447,115 @@ func hasService(obs entity.Observation, id string) bool {
 		}
 	}
 	return false
+}
+
+// Blindness (#808). Mapping a socket to its owning process reads
+// /proc/<pid>/fd, which is owner-only, so a non-root daemon — the default since
+// 0.5.4 — sees every other service's connections with no pid at all. Measured
+// on a real host: 45 of 45 established sockets attributed as root, 0 of 45 as
+// the service account.
+//
+// The danger is not the missing data, it is reporting the absence as a fact.
+// An empty observation returned with ok=true tells the tracker that nothing
+// depends on anything any more, and it retires every dependency the consumer
+// holds. The source must say its view failed instead.
+
+func TestBlind_UnattributableSocketsAreNotReportedAsNoDependencies(t *testing.T) {
+	// Outbound, established, real peers — and not one owner the agent can name.
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 0),
+		conn(statusEstablished, "10.0.0.5", 51001, "10.0.0.9", 8427, 0),
+		conn(statusEstablished, "10.0.0.5", 51002, "10.0.0.10", 8481, 0),
+	}
+	s := newTestSource(rows)
+
+	obs, ok := s.Observe()
+	if ok {
+		t.Fatalf("a scrape that could attribute nothing must not report success: %+v", obs)
+	}
+	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
+		t.Errorf("a failed observation must be empty, not partial: %+v", obs)
+	}
+}
+
+func TestBlind_ReportedOnceWithTheCounts(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 0),
+		conn(statusEstablished, "10.0.0.5", 51001, "10.0.0.9", 8427, 0),
+	}
+	s := newTestSource(rows)
+	var calls, observed, unattributable int
+	s.OnBlind(func(o, u int) { calls++; observed, unattributable = o, u })
+
+	for i := 0; i < 5; i++ {
+		s.Observe()
+	}
+	if calls != 1 {
+		t.Errorf("the operator is told once, not every cycle: %d calls", calls)
+	}
+	if observed != 2 || unattributable != 2 {
+		t.Errorf("counts = observed %d / unattributable %d, want 2 / 2", observed, unattributable)
+	}
+}
+
+// TestBlind_NotTriggeredByAnIdleHost: no outbound sockets at all is a
+// legitimate empty observation, not a failure. Reporting failure there would
+// keep a stale view alive on a host that genuinely depends on nothing.
+func TestBlind_NotTriggeredByAnIdleHost(t *testing.T) {
+	s := newTestSource(nil)
+	obs, ok := s.Observe()
+	if !ok {
+		t.Errorf("a host with no outbound sockets is observable, not blind: %+v", obs)
+	}
+}
+
+// TestBlind_NotTriggeredWhenOnlySomeSocketsAreUnattributable: a kernel row
+// racing with process exit is normal. Blindness is the structural case — every
+// socket but our own — so one nameless row among named ones must not blank the
+// rail.
+func TestBlind_NotTriggeredWhenOnlySomeSocketsAreUnattributable(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 5432, 100), // nginx
+		conn(statusEstablished, "10.0.0.5", 51001, "10.0.0.9", 8427, 0),   // unknown owner
+	}
+	s := newTestSource(rows)
+	var blind bool
+	s.OnBlind(func(int, int) { blind = true })
+
+	var obs entity.Observation
+	var ok bool
+	for i := 0; i < defaultThreshold; i++ {
+		obs, ok = s.Observe()
+	}
+	if !ok {
+		t.Fatalf("a partially attributable scrape is still an observation: %+v", obs)
+	}
+	if blind {
+		t.Error("blindness reported while a dependent was successfully named")
+	}
+	if relCount(obs, relDependsOn) != 1 {
+		t.Errorf("the one attributable dependency must be emitted: %+v", obs.Relations)
+	}
+}
+
+// TestBlind_AgentsOwnSocketsDoNotCountAsSight: the agent can always name its
+// own sockets, since it owns them. If that were enough to call attribution
+// working, the check would never fire on the very install shape it exists for.
+func TestBlind_AgentsOwnSocketsDoNotCountAsSight(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "10.0.0.9", 4317, 42), // the agent itself
+		conn(statusEstablished, "10.0.0.5", 51001, "10.0.0.9", 5432, 0),  // postgres, invisible
+	}
+	s := newTestSource(rows)
+	s.selfPID = func() int32 { return 42 }
+	s.agentID = func() string { return "agent-1" }
+	var blind bool
+	s.OnBlind(func(int, int) { blind = true })
+
+	if _, ok := s.Observe(); ok {
+		t.Error("only the agent's own sockets attributed: that is blindness, not sight")
+	}
+	if !blind {
+		t.Error("the operator was not told")
+	}
 }

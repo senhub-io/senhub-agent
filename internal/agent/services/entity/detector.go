@@ -156,6 +156,11 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	if d.lastGood == nil {
 		d.lastGood = map[uint64]cachedObservation{}
 	}
+	// reasons collects why an entity is about to disappear, for the cases the
+	// detector can explain. The tracker sees only absence and would otherwise
+	// call every one of them a termination — including the two below, where
+	// nothing is known about the resource at all (#806).
+	reasons := map[string]string{}
 	regs := registeredSources()
 	live := make(map[uint64]bool, len(regs))
 	for _, r := range regs {
@@ -171,16 +176,21 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 				o = cached.obs
 			} else {
 				// Failing beyond the TTL (or never succeeded): the
-				// empty set flows through and absence-deletes fire.
+				// empty set flows through and absence-deletes fire. We
+				// stopped seeing this slice of the graph; we did not
+				// learn that it went away.
+				markUnmonitored(reasons, cached.obs.Entities)
 				o = Observation{}
 			}
 		}
 		obs = obs.merge(o)
 	}
 	// Drop caches of unregistered sources so a stopped probe's topology
-	// expires instead of being served forever (audit D4).
-	for id := range d.lastGood {
+	// expires instead of being served forever (audit D4). The probe stopped or
+	// was removed from the configuration: its targets are unobserved, not gone.
+	for id, cached := range d.lastGood {
 		if !live[id] {
+			markUnmonitored(reasons, cached.obs.Entities)
 			delete(d.lastGood, id)
 		}
 	}
@@ -191,7 +201,21 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 		d.onOrphan(orphans)
 	}
 	// Invariant: never publish an unanchored node. Drop any entity with no
-	// relation (host excepted) before it reaches the wire.
-	entities = dropOrphanEntities(entities, d.onOrphanEntity)
-	t.Reconcile(stateEvents(entities, ts, interval), ts)
+	// relation (host excepted) before it reaches the wire. One that was
+	// published before and is dropped now lost its anchor, not its existence.
+	kept, unanchored := dropOrphanEntities(entities, d.onOrphanEntity)
+	for i := range unanchored {
+		reasons[entityKey(unanchored[i].Type, unanchored[i].ID)] = ReasonParentRemoved
+	}
+	t.Reconcile(stateEvents(kept, ts, interval), ts, reasons)
+}
+
+// markUnmonitored records that every entity a source used to report is about
+// to vanish because the agent stopped observing it, not because it went away.
+// An entity another source still reports this cycle is not deleted at all, so
+// a stale mark for it is inert.
+func markUnmonitored(reasons map[string]string, entities []Entity) {
+	for i := range entities {
+		reasons[entityKey(entities[i].Type, entities[i].ID)] = ReasonUnmonitored
+	}
 }

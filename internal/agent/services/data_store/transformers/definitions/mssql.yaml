@@ -26,7 +26,7 @@ metrics:
     lookup: "senhub.db.up"
     otel:
       name: senhub.db.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   # ═════════════════════════════════════════════════════════════════════════
@@ -149,7 +149,7 @@ metrics:
     lookup: "mssql.database.status"
     otel:
       name: sqlserver.database.status
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       database: db.namespace

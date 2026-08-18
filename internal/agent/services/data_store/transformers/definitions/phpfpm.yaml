@@ -16,7 +16,7 @@ metrics:
     description: "1 when the PHP-FPM status endpoint is reachable, 0 otherwise"
     otel:
       name: senhub.phpfpm.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       pool: phpfpm.pool

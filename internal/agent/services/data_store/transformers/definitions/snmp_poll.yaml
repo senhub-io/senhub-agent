@@ -27,7 +27,7 @@ metrics:
     description: "1 when the last poll reached the SNMP target, 0 otherwise"
     otel:
       name: senhub.snmp.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       instance: snmp.target

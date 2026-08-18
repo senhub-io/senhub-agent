@@ -115,12 +115,17 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 		t.Fatal("Observe() ok=false after successful collect")
 	}
 
-	if len(obs.Relations) != 1 {
-		t.Fatalf("Observe() returned %d relations, want 1", len(obs.Relations))
+	// A local memcached also carries a runs_on edge to its host since #740
+	// host-scoped its identity, so pick the monitors edge rather than
+	// assuming it is the only one.
+	var rel entity.Relation
+	for _, r := range obs.Relations {
+		if r.Type == "monitors" {
+			rel = r
+		}
 	}
-	rel := obs.Relations[0]
 	if rel.Type != "monitors" {
-		t.Errorf("relation.Type = %q, want %q", rel.Type, "monitors")
+		t.Fatalf("no monitors relation among %d relations", len(obs.Relations))
 	}
 	if rel.FromType != "service.instance" {
 		t.Errorf("relation.FromType = %q, want %q", rel.FromType, "service.instance")
@@ -131,8 +136,11 @@ func TestEntitySource_MonitorsEdgePresent(t *testing.T) {
 	if rel.ToType != "db" {
 		t.Errorf("relation.ToType = %q, want %q", rel.ToType, "db")
 	}
-	if v, _ := rel.ToID["db.instance.id"].(string); v != "localhost:11211" {
-		t.Errorf("relation.ToID[db.instance.id] = %q, want %q", v, "localhost:11211")
+	// The id is host-scoped, so it must no longer be the machine-independent
+	// "localhost:11211" that collapsed two servers into one entity.
+	v, _ := rel.ToID["db.instance.id"].(string)
+	if v == "localhost:11211" || v == "" {
+		t.Errorf("relation.ToID[db.instance.id] = %q, want a host-scoped id", v)
 	}
 }
 
@@ -150,8 +158,10 @@ func TestEntitySource_MonitorsEdgeAbsentWhenNoAgentID(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe() ok=false after successful collect")
 	}
-	if len(obs.Relations) != 0 {
-		t.Errorf("Observe() returned %d relations with no agent id, want 0", len(obs.Relations))
+	for _, r := range obs.Relations {
+		if r.Type == "monitors" {
+			t.Errorf("a monitors edge was emitted with no agent id: %+v", r)
+		}
 	}
 }
 
@@ -178,8 +188,12 @@ func TestEntitySource_LocalDBRunsOnHost(t *testing.T) {
 	if !runsOn("127.0.0.1", "prod-cache") {
 		t.Error("loopback db with a host-unique id must emit runs_on→host")
 	}
-	if runsOn("127.0.0.1", "") {
-		t.Error("host:port identity must NOT emit runs_on on loopback (collapse guard)")
+	// Without an operator name the id is the host-scoped fallback, which is
+	// unique per machine — so it anchors like any other local db. Before #740
+	// it embedded the loopback address and the collapse guard refused it,
+	// leaving every local instance with no host at all.
+	if !runsOn("127.0.0.1", "") {
+		t.Error("a host-scoped local db must emit runs_on->host")
 	}
 	if runsOn("10.0.0.5", "") {
 		t.Error("remote db must NOT emit runs_on→host")

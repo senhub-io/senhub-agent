@@ -18,7 +18,7 @@ metrics:
     description: "1 when the target answered with a parseable exposition"
     otel:
       name: senhub.promscrape.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
     tag_to_attribute:
       target: promscrape.target

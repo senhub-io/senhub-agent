@@ -397,6 +397,11 @@ var freeTierProbes = map[string]bool{
 	// fundamentally local probe (reads the clock daemon on the host,
 	// not a remote system).
 	"chrony": true,
+	// ntp: measures THIS host's clock error against a reference server the
+	// operator names. It queries a remote server, but what it reports is a
+	// property of the local machine — the same host observability role as
+	// cpu/memory/chrony, not the monitoring of a remote system.
+	"ntp": true,
 	// smart: S.M.A.R.T. disk health reads the local machine's drives via
 	// smartctl — host-local observability on the same footing as
 	// cpu/memory/logicaldisk. smartmontools is a prerequisite the operator
@@ -458,6 +463,11 @@ var freeTierProbes = map[string]bool{
 	// docker: container monitoring with a free equivalent (cadvisor /
 	// telegraf docker input) — basic collection is commoditized, so free.
 	"docker": true,
+
+	// swarm: Docker Swarm cluster state — the same commoditized-collection
+	// argument as docker, and the wedge case: a small shop replacing PRTG
+	// must see its cluster without buying a tier.
+	"swarm": true,
 	// redis: Redis/Valkey health/throughput, parity with redis_exporter —
 	// free as the OTel/exporter baseline; deep Redis depth stays paid.
 	"redis": true,

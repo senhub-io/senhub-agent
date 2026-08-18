@@ -19,7 +19,7 @@ metrics:
     description: "1 when mod_status responded successfully, 0 otherwise"
     otel:
       name: senhub.apache.up
-      unit: "1"
+      unit: "{status}"
       type: gauge
 
   - name: "apache.uptime"

@@ -34,6 +34,9 @@ type clickhouseEntitySource struct {
 	// hostID resolves the agent host id for a local-db runs_on edge.
 	// nil → dbcommon.HostID.
 	hostID func() string
+	// rekey announces the 0.5.4 identity migration for a local instance whose
+	// id was host-scoped. nil when nothing was re-keyed (remote target).
+	rekey *entity.RekeyAnnouncer
 
 	mu       sync.RWMutex
 	pinnedID string // empty until pinned
@@ -51,7 +54,8 @@ func newClickhouseEntitySource(instanceName, endpoint string) *clickhouseEntityS
 	addr, port := hostPortFromEndpoint(endpoint)
 	s := &clickhouseEntitySource{
 		instanceName: instanceName,
-		fallbackID:   addr + ":" + strconv.FormatInt(port, 10),
+		fallbackID:   dbcommon.FallbackInstanceID("clickhouse", addr, int(port), dbcommon.HostID()),
+		rekey:        dbcommon.NewRekeyAnnouncer("clickhouse", addr, int(port), dbcommon.HostID()),
 		host:         addr,
 		port:         port,
 		hostID:       dbcommon.HostID,
@@ -157,6 +161,14 @@ func (s *clickhouseEntitySource) Observe() (entity.Observation, bool) {
 	// runs_on edge: db → host when the db is on the agent's own host (loopback).
 	// The collapse guard suppresses it for a host:port-derived id.
 	if rel, ok := dbcommon.LocalHostRunsOn(dbID, s.host, s.hostID()); ok {
+		obs.Relations = append(obs.Relations, rel)
+	}
+
+	// The 0.5.4 identity migration: retire the pre-scoping node explicitly and
+	// alias it to this one, so the consumer reads "someone decided" rather than
+	// "the agent went quiet". Self-limiting to a few cycles.
+	s.rekey.Announce()
+	if rel, ok := s.rekey.SameAs(); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
 
