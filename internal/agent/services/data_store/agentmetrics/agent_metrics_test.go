@@ -1,6 +1,7 @@
 package agentmetrics
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -289,5 +290,28 @@ func TestBuildAgentRecords_NoHTTPRecordsWhenMapEmpty(t *testing.T) {
 		if r.Name == "senhub.agent.http.requests" {
 			t.Errorf("expected no http.requests records when map is empty/nil")
 		}
+	}
+}
+
+// TestSelfMetricsDeclareNoFalseRatios guards the naming rule 0.5.4 applied to
+// the probes but missed on two of the agent's own metrics: a dimensionless unit
+// of "1" on a gauge makes the OTel→Prometheus rule append _ratio, which is right
+// for a fraction and wrong for anything else. An endpoint INDEX reached
+// Prometheus as senhub_agent_otlp_active_endpoint_index_ratio, and a boolean as
+// ..._license_invalid_ratio.
+//
+// A name ending in _ratio is exempt: it already says what it is.
+func TestSelfMetricsDeclareNoFalseRatios(t *testing.T) {
+	for _, r := range BuildAgentRecords(AgentMetricsSnapshot{}) {
+		if r.Unit != "1" {
+			continue
+		}
+		if strings.HasSuffix(r.Name, ".ratio") || strings.HasSuffix(r.Name, "_ratio") ||
+			strings.Contains(r.Name, "utilization") {
+			continue
+		}
+		t.Errorf("%s declares unit \"1\" and is not a ratio: Prometheus will name it %s_ratio. "+
+			"Use an annotation unit such as {index}, {status} or {connection}",
+			r.Name, strings.ReplaceAll(r.Name, ".", "_"))
 	}
 }
