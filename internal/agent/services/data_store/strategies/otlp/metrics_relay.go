@@ -318,7 +318,7 @@ func (r *metricsRelay) export(rm []*metricpb.ResourceMetrics, points int) {
 	rm = r.enricher.enrichMetrics(rm)
 
 	if err := r.forwarder.forward(ctx, rm); err != nil {
-		agentstate.IncrementOTLPExportErrors()
+		agentstate.IncrementOTLPExportErrors("metrics")
 		r.logger.Warn().
 			Str("error", redactSensitive(err.Error())).
 			Int("resource_metrics", len(rm)).

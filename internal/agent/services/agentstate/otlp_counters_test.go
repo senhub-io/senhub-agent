@@ -18,7 +18,7 @@ func TestOTLPCounters_IncrementAndRead(t *testing.T) {
 	IncrementOTLPLogsPushed()
 	IncrementOTLPLogsPushed()
 
-	IncrementOTLPExportErrors()
+	IncrementOTLPExportErrors("metrics")
 
 	if got := GetOTLPMetricsPushedTotal(); got != 15 {
 		t.Errorf("metrics.pushed=%d, want 15", got)
@@ -45,7 +45,7 @@ func TestOTLPCounters_ConcurrentSafe(t *testing.T) {
 			for j := 0; j < incsPerG; j++ {
 				IncrementOTLPMetricsPushed(1)
 				IncrementOTLPLogsPushed()
-				IncrementOTLPExportErrors()
+				IncrementOTLPExportErrors("metrics")
 			}
 		}()
 	}
@@ -122,5 +122,29 @@ func TestOTLPStoreSizeAndExportDuration(t *testing.T) {
 	}
 	if got := GetOTLPMeanExportDuration(); got != 200*time.Millisecond {
 		t.Errorf("mean_export_duration=%v, want 200ms", got)
+	}
+}
+
+func TestOTLPExportErrorsBySignal(t *testing.T) {
+	before := GetOTLPExportErrorsBySignal()
+	IncrementOTLPExportErrors("logs")
+	IncrementOTLPExportErrors("logs")
+	IncrementOTLPExportErrors("traces")
+	IncrementOTLPExportErrors("") // normalised to "unknown"
+
+	after := GetOTLPExportErrorsBySignal()
+	if got := after["logs"] - before["logs"]; got != 2 {
+		t.Errorf("logs errors delta=%d, want 2", got)
+	}
+	if got := after["traces"] - before["traces"]; got != 1 {
+		t.Errorf("traces errors delta=%d, want 1", got)
+	}
+	if got := after["unknown"] - before["unknown"]; got != 1 {
+		t.Errorf("unknown errors delta=%d, want 1", got)
+	}
+	// The snapshot is a copy: mutating it must not leak back.
+	after["logs"] += 100
+	if again := GetOTLPExportErrorsBySignal(); again["logs"] == after["logs"] {
+		t.Error("snapshot mutation leaked into the live counters")
 	}
 }

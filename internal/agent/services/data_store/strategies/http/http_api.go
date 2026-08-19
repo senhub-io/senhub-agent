@@ -760,14 +760,15 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 
 	resp := OTLPInfoResponse{
 		Pipeline: OTLPPipelineInfo{
-			MetricsPushedTotal:  agentstate.GetOTLPMetricsPushedTotal(),
-			LogsPushedTotal:     agentstate.GetOTLPLogsPushedTotal(),
-			SpansRelayedTotal:   agentstate.GetOTLPSpansRelayedTotal(),
-			LogsRelayedTotal:    agentstate.GetOTLPLogsRelayedTotal(),
-			MetricsRelayedTotal: agentstate.GetOTLPMetricsRelayedTotal(),
-			ExportErrorsTotal:   agentstate.GetOTLPExportErrorsTotal(),
-			DroppedTotal:        droppedTotal,
-			DroppedByReason:     droppedByReason,
+			MetricsPushedTotal:   agentstate.GetOTLPMetricsPushedTotal(),
+			LogsPushedTotal:      agentstate.GetOTLPLogsPushedTotal(),
+			SpansRelayedTotal:    agentstate.GetOTLPSpansRelayedTotal(),
+			LogsRelayedTotal:     agentstate.GetOTLPLogsRelayedTotal(),
+			MetricsRelayedTotal:  agentstate.GetOTLPMetricsRelayedTotal(),
+			ExportErrorsTotal:    agentstate.GetOTLPExportErrorsTotal(),
+			ExportErrorsBySignal: agentstate.GetOTLPExportErrorsBySignal(),
+			DroppedTotal:         droppedTotal,
+			DroppedByReason:      droppedByReason,
 		},
 		Store: OTLPStoreInfo{
 			Size:               agentstate.GetOTLPStoreSize(),
