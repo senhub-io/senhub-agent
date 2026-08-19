@@ -83,6 +83,10 @@ storage:
         cert_file: /etc/ssl/private/agent.pem    # mTLS, optional
         key_file:  /etc/ssl/private/agent.key    # required if cert_file set
 
+      # Close an idle HTTP connection before the ingress does (see below).
+      # OTLP/HTTP only; unset keeps the Go default of 90s.
+      idle_conn_timeout: 45s
+
       compression: gzip               # gzip | none — default gzip
       timeout: 10s                    # per-export deadline
 
@@ -149,6 +153,23 @@ the primary, switches on a failed export and returns on its own once the
 primary recovers. See
 [the backpressure guide](https://github.com/senhub-io/senhub-agent/blob/master/docs/admin-guide/BACKPRESSURE.md)
 for the shape and the trade-offs.
+
+### `idle_conn_timeout` (OTLP/HTTP only)
+
+Load balancers and reverse proxies close connections that have been idle for
+some time. A signal that pushes continuously never reaches that point, but a
+sparse one does: the agent then discovers the connection is gone only when it
+tries to use it, and pays a failed request before reconnecting. Logs are the
+signal this affects, since metrics push on a fixed interval and keep their
+connection warm.
+
+Setting `idle_conn_timeout` **below your ingress idle timeout** makes the
+agent close first, turning that failure into a clean reconnect. Unset, the Go
+default of 90 seconds applies, which is longer than most ingress timeouts.
+
+The cost is one extra TCP and TLS handshake per idle period, on a signal that
+by definition is not busy. Setting it with `protocol: grpc` is refused at
+config load: gRPC connection keepalive is a separate mechanism.
 
 ### `tls`
 

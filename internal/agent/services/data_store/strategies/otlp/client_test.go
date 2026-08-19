@@ -2,7 +2,10 @@ package otlp
 
 import (
 	"context"
+	"crypto/tls"
+	"net/http"
 	"testing"
+	"time"
 )
 
 // buildExporters dials lazily — constructing the exporters never opens
@@ -93,5 +96,44 @@ func TestBuildExporters_DisabledSignals(t *testing.T) {
 				t.Error("trace exporter should be nil (signal disabled)")
 			}
 		})
+	}
+}
+
+// TestNewHTTPClient_KeepsStandardTransportBehaviour is the guard on the
+// footgun of #829: WithHTTPClient takes precedence over WithTLSClientConfig,
+// WithTimeout and WithProxy, so a hand-rolled client silently drops
+// whatever it forgets. Cloning http.DefaultTransport keeps proxy support
+// and the standard dial/handshake timeouts; only the two fields we mean
+// to change may differ.
+func TestNewHTTPClient_KeepsStandardTransportBehaviour(t *testing.T) {
+	tlsConf := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "ingest.example.com"}
+	client := newHTTPClient(tlsConf, 60*time.Second, 45*time.Second)
+
+	if client.Timeout != 60*time.Second {
+		t.Errorf("client timeout=%s, want 60s", client.Timeout)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport type %T, want *http.Transport", client.Transport)
+	}
+	if transport.IdleConnTimeout != 45*time.Second {
+		t.Errorf("IdleConnTimeout=%s, want 45s", transport.IdleConnTimeout)
+	}
+	if transport.TLSClientConfig != tlsConf {
+		t.Error("TLS configuration was not carried onto the custom transport")
+	}
+	if transport.Proxy == nil {
+		t.Error("proxy support dropped: HTTP_PROXY / HTTPS_PROXY would be ignored")
+	}
+
+	std := http.DefaultTransport.(*http.Transport)
+	if transport.TLSHandshakeTimeout != std.TLSHandshakeTimeout {
+		t.Errorf("TLSHandshakeTimeout=%s, want the standard %s", transport.TLSHandshakeTimeout, std.TLSHandshakeTimeout)
+	}
+	if transport.MaxIdleConns != std.MaxIdleConns {
+		t.Errorf("MaxIdleConns=%d, want the standard %d", transport.MaxIdleConns, std.MaxIdleConns)
+	}
+	if transport.ExpectContinueTimeout != std.ExpectContinueTimeout {
+		t.Errorf("ExpectContinueTimeout=%s, want the standard %s", transport.ExpectContinueTimeout, std.ExpectContinueTimeout)
 	}
 }
