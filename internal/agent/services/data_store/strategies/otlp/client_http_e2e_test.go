@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 
@@ -129,7 +129,7 @@ func TestOTLPHTTP_LogExport_E2E(t *testing.T) {
 
 	var rec sdklog.Record
 	rec.SetTimestamp(time.Now())
-	rec.SetBody(log.StringValue("e2e log line"))
+	rec.SetBody(attribute.StringValue("e2e log line"))
 
 	if err := exp.Export(context.Background(), []sdklog.Record{rec}); err != nil {
 		t.Fatalf("log Export over OTLP/HTTP failed: %v", err)

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -118,7 +119,7 @@ func TestLogsPipeline_AttributesAndProducerIdentity(t *testing.T) {
 	}
 
 	collected := map[string]string{}
-	got[0].WalkAttributes(func(kv log.KeyValue) bool {
+	got[0].WalkAttributes(func(kv attribute.KeyValue) bool {
 		collected[string(kv.Key)] = kv.Value.AsString()
 		return true
 	})

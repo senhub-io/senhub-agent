@@ -9,6 +9,7 @@ import (
 	"github.com/toise-dev/toise/pkg/emit/wire"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -59,30 +60,30 @@ func buildEmitReference(t *testing.T, eventName string, e emit.Entity) plog.LogR
 // flattenOurs renders our otel/log record's attributes into a comparable tree.
 func flattenOurs(rec log.Record) map[string]any {
 	out := map[string]any{}
-	rec.WalkAttributes(func(kv log.KeyValue) bool {
-		out[kv.Key] = ourValue(kv.Value)
+	rec.WalkAttributes(func(kv attribute.KeyValue) bool {
+		out[string(kv.Key)] = ourValue(kv.Value)
 		return true
 	})
 	return out
 }
 
-func ourValue(v log.Value) any {
-	switch v.Kind() {
-	case log.KindString:
+func ourValue(v attribute.Value) any {
+	switch v.Type() {
+	case attribute.STRING:
 		return v.AsString()
-	case log.KindInt64:
+	case attribute.INT64:
 		return v.AsInt64()
-	case log.KindFloat64:
+	case attribute.FLOAT64:
 		return v.AsFloat64()
-	case log.KindBool:
+	case attribute.BOOL:
 		return v.AsBool()
-	case log.KindMap:
+	case attribute.MAP:
 		m := map[string]any{}
 		for _, kv := range v.AsMap() {
-			m[kv.Key] = ourValue(kv.Value)
+			m[string(kv.Key)] = ourValue(kv.Value)
 		}
 		return m
-	case log.KindSlice:
+	case attribute.SLICE:
 		s := make([]any, 0)
 		for _, e := range v.AsSlice() {
 			s = append(s, ourValue(e))
@@ -326,29 +327,29 @@ func asPdata(t *testing.T, eventName string, rec log.Record) plog.Logs {
 	sl := rl.ScopeLogs().AppendEmpty()
 	out := sl.LogRecords().AppendEmpty()
 	out.SetEventName(eventName)
-	rec.WalkAttributes(func(kv log.KeyValue) bool {
-		putValue(out.Attributes().PutEmpty(kv.Key), kv.Value)
+	rec.WalkAttributes(func(kv attribute.KeyValue) bool {
+		putValue(out.Attributes().PutEmpty(string(kv.Key)), kv.Value)
 		return true
 	})
 	return ld
 }
 
-func putValue(dst pcommon.Value, v log.Value) {
-	switch v.Kind() {
-	case log.KindString:
+func putValue(dst pcommon.Value, v attribute.Value) {
+	switch v.Type() {
+	case attribute.STRING:
 		dst.SetStr(v.AsString())
-	case log.KindInt64:
+	case attribute.INT64:
 		dst.SetInt(v.AsInt64())
-	case log.KindFloat64:
+	case attribute.FLOAT64:
 		dst.SetDouble(v.AsFloat64())
-	case log.KindBool:
+	case attribute.BOOL:
 		dst.SetBool(v.AsBool())
-	case log.KindMap:
+	case attribute.MAP:
 		m := dst.SetEmptyMap()
 		for _, kv := range v.AsMap() {
-			putValue(m.PutEmpty(kv.Key), kv.Value)
+			putValue(m.PutEmpty(string(kv.Key)), kv.Value)
 		}
-	case log.KindSlice:
+	case attribute.SLICE:
 		s := dst.SetEmptySlice()
 		for _, e := range v.AsSlice() {
 			putValue(s.AppendEmpty(), e)
