@@ -164,14 +164,15 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 // CLI doesn't pull in the entire HTTP-server package graph.
 type OTLPInfo struct {
 	Pipeline struct {
-		MetricsPushedTotal  uint64            `json:"metrics_pushed_total"`
-		LogsPushedTotal     uint64            `json:"logs_pushed_total"`
-		SpansRelayedTotal   uint64            `json:"spans_relayed_total"`
-		LogsRelayedTotal    uint64            `json:"logs_relayed_total"`
-		MetricsRelayedTotal uint64            `json:"metrics_relayed_total"`
-		ExportErrorsTotal   uint64            `json:"export_errors_total"`
-		DroppedTotal        uint64            `json:"dropped_total"`
-		DroppedByReason     map[string]uint64 `json:"dropped_by_reason"`
+		MetricsPushedTotal   uint64            `json:"metrics_pushed_total"`
+		LogsPushedTotal      uint64            `json:"logs_pushed_total"`
+		SpansRelayedTotal    uint64            `json:"spans_relayed_total"`
+		LogsRelayedTotal     uint64            `json:"logs_relayed_total"`
+		MetricsRelayedTotal  uint64            `json:"metrics_relayed_total"`
+		ExportErrorsTotal    uint64            `json:"export_errors_total"`
+		ExportErrorsBySignal map[string]uint64 `json:"export_errors_by_signal"`
+		DroppedTotal         uint64            `json:"dropped_total"`
+		DroppedByReason      map[string]uint64 `json:"dropped_by_reason"`
 	} `json:"pipeline"`
 	Store struct {
 		Size               int64   `json:"size"`

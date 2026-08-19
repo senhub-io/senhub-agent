@@ -24,6 +24,7 @@ Response shape (truncated values):
     "metrics_pushed_total": 10815,
     "logs_pushed_total": 2825,
     "export_errors_total": 0,
+    "export_errors_by_signal": {},
     "dropped_total": 464,
     "dropped_by_reason": { "probe_cardinality": 464 }
   },
@@ -61,7 +62,8 @@ Counter maps (`dropped_by_reason`, `checkpoint.errors_by_stage`) are always retu
 | `spans_relayed_total` | uint64 | `senhub.agent.otlp.spans.relayed` | Spans received by the `otlp_receiver` probe and forwarded verbatim by the trace relay, counted after the collector accepted the batch. Pair it with the receiver's `ingested{signal="traces"}`: equal totals mean every ingested span left the agent, and a gap that does not close is the agent's side of the problem. The relay forwards raw proto outside the SDK exporters, so neither `metrics_pushed_total` nor `logs_pushed_total` covers this path. |
 | `logs_relayed_total` | uint64 | `senhub.agent.otlp.logs.relayed` | Log records ingested by the `otlp_receiver` probe and forwarded verbatim, with the emitting application's Resource preserved. Deliberately separate from `logs_pushed_total`, which counts records the agent itself produced: the two paths carry different Resources, so a single figure would hide which identity a record left with. |
 | `metrics_relayed_total` | uint64 | `senhub.agent.otlp.metrics.relayed` | Metric points ingested by the `otlp_receiver` probe and forwarded verbatim, with the emitting application's Resource preserved. Separate from `metrics_pushed_total`, which counts points re-encoded from the agent's own store under the agent's Resource. |
-| `export_errors_total` | uint64 | `senhub.agent.otlp.export.errors` | Number of failed OTLP export calls (after retry exhaustion). Signal independent — metrics, logs and relayed-signal failures all count here. |
+| `export_errors_total` | uint64 | sum of `export_errors_by_signal` | Number of failed OTLP export calls (after retry exhaustion), all signals combined. |
+| `export_errors_by_signal` | map[string]uint64 | `senhub.agent.otlp.export.errors{signal=…}` | Per-signal breakdown (`metrics`, `logs`, `traces`). A total dominated by healthy metric pushes hides a logs pipeline that fails on every batch, which is the failure this breakdown exists to surface; alert per signal, not only on the total. A signal that never failed emits no series. |
 | `dropped_total` | uint64 | sum of `dropped_by_reason` | Aggregate count of OTLP data-points discarded **before** the export call. |
 | `dropped_by_reason` | map[string]uint64 | `senhub.agent.otlp.dropped{reason=…}` | Per-reason breakdown. Reason set is a stable, small enum: |
 
@@ -125,6 +127,7 @@ Reasonable starter alerts (express them in your preferred alerting tool — thes
 | Symptom | Condition | Severity |
 |---|---|---|
 | Sink is down or unreachable | `pipeline.export_errors_total` rate > 0 sustained for 5 min | high |
+| One signal is rejected while the rest flow | `pipeline.export_errors_by_signal.<signal>` rate > 0 sustained for 5 min | high |
 | Cardinality cap is hitting | `pipeline.dropped_by_reason.probe_cardinality` rate > 0 sustained for 10 min | medium |
 | Memory pressure | `pipeline.dropped_by_reason.memory_hard_limit` rate > 0 | high |
 | Export starting to lag | `export_duration.mean_ms` > 60 % of the configured `timeout` | medium |

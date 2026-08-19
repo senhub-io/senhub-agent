@@ -318,7 +318,7 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 	rs = r.enricher.enrichSpans(rs)
 
 	if err := r.forwarder.forward(ctx, rs); err != nil {
-		agentstate.IncrementOTLPExportErrors()
+		agentstate.IncrementOTLPExportErrors("traces")
 		r.logger.Warn().
 			Str("error", redactSensitive(err.Error())).
 			Int("resource_spans", len(rs)).

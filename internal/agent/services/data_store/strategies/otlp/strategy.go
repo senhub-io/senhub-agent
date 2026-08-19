@@ -547,7 +547,7 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		span.RecordError(err)
 		span.SetStatus(codes.Error, redacted)
 		s.logger.Warn().Str("error", redacted).Dur("duration", exportDuration).Msg("OTLP metrics export failed")
-		agentstate.IncrementOTLPExportErrors()
+		agentstate.IncrementOTLPExportErrors("metrics")
 		return
 	}
 	span.SetStatus(codes.Ok, "")

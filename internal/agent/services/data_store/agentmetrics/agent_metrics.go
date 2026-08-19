@@ -205,14 +205,6 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of ingested metric points forwarded verbatim, with the emitting application's Resource preserved. Distinct from metrics.pushed, which counts points re-encoded from the agent's own store.",
 		},
 		otelmapper.OtelRecord{
-			Name:        "senhub.agent.otlp.export.errors",
-			Unit:        "{error}",
-			Type:        "counter",
-			Attributes:  map[string]string{},
-			Value:       float64(agentstate.GetOTLPExportErrorsTotal()),
-			Description: "Cumulative count of OTLP exports that failed after retries were exhausted.",
-		},
-		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.dropped_log_records",
 			Unit:        "{record}",
 			Type:        "counter",
@@ -261,6 +253,23 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "All-time mean of successful OTLP metrics export durations.",
 		},
 	)
+
+	// Export-error counters — one OTel metric with a `signal` attribute
+	// (metrics / logs / traces). The total is the sum over signals; the
+	// breakdown exists because a failing logs pipeline was invisible in
+	// a total dominated by healthy metric pushes (#821). Until a signal
+	// has failed at least once it emits no series (standard counter
+	// semantics: absence = zero).
+	for signal, n := range agentstate.GetOTLPExportErrorsBySignal() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.export.errors",
+			Unit:        "{error}",
+			Type:        "counter",
+			Attributes:  map[string]string{"signal": signal},
+			Value:       float64(n),
+			Description: "Cumulative count of OTLP exports that failed after retries were exhausted, by signal.",
+		})
+	}
 
 	// Per-reason drop counters — emitted as a single OTel metric with
 	// `reason` attribute. Operators alert on this rising. Today the only
