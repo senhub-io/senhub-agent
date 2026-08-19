@@ -363,3 +363,69 @@ func TestUnescapeSystemdPath(t *testing.T) {
 		t.Errorf("unescapeSystemdPath = %q", got)
 	}
 }
+
+// TestRefreshedUnit_PreservesOperatorDirectives pins #826: a directive an
+// operator added inline to the installed unit must survive the refresh.
+// One production host carried EnvironmentFile= inline instead of in a
+// drop-in; the refresh dropped it, the credential went missing, and the
+// agent came back with its OTLP output rejected while everything else
+// kept working.
+func TestRefreshedUnit_PreservesOperatorDirectives(t *testing.T) {
+	installed := `[Unit]
+Description=SenHub Agent
+
+[Service]
+Type=simple
+User=senhub
+Group=senhub
+ExecStart=` + systemBinaryUnitPath() + `
+EnvironmentFile=/etc/senhub-agent/bearer.env
+Environment=HTTP_PROXY=http://proxy.internal:3128
+
+[Install]
+WantedBy=multi-user.target
+`
+	got := refreshedUnit(installed, func(string) bool { return true })
+
+	if !strings.Contains(got, "EnvironmentFile=/etc/senhub-agent/bearer.env") {
+		t.Error("EnvironmentFile= was dropped by the refresh — the credential outage of #826")
+	}
+	if !strings.Contains(got, "Environment=HTTP_PROXY=http://proxy.internal:3128") {
+		t.Error("Environment= was dropped by the refresh")
+	}
+	// Preserved lines belong to [Service], not to [Install].
+	serviceIdx := strings.Index(got, "[Service]")
+	installIdx := strings.Index(got, "[Install]")
+	envIdx := strings.Index(got, "EnvironmentFile=")
+	if serviceIdx < 0 || installIdx < 0 || envIdx < serviceIdx || envIdx > installIdx {
+		t.Errorf("preserved directive landed outside [Service]:\n%s", got)
+	}
+}
+
+// TestRefreshedUnit_ManagedDirectivesAreNotDuplicated makes sure the
+// preservation never fights the refresh: a hardening directive the
+// template owns is refreshed, not carried over from the stale unit.
+func TestRefreshedUnit_ManagedDirectivesAreNotDuplicated(t *testing.T) {
+	installed := `[Unit]
+Description=SenHub Agent
+
+[Service]
+Type=simple
+User=senhub
+Group=senhub
+ExecStart=` + systemBinaryUnitPath() + `
+ProtectSystem=off
+
+[Install]
+WantedBy=multi-user.target
+`
+	got := refreshedUnit(installed, func(string) bool { return true })
+
+	if strings.Count(got, "ProtectSystem=") != 1 {
+		t.Errorf("ProtectSystem= appears %d times; the template must win exactly once:\n%s",
+			strings.Count(got, "ProtectSystem="), got)
+	}
+	if strings.Contains(got, "ProtectSystem=off") {
+		t.Error("the stale ProtectSystem=off survived; refresh-unit must reassert the hardening")
+	}
+}
