@@ -202,3 +202,21 @@ func TestStrategy_ShutdownWithoutStart(t *testing.T) {
 		t.Errorf("Shutdown without Start: %v", err)
 	}
 }
+
+func TestAgentSelfIdentity_IgnoresResourceServiceNameOverride(t *testing.T) {
+	// The self-entity always names the service. An operator setting
+	// resource.service.name (a telemetry-grouping knob, one value per
+	// agent in fleet setups) must not rename the agent's own entity,
+	// otherwise a fleet inventory filtered on service.name has holes (#825).
+	cfg := defaultConfig()
+	cfg.Resource.ServiceName = "vpn-sensorfactory"
+	cfg.Resource.ServiceInstance = "agent-key-1"
+
+	id := agentSelfIdentity(cfg)
+	if id.ServiceName != DefaultServiceName {
+		t.Errorf("ServiceName=%q, want %q", id.ServiceName, DefaultServiceName)
+	}
+	if id.InstanceID != "agent-key-1" {
+		t.Errorf("InstanceID=%q, want %q", id.InstanceID, "agent-key-1")
+	}
+}
