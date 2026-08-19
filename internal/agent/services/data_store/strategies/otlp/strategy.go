@@ -613,6 +613,20 @@ func dataPointTag(dp datapoint.DataPoint, key string) string {
 	return ""
 }
 
+// agentSelfIdentity builds the identity of the agent's own service.instance
+// entity. service.name always names the SERVICE: the operator's
+// resource.service.name override stays a telemetry-grouping knob, and letting
+// it leak here made every host publish a different service.name for the same
+// agent software, breaking any fleet inventory filtered on it (#825). The
+// host is already carried by the runs_on edge and service.instance.id.
+func agentSelfIdentity(cfg Config) entity.AgentIdentity {
+	return entity.AgentIdentity{
+		InstanceID:     cfg.Resource.ServiceInstance,
+		ServiceName:    DefaultServiceName,
+		ServiceVersion: cliArgs.Version,
+	}
+}
+
 // startEntityEmission wires the entity pump (consumer of the neutral
 // entity-event channel) and the Detector (producer of the Lot 1 foundation
 // events: host + service.instance + runs_on). Called from Start only when
@@ -624,10 +638,6 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.cfg.Entities.RedactAttributes, s.logger)
 	s.entityPump.start()
 
-	serviceName := s.cfg.Resource.ServiceName
-	if serviceName == "" {
-		serviceName = "senhub-agent"
-	}
 	hostFn := func() (entity.HostIdentity, error) {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
@@ -666,11 +676,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {
-		return entity.AgentIdentity{
-			InstanceID:     s.cfg.Resource.ServiceInstance,
-			ServiceName:    serviceName,
-			ServiceVersion: cliArgs.Version,
-		}
+		return agentSelfIdentity(s.cfg)
 	}
 	// Expose the agent's own service.instance.id to probe entity sources so
 	// they can stamp the From endpoint of their `monitors` edge to this same
