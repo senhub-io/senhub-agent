@@ -279,7 +279,10 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	for name, f := range agentstate.GetStrategyFailures() {
 		records = append(records, otelmapper.OtelRecord{
 			Name: "senhub.agent.strategy.failed",
-			Unit: "1",
+			// No unit: the Prometheus serializer reserves the "_ratio"
+			// suffix for the OTel unit "1", and a boolean state named
+			// strategy_failed_ratio reads as a proportion of something.
+			Unit: "",
 			Type: "gauge",
 			Attributes: map[string]string{
 				"strategy": name,
