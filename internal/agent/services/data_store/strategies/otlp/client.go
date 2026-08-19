@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
@@ -124,6 +126,23 @@ func resolveTransport(cfg Config, sig SignalTransport) resolvedTransport {
 	}
 }
 
+// newHTTPClient builds the http.Client the OTLP/HTTP exporters use when
+// an idle-connection timeout is configured.
+//
+// It clones http.DefaultTransport rather than building a Transport from
+// scratch, so proxy support (ProxyFromEnvironment), dial and TLS
+// handshake timeouts, connection pool sizing and HTTP/2 negotiation keep
+// the standard-library defaults. Only the two fields we mean to change
+// are overridden. This matters because WithHTTPClient takes precedence
+// over WithTLSClientConfig, WithTimeout and WithProxy: whatever this
+// function forgets, the exporter silently loses.
+func newHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConf
+	transport.IdleConnTimeout = idleConnTimeout
+	return &http.Client{Transport: transport, Timeout: timeout}
+}
+
 // ── Metrics ──────────────────────────────────────────────────────────
 
 func buildMetricExporter(ctx context.Context, cfg Config) (sdkmetric.Exporter, error) {
@@ -181,6 +200,9 @@ func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporte
 		opts = append(opts, otlpmetrichttp.WithInsecure())
 	} else {
 		opts = append(opts, otlpmetrichttp.WithTLSClientConfig(tlsConf))
+	}
+	if cfg.IdleConnTimeout > 0 {
+		opts = append(opts, otlpmetrichttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlpmetrichttp.WithHeaders(rt.headers))
@@ -259,6 +281,9 @@ func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, err
 	} else {
 		opts = append(opts, otlploghttp.WithTLSClientConfig(tlsConf))
 	}
+	if cfg.IdleConnTimeout > 0 {
+		opts = append(opts, otlploghttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
+	}
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlploghttp.WithHeaders(rt.headers))
 	}
@@ -335,6 +360,9 @@ func buildTraceExporterHTTP(ctx context.Context, cfg Config) (*otlptrace.Exporte
 		opts = append(opts, otlptracehttp.WithInsecure())
 	} else {
 		opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConf))
+	}
+	if cfg.IdleConnTimeout > 0 {
+		opts = append(opts, otlptracehttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlptracehttp.WithHeaders(rt.headers))
