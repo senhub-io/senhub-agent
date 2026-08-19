@@ -333,7 +333,15 @@ type persistentLogExporter struct {
 
 	healthy     atomic.Bool
 	onRecovered atomic.Pointer[func()]
+
+	// lastFailWarnNs throttles the export-failure warning. Log batches
+	// can flush every few seconds; one warning per interval is enough to
+	// surface a dying pipeline without flooding the journal (#821).
+	lastFailWarnNs atomic.Int64
 }
+
+// logExportWarnInterval spaces the "OTLP logs export failed" warnings.
+const logExportWarnInterval = 30 * time.Second
 
 func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *logger.ModuleLogger) *persistentLogExporter {
 	e := &persistentLogExporter{wrapped: wrapped, queue: queue, logger: log}
@@ -348,8 +356,22 @@ func (e *persistentLogExporter) setOnRecovered(fn func()) {
 func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
 	err := e.wrapped.Export(ctx, records)
 	if err != nil {
+		// Count BEFORE persisting: a rejected batch that lands in the
+		// dead-letter queue is still a failed export. In production a
+		// receiver rejecting every logs batch with 400 never moved any
+		// counter — the pipeline died silently behind queue/replay churn
+		// (#820, tracked as #821).
+		agentstate.IncrementOTLPExportErrors("logs")
 		e.persist(records)
 		e.healthy.Store(false)
+		now := time.Now().UnixNano()
+		if last := e.lastFailWarnNs.Load(); now-last >= int64(logExportWarnInterval) &&
+			e.lastFailWarnNs.CompareAndSwap(last, now) && e.logger != nil {
+			e.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("records", len(records)).
+				Msg("OTLP logs export failed; batch persisted to dead-letter queue")
+		}
 		return err
 	}
 	// Export succeeded: if we were unhealthy, the backend just recovered.

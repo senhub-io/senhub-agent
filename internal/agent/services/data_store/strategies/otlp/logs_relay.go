@@ -304,7 +304,7 @@ func (r *logsRelay) export(rl []*logspb.ResourceLogs, records int) {
 	rl = r.enricher.enrichLogs(rl)
 
 	if err := r.forwarder.forward(ctx, rl); err != nil {
-		agentstate.IncrementOTLPExportErrors()
+		agentstate.IncrementOTLPExportErrors("logs")
 		r.logger.Warn().
 			Str("error", redactSensitive(err.Error())).
 			Int("resource_logs", len(rl)).
