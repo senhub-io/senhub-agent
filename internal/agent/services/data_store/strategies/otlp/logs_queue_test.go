@@ -187,3 +187,32 @@ func TestPersistentLogExporter_PersistThenReplay(t *testing.T) {
 		t.Errorf("queue not drained after replay: %d files", files)
 	}
 }
+
+// TestPersistentLogExporter_FailureCountsBySignal locks the #821 fix: a
+// failed logs export must move the per-signal error counter, not only
+// land in the dead-letter queue. In production a receiver rejecting
+// every logs batch with 400 left export_errors_total flat.
+func TestPersistentLogExporter_FailureCountsBySignal(t *testing.T) {
+	dir := t.TempDir()
+	exp := &controllableExporter{failUntil: 1}
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	ple := newPersistentLogExporter(exp, q, testModuleLogger(t))
+
+	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
+	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
+
+	before := agentstate.GetOTLPExportErrorsBySignal()["logs"]
+	ctx := context.Background()
+	pipe.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1700000000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "count-me",
+		ProducerProbeName: "syslog",
+	})
+	_ = pipe.provider.ForceFlush(ctx)
+
+	if got := agentstate.GetOTLPExportErrorsBySignal()["logs"] - before; got != 1 {
+		t.Errorf("logs export-error delta=%d, want 1", got)
+	}
+}
