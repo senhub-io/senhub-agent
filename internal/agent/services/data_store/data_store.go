@@ -348,7 +348,16 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 	previous := d.activeStrategies()
 	newStrategies := make(map[string]SyncStrategy)
 
-	for _, storageConfig := range d.configProvider.GetConfiguration().StorageConfig {
+	storageConfigs := d.configProvider.GetConfiguration().StorageConfig
+	configuredNames := make([]string, 0, len(storageConfigs))
+	for _, sc := range storageConfigs {
+		configuredNames = append(configuredNames, sc.Name)
+	}
+	// A strategy the operator deleted outright must stop being reported
+	// as failing; only the ones still in the configuration can fail.
+	agentstate.PruneStrategyFailures(configuredNames)
+
+	for _, storageConfig := range storageConfigs {
 		strategy := d.retrieveOrCreate(storageConfig)
 		if strategy == nil {
 			continue
@@ -555,6 +564,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		d.logger.Error().
 			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Unknown strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureUnknownType, "no strategy of this type is compiled into this build")
 		return nil
 	}
 
@@ -562,6 +572,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		d.logger.Error().
 			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Failed to create strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureCreate, "strategy constructor returned nothing")
 		return nil
 	}
 
@@ -570,6 +581,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Err(err).
 			Msg("Invalid strategy configuration")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
 		return nil
 	}
 
@@ -577,9 +589,14 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		d.logger.Error().
 			Err(err).
 			Msg("Failed to start strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureStart, err.Error())
 		return nil
 	}
 
+	// Running: drop any failure recorded by an earlier attempt, so a
+	// fixed configuration stops alerting on the next refresh without an
+	// agent restart.
+	agentstate.ClearStrategyFailure(strategyConfig.Name)
 	d.logger.Debug().Msg("Strategy created successfully")
 	return strategy
 }
