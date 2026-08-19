@@ -164,17 +164,17 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 	if rec.SeverityText != "" {
 		apiRec.SetSeverityText(rec.SeverityText)
 	}
-	apiRec.SetBody(log.StringValue(rec.Body))
+	apiRec.SetBody(attribute.StringValue(rec.Body))
 
-	attrs := make([]log.KeyValue, 0, len(rec.Attributes)+2)
+	attrs := make([]attribute.KeyValue, 0, len(rec.Attributes)+2)
 	if rec.ProducerProbeName != "" {
-		attrs = append(attrs, log.String("senhub.probe.name", rec.ProducerProbeName))
+		attrs = append(attrs, attribute.String("senhub.probe.name", rec.ProducerProbeName))
 	}
 	if rec.ProducerProbeType != "" {
-		attrs = append(attrs, log.String("senhub.probe.type", rec.ProducerProbeType))
+		attrs = append(attrs, attribute.String("senhub.probe.type", rec.ProducerProbeType))
 	}
 	for k, v := range rec.Attributes {
-		attrs = append(attrs, log.String(k, v))
+		attrs = append(attrs, attribute.String(k, v))
 	}
 	if len(attrs) > 0 {
 		apiRec.AddAttributes(attrs...)
@@ -203,11 +203,11 @@ func (p *logsPipeline) replayEventLog(ctx context.Context, pr persistedLogRecord
 	if pr.SeverityText != "" {
 		apiRec.SetSeverityText(pr.SeverityText)
 	}
-	apiRec.SetBody(log.StringValue(pr.Body))
+	apiRec.SetBody(attribute.StringValue(pr.Body))
 	if len(pr.Attributes) > 0 {
-		attrs := make([]log.KeyValue, 0, len(pr.Attributes))
+		attrs := make([]attribute.KeyValue, 0, len(pr.Attributes))
 		for k, v := range pr.Attributes {
-			attrs = append(attrs, log.String(k, v))
+			attrs = append(attrs, attribute.String(k, v))
 		}
 		apiRec.AddAttributes(attrs...)
 	}
