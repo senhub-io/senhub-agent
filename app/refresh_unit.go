@@ -78,7 +78,102 @@ func refreshedUnit(installed string, binaryExists func(string) bool) string {
 		}
 		out = append(out, line)
 	}
+	return withPreservedDirectives(strings.Join(out, "\n"), installed)
+}
+
+// withPreservedDirectives carries operator-added [Service] directives from
+// the installed unit over to the refreshed one.
+//
+// The refreshed unit is rendered from the packaged template, so anything an
+// operator had added inline was silently dropped: a host carrying
+// EnvironmentFile= inline (rather than in a drop-in) lost its credentials on
+// refresh, and the agent then came back up with its OTLP output rejected at
+// config validation while the rest kept working — a quiet outage nobody saw
+// for 24 minutes (#826).
+//
+// Only keys the template does NOT define are carried over: directives we
+// manage (hardening, ExecStart, User=) are the point of the refresh and must
+// win. Drop-ins are unaffected, they were never part of this file.
+func withPreservedDirectives(refreshed, installed string) string {
+	managed := serviceDirectiveKeys(refreshed)
+	// Keys the refresh decides on its own, including by deliberately
+	// omitting them: a root unit carries no User=, and an ExecStart with
+	// no WorkingDirectory means the refresh dropped it on purpose.
+	// Preserving those would undo the rules above.
+	for _, decided := range []string{"ExecStart", "WorkingDirectory", "User", "Group"} {
+		managed[decided] = true
+	}
+	var extra []string
+	for _, line := range serviceSectionLines(installed) {
+		key, ok := directiveKey(line)
+		if !ok || managed[key] {
+			continue
+		}
+		extra = append(extra, line)
+	}
+	if len(extra) == 0 {
+		return refreshed
+	}
+
+	lines := strings.Split(refreshed, "\n")
+	out := make([]string, 0, len(lines)+len(extra)+2)
+	inserted := false
+	for _, line := range lines {
+		// Close the [Service] section with the preserved lines, before the
+		// next section header (typically [Install]).
+		if !inserted && strings.HasPrefix(strings.TrimSpace(line), "[") &&
+			strings.TrimSpace(line) != "[Service]" && len(out) > 0 {
+			out = append(out, "# Preserved from the previously installed unit:")
+			out = append(out, extra...)
+			out = append(out, "")
+			inserted = true
+		}
+		out = append(out, line)
+	}
+	if !inserted {
+		out = append(out, "# Preserved from the previously installed unit:")
+		out = append(out, extra...)
+	}
 	return strings.Join(out, "\n")
+}
+
+// serviceSectionLines returns the directive lines of the [Service] section.
+func serviceSectionLines(unit string) []string {
+	var lines []string
+	inService := false
+	for _, line := range strings.Split(unit, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			inService = trimmed == "[Service]"
+			continue
+		}
+		if inService && trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// serviceDirectiveKeys is the set of directive keys the [Service] section
+// of a unit defines.
+func serviceDirectiveKeys(unit string) map[string]bool {
+	keys := map[string]bool{}
+	for _, line := range serviceSectionLines(unit) {
+		if key, ok := directiveKey(line); ok {
+			keys[key] = true
+		}
+	}
+	return keys
+}
+
+// directiveKey splits "Key=value" into its key. Reports false for a line
+// that is not a directive.
+func directiveKey(line string) (string, bool) {
+	idx := strings.Index(line, "=")
+	if idx <= 0 {
+		return "", false
+	}
+	return strings.TrimSpace(line[:idx]), true
 }
 
 // installedServiceUser reads the User= directive from the installed unit

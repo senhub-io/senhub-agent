@@ -271,6 +271,25 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Configured-but-not-running strategies. A gauge at 1 while the
+	// strategy fails to start, gone once it runs: the agent stays up and
+	// its other outputs keep working, so without this the only trace of
+	// a dead output is one ERR line at boot (#826). Both labels are
+	// bounded (strategy names and a fixed reason enum).
+	for name, f := range agentstate.GetStrategyFailures() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.strategy.failed",
+			Unit: "1",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"strategy": name,
+				"reason":   f.Reason,
+			},
+			Value:       1,
+			Description: "Set to 1 while a configured strategy is not running, by strategy and reason (unknown_type, create, invalid_config, start). No series means every configured strategy started.",
+		})
+	}
+
 	// Per-reason drop counters — emitted as a single OTel metric with
 	// `reason` attribute. Operators alert on this rising. Today the only
 	// reason emitted is `store_cap` (cardinality cap on the metric store);
