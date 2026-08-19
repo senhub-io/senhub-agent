@@ -325,7 +325,17 @@ type Config struct {
 	// Meaningless over gRPC, where the "path" is the service method, so
 	// it is rejected at parse time rather than silently ignored.
 	URLPathPrefix string
-	Headers       map[string]string
+	// IdleConnTimeout closes an idle HTTP connection after this long,
+	// before an ingress load balancer resets it under us.
+	//
+	// The logs pipeline is sparse enough for its connection to sit idle
+	// across a typical LB idle timeout, while the metrics pipeline pushes
+	// every 30s and never idles — which is why rejected batches only ever
+	// appeared on /v1/logs. Closing first turns a reset discovered
+	// mid-request into a clean reconnect. 0 keeps the Go default (90s).
+	// OTLP/HTTP only: gRPC keepalive is a different mechanism.
+	IdleConnTimeout time.Duration
+	Headers         map[string]string
 	// Tenant is an ergonomic shortcut for the X-Scope-OrgID request header —
 	// the de-facto multi-tenant routing key across Mimir/Loki/Tempo and
 	// VictoriaMetrics (#240). It is applied to every signal. An explicit
@@ -593,6 +603,24 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("url_path_prefix requires protocol 'http' (the gRPC transport addresses services, not URL paths), got protocol %q", cfg.Protocol)
 		}
 		cfg.URLPathPrefix = prefix
+	}
+
+	if v, ok := params["idle_conn_timeout"]; ok {
+		str, isStr := v.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("idle_conn_timeout must be a duration string (e.g. \"45s\"), got %T", v)
+		}
+		d, err := time.ParseDuration(str)
+		if err != nil {
+			return cfg, fmt.Errorf("idle_conn_timeout: %w", err)
+		}
+		if d < 0 {
+			return cfg, fmt.Errorf("idle_conn_timeout must be >= 0 (0 = Go default), got %s", d)
+		}
+		if d > 0 && cfg.Protocol != "http" {
+			return cfg, fmt.Errorf("idle_conn_timeout requires protocol 'http' (gRPC connection keepalive is a separate mechanism), got protocol %q", cfg.Protocol)
+		}
+		cfg.IdleConnTimeout = d
 	}
 
 	if v, ok := params["compression"].(string); ok && v != "" {
