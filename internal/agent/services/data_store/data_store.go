@@ -72,7 +72,15 @@ type dataStore struct {
 	// never observe a partially rebuilt list (#260).
 	strategies atomic.Pointer[[]SyncStrategy]
 	// refreshMu serializes configuration refreshes (single writer).
-	refreshMu           sync.Mutex
+	refreshMu sync.Mutex
+	// replacedThisRefresh collects the instances retrieveOrCreate already
+	// shut down as replaced during the current refresh. The cleanup loop
+	// re-Shutdowns them (idempotent) but must not log them as if a live
+	// strategy were being removed: both lines carry the same strategy
+	// NAME, so an operator reading the journal saw the replacement start
+	// and be "removed" in the same millisecond (#827). Guarded by
+	// refreshMu, like every field it touches.
+	replacedThisRefresh map[SyncStrategy]bool
 	logger              *logger.ModuleLogger
 	configProvider      configuration.ConfigurationProvider
 	agentConfig         configuration.AgentConfiguration
@@ -347,6 +355,7 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 
 	previous := d.activeStrategies()
 	newStrategies := make(map[string]SyncStrategy)
+	d.replacedThisRefresh = make(map[SyncStrategy]bool)
 
 	for _, storageConfig := range d.configProvider.GetConfiguration().StorageConfig {
 		strategy := d.retrieveOrCreate(storageConfig)
@@ -393,9 +402,19 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 		if kept[old] {
 			continue
 		}
-		d.logger.Info().
-			Str("strategy", old.GetStrategyName()).
-			Msg("Shutting down strategy removed by config refresh")
+		if d.replacedThisRefresh[old] {
+			// Already stopped above, when its replacement was created.
+			// Shutdown is idempotent, so this second call is a no-op; log
+			// it at debug so the journal does not read as "the strategy
+			// that just started was removed" (#827).
+			d.logger.Debug().
+				Str("strategy", old.GetStrategyName()).
+				Msg("Replaced strategy instance already shut down; cleanup pass is a no-op")
+		} else {
+			d.logger.Info().
+				Str("strategy", old.GetStrategyName()).
+				Msg("Shutting down strategy removed by config refresh")
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		if err := old.Shutdown(ctx); err != nil {
 			d.logger.Error().
@@ -508,6 +527,9 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	// (#495). Shutdown is idempotent, so the post-refresh cleanup in
 	// OnConfigRefreshed re-calling it is a no-op.
 	if replaced != nil {
+		if d.replacedThisRefresh != nil {
+			d.replacedThisRefresh[replaced] = true
+		}
 		d.logger.Info().
 			Str("strategy", replaced.GetStrategyName()).
 			Msg("Shutting down replaced strategy before starting its replacement")
