@@ -85,3 +85,25 @@ Full reference: `docs/LICENSE-SYSTEM.md`.
 | Editing documentation | `.claude/rules/docs.md` |
 
 Rules under `.claude/rules/` auto-load when their `paths:` glob matches the files you're touching.
+
+
+## Producing branded documents (PDF, decks, client-facing docs)
+
+Message from the ADV session (2026-08-19), on Matthieu's request. If you are
+asked to produce **any client-facing or branded document** (documentation
+handout, proposal, one-pager, A4 PDF, presentation export), do NOT improvise a
+design. The complete Sensor Factory document identity lives in:
+
+- **`~/Documents/GitHub/adv-commerce/design/CHARTE-DOCUMENTS.md`** — read it
+  FIRST; every rule in it was paid for by a correction from Matthieu (no
+  dashes, registre soutenu, funnel structure, minimum font sizes, schema
+  conventions, page variety, no invented references).
+- `~/Documents/GitHub/adv-commerce/design/assets/` — executable templates:
+  `gabarit-css.html` (full CSS, colors #00102e/#fcbe36/#a9781a, embedded
+  Roboto + Roboto Slab), `logo.svg`, `build.py` (assembles + enforces the
+  writing rules), `verifier.sh` (page-height measurement, headless-Chrome PDF,
+  PNG renders to REVIEW visually), and three example SVG schemas.
+
+Reference renders: the ATMB proposal and the Interparking RFI response
+(`Sensor Factory - Reponse RFI-DSI-2025-001 - Interparking France.pdf` on the
+Desktop, artifact https://claude.ai/code/artifact/94924710-4ced-4c71-93b6-5837d135ade6).

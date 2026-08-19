@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -100,6 +101,53 @@ func newTestDataStoreWithEmptyConfig(t *testing.T) *dataStore {
 		t.Fatal("NewDataStore did not return *dataStore")
 	}
 	return ds
+}
+
+// TestOnConfigRefreshed_RecordsStrategyStartFailure pins #826: a
+// configured strategy that refuses to start must become observable
+// state, not just one ERR line at boot. The agent keeps running with
+// its other outputs, which is exactly why the failure goes unnoticed.
+func TestOnConfigRefreshed_RecordsStrategyStartFailure(t *testing.T) {
+	agentstate.ResetStrategyFailuresForTest()
+	t.Cleanup(agentstate.ResetStrategyFailuresForTest)
+
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	mockConfig := &MockAgentConfig{authKey: "k", serverURL: "https://example.com"}
+	provider := &MockConfigProvider{
+		config: configuration.ConfigurationData{
+			StorageConfig: []configuration.StorageConfig{
+				// No endpoint: the OTLP strategy refuses this configuration.
+				{Name: "otlp", Params: configuration.StorageConfigParams{"compression": "gzip"}},
+			},
+		},
+	}
+	ds, _ := NewDataStore(mockConfig, provider, baseLogger).(*dataStore)
+
+	ds.OnConfigRefreshed("broken-config")
+
+	if got := len(ds.activeStrategies()); got != 0 {
+		t.Fatalf("a strategy that refused its config is running: %d", got)
+	}
+	f, ok := agentstate.GetStrategyFailures()["otlp"]
+	if !ok {
+		t.Fatal("the rejected strategy left no failure state — invisible outage (#826)")
+	}
+	if f.Reason != agentstate.StrategyFailureInvalidConfig {
+		t.Errorf("reason=%q, want %q", f.Reason, agentstate.StrategyFailureInvalidConfig)
+	}
+	if f.Detail == "" {
+		t.Error("failure carries no detail; the operator cannot tell what to fix")
+	}
+
+	// Fixing the configuration clears the state without a restart.
+	provider.config.StorageConfig = []configuration.StorageConfig{
+		{Name: "otlp", Params: configuration.StorageConfigParams{"endpoint": "127.0.0.1:14998", "tls": map[string]interface{}{"enabled": false}}},
+	}
+	ds.OnConfigRefreshed("fixed-config")
+	if _, still := agentstate.GetStrategyFailures()["otlp"]; still {
+		t.Error("failure state survived a successful start")
+	}
+	_ = ds.Shutdown(context.Background())
 }
 
 // TestOnConfigRefreshed_InPlaceEditKeepsReplacementAlive pins the reload
