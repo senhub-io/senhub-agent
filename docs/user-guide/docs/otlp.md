@@ -83,6 +83,10 @@ storage:
         cert_file: /etc/ssl/private/agent.pem    # mTLS, optional
         key_file:  /etc/ssl/private/agent.key    # required if cert_file set
 
+      # Base path for backends that serve OTLP under a prefix rather than
+      # at the root (see below). OTLP/HTTP only.
+      url_path_prefix: "/api/v2/otlp"
+
       compression: gzip               # gzip | none — default gzip
       timeout: 10s                    # per-export deadline
 
@@ -149,6 +153,36 @@ the primary, switches on a failed export and returns on its own once the
 primary recovers. See
 [the backpressure guide](https://github.com/senhub-io/senhub-agent/blob/master/docs/admin-guide/BACKPRESSURE.md)
 for the shape and the trade-offs.
+
+### `url_path_prefix` (OTLP/HTTP only)
+
+`endpoint` is a `host:port` pair, so it cannot carry a path. Backends that
+serve OTLP under a base path instead of at the root need this prefix, which
+the agent prepends to the standard signal paths: `/api/v2/otlp` yields
+`/api/v2/otlp/v1/metrics`, `/api/v2/otlp/v1/logs` and `/api/v2/otlp/v1/traces`.
+
+Setting it with `protocol: grpc` is refused at config load rather than
+silently ignored: the gRPC transport addresses services, not URL paths.
+
+Pushing straight to Dynatrace, which serves OTLP at `/api/v2/otlp`, expects
+delta temporality and authenticates with an API token:
+
+```yaml
+otlp:
+  protocol: http
+  endpoint: "abc12345.live.dynatrace.com:443"
+  url_path_prefix: "/api/v2/otlp"
+  tls:
+    enabled: true
+  headers:
+    Authorization: "Api-Token ${env:DT_API_TOKEN}"
+  signals:
+    metrics:
+      enabled: true
+      temporality: delta
+    logs:
+      enabled: true
+```
 
 ### `tls`
 

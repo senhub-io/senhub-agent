@@ -315,7 +315,17 @@ type Config struct {
 	// because mixing transports against one endpoint is a
 	// configuration mistake far more often than an intent.
 	Protocol string
-	Headers  map[string]string
+	// URLPathPrefix is prepended to the standard OTLP/HTTP signal paths
+	// (/v1/metrics, /v1/logs, /v1/traces) when Protocol is "http". Empty
+	// means the standard paths, which is what a collector serves.
+	//
+	// It exists for backends that expose OTLP under a base path rather
+	// than at the root — Dynatrace serves it at /api/v2/otlp — because
+	// the endpoint field is a host:port and cannot carry a path (#823).
+	// Meaningless over gRPC, where the "path" is the service method, so
+	// it is rejected at parse time rather than silently ignored.
+	URLPathPrefix string
+	Headers       map[string]string
 	// Tenant is an ergonomic shortcut for the X-Scope-OrgID request header —
 	// the de-facto multi-tenant routing key across Mimir/Loki/Tempo and
 	// VictoriaMetrics (#240). It is applied to every signal. An explicit
@@ -572,6 +582,17 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	case "grpc", "http":
 	default:
 		return cfg, fmt.Errorf("protocol must be 'grpc' or 'http' (alias 'http/protobuf'), got %q", cfg.Protocol)
+	}
+
+	if v, ok := params["url_path_prefix"].(string); ok && v != "" {
+		prefix := strings.TrimRight(v, "/")
+		if !strings.HasPrefix(prefix, "/") {
+			return cfg, fmt.Errorf("url_path_prefix must start with '/', got %q", v)
+		}
+		if cfg.Protocol != "http" {
+			return cfg, fmt.Errorf("url_path_prefix requires protocol 'http' (the gRPC transport addresses services, not URL paths), got protocol %q", cfg.Protocol)
+		}
+		cfg.URLPathPrefix = prefix
 	}
 
 	if v, ok := params["compression"].(string); ok && v != "" {
