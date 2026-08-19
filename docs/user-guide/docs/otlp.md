@@ -495,6 +495,11 @@ Notes:
   file (`${file:/etc/senhub-agent/bearer.token}`); never inline it.
 - `host.id`, `host.name` and `os.*` resource attributes are auto-detected
   and attached to every signal — don't set them manually.
+- The `resource: service.name` override groups **telemetry** only. The
+  agent's own `service.instance` entity always carries
+  `service.name: senhub-agent`, whatever the override says, so a fleet
+  inventory filtered on that name sees every agent. The per-host label
+  stays available on the telemetry resource and on the host entity.
 - gRPC works through standard reverse proxies. nginx needs one location for
   OTLP/gRPC and one for OTLP/HTTP (the agent uses the standard `/v1/*`
   paths):
