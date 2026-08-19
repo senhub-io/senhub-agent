@@ -124,6 +124,16 @@ func resolveTransport(cfg Config, sig SignalTransport) resolvedTransport {
 	}
 }
 
+// Standard OTLP/HTTP signal paths. The exporters append these to the
+// endpoint on their own; they are spelled out here only to build the
+// prefixed variants for a backend that serves OTLP under a base path
+// (see Config.URLPathPrefix).
+const (
+	signalPathMetrics = "/v1/metrics"
+	signalPathLogs    = "/v1/logs"
+	signalPathTraces  = "/v1/traces"
+)
+
 // ── Metrics ──────────────────────────────────────────────────────────
 
 func buildMetricExporter(ctx context.Context, cfg Config) (sdkmetric.Exporter, error) {
@@ -172,6 +182,9 @@ func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporte
 	opts := []otlpmetrichttp.Option{
 		otlpmetrichttp.WithEndpoint(rt.endpoint),
 		otlpmetrichttp.WithTimeout(cfg.Timeout),
+	}
+	if cfg.URLPathPrefix != "" {
+		opts = append(opts, otlpmetrichttp.WithURLPath(cfg.URLPathPrefix+signalPathMetrics))
 	}
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
@@ -250,6 +263,9 @@ func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, err
 		otlploghttp.WithEndpoint(rt.endpoint),
 		otlploghttp.WithTimeout(cfg.Timeout),
 	}
+	if cfg.URLPathPrefix != "" {
+		opts = append(opts, otlploghttp.WithURLPath(cfg.URLPathPrefix+signalPathLogs))
+	}
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
 		return nil, err
@@ -326,6 +342,9 @@ func buildTraceExporterHTTP(ctx context.Context, cfg Config) (*otlptrace.Exporte
 	opts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(rt.endpoint),
 		otlptracehttp.WithTimeout(cfg.Timeout),
+	}
+	if cfg.URLPathPrefix != "" {
+		opts = append(opts, otlptracehttp.WithURLPath(cfg.URLPathPrefix+signalPathTraces))
 	}
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
