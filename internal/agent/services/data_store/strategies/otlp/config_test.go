@@ -719,3 +719,51 @@ func TestParseConfig_RejectsUnresolvedFileSecretRef(t *testing.T) {
 		t.Errorf("error should mention the unresolved reference: %v", err)
 	}
 }
+
+func TestParseConfig_URLPathPrefix(t *testing.T) {
+	// A backend serving OTLP under a base path (Dynatrace: /api/v2/otlp)
+	// cannot be reached through `endpoint`, which is a host:port (#823).
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint":        "abc12345.live.dynatrace.com:443",
+		"protocol":        "http",
+		"url_path_prefix": "/api/v2/otlp",
+	})
+	if err != nil {
+		t.Fatalf("valid prefix rejected: %v", err)
+	}
+	if cfg.URLPathPrefix != "/api/v2/otlp" {
+		t.Errorf("URLPathPrefix=%q", cfg.URLPathPrefix)
+	}
+
+	// A trailing slash would produce //v1/metrics.
+	cfg, err = ParseConfig(map[string]interface{}{
+		"endpoint":        "host:443",
+		"protocol":        "http",
+		"url_path_prefix": "/api/v2/otlp/",
+	})
+	if err != nil {
+		t.Fatalf("trailing slash rejected: %v", err)
+	}
+	if cfg.URLPathPrefix != "/api/v2/otlp" {
+		t.Errorf("trailing slash not trimmed: %q", cfg.URLPathPrefix)
+	}
+}
+
+func TestParseConfig_URLPathPrefixRejectedCases(t *testing.T) {
+	// Silently ignoring it over gRPC would send the operator hunting for
+	// a path that never leaves the agent.
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint":        "host:4317",
+		"url_path_prefix": "/api/v2/otlp",
+	}); err == nil {
+		t.Error("url_path_prefix accepted with the gRPC transport")
+	}
+
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint":        "host:443",
+		"protocol":        "http",
+		"url_path_prefix": "api/v2/otlp",
+	}); err == nil {
+		t.Error("prefix without a leading slash accepted")
+	}
+}
