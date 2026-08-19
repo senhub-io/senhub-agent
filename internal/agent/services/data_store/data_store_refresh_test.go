@@ -1,11 +1,13 @@
 package data_store
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -98,4 +100,60 @@ func newTestDataStoreWithEmptyConfig(t *testing.T) *dataStore {
 		t.Fatal("NewDataStore did not return *dataStore")
 	}
 	return ds
+}
+
+// TestOnConfigRefreshed_InPlaceEditKeepsReplacementAlive pins the reload
+// contract questioned by #827: editing one parameter of a strategy
+// fragment in place must leave exactly ONE live instance, carrying the
+// new parameters and still accepting data. The refresh legitimately
+// logs a shutdown for the replaced instance and, in the cleanup pass,
+// for that same instance again — both lines carry the same strategy
+// name, which is what made the journal read as "the replacement was
+// killed on arrival".
+func TestOnConfigRefreshed_InPlaceEditKeepsReplacementAlive(t *testing.T) {
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	mockConfig := &MockAgentConfig{authKey: "k", serverURL: "https://example.com"}
+	provider := &MockConfigProvider{
+		config: configuration.ConfigurationData{
+			StorageConfig: []configuration.StorageConfig{
+				{Name: "otlp", Params: configuration.StorageConfigParams{"endpoint": "127.0.0.1:14999", "compression": "gzip", "tls": map[string]interface{}{"enabled": false}}},
+			},
+		},
+	}
+	ds, _ := NewDataStore(mockConfig, provider, baseLogger).(*dataStore)
+
+	ds.OnConfigRefreshed("initial")
+	if got := len(ds.activeStrategies()); got != 1 {
+		t.Fatalf("after initial refresh: %d strategies, want 1", got)
+	}
+
+	// Same fragment, one param changed (the compression:none case).
+	provider.config.StorageConfig = []configuration.StorageConfig{
+		{Name: "otlp", Params: configuration.StorageConfigParams{"endpoint": "127.0.0.1:14999", "compression": "none", "tls": map[string]interface{}{"enabled": false}}},
+	}
+	ds.OnConfigRefreshed("edited-in-place")
+
+	act := ds.activeStrategies()
+	t.Logf("after edit: %d strategies", len(act))
+	for _, s := range act {
+		t.Logf("  alive: %s", s.GetStrategyName())
+	}
+	if len(act) != 1 {
+		t.Fatalf("after in-place edit: %d strategies, want 1", len(act))
+	}
+	if got := act[0].GetStrategyParams()["compression"]; got != "none" {
+		t.Fatalf("alive strategy carries compression=%v, want none (the replacement did not take over)", got)
+	}
+	// The alive instance must still accept datapoints: a shut-down
+	// strategy left in the router is the silent-death shape of #827.
+	if err := act[0].AddDataPoints([]datapoint.DataPoint{{Name: "probe.metric", Value: 1, Timestamp: time.Now()}}); err != nil {
+		t.Fatalf("alive strategy rejected data after reload: %v", err)
+	}
+
+	// A second refresh with the SAME config must be a no-op.
+	ds.OnConfigRefreshed("no-change")
+	if got := len(ds.activeStrategies()); got != 1 {
+		t.Fatalf("after no-change refresh: %d strategies, want 1", got)
+	}
+	_ = ds.Shutdown(context.Background())
 }
