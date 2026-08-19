@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -15,30 +16,30 @@ import (
 // emitted wire shape against the frozen Toise contract.
 func recordAttrs(rec log.Record) map[string]any {
 	out := map[string]any{}
-	rec.WalkAttributes(func(kv log.KeyValue) bool {
-		out[kv.Key] = logValueToAny(kv.Value)
+	rec.WalkAttributes(func(kv attribute.KeyValue) bool {
+		out[string(kv.Key)] = logValueToAny(kv.Value)
 		return true
 	})
 	return out
 }
 
-func logValueToAny(v log.Value) any {
-	switch v.Kind() {
-	case log.KindString:
+func logValueToAny(v attribute.Value) any {
+	switch v.Type() {
+	case attribute.STRING:
 		return v.AsString()
-	case log.KindInt64:
+	case attribute.INT64:
 		return v.AsInt64()
-	case log.KindFloat64:
+	case attribute.FLOAT64:
 		return v.AsFloat64()
-	case log.KindBool:
+	case attribute.BOOL:
 		return v.AsBool()
-	case log.KindMap:
+	case attribute.MAP:
 		m := map[string]any{}
 		for _, kv := range v.AsMap() {
-			m[kv.Key] = logValueToAny(kv.Value)
+			m[string(kv.Key)] = logValueToAny(kv.Value)
 		}
 		return m
-	case log.KindSlice:
+	case attribute.SLICE:
 		s := []any{}
 		for _, e := range v.AsSlice() {
 			s = append(s, logValueToAny(e))

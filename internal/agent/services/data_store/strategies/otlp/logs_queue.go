@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -88,7 +88,7 @@ func serializeEventLog(r sdklog.Record) (persistedLogRecord, bool) {
 	if obs := r.ObservedTimestamp(); !obs.IsZero() {
 		out.ObservedTimestampUnixNano = obs.UnixNano()
 	}
-	r.WalkAttributes(func(kv log.KeyValue) bool {
+	r.WalkAttributes(func(kv attribute.KeyValue) bool {
 		if out.Attributes == nil {
 			out.Attributes = map[string]string{}
 		}
