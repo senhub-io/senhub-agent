@@ -42,6 +42,15 @@ func systemBinaryUnitPath() string { return systemBinaryDir + "/" + systemBinary
 // binaryExists abstracts the filesystem check so the decision logic is
 // unit-testable.
 func refreshedUnit(installed string, binaryExists func(string) bool) string {
+	// Preservation wraps EVERY outcome. It used to sit on the last return
+	// only, so the most common host of all — one whose ExecStart already
+	// matches the packaged line — took an early return and lost the
+	// operator's directives anyway (#826).
+	return withPreservedDirectives(refreshedUnitBody(installed, binaryExists), installed)
+}
+
+// refreshedUnitBody applies the four ExecStart rules described above.
+func refreshedUnitBody(installed string, binaryExists func(string) bool) string {
 	unit := canonicalUnitForUser(installedServiceUser(installed))
 
 	execLine, workDir := installedExecStart(installed)
@@ -78,7 +87,7 @@ func refreshedUnit(installed string, binaryExists func(string) bool) string {
 		}
 		out = append(out, line)
 	}
-	return withPreservedDirectives(strings.Join(out, "\n"), installed)
+	return strings.Join(out, "\n")
 }
 
 // withPreservedDirectives carries operator-added [Service] directives from
