@@ -429,3 +429,33 @@ WantedBy=multi-user.target
 		t.Error("the stale ProtectSystem=off survived; refresh-unit must reassert the hardening")
 	}
 }
+
+// TestRefreshedUnit_PreservesDirectivesOnCanonicalExecStart is the case
+// the first fix missed and the recette caught: a host whose ExecStart
+// already matches the packaged line takes an early return, and the
+// operator's directives were dropped anyway. This is the COMMON host,
+// not an edge case.
+func TestRefreshedUnit_PreservesDirectivesOnCanonicalExecStart(t *testing.T) {
+	installed := `[Unit]
+Description=SenHub Agent
+
+[Service]
+Type=simple
+User=senhub
+Group=senhub
+` + packagedExecStartLine() + `
+Environment=RECETTE_MARKER=keepme
+EnvironmentFile=-/etc/senhub-agent/extra.env
+
+[Install]
+WantedBy=multi-user.target
+`
+	got := refreshedUnit(installed, func(string) bool { return true })
+
+	if !strings.Contains(got, "RECETTE_MARKER=keepme") {
+		t.Errorf("Environment= dropped on a canonical-ExecStart host:\n%s", got)
+	}
+	if !strings.Contains(got, "EnvironmentFile=-/etc/senhub-agent/extra.env") {
+		t.Errorf("EnvironmentFile= dropped on a canonical-ExecStart host:\n%s", got)
+	}
+}
