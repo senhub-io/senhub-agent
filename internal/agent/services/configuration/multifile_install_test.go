@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,9 +26,9 @@ func TestCreateDefaultConfiguration_WritesMultiFileLayout(t *testing.T) {
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath}
 	lc := NewLocalConfiguration(args, createTestLocalLogger())
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
-	if err := lc.Start(quitChan); err != nil {
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	if err := lc.Start(runCtx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
@@ -99,9 +100,9 @@ func TestCreateDefaultConfiguration_LoadFromDiskRoundTrip(t *testing.T) {
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath}
 	lc := NewLocalConfiguration(args, createTestLocalLogger())
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
-	if err := lc.Start(quitChan); err != nil {
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	if err := lc.Start(runCtx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
@@ -146,9 +147,9 @@ func TestWatcher_FragmentDirsAreWatched(t *testing.T) {
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath}
 	lc := NewLocalConfiguration(args, createTestLocalLogger())
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
-	if err := lc.Start(quitChan); err != nil {
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	if err := lc.Start(runCtx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 

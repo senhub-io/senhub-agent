@@ -50,10 +50,10 @@ func TestLocalConfiguration_Start_CreatesConfigFile(t *testing.T) {
 	logger := createTestLocalLogger()
 	localConfig := NewLocalConfiguration(args, logger)
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
-	err := localConfig.Start(quitChan)
+	err := localConfig.Start(runCtx)
 	if err != nil {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
@@ -84,10 +84,10 @@ func TestLocalConfiguration_HTTPS_Certificate_Generation(t *testing.T) {
 	logger := createTestLocalLogger()
 	localConfig := NewLocalConfiguration(args, logger)
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
-	err := localConfig.Start(quitChan)
+	err := localConfig.Start(runCtx)
 	if err != nil {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
@@ -130,10 +130,10 @@ func TestLocalConfiguration_CustomCertificates(t *testing.T) {
 	logger := createTestLocalLogger()
 	localConfig := NewLocalConfiguration(args, logger)
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
-	err = localConfig.Start(quitChan)
+	err = localConfig.Start(runCtx)
 	if err != nil {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
@@ -192,9 +192,9 @@ func TestLocalConfiguration_Shutdown(t *testing.T) {
 	logger := createTestLocalLogger()
 	localConfig := NewLocalConfiguration(args, logger)
 
-	quitChan := make(chan struct{})
+	runCtx, cancelRun := context.WithCancel(context.Background())
 
-	err := localConfig.Start(quitChan)
+	err := localConfig.Start(runCtx)
 	if err != nil {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestLocalConfiguration_Shutdown(t *testing.T) {
 		t.Errorf("Expected no error on shutdown, got %v", err)
 	}
 
-	close(quitChan)
+	cancelRun()
 }
 
 func TestLocalConfiguration_ExistingConfigFile(t *testing.T) {
@@ -243,10 +243,10 @@ probes:
 	logger := createTestLocalLogger()
 	localConfig := NewLocalConfiguration(args, logger)
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
-	err = localConfig.Start(quitChan)
+	err = localConfig.Start(runCtx)
 	if err != nil {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
@@ -269,9 +269,9 @@ func TestLocalConfiguration_AutoUpdateVersionResolution(t *testing.T) {
 			t.Fatalf("write config: %v", err)
 		}
 		lc := NewLocalConfiguration(&cliArgs.ParsedArgs{ConfigPath: configPath}, createTestLocalLogger())
-		quit := make(chan struct{})
-		defer close(quit)
-		if err := lc.Start(quit); err != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		if err := lc.Start(ctx); err != nil {
 			t.Fatalf("start: %v", err)
 		}
 		return lc.GetConfiguration()
@@ -322,10 +322,10 @@ func TestLocalConfiguration_ReloadConfiguration(t *testing.T) {
 	logger := createTestLocalLogger()
 	localConfig := NewLocalConfiguration(args, logger)
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
-	err := localConfig.Start(quitChan)
+	err := localConfig.Start(runCtx)
 	if err != nil {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
@@ -352,10 +352,10 @@ func TestLocalConfiguration_Interface(t *testing.T) {
 	logger := createTestLocalLogger()
 	localConfig := NewLocalConfiguration(args, logger)
 
-	quitChan := make(chan struct{})
-	defer close(quitChan)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
-	err := localConfig.Start(quitChan)
+	err := localConfig.Start(runCtx)
 	if err != nil {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}

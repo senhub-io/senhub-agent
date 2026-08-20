@@ -32,10 +32,6 @@ func (lc *LocalConfiguration) watchConfigFile() {
 			lc.logger.Debug().Msg("Configuration file watching stopped (shutdown)")
 			return
 
-		case <-lc.quitChannel:
-			lc.logger.Debug().Msg("Configuration file watching stopped")
-			return
-
 		case event, ok := <-lc.watcher.Events:
 			if !ok {
 				lc.logger.Debug().Msg("File watcher events channel closed")

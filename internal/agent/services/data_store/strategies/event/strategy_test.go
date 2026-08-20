@@ -154,7 +154,7 @@ func TestStartShutdown_TickerGoroutineExits(t *testing.T) {
 		t.Fatalf("constructor: %v", err)
 	}
 
-	if err := strategy.Start(); err != nil {
+	if err := strategy.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	// Relative count, not an absolute baseline: the test logger owns

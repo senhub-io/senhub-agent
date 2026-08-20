@@ -69,7 +69,7 @@ func (m *MockConfiguration) SetConfiguration(data ConfigurationData) {
 }
 
 // Start is a no-op so MockConfiguration satisfies ConfigurationProvider.
-func (m *MockConfiguration) Start(_ chan struct{}) error { return nil }
+func (m *MockConfiguration) Start(_ context.Context) error { return nil }
 
 // Shutdown is a no-op so MockConfiguration satisfies ConfigurationProvider.
 func (m *MockConfiguration) Shutdown(_ context.Context) error { return nil }
