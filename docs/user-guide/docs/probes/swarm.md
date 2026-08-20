@@ -16,7 +16,7 @@ you want per-container resource metrics as well.
 - The agent must run on a **manager** node. On a worker the Engine answers 503
   to every cluster query, and the probe reports that explicitly rather than
   showing an empty, healthy-looking cluster.
-- Read access to the Docker socket (`/var/run/docker.sock`).
+- Read access to the Docker Engine: the socket `/var/run/docker.sock` on Linux and macOS, the named pipe `npipe://./pipe/docker_engine` on Windows.
 
 Pointed at a worker or at an engine that is not in swarm mode, the probe still
 emits `senhub.swarm.up 0` plus a state series naming the reason — `worker`,
@@ -37,7 +37,7 @@ probes:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `socket_path` | `/var/run/docker.sock` | Docker Engine socket |
+| `socket_path` | per platform | Where the Docker Engine listens: `/var/run/docker.sock` on Linux and macOS, `npipe://./pipe/docker_engine` on Windows. A pipe may also be written `\\.\pipe\<name>`. |
 | `interval` | `60` | Collection cadence in seconds |
 | `timeout` | `10` | Per-request timeout in seconds |
 

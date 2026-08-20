@@ -50,6 +50,7 @@ require (
 )
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/billgraziano/dpapi v0.5.0
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/toise-dev/toise/pkg/emit v0.9.0
