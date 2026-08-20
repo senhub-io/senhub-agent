@@ -100,6 +100,47 @@ Each `tag_to_attribute` in the YAML maps probe tags to OTel attributes. Add the 
 - `Collect`: one cycle. Ping/validate the connection before issuing queries (server restarts, idle timeouts). Emit datapoints even on partial failure (always emit `senhub.db.up` for DB probes).
 - `OnShutdown`: close connections cleanly; cancel any in-flight context.
 
+### Listener probes must implement `types.ListenerProbe`
+
+A probe whose data arrives by subscription — a socket, a receiver, an OS
+event log — has nothing useful to do in `Collect`. Health cannot be
+inferred from "the no-op cycle returned nil": that is true whether or
+not the listener is alive, and it is how `syslog`, `event` and
+`otlp_receiver` reported healthy with a dead socket for the life of the
+agent (#289).
+
+Such a probe MUST implement:
+
+```go
+// ListenerHealth returns nil while the listener can receive, and the
+// reason it cannot otherwise. Must not block.
+func (p *MyListenerProbe) ListenerHealth() error
+```
+
+Hold the state in an atomic set by `OnStart` / the serve goroutine /
+`OnShutdown` — the serve error in particular, which is otherwise logged
+on a background goroutine and dropped. `ProbePoller` calls
+`ListenerHealth` on every cycle instead of inferring health from the
+collection. `TestListenerProbesImplementListenerHealth` pins the list;
+a new listener probe adds itself there.
+
+Emitting real self-metrics from `Collect` (records emitted, rejects,
+decode failures — what `filetail`, `snmptrap`, `linux_logs` and
+`windows_eventlog` do) is complementary and encouraged, but it does not
+replace `ListenerHealth`: a counter that stops moving is not the same
+signal as a socket that is closed.
+
+### `probe_name` / `probe_type` are guaranteed centrally
+
+`ProbePoller` adds `probe_name` and `probe_type` to every datapoint that
+does not already carry them, so a probe that forgets
+`EnrichDataPointsWithProbeName` no longer ships untagged datapoints
+(colliding cache keys, indistinguishable series at the sinks). The
+probe-side call in §Mandatory wiring stays the convention — it is
+insert-if-absent centrally, so calling it twice never duplicates a tag —
+but it is no longer the only thing standing between a new probe and
+silently broken output.
+
 ## Mandatory wiring — five touch-points, every new probe, same PR
 
 When adding a probe, register it in the **five** places below in the **same PR**. The structural invariant tests in `internal/agent/probes/registry_invariant_test.go` make the license and entity source halves non-skippable — CI fails if either is missing. The other places are not test-enforced today but matter just as much.

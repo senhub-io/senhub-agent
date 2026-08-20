@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -66,6 +67,26 @@ type EventProbe struct {
 	moduleLogger *logger.ModuleLogger
 	server       *http.Server
 	callback     func([]data_store.DataPoint) error
+	// serving reports whether the HTTP listener is up. serveErr holds
+	// the reason it is not. ListenAndServe runs on its own goroutine
+	// and its error used to be logged and dropped, so a port already in
+	// use killed the listener at boot while the probe kept reporting
+	// healthy for the life of the agent (#289).
+	serving  atomic.Bool
+	serveErr atomic.Pointer[string]
+}
+
+// ListenerHealth implements types.ListenerProbe: this probe receives
+// events over HTTP, so its health is whether that listener is serving,
+// not whether its no-op Collect returned.
+func (p *EventProbe) ListenerHealth() error {
+	if msg := p.serveErr.Load(); msg != nil {
+		return errors.New(*msg)
+	}
+	if !p.serving.Load() {
+		return errors.New("HTTP listener is not running")
+	}
+	return nil
 }
 
 // SetCallback sets the callback function for the EventProbe.
@@ -170,10 +191,15 @@ func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
 		IdleTimeout:  120 * time.Second,
 	}
 
+	p.serveErr.Store(nil)
+	p.serving.Store(true)
 	go func() {
 		if err := p.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			p.moduleLogger.Error().Err(err).Msg("Failed to start HTTP server")
+			msg := err.Error()
+			p.serveErr.Store(&msg)
 		}
+		p.serving.Store(false)
 	}()
 
 	p.moduleLogger.Info().Msg("Event probe started successfully")
@@ -182,6 +208,7 @@ func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
 
 // OnShutdown stops the EventProbe.
 func (p *EventProbe) OnShutdown(ctx context.Context) error {
+	p.serving.Store(false)
 	if p.server != nil {
 		p.moduleLogger.Info().Msg("Stopping Event probe")
 		return p.server.Shutdown(ctx)
