@@ -1,6 +1,6 @@
 package types
 
-// Helpers for reading numeric parameters out of the free-form
+// Helpers for reading typed parameters out of the free-form
 // map[string]interface{} that every probe receives as its raw
 // configuration.
 //
@@ -18,7 +18,11 @@ package types
 // a config of `port: 5140` works the same way regardless of which
 // loader populated the map.
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // IntParam reads an integer parameter from a probe config map. It
 // accepts int / int32 / int64 / float64 / float64 / numeric string —
@@ -96,4 +100,118 @@ func FloatParam(m map[string]interface{}, key string) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// StringParam reads a string parameter. Deliberately strict: a YAML
+// scalar that is not quoted as a string (a number, a bool) is a config
+// mistake for a field declared as text, and silently stringifying it
+// would hide it. Returns ok=false when the key is absent or holds a
+// non-string.
+func StringParam(m map[string]interface{}, key string) (string, bool) {
+	raw, present := m[key]
+	if !present {
+		return "", false
+	}
+	s, isString := raw.(string)
+	return s, isString
+}
+
+// BoolParam reads a boolean parameter. Accepts a native bool and the
+// string spellings strconv.ParseBool understands ("true", "1", "no",
+// …) so a value that came through an environment-variable substitution
+// — always a string — reads the same as a YAML literal.
+func BoolParam(m map[string]interface{}, key string) (bool, bool) {
+	raw, present := m[key]
+	if !present {
+		return false, false
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v, true
+	case string:
+		b, err := strconv.ParseBool(strings.TrimSpace(v))
+		if err != nil {
+			return false, false
+		}
+		return b, true
+	default:
+		return false, false
+	}
+}
+
+// StringSlice coerces one already-extracted value into a []string.
+// It accepts the []interface{} a YAML/JSON list decodes to, a native
+// []string, and a lone scalar (an operator writing `paths: /var/log/x`
+// instead of a one-item list). Non-string elements and empty entries
+// are dropped. A value of any other shape yields nil.
+func StringSlice(raw interface{}) []string {
+	switch v := raw.(type) {
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			if s, ok := e.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, s := range v {
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []string{v}
+	default:
+		return nil
+	}
+}
+
+// StringSliceParam reads a list-of-strings parameter, with the shape
+// tolerance of StringSlice. ok=false when the key is absent or holds a
+// value that is neither a list nor a scalar string — an empty list is
+// present, so it reads back as (empty slice, true).
+func StringSliceParam(m map[string]interface{}, key string) ([]string, bool) {
+	raw, present := m[key]
+	if !present {
+		return nil, false
+	}
+	switch raw.(type) {
+	case []interface{}, []string, string:
+		return StringSlice(raw), true
+	default:
+		return nil, false
+	}
+}
+
+// DurationParam reads a duration parameter. A bare number is read as a
+// number of seconds — the convention every probe config uses for
+// `interval` / `timeout` — and a string goes through
+// time.ParseDuration, so both `timeout: 45` and `timeout: 45s` mean the
+// same thing. ok reports only that a readable value was present; a
+// non-positive duration is returned as-is for the caller to reject or
+// treat as "unset", since probes disagree on what zero means.
+func DurationParam(m map[string]interface{}, key string) (time.Duration, bool) {
+	raw, present := m[key]
+	if !present {
+		return 0, false
+	}
+	if s, isString := raw.(string); isString {
+		if d, err := time.ParseDuration(strings.TrimSpace(s)); err == nil {
+			return d, true
+		}
+		// Not a unit-suffixed duration: fall through so a numeric
+		// string ("45", the shape an env substitution produces) is
+		// still read as seconds.
+	}
+	seconds, ok := FloatParam(m, key)
+	if !ok {
+		return 0, false
+	}
+	return time.Duration(seconds * float64(time.Second)), true
 }

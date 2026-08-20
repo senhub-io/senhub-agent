@@ -123,7 +123,7 @@ func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) 
 		cfg.BearerToken = v
 	}
 
-	for _, raw := range stringSlice(config["allowed_cidrs"]) {
+	for _, raw := range types.StringSlice(config["allowed_cidrs"]) {
 		_, cidr, err := net.ParseCIDR(raw)
 		if err != nil {
 			return receiverConfig{}, fmt.Errorf("allowed_cidrs: invalid CIDR %q: %w", raw, err)
@@ -169,7 +169,7 @@ func parseSignals(raw interface{}) (signalSet, error) {
 	if raw == nil {
 		return signalSet{Metrics: true}, nil
 	}
-	names := stringSlice(raw)
+	names := types.StringSlice(raw)
 	if len(names) == 0 {
 		return signalSet{Metrics: true}, nil
 	}
@@ -190,20 +190,4 @@ func parseSignals(raw interface{}) (signalSet, error) {
 		return signalSet{}, fmt.Errorf("signals: at least one of %q, %q, %q must be enabled", signalMetrics, signalLogs, signalTraces)
 	}
 	return s, nil
-}
-
-// stringSlice coerces a YAML/JSON list param into []string, ignoring
-// non-string elements. Same shape tolerance as the other probes.
-func stringSlice(raw interface{}) []string {
-	items, ok := raw.([]interface{})
-	if !ok {
-		return nil
-	}
-	var out []string
-	for _, it := range items {
-		if s, ok := it.(string); ok && s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }

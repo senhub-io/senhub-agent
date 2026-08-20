@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -32,7 +33,7 @@ type unixLogicalDiskCollector struct {
 }
 
 // newLogicalDiskCollector creates a new collector instance
-func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (logicaldiskCollector, error) {
+func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (hostpoll.Collector, error) {
 	return &unixLogicalDiskCollector{
 		logger: logger.NewModuleLogger(baseLogger, "probe.logicaldisk"),
 	}, nil
