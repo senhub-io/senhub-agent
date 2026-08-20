@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -170,7 +171,7 @@ func TestLogicalDiskProbe_GetTargetStrategies(t *testing.T) {
 		t.Fatalf("Failed to create probe: %v", err)
 	}
 
-	ldProbe := probe.(*logicaldiskProbe)
+	ldProbe := probe.(*hostpoll.Probe)
 	strategies := ldProbe.GetTargetStrategies()
 	expected := []string{"senhub", "prtg", "http", "otlp"}
 
@@ -212,7 +213,7 @@ func TestLogicalDiskProbe_Collect(t *testing.T) {
 	// Set probe name for proper enrichment testing
 	probe.(interface{ SetName(string) }).SetName("logicaldisk")
 
-	ldProbe := probe.(*logicaldiskProbe)
+	ldProbe := probe.(*hostpoll.Probe)
 
 	tests := []struct {
 		name          string
@@ -268,7 +269,7 @@ func TestLogicalDiskProbe_Collect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Inject mock collector
-			ldProbe.collector = tt.mockCollector
+			ldProbe.SetCollector(tt.mockCollector)
 
 			metrics, err := probe.Collect()
 			if (err != nil) != tt.wantErr {
@@ -355,8 +356,8 @@ func TestLogicalDiskProbe_OnShutdown(t *testing.T) {
 				t.Fatalf("Failed to create probe: %v", err)
 			}
 
-			ldProbe := probe.(*logicaldiskProbe)
-			ldProbe.collector = tt.mockCollector
+			ldProbe := probe.(*hostpoll.Probe)
+			ldProbe.SetCollector(tt.mockCollector)
 
 			ctx := context.Background()
 			err = probe.OnShutdown(ctx)
@@ -409,8 +410,8 @@ func TestLogicalDiskProbe_IsHealthy(t *testing.T) {
 				t.Fatalf("Failed to create probe: %v", err)
 			}
 
-			ldProbe := probe.(*logicaldiskProbe)
-			ldProbe.collector = tt.mockCollector
+			ldProbe := probe.(*hostpoll.Probe)
+			ldProbe.SetCollector(tt.mockCollector)
 
 			healthy := ldProbe.IsHealthy()
 			if healthy != tt.wantHealthy {
@@ -464,7 +465,7 @@ func TestLogicalDiskProbe_String(t *testing.T) {
 			// Set probe name for String() testing
 			probe.(interface{ SetName(string) }).SetName("logicaldisk")
 
-			ldProbe := probe.(*logicaldiskProbe)
+			ldProbe := probe.(*hostpoll.Probe)
 			str := ldProbe.String()
 			for _, expected := range tt.wantContain {
 				if !contains(str, expected) {

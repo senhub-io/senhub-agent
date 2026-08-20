@@ -1,14 +1,21 @@
 package probes_test
 
 // External-test-package suite (note `package probes_test`, not
-// `package probes`). The blank imports below are how every probe
-// package's init() — which calls `probes.RegisterProbe(...)` — fires
-// when running `go test ./internal/agent/probes/`. The internal
-// `package probes` cannot do this itself: a probe package imports
-// the `probes` parent for RegisterProbe, so the parent importing the
-// probe package back would be a cycle. The external test package is
-// the standard Go pattern for breaking that dependency loop while
-// keeping the tests close to the code they exercise.
+// `package probes`). The internal `package probes` cannot host these
+// tests: a probe package imports the `probes` parent for RegisterProbe,
+// so the parent importing the probe packages back would be a cycle. The
+// external test package is the standard Go pattern for breaking that
+// loop while keeping the tests close to the code they exercise.
+//
+// The registry is populated by blank-importing `app`, whose
+// probes_register.go is the canonical registration list of the probes
+// the OSS binary ships — each of those packages' init() calls
+// probes.RegisterProbe. Deriving the set from that one list is the
+// point: this file used to repeat the catalogue as its own blank-import
+// list, the two drifted (nine probes shipped but were never imported
+// here, escaping every invariant below), and the repair was a third
+// test that parsed both lists and compared them. One list cannot drift
+// from itself.
 
 import (
 	"fmt"
@@ -29,72 +36,7 @@ import (
 	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 
-	_ "senhub-agent.go/internal/agent/probes/activemq"
-	_ "senhub-agent.go/internal/agent/probes/apache"
-	_ "senhub-agent.go/internal/agent/probes/cassandra"
-	_ "senhub-agent.go/internal/agent/probes/ceph"
-	_ "senhub-agent.go/internal/agent/probes/chrony"
-	_ "senhub-agent.go/internal/agent/probes/clickhouse"
-	_ "senhub-agent.go/internal/agent/probes/consul"
-	_ "senhub-agent.go/internal/agent/probes/couchdb"
-	_ "senhub-agent.go/internal/agent/probes/cpu"
-	_ "senhub-agent.go/internal/agent/probes/dnslatency"
-	_ "senhub-agent.go/internal/agent/probes/docker"
-	_ "senhub-agent.go/internal/agent/probes/elasticsearch"
-	_ "senhub-agent.go/internal/agent/probes/envoy"
-	_ "senhub-agent.go/internal/agent/probes/event"
-	_ "senhub-agent.go/internal/agent/probes/execprobe"
-	_ "senhub-agent.go/internal/agent/probes/filetail"
-	_ "senhub-agent.go/internal/agent/probes/haproxy"
-	_ "senhub-agent.go/internal/agent/probes/host"
-	_ "senhub-agent.go/internal/agent/probes/httpcheck"
-	_ "senhub-agent.go/internal/agent/probes/hyperv"
-	_ "senhub-agent.go/internal/agent/probes/icmpcheck"
-	_ "senhub-agent.go/internal/agent/probes/influxdb"
-	_ "senhub-agent.go/internal/agent/probes/ipmi"
-	_ "senhub-agent.go/internal/agent/probes/jenkins"
-	_ "senhub-agent.go/internal/agent/probes/kafka"
-	_ "senhub-agent.go/internal/agent/probes/kubernetes"
-	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
-	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
-	_ "senhub-agent.go/internal/agent/probes/memcached"
-	_ "senhub-agent.go/internal/agent/probes/memory"
-	_ "senhub-agent.go/internal/agent/probes/modbus"
-	_ "senhub-agent.go/internal/agent/probes/mongodb"
-	_ "senhub-agent.go/internal/agent/probes/mssql"
-	_ "senhub-agent.go/internal/agent/probes/mysql"
-	_ "senhub-agent.go/internal/agent/probes/nats"
-	_ "senhub-agent.go/internal/agent/probes/network"
-	_ "senhub-agent.go/internal/agent/probes/nginx"
-	_ "senhub-agent.go/internal/agent/probes/ntp"
-	_ "senhub-agent.go/internal/agent/probes/nvidia"
-	_ "senhub-agent.go/internal/agent/probes/opensearch"
-	_ "senhub-agent.go/internal/agent/probes/oracle"
-	_ "senhub-agent.go/internal/agent/probes/osupdates"
-	_ "senhub-agent.go/internal/agent/probes/otlpreceiver"
-	_ "senhub-agent.go/internal/agent/probes/phpfpm"
-	_ "senhub-agent.go/internal/agent/probes/postgresql"
-	_ "senhub-agent.go/internal/agent/probes/process"
-	_ "senhub-agent.go/internal/agent/probes/promscrape"
-	_ "senhub-agent.go/internal/agent/probes/proxmox"
-	_ "senhub-agent.go/internal/agent/probes/pulsar"
-	_ "senhub-agent.go/internal/agent/probes/rabbitmq"
-	_ "senhub-agent.go/internal/agent/probes/redis"
-	_ "senhub-agent.go/internal/agent/probes/smart"
-	_ "senhub-agent.go/internal/agent/probes/snmppoll"
-	_ "senhub-agent.go/internal/agent/probes/snmptrap"
-	_ "senhub-agent.go/internal/agent/probes/solr"
-	_ "senhub-agent.go/internal/agent/probes/swarm"
-	_ "senhub-agent.go/internal/agent/probes/syslog"
-	_ "senhub-agent.go/internal/agent/probes/systemd"
-	_ "senhub-agent.go/internal/agent/probes/tcpdial"
-	_ "senhub-agent.go/internal/agent/probes/tomcat"
-	_ "senhub-agent.go/internal/agent/probes/unifi"
-	_ "senhub-agent.go/internal/agent/probes/varnish"
-	_ "senhub-agent.go/internal/agent/probes/wildfly"
-	_ "senhub-agent.go/internal/agent/probes/windowseventlog"
-	_ "senhub-agent.go/internal/agent/probes/winservices"
-	_ "senhub-agent.go/internal/agent/probes/zookeeper"
+	_ "senhub-agent.go/app"
 )
 
 // TestEveryRegisteredProbeIsAuthorizable enforces a structural
@@ -162,11 +104,11 @@ func TestEveryRegisteredProbeIsAuthorizable(t *testing.T) {
 // test cross-checked the licence catalogue against the registry — four
 // free-tier probes were declared but their packages never blank-imported
 // in app/probes_register.go, so the names existed for the licence
-// validator while the binary could not construct them. This test file's
-// blank-import list is pinned to app/probes_register.go by
-// TestRegistryInvariantCoversEveryShippedProbe, so a pass here covers the
-// shipped binary, not just the test binary. The paid-catalogue half runs
-// in the enterprise suite (see the comment above).
+// validator while the binary could not construct them. The registry this
+// test reads is populated from app/probes_register.go itself, so a pass
+// here covers the shipped binary, not just the test binary. The
+// paid-catalogue half runs in the enterprise suite (see the comment
+// above).
 func TestEveryFreeTierProbeHasRegisteredConstructor(t *testing.T) {
 	free := license.GetFreeTierProbes()
 	if len(free) == 0 {
@@ -353,61 +295,6 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 					"if it genuinely describes no remote entity (#471).", name)
 			}
 		})
-	}
-}
-
-// TestRegistryInvariantCoversEveryShippedProbe guards the two invariants above
-// against their own blind spot: they only see probes whose packages are
-// blank-imported in THIS file. That list is separate from the one the OSS
-// binary actually ships (app/probes_register.go), and it drifted once — nine
-// probes (including redis and docker with a NoOp entity source) were shipped
-// but never imported here, so they silently escaped both invariants. This test
-// parses both import lists and fails if they diverge, so a probe added to the
-// binary but not here (or vice-versa) can never again slip past the guards.
-func TestRegistryInvariantCoversEveryShippedProbe(t *testing.T) {
-	const probePrefix = "senhub-agent.go/internal/agent/probes/"
-	// Subpackages under probes/ that are libraries, not registerable probes.
-	notAProbe := map[string]bool{"types": true}
-
-	probePkgs := func(path string) map[string]bool {
-		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
-		}
-		out := map[string]bool{}
-		for _, imp := range f.Imports {
-			p, err := strconv.Unquote(imp.Path.Value)
-			if err != nil || !strings.HasPrefix(p, probePrefix) {
-				continue
-			}
-			pkg := strings.TrimPrefix(p, probePrefix)
-			if strings.Contains(pkg, "/") || notAProbe[pkg] {
-				continue // nested library package, not a leaf probe package
-			}
-			out[pkg] = true
-		}
-		return out
-	}
-
-	// go test runs with the working directory set to the package directory
-	// (internal/agent/probes); app/probes_register.go lives three levels up.
-	here := probePkgs("registry_invariant_test.go")
-	binary := probePkgs("../../../app/probes_register.go")
-
-	for pkg := range binary {
-		if !here[pkg] {
-			t.Errorf("probe package %q ships in the OSS binary (app/probes_register.go) "+
-				"but is not blank-imported by this test — it escapes the structural "+
-				"invariants. Add:\n\t_ %q", pkg, probePrefix+pkg)
-		}
-	}
-	for pkg := range here {
-		if !binary[pkg] {
-			t.Errorf("probe package %q is blank-imported by this test but is NOT registered "+
-				"by the OSS binary (app/probes_register.go) — stale import; remove it here or "+
-				"add it to the binary.", pkg)
-		}
 	}
 }
 
