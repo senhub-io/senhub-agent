@@ -24,6 +24,16 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **The OTLP log queue no longer fills with records that cannot be
+  delivered.** When the receiver refuses a batch for what it contains —
+  a malformed payload, an attribute type it does not accept — resending
+  it gets the same answer. Those records used to be written to the
+  on-disk queue anyway, replayed at every restart and every recovery,
+  refused again, and written back; they occupied space the queue then
+  took from records that a retry *would* have delivered. They are now
+  discarded once and counted, and the queue keeps doing what it is for:
+  riding out an outage.
+
 - **A dead listener is now reported as unhealthy.** The syslog, event
   and OTLP receiver probes wait for data to arrive rather than polling
   for it, so they had nothing to derive health from and reported healthy

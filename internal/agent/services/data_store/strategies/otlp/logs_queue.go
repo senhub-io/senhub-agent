@@ -14,7 +14,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 
+	"github.com/rs/zerolog"
+
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -362,16 +365,34 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		// counter — the pipeline died silently behind queue/replay churn
 		// (#820, tracked as #821).
 		agentstate.IncrementOTLPExportErrors("logs")
-		e.persist(records)
+
+		classified := classifyExportError(err)
+		agentstate.IncrementExportSendFailed("otlp", exporterrors.Reason(classified))
 		e.healthy.Store(false)
-		now := time.Now().UnixNano()
-		if last := e.lastFailWarnNs.Load(); now-last >= int64(logExportWarnInterval) &&
-			e.lastFailWarnNs.CompareAndSwap(last, now) && e.logger != nil {
-			e.logger.Warn().
-				Str("error", redactSensitive(err.Error())).
+
+		if !exporterrors.IsRetryable(classified) {
+			// The receiver refused the payload on its merits. Persisting
+			// it would put a batch on disk that is replayed at boot and
+			// on every recovery, rejected every time, and re-persisted —
+			// occupying space the drop-oldest eviction then takes from
+			// batches that could still be delivered (#833).
+			for i := 0; i < len(records); i++ {
+				agentstate.IncrementOTLPDropped("receiver_rejected")
+			}
+			e.warnThrottled(func(ev *zerolog.Event) {
+				ev.Str("error", redactSensitive(err.Error())).
+					Int("records", len(records)).
+					Msg("OTLP logs export rejected by the receiver; records discarded (not queued — a retry gets the same rejection)")
+			})
+			return err
+		}
+
+		e.persist(records)
+		e.warnThrottled(func(ev *zerolog.Event) {
+			ev.Str("error", redactSensitive(err.Error())).
 				Int("records", len(records)).
 				Msg("OTLP logs export failed; batch persisted to dead-letter queue")
-		}
+		})
 		return err
 	}
 	// Export succeeded: if we were unhealthy, the backend just recovered.
@@ -381,6 +402,20 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		}
 	}
 	return nil
+}
+
+// warnThrottled emits at most one warning per logExportWarnInterval, so
+// a sustained outage does not turn the journal into the incident.
+func (e *persistentLogExporter) warnThrottled(emit func(*zerolog.Event)) {
+	if e.logger == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := e.lastFailWarnNs.Load()
+	if now-last < int64(logExportWarnInterval) || !e.lastFailWarnNs.CompareAndSwap(last, now) {
+		return
+	}
+	emit(e.logger.Warn())
 }
 
 // persist serialises the event-log records of a failed batch to the
