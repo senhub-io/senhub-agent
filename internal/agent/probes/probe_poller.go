@@ -20,6 +20,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
@@ -248,12 +249,14 @@ func (p *ProbePoller) collect() error {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
-		agentstate.RecordProbeHealth(p.ProbeId, false)
+		p.recordHealth(err)
 		return fmt.Errorf("collect failed: %w", err)
 	}
 	span.SetAttributes(attribute.Int("probe.datapoints_emitted", len(data)))
 	span.SetStatus(codes.Ok, "")
-	agentstate.RecordProbeHealth(p.ProbeId, true)
+	p.recordHealth(nil)
+
+	data = p.withIdentityTags(data)
 
 	if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
 		p.moduleLogger.Debug().Msg("Using probe's strategy router")
@@ -262,6 +265,88 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// recordHealth publishes the probe's health for this cycle.
+//
+// For a polling probe that is "did the last Collect succeed". For a
+// listener probe it is the state of the listener itself: its Collect
+// has nothing to do, so a successful no-op cycle says only that the
+// no-op ran. Seven probes reported healthy on that basis while their
+// socket could have been closed for hours (#289).
+//
+// collectErr is the error Collect returned, or nil. A listener probe
+// whose Collect failed is unhealthy regardless of what its listener
+// says — the failure is real either way.
+func (p *ProbePoller) recordHealth(collectErr error) {
+	if collectErr != nil {
+		agentstate.RecordProbeHealth(p.ProbeId, false)
+		return
+	}
+
+	listener, ok := p.Probe.(types.ListenerProbe)
+	if !ok {
+		agentstate.RecordProbeHealth(p.ProbeId, true)
+		return
+	}
+
+	if err := listener.ListenerHealth(); err != nil {
+		p.moduleLogger.Warn().
+			Err(err).
+			Str("probe_name", p.Probe.GetName()).
+			Msg("listener is not able to receive; probe reported unhealthy")
+		agentstate.IncrementCollectErrors(p.probeType(), "listener")
+		agentstate.RecordProbeHealth(p.ProbeId, false)
+		return
+	}
+	agentstate.RecordProbeHealth(p.ProbeId, true)
+}
+
+// withIdentityTags guarantees every datapoint leaving a probe carries
+// probe_name and probe_type, whoever produced it.
+//
+// Probes are expected to call EnrichDataPointsWithProbeName themselves,
+// and most do — but "expected to" is the problem: a probe that forgets
+// ships untagged datapoints, which reach the cache with a colliding key
+// and the sinks with no way to tell one instance from another, silently.
+// Adding the tags here makes the guarantee structural instead of
+// conventional (#289).
+//
+// It adds only what is missing, so a probe that already enriched is
+// untouched and no tag is ever duplicated. That is what lets the
+// probe-side calls be removed later, one probe at a time, without a
+// flag day across two repositories.
+func (p *ProbePoller) withIdentityTags(data []datapoint.DataPoint) []datapoint.DataPoint {
+	probeName := p.Probe.GetName()
+	probeType := p.probeType()
+
+	for i := range data {
+		var hasName, hasType bool
+		for _, t := range data[i].Tags {
+			switch t.Key {
+			case "probe_name":
+				hasName = true
+			case "probe_type":
+				hasType = true
+			}
+		}
+		if hasName && hasType {
+			continue
+		}
+
+		// Copy before appending: the probe may hold the slice, and a
+		// shared backing array would let one datapoint's append clobber
+		// the next one's tags.
+		enriched := append([]tags.Tag{}, data[i].Tags...)
+		if !hasName {
+			enriched = append(enriched, tags.Tag{Key: "probe_name", Value: probeName})
+		}
+		if !hasType {
+			enriched = append(enriched, tags.Tag{Key: "probe_type", Value: probeType})
+		}
+		data[i].Tags = enriched
+	}
+	return data
 }
 
 // addDataPointCtx is a thin wrapper that exists so future code can
@@ -314,6 +399,8 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 	return func(data []datapoint.DataPoint) error {
 		p.moduleLogger.Debug().Int("datapoints_count", len(data)).Msg("Callback triggered")
 
+		data = p.withIdentityTags(data)
+
 		var err error
 		if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
 			err = p.addDataPoint(data, strategyRouter)
@@ -324,7 +411,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 			agentstate.IncrementCollectErrors(p.probeType(), "route")
 			agentstate.RecordProbeHealth(p.ProbeId, false)
 		} else {
-			agentstate.RecordProbeHealth(p.ProbeId, true)
+			p.recordHealth(nil)
 		}
 		return err
 	}
