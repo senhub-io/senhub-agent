@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ybbus/httpretry"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -72,7 +73,7 @@ func (s *server) NewRequest(method string, url string, body io.Reader) (*http.Re
 		Msg("Creating new request")
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
+		return nil, exporterrors.Configuration("failed to create request", err)
 	}
 	req.Header.Set("X-AGENT-KEY", s.authenticationKey)
 	return req, nil
@@ -82,40 +83,44 @@ func (s *server) NewRequest(method string, url string, body io.Reader) (*http.Re
 func (s *server) Get(urlPath string) (*http.Response, error) {
 	fullUrl, err := url.JoinPath(s.url, urlPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to join URL path: %v", err)
+		return nil, exporterrors.Configuration("failed to join URL path", err)
 	}
 
 	s.moduleLogger.Debug().Str("url", fullUrl).Msg("Making GET request")
 	req, err := s.NewRequest("GET", fullUrl, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create GET request: %v", err)
+		return nil, fmt.Errorf("failed to create GET request: %w", err)
 	}
-	return s.http.Do(req)
+	res, err := s.http.Do(req)
+	if err != nil {
+		return nil, exporterrors.Transport("GET request failed", err)
+	}
+	return res, nil
 }
 
 // Post sends JSON data via HTTP POST
 func (s *server) Post(urlPath string, data any) (*http.Response, error) {
 	fullUrl, err := url.JoinPath(s.url, urlPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to join URL path: %v", err)
+		return nil, exporterrors.Configuration("failed to join URL path", err)
 	}
 
 	requestBody, err := json.Marshal(data)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to encode data: %v\n", err)
-		return nil, fmt.Errorf("failed to marshal JSON: %v", err)
+		s.moduleLogger.Error().Err(err).Msg("Failed to encode data")
+		return nil, exporterrors.Validation("failed to marshal JSON", err)
 	}
 
 	s.moduleLogger.Debug().Str("url", fullUrl).Msg("Making POST request")
 	req, err := s.NewRequest("POST", fullUrl, bytes.NewBuffer(requestBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create POST request: %v", err)
+		return nil, fmt.Errorf("failed to create POST request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	res, err := s.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("POST request failed: %v", err)
+		return nil, exporterrors.Transport("POST request failed", err)
 	}
 	return bufferAndClose(res)
 }
@@ -124,19 +129,19 @@ func (s *server) Post(urlPath string, data any) (*http.Response, error) {
 func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, error) {
 	fullUrl, err := url.JoinPath(s.url, urlPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to join URL path: %v", err)
+		return nil, exporterrors.Configuration("failed to join URL path", err)
 	}
 
 	s.moduleLogger.Debug().Str("url", fullUrl).Msg("Making POST stream request")
 	req, err := s.NewRequest("POST", fullUrl, strings.NewReader(streamBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stream request: %v", err)
+		return nil, fmt.Errorf("failed to create stream request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/stream+json")
 	res, err := s.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("stream request failed: %v", err)
+		return nil, exporterrors.Transport("stream request failed", err)
 	}
 	return bufferAndClose(res)
 }

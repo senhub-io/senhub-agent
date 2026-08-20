@@ -1,6 +1,7 @@
 package senhub
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -109,5 +111,65 @@ func TestIsPermanentClientStatus(t *testing.T) {
 		if got := isPermanentClientStatus(c.status); got != c.permanent {
 			t.Errorf("isPermanentClientStatus(%d) = %v, want %v", c.status, got, c.permanent)
 		}
+	}
+}
+
+// TestDoSync_ConfigurationErrorDropsBatch pins the class the taxonomy
+// was introduced for: an endpoint the URL parser rejects fails
+// identically on every tick, so re-prepending the batch would pin it at
+// the head of the buffer and stop the buffer draining for good. Only an
+// operator editing the config clears it — drop the batch.
+func TestDoSync_ConfigurationErrorDropsBatch(t *testing.T) {
+	s := newTestStrategy(t, "://not-a-url")
+	if err := s.buffer.Append(sampleData()); err != nil {
+		t.Fatalf("Append() error: %v", err)
+	}
+
+	if err := s.doSync(); err != nil {
+		t.Fatalf("doSync() should not surface an unrecoverable config error, got: %v", err)
+	}
+
+	if remaining := s.buffer.Sync(); len(remaining) != 0 {
+		t.Errorf("batch not dropped: buffer still holds %d points after a configuration failure", len(remaining))
+	}
+}
+
+// TestDoSync_TransportErrorKeepsBatch guards the other side of the same
+// branch: an unreachable intake is the ordinary outage case and must
+// keep the data for the next tick.
+func TestDoSync_TransportErrorKeepsBatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closedURL := srv.URL
+	srv.Close() // nothing listens on that port any more
+
+	s := newTestStrategy(t, closedURL)
+	if err := s.buffer.Append(sampleData()); err != nil {
+		t.Fatalf("Append() error: %v", err)
+	}
+
+	if err := s.doSync(); err == nil {
+		t.Fatal("doSync() should surface an unreachable intake as error, got nil")
+	}
+
+	if remaining := s.buffer.Sync(); len(remaining) != 2 {
+		t.Errorf("batch not retained for retry: buffer holds %d points, want 2", len(remaining))
+	}
+}
+
+// TestPermanentClientErrorClassifiesAsValidation keeps the status-code
+// detail reachable while the batch-level decision goes through the
+// shared taxonomy.
+func TestPermanentClientErrorClassifiesAsValidation(t *testing.T) {
+	var err error = &permanentClientError{statusCode: http.StatusUnprocessableEntity}
+
+	if !errors.Is(err, exporterrors.ErrValidation) {
+		t.Error("permanentClientError should classify as ErrValidation")
+	}
+	if exporterrors.IsRetryable(err) {
+		t.Error("permanentClientError must not be retryable")
+	}
+	var permErr *permanentClientError
+	if !errors.As(err, &permErr) || permErr.statusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status code must stay reachable through errors.As, got %+v", permErr)
 	}
 }

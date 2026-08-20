@@ -69,7 +69,7 @@ func New(config map[string]interface{}, baseLogger *logger.Logger, spec Spec) (*
 
 	collector, err := spec.NewCollector(config, baseLogger, moduleLogger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s collector: %v", spec.Subject, err)
+		return nil, fmt.Errorf("failed to create %s collector: %w", spec.Subject, err)
 	}
 
 	return &Probe{
@@ -92,7 +92,7 @@ func (p *Probe) GetInterval() time.Duration { return p.interval }
 func (p *Probe) Collect() ([]datapoint.DataPoint, error) {
 	metrics, err := p.collector.Collect(time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("failed to collect %s metrics: %v", p.spec.Subject, err)
+		return nil, fmt.Errorf("failed to collect %s metrics: %w", p.spec.Subject, err)
 	}
 	return p.EnrichDataPointsWithProbeName(metrics, p.GetName()), nil
 }

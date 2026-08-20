@@ -83,12 +83,12 @@ func NewProbePoller(
 
 	probeConstructor, err := getProbeConstructorForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("No constructor for probe %s\n%v", config.Name, err)
+		return nil, fmt.Errorf("No constructor for probe %s\n%w", config.Name, err)
 	}
 
 	probe, err := probeConstructor(config.Params, baseLogger)
 	if err != nil {
-		return nil, fmt.Errorf("unable to start probe %s: %v", config.Name, err)
+		return nil, fmt.Errorf("unable to start probe %s: %w", config.Name, err)
 	}
 
 	// Set the unique probe name from configuration (v2 format: name field)
@@ -247,7 +247,7 @@ func (p *ProbePoller) collect() error {
 		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
 		agentstate.RecordProbeHealth(p.ProbeId, false)
-		return fmt.Errorf("collect failed: %v", err)
+		return fmt.Errorf("collect failed: %w", err)
 	}
 	span.SetAttributes(attribute.Int("probe.datapoints_emitted", len(data)))
 	span.SetStatus(codes.Ok, "")

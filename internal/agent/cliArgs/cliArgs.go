@@ -10,8 +10,8 @@
 package cliArgs
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -232,6 +232,16 @@ func GetAbsoluteConfigPath(configPath string) (string, error) {
 // — the top-level parser needs an explicit subcommand, so we call
 // the start parser directly. Empty input is valid and yields a
 // ParsedArgs filled with sensible defaults.
+// fatalf reports an unrecoverable argument-parsing failure and exits.
+// Nothing here can reach a module logger: argument parsing is what
+// produces the configuration a logger is built from, so this runs
+// strictly before one exists. Plain stderr also keeps the CLI's own
+// convention — an "Error: ..." line rather than a timestamped log line.
+func fatalf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	os.Exit(1)
+}
+
 func ParseStartArgs(flags []string) *ParsedArgs {
 	parsedEnv := Env
 	if parsedEnv != "development" {
@@ -241,10 +251,10 @@ func ParseStartArgs(flags []string) *ParsedArgs {
 	var startArgs StartSubcommandArgs
 	p, err := arg.NewParser(arg.Config{}, &startArgs)
 	if err != nil {
-		log.Fatalf("failed to create start args parser: %v", err)
+		fatalf("failed to create start args parser: %v", err)
 	}
 	if parseErr := p.Parse(flags); parseErr != nil {
-		if parseErr == arg.ErrHelp {
+		if errors.Is(parseErr, arg.ErrHelp) {
 			p.WriteHelp(os.Stdout)
 			os.Exit(0)
 		}
@@ -263,13 +273,13 @@ func MustParse() *ParsedArgs {
 
 	p, err := arg.NewParser(arg.Config{}, &args)
 	if err != nil {
-		log.Fatalf("there was an error in the definition of the Go struct: %v", err)
+		fatalf("there was an error in the definition of the Go struct: %v", err)
 	}
 
 	err = p.Parse(os.Args[1:])
 	if err != nil {
 		switch {
-		case err == arg.ErrHelp:
+		case errors.Is(err, arg.ErrHelp):
 			p.WriteHelp(os.Stdout)
 			os.Exit(0)
 		case p.Subcommand() == nil:
@@ -278,14 +288,14 @@ func MustParse() *ParsedArgs {
 			var startArgs StartSubcommandArgs
 			sp, spErr := arg.NewParser(arg.Config{}, &startArgs)
 			if spErr != nil {
-				log.Fatalf("failed to create start args parser: %v", spErr)
+				fatalf("failed to create start args parser: %v", spErr)
 			}
 			// Parse errors are deliberately tolerated here: every
 			// StartSubcommandArgs field is optional, so a bare
 			// `senhub-agent` (no subcommand, no flags) must still
 			// yield a usable ParsedArgs. The discard makes the
 			// intent explicit for the linter (SA9003).
-			if parseErr := sp.Parse(os.Args[1:]); parseErr != nil && parseErr != arg.ErrHelp {
+			if parseErr := sp.Parse(os.Args[1:]); parseErr != nil && !errors.Is(parseErr, arg.ErrHelp) {
 				_ = parseErr
 			}
 			return parsedArgsFromStartArgs(&startArgs, parsedEnv)

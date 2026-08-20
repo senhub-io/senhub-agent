@@ -20,6 +20,7 @@ package smart
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
@@ -493,7 +494,8 @@ func runSmartctl(ctx context.Context, path string, useSudo bool, args []string) 
 	cmd := exec.CommandContext(ctx, name, fullArgs...) //nolint:gosec
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			// Accept exit codes where bits 0 and 1 are clear: these indicate
 			// disk-health conditions only, not execution errors.
 			if exitErr.ExitCode()&0x03 == 0 {

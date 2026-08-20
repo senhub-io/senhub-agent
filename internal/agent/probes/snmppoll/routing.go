@@ -100,7 +100,7 @@ func collectRoutes(client snmpClient) ([]routeRow, error) {
 	inetBinds, inetErr := client.WalkRaw(inetCidrRouteEntry)
 
 	if v4Err != nil && inetErr != nil {
-		return nil, fmt.Errorf("route walks failed — ipCidrRoute: %w; inetCidrRoute: %v", v4Err, inetErr)
+		return nil, fmt.Errorf("route walks failed — ipCidrRoute: %w; inetCidrRoute: %w", v4Err, inetErr)
 	}
 
 	var rows []routeRow
