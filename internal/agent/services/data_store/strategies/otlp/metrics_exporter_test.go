@@ -74,6 +74,7 @@ func TestPushMetrics_BuildsResourceMetricsWithCounter(t *testing.T) {
 		{Key: "probe_name", Value: "host-a"},
 		{Key: "probe_type", Value: "cpu"},
 	}
+	beforeUpsert := time.Now()
 	store.upsert(datapoint.DataPoint{Name: "cpu_user_time", Value: 42, Tags: identity})
 
 	defs := &fakeDefs{defs: map[string]*transformers.ProbeDefinition{
@@ -134,8 +135,19 @@ func TestPushMetrics_BuildsResourceMetricsWithCounter(t *testing.T) {
 	if !dp.StartTime.Equal(startTime) {
 		t.Errorf("StartTime=%v", dp.StartTime)
 	}
-	if !dp.Time.Equal(now) {
-		t.Errorf("Time=%v", dp.Time)
+	// Since #812 a datapoint is stamped with WHEN IT WAS MEASURED, not
+	// when it was exported: the store recorded the observation at upsert,
+	// so the point carries that instant and not the `now` handed to the
+	// exporter. Re-exporting stored series with export time is what let a
+	// removed target keep publishing 0 with fresh timestamps.
+	if dp.Time.Equal(now) {
+		t.Error("Time is the export time; it must be the observation time (#812)")
+	}
+	if dp.Time.IsZero() {
+		t.Error("Time is zero: the observation time was lost on the way out")
+	}
+	if dp.Time.Before(beforeUpsert) || dp.Time.After(time.Now()) {
+		t.Errorf("Time=%v is outside the window in which the value was stored", dp.Time)
 	}
 }
 
@@ -603,5 +615,26 @@ func TestPushMetrics_DeltaTemporalityRoundTrip(t *testing.T) {
 		if _, leaked := dp.Attributes.Value(attribute.Key("otel_temporality")); leaked {
 			t.Error("otel_temporality control tag leaked as a histogram attribute")
 		}
+	}
+}
+
+// TestPointTime_UsesObservationNotExportTime pins #812: a series is
+// stamped with when it was measured, so a consumer can tell a fresh
+// value from one restored out of the checkpoint hours ago. Stamping
+// everything with export time is what let a removed target keep
+// publishing 0 with fresh timestamps, holding an alert red on something
+// nobody was querying any more.
+func TestPointTime_UsesObservationNotExportTime(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	observed := now.Add(-3 * time.Hour)
+
+	if got := pointTime(otelmapper.OtelRecord{ObservedAt: observed}, now); !got.Equal(observed) {
+		t.Errorf("point time=%s, want the observation time %s", got, observed)
+	}
+
+	// A producer that says nothing (agent self-metrics, computed at
+	// export) still gets export time.
+	if got := pointTime(otelmapper.OtelRecord{}, now); !got.Equal(now) {
+		t.Errorf("point time=%s, want export time %s when unobserved", got, now)
 	}
 }

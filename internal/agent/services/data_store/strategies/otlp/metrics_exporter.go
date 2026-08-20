@@ -45,7 +45,7 @@ func pushMetrics(
 	missingMappingHandler func(otelmapper.CacheMetric, error),
 	maxConcurrent int,
 ) (int, error) {
-	cms, _ := store.snapshot()
+	cms, observedAt := store.snapshot()
 	if len(cms) == 0 && len(extraRecords) == 0 {
 		return 0, nil
 	}
@@ -56,7 +56,7 @@ func pushMetrics(
 	// own resource graphs even when probes are quiet.
 	records := make([]otelmapper.OtelRecord, 0, len(extraRecords)+len(cms))
 	records = append(records, extraRecords...)
-	for _, cm := range cms {
+	for i, cm := range cms {
 		// def may be nil — Resolve handles that (an error for probe metrics
 		// with no definition, a pass-through for OTLP-ingested metrics).
 		def := defs.GetProbeDefinition(cm.ProbeType)
@@ -66,6 +66,15 @@ func pushMetrics(
 				missingMappingHandler(cm, err)
 			}
 			continue
+		}
+		// Carry when the value was measured. Without it every stored
+		// series is re-exported stamped `now`, which claims a fresh
+		// measurement of something that may not have been queried for
+		// hours (#812).
+		if i < len(observedAt) && !observedAt[i].IsZero() {
+			for j := range recs {
+				recs[j].ObservedAt = observedAt[i]
+			}
 		}
 		records = append(records, recs...)
 	}
@@ -272,7 +281,7 @@ func buildAggregation(otelType, temporality string, points []otelmapper.OtelReco
 		dps = append(dps, metricdata.DataPoint[float64]{
 			Attributes: attributeSet(p.Attributes),
 			StartTime:  startTime,
-			Time:       now,
+			Time:       pointTime(p, now),
 			Value:      p.Value,
 		})
 	}
@@ -333,7 +342,7 @@ func buildHistogramAggregation(points []otelmapper.OtelRecord, temporality strin
 		hdp := metricdata.HistogramDataPoint[float64]{
 			Attributes: attributeSet(p.Attributes),
 			StartTime:  startTime,
-			Time:       now,
+			Time:       pointTime(p, now),
 		}
 		h := p.Histogram
 		if h == nil {
@@ -392,4 +401,15 @@ func attributeSet(m map[string]string) attribute.Set {
 		kvs = append(kvs, attribute.String(k, m[k]))
 	}
 	return attribute.NewSet(kvs...)
+}
+
+// pointTime is when the measurement happened: the producer's own
+// observation time when it gave one, the export time otherwise. Stamping
+// everything with export time makes a stale series indistinguishable
+// from a fresh one (#812).
+func pointTime(r otelmapper.OtelRecord, now time.Time) time.Time {
+	if r.ObservedAt.IsZero() {
+		return now
+	}
+	return r.ObservedAt
 }
