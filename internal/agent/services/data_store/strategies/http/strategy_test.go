@@ -571,7 +571,7 @@ func TestHTTPSyncStrategy_Shutdown(t *testing.T) {
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
 	// Start the strategy
-	err := strategy.Start()
+	err := strategy.Start(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to start strategy: %v", err)
 	}
@@ -595,7 +595,7 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
 	// Start the strategy to initialize the server
-	err := strategy.Start()
+	err := strategy.Start(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to start strategy: %v", err)
 	}
@@ -798,7 +798,7 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
 
 	// Start the strategy to initialize the server
-	err := strategy.Start()
+	err := strategy.Start(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to start strategy: %v", err)
 	}

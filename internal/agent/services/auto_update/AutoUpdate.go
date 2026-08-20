@@ -19,6 +19,7 @@ import (
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/configParser"
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -48,9 +49,7 @@ type ConfigSource interface {
 // This function checks for update and applies the update if required
 
 type AutoUpdate interface {
-	GetName() string
-	Start(quitChannel chan struct{}) error
-	Shutdown(ctx context.Context) error
+	lifecycle.Service
 	Update(expectedVersion string, registryUrl ...string) (bool, error)
 	CheckForNewVersion(includeBeta bool) (*VersionMetadata, error)
 	ListAvailableVersions(includeBeta bool) ([]VersionMetadata, error)
@@ -72,7 +71,11 @@ type autoUpdate struct {
 	logger       *logger.ModuleLogger
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
-	dryRun       bool
+	// runCtx is the lifecycle context Start received, kept so a
+	// scheduler recreated on an interval change stays attached to the
+	// agent's cancellation root.
+	runCtx context.Context
+	dryRun bool
 	// operatorDriven is true for the root-run `senhub-agent update` CLI and
 	// false for the daemon's periodic checker. See selfApplyRefusal.
 	operatorDriven bool
@@ -147,11 +150,12 @@ func (a *autoUpdate) createScheduler() {
 	a.scheduler = &scheduler
 }
 
-func (a *autoUpdate) Start(quitChannel chan struct{}) error {
+func (a *autoUpdate) Start(ctx context.Context) error {
+	a.runCtx = ctx
 	a.configSource.OnConfigChanged(a.onConfigChange)
 
 	a.createScheduler()
-	if err := (*a.scheduler).Start(quitChannel); err != nil {
+	if err := (*a.scheduler).Start(ctx); err != nil {
 		a.logger.Error().
 			Err(err).
 			Msg("Failed to start scheduler")
@@ -188,7 +192,12 @@ func (a *autoUpdate) onConfigChange(string) {
 				Msg("Failed to shutdown scheduler during config change")
 		}
 		a.createScheduler()
-		if err := (*a.scheduler).Start(nil); err != nil {
+		// The replacement scheduler inherits the SAME lifecycle context
+		// as the one it replaces. Passing nil here used to hand the
+		// restarted scheduler no external cancellation at all — an
+		// interval change silently detached auto-update from agent
+		// shutdown (#285).
+		if err := (*a.scheduler).Start(a.runCtx); err != nil {
 			a.logger.Error().
 				Err(err).
 				Msg("Failed to restart scheduler during config change")

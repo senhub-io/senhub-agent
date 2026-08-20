@@ -373,7 +373,7 @@ func TestComprehensiveMetricsIntegration(t *testing.T) {
 	strategy := NewHTTPSyncStrategy(config.AgentConfig, params, config.Logger).(*HTTPSyncStrategy)
 
 	// Start the HTTP strategy
-	err := strategy.Start()
+	err := strategy.Start(context.Background())
 	if err != nil {
 		t.Fatalf("❌ Failed to start HTTP strategy: %v", err)
 	}
