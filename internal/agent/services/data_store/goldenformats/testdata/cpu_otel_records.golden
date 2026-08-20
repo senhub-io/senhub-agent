@@ -1,0 +1,239 @@
+[
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_dpc_rate",
+    "otel_name": "senhub.system.cpu.dpcs",
+    "type": "gauge",
+    "unit": "1/s"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_dpc_queued",
+    "otel_name": "senhub.system.cpu.dpcs_queued",
+    "type": "gauge",
+    "unit": "1/s"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_interrupts",
+    "otel_name": "senhub.system.cpu.interrupts",
+    "type": "gauge",
+    "unit": "1/s"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_queue_length",
+    "otel_name": "senhub.system.cpu.queue_length",
+    "type": "gauge",
+    "unit": "{thread}"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_load15",
+    "otel_name": "system.cpu.load_15m",
+    "type": "gauge",
+    "unit": "{thread}"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_load1",
+    "otel_name": "system.cpu.load_1m",
+    "type": "gauge",
+    "unit": "{thread}"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_load5",
+    "otel_name": "system.cpu.load_5m",
+    "type": "gauge",
+    "unit": "{thread}"
+  },
+  {
+    "attributes": {
+      "cpu.logical_number": "0",
+      "cpu.mode": "interrupt",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_core_irq",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.logical_number": "0",
+      "cpu.mode": "softirq",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_core_softirq",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.logical_number": "0",
+      "cpu.mode": "system",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_core_system",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.logical_number": "0",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_core_usage",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.logical_number": "0",
+      "cpu.mode": "user",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_core_user",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "idle",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_idle",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "iowait",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_iowait",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "interrupt",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_irq",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "nice",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_nice",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "softirq",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_softirq",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "steal",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_steal",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "system",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_system",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_usage_total",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "user",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_user",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_processes_total",
+    "otel_name": "system.processes.count",
+    "type": "gauge",
+    "unit": "{process}"
+  }
+]
