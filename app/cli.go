@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/user"
 	"runtime"
@@ -38,7 +37,10 @@ func (p *program) Stop(s service.Service) error {
 	defer cancel()
 
 	if err := p.agent.Shutdown(ctx); err != nil {
-		log.Printf("Agent forced to shutdown with error: %v", err)
+		// The service manager is tearing the process down; the agent's
+		// own logger is part of what is being shut down, so this last
+		// word goes straight to stderr.
+		fmt.Fprintf(os.Stderr, "Agent forced to shutdown with error: %v\n", err)
 	}
 	p.done <- true
 	return nil
@@ -50,8 +52,7 @@ func (p *program) run() {
 		// an error on misconfiguration. This path is a defence-in-depth
 		// fallback for callers that override exitFn (tests) or for future
 		// code that makes handleStartError non-fatal.
-		log.Printf("agent error: %s", err)
-		os.Exit(1)
+		fatalf("agent error: %s", err)
 	}
 }
 
@@ -120,10 +121,9 @@ func checkPrivileges(command string) error {
 }
 
 // fatalf prints a user-facing failure to stderr and exits non-zero. It
-// is the CLI's single fatal-error path: command handlers use it instead
-// of log.Fatalf so a failure reads as a plain "Error: ..." line on
-// stderr, consistent with the rest of the CLI, rather than a
-// timestamped log line (the default logger runs with LstdFlags).
+// is the CLI's single fatal-error path, so a failure reads as a plain
+// "Error: ..." line on stderr, consistent with the rest of the CLI
+// rather than with a timestamped log line.
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
