@@ -2,6 +2,7 @@ package exporterrors
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -72,5 +73,57 @@ func TestIsRetryable(t *testing.T) {
 		if got := IsRetryable(c.err); got != c.want {
 			t.Errorf("%s: IsRetryable(%v) = %v, want %v", c.name, c.err, got, c.want)
 		}
+	}
+}
+
+// TestIsPermanentHTTPStatus pins the retry-vs-drop split for HTTP push
+// sinks. It moved here from the cloud strategy when the event sink
+// needed the same classification and would otherwise have forked it
+// (#287) — the table is the one the cloud sink shipped.
+func TestIsPermanentHTTPStatus(t *testing.T) {
+	cases := []struct {
+		status    int
+		permanent bool
+	}{
+		{http.StatusBadRequest, true},           // 400
+		{http.StatusUnauthorized, false},        // 401 retryable (auth blip / key rotation)
+		{http.StatusForbidden, false},           // 403 retryable (auth blip / key rotation)
+		{http.StatusNotFound, true},             // 404
+		{http.StatusUnprocessableEntity, true},  // 422
+		{http.StatusRequestTimeout, false},      // 408 retryable
+		{http.StatusTooManyRequests, false},     // 429 retryable
+		{http.StatusInternalServerError, false}, // 500 retryable
+		{http.StatusServiceUnavailable, false},  // 503 retryable
+		{http.StatusOK, false},                  // 200 not an error
+	}
+	for _, c := range cases {
+		if got := IsPermanentHTTPStatus(c.status); got != c.permanent {
+			t.Errorf("IsPermanentHTTPStatus(%d) = %v, want %v", c.status, got, c.permanent)
+		}
+	}
+}
+
+// TestReason pins the bounded label set the send-failure counter uses.
+// An unclassified error must report "transport": IsRetryable keeps its
+// batch, so a counter saying otherwise would tell an operator data was
+// dropped when it was not.
+func TestReason(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"transport", Transport("posting", errors.New("connection refused")), "transport"},
+		{"validation", Validation("rejected", errors.New("400")), "validation"},
+		{"configuration", Configuration("bad url", errors.New("parse")), "configuration"},
+		{"unclassified", errors.New("something else"), "transport"},
+		{"nil", nil, "transport"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := Reason(c.err); got != c.want {
+				t.Errorf("Reason(%v) = %q, want %q", c.err, got, c.want)
+			}
+		})
 	}
 }
