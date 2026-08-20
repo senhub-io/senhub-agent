@@ -15,12 +15,32 @@ LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
 WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
 DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
 DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
-# Version embedded in binaries: the nearest reachable tag from HEAD
-# (git describe), NOT the highest tag repo-wide — building an older
-# branch must not claim a newer version (poisons updater comparisons).
-# Falls back to 0.0.0-dev when no tag is reachable (fresh clones, CI
-# shallow checkouts without tags).
-VERSION=$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo 0.0.0-dev)
+# Version embedded in binaries.
+#
+# A build sitting exactly on a version tag takes that tag verbatim: that
+# is a release, and its version string must stay clean for the updater
+# and for the published artifacts.
+#
+# Anything else is a development build, named after the line it belongs
+# to (the VERSION file) plus the commit it was built from:
+# 0.5.5-dev.1234.gabc12345. It sorts above the previous release and below
+# its own, which is the truth about what the binary contains.
+#
+# The line comes from a file rather than from `git describe` because
+# release tags are not reachable from the development branch (they live
+# on the release branch), so describe reports the last tag merged there —
+# 0.5.2-beta while the code is well past 0.5.4. Deployed on a bench that
+# made the fleet inventory read as a DOWNGRADE, and it matters more now
+# that the agent publishes service.version onto the entity rail, where a
+# wrong value is worse than none (#830, found in the 0.5.5 recette).
+#
+# Bump VERSION when a new cycle opens. Falls back to the old describe
+# behaviour, then to 0.0.0-dev, when the file or the tags are missing
+# (fresh clones, shallow CI checkouts).
+VERSION_LINE=$(shell tr -d ' \n\r' < VERSION 2>/dev/null)
+VERSION_EXACT=$(shell git describe --tags --exact-match --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null)
+VERSION_DEV=$(VERSION_LINE)-dev.$(shell git rev-list --count HEAD 2>/dev/null || echo 0).g$(shell git rev-parse --short=8 HEAD 2>/dev/null || echo unknown)
+VERSION=$(strip $(or $(VERSION_EXACT),$(and $(VERSION_LINE),$(VERSION_DEV)),$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null),0.0.0-dev))
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
 PRODUCTION_URL="https://eu-west-1.intake.senhub.io"

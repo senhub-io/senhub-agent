@@ -2,6 +2,33 @@
 
 This document describes the build system, compilation process, and testing procedures for SenHub Agent.
 
+## Version embedded in a binary
+
+A binary reports its version through `senhub-agent version`, and — since
+the entity rail carries `service.version` — into the topology graph. Two
+cases, decided by the Makefile:
+
+| Build | Reported version | How |
+|---|---|---|
+| HEAD is exactly on a version tag (a release) | the tag verbatim, e.g. `0.5.4` | `git describe --exact-match` |
+| anything else (a development build) | `<line>-dev.<commits>.g<sha>`, e.g. `0.5.5-dev.2159.g06a29207` | the `VERSION` file plus the commit |
+
+**`VERSION` at the repository root holds the line under development.**
+Bump it when a cycle opens (`0.5.5` → `0.5.6`), in the same commit that
+opens the cycle.
+
+The line cannot be derived from git: release tags live on the release
+branch and are not reachable from `dev`, so `git describe` there reports
+the last tag that happens to be merged in — `0.5.2-beta` while the code
+is well past 0.5.4. A build deployed on a bench then announced a version
+older than the release it superseded, and a fleet inventory read it as a
+downgrade. A wrong version is worse than an unknown one, so the reported
+line comes from a file that states it.
+
+A development version sorts above the previous release and below its own,
+which keeps updater comparisons meaningful: `0.5.4` < `0.5.5-dev.2159` <
+`0.5.5`.
+
 ## Build Commands
 
 The project uses a Makefile for consistent build operations across all platforms.
