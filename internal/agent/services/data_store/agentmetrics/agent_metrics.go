@@ -368,6 +368,21 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Export send-failure counters (#287). A sink whose backlog is still
+	// under its cap sheds nothing while failing every send, so the drop
+	// counter above stays flat through an outage — this is the series
+	// that moves. One increment per failed attempt, not per datapoint.
+	for _, f := range agentstate.GetExportSendFailed() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.export.send.failed",
+			Unit:        "{attempt}",
+			Type:        "counter",
+			Attributes:  map[string]string{"strategy": f.Strategy, "reason": f.Reason},
+			Value:       float64(f.Count),
+			Description: "Cumulative count of failed delivery attempts by a push strategy, by strategy and reason (transport: batch kept and retried; validation/configuration: batch dropped).",
+		})
+	}
+
 	// OTLP receiver ingest counters — items accepted per signal
 	// (metrics=emitted internal datapoints after family expansion,
 	// logs=records, traces=spans). Emitted only once the receiver has

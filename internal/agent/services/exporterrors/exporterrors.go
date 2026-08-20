@@ -26,6 +26,7 @@ package exporterrors
 import (
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 var (
@@ -72,4 +73,50 @@ func classify(class error, msg string, cause error) error {
 // the batch rather than silently discard it.
 func IsRetryable(err error) bool {
 	return !errors.Is(err, ErrConfiguration) && !errors.Is(err, ErrValidation)
+}
+
+// IsPermanentHTTPStatus reports whether an HTTP status from a push sink
+// is a permanent rejection — one a resend of the same bytes cannot fix.
+//
+// Every 4xx qualifies except the ones a later attempt plausibly
+// recovers from:
+//
+//   - 408 Request Timeout and 429 Too Many Requests are transient by
+//     definition.
+//   - 401 Unauthorized and 403 Forbidden clear on an intake-side auth
+//     blip or a slow key-rotation propagation. Dropping the batch would
+//     lose data across a window a retry rides out, and the bounded push
+//     backlog caps the cost if the key is genuinely wrong.
+//
+// Non-4xx — network errors, 5xx — are never permanent here.
+//
+// It lives in this package rather than in a sink because two sinks
+// already needed the same split and a third would have forked it again
+// (#287).
+func IsPermanentHTTPStatus(status int) bool {
+	if status < 400 || status >= 500 {
+		return false
+	}
+	switch status {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests,
+		http.StatusUnauthorized, http.StatusForbidden:
+		return false
+	default:
+		return true
+	}
+}
+
+// Reason names the class as a bounded label for the send-failure
+// counter. Unclassified errors report "transport", matching what
+// IsRetryable already decides about them: the batch was kept, so the
+// counter must not tell an operator it was dropped.
+func Reason(err error) string {
+	switch {
+	case errors.Is(err, ErrConfiguration):
+		return "configuration"
+	case errors.Is(err, ErrValidation):
+		return "validation"
+	default:
+		return "transport"
+	}
 }
