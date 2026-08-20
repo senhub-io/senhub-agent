@@ -9,6 +9,7 @@ import (
 	"time"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -102,7 +103,7 @@ type counterWithTime struct {
 	Timestamp time.Time
 }
 
-func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (osNetworkCollector, error) {
+func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
 	return &unixNetworkCollector{
 		logger:       logger,
 		lastCounters: make(map[string]counterWithTime),

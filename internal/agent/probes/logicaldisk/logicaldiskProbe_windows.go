@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -101,7 +102,7 @@ func queryVolumeFSType(drive string) string {
 	return normalizeFSType(windows.UTF16ToString(fsName))
 }
 
-func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (logicaldiskCollector, error) {
+func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (hostpoll.Collector, error) {
 	// Initialize PDH logger
 	pdh.InitializePDHLogger(baseLogger)
 

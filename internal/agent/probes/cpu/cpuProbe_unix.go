@@ -9,6 +9,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/load"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -26,7 +27,7 @@ type unixCollector struct {
 	lastTimestamp time.Time
 }
 
-func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
 	return &unixCollector{
 		logger: logger,
 	}, nil

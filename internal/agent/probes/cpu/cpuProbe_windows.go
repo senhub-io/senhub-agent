@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v3/process"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -107,7 +108,7 @@ type windowsCollector struct {
 	logger      *logger.ModuleLogger
 }
 
-func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (osCollector, error) {
+func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (hostpoll.Collector, error) {
 	// Initialize PDH logger
 	pdh.InitializePDHLogger(baseLogger)
 
