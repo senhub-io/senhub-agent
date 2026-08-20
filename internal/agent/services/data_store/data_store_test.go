@@ -25,7 +25,7 @@ func (m *MockConfigProvider) GetConfiguration() configuration.ConfigurationData 
 
 func (m *MockConfigProvider) OnConfigChanged(callback func(string)) {}
 func (m *MockConfigProvider) GetName() string                       { return "MockConfigProvider" }
-func (m *MockConfigProvider) Start(chan struct{}) error             { return nil }
+func (m *MockConfigProvider) Start(context.Context) error           { return nil }
 func (m *MockConfigProvider) Shutdown(context.Context) error        { return nil }
 
 // MockAgentConfig implements configuration.AgentConfiguration for testing
@@ -60,7 +60,7 @@ func (m *MockStrategy) GetStrategyParams() map[string]interface{} { return m.par
 func (m *MockStrategy) ValidateConfigParams(configuration.StorageConfigParams) error {
 	return m.validateError
 }
-func (m *MockStrategy) Start() error {
+func (m *MockStrategy) Start(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.started = true
@@ -407,8 +407,8 @@ func TestStartAndShutdown(t *testing.T) {
 
 	ds := NewDataStore(mockConfig, mockProvider, baseLogger)
 
-	quitChannel := make(chan struct{})
-	err := ds.Start(quitChannel)
+	runCtx := context.Background()
+	err := ds.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start returned error: %v", err)
 	}

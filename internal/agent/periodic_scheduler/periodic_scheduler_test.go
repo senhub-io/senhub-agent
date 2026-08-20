@@ -35,16 +35,16 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	logger := zerolog.New(os.Stderr)
 
 	t.Run("Start", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
 	})
 
 	t.Run("Start should call OnStart", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		called := false
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -53,7 +53,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 				return nil
 			},
 		}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
@@ -64,14 +64,14 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	})
 
 	t.Run("Start should report OnStart failure", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			OnStart: func(quitChannel chan struct{}) error {
 				return fmt.Errorf("Failure message")
 			},
 		}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 
 		if err == nil {
 			t.Errorf("PeriodicScheduler.Start() should report OnStart error")
@@ -83,7 +83,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	})
 
 	t.Run("Start should call Execute if ExecuteOnStart is true", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		called := false
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -93,7 +93,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 				return nil
 			},
 		}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
@@ -105,7 +105,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	})
 
 	t.Run("Start should call Execute only once if ExecuteOnStart is true", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		called := 0
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -115,7 +115,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 				return nil
 			},
 		}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
@@ -127,7 +127,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	})
 
 	t.Run("Start should NOT call Execute if ExecuteOnStart is false", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		called := false
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -137,7 +137,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 				return nil
 			},
 		}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
@@ -151,7 +151,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	t.Run(
 		"Start should call Execute and OnStart only once if called several times",
 		func(t *testing.T) {
-			quitChannel := make(chan struct{})
+			runCtx := context.Background()
 			onStartCalled := 0
 			executeCalled := 0
 
@@ -167,12 +167,12 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 				},
 			}, &logger)
 
-			err := periodicScheduler.Start(quitChannel)
+			err := periodicScheduler.Start(runCtx)
 			if err != nil {
 				t.Errorf("PeriodicScheduler.Start() error = %v", err)
 			}
 
-			err = periodicScheduler.Start(quitChannel)
+			err = periodicScheduler.Start(runCtx)
 			if err != nil {
 				t.Errorf("PeriodicScheduler.Start() second call error = %v", err)
 			}
@@ -186,7 +186,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 		})
 
 	t.Run("Start should be callabale after Shutdown", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		onStartCalled := 0
 		executeCalled := 0
 
@@ -202,7 +202,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 			},
 		}, &logger)
 
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
@@ -212,7 +212,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Shutdown() error = %v", err)
 		}
 
-		err = periodicScheduler.Start(quitChannel)
+		err = periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() after Shutdown error = %v", err)
 		}
@@ -226,7 +226,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	})
 
 	t.Run("Start should call Execute periodically", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		var called int64
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -238,7 +238,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 			},
 		}, &logger)
 
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
@@ -277,7 +277,7 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 
 	t.Run("MaxRetries zero keeps retrying forever, never shuts down", func(t *testing.T) {
 		logger := zerolog.New(os.Stderr)
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		var called int64
 		var shutdownCalled int64
 
@@ -295,7 +295,7 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 			},
 		}, &logger)
 
-		if err := periodicScheduler.Start(quitChannel); err != nil {
+		if err := periodicScheduler.Start(runCtx); err != nil {
 			t.Fatalf("Start: %v", err)
 		}
 		defer periodicScheduler.Shutdown(context.Background())
@@ -315,7 +315,7 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 
 	t.Run("MaxRetries crossed backs off but keeps retrying, never shuts down", func(t *testing.T) {
 		logger := zerolog.New(os.Stderr)
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		var called int64
 		var shutdownCalled int64
 
@@ -332,7 +332,7 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 			},
 		}, &logger)
 
-		if err := periodicScheduler.Start(quitChannel); err != nil {
+		if err := periodicScheduler.Start(runCtx); err != nil {
 			t.Fatalf("Start: %v", err)
 		}
 		defer periodicScheduler.Shutdown(context.Background())
@@ -354,7 +354,7 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 
 	t.Run("success resets the failure backoff", func(t *testing.T) {
 		logger := zerolog.New(os.Stderr)
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		var called int64
 		failures := int64(5)
 
@@ -370,7 +370,7 @@ func TestPeriodicScheduler_Retry(t *testing.T) {
 			},
 		}, &logger)
 
-		if err := periodicScheduler.Start(quitChannel); err != nil {
+		if err := periodicScheduler.Start(runCtx); err != nil {
 			t.Fatalf("Start: %v", err)
 		}
 		defer periodicScheduler.Shutdown(context.Background())
@@ -516,9 +516,9 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	logger := zerolog.New(os.Stderr)
 
 	t.Run("Stop", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
@@ -530,7 +530,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	})
 
 	t.Run("Stop should call Execute only once if ExecuteOnShutdown is true", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		called := 0
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -540,7 +540,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 				return nil
 			},
 		}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
@@ -557,7 +557,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	})
 
 	t.Run("Stop should NOT call Execute if ExecuteOnShutdown is false", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		called := false
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -567,7 +567,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 				return nil
 			},
 		}, &logger)
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
@@ -584,7 +584,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	})
 
 	t.Run("Stop should call Execute and OnStart only once if called several times", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		onShutdownCalled := 0
 		executeCalled := 0
 
@@ -600,7 +600,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 			},
 		}, &logger)
 
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
@@ -624,7 +624,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	})
 
 	t.Run("Stop should call callbacks after restarted", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 		onShutdownCalled := 0
 		executeCalled := 0
 
@@ -640,7 +640,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 			},
 		}, &logger)
 
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
@@ -650,7 +650,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Shutdown() error = %v", err)
 		}
 
-		err = periodicScheduler.Start(quitChannel)
+		err = periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() after Shutdown error = %v", err)
 		}
@@ -669,7 +669,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	})
 
 	t.Run("Stop should forward OnShutdown errors", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			OnShutdown: func(context.Context) error {
@@ -677,7 +677,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 			},
 		}, &logger)
 
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
@@ -693,7 +693,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 	})
 
 	t.Run("Stop should forward Execute error on shutdown", func(t *testing.T) {
-		quitChannel := make(chan struct{})
+		runCtx := context.Background()
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			ExecuteOnShutdown: true,
@@ -702,7 +702,7 @@ func TestPeriodicScheduler_Shutdown(t *testing.T) {
 			},
 		}, &logger)
 
-		err := periodicScheduler.Start(quitChannel)
+		err := periodicScheduler.Start(runCtx)
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}

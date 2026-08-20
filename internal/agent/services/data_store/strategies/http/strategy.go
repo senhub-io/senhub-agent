@@ -19,6 +19,10 @@ import (
 
 // HTTPSyncStrategy implements an HTTP server that exposes metrics via REST endpoints
 type HTTPSyncStrategy struct {
+	// runCtx is the lifecycle context Start received, kept so a live
+	// reconfiguration restarts the server under the same cancellation
+	// root rather than an orphaned background one.
+	runCtx              context.Context
 	agentConfig         configuration.AgentConfiguration
 	params              map[string]interface{}
 	logger              *logger.ModuleLogger
@@ -223,14 +227,19 @@ func (h *HTTPSyncStrategy) ValidateConfigParams(params configuration.StorageConf
 }
 
 // Start initializes the HTTP server and cache cleanup
-func (h *HTTPSyncStrategy) Start() error {
+func (h *HTTPSyncStrategy) Start(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	h.runCtx = ctx
+
 	h.logger.Info().
 		Int("port", h.port).
 		Str("bind_address", h.bindAddress).
 		Msg("Starting HTTP strategy")
 
 	// Delegate server startup to ServerManager
-	if err := h.serverManager.Start(); err != nil {
+	if err := h.serverManager.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 
@@ -798,8 +807,14 @@ func (h *HTTPSyncStrategy) restartServer() error {
 		}
 	}
 
-	// Restart with new configuration
-	if err := h.serverManager.Start(); err != nil {
+	// Restart with new configuration, under the same lifecycle context
+	// the strategy was started with — a live reconfiguration must not
+	// quietly promote the server to an uncancellable one.
+	runCtx := h.runCtx
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
+	if err := h.serverManager.Start(runCtx); err != nil {
 		h.logger.Error().Err(err).Msg("Failed to restart HTTP server")
 		return err
 	}

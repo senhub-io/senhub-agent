@@ -150,6 +150,10 @@ type OTLPSyncStrategy struct {
 	startMu  sync.Mutex
 	started  bool
 	shutdown bool
+	// runCtx is the lifecycle context Start received — the cancellation
+	// root for the push loop, the memory-limiter poller, the
+	// checkpointer and the entity detector. Guarded by startMu.
+	runCtx context.Context
 
 	// missingMappingWarned dedups the "metric has no OTel mapping"
 	// warning. Same idea as the prometheus side — keyed by
@@ -270,7 +274,7 @@ func (s *OTLPSyncStrategy) ValidateConfigParams(params configuration.StorageConf
 // when metrics are enabled, launches the periodic push goroutine.
 // Idempotent — subsequent calls are no-ops while running. Once Shutdown
 // has been called, Start returns an error rather than silently restarting.
-func (s *OTLPSyncStrategy) Start() error {
+func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
 
@@ -281,10 +285,18 @@ func (s *OTLPSyncStrategy) Start() error {
 		return fmt.Errorf("strategy already shut down — cannot restart")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// runCtx is the lifecycle root for everything this strategy spawns
+	// (memory limiter poller, checkpointer, entity emission). Cancelling
+	// the agent context stops them without waiting for Shutdown.
+	s.runCtx = ctx
+
+	buildCtx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
 
-	exp, err := buildExporters(ctx, s.cfg, s.logger)
+	exp, err := buildExporters(buildCtx, s.cfg, s.logger)
 	if err != nil {
 		return fmt.Errorf("build exporters: %w", err)
 	}
@@ -294,7 +306,7 @@ func (s *OTLPSyncStrategy) Start() error {
 	// Start the memory limiter poller before the metrics pusher so
 	// the first cycle's upsert path sees an accurate state flag.
 	if s.memLimiter != nil {
-		s.memLimiter.start(context.Background())
+		s.memLimiter.start(ctx)
 	}
 
 	// Restore the LWW store from the on-disk checkpoint (if any)
@@ -307,7 +319,7 @@ func (s *OTLPSyncStrategy) Start() error {
 		} else if n > 0 {
 			s.logger.Info().Int("entries", n).Msg("OTLP checkpoint restored")
 		}
-		s.chkpt.start(context.Background())
+		s.chkpt.start(ctx)
 	}
 
 	if s.cfg.Metrics.Enabled {
@@ -429,6 +441,7 @@ func (s *OTLPSyncStrategy) Start() error {
 func (s *OTLPSyncStrategy) startMetricsPusher() {
 	s.pushTicker = time.NewTicker(s.cfg.Metrics.Interval)
 	s.pushDone = make(chan struct{})
+	runCtx := s.runCtx
 	s.pushWG.Add(1)
 	go func() {
 		defer s.pushWG.Done()
@@ -436,7 +449,16 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 			select {
 			case <-s.pushDone:
 				return
+			case <-runCtx.Done():
+				// Agent-wide cancellation without a Shutdown call
+				// (strategy dropped from the config in the same
+				// refresh that cancelled the context).
+				return
 			case <-s.pushTicker.C:
+				// Deliberately NOT runCtx: cancellation ends the
+				// loop, it must not abort a push already in flight
+				// and drop the batch it carries. The exporter has
+				// its own per-export timeout.
 				s.pushPeriodic(context.Background())
 			}
 		}
@@ -744,7 +766,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 				Msg("entity has no relation; dropped from the wire (anti-orphan guard)")
 		}
 	})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(s.runCtx)
 	s.entityDetectorCancel = cancel
 	s.entityDetectorWG.Add(1)
 	go func() {

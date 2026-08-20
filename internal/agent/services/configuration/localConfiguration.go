@@ -78,14 +78,17 @@ type LocalConfiguration struct {
 	args          *cliArgs.ParsedArgs
 	eventNotifier *EventNotifier
 	watcher       *fsnotify.Watcher
-	quitChannel   chan struct{}
 	// stopCh + watcherWG make the watcher goroutines joinable:
 	// Shutdown closes stopCh and waits, so no goroutine outlives the
 	// instance (tests saw rewatch goroutines outlive t.TempDir()).
-	// quitChannel stays external (owned by the caller, may be nil).
-	stopCh    chan struct{}
-	stopOnce  sync.Once
-	watcherWG sync.WaitGroup
+	// stopCh is now the ONLY termination signal the watcher selects on:
+	// the lifecycle context closes it through an AfterFunc, so an agent
+	// cancellation and a Shutdown converge on one path instead of the
+	// watcher racing a caller-owned quit channel that could be nil (#285).
+	stopCh         chan struct{}
+	stopOnce       sync.Once
+	releaseStopCtx func() bool
+	watcherWG      sync.WaitGroup
 }
 
 // snapshot returns the current immutable configuration snapshot
@@ -275,9 +278,8 @@ func (lc *LocalConfiguration) OnConfigChanged(callback func(string)) {
 }
 
 // Start initializes the local configuration and begins file watching
-func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
+func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	lc.logger.Info().Msg("Starting LocalConfiguration with file watching")
-	lc.quitChannel = quitChannel
 
 	// Migrate configuration if needed (before loading)
 	migrator := NewConfigMigrator(lc.configPath, lc.logger.Logger)
@@ -351,8 +353,14 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 	}
 
 	// Start watching goroutine (joinable: Shutdown closes stopCh and
-	// waits on watcherWG).
+	// waits on watcherWG). Cancelling ctx closes the same channel, so
+	// the watcher has exactly one termination signal.
 	lc.stopCh = make(chan struct{})
+	if ctx != nil {
+		lc.releaseStopCtx = context.AfterFunc(ctx, func() {
+			lc.stopOnce.Do(func() { close(lc.stopCh) })
+		})
+	}
 	lc.watcherWG.Add(1)
 	go lc.watchConfigFile()
 
@@ -363,6 +371,10 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 func (lc *LocalConfiguration) Shutdown(ctx context.Context) error {
 	lc.logger.Info().Msg("Shutting down LocalConfiguration")
 
+	if lc.releaseStopCtx != nil {
+		lc.releaseStopCtx()
+		lc.releaseStopCtx = nil
+	}
 	if lc.stopCh != nil {
 		lc.stopOnce.Do(func() { close(lc.stopCh) })
 	}
