@@ -24,6 +24,28 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **An intake outage can no longer grow the event backlog until the
+  agent dies.** The cloud metrics and PRTG outputs already capped what
+  they hold when a destination is unreachable; the event output did not,
+  and every failed send appended the whole batch to a list nothing
+  trimmed. It is now bounded like the others: past the cap the oldest
+  events go first, and the loss is counted rather than silent.
+
+- **A rejected batch is no longer resent forever.** When the intake
+  refuses a batch of events for what it contains — a malformed payload,
+  an unprocessable body — resending the same bytes gets the same answer.
+  The agent now recognises that class, drops the batch once, and moves
+  on, instead of pinning it at the head of the retry backlog where it
+  blocked everything queued behind it and burned a round-trip (plus two
+  seconds of retry sleep) on every cycle.
+
+- **A failing output is now visible before it starts losing data.**
+  Until the backlog reaches its cap an output that cannot deliver sheds
+  nothing, so no counter moved and the only trace was a log line. The
+  new `senhub.agent.export.send.failed{strategy,reason}` counts failed
+  delivery attempts per output, with `reason` saying whether the batch
+  was kept (`transport`) or dropped (`validation`, `configuration`).
+
 - **Stopping the agent no longer races itself.** Every service — the
   configuration loader, the outputs, the probe pool, the auto-updater —
   now shares one cancellation, and each gets its own shutdown allowance

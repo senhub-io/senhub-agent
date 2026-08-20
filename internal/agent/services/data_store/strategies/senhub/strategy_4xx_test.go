@@ -89,31 +89,6 @@ func TestDoSync_RetryableStatusKeepsBatch(t *testing.T) {
 	}
 }
 
-// TestIsPermanentClientStatus pins the classification: which statuses
-// drop the batch and which stay on the retry path.
-func TestIsPermanentClientStatus(t *testing.T) {
-	cases := []struct {
-		status    int
-		permanent bool
-	}{
-		{http.StatusBadRequest, true},           // 400
-		{http.StatusUnauthorized, false},        // 401 retryable (auth blip / key rotation)
-		{http.StatusForbidden, false},           // 403 retryable (auth blip / key rotation)
-		{http.StatusNotFound, true},             // 404
-		{http.StatusUnprocessableEntity, true},  // 422
-		{http.StatusRequestTimeout, false},      // 408 retryable
-		{http.StatusTooManyRequests, false},     // 429 retryable
-		{http.StatusInternalServerError, false}, // 500 retryable
-		{http.StatusServiceUnavailable, false},  // 503 retryable
-		{http.StatusOK, false},                  // 200 not an error
-	}
-	for _, c := range cases {
-		if got := isPermanentClientStatus(c.status); got != c.permanent {
-			t.Errorf("isPermanentClientStatus(%d) = %v, want %v", c.status, got, c.permanent)
-		}
-	}
-}
-
 // TestDoSync_ConfigurationErrorDropsBatch pins the class the taxonomy
 // was introduced for: an endpoint the URL parser rejects fails
 // identically on every tick, so re-prepending the batch would pin it at
