@@ -3,6 +3,8 @@ package snmptrap
 import (
 	"fmt"
 	"strings"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 const (
@@ -78,7 +80,7 @@ func parseConfig(config map[string]interface{}) (receiverConfig, error) {
 		cfg.Community = v
 	}
 
-	cfg.MibPaths = stringSlice(config["mib_paths"])
+	cfg.MibPaths = types.StringSlice(config["mib_paths"])
 
 	users, err := parseV3Users(config["v3"])
 	if err != nil {
@@ -131,28 +133,4 @@ func stringField(m map[string]interface{}, key string) string {
 		return v
 	}
 	return ""
-}
-
-// stringSlice coerces a YAML-decoded value into []string (the loader
-// yields []interface{}), dropping empties. A lone string is accepted too.
-func stringSlice(raw interface{}) []string {
-	switch v := raw.(type) {
-	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, e := range v {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []string:
-		return v
-	case string:
-		if v == "" {
-			return nil
-		}
-		return []string{v}
-	default:
-		return nil
-	}
 }

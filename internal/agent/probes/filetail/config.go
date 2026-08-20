@@ -101,7 +101,7 @@ func parseConfig(config map[string]interface{}) (FileTailProbeConfig, error) {
 		MaxBytesPerLine: DefaultMaxBytesPerLine,
 	}
 
-	parsed.Paths = stringSlice(config["paths"])
+	parsed.Paths = types.StringSlice(config["paths"])
 	if len(parsed.Paths) == 0 {
 		return parsed, fmt.Errorf("filetail: at least one entry under `paths` is required")
 	}
@@ -211,35 +211,4 @@ func countNamedGroups(names []string) int {
 		}
 	}
 	return n
-}
-
-// stringSlice normalises a YAML/JSON list-of-strings (or a lone string)
-// into a []string, dropping empties. yaml.v2 decodes a list into
-// []interface{}; a single scalar arrives as a bare string.
-func stringSlice(raw interface{}) []string {
-	switch v := raw.(type) {
-	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, e := range v {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []string:
-		out := make([]string, 0, len(v))
-		for _, s := range v {
-			if s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case string:
-		if v == "" {
-			return nil
-		}
-		return []string{v}
-	default:
-		return nil
-	}
 }
