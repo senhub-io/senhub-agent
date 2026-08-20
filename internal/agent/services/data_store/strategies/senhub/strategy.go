@@ -5,14 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
 	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
@@ -25,30 +24,22 @@ var (
 	DEFAULT_SENHUB_INTERVAL = 5 * time.Second
 )
 
-// Buffer interface for local use to avoid import cycles
+// Buffer is the backlog contract this strategy uses. The implementation
+// is the shared bounded queue: this used to be a verbatim fork of the
+// same code the PRTG sink carried, and a fork is how the two drifted
+// (#287).
 type Buffer interface {
-	// Append appends data to the buffer
 	Append(newData []datapoint.DataPoint) error
-	// Flush the buffer data and return the data
 	Sync() []datapoint.DataPoint
-	// Revert the sync operation
 	AbortSync(failedData []datapoint.DataPoint) error
-}
-
-// buffer implements Buffer interface
-type buffer struct {
-	data      *[]datapoint.DataPoint
-	mutex     sync.Mutex
-	maxPoints int // 0 = unbounded
+	Len() int
 }
 
 // DefaultMaxBufferPoints bounds the cloud push buffer. Before the cap
 // an intake outage grew the buffer until OOM (#267, audit A3): every
 // failed sync re-prepended the whole backlog while collection kept
-// appending. 100k points is hours of typical agent volume; oldest
-// points are dropped first — the freshest data is the valuable part
-// of a monitoring stream when the backlog cannot be shipped anyway.
-const DefaultMaxBufferPoints = 100000
+// appending.
+const DefaultMaxBufferPoints = pushqueue.DefaultMaxItems
 
 // NewBuffer creates a buffer bounded at DefaultMaxBufferPoints.
 func NewBuffer() Buffer {
@@ -57,49 +48,7 @@ func NewBuffer() Buffer {
 
 // NewBufferWithCap creates a buffer bounded at maxPoints (0 = unbounded).
 func NewBufferWithCap(maxPoints int) Buffer {
-	return &buffer{
-		data:      &[]datapoint.DataPoint{},
-		maxPoints: maxPoints,
-	}
-}
-
-// trimToCap drops the OLDEST points so the buffer holds at most
-// maxPoints, recording the drops. Callers hold the mutex.
-func (b *buffer) trimToCap() {
-	if b.maxPoints <= 0 || len(*b.data) <= b.maxPoints {
-		return
-	}
-	dropped := len(*b.data) - b.maxPoints
-	*b.data = (*b.data)[dropped:]
-	agentstate.IncrementPushBufferDropped("senhub", dropped)
-}
-
-// Append appends data to the buffer
-func (b *buffer) Append(newData []datapoint.DataPoint) error {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	*b.data = append(*b.data, newData...)
-	b.trimToCap()
-	return nil
-}
-
-// Sync returns all buffered data and clears the buffer
-func (b *buffer) Sync() []datapoint.DataPoint {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	data := *b.data
-	b.data = &[]datapoint.DataPoint{}
-	return data
-}
-
-// AbortSync re-prepends failed data (oldest first) so ordering
-// survives a retry; the cap then trims from the oldest end.
-func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	*b.data = append(failedData, *b.data...)
-	b.trimToCap()
-	return nil
+	return pushqueue.New[datapoint.DataPoint]("senhub", maxPoints)
 }
 
 type SenhubDataPoint struct {
@@ -246,6 +195,8 @@ func (s *SyncStrategySenhub) doSync() error {
 
 	s.logger.Debug().Any("data", transformedData).Msg("synchronizing data")
 	if err := s.doSyncData(transformedData); err != nil {
+		agentstate.IncrementExportSendFailed("senhub", exporterrors.Reason(err))
+
 		if !exporterrors.IsRetryable(err) {
 			// Nothing a later tick can change: a permanent 4xx (400
 			// malformed, 422 unprocessable), a payload we cannot even
@@ -292,31 +243,6 @@ func (e *permanentClientError) Error() string {
 // reach it with errors.As.
 func (e *permanentClientError) Unwrap() error { return exporterrors.ErrValidation }
 
-// isPermanentClientStatus reports whether a 4xx status is a permanent
-// client error for a metrics push. Every 4xx is treated as permanent
-// except the ones a resend can plausibly recover from:
-//   - 408 (Request Timeout) and 429 (Too Many Requests): transient by
-//     definition.
-//   - 401 (Unauthorized) and 403 (Forbidden): an intake-side auth blip or a
-//     slow key-rotation propagation clears on its own; dropping the batch would
-//     lose data during a window a retry would ride out. The bounded push buffer
-//     caps the backlog if the key is genuinely bad, so retrying is safe.
-//
-// Non-4xx (network errors, 5xx) are never classified here and keep their
-// existing retry behavior.
-func isPermanentClientStatus(status int) bool {
-	if status < 400 || status >= 500 {
-		return false
-	}
-	switch status {
-	case http.StatusRequestTimeout, http.StatusTooManyRequests,
-		http.StatusUnauthorized, http.StatusForbidden:
-		return false
-	default:
-		return true
-	}
-}
-
 func (s *SyncStrategySenhub) doSyncData(data []SenhubDataPoint) error {
 	response, err := s.server.Post("/metrics", data)
 	if err != nil {
@@ -324,7 +250,7 @@ func (s *SyncStrategySenhub) doSyncData(data []SenhubDataPoint) error {
 	}
 
 	if response.StatusCode != 200 {
-		if isPermanentClientStatus(response.StatusCode) {
+		if exporterrors.IsPermanentHTTPStatus(response.StatusCode) {
 			return &permanentClientError{statusCode: response.StatusCode}
 		}
 		return fmt.Errorf("unexpected status code: %d\n%v", response.StatusCode, response.Body)
