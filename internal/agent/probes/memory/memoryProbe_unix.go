@@ -47,7 +47,7 @@ func (u *unixMemoryCollector) Collect(timestamp time.Time) ([]data_store.DataPoi
 func (u *unixMemoryCollector) getBaseTags() ([]tags.Tag, error) {
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 	return baseTags, nil
 }
@@ -55,7 +55,7 @@ func (u *unixMemoryCollector) getBaseTags() ([]tags.Tag, error) {
 func (u *unixMemoryCollector) collectVirtualMemory(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	vmem, err := mem.VirtualMemory()
 	if err != nil {
-		return fmt.Errorf("error getting virtual memory metrics: %v", err)
+		return fmt.Errorf("error getting virtual memory metrics: %w", err)
 	}
 
 	// NOTE: vmem.Available is intentionally NOT emitted on Unix. The
@@ -98,7 +98,7 @@ func (u *unixMemoryCollector) collectVirtualMemory(dataPoints *[]data_store.Data
 func (u *unixMemoryCollector) collectSwapMemory(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	swap, err := mem.SwapMemory()
 	if err != nil {
-		return fmt.Errorf("error getting swap memory metrics: %v", err)
+		return fmt.Errorf("error getting swap memory metrics: %w", err)
 	}
 
 	metrics := []struct {

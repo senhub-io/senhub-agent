@@ -3,7 +3,6 @@ package app
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -311,14 +310,12 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 }
 
 func runAgent(args *cliArgs.ParsedArgs) {
-	// Configure logging based on verbose flag
-	if args.Verbose {
-		log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
-		log.Println("Verbose logging enabled")
-	}
-
 	// Create logger early for better logging
 	appLogger := agentLogger.NewLogger(args)
+
+	if args.Verbose {
+		appLogger.Debug().Msg("Verbose logging enabled")
+	}
 
 	svcConfig := &service.Config{
 		Name:        "SenHubService",

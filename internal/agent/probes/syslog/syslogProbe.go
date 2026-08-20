@@ -3,6 +3,7 @@ package syslog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -93,7 +94,7 @@ func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, e
 	}
 
 	if len(errs) > 0 {
-		return SyslogProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
+		return SyslogProbeConfig{}, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return SyslogProbeConfig{

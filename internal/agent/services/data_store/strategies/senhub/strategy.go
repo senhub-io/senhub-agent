@@ -13,6 +13,7 @@ import (
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/tags"
@@ -185,7 +186,7 @@ func ParseSyncStrategySenhubParams(config configuration.StorageConfigParams) (Sy
 	}
 
 	if len(errs) > 0 {
-		return params, fmt.Errorf("error parsing config: %v", errs)
+		return params, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return params, nil
@@ -245,17 +246,22 @@ func (s *SyncStrategySenhub) doSync() error {
 
 	s.logger.Debug().Any("data", transformedData).Msg("synchronizing data")
 	if err := s.doSyncData(transformedData); err != nil {
-		var permErr *permanentClientError
-		if errors.As(err, &permErr) {
-			// A permanent 4xx (e.g. 400 malformed, 422 unprocessable)
-			// will never be accepted no matter how often we resend it.
-			// Re-prepending it via AbortSync would pin the batch at the
+		if !exporterrors.IsRetryable(err) {
+			// Nothing a later tick can change: a permanent 4xx (400
+			// malformed, 422 unprocessable), a payload we cannot even
+			// serialise, or an endpoint URL the operator has to fix.
+			// Re-prepending the batch via AbortSync would pin it at the
 			// head of the buffer forever, so the buffer never drains and
 			// every scheduler tick wastes a round-trip. Drop it instead.
-			s.logger.Warn().
-				Int("status_code", permErr.statusCode).
+			event := s.logger.Warn()
+			var permErr *permanentClientError
+			if errors.As(err, &permErr) {
+				event = event.Int("status_code", permErr.statusCode)
+			}
+			event.
+				Err(err).
 				Int("dropped_points", len(data)).
-				Msg("permanent client error from intake; discarding batch (no retry)")
+				Msg("unrecoverable error from intake; discarding batch (no retry)")
 			agentstate.IncrementPushBufferDropped("senhub", len(data))
 			return nil
 		}
@@ -278,6 +284,13 @@ type permanentClientError struct {
 func (e *permanentClientError) Error() string {
 	return fmt.Sprintf("permanent client error: status %d", e.statusCode)
 }
+
+// Unwrap places the status-code detail inside the shared taxonomy: the
+// intake looked at what we sent and refused it, which is exactly
+// ErrValidation. Callers that only need "retry or drop" ask
+// exporterrors.IsRetryable; the ones that want the status code still
+// reach it with errors.As.
+func (e *permanentClientError) Unwrap() error { return exporterrors.ErrValidation }
 
 // isPermanentClientStatus reports whether a 4xx status is a permanent
 // client error for a metrics push. Every 4xx is treated as permanent
