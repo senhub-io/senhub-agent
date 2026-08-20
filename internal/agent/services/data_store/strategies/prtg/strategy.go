@@ -9,14 +9,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/validators"
@@ -33,71 +34,24 @@ var (
 // read) so a hung endpoint cannot block the sync goroutine forever.
 const defaultPushTimeout = 30 * time.Second
 
-// Buffer interface for local use to avoid import cycles
+// Buffer is the backlog contract this strategy uses. The implementation
+// is the shared bounded queue — this file used to carry a verbatim copy
+// of the cloud sink's buffer (#287).
 type Buffer interface {
-	// Append appends data to the buffer
 	Append(newData []datapoint.DataPoint) error
-	// Flush the buffer data and return the data
 	Sync() []datapoint.DataPoint
-	// Revert the sync operation
 	AbortSync(failedData []datapoint.DataPoint) error
-}
-
-// buffer implements Buffer interface
-type buffer struct {
-	data      *[]datapoint.DataPoint
-	mutex     sync.Mutex
-	maxPoints int // 0 = unbounded
-}
-
-// NewBuffer creates a new buffer instance
-func NewBuffer() Buffer {
-	return &buffer{
-		data:      &[]datapoint.DataPoint{},
-		maxPoints: defaultMaxBufferPoints,
-	}
+	Len() int
 }
 
 // defaultMaxBufferPoints mirrors the senhub cloud buffer cap (#267):
 // a PRTG endpoint outage must not grow this buffer until OOM. Oldest
 // points are dropped first.
-const defaultMaxBufferPoints = 100000
+const defaultMaxBufferPoints = pushqueue.DefaultMaxItems
 
-// trimToCap drops the OLDEST points past the cap. Callers hold mutex.
-func (b *buffer) trimToCap() {
-	if b.maxPoints <= 0 || len(*b.data) <= b.maxPoints {
-		return
-	}
-	dropped := len(*b.data) - b.maxPoints
-	*b.data = (*b.data)[dropped:]
-	agentstate.IncrementPushBufferDropped("prtg", dropped)
-}
-
-// Append appends data to the buffer
-func (b *buffer) Append(newData []datapoint.DataPoint) error {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	*b.data = append(*b.data, newData...)
-	b.trimToCap()
-	return nil
-}
-
-// Sync returns all buffered data and clears the buffer
-func (b *buffer) Sync() []datapoint.DataPoint {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	data := *b.data
-	b.data = &[]datapoint.DataPoint{}
-	return data
-}
-
-// AbortSync adds failed data back to the buffer
-func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	*b.data = append(failedData, *b.data...)
-	b.trimToCap()
-	return nil
+// NewBuffer creates a new buffer instance
+func NewBuffer() Buffer {
+	return pushqueue.New[datapoint.DataPoint]("prtg", defaultMaxBufferPoints)
 }
 
 type SyncStrategyPrtgParams struct {
@@ -313,6 +267,7 @@ func (s *SyncStrategyPrtg) DoSync() error {
 		s.logger.Error().Err(abortErr).Msg("failed to abort sync")
 	}
 	if err := s.doSyncData(data); err != nil {
+		agentstate.IncrementExportSendFailed("prtg", exporterrors.Reason(err))
 		s.logger.Error().Err(err).Msg("error synchronizing data")
 		return err
 	}
@@ -352,7 +307,7 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	requestBody, err := json.Marshal(jsonData)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("error encoding data.")
-		return err
+		return exporterrors.Validation("encoding PRTG payload", err)
 	}
 	resp, err := s.http.Post(
 		s.config.ServerUrl,
@@ -360,7 +315,7 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 		bytes.NewBuffer(requestBody),
 	)
 	if err != nil {
-		return err
+		return exporterrors.Transport("posting to the PRTG endpoint", err)
 	}
 	// Drain + close so the transport can reuse the connection; this
 	// push runs every sync and leaked one connection per cycle (#277).
@@ -370,7 +325,11 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	}()
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, body)
+		statusErr := fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, body)
+		if exporterrors.IsPermanentHTTPStatus(resp.StatusCode) {
+			return exporterrors.Validation("PRTG endpoint rejected the batch", statusErr)
+		}
+		return exporterrors.Transport("PRTG endpoint did not accept the batch", statusErr)
 	}
 
 	return nil

@@ -15,6 +15,8 @@ import (
 	eventFormatter "senhub-agent.go/internal/agent/formats/event"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -49,11 +51,22 @@ type EventSyncStrategy struct {
 	buffer         chan eventtypes.EventDataPoint
 	syncInProgress atomic.Bool
 	currentSize    atomic.Int64 // Current size of buffered events in bytes
-	failedEvents   []eventtypes.EventDataPoint
-	mutex          sync.Mutex // Protects failedEvents
+	// failedEvents is the retry backlog for batches the intake refused.
+	// It is the shared bounded queue rather than a plain slice: an
+	// unbounded retry backlog is the OOM class the two metric sinks
+	// closed in #267, and this sink was the one place it was still live
+	// — every failed sync appended the whole batch with no cap, so an
+	// intake outage grew it until the process died (#287).
+	failedEvents *pushqueue.Bounded[eventtypes.EventDataPoint]
 
 	syncTriggerSize  int   // Number of events that triggers a sync
 	syncTriggerBytes int64 // Size in bytes that triggers a sync
+
+	// retryAttempts / retryDelay drive the short in-tick retry. They are
+	// fields rather than the bare constants so a test can exercise the
+	// outage path without paying seconds of real sleep per cycle.
+	retryAttempts uint
+	retryDelay    time.Duration
 
 	config      EventSyncStrategyParams
 	server      server.Server
@@ -119,11 +132,14 @@ func NewEventSyncStrategy(
 
 	strategy := &EventSyncStrategy{
 		buffer:           make(chan eventtypes.EventDataPoint, config.QueueSize),
+		failedEvents:     pushqueue.NewDefault[eventtypes.EventDataPoint]("event"),
 		config:           config,
 		server:           srv,
 		agentConfig:      agentConfig,
 		logger:           moduleLogger,
 		formatter:        eventFormatter.NewFormatter(),
+		retryAttempts:    DefaultRetryAttempts,
+		retryDelay:       DefaultRetryDelay,
 		syncTriggerSize:  DefaultChunkSize,
 		syncTriggerBytes: MaxMessageSize / 2, // Trigger at 50% of max message size
 	}
@@ -299,15 +315,12 @@ func (s *EventSyncStrategy) doSync() error {
 	var currentBatchSize int64
 
 	// First handle any previously failed events
-	s.mutex.Lock()
-	if len(s.failedEvents) > 0 {
+	if retryBacklog := s.failedEvents.Sync(); len(retryBacklog) > 0 {
 		s.logger.Info().
-			Int("count", len(s.failedEvents)).
+			Int("count", len(retryBacklog)).
 			Msg("Processing previously failed events")
-		events = append(events, s.failedEvents...)
-		s.failedEvents = nil
+		events = append(events, retryBacklog...)
 	}
-	s.mutex.Unlock()
 
 	// Collect events up to chunk limits. The breaks must exit the
 	// LOOP, not just the select: an unlabeled break here caused an
@@ -347,13 +360,18 @@ collect:
 		return nil
 	}
 
-	// Try to send events with retry mechanism
+	// Try to send events with retry mechanism. RetryIf keeps the short
+	// in-tick retry for a transport blip but skips it entirely for a
+	// payload the intake refused on its merits: three attempts and two
+	// seconds of sleep inside the scheduler tick buy nothing when the
+	// same bytes get the same rejection.
 	err := retry.Do(
 		func() error {
 			return s.sendEvents(events)
 		},
-		retry.Attempts(DefaultRetryAttempts),
-		retry.Delay(DefaultRetryDelay),
+		retry.Attempts(s.retryAttempts),
+		retry.Delay(s.retryDelay),
+		retry.RetryIf(exporterrors.IsRetryable),
 		retry.OnRetry(func(n uint, err error) {
 			s.logger.Warn().
 				Err(err).
@@ -364,11 +382,28 @@ collect:
 	)
 
 	if err != nil {
-		// Preserve failed events for next sync attempt
-		s.mutex.Lock()
-		s.failedEvents = append(s.failedEvents, events...)
-		s.mutex.Unlock()
-		return fmt.Errorf("failed to sync events after %d attempts: %w", DefaultRetryAttempts, err)
+		agentstate.IncrementExportSendFailed("event", exporterrors.Reason(err))
+
+		if !exporterrors.IsRetryable(err) {
+			// Nothing a later tick can change. Keeping the batch would
+			// pin it at the head of the retry backlog forever, so the
+			// backlog never drains and every tick re-sends bytes the
+			// intake already refused.
+			s.logger.Warn().
+				Err(err).
+				Int("dropped_events", len(events)).
+				Msg("unrecoverable error from intake; discarding events (no retry)")
+			agentstate.IncrementPushBufferDropped("event", len(events))
+			return nil
+		}
+
+		// Preserve failed events for next sync attempt. The backlog is
+		// bounded: past the cap the oldest events go, which is what an
+		// outage longer than the queue depth costs.
+		if abortErr := s.failedEvents.AbortSync(events); abortErr != nil {
+			s.logger.Error().Err(abortErr).Msg("failed to queue events for retry")
+		}
+		return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
 	}
 
 	s.logger.Info().
@@ -388,7 +423,9 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 	// Marshal all events as a single JSON array
 	eventsJSON, err := json.Marshal(events)
 	if err != nil {
-		return fmt.Errorf("error marshaling events array: %w", err)
+		// The agent could not even serialise what it holds: retrying the
+		// same values produces the same failure.
+		return exporterrors.Validation("marshaling events array", err)
 	}
 
 	s.logger.Debug().
@@ -398,18 +435,27 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 
 	response, err := s.server.PostStream("/event/insert", string(eventsJSON))
 	if err != nil {
-		return fmt.Errorf("error sending events: %w", err)
+		// The far end was not reached. Keep the batch.
+		return exporterrors.Transport("sending events", err)
 	}
 	defer response.Body.Close()
 
 	respBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
+		return exporterrors.Transport("reading response body", err)
 	}
 
 	// Accept both 200 OK and 202 Accepted as successful responses
 	if response.StatusCode != http.StatusAccepted && response.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
+		statusErr := fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
+		// Same split as the cloud metrics sink: a 4xx is permanent
+		// except the ones a resend plausibly recovers from (408, 429,
+		// and the auth pair, which clears on an intake blip or a slow
+		// key rotation). 5xx and everything else stays retryable.
+		if exporterrors.IsPermanentHTTPStatus(response.StatusCode) {
+			return exporterrors.Validation("intake rejected the batch", statusErr)
+		}
+		return exporterrors.Transport("intake did not accept the batch", statusErr)
 	}
 
 	s.logger.Info().
