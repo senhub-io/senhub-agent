@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -289,15 +290,16 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	commit := versionInfo.Commit
 
 	response := SystemInfoResponse{
-		Status:    "running",
-		Version:   version,
-		Commit:    commit,
-		GoVersion: runtime.Version(),
-		OS:        runtime.GOOS,
-		Arch:      runtime.GOARCH,
-		Port:      a.strategy.port,
-		Uptime:    systemHealth.Uptime,
-		Health:    systemHealth.Health,
+		Status:           "running",
+		Version:          version,
+		Commit:           commit,
+		GoVersion:        runtime.Version(),
+		OS:               runtime.GOOS,
+		Arch:             runtime.GOARCH,
+		Port:             a.strategy.port,
+		Uptime:           systemHealth.Uptime,
+		Health:           systemHealth.Health,
+		StrategyFailures: strategyFailureList(),
 		Cache: CacheInfoResponse{
 			TotalMetrics: totalMetrics,
 			TTL:          a.strategy.cache.ttl.String(),
@@ -805,4 +807,27 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 		a.logger.Error().Err(err).Msg("Failed to encode OTLP info response")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+// strategyFailureList snapshots the configured outputs that are not
+// running, sorted by name so the payload is stable between scrapes.
+func strategyFailureList() []StrategyFailureInfo {
+	failures := agentstate.GetStrategyFailures()
+	if len(failures) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(failures))
+	for name := range failures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]StrategyFailureInfo, 0, len(names))
+	for _, name := range names {
+		out = append(out, StrategyFailureInfo{
+			Strategy: name,
+			Reason:   failures[name].Reason,
+			Detail:   failures[name].Detail,
+		})
+	}
+	return out
 }

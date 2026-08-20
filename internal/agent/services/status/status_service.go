@@ -30,6 +30,19 @@ type SystemStatus struct {
 	Probes      []ProbeStatus   `json:"probes"`
 	Performance PerformanceInfo `json:"performance"`
 	Agent       AgentInfo       `json:"agent"`
+	// StrategyFailures are the configured outputs that are not running.
+	// It comes from the DAEMON over HTTP: the CLI runs in its own
+	// process, so reading the in-memory state locally would always show
+	// none while the agent has a dead output (#826).
+	StrategyFailures []StrategyFailure `json:"strategy_failures,omitempty"`
+}
+
+// StrategyFailure is one configured output that failed to start, as
+// reported by the running agent.
+type StrategyFailure struct {
+	Strategy string `json:"strategy"`
+	Reason   string `json:"reason"`
+	Detail   string `json:"detail,omitempty"`
 }
 
 // HealthInfo represents system health status
