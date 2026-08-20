@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/mcuadros/go-syslog.v2"
@@ -42,6 +43,20 @@ type SyslogProbe struct {
 	moduleLogger *logger.ModuleLogger
 	server       *syslog.Server
 	callback     func([]data_store.DataPoint) error
+	// listening reports whether the syslog socket is bound and booted.
+	// Without it the probe's no-op Collect made it look healthy whether
+	// or not anything was listening (#289).
+	listening atomic.Bool
+}
+
+// ListenerHealth implements types.ListenerProbe: this probe receives
+// syslog over a socket, so its health is whether that socket is bound,
+// not whether its no-op Collect returned.
+func (p *SyslogProbe) ListenerHealth() error {
+	if !p.listening.Load() {
+		return errors.New("syslog listener is not bound")
+	}
+	return nil
 }
 
 func (p *SyslogProbe) SetCallback(callback func([]data_store.DataPoint) error) {
@@ -161,6 +176,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	}
 
 	p.server = server
+	p.listening.Store(true)
 	p.moduleLogger.Info().Msg("Syslog server started successfully")
 
 	go func() {
@@ -179,6 +195,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 }
 
 func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
+	p.listening.Store(false)
 	if p.server != nil {
 		p.moduleLogger.Info().Msg("Stopping syslog probe")
 		return p.server.Kill()
