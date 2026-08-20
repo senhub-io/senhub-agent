@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v3/mem"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -18,7 +19,7 @@ type unixMemoryCollector struct {
 	logger *logger.Logger
 }
 
-func newMemoryCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+func newMemoryCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
 	return &unixMemoryCollector{
 		logger: logger,
 	}, nil

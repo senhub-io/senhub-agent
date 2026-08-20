@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -136,7 +137,7 @@ func TestCpuProbe_GetTargetStrategies(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewCpuProbe(map[string]interface{}{}, baseLogger)
-	cpuProbe := probe.(*cpuProbe)
+	cpuProbe := probe.(*hostpoll.Probe)
 	strategies := cpuProbe.GetTargetStrategies()
 	expected := []string{"senhub", "prtg", "http", "otlp"}
 
@@ -160,7 +161,7 @@ func TestCpuProbe_Collect(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewCpuProbe(map[string]interface{}{}, baseLogger)
-	cpuProbe := probe.(*cpuProbe)
+	cpuProbe := probe.(*hostpoll.Probe)
 
 	tests := []struct {
 		name          string
@@ -189,7 +190,7 @@ func TestCpuProbe_Collect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cpuProbe.collector = tt.mockCollector
+			cpuProbe.SetCollector(tt.mockCollector)
 
 			metrics, err := probe.Collect()
 			if (err != nil) != tt.wantErr {
@@ -240,8 +241,8 @@ func TestCpuProbe_OnShutdown(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			probe, _ := NewCpuProbe(map[string]interface{}{}, baseLogger)
-			cpuProbe := probe.(*cpuProbe)
-			cpuProbe.collector = tt.mockCollector
+			cpuProbe := probe.(*hostpoll.Probe)
+			cpuProbe.SetCollector(tt.mockCollector)
 
 			ctx := context.Background()
 			err := probe.OnShutdown(ctx)
@@ -257,11 +258,11 @@ func TestCpuProbe_IsHealthy(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewCpuProbe(map[string]interface{}{}, baseLogger)
-	cpuProbe := probe.(*cpuProbe)
+	cpuProbe := probe.(*hostpoll.Probe)
 
-	cpuProbe.collector = &mockOSCollector{
+	cpuProbe.SetCollector(&mockOSCollector{
 		collectData: []data_store.DataPoint{{Name: "cpu.usage", Value: 50.0, Timestamp: time.Now()}},
-	}
+	})
 
 	if !cpuProbe.IsHealthy() {
 		t.Error("IsHealthy() should return true when collection succeeds")
@@ -273,7 +274,7 @@ func TestCpuProbe_String(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewCpuProbe(map[string]interface{}{}, baseLogger)
-	cpuProbe := probe.(*cpuProbe)
+	cpuProbe := probe.(*hostpoll.Probe)
 
 	str := cpuProbe.String()
 	if str == "" {

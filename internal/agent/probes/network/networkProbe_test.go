@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -92,7 +93,7 @@ func TestNetworkProbe_GetTargetStrategies(t *testing.T) {
 		t.Skip("Skipping on Windows PDH limitation")
 	}
 	if err == nil {
-		netProbe := probe.(*networkProbe)
+		netProbe := probe.(*hostpoll.Probe)
 		strategies := netProbe.GetTargetStrategies()
 		if len(strategies) != 4 {
 			t.Errorf("GetTargetStrategies() returned %d, want 4", len(strategies))
@@ -109,7 +110,7 @@ func TestNetworkProbe_Collect(t *testing.T) {
 		t.Skip("Skipping on Windows PDH limitation")
 	}
 	if err == nil {
-		netProbe := probe.(*networkProbe)
+		netProbe := probe.(*hostpoll.Probe)
 
 		tests := []struct {
 			name          string
@@ -122,7 +123,7 @@ func TestNetworkProbe_Collect(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				netProbe.collector = tt.mockCollector
+				netProbe.SetCollector(tt.mockCollector)
 				_, err := probe.Collect()
 				if (err != nil) != tt.wantErr {
 					t.Errorf("Collect() error = %v, wantErr %v", err, tt.wantErr)
@@ -141,8 +142,8 @@ func TestNetworkProbe_OnShutdown(t *testing.T) {
 		t.Skip("Skipping on Windows PDH limitation")
 	}
 	if err == nil {
-		netProbe := probe.(*networkProbe)
-		netProbe.collector = &mockOSCollector{closeError: nil}
+		netProbe := probe.(*hostpoll.Probe)
+		netProbe.SetCollector(&mockOSCollector{closeError: nil})
 
 		ctx := context.Background()
 		if err := probe.OnShutdown(ctx); err != nil {
@@ -160,8 +161,8 @@ func TestNetworkProbe_IsHealthy(t *testing.T) {
 		t.Skip("Skipping on Windows PDH limitation")
 	}
 	if err == nil {
-		netProbe := probe.(*networkProbe)
-		netProbe.collector = &mockOSCollector{collectData: []data_store.DataPoint{{Name: "network.bytes_sent", Value: 1024.0, Timestamp: time.Now()}}}
+		netProbe := probe.(*hostpoll.Probe)
+		netProbe.SetCollector(&mockOSCollector{collectData: []data_store.DataPoint{{Name: "network.bytes_sent", Value: 1024.0, Timestamp: time.Now()}}})
 
 		if !netProbe.IsHealthy() {
 			t.Error("IsHealthy() should return true")
