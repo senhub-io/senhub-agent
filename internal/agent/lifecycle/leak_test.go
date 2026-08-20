@@ -40,22 +40,15 @@ import (
 // agents accumulate scheduler goroutines until the process was
 // restarted.
 func TestNoGoroutineLeakAcrossStartReloadStop(t *testing.T) {
-	// One logger for the whole test, as the daemon has one for the whole
-	// process. Building one per cycle would measure the log rotator's
-	// per-logger mill goroutine (lumberjack keeps it for the logger's
-	// lifetime and the logger has no Close, #835) instead of the service
-	// lifecycle this test is about.
-	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
-
 	// One warm-up cycle absorbs the process-wide one-time work a first
 	// bring-up does (lookup registry, transformer definitions, secret
 	// backend) so the baseline measures a steady state, not a cold one.
-	runOneCycle(t, baseLogger, -1)
+	runOneCycle(t, -1)
 	baseline := stableGoroutineCount(t)
 
 	const cycles = 6
 	for cycle := 0; cycle < cycles; cycle++ {
-		runOneCycle(t, baseLogger, cycle)
+		runOneCycle(t, cycle)
 	}
 
 	after := stableGoroutineCount(t)
@@ -77,7 +70,7 @@ func TestNoGoroutineLeakAcrossStartReloadStop(t *testing.T) {
 // runOneCycle starts the real service set on a throwaway config
 // directory, mutates the config to force a reload, and stops everything
 // through the supervisor.
-func runOneCycle(t *testing.T, baseLogger *logger.Logger, cycle int) {
+func runOneCycle(t *testing.T, cycle int) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -85,7 +78,12 @@ func runOneCycle(t *testing.T, baseLogger *logger.Logger, cycle int) {
 	port := freePort(t)
 	writeConfig(t, configPath, port, 0)
 
+	// A logger per cycle, as a fresh agent process would build. This
+	// used to be hoisted out of the loop because it leaked a rotator
+	// goroutine per construction; the rotator is shared per path now
+	// (#835), so the cycle can be honest about what it builds.
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath}
+	baseLogger := logger.NewLogger(args)
 
 	agentstate.ResetStrategyFailuresForTest()
 
