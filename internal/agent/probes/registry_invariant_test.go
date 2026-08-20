@@ -370,3 +370,34 @@ func TestProbePackagesDoNotRegisterEntitySourcesDirectly(t *testing.T) {
 			strings.Join(offenders, "\n  "))
 	}
 }
+
+// TestListenerProbesImplementListenerHealth pins which probes must
+// report real liveness. A probe whose Collect is a no-op has nothing to
+// derive health from, so without ListenerHealth it reports healthy for
+// the life of the agent whatever happened to its socket (#289). The
+// list is explicit rather than derived: "does Collect return nil,nil"
+// is not something a test can ask, and a new listener probe should have
+// to add itself here deliberately.
+func TestListenerProbesImplementListenerHealth(t *testing.T) {
+	noOpCollectProbes := []string{"syslog", "event", "otlp_receiver"}
+
+	for _, name := range noOpCollectProbes {
+		t.Run(name, func(t *testing.T) {
+			ctor, ok := probes.LookupProbeConstructor(name)
+			if !ok {
+				t.Fatalf("probe %q is not registered", name)
+			}
+			cfg := map[string]interface{}{"interval": 30}
+			for k, v := range probeConfigFixtures[name] {
+				cfg[k] = v
+			}
+			probe, err := ctor(cfg, logger.NewLogger(&cliArgs.ParsedArgs{}))
+			if err != nil {
+				t.Fatalf("constructing %q: %v", name, err)
+			}
+			if _, ok := probe.(types.ListenerProbe); !ok {
+				t.Errorf("%q has a no-op Collect but does not implement types.ListenerProbe — it would report healthy with a dead listener", name)
+			}
+		})
+	}
+}

@@ -24,6 +24,21 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **A dead listener is now reported as unhealthy.** The syslog, event
+  and OTLP receiver probes wait for data to arrive rather than polling
+  for it, so they had nothing to derive health from and reported healthy
+  on every cycle — including cycles where their socket had been closed
+  for hours because the port was taken at startup or the server stopped
+  with an error on its own goroutine. They now report the state of the
+  listener itself, so `senhub-agent status` and
+  `senhub_agent_probes_healthy` tell you when one has stopped receiving.
+
+- **A probe can no longer ship untagged data by omission.** `probe_name`
+  and `probe_type` are now added centrally to every datapoint that does
+  not already carry them. Previously each probe added them itself, and a
+  probe that forgot produced series nothing could tell apart — and whose
+  cache entries collided with another instance's.
+
 - **An intake outage can no longer grow the event backlog until the
   agent dies.** The cloud metrics and PRTG outputs already capped what
   they hold when a destination is unreachable; the event output did not,
