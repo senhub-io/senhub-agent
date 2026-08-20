@@ -214,13 +214,13 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if testServer.LastRequest.Req == nil {
+		if testServer.LastRequest().Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
-		if testServer.LastRequest.Req.Method != "POST" {
-			t.Errorf("DoSync() request method = %s", testServer.LastRequest.Req.Method)
+		if testServer.LastRequest().Req.Method != "POST" {
+			t.Errorf("DoSync() request method = %s", testServer.LastRequest().Req.Method)
 		}
-		if testServer.LastRequest.BodyStr == nil {
+		if testServer.LastRequest().BodyStr == nil {
 			t.Errorf("DoSync() request body is nil")
 		}
 	})
@@ -252,7 +252,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if testServer.LastRequest.Req == nil {
+		if testServer.LastRequest().Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
 
@@ -268,8 +268,8 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			},
 		}
 
-		if diff := deep.Equal(testServer.LastRequest.BodyJson, expected); diff != nil {
-			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest.BodyStr)
+		if diff := deep.Equal(testServer.LastRequest().BodyJson, expected); diff != nil {
+			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest().BodyStr)
 		}
 	})
 
@@ -301,7 +301,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if testServer.LastRequest.Req == nil {
+		if testServer.LastRequest().Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
 
@@ -317,8 +317,8 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			},
 		}
 
-		if diff := deep.Equal(testServer.LastRequest.BodyJson, expected); diff != nil {
-			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest.BodyStr)
+		if diff := deep.Equal(testServer.LastRequest().BodyJson, expected); diff != nil {
+			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest().BodyStr)
 		}
 	})
 
@@ -364,7 +364,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() error = %v", err)
 		}
 
-		if testServer.LastRequest.Req == nil {
+		if testServer.LastRequest().Req == nil {
 			t.Errorf("DoSync() request is nil")
 		}
 
@@ -385,8 +385,8 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			},
 		}
 
-		if diff := deep.Equal(testServer.LastRequest.BodyJson, expected); diff != nil {
-			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest.BodyStr)
+		if diff := deep.Equal(testServer.LastRequest().BodyJson, expected); diff != nil {
+			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest().BodyStr)
 		}
 	})
 }
