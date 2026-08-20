@@ -866,3 +866,29 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 		})
 	}
 }
+
+// TestEndpointSetSignature_OrderIndependent guards the comparison that
+// decides whether the route table must be rebuilt: two identical sets
+// must never look different just because Go iterated the map in another
+// order, or every refresh would restart the HTTP server (#822).
+func TestEndpointSetSignature_OrderIndependent(t *testing.T) {
+	a := map[string]bool{"prtg": true, "web": true, "nagios": true}
+	b := map[string]bool{"nagios": true, "prtg": true, "web": true}
+	if endpointSetSignature(a) != endpointSetSignature(b) {
+		t.Errorf("same set, different signature: %q vs %q", endpointSetSignature(a), endpointSetSignature(b))
+	}
+
+	// Adding an endpoint must be visible: that is the change the restart
+	// hangs off.
+	c := map[string]bool{"prtg": true, "web": true, "nagios": true, "prometheus": true}
+	if endpointSetSignature(a) == endpointSetSignature(c) {
+		t.Error("adding prometheus produced the same signature")
+	}
+
+	// A disabled endpoint counts as absent, not as a member.
+	d := map[string]bool{"prtg": true, "web": true, "nagios": true, "prometheus": false}
+	if endpointSetSignature(a) != endpointSetSignature(d) {
+		t.Errorf("a disabled endpoint changed the signature: %q vs %q",
+			endpointSetSignature(a), endpointSetSignature(d))
+	}
+}
