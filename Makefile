@@ -15,12 +15,24 @@ LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
 WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
 DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
 DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
-# Version embedded in binaries: the nearest reachable tag from HEAD
-# (git describe), NOT the highest tag repo-wide — building an older
-# branch must not claim a newer version (poisons updater comparisons).
+# Version embedded in binaries. A build sitting exactly on a version tag
+# takes that tag verbatim — that is a release, and its version string
+# must stay clean for the updater and for the release artifacts.
+#
+# Any other build carries the full `git describe` form
+# (0.5.2-beta-332-g55beec4d), which says out loud that it is N commits
+# past a tag. The bare nearest tag used to be reported instead, so a
+# build from a branch whose newest reachable tag was old announced that
+# old version as fact: deployed on a bench, it made the fleet inventory
+# read as a DOWNGRADE, and an auditor could not tell a stale claim from
+# a real one (found in the 0.5.5 recette). Saying "0.5.2-beta plus 332
+# commits" is honest; saying "0.5.2-beta" is not.
+#
 # Falls back to 0.0.0-dev when no tag is reachable (fresh clones, CI
 # shallow checkouts without tags).
-VERSION=$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo 0.0.0-dev)
+VERSION=$(shell git describe --tags --exact-match --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null \
+	|| git describe --tags --match '[0-9]*.[0-9]*.[0-9]*' --dirty 2>/dev/null \
+	|| echo 0.0.0-dev)
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
 PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
