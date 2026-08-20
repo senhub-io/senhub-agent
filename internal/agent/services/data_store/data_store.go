@@ -21,11 +21,6 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/prtg"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/senhub"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -510,8 +505,8 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 					Msg("Strategy configuration changed, attempting update")
 
 				// Try to update the strategy if it supports live updates
-				if httpStrategy, ok := strategy.(*http.HTTPSyncStrategy); ok {
-					if err := httpStrategy.UpdateConfiguration(strategyConfig.Params); err != nil {
+				if updatable, ok := strategy.(LiveUpdatable); ok {
+					if err := updatable.UpdateConfiguration(strategyConfig.Params); err != nil {
 						d.logger.Warn().
 							Err(err).
 							Msg("Failed to update strategy configuration, will recreate")
@@ -558,36 +553,29 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 		Msg("Creating new strategy")
 
-	var strategy SyncStrategy
-	switch strategyConfig.Name {
-	case "senhub":
-		d.logger.Debug().Msg("Initializing senhub strategy")
-		strategy = senhub.NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
-	case "prtg":
-		d.logger.Debug().Msg("Initializing prtg strategy")
-		strategy = prtg.NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger, d.transformerRegistry)
-	case "event":
-		d.logger.Debug().Msg("Initializing event strategy")
-		eventStrategy, err := event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
-		if err != nil {
-			d.logger.Error().
-				Err(err).
-				Msg("Invalid event strategy configuration, strategy skipped")
-			return nil
-		}
-		strategy = eventStrategy
-	case "http":
-		d.logger.Debug().Msg("Initializing HTTP strategy")
-		strategy = http.NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
-		d.logger.Debug().Bool("initialized", strategy != nil).Msg("HTTP strategy created")
-	case "otlp":
-		d.logger.Debug().Msg("Initializing OTLP strategy")
-		strategy = otlp.NewOTLPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
-	default:
+	factory, known := lookupStrategyFactory(strategyConfig.Name)
+	if !known {
 		d.logger.Error().
+			Str("strategy", strategyConfig.Name).
+			Strs("available", RegisteredStrategyNames()).
 			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Unknown strategy")
 		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureUnknownType, "no strategy of this type is compiled into this build")
+		return nil
+	}
+
+	strategy, err := factory(strategyConfig.Params, StrategyDeps{
+		AgentConfig: d.agentConfig,
+		Logger:      d.logger.Logger,
+		Registry:    d.transformerRegistry,
+	})
+	if err != nil {
+		d.logger.Error().
+			Err(err).
+			Str("strategy", strategyConfig.Name).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+			Msg("Invalid strategy configuration, strategy skipped")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
 		return nil
 	}
 

@@ -16,6 +16,12 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/sensor"
+
+	// Blank import: the strategy implementations register themselves with
+	// the data store, so an agent that builds a data store must pull them
+	// in. Importing them here rather than from the hub is what lets the
+	// hub stay ignorant of its sinks (#288).
+	_ "senhub-agent.go/internal/agent/services/data_store/strategyreg"
 )
 
 // Service defines interface for agent services lifecycle
