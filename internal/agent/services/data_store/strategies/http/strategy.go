@@ -13,6 +13,8 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"sort"
+	"strings"
 )
 
 // HTTPSyncStrategy implements an HTTP server that exposes metrics via REST endpoints
@@ -713,6 +715,12 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 		Any("new_params", configuration.SanitizeParamsForLog(newParams)).
 		Msg("Updating HTTP strategy configuration")
 
+	// Snapshot the endpoint set before the update: routes are registered
+	// once at Start behind IsEndpointEnabled guards, so enabling one at
+	// runtime changed the config and nothing else — the new endpoint kept
+	// answering 404 until someone restarted the service (#822).
+	previousEndpoints := endpointSetSignature(h.configManager.GetEnabledEndpoints())
+
 	// Update the configuration manager
 	if err := h.configManager.UpdateConfiguration(newParams); err != nil {
 		h.logger.Error().
@@ -723,6 +731,16 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 
 	// Update internal parameters
 	h.params = newParams
+
+	// The route table is built at server start, so an endpoint set change
+	// needs the same restart a port change gets.
+	if current := endpointSetSignature(h.configManager.GetEnabledEndpoints()); current != previousEndpoints {
+		h.logger.Info().
+			Str("old_endpoints", previousEndpoints).
+			Str("new_endpoints", current).
+			Msg("Enabled endpoints changed, restarting HTTP server to rebuild the routes")
+		return h.restartServer()
+	}
 
 	// Restart server if port or bind address changed
 	if portParam, exists := newParams["port"]; exists {
@@ -799,4 +817,17 @@ func (h *HTTPSyncStrategy) restartServer() error {
 // GetStatusService returns the status service (read-only access)
 func (h *HTTPSyncStrategy) GetStatusService() *status.StatusService {
 	return h.statusService
+}
+
+// endpointSetSignature renders an enabled-endpoint set as a stable
+// string, so two sets can be compared regardless of map iteration order.
+func endpointSetSignature(endpoints map[string]bool) string {
+	names := make([]string, 0, len(endpoints))
+	for name, enabled := range endpoints {
+		if enabled {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }
