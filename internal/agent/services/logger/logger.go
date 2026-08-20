@@ -2,7 +2,6 @@ package logger
 
 import (
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,7 +55,7 @@ func getLogPath() string {
 	// Attempt to create the log directory and test write permissions
 	logPath := filepath.Join(basePath, "senhubagent.log")
 	if err := os.MkdirAll(basePath, 0750); err != nil {
-		log.Printf("Unable to create log directory %s: %v", basePath, err)
+		bootstrapLog().Warn().Err(err).Str("dir", basePath).Msg("Unable to create log directory; falling back to the executable directory")
 		// Fall back to executable directory
 		exePath, _ := os.Executable()
 		basePath = filepath.Dir(exePath)
@@ -65,8 +64,7 @@ func getLogPath() string {
 		// Test write permissions by trying to create a test file
 		testFile := filepath.Join(basePath, ".write_test")
 		if file, err := os.Create(filepath.Clean(testFile)); err != nil { // #nosec G304 - testFile is constructed from safe basePath
-			log.Printf("No write permissions for log directory %s: %v", basePath, err)
-			log.Printf("Falling back to local directory for logs")
+			bootstrapLog().Warn().Err(err).Str("dir", basePath).Msg("No write permissions for log directory; falling back to the executable directory")
 			// Fall back to executable directory
 			exePath, _ := os.Executable()
 			basePath = filepath.Dir(exePath)
@@ -79,7 +77,7 @@ func getLogPath() string {
 
 	// Only print log file path when not running status command or tests
 	if len(os.Args) < 2 || (os.Args[1] != "status" && !isInTestMode()) {
-		log.Printf("Using log file: %s", logPath)
+		bootstrapLog().Info().Str("path", logPath).Msg("Using log file")
 	}
 	return logPath
 }
@@ -131,12 +129,12 @@ func setupDebugLogShipper(args *cliArgs.ParsedArgs) (io.Writer, error) {
 		}
 	}
 
-	log.Printf("Initializing debug log shipper to %s", args.DebugLogShipperUrl)
+	bootstrapLog().Info().Str("endpoint", args.DebugLogShipperUrl).Msg("Initializing debug log shipper")
 
 	// Initialize the debug log shipper
 	shipper, err := debugshipper.NewDebugLogShipper(config)
 	if err != nil {
-		log.Printf("Failed to initialize debug log shipper: %v", err)
+		bootstrapLog().Error().Err(err).Msg("Failed to initialize debug log shipper")
 		return nil, err
 	}
 
@@ -149,7 +147,7 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	// Create debug log shipper if configured
 	shipper, err := setupDebugLogShipper(args)
 	if err != nil {
-		log.Printf("Warning: Failed to create debug log shipper: %v", err)
+		bootstrapLog().Warn().Err(err).Msg("Failed to create debug log shipper")
 	}
 
 	// Create logger configuration
@@ -247,7 +245,7 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 		// Apply masking to the log shipper
 		maskedShipper := NewMaskingWriter(config.logShipper)
 		writer = zerolog.MultiLevelWriter(writer, maskedShipper)
-		log.Printf("Debug log shipping enabled in development mode")
+		bootstrapLog().Info().Msg("Debug log shipping enabled in development mode")
 	}
 
 	logger := zerolog.
@@ -305,13 +303,13 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	if isInteractive {
 		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
-		log.Printf("Running in interactive mode - console output enabled")
+		bootstrapLog().Info().Msg("Running in interactive mode - console output enabled")
 	}
 
 	// Add debug log shipper if configured
 	if config.logShipper != nil {
 		writers = append(writers, NewMaskingWriter(config.logShipper))
-		log.Printf("Debug log shipping enabled in production mode")
+		bootstrapLog().Info().Msg("Debug log shipping enabled in production mode")
 	}
 
 	// Set default production log level to info
@@ -333,6 +331,21 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 // consoleTimeFormat dates every console line too: a line pasted into a ticket
 // without its date is a line nobody can correlate with anything.
 const consoleTimeFormat = "2006-01-02 15:04:05.000"
+
+// bootstrapLog reports on the construction of the logger itself —
+// picking the log file, falling back when the canonical directory is
+// unwritable, wiring the debug shipper. None of it can go through the
+// configured logger, which does not exist yet, so it goes to stderr in
+// the same shape the rest of the agent uses. Built once: the writer is
+// stateless and every caller here runs during start-up.
+var bootstrapLog = sync.OnceValue(func() *ModuleLogger {
+	l := zerolog.
+		New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}).
+		With().
+		Timestamp().
+		Logger()
+	return NewModuleLogger((*Logger)(&l), "logger.bootstrap")
+})
 
 // fileWriter wraps the rotating file in the layout chosen by --log-format.
 //

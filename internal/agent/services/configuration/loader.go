@@ -62,12 +62,16 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 
 	legacy, err := isLegacyMonolithic(raw)
 	if err != nil {
-		return LocalConfigurationData{}, fmt.Errorf("scanning %s for legacy markers: %w", configPath, err)
+		// Same bytes, same decoder as the unmarshal just below: a
+		// syntax error surfaces here first, so it has to carry the
+		// same ParseError shape or `config check` would lose the
+		// line-context branch for the most common failure of all.
+		return LocalConfigurationData{}, newParseError(configPath, err)
 	}
 
 	var data LocalConfigurationData
 	if err := yaml.Unmarshal(raw, &data); err != nil {
-		return LocalConfigurationData{}, fmt.Errorf("parsing %s: %w", configPath, err)
+		return LocalConfigurationData{}, newParseError(configPath, err)
 	}
 
 	baseDir := filepath.Dir(configPath)
@@ -167,7 +171,7 @@ func loadProbesD(dir string) ([]ProbeConfig, error) {
 		}
 		var batch []ProbeConfig
 		if err := yaml.Unmarshal(raw, &batch); err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, err)
+			return nil, newParseError(path, err)
 		}
 		// fixYAMLTypes-style coercion is done after the merge by the
 		// caller; here we just append.
@@ -209,7 +213,7 @@ func loadStrategiesD(dir string, log *logger.ModuleLogger) ([]StorageConfig, err
 		// `prometheus:\n  bind_address: …`
 		var single map[string]StorageConfigParams
 		if err := yaml.Unmarshal(raw, &single); err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, err)
+			return nil, newParseError(path, err)
 		}
 		if len(single) == 0 {
 			// Empty file or all-comments — silent skip is fine,
@@ -218,7 +222,7 @@ func loadStrategiesD(dir string, log *logger.ModuleLogger) ([]StorageConfig, err
 			continue
 		}
 		if len(single) > 1 {
-			return nil, fmt.Errorf("parsing %s: expected exactly one top-level strategy key, got %d (use one file per strategy)", path, len(single))
+			return nil, newParseError(path, fmt.Errorf("expected exactly one top-level strategy key, got %d (use one file per strategy)", len(single)))
 		}
 		for name, params := range single {
 			cfg := StorageConfig{Name: name, Params: params}

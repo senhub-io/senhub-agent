@@ -2,6 +2,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -291,13 +292,25 @@ func checkConfig(configPath string) {
 		fmt.Println("  [ERROR] Configuration load failed")
 		fmt.Printf("           %v\n", err)
 		fmt.Println()
-		if strings.Contains(err.Error(), "yaml") {
-			showYAMLErrorContext(string(content), err)
+		var parseErr *configuration.ParseError
+		if errors.As(err, &parseErr) {
+			// Multi-file layouts fail on a probes.d/ or strategies.d/
+			// fragment, not on the top-level file we already read.
+			// Show the file the decoder actually choked on, and hand
+			// the unwrapped decoder error over — the "yaml: line N:"
+			// prefix it carries is what locates the offending line.
+			src := content
+			if parseErr.Path != configPath {
+				if raw, readErr := os.ReadFile(parseErr.Path); readErr == nil { // #nosec G304 - path came from the loader walking the configured *.d/ directories
+					src = raw
+				}
+			}
+			showYAMLErrorContext(string(src), parseErr.Err)
 		}
 		os.Exit(1)
 	}
 
-	errors := 0
+	errorCount := 0
 	warnings := 0
 
 	// Config version. Validate against the agent's supported range
@@ -308,11 +321,11 @@ func checkConfig(configPath string) {
 	switch {
 	case config.ConfigVersion == 0:
 		fmt.Printf("  [ERROR] config_version missing (expected %d)\n", configuration.CurrentConfigVersion)
-		errors++
+		errorCount++
 	case configuration.ValidateConfigVersion(config.ConfigVersion) != nil:
 		fmt.Printf("  [ERROR] config_version: %d (%v)\n",
 			config.ConfigVersion, configuration.ValidateConfigVersion(config.ConfigVersion))
-		errors++
+		errorCount++
 	case config.ConfigVersion < configuration.CurrentConfigVersion:
 		fmt.Printf("  [OK]   config_version: %d (agent supports up to %d; will migrate on next write)\n",
 			config.ConfigVersion, configuration.CurrentConfigVersion)
@@ -325,7 +338,7 @@ func checkConfig(configPath string) {
 		fmt.Printf("  [OK]   agent.key: %s\n", config.Agent.Key)
 	} else {
 		fmt.Println("  [ERROR] agent.key is missing")
-		errors++
+		errorCount++
 	}
 
 	// License
@@ -338,7 +351,7 @@ func checkConfig(configPath string) {
 			lic, licErr := validator.ValidateLicense(config.Agent.License)
 			if licErr != nil {
 				fmt.Printf("  [ERROR] agent.license: invalid (%v)\n", licErr)
-				errors++
+				errorCount++
 			} else {
 				fmt.Printf("  [OK]   agent.license: tier=%s, expires=%s\n",
 					lic.Tier, lic.ExpiresAt.Format("2006-01-02"))
@@ -351,7 +364,7 @@ func checkConfig(configPath string) {
 				// Verify binding
 				if config.Agent.Key != "" && !license.VerifyBinding(config.Agent.License, config.Agent.Key, lic) {
 					fmt.Println("  [ERROR] License is not bound to this agent key")
-					errors++
+					errorCount++
 				} else if config.Agent.Key != "" {
 					fmt.Println("  [OK]   License binding verified")
 				}
@@ -385,17 +398,17 @@ func checkConfig(configPath string) {
 		for _, p := range config.Probes {
 			if p.Name == "" {
 				fmt.Println("  [ERROR] Probe with empty name")
-				errors++
+				errorCount++
 				continue
 			}
 			if p.Type == "" {
 				fmt.Printf("  [ERROR] Probe %q: type is missing\n", p.Name)
-				errors++
+				errorCount++
 				continue
 			}
 			if !registeredProbes[p.Type] {
 				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
-				errors++
+				errorCount++
 				continue
 			}
 			if !p.IsEnabled() {
@@ -406,7 +419,7 @@ func checkConfig(configPath string) {
 
 			// Validate required params per probe type
 			e, w := validateProbeParams(p.Name, p.Type, p.Params)
-			errors += e
+			errorCount += e
 			warnings += w
 		}
 	}
@@ -426,7 +439,7 @@ func checkConfig(configPath string) {
 			if s.Name == "otlp" {
 				if verr := otlp.ValidateEntitiesRedactAttributes(s.Params); verr != nil {
 					fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
-					errors++
+					errorCount++
 					continue
 				}
 			}
@@ -455,12 +468,12 @@ func checkConfig(configPath string) {
 
 	// Summary
 	fmt.Println()
-	if errors == 0 && warnings == 0 {
+	if errorCount == 0 && warnings == 0 {
 		fmt.Println("Configuration is valid.")
-	} else if errors == 0 {
+	} else if errorCount == 0 {
 		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
 	} else {
-		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errors, warnings)
+		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errorCount, warnings)
 		os.Exit(1)
 	}
 }

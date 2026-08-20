@@ -45,7 +45,7 @@ func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interf
 	if err != nil {
 		return interfaceInfo{
 			isMonitored: false,
-			err:         fmt.Errorf("error getting interface %s: %v", interfaceName, err),
+			err:         fmt.Errorf("error getting interface %s: %w", interfaceName, err),
 		}
 	}
 
@@ -78,7 +78,7 @@ func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interf
 	if err != nil {
 		return interfaceInfo{
 			isMonitored: false,
-			err:         fmt.Errorf("error getting addresses for interface %s: %v", interfaceName, err),
+			err:         fmt.Errorf("error getting addresses for interface %s: %w", interfaceName, err),
 		}
 	}
 
@@ -113,12 +113,12 @@ func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (hostp
 func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
 	counters, err := psnet.IOCounters(true)
 	if err != nil {
-		return nil, fmt.Errorf("error getting network metrics: %v", err)
+		return nil, fmt.Errorf("error getting network metrics: %w", err)
 	}
 
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 
 	dataPoints := make([]data_store.DataPoint, 0)
