@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yusufpapurcu/wmi"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -266,7 +267,7 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 	return interfaces, nil
 }
 
-func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logger) (osNetworkCollector, error) {
+func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logger) (hostpoll.Collector, error) {
 	// Initialize PDH logger
 	pdh.InitializePDHLogger(baseLogger)
 

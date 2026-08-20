@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -73,7 +74,7 @@ func TestMemoryProbe_GetTargetStrategies(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewMemoryProbe(map[string]interface{}{}, baseLogger)
-	memProbe := probe.(*memoryProbe)
+	memProbe := probe.(*hostpoll.Probe)
 	strategies := memProbe.GetTargetStrategies()
 
 	if len(strategies) != 4 {
@@ -86,7 +87,7 @@ func TestMemoryProbe_Collect(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewMemoryProbe(map[string]interface{}{}, baseLogger)
-	memProbe := probe.(*memoryProbe)
+	memProbe := probe.(*hostpoll.Probe)
 
 	tests := []struct {
 		name          string
@@ -99,7 +100,7 @@ func TestMemoryProbe_Collect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			memProbe.collector = tt.mockCollector
+			memProbe.SetCollector(tt.mockCollector)
 			_, err := probe.Collect()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Collect() error = %v, wantErr %v", err, tt.wantErr)
@@ -113,8 +114,8 @@ func TestMemoryProbe_OnShutdown(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewMemoryProbe(map[string]interface{}{}, baseLogger)
-	memProbe := probe.(*memoryProbe)
-	memProbe.collector = &mockOSCollector{closeError: nil}
+	memProbe := probe.(*hostpoll.Probe)
+	memProbe.SetCollector(&mockOSCollector{closeError: nil})
 
 	ctx := context.Background()
 	if err := probe.OnShutdown(ctx); err != nil {
@@ -127,8 +128,8 @@ func TestMemoryProbe_IsHealthy(t *testing.T) {
 	baseLogger := logger.NewLogger(mockArgs)
 
 	probe, _ := NewMemoryProbe(map[string]interface{}{}, baseLogger)
-	memProbe := probe.(*memoryProbe)
-	memProbe.collector = &mockOSCollector{collectData: []data_store.DataPoint{{Name: "memory.usage", Value: 8.0, Timestamp: time.Now()}}}
+	memProbe := probe.(*hostpoll.Probe)
+	memProbe.SetCollector(&mockOSCollector{collectData: []data_store.DataPoint{{Name: "memory.usage", Value: 8.0, Timestamp: time.Now()}}})
 
 	if !memProbe.IsHealthy() {
 		t.Error("IsHealthy() should return true")
