@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -222,6 +223,60 @@ agent:
 	}
 	if !strings.Contains(err.Error(), bad) {
 		t.Errorf("error must mention the bad file path %q, got: %v", bad, err)
+	}
+
+	var parseErr *ParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("decode failure must be a *ParseError, got %T: %v", err, err)
+	}
+	if parseErr.Path != bad {
+		t.Errorf("ParseError.Path = %q, want %q", parseErr.Path, bad)
+	}
+	// The unwrapped decoder error keeps its own "yaml: line N:" prefix;
+	// `config check` scans it to point at the offending line, so a
+	// wrapped-in message here would silently kill that output.
+	if !strings.HasPrefix(parseErr.Err.Error(), "yaml:") {
+		t.Errorf("ParseError.Err should be the raw decoder error, got %q", parseErr.Err)
+	}
+}
+
+// A syntax error in the top-level file is caught by the legacy-marker
+// probe before the real unmarshal ever runs. It has to arrive as the
+// same *ParseError, otherwise the most common failure of all — a typo
+// in agent.yaml — is the one case the caller cannot classify.
+func TestLoadFromDisk_ParseErrorTopLevel(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "agent.yaml")
+	writeFile(t, configPath, "agent:\n  key: \"k1\"\n key_misaligned: oops\n")
+
+	_, err := LoadFromDisk(configPath, loaderTestLogger(t))
+	if err == nil {
+		t.Fatal("expected parse error from malformed top-level YAML")
+	}
+	var parseErr *ParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("decode failure must be a *ParseError, got %T: %v", err, err)
+	}
+	if parseErr.Path != configPath {
+		t.Errorf("ParseError.Path = %q, want %q", parseErr.Path, configPath)
+	}
+}
+
+// A missing file is not a parse failure: callers branch on the
+// difference to decide whether printing a line-context block makes
+// any sense.
+func TestLoadFromDisk_MissingFileIsNotParseError(t *testing.T) {
+	dir := t.TempDir()
+	_, err := LoadFromDisk(filepath.Join(dir, "absent.yaml"), loaderTestLogger(t))
+	if err == nil {
+		t.Fatal("expected an error for a missing config file")
+	}
+	var parseErr *ParseError
+	if errors.As(err, &parseErr) {
+		t.Errorf("missing file must not classify as *ParseError: %v", err)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing file should unwrap to os.ErrNotExist, got: %v", err)
 	}
 }
 
