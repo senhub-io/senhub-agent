@@ -49,7 +49,7 @@ func (m *MockConfigProvider) TriggerConfigChange(reason string) {
 }
 
 func (m *MockConfigProvider) GetName() string                { return "MockConfigProvider" }
-func (m *MockConfigProvider) Start(chan struct{}) error      { return nil }
+func (m *MockConfigProvider) Start(context.Context) error    { return nil }
 func (m *MockConfigProvider) Shutdown(context.Context) error { return nil }
 
 func TestNewSensor(t *testing.T) {
@@ -84,9 +84,9 @@ func TestSensor_Start_NoProbes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start with no probes should not error, got: %v", err)
 	}
@@ -113,9 +113,9 @@ func TestSensor_Start_WithValidProbe(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start with valid probe should not error, got: %v", err)
 	}
@@ -146,10 +146,10 @@ func TestSensor_Start_WithInvalidProbe(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
 	// Start should not fail even if probe creation fails
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start should not error even with invalid probe, got: %v", err)
 	}
@@ -216,10 +216,10 @@ func TestSensor_OnConfigChanged(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
 	// Start sensor - registers config change callback
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start failed: %v", err)
 	}
@@ -271,10 +271,10 @@ func TestSensor_Shutdown_WithProbes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
 	// Start with multiple probes
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start failed: %v", err)
 	}
@@ -344,9 +344,9 @@ func TestSensor_MultipleProbes_DifferentTypes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start with multiple probes failed: %v", err)
 	}
@@ -492,7 +492,7 @@ func TestSensor_SyncConfiguration_ConcurrentConfigEvents(t *testing.T) {
 	}
 
 	s := NewSensor(addDataPoint, mockProvider, baseLogger).(*sensor)
-	if err := s.Start(make(chan struct{})); err != nil {
+	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
@@ -621,8 +621,8 @@ func TestSensor_Start_DisabledProbeIsNotStarted(t *testing.T) {
 	addDataPoint := func(data []datapoint.DataPoint, router data_store.StrategyRouter) error { return nil }
 
 	s := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
-	if err := s.Start(quitChannel); err != nil {
+	runCtx := context.Background()
+	if err := s.Start(runCtx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })

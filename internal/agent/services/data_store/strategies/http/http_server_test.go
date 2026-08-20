@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ func TestServerManager_StartFailsOnTakenPort(t *testing.T) {
 	port := ln.Addr().(*net.TCPAddr).Port
 
 	strategy := newServerTestStrategy(t, port)
-	err = strategy.serverManager.Start()
+	err = strategy.serverManager.Start(context.Background())
 	if err == nil {
 		t.Fatal("Start must fail when the port is already taken")
 	}
@@ -52,7 +53,7 @@ func TestServerManager_StartFailsOnTakenPort(t *testing.T) {
 // port binds synchronously and Start returns nil.
 func TestServerManager_StartServesOnFreePort(t *testing.T) {
 	strategy := newServerTestStrategy(t, 0) // kernel-assigned free port
-	if err := strategy.serverManager.Start(); err != nil {
+	if err := strategy.serverManager.Start(context.Background()); err != nil {
 		t.Fatalf("Start on a free port: %v", err)
 	}
 	t.Cleanup(func() {

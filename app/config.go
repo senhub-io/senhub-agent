@@ -2,6 +2,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
@@ -51,11 +53,20 @@ func generateConfiguration(args *cliArgs.ParsedArgs) error {
 
 	localConfig := configuration.NewLocalConfiguration(args, appLogger)
 
-	quitChannel := make(chan struct{})
-	defer close(quitChannel)
+	// Install is a one-shot: the loader is started only to create and
+	// seal the configuration, then stopped so its watcher goroutine does
+	// not outlive the command.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	if err := localConfig.Start(quitChannel); err != nil {
+	if err := localConfig.Start(ctx); err != nil {
 		return fmt.Errorf("failed to create configuration: %w", err)
+	}
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), lifecycle.DefaultStopBudget)
+	defer stopCancel()
+	if err := localConfig.Shutdown(stopCtx); err != nil {
+		appLogger.Warn().Err(err).Msg("Configuration loader did not stop cleanly after install")
 	}
 
 	return nil

@@ -20,6 +20,8 @@ type ServerManager struct {
 	strategy *HTTPSyncStrategy // Reference to parent strategy for access to modules
 	server   *http.Server
 	handlers *HTTPHandlers
+	// stopOnCancel releases the context.AfterFunc registered in Start.
+	stopOnCancel func() bool
 }
 
 // NewServerManager creates a new HTTP server manager
@@ -31,8 +33,9 @@ func NewServerManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *
 	}
 }
 
-// Start initializes and starts the HTTP server
-func (s *ServerManager) Start() error {
+// Start initializes and starts the HTTP server. It stops serving when
+// ctx is cancelled or Shutdown is called, whichever comes first.
+func (s *ServerManager) Start(ctx context.Context) error {
 	s.logger.Info().
 		Int("port", s.strategy.port).
 		Str("bind_address", s.strategy.bindAddress).
@@ -63,12 +66,35 @@ func (s *ServerManager) Start() error {
 	}
 	go s.serveAsync(ln)
 
+	// Cancelling the lifecycle context stops the server even when
+	// nobody calls Shutdown — the case where the agent context is
+	// cancelled but a strategy was dropped from the config in the same
+	// refresh. stopOnCancel is released in Shutdown so the registration
+	// does not outlive the server.
+	s.stopOnCancel = context.AfterFunc(ctx, func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), serverDrainBudget)
+		defer cancel()
+		if err := s.server.Shutdown(shutdownCtx); err != nil {
+			s.logger.Warn().Err(err).Msg("HTTP server did not drain within the budget on cancellation")
+		}
+	})
+
 	return nil
 }
+
+// serverDrainBudget bounds the drain of in-flight requests when the
+// server stops on context cancellation rather than through Shutdown
+// (which carries the caller's own budget).
+const serverDrainBudget = 2 * time.Second
 
 // Shutdown gracefully stops the HTTP server and cleanup routines
 func (s *ServerManager) Shutdown(ctx context.Context) error {
 	s.logger.Info().Msg("Shutting down HTTP server")
+
+	if s.stopOnCancel != nil {
+		s.stopOnCancel()
+		s.stopOnCancel = nil
+	}
 
 	// Stop cache cleanup
 	s.strategy.cache.Stop()

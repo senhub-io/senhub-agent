@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func newPumpTestStrategy(t *testing.T) *EventSyncStrategy {
 	if err != nil {
 		t.Fatalf("NewEventSyncStrategy: %v", err)
 	}
-	s.startLogPump()
+	s.startLogPump(context.Background())
 	t.Cleanup(func() {
 		if s.logCancel != nil {
 			s.logCancel()
@@ -82,7 +83,7 @@ func TestLogPump_ReinjectsGlobalTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEventSyncStrategy: %v", err)
 	}
-	s.startLogPump()
+	s.startLogPump(context.Background())
 	t.Cleanup(func() {
 		if s.logCancel != nil {
 			s.logCancel()

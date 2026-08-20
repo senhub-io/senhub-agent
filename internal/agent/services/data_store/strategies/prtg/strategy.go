@@ -225,7 +225,7 @@ func (s *SyncStrategyPrtg) ValidateConfigParams(params configuration.StorageConf
 	return nil
 }
 
-func (s *SyncStrategyPrtg) Start() error {
+func (s *SyncStrategyPrtg) Start(ctx context.Context) error {
 	if (s.scheduler) != nil {
 		return nil
 	}
@@ -236,7 +236,7 @@ func (s *SyncStrategyPrtg) Start() error {
 		ExecuteOnShutdown: true,
 	}, s.logger.Logger)
 	s.scheduler = scheduler
-	return s.scheduler.Start(nil)
+	return s.scheduler.Start(ctx)
 }
 
 func (s *SyncStrategyPrtg) Shutdown(ctx context.Context) error {

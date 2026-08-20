@@ -24,6 +24,24 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **Stopping the agent no longer races itself.** Every service — the
+  configuration loader, the outputs, the probe pool, the auto-updater —
+  now shares one cancellation, and each gets its own shutdown allowance
+  instead of competing for a single five-second budget the first slow
+  drain could consume entirely. In practice: an output that takes its
+  time flushing its last batch no longer costs the probe pool its chance
+  to close connections cleanly. The whole stop stays bounded (twenty
+  seconds at worst) so systemd and the Windows service manager never
+  escalate to a kill.
+
+- **A configuration reload no longer leaves work behind.** Probes and
+  outputs recreated by a reload used to be started without any link to
+  the agent's own shutdown, and relied entirely on being stopped
+  individually; one that was not left a goroutine running for the life of
+  the process. Long-lived agents whose configuration is edited regularly
+  were the ones that accumulated them. A start/reload/stop cycle is now
+  covered by a test that fails on a single leaked goroutine.
+
 - **OTLP export failures are now visible per signal.** A failing logs
   pipeline (for example a receiver rejecting every batch) previously
   moved no counter: the failure only surfaced as dead-letter queue

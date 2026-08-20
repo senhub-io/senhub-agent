@@ -421,10 +421,19 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 }
 
 // Start initializes and starts the sync strategy
-func (s *EventSyncStrategy) Start() error {
+func (s *EventSyncStrategy) Start(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.tickerOnce.Do(func() {
 		s.ticker = time.NewTicker(s.config.SyncInterval)
 		s.tickerStop = make(chan struct{})
+		// Agent-wide cancellation stops the ticker goroutine even when
+		// nothing calls Shutdown; stopOnce keeps the two paths from
+		// double-closing.
+		context.AfterFunc(ctx, func() {
+			s.stopOnce.Do(func() { close(s.tickerStop) })
+		})
 		s.logger.Info().
 			Dur("interval", s.config.SyncInterval).
 			Int("queue_size", s.config.QueueSize).
@@ -444,7 +453,7 @@ func (s *EventSyncStrategy) Start() error {
 			}
 		}(s.ticker, s.tickerStop)
 	})
-	s.startLogPump()
+	s.startLogPump(ctx)
 	return nil
 }
 
@@ -455,11 +464,11 @@ func (s *EventSyncStrategy) Start() error {
 // onto /event/insert. Each record is converted with the format-preserving
 // FromSyslogLog / FromEventLog so the payload is byte-identical to the old
 // metric datapoint path.
-func (s *EventSyncStrategy) startLogPump() {
+func (s *EventSyncStrategy) startLogPump(parent context.Context) {
 	s.logPumpOnce.Do(func() {
 		ch := agentstate.SubscribeLogs(s.config.QueueSize)
 		s.logSub = ch
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(parent)
 		s.logCancel = cancel
 		s.logWG.Add(1)
 		go func() {
