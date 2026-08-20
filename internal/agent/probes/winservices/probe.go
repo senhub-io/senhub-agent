@@ -105,7 +105,7 @@ func NewWinServicesProbe(config map[string]interface{}, baseLogger *logger.Logge
 func parseConfig(config map[string]interface{}) (WinServicesProbeConfig, error) {
 	parsed := WinServicesProbeConfig{Interval: DefaultInterval}
 
-	parsed.Services = stringSlice(config["services"])
+	parsed.Services = types.StringSlice(config["services"])
 
 	if d, ok, err := durationSeconds(config["interval"]); err != nil {
 		return parsed, fmt.Errorf("winservices: interval: %w", err)

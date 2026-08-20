@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 const (
@@ -42,7 +44,7 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 		Timeout:         defaultTimeout,
 	}
 
-	if v := stringSlice(raw["brokers"]); len(v) > 0 {
+	if v := types.StringSlice(raw["brokers"]); len(v) > 0 {
 		cfg.Brokers = v
 	}
 	if v, ok := raw["protocol_version"].(string); ok && v != "" {
@@ -72,8 +74,8 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	if secs, ok := raw["timeout"].(int); ok && secs > 0 {
 		cfg.Timeout = time.Duration(secs) * time.Second
 	}
-	cfg.TopicFilter = stringSlice(raw["topic_filter"])
-	cfg.GroupFilter = stringSlice(raw["group_filter"])
+	cfg.TopicFilter = types.StringSlice(raw["topic_filter"])
+	cfg.GroupFilter = types.StringSlice(raw["group_filter"])
 	if v, ok := raw["instance_name"].(string); ok {
 		cfg.InstanceName = v
 	}
@@ -83,27 +85,4 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	}
 
 	return cfg, nil
-}
-
-// stringSlice coerces a YAML-decoded value into []string, dropping empties.
-func stringSlice(raw interface{}) []string {
-	switch v := raw.(type) {
-	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, e := range v {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []string:
-		return v
-	case string:
-		if v == "" {
-			return nil
-		}
-		return []string{v}
-	default:
-		return nil
-	}
 }
