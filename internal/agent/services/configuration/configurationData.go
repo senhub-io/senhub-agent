@@ -42,6 +42,39 @@ type ProbeConfig struct {
 	// probe meant deleting its entry and with it the credentials, intervals and
 	// custom tags that took effort to get right.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	// LogStrategies routes this probe's LOG records to specific outputs,
+	// the way the metric router already routes its datapoints.
+	//
+	// It is a separate field, and deliberately not the probe's metric
+	// target list, because the two answer different questions. The
+	// syslog probe sends its METRICS to the legacy event output; reusing
+	// that list for its logs would cut them off the OTLP rail entirely
+	// (#836). Only outputs that can consume logs are accepted — naming
+	// one that cannot would silently mute the probe.
+	//
+	// Absent (the default) means every log output receives the records,
+	// which is what every existing configuration does today.
+	LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
+}
+
+// LogCapableStrategies is the set of outputs that can consume a log
+// record. The metric sinks (senhub, prtg, http) are absent because they
+// take datapoints, not logs — routing a probe's logs to one of them
+// would deliver them nowhere.
+//
+// Kept here rather than in the data store so `agent config check` can
+// reject an unroutable value without importing the strategies.
+var LogCapableStrategies = []string{"otlp", "event"}
+
+// IsLogCapableStrategy reports whether name is an output that can
+// receive log records.
+func IsLogCapableStrategy(name string) bool {
+	for _, s := range LogCapableStrategies {
+		if s == name {
+			return true
+		}
+	}
+	return false
 }
 
 // IsEnabled reports whether the probe should run. An absent `enabled` key means
