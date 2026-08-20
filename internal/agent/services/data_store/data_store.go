@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
@@ -43,8 +44,10 @@ type SyncStrategy interface {
 	// ValidateConfigParams verifies if provided configuration is valid
 	ValidateConfigParams(configuration.StorageConfigParams) error
 
-	// Start initiates the strategy's background processes
-	Start() error
+	// Start initiates the strategy's background processes. They run
+	// until ctx is cancelled or Shutdown is called; a strategy never
+	// stops itself (#285).
+	Start(ctx context.Context) error
 
 	// AddDataPoints queues data points for synchronization
 	AddDataPoints([]datapoint.DataPoint) error
@@ -55,9 +58,7 @@ type SyncStrategy interface {
 
 // DataStore coordinates data collection and routing between probes and sync strategies
 type DataStore interface {
-	GetName() string
-	Start(chan struct{}) error
-	Shutdown(context.Context) error
+	lifecycle.Service
 	GetCallback() AddCallback
 }
 
@@ -67,8 +68,13 @@ type dataStore struct {
 	// the config watcher builds a NEW slice and Store()s it — readers
 	// never observe a partially rebuilt list (#260).
 	strategies atomic.Pointer[[]SyncStrategy]
-	// refreshMu serializes configuration refreshes (single writer).
+	// refreshMu serializes configuration refreshes (single writer). It
+	// also guards runCtx and replacedThisRefresh.
 	refreshMu sync.Mutex
+	// runCtx is the lifecycle context the store was started with — the
+	// cancellation root every strategy inherits, including the ones a
+	// config reload creates after Start returned.
+	runCtx context.Context
 	// replacedThisRefresh collects the instances retrieveOrCreate already
 	// shut down as replaced during the current refresh. The cleanup loop
 	// re-Shutdowns them (idempotent) but must not log them as if a live
@@ -264,8 +270,18 @@ func (d *dataStore) GetCallback() AddCallback {
 	}
 }
 
-func (d *dataStore) Start(quitChannel chan struct{}) error {
+// StopBudget gives the strategies longer than the default: the senhub
+// and otlp sinks flush a buffer over the network on shutdown, and a
+// timed-out flush is a batch of metrics silently lost.
+func (d *dataStore) StopBudget() time.Duration { return 10 * time.Second }
+
+func (d *dataStore) Start(ctx context.Context) error {
 	d.logger.Debug().Msg("Starting DataStore service")
+
+	d.refreshMu.Lock()
+	d.runCtx = ctx
+	d.refreshMu.Unlock()
+
 	d.OnConfigRefreshed("initial")
 	d.configProvider.OnConfigChanged(d.OnConfigRefreshed)
 	return nil
@@ -596,7 +612,16 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		return nil
 	}
 
-	if err := strategy.Start(); err != nil {
+	// runCtx is read under refreshMu, which every caller of this
+	// function already holds. A nil means the store was never Started
+	// (config-show, tests): the strategy still stops via Shutdown, it
+	// just has no external cancellation.
+	runCtx := d.runCtx
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
+
+	if err := strategy.Start(runCtx); err != nil {
 		d.logger.Error().
 			Err(err).
 			Msg("Failed to start strategy")

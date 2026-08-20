@@ -201,7 +201,7 @@ func (s *SyncStrategySenhub) ValidateConfigParams(params configuration.StorageCo
 	return nil
 }
 
-func (s *SyncStrategySenhub) Start() error {
+func (s *SyncStrategySenhub) Start(ctx context.Context) error {
 	if (s.scheduler) != nil {
 		return nil
 	}
@@ -213,7 +213,7 @@ func (s *SyncStrategySenhub) Start() error {
 	}, s.logger.Logger)
 	s.scheduler = scheduler
 
-	return s.scheduler.Start(nil)
+	return s.scheduler.Start(ctx)
 }
 
 func (s *SyncStrategySenhub) Shutdown(ctx context.Context) error {

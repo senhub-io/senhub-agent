@@ -9,6 +9,9 @@ package agent
 import (
 	"context"
 	"os"
+	"time"
+
+	"senhub-agent.go/internal/agent/lifecycle"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
@@ -24,22 +27,19 @@ import (
 	_ "senhub-agent.go/internal/agent/services/data_store/strategyreg"
 )
 
-// Service defines interface for agent services lifecycle
-type Service interface {
-	GetName() string
-	Start(chan struct{}) error
-	Shutdown(context.Context) error
-}
+// Service is the lifecycle contract every agent service implements.
+// Kept as an alias so callers outside this package keep reading
+// agent.Service while there is exactly one definition of it.
+type Service = lifecycle.Service
 
 // Agent defines interface for main agent operations
 type Agent interface {
-	Start() error
+	Start(ctx context.Context) error
 	Shutdown(context.Context) error
 }
 
 type agent struct {
-	startedServices    *[]Service
-	messageChannel     chan struct{}
+	supervisor         *lifecycle.Supervisor
 	logger             *logger.Logger
 	agentConfiguration configuration.AgentConfiguration
 	localConfiguration *configuration.LocalConfiguration
@@ -124,8 +124,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	}
 
 	return agent{
-		startedServices:    &[]Service{},
-		messageChannel:     make(chan struct{}),
+		supervisor:         lifecycle.NewSupervisor(logger),
 		logger:             logger,
 		agentConfiguration: agentConfiguration,
 		localConfiguration: localConfiguration,
@@ -136,7 +135,11 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	}
 }
 
-func (a agent) Start() error {
+// services is the ordered service set. Start brings them up in this
+// order and Shutdown tears them down in reverse, so producers (probes)
+// stop before the consumer (data store) and the configuration provider
+// outlives everything that reads it.
+func (a agent) services() []Service {
 	servicesToStart := []Service{
 		a.localConfiguration,
 		a.store,
@@ -146,28 +149,17 @@ func (a agent) Start() error {
 		a.logger.Info().Msg("Adding auto-updater to services")
 		servicesToStart = append(servicesToStart, a.updater)
 	}
+	return servicesToStart
+}
 
-	var errors []error
-	for _, service := range servicesToStart {
-		a.logger.Debug().
-			Str("service", service.GetName()).
-			Msg("Starting service")
+// StopBudget is the wall-clock the caller must allow for Shutdown: the
+// sum of the services' own budgets, since they stop one after the other.
+func (a agent) StopBudget() time.Duration {
+	return lifecycle.TotalStopBudget(a.services()...)
+}
 
-		if err := service.Start(a.messageChannel); err != nil {
-			a.logger.Error().
-				Str("service", service.GetName()).
-				Err(err).
-				Msg("Failed to start service")
-			errors = append(errors, err)
-		} else {
-			a.logger.Info().
-				Str("service", service.GetName()).
-				Msg("Service started")
-			*a.startedServices = append(*a.startedServices, service)
-		}
-	}
-
-	if len(errors) > 0 {
+func (a agent) Start(ctx context.Context) error {
+	if errors := a.supervisor.Start(ctx, a.services()...); len(errors) > 0 {
 		a.handleStartError()
 	}
 
@@ -220,33 +212,7 @@ func (a agent) doVersionCheck(updater auto_update.AutoUpdate) {
 }
 
 func (a agent) Shutdown(ctx context.Context) error {
-	close(a.messageChannel)
-
-	// Tear down in reverse start order: sensors (producers) before the
-	// data store (consumer), so that the final collection cycle drains
-	// cleanly before the store closes its strategies.
-	services := *a.startedServices
-	var errors []error
-	for i := len(services) - 1; i >= 0; i-- {
-		service := services[i]
-		a.logger.Debug().
-			Str("service", service.GetName()).
-			Msg("Shutting down service")
-
-		if err := service.Shutdown(ctx); err != nil {
-			a.logger.Error().
-				Str("service", service.GetName()).
-				Err(err).
-				Msg("Failed to shut down service")
-			errors = append(errors, err)
-		} else {
-			a.logger.Info().
-				Str("service", service.GetName()).
-				Msg("Service shut down")
-		}
-	}
-
-	if len(errors) > 0 {
+	if errors := a.supervisor.Shutdown(ctx); len(errors) > 0 {
 		return errors[0]
 	}
 	return nil

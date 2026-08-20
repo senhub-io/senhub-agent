@@ -5,8 +5,7 @@
 package configuration
 
 import (
-	"context"
-
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -32,11 +31,9 @@ type AgentConfiguration interface {
 // is the only implementation; pre-0.2.0 there was also a remote
 // variant that fetched from intake.senhub.io.
 type ConfigurationProvider interface {
-	GetName() string
+	lifecycle.Service
 	GetConfiguration() ConfigurationData
 	OnConfigChanged(callback func(string))
-	Start(chan struct{}) error
-	Shutdown(context.Context) error
 }
 
 // agentConfiguration is the concrete AgentConfiguration backed by a

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -44,22 +45,35 @@ type PeriodicSchedulerConfig struct {
 
 type PeriodicScheduler interface {
 	GetInterval() time.Duration
-	Start(quitChannel chan struct{}) error
+	Start(ctx context.Context) error
 	Shutdown(ctx context.Context) error
 }
 
 type periodicScheduler struct {
-	started     bool
-	logger      *logger.Logger
-	config      PeriodicSchedulerConfig
-	ticker      *time.Ticker
-	quitChannel chan struct{}
-	stopChannel chan struct{}
+	started bool
+	logger  *logger.Logger
+	config  PeriodicSchedulerConfig
+	ticker  *time.Ticker
+	// runCtx is the scheduler's own cancellation root, derived from
+	// the context Start received. It is the SINGLE termination signal
+	// for everything the scheduler owns: the tick goroutine and any
+	// goroutine an OnStart hook parked on the channel derived from it.
+	// Cancelling it happens either because the caller cancelled its
+	// context or because Shutdown ran — the scheduler itself never
+	// cancels it on an Execute error (#258).
+	runCtx    context.Context
+	runCancel context.CancelFunc
+	// releaseStopChannel closes the OnStart hook channel when the
+	// scheduler stops before its context does.
+	releaseStopChannel func()
+	// done is closed by the tick goroutine on exit. Shutdown waits on
+	// it so "stopped" means the goroutine is gone, not merely signalled.
+	done chan struct{}
 	// lifecycleMutex serializes Start/Shutdown and guards
-	// started/ticker/quitChannel/stopChannel. It is distinct from
-	// mutex (which only serializes Execute) so a Shutdown can wait
-	// for an in-flight tick without lock-order inversion: the tick
-	// goroutine only ever takes mutex, never lifecycleMutex.
+	// started/ticker/runCtx/runCancel. It is distinct from mutex
+	// (which only serializes Execute) so a Shutdown can wait for an
+	// in-flight tick without lock-order inversion: the tick goroutine
+	// only ever takes mutex, never lifecycleMutex.
 	lifecycleMutex sync.Mutex
 	mutex          sync.Mutex // Protects probe operations
 }
@@ -72,7 +86,13 @@ func NewPeriodicScheduler(config PeriodicSchedulerConfig, logger *logger.Logger)
 	}
 }
 
-func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
+// Start runs the scheduler until ctx is cancelled or Shutdown is
+// called. A nil ctx is treated as context.Background(): the scheduler is
+// created in enough places (config-change restarts, strategy
+// recreation) that a nil there used to mean "no termination signal at
+// all" — now it only means "no external one", and Shutdown still stops
+// everything (#270, #285).
+func (l *periodicScheduler) Start(ctx context.Context) error {
 	l.lifecycleMutex.Lock()
 	defer l.lifecycleMutex.Unlock()
 
@@ -80,22 +100,26 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 		return nil
 	}
 
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	l.logger.Info().Msg("Starting")
 	l.started = true
-	l.quitChannel = quitChannel
-	l.stopChannel = make(chan struct{})
+	l.runCtx, l.runCancel = context.WithCancel(ctx)
 
 	if l.config.OnStart != nil {
 		l.logger.Info().Msg("On start call")
-		// OnStart receives the scheduler-owned stop channel, not the
-		// caller's quitChannel: callers routinely pass nil (sensor
-		// config reloads, push strategies), and any goroutine an
-		// OnStart hook parks on a nil channel blocks forever — one
-		// leaked goroutine per probe stop / strategy recreation
-		// (#270). The stop channel is closed in Shutdown, before
-		// OnShutdown runs, so hook goroutines always get a
-		// termination signal.
-		if err := l.config.OnStart(l.stopChannel); err != nil {
+		// OnStart still speaks `chan struct{}` — that is the shape a
+		// listener goroutine selects on — but the channel is derived
+		// from the scheduler's run context rather than handed in by
+		// the caller. There is one cancellation root per scheduler and
+		// it is never nil, so a hook goroutine always gets a
+		// termination signal, whether the agent context is cancelled
+		// or Shutdown runs first.
+		stopChannel, release := lifecycle.StopChannel(l.runCtx)
+		l.releaseStopChannel = release
+		if err := l.config.OnStart(stopChannel); err != nil {
 			return fmt.Errorf("OnStart failed: %w", err)
 		}
 	}
@@ -141,13 +165,16 @@ func (l *periodicScheduler) setupIntervalCall() error {
 	backoffTicks := 0  // current backoff width in ticks (0 = none)
 	skipRemaining := 0 // ticks left to skip before the next attempt
 
-	// quit and stop are captured here, not read from the struct inside
-	// the goroutine: a Shutdown/Start restart cycle replaces those
-	// fields, and a previous goroutine reading them would race.
-	quit := l.quitChannel
-	stop := l.stopChannel
+	// done and the run context are captured here, not read from the
+	// struct inside the goroutine: a Shutdown/Start restart cycle
+	// replaces those fields, and a previous goroutine reading them
+	// would race.
+	runCtx := l.runCtx
+	done := make(chan struct{})
+	l.done = done
 
-	go func(ticker *time.Ticker, quit, stop chan struct{}) {
+	go func(ticker *time.Ticker, runCtx context.Context, done chan struct{}) {
+		defer close(done)
 		stopped := false
 		// Recover from any panic in Execute so a buggy probe collector
 		// does not silently kill the scheduler goroutine — historically
@@ -160,9 +187,9 @@ func (l *periodicScheduler) setupIntervalCall() error {
 					Interface("panic", r).
 					Msgf("scheduler goroutine PANICKED — probe is now stalled forever (restart agent to recover): %v", r)
 			} else if !stopped {
-				// Clean exit without quit/stop signal is abnormal —
-				// the for-select should only exit via quitChannel or
-				// the Shutdown stop channel.
+				// Clean exit without a cancellation is abnormal — the
+				// for-select should only exit when the run context is
+				// done (caller cancellation or Shutdown).
 				l.logger.Warn().Msg("scheduler goroutine exited without quit signal — probe is now stalled")
 			}
 		}()
@@ -230,17 +257,13 @@ func (l *periodicScheduler) setupIntervalCall() error {
 					backoffTicks = 0
 					skipRemaining = 0
 				}
-			case <-quit:
+			case <-runCtx.Done():
 				stopped = true
-				l.logger.Info().Msg("Scheduler goroutine terminating on quit signal")
-				return
-			case <-stop:
-				stopped = true
-				l.logger.Info().Msg("Scheduler goroutine terminating on shutdown")
+				l.logger.Info().Msg("Scheduler goroutine terminating on cancellation")
 				return
 			}
 		}
-	}(l.ticker, quit, stop)
+	}(l.ticker, runCtx, done)
 
 	return nil
 }
@@ -261,9 +284,31 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 		l.ticker = nil
 	}
 
-	if l.stopChannel != nil {
-		close(l.stopChannel)
-		l.stopChannel = nil
+	// Cancelling the run context is the single stop signal: it ends the
+	// tick goroutine and closes the channel the OnStart hook parked its
+	// own goroutines on. Both happen before OnShutdown runs, so a hook
+	// that tears down a listener never races the goroutine feeding it.
+	if l.runCancel != nil {
+		l.runCancel()
+		l.runCancel = nil
+		l.runCtx = nil
+	}
+	if l.releaseStopChannel != nil {
+		l.releaseStopChannel()
+		l.releaseStopChannel = nil
+	}
+
+	// Wait for the tick goroutine to actually exit, bounded by the
+	// caller's budget. Without this, Shutdown returned while a tick was
+	// still in flight: the next Start raced it, and a leak test could
+	// never observe a settled state.
+	if l.done != nil {
+		select {
+		case <-l.done:
+		case <-ctx.Done():
+			l.logger.Warn().Msg("Scheduler goroutine still running when the stop budget expired")
+		}
+		l.done = nil
 	}
 
 	if l.config.ExecuteOnShutdown {
