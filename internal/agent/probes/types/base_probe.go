@@ -13,7 +13,26 @@ type BaseProbe struct {
 	name      string        // Unique probe name from configuration
 	probeType string        // Probe type (technical identifier: cpu, redfish, citrix, etc.)
 	entitySrc entity.Source // Set by SetEntitySource in the constructor
+	// logTargets routes this probe's LOG records. Set by ProbePoller
+	// from the probe's configuration; nil means every log output
+	// receives them.
+	logTargets []string
 }
+
+// SetLogTargets records which outputs this probe's log records are
+// routed to. Called by ProbePoller from configuration — a probe never
+// sets this itself.
+func (p *BaseProbe) SetLogTargets(targets []string) { p.logTargets = targets }
+
+// LogTargets returns the outputs this probe's log records go to, for a
+// producer to stamp on the records it publishes. Nil means broadcast.
+//
+// This is NOT GetTargetStrategies. That one routes datapoints, and for
+// at least two probes it names an output that cannot take logs at all:
+// the syslog probe sends its METRICS to the legacy event sink, so
+// borrowing that list for its logs would cut them off the OTLP rail
+// (#836). The two questions have two answers, so they have two methods.
+func (p *BaseProbe) LogTargets() []string { return p.logTargets }
 
 // GetTargetStrategies returns the default storage strategies
 // for collected metrics. "otlp" is included so that an operator who

@@ -18,7 +18,7 @@ import (
 // a clear message on platforms without systemd-journald.
 type journalReader struct{}
 
-func newJournalReader(_ LinuxLogsProbeConfig, _ *logger.ModuleLogger, _ string, _ *atomic.Uint64) (*journalReader, error) {
+func newJournalReader(_ LinuxLogsProbeConfig, _ *logger.ModuleLogger, _ string, _ []string, _ *atomic.Uint64) (*journalReader, error) {
 	return nil, fmt.Errorf("linux_logs probe is not supported on %s (requires systemd-journald)", runtime.GOOS)
 }
 

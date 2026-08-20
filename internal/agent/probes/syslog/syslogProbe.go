@@ -252,10 +252,11 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 	// DataPoint → data_store → event strategy path was dropped — it was a
 	// duplicate of the same message ("a log, not a metric").
 	agentstate.PublishLog(agentstate.LogRecord{
-		Timestamp:    timestamp,
-		Severity:     agentstate.SyslogPriorityToSeverity(severity),
-		SeverityText: agentstate.SyslogPriorityToText(severity),
-		Body:         content,
+		TargetStrategies: p.LogTargets(),
+		Timestamp:        timestamp,
+		Severity:         agentstate.SyslogPriorityToSeverity(severity),
+		SeverityText:     agentstate.SyslogPriorityToText(severity),
+		Body:             content,
 		Attributes: map[string]string{
 			"syslog.facility":      fmt.Sprintf("%d", facility),
 			"syslog.severity_code": fmt.Sprintf("%d", severity),
