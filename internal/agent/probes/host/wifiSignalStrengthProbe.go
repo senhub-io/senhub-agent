@@ -141,7 +141,7 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute netsh command: %v", err)
+		return nil, fmt.Errorf("failed to execute netsh command: %w", err)
 	}
 
 	var signalStrength int
@@ -157,7 +157,7 @@ func (m *wifiSignalStrengthProbe) collectWindows() ([]data_store.DataPoint, erro
 				signalStrengthStr := strings.TrimSuffix(parts[len(parts)-1], "%")
 				signalStrength, err = strconv.Atoi(signalStrengthStr)
 				if err != nil {
-					return nil, fmt.Errorf("error parsing signal strength: %v", err)
+					return nil, fmt.Errorf("error parsing signal strength: %w", err)
 				}
 				foundSignal = true
 			}
@@ -211,7 +211,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 	cmd := exec.Command("iwconfig")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving Wi-Fi information: %v", err)
+		return nil, fmt.Errorf("error retrieving Wi-Fi information: %w", err)
 	}
 
 	var dataPoints []data_store.DataPoint

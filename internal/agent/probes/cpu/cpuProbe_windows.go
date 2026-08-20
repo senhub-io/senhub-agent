@@ -116,7 +116,7 @@ func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (
 
 	query, err := pdh.NewQuery()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create PDH query: %v", err)
+		return nil, fmt.Errorf("failed to create PDH query: %w", err)
 	}
 
 	collector := &windowsCollector{
@@ -199,7 +199,7 @@ func (w *windowsCollector) initializeCounters() error {
 
 			instances, err := pdh.GetInstancesList(objectName, false)
 			if err != nil {
-				return fmt.Errorf("failed to get %s instances: %v", objectName, err)
+				return fmt.Errorf("failed to get %s instances: %w", objectName, err)
 			}
 
 			hasTotal := false
@@ -233,7 +233,7 @@ func (w *windowsCollector) initializeCounters() error {
 					Str("instance", instance).
 					Msg("Adding counter")
 				if err := w.query.AddCounter(path); err != nil {
-					return fmt.Errorf("failed to add counter %s (instance %s): %v",
+					return fmt.Errorf("failed to add counter %s (instance %s): %w",
 						metricName, instance, err)
 				}
 			}
@@ -249,7 +249,7 @@ func (w *windowsCollector) initializeCounters() error {
 				Str("path", path).
 				Msg("Adding counter")
 			if err := w.query.AddCounter(path); err != nil {
-				return fmt.Errorf("failed to add counter %s: %v", metricName, err)
+				return fmt.Errorf("failed to add counter %s: %w", metricName, err)
 			}
 		}
 	}
@@ -288,12 +288,12 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 
 	w.logger.Debug().Msg("Collecting metrics")
 	if err := w.query.Collect(); err != nil {
-		return nil, fmt.Errorf("failed to collect PDH metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect PDH metrics: %w", err)
 	}
 
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 	w.logger.Debug().Interface("base_tags", baseTags).Msg("Got base tags")
 

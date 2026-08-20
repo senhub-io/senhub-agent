@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -184,7 +185,7 @@ func ParseSyncStrategyPrtgParams(config configuration.StorageConfigParams) (Sync
 	}
 
 	if len(errs) > 0 {
-		return params, fmt.Errorf("error parsing config: %v", errs)
+		return params, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return params, nil

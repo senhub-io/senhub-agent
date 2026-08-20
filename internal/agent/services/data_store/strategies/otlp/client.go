@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 
@@ -442,5 +443,5 @@ func (e *exporters) shutdown(ctx context.Context) error {
 	if len(errs) == 1 {
 		return errs[0]
 	}
-	return fmt.Errorf("multiple shutdown errors: %v", errs)
+	return fmt.Errorf("multiple shutdown errors: %w", errors.Join(errs...))
 }

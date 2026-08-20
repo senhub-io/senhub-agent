@@ -101,7 +101,7 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 
 	if err := wmi.Query(query, &adapters); err != nil {
 		logger.Debug().Err(err).Msg("WMI query failed")
-		return nil, fmt.Errorf("failed to get network adapters from WMI: %v", err)
+		return nil, fmt.Errorf("failed to get network adapters from WMI: %w", err)
 	}
 	logger.Debug().Int("adapter_count", len(adapters)).Msg("Found physical adapters from WMI")
 
@@ -140,7 +140,7 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
 		logger.Debug().Err(err).Msg("Failed to get system interfaces")
-		return nil, fmt.Errorf("failed to get system network interfaces: %v", err)
+		return nil, fmt.Errorf("failed to get system network interfaces: %w", err)
 	}
 	logger.Debug().Int("interface_count", len(netInterfaces)).Msg("Found system interfaces")
 
@@ -149,7 +149,7 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 	pdhInstances, err := pdh.GetInstancesList("Network Interface", true) // debug enabled
 	if err != nil {
 		logger.Debug().Err(err).Msg("Failed to get PDH instances")
-		return nil, fmt.Errorf("failed to get PDH Network Interface instances: %v", err)
+		return nil, fmt.Errorf("failed to get PDH Network Interface instances: %w", err)
 	}
 	logger.Debug().Int("instance_count", len(pdhInstances)).Msg("PDH Interface instances found")
 	for _, inst := range pdhInstances {
@@ -275,7 +275,7 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 
 	query, err := pdh.NewQuery()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create PDH query: %v", err)
+		return nil, fmt.Errorf("failed to create PDH query: %w", err)
 	}
 
 	moduleLogger.Debug().Msg("Initializing network collector")
@@ -283,7 +283,7 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 	interfaces, err := getNetworkInterfaces(moduleLogger)
 	if err != nil {
 		query.Close()
-		return nil, fmt.Errorf("failed to get network interfaces: %v", err)
+		return nil, fmt.Errorf("failed to get network interfaces: %w", err)
 	}
 
 	collector := &windowsNetworkCollector{
@@ -322,7 +322,7 @@ func (w *windowsNetworkCollector) initializeCounters() error {
 				}
 
 				if err := w.query.AddCounter(path); err != nil {
-					return fmt.Errorf("failed to add counter %s (instance %s): %v", metricName, pdhName, err)
+					return fmt.Errorf("failed to add counter %s (instance %s): %w", metricName, pdhName, err)
 				}
 				w.logger.Debug().
 					Str("metric", metricName).
@@ -348,19 +348,19 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 		// expected, not a failure (#590). Any other error is real. After the
 		// one-second wait the next Collect below has a delta to read.
 		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
-			return nil, fmt.Errorf("failed initial sample collection: %v", err)
+			return nil, fmt.Errorf("failed initial sample collection: %w", err)
 		}
 		time.Sleep(1 * time.Second)
 		w.initialized = true
 	}
 
 	if err := w.query.Collect(); err != nil {
-		return nil, fmt.Errorf("failed to collect PDH metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect PDH metrics: %w", err)
 	}
 
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 
 	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))
