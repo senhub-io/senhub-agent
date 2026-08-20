@@ -112,7 +112,7 @@ func checkPrivileges(command string) error {
 
 	currentUser, err := user.Current()
 	if err != nil {
-		return fmt.Errorf("unable to determine current user: %v", err)
+		return fmt.Errorf("unable to determine current user: %w", err)
 	}
 	if currentUser.Uid != "0" {
 		return fmt.Errorf("the %q command manages the system service and must be run with root privileges. Please use 'sudo' or run as root", command)

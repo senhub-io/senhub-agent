@@ -69,7 +69,7 @@ func NewNetworkProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create network collector: %v", err)
+		return nil, fmt.Errorf("failed to create network collector: %w", err)
 	}
 
 	return probe, nil
@@ -91,7 +91,7 @@ func (p *networkProbe) Collect() ([]data_store.DataPoint, error) {
 	timestamp := time.Now()
 	metrics, err := p.collector.Collect(timestamp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to collect network metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect network metrics: %w", err)
 	}
 
 	// Enrich datapoints with probe name and type tags

@@ -356,7 +356,7 @@ func GetLocalizedCounterName(englishName string) (string, error) {
 		lastErr = fmt.Errorf("failed to get localized name for index %d: %s", index, GetPdhErrorText(uint32(ret)))
 	}
 
-	return "", fmt.Errorf("all indexes failed for %s: %v", englishName, lastErr)
+	return "", fmt.Errorf("all indexes failed for %s: %w", englishName, lastErr)
 }
 
 func GetInstancesList(objectName string, debug bool) ([]string, error) {
@@ -369,7 +369,7 @@ func GetInstancesList(objectName string, debug bool) ([]string, error) {
 		if debug {
 			logDebug("GetInstancesList: Failed to get localized name: %v", err)
 		}
-		return nil, fmt.Errorf("failed to get localized name: %v", err)
+		return nil, fmt.Errorf("failed to get localized name: %w", err)
 	}
 
 	if debug {
@@ -378,7 +378,7 @@ func GetInstancesList(objectName string, debug bool) ([]string, error) {
 
 	objectNameUTF16, err := windows.UTF16PtrFromString(localizedName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert name to UTF16: %v", err)
+		return nil, fmt.Errorf("failed to convert name to UTF16: %w", err)
 	}
 
 	var counterSize, instanceSize uint32

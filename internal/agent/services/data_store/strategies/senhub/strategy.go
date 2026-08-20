@@ -186,7 +186,7 @@ func ParseSyncStrategySenhubParams(config configuration.StorageConfigParams) (Sy
 	}
 
 	if len(errs) > 0 {
-		return params, fmt.Errorf("error parsing config: %v", errs)
+		return params, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return params, nil

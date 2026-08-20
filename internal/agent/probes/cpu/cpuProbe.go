@@ -48,7 +48,7 @@ func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to create CPU collector: %v", err)
+		return nil, fmt.Errorf("failed to create CPU collector: %w", err)
 	}
 	return probe, nil
 }
@@ -73,7 +73,7 @@ func (p *cpuProbe) Collect() ([]data_store.DataPoint, error) {
 	timestamp := time.Now()
 	metrics, err := p.collector.Collect(timestamp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to collect CPU metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect CPU metrics: %w", err)
 	}
 
 	// Enrich datapoints with probe name

@@ -51,7 +51,7 @@ func NewMemoryProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Memory collector: %v", err)
+		return nil, fmt.Errorf("failed to create Memory collector: %w", err)
 	}
 
 	return probe, nil
@@ -73,7 +73,7 @@ func (p *memoryProbe) Collect() ([]data_store.DataPoint, error) {
 	timestamp := time.Now()
 	metrics, err := p.collector.Collect(timestamp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to collect Memory metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect Memory metrics: %w", err)
 	}
 
 	// Enrich datapoints with probe name and type tags

@@ -96,7 +96,7 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 		// OnShutdown runs, so hook goroutines always get a
 		// termination signal.
 		if err := l.config.OnStart(l.stopChannel); err != nil {
-			return fmt.Errorf("OnStart failed: %v", err)
+			return fmt.Errorf("OnStart failed: %w", err)
 		}
 	}
 
@@ -105,7 +105,7 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 		// Do onStart call
 		if err := l.doCall(); err != nil && l.config.FailOnStartError {
 			if l.config.FailOnStartError {
-				return fmt.Errorf("Initial call failed: %v", err)
+				return fmt.Errorf("Initial call failed: %w", err)
 			}
 
 			l.logger.Error().Err(err).Msg("Initial call failed")
@@ -113,7 +113,7 @@ func (l *periodicScheduler) Start(quitChannel chan struct{}) error {
 	}
 
 	if err := l.setupIntervalCall(); err != nil {
-		return fmt.Errorf("Unable to setup interval call %v", err)
+		return fmt.Errorf("Unable to setup interval call %w", err)
 	}
 
 	return nil
@@ -269,14 +269,14 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	if l.config.ExecuteOnShutdown {
 		l.logger.Info().Msg("Final call")
 		if err := l.doCall(); err != nil {
-			return fmt.Errorf("Unable to call Execute on shutdown: %v", err)
+			return fmt.Errorf("Unable to call Execute on shutdown: %w", err)
 		}
 	}
 
 	if l.config.OnShutdown != nil {
 		l.logger.Info().Msg("OnShutdown call")
 		if err := l.config.OnShutdown(ctx); err != nil {
-			return fmt.Errorf("OnShutdown failed: %v", err)
+			return fmt.Errorf("OnShutdown failed: %w", err)
 		}
 	}
 
