@@ -533,7 +533,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		strategy = senhub.NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
 	case "prtg":
 		d.logger.Debug().Msg("Initializing prtg strategy")
-		strategy = prtg.NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger)
+		strategy = prtg.NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger, d.transformerRegistry)
 	case "event":
 		d.logger.Debug().Msg("Initializing event strategy")
 		eventStrategy, err := event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)

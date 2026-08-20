@@ -15,6 +15,7 @@ import (
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/validators"
@@ -114,12 +115,19 @@ type SyncStrategyPrtg struct {
 	config      SyncStrategyPrtgParams
 	logger      *logger.ModuleLogger
 	scheduler   periodic_scheduler.PeriodicScheduler
+
+	// registry resolves a metric's display name from the probe's YAML
+	// definition — the same source the pull endpoint uses. Without it the
+	// push path invented its own names and the same device appeared under
+	// two different channel sets depending on the transport (#293).
+	registry *transformers.TransformerRegistry
 }
 
 func NewSyncStrategyPrtg(
 	agentConfig configuration.AgentConfiguration,
 	storageConfig configuration.StorageConfigParams,
 	baseLogger *logger.Logger,
+	registry *transformers.TransformerRegistry,
 ) *SyncStrategyPrtg {
 	// Create module-specific logger for PRTG strategy
 	moduleLogger := logger.NewModuleLogger(baseLogger, "strategy.prtg")
@@ -135,6 +143,7 @@ func NewSyncStrategyPrtg(
 		rawConfig:   storageConfig,
 		agentConfig: agentConfig,
 		logger:      moduleLogger,
+		registry:    registry,
 	}
 
 	return &strategy
@@ -310,6 +319,11 @@ func (s *SyncStrategyPrtg) DoSync() error {
 	return nil
 }
 
+// prtgMetricIDTag is the per-probe override of the channel name. Kept in
+// sync with data_store.PrtgTagName; duplicated rather than imported to
+// avoid a strategy depending on its parent package.
+const prtgMetricIDTag = "prtg_metric_id"
+
 type PrtgResult struct {
 	Channel string  `json:"channel"`
 	Value   float64 `json:"value"`
@@ -327,7 +341,7 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	jsonData := PrtgData{}
 	for _, p := range data {
 		jsonData.Prtg.Result = append(jsonData.Prtg.Result, PrtgResult{
-			metricId(p),
+			s.channelName(p),
 			p.Value,
 			1,
 		})
@@ -359,4 +373,45 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	}
 
 	return nil
+}
+
+// channelName is the label a measurement carries into PRTG.
+//
+// It resolves the display name from the probe's YAML definition, which is
+// what the pull endpoint has always done. The push path used to emit the
+// raw internal metric id instead, so the same device showed
+// "cpu_core_usage" when the agent pushed and "CPU Core 0 Usage" when PRTG
+// pulled — one device, two channel sets, depending only on transport
+// (#293).
+//
+// An explicit prtg_metric_id tag still wins: a probe that sets it is
+// naming its own channel on purpose.
+func (s *SyncStrategyPrtg) channelName(p datapoint.DataPoint) string {
+	for _, t := range p.Tags {
+		if t.Key == prtgMetricIDTag {
+			return strings.ReplaceAll(t.Value, "[name]", p.Name)
+		}
+	}
+
+	if s.registry != nil {
+		tagMap := make(map[string]string, len(p.Tags))
+		for _, t := range p.Tags {
+			tagMap[t.Key] = t.Value
+		}
+		probeType := tagMap["probe_type"]
+		if probeType == "" {
+			probeType = tagMap["probe_name"]
+		}
+		if probeType != "" {
+			if transformer, err := s.registry.LoadTransformer(probeType, "friendly"); err == nil && transformer != nil {
+				if friendly := transformer.TransformMetricName(p.Name, tagMap); friendly != "" {
+					return friendly
+				}
+			}
+		}
+	}
+
+	// No definition for this probe type: the raw name is all we have, and
+	// it is what both paths fall back to.
+	return p.Name
 }
