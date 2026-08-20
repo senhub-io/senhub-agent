@@ -3,6 +3,8 @@ package otlp
 import (
 	"context"
 	"errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"os"
 	"path/filepath"
 	"sync"
@@ -214,5 +216,99 @@ func TestPersistentLogExporter_FailureCountsBySignal(t *testing.T) {
 
 	if got := agentstate.GetOTLPExportErrorsBySignal()["logs"] - before; got != 1 {
 		t.Errorf("logs export-error delta=%d, want 1", got)
+	}
+}
+
+// rejectingExporter always refuses the payload on its merits, the way a
+// receiver answers a malformed batch.
+type rejectingExporter struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (e *rejectingExporter) Export(context.Context, []sdklog.Record) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.calls++
+	return status.Error(codes.InvalidArgument, "unsupported attribute type")
+}
+func (e *rejectingExporter) ForceFlush(context.Context) error { return nil }
+func (e *rejectingExporter) Shutdown(context.Context) error   { return nil }
+func (e *rejectingExporter) attempts() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.calls
+}
+
+// TestPersistentLogExporter_RejectedBatchIsNotQueued is #833's answer in
+// one behaviour: the dead-letter queue is for outages, not for payloads
+// the receiver refuses.
+//
+// A rejected batch used to be written to disk, replayed at boot and on
+// every recovery, rejected again, and written back — occupying space
+// that the drop-oldest eviction then takes from batches that could
+// still be delivered. An outage's worth of real event logs gets evicted
+// to keep re-sending something the receiver has refused every time.
+func TestPersistentLogExporter_RejectedBatchIsNotQueued(t *testing.T) {
+	dir := t.TempDir()
+	exp := &rejectingExporter{}
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	ple := newPersistentLogExporter(exp, q, testModuleLogger(t))
+
+	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
+	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
+
+	ctx := context.Background()
+	pipe.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1700000000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "the receiver will never take this",
+		ProducerProbeName: "syslog",
+	})
+	_ = pipe.provider.ForceFlush(ctx)
+
+	if exp.attempts() == 0 {
+		t.Fatal("the exporter was never called; the test proves nothing")
+	}
+
+	q.mu.Lock()
+	recs := q.records
+	q.mu.Unlock()
+	if recs != 0 {
+		t.Errorf("a rejected batch was persisted: queue holds %d records", recs)
+	}
+	if files := countQueueFiles(t, dir); files != 0 {
+		t.Errorf("a rejected batch left %d files on disk", files)
+	}
+}
+
+// TestPersistentLogExporter_OutageIsStillQueued is the other half: the
+// classification must not turn the dead-letter queue off. An unreachable
+// backend is exactly what it exists for.
+func TestPersistentLogExporter_OutageIsStillQueued(t *testing.T) {
+	dir := t.TempDir()
+	exp := &controllableExporter{failUntil: 1}
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	ple := newPersistentLogExporter(exp, q, testModuleLogger(t))
+
+	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
+	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
+
+	ctx := context.Background()
+	pipe.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1700000000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "keep me for the replay",
+		ProducerProbeName: "syslog",
+	})
+	_ = pipe.provider.ForceFlush(ctx)
+
+	q.mu.Lock()
+	recs := q.records
+	q.mu.Unlock()
+	if recs == 0 {
+		t.Error("an ordinary outage was not persisted — the dead-letter queue no longer does its job")
 	}
 }
