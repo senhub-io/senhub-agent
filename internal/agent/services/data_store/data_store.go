@@ -678,13 +678,20 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 				correctedValue = newValue
 				correctionCount++
 
-				d.logger.Info().
+				// Debug, not Info, and without a derived ratio: a unit
+				// correction is a permanent property of the probe's
+				// definition, not an event. At Info this printed a
+				// five-field line for EVERY corrected datapoint of every
+				// cycle, burying the journal under a restatement of the
+				// YAML (#295). The factor is the two values divided,
+				// which a reader can do and a disabled log line should
+				// not compute.
+				d.logger.Debug().
 					Str("metric", dp.Name).
 					Str("probe", probeName).
 					Float64("original_value", originalFloat64).
 					Float64("corrected_value", newValue).
-					Float64("correction_factor", newValue/originalFloat64).
-					Msg("Unit correction applied to datapoint - ensuring consistent units across all strategies")
+					Msg("Unit correction applied")
 			}
 		} else {
 			// Only the legacy fallback transformer (created when a probe
@@ -727,10 +734,13 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 	}
 
 	if correctionCount > 0 {
-		d.logger.Info().
+		// Also Debug: on a host whose definitions declare corrections this
+		// fires on every collection cycle, forever, saying nothing that
+		// changed.
+		d.logger.Debug().
 			Int("total_datapoints", len(datapoints)).
 			Int("corrections_applied", correctionCount).
-			Msg("Unit corrections completed - all strategies will receive corrected metrics")
+			Msg("Unit corrections applied to batch")
 	}
 
 	return correctedDatapoints
