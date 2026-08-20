@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -115,7 +116,8 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 
 	// Try HTTP endpoint first (for running agent with HTTP strategy)
 	if agentKey != "" {
-		if systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, 8080); err == nil {
+		httpPort := resolveHTTPStrategyPort(configPath)
+		if systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, httpPort); err == nil {
 			// Enrich with dashboard URL from config
 			if configPath != "" {
 				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
@@ -126,7 +128,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			// --otlp adds an OTLP self-metric block after the standard view.
 			// Failure here is non-fatal: the standard status already printed.
 			if args != nil && args.ShowOTLP {
-				if info, err := statusHelper.GetOTLPInfoFromHTTP(agentKey, 8080); err == nil {
+				if info, err := statusHelper.GetOTLPInfoFromHTTP(agentKey, httpPort); err == nil {
 					fmt.Print("\n")
 					fmt.Print(formatter.FormatOTLPInfo(info))
 				} else {
@@ -136,7 +138,8 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			return
 		}
 		// HTTP failed, fall back to direct method
-		// Note: This happens when HTTP strategy is not enabled or agent is not listening on port 8080
+		// Note: this happens when the HTTP strategy is not enabled, or the
+		// agent is not listening on the resolved port
 	}
 
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
@@ -306,3 +309,39 @@ func isGitHash(s string) bool {
 }
 
 // validateConfigPath validates that the config path is safe to read
+
+// resolveHTTPStrategyPort finds the port the running agent's HTTP
+// strategy listens on, so `status` reaches a daemon configured on
+// anything other than the default.
+//
+// It goes through the real configuration loader rather than parsing the
+// main file by hand: an operator running the multi-file layout keeps the
+// http strategy in strategies.d/, invisible to a `strategies:` lookup in
+// agent.yaml. Status silently fell back to the degraded local view on
+// every such host, which also hid the dead-output report (#826).
+func resolveHTTPStrategyPort(configPath string) int {
+	const defaultPort = 8080
+	if configPath == "" {
+		return defaultPort
+	}
+	cfg, err := configuration.LoadFromDisk(configPath, nil)
+	if err != nil {
+		return defaultPort
+	}
+	for _, storage := range cfg.Storage {
+		if storage.Name != "http" {
+			continue
+		}
+		switch v := storage.Params["port"].(type) {
+		case int:
+			if v > 0 {
+				return v
+			}
+		case float64:
+			if v > 0 {
+				return int(v)
+			}
+		}
+	}
+	return defaultPort
+}
