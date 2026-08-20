@@ -121,3 +121,32 @@ func TestFormatMsDuration(t *testing.T) {
 		}
 	}
 }
+
+// TestFormatSystemStatus_ShowsDeadOutputs pins the defect the recette
+// found: the CLI runs in its own process, so the block must render from
+// the payload the DAEMON returned. Reading the in-memory state locally
+// showed nothing while the agent had a dead output (#826).
+func TestFormatSystemStatus_ShowsDeadOutputs(t *testing.T) {
+	f := NewCLIFormatter()
+	status := SystemStatus{
+		Health: HealthInfo{Status: "healthy"},
+		Agent:  AgentInfo{Version: "0.5.5"},
+		StrategyFailures: []StrategyFailure{
+			{Strategy: "otlp", Reason: "invalid_config", Detail: "Authorization Bearer but no credential"},
+		},
+	}
+
+	out := f.FormatSystemStatus(status)
+	if !strings.Contains(out, "otlp") || !strings.Contains(out, "invalid_config") {
+		t.Errorf("dead output not reported:\n%s", out)
+	}
+	if !strings.Contains(out, "Authorization Bearer but no credential") {
+		t.Error("the detail is missing; the operator cannot tell what to fix")
+	}
+
+	// A healthy agent keeps the nominal view unchanged.
+	status.StrategyFailures = nil
+	if out := f.FormatSystemStatus(status); strings.Contains(out, "NOT running") {
+		t.Errorf("failure block rendered with no failures:\n%s", out)
+	}
+}

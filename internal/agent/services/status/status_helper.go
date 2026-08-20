@@ -123,7 +123,8 @@ type HTTPSystemInfoResponse struct {
 		ProbeCount   int    `json:"probe_count"`
 		TTL          string `json:"ttl"`
 	} `json:"cache"`
-	Resources struct {
+	StrategyFailures []StrategyFailure `json:"strategy_failures"`
+	Resources        struct {
 		MemoryUsageMB float64 `json:"memory_usage_mb"`
 		CPUPercent    float64 `json:"cpu_percent"`
 		Goroutines    int     `json:"goroutines"`
@@ -141,7 +142,8 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 			Source: "local_config",
 			Status: "local",
 		},
-		Probes: nil, // Will be populated by caller via GetDetailedProbeStatusFromHTTP
+		StrategyFailures: httpResp.StrategyFailures,
+		Probes:           nil, // Will be populated by caller via GetDetailedProbeStatusFromHTTP
 		Performance: PerformanceInfo{
 			Uptime:        httpResp.Uptime,
 			MemoryUsageMB: httpResp.Resources.MemoryUsageMB,

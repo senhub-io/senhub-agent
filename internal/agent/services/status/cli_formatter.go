@@ -9,8 +9,6 @@ import (
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-
-	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
 // CLIFormatter formats status information for command line display
@@ -55,7 +53,7 @@ func (f *CLIFormatter) FormatSystemStatus(status SystemStatus) string {
 	// Outputs that are configured but not running. Printed even though
 	// the agent is otherwise healthy: it is the failure operators miss
 	// (#826).
-	if block := f.formatStrategyFailures(); block != "" {
+	if block := f.formatStrategyFailures(status.StrategyFailures); block != "" {
 		output.WriteString("\n")
 		output.WriteString(block)
 	}
@@ -120,8 +118,7 @@ func (f *CLIFormatter) formatAgentInfo(agent AgentInfo) string {
 // formatStrategyFailures renders the configured strategies that are not
 // running. Returns an empty string when every output started, so the
 // nominal status view is unchanged.
-func (f *CLIFormatter) formatStrategyFailures() string {
-	failures := agentstate.GetStrategyFailures()
+func (f *CLIFormatter) formatStrategyFailures(failures []StrategyFailure) string {
 	if len(failures) == 0 {
 		return ""
 	}
@@ -134,15 +131,10 @@ func (f *CLIFormatter) formatStrategyFailures() string {
 	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 
-	names := make([]string, 0, len(failures))
-	for name := range failures {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		output.WriteString(fmt.Sprintf("%-12s %s\n", name+":", failures[name].Reason))
-		if detail := failures[name].Detail; detail != "" {
-			output.WriteString(fmt.Sprintf("             %s\n", detail))
+	for _, failure := range failures {
+		output.WriteString(fmt.Sprintf("%-12s %s\n", failure.Strategy+":", failure.Reason))
+		if failure.Detail != "" {
+			output.WriteString(fmt.Sprintf("             %s\n", failure.Detail))
 		}
 	}
 	output.WriteString("\nThe agent is running; these outputs are not. Fix the configuration and restart.\n")

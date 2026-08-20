@@ -334,12 +334,24 @@ type SystemInfoResponse struct {
 	Health    HealthCheckResponse `json:"health"`
 	Cache     CacheInfoResponse   `json:"cache"`
 	Resources ResourcesInfo       `json:"resources"`
+	// StrategyFailures lists the configured outputs that are NOT running.
+	// Served here rather than computed by the CLI, because the CLI is a
+	// separate process: reading the in-memory state there would always
+	// find it empty while the daemon holds the truth (#826).
+	StrategyFailures []StrategyFailureInfo `json:"strategy_failures,omitempty"`
 }
 
 // OTLPInfoResponse represents the response for /info/otlp — a snapshot
 // of every OTLP self-metric exposed by `agentstate`. Designed to feed
 // the CLI `agent status --otlp` view and the web dashboard's OTLP card
 // without forcing either to scrape the Prometheus bridge.
+// StrategyFailureInfo is one configured output that failed to start.
+type StrategyFailureInfo struct {
+	Strategy string `json:"strategy"`
+	Reason   string `json:"reason"`
+	Detail   string `json:"detail,omitempty"`
+}
+
 type OTLPInfoResponse struct {
 	Pipeline       OTLPPipelineInfo       `json:"pipeline"`
 	Store          OTLPStoreInfo          `json:"store"`
