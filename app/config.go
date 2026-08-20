@@ -162,19 +162,42 @@ func validateConfigPath(configPath string) error {
 		return fmt.Errorf("path contains directory traversal attempts")
 	}
 
-	// Only allow config files in current directory or subdirectories (no parent directory access)
+	// Accept the installed configuration, wherever the platform puts it,
+	// plus anything under the working directory (a local bench, a config
+	// staged next to the binary).
+	//
+	// Restricting this to the working directory alone made `status`
+	// unusable on every normal install: the config lives in
+	// /etc/senhub-agent or C:\ProgramData\SenHub, never under the
+	// directory an operator happens to run the command from. The key
+	// could not be read, so the command never reached the daemon and
+	// silently printed its degraded local view instead.
+	if withinInstalledConfigDir(absPath) {
+		return nil
+	}
+
 	workingDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
-
-	// Check if the file is within the working directory or its subdirectories
 	relPath, err := filepath.Rel(workingDir, absPath)
 	if err != nil || strings.HasPrefix(relPath, "..") {
-		return fmt.Errorf("config file must be within the current working directory or its subdirectories")
+		return fmt.Errorf("config file must be the installed configuration or live under the current directory")
 	}
 
 	return nil
+}
+
+// withinInstalledConfigDir reports whether path sits in the directory
+// this platform installs the agent configuration into.
+func withinInstalledConfigDir(path string) bool {
+	installed, err := cliArgs.GetAbsoluteConfigPath("")
+	if err != nil {
+		return false
+	}
+	dir := filepath.Dir(installed)
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && !strings.HasPrefix(rel, "..")
 }
 
 // extractAgentKeyFromConfig attempts to extract agent key from local config file

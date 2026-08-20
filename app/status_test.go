@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"path/filepath"
 	"senhub-agent.go/internal/agent/cliArgs"
 )
 
@@ -82,5 +83,30 @@ func TestValidateConfigPath(t *testing.T) {
 				t.Errorf("validateConfigPath() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestValidateConfigPath_AcceptsInstalledConfig pins the defect the
+// recette found on both platforms: the installed configuration lives in
+// /etc/senhub-agent or C:\ProgramData\SenHub, never under the directory
+// an operator runs the command from. Refusing it made `status` unable to
+// read the agent key, so it never reached the daemon and printed its
+// degraded local view instead — on every normal install.
+func TestValidateConfigPath_AcceptsInstalledConfig(t *testing.T) {
+	installed, err := cliArgs.GetAbsoluteConfigPath("")
+	if err != nil {
+		t.Skipf("no platform default config path: %v", err)
+	}
+	if err := validateConfigPath(installed); err != nil {
+		t.Errorf("installed configuration refused: %v", err)
+	}
+	// A sibling fragment of the same install is equally legitimate.
+	sibling := filepath.Join(filepath.Dir(installed), "strategies.d", "10-otlp.yaml")
+	if err := validateConfigPath(sibling); err != nil {
+		t.Errorf("installed fragment refused: %v", err)
+	}
+	// Traversal stays refused.
+	if err := validateConfigPath("../../../etc/passwd.yaml"); err == nil {
+		t.Error("directory traversal accepted")
 	}
 }
