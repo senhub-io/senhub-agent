@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -240,7 +241,7 @@ func parseUpdateCommand(argv []string) (parsed *cliArgs.ParsedArgs, wantHelp boo
 		return nil, false, fmt.Errorf("building update parser: %w", perr)
 	}
 	if perr := p.Parse(argv); perr != nil {
-		if perr == arg.ErrHelp {
+		if errors.Is(perr, arg.ErrHelp) {
 			return nil, true, nil
 		}
 		return nil, false, perr

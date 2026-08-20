@@ -10,6 +10,7 @@
 package cliArgs
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -253,7 +254,7 @@ func ParseStartArgs(flags []string) *ParsedArgs {
 		fatalf("failed to create start args parser: %v", err)
 	}
 	if parseErr := p.Parse(flags); parseErr != nil {
-		if parseErr == arg.ErrHelp {
+		if errors.Is(parseErr, arg.ErrHelp) {
 			p.WriteHelp(os.Stdout)
 			os.Exit(0)
 		}
@@ -278,7 +279,7 @@ func MustParse() *ParsedArgs {
 	err = p.Parse(os.Args[1:])
 	if err != nil {
 		switch {
-		case err == arg.ErrHelp:
+		case errors.Is(err, arg.ErrHelp):
 			p.WriteHelp(os.Stdout)
 			os.Exit(0)
 		case p.Subcommand() == nil:
@@ -294,7 +295,7 @@ func MustParse() *ParsedArgs {
 			// `senhub-agent` (no subcommand, no flags) must still
 			// yield a usable ParsedArgs. The discard makes the
 			// intent explicit for the linter (SA9003).
-			if parseErr := sp.Parse(os.Args[1:]); parseErr != nil && parseErr != arg.ErrHelp {
+			if parseErr := sp.Parse(os.Args[1:]); parseErr != nil && !errors.Is(parseErr, arg.ErrHelp) {
 				_ = parseErr
 			}
 			return parsedArgsFromStartArgs(&startArgs, parsedEnv)

@@ -21,6 +21,7 @@ package execprobe
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -306,11 +307,12 @@ func (p *ExecProbe) runOnce() execResult {
 	res.stdout = stdout.Bytes()
 	res.timedOut = ctx.Err() == context.DeadlineExceeded
 
-	switch e := err.(type) {
-	case nil:
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
 		res.exitCode = 0
-	case *exec.ExitError:
-		res.exitCode = e.ExitCode()
+	case errors.As(err, &exitErr):
+		res.exitCode = exitErr.ExitCode()
 	default:
 		res.err = fmt.Errorf("running %s: %w", p.config.Command, err)
 	}
