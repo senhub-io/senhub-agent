@@ -422,8 +422,31 @@ func checkConfig(configPath string) {
 				errorCount++
 				continue
 			}
+			// An output that cannot consume logs would silently swallow
+			// this probe's records: they would be routed to it, and it
+			// would never read the log rail. Refuse the value instead of
+			// letting the operator discover it as missing data (#836).
+			badRouting := false
+			for _, target := range p.LogStrategies {
+				if !configuration.IsLogCapableStrategy(target) {
+					fmt.Printf("  [ERROR] Probe %q: log_strategies names %q, which cannot receive logs (accepted: %s)\n",
+						p.Name, target, strings.Join(configuration.LogCapableStrategies, ", "))
+					errorCount++
+					badRouting = true
+				}
+			}
+			if badRouting {
+				// Don't follow an ERROR with an OK line describing the
+				// routing that was just rejected — the operator would
+				// have to read both to know which one holds.
+				continue
+			}
+
 			if !p.IsEnabled() {
 				fmt.Printf("  [OFF]  Probe %q (type: %s) - disabled, will not collect\n", p.Name, p.Type)
+			} else if len(p.LogStrategies) > 0 {
+				fmt.Printf("  [OK]   Probe %q (type: %s), logs routed to %s\n",
+					p.Name, p.Type, strings.Join(p.LogStrategies, ", "))
 			} else {
 				fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
 			}

@@ -184,7 +184,7 @@ not json at all
 `
 	r := bufioReaderFromString(input)
 	var emitted atomic.Uint64
-	drainReader(r, testLogger(), "linux-logs-test", &emitted)
+	drainReader(r, testLogger(), "linux-logs-test", nil, &emitted)
 
 	// Drain everything that was published.
 	deadline := time.After(2 * time.Second)

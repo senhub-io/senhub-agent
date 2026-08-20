@@ -22,6 +22,17 @@ Changes land here as they are merged to `dev`.
   keeps the previous behaviour (the Go default of 90 seconds), so
   nothing changes until you configure it.
 
+## Features
+
+- **Route a probe's logs to a specific output.** A probe that produces
+  logs sent them to every output that reads them; the `endpoints`-style
+  filtering that governs metrics did not apply. The new per-probe
+  `log_strategies` closes that: `log_strategies: ["otlp"]` sends that
+  probe's records to OTLP and nowhere else. Omitting it keeps today's
+  behaviour, so nothing changes until you configure it. Only outputs
+  that can actually consume logs are accepted — `agent config check`
+  rejects anything else instead of letting the records go nowhere.
+
 ## Fixes
 
 - **The OTLP log queue no longer fills with records that cannot be

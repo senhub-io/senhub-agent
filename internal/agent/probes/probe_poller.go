@@ -120,6 +120,18 @@ func NewProbePoller(
 			Msg("Probe does not support SetProbeType() - transformers and discriminant tags will not work. Probe should embed BaseProbe.")
 	}
 
+	// Log routing comes from configuration, not from the probe's metric
+	// target list — see BaseProbe.LogTargets for why the two must not be
+	// the same list (#836).
+	if routable, ok := probe.(interface{ SetLogTargets([]string) }); ok {
+		routable.SetLogTargets(config.LogStrategies)
+	} else if len(config.LogStrategies) > 0 {
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Strs("log_strategies", config.LogStrategies).
+			Msg("Probe does not support SetLogTargets() - log_strategies will be ignored and its logs will reach every log output. Probe should embed BaseProbe.")
+	}
+
 	probePoller := &ProbePoller{
 		ProbeId:      probeId,
 		Probe:        probe,

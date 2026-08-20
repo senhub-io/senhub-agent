@@ -73,10 +73,11 @@ const drainBatchSize = 64
 // a shared stop event to unblock them, and the bookmark store they flush
 // progress into.
 type eventReader struct {
-	cfg       WindowsEventLogProbeConfig
-	log       *logger.ModuleLogger
-	probeName string
-	emitted   *atomic.Uint64
+	cfg        WindowsEventLogProbeConfig
+	log        *logger.ModuleLogger
+	probeName  string
+	logTargets []string
+	emitted    *atomic.Uint64
 
 	stopEvent windows.Handle
 	bookmarks *bookmarkStore
@@ -89,7 +90,7 @@ type eventReader struct {
 // Returns an error only for unrecoverable setup failures (event creation,
 // bookmark load); a single channel that fails to subscribe is logged and
 // skipped so one bad channel name does not sink the whole probe.
-func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, probeName string, emitted *atomic.Uint64) (*eventReader, error) {
+func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, probeName string, logTargets []string, emitted *atomic.Uint64) (*eventReader, error) {
 	stop, err := windows.CreateEvent(nil, 1 /*manual reset*/, 0 /*nonsignalled*/, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create stop event: %w", err)
@@ -106,12 +107,13 @@ func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, pr
 	}
 
 	r := &eventReader{
-		cfg:       cfg,
-		log:       log,
-		probeName: probeName,
-		emitted:   emitted,
-		stopEvent: stop,
-		bookmarks: store,
+		cfg:        cfg,
+		log:        log,
+		probeName:  probeName,
+		logTargets: logTargets,
+		emitted:    emitted,
+		stopEvent:  stop,
+		bookmarks:  store,
 	}
 
 	for _, channel := range cfg.Channels {
@@ -226,7 +228,9 @@ func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 				r.log.Debug().Str("channel", channel).Str("xml", truncate(xmlStr, 200)).
 					Msg("Unparseable event XML; skipped")
 			} else if r.cfg.shouldEmit(parsed) {
-				agentstate.PublishLog(parsed.toLogRecord(r.probeName, r.cfg.RedactPII))
+				rec := parsed.toLogRecord(r.probeName, r.cfg.RedactPII)
+				rec.TargetStrategies = r.logTargets
+				agentstate.PublishLog(rec)
 				if r.emitted != nil {
 					r.emitted.Add(1)
 				}
