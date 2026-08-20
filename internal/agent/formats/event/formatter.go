@@ -3,12 +3,16 @@ package event
 
 import (
 	"encoding/json"
+	"strconv"
+	"unicode"
+
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/agent/types/event"
-	"unicode"
 )
 
 type Formatter struct{}
@@ -17,37 +21,30 @@ func NewFormatter() *Formatter {
 	return &Formatter{}
 }
 
-// Ajouter dans formatter.go
+// syslogSeverityToEventSeverity maps an RFC 5424 severity code (as the
+// string the probe put on the tag) to the legacy event severity name.
+//
+// The eight rungs live in agentstate, once, alongside the OTel mapping
+// the same code produces. This used to be a second hand-maintained copy
+// of them (#294).
+//
+// The DEFAULT stays "notice" and is deliberately not unified. It is a
+// wire-format behaviour of the legacy /event/insert rail: an input the
+// agent cannot parse arrives at the cloud intake as notice today, and
+// TestFromEventLog_ByteIdenticalAndStructurePreserved pins that the
+// log-bus path reproduces it byte for byte. The OTel rail answers
+// Unspecified for the same input — the two rails disagree, on purpose,
+// until the legacy rail is retired with its consumers.
 func (f *Formatter) syslogSeverityToEventSeverity(syslogSeverity string) event.EventSeverity {
-	// Syslog severity levels (0-7)
-	// 0: Emergency
-	// 1: Alert
-	// 2: Critical
-	// 3: Error
-	// 4: Warning
-	// 5: Notice
-	// 6: Informational
-	// 7: Debug
-	switch syslogSeverity {
-	case "0":
-		return event.Emergency
-	case "1":
-		return event.Alert
-	case "2":
-		return event.Critical
-	case "3":
-		return event.Error
-	case "4":
-		return event.Warning
-	case "5":
-		return event.Notice
-	case "6":
-		return event.Informational
-	case "7":
-		return event.Debug
-	default:
+	code, err := strconv.Atoi(syslogSeverity)
+	if err != nil {
 		return event.Notice
 	}
+	name := agentstate.SyslogPriorityToEventName(code)
+	if name == "" {
+		return event.Notice
+	}
+	return event.EventSeverity(name)
 }
 
 // FormatDataPoint convertit un DataPoint en EventDataPoint

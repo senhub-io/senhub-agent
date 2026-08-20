@@ -91,66 +91,6 @@ const (
 	LogSeverityFatal       LogSeverity = 21
 )
 
-// SyslogPriorityToSeverity maps RFC 5424 PRI severity values (0..7) to
-// OTel SeverityNumber per the OTel Logs Data Model §4.2 table.
-//
-//	0 emergency → FATAL4 (24)
-//	1 alert     → FATAL3 (23)
-//	2 critical  → FATAL2 (22)
-//	3 error     → ERROR  (17)
-//	4 warning   → WARN   (13)
-//	5 notice    → INFO2  (10)
-//	6 info      → INFO   (9)
-//	7 debug     → DEBUG  (5)
-//
-// Out-of-range inputs return Unspecified rather than panicking — keeps
-// the path resilient to malformed syslog messages.
-func SyslogPriorityToSeverity(pri int) LogSeverity {
-	switch pri {
-	case 0:
-		return 24
-	case 1:
-		return 23
-	case 2:
-		return 22
-	case 3:
-		return LogSeverityError
-	case 4:
-		return LogSeverityWarn
-	case 5:
-		return 10
-	case 6:
-		return LogSeverityInfo
-	case 7:
-		return LogSeverityDebug
-	}
-	return LogSeverityUnspecified
-}
-
-// SyslogPriorityToText returns the standard OTel SeverityText for the
-// same mapping. Empty string for out-of-range inputs.
-func SyslogPriorityToText(pri int) string {
-	switch pri {
-	case 0:
-		return "FATAL4"
-	case 1:
-		return "FATAL3"
-	case 2:
-		return "FATAL2"
-	case 3:
-		return "ERROR"
-	case 4:
-		return "WARN"
-	case 5:
-		return "INFO2"
-	case 6:
-		return "INFO"
-	case 7:
-		return "DEBUG"
-	}
-	return ""
-}
-
 // logSubscription binds a delivery channel to the strategy that owns
 // it. An empty strategy marks a catch-all subscriber (SubscribeLogs)
 // that receives every record; a named subscriber (SubscribeLogsFor)
