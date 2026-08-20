@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -14,20 +15,6 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
-
-// eventSeverityToOtel maps the event probe's accepted severity strings
-// (which mirror the syslog severity names) to OTel SeverityNumber per
-// the OTel logs data model. Entries match validSeverities exactly.
-var eventSeverityToOtel = map[string]agentstate.LogSeverity{
-	"EMERG":   24, // FATAL4
-	"ALERT":   23, // FATAL3
-	"CRIT":    22, // FATAL2
-	"ERR":     agentstate.LogSeverityError,
-	"WARNING": agentstate.LogSeverityWarn,
-	"NOTICE":  10, // INFO2
-	"INFO":    agentstate.LogSeverityInfo,
-	"DEBUG":   agentstate.LogSeverityDebug,
-}
 
 // Default values
 const (
@@ -39,18 +26,6 @@ const (
 	MaxPort             = 65535
 	MaxFields           = 20
 )
-
-// validSeverities is a map of valid severity levels.
-var validSeverities = map[string]struct{}{
-	"EMERG":   {},
-	"ALERT":   {},
-	"CRIT":    {},
-	"ERR":     {},
-	"WARNING": {},
-	"NOTICE":  {},
-	"INFO":    {},
-	"DEBUG":   {},
-}
 
 // EventProbeConfig holds the configuration for the EventProbe.
 type EventProbeConfig struct {
@@ -87,6 +62,17 @@ func (p *EventProbe) ListenerHealth() error {
 		return errors.New("HTTP listener is not running")
 	}
 	return nil
+}
+
+// eventProbeSeverity maps an accepted severity name to its OTel
+// SeverityNumber. The ladder lives in agentstate, once: this used to be
+// a third hand-maintained copy of the same eight rungs, alongside a
+// separate validation set that had to be kept in step with it (#294).
+// An unaccepted name cannot reach here — the payload is rejected at
+// validation — so the miss returns Unspecified rather than guessing.
+func eventProbeSeverity(name string) agentstate.LogSeverity {
+	sev, _ := agentstate.EventProbeSeverityToOTel(name)
+	return sev
 }
 
 // SetCallback sets the callback function for the EventProbe.
@@ -271,7 +257,7 @@ func (p *EventProbe) publishLog(event map[string]interface{}, timestamp time.Tim
 
 	agentstate.PublishLog(agentstate.LogRecord{
 		Timestamp:    timestamp,
-		Severity:     eventSeverityToOtel[severityStr],
+		Severity:     eventProbeSeverity(severityStr),
 		SeverityText: severityStr,
 		Body:         body,
 		Attributes:   attrs,
@@ -313,8 +299,9 @@ func validateEvent(event map[string]interface{}) error {
 	}
 
 	if severity, ok := event["severity"].(string); ok {
-		if _, valid := validSeverities[severity]; !valid {
-			return fmt.Errorf("invalid severity value: %s", severity)
+		if _, valid := agentstate.EventProbeSeverityToOTel(severity); !valid {
+			return fmt.Errorf("invalid severity value: %s (accepted: %s)",
+				severity, strings.Join(agentstate.EventProbeSeverityNames(), ", "))
 		}
 	} else {
 		return fmt.Errorf("severity must be a string")
