@@ -327,6 +327,7 @@ func (p *SNMPTrapProbe) handleTrap(s *gosnmp.SnmpPacket, u *net.UDPAddr) {
 		sourceIP = u.IP.String()
 	}
 	rec := packetToLogRecord(s, sourceIP, p.GetName(), p.mibs)
+	rec.TargetStrategies = p.LogTargets()
 	agentstate.PublishLog(rec)
 	// The trap itself is the output (an OTel log record); per-trap logging
 	// stays at debug to avoid duplicating a high-volume stream. Surface the
