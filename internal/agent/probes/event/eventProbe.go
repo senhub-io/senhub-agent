@@ -3,6 +3,7 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -120,7 +121,7 @@ func parseEventProbeConfig(config map[string]interface{}) (EventProbeConfig, err
 	}
 
 	if len(errs) > 0 {
-		return EventProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
+		return EventProbeConfig{}, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return EventProbeConfig{
@@ -272,7 +273,7 @@ func validateEvent(event map[string]interface{}) error {
 
 	if ts, ok := event["timestamp"].(string); ok {
 		if _, err := time.Parse(time.RFC3339, ts); err != nil {
-			return fmt.Errorf("invalid timestamp format, must be ISO8601: %v", err)
+			return fmt.Errorf("invalid timestamp format, must be ISO8601: %w", err)
 		}
 	}
 

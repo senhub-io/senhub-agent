@@ -67,7 +67,7 @@ func NewLogicalDiskProbe(config map[string]interface{}, baseLogger *logger.Logge
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create logicaldisk collector: %v", err)
+		return nil, fmt.Errorf("failed to create logicaldisk collector: %w", err)
 	}
 	return probe, nil
 }
@@ -88,7 +88,7 @@ func (p *logicaldiskProbe) Collect() ([]data_store.DataPoint, error) {
 	timestamp := time.Now()
 	metrics, err := p.collector.Collect(timestamp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to collect logicaldisk metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect logicaldisk metrics: %w", err)
 	}
 
 	// Enrich datapoints with probe name and type tags

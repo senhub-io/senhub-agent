@@ -110,7 +110,7 @@ func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.L
 
 	query, err := pdh.NewQuery()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create PDH query: %v", err)
+		return nil, fmt.Errorf("failed to create PDH query: %w", err)
 	}
 
 	collector := &windowsLogicalDiskCollector{
@@ -209,7 +209,7 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 			// Obtenir toutes les instances de disques logiques
 			instances, err := pdh.GetInstancesList("LogicalDisk", false)
 			if err != nil {
-				return fmt.Errorf("failed to get LogicalDisk instances: %v", err)
+				return fmt.Errorf("failed to get LogicalDisk instances: %w", err)
 			}
 
 			// Ajouter _Total à la liste des instances s'il n'y est pas déjà
@@ -243,7 +243,7 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 
 				w.logger.Debug().Str("metric", metricName).Str("path", path).Str("drive", instance).Msg("Adding counter")
 				if err := w.query.AddCounter(path); err != nil {
-					return fmt.Errorf("failed to add counter %s (drive %s): %v", metricName, instance, err)
+					return fmt.Errorf("failed to add counter %s (drive %s): %w", metricName, instance, err)
 				}
 			}
 		}
@@ -261,12 +261,12 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 	}
 
 	if err := w.query.Collect(); err != nil {
-		return nil, fmt.Errorf("failed to collect PDH metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect PDH metrics: %w", err)
 	}
 
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 
 	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))

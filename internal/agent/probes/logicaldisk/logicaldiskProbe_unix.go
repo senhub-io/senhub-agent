@@ -169,7 +169,7 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 
 	// Get statistics about mounted filesystems
@@ -278,7 +278,7 @@ func (c *unixLogicalDiskCollector) getMountPointsLinux() ([]mountInfo, error) {
 	// Read /proc/mounts
 	mountsFile, err := unix.Open("/proc/mounts", unix.O_RDONLY, 0)
 	if err != nil {
-		return nil, fmt.Errorf("error opening /proc/mounts: %v", err)
+		return nil, fmt.Errorf("error opening /proc/mounts: %w", err)
 	}
 	defer unix.Close(mountsFile)
 
@@ -336,7 +336,7 @@ func (c *unixLogicalDiskCollector) getMountPointsDarwin() ([]mountInfo, error) {
 	cmd := exec.Command("df", "-h")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("error running df command: %v", err)
+		return nil, fmt.Errorf("error running df command: %w", err)
 	}
 
 	lines := strings.Split(string(output), "\n")

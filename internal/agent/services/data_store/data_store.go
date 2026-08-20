@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -277,7 +278,7 @@ func (d *dataStore) Shutdown(ctx context.Context) error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("errors shutting down strategies: %v", errs)
+		return fmt.Errorf("errors shutting down strategies: %w", errors.Join(errs...))
 	}
 	return nil
 }
