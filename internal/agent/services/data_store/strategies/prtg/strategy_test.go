@@ -9,6 +9,8 @@ import (
 	"github.com/go-test/deep"
 	"github.com/rs/zerolog"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
 	"senhub-agent.go/internal/testUtils"
@@ -35,6 +37,7 @@ func TestSyncStrategyPrtg_NewSyncStrategyPrtg(t *testing.T) {
 				"server_url": "http://localhost:8080",
 			},
 			&logger,
+			nil,
 		)
 		if strategy.GetStrategyName() != "prtg" {
 			t.Errorf("GetStrategyParams() != prtg: %s", strategy.GetStrategyName())
@@ -51,6 +54,7 @@ func TestSyncStrategyPrtg_NewSyncStrategyPrtg(t *testing.T) {
 				"server_url": "http://localhost:8080",
 			},
 			&logger,
+			nil,
 		)
 		if strategy.http.Timeout <= 0 {
 			t.Fatalf("outbound PRTG client has no timeout (got %v); a hung endpoint would block indefinitely", strategy.http.Timeout)
@@ -139,6 +143,7 @@ func TestSyncStrategyPrtg_AddDataPoints(t *testing.T) {
 			"server_url": "http://localhost:8080",
 		},
 		&logger,
+		nil,
 	)
 
 	t.Run("AddDataPoints accepts no value", func(t *testing.T) {
@@ -188,6 +193,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			agentConfiguration,
 			config,
 			&logger,
+			nil,
 		)
 		if err := strategy.ValidateConfigParams(config); err != nil {
 			t.Errorf("ValidateConfigParams() error = %v", err)
@@ -224,6 +230,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			agentConfiguration,
 			config,
 			&logger,
+			nil,
 		)
 		if err := strategy.ValidateConfigParams(config); err != nil {
 			t.Errorf("ValidateConfigParams() error = %v", err)
@@ -271,6 +278,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			agentConfiguration,
 			config,
 			&logger,
+			nil,
 		)
 		if err := strategy.ValidateConfigParams(config); err != nil {
 			t.Errorf("ValidateConfigParams() error = %v", err)
@@ -319,6 +327,7 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			agentConfiguration,
 			config,
 			&logger,
+			nil,
 		)
 		if err := strategy.ValidateConfigParams(config); err != nil {
 			t.Errorf("ValidateConfigParams() error = %v", err)
@@ -380,4 +389,57 @@ func TestSyncStrategyPrtg_DoSync(t *testing.T) {
 			t.Errorf("DoSync() request body = %v\n%s", diff, testServer.LastRequest.BodyStr)
 		}
 	})
+}
+
+// TestChannelName_MatchesTheDefinition pins the convergence of #293: a
+// measurement must carry the same channel label whether the agent pushes
+// it or PRTG pulls it. The push path used to emit the raw internal id, so
+// one device appeared under two channel sets depending on transport.
+func TestChannelName_MatchesTheDefinition(t *testing.T) {
+	zl := zerolog.New(os.Stderr)
+	registry := transformers.NewTransformerRegistry(&zl)
+	s := &SyncStrategyPrtg{registry: registry, logger: logger.NewModuleLogger(&zl, "prtg-test")}
+
+	point := datapoint.DataPoint{
+		Name: "cpu_core_usage",
+		Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"},
+			{Key: "probe_type", Value: "cpu"},
+			{Key: "core", Value: "0"},
+		},
+	}
+	got := s.channelName(point)
+	if got == point.Name {
+		t.Errorf("channel is still the raw metric id %q; the definition's display name was not resolved", got)
+	}
+
+	// An explicit per-probe override still wins: a probe that sets the tag
+	// is naming its channel on purpose.
+	override := datapoint.DataPoint{
+		Name: "cpu_core_usage",
+		Tags: []tags.Tag{
+			{Key: "probe_type", Value: "cpu"},
+			{Key: prtgMetricIDTag, Value: "Custom [name]"},
+		},
+	}
+	if got := s.channelName(override); got != "Custom cpu_core_usage" {
+		t.Errorf("override channel=%q, want %q", got, "Custom cpu_core_usage")
+	}
+
+	// The invariant is not "some particular string" but "the same string
+	// the pull endpoint would show": both resolve through the registry, so
+	// a probe type with no definition gets the fallback transformer's
+	// rendering on BOTH paths rather than a raw id on one of them.
+	unknown := datapoint.DataPoint{
+		Name: "whatever",
+		Tags: []tags.Tag{{Key: "probe_type", Value: "no-such-probe-type"}},
+	}
+	transformer, err := registry.LoadTransformer("no-such-probe-type", "friendly")
+	if err != nil {
+		t.Fatalf("registry refused an unknown probe type: %v", err)
+	}
+	want := transformer.TransformMetricName("whatever", map[string]string{"probe_type": "no-such-probe-type"})
+	if got := s.channelName(unknown); got != want {
+		t.Errorf("push channel=%q but the pull path would show %q", got, want)
+	}
 }
