@@ -278,8 +278,13 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 		return transformer, nil
 	}
 
-	// Log the error and create fallback transformer directly
-	tr.moduleLogger.Warn().
+	// Fall back to the generic transformer. For a pass-through probe this
+	// is the design, so it is not worth a warning (#824).
+	fallbackEvent := tr.moduleLogger.Warn()
+	if passThroughProbes[probeName] {
+		fallbackEvent = tr.moduleLogger.Debug()
+	}
+	fallbackEvent.
 		Err(err).
 		Str("probe", probeName).
 		Msg("Definition-based transformer not found, creating fallback")
@@ -454,6 +459,15 @@ func (pt *ProbeTransformer) makeReadable(key string) string {
 	return strings.Join(words, " ")
 }
 
+// passThroughProbes are probe types that deliberately ship no metric
+// definition: they forward whatever an emitter sent rather than mapping
+// a fixed metric set of their own, so there is nothing to describe in a
+// YAML file. Their missing definition is expected and must not be
+// reported as a fault.
+var passThroughProbes = map[string]bool{
+	"otlp_receiver": true,
+}
+
 // loadDefinitionBasedTransformer loads a new definition-based transformer.
 // Called with tr.mu already held for writing (from LoadTransformer's
 // slow path): it reads tr.definitions directly and must NOT take the
@@ -466,11 +480,19 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 		probeFilePath := fmt.Sprintf("definitions/%s.yaml", probeName)
 		loaded, err := tr.loadProbeDefinitionFromEmbed(probeFilePath)
 		if err != nil {
-			tr.moduleLogger.Error().
+			// A pass-through probe ships no definition by design, so its
+			// missing file is the nominal path, not a fault. Logging it at
+			// ERR made a healthy agent look broken on every ingested batch
+			// and cost triage time during acceptance runs (#824).
+			event := tr.moduleLogger.Error()
+			if passThroughProbes[probeName] {
+				event = tr.moduleLogger.Debug()
+			}
+			event.
 				Err(err).
 				Str("probe", probeName).
 				Str("file_path", probeFilePath).
-				Msg("Failed to load embedded probe definition")
+				Msg("No embedded probe definition; using the fallback transformer")
 			return nil, fmt.Errorf("failed to load probe definition: %w", err)
 		}
 		definition = loaded
