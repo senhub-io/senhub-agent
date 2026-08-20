@@ -1956,6 +1956,29 @@ signal; there is **no separate relation event**.
 | LogRecord | `entity.relationships` | an embedded array of bare descriptors `{relationship.type, entity.type, entity.id}` |
 | LogRecord | `entity.delete.reason` | on `entity.delete` only — see below |
 
+### Relationship types the consumer accepts
+
+An entity record naming a relationship type the consumer does not know is
+**rejected on arrival**, and the producer never learns: the rejection comes
+back as an OTLP partial success and surfaces one hop away, in the collector's
+journal. A production fan-out lost six entity records per batch for 37 minutes
+that way, with nothing in the agent's own logs (#819).
+
+Accepted set as of consumer read-layer **v0.14.0**:
+
+`runs_on`, `has_interface`, `bound_to`, `next_hop_via`, `listens_on`,
+`monitors`, `has_route`, `connected_to`, `depends_on`, `same_as`,
+`attached_to`, `has_segment`, `routes_via`, `forwards_to`, `adjacent_to`.
+
+Three of them carry a **version prerequisite**: `has_segment`, `attached_to`
+and the `network.segment` entity type were registered in v0.14.0. An agent
+emitting them against an older read-layer has those records dropped, silently
+from its side. Check the consumer version before enabling a probe that emits
+network topology.
+
+Adding a type to this list is a cross-team change: agree it with the consumer
+first, ship their side, then emit. The reverse order is silent data loss.
+
 ### Why a delete happened (#806)
 
 `entity.delete.reason` says why **this producer** retired an entity. It is a
