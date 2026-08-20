@@ -286,14 +286,7 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		logPath = interactiveLogPath(logPath)
 	}
 
-	// Configure log rotation settings
-	logRotator := &lumberjack.Logger{
-		Filename:   logPath, // Path to the log file
-		MaxSize:    10,      // Megabytes before rotation
-		MaxBackups: 5,       // Number of backup files to keep
-		MaxAge:     30,      // Days to keep backup files
-		Compress:   true,    // Enable compression of rotated logs
-	}
+	logRotator := rotatorFor(logPath)
 
 	// Define masked writers - start with log file
 	writers := []io.Writer{NewMaskingWriter(fileWriter(logRotator, args))}
@@ -326,6 +319,52 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		Logger()
 
 	return &logger
+}
+
+// rotators holds one log rotator per file path, for the lifetime of the
+// process.
+//
+// Sharing is not an optimisation, it is the correct model, for two
+// independent reasons:
+//
+//   - Two rotators writing one file fight over the rotation rename. That
+//     is why an interactive `run` already gets its own path (see above);
+//     handing out a second rotator for the SAME path would reintroduce
+//     exactly the collision that carve-out avoids.
+//   - lumberjack starts a background "mill" goroutine on first write and
+//     keeps it for the rotator's lifetime. Its Close() closes the file
+//     but does NOT close the channel the mill ranges over, so the
+//     goroutine outlives Close and there is no upstream way to stop it.
+//     One rotator per path therefore means one mill goroutine per path,
+//     where building a rotator per logger meant one per construction —
+//     invisible in the daemon, which builds exactly one logger, and a
+//     steady leak in anything that builds them repeatedly (#835).
+//
+// There is deliberately no Close: the rotator is shared, so no single
+// holder may close it, and closing it would not stop the mill anyway.
+var rotators = struct {
+	mu sync.Mutex
+	m  map[string]*lumberjack.Logger
+}{m: map[string]*lumberjack.Logger{}}
+
+// rotatorFor returns the process-wide rotator for logPath, creating it
+// on first use.
+func rotatorFor(logPath string) *lumberjack.Logger {
+	rotators.mu.Lock()
+	defer rotators.mu.Unlock()
+
+	if r, ok := rotators.m[logPath]; ok {
+		return r
+	}
+	r := &lumberjack.Logger{
+		Filename:   logPath, // Path to the log file
+		MaxSize:    10,      // Megabytes before rotation
+		MaxBackups: 5,       // Number of backup files to keep
+		MaxAge:     30,      // Days to keep backup files
+		Compress:   true,    // Enable compression of rotated logs
+	}
+	rotators.m[logPath] = r
+	return r
 }
 
 // consoleTimeFormat dates every console line too: a line pasted into a ticket
