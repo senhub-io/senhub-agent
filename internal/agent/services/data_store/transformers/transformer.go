@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/services/logger"
+	"sync/atomic"
 )
 
 //go:embed definitions/*.yaml definitions/shared/*.yaml lookups/*.lookup corrections/*.yaml
@@ -193,11 +194,59 @@ type DefinitionBasedTransformer struct {
 // write the cache. All map access goes through tr.mu; the probe
 // definitions are eager-loaded once at construction so steady-state
 // lookups are lock-protected map hits — never a YAML parse.
-type TransformerRegistry struct {
-	mu           sync.RWMutex
+// registrySnapshot is the registry's whole readable state. Readers take
+// the pointer and read the maps without a lock; a writer builds a new
+// snapshot and swaps it, so no map is ever read and written at once.
+type registrySnapshot struct {
 	transformers map[string]MetricTransformer // key: "probe_name:style"
 	definitions  map[string]*ProbeDefinition  // eager; nil value = known-absent
+}
+
+type TransformerRegistry struct {
+	// snapshot is read on the hot path — LoadTransformer runs once per
+	// datapoint — so that path must not take a lock. Both maps only ever
+	// GROW, by one entry per probe type, and a miss happens once per type
+	// per process: copying them on a miss costs nothing measurable and
+	// buys a lock-free read (#286).
+	snapshot atomic.Pointer[registrySnapshot]
+	// writeMu serialises writers so two concurrent misses cannot each
+	// build a snapshot from the same base and lose one another's entry.
+	writeMu      sync.Mutex
 	moduleLogger *logger.ModuleLogger
+}
+
+// read returns the current snapshot, never nil.
+func (tr *TransformerRegistry) read() *registrySnapshot {
+	if snap := tr.snapshot.Load(); snap != nil {
+		return snap
+	}
+	return &registrySnapshot{
+		transformers: map[string]MetricTransformer{},
+		definitions:  map[string]*ProbeDefinition{},
+	}
+}
+
+// withEntry swaps in a snapshot carrying one extra entry. Callers hold
+// writeMu.
+func (tr *TransformerRegistry) withEntry(transformerKey string, transformer MetricTransformer, defName string, def *ProbeDefinition, setDef bool) {
+	cur := tr.read()
+	next := &registrySnapshot{
+		transformers: make(map[string]MetricTransformer, len(cur.transformers)+1),
+		definitions:  make(map[string]*ProbeDefinition, len(cur.definitions)+1),
+	}
+	for k, v := range cur.transformers {
+		next.transformers[k] = v
+	}
+	for k, v := range cur.definitions {
+		next.definitions[k] = v
+	}
+	if transformerKey != "" {
+		next.transformers[transformerKey] = transformer
+	}
+	if setDef {
+		next.definitions[defName] = def
+	}
+	tr.snapshot.Store(next)
 }
 
 // NewTransformerRegistry creates a new transformer registry with every
@@ -216,11 +265,12 @@ func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
 		}
 	}
 
-	return &TransformerRegistry{
+	registry := &TransformerRegistry{moduleLogger: moduleLogger}
+	registry.snapshot.Store(&registrySnapshot{
 		transformers: make(map[string]MetricTransformer),
 		definitions:  definitions,
-		moduleLogger: moduleLogger,
-	}
+	})
+	return registry
 }
 
 // GetProbeDefinition returns the parsed ProbeDefinition for a probe, or nil if not found.
@@ -228,9 +278,7 @@ func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
 // Served from the eager-loaded index; negative lookups are memoized so
 // unknown probe names never re-read the embedded FS.
 func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefinition {
-	tr.mu.RLock()
-	def, known := tr.definitions[probeName]
-	tr.mu.RUnlock()
+	def, known := tr.read().definitions[probeName]
 	if known {
 		return def // may be nil: memoized negative
 	}
@@ -241,9 +289,9 @@ func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefini
 	if err != nil {
 		loaded = nil
 	}
-	tr.mu.Lock()
-	tr.definitions[probeName] = loaded
-	tr.mu.Unlock()
+	tr.writeMu.Lock()
+	tr.withEntry("", nil, probeName, loaded, true)
+	tr.writeMu.Unlock()
 	return loaded
 }
 
@@ -251,18 +299,15 @@ func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefini
 func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricTransformer, error) {
 	key := fmt.Sprintf("%s:%s", probeName, style)
 
-	// Fast path: cached transformer under read lock.
-	tr.mu.RLock()
-	transformer, exists := tr.transformers[key]
-	tr.mu.RUnlock()
-	if exists {
+	// Fast path: a lock-free read of the current snapshot.
+	if transformer, exists := tr.read().transformers[key]; exists {
 		return transformer, nil
 	}
 
-	// Slow path: build under the write lock, double-checked.
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-	if transformer, exists := tr.transformers[key]; exists {
+	// Slow path: build under the writer lock, double-checked.
+	tr.writeMu.Lock()
+	defer tr.writeMu.Unlock()
+	if transformer, exists := tr.read().transformers[key]; exists {
 		return transformer, nil
 	}
 
@@ -270,7 +315,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 	transformer, err := tr.loadDefinitionBasedTransformer(probeName)
 	if err == nil {
 		// Cache the transformer
-		tr.transformers[key] = transformer
+		tr.withEntry(key, transformer, "", nil, false)
 		tr.moduleLogger.Debug().
 			Str("probe", probeName).
 			Str("style", style).
@@ -288,7 +333,7 @@ func (tr *TransformerRegistry) LoadTransformer(probeName, style string) (MetricT
 	transformer = tr.createFallbackTransformer(probeName, style)
 
 	// Cache the transformer
-	tr.transformers[key] = transformer
+	tr.withEntry(key, transformer, "", nil, false)
 	tr.moduleLogger.Debug().
 		Str("probe", probeName).
 		Str("style", style).
@@ -459,7 +504,7 @@ func (pt *ProbeTransformer) makeReadable(key string) string {
 // slow path): it reads tr.definitions directly and must NOT take the
 // lock again.
 func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) (MetricTransformer, error) {
-	definition := tr.definitions[probeName]
+	definition := tr.read().definitions[probeName]
 	if definition == nil {
 		// Not in the eager index (custom probe type or eager load
 		// failure): one lazy attempt against the embedded FS.
@@ -474,7 +519,7 @@ func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) 
 			return nil, fmt.Errorf("failed to load probe definition: %w", err)
 		}
 		definition = loaded
-		tr.definitions[probeName] = definition
+		tr.withEntry("", nil, probeName, definition, true)
 	}
 
 	tr.moduleLogger.Debug().
