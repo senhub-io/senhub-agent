@@ -180,8 +180,10 @@ func (p *ProbePoller) GetProbeParams() configuration.ProbeConfigParams {
 }
 
 // Start begins the periodic collection of metrics from the probe.
-// It handles initialization, scheduling, and error recovery.
-func (p *ProbePoller) Start(quitChannel chan struct{}) error {
+// It handles initialization, scheduling, and error recovery. The probe
+// runs until ctx is cancelled or Shutdown is called; it never stops
+// itself.
+func (p *ProbePoller) Start(ctx context.Context) error {
 	p.moduleLogger.Debug().Msg("Starting probe")
 
 	if !p.Probe.ShouldStart() {
@@ -189,7 +191,7 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 		return nil
 	}
 
-	if err := p.scheduler.Start(quitChannel); err != nil {
+	if err := p.scheduler.Start(ctx); err != nil {
 		return err
 	}
 	p.registerEntitySource()

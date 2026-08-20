@@ -79,7 +79,7 @@ func TestStrategy_ValidateConfigParams(t *testing.T) {
 func TestStrategy_StartShutdown(t *testing.T) {
 	s := newTestStrategy(t, nil)
 
-	if err := s.Start(); err != nil {
+	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned: %v", err)
 	}
 	if !s.started {
@@ -90,7 +90,7 @@ func TestStrategy_StartShutdown(t *testing.T) {
 	}
 
 	// Idempotent start.
-	if err := s.Start(); err != nil {
+	if err := s.Start(context.Background()); err != nil {
 		t.Errorf("second Start returned: %v", err)
 	}
 
@@ -109,7 +109,7 @@ func TestStrategy_StartShutdown(t *testing.T) {
 	}
 
 	// Cannot restart after shutdown.
-	if err := s.Start(); err == nil {
+	if err := s.Start(context.Background()); err == nil {
 		t.Errorf("Start after Shutdown should fail")
 	}
 }
@@ -127,7 +127,7 @@ func TestStrategy_StartShutdown_WithTraces(t *testing.T) {
 	}
 	s := newTestStrategy(t, params)
 
-	if err := s.Start(); err != nil {
+	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start returned: %v", err)
 	}
 	if s.exporters.trace == nil {

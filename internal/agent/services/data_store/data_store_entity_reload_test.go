@@ -28,7 +28,7 @@ func (p *entityReloadConfigProvider) GetConfiguration() configuration.Configurat
 }
 func (p *entityReloadConfigProvider) OnConfigChanged(func(string)) {}
 func (p *entityReloadConfigProvider) GetName() string              { return "entityReloadConfigProvider" }
-func (p *entityReloadConfigProvider) Start(chan struct{}) error    { return nil }
+func (p *entityReloadConfigProvider) Start(context.Context) error  { return nil }
 func (p *entityReloadConfigProvider) Shutdown(context.Context) error {
 	return nil
 }

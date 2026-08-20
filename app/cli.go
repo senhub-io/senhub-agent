@@ -16,10 +16,21 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 )
 
+// maxStopBudget caps the wall-clock the daemon spends stopping,
+// whatever the services ask for. Windows' SCM kills a service that
+// takes too long to acknowledge a stop, and systemd's TimeoutStopSec
+// then SIGKILLs — a budget past either of those buys nothing and turns
+// a clean stop into a kill.
+const maxStopBudget = 20 * time.Second
+
 type program struct {
 	agent agent.Agent
 	done  chan bool
 	args  *cliArgs.ParsedArgs
+	// cancel is the root of the agent's lifecycle context. Stop cancels
+	// it (through the supervisor) so every goroutine in the process
+	// descends from one cancellation.
+	cancel context.CancelFunc
 }
 
 func (p *program) Start(s service.Service) error {
@@ -29,12 +40,24 @@ func (p *program) Start(s service.Service) error {
 	} else {
 		p.agent = agent.NewAgent()
 	}
-	go p.run()
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancel = cancel
+	go p.run(ctx)
 	return nil
 }
 
 func (p *program) Stop(s service.Service) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// The budget is what the services declare they need, not a single
+	// flat allowance that whichever service stops first can consume in
+	// full (#285). The supervisor still bounds each one individually.
+	budget := maxStopBudget
+	if b, ok := p.agent.(interface{ StopBudget() time.Duration }); ok {
+		if d := b.StopBudget(); d > 0 && d < maxStopBudget {
+			budget = d
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 
 	if err := p.agent.Shutdown(ctx); err != nil {
@@ -43,12 +66,15 @@ func (p *program) Stop(s service.Service) error {
 		// word goes straight to stderr.
 		fmt.Fprintf(os.Stderr, "Agent forced to shutdown with error: %v\n", err)
 	}
+	if p.cancel != nil {
+		p.cancel()
+	}
 	p.done <- true
 	return nil
 }
 
-func (p *program) run() {
-	if err := p.agent.Start(); err != nil {
+func (p *program) run(ctx context.Context) {
+	if err := p.agent.Start(ctx); err != nil {
 		// handleStartError already calls os.Exit(1) before Start returns
 		// an error on misconfiguration. This path is a defence-in-depth
 		// fallback for callers that override exitFn (tests) or for future
