@@ -233,7 +233,7 @@ func (p *WindowsEventLogProbe) OnStart(quitChannel chan struct{}) error {
 		Str("bookmark_path", p.config.BookmarkPath).
 		Msg("Starting windows_eventlog probe")
 
-	reader, err := newEventReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
+	reader, err := newEventReader(p.config, p.moduleLogger, p.GetName(), p.LogTargets(), &p.emitted)
 	if err != nil {
 		return fmt.Errorf("start windows event log reader: %w", err)
 	}

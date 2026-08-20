@@ -102,7 +102,7 @@ func parseRealtime(s string) time.Time {
 // One malformed line is logged and skipped — the journal produces a
 // lot of records and a single garbled line should not bring down the
 // whole stream.
-func drainReader(r *bufio.Reader, log *logger.ModuleLogger, probeName string, emitted *atomic.Uint64) {
+func drainReader(r *bufio.Reader, log *logger.ModuleLogger, probeName string, logTargets []string, emitted *atomic.Uint64) {
 	for {
 		line, err := r.ReadString('\n')
 		if line != "" {
@@ -112,7 +112,9 @@ func drainReader(r *bufio.Reader, log *logger.ModuleLogger, probeName string, em
 				log.Debug().Err(jerr).Str("line", truncate(line, 200)).
 					Msg("journalctl emitted unparseable line; skipping")
 			} else if entry.Message != "" {
-				agentstate.PublishLog(parseEntry(entry, probeName))
+				rec := parseEntry(entry, probeName)
+				rec.TargetStrategies = logTargets
+				agentstate.PublishLog(rec)
 				if emitted != nil {
 					emitted.Add(1)
 				}

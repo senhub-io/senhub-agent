@@ -329,6 +329,7 @@ func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time
 			Msg("line did not parse as declared json; skipping")
 		return
 	}
+	rec.TargetStrategies = p.LogTargets()
 	agentstate.PublishLog(rec)
 	p.emitted.Add(1)
 }
