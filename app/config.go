@@ -184,14 +184,24 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 		return "", fmt.Errorf("invalid config path: %w", err)
 	}
 
-	// This is a simplified version - in practice, we'd properly parse the YAML
+	// Resolve through the real loader first: since 0.5.x an install seals
+	// the key, so the file holds "${secret:agent.key}" and a text search
+	// hands that literal to the API. Auth then fails and `status` silently
+	// falls back to its degraded local view — on every modern host.
+	if cfg, err := configuration.LoadForShow(configPath, configuration.ShowResolved, nil); err == nil {
+		if key := strings.TrimSpace(cfg.Agent.Key); key != "" && !strings.Contains(key, "${") {
+			return key, nil
+		}
+	}
+
+	// Fallback: a plain key in a file the loader could not read (a partial
+	// or hand-written config still deserves a working status).
 	// #nosec G304 - path is validated by validateConfigPath function
 	content, err := os.ReadFile(configPath)
 	if err != nil {
 		return "", err
 	}
 
-	// Simple string search for agent key (not ideal, but functional)
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -199,7 +209,10 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
 				key := strings.TrimSpace(strings.Trim(parts[1], "\""))
-				if key != "" {
+				// An unresolved reference is not a key: handing it to the
+				// API fails authentication and sends the caller down the
+				// degraded path with no clue why.
+				if key != "" && !strings.Contains(key, "${") {
 					return key, nil
 				}
 			}
