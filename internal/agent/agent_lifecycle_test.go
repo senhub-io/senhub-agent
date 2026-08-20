@@ -9,6 +9,8 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/lifecycle"
+	"senhub-agent.go/internal/agent/services/auto_update"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -216,4 +218,99 @@ func (b *budgetedFake) StopBudget() time.Duration { return b.budget }
 func (b *budgetedFake) Shutdown(ctx context.Context) error {
 	b.shutdownCtxErr = ctx.Err()
 	return b.fakeService.Shutdown(ctx)
+}
+
+// TestServiceSetIncludesUpdaterOnlyWhenEnabled pins the one conditional
+// in the bring-up set. An updater wired in when auto-update is off runs
+// version checks nobody asked for; one left out when it is on silently
+// disables the feature. It also pins the position: Shutdown walks the
+// set in reverse, so the order here IS the teardown order.
+//
+// This is the orchestration the audit found untested (#297) — it used to
+// be an inline loop inside Start with no way to observe the set without
+// constructing real services.
+func TestServiceSetIncludesUpdaterOnlyWhenEnabled(t *testing.T) {
+	base := agent{
+		logger:             noopLogger(),
+		localConfiguration: nil,
+		store:              stubStore{},
+		sensors:            stubSensor{},
+	}
+
+	if got := len(base.services()); got != 3 {
+		t.Errorf("service set without an updater has %d entries, want 3", got)
+	}
+
+	withUpdater := base
+	withUpdater.updater = stubUpdater{}
+	set := withUpdater.services()
+	if len(set) != 4 {
+		t.Fatalf("service set with an updater has %d entries, want 4", len(set))
+	}
+	if last := set[len(set)-1]; last.GetName() != "AutoUpdate" {
+		t.Errorf("last service is %q, want AutoUpdate — it must stop first", last.GetName())
+	}
+	if set[1].GetName() != "DataStore" || set[2].GetName() != "Sensor" {
+		t.Errorf("order is %q then %q, want DataStore then Sensor — probes push into the store, so the store outlives them on teardown",
+			set[1].GetName(), set[2].GetName())
+	}
+}
+
+// TestStopBudgetIsTheSumOfTheServices pins what app/cli.go relies on to
+// size the process-wide stop deadline: services stop in turn, so the
+// caller has to allow for all of them. A budget smaller than the sum
+// hands the last service an already-expired context — the failure the
+// single 5s global budget produced.
+func TestStopBudgetIsTheSumOfTheServices(t *testing.T) {
+	a := agent{
+		logger:  noopLogger(),
+		store:   stubStore{},
+		sensors: stubSensor{},
+		updater: stubUpdater{},
+	}
+
+	var want time.Duration
+	for _, svc := range a.services() {
+		if b, ok := svc.(lifecycle.BudgetedService); ok {
+			want += b.StopBudget()
+		} else {
+			want += lifecycle.DefaultStopBudget
+		}
+	}
+
+	if got := a.StopBudget(); got != want {
+		t.Errorf("StopBudget = %s, want %s (the sum of the service budgets)", got, want)
+	}
+}
+
+// The stubs below stand in for the real services so the set can be
+// inspected without a config file, a bound port or a probe pool.
+
+type stubStore struct{}
+
+func (stubStore) GetName() string                     { return "DataStore" }
+func (stubStore) Start(context.Context) error         { return nil }
+func (stubStore) Shutdown(context.Context) error      { return nil }
+func (stubStore) StopBudget() time.Duration           { return 10 * time.Second }
+func (stubStore) GetCallback() data_store.AddCallback { return nil }
+
+type stubSensor struct{}
+
+func (stubSensor) GetName() string                { return "Sensor" }
+func (stubSensor) Start(context.Context) error    { return nil }
+func (stubSensor) Shutdown(context.Context) error { return nil }
+func (stubSensor) StopBudget() time.Duration      { return 8 * time.Second }
+
+// stubUpdater satisfies auto_update.AutoUpdate without doing anything.
+type stubUpdater struct{}
+
+func (stubUpdater) GetName() string                { return "AutoUpdate" }
+func (stubUpdater) Start(context.Context) error    { return nil }
+func (stubUpdater) Shutdown(context.Context) error { return nil }
+func (stubUpdater) Update(string, ...string) (bool, error) {
+	return false, nil
+}
+func (stubUpdater) CheckForNewVersion(bool) (*auto_update.VersionMetadata, error) { return nil, nil }
+func (stubUpdater) ListAvailableVersions(bool) ([]auto_update.VersionMetadata, error) {
+	return nil, nil
 }

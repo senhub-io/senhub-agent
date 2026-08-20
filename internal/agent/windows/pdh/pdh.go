@@ -7,16 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/sys/windows"
-	"strings"
 	"sync"
 	"unsafe"
-
-	"senhub-agent.go/internal/agent/services/logger"
-)
-
-var (
-	// moduleLogger for PDH operations - initialized with basic logger
-	moduleLogger *logger.ModuleLogger
 )
 
 // ErrNoData reports a PDH_NO_DATA condition. It is expected on the first
@@ -24,23 +16,6 @@ var (
 // so callers that prime then re-collect should tolerate it via errors.Is
 // rather than treating it as a hard failure.
 var ErrNoData = errors.New("no PDH sample available yet")
-
-// InitializePDHLogger initializes the PDH module logger
-func InitializePDHLogger(baseLogger *logger.Logger) {
-	moduleLogger = logger.NewModuleLogger(baseLogger, "pdh.windows")
-}
-
-// logDebug safely logs debug messages, falling back to no-op if logger not initialized
-func logDebug(msg string, args ...interface{}) {
-	if moduleLogger != nil {
-		if len(args) > 0 {
-			moduleLogger.Debug().Msgf(msg, args...)
-		} else {
-			moduleLogger.Debug().Msg(msg)
-		}
-	}
-	// If moduleLogger is nil, do nothing (silent fallback)
-}
 
 const (
 	PDH_CSTATUS_VALID_DATA                     = 0x00000000
@@ -422,27 +397,12 @@ func GetInstancesList(objectName string, debug bool) ([]string, error) {
 	}
 
 	if ret == PDH_CSTATUS_VALID_DATA {
-		var instances []string
-		var currentInstance []uint16
-
-		// Parcourir le buffer d'instances
-		for _, char := range instanceList {
-			if char == 0 {
-				if len(currentInstance) > 0 {
-					instance := windows.UTF16ToString(currentInstance)
-					if instance != "" && instance != "_Total" {
-						if debug {
-							logDebug("GetInstancesList: Found instance: '%s'", instance)
-						}
-						instances = append(instances, instance)
-					}
-				}
-				currentInstance = []uint16{}
-			} else {
-				currentInstance = append(currentInstance, char)
+		instances := parseInstanceList(instanceList)
+		if debug {
+			for _, instance := range instances {
+				logDebug("GetInstancesList: Found instance: '%s'", instance)
 			}
 		}
-
 		if len(instances) > 0 {
 			return instances, nil
 		}
@@ -539,24 +499,4 @@ func (q *Query) Close() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	pdhCloseQuery.Call(uintptr(q.handle))
-}
-
-func BuildCounterPath(path string, instance string) string {
-	if instance == "" {
-		logDebug("Built path without instance: %s", path)
-		return path
-	}
-
-	parts := strings.Split(path, "\\")
-	if len(parts) >= 2 {
-		builtPath := fmt.Sprintf("\\%s(%s)\\%s",
-			parts[1],
-			instance,
-			strings.Join(parts[2:], "\\"))
-		logDebug("Built path with instance: %s", builtPath)
-		return builtPath
-	}
-
-	logDebug("Fallback path: %s", path)
-	return path
 }
