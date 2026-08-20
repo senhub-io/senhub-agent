@@ -138,10 +138,15 @@ func (p *OTLPReceiverProbe) startGRPC(quitChannel chan struct{}) error {
 	p.listener = lis
 	p.mu.Unlock()
 
+	p.markServing()
 	go func() {
-		if serveErr := server.Serve(lis); serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+		serveErr := server.Serve(lis)
+		if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
 			p.moduleLogger.Error().Err(serveErr).Msg("OTLP gRPC server stopped with error")
+			p.markStopped(serveErr)
+			return
 		}
+		p.markStopped(nil)
 	}()
 
 	go func() {
