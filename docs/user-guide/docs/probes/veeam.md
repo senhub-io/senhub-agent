@@ -167,6 +167,23 @@ modules) are reported by Veeam's `/jobs/states` endpoint without a standard job
 type. The agent labels these as `CustomPlatform` (Veeam's own term) so they are
 grouped and filterable, rather than left as "Unknown".
 
+These jobs also carry less information than a native one, which surprises
+operators filtering by tag:
+
+- **The status is not in `jobs_detail`.** The job status channel is tagged
+  `metric_type:jobs_status`; a query filtering on `metric_type:jobs_detail`
+  deliberately excludes it and returns only Time Since Last Run, Running
+  Duration and Objects Count. Query `metric_type:jobs_status` for the status.
+- **`Time Since Last Run` is `-1`, and that is not a failure.** Veeam reports
+  no session timestamp for plugin-managed jobs, so the channel carries the
+  "no measurement" sentinel rather than a duration. Do not alert on it for
+  this job type.
+- **No transferred bytes and no bottleneck channels.** For the same reason
+  (no session progress from VBR), those channels are not emitted at all.
+- **The status itself is meaningful.** When Veeam reports no last run, the
+  probe falls back to the job's last result, so these jobs show their real
+  Success / Warning / Failed instead of "Never Run".
+
 ### No job metrics
 
 If `hours_to_check` is too short, jobs that ran outside the time window are excluded. Increase the value (default: 24 hours).
