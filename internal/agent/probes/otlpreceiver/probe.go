@@ -300,6 +300,7 @@ func (p *OTLPReceiverProbe) ingestLogs(resourceLogs []*logspb.ResourceLogs) {
 	}
 	if flatSubs > 0 {
 		for _, rec := range records {
+			rec.TargetStrategies = p.LogTargets()
 			agentstate.PublishLog(rec)
 		}
 	}

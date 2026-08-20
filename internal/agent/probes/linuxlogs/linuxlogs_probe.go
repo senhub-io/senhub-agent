@@ -229,7 +229,7 @@ func (p *LinuxLogsProbe) OnStart(quitChannel chan struct{}) error {
 		Bool("include_boot", p.config.IncludeBoot).
 		Msg("Starting linux_logs probe")
 
-	reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
+	reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), p.LogTargets(), &p.emitted)
 	if err != nil {
 		return fmt.Errorf("start journal reader: %w", err)
 	}
@@ -295,7 +295,7 @@ func (p *LinuxLogsProbe) respawn(quitChannel chan struct{}, dead *journalReader,
 		case <-time.After(*backoff):
 		}
 
-		reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
+		reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), p.LogTargets(), &p.emitted)
 		if err != nil {
 			p.moduleLogger.Error().
 				Err(err).
