@@ -17,13 +17,24 @@ running state. No external client library is required.
   type: docker
 ```
 
-The probe connects to the local Docker socket at `/var/run/docker.sock` by
-default. No parameters are required for a local setup.
+The probe connects to the local Docker Engine on whichever transport the
+platform offers, with no parameter needed for a local setup:
+
+| Platform | Default address | Transport |
+|---|---|---|
+| Linux, macOS | `/var/run/docker.sock` | Unix socket |
+| Windows | `npipe://./pipe/docker_engine` | named pipe |
+
+Docker Engine and Docker Desktop on Windows expose the API over a named pipe
+rather than a socket, which is why the default differs. Set `socket_path`
+to override it; a Windows pipe may be written `npipe://./pipe/<name>` or
+`\\.\pipe\<name>`.
 
 ## Parameters
 
-This probe takes no configuration parameters — it connects to the local Docker
-Engine socket automatically.
+| Parameter | Default | Description |
+|---|---|---|
+| `socket_path` | per platform (see above) | Where the Docker Engine listens. A Unix socket path, or a Windows named pipe as `npipe://./pipe/<name>`. |
 
 ## Metrics
 
