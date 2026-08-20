@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -66,6 +67,43 @@ type OTLPReceiverProbe struct {
 	callback           func([]data_store.DataPoint) error
 	lastNoSinkWarn     time.Time
 	lastNoSpanSinkWarn time.Time
+
+	// serving reports whether the receiver is accepting; serveErr holds
+	// why it stopped. Serve() runs on its own goroutine and its error
+	// was logged and dropped, so a receiver that died — a port taken, a
+	// TLS handshake failure at bind — kept reporting healthy for the
+	// life of the agent because its Collect is a no-op (#289).
+	serving  atomic.Bool
+	serveErr atomic.Pointer[string]
+}
+
+// ListenerHealth implements types.ListenerProbe: this probe's data
+// arrives over a socket, so its health is whether that socket is being
+// served, not whether its no-op Collect returned.
+func (p *OTLPReceiverProbe) ListenerHealth() error {
+	if msg := p.serveErr.Load(); msg != nil {
+		return errors.New(*msg)
+	}
+	if !p.serving.Load() {
+		return errors.New("OTLP receiver is not serving")
+	}
+	return nil
+}
+
+// markServing records that the receiver is accepting on its listener.
+func (p *OTLPReceiverProbe) markServing() {
+	p.serveErr.Store(nil)
+	p.serving.Store(true)
+}
+
+// markStopped records that the receiver stopped, with the reason when
+// it was not an ordinary shutdown.
+func (p *OTLPReceiverProbe) markStopped(err error) {
+	if err != nil {
+		msg := err.Error()
+		p.serveErr.Store(&msg)
+	}
+	p.serving.Store(false)
 }
 
 // NewOTLPReceiverProbe constructs the probe from its raw config map.
