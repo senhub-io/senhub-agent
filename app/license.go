@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -30,7 +31,7 @@ func handleLicenseCommand() {
 	// Parse args starting from index 2 (skip "agent" and "license")
 	err = parser.Parse(os.Args[2:])
 	if err != nil {
-		if err == arg.ErrHelp {
+		if errors.Is(err, arg.ErrHelp) {
 			parser.WriteHelp(os.Stdout)
 			os.Exit(0)
 		}
