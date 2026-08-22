@@ -489,6 +489,26 @@ func checkConfig(configPath string) {
 	// Checked whenever the agent is configured, not only when auto_update is
 	// enabled: on Linux a writable binary is a security finding on its own, and
 	// turning auto-update off does not make it safe.
+	// The registry URL is a BASE the agent appends to. A value carrying
+	// a path the agent adds itself doubles it, and updates then fail
+	// silently — the host stays on its installed version with
+	// `enabled: true` still in the file. Say so at check time rather
+	// than letting it be discovered months later (#747, #840).
+	if config.AutoUpdate != nil {
+		if p := configuration.CheckRegistryURL(config.AutoUpdate.URL); p != nil {
+			if p.Suggestion != "" {
+				fmt.Printf("  [WARN] auto_update.url %s\n", p.Reason)
+				fmt.Printf("         configured: %s\n", config.AutoUpdate.URL)
+				fmt.Printf("         write instead: %s\n", p.Suggestion)
+				warnings++
+			} else {
+				fmt.Printf("  [ERROR] auto_update.url %s\n", p.Reason)
+				fmt.Printf("          configured: %s\n", config.AutoUpdate.URL)
+				errorCount++
+			}
+		}
+	}
+
 	if warn := checkAutoUpdateWritability(); warn != "" {
 		fmt.Printf("  [WARN] %s\n", warn)
 		warnings++
