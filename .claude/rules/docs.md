@@ -37,6 +37,27 @@ When you change a contract documented in one of these files, update the doc in t
 | Grafana | **Don't advertise** as a channel — Grafana is a viz tool consuming Prometheus / VictoriaMetrics, not an integration the agent speaks directly. Dashboards we ship are a sample, not a product. |
 | Icinga | **Don't advertise**. Compatible via Nagios output but not officially tested. |
 
+## The documented-key check
+
+`internal/docscoverage` fails `make test` when a configuration key the
+agent parses appears nowhere under `docs/user-guide/docs/`. It reads the
+parsers (probe params and strategy params) rather than a list someone
+maintains, so a new key is covered the moment it is added.
+
+Two things follow from that:
+
+- Adding a key means adding it to the page describing its block, in the
+  same commit. That is the rule above, made enforceable.
+- If the string is NOT an operator-facing key — a field of a parsed
+  syslog message, a value a formatter passes to itself — add it to
+  `allowed` in `config_keys_test.go` with the reason. A stale entry
+  fails its own test, so the list cannot become a place gaps hide in.
+
+The check is one-directional: it proves a key is mentioned, not that the
+mention is right. A page can still document a key the code stopped
+reading — the mysql and postgresql pages did, for a whole parameter set
+each — and only a reader comparing the two catches that.
+
 ## Release notes
 
 - One file per release: `docs/releases/X.Y.Z-beta.md`.

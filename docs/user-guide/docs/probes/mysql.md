@@ -28,12 +28,8 @@ STATUS` and `information_schema`.
     username: senhub_monitor
     password: ${secret:production-mysql.password}   # OS secret store; inline plaintext is auto-sealed on install
     interval: 60
-    timeout: 10
-    tls:
-      enabled: true
-      skip_verify: false
-      ca_file: /etc/ssl/db-ca.pem
-    max_replication_lag_seconds: 60
+    tls: true
+    per_database: false
 ```
 
 ### Parameters
@@ -44,15 +40,12 @@ STATUS` and `information_schema`.
 | `port` | No | `3306` | TCP port |
 | `username` | Yes | - | Monitoring user |
 | `password` | Yes | - | Monitoring user's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `database` | No | `""` | Default database (optional; leave empty for server-level only) |
 | `interval` | No | `60` | Collection interval in seconds |
-| `timeout` | No | `10` | Per-query timeout in seconds |
-| `tls.enabled` | No | `false` | Connect over TLS |
-| `tls.skip_verify` | No | `false` | Skip server certificate verification |
-| `tls.ca_file` | No | `""` | Path to CA certificate |
-| `max_replication_lag_seconds` | No | `60` | Threshold used by the composite `senhub.db.replication.health` channel |
-| `expose_per_database` | No | `false` | Emit per-database metrics (cardinality scales with #databases) |
-| `expose_top_tables` | No | `0` | Emit metrics for the top-N tables by size; `0` disables this feature |
+| `tls` | No | `false` | Connect over TLS |
+| `per_database` | No | `false` | Emit per-database metrics (cardinality scales with the number of databases) |
+| `per_table` | No | `false` | Emit per-table metrics for the largest tables |
+| `top_n_tables` | No | `20` | How many tables `per_table` covers, largest first |
+| `instance_name` | No | derived | Stable identity override for this instance. Set it when the same server is reachable under several names, so the entity does not split |
 
 ## GRANTs
 
