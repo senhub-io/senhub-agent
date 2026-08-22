@@ -160,6 +160,11 @@ type OTLPSyncStrategy struct {
 	// "probe_type:metric_name" — so a single misconfigured probe does
 	// not flood logs on every push tick.
 	missingMappingWarned sync.Map
+
+	// psReporter accounts for the records a consumer refuses on the
+	// metrics rail. The logs rail has its own, on the exporter that owns
+	// the dead-letter queue.
+	psReporter *partialSuccessReporter
 }
 
 // NewOTLPSyncStrategy constructs (but does not start) the OTLP strategy.
@@ -236,6 +241,7 @@ func NewOTLPSyncStrategy(
 		globalTagKeys: globalTagKeys,
 		globalTags:    globalTags,
 		memLimiter:    ml,
+		psReporter:    newPartialSuccessReporter(moduleLogger),
 	}
 
 	if cfg.Persistence.Path != "" {
@@ -292,6 +298,11 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// (memory limiter poller, checkpointer, entity emission). Cancelling
 	// the agent context stops them without waiting for Shutdown.
 	s.runCtx = ctx
+
+	// Before the first exporter exists: the SDK reports a consumer's
+	// partial rejection through the global error handler, and anything
+	// the handler misses is lost to stderr (#819).
+	installSDKErrorHandler(s.logger)
 
 	buildCtx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
@@ -576,7 +587,10 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		s.globalTagKeys,
 		extraRecords,
 		func(ctx context.Context, rm *metricdata.ResourceMetrics) error {
-			return s.exporters.metric.Export(ctx, rm)
+			// Datapoints the consumer refuses are counted and dropped from
+			// the error: the push landed, and reporting it as a failed
+			// export would hide a partial loss behind a total one (#819).
+			return s.psReporter.reportRejections(s.exporters.metric.Export(ctx, rm))
 		},
 		s.warnMissingMappingOnce,
 		s.cfg.MaxConcurrentExports,
