@@ -2,7 +2,7 @@ package oracle
 
 import (
 	"fmt"
-	"strconv"
+	"senhub-agent.go/internal/agent/probes/types"
 	"time"
 )
 
@@ -68,33 +68,15 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	return cfg, nil
 }
 
+// stringParam / intParam delegate to the shared helpers. They were
+// private duplicates that had drifted: the local intParam accepted
+// int/int64/float64/string, the shared one also handles the unsigned and
+// int32 forms, and rejects a float that is not a whole number instead of
+// truncating it silently (#831).
 func stringParam(raw map[string]interface{}, key string) (string, bool) {
-	v, ok := raw[key]
-	if !ok {
-		return "", false
-	}
-	s, ok := v.(string)
-	return s, ok
+	return types.StringParam(raw, key)
 }
 
-// intParam accepts the int / int64 / float64 forms a YAML scalar can
-// decode to depending on the loader path.
 func intParam(raw map[string]interface{}, key string) (int, bool) {
-	v, ok := raw[key]
-	if !ok {
-		return 0, false
-	}
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case int64:
-		return int(n), true
-	case float64:
-		return int(n), true
-	case string:
-		if i, err := strconv.Atoi(n); err == nil {
-			return i, true
-		}
-	}
-	return 0, false
+	return types.IntParam(raw, key)
 }
