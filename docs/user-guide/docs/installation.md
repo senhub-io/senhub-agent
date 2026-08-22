@@ -21,6 +21,65 @@ Contact SenHub support (support@senhub.io) or download from the [GitHub releases
 - On Linux, the agent ZIP for your architecture (see naming convention below)
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
 
+### Direct download URLs
+
+For a Dockerfile, an air-gapped copy or a configuration-management
+recipe, you need the URL rather than a browser. Two sources serve the
+same artifacts:
+
+```bash
+# GitHub — public, and the one to prefer for a container build
+https://github.com/senhub-io/senhub-agent/releases/download/0.5.4/senhub-agent-linux-amd64.zip
+
+# SenHub release server
+https://eu-west-1.intake.senhub.io/download/0.5.4/senhub-agent-linux-amd64.zip
+```
+
+!!! warning "Release tags carry no `v` prefix"
+
+    The tag is `0.5.4`, not `v0.5.4`. A URL built with the `v` returns
+    404, which reads like a missing file rather than a wrong name — this
+    is the single most common reason a direct download fails.
+
+Substitute the version you want. To discover what is published:
+
+```bash
+curl -s https://eu-west-1.intake.senhub.io/releases/releases.json
+```
+
+That endpoint lists every stable version, newest first; `latest` is an
+alias for the newest. Beta versions are at
+`/releases/beta/releases.json`.
+
+!!! note "`/releases` lists, `/download` serves"
+
+    The two are different paths on purpose: `/releases/...` is the
+    index, `/download/<version>/...` is where the files are. Do not put
+    either of them into `auto_update.url` — that setting is the **base**
+    the agent appends to, so a value carrying one of these paths makes
+    every derived URL double it. `agent config check` reports this and
+    tells you what to write instead.
+
+### Verifying a download
+
+Every artifact is published with a [minisign](https://jedisct1.github.io/minisign/)
+signature next to it. Verify before you run it, especially in an
+automated build:
+
+```bash
+VERSION=0.5.4
+BASE=https://github.com/senhub-io/senhub-agent/releases/download/$VERSION
+curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip"
+curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip.minisig"
+
+minisign -Vm senhub-agent-linux-amd64.zip \
+  -P RWRlfkyeLpjI0MjTSfuvT/bDNHHaVJhRirQN8Z8LTAM+n4LKVbpjrlRh
+```
+
+That public key is the one the agent itself embeds to verify its own
+auto-updates. There is no `SHA256SUMS` file — minisign is the
+verification path.
+
 ### Release Artifact Naming
 
 Release artifacts are ZIP archives named with dashes between OS and architecture:
