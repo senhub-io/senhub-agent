@@ -507,6 +507,13 @@ func checkConfig(configPath string) {
 				continue
 			}
 			if s.Name == "otlp" {
+				if otlp.StalenessEvictionDisabled(s.Params) {
+					fmt.Printf("  [WARN] Strategy %q: staleness_ttl disables series eviction\n", s.Name)
+					fmt.Println("         A series whose producer disappears (a target removed from a probe,")
+					fmt.Println("         a probe denied by licence) keeps being exported at its last value")
+					fmt.Println("         with fresh timestamps, and a restart restores it from the checkpoint.")
+					warnings++
+				}
 				if verr := otlp.ValidateEntitiesRedactAttributes(s.Params); verr != nil {
 					fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
 					errorCount++
