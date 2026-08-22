@@ -72,6 +72,32 @@ func generateConfiguration(args *cliArgs.ParsedArgs) error {
 	return nil
 }
 
+// cleanupTargets decides what an uninstall removes for the configuration
+// itself, split out so the decision is testable without deleting
+// anything.
+//
+// installed says whether the config lives in the directory this platform
+// installs into. When it does, the whole directory goes: it holds
+// probes.d/, strategies.d/ and the sealed secret store, and leaving
+// those behind is what #841 was about. When it does not — an explicit
+// --config-path pointing somewhere the agent does not own — only the
+// config file goes, because the neighbours are not ours to delete.
+func cleanupTargets(configPath string, installed bool) (files []string, dirs []string) {
+	if installed {
+		dir := filepath.Dir(configPath)
+		if dir != "" && dir != "." && dir != string(filepath.Separator) {
+			if _, err := os.Stat(dir); err == nil {
+				return nil, []string{dir}
+			}
+		}
+		return nil, nil
+	}
+	if _, err := os.Stat(configPath); err == nil {
+		return []string{configPath}, nil
+	}
+	return nil, nil
+}
+
 // cleanupFiles removes configuration files, logs, and certificates during uninstall
 func cleanupFiles(args *cliArgs.ParsedArgs) {
 	var filesToRemove []string
@@ -86,9 +112,19 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 			configPath = "./agent-config.yaml"
 		}
 	}
-	if _, statErr := os.Stat(configPath); statErr == nil {
-		filesToRemove = append(filesToRemove, configPath)
-	}
+	// The whole installed configuration directory goes, not just
+	// agent.yaml. It also holds probes.d/, strategies.d/ and the sealed
+	// secret store, and removing only the top file left an operator who
+	// answered "yes" with their probes, their outputs AND their sealed
+	// credentials still on disk under a "Cleanup completed" line (#841).
+	//
+	// Guarded on the INSTALLED directory: a config passed with an
+	// explicit --config-path may live next to files the agent does not
+	// own, and removing its parent would take them too. In that case the
+	// old, narrow behaviour applies — the config file only.
+	cfgFiles, cfgDirs := cleanupTargets(configPath, withinInstalledConfigDir(configPath))
+	filesToRemove = append(filesToRemove, cfgFiles...)
+	dirsToRemove = append(dirsToRemove, cfgDirs...)
 
 	// Certificate directory (use absolute path)
 	currentDir, err := os.Getwd()

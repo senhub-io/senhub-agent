@@ -176,7 +176,11 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// left the service DOWN on a cancelled uninstall; --yes skips the
 		// prompt for unattended removal.
 		if !args.Yes {
-			fmt.Println("Uninstall will remove the agent configuration file, the certs/ directory, and log files/directories.")
+			fmt.Println("Uninstall will remove the whole agent configuration directory — agent.yaml,")
+			fmt.Println("probes.d/, strategies.d/ AND the sealed secret store, which holds the agent")
+			fmt.Println("key and every credential the agent sealed (database, BMC, API tokens).")
+			fmt.Println("That is irreversible: sealed values cannot be recovered afterwards.")
+			fmt.Println("The certs/ directory and log files/directories are removed too.")
 			fmt.Print("Proceed? [y/N] ")
 			if !readYesConfirmation() {
 				fmt.Println("Uninstall cancelled; nothing was removed.")
