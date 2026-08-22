@@ -204,11 +204,11 @@ func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
 }
 
 func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
-	facility, _ := logParts["facility"].(int)
-	severity, _ := logParts["severity"].(int)
+	facility, _ := types.IntParam(logParts, "facility")
+	severity, _ := types.IntParam(logParts, "severity")
 	hostname, _ := logParts["hostname"].(string)
 	client, _ := logParts["client"].(string)
-	priority, _ := logParts["priority"].(int)
+	priority, _ := types.IntParam(logParts, "priority")
 	timestamp, _ := logParts["timestamp"].(time.Time)
 
 	// The server is configured with syslog.Automatic format
