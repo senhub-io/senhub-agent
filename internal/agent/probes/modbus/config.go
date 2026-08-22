@@ -2,6 +2,7 @@ package modbus
 
 import (
 	"fmt"
+	"senhub-agent.go/internal/agent/probes/types"
 	"time"
 )
 
@@ -57,10 +58,10 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	}
 	cfg.Host = host
 
-	if v, ok := raw["port"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "port"); ok && v > 0 {
 		cfg.Port = v
 	}
-	if v, ok := raw["unit_id"].(int); ok && v >= 0 {
+	if v, ok := types.IntParam(raw, "unit_id"); ok && v >= 0 {
 		cfg.UnitID = v
 	}
 	if v, ok := raw["timeout"].(string); ok && v != "" {
@@ -69,10 +70,10 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 			return cfg, fmt.Errorf("modbus: invalid timeout %q: %w", v, err)
 		}
 		cfg.Timeout = d
-	} else if v, ok := raw["timeout"].(int); ok && v > 0 {
+	} else if v, ok := types.IntParam(raw, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 
@@ -137,9 +138,9 @@ func parseRegister(i int, m map[string]interface{}) (registerConfig, error) {
 	}
 	reg.Type = typ
 
-	if v, ok := m["scale"].(float64); ok {
+	if v, ok := types.FloatParam(m, "scale"); ok {
 		reg.Scale = float32(v)
-	} else if v, ok := m["scale"].(int); ok {
+	} else if v, ok := types.IntParam(m, "scale"); ok {
 		reg.Scale = float32(v)
 	}
 	if reg.Scale == 0 {

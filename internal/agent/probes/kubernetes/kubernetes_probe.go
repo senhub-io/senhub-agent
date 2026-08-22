@@ -150,7 +150,7 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		cfg.Kubeconfig = v
 	}
 
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 

@@ -155,16 +155,16 @@ func parseConfig(config map[string]interface{}) (checkConfig, error) {
 		}
 	}
 
-	if v, ok := config["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := config["samples"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "samples"); ok && v > 0 {
 		if v > maxSamples {
 			return cfg, fmt.Errorf("ntp samples is %d, which exceeds the maximum of %d — more packets per cycle stop improving the estimate and start looking like abuse to the server", v, maxSamples)
 		}
 		cfg.Samples = v
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	return cfg, nil
