@@ -87,6 +87,11 @@ func NewProbePoller(
 		return nil, fmt.Errorf("No constructor for probe %s\n%w", config.Name, err)
 	}
 
+	// Said here rather than in each probe: a parameter the probe stopped
+	// reading is silently ignored, so the operator's only signal that
+	// their option does nothing is this line (#842).
+	reportLegacyParams(moduleLogger, config.Name, config.Type, config.Params)
+
 	probe, err := probeConstructor(config.Params, baseLogger)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start probe %s: %w", config.Name, err)
