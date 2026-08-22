@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"senhub-agent.go/internal/agent/probes/types"
 	"time"
 )
 
@@ -32,7 +33,7 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	if v, ok := raw["host"].(string); ok && v != "" {
 		cfg.Host = v
 	}
-	if v, ok := raw["port"].(int); ok {
+	if v, ok := types.IntParam(raw, "port"); ok {
 		if v <= 0 || v > 65535 {
 			return cfg, fmt.Errorf("redis probe: port %d is out of range (1–65535)", v)
 		}
@@ -56,10 +57,10 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	if (cfg.TLSCertFile != "") != (cfg.TLSKeyFile != "") {
 		return cfg, fmt.Errorf("redis probe: tls_cert_file and tls_key_file must both be set for mTLS (tls_cert_file=%q, tls_key_file=%q)", cfg.TLSCertFile, cfg.TLSKeyFile)
 	}
-	if v, ok := raw["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	if v, ok := raw["instance_name"].(string); ok {
