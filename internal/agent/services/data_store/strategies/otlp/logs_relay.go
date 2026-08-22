@@ -35,12 +35,13 @@ type logBatchForwarder interface {
 // ── gRPC transport ───────────────────────────────────────────────────
 
 type grpcLogBatchForwarder struct {
-	conn    *grpc.ClientConn
-	client  collectorlogspb.LogsServiceClient
-	headers map[string]string
+	reporter *partialSuccessReporter
+	conn     *grpc.ClientConn
+	client   collectorlogspb.LogsServiceClient
+	headers  map[string]string
 }
 
-func newGRPCLogBatchForwarder(cfg Config) (*grpcLogBatchForwarder, error) {
+func newGRPCLogBatchForwarder(cfg Config, reporter *partialSuccessReporter) (*grpcLogBatchForwarder, error) {
 	rt := resolveTransport(cfg, cfg.Logs.SignalTransport)
 	creds, _, err := tlsCredentials(rt.tls)
 	if err != nil {
@@ -55,9 +56,10 @@ func newGRPCLogBatchForwarder(cfg Config) (*grpcLogBatchForwarder, error) {
 		return nil, fmt.Errorf("logs relay gRPC client for %s: %w", rt.endpoint, err)
 	}
 	return &grpcLogBatchForwarder{
-		conn:    conn,
-		client:  collectorlogspb.NewLogsServiceClient(conn),
-		headers: rt.headers,
+		reporter: reporter,
+		conn:     conn,
+		client:   collectorlogspb.NewLogsServiceClient(conn),
+		headers:  rt.headers,
 	}, nil
 }
 
@@ -65,9 +67,15 @@ func (f *grpcLogBatchForwarder) forward(ctx context.Context, rl []*logspb.Resour
 	if len(f.headers) > 0 {
 		ctx = metadata.NewOutgoingContext(ctx, metadata.New(f.headers))
 	}
-	if _, err := f.client.Export(ctx, &collectorlogspb.ExportLogsServiceRequest{ResourceLogs: rl}); err != nil {
+	resp, err := f.client.Export(ctx, &collectorlogspb.ExportLogsServiceRequest{ResourceLogs: rl})
+	if err != nil {
 		return fmt.Errorf("LogsService.Export: %w", err)
 	}
+	// The collector may keep only part of what it was handed. Nothing
+	// downstream reads this response, so an unreported rejection here is
+	// relayed telemetry lost with no trace on either side.
+	ps := resp.GetPartialSuccess()
+	reportRelayRejection(f.reporter, "logs", ps.GetRejectedLogRecords(), ps.GetErrorMessage())
 	return nil
 }
 
@@ -78,13 +86,14 @@ func (f *grpcLogBatchForwarder) close() error {
 // ── HTTP transport ───────────────────────────────────────────────────
 
 type httpLogBatchForwarder struct {
-	client  *http.Client
-	url     string
-	headers map[string]string
-	gzip    bool
+	reporter *partialSuccessReporter
+	client   *http.Client
+	url      string
+	headers  map[string]string
+	gzip     bool
 }
 
-func newHTTPLogBatchForwarder(cfg Config) (*httpLogBatchForwarder, error) {
+func newHTTPLogBatchForwarder(cfg Config, reporter *partialSuccessReporter) (*httpLogBatchForwarder, error) {
 	rt := resolveTransport(cfg, cfg.Logs.SignalTransport)
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
@@ -98,10 +107,11 @@ func newHTTPLogBatchForwarder(cfg Config) (*httpLogBatchForwarder, error) {
 		transport.TLSClientConfig = tlsConf
 	}
 	return &httpLogBatchForwarder{
-		client:  &http.Client{Transport: transport},
-		url:     scheme + "://" + rt.endpoint + "/v1/logs",
-		headers: rt.headers,
-		gzip:    cfg.Compression == "gzip",
+		reporter: reporter,
+		client:   &http.Client{Transport: transport},
+		url:      scheme + "://" + rt.endpoint + "/v1/logs",
+		headers:  rt.headers,
+		gzip:     cfg.Compression == "gzip",
 	}, nil
 }
 
@@ -139,9 +149,18 @@ func (f *httpLogBatchForwarder) forward(ctx context.Context, rl []*logspb.Resour
 		return fmt.Errorf("POST %s: %w", f.url, err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	// The body is the partial_success answer, not noise: it names what
+	// the collector refused out of this batch. It used to go to
+	// io.Discard, which is why a rejection of relayed telemetry was
+	// invisible from here (#819).
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("POST %s: unexpected status %d", f.url, resp.StatusCode)
+	}
+	var answer collectorlogspb.ExportLogsServiceResponse
+	if proto.Unmarshal(respBody, &answer) == nil {
+		ps := answer.GetPartialSuccess()
+		reportRelayRejection(f.reporter, "logs", ps.GetRejectedLogRecords(), ps.GetErrorMessage())
 	}
 	return nil
 }
@@ -177,12 +196,13 @@ type logsRelay struct {
 }
 
 func newLogsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*logsRelay, error) {
+	reporter := newPartialSuccessReporter(moduleLogger, "relay")
 	var fwd logBatchForwarder
 	var err error
 	if cfg.Protocol == "http" {
-		fwd, err = newHTTPLogBatchForwarder(cfg)
+		fwd, err = newHTTPLogBatchForwarder(cfg, reporter)
 	} else {
-		fwd, err = newGRPCLogBatchForwarder(cfg)
+		fwd, err = newGRPCLogBatchForwarder(cfg, reporter)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("building log batch forwarder: %w", err)
