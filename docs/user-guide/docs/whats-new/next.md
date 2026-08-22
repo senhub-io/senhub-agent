@@ -35,6 +35,24 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **Uninstalling now removes the sealed secret store.** `uninstall` said
+  "Cleanup completed" while leaving `probes.d/`, `strategies.d/` and the
+  secret store on disk — the latter holding the agent key and every
+  credential the agent had sealed (database, BMC, API tokens). The whole
+  installed configuration directory is now removed, and the confirmation
+  says so before you answer, because it cannot be undone. A
+  configuration you pointed at with `--config-path` outside the install
+  directory is still treated narrowly: only that file is removed, since
+  its neighbours are not ours to delete.
+
+- **A second agent on the same machine no longer destroys the first
+  one's logs.** Two agents resolved the same log file and each rotated
+  it independently; whichever rotated first truncated the other's file,
+  and its history was gone. A normal install keeps writing
+  `senhubagent.log` exactly as before — nothing to change in your log
+  collection. A second instance, started with a different configuration
+  file, now writes to its own.
+
 - **A registry URL with a path no longer breaks updates silently.**
   `auto_update.url` is the *base* the agent appends to, and it appends
   two different things — `/releases/…` for the version list,
