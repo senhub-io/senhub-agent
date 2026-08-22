@@ -2,6 +2,7 @@ package postgresql
 
 import (
 	"fmt"
+	"senhub-agent.go/internal/agent/probes/types"
 	"time"
 )
 
@@ -32,7 +33,7 @@ func parseConfig(params map[string]interface{}) (config, error) {
 	}
 	cfg.Host = host
 
-	if v, ok := params["port"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(params, "port"); ok && v > 0 {
 		cfg.Port = v
 	}
 
@@ -61,7 +62,7 @@ func parseConfig(params map[string]interface{}) (config, error) {
 		}
 	}
 
-	if v, ok := params["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(params, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 

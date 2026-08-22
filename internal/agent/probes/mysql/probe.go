@@ -141,7 +141,7 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	} else {
 		cfg.Host = "127.0.0.1"
 	}
-	if v, ok := raw["port"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "port"); ok && v > 0 {
 		cfg.Port = v
 	}
 	if v, ok := raw["username"].(string); ok {
@@ -153,7 +153,7 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	if v, ok := raw["tls"].(bool); ok {
 		cfg.TLS = v
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	if v, ok := raw["per_database"].(bool); ok {
@@ -162,7 +162,7 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	if v, ok := raw["per_table"].(bool); ok {
 		cfg.PerTable = v
 	}
-	if v, ok := raw["top_n_tables"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "top_n_tables"); ok && v > 0 {
 		cfg.TopNTables = v
 	}
 	if v, ok := raw["instance_name"].(string); ok {

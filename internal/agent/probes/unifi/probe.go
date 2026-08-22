@@ -121,10 +121,10 @@ func parseConfig(raw map[string]interface{}) (unifiConfig, error) {
 	if v, ok := raw["verify_tls"].(bool); ok {
 		cfg.VerifyTLS = v
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
-	if v, ok := raw["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
 

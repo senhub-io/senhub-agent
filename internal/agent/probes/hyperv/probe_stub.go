@@ -31,7 +31,7 @@ type HypervProbe struct {
 
 func NewHypervProbe(config map[string]interface{}, _ *logger.Logger) (types.Probe, error) {
 	interval := defaultInterval
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		interval = time.Duration(v) * time.Second
 	}
 	probe := &HypervProbe{

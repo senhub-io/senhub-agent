@@ -1,6 +1,10 @@
 package mongodb
 
-import "time"
+import (
+	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
+)
 
 const (
 	probeType = "mongodb"
@@ -35,10 +39,10 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 	if v, ok := raw["uri"].(string); ok && v != "" {
 		cfg.URI = v
 	}
-	if v, ok := raw["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	if v, ok := raw["direct_connection"].(bool); ok {

@@ -66,10 +66,10 @@ func NewNginxProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	if v, ok := config["endpoint"].(string); ok && v != "" {
 		cfg.Endpoint = v
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
-	if v, ok := config["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
 	if v, ok := config["instance_name"].(string); ok {

@@ -62,7 +62,7 @@ func NewVarnishProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	if v, ok := config["instance_name"].(string); ok {
 		cfg.InstanceName = v
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 
