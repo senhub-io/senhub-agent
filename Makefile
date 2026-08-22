@@ -114,19 +114,38 @@ all: create-dist build test ## Build all binaries and run tests
 build: build-windows build-linux build-darwin ## Build binaries
 	@echo version: $(VERSION) - commit: $(COMMIT_HASH)
 
+# CGO_ENABLED=0 on every target, matching what the release workflow
+# already does explicitly. Without it these targets only produce a static
+# binary by accident of the machine: cross-compiling disables cgo on its
+# own, so a developer on macOS gets static, and the same command on a
+# Linux workstation with a C toolchain gets DYNAMIC. That difference is
+# invisible until the binary meets a musl container, where the failure
+# reads "no such file or directory" — the missing interpreter, not a
+# missing file. Local builds must be the same shape as shipped ones.
 build-windows: create-dist ## Build for Windows
 		@mkdir -p $(WINDOWS_AMD64_DIR)
-		@env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 build-linux: create-dist ## Build for Linux
 		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
-		@env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
-		@env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@$(MAKE) --no-print-directory verify-static
 
 build-darwin: create-dist ## Build for Darwin (macOS)
 		@mkdir -p $(DARWIN_AMD64_DIR) $(DARWIN_ARM64_DIR)
-		@env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/
-		@env GOOS=darwin GOARCH=arm64 go build -o $(DARWIN_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o $(DARWIN_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+
+verify-static: ## Fail if a linux binary carries an ELF interpreter (would not run on musl/scratch)
+		@for f in $(LINUX_AMD64) $(LINUX_ARM64); do \
+			if [ -f "$$f" ] && head -c 4096 "$$f" | grep -qa "/ld-linux\|/ld-musl"; then \
+				echo "ERROR: $$f is dynamically linked — it will not run on Alpine, scratch or distroless."; \
+				echo "       Build with CGO_ENABLED=0."; \
+				exit 1; \
+			fi; \
+		done
+		@echo "linux binaries are statically linked"
 
 # ========================================
 # PACKAGING TARGETS
