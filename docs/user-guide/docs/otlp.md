@@ -120,6 +120,32 @@ storage:
           relay_enrichment: true      # default true; add agent correlation
                                       # context to relayed spans (see below)
 
+      # How many exports may be in flight at once. The push splits a
+      # large cycle per probe and ships the parts in parallel; 1 means
+      # the single-batch path. Accepted range 1-64.
+      max_concurrent_exports: 4       # default 4
+
+      # Cap the memory the metric store may use, in MiB of Go heap.
+      # Past the soft limit the store keeps its existing series and
+      # refuses new ones; past the hard limit it refuses all writes and
+      # forces a collection. 0 disables either threshold.
+      memory_limit:
+        soft_mib: 200                 # default 200
+        hard_mib: 400                 # default 400
+        check_interval: 5s            # default 5s
+
+      # Survive a restart: the last value of every series is written to
+      # disk and restored at boot, so cumulative counters continue
+      # instead of resetting.
+      persistence:
+        enabled: false                # default false
+        path: /var/lib/senhub-agent/otlp
+        interval: 30s                 # default 30s
+        # Disk cap for the logs dead-letter queue, which holds batches
+        # the receiver could not take during an outage. Past it the
+        # oldest batches are evicted. 0 keeps the default.
+        logs_queue_max_bytes: 134217728   # default 128 MiB
+
       # Resource attributes attached to every emitted batch. Defaults
       # are derived from agent identity if omitted.
       resource:

@@ -25,6 +25,7 @@ No parameters are required. The probe auto-detects all GPUs visible to
 | Parameter | Default | Description |
 |---|---|---|
 | `nvidia_smi_path` | `nvidia-smi` | Path to the `nvidia-smi` binary if not in PATH |
+| `gpus` | all | Report only these GPU indices, as `nvidia-smi` numbers them (`["0", "1"]`). Useful on a host where some cards belong to another team |
 
 ## Metrics
 

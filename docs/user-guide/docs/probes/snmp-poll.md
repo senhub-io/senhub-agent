@@ -43,6 +43,7 @@ one series per interface (`if_index` tag).
 | `community` | `public` | Community string (v2c) — reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `v3` | none | USM credentials, required with `version: 3` (see below) |
 | `timeout` | `5s` | Per-request timeout (duration string or seconds) |
+| `retries` | `2` | Retries per request before the device counts as unanswered. UDP loses packets; a congested link needs more than one attempt, and each one costs `timeout` |
 | `interval` | `60s` | Metric polling cadence |
 | `topology_interval` | `10m` | Entity/topology sweep cadence (slower rail, independent of metrics) |
 | `mibs` | `[]` | Built-in MIB modules to poll: `mib-2`, `if-mib` |
@@ -144,6 +145,39 @@ params:
 | `max_devices` | `200` | Hard cap on discovered devices |
 | `max_hops` | `4` | BFS depth bound from the seeds |
 | `interval` | `topology_interval` | Crawl cadence |
+| `governance_rules` | none | Per-device governance, matched as the crawl finds devices (see below) |
+
+#### Governance for discovered devices
+
+A crawl finds devices you never listed, so their ownership, criticality and
+location cannot be written per device. `governance_rules` states them by
+match instead: the first rule whose conditions all hold stamps its
+`governance` block on the device's entity.
+
+```yaml
+discovery:
+  seeds: ["10.0.0.1"]
+  allowed_cidrs: ["10.0.0.0/16"]
+  governance_rules:
+    - match:
+        cidr: "10.0.10.0/24"
+      governance:
+        criticality: critical
+        owner:
+          team: network
+        location:
+          site: paris
+    - match:
+        vendor: "cisco"
+        sysname: "^edge-"      # regular expression
+      governance:
+        criticality: high
+```
+
+`match` accepts `cidr`, `vendor` and `sysname` — all optional, all must hold
+for the rule to apply, and a rule with no `match` applies to every device.
+The `governance` block takes the same keys as the per-agent one: `criticality`,
+`lifecycle`, `owner`, `location` and free-form `labels`.
 
 ## Metrics
 
