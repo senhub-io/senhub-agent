@@ -225,7 +225,7 @@ func TestEveryRejectionIsCountedEvenWhenTheLineIsSuppressed(t *testing.T) {
 	agentstate.ResetExportRejectedForTest()
 
 	var buf syncBuffer
-	r := newPartialSuccessReporter(bufferModuleLogger(&buf))
+	r := newPartialSuccessReporter(bufferModuleLogger(&buf), "export")
 	now := time.Unix(1_700_000_000, 0)
 	r.now = func() time.Time { return now }
 
@@ -258,7 +258,7 @@ func TestTheNextWindowReportsWhatWasSuppressed(t *testing.T) {
 	agentstate.ResetExportRejectedForTest()
 
 	var buf syncBuffer
-	r := newPartialSuccessReporter(bufferModuleLogger(&buf))
+	r := newPartialSuccessReporter(bufferModuleLogger(&buf), "export")
 	now := time.Unix(1_700_000_000, 0)
 	r.now = func() time.Time { return now }
 
@@ -288,7 +288,7 @@ func TestDistinctMessagesAreReportedSeparately(t *testing.T) {
 	agentstate.ResetExportRejectedForTest()
 
 	var buf syncBuffer
-	r := newPartialSuccessReporter(bufferModuleLogger(&buf))
+	r := newPartialSuccessReporter(bufferModuleLogger(&buf), "export")
 	now := time.Unix(1_700_000_000, 0)
 	r.now = func() time.Time { return now }
 
@@ -308,7 +308,7 @@ func TestCoalescingStateIsBounded(t *testing.T) {
 	agentstate.ResetExportRejectedForTest()
 
 	var buf syncBuffer
-	r := newPartialSuccessReporter(bufferModuleLogger(&buf))
+	r := newPartialSuccessReporter(bufferModuleLogger(&buf), "export")
 
 	for i := 0; i < partialSuccessRunCap*3; i++ {
 		r.reportRejection(partialSuccess{signal: "logs", rejected: 1, message: "record " + strconv.Itoa(i)})
@@ -325,7 +325,7 @@ func TestNonPartialSDKErrorsSurfaceToo(t *testing.T) {
 	agentstate.ResetExportRejectedForTest()
 
 	var buf syncBuffer
-	h := &sdkErrorHandler{reporter: newPartialSuccessReporter(bufferModuleLogger(&buf))}
+	h := &sdkErrorHandler{reporter: newPartialSuccessReporter(bufferModuleLogger(&buf), "export")}
 
 	h.Handle(errors.New("periodic reader export: context deadline exceeded"))
 

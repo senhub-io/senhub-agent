@@ -39,12 +39,13 @@ type spanForwarder interface {
 // (endpoint / TLS credentials / headers / compression) the SDK exporters
 // use — resolveTransport + tlsCredentials are shared with client.go.
 type grpcSpanForwarder struct {
-	conn    *grpc.ClientConn
-	client  collectortracepb.TraceServiceClient
-	headers map[string]string
+	reporter *partialSuccessReporter
+	conn     *grpc.ClientConn
+	client   collectortracepb.TraceServiceClient
+	headers  map[string]string
 }
 
-func newGRPCSpanForwarder(cfg Config) (*grpcSpanForwarder, error) {
+func newGRPCSpanForwarder(cfg Config, reporter *partialSuccessReporter) (*grpcSpanForwarder, error) {
 	rt := resolveTransport(cfg, cfg.Traces.SignalTransport)
 	creds, _, err := tlsCredentials(rt.tls)
 	if err != nil {
@@ -61,9 +62,10 @@ func newGRPCSpanForwarder(cfg Config) (*grpcSpanForwarder, error) {
 		return nil, fmt.Errorf("traces relay gRPC client for %s: %w", rt.endpoint, err)
 	}
 	return &grpcSpanForwarder{
-		conn:    conn,
-		client:  collectortracepb.NewTraceServiceClient(conn),
-		headers: rt.headers,
+		reporter: reporter,
+		conn:     conn,
+		client:   collectortracepb.NewTraceServiceClient(conn),
+		headers:  rt.headers,
 	}, nil
 }
 
@@ -71,9 +73,12 @@ func (f *grpcSpanForwarder) forward(ctx context.Context, rs []*tracepb.ResourceS
 	if len(f.headers) > 0 {
 		ctx = metadata.NewOutgoingContext(ctx, metadata.New(f.headers))
 	}
-	if _, err := f.client.Export(ctx, &collectortracepb.ExportTraceServiceRequest{ResourceSpans: rs}); err != nil {
+	resp, err := f.client.Export(ctx, &collectortracepb.ExportTraceServiceRequest{ResourceSpans: rs})
+	if err != nil {
 		return fmt.Errorf("TraceService.Export: %w", err)
 	}
+	ps := resp.GetPartialSuccess()
+	reportRelayRejection(f.reporter, "traces", ps.GetRejectedSpans(), ps.GetErrorMessage())
 	return nil
 }
 
@@ -88,13 +93,14 @@ func (f *grpcSpanForwarder) close() error {
 // body when the strategy compression is gzip (same wire shape as the SDK
 // OTLP/HTTP exporters).
 type httpSpanForwarder struct {
-	client  *http.Client
-	url     string
-	headers map[string]string
-	gzip    bool
+	reporter *partialSuccessReporter
+	client   *http.Client
+	url      string
+	headers  map[string]string
+	gzip     bool
 }
 
-func newHTTPSpanForwarder(cfg Config) (*httpSpanForwarder, error) {
+func newHTTPSpanForwarder(cfg Config, reporter *partialSuccessReporter) (*httpSpanForwarder, error) {
 	rt := resolveTransport(cfg, cfg.Traces.SignalTransport)
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
@@ -110,10 +116,11 @@ func newHTTPSpanForwarder(cfg Config) (*httpSpanForwarder, error) {
 		transport.TLSClientConfig = tlsConf
 	}
 	return &httpSpanForwarder{
-		client:  &http.Client{Transport: transport},
-		url:     scheme + "://" + rt.endpoint + "/v1/traces",
-		headers: rt.headers,
-		gzip:    cfg.Compression == "gzip",
+		reporter: reporter,
+		client:   &http.Client{Transport: transport},
+		url:      scheme + "://" + rt.endpoint + "/v1/traces",
+		headers:  rt.headers,
+		gzip:     cfg.Compression == "gzip",
 	}, nil
 }
 
@@ -151,11 +158,18 @@ func (f *httpSpanForwarder) forward(ctx context.Context, rs []*tracepb.ResourceS
 		return fmt.Errorf("POST %s: %w", f.url, err)
 	}
 	defer resp.Body.Close()
-	// Drain so the connection can be reused; the response body (an
-	// ExportTraceServiceResponse) carries nothing the relay acts on.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	// The body is the partial_success answer, not noise: it names what
+	// the collector refused out of this batch. It used to go to
+	// io.Discard, which is why a rejection of relayed telemetry was
+	// invisible from here (#819).
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("POST %s: unexpected status %d", f.url, resp.StatusCode)
+	}
+	var answer collectortracepb.ExportTraceServiceResponse
+	if proto.Unmarshal(respBody, &answer) == nil {
+		ps := answer.GetPartialSuccess()
+		reportRelayRejection(f.reporter, "traces", ps.GetRejectedSpans(), ps.GetErrorMessage())
 	}
 	return nil
 }
@@ -193,12 +207,13 @@ type spansRelay struct {
 }
 
 func newSpansRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
+	reporter := newPartialSuccessReporter(moduleLogger, "relay")
 	var fwd spanForwarder
 	var err error
 	if cfg.Protocol == "http" {
-		fwd, err = newHTTPSpanForwarder(cfg)
+		fwd, err = newHTTPSpanForwarder(cfg, reporter)
 	} else {
-		fwd, err = newGRPCSpanForwarder(cfg)
+		fwd, err = newGRPCSpanForwarder(cfg, reporter)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("building span forwarder: %w", err)
