@@ -702,10 +702,16 @@ func showYAMLErrorContext(content string, yamlErr error) {
 
 // validateProbeParams checks required parameters for each probe type
 func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	// Checked for every probe type, before anything else: a parameter the
+	// probe does not read is invisible at runtime, and this verb is where
+	// an operator finds out before deploying rather than after (#842).
+	errors, warnings = reportLegacyProbeParams(name, probeType, params)
+
 	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
 	// Validate manually instead of using a flat required-list.
 	if probeType == "citrix" {
-		return validateCitrixParams(name, params)
+		citrixErrors, citrixWarnings := validateCitrixParams(name, params)
+		return errors + citrixErrors, warnings + citrixWarnings
 	}
 
 	// Required params per probe type (flat format)
@@ -721,7 +727,7 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 
 	required, hasRequired := requiredParams[probeType]
 	if !hasRequired {
-		return 0, 0
+		return errors, warnings
 	}
 
 	for _, param := range required {
@@ -742,6 +748,38 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 		}
 	}
 
+	return errors, warnings
+}
+
+// reportLegacyProbeParams reports the parameter names a probe used to
+// answer to and no longer does.
+//
+// A renamed one is a warning: the configuration still works, and the
+// operator is told the spelling to converge on. One with no equivalent
+// is an ERROR — they asked for something that will not happen, and
+// silence about it is exactly how `sslmode: require` came to mean a
+// plaintext connection.
+func reportLegacyProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	declared := probes.LegacyParamsFor(probeType)
+	for _, key := range probes.LegacyParamsUsed(probeType, params) {
+		p := declared[key]
+
+		detail := ""
+		if p.Replacement != "" {
+			detail = fmt.Sprintf(" — use %q", p.Replacement)
+		}
+		if p.Note != "" {
+			detail += " (" + p.Note + ")"
+		}
+
+		if p.Accepted {
+			fmt.Printf("         [WARN] Probe %q: param %q has been renamed%s\n", name, key, detail)
+			warnings++
+			continue
+		}
+		fmt.Printf("         [ERROR] Probe %q: param %q is not read by the %s probe and has no effect%s\n", name, key, probeType, detail)
+		errors++
+	}
 	return errors, warnings
 }
 

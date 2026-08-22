@@ -34,6 +34,18 @@ const ProbeType = "postgresql"
 // defaultInterval is used when the operator omits interval.
 const defaultInterval = 60 * time.Second
 
+// defaultTimeout bounds a collection cycle's queries. It was hard-coded
+// at this value; it is a parameter now because a database behind a
+// congested link, or one answering a heavy catalogue query, needs more
+// than ten seconds and had no way to say so (#842).
+const defaultTimeout = 10 * time.Second
+
+// defaultMaxReplicationLag is the replay lag past which a streaming
+// replica counts as unhealthy. This is the value the probe has always
+// applied, kept as the default so upgrading changes nothing; it is a
+// parameter now because five minutes is a threshold, not a law.
+const defaultMaxReplicationLag = 300 * time.Second
+
 // pgProbe is the runtime state of one postgresql probe instance.
 type pgProbe struct {
 	*types.BaseProbe
@@ -127,7 +139,7 @@ func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
 	// down-at-start target is a recoverable outage, not a fatal probe
 	// failure; emit up=0 and return while unreachable, the pool re-dials on
 	// demand once the server returns (#485).
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer cancel()
 
 	if p.db == nil {
@@ -440,7 +452,9 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 		if err == nil && replayLag.Valid {
 			lagTags := append(append([]tags.Tag{}, replTags...), tags.Tag{Key: "operation", Value: "replay"})
 			*points = append(*points, p.dp("postgresql.wal.lag", float64(replayLag.Float64), now, lagTags))
-			if replayLag.Float64 > 300 { // >5 min lag → degraded
+			// Lag is what makes a replica useless while it still looks
+			// alive: streaming, threads up, and minutes behind.
+			if p.cfg.MaxReplicationLag > 0 && replayLag.Float64 > p.cfg.MaxReplicationLag.Seconds() {
 				replHealth = 0
 			}
 		}
@@ -491,6 +505,14 @@ func (p *pgProbe) buildDSN() string {
 	}
 	q := url.Values{}
 	q.Set("sslmode", p.tlsMode())
+	// Without this the CA an operator configured was parsed, stored, and
+	// never sent: verification fell back to the system roots, so a
+	// certificate from a private authority failed — or, with
+	// verification skipped, was accepted without ever consulting the CA
+	// that was supposed to be the point (#842).
+	if p.cfg.TLSConfig != nil && p.cfg.TLSConfig.CACert != "" {
+		q.Set("sslrootcert", p.cfg.TLSConfig.CACert)
+	}
 
 	u := url.URL{
 		Scheme:   "postgres",
@@ -509,6 +531,11 @@ func (p *pgProbe) buildDSN() string {
 // certificate. An operator who sets tls gets verification ("verify-full"),
 // or "require" when they opt into skipping verification.
 func (p *pgProbe) tlsMode() string {
+	// An explicit sslmode is the operator speaking libpq directly, and it
+	// wins: it can express modes the tls block does not model.
+	if p.cfg.SSLMode != "" {
+		return p.cfg.SSLMode
+	}
 	if p.cfg.TLSConfig == nil {
 		return "prefer"
 	}
