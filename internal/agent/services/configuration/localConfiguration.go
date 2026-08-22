@@ -198,9 +198,18 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 // The agent builds the version-list URL with url.JoinPath(registry,
 // "/releases/releases.json"). A config whose url already ends in /releases —
 // which is what the installer scaffolded before #586 — therefore resolves to
-// .../releases/releases/releases.json, a 404. Auto-update then does nothing,
-// with `enabled: true` still in the file: the host silently stays on the
-// version it was installed with.
+// .../releases/releases/releases.json. That path returned nothing usable when
+// #747 was written, so auto-update did nothing while `enabled: true` sat in
+// the file and the host silently stayed on the version it was installed with.
+//
+// The release server now answers the doubled path with the same payload as the
+// correct one (verified 2026-08-20: both 200, byte-identical; an arbitrary
+// path under /releases/ still 404s, so this is a deliberate alias rather than
+// a catch-all). Do NOT read that as making this function redundant — it is the
+// other way round. The two cover different populations: this normalisation
+// covers hosts running 0.5.4+, the server alias covers everything older still
+// carrying the bad URL on disk. Removing either one re-breaks the population
+// the other does not reach.
 //
 // Fixing the scaffold did nothing for the hosts already deployed, and those
 // are the ones running. Normalising on read repairs the whole fleet at the

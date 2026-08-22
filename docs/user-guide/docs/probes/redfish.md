@@ -44,8 +44,86 @@ The probe automatically detects the hardware vendor via the Redfish API and adap
 
 **Important notes:**
 - `base_url`: The Redfish API endpoint (iDRAC, iLO, or BMC management address)
-- `interval`: 300 seconds (5 minutes) is recommended for hardware monitoring
+- `interval`: 300 seconds is a good starting point for hardware monitoring. Do
+  not go above it if you read this probe through PRTG — see
+  [Interval and the PRTG TTL](#interval-and-the-prtg-ttl).
 - `verify_ssl`: Set to `false` for self-signed certificates commonly used on BMC interfaces
+
+## Choosing what to collect (`collections`)
+
+The probe walks several independent subsystems of the BMC. By default it
+collects six of them:
+
+```yaml
+collections: ["system", "thermal", "power", "processor", "memory", "storage"]
+```
+
+You do not need this key at all to get those six. Add it only to collect
+something outside the default set, or to deliberately collect less.
+
+!!! warning "`collections` replaces the defaults, it does not filter them"
+
+    The moment this key is present, the six defaults are **discarded** and
+    only what you list is collected. It is a replacement, not a filter.
+
+    So this configuration does **not** mean "everything except storage":
+
+    ```yaml
+    collections: ["system", "power"]     # thermal, processor, memory
+                                         # and storage are ALL off
+    ```
+
+    It means the probe collects system and power, and nothing else. The
+    sensor still reports OK — with far fewer channels than before, every
+    one of them healthy. There is no error and no warning.
+
+    If you are turning one subsystem off, write out every subsystem you
+    still want:
+
+    ```yaml
+    collections: ["system", "thermal", "power", "processor", "memory"]
+    ```
+
+### Accepted values
+
+| Value | Collects | In the defaults |
+|---|---|---|
+| `system` | Overall system health, power state | Yes |
+| `thermal` | Temperature sensors, fans | Yes |
+| `power` | PSU health, power supplies, consumption | Yes |
+| `processor` | CPU health, speed, temperature, utilisation | Yes |
+| `memory` | DIMM health, capacity, speed, ECC errors | Yes |
+| `storage` | Controllers, drives, volumes, pools | Yes |
+| `drives` | Physical drives on their own | **No** |
+| `network` | Network interface health and link state | **No** |
+| `networkadapter` | Network adapter detail | **No** |
+
+The last three are **never collected unless you list them** — a default
+configuration does not include them. Listing them means also re-listing
+the defaults you want, per the warning above.
+
+A value that is not in this table is accepted at load time and fails on
+every collection cycle instead. A typo — `cpu` for `processor`, `disk`
+for `storage` — silently collects nothing from that subsystem. Check the
+spelling against the table, and see
+[Missing channels](#missing-channels-in-prtg-or-nagios) below.
+
+## Interval and the PRTG TTL
+
+The PRTG format serves what is in the agent's cache and drops any value
+older than **5 minutes**. That bound is fixed — it is not the
+`cache.retention_minutes` setting, and changing that setting does not
+move it.
+
+An `interval` above 300 seconds therefore produces PRTG channels that
+come and go: the sensor reads them just after a collection, then finds
+nothing on the next scrape. BMCs are slow, so raising the interval is a
+natural reflex — it is the wrong lever here. If you need to poll a BMC
+less often than every 5 minutes, read it through Nagios or push over
+OTLP, both of which serve the cache without that age limit.
+
+This applies to the PRTG format only. Nagios and the OTLP push are not
+affected.
 
 ## Multiple Servers
 
@@ -333,6 +411,32 @@ If your environment uses properly signed certificates, ensure the CA chain is tr
 **Symptom:** Pool or volume capacity metrics return 0
 
 **Explanation:** Dell PowerVault ME series systems may return `CapacityBytes=0` in the standard Redfish response. The agent automatically detects this and uses `Capacity.Data.AllocatedBytes` as the effective capacity. Ensure you are running a recent version of the agent for this workaround to be active.
+
+## Missing channels in PRTG or Nagios
+
+**Symptom:** the sensor works and every channel reads OK, but there are
+far fewer channels than you expect — no temperatures, no fans, no memory,
+no drives.
+
+Nothing is broken; the probe was told to collect less. Check, in order:
+
+1. **`collections` in the probe configuration.** If the key is present,
+   only the subsystems it lists are collected — the defaults are gone.
+   This is the usual cause. See
+   [Choosing what to collect](#choosing-what-to-collect-collections).
+2. **Spelling of each value**, against the table in that section. An
+   unrecognised value is accepted at load and fails per cycle:
+
+   ```bash
+   journalctl -u senhub-agent | grep "unsupported collection type"
+   ```
+
+3. **`interval` above 300 seconds**, if you read the probe through
+   PRTG — channels then disappear between scrapes. See
+   [Interval and the PRTG TTL](#interval-and-the-prtg-ttl).
+4. **What the BMC actually exposes.** A limited or unlicensed BMC may not
+   serve a subsystem at all; enable debug logging below to see which
+   Redfish endpoints answered.
 
 ## Debug Logging
 
