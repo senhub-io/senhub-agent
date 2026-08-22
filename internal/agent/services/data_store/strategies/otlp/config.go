@@ -1361,3 +1361,20 @@ func resolveRelayEnrichment(relay RelayConfig, traces TracesSignal) bool {
 	}
 	return traces.RelayEnrichment
 }
+
+// StalenessEvictionDisabled reports whether a parsed otlp strategy
+// configuration turns series eviction off.
+//
+// It is a supported setting, but it has one failure mode an operator
+// cannot see: a series whose producer disappears keeps being exported
+// at its last value with fresh timestamps, indefinitely, and a restart
+// restores it from the checkpoint rather than clearing it. `agent config
+// check` reports it so the choice is visible before it becomes a red
+// alert on a target that no longer exists (#812).
+func StalenessEvictionDisabled(params map[string]interface{}) bool {
+	cfg, err := ParseConfig(params)
+	if err != nil {
+		return false // a config that does not parse is reported elsewhere
+	}
+	return cfg.StalenessTTL <= 0
+}

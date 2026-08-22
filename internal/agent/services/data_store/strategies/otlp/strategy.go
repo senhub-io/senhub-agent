@@ -319,6 +319,26 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 		} else if n > 0 {
 			s.logger.Info().Int("entries", n).Msg("OTLP checkpoint restored")
 		}
+	}
+
+	// Say once, at start, whether series eviction is on and how wide its
+	// window is.
+	//
+	// With it OFF, a series whose producer disappears — a target removed
+	// from a probe, a probe denied by licence — keeps being exported at
+	// its last value with FRESH timestamps, forever, and a restart does
+	// not clear it because the checkpoint restores it. The alert stays
+	// red on something that no longer exists, and nothing in the agent
+	// says why. That cost an operator a tcpdump and a hand-edited
+	// checkpoint file to diagnose (#812). One line at start turns the
+	// same question into a journal grep.
+	if s.cfg.StalenessTTL <= 0 {
+		s.logger.Warn().
+			Msg("OTLP series eviction is DISABLED (staleness_ttl <= 0): a series whose producer disappears will be re-exported at its last value with fresh timestamps indefinitely, across restarts. Set staleness_ttl to re-enable.")
+	} else {
+		s.logger.Info().
+			Dur("staleness_ttl", s.cfg.StalenessTTL).
+			Msg("OTLP series eviction enabled")
 		s.chkpt.start(ctx)
 	}
 
