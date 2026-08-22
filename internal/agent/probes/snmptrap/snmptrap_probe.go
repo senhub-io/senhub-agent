@@ -314,7 +314,7 @@ func (p *SNMPTrapProbe) closeListener() {
 	p.conn = nil
 	p.mu.Unlock()
 	if conn != nil {
-		conn.Close()
+		_ = conn.Close()
 	}
 }
 

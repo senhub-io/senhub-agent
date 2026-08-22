@@ -34,8 +34,7 @@ type natsEntitySource struct {
 	mu      sync.Mutex
 	pinned  bool
 	id      string
-	version string         // service.version from /varz, "" until reported
-	attrs   map[string]any // descriptive: server.address / server.port
+	version string // service.version from /varz, "" until reported
 }
 
 func newNATSEntitySource(endpoint, instanceName string) *natsEntitySource {

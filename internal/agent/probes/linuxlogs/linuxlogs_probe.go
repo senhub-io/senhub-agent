@@ -97,7 +97,6 @@ type LinuxLogsProbe struct {
 	// quitOnce guards the close of the embedded quit channel — Probe
 	// pollers may signal shutdown via either OnShutdown(ctx) or by
 	// closing the channel passed to OnStart.
-	quitOnce sync.Once
 
 	// emitted counts log records published to the log rail across the
 	// probe's lifetime, surviving journalctl respawns (the counter lives
