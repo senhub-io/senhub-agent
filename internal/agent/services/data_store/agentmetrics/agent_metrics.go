@@ -383,6 +383,22 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Export rejection counters (#819). Distinct from the failure counter
+	// above and not derivable from it: the export SUCCEEDED, the consumer
+	// answered OK, and it kept only part of what it was given. Nothing on
+	// the failure path moves, so this is the only series that shows the
+	// loss from the producing host.
+	for _, rj := range agentstate.GetExportRejected() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.export.rejected",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{"strategy": rj.Strategy, "signal": rj.Signal},
+			Value:       float64(rj.Count),
+			Description: "Cumulative count of records refused by a consumer through an OTLP partial success, by strategy and signal. These records are lost — the export reported no error and they are not retried.",
+		})
+	}
+
 	// OTLP receiver ingest counters — items accepted per signal
 	// (metrics=emitted internal datapoints after family expansion,
 	// logs=records, traces=spans). Emitted only once the receiver has

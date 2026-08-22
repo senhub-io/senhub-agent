@@ -334,6 +334,12 @@ type persistentLogExporter struct {
 	queue   *logsQueue
 	logger  *logger.ModuleLogger
 
+	// reporter takes the consumer's partial rejections out of the export
+	// error before it is classified. Without it a delivered batch the
+	// consumer partly refused reads as a transport failure and lands on
+	// disk, to be replayed against a consumer that already has it (#819).
+	reporter *partialSuccessReporter
+
 	healthy     atomic.Bool
 	onRecovered atomic.Pointer[func()]
 
@@ -347,7 +353,12 @@ type persistentLogExporter struct {
 const logExportWarnInterval = 30 * time.Second
 
 func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *logger.ModuleLogger) *persistentLogExporter {
-	e := &persistentLogExporter{wrapped: wrapped, queue: queue, logger: log}
+	e := &persistentLogExporter{
+		wrapped:  wrapped,
+		queue:    queue,
+		logger:   log,
+		reporter: newPartialSuccessReporter(log),
+	}
 	e.healthy.Store(true)
 	return e
 }
@@ -357,7 +368,10 @@ func (e *persistentLogExporter) setOnRecovered(fn func()) {
 }
 
 func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
-	err := e.wrapped.Export(ctx, records)
+	// A partial success is not a failed export: what came back with it is.
+	// Counting the refused records here and dropping them from the error
+	// is what keeps a delivered batch out of the dead-letter queue.
+	err := e.reporter.reportRejections(e.wrapped.Export(ctx, records))
 	if err != nil {
 		// Count BEFORE persisting: a rejected batch that lands in the
 		// dead-letter queue is still a failed export. In production a
