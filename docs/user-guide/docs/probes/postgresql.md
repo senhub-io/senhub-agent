@@ -28,12 +28,10 @@ when the extension is installed.
     port: 5432
     username: senhub_monitor
     password: ${secret:production-postgres.password}   # OS secret store; inline plaintext is auto-sealed on install
-    database: postgres
     interval: 60
-    timeout: 10
-    sslmode: require
-    max_replication_lag_seconds: 60
-    bloat_top_n: 10
+    databases: [app, billing]     # omit for server-wide statistics only
+    tls:
+      ca_cert: /etc/ssl/db-ca.pem
 ```
 
 ### Parameters
@@ -44,15 +42,11 @@ when the extension is installed.
 | `port` | No | `5432` | TCP port |
 | `username` | Yes | - | Monitoring role |
 | `password` | Yes | - | Role's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `database` | No | `postgres` | Maintenance database to connect to |
+| `databases` | No | — | Databases to collect per-database statistics for. Omitted means server-wide statistics only |
 | `interval` | No | `60` | Collection interval in seconds |
-| `timeout` | No | `10` | Per-query timeout in seconds |
-| `sslmode` | No | `prefer` | libpq sslmode (`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`) |
-| `sslrootcert` | No | `""` | CA certificate path (for `verify-ca` / `verify-full`) |
-| `max_replication_lag_seconds` | No | `60` | Threshold for the composite `senhub.db.replication.health` channel |
-| `bloat_top_n` | No | `10` | Top-N tables by heap size to track for bloat (hard cap 50) |
-| `expose_per_database` | No | `false` | Emit per-database metrics |
-| `expose_top_tables` | No | `0` | Emit per-table metrics; cardinality scales with N |
+| `tls.ca_cert` | No | `""` | CA certificate path. Presence of a `tls:` block is what enables TLS |
+| `tls.insecure_skip_verify` | No | `false` | Accept the server certificate without verifying it. For a self-signed certificate in a lab, not in production |
+| `instance_name` | No | derived | Stable identity override for this instance. Set it when the same server is reachable under several names, so the entity does not split |
 
 ## GRANTs
 
