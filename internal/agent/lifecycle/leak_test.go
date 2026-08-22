@@ -78,12 +78,20 @@ func runOneCycle(t *testing.T, cycle int) {
 	port := freePort(t)
 	writeConfig(t, configPath, port, 0)
 
-	// A logger per cycle, as a fresh agent process would build. This
-	// used to be hoisted out of the loop because it leaked a rotator
-	// goroutine per construction; the rotator is shared per path now
-	// (#835), so the cycle can be honest about what it builds.
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath}
-	baseLogger := logger.NewLogger(args)
+
+	// The logger is built from EMPTY args on purpose, so every cycle
+	// resolves the same log file and therefore the same rotator.
+	//
+	// That models production and the test would lie otherwise. A real
+	// agent process has exactly one configuration, so exactly one log
+	// file and one rotator; this loop has a fresh temp config per cycle
+	// only to isolate the services under test. Since #838 the log file
+	// name is derived from the config path — a second INSTANCE must not
+	// share the service's file — so passing the per-cycle path here
+	// would spawn a rotator per cycle and report a leak that no agent
+	// can produce.
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 
 	agentstate.ResetStrategyFailuresForTest()
 
