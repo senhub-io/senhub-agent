@@ -687,13 +687,6 @@ func (p *mysqlProbe) topNTables(ts []tableSize) []tableSize {
 	return out
 }
 
-// queryVersionComment fetches @@version_comment for environment detection.
-func (p *mysqlProbe) queryVersionComment(ctx context.Context) string {
-	var v string
-	_ = p.db.QueryRowContext(ctx, "SELECT @@version_comment").Scan(&v)
-	return v
-}
-
 // queryServerUUID fetches @@server_uuid, the MySQL-persisted stable server
 // identity. Returns "" on error (caller falls back to host:port).
 func (p *mysqlProbe) queryServerUUID(ctx context.Context) string {

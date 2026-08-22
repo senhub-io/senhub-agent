@@ -326,13 +326,6 @@ func (p *CephProbe) collectHealth(now time.Time, instance string) ([]data_store.
 
 // --- OSDs ---
 
-type osdDumpResponse struct {
-	OSDs []struct {
-		Up int `json:"up"`
-		In int `json:"in"`
-	} `json:"osds"`
-}
-
 func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.DataPoint, error) {
 	raw, err := p.apiGet("/api/osd")
 	if err != nil {

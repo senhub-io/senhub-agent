@@ -202,13 +202,6 @@ func (p *pgProbe) dp(name string, value float64, ts time.Time, baseTags []tags.T
 	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: baseTags}
 }
 
-func (p *pgProbe) dpWithTags(name string, value float64, ts time.Time, base []tags.Tag, extra ...tags.Tag) data_store.DataPoint {
-	t := make([]tags.Tag, len(base)+len(extra))
-	copy(t, base)
-	copy(t[len(base):], extra)
-	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: t}
-}
-
 // tagsFor copies baseTags and overrides metric_type.
 func (p *pgProbe) tagsFor(mt dbcommon.MetricType, instance string) []tags.Tag {
 	return []tags.Tag{
