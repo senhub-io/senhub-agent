@@ -76,6 +76,19 @@ Changes land here as they are merged to `dev`.
   discarded once and counted, and the queue keeps doing what it is for:
   riding out an outage.
 
+- **A batch the collector partly refuses is no longer treated as a
+  batch it never received.** OTLP lets a consumer accept a batch and
+  keep only part of it, saying what it refused and why. The agent read
+  that answer as a failed export: the delivered batch went to the
+  on-disk log queue and was replayed at every restart and recovery,
+  re-sending records the collector already had, while the refused ones
+  were refused again and nothing counted them. The rejection is now
+  separated from a real failure — the records the consumer refused are
+  counted in the new
+  `senhub.agent.export.rejected{strategy,signal}` and the reason it
+  gave is logged (once per minute per reason, not once per batch),
+  while the batch stays out of the queue.
+
 - **A dead listener is now reported as unhealthy.** The syslog, event
   and OTLP receiver probes wait for data to arrive rather than polling
   for it, so they had nothing to derive health from and reported healthy
