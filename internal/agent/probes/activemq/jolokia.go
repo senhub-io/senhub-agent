@@ -80,12 +80,3 @@ func (c *jolokiaClient) readString(ctx context.Context, mbean, attribute string)
 	}
 	return s, nil
 }
-
-func (c *jolokiaClient) readMap(ctx context.Context, mbean, attribute string) (map[string]interface{}, error) {
-	raw, err := c.read(ctx, mbean, attribute)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]interface{}
-	return m, json.Unmarshal(raw, &m)
-}

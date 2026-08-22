@@ -281,7 +281,7 @@ func (c *unixLogicalDiskCollector) getMountPointsLinux() ([]mountInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error opening /proc/mounts: %w", err)
 	}
-	defer unix.Close(mountsFile)
+	defer func() { _ = unix.Close(mountsFile) }()
 
 	appendLine := func(line string) {
 		if line == "" {
