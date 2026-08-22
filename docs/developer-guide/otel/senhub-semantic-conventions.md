@@ -1959,10 +1959,16 @@ signal; there is **no separate relation event**.
 ### Relationship types the consumer accepts
 
 An entity record naming a relationship type the consumer does not know is
-**rejected on arrival**, and the producer never learns: the rejection comes
-back as an OTLP partial success and surfaces one hop away, in the collector's
-journal. A production fan-out lost six entity records per batch for 37 minutes
-that way, with nothing in the agent's own logs (#819).
+**rejected on arrival**. The rejection comes back as an OTLP partial success —
+the export itself succeeds — and it used to surface one hop away, in the
+collector's journal: a production fan-out lost six entity records per batch for
+37 minutes that way (#819).
+
+Since 0.5.5 the agent reads that answer itself. The refused records are counted
+in `senhub.agent.export.rejected{strategy,signal}` and the consumer's reason is
+logged, once per minute per distinct reason. Check that counter first when
+entities are missing downstream: a value above zero means the consumer is
+refusing what the agent sends, and the log line says why.
 
 Accepted set as of consumer read-layer **v0.14.0**:
 
