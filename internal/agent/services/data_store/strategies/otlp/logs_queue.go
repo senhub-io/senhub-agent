@@ -357,7 +357,7 @@ func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *lo
 		wrapped:  wrapped,
 		queue:    queue,
 		logger:   log,
-		reporter: newPartialSuccessReporter(log),
+		reporter: newPartialSuccessReporter(log, "export"),
 	}
 	e.healthy.Store(true)
 	return e

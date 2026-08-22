@@ -35,12 +35,13 @@ type metricBatchForwarder interface {
 // ── gRPC transport ───────────────────────────────────────────────────
 
 type grpcMetricBatchForwarder struct {
-	conn    *grpc.ClientConn
-	client  collectormetricspb.MetricsServiceClient
-	headers map[string]string
+	reporter *partialSuccessReporter
+	conn     *grpc.ClientConn
+	client   collectormetricspb.MetricsServiceClient
+	headers  map[string]string
 }
 
-func newGRPCMetricBatchForwarder(cfg Config) (*grpcMetricBatchForwarder, error) {
+func newGRPCMetricBatchForwarder(cfg Config, reporter *partialSuccessReporter) (*grpcMetricBatchForwarder, error) {
 	rt := resolveTransport(cfg, cfg.Metrics.SignalTransport)
 	creds, _, err := tlsCredentials(rt.tls)
 	if err != nil {
@@ -55,9 +56,10 @@ func newGRPCMetricBatchForwarder(cfg Config) (*grpcMetricBatchForwarder, error) 
 		return nil, fmt.Errorf("metrics relay gRPC client for %s: %w", rt.endpoint, err)
 	}
 	return &grpcMetricBatchForwarder{
-		conn:    conn,
-		client:  collectormetricspb.NewMetricsServiceClient(conn),
-		headers: rt.headers,
+		reporter: reporter,
+		conn:     conn,
+		client:   collectormetricspb.NewMetricsServiceClient(conn),
+		headers:  rt.headers,
 	}, nil
 }
 
@@ -65,9 +67,12 @@ func (f *grpcMetricBatchForwarder) forward(ctx context.Context, rm []*metricpb.R
 	if len(f.headers) > 0 {
 		ctx = metadata.NewOutgoingContext(ctx, metadata.New(f.headers))
 	}
-	if _, err := f.client.Export(ctx, &collectormetricspb.ExportMetricsServiceRequest{ResourceMetrics: rm}); err != nil {
+	resp, err := f.client.Export(ctx, &collectormetricspb.ExportMetricsServiceRequest{ResourceMetrics: rm})
+	if err != nil {
 		return fmt.Errorf("MetricsService.Export: %w", err)
 	}
+	ps := resp.GetPartialSuccess()
+	reportRelayRejection(f.reporter, "metrics", ps.GetRejectedDataPoints(), ps.GetErrorMessage())
 	return nil
 }
 
@@ -78,13 +83,14 @@ func (f *grpcMetricBatchForwarder) close() error {
 // ── HTTP transport ───────────────────────────────────────────────────
 
 type httpMetricBatchForwarder struct {
-	client  *http.Client
-	url     string
-	headers map[string]string
-	gzip    bool
+	reporter *partialSuccessReporter
+	client   *http.Client
+	url      string
+	headers  map[string]string
+	gzip     bool
 }
 
-func newHTTPMetricBatchForwarder(cfg Config) (*httpMetricBatchForwarder, error) {
+func newHTTPMetricBatchForwarder(cfg Config, reporter *partialSuccessReporter) (*httpMetricBatchForwarder, error) {
 	rt := resolveTransport(cfg, cfg.Metrics.SignalTransport)
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
@@ -98,10 +104,11 @@ func newHTTPMetricBatchForwarder(cfg Config) (*httpMetricBatchForwarder, error) 
 		transport.TLSClientConfig = tlsConf
 	}
 	return &httpMetricBatchForwarder{
-		client:  &http.Client{Transport: transport},
-		url:     scheme + "://" + rt.endpoint + "/v1/metrics",
-		headers: rt.headers,
-		gzip:    cfg.Compression == "gzip",
+		reporter: reporter,
+		client:   &http.Client{Transport: transport},
+		url:      scheme + "://" + rt.endpoint + "/v1/metrics",
+		headers:  rt.headers,
+		gzip:     cfg.Compression == "gzip",
 	}, nil
 }
 
@@ -139,9 +146,18 @@ func (f *httpMetricBatchForwarder) forward(ctx context.Context, rm []*metricpb.R
 		return fmt.Errorf("POST %s: %w", f.url, err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	// The body is the partial_success answer, not noise: it names what
+	// the collector refused out of this batch. It used to go to
+	// io.Discard, which is why a rejection of relayed telemetry was
+	// invisible from here (#819).
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("POST %s: unexpected status %d", f.url, resp.StatusCode)
+	}
+	var answer collectormetricspb.ExportMetricsServiceResponse
+	if proto.Unmarshal(respBody, &answer) == nil {
+		ps := answer.GetPartialSuccess()
+		reportRelayRejection(f.reporter, "metrics", ps.GetRejectedDataPoints(), ps.GetErrorMessage())
 	}
 	return nil
 }
@@ -177,12 +193,13 @@ type metricsRelay struct {
 }
 
 func newMetricsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*metricsRelay, error) {
+	reporter := newPartialSuccessReporter(moduleLogger, "relay")
 	var fwd metricBatchForwarder
 	var err error
 	if cfg.Protocol == "http" {
-		fwd, err = newHTTPMetricBatchForwarder(cfg)
+		fwd, err = newHTTPMetricBatchForwarder(cfg, reporter)
 	} else {
-		fwd, err = newGRPCMetricBatchForwarder(cfg)
+		fwd, err = newGRPCMetricBatchForwarder(cfg, reporter)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("building log batch forwarder: %w", err)

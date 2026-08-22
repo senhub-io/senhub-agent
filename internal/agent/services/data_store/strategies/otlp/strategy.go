@@ -241,7 +241,7 @@ func NewOTLPSyncStrategy(
 		globalTagKeys: globalTagKeys,
 		globalTags:    globalTags,
 		memLimiter:    ml,
-		psReporter:    newPartialSuccessReporter(moduleLogger),
+		psReporter:    newPartialSuccessReporter(moduleLogger, "export"),
 	}
 
 	if cfg.Persistence.Path != "" {

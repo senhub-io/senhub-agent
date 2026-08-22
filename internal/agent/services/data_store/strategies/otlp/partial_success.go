@@ -172,6 +172,10 @@ type reportRun struct {
 // line per distinct message per window.
 type partialSuccessReporter struct {
 	logger *logger.ModuleLogger
+	// origin names the pipeline this reporter watches — "export" for the
+	// agent's own signals, "relay" for third-party telemetry passing
+	// through. Same consumer, same message, two different losses.
+	origin string
 	window time.Duration
 	now    func() time.Time
 
@@ -179,9 +183,10 @@ type partialSuccessReporter struct {
 	runs map[reportKey]*reportRun
 }
 
-func newPartialSuccessReporter(moduleLogger *logger.ModuleLogger) *partialSuccessReporter {
+func newPartialSuccessReporter(moduleLogger *logger.ModuleLogger, origin string) *partialSuccessReporter {
 	return &partialSuccessReporter{
 		logger: moduleLogger,
+		origin: origin,
 		window: partialSuccessWindow,
 		now:    time.Now,
 		runs:   map[reportKey]*reportRun{},
@@ -226,6 +231,7 @@ func (r *partialSuccessReporter) reportRejection(ps partialSuccess) {
 		return
 	}
 	ev := r.logger.Warn().
+		Str("origin", r.origin).
 		Str("signal", ps.signal).
 		Int64("rejected", ps.rejected).
 		Str("consumer_message", redactSensitive(ps.message))
@@ -286,7 +292,7 @@ var sdkErrorHandlerOnce sync.Once
 // successes included, into the agent's log.
 func installSDKErrorHandler(moduleLogger *logger.ModuleLogger) {
 	sdkErrorHandlerOnce.Do(func() {
-		otel.SetErrorHandler(&sdkErrorHandler{reporter: newPartialSuccessReporter(moduleLogger)})
+		otel.SetErrorHandler(&sdkErrorHandler{reporter: newPartialSuccessReporter(moduleLogger, "sdk")})
 	})
 }
 
@@ -295,4 +301,17 @@ func installSDKErrorHandler(moduleLogger *logger.ModuleLogger) {
 // otherwise turn the installation into a no-op.
 func resetSDKErrorHandlerForTest() {
 	sdkErrorHandlerOnce = sync.Once{}
+}
+
+// reportRelayRejection is what the relay forwarders call with the
+// partial_success the collector service answered. The relays speak the
+// collector API themselves rather than through an SDK exporter, so
+// nothing turns that field into an error for them — they discarded the
+// response entirely, which made a rejection of relayed third-party
+// telemetry invisible on both sides at once (#819).
+func reportRelayRejection(r *partialSuccessReporter, signal string, rejected int64, message string) {
+	if r == nil || (rejected == 0 && message == "") {
+		return
+	}
+	r.reportRejection(partialSuccess{signal: signal, rejected: rejected, message: message})
 }
