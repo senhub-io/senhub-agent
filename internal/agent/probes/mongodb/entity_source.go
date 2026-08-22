@@ -180,14 +180,6 @@ func (s *mongodbEntitySource) Observe() (entity.Observation, bool) {
 	return obs, true
 }
 
-// hostPort formats addr and port as "addr:port".
-func hostPort(addr string, port int64) string {
-	if port == 0 {
-		return addr
-	}
-	return addr + ":" + itoa(port)
-}
-
 // itoa converts an int64 to its decimal string representation without
 // importing strconv (which is already used in mongodb_probe.go for baseTags).
 func itoa(n int64) string {

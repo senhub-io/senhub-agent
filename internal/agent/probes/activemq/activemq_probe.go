@@ -433,15 +433,6 @@ func (p *activemqProbe) matchesFilter(name string) bool {
 	return false
 }
 
-func (p *activemqProbe) collectDestinations(ctx context.Context, now time.Time, destType string) ([]data_store.DataPoint, error) {
-	names, err := p.listDestinationNames(ctx, destType)
-	if err != nil {
-		return nil, fmt.Errorf("listing %s destinations: %w", destType, err)
-	}
-	pts, _ := p.collectDestinationsFromNames(ctx, now, destType, names)
-	return pts, nil
-}
-
 // collectDestinationsFromNames collects metrics for a pre-fetched list of
 // destination names (avoids a duplicate listDestinationNames call when Collect
 // already fetched the names to build the entity snapshot).

@@ -15,16 +15,6 @@ func stubGuestID(m map[string]string) func(string) string {
 	return func(guid string) string { return m[guid] }
 }
 
-// findEntity returns the first entity in obs matching the given type, or nil.
-func findEntity(obs entity.Observation, typ string) *entity.Entity {
-	for i := range obs.Entities {
-		if obs.Entities[i].Type == typ {
-			return &obs.Entities[i]
-		}
-	}
-	return nil
-}
-
 // findRelations returns all relations in obs with the given type.
 func findRelations(obs entity.Observation, typ string) []entity.Relation {
 	var out []entity.Relation

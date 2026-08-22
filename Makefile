@@ -280,7 +280,7 @@ lint: ## Analyse de qualité du code (golangci-lint)
 		echo "$(RED)❌ golangci-lint non installé. Exécutez 'make install-tools'$(NC)"; \
 		exit 1; \
 	}
-	@golangci-lint run --timeout=5m
+	@golangci-lint run --timeout=10m
 	@echo "$(GREEN)✅ Analyse lint terminée$(NC)"
 
 # NEW: Correction automatique des problèmes
