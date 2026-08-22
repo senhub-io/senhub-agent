@@ -89,6 +89,37 @@ Changes land here as they are merged to `dev`.
   gave is logged (once per minute per reason, not once per batch),
   while the batch stays out of the queue.
 
+- **The MySQL and PostgreSQL parameter references were wrong, and are
+  now right.** Both pages described the parameters of the paid-tier
+  probes they replaced when those probes moved to the free tier. An
+  operator following them set `sslmode: require` on PostgreSQL and got a
+  plaintext connection; set `expose_top_tables` on MySQL and got
+  nothing. The pages now list what the shipped probes read. If your
+  configuration uses one of the old names, the agent ignores it
+  silently — it is not rejected, it simply does nothing:
+
+  | Old name | MySQL | PostgreSQL |
+  |---|---|---|
+  | `expose_per_database` | now `per_database` | use `databases: [...]` |
+  | `expose_top_tables: N` | now `per_table: true` + `top_n_tables: N` | not available |
+  | `database` | not read | use `databases: [...]` |
+  | `timeout` | not read | not read |
+  | `max_replication_lag_seconds` | not read | not read |
+  | `bloat_top_n` | — | not read |
+  | `sslmode` / `sslrootcert` | — | now `tls.ca_cert` / `tls.insecure_skip_verify` |
+  | `tls.enabled` / `tls.skip_verify` / `tls.ca_file` | now `tls: true` (no verification controls) | — |
+
+  Whether the dropped options come back is tracked in
+  [#842](https://github.com/senhub-io/senhub-agent/issues/842).
+
+- **Options that shipped without documentation now have some.** A test
+  reads the configuration keys the agent parses and fails the build when
+  one appears nowhere in this guide, which found sixteen: the OTLP
+  memory limit and durability settings, the metric cache cap, the push
+  storages' own parameters, and per-probe options on `smart`, `nvidia`,
+  `activemq` and `snmp_poll`. Each was a shipped feature nobody could
+  find.
+
 - **A dead listener is now reported as unhealthy.** The syslog, event
   and OTLP receiver probes wait for data to arrive rather than polling
   for it, so they had nothing to derive health from and reported healthy

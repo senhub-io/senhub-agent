@@ -168,6 +168,7 @@ storage:
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
 | `endpoints` | `["prtg", "web"]` | Enabled endpoint types |
+| `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
 
 ### Available Endpoint Types
 
@@ -202,6 +203,35 @@ If you installed with `--enable-https`, the agent generated self-signed certific
 | `min_tls_version` | `1.2` | Minimum TLS version (1.2 or 1.3) |
 | `cert_file` | - | Path to TLS certificate file (.pem or .crt) |
 | `key_file` | - | Path to TLS private key file (.pem or .key) |
+
+### Push storages
+
+Two storages push rather than being polled, and both take their own
+parameters. Neither is required: an agent polled over HTTP needs no
+storage but `http`.
+
+```yaml
+storage:
+  - name: prtg
+    params:
+      server_url: "https://prtg.example.com"
+      interval: 60s
+      data_retention_period: 2m
+
+  - name: event
+    params:
+      server_url: "https://eu-west-1.intake.senhub.io"
+      queue_size: 1000
+      sync_interval: 30s
+```
+
+| Parameter | Storage | Default | Description |
+|-----------|---------|---------|-------------|
+| `server_url` | both | — | Required. The destination the agent pushes to |
+| `interval` | `prtg` | `60s` | How often the cached values are pushed |
+| `data_retention_period` | `prtg` | `2m` | How long a pushed value stays valid. A value older than this is dropped rather than sent, so a stalled probe reports no data instead of a stale reading |
+| `queue_size` | `event` | `1000` | Events held in memory awaiting a push. Past it the oldest are dropped and counted |
+| `sync_interval` | `event` | `30s` | How often the queue is flushed. A large batch is flushed earlier on its own |
 
 ## Cache Section
 

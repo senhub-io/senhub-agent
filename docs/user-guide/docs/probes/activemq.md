@@ -29,6 +29,8 @@ reporting broker-level resource usage (memory, store, temp) and per-destination
 | `username` | `admin` | Basic-auth username |
 | `password` | `admin` | Basic-auth password — reference via `${secret:activemq.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
 | `broker_name` | `localhost` | Broker name used to scope MBean queries |
+| `queue_filter` | all queues | Only report these destinations, by exact name. A broker with hundreds of short-lived queues otherwise emits a series per queue |
+| `instance_name` | derived | Stable identity override for this broker, so the entity does not split when the broker is reachable under several names |
 
 ## Metrics
 
