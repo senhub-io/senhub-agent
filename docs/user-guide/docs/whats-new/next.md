@@ -89,28 +89,36 @@ Changes land here as they are merged to `dev`.
   gave is logged (once per minute per reason, not once per batch),
   while the batch stays out of the queue.
 
-- **The MySQL and PostgreSQL parameter references were wrong, and are
-  now right.** Both pages described the parameters of the paid-tier
-  probes they replaced when those probes moved to the free tier. An
-  operator following them set `sslmode: require` on PostgreSQL and got a
-  plaintext connection; set `expose_top_tables` on MySQL and got
-  nothing. The pages now list what the shipped probes read. If your
-  configuration uses one of the old names, the agent ignores it
-  silently — it is not rejected, it simply does nothing:
+- **MySQL and PostgreSQL answer to their documented parameters again.**
+  Both pages described the parameters of the paid probes they replaced
+  when those probes moved to the free tier. An operator following them
+  set `sslmode: require` on PostgreSQL and got a plaintext connection;
+  set `expose_top_tables` on MySQL and got nothing. Nothing warned,
+  because a parameter a probe does not read is simply not read.
 
-  | Old name | MySQL | PostgreSQL |
-  |---|---|---|
-  | `expose_per_database` | now `per_database` | use `databases: [...]` |
-  | `expose_top_tables: N` | now `per_table: true` + `top_n_tables: N` | not available |
-  | `database` | not read | use `databases: [...]` |
-  | `timeout` | not read | not read |
-  | `max_replication_lag_seconds` | not read | not read |
-  | `bloat_top_n` | — | not read |
-  | `sslmode` / `sslrootcert` | — | now `tls.ca_cert` / `tls.insecure_skip_verify` |
-  | `tls.enabled` / `tls.skip_verify` / `tls.ca_file` | now `tls: true` (no verification controls) | — |
+  The old names work again — `expose_per_database`, `expose_top_tables`,
+  `database`, `sslmode`, `sslrootcert`, `timeout` — and the options that
+  had no equivalent at all are back: a query timeout on both probes, a
+  private CA and a verification switch on MySQL (`tls` now takes a block,
+  not just `true`), and a configurable replication lag threshold. The
+  pages list what the probes actually read, and `agent config check`
+  names the current spelling for a renamed parameter.
 
-  Whether the dropped options come back is tracked in
-  [#842](https://github.com/senhub-io/senhub-agent/issues/842).
+  Three PostgreSQL parameters are not coming back: `expose_per_database`,
+  `expose_top_tables` and `bloat_top_n` asked for per-database and
+  per-table breakdowns this probe does not produce. `agent config check`
+  reports them as errors rather than letting them sit in a file looking
+  like they do something.
+
+- **A lagging MySQL replica is no longer reported as healthy.**
+  `senhub.db.replication.health` checked that both replica threads were
+  running and stopped there, so a replica hours behind its source — stale
+  reads, useless for failover — reported 1. Lag is part of the composite
+  now, as the reference always said it was, above
+  `max_replication_lag_seconds` (default 300, the threshold the
+  PostgreSQL probe has always applied). Set it to `0` for a deliberately
+  delayed replica. If you alert on this metric, a replica between your
+  own tolerance and 300 seconds will change state at upgrade.
 
 - **Options that shipped without documentation now have some.** A test
   reads the configuration keys the agent parses and fails the build when
