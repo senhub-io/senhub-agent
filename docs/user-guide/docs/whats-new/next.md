@@ -35,6 +35,19 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **A registry URL with a path no longer breaks updates silently.**
+  `auto_update.url` is the *base* the agent appends to, and it appends
+  two different things — `/releases/…` for the version list,
+  `/download/…` for the artifacts. A value that already carried one of
+  those paths made every derived URL double it, so the agent found
+  nothing, changed nothing, and stayed on its installed version with
+  `auto_update.enabled: true` still in the file. The agent now corrects
+  every shape anyone writes (`/releases`, `/download`, a pasted
+  `releases.json` URL, a trailing slash), on every code path rather than
+  only when the configuration is read, and `agent config check` reports
+  the value with the one to write instead. The correction is also logged
+  once rather than on every collection cycle.
+
 - **The OTLP log queue no longer fills with records that cannot be
   delivered.** When the receiver refuses a batch for what it contains —
   a malformed payload, an attribute type it does not accept — resending

@@ -520,9 +520,25 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 	return nil
 }
 
+// GetRegistryUrl resolves the base every update URL is derived from.
+//
+// Normalisation happens HERE, not only where the configuration is read,
+// because this is the one funnel every caller goes through: the periodic
+// checker, `update <version>`, `update --list`, and the boot version
+// check. Doing it at the config-read site alone left the explicit
+// registryUrl argument — the CLI paths — unprotected (#840).
 func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 	if registryUrl == "" {
 		return DEFAULT_REGISTRY_URL
+	}
+	if fixed, changed := configuration.NormalizeRegistryURL(registryUrl); changed {
+		if configuration.ShouldWarnRegistryURL(registryUrl) && a.logger != nil {
+			a.logger.Warn().
+				Str("configured", registryUrl).
+				Str("using", fixed).
+				Msg("registry URL carries a path the agent appends itself; using the corrected base")
+		}
+		return fixed
 	}
 	return registryUrl
 }
