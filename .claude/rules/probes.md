@@ -219,6 +219,42 @@ For probes that emit collapsed metrics (one OTel name + discriminator attribute)
 
 The probe **type name** must be a deliberate, stable identifier — it's part of license JWT claims, transformer file paths, `DiscriminantTagsRegistry` keys, and customer JWTs already in the wild. Renaming a probe type is a breaking change for every customer holding a license that names it.
 
+## Renaming or dropping a parameter
+
+A parameter name outlives the code that reads it. An unknown key in a
+probe's `params` block is not rejected — it is simply not read — so a
+rename ships as a silent loss of function for every configuration that
+still uses the old spelling. That is how `sslmode: require` came to mean
+a plaintext connection (#842).
+
+When you rename a parameter, or stop reading one:
+
+1. **Keep reading the old name** when the option still exists. Read the
+   legacy spelling FIRST and let the current one override it, so a
+   half-migrated file lands on what the operator wrote most recently.
+2. **Declare it**, in the probe package's `init()`:
+
+   ```go
+   probes.RegisterLegacyParams(ProbeType, map[string]probes.LegacyParam{
+       "expose_per_database": {Replacement: "per_database", Accepted: true},
+       "bloat_top_n":         {Note: "this probe does not measure table bloat"},
+   })
+   ```
+
+   `Accepted: true` means the probe still honours it: `agent config
+   check` reports a WARNING naming the current spelling, and the probe
+   logs one line at startup. No `Accepted` means the option is gone:
+   `config check` reports an **ERROR**, because the operator asked for
+   something that will not happen.
+
+3. Every entry carries a `Replacement`, a `Note`, or both — a test
+   fails otherwise. "That name is wrong" without saying what to write
+   instead is worse than silence.
+
+A parameter that IS read needs no entry, even if it is an alias: a
+warning about something that works as written is noise. Document it in
+the page's parameter table instead.
+
 ## Tests
 
 - Unit tests use synthetic input maps (stub `SHOW GLOBAL STATUS` etc.) — no real connection required for the per-family build* helpers.

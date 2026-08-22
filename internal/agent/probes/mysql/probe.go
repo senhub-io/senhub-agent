@@ -21,8 +21,10 @@
 //	  port:     3306
 //	  username: senhub_monitor
 //	  password: ${env:MYSQL_MONITOR_PASSWORD}
-//	  tls:      false
+//	  tls:      false       # or a block: {ca_file, skip_verify}
 //	  interval: 60
+//	  timeout:  10          # seconds a query may take
+//	  max_replication_lag_seconds: 300  # 0 disables the lag term
 //	  per_database: false   # opt-in size per database
 //	  per_table:    false   # opt-in size per table (requires per_database)
 //	  top_n_tables: 20      # max tables per database when per_table=true
@@ -30,8 +32,11 @@ package mysql
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +57,13 @@ const (
 	defaultPort     = 3306
 	defaultInterval = 60 * time.Second
 	defaultTimeout  = 10 * time.Second
+
+	// defaultMaxReplicationLag matches what the postgresql probe has
+	// always applied. The pages of the probe this one replaced said 60,
+	// but no shipped code ever used that value, and lowering the bar on
+	// upgrade would turn every replica between the two thresholds
+	// unhealthy overnight. Operators who want 60 set it.
+	defaultMaxReplicationLag = 300 * time.Second
 
 	// serverUUIDQuery fetches the MySQL server's persistent unique id.
 	// @@server_uuid is set once at server initialisation and survives
@@ -78,17 +90,43 @@ const (
 	perTableSizeQuery     = "SELECT table_schema, table_name, COALESCE(data_length+index_length,0) FROM information_schema.TABLES WHERE table_schema NOT IN ('information_schema','performance_schema','mysql','sys')"
 )
 
+// tlsSettings carries what an operator asked for on the connection.
+//
+// `tls: true` used to be the whole surface, which means "verify against
+// the system roots" and nothing else — no private CA, no way to accept a
+// self-signed certificate in a lab. Both are ordinary for a database
+// behind an internal PKI, and the probe that shipped before this one
+// took them (#842).
+type tlsSettings struct {
+	Enabled bool
+	// SkipVerify accepts the server's certificate without checking it.
+	// It is a lab affordance and says so in the documentation.
+	SkipVerify bool
+	// CAFile is the PEM bundle the server's certificate is verified
+	// against. Setting it implies Enabled.
+	CAFile string
+}
+
 // config holds the parsed probe configuration.
 type config struct {
-	Host        string
-	Port        int
-	Username    string
-	Password    string
-	TLS         bool
+	Host     string
+	Port     int
+	Username string
+	Password string
+	// Database is the default schema the connection opens on. Optional:
+	// every query the probe issues names its own schema.
+	Database    string
+	TLS         tlsSettings
+	Timeout     time.Duration
 	Interval    time.Duration
 	PerDatabase bool
 	PerTable    bool
 	TopNTables  int
+	// MaxReplicationLag is the lag past which a replica whose threads are
+	// both running still counts as unhealthy. Without it
+	// senhub.db.replication.health reported 1 for a replica hours behind
+	// its source, which is what the metric exists to catch.
+	MaxReplicationLag time.Duration
 	// InstanceName is an optional operator-supplied stable identifier for the
 	// db entity (db.instance.id). When set it takes precedence over the
 	// MySQL-reported @@server_uuid so that operators can assign a meaningful,
@@ -131,9 +169,11 @@ func NewMysqlProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 
 func parseConfig(raw map[string]interface{}) (config, error) {
 	cfg := config{
-		Port:       defaultPort,
-		Interval:   defaultInterval,
-		TopNTables: 20,
+		Port:              defaultPort,
+		Interval:          defaultInterval,
+		Timeout:           defaultTimeout,
+		TopNTables:        20,
+		MaxReplicationLag: defaultMaxReplicationLag,
 	}
 
 	if v, ok := raw["host"].(string); ok && v != "" {
@@ -150,16 +190,40 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	if v, ok := raw["password"].(string); ok {
 		cfg.Password = v
 	}
-	if v, ok := raw["tls"].(bool); ok {
-		cfg.TLS = v
+	if v, ok := raw["database"].(string); ok {
+		cfg.Database = v
+	}
+	tlsCfg, err := parseTLS(raw["tls"])
+	if err != nil {
+		return cfg, err
+	}
+	cfg.TLS = tlsCfg
+	if v, ok := types.DurationParam(raw, "timeout"); ok && v > 0 {
+		cfg.Timeout = v
 	}
 	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
-	if v, ok := raw["per_database"].(bool); ok {
+	if v, ok := types.DurationParam(raw, "max_replication_lag_seconds"); ok && v >= 0 {
+		cfg.MaxReplicationLag = v
+	}
+
+	// The names the probe this one replaced answered to. Read first so a
+	// configuration carrying both spellings converges on the current one
+	// rather than on whichever the parser happened to see last.
+	if v, ok := types.BoolParam(raw, "expose_per_database"); ok {
 		cfg.PerDatabase = v
 	}
-	if v, ok := raw["per_table"].(bool); ok {
+	if v, ok := types.IntParam(raw, "expose_top_tables"); ok && v > 0 {
+		// One key became two: "how many" implied "at all".
+		cfg.PerTable = true
+		cfg.TopNTables = v
+	}
+
+	if v, ok := types.BoolParam(raw, "per_database"); ok {
+		cfg.PerDatabase = v
+	}
+	if v, ok := types.BoolParam(raw, "per_table"); ok {
 		cfg.PerTable = v
 	}
 	if v, ok := types.IntParam(raw, "top_n_tables"); ok && v > 0 {
@@ -169,6 +233,69 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 		cfg.InstanceName = v
 	}
 	return cfg, nil
+}
+
+// parseTLS reads either shape: `tls: true` (verify against the system
+// roots, what the probe accepted before) or a block naming a CA and the
+// verification policy. A block that names a CA or asks to skip
+// verification is on even without `enabled: true` — configuring how TLS
+// behaves and leaving it off is never what someone meant.
+func parseTLS(raw interface{}) (tlsSettings, error) {
+	var out tlsSettings
+	switch v := raw.(type) {
+	case nil:
+		return out, nil
+	case bool:
+		out.Enabled = v
+		return out, nil
+	}
+
+	block, ok := asStringKeyedMap(raw)
+	if !ok {
+		return out, fmt.Errorf("mysql: tls must be true/false or a block, got %T", raw)
+	}
+	if enabled, present := types.BoolParam(block, "enabled"); present {
+		out.Enabled = enabled
+	}
+	if skip, present := types.BoolParam(block, "skip_verify"); present {
+		out.SkipVerify = skip
+	}
+	// The spelling the OTLP strategy and the postgresql probe use. Both
+	// are accepted everywhere rather than making an operator remember
+	// which component wanted which word.
+	if skip, present := types.BoolParam(block, "insecure_skip_verify"); present {
+		out.SkipVerify = skip
+	}
+	if ca, present := types.StringParam(block, "ca_file"); present && ca != "" {
+		out.CAFile = ca
+	}
+	if ca, present := types.StringParam(block, "ca_cert"); present && ca != "" {
+		out.CAFile = ca
+	}
+	if out.CAFile != "" || out.SkipVerify {
+		out.Enabled = true
+	}
+	return out, nil
+}
+
+// asStringKeyedMap normalises the two map shapes a YAML decode produces
+// (yaml.v2 gives interface-keyed maps for nested blocks).
+func asStringKeyedMap(raw interface{}) (map[string]interface{}, bool) {
+	switch m := raw.(type) {
+	case map[string]interface{}:
+		return m, true
+	case map[interface{}]interface{}:
+		out := make(map[string]interface{}, len(m))
+		for k, v := range m {
+			ks, ok := k.(string)
+			if !ok {
+				return nil, false
+			}
+			out[ks] = v
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 func (p *mysqlProbe) ShouldStart() bool          { return true }
@@ -238,7 +365,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	up := float64(0)
 	var points []data_store.DataPoint
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer cancel()
 
 	// Ping the server. The connection is established here (not in OnStart)
@@ -409,7 +536,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	)
 
 	// ─── Storage ──────────────────────────────────────────────────────────────
-	storageCtx, storageCancel := context.WithTimeout(context.Background(), defaultTimeout)
+	storageCtx, storageCancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer storageCancel()
 
 	if totalSize, err := p.querySingleFloat(storageCtx, totalSizeQuery); err == nil {
@@ -444,7 +571,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// ─── Replication ──────────────────────────────────────────────────────────
-	replCtx, replCancel := context.WithTimeout(context.Background(), defaultTimeout)
+	replCtx, replCancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer replCancel()
 
 	role, replicaRows, replicaStatus := p.collectReplication(replCtx)
@@ -462,21 +589,8 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 			health = 0
 		}
 	} else if role == dbcommon.RoleReplica {
-		ioRunning := replicaStatus["Slave_IO_Running"]
-		sqlRunning := replicaStatus["Slave_SQL_Running"]
-		lag := asFloat(replicaStatus["Seconds_Behind_Master"])
-
-		ioOK := float64(0)
-		if strings.EqualFold(ioRunning, "yes") {
-			ioOK = 1
-		}
-		sqlOK := float64(0)
-		if strings.EqualFold(sqlRunning, "yes") {
-			sqlOK = 1
-		}
-		if ioOK == 0 || sqlOK == 0 {
-			health = 0
-		}
+		ioOK, sqlOK, lag := replicaThreadState(replicaStatus)
+		health = replicaHealth(ioOK, sqlOK, lag, p.cfg.MaxReplicationLag)
 		points = append(points,
 			p.dp("senhub.db.mysql.replica.io_thread.running", ioOK, now, string(dbcommon.MetricTypeReplication), allCommonTags),
 			p.dp("senhub.db.mysql.replica.sql_thread.running", sqlOK, now, string(dbcommon.MetricTypeReplication), allCommonTags),
@@ -703,17 +817,90 @@ func (p *mysqlProbe) buildDSN() (string, error) {
 	mc.Passwd = p.cfg.Password
 	mc.Net = "tcp"
 	mc.Addr = fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
-	mc.Timeout = defaultTimeout
-	mc.ReadTimeout = defaultTimeout
-	mc.WriteTimeout = defaultTimeout
+	mc.DBName = p.cfg.Database
+	mc.Timeout = p.cfg.Timeout
+	mc.ReadTimeout = p.cfg.Timeout
+	mc.WriteTimeout = p.cfg.Timeout
 	mc.ParseTime = false
 
-	if p.cfg.TLS {
-		mc.TLSConfig = "true"
-	} else {
-		mc.TLSConfig = "false"
+	tlsName, err := p.registerTLS()
+	if err != nil {
+		return "", err
 	}
+	mc.TLSConfig = tlsName
 	return mc.FormatDSN(), nil
+}
+
+// registerTLS returns the driver's TLS selector for this probe.
+//
+// "true" and "false" are the driver's built-ins; anything else has to be
+// registered by name first. The name carries the probe's own name so two
+// mysql probes with different certificate policies cannot overwrite each
+// other's registration — the driver's registry is process-global.
+func (p *mysqlProbe) registerTLS() (string, error) {
+	if !p.cfg.TLS.Enabled {
+		return "false", nil
+	}
+	if p.cfg.TLS.CAFile == "" && !p.cfg.TLS.SkipVerify {
+		return "true", nil
+	}
+
+	conf := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: p.cfg.TLS.SkipVerify, // #nosec G402 - operator opt-in, documented as a lab affordance
+		ServerName:         p.cfg.Host,
+	}
+	if p.cfg.TLS.CAFile != "" {
+		pem, err := os.ReadFile(p.cfg.TLS.CAFile) // #nosec G304 - operator-supplied path
+		if err != nil {
+			return "", fmt.Errorf("mysql probe %s: reading tls.ca_file: %w", p.GetName(), err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			// Falling back to the system roots here would verify against
+			// the wrong authority and look like it worked.
+			return "", fmt.Errorf("mysql probe %s: tls.ca_file %s contains no usable certificate", p.GetName(), p.cfg.TLS.CAFile)
+		}
+		conf.RootCAs = pool
+	}
+
+	name := "senhub-mysql-" + p.GetName()
+	if err := gomysql.RegisterTLSConfig(name, conf); err != nil {
+		return "", fmt.Errorf("mysql probe %s: registering TLS config: %w", p.GetName(), err)
+	}
+	return name, nil
+}
+
+// replicaThreadState reads the two replica threads and the reported lag
+// out of SHOW REPLICA STATUS.
+func replicaThreadState(status map[string]string) (ioOK, sqlOK, lag float64) {
+	if strings.EqualFold(status["Slave_IO_Running"], "yes") {
+		ioOK = 1
+	}
+	if strings.EqualFold(status["Slave_SQL_Running"], "yes") {
+		sqlOK = 1
+	}
+	return ioOK, sqlOK, asFloat(status["Seconds_Behind_Master"])
+}
+
+// replicaHealth is the composite behind senhub.db.replication.health.
+//
+// Both threads running says the replica is trying, not that it is
+// keeping up: a replica hours behind its source serves stale reads and
+// cannot be failed over to, which is the condition this metric is read
+// for. Lag belongs in the composite — the reference always said it did,
+// and the code did not (#842).
+//
+// A non-positive maxLag turns the lag term off, for a replica that is
+// deliberately delayed.
+func replicaHealth(ioOK, sqlOK, lag float64, maxLag time.Duration) float64 {
+	if ioOK == 0 || sqlOK == 0 {
+		return 0
+	}
+	if maxLag > 0 && lag > maxLag.Seconds() {
+		return 0
+	}
+	return 1
 }
 
 // asFloat parses a string value from SHOW GLOBAL STATUS into a float64.
