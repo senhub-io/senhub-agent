@@ -1,6 +1,9 @@
 package logger
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -49,17 +52,62 @@ type ModuleLogConfig struct {
 // Pre-0.2.0 the Linux path was /var/log/senhub (without "-agent" suffix).
 // LogBaseDir() exposes the canonical directory so install / uninstall
 // can share the same constant.
-func getLogPath() string {
+
+// logFileNameFor picks the log file this instance writes to.
+//
+// The default install keeps "senhubagent.log" unchanged — every log
+// collector, logrotate rule and support runbook in the field names it,
+// and renaming the fleet's log file to fix a second-instance problem
+// would be a far worse trade than the problem.
+//
+// A SECOND instance — a lab, a staging config, a probe under test beside
+// the service — necessarily runs with a different config path, or it
+// would be the same agent. It gets its own file, keyed by that path.
+//
+// Sharing one file between two processes is not untidy, it is
+// destructive: each carries its own rotator, and lumberjack's rotation
+// opens the target with O_TRUNC, so whichever rotates first truncates
+// the file the other is appending to and the other's history is gone
+// (#838). The agent already carves out the interactive `run` for the
+// same reason; this extends the carve-out from mode to instance.
+func logFileNameFor(args *cliArgs.ParsedArgs) string {
+	const defaultName = "senhubagent.log"
+	if args == nil || strings.TrimSpace(args.ConfigPath) == "" {
+		return defaultName
+	}
+
+	configured, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		return defaultName
+	}
+	installed, err := cliArgs.GetAbsoluteConfigPath("")
+	if err != nil {
+		return defaultName
+	}
+	if filepath.Clean(configured) == filepath.Clean(installed) {
+		return defaultName
+	}
+
+	// Short, stable, and derived only from the path — two runs of the
+	// same instance must land in the same file, and the name must not
+	// leak a directory layout into a log directory listing.
+	sum := sha256.Sum256([]byte(filepath.Clean(configured)))
+	return fmt.Sprintf("senhubagent-%s.log", hex.EncodeToString(sum[:4]))
+}
+
+func getLogPath(args *cliArgs.ParsedArgs) string {
 	basePath := LogBaseDir()
 
+	name := logFileNameFor(args)
+
 	// Attempt to create the log directory and test write permissions
-	logPath := filepath.Join(basePath, "senhubagent.log")
+	logPath := filepath.Join(basePath, name)
 	if err := os.MkdirAll(basePath, 0750); err != nil {
 		bootstrapLog().Warn().Err(err).Str("dir", basePath).Msg("Unable to create log directory; falling back to the executable directory")
 		// Fall back to executable directory
 		exePath, _ := os.Executable()
 		basePath = filepath.Dir(exePath)
-		logPath = filepath.Join(basePath, "senhubagent.log")
+		logPath = filepath.Join(basePath, name)
 	} else {
 		// Test write permissions by trying to create a test file
 		testFile := filepath.Join(basePath, ".write_test")
@@ -68,7 +116,7 @@ func getLogPath() string {
 			// Fall back to executable directory
 			exePath, _ := os.Executable()
 			basePath = filepath.Dir(exePath)
-			logPath = filepath.Join(basePath, "senhubagent.log")
+			logPath = filepath.Join(basePath, name)
 		} else {
 			_ = file.Close()
 			_ = os.Remove(testFile)
@@ -272,7 +320,7 @@ func interactiveLogPath(p string) string {
 // - Masking of sensitive information
 // Console output is automatically added when running in interactive mode (run command)
 func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
-	logPath := getLogPath()
+	logPath := getLogPath(args)
 
 	// Detect interactive (`run`) vs service (daemon) mode.
 	isInteractive := service.Interactive()
