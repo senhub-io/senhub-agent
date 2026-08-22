@@ -95,14 +95,12 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 
 	// Wrap transport with BasicAuth if credentials are configured.
-	var roundTripper http.RoundTripper = transport
 	if cfg.Username != "" {
-		roundTripper = &basicAuthTransport{
+		httpClient.Transport = &basicAuthTransport{
 			wrapped:  transport,
 			username: cfg.Username,
 			password: cfg.Password,
 		}
-		httpClient.Transport = roundTripper
 	}
 
 	probe := &TomcatProbe{

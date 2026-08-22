@@ -337,6 +337,11 @@ func (m *MetricsProcessor) ApplyNagiosTagFilters(metrics []CachedMetric, filters
 
 	var filtered []CachedMetric
 	for _, metric := range metrics {
+		// include only ever goes false, so the filter loop runs to the
+		// end rather than short-circuiting. It used to carry `break`
+		// statements that LOOKED like they did: inside a switch case a
+		// break leaves the switch, not the loop. Harmless today, and a
+		// trap for whoever adds a branch that sets include back to true.
 		include := true
 
 		for _, filter := range filters {
@@ -369,17 +374,14 @@ func (m *MetricsProcessor) ApplyNagiosTagFilters(metrics []CachedMetric, filters
 			case "equals":
 				if len(filter.Values) > 0 && tagValue != filter.Values[0] {
 					include = false
-					break
 				}
 			case "not_equals":
 				if len(filter.Values) > 0 && tagValue == filter.Values[0] {
 					include = false
-					break
 				}
 			case "exists":
 				if tagValue == "" {
 					include = false
-					break
 				}
 			}
 		}

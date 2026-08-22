@@ -1,7 +1,6 @@
 package rabbitmq
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -334,18 +333,13 @@ func TestFetchJSON_InvalidJSON(t *testing.T) {
 		client: &http.Client{},
 	}
 
-	var dst json.RawMessage
-	err := p.fetchJSON("/api/overview", &dst)
-	// should succeed — raw JSON is valid as []byte; but here we pass a typed struct
-	// to trigger the real path. Use a typed target to exercise the unmarshal error.
+	// A typed target is what exercises the unmarshal path: json.RawMessage
+	// accepts any bytes, so decoding into one would prove nothing.
 	type strict struct {
 		Field int `json:"field"`
 	}
 	var s strict
-	err = p.fetchJSON("/api/overview", &s)
-	// json.Unmarshal("not-json") will fail
-	if err == nil {
+	if err := p.fetchJSON("/api/overview", &s); err == nil {
 		t.Error("fetchJSON should fail on invalid JSON body")
 	}
-	_ = err
 }

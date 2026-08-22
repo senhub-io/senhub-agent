@@ -1,6 +1,9 @@
 package auto_update
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestShouldUpdateTo(t *testing.T) {
 	tests := []struct {
@@ -47,11 +50,11 @@ func TestErrFirst_ReturnsFirstNonNil(t *testing.T) {
 		t.Errorf("all-nil should return nil; got %v", got)
 	}
 	mock := &mockErr{"first"}
-	if got := errFirst(nil, mock, nil); got != mock {
+	if got := errFirst(nil, mock, nil); !errors.Is(got, mock) {
 		t.Errorf("got %v, want first non-nil mock", got)
 	}
 	second := &mockErr{"second"}
-	if got := errFirst(nil, mock, second); got != mock {
+	if got := errFirst(nil, mock, second); !errors.Is(got, mock) {
 		t.Errorf("got %v, want %v (first non-nil)", got, mock)
 	}
 }
