@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -230,10 +232,15 @@ func (s *SyncStrategySenhub) doSync() error {
 // the payload is rejected for a reason resending cannot fix.
 type permanentClientError struct {
 	statusCode int
+	// reason is what the intake said. Empty when it said nothing.
+	reason string
 }
 
 func (e *permanentClientError) Error() string {
-	return fmt.Sprintf("permanent client error: status %d", e.statusCode)
+	if e.reason == "" {
+		return fmt.Sprintf("permanent client error: status %d", e.statusCode)
+	}
+	return fmt.Sprintf("permanent client error: status %d: %s", e.statusCode, e.reason)
 }
 
 // Unwrap places the status-code detail inside the shared taxonomy: the
@@ -243,18 +250,55 @@ func (e *permanentClientError) Error() string {
 // reach it with errors.As.
 func (e *permanentClientError) Unwrap() error { return exporterrors.ErrValidation }
 
+// maxRejectionBodyBytes bounds how much of a refusal the agent reads
+// back. A rejection carries a sentence, not a stream; reading without a
+// bound would let a misbehaving endpoint stream into a log line.
+const maxRejectionBodyBytes = 4096
+
 func (s *SyncStrategySenhub) doSyncData(data []SenhubDataPoint) error {
 	response, err := s.server.Post("/metrics", data)
 	if err != nil {
 		return err
 	}
+	// Drain and close so the transport can reuse the connection. The
+	// body was never closed here, on any path — one leaked connection
+	// per sync, the same defect PRTG had in #277.
+	defer func() {
+		_, _ = io.Copy(io.Discard, response.Body)
+		_ = response.Body.Close()
+	}()
 
 	if response.StatusCode != 200 {
+		// The intake's own explanation of the refusal, which is the only
+		// thing that matters on this failure. It used to be formatted
+		// with %v against the io.ReadCloser, so the log carried the
+		// pointer — "&{0xc000...}" — and never the reason (#832).
+		reason := readRejectionReason(response.Body)
 		if exporterrors.IsPermanentHTTPStatus(response.StatusCode) {
-			return &permanentClientError{statusCode: response.StatusCode}
+			return &permanentClientError{statusCode: response.StatusCode, reason: reason}
 		}
-		return fmt.Errorf("unexpected status code: %d\n%v", response.StatusCode, response.Body)
+		if reason == "" {
+			return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+		}
+		return fmt.Errorf("unexpected status code: %d: %s", response.StatusCode, reason)
 	}
 
 	return nil
+}
+
+// readRejectionReason reads a bounded, single-line rendering of an error
+// body. Returns "" when the body is empty or unreadable — the status
+// code alone is still worth reporting, so a read failure must not lose
+// the error it was describing.
+func readRejectionReason(body io.Reader) string {
+	if body == nil {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(body, maxRejectionBodyBytes))
+	if err != nil {
+		return ""
+	}
+	// Collapse to one line: this lands in a structured log field, and a
+	// multi-line body would break the record it is embedded in.
+	return strings.TrimSpace(strings.Join(strings.Fields(string(raw)), " "))
 }
