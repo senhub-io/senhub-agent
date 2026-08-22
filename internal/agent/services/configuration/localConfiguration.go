@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -183,49 +182,20 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 	}
 	cfg := *lc.snapshot().AutoUpdate
 	if fixed, changed := NormalizeRegistryURL(cfg.URL); changed {
-		lc.logger.Warn().
-			Str("configured", cfg.URL).
-			Str("using", fixed).
-			Msg("auto_update.url carried a trailing /releases; the agent appends that path itself, so the configured value resolved to a doubled path and updates were failing silently. Using the corrected base URL — fix the config to stop this warning")
+		// Once per configured value, not once per call: this function is
+		// on the hot path — GetConfiguration resolves the auto-update
+		// block and runs once per datapoint batch — so the previous
+		// unconditional warning meant one identical line per batch, for
+		// the life of the process (#840).
+		if ShouldWarnRegistryURL(cfg.URL) {
+			lc.logger.Warn().
+				Str("configured", cfg.URL).
+				Str("using", fixed).
+				Msg("auto_update.url carries a path the agent appends itself, so every derived URL doubled it and updates were failing silently. Using the corrected base — edit the config to stop this warning")
+		}
 		cfg.URL = fixed
 	}
 	return &cfg
-}
-
-// NormalizeRegistryURL strips what the agent appends itself from a configured
-// registry URL, and reports whether it had to.
-//
-// The agent builds the version-list URL with url.JoinPath(registry,
-// "/releases/releases.json"). A config whose url already ends in /releases —
-// which is what the installer scaffolded before #586 — therefore resolves to
-// .../releases/releases/releases.json. That path returned nothing usable when
-// #747 was written, so auto-update did nothing while `enabled: true` sat in
-// the file and the host silently stayed on the version it was installed with.
-//
-// The release server now answers the doubled path with the same payload as the
-// correct one (verified 2026-08-20: both 200, byte-identical; an arbitrary
-// path under /releases/ still 404s, so this is a deliberate alias rather than
-// a catch-all). Do NOT read that as making this function redundant — it is the
-// other way round. The two cover different populations: this normalisation
-// covers hosts running 0.5.4+, the server alias covers everything older still
-// carrying the bad URL on disk. Removing either one re-breaks the population
-// the other does not reach.
-//
-// Fixing the scaffold did nothing for the hosts already deployed, and those
-// are the ones running. Normalising on read repairs the whole fleet at the
-// next restart without anyone editing a file.
-func NormalizeRegistryURL(raw string) (normalized string, changed bool) {
-	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
-	if trimmed == "" {
-		return raw, false
-	}
-	if strings.HasSuffix(trimmed, "/releases") {
-		trimmed = strings.TrimSuffix(trimmed, "/releases")
-	}
-	if trimmed == raw {
-		return raw, false
-	}
-	return trimmed, true
 }
 
 // GetCacheConfig returns the cache configuration
