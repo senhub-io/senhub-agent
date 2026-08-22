@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -146,5 +147,63 @@ func TestPermanentClientErrorClassifiesAsValidation(t *testing.T) {
 	var permErr *permanentClientError
 	if !errors.As(err, &permErr) || permErr.statusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status code must stay reachable through errors.As, got %+v", permErr)
+	}
+}
+
+// TestRejectionReasonReachesTheOperator is the defect #832 named: the
+// intake's explanation of why it refused a batch was formatted with %v
+// against an io.ReadCloser, so the log carried a pointer and never the
+// reason — on exactly the failure where the reason is the only thing
+// that matters.
+func TestRejectionReasonReachesTheOperator(t *testing.T) {
+	const reason = `{"error":"metric name too long","field":"name"}`
+
+	for _, status := range []int{http.StatusUnprocessableEntity, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(reason))
+			}))
+			defer srv.Close()
+
+			s := newTestStrategy(t, srv.URL)
+			err := s.doSyncData([]SenhubDataPoint{{Name: "x", Value: 1}})
+			if err == nil {
+				t.Fatalf("status %d produced no error", status)
+			}
+			if !strings.Contains(err.Error(), "metric name too long") {
+				t.Errorf("the intake's reason is missing from %q", err.Error())
+			}
+			if strings.Contains(err.Error(), "0xc0") || strings.Contains(err.Error(), "&{") {
+				t.Errorf("the error carries a pointer rendering instead of text: %q", err.Error())
+			}
+		})
+	}
+}
+
+// TestRejectionReasonIsBoundedAndSingleLine keeps a misbehaving endpoint
+// from streaming into a log record, and keeps a multi-line body from
+// breaking the structured line it is embedded in.
+func TestRejectionReasonIsBoundedAndSingleLine(t *testing.T) {
+	body := "first line\nsecond line\n" + strings.Repeat("A", 100_000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	s := newTestStrategy(t, srv.URL)
+	err := s.doSyncData([]SenhubDataPoint{{Name: "x", Value: 1}})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if strings.Contains(err.Error(), "\n") {
+		t.Errorf("the reason spans multiple lines: %q", err.Error())
+	}
+	if len(err.Error()) > maxRejectionBodyBytes+200 {
+		t.Errorf("the reason is unbounded: %d bytes", len(err.Error()))
+	}
+	if !strings.Contains(err.Error(), "first line second line") {
+		t.Errorf("the leading text was lost: %q", err.Error()[:80])
 	}
 }
