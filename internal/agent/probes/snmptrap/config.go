@@ -66,17 +66,17 @@ func parseConfig(config map[string]interface{}) (receiverConfig, error) {
 		Version:     defaultVersion,
 	}
 
-	if v, ok := config["bind_address"].(string); ok && v != "" {
+	if v, ok := types.StringParam(config, "bind_address"); ok && v != "" {
 		cfg.BindAddress = v
 	}
-	if v, ok := config["version"].(string); ok && v != "" {
+	if v, ok := types.StringParam(config, "version"); ok && v != "" {
 		cfg.Version = strings.ToLower(v)
 	}
 	if cfg.Version != "v2c" && cfg.Version != "v3" {
 		return cfg, fmt.Errorf("snmp_trap: version must be \"v2c\" or \"v3\", got %q", cfg.Version)
 	}
 
-	if v, ok := config["community"].(string); ok {
+	if v, ok := types.StringParam(config, "community"); ok {
 		cfg.Community = v
 	}
 
@@ -128,9 +128,11 @@ func parseV3Users(raw interface{}) ([]v3User, error) {
 	return out, nil
 }
 
+// stringField is the "absent means empty" form this file wants, over the
+// shared helper rather than over a bare assertion — so a value that
+// arrives as something other than a string is handled the same way here
+// as everywhere else (#831).
 func stringField(m map[string]interface{}, key string) string {
-	if v, ok := m[key].(string); ok {
-		return v
-	}
-	return ""
+	v, _ := types.StringParam(m, key)
+	return v
 }

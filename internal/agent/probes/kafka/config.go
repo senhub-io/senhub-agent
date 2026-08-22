@@ -47,13 +47,13 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	if v := types.StringSlice(raw["brokers"]); len(v) > 0 {
 		cfg.Brokers = v
 	}
-	if v, ok := raw["protocol_version"].(string); ok && v != "" {
+	if v, ok := types.StringParam(raw, "protocol_version"); ok && v != "" {
 		cfg.ProtocolVersion = v
 	}
-	if v, ok := raw["tls"].(bool); ok {
+	if v, ok := types.BoolParam(raw, "tls"); ok {
 		cfg.TLS = v
 	}
-	if v, ok := raw["sasl_mechanism"].(string); ok {
+	if v, ok := types.StringParam(raw, "sasl_mechanism"); ok {
 		mech := strings.ToUpper(v)
 		switch mech {
 		case "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512":
@@ -62,21 +62,21 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 			return cfg, fmt.Errorf("kafka: unsupported sasl_mechanism %q (valid: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512)", v)
 		}
 	}
-	if v, ok := raw["sasl_username"].(string); ok {
+	if v, ok := types.StringParam(raw, "sasl_username"); ok {
 		cfg.SASLUsername = v
 	}
-	if v, ok := raw["sasl_password"].(string); ok {
+	if v, ok := types.StringParam(raw, "sasl_password"); ok {
 		cfg.SASLPassword = v
 	}
-	if secs, ok := raw["interval"].(int); ok && secs > 0 {
+	if secs, ok := types.IntParam(raw, "interval"); ok && secs > 0 {
 		cfg.Interval = time.Duration(secs) * time.Second
 	}
-	if secs, ok := raw["timeout"].(int); ok && secs > 0 {
+	if secs, ok := types.IntParam(raw, "timeout"); ok && secs > 0 {
 		cfg.Timeout = time.Duration(secs) * time.Second
 	}
 	cfg.TopicFilter = types.StringSlice(raw["topic_filter"])
 	cfg.GroupFilter = types.StringSlice(raw["group_filter"])
-	if v, ok := raw["instance_name"].(string); ok {
+	if v, ok := types.StringParam(raw, "instance_name"); ok {
 		cfg.InstanceName = v
 	}
 
