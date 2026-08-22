@@ -37,14 +37,6 @@ func entityID(obs entity.Observation) string {
 	return v
 }
 
-// relationType returns the type of the first relation or "".
-func relationType(obs entity.Observation) string {
-	if len(obs.Relations) == 0 {
-		return ""
-	}
-	return obs.Relations[0].Type
-}
-
 // relByType returns a pointer to the first relation of the given type, or nil.
 func relByType(obs entity.Observation, ty string) *entity.Relation {
 	for i := range obs.Relations {
