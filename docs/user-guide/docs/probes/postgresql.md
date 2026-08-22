@@ -28,10 +28,11 @@ when the extension is installed.
     port: 5432
     username: senhub_monitor
     password: ${secret:production-postgres.password}   # OS secret store; inline plaintext is auto-sealed on install
+    database: postgres
     interval: 60
-    databases: [app, billing]     # omit for server-wide statistics only
-    tls:
-      ca_cert: /etc/ssl/db-ca.pem
+    timeout: 10
+    sslmode: verify-full
+    sslrootcert: /etc/ssl/db-ca.pem
 ```
 
 ### Parameters
@@ -42,11 +43,30 @@ when the extension is installed.
 | `port` | No | `5432` | TCP port |
 | `username` | Yes | - | Monitoring role |
 | `password` | Yes | - | Role's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `databases` | No | — | Databases to collect per-database statistics for. Omitted means server-wide statistics only |
+| `database` | No | `postgres` | Database the connection opens on. The probe reads cluster-wide views, so this selects the connection and nothing else |
+| `databases` | No | — | List form of the same thing; only the first entry is used |
 | `interval` | No | `60` | Collection interval in seconds |
-| `tls.ca_cert` | No | `""` | CA certificate path. Presence of a `tls:` block is what enables TLS |
-| `tls.insecure_skip_verify` | No | `false` | Accept the server certificate without verifying it. For a self-signed certificate in a lab, not in production |
+| `timeout` | No | `10` | Seconds a query may take. Accepts `30` or `30s` |
+| `sslmode` | No | `prefer` | libpq mode, passed to the driver as written: `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`. An unknown value stops the probe rather than reaching the server |
+| `sslrootcert` | No | `""` | CA certificate path, libpq's name for it. `tls.ca_file` and `tls.ca_cert` are the same setting |
+| `tls.ca_file` | No | `""` | CA the server's certificate is verified against. Setting it selects `verify-full` unless `sslmode` says otherwise |
+| `tls.skip_verify` | No | `false` | Accept the server certificate without verifying it (`insecure_skip_verify` is accepted too). Selects `require`. For a lab, not for production |
+| `max_replication_lag_seconds` | No | `300` | Replay lag past which a streaming replica counts as unhealthy. `0` turns the lag term off |
 | `instance_name` | No | derived | Stable identity override for this instance. Set it when the same server is reachable under several names, so the entity does not split |
+
+#### Parameters this probe does not read
+
+The paid probe this one replaced produced per-database and per-table
+breakdowns. This one reports **cluster-wide totals** — `pg_stat_database`
+is already summed — so three of its parameters have nothing to map onto
+and are reported as errors by `agent config check` rather than accepted
+and ignored:
+
+| Parameter | Why |
+|---|---|
+| `expose_per_database` | there is no per-database breakdown to turn on |
+| `expose_top_tables` | no per-table metrics are emitted |
+| `bloat_top_n` | table bloat is not measured |
 
 ## GRANTs
 

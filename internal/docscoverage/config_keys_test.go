@@ -23,9 +23,15 @@ var scanRoots = []string{
 }
 
 // docRoot is the reference tree an operator is pointed at. A key
-// mentioned only in a release note, a developer-guide page or a code
-// comment is a key nobody configuring the agent will find.
+// mentioned only in a developer-guide page or a code comment is a key
+// nobody configuring the agent will find.
 const docRoot = "docs/user-guide/docs"
+
+// skippedDocDirs are pages under docRoot that do not count as
+// documentation of a key. A release note announces a change once and is
+// then read by nobody looking things up — a key mentioned only there is
+// as undiscoverable as one mentioned nowhere.
+var skippedDocDirs = []string{"whats-new"}
 
 // configKeyRe bounds what counts as a key: snake_case, and long enough
 // that a map lookup like m["id"] does not enter the corpus as one.
@@ -383,7 +389,15 @@ func documentationCorpus(t *testing.T, root string) string {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() || !strings.HasSuffix(path, ".md") {
+		if info.IsDir() {
+			for _, skip := range skippedDocDirs {
+				if filepath.Base(path) == skip {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".md") {
 			return nil
 		}
 		content, readErr := os.ReadFile(path)
