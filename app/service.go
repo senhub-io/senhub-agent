@@ -40,7 +40,7 @@ func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Wr
 	} else {
 		fmt.Fprintf(errOut, "Error removing the system service: %v\n", err)
 		fmt.Fprintln(out, "Removing the installed files anyway, as confirmed.")
-		fmt.Fprintln(out, "If a service unit survives, it will not start without them: remove it by hand.")
+		fmt.Fprintln(out, "If a service registration survives, it will not start without them: remove it by hand.")
 	}
 
 	cleanupFiles(args)
