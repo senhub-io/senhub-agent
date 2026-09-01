@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,7 +16,9 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
@@ -506,6 +509,31 @@ func checkConfig(configPath string) {
 				warnings++
 				continue
 			}
+			// A key no strategy reads is invisible at runtime: the file
+			// says one thing and the agent does another, which is how
+			// `insecure: true` came to mean a TLS handshake (#846).
+			for _, unread := range data_store.UnreadParamsFor(s.Name, s.Params) {
+				if unread.Replacement != "" {
+					fmt.Printf("         [WARN] Storage %q: param %q is not read; write %s instead\n",
+						s.Name, unread.Key, unread.Replacement)
+					warnings++
+					continue
+				}
+				fmt.Printf("         [ERROR] Storage %q: param %q is not read by the %s strategy and has no effect\n",
+					s.Name, unread.Key, s.Name)
+				errorCount++
+			}
+
+			// And the validation the agent runs at construction: a
+			// configuration this refuses is a configuration that will be
+			// dropped, and reporting it valid here only moves the
+			// discovery to the restart (#848).
+			if verr := data_store.ValidateStrategyParams(s.Name, s.Params); verr != nil {
+				fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
+				errorCount++
+				continue
+			}
+
 			if s.Name == "otlp" {
 				if otlp.StalenessEvictionDisabled(s.Params) {
 					fmt.Printf("  [WARN] Strategy %q: staleness_ttl disables series eviction\n", s.Name)
@@ -707,6 +735,16 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	// an operator finds out before deploying rather than after (#842).
 	errors, warnings = reportLegacyProbeParams(name, probeType, params)
 
+	// Then ask the probe itself. Every range and coherence check a probe
+	// performs lives in its constructor, so a check that never builds one
+	// passes on the mistakes operators actually make: `priority: 99` was
+	// reported [OK] and the probe then refused to start (#848). The probe
+	// is constructed and dropped — no Start, so nothing opens a socket or
+	// a file.
+	e, w := reportProbeParamProblems(name, probeType, params)
+	errors += e
+	warnings += w
+
 	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
 	// Validate manually instead of using a flat required-list.
 	if probeType == "citrix" {
@@ -746,6 +784,43 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 				warnings++
 			}
 		}
+	}
+
+	return errors, warnings
+}
+
+// reportProbeParamProblems builds the probe and reports what it refuses.
+//
+// Two different answers matter to an operator: a value the probe rejects
+// outright (an error — the probe will not start), and a value the probe
+// could not read and silently replaced with its default (a warning — the
+// probe starts, doing something other than what the file says, #847).
+func reportProbeParamProblems(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	ctor, known := probes.LookupProbeConstructor(probeType)
+	if !known {
+		return 0, 0
+	}
+
+	// The probe's own logger goes nowhere: `config check` speaks in
+	// [OK]/[WARN]/[ERROR] lines, and a probe logging its construction
+	// would interleave with them.
+	discard := zerolog.New(io.Discard)
+	probeLogger := (*agentLogger.Logger)(&discard)
+
+	var ctorErr error
+	issues := types.CollectParamIssues(func() {
+		_, ctorErr = ctor(params, probeLogger)
+	})
+
+	for _, issue := range issues {
+		fmt.Printf("         [WARN] Probe %q: param %q reads %v, which is not %s — the probe ignores it and uses its default\n",
+			name, issue.Key, issue.Got, issue.Want)
+		warnings++
+	}
+
+	if ctorErr != nil {
+		fmt.Printf("         [ERROR] Probe %q: %v\n", name, ctorErr)
+		errors++
 	}
 
 	return errors, warnings

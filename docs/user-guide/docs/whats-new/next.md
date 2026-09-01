@@ -33,6 +33,44 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **`agent config check` now reads the values, not only the shape.** It
+  verified that a file parsed, that a probe type existed and that a
+  strategy resolved, and never asked whether the values would be
+  accepted — so `priority: 99` was reported `[OK]` and the probe then
+  refused to start, and a strategy key the agent rejects at construction
+  passed the same way. The check now runs each probe's own validation
+  (the probe is built and dropped: nothing is started, no socket or file
+  is opened) and each strategy's validator.
+
+    Three new lines you may see on a file that used to pass:
+
+    | What | Reported as |
+    |---|---|
+    | A value the probe refuses (`priority: 99`) | `[ERROR]`, and the check exits non-zero |
+    | A value the probe cannot read (`priority: "high"`) | `[WARN]` — the probe starts on its default, which is not what the file says |
+    | A key the strategy never reads (`insecure: true`) | `[ERROR]`, or a `[WARN]` naming the current spelling when there is one |
+
+    If you run `config check` in a pipeline, a file with one of these
+    now fails it. That is the point — the agent was already behaving
+    this way, silently.
+
+- **A parameter the agent cannot read no longer disappears without a
+  word.** The typed readers answered "absent" and "present but
+  unreadable" identically, so every probe treated a mistyped value the
+  way it treats a missing one: it used its default. `priority:
+  "pas-un-nombre"` started a journal reader on priority 7 and said
+  nothing. The agent now warns at startup, naming the parameter, the
+  value written and what was expected.
+
+- **`uninstall` cleans the machine even when there is no service unit to
+  remove.** The file cleanup was gated on the service removal
+  succeeding, and the failure was swallowed: on a machine whose unit had
+  already been removed by hand, or where an install never completed,
+  `uninstall --yes` printed nothing, removed nothing and exited 0 —
+  leaving the sealed secret store, which holds the agent key and every
+  credential the agent sealed. The removal is now reported when it
+  fails, the files go either way, and the exit code says so.
+
 - **Uninstalling now removes the sealed secret store.** `uninstall` said
   "Cleanup completed" while leaving `probes.d/`, `strategies.d/` and the
   secret store on disk — the latter holding the agent key and every
