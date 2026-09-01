@@ -35,6 +35,17 @@ type SystemStatus struct {
 	// process, so reading the in-memory state locally would always show
 	// none while the agent has a dead output (#826).
 	StrategyFailures []StrategyFailure `json:"strategy_failures,omitempty"`
+	// ConfigWatch is set only when the agent runs WITHOUT a
+	// configuration watch, in which case an edit needs a restart to
+	// apply. Same reason as above: the daemon knows, the CLI does not.
+	ConfigWatch *ConfigWatch `json:"config_watch,omitempty"`
+}
+
+// ConfigWatch says why the running agent is not watching its
+// configuration.
+type ConfigWatch struct {
+	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // StrategyFailure is one configured output that failed to start, as
