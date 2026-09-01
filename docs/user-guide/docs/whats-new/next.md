@@ -33,6 +33,13 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **The `docker` and `swarm` probes now work on Windows.** Docker Engine
+  and Docker Desktop expose their API over a named pipe there, while the
+  probes only ever dialled a Unix socket — so a Windows host running
+  containers collected nothing at all. The default address is now the one
+  the platform actually uses, and `socket_path` accepts a pipe
+  (`npipe://./pipe/docker_engine`).
+
 - **`agent config check` now reads the values, not only the shape.** It
   verified that a file parsed, that a probe type existed and that a
   strategy resolved, and never asked whether the values would be

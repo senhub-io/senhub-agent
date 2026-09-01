@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -475,8 +476,8 @@ func TestParseConfig_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseConfig: %v", err)
 	}
-	if cfg.SocketPath != defaultSocketPath {
-		t.Errorf("socket = %q, want %q", cfg.SocketPath, defaultSocketPath)
+	if cfg.SocketPath != dockerdial.DefaultAddress() {
+		t.Errorf("socket = %q, want %q", cfg.SocketPath, dockerdial.DefaultAddress())
 	}
 	if cfg.Interval != defaultInterval {
 		t.Errorf("interval = %v, want %v", cfg.Interval, defaultInterval)
