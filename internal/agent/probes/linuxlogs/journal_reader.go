@@ -45,8 +45,12 @@ func parseEntry(e journalEntry, probeName string) agentstate.LogRecord {
 	ts := parseRealtime(e.RealtimeUS)
 
 	attrs := map[string]string{}
+	// Namespaced, never host.name: the resource already carries the
+	// canonical FQDN, and _HOSTNAME is the short kernel name. Two
+	// spellings of the same key at two levels split one host in two
+	// downstream (#844).
 	if e.Hostname != "" {
-		attrs["host.name"] = e.Hostname
+		attrs["systemd.hostname"] = e.Hostname
 	}
 	if e.SystemdUnit != "" {
 		attrs["systemd.unit"] = e.SystemdUnit

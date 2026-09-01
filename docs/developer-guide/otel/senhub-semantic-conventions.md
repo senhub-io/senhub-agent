@@ -931,7 +931,7 @@ Each record carries the attributes below, read from the JSON of `journalctl --ou
 
 | Attribute OTel | Source journalctl | Notes |
 |---|---|---|
-| `host.name` | `_HOSTNAME` | canonical resource attr |
+| `systemd.hostname` | `_HOSTNAME` | the short kernel name; **never** `host.name`, which the resource already carries as an FQDN (#844) |
 | `systemd.unit` | `_SYSTEMD_UNIT` | Canonical OTel attribute for the systemd service |
 | `syslog.appname` | `SYSLOG_IDENTIFIER` | Canonical OTel attribute (the RFC 5424 `appname` equivalent) |
 | `process.pid` | `_PID` | canonical OTel attr |
@@ -1004,7 +1004,7 @@ The record carries the keys mandated by issue #154, plus canonical OTel attribut
 | `event_provider` | `System/Provider/@Name` | key mandated by #154 |
 | `event_source` | `System/Provider/@Name` | key mandated by #154 (an alias of provider, for PRTG parity) |
 | `record_id` | `System/EventRecordID` | key mandated by #154 |
-| `host.name` | `System/Computer` | canonical OTel resource attr |
+| `winlog.computer` | `System/Computer` | as Windows spells it (uppercase); **never** `host.name`, which the resource already carries as an FQDN (#844) |
 | `process.pid` | `System/Execution/@ProcessID` | canonical OTel attr |
 | `user.id` | `System/Security/@UserID` | SID; omitted when `redact_pii: true` |
 | `eventdata.<Name>` | `EventData/Data` | Structured payload; sensitive fields masked in PII mode |
@@ -1929,8 +1929,10 @@ VictoriaMetrics — a common bug to diagnose.
 The logs signal (the `syslog`, `event` and `linux_logs` probes) is purely
 OTel: there is no `senhub.*` convention at the log-record level itself —
 the attributes are the standard ones (`syslog.facility`,
-`syslog.hostname`, `syslog.appname`, `host.name`, `systemd.unit`,
-`process.pid`, `process.executable.name`). Only the `event` probe's payload —
+`syslog.hostname`, `syslog.appname`, `systemd.unit`, `process.pid`,
+`process.executable.name`). None of them is `host.name`: the host lives
+on the resource, and a record-level copy in another spelling splits one
+machine in two downstream (#844). Only the `event` probe's payload —
 free-form by construction — is namespaced `senhub.event.*`.
 
 Severity mapping: the RFC 5424 → OTel SeverityNumber table applied
