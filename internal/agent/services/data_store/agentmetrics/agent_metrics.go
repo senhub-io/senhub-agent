@@ -293,6 +293,24 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Configuration watch. A gauge at 1 while the agent is running
+	// without one, gone once it has it. The agent collects and exports
+	// normally in that state, so nothing else would show it — and the
+	// host most likely to be in it is a host whose logs you are no
+	// longer reading (#850).
+	if watch := agentstate.GetConfigWatchDisabled(); watch != nil {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.config.watch.disabled",
+			Unit: "",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"reason": watch.Reason,
+			},
+			Value:       1,
+			Description: "Set to 1 while the agent is not watching its configuration, by reason (watcher_unavailable, path_not_watched). A configuration change then needs an agent restart to apply. No series means the configuration is watched.",
+		})
+	}
+
 	// Per-reason drop counters — emitted as a single OTel metric with
 	// `reason` attribute. Operators alert on this rising. Today the only
 	// reason emitted is `store_cap` (cardinality cap on the metric store);
