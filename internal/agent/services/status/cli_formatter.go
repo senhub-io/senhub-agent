@@ -58,6 +58,14 @@ func (f *CLIFormatter) FormatSystemStatus(status SystemStatus) string {
 		output.WriteString(block)
 	}
 
+	// Running without a configuration watch. The agent collects and
+	// exports normally, so nothing else in this view would say that an
+	// edit will not be picked up (#850).
+	if block := f.formatConfigWatch(status.ConfigWatch); block != "" {
+		output.WriteString("\n")
+		output.WriteString(block)
+	}
+
 	// Probe Status (only if we have probes)
 	if len(status.Probes) > 0 {
 		output.WriteString("\n")
@@ -138,6 +146,29 @@ func (f *CLIFormatter) formatStrategyFailures(failures []StrategyFailure) string
 		}
 	}
 	output.WriteString("\nThe agent is running; these outputs are not. Fix the configuration and restart.\n")
+	return output.String()
+}
+
+// formatConfigWatch renders the degraded configuration watch. Returns
+// an empty string when the configuration is watched, so the nominal
+// status view is unchanged.
+func (f *CLIFormatter) formatConfigWatch(watch *ConfigWatch) string {
+	if watch == nil {
+		return ""
+	}
+
+	var output strings.Builder
+	if runtime.GOOS == "windows" {
+		output.WriteString("Configuration NOT watched\n")
+	} else {
+		output.WriteString("⚠️  Configuration NOT watched\n")
+	}
+	output.WriteString(strings.Repeat("-", 30) + "\n")
+	output.WriteString(fmt.Sprintf("%-12s %s\n", "reason:", watch.Reason))
+	if watch.Detail != "" {
+		output.WriteString(fmt.Sprintf("             %s\n", watch.Detail))
+	}
+	output.WriteString("\nCollection and export are unaffected. A configuration change will not be\npicked up on its own: restart the agent to apply one.\n")
 	return output.String()
 }
 
