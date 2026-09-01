@@ -63,6 +63,8 @@ func TestConfigCheckFailsOnAParameterWithNoEffect(t *testing.T) {
 	out := captureStdout(t, func() {
 		errs, warns = validateProbeParams("pg", "postgresql", map[string]interface{}{
 			"host":        "db.example.com",
+			"username":    "monitor",
+			"password":    "secret",
 			"bloat_top_n": 10,
 		})
 	})
@@ -88,6 +90,8 @@ func TestConfigCheckReportsEveryLegacyParameter(t *testing.T) {
 	out := captureStdout(t, func() {
 		errs, warns = validateProbeParams("pg", "postgresql", map[string]interface{}{
 			"host":                "db.example.com",
+			"username":            "monitor",
+			"password":            "secret",
 			"database":            "appdb",   // read as written — not a legacy name
 			"sslmode":             "require", // idem
 			"expose_top_tables":   5,
