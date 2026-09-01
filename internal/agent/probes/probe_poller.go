@@ -92,7 +92,23 @@ func NewProbePoller(
 	// their option does nothing is this line (#842).
 	reportLegacyParams(moduleLogger, config.Name, config.Type, config.Params)
 
-	probe, err := probeConstructor(config.Params, baseLogger)
+	// A parameter the probe could not read is not a parsing detail: the
+	// operator wrote a value and the probe used its default instead.
+	// Collected around the construction so the warning can name the
+	// probe, which the helpers themselves cannot know (#847).
+	var probe types.Probe
+	issues := types.CollectParamIssues(func() {
+		probe, err = probeConstructor(config.Params, baseLogger)
+	})
+	for _, issue := range issues {
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Str("probe_type", config.Type).
+			Str("param", issue.Key).
+			Interface("value", issue.Got).
+			Str("expected", issue.Want).
+			Msg("Configured parameter could not be read and was ignored; the probe uses its default instead")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("unable to start probe %s: %w", config.Name, err)
 	}

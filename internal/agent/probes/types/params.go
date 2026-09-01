@@ -21,8 +21,68 @@ package types
 import (
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// ParamIssue names a parameter that is present in a probe's
+// configuration and cannot be read as the type the probe asked for.
+//
+// The helpers below answer (value, ok), and ok=false covers two
+// situations an operator experiences very differently: the key is
+// absent, which means "use the default", and the key is present
+// holding something unreadable, which means "what I wrote was thrown
+// away". Every caller writes `if v, ok := IntParam(...); ok`, so
+// without this the second case takes the path of the first and the
+// operator is never told (#847).
+type ParamIssue struct {
+	Key  string
+	Want string
+	Got  interface{}
+}
+
+// issueSink receives issues while a collector is installed. Read on
+// every unreadable value and written only by CollectParamIssues, so it
+// is an atomic pointer rather than a plain variable.
+var issueSink atomic.Pointer[func(ParamIssue)]
+
+// collecting serialises collectors: two overlapping collections would
+// each see the other's issues.
+var collecting sync.Mutex
+
+// CollectParamIssues runs fn and returns every parameter the parsing
+// inside it found present and unreadable.
+//
+// Callers construct one probe at a time, which is what makes a
+// process-wide sink workable: an issue raised by another goroutine
+// while a collection is open would be attributed to it.
+func CollectParamIssues(fn func()) []ParamIssue {
+	collecting.Lock()
+	defer collecting.Unlock()
+
+	var mu sync.Mutex
+	var found []ParamIssue
+	sink := func(i ParamIssue) {
+		mu.Lock()
+		defer mu.Unlock()
+		found = append(found, i)
+	}
+	issueSink.Store(&sink)
+	defer issueSink.Store(nil)
+
+	fn()
+
+	mu.Lock()
+	defer mu.Unlock()
+	return found
+}
+
+func reportParamIssue(key, want string, got interface{}) {
+	if sink := issueSink.Load(); sink != nil {
+		(*sink)(ParamIssue{Key: key, Want: want, Got: got})
+	}
+}
 
 // IntParam reads an integer parameter from a probe config map. It
 // accepts int / int32 / int64 / float64 / float64 / numeric string —
@@ -33,6 +93,16 @@ import (
 // rejected so a typo like `port: 5140.5` does not silently become
 // 5140.
 func IntParam(m map[string]interface{}, key string) (int, bool) {
+	v, ok := intParam(m, key)
+	if !ok {
+		if raw, present := m[key]; present {
+			reportParamIssue(key, "a whole number", raw)
+		}
+	}
+	return v, ok
+}
+
+func intParam(m map[string]interface{}, key string) (int, bool) {
 	raw, present := m[key]
 	if !present {
 		return 0, false
@@ -72,6 +142,16 @@ func IntParam(m map[string]interface{}, key string) (int, bool) {
 // can write `backoff_factor: 2` (int literal) without breaking a
 // field declared as float64.
 func FloatParam(m map[string]interface{}, key string) (float64, bool) {
+	v, ok := floatParam(m, key)
+	if !ok {
+		if raw, present := m[key]; present {
+			reportParamIssue(key, "a number", raw)
+		}
+	}
+	return v, ok
+}
+
+func floatParam(m map[string]interface{}, key string) (float64, bool) {
 	raw, present := m[key]
 	if !present {
 		return 0, false
@@ -113,6 +193,9 @@ func StringParam(m map[string]interface{}, key string) (string, bool) {
 		return "", false
 	}
 	s, isString := raw.(string)
+	if !isString {
+		reportParamIssue(key, "text (quote it)", raw)
+	}
 	return s, isString
 }
 
@@ -121,6 +204,16 @@ func StringParam(m map[string]interface{}, key string) (string, bool) {
 // …) so a value that came through an environment-variable substitution
 // — always a string — reads the same as a YAML literal.
 func BoolParam(m map[string]interface{}, key string) (bool, bool) {
+	v, ok := boolParam(m, key)
+	if !ok {
+		if raw, present := m[key]; present {
+			reportParamIssue(key, "true or false", raw)
+		}
+	}
+	return v, ok
+}
+
+func boolParam(m map[string]interface{}, key string) (bool, bool) {
 	raw, present := m[key]
 	if !present {
 		return false, false
@@ -185,6 +278,7 @@ func StringSliceParam(m map[string]interface{}, key string) ([]string, bool) {
 	case []interface{}, []string, string:
 		return StringSlice(raw), true
 	default:
+		reportParamIssue(key, "a list of text values", raw)
 		return nil, false
 	}
 }
@@ -209,8 +303,9 @@ func DurationParam(m map[string]interface{}, key string) (time.Duration, bool) {
 		// string ("45", the shape an env substitution produces) is
 		// still read as seconds.
 	}
-	seconds, ok := FloatParam(m, key)
+	seconds, ok := floatParam(m, key)
 	if !ok {
+		reportParamIssue(key, "a duration (\"45s\") or a number of seconds", raw)
 		return 0, false
 	}
 	return time.Duration(seconds * float64(time.Second)), true
