@@ -165,15 +165,21 @@ func (s *EventSyncStrategy) GetStrategyParams() map[string]interface{} {
 	}
 }
 
-// ValidateConfigParams validates the provided configuration parameters
-func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageConfigParams) error {
+// ValidateParams reads the parameters without touching any strategy.
+//
+// Kept separate from the method below because a caller that only wants
+// to know whether a configuration is acceptable — `agent config check`
+// — must not resize a live buffer to find out, and could not call the
+// method at all: on a zero-value strategy it closes a nil channel
+// (#848).
+func ValidateParams(params configuration.StorageConfigParams) (EventSyncStrategyParams, error) {
 	config := EventSyncStrategyParams{
 		QueueSize:    DefaultQueueSize,
 		SyncInterval: DefaultSyncInterval,
 	}
 
 	if url, ok := params["server_url"].(string); !ok || url == "" {
-		return fmt.Errorf("server_url is required")
+		return config, fmt.Errorf("server_url is required")
 	} else {
 		config.ServerURL = url
 		config.ServerURLFull = url + "/event/insert"
@@ -186,9 +192,20 @@ func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageCon
 	if interval, ok := params["sync_interval"].(string); ok {
 		duration, err := time.ParseDuration(interval)
 		if err != nil {
-			return fmt.Errorf("invalid sync_interval: %w", err)
+			return config, fmt.Errorf("invalid sync_interval: %w", err)
 		}
 		config.SyncInterval = duration
+	}
+
+	return config, nil
+}
+
+// ValidateConfigParams validates the provided configuration parameters
+// and adopts them.
+func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageConfigParams) error {
+	config, err := ValidateParams(params)
+	if err != nil {
+		return err
 	}
 
 	s.config = config
