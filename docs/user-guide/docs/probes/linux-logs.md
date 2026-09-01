@@ -78,7 +78,7 @@ attributes (mapped per the OTel semantic conventions):
 |---|---|
 | Severity (number + text) | `PRIORITY` field, mapped via RFC 5424 → OTel table |
 | Body | `MESSAGE` field |
-| `host.name` | `_HOSTNAME` |
+| `systemd.hostname` | `_HOSTNAME` |
 | `systemd.unit` | `_SYSTEMD_UNIT` |
 | `syslog.appname` | `SYSLOG_IDENTIFIER` |
 | `process.pid` | `_PID` |
@@ -87,6 +87,12 @@ attributes (mapped per the OTel semantic conventions):
 | `systemd.transport` | `_TRANSPORT` |
 | `senhub.probe.name` | The probe instance name (from `probes[].name`) |
 | `senhub.probe.type` | `"linux_logs"` |
+
+The host a record came from is the one on the resource, resolved as an
+FQDN, the same value the metrics carry. `_HOSTNAME` is the short kernel
+name of that same machine, so it is emitted as `systemd.hostname` and
+never as a record-level `host.name` — two spellings of one key would
+split the host in two on the consumer side.
 
 Severity mapping (RFC 5424 → OTel):
 

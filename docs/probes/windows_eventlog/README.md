@@ -70,7 +70,9 @@ otlp:
 
 Each record carries the mandated attributes `event_id`, `event_level`,
 `event_channel`, `event_provider`, `event_source`, `record_id`, plus
-OTel-canonical `host.name` / `process.pid` / `user.id` and the full
+`winlog.computer` (the Windows spelling of the machine; the canonical
+`host.name` lives on the resource), OTel-canonical `process.pid` /
+`user.id` and the full
 `EventData` payload under `eventdata.<Name>`. Severity maps Windows
 levels to the OTel SeverityNumber range (Critical→FATAL, Error→ERROR,
 Warning→WARN, Information→INFO, Verbose→DEBUG).
@@ -123,8 +125,8 @@ Validated end-to-end on **Windows Server 2022** (build 20348):
 
 - Real `System` + `Application` events flow to OTLP logs with every
   mandated attribute (`event_id`, `event_level`, `event_channel`,
-  `event_provider`, `event_source`, `record_id`) plus `host.name`,
-  `process.pid` and the `eventdata.*` payload.
+  `event_provider`, `event_source`, `record_id`) plus
+  `winlog.computer`, `process.pid` and the `eventdata.*` payload.
 - Per-channel bookmarks persist and resume after a restart
   (`StartAfterBookmark`) with **no duplication and no loss**.
 - Steady-state tail footprint ~22 MB / ~0% CPU; a 53k-event backlog

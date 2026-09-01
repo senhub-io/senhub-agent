@@ -138,8 +138,8 @@ func TestToLogRecord_MandatedAttributes(t *testing.T) {
 	if rec.Attributes["event_id"] != "4624" {
 		t.Errorf("event_id = %q", rec.Attributes["event_id"])
 	}
-	if rec.Attributes["host.name"] != "WIN-VDA01" {
-		t.Errorf("host.name = %q", rec.Attributes["host.name"])
+	if rec.Attributes["winlog.computer"] != "WIN-VDA01" {
+		t.Errorf("winlog.computer = %q", rec.Attributes["winlog.computer"])
 	}
 	if rec.Attributes["eventdata.TargetUserName"] != "jdoe" {
 		t.Errorf("eventdata.TargetUserName = %q", rec.Attributes["eventdata.TargetUserName"])
@@ -161,5 +161,20 @@ func TestToLogRecord_RedactPII(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body, "REDACTED") {
 		t.Errorf("Security body should be redacted, got %q", rec.Body)
+	}
+}
+
+// The Computer field is the same machine spelled uppercase; as a
+// record-level host.name it collides with the canonical FQDN on the
+// resource and splits one host in two downstream (#844).
+func TestToLogRecord_NeverEmitsRecordLevelHostName(t *testing.T) {
+	ev, _ := parseEventXML(sampleSecurityEvent)
+	rec := ev.toLogRecord("sec", false)
+
+	if v, ok := rec.Attributes["host.name"]; ok {
+		t.Errorf("host.name must not be a record attribute, got %q", v)
+	}
+	if rec.Attributes["winlog.computer"] != "WIN-VDA01" {
+		t.Errorf("winlog.computer = %q", rec.Attributes["winlog.computer"])
 	}
 }
