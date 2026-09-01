@@ -22,8 +22,6 @@ Changes land here as they are merged to `dev`.
   keeps the previous behaviour (the Go default of 90 seconds), so
   nothing changes until you configure it.
 
-## Features
-
 - **Route a probe's logs to a specific output.** A probe that produces
   logs sent them to every output that reads them; the `endpoints`-style
   filtering that governs metrics did not apply. The new per-probe
@@ -209,6 +207,30 @@ Changes land here as they are merged to `dev`.
   without restarting the agent.
 
 ## Breaking Changes
+
+- **`linux_logs` and `windows_eventlog` no longer put `host.name` on a
+  log record.** Both probes read a local journal, and both copied the
+  hostname the source spells into a record-level `host.name` — the short
+  kernel name on Linux, the uppercase computer name on Windows. The
+  resource already carries the canonical FQDN, the same value the
+  metrics use, so every record held that key twice with two values and
+  which one survived was decided by the consumer. On a reporting tenant
+  that split 22 machines into 35 identities, and a dashboard filtered on
+  the FQDN showed a quarter of the lines with nothing saying so. The
+  per-record value is kept, namespaced, the way `syslog` has always
+  emitted a remote sender's hostname.
+
+    | Before (record attribute) | After (record attribute) |
+    |---|---|
+    | `host.name` = `edge-01` (`linux_logs`) | `systemd.hostname` = `edge-01` |
+    | `host.name` = `DASH483` (`windows_eventlog`) | `winlog.computer` = `DASH483` |
+
+    Migration: a query filtering log records on the short or uppercase
+    name must move to the resource-level `host.name` (the FQDN), which
+    is also what joins logs to metrics. A query that needs the spelling
+    the source used reads `systemd.hostname` or `winlog.computer`. The
+    `syslog` probe is untouched: its `syslog.hostname` genuinely names
+    another machine.
 
 - **`senhub.agent.otlp.export.errors` gained a `signal` attribute.**
   The unlabeled series is replaced by one series per failing signal;

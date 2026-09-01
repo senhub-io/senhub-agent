@@ -50,6 +50,11 @@ Each event becomes one OTel log record: channel, provider, EventID,
 level (mapped to OTel severity), task, keywords, the rendered
 message as the body, and the EventData fields as attributes.
 
+The machine name from the event XML is emitted as `winlog.computer`,
+the uppercase spelling Windows uses. The host a record belongs to is
+the FQDN on the resource — the same value the metrics carry — so the
+record never carries its own `host.name`.
+
 ## Operational notes
 
 - **Push, not poll.** Events are delivered by subscription the
