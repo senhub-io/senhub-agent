@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -32,7 +33,6 @@ import (
 const ProbeType = "docker"
 
 const (
-	defaultSocketPath     = "/var/run/docker.sock"
 	defaultInterval       = 60 * time.Second
 	defaultTimeout        = 10 * time.Second
 	apiVersion            = "v1.43"
@@ -186,7 +186,7 @@ func NewDockerProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 
 func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	cfg := probeConfig{
-		SocketPath: defaultSocketPath,
+		SocketPath: dockerdial.DefaultAddress(),
 		Interval:   defaultInterval,
 		Timeout:    defaultTimeout,
 	}
@@ -228,12 +228,13 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	return cfg, nil
 }
 
-// buildClient constructs an http.Client that dials the Unix socket.
+// buildClient constructs an http.Client that dials the engine on
+// whichever transport this platform offers.
 func (p *dockerProbe) buildClient() *http.Client {
 	socketPath := p.cfg.SocketPath
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
+			return dockerdial.Dial(ctx, socketPath)
 		},
 	}
 	return &http.Client{
