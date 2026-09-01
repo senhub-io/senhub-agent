@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"runtime"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -39,6 +40,30 @@ func (p *dockerProbe) sourcePoints(active string, ts time.Time) []data_store.Dat
 	return points
 }
 
+// noUnifiedCgroupMessage picks what to tell an operator when there is no
+// unified cgroup tree to read.
+//
+// The two cases are not variations of one another. On Linux the host
+// runs cgroup v1, which splits controllers across sibling trees and
+// needs a different reader, and the fallback is a real thing that could
+// have worked. Everywhere else there are no cgroups at all, and naming
+// them sends the operator looking for something their platform does not
+// have — which is what the probe did on Windows once #801 let it get
+// this far.
+func noUnifiedCgroupMessage(goos string) string {
+	switch goos {
+	case "linux":
+		return "docker: the socket is unreachable and this host uses cgroup v1, " +
+			"which the unprivileged fallback does not read; grant access to the socket or see the least-privilege guide"
+	case "windows":
+		return "docker: the engine is unreachable; check that the Docker service is running " +
+			"and that this account may open its named pipe"
+	default:
+		return "docker: the engine is unreachable; check that the Docker daemon is running " +
+			"and that this account may open its socket"
+	}
+}
+
 // collectFromCgroups is the unprivileged path, used when the Docker socket
 // cannot be reached. It reports ok=false when the fallback cannot run at all,
 // so the caller can surface the original socket error instead.
@@ -52,11 +77,14 @@ func (p *dockerProbe) collectFromCgroups(ts time.Time, socketErr error) ([]data_
 		return nil, false
 	}
 	if !p.cgroups.unifiedAvailable() {
-		// cgroup v1 splits controllers across sibling trees and needs a
-		// different reader. Publishing half of it would be worse than
-		// publishing none, so say so and let the socket error stand.
-		p.warnOnce("docker: the socket is unreachable and this host uses cgroup v1, " +
-			"which the unprivileged fallback does not read; grant access to the socket or see the least-privilege guide")
+		// No unified cgroup tree. Two very different reasons, and telling
+		// an operator the wrong one sends them somewhere there is nothing
+		// to find: on Linux the host runs cgroup v1, which splits
+		// controllers across sibling trees and needs a different reader;
+		// everywhere else there are no cgroups at all, and the engine is
+		// reached over a named pipe whose reachability is the only
+		// question (#801 made this path visible on Windows).
+		p.warnOnce(noUnifiedCgroupMessage(runtime.GOOS))
 		return nil, false
 	}
 
