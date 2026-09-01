@@ -1,9 +1,14 @@
 package app
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"senhub-agent.go/internal/agent/cliArgs"
 )
 
 // TestCleanupTargetsWholeInstalledConfigDir pins what an operator gets
@@ -74,5 +79,64 @@ func TestCleanupSparesAnOperatorDirectory(t *testing.T) {
 	}
 	if len(files) != 1 || files[0] != configPath {
 		t.Errorf("files = %v, want just the config file", files)
+	}
+}
+
+// failingRemover stands in for a machine with no service unit: the
+// removal fails, and the question is what happens to the files.
+type failingRemover struct{ err error }
+
+func (f failingRemover) Uninstall() error { return f.err }
+
+// TestRemoveServiceCleansUpWhenTheUnitIsGone pins the #849 behaviour.
+//
+// Gating the file cleanup on the service removal meant `uninstall --yes`
+// on a machine whose unit had already been removed printed nothing,
+// removed nothing and exited 0 — leaving the sealed secret store on a
+// machine the operator believed they had cleaned.
+func TestRemoveServiceCleansUpWhenTheUnitIsGone(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(configPath, []byte("config_version: 3\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var out, errOut bytes.Buffer
+	err := removeService(
+		failingRemover{err: errors.New("no such unit")},
+		&cliArgs.ParsedArgs{ConfigPath: configPath},
+		&out, &errOut,
+	)
+
+	if err == nil {
+		t.Error("a failed service removal must be reported to the caller, which turns it into a non-zero exit")
+	}
+	if !strings.Contains(errOut.String(), "no such unit") {
+		t.Errorf("the failure must name what went wrong, got %q", errOut.String())
+	}
+	if _, statErr := os.Stat(configPath); !os.IsNotExist(statErr) {
+		t.Error("the configuration survived an uninstall the operator confirmed")
+	}
+}
+
+// TestRemoveServiceReportsSuccess keeps the nominal path honest: when
+// the unit does go away, the operator is told so and nothing is
+// reported on stderr.
+func TestRemoveServiceReportsSuccess(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(configPath, []byte("config_version: 3\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := removeService(failingRemover{}, &cliArgs.ParsedArgs{ConfigPath: configPath}, &out, &errOut); err != nil {
+		t.Fatalf("removeService: %v", err)
+	}
+	if !strings.Contains(out.String(), "Service uninstalled successfully") {
+		t.Errorf("success must be stated, got %q", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("nothing belongs on stderr on the nominal path, got %q", errOut.String())
 	}
 }

@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,6 +16,37 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
+
+// serviceRemover is the part of service.Service removeService needs, so
+// the no-unit path is testable without a service manager.
+type serviceRemover interface {
+	Uninstall() error
+}
+
+// removeService removes the system service and then the installed
+// files, in that order and independently.
+//
+// The file cleanup is NOT gated on the service removal succeeding. The
+// operator confirmed the removal of the whole configuration directory,
+// and the absence of a service unit — removed by hand, an install that
+// never completed, a unit registered under another name — is not a
+// reason to leave the sealed secret store on the machine. Gating it
+// meant `uninstall --yes` on such a machine printed nothing, removed
+// nothing and exited 0, which reads exactly like success (#849).
+func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Writer) error {
+	err := s.Uninstall()
+	if err == nil {
+		fmt.Fprintln(out, "Service uninstalled successfully")
+	} else {
+		fmt.Fprintf(errOut, "Error removing the system service: %v\n", err)
+		fmt.Fprintln(out, "Removing the installed files anyway, as confirmed.")
+		fmt.Fprintln(out, "If a service unit survives, it will not start without them: remove it by hand.")
+	}
+
+	cleanupFiles(args)
+
+	return err
+}
 
 func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// Build the ExecStart arguments for the installed service: pass
@@ -200,13 +232,8 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			time.Sleep(2 * time.Second)
 		}
 
-		// Uninstall the service
-		err = s.Uninstall()
-		if err == nil {
-			fmt.Println("Service uninstalled successfully")
-
-			// Clean up files and directories
-			cleanupFiles(args)
+		if removeService(s, args, os.Stdout, os.Stderr) != nil {
+			os.Exit(1)
 		}
 	case "start":
 		// Heal a pre-0.2.x Windows registration whose command line
