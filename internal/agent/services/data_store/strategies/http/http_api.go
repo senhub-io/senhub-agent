@@ -300,6 +300,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 		Uptime:           systemHealth.Uptime,
 		Health:           systemHealth.Health,
 		StrategyFailures: strategyFailureList(),
+		ConfigWatch:      configWatchInfo(),
 		Cache: CacheInfoResponse{
 			TotalMetrics: totalMetrics,
 			TTL:          a.strategy.cache.ttl.String(),
@@ -807,6 +808,16 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 		a.logger.Error().Err(err).Msg("Failed to encode OTLP info response")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+// configWatchInfo reports the configuration watch only when it is NOT
+// running: the nominal payload is unchanged.
+func configWatchInfo() *ConfigWatchInfo {
+	state := agentstate.GetConfigWatchDisabled()
+	if state == nil {
+		return nil
+	}
+	return &ConfigWatchInfo{Reason: state.Reason, Detail: state.Detail}
 }
 
 // strategyFailureList snapshots the configured outputs that are not

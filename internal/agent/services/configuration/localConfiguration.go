@@ -15,6 +15,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -88,6 +89,12 @@ type LocalConfiguration struct {
 	stopOnce       sync.Once
 	releaseStopCtx func() bool
 	watcherWG      sync.WaitGroup
+
+	// newWatcher is fsnotify.NewWatcher, replaceable so a test can
+	// exercise the kernel refusing one — the case that used to stop the
+	// agent from running at all (#850) and that no test could reach
+	// while the constructor was called directly.
+	newWatcher func() (*fsnotify.Watcher, error)
 }
 
 // snapshot returns the current immutable configuration snapshot
@@ -132,6 +139,7 @@ func NewLocalConfiguration(
 		configPath:    configPath,
 		args:          args,
 		eventNotifier: NewEventNotifier(moduleLogger.Logger),
+		newWatcher:    fsnotify.NewWatcher,
 	}
 	lc.storeData(LocalConfigurationData{})
 
@@ -297,15 +305,27 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	//     triggers a reload without an agent restart. Pre-0.2.x
 	//     these directories were silently unwatched — operators had
 	//     to restart to pick up new fragments.
+	//
+	// None of this is fatal. The watch is a convenience — an edit picked
+	// up without a restart — and it can fail for reasons that have
+	// nothing to do with the operator's file: inotify has a per-user
+	// instance quota, and a host running k3s can hold most of it. Exiting
+	// there meant the agent restarted five times, systemd gave up, and
+	// the host stopped being monitored because a convenience could not
+	// start (#850). A configuration that cannot be LOADED is still fatal:
+	// that is the operator's file, and it is checked above.
 	var err error
-	lc.watcher, err = fsnotify.NewWatcher()
+	lc.watcher, err = lc.newWatcher()
 	if err != nil {
-		return fmt.Errorf("failed to create file watcher: %w", err)
+		lc.degradeToUnwatched(agentstate.ConfigWatchUnavailable, err)
+		return nil
 	}
 
 	if err := lc.watcher.Add(lc.configPath); err != nil {
 		_ = lc.watcher.Close()
-		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
+		lc.watcher = nil
+		lc.degradeToUnwatched(agentstate.ConfigWatchNotWatched, err)
+		return nil
 	}
 	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
 
@@ -326,7 +346,9 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		}
 		if err := lc.watcher.Add(dir); err != nil {
 			_ = lc.watcher.Close()
-			return fmt.Errorf("failed to watch fragment directory %s: %w", dir, err)
+			lc.watcher = nil
+			lc.degradeToUnwatched(agentstate.ConfigWatchNotWatched, err)
+			return nil
 		}
 		lc.logger.Info().Str("dir", dir).Msg("Started watching fragment directory")
 	}
@@ -334,6 +356,8 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	// Start watching goroutine (joinable: Shutdown closes stopCh and
 	// waits on watcherWG). Cancelling ctx closes the same channel, so
 	// the watcher has exactly one termination signal.
+	agentstate.ClearConfigWatchDisabled()
+
 	lc.stopCh = make(chan struct{})
 	if ctx != nil {
 		lc.releaseStopCtx = context.AfterFunc(ctx, func() {
@@ -344,6 +368,22 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	go lc.watchConfigFile()
 
 	return nil
+}
+
+// degradeToUnwatched keeps the agent running without a configuration
+// watch, and makes the degraded state findable.
+//
+// The log line is the least reliable of the three surfaces — a host that
+// stops being monitored often stops shipping its logs too — so the state
+// also reaches a metric and `agent status`.
+func (lc *LocalConfiguration) degradeToUnwatched(reason string, cause error) {
+	detail := cause.Error()
+	agentstate.RecordConfigWatchDisabled(reason, detail)
+	lc.logger.Warn().
+		Err(cause).
+		Str("config_path", lc.configPath).
+		Str("reason", reason).
+		Msg("Configuration changes will NOT be picked up without a restart: the file watcher could not start. Collection and export are unaffected; edit the configuration and restart the agent to apply it.")
 }
 
 // Shutdown performs cleanup and stops file watching

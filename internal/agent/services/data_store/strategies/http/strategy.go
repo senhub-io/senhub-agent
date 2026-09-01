@@ -350,6 +350,10 @@ type SystemInfoResponse struct {
 	// separate process: reading the in-memory state there would always
 	// find it empty while the daemon holds the truth (#826).
 	StrategyFailures []StrategyFailureInfo `json:"strategy_failures,omitempty"`
+	// ConfigWatch is set only when the agent is running WITHOUT a
+	// configuration watch: an edit then needs a restart to apply. Same
+	// reasoning as above — the daemon holds the truth, the CLI does not.
+	ConfigWatch *ConfigWatchInfo `json:"config_watch,omitempty"`
 }
 
 // OTLPInfoResponse represents the response for /info/otlp — a snapshot
@@ -361,6 +365,12 @@ type StrategyFailureInfo struct {
 	Strategy string `json:"strategy"`
 	Reason   string `json:"reason"`
 	Detail   string `json:"detail,omitempty"`
+}
+
+// ConfigWatchInfo says why the agent is not watching its configuration.
+type ConfigWatchInfo struct {
+	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
 }
 
 type OTLPInfoResponse struct {

@@ -33,6 +33,28 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **The agent no longer refuses to run when it cannot watch its
+  configuration.** The watch exists so an edit is picked up without a
+  restart. It can fail for reasons that have nothing to do with your
+  file: on Linux, inotify has a per-user quota of 128 instances by
+  default, and a host running k3s can hold most of it. The agent treated
+  that as a fatal start, systemd restarted it five times, gave up, and
+  the host stopped being monitored — because a convenience could not
+  start.
+
+    It now starts, collects and exports normally, and says what it lost:
+
+    | Surface | What you see |
+    |---|---|
+    | Log | one WARN naming the cause and the consequence |
+    | `agent status` | a **Configuration NOT watched** block with the reason |
+    | Metrics | `senhub.agent.config.watch.disabled{reason}` at 1, no series when the watch runs |
+
+    In that state a configuration change needs an agent restart to
+    apply. A configuration that cannot be **loaded** — a malformed file,
+    a broken substitution — still fails the start, as before: that one is
+    yours to fix, and systemd is right to report it.
+
 - **The `docker` and `swarm` probes now work on Windows.** Docker Engine
   and Docker Desktop expose their API over a named pipe there, while the
   probes only ever dialled a Unix socket — so a Windows host running

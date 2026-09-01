@@ -124,6 +124,7 @@ type HTTPSystemInfoResponse struct {
 		TTL          string `json:"ttl"`
 	} `json:"cache"`
 	StrategyFailures []StrategyFailure `json:"strategy_failures"`
+	ConfigWatch      *ConfigWatch      `json:"config_watch"`
 	Resources        struct {
 		MemoryUsageMB float64 `json:"memory_usage_mb"`
 		CPUPercent    float64 `json:"cpu_percent"`
@@ -143,6 +144,7 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 			Status: "local",
 		},
 		StrategyFailures: httpResp.StrategyFailures,
+		ConfigWatch:      httpResp.ConfigWatch,
 		Probes:           nil, // Will be populated by caller via GetDetailedProbeStatusFromHTTP
 		Performance: PerformanceInfo{
 			Uptime:        httpResp.Uptime,
