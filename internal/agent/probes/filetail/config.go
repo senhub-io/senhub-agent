@@ -101,7 +101,7 @@ func parseConfig(config map[string]interface{}) (FileTailProbeConfig, error) {
 		MaxBytesPerLine: DefaultMaxBytesPerLine,
 	}
 
-	parsed.Paths = types.StringSlice(config["paths"])
+	parsed.Paths, _ = types.StringSliceParam(config, "paths")
 	if len(parsed.Paths) == 0 {
 		return parsed, fmt.Errorf("filetail: at least one entry under `paths` is required")
 	}

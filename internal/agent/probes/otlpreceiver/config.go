@@ -3,6 +3,7 @@ package otlpreceiver
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"senhub-agent.go/internal/agent/probes/types"
 )
@@ -123,7 +124,8 @@ func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) 
 		cfg.BearerToken = v
 	}
 
-	for _, raw := range types.StringSlice(config["allowed_cidrs"]) {
+	allowedCIDRs, _ := types.StringSliceParam(config, "allowed_cidrs")
+	for _, raw := range allowedCIDRs {
 		_, cidr, err := net.ParseCIDR(raw)
 		if err != nil {
 			return receiverConfig{}, fmt.Errorf("allowed_cidrs: invalid CIDR %q: %w", raw, err)
@@ -163,15 +165,41 @@ func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) 
 	return cfg, nil
 }
 
-// parseSignals reads the `signals:` list. Absent or empty means metrics
-// only (back-compat).
+// emptyList reports whether raw is a list that is present and empty, as
+// opposed to a value of some other shape that produced no names.
+func emptyList(raw interface{}) bool {
+	switch v := raw.(type) {
+	case []interface{}:
+		return len(v) == 0
+	case []string:
+		return len(v) == 0
+	default:
+		return false
+	}
+}
+
+// parseSignals reads the `signals:` list. Absent or an explicitly empty
+// list means metrics only (back-compat).
+//
+// A value that is present and cannot be read as a list is an ERROR, not
+// a fall back to the default. The difference cost a client three rounds
+// of "the agent cannot receive logs": `signals: metrics, traces, logs`
+// without brackets is a scalar, not a list, and the receiver silently
+// started on metrics only while the sender got UNIMPLEMENTED for the
+// other two. A signal that is refused because nobody asked for it looks
+// exactly like a signal the agent cannot handle.
 func parseSignals(raw interface{}) (signalSet, error) {
 	if raw == nil {
 		return signalSet{Metrics: true}, nil
 	}
 	names := types.StringSlice(raw)
 	if len(names) == 0 {
-		return signalSet{Metrics: true}, nil
+		if emptyList(raw) {
+			return signalSet{Metrics: true}, nil
+		}
+		return signalSet{}, fmt.Errorf(
+			"signals: %#v is not a list of signal names — write signals: [%s, %s, %s] with the brackets, "+
+				"or one name per line with a leading dash", raw, signalMetrics, signalLogs, signalTraces)
 	}
 	var s signalSet
 	for _, n := range names {
@@ -183,6 +211,15 @@ func parseSignals(raw interface{}) (signalSet, error) {
 		case signalTraces:
 			s.Traces = true
 		default:
+			// A name carrying commas is the whole line read as one
+			// value: `signals: metrics, logs, traces` is a scalar in
+			// YAML, and quoting it back as an unknown signal is
+			// accurate but does not say what to do about it.
+			if strings.Contains(n, ",") {
+				return signalSet{}, fmt.Errorf(
+					"signals: %q was read as one name because the line has no brackets — write signals: [%s, %s, %s]",
+					n, signalMetrics, signalLogs, signalTraces)
+			}
 			return signalSet{}, fmt.Errorf("signals: unknown signal %q (want %q, %q or %q)", n, signalMetrics, signalLogs, signalTraces)
 		}
 	}
