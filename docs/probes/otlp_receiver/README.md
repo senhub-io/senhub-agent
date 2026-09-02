@@ -15,6 +15,36 @@ Two things must line up for a signal to arrive somewhere:
 A signal that is accepted but has no sink is counted and dropped, with a
 throttled warning in the agent log.
 
+### What goes wrong with `signals`, and how it looks
+
+Every shape below produces a running agent. The difference is what the
+receiver actually registered, and a signal that was never registered
+answers a sender with `UNIMPLEMENTED` — which reads like a missing
+feature rather than an option that was not asked for.
+
+| Written | Receiver starts with | How you find out |
+|---|---|---|
+| no `signals` line | `["metrics"]` | nothing says so; logs and traces are refused |
+| `signals: [metrics, logs, traces]` | `["metrics","logs","traces"]` | this is the working form |
+| `signals: logs` | `["logs"]` | accepted — a lone name is a one-item list. **Metrics stop**, because the list replaces the default |
+| `signals: metrics, logs, traces` (no brackets) | refused at start | a scalar is not a list. Before 0.5.5 this silently left the receiver on metrics only |
+| `signals: [metrics, log]` | probe does not start | `unknown signal "log"`, named at startup |
+
+**The one check that answers all of it** is the line the receiver logs
+when it comes up:
+
+```
+INF OTLP gRPC receiver started address=0.0.0.0:4317 signals=["metrics","logs","traces"]
+```
+
+If that list is not what you wrote, the agent did not read what you
+think it read. On 0.5.4 and earlier, `agent config check` does not
+validate these values — it reports the file as valid and the probe then
+refuses to start; from 0.5.5 the check runs the probe's own validation.
+
+Accepting a signal is only half of it: a strategy must also consume it,
+or the records are counted as `no_sink` and dropped. See [Sinks](#sinks).
+
 ## Configuration
 
 ```yaml
@@ -35,7 +65,7 @@ throttled warning in the agent log.
 | `address` | string | `127.0.0.1:4317` (grpc), `127.0.0.1:4318` (http) | Listen `host:port`. Loopback-only by default; see [Listening remotely](#listening-remotely). |
 | `port` | int | — | Convenience: replace just the port of the default/derived address. |
 | `http_path` | string | `/v1/metrics` | HTTP only: the route metrics are POSTed to. Logs and traces are served on the fixed OTLP routes `/v1/logs` and `/v1/traces`. |
-| `signals` | list of strings | `[metrics]` | Which OTLP services the listener registers: any of `metrics`, `logs`, `traces`. See [Signals](#signals). |
+| `signals` | list of strings | `[metrics]` | Which OTLP services the listener registers: any of `metrics`, `logs`, `traces`. The list **replaces** the default rather than extending it. See [Signals](#signals). |
 | `bearer_token` | string | — | When set, senders must present `Authorization: Bearer <token>`. Use `${env:VAR}` or `${file:/path}` rather than a literal. |
 | `allowed_cidrs` | list of strings | — | When non-empty, only these peer ranges may ingest. The transport peer address is used; proxy headers are not consulted. |
 | `rate_limit_rps` | float | — | Accepted requests per second (token bucket). Omitted or `0` disables rate limiting. |

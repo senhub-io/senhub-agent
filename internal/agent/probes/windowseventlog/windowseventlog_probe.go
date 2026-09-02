@@ -147,12 +147,12 @@ func parseConfig(config map[string]interface{}) (WindowsEventLogProbeConfig, err
 		PollInterval: DefaultPollInterval,
 	}
 
-	parsed.Channels = types.StringSlice(config["channels"])
+	parsed.Channels, _ = types.StringSliceParam(config, "channels")
 	if len(parsed.Channels) == 0 {
 		return parsed, fmt.Errorf("windows_eventlog: at least one channel is required")
 	}
 
-	parsed.Levels = types.StringSlice(config["levels"])
+	parsed.Levels, _ = types.StringSliceParam(config, "levels")
 	for _, lvl := range parsed.Levels {
 		n, ok := levelTextToInt(lvl)
 		if !ok {
@@ -169,7 +169,7 @@ func parseConfig(config map[string]interface{}) (WindowsEventLogProbeConfig, err
 		return parsed, fmt.Errorf("windows_eventlog: exclude_event_ids: %w", err)
 	}
 
-	parsed.Sources = types.StringSlice(config["sources"])
+	parsed.Sources, _ = types.StringSliceParam(config, "sources")
 
 	if s, ok := config["bookmark_path"].(string); ok {
 		parsed.BookmarkPath = s

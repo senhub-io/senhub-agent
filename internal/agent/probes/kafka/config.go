@@ -44,7 +44,7 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 		Timeout:         defaultTimeout,
 	}
 
-	if v := types.StringSlice(raw["brokers"]); len(v) > 0 {
+	if v, _ := types.StringSliceParam(raw, "brokers"); len(v) > 0 {
 		cfg.Brokers = v
 	}
 	if v, ok := types.StringParam(raw, "protocol_version"); ok && v != "" {
@@ -74,8 +74,8 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	if secs, ok := types.IntParam(raw, "timeout"); ok && secs > 0 {
 		cfg.Timeout = time.Duration(secs) * time.Second
 	}
-	cfg.TopicFilter = types.StringSlice(raw["topic_filter"])
-	cfg.GroupFilter = types.StringSlice(raw["group_filter"])
+	cfg.TopicFilter, _ = types.StringSliceParam(raw, "topic_filter")
+	cfg.GroupFilter, _ = types.StringSliceParam(raw, "group_filter")
 	if v, ok := types.StringParam(raw, "instance_name"); ok {
 		cfg.InstanceName = v
 	}
