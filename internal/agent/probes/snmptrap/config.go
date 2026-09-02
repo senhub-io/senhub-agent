@@ -80,7 +80,7 @@ func parseConfig(config map[string]interface{}) (receiverConfig, error) {
 		cfg.Community = v
 	}
 
-	cfg.MibPaths = types.StringSlice(config["mib_paths"])
+	cfg.MibPaths, _ = types.StringSliceParam(config, "mib_paths")
 
 	users, err := parseV3Users(config["v3"])
 	if err != nil {

@@ -33,6 +33,21 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **A list parameter written without its brackets is no longer read as
+  nothing.** `signals: metrics, logs, traces` is valid YAML and a
+  *string*, not a list. The OTLP receiver discarded it and started on its
+  default — metrics only — with nothing in the log to say the line had
+  been ignored, while the sender got `UNIMPLEMENTED` for the two signals
+  it thought it had enabled. That reads like a missing feature; it was an
+  option nobody had asked for. A value that cannot be read as a list is
+  now refused at startup, naming the shape to write. Absent, or an
+  explicitly empty list, still means metrics only.
+
+    The same silence existed on every list parameter the probes read —
+    `paths`, `channels`, `levels`, `sources`, `services`, `brokers`,
+    `mib_paths`, `allowed_cidrs`. They now report a value they cannot
+    read instead of falling back without a word.
+
 - **The agent no longer refuses to run when it cannot watch its
   configuration.** The watch exists so an edit is picked up without a
   restart. It can fail for reasons that have nothing to do with your
