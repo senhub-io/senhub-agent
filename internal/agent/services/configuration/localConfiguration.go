@@ -95,6 +95,10 @@ type LocalConfiguration struct {
 	// agent from running at all (#850) and that no test could reach
 	// while the constructor was called directly.
 	newWatcher func() (*fsnotify.Watcher, error)
+
+	// lastCacheRetention is the retention GetCacheConfig last announced, so a
+	// value that has not changed is not re-announced on every call.
+	lastCacheRetention atomic.Int32
 }
 
 // snapshot returns the current immutable configuration snapshot
@@ -206,19 +210,27 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 	return &cfg
 }
 
-// GetCacheConfig returns the cache configuration
+// GetCacheConfig returns the cache configuration.
+//
+// It is called on every consumer that needs the retention, not once at load,
+// so it says as little as possible: an omitted `cache:` block is an accepted
+// default, not a fault, and warning about it on each call taught operators to
+// read a WARN as noise. The configured value is announced once, and again only
+// when a reload changes it.
 func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 	if lc.snapshot().Cache == nil {
-		lc.logger.Warn().Msg("Cache configuration is nil in YAML, using default (5 minutes)")
-		// Return default configuration
+		lc.logger.Debug().Msg("No cache block configured; using the default retention of 5 minutes")
 		return &CacheConfig{
 			RetentionMinutes: 5,
 		}
 	}
-	lc.logger.Info().
-		Int("retention_minutes", lc.snapshot().Cache.RetentionMinutes).
-		Msg("Cache configuration loaded from YAML")
-	return lc.snapshot().Cache
+	cfg := lc.snapshot().Cache
+	if lc.lastCacheRetention.Swap(int32(cfg.RetentionMinutes)) != int32(cfg.RetentionMinutes) {
+		lc.logger.Info().
+			Int("retention_minutes", cfg.RetentionMinutes).
+			Msg("Cache configuration loaded from YAML")
+	}
+	return cfg
 }
 
 // GetConfiguration returns the configuration data in ConfigurationData format
