@@ -774,10 +774,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 				Int("outbound_sockets", observed).
 				Int("unattributable", unattributable).
 				Str("running_as", processUsername()).
-				Msg("depends_on is enabled but this agent cannot attribute any socket to its owning process; " +
-					"mapping a socket to its owner reads /proc/<pid>/fd, which only the owner may read. " +
-					"No dependency edge can be produced for services owned by another user. " +
-					"Run the agent as root for this rail, or leave entities.depends_on_enabled off")
+				Msg(dependsOnBlindMessage(os.Geteuid()))
 		})
 		s.entitySourceUnregisters = append(s.entitySourceUnregisters, entity.RegisterSource(dep))
 	}
@@ -966,6 +963,35 @@ func (s *OTLPSyncStrategy) relayEnricher() *relayEnricher {
 // processUsername names the account the daemon runs under, for the operator
 // message that explains why a rail is empty. Best effort: an unresolvable uid
 // is reported as the number, which still tells the operator it is not root.
+// dependsOnBlindMessage explains a dependency rail that can see sockets and
+// name none of their owners.
+//
+// The privilege answer is only half of it, and telling it to an operator who
+// already runs as root sends them to do what they are doing. Mapping a socket
+// to its owner reads /proc/<pid>/fd; unreadable is one reason, ABSENT is
+// another. A container that shares another's network namespace sees that
+// namespace's whole socket table while its /proc holds only its own
+// processes, so the owners do not exist in this agent's view at all and no
+// privilege can conjure them. Reproduced on a real host: two containers
+// sharing a network namespace, agent as root, every socket unattributable.
+func dependsOnBlindMessage(euid int) string {
+	const common = "depends_on is enabled but this agent cannot attribute any socket to its owning process; " +
+		"mapping a socket to its owner reads /proc/<pid>/fd. "
+
+	if euid == 0 {
+		return common +
+			"This agent already runs as root, so privileges are not the cause: the owning processes are not " +
+			"visible to it at all. That is what a shared network namespace looks like from inside a container — " +
+			"the socket table belongs to the namespace, the processes belong to their own. " +
+			"Run the agent in the same PID namespace as the processes it should attribute, or leave " +
+			"entities.depends_on_enabled off; no dependency edge can be produced as it stands."
+	}
+	return common +
+		"/proc/<pid>/fd is owner-only, so a daemon running as another user sees every other service's " +
+		"connections with no owner. No dependency edge can be produced for services owned by another user. " +
+		"Run the agent as root for this rail, or leave entities.depends_on_enabled off."
+}
+
 func processUsername() string {
 	if u, err := user.Current(); err == nil && u.Username != "" {
 		return u.Username

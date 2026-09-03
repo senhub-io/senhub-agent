@@ -33,6 +33,24 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **The `depends_on` warning no longer tells root to run as root.** An agent
+  that sees outbound sockets and can name none of their owners said so and
+  advised running as root — while its own `running_as` field read `root`. The
+  privilege answer is only half of it: mapping a socket to its owner reads
+  `/proc/<pid>/fd`, and *unreadable* is one reason, *absent* is another. A
+  container sharing another's network namespace sees that namespace's whole
+  socket table while its `/proc` holds only its own processes, so the owners
+  do not exist in its view and no privilege conjures them. Reproduced on a
+  host, agent as root, every socket unattributable. The message now tells each
+  case what is actually true, and both still name the switch to turn the rail
+  off.
+
+- **An omitted `cache:` block is no longer a warning.** It was reported on
+  every call — not once at load — so an accepted default produced a recurring
+  WARN, which is how operators learn to read warnings as noise. The default is
+  now silent, and a configured retention is announced once, again only if a
+  reload changes it.
+
 - **A list parameter written without its brackets is no longer read as
   nothing.** `signals: metrics, logs, traces` is valid YAML and a
   *string*, not a list. The OTLP receiver discarded it and started on its
