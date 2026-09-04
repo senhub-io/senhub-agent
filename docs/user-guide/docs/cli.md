@@ -66,6 +66,25 @@ senhub-agent run --filter strategy.http,sensor   # HTTP API + probe management
 
 Use `debug-modules-list` to see all available filters.
 
+## Web console
+
+### console
+
+Opens the built-in web console in the default browser, or prints its address with `--print`. The address carries the agent key, which is sealed on a modern install: the command needs the rights of the service account or an administrator. On Windows, a non-elevated call asks for elevation once, then opens the browser with the user's own rights. The command waits up to fifteen seconds for the agent to answer on its port before opening the page.
+
+```bash
+senhub-agent console
+senhub-agent console --print
+senhub-agent console --config-path /etc/senhub/agent.yaml
+```
+
+| Flag | Description |
+|------|-------------|
+| `--print` | Print the address, do not open a browser |
+| `--config-path PATH` | Configuration file to read (default: OS canonical path) |
+
+The Windows MSI creates a "SenHub Agent Console" desktop shortcut that runs this command.
+
 ## Configuration
 
 ### config init
