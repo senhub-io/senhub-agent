@@ -447,13 +447,11 @@ msiexec /x senhub-agent-<version>-amd64.msi /qn
 
 Or use **Apps & features** / **Programs and Features** interactively.
 
-By default, uninstalling keeps the operator state under `%ProgramData%\SenHub\` — configuration, sealed secret store, and license — while removing the transient `logs\` and `update\` folders (regenerated on the next run). A later reinstall or upgrade picks the existing setup back up. To delete that data tree as well when decommissioning a host, opt in with `PURGE_DATA=1`:
+Uninstalling removes the whole `%ProgramData%\SenHub\` tree — configuration, sealed secret store, license, and the transient `logs\` and `update\` folders — so removing the product leaves the machine clean, whether you uninstall from **Apps & features** or with `msiexec /x`. A later fresh install then starts from the installer's inputs (licence, port) rather than a stale kept configuration.
 
-```bat
-msiexec /x senhub-agent-<version>-amd64.msi /qn PURGE_DATA=1
-```
+This is not recoverable. To move a host to a newer version while keeping its licence and configuration, **upgrade in place** (install the newer MSI over the older one) instead of uninstalling: an in-place major upgrade preserves everything under `%ProgramData%\SenHub\`.
 
-The purge is not recoverable and never applies during an upgrade. An interactive uninstall always keeps the data; use the command line to purge.
+`PURGE_DATA` is accepted for backward compatibility but no longer changes anything, since a genuine uninstall already removes the full tree.
 
 **Windows (ZIP install):**
 ```powershell
