@@ -80,7 +80,7 @@ func init() {
 		"key_file", "le", "lookup_id", "max_cache_size", "metrics",
 		"min_tls_version", "nagios_checks_count", "nagios_version", "name",
 		"port", "probe", "probe_name", "probe_type", "prometheus", "protocol",
-		"schema", "server_configured", "tags", "target", "tls",
+		"schema", "server_configured", "settings", "tags", "target", "tls",
 		"tls_min_version", "total_metrics", "unit", "url",
 	}, nil)
 

@@ -24,6 +24,12 @@ type AgentConfiguration interface {
 	// emits them as Resource attributes rather than per-metric
 	// attributes (issue #202). May be nil/empty.
 	GetGlobalTags() map[string]string
+
+	// GetConfigPath returns the absolute path of the agent config file,
+	// so a strategy that edits configuration (the web-UI settings page)
+	// writes the right fragment. Empty when no config source is bound
+	// (bare test AgentConfiguration).
+	GetConfigPath() string
 }
 
 // ConfigurationProvider is the interface the data store / sensor pool
@@ -82,6 +88,13 @@ func NewAgentConfigurationWithLocal(
 
 func (l *agentConfiguration) GetAuthenticationKey() string {
 	return l.AuthenticationKey
+}
+
+func (l *agentConfiguration) GetConfigPath() string {
+	if l.localConfiguration != nil {
+		return l.localConfiguration.configPath
+	}
+	return ""
 }
 
 func (l *agentConfiguration) GetGlobalTags() map[string]string {
