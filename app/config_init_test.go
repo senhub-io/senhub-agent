@@ -134,3 +134,13 @@ func TestParseTagList(t *testing.T) {
 		}
 	}
 }
+
+func TestParseInitConfigArgs_LicenseAndHTTPPort(t *testing.T) {
+	opts, err := parseInitConfigArgs([]string{"--license", "j", "--http-port", "9080"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.license != "j" || opts.httpPort != 9080 {
+		t.Errorf("opts = %+v", opts)
+	}
+}
