@@ -170,3 +170,32 @@ func TestResolveLicenseInput(t *testing.T) {
 		t.Errorf("empty file falls back to inline: got %q", got)
 	}
 }
+
+func TestFindLicenseInDir(t *testing.T) {
+	dir := t.TempDir()
+	if got, err := findLicenseInDir(dir); err != nil || got != "" {
+		t.Errorf("empty folder: got %q, %v; want no file and no error (Free tier)", got, err)
+	}
+	one := filepath.Join(dir, "license-client1-Pro.jwt")
+	os.WriteFile(one, []byte("tok"), 0o600)
+	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("x"), 0o600)
+	os.MkdirAll(filepath.Join(dir, "sub.jwt"), 0o700)
+	if got, err := findLicenseInDir(dir); err != nil || got != one {
+		t.Errorf("single jwt: got %q, %v; want %q", got, err, one)
+	}
+	os.WriteFile(filepath.Join(dir, "other.jwt"), []byte("tok2"), 0o600)
+	if _, err := findLicenseInDir(dir); err == nil {
+		t.Error("two jwt files must be refused, not guessed")
+	}
+	named := filepath.Join(dir, "license.jwt")
+	os.WriteFile(named, []byte("tok3"), 0o600)
+	if got, err := findLicenseInDir(dir); err != nil || got != named {
+		t.Errorf("license.jwt wins over siblings: got %q, %v", got, err)
+	}
+	if _, err := findLicenseInDir(filepath.Join(dir, "missing")); err == nil {
+		t.Error("a missing folder must be an error")
+	}
+	if _, err := parseInitConfigArgs([]string{"--license-dir", dir}); err != nil {
+		t.Errorf("--license-dir must parse: %v", err)
+	}
+}
