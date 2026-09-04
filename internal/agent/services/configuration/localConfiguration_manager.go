@@ -201,7 +201,7 @@ func (lc *LocalConfiguration) generateAgentYAML(agentKey string) ([]byte, error)
 // to 0.0.0.0; otherwise it stays on 127.0.0.1:8080 with PRTG / Web /
 // Nagios endpoints.
 func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
-	port := 8080
+	port := lc.defaultHTTPPort()
 	bindAddress := "127.0.0.1"
 	tlsSection := ""
 
@@ -251,9 +251,18 @@ func (lc *LocalConfiguration) generateAgentKey() (string, error) {
 }
 
 // createDefaultStorageConfig creates default storage configuration
+// defaultHTTPPort is the plain-HTTP port a fresh configuration listens
+// on: the one the installer asked for, else 8080.
+func (lc *LocalConfiguration) defaultHTTPPort() int {
+	if lc.args != nil && lc.args.HttpPort > 0 {
+		return lc.args.HttpPort
+	}
+	return 8080
+}
+
 func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 	httpParams := map[string]interface{}{
-		"port":         8080,
+		"port":         lc.defaultHTTPPort(),
 		"bind_address": "127.0.0.1",
 		"endpoints":    []string{"prtg", "web", "nagios"},
 	}

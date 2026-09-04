@@ -125,6 +125,7 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 | `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (Free needs none) |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
+| `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`). A port already in use fails the install. |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `ADOPT` | `ADOPT=1` takes over an agent installed outside the MSI (see below) |
 
@@ -314,6 +315,7 @@ The `install` command accepts the following options:
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--http-port PORT` | `8080` | HTTP listening port (PRTG / Web UI / Nagios endpoints) |
 | `--enable-https` | disabled | Enable HTTPS on the agent API |
 | `--https-port PORT` | `8443` | HTTPS listening port |
 | `--https-hosts HOSTS` | `localhost,127.0.0.1` | Hostnames for the auto-generated certificate (comma-separated) |

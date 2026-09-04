@@ -12,8 +12,10 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -27,6 +29,7 @@ type initConfigArgs struct {
 	otlpEndpoint string
 	otlpProtocol string
 	tags         map[string]string
+	httpPort     int
 }
 
 // parseInitConfigArgs parses the flags after `config init`. A value-taking
@@ -62,6 +65,11 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.otlpEndpoint, err = value(&i)
 		case "--otlp-protocol":
 			out.otlpProtocol, err = value(&i)
+		case "--http-port":
+			var raw string
+			if raw, err = value(&i); err == nil {
+				out.httpPort, err = parseHTTPPort(raw)
+			}
 		default:
 			return out, fmt.Errorf("unknown flag %q", argv[i])
 		}
@@ -77,6 +85,24 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 		return out, err
 	}
 	return out, nil
+}
+
+// parseHTTPPort reads the --http-port value. An empty value means the
+// default: the MSI always passes the flag, with the HTTP_PORT property
+// expanded to nothing when the operator set none.
+func parseHTTPPort(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("--http-port must be a number in 1-65535, got %q", raw)
+	}
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("--http-port must be in 1-65535, got %d", port)
+	}
+	return port, nil
 }
 
 // validateOTLPArgs rejects an invalid protocol, a protocol without an
@@ -135,7 +161,18 @@ func initConfig(argv []string) {
 		return
 	}
 
-	args := &cliArgs.ParsedArgs{ConfigPath: configPath}
+	// Refuse a port the strategy cannot bind before anything is written.
+	// This command runs where nobody watches the output, so a silent
+	// half-success here becomes a service that runs and answers nothing.
+	httpPort := opts.httpPort
+	if httpPort == 0 {
+		httpPort = defaultHTTPPort
+	}
+	if err := checkHTTPPortFree(defaultHTTPBindAddress, httpPort); err != nil {
+		fatalf("config init: %v", err)
+	}
+
+	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: opts.httpPort}
 	if err := generateConfiguration(args); err != nil {
 		fatalf("config init: %v", err)
 	}
@@ -149,6 +186,7 @@ func initConfig(argv []string) {
 	}
 
 	fmt.Printf("Configuration created at %s\n", configPath)
+	fmt.Printf("  http: %s\n", net.JoinHostPort(defaultHTTPBindAddress, strconv.Itoa(httpPort)))
 	if license != "" {
 		fmt.Println("  license: set")
 	}

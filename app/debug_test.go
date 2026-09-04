@@ -31,3 +31,29 @@ func TestResolveHTTPStrategyPort(t *testing.T) {
 		t.Errorf("port=%d for a missing config, want the 8080 default", got)
 	}
 }
+
+func TestBuildDashboardURL_MultiFileWithTLS(t *testing.T) {
+	// The printed console address must be the one that answers: the
+	// port and scheme come from strategies.d/, not from a constant.
+	dir := t.TempDir()
+	main := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(main, []byte("config_version: 3\nagent:\n  key: \"k\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "strategies.d"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "strategies.d", "00-http.yaml"),
+		[]byte("http:\n  port: 9443\n  endpoints: [\"web\"]\n  tls:\n    enabled: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buildDashboardURL(main, "k"), "https://localhost:9443/web/k/dashboard"; got != want {
+		t.Errorf("url = %q, want %q", got, want)
+	}
+	if got, want := buildDashboardURL(filepath.Join(dir, "absent.yaml"), "k"), "http://localhost:8080/web/k/dashboard"; got != want {
+		t.Errorf("url for a missing config = %q, want %q", got, want)
+	}
+	if got := buildDashboardURL(main, ""); got != "" {
+		t.Errorf("url without an agent key = %q, want empty", got)
+	}
+}
