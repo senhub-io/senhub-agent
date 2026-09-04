@@ -110,6 +110,9 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/web/{agentkey}/dashboard", h.HandleWebDashboard).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/explorer", h.HandleWebExplorer).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/docs", h.HandleWebDocs).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/settings", h.HandleWebSettings).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsGet).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsSet).Methods("POST")
 		// router.HandleFunc("/web/{agentkey}/guide", h.HandleWebGuide).Methods("GET") // Temporarily disabled
 
 		// Static assets
@@ -172,6 +175,18 @@ func (h *HTTPHandlers) HandleDebugLogs(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTPHandlers) HandleSetLogLevels(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleSetLogLevels(w, r)
+}
+
+func (h *HTTPHandlers) HandleWebSettings(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleWebSettings(w, r)
+}
+
+func (h *HTTPHandlers) HandleConfigSettingsGet(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleConfigSettingsGet(w, r)
+}
+
+func (h *HTTPHandlers) HandleConfigSettingsSet(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleConfigSettingsSet(w, r)
 }
 
 func (h *HTTPHandlers) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {

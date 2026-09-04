@@ -68,6 +68,7 @@ func TestLogPump_SyslogReachesEventInsert(t *testing.T) {
 // M2 re-injection.
 type tagsAgentConfig struct{ stubAgentConfig }
 
+func (tagsAgentConfig) GetConfigPath() string { return "" }
 func (tagsAgentConfig) GetGlobalTags() map[string]string {
 	return map[string]string{"site": "paris", "env": "prod"}
 }

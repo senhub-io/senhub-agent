@@ -24,6 +24,7 @@ type fakeAgentConfig struct {
 
 func (f *fakeAgentConfig) GetAuthenticationKey() string     { return f.key }
 func (f *fakeAgentConfig) GetGlobalTags() map[string]string { return f.globalTags }
+func (f *fakeAgentConfig) GetConfigPath() string            { return "" }
 
 func newTestStrategy(t *testing.T, params map[string]interface{}) *OTLPSyncStrategy {
 	t.Helper()

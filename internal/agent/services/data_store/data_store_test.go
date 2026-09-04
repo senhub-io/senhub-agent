@@ -36,6 +36,7 @@ type MockAgentConfig struct {
 
 func (m *MockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
 func (m *MockAgentConfig) GetGlobalTags() map[string]string { return nil }
+func (m *MockAgentConfig) GetConfigPath() string            { return "" }
 
 // MockStrategy implements SyncStrategy for testing
 // MockStrategy records lifecycle and datapoint calls. It is mutex-
