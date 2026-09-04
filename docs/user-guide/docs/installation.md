@@ -107,14 +107,14 @@ Two paths are supported on Windows:
 
 The MSI (built with WiX 5.0.2) installs `senhub-agent.exe` into `%ProgramFiles%\SenHub Agent\`, registers and starts the `senhub-agent` Windows service (display name **SenHub Agent**, running as `LocalSystem`, with restart-on-failure recovery), and provisions the configuration on first install.
 
-On first install the MSI runs `senhub-agent config init`, which writes the default multi-file configuration under `%ProgramData%\SenHub\` (`agent.yaml` + `probes.d\` + `strategies.d\`) with no interactive step, and applies any license key, tags or OTLP endpoint you provide. Provisioning is idempotent: an upgrade or reinstall never overwrites an existing configuration, and operator config under `%ProgramData%\SenHub\` is preserved on uninstall.
+On first install the MSI runs `senhub-agent config init`, which writes the default multi-file configuration under `%ProgramData%\SenHub\` (`agent.yaml` + `probes.d\` + `strategies.d\`) with no interactive step, and applies any license key, tags or OTLP endpoint you provide. Provisioning is idempotent: an upgrade never overwrites an existing configuration. A genuine uninstall removes `%ProgramData%\SenHub\` in full (see [Uninstall](#uninstall)), so a fresh install starts from the installer's inputs.
 
 !!! note "Signed installer"
     The MSI, the bundled `senhub-agent.exe` and the installer's PowerShell payload are code-signed with an HSM-backed **Certum** code-signing certificate. Windows shows the `SENSOR FACTORY SAS` publisher, and SmartScreen does not raise an unknown-publisher warning. You can confirm the signature with `Get-AuthenticodeSignature .\senhub-agent-<version>-amd64.msi | Format-List` — status `Valid` with the `SENSOR FACTORY SAS` publisher.
 
 #### Interactive install
 
-Double-click `senhub-agent-<version>-amd64.msi` and follow the guided wizard (Welcome → license → install directory → ready → progress → finish). With nothing provided, the agent installs in the Free-tier default (local scrape endpoints only, no push).
+Double-click `senhub-agent-<version>-amd64.msi` and follow the guided wizard (Welcome → licence agreement → install directory → agent options → ready → progress → finish). With nothing provided, the agent installs in the Free-tier default (local scrape endpoints only, no push).
 
 #### Silent / unattended install
 
@@ -122,7 +122,8 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 
 | Property | Purpose |
 |---|---|
-| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (Free needs none) |
+| `LICENSE_FILE` | Path to the licence file (`.jwt`) received from Sensor Factory (what the wizard asks for; local or UNC path) |
+| `LICENSE_KEY` | The licence token itself, for scripted installs |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`). A port already in use fails the install. |
@@ -132,7 +133,7 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 
 Properties are consumed only on first install; they do not overwrite an existing `agent.yaml`.
 
-The guided install (double-click) asks for the licence key, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
+The guided install (double-click) asks for the licence file, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^

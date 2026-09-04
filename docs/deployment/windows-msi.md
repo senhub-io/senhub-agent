@@ -38,7 +38,8 @@ agent installs in the offline Free-tier default.
 
 | Property | Purpose |
 |---|---|
-| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (see the note on log exposure below) |
+| `LICENSE_FILE` | Path to the licence file (`.jwt`) received from Sensor Factory; what the wizard asks for. Use a local or UNC path (the seeding step runs as SYSTEM and cannot see mapped drives) |
+| `LICENSE_KEY` | The licence token itself, for scripted installs (see the note on log exposure below) |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
@@ -76,8 +77,10 @@ nothing, its only trace being one `binding HTTP server` line in
 Double-clicking the MSI runs the standard wizard with one extra page,
 after the install directory:
 
-- **Licence key**: optional, Free tier when empty; a key can be added
-  later from the web console.
+- **Licence file**: the path to the `.jwt` file received from Sensor
+  Factory, optional (Free tier when empty; a licence can be added later
+  from the web console). A customer licence is the same file for every
+  agent of that customer.
 - **Port**: the port of the web console and of the PRTG / Nagios
   endpoints, `8080` by default. The field takes integers only and the
   wizard refuses a value outside 1 to 65535 before anything is
