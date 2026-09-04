@@ -32,6 +32,7 @@ type initConfigArgs struct {
 	tags         map[string]string
 	httpPort     int
 	licenseFile  string
+	licenseDir   string
 }
 
 // parseInitConfigArgs parses the flags after `config init`. A value-taking
@@ -60,6 +61,8 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.license, err = value(&i)
 		case "--license-file":
 			out.licenseFile, err = value(&i)
+		case "--license-dir":
+			out.licenseDir, err = value(&i)
 		case "--tags":
 			var raw string
 			if raw, err = value(&i); err == nil {
@@ -183,7 +186,18 @@ func initConfig(argv []string) {
 	// must fail with nothing on disk. A configuration left behind by a
 	// failed install is picked up as "already present" by the next one,
 	// which then ignores the port and licence it was given.
-	license, err := resolveLicenseInput(opts.license, opts.licenseFile)
+	licenseFile := opts.licenseFile
+	if licenseFile == "" && opts.licenseDir != "" {
+		found, findErr := findLicenseInDir(opts.licenseDir)
+		if findErr != nil {
+			fatalf("config init: %v", findErr)
+		}
+		if found == "" {
+			fmt.Fprintf(os.Stderr, "Note: no licence file (*.jwt) in %s; installing on the Free tier. A licence can be added later from the web console.\n", opts.licenseDir)
+		}
+		licenseFile = found
+	}
+	license, err := resolveLicenseInput(opts.license, licenseFile)
 	if err != nil {
 		fatalf("config init: %v", err)
 	}
@@ -234,6 +248,41 @@ func initConfig(argv []string) {
 		fmt.Printf("  otlp endpoint: %s\n", otlpEndpoint)
 	}
 	fmt.Printf("  probes: %s\n", filepath.Join(filepath.Dir(configPath), "probes.d"))
+}
+
+// findLicenseInDir returns the licence file to use from a folder the
+// operator picked in the installer: license.jwt when present, else the
+// single *.jwt there. No file is not an error (the operator may have
+// left the default folder, meaning Free tier); several files are, since
+// guessing which customer's licence to install is worse than asking.
+// The lookup is not recursive: the installer's folder picker can land on
+// a drive root, and walking it would be slow and surprising.
+func findLicenseInDir(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("reading licence folder %s: %w", dir, err)
+	}
+	var candidates []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.EqualFold(name, "license.jwt") {
+			return filepath.Join(dir, name), nil
+		}
+		if strings.EqualFold(filepath.Ext(name), ".jwt") {
+			candidates = append(candidates, filepath.Join(dir, name))
+		}
+	}
+	switch len(candidates) {
+	case 0:
+		return "", nil
+	case 1:
+		return candidates[0], nil
+	default:
+		return "", fmt.Errorf("%d licence files (*.jwt) in %s; keep only the one to install, or name it license.jwt", len(candidates), dir)
+	}
 }
 
 // resolveLicenseInput returns the licence to provision: the content of
