@@ -70,6 +70,15 @@ This is especially useful when setting up PRTG, Nagios, or other monitoring tool
 
 ![Sensor Builder](images/web-interface/sensor-builder.webp "Sensor Builder with endpoint list and live JSON response")
 
+### Settings
+
+The Settings page changes the agent's own configuration from the browser, so a Windows operator does not have to edit YAML on the server:
+
+- **Connection** — the HTTP port and bind address of the console and of the PRTG / Nagios endpoints. Changing the port moves the interface to the new address; the page tells you where to reconnect. The change is applied live, with no restart.
+- **Licence** — the page shows the agent key (the value to give Sensor Factory when ordering a licence) and lets you paste a licence token. The token is checked against this agent key before it is saved, so a licence meant for another machine is refused rather than silently ignored.
+
+These changes are written to the multi-file configuration and picked up by the running agent, exactly as the `senhub-agent config set` command does.
+
 ### Documentation
 
 The Docs section provides embedded reference documentation accessible directly from the agent, without needing an internet connection. This is useful in air-gapped environments.
