@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -511,16 +512,42 @@ func IsProbeAuthorizable(probeName string) bool {
 	return paidProbes[probeName]
 }
 
-// VerifyBinding returns true when the licence is bound to the given
-// agent key. A JWT licence binds via its Subject claim — an empty
-// Subject is treated as a wildcard (test fixtures, dev tokens) so
-// that operators using unsigned-tier-only setups are not blocked.
+// agentKeyPattern matches a v4-style agent key (UUID). The Subject of a
+// licence is read as an agent key only when it has this exact shape;
+// anything else is a customer identifier (see VerifyBinding).
+var agentKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// SubjectIsAgentKey reports whether a licence Subject is an agent key
+// (a UUID) rather than a customer identifier. Callers use it to word an
+// error correctly and to decide whether to compare against this agent.
+func SubjectIsAgentKey(subject string) bool {
+	return agentKeyPattern.MatchString(subject)
+}
+
+// VerifyBinding reports whether a licence may be used on the agent with
+// the given key. Three cases, by the shape of the Subject claim:
 //
-// The compact-licence binding (a 4-byte agent-key hash embedded in
-// the token) was retired together with the compact format.
+//   - empty Subject → an unbound licence, valid on any agent (kept for
+//     back-compat with dev/unsigned-tier setups);
+//   - Subject is an agent key (a UUID) → a per-agent licence, valid only
+//     on that exact agent;
+//   - Subject is anything else → a customer licence (e.g. "client1"),
+//     valid across that customer's whole fleet. The Subject is an
+//     identifier for traceability, not a secret — the licence's trust
+//     comes from its RS256 signature, which this is called after.
+//
+// The compact-licence binding (a 4-byte agent-key hash embedded in the
+// token) was retired together with the compact format.
 func VerifyBinding(_ string, agentKey string, lic *License) bool {
 	if lic == nil {
 		return false
 	}
-	return lic.Subject == "" || lic.Subject == agentKey
+	if lic.Subject == "" {
+		return true
+	}
+	if SubjectIsAgentKey(lic.Subject) {
+		return lic.Subject == agentKey
+	}
+	// A customer identifier: valid fleet-wide.
+	return true
 }

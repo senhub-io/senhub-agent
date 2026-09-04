@@ -31,6 +31,7 @@ type initConfigArgs struct {
 	otlpProtocol string
 	tags         map[string]string
 	httpPort     int
+	licenseFile  string
 }
 
 // parseInitConfigArgs parses the flags after `config init`. A value-taking
@@ -57,6 +58,8 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.configPath, err = value(&i)
 		case "--license":
 			out.license, err = value(&i)
+		case "--license-file":
+			out.licenseFile, err = value(&i)
 		case "--tags":
 			var raw string
 			if raw, err = value(&i); err == nil {
@@ -193,6 +196,17 @@ func initConfig(argv []string) {
 		fatalf("config init: %v", err)
 	}
 
+	if opts.licenseFile != "" {
+		data, readErr := os.ReadFile(opts.licenseFile) // #nosec G304 - operator-provided path
+		if readErr != nil {
+			fatalf("config init: reading --license-file %s: %v", opts.licenseFile, readErr)
+		}
+		fromFile := strings.TrimSpace(string(data))
+		if fromFile != "" {
+			license = fromFile
+		}
+	}
+
 	if err := configuration.ApplyInstallOverrides(configPath, license, tags); err != nil {
 		fatalf("config init: applying provisioned fields: %v", err)
 	}
@@ -243,7 +257,7 @@ func warnLicenseBinding(configPath, jwt string) {
 		return
 	}
 	if !licensepkg.VerifyBinding("", agentKey, lic) {
-		fmt.Fprintf(os.Stderr, "Warning: the provisioned licence is bound to %q, not to this agent key %q; the agent will run on the Free tier until a matching licence is activated.\n", lic.Subject, agentKey)
+		fmt.Fprintf(os.Stderr, "Warning: the provisioned licence is issued for another agent (%q), not this one (%q); the agent will run on the Free tier until a valid licence is activated.\n", lic.Subject, agentKey)
 	}
 }
 

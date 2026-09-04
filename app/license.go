@@ -122,13 +122,22 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	// than persist a licence that will never take effect.
 	agentKey, keyErr := extractAgentKeyFromConfig(configPath)
 	if keyErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not read this agent's key to verify the licence binding: %v\n", keyErr)
+		fmt.Fprintf(os.Stderr, "Warning: could not read this agent's key to verify the licence: %v\n", keyErr)
 	} else if !license.VerifyBinding("", agentKey, validatedLicense) {
-		fmt.Fprintf(os.Stderr, "Error: this licence is bound to %q, not to this agent's key %q.\n", validatedLicense.Subject, agentKey)
-		fmt.Fprintf(os.Stderr, "Order a licence for this agent key, or read it with: senhub-agent license key\n")
+		// Only reachable for a per-agent licence (a UUID subject) issued
+		// for a different agent; a customer or unbound licence is accepted.
+		fmt.Fprintf(os.Stderr, "Error: this licence is issued for another agent (%q); this agent is %q.\n", validatedLicense.Subject, agentKey)
+		fmt.Fprintf(os.Stderr, "Use your customer licence, or one issued for this agent.\n")
 		os.Exit(1)
-	} else if agentKey != "" {
-		fmt.Println("   Binding: matches this agent key")
+	} else {
+		switch {
+		case validatedLicense.Subject == "":
+			fmt.Println("   Scope: valid on any agent")
+		case license.SubjectIsAgentKey(validatedLicense.Subject):
+			fmt.Println("   Scope: bound to this agent")
+		default:
+			fmt.Printf("   Scope: customer licence (%s), valid fleet-wide\n", validatedLicense.Subject)
+		}
 	}
 
 	// Persist the license to a dedicated sidecar file (license.jwt) next to the

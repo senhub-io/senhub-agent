@@ -76,14 +76,15 @@
                 <h2>Licence</h2>
                 <div class="row"><span class="k">Agent key</span></div>
                 <div class="agentkey-box" id="agentkey">{{.AgentKey}}</div>
-                <div class="hint">This key identifies the agent. A licence is bound to it — give it to Sensor Factory when ordering one. <button class="copy" id="copy-key" type="button">Copy</button></div>
+                <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A licence is bound to it — give it to Sensor Factory when ordering one, and the licence you receive is checked against it here. <button class="copy" id="copy-key" type="button">Copy</button></div>
                 <div class="row" style="margin-top:0.8rem;"><span class="k">Status</span><span class="v" id="lic-status">…</span></div>
                 <div class="row"><span class="k">Tier</span><span class="v" id="lic-tier">…</span></div>
                 <div class="row"><span class="k">Expires</span><span class="v" id="lic-exp">…</span></div>
                 <div class="field" style="margin-top:0.8rem;">
-                    <label for="license">Activate a licence</label>
-                    <textarea id="license" placeholder="Paste the licence token (JWT)"></textarea>
-                    <div class="hint">The token is checked against this agent key before it is saved.</div>
+                    <label for="license-file">Activate a licence</label>
+                    <input type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" />
+                    <div class="hint">Choose the licence file you received, or paste the token below. It is checked against this agent key before it is saved.</div>
+                    <textarea id="license" placeholder="…or paste the licence token (JWT)" style="margin-top:0.5rem;"></textarea>
                 </div>
                 <div class="actions">
                     <button class="btn btn-primary" id="save-lic">Activate licence</button>
@@ -162,6 +163,18 @@
             } catch (e) {
                 banner('err', e.message);
             }
+        });
+
+        $('license-file').addEventListener('change', (ev) => {
+            const f = ev.target.files && ev.target.files[0];
+            if (!f) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                $('license').value = (reader.result || '').toString().trim();
+                banner('warn', 'Licence file loaded from ' + f.name + '. Click "Activate licence" to apply it.');
+            };
+            reader.onerror = () => banner('err', 'Could not read the file.');
+            reader.readAsText(f);
         });
 
         $('copy-key').addEventListener('click', () => {
