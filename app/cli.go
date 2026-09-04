@@ -643,6 +643,7 @@ License Commands:
 
 Other Commands:
     version              Show agent version
+    license key          Print this agent's key (order a licence for it)
     console              Open the web console in the browser (--print to
                           show the address only; asks for elevation when
                           the sealed agent key requires it)
