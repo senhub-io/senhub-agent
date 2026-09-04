@@ -41,11 +41,20 @@ agent installs in the offline Free-tier default.
 | `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (see the note on log exposure below) |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
+| `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `PURGE_DATA` | Uninstall only — `PURGE_DATA=1` on `msiexec /x` deletes `%ProgramData%\SenHub\` in full (see [Uninstall and data purge](#uninstall-and-data-purge)) |
 
 Install-time properties are consumed only on first install; they do not
 overwrite an existing `agent.yaml`.
+
+The seeding step checks that the HTTP port is free before writing the
+configuration. A port already in use, or an invalid property value, makes
+the seeding fail and the install roll back; the reason is in the install
+log (`SeedConfig`). Rerun with `HTTP_PORT=<free port>`. Without this check
+the install used to exit 0 with a running service that answered on
+nothing, its only trace being one `binding HTTP server` line in
+`%ProgramData%\SenHub\logs`.
 
 > **`LICENSE_KEY` and install logs.** The license token is a secret. A
 > verbose install log (`/l*v`) records public property values and custom

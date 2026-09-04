@@ -22,7 +22,13 @@
 
       msiexec /i senhub-agent.msi /qn ^
         LICENSE_KEY=eyJhbGci... ^
-        TAGS=site=paris,env=prod
+        TAGS=site=paris,env=prod ^
+        HTTP_PORT=9080
+
+  HTTP_PORT moves the local HTTP endpoints (PRTG, Web UI, Nagios) off
+  the 8080 default. The seeding step refuses a port already in use, and
+  the install fails with it: a service that starts on a taken port runs,
+  logs one line and answers nothing, which is worse than a refusal.
 
   Uninstall keeps operator state under %ProgramData%\SenHub (config,
   sealed secret store, license) by default so upgrades and reinstalls
@@ -100,6 +106,8 @@
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
+    <!-- Optional: port of the local HTTP endpoints (default 8080). -->
+    <Property Id="HTTP_PORT" Secure="yes" />
     <!--
       PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
       on uninstall (config, sealed secret store, license, logs, staged
@@ -160,9 +168,16 @@
       agent: it writes the default offline multi-file layout, then applies
       the license + tags. Validated on a real Windows host (see
       docs/deployment/windows-msi.md, "Config seeding").
+
+      Return="check": a failed seeding fails the install. config init
+      exits non-zero on an invalid property value and on an HTTP port
+      already in use; both used to be swallowed, leaving a service that
+      started on its defaults with nothing the operator asked for. The
+      idempotency guard makes a rerun on an existing config a no-op, so
+      repair and reinstall are unaffected.
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --http-port &quot;[HTTP_PORT]&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -173,7 +188,7 @@
                   Execute="deferred"
                   Impersonate="no"
                   HideTarget="yes"
-                  Return="ignore" />
+                  Return="check" />
 
     <!--
       ADOPT migration: stop and delete the foreign service before our
@@ -274,10 +289,10 @@
     <!-- silent install (/qn) skips the UI entirely and drives the     -->
     <!-- same properties from the command line / transform.            -->
     <!--                                                               -->
-    <!-- Entering LICENSE_KEY / TAGS / OTLP_ENDPOINT inside the wizard  -->
-    <!-- (a custom dialog) is a follow-up validated interactively on   -->
-    <!-- Windows; today those are set via properties (silent install), -->
-    <!-- and a guided install lands the offline default.               -->
+    <!-- Entering LICENSE_KEY / TAGS / OTLP_ENDPOINT / HTTP_PORT inside -->
+    <!-- the wizard (a custom dialog) is not built; today those are set -->
+    <!-- via properties (silent install), and a guided install lands   -->
+    <!-- the offline default.                                          -->
     <!-- ============================================================ -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />

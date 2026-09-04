@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"gopkg.in/yaml.v2"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -239,60 +238,14 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	return systemStatus, nil
 }
 
-// buildDashboardURL constructs the dashboard URL from the agent configuration file
+// buildDashboardURL constructs the dashboard URL from the agent
+// configuration, whichever layout it uses.
 func buildDashboardURL(configPath string, agentKey string) string {
 	if agentKey == "" {
 		return ""
 	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return ""
-	}
-
-	// Parse YAML to extract HTTP strategy params
-	var config struct {
-		Strategies []struct {
-			Type   string                 `yaml:"type"`
-			Params map[string]interface{} `yaml:"params"`
-		} `yaml:"strategies"`
-	}
-
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return ""
-	}
-
-	// Find HTTP strategy and extract port/https settings
-	for _, s := range config.Strategies {
-		if s.Type != "http" {
-			continue
-		}
-
-		port := 8080
-		scheme := "http"
-
-		if p, ok := s.Params["port"]; ok {
-			switch v := p.(type) {
-			case int:
-				port = v
-			case float64:
-				port = int(v)
-			}
-		}
-
-		if https, ok := s.Params["enable_https"]; ok {
-			if enabled, ok := https.(bool); ok && enabled {
-				scheme = "https"
-				if port == 8080 {
-					port = 8443
-				}
-			}
-		}
-
-		return fmt.Sprintf("%s://localhost:%d/web/%s/dashboard", scheme, port, agentKey)
-	}
-
-	return ""
+	scheme, port := resolveHTTPStrategyEndpoint(configPath)
+	return fmt.Sprintf("%s://localhost:%d/web/%s/dashboard", scheme, port, agentKey)
 }
 
 // isGitHash checks if a string looks like a git commit hash (hex characters only)
@@ -313,20 +266,29 @@ func isGitHash(s string) bool {
 // resolveHTTPStrategyPort finds the port the running agent's HTTP
 // strategy listens on, so `status` reaches a daemon configured on
 // anything other than the default.
+func resolveHTTPStrategyPort(configPath string) int {
+	_, port := resolveHTTPStrategyEndpoint(configPath)
+	return port
+}
+
+// resolveHTTPStrategyEndpoint returns the scheme and port of the HTTP
+// strategy as configured on disk, falling back to plain HTTP on 8080
+// when the configuration cannot be read.
 //
 // It goes through the real configuration loader rather than parsing the
 // main file by hand: an operator running the multi-file layout keeps the
 // http strategy in strategies.d/, invisible to a `strategies:` lookup in
 // agent.yaml. Status silently fell back to the degraded local view on
-// every such host, which also hid the dead-output report (#826).
-func resolveHTTPStrategyPort(configPath string) int {
-	const defaultPort = 8080
+// every such host, which also hid the dead-output report (#826), and
+// every printed console address named 8080 whatever the file said.
+func resolveHTTPStrategyEndpoint(configPath string) (scheme string, port int) {
+	scheme, port = "http", defaultHTTPPort
 	if configPath == "" {
-		return defaultPort
+		return scheme, port
 	}
 	cfg, err := configuration.LoadFromDisk(configPath, nil)
 	if err != nil {
-		return defaultPort
+		return scheme, port
 	}
 	for _, storage := range cfg.Storage {
 		if storage.Name != "http" {
@@ -335,13 +297,32 @@ func resolveHTTPStrategyPort(configPath string) int {
 		switch v := storage.Params["port"].(type) {
 		case int:
 			if v > 0 {
-				return v
+				port = v
 			}
 		case float64:
 			if v > 0 {
-				return int(v)
+				port = int(v)
 			}
 		}
+		if tlsEnabledParam(storage.Params["tls"]) {
+			scheme = "https"
+		}
+		return scheme, port
 	}
-	return defaultPort
+	return scheme, port
+}
+
+// tlsEnabledParam reads `tls.enabled` from a strategy parameter block.
+// The block arrives with string keys from the runtime parser and with
+// interface keys straight from the yaml.v2 loader; both are read.
+func tlsEnabledParam(v interface{}) bool {
+	switch m := v.(type) {
+	case map[string]interface{}:
+		enabled, _ := m["enabled"].(bool)
+		return enabled
+	case map[interface{}]interface{}:
+		enabled, _ := m["enabled"].(bool)
+		return enabled
+	}
+	return false
 }

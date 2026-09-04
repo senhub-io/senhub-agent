@@ -77,11 +77,15 @@ senhub-agent config init
 senhub-agent config init --license <jwt> --tags env=prod,site=paris
 senhub-agent config init --otlp-endpoint otlp.example.com:4317
 senhub-agent config init --otlp-endpoint vm.example.com:4318 --otlp-protocol http
+senhub-agent config init --http-port 9080
 ```
+
+Before writing anything, `config init` binds the HTTP port it is about to configure and releases it. A port already in use is refused with the reason and the command exits non-zero, so an unattended install fails visibly instead of leaving a service that runs and answers nothing.
 
 | Flag | Description |
 |------|-------------|
 | `--config-path PATH` | Target configuration file (default: OS canonical path) |
+| `--http-port PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
 | `--license JWT` | License token to seed (unlocks paid probe tiers) |
 | `--tags k=v,k2=v2` | Host-level global tags applied to the generated config |
 | `--otlp-endpoint HOST:PORT` | Provision an OTLP push endpoint as a strategy fragment (metrics + logs) |
