@@ -151,6 +151,15 @@ func initConfig(argv []string) {
 	// monolithic file) is preserved verbatim.
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Printf("Configuration already present at %s — leaving it unchanged.\n", configPath)
+		// A kept configuration is not re-seeded, so a port it names is
+		// not this command's to refuse; but the installer runs before the
+		// service starts, so saying that the port is taken is still the
+		// only warning the operator will get.
+		if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
+			if portErr := checkHTTPPortFree(defaultHTTPBindAddress, port); portErr != nil {
+				fmt.Printf("Warning: the existing configuration keeps %v\n", portErr)
+			}
+		}
 		// Still ensure the OTLP fragment on an existing config: a prior run
 		// could have generated the config but not yet written the fragment.
 		// Idempotent — WriteOTLPStrategyFragment no-ops when 10-otlp.yaml
