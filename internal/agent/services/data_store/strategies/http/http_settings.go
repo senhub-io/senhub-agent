@@ -24,6 +24,7 @@ type licenseView struct {
 	Configured bool   `json:"configured"`
 	Tier       string `json:"tier,omitempty"`
 	Bound      bool   `json:"bound"`
+	Scope      string `json:"scope,omitempty"`
 	ExpiresAt  string `json:"expires_at,omitempty"`
 	Expired    bool   `json:"expired,omitempty"`
 	Detail     string `json:"detail,omitempty"`
@@ -99,10 +100,24 @@ func (h *HTTPSyncStrategy) currentLicenseView(agentKey string) licenseView {
 	if err != nil {
 		return licenseView{Configured: true, Detail: "invalid licence on disk"}
 	}
+	scope := "valid on any agent"
+	switch {
+	case lic.Subject == "":
+		scope = "valid on any agent"
+	case license.SubjectIsAgentKey(lic.Subject):
+		if lic.Subject == agentKey {
+			scope = "bound to this agent"
+		} else {
+			scope = "issued for another agent"
+		}
+	default:
+		scope = "customer licence (" + lic.Subject + ")"
+	}
 	return licenseView{
 		Configured: true,
 		Tier:       string(lic.Tier),
 		Bound:      license.VerifyBinding("", agentKey, lic),
+		Scope:      scope,
 		ExpiresAt:  lic.ExpiresAt.Format("2006-01-02"),
 		Expired:    lic.IsExpired,
 	}
@@ -173,7 +188,7 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 			return
 		}
 		if !license.VerifyBinding("", agentKey, lic) {
-			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("this licence is bound to %q, not to this agent key %q", lic.Subject, agentKey))
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("this licence is issued for another agent (%q), not this one (%q); use your customer licence", lic.Subject, agentKey))
 			return
 		}
 		if err := configuration.WriteLicenseSidecar(configPath, jwt); err != nil {
