@@ -127,31 +127,28 @@ Silent uninstall:
 msiexec /x senhub-agent-<version>-amd64.msi /qn
 ```
 
-By default, uninstalling removes what the MSI installed (the binary, the
-`senhub-agent` service and the registry marker) plus the two transient
-subfolders `%ProgramData%\SenHub\logs\` and `%ProgramData%\SenHub\update\`
-(rotated logs and staged auto-update packages — both regenerated on the
-next run), so a plain uninstall leaves a clean tree. Operator state under
-`%ProgramData%\SenHub\` — configuration (`agent.yaml`, `probes.d\`,
-`strategies.d\`), the sealed secret store and the license — is **kept**.
-This is deliberate: a later reinstall or an upgrade picks the existing
-configuration back up with no data loss. An in-place major upgrade never
-removes the transient folders either, so a staged auto-update in progress
-survives the upgrade.
+Uninstalling removes what the MSI installed (the binary, the
+`senhub-agent` service and the registry marker) **and the whole
+`%ProgramData%\SenHub\` tree** — configuration (`agent.yaml`,
+`probes.d\`, `strategies.d\`), the sealed secret store, the license and
+the transient `logs\` and `update\` subfolders. Removing the product
+leaves the machine clean, and a later fresh install starts from the
+installer's inputs (licence, port) rather than a stale kept
+configuration.
 
-To remove the machine's agent data as well, opt in with `PURGE_DATA=1`:
+This holds for an interactive uninstall from **Apps & features** as well
+as `msiexec /x`. It is not recoverable, so a host that will be
+reinstalled and must keep its licence should be **upgraded in place**
+(install the newer MSI over the older one) rather than uninstalled and
+reinstalled.
 
-```bat
-msiexec /x senhub-agent-<version>-amd64.msi /qn PURGE_DATA=1
-```
+An in-place major upgrade preserves everything under
+`%ProgramData%\SenHub\`: a newer MSI replacing an older one never
+touches the data tree, so configuration, licence, secret store and any
+staged auto-update survive the upgrade.
 
-This deletes the entire `%ProgramData%\SenHub\` tree, including the
-sealed secret store and the license. It is not recoverable; use it when
-decommissioning a host for good. The purge acts only on a real uninstall
-— a major upgrade (a newer MSI replacing an older one) never touches the
-data tree, with or without the property. An interactive uninstall from
-**Apps & features** always keeps the data (there is no way to pass the
-property there); run the `msiexec /x` command above instead.
+`PURGE_DATA` is accepted for backward compatibility but no longer changes
+anything: a genuine uninstall already removes the full tree.
 
 ## Existing installations
 
