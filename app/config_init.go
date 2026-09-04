@@ -161,7 +161,7 @@ func initConfig(argv []string) {
 		//   - a kept port that is already taken.
 		if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
 			if opts.httpPort != 0 && opts.httpPort != port {
-				fmt.Printf("Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d' (once available) or by editing strategies.d/00-http.yaml.\n", opts.httpPort, port, opts.httpPort)
+				fmt.Printf("Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d'.\n", opts.httpPort, port, opts.httpPort)
 			}
 			if portErr := checkHTTPPortFree(defaultHTTPBindAddress, port); portErr != nil {
 				fmt.Printf("Warning: %v\n", portErr)
