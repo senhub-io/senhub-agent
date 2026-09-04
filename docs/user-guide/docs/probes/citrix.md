@@ -400,4 +400,4 @@ Contact support@senhub.io for license information.
 ## Support
 
 - **Email**: support@senhub.io
-- **Documentation**: [docs.senhub.io](https://docs.senhub.io)
+- **Documentation**: [agent.senhub.io/docs](https://agent.senhub.io/docs)
