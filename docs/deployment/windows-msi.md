@@ -85,12 +85,13 @@ after the install directory:
   seeded, and the install fails with the reason.
 - **Desktop shortcut**: checked by default, creates "SenHub Agent
   Console" on the desktop with the agent icon.
+- **Open the web console when setup completes**: checked by default;
+  the browser opens on the console when the wizard closes.
 
-The finish page offers to open the web console in the browser. Its
-address ends with the agent key, generated on the machine and kept
-sealed, so it is not printed by the wizard: the shortcut, the finish
-page and `senhub-agent console` open it, and `senhub-agent console
---print` (as administrator) prints it.
+The console address ends with the agent key, generated on the machine
+and kept sealed, so it is not printed by the wizard: the shortcut, the
+end of the wizard and `senhub-agent console` open it, and
+`senhub-agent console --print` (as administrator) prints it.
 
 The shortcut runs `senhub-agent.exe console`. It carries no key: the
 agent reads the sealed key, asks for elevation once if the user is not

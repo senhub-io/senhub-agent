@@ -132,7 +132,7 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 
 Properties are consumed only on first install; they do not overwrite an existing `agent.yaml`.
 
-The guided install (double-click) asks for the licence key, the port and the desktop shortcut on one page, then offers to open the web console from its finish page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
+The guided install (double-click) asks for the licence key, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^
