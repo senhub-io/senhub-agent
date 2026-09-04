@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // parseInitConfigArgs must fail closed on unattended install paths: an
 // unknown flag (a typo'd --licence) or a value-taking flag with no value
@@ -142,5 +146,27 @@ func TestParseInitConfigArgs_LicenseAndHTTPPort(t *testing.T) {
 	}
 	if opts.license != "j" || opts.httpPort != 9080 {
 		t.Errorf("opts = %+v", opts)
+	}
+}
+
+func TestResolveLicenseInput(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "lic.jwt")
+	if err := os.WriteFile(f, []byte("  tok-from-file \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveLicenseInput("inline", f); err != nil || got != "tok-from-file" {
+		t.Errorf("file wins: got %q, %v", got, err)
+	}
+	if got, err := resolveLicenseInput("inline", ""); err != nil || got != "inline" {
+		t.Errorf("no file: got %q, %v", got, err)
+	}
+	if _, err := resolveLicenseInput("inline", filepath.Join(dir, "missing.jwt")); err == nil {
+		t.Error("a missing file must be an error, before anything is written")
+	}
+	empty := filepath.Join(dir, "empty.jwt")
+	os.WriteFile(empty, []byte("\n"), 0o600)
+	if got, _ := resolveLicenseInput("inline", empty); got != "inline" {
+		t.Errorf("empty file falls back to inline: got %q", got)
 	}
 }
