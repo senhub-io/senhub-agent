@@ -112,6 +112,9 @@
     <!-- Desktop shortcut to the web console (1 = create, the default;
          DESKTOP_SHORTCUT=0 on the command line skips it). -->
     <Property Id="DESKTOP_SHORTCUT" Value="1" Secure="yes" />
+    <!-- Open the web console when the wizard finishes (guided install
+         only: the launch is wired to the finish page's button). -->
+    <Property Id="OPEN_CONSOLE" Value="1" Secure="yes" />
     <!--
       PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
       on uninstall (config, sealed secret store, license, logs, staged
@@ -295,8 +298,8 @@
     <!--                                                               -->
     <!-- The SenHub options page (SenHubOptionsDlg below) is inserted   -->
     <!-- after the directory page: licence key, HTTP port and the      -->
-    <!-- desktop shortcut. The finish page offers to open the console. -->
-    <!-- TAGS / OTLP_ENDPOINT stay command-line                        -->
+    <!-- desktop shortcut, open the console at the end. TAGS and       -->
+    <!-- OTLP_ENDPOINT stay command-line                               -->
     <!-- properties: they belong to fleet provisioning, not to a       -->
     <!-- person clicking through a wizard.                             -->
     <!-- ============================================================ -->
@@ -328,6 +331,7 @@
         <Control Id="PortHint" Type="Text" X="86" Y="141" Width="264" Height="15" NoPrefix="yes" Text="The console will answer on http://localhost:&lt;port&gt;/" />
 
         <Control Id="ShortcutCheck" Type="CheckBox" X="20" Y="172" Width="330" Height="17" Property="DESKTOP_SHORTCUT" CheckBoxValue="1" Text="Create a desktop shortcut to the web console" />
+        <Control Id="OpenConsoleCheck" Type="CheckBox" X="20" Y="192" Width="330" Height="17" Property="OPEN_CONSOLE" CheckBoxValue="1" Text="Open the web console when setup completes" />
 
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="373" Height="0" />
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
@@ -356,19 +360,18 @@
       <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="SenHubOptionsDlg" Order="5" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="SenHubOptionsDlg" Order="3" Condition="NOT Installed" />
 
-      <!-- Finish page: a pre-checked "open the web console now". The
-           address itself is not shown: it ends with the agent key, which
-           the wizard cannot read back (sealed for SYSTEM and elevated
-           administrators), and an address one cannot copy in full only
-           frustrates. LaunchConsole runs as the person installing; the
-           agent asks for elevation itself to read the sealed key, then
-           opens the browser with the user's rights. -->
-      <Publish Dialog="ExitDialog" Control="Finish" Property="LaunchConsole" Value="&quot;[#SenHubAgentExe]&quot; console" Order="1" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
-      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchConsole" Order="2" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+      <!-- Finish page: standard, untouched. The "open the console" choice
+           lives on the options page: the built-in optional checkbox of
+           ExitDialog paints an opaque grey band over the dialog image,
+           and the address itself is not shown anywhere in the wizard,
+           since it ends with the agent key, which the wizard cannot read
+           back (sealed for SYSTEM and elevated administrators).
+           LaunchConsole runs as the person installing; the agent asks
+           for elevation itself to read the sealed key, then opens the
+           browser with the user's rights. -->
+      <Publish Dialog="ExitDialog" Control="Finish" Property="LaunchConsole" Value="&quot;[#SenHubAgentExe]&quot; console" Order="1" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchConsole" Order="2" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
     </UI>
-
-    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open the web console now" />
-    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
     <CustomAction Id="LaunchConsole"
                   BinaryRef="Wix4UtilCA_X64"
