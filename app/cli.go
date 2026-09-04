@@ -318,6 +318,10 @@ func readOnlyCommand(args []string) bool {
 	switch args[1] {
 	case "--help", "-h", "help", "--version", "version", "debug-modules-list":
 		return true
+	case "console":
+		// Reads the configuration only; when the sealed key needs more
+		// rights than the caller has, it asks for them itself.
+		return true
 	case "config":
 		if len(args) > 2 && (args[2] == "check" || args[2] == "show") {
 			return true
@@ -366,6 +370,7 @@ var knownTopLevelArgs = map[string]struct{}{
 	"start": {}, "stop": {}, "restart": {},
 	"status": {}, "run": {},
 	"refresh-unit": {},
+	"console":      {},
 }
 
 func Main() {
@@ -531,6 +536,9 @@ func Main() {
 	case "refresh-unit":
 		runRefreshUnit()
 		return
+	case "console":
+		runConsole(os.Args[2:])
+		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
 		// Commands that take no positional args: dispatched directly.
 		// `status` carries the optional --otlp view flag; `uninstall` the
@@ -635,6 +643,9 @@ License Commands:
 
 Other Commands:
     version              Show agent version
+    console              Open the web console in the browser (--print to
+                          show the address only; asks for elevation when
+                          the sealed agent key requires it)
     update               Check for new versions
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version

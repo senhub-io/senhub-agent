@@ -42,6 +42,7 @@ agent installs in the offline Free-tier default.
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
+| `DESKTOP_SHORTCUT` | `1` (default) places a "SenHub Agent Console" shortcut on the desktop; `DESKTOP_SHORTCUT=0` skips it |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `PURGE_DATA` | Uninstall only — `PURGE_DATA=1` on `msiexec /x` deletes `%ProgramData%\SenHub\` in full (see [Uninstall and data purge](#uninstall-and-data-purge)) |
 
@@ -70,12 +71,40 @@ nothing, its only trace being one `binding HTTP server` line in
 > - The token equally appears in the shell history / job output of the
 >   deployment tool that invokes `msiexec`; scrub those the same way.
 
+## Guided install
+
+Double-clicking the MSI runs the standard wizard with one extra page,
+after the install directory:
+
+- **Licence key**: optional, Free tier when empty; a key can be added
+  later from the web console.
+- **Port**: the port of the web console and of the PRTG / Nagios
+  endpoints, `8080` by default. The field takes integers only and the
+  wizard refuses a value outside 1 to 65535 before anything is
+  installed. A port already in use is refused when the configuration is
+  seeded, and the install fails with the reason.
+- **Desktop shortcut**: checked by default, creates "SenHub Agent
+  Console" on the desktop with the agent icon.
+
+The finish page names the console address for the chosen port and
+offers to open it. The address ends with the agent key, which is
+generated on the machine and kept sealed, so the wizard shows its
+shape rather than the full value; the shortcut, the finish page and
+`senhub-agent console` open the real address, and
+`senhub-agent console --print` (as administrator) prints it.
+
+The shortcut runs `senhub-agent.exe console`. It carries no key: the
+agent reads the sealed key, asks for elevation once if the user is not
+already elevated, then opens the default browser with the user's own
+rights. It is removed with the product.
+
 ## Silent install
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^
   LICENSE_KEY=eyJhbGciOi... ^
   TAGS=site=paris,env=prod ^
+  HTTP_PORT=9080 DESKTOP_SHORTCUT=0 ^
   /l* %TEMP%\senhub-agent-install.log
 ```
 
