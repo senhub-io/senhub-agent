@@ -86,12 +86,11 @@ after the install directory:
 - **Desktop shortcut**: checked by default, creates "SenHub Agent
   Console" on the desktop with the agent icon.
 
-The finish page names the console address for the chosen port and
-offers to open it. The address ends with the agent key, which is
-generated on the machine and kept sealed, so the wizard shows its
-shape rather than the full value; the shortcut, the finish page and
-`senhub-agent console` open the real address, and
-`senhub-agent console --print` (as administrator) prints it.
+The finish page offers to open the web console in the browser. Its
+address ends with the agent key, generated on the machine and kept
+sealed, so it is not printed by the wizard: the shortcut, the finish
+page and `senhub-agent console` open it, and `senhub-agent console
+--print` (as administrator) prints it.
 
 The shortcut runs `senhub-agent.exe console`. It carries no key: the
 agent reads the sealed key, asks for elevation once if the user is not
