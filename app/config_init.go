@@ -20,6 +20,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
+	licensepkg "senhub-agent.go/internal/agent/services/license"
 )
 
 // initConfigArgs holds the provisionable fields `config init` accepts.
@@ -151,13 +152,19 @@ func initConfig(argv []string) {
 	// monolithic file) is preserved verbatim.
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Printf("Configuration already present at %s — leaving it unchanged.\n", configPath)
-		// A kept configuration is not re-seeded, so a port it names is
-		// not this command's to refuse; but the installer runs before the
-		// service starts, so saying that the port is taken is still the
-		// only warning the operator will get.
+		// A kept configuration is not re-seeded (the agent owns its config,
+		// the installer does not rewrite it). Two things still deserve a
+		// word, because the installer runs before the service starts and
+		// this print is the only trace the operator gets:
+		//   - a port asked for on this run that the kept config ignores,
+		//     which is exactly the reinstall-over-kept-config surprise;
+		//   - a kept port that is already taken.
 		if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
+			if opts.httpPort != 0 && opts.httpPort != port {
+				fmt.Printf("Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d' (once available) or by editing strategies.d/00-http.yaml.\n", opts.httpPort, port, opts.httpPort)
+			}
 			if portErr := checkHTTPPortFree(defaultHTTPBindAddress, port); portErr != nil {
-				fmt.Printf("Warning: the existing configuration keeps %v\n", portErr)
+				fmt.Printf("Warning: %v\n", portErr)
 			}
 		}
 		// Still ensure the OTLP fragment on an existing config: a prior run
@@ -190,6 +197,16 @@ func initConfig(argv []string) {
 		fatalf("config init: applying provisioned fields: %v", err)
 	}
 
+	// A licence is bound to this machine's agent key. At install the key
+	// has just been generated, so a licence provisioned on the command
+	// line can only match one obtained for this exact key. Warn on a
+	// mismatch rather than fail: the agent still runs (Free tier), and an
+	// unattended install must not abort on a licence that can be fixed
+	// later with `license activate`.
+	if license != "" {
+		warnLicenseBinding(configPath, license)
+	}
+
 	if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint, otlpProtocol); err != nil {
 		fatalf("config init: writing OTLP strategy: %v", err)
 	}
@@ -206,6 +223,28 @@ func initConfig(argv []string) {
 		fmt.Printf("  otlp endpoint: %s\n", otlpEndpoint)
 	}
 	fmt.Printf("  probes: %s\n", filepath.Join(filepath.Dir(configPath), "probes.d"))
+}
+
+// warnLicenseBinding prints a warning when the provisioned licence is not
+// bound to the agent key just generated for this install. It never fails
+// the command; the boot-time check and `license activate` enforce it.
+func warnLicenseBinding(configPath, jwt string) {
+	validator, err := licensepkg.GetDefaultValidator(7)
+	if err != nil {
+		return
+	}
+	lic, err := validator.ValidateLicense(jwt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: the provisioned licence could not be validated: %v\n", err)
+		return
+	}
+	agentKey, err := extractAgentKeyFromConfig(configPath)
+	if err != nil || agentKey == "" {
+		return
+	}
+	if !licensepkg.VerifyBinding("", agentKey, lic) {
+		fmt.Fprintf(os.Stderr, "Warning: the provisioned licence is bound to %q, not to this agent key %q; the agent will run on the Free tier until a matching licence is activated.\n", lic.Subject, agentKey)
+	}
 }
 
 // parseTagList turns "k1=v1,k2=v2" into a map. Blank entries and entries
