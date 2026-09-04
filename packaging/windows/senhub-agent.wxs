@@ -30,10 +30,13 @@
   the install fails with it: a service that starts on a taken port runs,
   logs one line and answers nothing, which is worse than a refusal.
 
-  Uninstall keeps operator state under %ProgramData%\SenHub (config,
-  sealed secret store, license) by default so upgrades and reinstalls
-  never lose it. The transient subfolders logs\ and update\ (rotated
-  logs and staged auto-update MSIs — both regenerated on next run) are
+  An upgrade keeps operator state under %ProgramData%\SenHub (config,
+  sealed secret store, license) so it is never lost across versions. A
+  genuine uninstall removes the whole tree, so removing the product
+  leaves the machine clean and a later fresh install starts from the
+  installer's inputs rather than a stale kept config. The transient
+  subfolders logs\ and update\ (rotated logs and staged auto-update
+  MSIs — both regenerated on next run) are
   removed on a plain uninstall so it leaves a clean tree. A full data
   purge, including config and secrets, is opt-in:
 
@@ -126,6 +129,9 @@
       additionally removes the preserved state. See the PurgeDataFolder
       authoring on the DataFolderMarker component below.
     -->
+    <!-- PURGE_DATA is retained for backward compatibility only: a genuine
+         uninstall now removes %ProgramData%\SenHub in full regardless, so
+         this property no longer changes anything. -->
     <Property Id="PURGE_DATA" Secure="yes" />
 
     <!--
@@ -173,7 +179,9 @@
       We invoke the installed binary's `config init` path rather than
       templating YAML inside the MSI, so the schema stays owned by the
       agent: it writes the default offline multi-file layout, then applies
-      the license + tags. Validated on a real Windows host (see
+      the license + tags (a genuine uninstall later removes the whole
+      tree, so a fresh install always starts from the installer inputs).
+      Validated on a real Windows host (see
       docs/deployment/windows-msi.md, "Config seeding").
 
       Return="check": a failed seeding fails the install. config init
@@ -273,7 +281,7 @@
       <Custom Action="SetPurgeLogsDefault"   After="SetPurgeDataDefault" />
       <Custom Action="SetPurgeUpdateDefault" After="SetPurgeLogsDefault" />
       <Custom Action="SetPurgeDataReal"      After="SetPurgeUpdateDefault"
-              Condition="(PURGE_DATA=&quot;1&quot;) AND Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
+              Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="SetPurgeLogsReal"      After="SetPurgeDataReal"
               Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="SetPurgeUpdateReal"    After="SetPurgeLogsReal"
@@ -498,14 +506,13 @@
         authoring above. Only config, the sealed secret store and the
         license are preserved.
 
-        Exception, opt-in only: since 0.5.0 the tree also holds the sealed
-        secret store, the license and staged auto-update MSIs, so an
-        operator who wants a truly clean removal (including that preserved
-        state) can pass PURGE_DATA=1 on `msiexec /x`. RemoveFolderEx reads
-        PURGEDATAFOLDER, which is set to the whole tree ONLY on a genuine
-        full uninstall with PURGE_DATA=1 (never on a MajorUpgrade); on every
-        other transaction it points at the never-existing sentinel path, so
-        it no-ops without aborting the sibling purges (#707).
+        A genuine uninstall removes the whole tree — config, the sealed
+        secret store, the license and staged MSIs — so removing the product
+        leaves nothing behind. RemoveFolderEx reads PURGEDATAFOLDER, set to
+        the whole tree on a genuine full uninstall and to the never-existing
+        sentinel path on a MajorUpgrade (which must preserve operator
+        state); the sentinel no-ops without aborting the sibling purges
+        (#707). PURGE_DATA is no longer consulted for this.
       -->
       <Component Id="DataFolderMarker" Directory="DATAFOLDER" Guid="*">
         <RegistryValue Root="HKLM"
