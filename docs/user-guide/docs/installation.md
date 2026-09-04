@@ -126,10 +126,13 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`). A port already in use fails the install. |
+| `DESKTOP_SHORTCUT` | `1` (default) creates a "SenHub Agent Console" desktop shortcut; `0` skips it |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `ADOPT` | `ADOPT=1` takes over an agent installed outside the MSI (see below) |
 
 Properties are consumed only on first install; they do not overwrite an existing `agent.yaml`.
+
+The guided install (double-click) asks for the licence key, the port and the desktop shortcut on one page, then names the console address on its finish page and offers to open it. The address ends with the agent key, generated on the machine and kept sealed: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^

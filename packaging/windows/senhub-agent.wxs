@@ -23,7 +23,7 @@
       msiexec /i senhub-agent.msi /qn ^
         LICENSE_KEY=eyJhbGci... ^
         TAGS=site=paris,env=prod ^
-        HTTP_PORT=9080
+        HTTP_PORT=9080 DESKTOP_SHORTCUT=0
 
   HTTP_PORT moves the local HTTP endpoints (PRTG, Web UI, Nagios) off
   the 8080 default. The seeding step refuses a port already in use, and
@@ -106,8 +106,12 @@
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
-    <!-- Optional: port of the local HTTP endpoints (default 8080). -->
-    <Property Id="HTTP_PORT" Secure="yes" />
+    <!-- Port of the local HTTP endpoints. Defaulted so the options page
+         shows the value the seeding step will use. -->
+    <Property Id="HTTP_PORT" Value="8080" Secure="yes" />
+    <!-- Desktop shortcut to the web console (1 = create, the default;
+         DESKTOP_SHORTCUT=0 on the command line skips it). -->
+    <Property Id="DESKTOP_SHORTCUT" Value="1" Secure="yes" />
     <!--
       PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
       on uninstall (config, sealed secret store, license, logs, staged
@@ -289,12 +293,86 @@
     <!-- silent install (/qn) skips the UI entirely and drives the     -->
     <!-- same properties from the command line / transform.            -->
     <!--                                                               -->
-    <!-- Entering LICENSE_KEY / TAGS / OTLP_ENDPOINT / HTTP_PORT inside -->
-    <!-- the wizard (a custom dialog) is not built; today those are set -->
-    <!-- via properties (silent install), and a guided install lands   -->
-    <!-- the offline default.                                          -->
+    <!-- The SenHub options page (SenHubOptionsDlg below) is inserted   -->
+    <!-- after the directory page: licence key, HTTP port and the      -->
+    <!-- desktop shortcut. The finish page names the console address   -->
+    <!-- and offers to open it. TAGS / OTLP_ENDPOINT stay command-line -->
+    <!-- properties: they belong to fleet provisioning, not to a       -->
+    <!-- person clicking through a wizard.                             -->
     <!-- ============================================================ -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <UI>
+      <!--
+        Options page. Licence and port are the two settings a person
+        installing by hand needs before the service starts: the port
+        decides whether the console answers at all, and the web console
+        cannot set the port that keeps it from answering.
+
+        The port field takes integers only; the range is checked on Next
+        and refused with SenHubBadPortDlg before anything is installed.
+        A port already in use is refused later by the seeding step, which
+        fails the install (see SeedConfig).
+      -->
+      <Dialog Id="SenHubOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="300" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent options" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="Licence, console port and shortcut. Everything else is set from the web console." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="373" Height="0" />
+
+        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="Licence key (leave empty for the Free tier; the key can be added later from the web console):" />
+        <Control Id="LicenseEdit" Type="Edit" X="20" Y="84" Width="330" Height="18" Property="LICENSE_KEY" />
+
+        <Control Id="PortLabel" Type="Text" X="20" Y="112" Width="330" Height="24" NoPrefix="yes" Text="Port of the web console and of the PRTG / Nagios endpoints, on this machine only (default 8080):" />
+        <Control Id="PortEdit" Type="Edit" X="20" Y="138" Width="60" Height="18" Property="HTTP_PORT" Integer="yes" />
+        <Control Id="PortHint" Type="Text" X="86" Y="141" Width="264" Height="15" NoPrefix="yes" Text="The console will answer on http://localhost:&lt;port&gt;/" />
+
+        <Control Id="ShortcutCheck" Type="CheckBox" X="20" Y="172" Width="330" Height="17" Property="DESKTOP_SHORTCUT" CheckBoxValue="1" Text="Create a desktop shortcut to the web console" />
+
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="373" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
+          <Publish Event="NewDialog" Value="InstallDirDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
+          <Publish Event="SpawnDialog" Value="SenHubBadPortDlg" Order="1" Condition="NOT HTTP_PORT OR HTTP_PORT &lt; 1 OR HTTP_PORT &gt; 65535" />
+          <Publish Property="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Web console: http://localhost:[HTTP_PORT]/web/&lt;agent key&gt;/dashboard&#13;&#10;&#13;&#10;The agent key is generated on this machine and kept sealed. The desktop shortcut and &quot;senhub-agent console&quot; (as administrator) open the console; &quot;senhub-agent console --print&quot; shows the full address." Order="2" Condition="HTTP_PORT &gt;= 1 AND HTTP_PORT &lt;= 65535" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="3" Condition="HTTP_PORT &gt;= 1 AND HTTP_PORT &lt;= 65535" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="SenHubBadPortDlg" Width="260" Height="85" Title="[ProductName] Setup" NoMinimize="yes">
+        <Control Id="Text" Type="Text" X="48" Y="15" Width="194" Height="30" NoPrefix="yes" Text="The port must be a number between 1 and 65535." />
+        <Control Id="Icon" Type="Icon" X="15" Y="15" Width="24" Height="24" ToolTip="Information icon" FixedSize="yes" IconSize="32" Text="WixUI_Ico_Info" />
+        <Control Id="Return" Type="PushButton" X="100" Y="57" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+
+      <!-- Insert the options page between the directory page and the
+           summary. A later Order on the same control wins over the
+           NewDialog the built-in set publishes. -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="SenHubOptionsDlg" Order="5" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="SenHubOptionsDlg" Order="3" Condition="NOT Installed" />
+
+      <!-- Finish page: the console address (set on the options page) and
+           a pre-checked "open it now". LaunchConsole runs as the person
+           installing; the agent asks for elevation itself to read the
+           sealed key, then opens the browser with the user's rights. -->
+      <Publish Dialog="ExitDialog" Control="Finish" Property="LaunchConsole" Value="&quot;[#SenHubAgentExe]&quot; console" Order="1" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchConsole" Order="2" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open the web console now" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+
+    <CustomAction Id="LaunchConsole"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="immediate"
+                  Return="ignore" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />
     <!-- SenHub-branded wizard art (mascot + brand accent), replacing the
          default WiX bitmaps. Dialog = 493x312 (Welcome/Finish background),
@@ -318,6 +396,8 @@
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="DATAFOLDER" Name="SenHub" />
     </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
 
     <ComponentGroup Id="ProductComponents">
 
@@ -363,6 +443,29 @@
             Stop="both"
             Remove="uninstall"
             Wait="yes" />
+      </Component>
+
+      <!--
+        Desktop shortcut to the web console, on the all-users desktop of
+        a per-machine install. It carries no address: it runs the agent's
+        `console` verb, which reads the sealed key (asking for elevation
+        once) and opens the browser. Removed with the product.
+      -->
+      <Component Id="ConsoleShortcut" Directory="DesktopFolder" Guid="*" Condition="DESKTOP_SHORTCUT = 1">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                       Name="DesktopShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+        <Shortcut Id="ConsoleDesktopShortcut"
+                  Name="SenHub Agent Console"
+                  Description="Open the SenHub Agent web console"
+                  Target="[#SenHubAgentExe]"
+                  Arguments="console"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="senhub.ico"
+                  Show="minimized" />
       </Component>
 
       <!--
