@@ -19,6 +19,7 @@ func handleLicenseCommand() {
 	type LicenseCmd struct {
 		Activate *cliArgs.LicenseActivateArgs `arg:"subcommand:activate"`
 		Show     *cliArgs.LicenseShowArgs     `arg:"subcommand:show"`
+		Key      *cliArgs.LicenseShowArgs     `arg:"subcommand:key"`
 		Remove   *cliArgs.LicenseRemoveArgs   `arg:"subcommand:remove"`
 	}
 
@@ -49,6 +50,8 @@ func handleLicenseCommand() {
 		handleLicenseActivate(cmd.Activate)
 	case cmd.Show != nil:
 		handleLicenseShow(cmd.Show)
+	case cmd.Key != nil:
+		handleLicenseKey(cmd.Key)
 	case cmd.Remove != nil:
 		handleLicenseRemove(cmd.Remove)
 	default:
@@ -58,6 +61,24 @@ func handleLicenseCommand() {
 }
 
 // handleLicenseActivate activates a license
+// handleLicenseKey prints this agent's key, which a licence must be
+// bound to. It is the value to hand to Sensor Factory when ordering a
+// paid-tier licence, and the value `license activate` checks against.
+func handleLicenseKey(args *cliArgs.LicenseShowArgs) {
+	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		fatalf("failed to determine config path: %v", err)
+	}
+	agentKey, err := extractAgentKeyFromConfig(configPath)
+	if err != nil {
+		fatalf("failed to read the agent key: %v", err)
+	}
+	if agentKey == "" {
+		fatalf("no agent key in %s", configPath)
+	}
+	fmt.Println(agentKey)
+}
+
 func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	// Get absolute config path
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
@@ -91,6 +112,23 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 		} else {
 			fmt.Printf("   Grace period has ended - license is inactive\n")
 		}
+	}
+
+	// A licence binds to one machine through its Subject claim, which is
+	// the agent key. Activating a licence minted for another agent key
+	// writes a file the agent then refuses at boot (the same VerifyBinding
+	// runs there), leaving the host silently on the Free tier. Catch the
+	// mismatch here, where the operator is watching, and refuse rather
+	// than persist a licence that will never take effect.
+	agentKey, keyErr := extractAgentKeyFromConfig(configPath)
+	if keyErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not read this agent's key to verify the licence binding: %v\n", keyErr)
+	} else if !license.VerifyBinding("", agentKey, validatedLicense) {
+		fmt.Fprintf(os.Stderr, "Error: this licence is bound to %q, not to this agent's key %q.\n", validatedLicense.Subject, agentKey)
+		fmt.Fprintf(os.Stderr, "Order a licence for this agent key, or read it with: senhub-agent license key\n")
+		os.Exit(1)
+	} else if agentKey != "" {
+		fmt.Println("   Binding: matches this agent key")
 	}
 
 	// Persist the license to a dedicated sidecar file (license.jwt) next to the
