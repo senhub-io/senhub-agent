@@ -252,14 +252,20 @@ func initConfig(argv []string) {
 
 // findLicenseInDir returns the licence file to use from a folder the
 // operator picked in the installer: license.jwt when present, else the
-// single *.jwt there. No file is not an error (the operator may have
-// left the default folder, meaning Free tier); several files are, since
+// single *.jwt there. No file, or no such folder, is not an error (the
+// operator left the installer's default, meaning Free tier); several files are, since
 // guessing which customer's licence to install is worse than asking.
 // The lookup is not recursive: the installer's folder picker can land on
 // a drive root, and walking it would be slow and surprising.
 func findLicenseInDir(dir string) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// The installer's default folder does not exist; the operator
+			// left it as is, which means "no licence". Same outcome as an
+			// empty folder.
+			return "", nil
+		}
 		return "", fmt.Errorf("reading licence folder %s: %w", dir, err)
 	}
 	var candidates []string

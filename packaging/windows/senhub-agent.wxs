@@ -21,12 +21,13 @@
   auth token to seed:
 
       msiexec /i senhub-agent.msi /qn ^
-        LICENSE_FILE=C:\licences\license-client1-Pro.jwt ^
+        LICENSEDIR=C:\licences ^
         TAGS=site=paris,env=prod ^
         HTTP_PORT=9080 DESKTOP_SHORTCUT=0
 
-  LICENSE_KEY=<jwt> is still accepted for scripted installs that carry
-  the token itself.
+  LICENSEDIR is the folder the wizard browses to (license.jwt or the
+  single *.jwt inside is used). LICENSE_FILE=<path> names the file
+  itself, and LICENSE_KEY=<jwt> carries the token, for scripted installs.
 
   HTTP_PORT moves the local HTTP endpoints (PRTG, Web UI, Nagios) off
   the 8080 default. The seeding step refuses a port already in use, and
@@ -114,6 +115,13 @@
          seeding step, which runs as SYSTEM: a mapped drive letter is not
          visible there, use a local path or a UNC path. -->
     <Property Id="LICENSE_FILE" Secure="yes" />
+    <!-- Folder holding the licence file, chosen with the wizard's folder
+         browser (Windows Installer has no native file picker). LICENSEDIR
+         is a Directory so BrowseDlg can drive it; it is also a public
+         property so a scripted install can pass LICENSEDIR=C:\licences.
+         The seeding step picks license.jwt or the single *.jwt inside. -->
+    <Property Id="LICENSEDIR" Secure="yes" />
+    <Property Id="WIXUI_LICENSEDIR" Value="LICENSEDIR" />
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
@@ -192,6 +200,11 @@
       Validated on a real Windows host (see
       docs/deployment/windows-msi.md, "Config seeding").
 
+      The folder argument is written "[LICENSEDIR]\" on purpose: a
+      Directory property always ends with a backslash, and \" would
+      otherwise escape the closing quote and swallow the rest of the
+      command line. The doubled backslash keeps one literal backslash.
+
       Return="check": a failed seeding fails the install. config init
       exits non-zero on an invalid property value and on an HTTP port
       already in use; both used to be swallowed, leaving a service that
@@ -200,7 +213,7 @@
       repair and reinstall are unaffected.
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot; --license-dir &quot;[LICENSEDIR]\&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -339,8 +352,12 @@
         <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="Licence, console port and shortcut. Everything else is set from the web console." />
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="373" Height="0" />
 
-        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="Licence file (path to the .jwt file you received; leave empty for the Free tier, a licence can be added later from the web console):" />
-        <Control Id="LicenseFileEdit" Type="Edit" X="20" Y="84" Width="330" Height="18" Property="LICENSE_FILE" />
+        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="Licence folder: the folder holding the .jwt licence file you received (leave as is for the Free tier; a licence can be added later from the web console):" />
+        <Control Id="LicenseDirEdit" Type="PathEdit" X="20" Y="84" Width="264" Height="18" Property="WIXUI_LICENSEDIR" Indirect="yes" />
+        <Control Id="LicenseBrowse" Type="PushButton" X="290" Y="84" Width="60" Height="18" Text="B&amp;rowse...">
+          <Publish Property="_BrowseProperty" Value="[WIXUI_LICENSEDIR]" Order="1" />
+          <Publish Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+        </Control>
 
         <Control Id="PortLabel" Type="Text" X="20" Y="112" Width="330" Height="24" NoPrefix="yes" Text="Port of the web console and of the PRTG / Nagios endpoints, on this machine only (default 8080):" />
         <Control Id="PortEdit" Type="Edit" X="20" Y="138" Width="60" Height="18" Property="HTTP_PORT" Integer="yes" />
@@ -419,6 +436,14 @@
     </StandardDirectory>
 
     <StandardDirectory Id="DesktopFolder" />
+
+    <!-- Placeholder so LICENSEDIR exists in the Directory table and the
+         wizard's folder browser can drive it. Its default, C:\SenHub-licence,
+         does not exist on purpose: config init reads a missing folder as
+         "no licence" (Free tier). Nothing is installed here. -->
+    <StandardDirectory Id="TARGETDIR">
+      <Directory Id="LICENSEDIR" Name="SenHub-licence" />
+    </StandardDirectory>
 
     <ComponentGroup Id="ProductComponents">
 
