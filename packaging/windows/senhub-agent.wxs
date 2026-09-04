@@ -21,9 +21,12 @@
   auth token to seed:
 
       msiexec /i senhub-agent.msi /qn ^
-        LICENSE_KEY=eyJhbGci... ^
+        LICENSE_FILE=C:\licences\license-client1-Pro.jwt ^
         TAGS=site=paris,env=prod ^
         HTTP_PORT=9080 DESKTOP_SHORTCUT=0
+
+  LICENSE_KEY=<jwt> is still accepted for scripted installs that carry
+  the token itself.
 
   HTTP_PORT moves the local HTTP endpoints (PRTG, Web UI, Nagios) off
   the 8080 default. The seeding step refuses a port already in use, and
@@ -106,6 +109,11 @@
       cloud backend/token: the agent is offline by default (see header).
     -->
     <Property Id="LICENSE_KEY" Secure="yes" Hidden="yes" />
+    <!-- Path to the licence file (.jwt) the customer received. This is what
+         the wizard asks for: a token is far too long to type. Read by the
+         seeding step, which runs as SYSTEM: a mapped drive letter is not
+         visible there, use a local path or a UNC path. -->
+    <Property Id="LICENSE_FILE" Secure="yes" />
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
@@ -192,7 +200,7 @@
       repair and reinstall are unaffected.
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --http-port &quot;[HTTP_PORT]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -331,8 +339,8 @@
         <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="Licence, console port and shortcut. Everything else is set from the web console." />
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="373" Height="0" />
 
-        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="Licence key (leave empty for the Free tier; the key can be added later from the web console):" />
-        <Control Id="LicenseEdit" Type="Edit" X="20" Y="84" Width="330" Height="18" Property="LICENSE_KEY" />
+        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="Licence file (path to the .jwt file you received; leave empty for the Free tier, a licence can be added later from the web console):" />
+        <Control Id="LicenseFileEdit" Type="Edit" X="20" Y="84" Width="330" Height="18" Property="LICENSE_FILE" />
 
         <Control Id="PortLabel" Type="Text" X="20" Y="112" Width="330" Height="24" NoPrefix="yes" Text="Port of the web console and of the PRTG / Nagios endpoints, on this machine only (default 8080):" />
         <Control Id="PortEdit" Type="Edit" X="20" Y="138" Width="60" Height="18" Property="HTTP_PORT" Integer="yes" />
