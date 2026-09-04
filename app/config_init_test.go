@@ -47,6 +47,36 @@ func TestParseInitConfigArgs(t *testing.T) {
 		}
 	})
 
+	t.Run("http port parsed", func(t *testing.T) {
+		opts, err := parseInitConfigArgs([]string{"--http-port", "9080"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if opts.httpPort != 9080 {
+			t.Errorf("httpPort = %d, want 9080", opts.httpPort)
+		}
+	})
+
+	// The MSI always passes --http-port, expanded to "" when the operator
+	// set no HTTP_PORT property: empty must mean the default, not an error.
+	t.Run("empty http port means default", func(t *testing.T) {
+		opts, err := parseInitConfigArgs([]string{"--http-port", ""})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if opts.httpPort != 0 {
+			t.Errorf("httpPort = %d, want 0 (default)", opts.httpPort)
+		}
+	})
+
+	t.Run("http port out of range or not a number rejected", func(t *testing.T) {
+		for _, raw := range []string{"0", "65536", "-1", "http", "80 80"} {
+			if _, err := parseInitConfigArgs([]string{"--http-port", raw}); err == nil {
+				t.Errorf("--http-port %q must be rejected", raw)
+			}
+		}
+	})
+
 	t.Run("empty args ok", func(t *testing.T) {
 		if _, err := parseInitConfigArgs(nil); err != nil {
 			t.Errorf("empty args should parse: %v", err)

@@ -87,6 +87,51 @@ func TestCreateDefaultConfiguration_WritesMultiFileLayout(t *testing.T) {
 	}
 }
 
+// TestCreateDefaultConfiguration_HTTPPort pins that the port the
+// installer asks for is the one written to strategies.d/00-http.yaml
+// and the one the in-memory view reports, so the address printed at the
+// end of the install is the address that answers.
+func TestCreateDefaultConfiguration_HTTPPort(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "agent.yaml")
+
+	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: 9080}
+	lc := NewLocalConfiguration(args, createTestLocalLogger())
+
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	if err := lc.Start(runCtx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	httpRaw, err := os.ReadFile(filepath.Join(tempDir, "strategies.d", "00-http.yaml"))
+	if err != nil {
+		t.Fatalf("read strategies.d/00-http.yaml: %v", err)
+	}
+	var httpMap map[string]map[string]interface{}
+	if err := yaml.Unmarshal(httpRaw, &httpMap); err != nil {
+		t.Fatalf("http strategy fragment parse: %v", err)
+	}
+	if got := httpMap["http"]["port"]; got != 9080 {
+		t.Errorf("fragment port = %v, want 9080", got)
+	}
+
+	cfg, err := LoadFromDisk(configPath, nil)
+	if err != nil {
+		t.Fatalf("LoadFromDisk: %v", err)
+	}
+	for _, s := range cfg.Storage {
+		if s.Name == "http" && s.Params["port"] != 9080 {
+			t.Errorf("loaded port = %v, want 9080", s.Params["port"])
+		}
+	}
+	for _, s := range lc.snapshot().Storage {
+		if s.Name == "http" && s.Params["port"] != 9080 {
+			t.Errorf("in-memory port = %v, want 9080", s.Params["port"])
+		}
+	}
+}
+
 // TestCreateDefaultConfiguration_LoadFromDiskRoundTrip verifies that
 // the multi-file layout written by install loads back via the public
 // loader with the expected probes + strategy. This is the integration

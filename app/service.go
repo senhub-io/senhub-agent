@@ -177,6 +177,23 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		if err == nil {
 			fmt.Println("Service installed successfully")
 
+			// A fresh configuration is about to be written: say now if
+			// its HTTP port is already taken, while the operator is
+			// still reading. The service would otherwise start, log
+			// one line and answer nothing.
+			if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+				bindAddress, port := defaultHTTPBindAddress, args.HttpPort
+				if port == 0 {
+					port = defaultHTTPPort
+				}
+				if args.EnableHttps {
+					bindAddress, port = "0.0.0.0", args.HttpsPort
+				}
+				if portErr := checkHTTPPortFree(bindAddress, port); portErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: %v; the agent will not answer on this port until it is freed or changed in strategies.d/00-http.yaml\n", portErr)
+				}
+			}
+
 			// Always generate the local configuration at install time
 			if err := generateConfiguration(args); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate configuration: %v\n", err)
@@ -184,10 +201,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				fmt.Printf("Configuration generated: %s\n", configPath)
 				if args.EnableHttps {
 					fmt.Printf("HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
-					fmt.Printf("\nAccess your agent at: https://localhost:%d/web/{agentkey}/dashboard\n", args.HttpsPort)
-				} else {
-					fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")
 				}
+				scheme, port := resolveHTTPStrategyEndpoint(configPath)
+				fmt.Printf("\nAccess your agent at: %s://localhost:%d/web/{agentkey}/dashboard\n", scheme, port)
 			}
 
 			// The installer runs as root but the daemon does not; the

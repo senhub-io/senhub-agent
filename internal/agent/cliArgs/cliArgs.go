@@ -93,6 +93,8 @@ type StartSubcommandArgs struct {
 
 	ServiceUser string `arg:"--user" help:"System user the installed Linux service runs as (default: senhub; use root to keep the legacy root unit)"`
 
+	HttpPort int `arg:"--http-port" help:"Port the HTTP strategy listens on (default: 8080)"`
+
 	// HTTPS options for the HTTP strategy
 	EnableHttps   bool   `arg:"--enable-https" help:"Enable HTTPS for HTTP strategy"`
 	HttpsPort     int    `arg:"--https-port" help:"HTTPS port (default: 8443)"`
@@ -135,6 +137,10 @@ type ParsedArgs struct {
 	// as. Empty means the installer default (the dedicated senhub
 	// user); "root" restores the pre-0.2.3 root unit.
 	ServiceUser string
+
+	// HttpPort is the port the generated HTTP strategy listens on when
+	// HTTPS is off. Zero means the 8080 default.
+	HttpPort int
 
 	// HTTPS options
 	EnableHttps   bool
@@ -240,6 +246,17 @@ func GetAbsoluteConfigPath(configPath string) (string, error) {
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+// ValidatePort accepts zero (unset, the default applies) or a TCP port
+// in 1-65535. Both install paths run unattended, so an out-of-range
+// value must stop at the flag rather than land in a fragment the agent
+// refuses at its first start.
+func ValidatePort(port int) error {
+	if port < 0 || port > 65535 {
+		return fmt.Errorf("port %d is out of range 1-65535", port)
+	}
+	return nil
 }
 
 func ParseStartArgs(flags []string) *ParsedArgs {
@@ -362,6 +379,12 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 	if minTlsVersion == "" {
 		minTlsVersion = "1.2"
 	}
+	if err := ValidatePort(args.HttpPort); err != nil {
+		fatalf("--http-port: %v", err)
+	}
+	if err := ValidatePort(args.HttpsPort); err != nil {
+		fatalf("--https-port: %v", err)
+	}
 
 	return &ParsedArgs{
 		Verbose:               verbose,
@@ -377,6 +400,8 @@ func parsedArgsFromStartArgs(args *StartSubcommandArgs, environment string) *Par
 		ConfigPath: configPath,
 
 		ServiceUser: args.ServiceUser,
+
+		HttpPort: args.HttpPort,
 
 		EnableHttps:   args.EnableHttps,
 		HttpsPort:     httpsPort,

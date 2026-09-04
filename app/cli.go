@@ -597,7 +597,7 @@ func showHelp() {
 	configPath, err := cliArgs.GetAbsoluteConfigPath("")
 	if err == nil {
 		if key, err := extractAgentKeyFromConfig(configPath); err == nil && key != "" {
-			consoleURL = fmt.Sprintf("http://127.0.0.1:8080/web/%s/dashboard", key)
+			consoleURL = buildDashboardURL(configPath, key)
 		}
 	}
 
@@ -640,7 +640,8 @@ Other Commands:
     update <version>     Install a specific version
     config init [opts]    Create the default offline configuration if none
                           exists (idempotent). Accepts --config-path,
-                          --license <jwt>, --tags k=v,..., --otlp-endpoint
+                          --http-port <n>, --license <jwt>, --tags k=v,...,
+                          --otlp-endpoint; refuses a port already in use
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML
@@ -680,6 +681,7 @@ Agent Options:
     --debug-modules module1,module2        [deprecated] Use --filter instead
 
 HTTPS/TLS Options:
+    --http-port PORT                       HTTP port (default: 8080)
     --enable-https                         Enable HTTPS on the HTTP strategy
     --https-port PORT                      HTTPS port (default: 8443)
     --https-hosts HOST1,HOST2              Hostnames for auto-generated certificate SAN
