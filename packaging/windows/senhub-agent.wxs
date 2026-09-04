@@ -295,8 +295,8 @@
     <!--                                                               -->
     <!-- The SenHub options page (SenHubOptionsDlg below) is inserted   -->
     <!-- after the directory page: licence key, HTTP port and the      -->
-    <!-- desktop shortcut. The finish page names the console address   -->
-    <!-- and offers to open it. TAGS / OTLP_ENDPOINT stay command-line -->
+    <!-- desktop shortcut. The finish page offers to open the console. -->
+    <!-- TAGS / OTLP_ENDPOINT stay command-line                        -->
     <!-- properties: they belong to fleet provisioning, not to a       -->
     <!-- person clicking through a wizard.                             -->
     <!-- ============================================================ -->
@@ -335,8 +335,7 @@
         </Control>
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
           <Publish Event="SpawnDialog" Value="SenHubBadPortDlg" Order="1" Condition="NOT HTTP_PORT OR HTTP_PORT &lt; 1 OR HTTP_PORT &gt; 65535" />
-          <Publish Property="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Web console: http://localhost:[HTTP_PORT]/web/&lt;agent key&gt;/dashboard&#13;&#10;&#13;&#10;The agent key is generated on this machine and kept sealed. The desktop shortcut and &quot;senhub-agent console&quot; (as administrator) open the console; &quot;senhub-agent console --print&quot; shows the full address." Order="2" Condition="HTTP_PORT &gt;= 1 AND HTTP_PORT &lt;= 65535" />
-          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="3" Condition="HTTP_PORT &gt;= 1 AND HTTP_PORT &lt;= 65535" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="2" Condition="HTTP_PORT &gt;= 1 AND HTTP_PORT &lt;= 65535" />
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
           <Publish Event="SpawnDialog" Value="CancelDlg" />
@@ -354,13 +353,16 @@
       <!-- Insert the options page between the directory page and the
            summary. A later Order on the same control wins over the
            NewDialog the built-in set publishes. -->
-      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="SenHubOptionsDlg" Order="5" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="SenHubOptionsDlg" Order="5" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="SenHubOptionsDlg" Order="3" Condition="NOT Installed" />
 
-      <!-- Finish page: the console address (set on the options page) and
-           a pre-checked "open it now". LaunchConsole runs as the person
-           installing; the agent asks for elevation itself to read the
-           sealed key, then opens the browser with the user's rights. -->
+      <!-- Finish page: a pre-checked "open the web console now". The
+           address itself is not shown: it ends with the agent key, which
+           the wizard cannot read back (sealed for SYSTEM and elevated
+           administrators), and an address one cannot copy in full only
+           frustrates. LaunchConsole runs as the person installing; the
+           agent asks for elevation itself to read the sealed key, then
+           opens the browser with the user's rights. -->
       <Publish Dialog="ExitDialog" Control="Finish" Property="LaunchConsole" Value="&quot;[#SenHubAgentExe]&quot; console" Order="1" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchConsole" Order="2" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
     </UI>
