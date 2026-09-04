@@ -486,6 +486,13 @@ func Main() {
 			migrateConfig(configPath)
 			return
 		}
+		if len(os.Args) > 2 && os.Args[2] == "set" {
+			// agent config set <key> <value> [--config-path <path>]
+			// Change one setting in the multi-file layout without
+			// hand-editing YAML. The running agent reloads the change.
+			runConfigSet(os.Args[3:])
+			return
+		}
 		if len(os.Args) > 2 && os.Args[2] == "init" {
 			// agent config init [--config-path <path>] [--license <jwt>]
 			//                    [--tags k=v,k2=v2]

@@ -87,6 +87,22 @@ The Windows MSI creates a "SenHub Agent Console" desktop shortcut that runs this
 
 ## Configuration
 
+### config set
+
+Changes one setting in the multi-file layout without editing YAML by hand. It writes the matching fragment under `strategies.d/`, preserving the file's comments and key order, and the running agent reloads the change on its own — no restart. An invalid value is refused and the file is left untouched.
+
+```bash
+senhub-agent config set http.port 9080
+senhub-agent config set http.bind_address 0.0.0.0
+```
+
+| Key | Value |
+|-----|-------|
+| `http.port` | Port of the local HTTP endpoints (1-65535) |
+| `http.bind_address` | Address the HTTP server binds to |
+
+Changing `http.port` moves the web console and the PRTG / Nagios endpoints to the new port; reconnect on the new address.
+
 ### config init
 
 Creates the default configuration for an unattended install (for example a silent MSI install or a scripted provisioning step), then applies the fields an installer can pass. It is idempotent: if a configuration already exists at the target path it is left untouched.
