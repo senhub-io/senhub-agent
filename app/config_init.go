@@ -139,7 +139,6 @@ func initConfig(argv []string) {
 		fatalf("config init: %v", err)
 	}
 	configPath := opts.configPath
-	license := opts.license
 	otlpEndpoint := opts.otlpEndpoint
 	otlpProtocol := opts.otlpProtocol
 	tags := opts.tags
@@ -180,6 +179,15 @@ func initConfig(argv []string) {
 		return
 	}
 
+	// Read the licence file before anything is written: an unreadable path
+	// must fail with nothing on disk. A configuration left behind by a
+	// failed install is picked up as "already present" by the next one,
+	// which then ignores the port and licence it was given.
+	license, err := resolveLicenseInput(opts.license, opts.licenseFile)
+	if err != nil {
+		fatalf("config init: %v", err)
+	}
+
 	// Refuse a port the strategy cannot bind before anything is written.
 	// This command runs where nobody watches the output, so a silent
 	// half-success here becomes a service that runs and answers nothing.
@@ -194,17 +202,6 @@ func initConfig(argv []string) {
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: opts.httpPort}
 	if err := generateConfiguration(args); err != nil {
 		fatalf("config init: %v", err)
-	}
-
-	if opts.licenseFile != "" {
-		data, readErr := os.ReadFile(opts.licenseFile) // #nosec G304 - operator-provided path
-		if readErr != nil {
-			fatalf("config init: reading --license-file %s: %v", opts.licenseFile, readErr)
-		}
-		fromFile := strings.TrimSpace(string(data))
-		if fromFile != "" {
-			license = fromFile
-		}
 	}
 
 	if err := configuration.ApplyInstallOverrides(configPath, license, tags); err != nil {
@@ -237,6 +234,24 @@ func initConfig(argv []string) {
 		fmt.Printf("  otlp endpoint: %s\n", otlpEndpoint)
 	}
 	fmt.Printf("  probes: %s\n", filepath.Join(filepath.Dir(configPath), "probes.d"))
+}
+
+// resolveLicenseInput returns the licence to provision: the content of
+// licenseFile when given (a file is what a customer receives; a token is
+// too long to type), else the inline token. An unreadable file is an
+// error; an empty file falls back to the inline token.
+func resolveLicenseInput(inline, licenseFile string) (string, error) {
+	if licenseFile == "" {
+		return inline, nil
+	}
+	data, err := os.ReadFile(licenseFile) // #nosec G304 - operator-provided path
+	if err != nil {
+		return "", fmt.Errorf("reading --license-file %s: %w", licenseFile, err)
+	}
+	if fromFile := strings.TrimSpace(string(data)); fromFile != "" {
+		return fromFile, nil
+	}
+	return inline, nil
 }
 
 // warnLicenseBinding prints a warning when the provisioned licence is not
