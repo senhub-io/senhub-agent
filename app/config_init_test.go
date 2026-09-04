@@ -192,8 +192,8 @@ func TestFindLicenseInDir(t *testing.T) {
 	if got, err := findLicenseInDir(dir); err != nil || got != named {
 		t.Errorf("license.jwt wins over siblings: got %q, %v", got, err)
 	}
-	if _, err := findLicenseInDir(filepath.Join(dir, "missing")); err == nil {
-		t.Error("a missing folder must be an error")
+	if got, err := findLicenseInDir(filepath.Join(dir, "missing")); err != nil || got != "" {
+		t.Errorf("a missing folder is the installer default and means no licence: got %q, %v", got, err)
 	}
 	if _, err := parseInitConfigArgs([]string{"--license-dir", dir}); err != nil {
 		t.Errorf("--license-dir must parse: %v", err)
