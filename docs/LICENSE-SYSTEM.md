@@ -243,7 +243,7 @@ cp license.jwt /etc/senhub-agent/license.jwt   # restart the agent
 # Check the "License" card for status
 ```
 
-The token stays in clear on disk: it is a JWT bound to the agent key, not a
+The token stays in clear on disk: it is a JWT bound to a customer (or a single agent), not a
 portable access secret, so it is deliberately excluded from the `${secret:}`
 seal. The loader reads the sidecar automatically when `agent.license` is empty;
 an inline `agent.license` **literal** JWT is auto-migrated to the sidecar on the
