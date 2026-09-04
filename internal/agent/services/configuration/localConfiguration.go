@@ -172,6 +172,11 @@ func (lc *LocalConfiguration) GetAgentKey() string {
 }
 
 // GetAuthenticationKey implements AgentConfiguration interface
+// GetConfigPath returns the absolute path of the agent config file.
+func (lc *LocalConfiguration) GetConfigPath() string {
+	return lc.configPath
+}
+
 func (lc *LocalConfiguration) GetAuthenticationKey() string {
 	return lc.snapshot().Agent.Key
 }

@@ -26,6 +26,7 @@ type stubAgentConfig struct{}
 
 func (stubAgentConfig) GetAuthenticationKey() string     { return "test-key" }
 func (stubAgentConfig) GetGlobalTags() map[string]string { return nil }
+func (stubAgentConfig) GetConfigPath() string            { return "" }
 
 func testBaseLogger() *logger.Logger {
 	return logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"})

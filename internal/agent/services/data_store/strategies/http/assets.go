@@ -89,6 +89,13 @@ func (ah *AssetHandler) parseTemplates() {
 		}
 	}
 
+	// Parse Settings template
+	if tmplContent, err := htmlFiles.ReadFile("assets/html/settings.html"); err == nil {
+		if tmpl, err := template.New("settings").Parse(string(tmplContent)); err == nil {
+			ah.templates["settings"] = tmpl
+		}
+	}
+
 	// Parse Documentation template
 	if tmplContent, err := htmlFiles.ReadFile("assets/html/docs.html"); err == nil {
 		if tmpl, err := template.New("docs").Parse(string(tmplContent)); err == nil {
@@ -225,6 +232,8 @@ func GetTemplateName(urlPath string) string {
 		return "dashboard"
 	case strings.Contains(urlPath, "/explorer"):
 		return "api-explorer"
+	case strings.Contains(urlPath, "/settings"):
+		return "settings"
 	case strings.Contains(urlPath, "/docs"):
 		return "docs"
 	case strings.Contains(urlPath, "/admin"):
