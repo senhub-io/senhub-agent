@@ -2,24 +2,6 @@ package snmppoll
 
 import "senhub-agent.go/internal/agent/probes"
 
-// governanceFields describes the governance block, at the top level and
-// inside a discovery rule alike.
-var governanceFields = []probes.ParamSpec{
-	{Key: "owner", Kind: probes.KindBlock, Description: "Who owns the device", Fields: []probes.ParamSpec{
-		{Key: "team", Kind: probes.KindString, Description: "Owning team"},
-		{Key: "contact", Kind: probes.KindString, Description: "Contact for the team"},
-	}},
-	{Key: "criticality", Kind: probes.KindString, Enum: []string{"critical", "high", "medium", "low"}, Description: "Business criticality"},
-	{Key: "location", Kind: probes.KindBlock, Description: "Where the device is", Fields: []probes.ParamSpec{
-		{Key: "site", Kind: probes.KindString},
-		{Key: "datacenter", Kind: probes.KindString},
-		{Key: "rack", Kind: probes.KindString},
-		{Key: "room", Kind: probes.KindString},
-	}},
-	{Key: "lifecycle", Kind: probes.KindString, Description: "active, maintenance, decommissioning or retired"},
-	{Key: "labels", Kind: probes.KindMap, Description: "Free-form labels emitted as entity attributes"},
-}
-
 func init() {
 	probes.RegisterProbeSpec(probes.ProbeSpec{
 		Type: "snmp_poll", DisplayName: "SNMP Poll", Category: "network",
@@ -65,10 +47,10 @@ func init() {
 						{Key: "vendor", Kind: probes.KindString},
 						{Key: "sysname", Kind: probes.KindString, Description: "Regular expression"},
 					}},
-					{Key: "governance", Kind: probes.KindBlock, Fields: governanceFields},
+					{Key: "governance", Kind: probes.KindBlock, Fields: probes.GovernanceFields()},
 				}},
 			}},
-			{Key: "governance", Kind: probes.KindBlock, Group: "governance", Description: "Ownership, criticality and location of the device", Fields: governanceFields},
+			{Key: "governance", Kind: probes.KindBlock, Group: "governance", Description: "Ownership, criticality and location of the device", Fields: probes.GovernanceFields()},
 		},
 	})
 }

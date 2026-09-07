@@ -39,3 +39,11 @@ func ProbeSpecFor(probeType string) (ProbeSpec, bool) { return spec.For(probeTyp
 
 // RegisteredProbeSpecs returns every declared schema, sorted by type.
 func RegisteredProbeSpecs() []ProbeSpec { return spec.Registered() }
+
+// GovernanceFields is the schema of the governance block every probe
+// instance accepts; snmp_poll reuses it inside its discovery rules.
+func GovernanceFields() []ParamSpec { return spec.GovernanceFields() }
+
+// CheckGovernance reports the governance keys that are unknown or of the
+// wrong shape.
+func CheckGovernance(v interface{}) []SpecProblem { return spec.CheckGovernance(v) }

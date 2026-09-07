@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+
+	"senhub-agent.go/internal/agent/services/governance"
 )
 
 // Shared configuration data types — extracted from the
@@ -38,6 +40,14 @@ type ProbeConfig struct {
 	// they override agent global_tags (and built-in probe tags) on a key
 	// conflict. Matched to datapoints by probe name in the data store.
 	CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
+	// Governance is the operator-asserted ownership, criticality, location,
+	// lifecycle and labels of what THIS instance observes: the database, the
+	// device, the remote application. It is stamped on the entities the
+	// instance emits and on its metrics and logs, so two instances on one
+	// host can belong to two different application chains. The agent-level
+	// governance block describes the host itself and is not inherited here.
+	// Kept raw: the governance package owns the shape and the closed sets.
+	Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
 	// Enabled turns a probe off without deleting its configuration.
 	//
 	// A POINTER on purpose: absent must stay distinguishable from an explicit
@@ -144,4 +154,13 @@ func (p ProbeConfig) ID() string {
 	hash := sha256.New()
 	hash.Write([]byte(input))
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// ParseGovernance validates the instance's governance block. The zero
+// value comes back when none is declared.
+func (p ProbeConfig) ParseGovernance() (governance.Governance, error) {
+	if p.Governance == nil {
+		return governance.Governance{}, nil
+	}
+	return governance.Parse(p.Governance)
 }
