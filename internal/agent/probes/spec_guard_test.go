@@ -86,7 +86,9 @@ func declaredSegments(spec probes.ProbeSpec) map[string]struct{} {
 // registers it, by reading the RegisterProbe("...") calls.
 func probePackageDirs(t *testing.T, root string) map[string]string {
 	t.Helper()
-	re := regexp.MustCompile(`RegisterProbe\(\s*"([a-z0-9_]+)"`)
+	// A probe registers itself with a literal or with a package constant;
+	// the spec always carries the literal, so both are read.
+	re := regexp.MustCompile(`RegisterProbe\(\s*"([a-z0-9_]+)"|\bType:\s*"([a-z0-9_]+)"`)
 	out := map[string]string{}
 	base := filepath.Join(root, "internal", "agent", "probes")
 	err := filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
@@ -103,7 +105,11 @@ func probePackageDirs(t *testing.T, root string) map[string]string {
 			return nil
 		}
 		for _, m := range re.FindAllStringSubmatch(string(src), -1) {
-			out[m[1]] = filepath.Dir(path)
+			name := m[1]
+			if name == "" {
+				name = m[2]
+			}
+			out[name] = filepath.Dir(path)
 		}
 		return nil
 	})
@@ -119,14 +125,34 @@ func probePackageDirs(t *testing.T, root string) map[string]string {
 func keysReadByPackage(t *testing.T, root, dir string) map[string]struct{} {
 	t.Helper()
 	fset := token.NewFileSet()
-	const modulePrefix = "senhub-agent.go/internal/agent/probes/"
+	// Follow the imports a parser delegates to, one level: sibling probe
+	// packages (hostpoll for the host probes) and the governance package
+	// (snmp_poll). Wider first-party imports are not followed: entity
+	// helpers take attribute maps of the same Go type as a params map,
+	// and their keys are not settings.
+	const modulePrefix = "senhub-agent.go/"
+	followed := []string{modulePrefix + "internal/agent/probes/", modulePrefix + "internal/agent/services/governance"}
+	// dbcommon builds entity attribute maps (typed like a params map) for
+	// the database probes; its keys are OTel attributes, not settings.
+	skipped := []string{modulePrefix + "internal/agent/probes/dbcommon"}
 	dirs := []string{dir}
 	if files, err := parseDirectory(fset, dir); err == nil {
 		for _, f := range files {
 			for _, imp := range f.Imports {
 				p, _ := strconv.Unquote(imp.Path.Value)
-				if strings.HasPrefix(p, modulePrefix) {
-					dirs = append(dirs, filepath.Join(root, "internal", "agent", "probes", strings.TrimPrefix(p, modulePrefix)))
+				skip := false
+				for _, prefix := range skipped {
+					if strings.HasPrefix(p, prefix) {
+						skip = true
+					}
+				}
+				if skip {
+					continue
+				}
+				for _, prefix := range followed {
+					if strings.HasPrefix(p, prefix) {
+						dirs = append(dirs, filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(p, modulePrefix))))
+					}
 				}
 			}
 		}
@@ -209,12 +235,21 @@ func keysInFunc(fn *ast.FuncDecl, mapReturners map[string]bool) map[string]token
 		if !ok || len(assign.Rhs) != 1 || len(assign.Lhs) == 0 {
 			return true
 		}
-		call, ok := assign.Rhs[0].(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		callee, ok := call.Fun.(*ast.Ident)
-		if !ok || !mapReturners[callee.Name] {
+		switch rhs := assign.Rhs[0].(type) {
+		case *ast.CallExpr:
+			callee, ok := rhs.Fun.(*ast.Ident)
+			if !ok || !mapReturners[callee.Name] {
+				return true
+			}
+		case *ast.TypeAssertExpr:
+			// `block, ok := raw.(map[string]interface{})` on a value that
+			// arrived as interface{} (a nested block handed to a helper, or
+			// an element of a list of blocks): the result is a settings
+			// map whatever it came from.
+			if rhs.Type == nil || !isConfigMapType(rhs.Type) {
+				return true
+			}
+		default:
 			return true
 		}
 		if ident, ok := assign.Lhs[0].(*ast.Ident); ok && ident.Name != "_" {
