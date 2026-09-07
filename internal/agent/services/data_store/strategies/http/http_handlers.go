@@ -114,6 +114,9 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsGet).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsSet).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/catalog/probes", h.HandleCatalogProbes).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/probes", h.HandleProbeCreate).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.HandleProbeUpdate).Methods("PUT")
+		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.HandleProbeDelete).Methods("DELETE")
 		// router.HandleFunc("/web/{agentkey}/guide", h.HandleWebGuide).Methods("GET") // Temporarily disabled
 
 		// Static assets
@@ -192,6 +195,18 @@ func (h *HTTPHandlers) HandleConfigSettingsSet(w http.ResponseWriter, r *http.Re
 
 func (h *HTTPHandlers) HandleCatalogProbes(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleCatalogProbes(w, r)
+}
+
+func (h *HTTPHandlers) HandleProbeCreate(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleProbeCreate(w, r)
+}
+
+func (h *HTTPHandlers) HandleProbeUpdate(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleProbeUpdate(w, r)
+}
+
+func (h *HTTPHandlers) HandleProbeDelete(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleProbeDelete(w, r)
 }
 
 func (h *HTTPHandlers) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {
