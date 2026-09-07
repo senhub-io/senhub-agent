@@ -155,19 +155,6 @@ jobs:
           echo "JSIGN=java -jar jsign.jar" >> "$GITHUB_ENV"
           java -jar "$JAR" --version || true
 
-      - name: Build installer custom action (DTF)
-        # The wizard's licence "Browse..." button is a managed custom
-        # action (packaging/windows/ca): Windows Installer has no native
-        # file picker. The Windows runner ships the .NET SDK and the
-        # .NET Framework targeting packs; DTF wraps the assembly into the
-        # native SenHubCA.CA.dll that WiX embeds.
-        run: |
-          dotnet build packaging/windows/ca/SenHubCA.csproj -c Release -p:Platform=x64 -nologo
-          CA_DLL=$(find packaging/windows/ca/bin -name 'SenHubCA.CA.dll' | head -1)
-          test -n "$CA_DLL" || { echo "::error::SenHubCA.CA.dll not produced"; exit 1; }
-          echo "CA_DIR=$(dirname "$CA_DLL")" >> "$GITHUB_ENV"
-          ls -la "$CA_DLL"
-
       - name: Sign agent binary (jsign)
         if: steps.sign.outputs.enabled == 'true'
         run: |
@@ -183,17 +170,6 @@ jobs:
             --tsaurl "$CODESIGN_TSA" --tsmode rfc3161 \
             --name "SenHub Agent" --url "https://senhub.io" \
             dist/windows-amd64/senhub-agent.exe
-          # The installer custom action DLL is embedded in the MSI and
-          # loaded into the wizard; sign it too.
-          $JSIGN \
-            --storetype "$CODESIGN_STORETYPE" \
-            ${CODESIGN_KEYSTORE:+--keystore "$CODESIGN_KEYSTORE"} \
-            ${CODESIGN_STOREPASS:+--storepass "$CODESIGN_STOREPASS"} \
-            ${CODESIGN_ALIAS:+--alias "$CODESIGN_ALIAS"} \
-            ${CODESIGN_KEYPASS:+--keypass "$CODESIGN_KEYPASS"} \
-            --tsaurl "$CODESIGN_TSA" --tsmode rfc3161 \
-            --name "SenHub Agent installer" --url "https://senhub.io" \
-            "$CA_DIR/SenHubCA.CA.dll"
 
       - name: Install WiX Toolset (dotnet tool)
         env:
@@ -221,7 +197,6 @@ jobs:
           wix build packaging/windows/senhub-agent.wxs \
             -d Version="$VERSION" \
             -d BinDir="dist/windows-amd64" \
-            -d CaDir="$CA_DIR" \
             -arch x64 \
             -ext WixToolset.Util.wixext \
             -ext WixToolset.UI.wixext \
