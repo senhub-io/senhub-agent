@@ -4,7 +4,6 @@ package sensor
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"sync"
 	"time"
 
@@ -17,12 +16,10 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// validProbeNameRegex matches URL-safe probe names: letters, digits, hyphens, underscores
-var validProbeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
-
-// isValidProbeName checks if a probe name is safe for use in HTTP URLs
+// isValidProbeName checks if a probe name is safe for use in HTTP URLs;
+// the rule lives with ProbeConfig so the configurator applies the same.
 func isValidProbeName(name string) bool {
-	return name != "" && validProbeNameRegex.MatchString(name)
+	return configuration.IsValidProbeName(name)
 }
 
 // Sensor manages the pool of running probes. It is an agent service:
