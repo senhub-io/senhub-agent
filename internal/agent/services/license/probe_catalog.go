@@ -37,6 +37,8 @@ var paidProbes = map[string]bool{
 	"vsphere_ha":        true,
 	"ad_hybrid":         true,
 	"exchange_online":   true,
+	// Azure Container Apps console log stream, read through ARM.
+	"azure_container_apps": true,
 	// Bespoke commercial collector: third-party apps push events over HTTP.
 	"event": true,
 	// Active / synthetic checks.

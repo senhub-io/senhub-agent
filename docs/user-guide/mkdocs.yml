@@ -136,6 +136,7 @@ nav:
       - VMware vSphere HA: probes/vsphere_ha.md
       - Azure AD Connect Health: probes/ad_hybrid.md
       - Exchange Online: probes/exchange_online.md
+      - Azure Container Apps: probes/azure_container_apps.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md
