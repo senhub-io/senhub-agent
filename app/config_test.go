@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"senhub-agent.go/internal/agent/probes"
 	"strings"
 	"testing"
 )
