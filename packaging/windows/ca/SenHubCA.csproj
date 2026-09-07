@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Installer custom actions for the SenHub Agent MSI (WiX DTF).
+    Today: BrowseLicenseFile, the "Browse..." button of the options page,
+    which opens the standard Windows file dialog and writes the chosen
+    path into the LICENSE_FILE property. Windows Installer has no native
+    file picker; only a DLL custom action can set a property from a
+    dialog, hence this project. Built on the Windows runner by
+    windows-msi.yml; the output SenHubCA.CA.dll is the self-extracting
+    native wrapper DTF generates around the managed assembly.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <OutputType>Library</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <RootNamespace>SenHub.Installer</RootNamespace>
+    <AssemblyName>SenHubCA</AssemblyName>
+    <Nullable>disable</Nullable>
+    <LangVersion>7.3</LangVersion>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Dtf.CustomAction" Version="5.0.2" />
+  </ItemGroup>
+</Project>
