@@ -4,10 +4,27 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/probes"
+	_ "senhub-agent.go/internal/agent/probes/chrony"
 	_ "senhub-agent.go/internal/agent/probes/cpu"
+	_ "senhub-agent.go/internal/agent/probes/docker"
+	_ "senhub-agent.go/internal/agent/probes/execprobe"
+	_ "senhub-agent.go/internal/agent/probes/filetail"
+	_ "senhub-agent.go/internal/agent/probes/httpcheck"
+	_ "senhub-agent.go/internal/agent/probes/icmpcheck"
+	_ "senhub-agent.go/internal/agent/probes/linuxlogs"
 	_ "senhub-agent.go/internal/agent/probes/logicaldisk"
 	_ "senhub-agent.go/internal/agent/probes/memory"
+	_ "senhub-agent.go/internal/agent/probes/mysql"
 	_ "senhub-agent.go/internal/agent/probes/network"
+	_ "senhub-agent.go/internal/agent/probes/nginx"
+	_ "senhub-agent.go/internal/agent/probes/postgresql"
+	_ "senhub-agent.go/internal/agent/probes/promscrape"
+	_ "senhub-agent.go/internal/agent/probes/redis"
+	_ "senhub-agent.go/internal/agent/probes/smart"
+	_ "senhub-agent.go/internal/agent/probes/snmppoll"
+	_ "senhub-agent.go/internal/agent/probes/snmptrap"
+	_ "senhub-agent.go/internal/agent/probes/windowseventlog"
+	_ "senhub-agent.go/internal/agent/probes/winservices"
 )
 
 // A declared schema must describe a probe that exists, carry a display
