@@ -29,6 +29,7 @@ One probe instance follows one application; add an instance per application. Rep
     subscription_id: "22222222-2222-2222-2222-222222222222"
     resource_group: rg-squash
     app: squash-tm
+    bookmark_path: /var/lib/senhub-agent/squash-logs.bookmark
     parser:
       type: raw
     multiline:
@@ -53,6 +54,7 @@ The `governance` block is the agent's per-probe governance (see [Configuration](
 | `app` | string | Yes | - | Name of the Container App |
 | `containers` | list | No | all | Container names to read; the others in each replica are ignored |
 | `tail_lines` | integer | No | `100` | Lines re-read when a stream is (re)attached; the probe drops the ones it already published |
+| `bookmark_path` | string | No | - | File where the probe keeps, per stream, the timestamp of the last line it published, so a restart of the agent does not publish the re-read lines a second time. Without it, only reconnections within one run are deduplicated. |
 | `interval` | integer | No | `60` | Seconds between replica scans, and the cadence of the state metrics |
 | `parser` | block | No | `type: raw` | Line parser: `type` (`raw`, `regex`, `json`, `logfmt`), `pattern` (regex with named groups), `timestamp_field`, `timestamp_format`. Same block as [File Tail](filetail.md). |
 | `multiline` | block | No | off | Folding of physical lines into one record: `pattern`, `negate`, `match` (`after` or `before`). Same block as [File Tail](filetail.md). |
@@ -73,7 +75,7 @@ Each record's body is the line (or the folded multiline record). Attributes:
 | `senhub.azure_container_apps.revision` | The revision the line came from |
 | `senhub.azure_container_apps.replica` | The replica the line came from |
 | `container.name` | The container the line came from |
-| `log.iostream` | `stdout` or `stderr` when the stream tells them apart |
+| `log.iostream` | `stdout` or `stderr` |
 
 Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attributes; a `message`, `level` or configured timestamp field is promoted the same way as in `filetail`.
 
@@ -94,7 +96,7 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
 - Outbound HTTPS from the agent host to `login.microsoftonline.com`, `management.azure.com` and the log stream endpoint of the application's environment (`*.azurecontainerapps.dev`).
 
 !!! note "A live stream, not an archive"
-    The stream carries lines as they are written. While the agent is stopped, lines are not kept for it: on restart the probe re-reads the last `tail_lines` of each container and resumes. An application that needs every line kept keeps Azure's own Log Analytics as well; this probe is the low-latency path.
+    The stream carries lines as they are written. While the agent is stopped, lines are not kept for it: on restart the probe re-reads the last `tail_lines` of each container, skips the ones its bookmark says were published, and resumes. Lines written beyond that window while the agent was down are lost to it. An application that needs every line kept keeps Azure's own Log Analytics as well; this probe is the low-latency path.
 
 # Outputs
 
