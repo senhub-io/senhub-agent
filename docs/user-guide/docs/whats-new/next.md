@@ -41,7 +41,10 @@ Changes land here as they are merged to `dev`.
   `application` names the application chain an instance takes part in, so
   one filter finds everything in the chain across hosts and probe types.
   `agent config check` reports an unknown key or a value outside a closed
-  set, and the Probes page edits the block below the parameters.
+  set, and the Probes page edits the block below the parameters. The host's
+  location (site, datacenter, rack, room) now also descends to what runs on
+  the host, a database or a service reached on the loopback address; owner,
+  criticality and labels never do.
 
 ## Fixes
 

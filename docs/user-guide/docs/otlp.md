@@ -332,9 +332,12 @@ configuration on every host.
 takes `active` / `maintenance` / `decommissioning` / `retired`. `labels` is a
 free key/value map for anything that is yours alone.
 
-This block describes the host. What a probe observes (a database, a device, a
-remote application) is governed on the probe entry instead, with the same
-vocabulary: see [Governance per probe](configuration.md#governance-per-probe).
+This block describes the host. Its location alone (`site`, `datacenter`,
+`rack`, `room`) also descends to what the agent places on this host, a
+database or a service reached on the loopback address; owner, criticality,
+lifecycle and labels stay with the host. What a probe observes (a database, a
+device, a remote application) is governed on the probe entry instead, with the
+same vocabulary: see [Governance per probe](configuration.md#governance-per-probe).
 
 `depends_on_enabled` turns on outbound dependency discovery — the edges that
 say "this service talks to that endpoint". It is off by default because mapping

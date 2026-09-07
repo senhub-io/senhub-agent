@@ -194,6 +194,9 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 			delete(d.lastGood, id)
 		}
 	}
+	// What runs on this host is where the host is: its location descends
+	// to the entities the sources placed here, and to nothing remote.
+	obs = inheritHostLocation(obs, h.ID, h.Governance)
 	// Fold each relation onto its source entity (embedded entity.relationships)
 	// before the tracker, so the tracker reconciles entities only.
 	entities, orphans := obs.foldRelationships()

@@ -177,7 +177,7 @@ When adding a probe, register it in the **six** places below in the **same PR**.
    entitySrc.SetUp(false, nil)
    ```
 
-   **Governance is not the probe's business.** The operator's per-instance `governance` block (owner / criticality / location / lifecycle / labels) is stamped by the `ProbePoller` on every entity the source reports (`entity.WithAttributes`, absent keys only) and by the data store on the instance's metrics and logs. A probe never parses or stamps it; the one exception is `snmp_poll`, whose discovery rules stamp a more specific block per device and therefore win.
+   **Governance is not the probe's business.** The operator's per-instance `governance` block (owner / criticality / location / lifecycle / labels) is stamped by the `ProbePoller` on every entity the source reports (`entity.WithAttributes`, absent keys only) and by the data store on the instance's metrics and logs. A probe never parses or stamps it; the one exception is `snmp_poll`, whose discovery rules stamp a more specific block per device and therefore win. The detector also lets the host's location (and only that) descend to every entity a `runs_on` relation places on this host, so a probe that reports a local target with `entity.LocalRunsOn` gets it for free.
 
    **Host-level probes and log conduits** (cpu, memory, network, logicaldisk, linux_logs, syslog, filetail, windowseventlog, event): do NOT call `SetEntitySource()`. They inherit the `NoOpEntitySource` fallback from `BaseProbe`, which satisfies the invariant without emitting extra entity events — the host entity is already reported by the entity detector.
 
