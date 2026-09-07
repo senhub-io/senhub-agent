@@ -598,7 +598,7 @@ func (h *HTTPSyncStrategy) handleStatsCache(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *HTTPSyncStrategy) handleConfigProbes(w http.ResponseWriter, r *http.Request) {
-	h.debugManager.HandleConfigProbes(w, r)
+	h.handleConfiguredProbes(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
