@@ -70,6 +70,18 @@ This is especially useful when setting up PRTG, Nagios, or other monitoring tool
 
 ![Sensor Builder](images/web-interface/sensor-builder.webp "Sensor Builder with endpoint list and live JSON response")
 
+### Probes
+
+The Probes page is the configurator: it lists the probes the configuration declares and lets you add, edit, enable, disable and delete probe instances without editing YAML on the server.
+
+- **The list** shows each probe with its live state: running, failing, starting, disabled, or the licence reason it cannot run. Probes whose file was written by hand are listed but left to the hand; only the files the console wrote (one file per instance under `probes.d`, marked by a header comment) can be edited from the page.
+- **Add a probe** picks a type from the catalogue, grouped by category, with the types your licence does not cover greyed out and the reason shown. The form is generated from the probe's declared schema: required fields are marked, closed sets are drop-downs, secrets are password fields that are never echoed back, lists take one value per line, nested settings are grouped.
+- **Validate** asks the agent to check the values against the schema and to build the probe, which reports what it would refuse or silently replace with a default. **Test** runs one real collection cycle and shows the metrics that came back, within a short budget. **Save** writes the file; the agent starts, restarts or stops the probe on its own, no restart.
+- **Secrets** typed in the form go to the agent's secret store; the file holds a `${secret:...}` reference. Without a usable secret store the save is refused with the `${env:}` or `${file:}` alternative rather than writing a password in clear.
+- **Delete** removes the file and its stored secrets; **Disable** keeps them, which is the better choice during an incident.
+
+The same operations are available to scripts on `/api/{key}/catalog/probes`, `/api/{key}/config/probes` (GET, POST, PUT and DELETE on `.../{name}`), `/api/{key}/config/validate` and `/api/{key}/config/test`.
+
 ### Settings
 
 The Settings page changes the agent's own configuration from the browser, so a Windows operator does not have to edit YAML on the server:
