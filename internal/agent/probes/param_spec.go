@@ -75,6 +75,14 @@ func RegisterProbeSpec(spec ProbeSpec) {
 	specs[spec.Type] = spec
 }
 
+// unregisterProbeSpec removes a declaration. Tests only: production code
+// declares once, at init, and never takes a schema back.
+func unregisterProbeSpec(probeType string) {
+	specMu.Lock()
+	defer specMu.Unlock()
+	delete(specs, probeType)
+}
+
 // ProbeSpecFor returns the schema of a probe type, if one is declared.
 func ProbeSpecFor(probeType string) (ProbeSpec, bool) {
 	specMu.RLock()
