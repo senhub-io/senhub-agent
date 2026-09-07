@@ -156,10 +156,11 @@ func truncateString(s string, maxLen int) string {
 }
 
 // enrichWithConfiguredTags overlays the agent-level global_tags and each
-// probe instance's custom_tags onto every datapoint, in one place for all
-// sinks. Priority on a key conflict is custom_tags > global_tags > built-in
-// (the tags the probe already emitted). Per-probe custom_tags are matched to
-// a datapoint by its probe_name tag. No-op (and no allocation) when neither
+// probe instance's operator tags (its governance attributes, then its
+// custom_tags) onto every datapoint, in one place for all sinks. Priority
+// on a key conflict is custom_tags > governance > global_tags > built-in
+// (the tags the probe already emitted). Per-probe tags are matched to a
+// datapoint by its probe_name tag. No-op (and no allocation) when nothing
 // is configured.
 func (d *dataStore) enrichWithConfiguredTags(data []datapoint.DataPoint) []datapoint.DataPoint {
 	cfg := d.configProvider.GetConfiguration()
@@ -167,13 +168,18 @@ func (d *dataStore) enrichWithConfiguredTags(data []datapoint.DataPoint) []datap
 
 	var customByProbe map[string][]tags.Tag
 	for _, p := range cfg.Probes {
-		if len(p.CustomTags) == 0 {
+		operator, err := operatorTagsForProbe(p)
+		if err != nil {
+			d.logger.Warn().Err(err).Msg("governance block ignored on datapoints")
+			continue
+		}
+		if len(operator) == 0 {
 			continue
 		}
 		if customByProbe == nil {
 			customByProbe = make(map[string][]tags.Tag)
 		}
-		customByProbe[p.Name] = tags.MapToTags(p.CustomTags)
+		customByProbe[p.Name] = tags.MapToTags(operator)
 	}
 
 	if len(global) == 0 && customByProbe == nil {
@@ -454,25 +460,26 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 }
 
 // publishSignalContext snapshots the agent's global_tags and per-probe
-// custom_tags into agentstate so the log rail can stamp them for
-// cross-signal correlation. Rebuilt on every config refresh; the maps are
+// operator tags (governance attributes, then custom_tags) into agentstate
+// so the log rail can stamp them for cross-signal correlation. Rebuilt on every config refresh; the maps are
 // plain string maps so agentstate stays free of configuration types.
 func (d *dataStore) publishSignalContext() {
 	cfg := d.configProvider.GetConfiguration()
 
 	var customByProbe map[string]map[string]string
 	for _, p := range cfg.Probes {
-		if len(p.CustomTags) == 0 {
+		operator, err := operatorTagsForProbe(p)
+		if err != nil {
+			d.logger.Warn().Err(err).Msg("governance block ignored on log records")
+			continue
+		}
+		if len(operator) == 0 {
 			continue
 		}
 		if customByProbe == nil {
 			customByProbe = make(map[string]map[string]string, len(cfg.Probes))
 		}
-		customTags := make(map[string]string, len(p.CustomTags))
-		for k, v := range p.CustomTags {
-			customTags[k] = v
-		}
-		customByProbe[p.Name] = customTags
+		customByProbe[p.Name] = operator
 	}
 
 	var global map[string]string
