@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/spec"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/governance"
 )
 
 // probeWriteRequest is the body of a create or update: the same shape
@@ -19,6 +21,9 @@ type probeWriteRequest struct {
 	Type    string                 `json:"type"`
 	Enabled *bool                  `json:"enabled"`
 	Params  map[string]interface{} `json:"params"`
+	// Governance is the instance's optional governance block; an empty
+	// object means none, so a form with nothing filled in writes nothing.
+	Governance map[string]interface{} `json:"governance,omitempty"`
 }
 
 type probeWriteResponse struct {
@@ -139,6 +144,10 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey strin
 		writeJSONError(w, http.StatusBadRequest, "parameters: "+strings.Join(msgs, "; "))
 		return ps, nil, false
 	}
+	if err := checkGovernanceBlock(req.Governance); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return ps, nil, false
+	}
 	var warnings []string
 	if ProbeChecker != nil {
 		issues, err := ProbeChecker(req.Type, req.Params)
@@ -154,7 +163,31 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey strin
 }
 
 func (req probeWriteRequest) toConfig() configuration.ProbeConfig {
-	return configuration.ProbeConfig{Name: req.Name, Type: req.Type, Enabled: req.Enabled, Params: req.Params}
+	cfg := configuration.ProbeConfig{Name: req.Name, Type: req.Type, Enabled: req.Enabled, Params: req.Params}
+	if len(req.Governance) > 0 {
+		cfg.Governance = req.Governance
+	}
+	return cfg
+}
+
+// checkGovernanceBlock applies the same two checks `config check` runs:
+// the shape against the shared schema, then the values against the
+// governance package's closed sets. Nil and empty are fine.
+func checkGovernanceBlock(v map[string]interface{}) error {
+	if len(v) == 0 {
+		return nil
+	}
+	if problems := spec.CheckGovernance(v); len(problems) > 0 {
+		msgs := make([]string, 0, len(problems))
+		for _, p := range problems {
+			msgs = append(msgs, p.String())
+		}
+		return errors.New(strings.Join(msgs, "; "))
+	}
+	if _, err := governance.Parse(v); err != nil {
+		return fmt.Errorf("governance: %w", err)
+	}
+	return nil
 }
 
 // secretPathsOf lists the dotted param paths the schema marks secret.
