@@ -336,48 +336,54 @@ func (lc *LocalConfiguration) createDefaultCacheConfig() *CacheConfig {
 // This is needed because yaml.v2 unmarshals into map[interface{}]interface{}
 // but Go JSON expects map[string]interface{}
 func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
-	// Fix storage configs
+	return normalizeYAMLTypes(config)
+}
+
+// normalizeYAMLTypes rewrites every map yaml.v2 keyed by interface{} into
+// the string-keyed map the rest of the agent (and encoding/json) expects:
+// strategy params, probe params and the probe governance block, which
+// nests maps the same way. It runs in the loader so every reader of a
+// configuration gets the same shapes, not only the running agent.
+func normalizeYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
 	for i, storage := range config.Storage {
-		if converted := lc.convertMapTypes(storage.Params); converted != nil {
-			if convertedMap, ok := converted.(map[string]interface{}); ok {
-				config.Storage[i].Params = convertedMap
-			}
+		if converted, ok := convertMapTypes(storage.Params).(map[string]interface{}); ok {
+			config.Storage[i].Params = converted
 		}
 	}
-
-	// Fix probe configs
 	for i, probe := range config.Probes {
-		if converted := lc.convertMapTypes(probe.Params); converted != nil {
-			if convertedMap, ok := converted.(map[string]interface{}); ok {
-				config.Probes[i].Params = convertedMap
+		if converted, ok := convertMapTypes(probe.Params).(map[string]interface{}); ok {
+			config.Probes[i].Params = converted
+		}
+		if probe.Governance != nil {
+			if converted, ok := convertMapTypes(probe.Governance).(map[string]interface{}); ok {
+				config.Probes[i].Governance = converted
 			}
 		}
 	}
-
 	return config
 }
 
 // convertMapTypes recursively converts map[interface{}]interface{} to map[string]interface{}
-func (lc *LocalConfiguration) convertMapTypes(input interface{}) interface{} {
+func convertMapTypes(input interface{}) interface{} {
 	switch v := input.(type) {
 	case map[interface{}]interface{}:
 		result := make(map[string]interface{})
 		for key, value := range v {
 			if keyStr, ok := key.(string); ok {
-				result[keyStr] = lc.convertMapTypes(value)
+				result[keyStr] = convertMapTypes(value)
 			}
 		}
 		return result
 	case map[string]interface{}:
 		result := make(map[string]interface{})
 		for key, value := range v {
-			result[key] = lc.convertMapTypes(value)
+			result[key] = convertMapTypes(value)
 		}
 		return result
 	case []interface{}:
 		result := make([]interface{}, len(v))
 		for i, item := range v {
-			result[i] = lc.convertMapTypes(item)
+			result[i] = convertMapTypes(item)
 		}
 		return result
 	default:
