@@ -735,6 +735,15 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	// an operator finds out before deploying rather than after (#842).
 	errors, warnings = reportLegacyProbeParams(name, probeType, params)
 
+	// A probe that declares its schema is checked against it first: a
+	// missing required key, a value outside its closed set or of the
+	// wrong shape, and a key the probe never reads are all errors — the
+	// file asks for something that will not happen. This is the same
+	// front door the web configurator uses, so both give one answer.
+	schemaErrors, schemaWarnings := reportSchemaProblems(name, probeType, params)
+	errors += schemaErrors
+	warnings += schemaWarnings
+
 	// Then ask the probe itself. Every range and coherence check a probe
 	// performs lives in its constructor, so a check that never builds one
 	// passes on the mistakes operators actually make: `priority: 99` was
@@ -786,6 +795,21 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 		}
 	}
 
+	return errors, warnings
+}
+
+// reportSchemaProblems checks params against the probe's declared schema
+// when it has one. Without a schema it says nothing; the constructor
+// probe below still runs.
+func reportSchemaProblems(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	spec, ok := probes.ProbeSpecFor(probeType)
+	if !ok {
+		return 0, 0
+	}
+	for _, problem := range spec.CheckParams(params) {
+		fmt.Printf("         [ERROR] Probe %q: param %q %s\n", name, problem.Key, problem.Message)
+		errors++
+	}
 	return errors, warnings
 }
 
