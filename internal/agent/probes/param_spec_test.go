@@ -73,6 +73,7 @@ func TestProbeSpec_CheckParams(t *testing.T) {
 func TestRegisterProbeSpec(t *testing.T) {
 	spec := ProbeSpec{Type: "zz-test-spec"}
 	RegisterProbeSpec(spec)
+	t.Cleanup(func() { unregisterProbeSpec("zz-test-spec") })
 	if _, ok := ProbeSpecFor("zz-test-spec"); !ok {
 		t.Fatal("registered spec not found")
 	}
