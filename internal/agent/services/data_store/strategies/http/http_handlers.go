@@ -111,6 +111,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/web/{agentkey}/explorer", h.HandleWebExplorer).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/docs", h.HandleWebDocs).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/settings", h.HandleWebSettings).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/probes", h.HandleWebProbes).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsGet).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsSet).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/catalog/probes", h.HandleCatalogProbes).Methods("GET")
@@ -183,6 +184,10 @@ func (h *HTTPHandlers) HandleSetLogLevels(w http.ResponseWriter, r *http.Request
 
 func (h *HTTPHandlers) HandleWebSettings(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleWebSettings(w, r)
+}
+
+func (h *HTTPHandlers) HandleWebProbes(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleWebPage(w, r, "probes")
 }
 
 func (h *HTTPHandlers) HandleConfigSettingsGet(w http.ResponseWriter, r *http.Request) {

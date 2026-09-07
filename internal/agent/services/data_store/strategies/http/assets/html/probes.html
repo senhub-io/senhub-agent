@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agent-key" content="{{.AgentKey}}">
+    <title>SenHub Agent - Probes</title>
+    <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
+    <style>
+        .probes-layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.4fr); gap: 1.5rem; }
+        @media (max-width: 900px) { .probes-layout { grid-template-columns: 1fr; } }
+        table.probes { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        table.probes th, table.probes td { text-align: left; padding: 0.45rem 0.4rem; border-bottom: 1px solid var(--gray-200); vertical-align: middle; }
+        table.probes th { color: var(--gray-600); font-weight: 600; font-size: 0.8rem; }
+        .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+        .pill.ok { background: #e7f7ec; color: #1a7f43; } .pill.no { background: #fdecea; color: #b3261e; } .pill.mid { background: #fff6e5; color: #8a5a00; } .pill.off { background: var(--gray-100); color: var(--gray-600); }
+        .row-actions button { margin-left: 0.25rem; }
+        .field { margin-bottom: 0.8rem; }
+        .field label { display: block; font-weight: 600; margin-bottom: 0.3rem; color: var(--gray-700); font-size: 0.9rem; }
+        .field input[type=text], .field input[type=number], .field input[type=password], .field select, .field textarea { width: 100%; padding: 0.45rem 0.55rem; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 0.92rem; box-sizing: border-box; }
+        .field textarea { font-family: 'Monaco','Menlo',monospace; font-size: 0.8rem; min-height: 70px; }
+        .hint { font-size: 0.78rem; color: var(--gray-600); margin-top: 0.25rem; }
+        fieldset.block { border: 1px solid var(--gray-200); border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.8rem; }
+        fieldset.block legend { font-weight: 600; font-size: 0.85rem; color: var(--gray-700); padding: 0 0.3rem; }
+        .banner { padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 1rem; display: none; white-space: pre-wrap; }
+        .banner.ok { background: #e7f7ec; color: #1a7f43; border: 1px solid #b7e4c7; } .banner.err { background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; } .banner.warn { background: #fff6e5; color: #8a5a00; border: 1px solid #ffe0a3; }
+        .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
+        .muted { color: var(--gray-600); }
+        .preview { font-family: 'Monaco','Menlo',monospace; font-size: 0.78rem; background: var(--gray-100); padding: 0.5rem; border-radius: 6px; max-height: 220px; overflow: auto; margin-top: 0.6rem; }
+        option:disabled { color: var(--gray-400); }
+        button.btn-small { font-size: 0.78rem; padding: 0.2rem 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-top">
+            <h1><img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo"> SenHub Agent</h1>
+            <nav class="main-nav">
+                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
+                <a href="/web/{{.AgentKey}}/probes" class="nav-link active">Probes</a>
+                <a href="/web/{{.AgentKey}}/explorer" class="nav-link">Sensor Builder</a>
+                <a href="/web/{{.AgentKey}}/settings" class="nav-link">Settings</a>
+                <a href="/web/{{.AgentKey}}/docs" class="nav-link">Documentation</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="banner" class="banner"></div>
+        <div class="probes-layout">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2>Configured probes</h2>
+                    <button class="btn btn-primary" id="btn-new">Add a probe</button>
+                </div>
+                <p class="hint">What the configuration declares, and what the agent is doing with it. Files written by hand are listed but edited by hand.</p>
+                <table class="probes">
+                    <thead><tr><th>Name</th><th>Type</th><th>State</th><th></th></tr></thead>
+                    <tbody id="probe-rows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+                </table>
+            </div>
+
+            <div class="card" id="editor" hidden>
+                <h2 id="editor-title">New probe</h2>
+                <div class="field">
+                    <label for="f-type">Type</label>
+                    <select id="f-type"></select>
+                    <div class="hint" id="type-hint"></div>
+                </div>
+                <div class="field">
+                    <label for="f-name">Name</label>
+                    <input type="text" id="f-name" placeholder="mysql-prod" />
+                    <div class="hint">Letters, digits, hyphens and underscores. It identifies the probe and its secrets; it cannot be changed later.</div>
+                </div>
+                <div class="field">
+                    <label><input type="checkbox" id="f-enabled" checked /> Enabled</label>
+                </div>
+                <div id="form-params"></div>
+                <div class="actions">
+                    <button class="btn" id="btn-validate">Validate</button>
+                    <button class="btn" id="btn-test">Test</button>
+                    <button class="btn btn-primary" id="btn-save">Save</button>
+                    <button class="btn" id="btn-cancel">Cancel</button>
+                </div>
+                <div id="preview" class="preview" hidden></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.AGENT_KEY = '{{.AgentKey}}';
+        const API = '/api/' + window.AGENT_KEY;
+        const $ = (id) => document.getElementById(id);
+        let catalog = [], probes = [], editing = null; // editing = existing probe name, or null for a new one
+
+        function banner(kind, msg) { const b = $('banner'); b.className = 'banner ' + kind; b.textContent = msg; b.style.display = 'block'; window.scrollTo({top: 0}); }
+        async function getJSON(url) { const r = await fetch(url); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }
+        async function send(method, url, body) { const r = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body) }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }
+        function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+        async function load() {
+            try {
+                const [c, p] = await Promise.all([getJSON(API + '/catalog/probes'), getJSON(API + '/config/probes')]);
+                catalog = c.probes || []; probes = p.probes || [];
+                renderRows(); renderTypeSelect();
+            } catch (e) { banner('err', 'Could not load: ' + e.message); }
+        }
+
+        function statePill(p) {
+            if (!p.enabled) return '<span class="pill off">disabled</span>';
+            if (!p.authorized) return '<span class="pill no">' + esc(p.reason || 'not licensed') + '</span>';
+            if (!p.running) return '<span class="pill mid">not running</span>';
+            if (p.health === 'ok') return '<span class="pill ok">running</span>';
+            if (p.health === 'failed') return '<span class="pill no">failing</span>';
+            return '<span class="pill mid">starting</span>';
+        }
+
+        function renderRows() {
+            const tb = $('probe-rows'); tb.innerHTML = '';
+            if (!probes.length) { tb.innerHTML = '<tr><td colspan="4" class="muted">No probe configured.</td></tr>'; return; }
+            for (const p of probes) {
+                const tr = document.createElement('tr');
+                const managedNote = p.managed ? '' : ' <span class="muted" title="Written by hand; edit the file">(by hand)</span>';
+                tr.innerHTML = '<td><strong>' + esc(p.name) + '</strong>' + managedNote + '</td><td>' + esc(p.type) + '</td><td>' + statePill(p) + '</td>' +
+                    '<td class="row-actions"></td>';
+                const act = tr.querySelector('.row-actions');
+                if (p.managed && p.has_schema) {
+                    const e = document.createElement('button'); e.className = 'btn btn-small'; e.textContent = 'Edit'; e.onclick = () => openEditor(p); act.appendChild(e);
+                    const t = document.createElement('button'); t.className = 'btn btn-small'; t.textContent = p.enabled ? 'Disable' : 'Enable'; t.onclick = () => toggle(p); act.appendChild(t);
+                    const d = document.createElement('button'); d.className = 'btn btn-small'; d.textContent = 'Delete'; d.onclick = () => remove(p); act.appendChild(d);
+                }
+                tb.appendChild(tr);
+            }
+        }
+
+        function renderTypeSelect() {
+            const s = $('f-type'); s.innerHTML = '';
+            const byCat = {};
+            for (const c of catalog) { (byCat[c.category || 'other'] = byCat[c.category || 'other'] || []).push(c); }
+            for (const cat of Object.keys(byCat).sort()) {
+                const og = document.createElement('optgroup'); og.label = cat;
+                for (const c of byCat[cat].sort((a, b) => a.display_name.localeCompare(b.display_name))) {
+                    const o = document.createElement('option'); o.value = c.type; o.textContent = c.display_name + (c.tier !== 'free' ? ' (' + c.tier + ')' : '');
+                    if (!c.authorized) { o.disabled = true; o.textContent += ' — ' + (c.reason || 'not licensed'); }
+                    og.appendChild(o);
+                }
+                s.appendChild(og);
+            }
+        }
+
+        function specOf(type) { return catalog.find(c => c.type === type); }
+
+        // --- form generation from the schema ---
+        function control(p, path, value) {
+            const id = 'p:' + path;
+            const wrap = document.createElement('div'); wrap.className = 'field';
+            if (p.kind === 'block') {
+                const fs = document.createElement('fieldset'); fs.className = 'block';
+                const lg = document.createElement('legend'); lg.textContent = p.key + (p.required ? ' *' : ''); fs.appendChild(lg);
+                if (p.description) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = p.description; fs.appendChild(h); }
+                const v = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+                for (const f of (p.fields || [])) fs.appendChild(control(f, path + '.' + f.key, v[f.key]));
+                return fs;
+            }
+            const label = document.createElement('label'); label.htmlFor = id; label.textContent = p.key + (p.required ? ' *' : '');
+            wrap.appendChild(label);
+            let input;
+            if (p.enum && p.enum.length && p.kind !== 'string_list') {
+                input = document.createElement('select');
+                const none = document.createElement('option'); none.value = ''; none.textContent = p.default !== undefined ? '(default: ' + p.default + ')' : '(default)'; input.appendChild(none);
+                for (const e of p.enum) { const o = document.createElement('option'); o.value = e; o.textContent = e; input.appendChild(o); }
+                if (value !== undefined && value !== null) input.value = String(value);
+            } else if (p.kind === 'bool') {
+                input = document.createElement('select');
+                for (const [v, t] of [['', p.default !== undefined ? '(default: ' + p.default + ')' : '(default)'], ['true', 'true'], ['false', 'false']]) { const o = document.createElement('option'); o.value = v; o.textContent = t; input.appendChild(o); }
+                if (value !== undefined && value !== null) input.value = String(value);
+            } else if (p.kind === 'string_list' || p.kind === 'map' || p.kind === 'block_list') {
+                input = document.createElement('textarea');
+                if (p.kind === 'string_list') { input.placeholder = 'one per line'; if (Array.isArray(value)) input.value = value.join('\n'); }
+                else if (p.kind === 'map') { input.placeholder = 'KEY=value, one per line'; if (value && typeof value === 'object') input.value = Object.entries(value).map(([k, v]) => k + '=' + v).join('\n'); }
+                else { input.placeholder = 'JSON list of objects, e.g. [{"oid":"1.3.6.1.2.1.1.3.0","metric":"uptime"}]'; if (Array.isArray(value)) input.value = JSON.stringify(value, null, 1); }
+            } else {
+                input = document.createElement('input');
+                input.type = p.secret ? 'password' : ((p.kind === 'int' || p.kind === 'float') ? 'number' : 'text');
+                if (p.kind === 'float') input.step = 'any';
+                if (p.example) input.placeholder = p.example; else if (p.default !== undefined && p.default !== null) input.placeholder = 'default: ' + p.default;
+                if (value !== undefined && value !== null) input.value = (p.secret && String(value).startsWith('${')) ? '' : String(value);
+                if (p.secret) input.autocomplete = 'new-password';
+            }
+            input.id = id; input.dataset.kind = p.kind; input.dataset.path = path;
+            wrap.appendChild(input);
+            const hint = [];
+            if (p.description) hint.push(p.description);
+            if (p.secret) hint.push(value && String(value).startsWith('${') ? 'Stored in the secret store; leave empty to keep it.' : 'Stored in the secret store, never in the file.');
+            if (hint.length) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = hint.join(' '); wrap.appendChild(h); }
+            return wrap;
+        }
+
+        function renderForm(type, params) {
+            const spec = specOf(type); const box = $('form-params'); box.innerHTML = '';
+            $('type-hint').textContent = spec ? (spec.summary || '') : '';
+            if (!spec) return;
+            const groups = {};
+            for (const p of spec.params) (groups[p.group || 'settings'] = groups[p.group || 'settings'] || []).push(p);
+            for (const g of Object.keys(groups)) {
+                const fs = document.createElement('fieldset'); fs.className = 'block';
+                const lg = document.createElement('legend'); lg.textContent = g; fs.appendChild(lg);
+                for (const p of groups[g]) fs.appendChild(control(p, p.key, params ? params[p.key] : undefined));
+                box.appendChild(fs);
+            }
+        }
+
+        function readForm() {
+            const spec = specOf($('f-type').value); const params = {};
+            const set = (path, v) => { const parts = path.split('.'); let o = params; for (let i = 0; i < parts.length - 1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; } o[parts[parts.length - 1]] = v; };
+            for (const el of $('form-params').querySelectorAll('[data-path]')) {
+                const kind = el.dataset.kind, raw = el.value;
+                if (raw === '' || raw === null) continue;
+                let v = raw;
+                if (kind === 'int') v = parseInt(raw, 10);
+                else if (kind === 'float') v = parseFloat(raw);
+                else if (kind === 'bool') v = (raw === 'true');
+                else if (kind === 'string_list') v = raw.split('\n').map(s => s.trim()).filter(Boolean);
+                else if (kind === 'map') { v = {}; for (const line of raw.split('\n')) { const i = line.indexOf('='); if (i > 0) v[line.slice(0, i).trim()] = line.slice(i + 1).trim(); } }
+                else if (kind === 'block_list') { try { v = JSON.parse(raw); } catch (e) { throw new Error(el.dataset.path + ': not valid JSON'); } }
+                set(el.dataset.path, v);
+            }
+            return { name: $('f-name').value.trim(), type: spec ? spec.type : $('f-type').value, enabled: $('f-enabled').checked, params };
+        }
+
+        function openEditor(p) {
+            editing = p ? p.name : null;
+            $('editor').hidden = false; $('preview').hidden = true;
+            $('editor-title').textContent = p ? 'Edit ' + p.name : 'New probe';
+            $('f-type').disabled = !!p; $('f-name').disabled = !!p;
+            if (p) { $('f-type').value = p.type; $('f-name').value = p.name; $('f-enabled').checked = !!p.enabled; renderForm(p.type, p.params); }
+            else { $('f-name').value = ''; $('f-enabled').checked = true; const first = catalog.find(c => c.authorized); if (first) $('f-type').value = first.type; renderForm($('f-type').value, null); }
+            $('editor').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        $('btn-new').onclick = () => openEditor(null);
+        $('btn-cancel').onclick = () => { $('editor').hidden = true; editing = null; };
+        $('f-type').onchange = () => renderForm($('f-type').value, null);
+
+        $('btn-validate').onclick = async () => {
+            try { const b = readForm(); const d = await send('POST', API + '/config/validate', { probe: b.type, config: b.params, validation: 'schema' });
+                const t = d.tests && d.tests.schema; banner(d.valid ? 'ok' : 'err', d.valid ? ('Valid.' + (t && t.details ? ' ' + t.details : '')) : (d.errors || []).join('\n')); }
+            catch (e) { banner('err', e.message); }
+        };
+        $('btn-test').onclick = async () => {
+            try { const b = readForm(); banner('warn', 'Testing…'); const d = await send('POST', API + '/config/test', { probe: b.type, config: b.params, validation: 'full', timeout: 8 });
+                const pv = $('preview'); if (d.preview_metrics && d.preview_metrics.length) { pv.hidden = false; pv.textContent = d.preview_metrics.slice(0, 40).map(m => m.name + ' = ' + m.value + (m.tags && Object.keys(m.tags).length ? '  ' + JSON.stringify(m.tags) : '')).join('\n'); }
+                banner(d.valid ? 'ok' : 'err', d.valid ? 'Test passed: ' + ((d.tests && d.tests.metrics && d.tests.metrics.details) || 'collected') : (d.errors || []).join('\n')); }
+            catch (e) { banner('err', e.message); }
+        };
+        $('btn-save').onclick = async () => {
+            try { const b = readForm();
+                const d = editing ? await send('PUT', API + '/config/probes/' + encodeURIComponent(editing), b) : await send('POST', API + '/config/probes', b);
+                banner('ok', (d.applied || 'Saved.') + (d.warnings && d.warnings.length ? '\n' + d.warnings.join('\n') : ''));
+                $('editor').hidden = true; editing = null; setTimeout(load, 1200); }
+            catch (e) { banner('err', e.message); }
+        };
+        async function toggle(p) {
+            try { const d = await send('PUT', API + '/config/probes/' + encodeURIComponent(p.name), { type: p.type, enabled: !p.enabled, params: stripRedacted(p.params) }); banner('ok', d.applied || 'Saved.'); setTimeout(load, 1200); }
+            catch (e) { banner('err', e.message); }
+        }
+        async function remove(p) {
+            if (!window.confirm('Delete probe "' + p.name + '"? Its settings and stored secrets are lost. Disabling keeps them.')) return;
+            try { const d = await send('DELETE', API + '/config/probes/' + encodeURIComponent(p.name)); banner('ok', d.applied || 'Deleted.'); setTimeout(load, 1200); }
+            catch (e) { banner('err', e.message); }
+        }
+        // The listing redacts secrets; sending them back unchanged would
+        // overwrite the stored value with the placeholder. Drop them, the
+        // server keeps a reference it already holds.
+        function stripRedacted(params) {
+            const out = {};
+            for (const [k, v] of Object.entries(params || {})) {
+                if (v && typeof v === 'object' && !Array.isArray(v)) { out[k] = stripRedacted(v); }
+                else if (typeof v === 'string' && (v === '***' || v === '[REDACTED]' || v.startsWith('${secret:'))) { continue; }
+                else out[k] = v;
+            }
+            return out;
+        }
+        load();
+    </script>
+</body>
+</html>
