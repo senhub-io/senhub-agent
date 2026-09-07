@@ -32,7 +32,7 @@ No parameters are required — the probe auto-discovers all drives visible to
 | `smartctl_path` | `smartctl` | Path to the `smartctl` binary if not in PATH |
 | `use_sudo` | `false` | Prefix every `smartctl` call with `sudo`. For a packaged agent that does not run as root and has a sudoers rule for `smartctl` |
 | `interval` | `300` | Seconds between collections |
-| `exec_timeout` | `30` | Seconds a single `smartctl` call may take before it is abandoned |
+| `exec_timeout` | `10` | Seconds a single `smartctl` call may take before it is abandoned |
 
 `devices` and `exclude_devices` take the paths `smartctl --scan` prints. On a
 host with many drives, listing the ones you care about is cheaper than

@@ -35,6 +35,10 @@ to override it; a Windows pipe may be written `npipe://./pipe/<name>` or
 | Parameter | Default | Description |
 |---|---|---|
 | `socket_path` | per platform (see above) | Where the Docker Engine listens. A Unix socket path, or a Windows named pipe as `npipe://./pipe/<name>`. |
+| `interval` | `60` | Seconds between collections |
+| `timeout` | `10` | Engine request timeout in seconds |
+| `include` | all | Container name patterns to keep (shell globs); empty keeps every container |
+| `exclude` | none | Container name patterns to drop; evaluated after `include` |
 
 ## Metrics
 
