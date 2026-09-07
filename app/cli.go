@@ -422,6 +422,10 @@ func Main() {
 	// If first argument is a service command
 	command := os.Args[1]
 
+	// The web console's probe configurator validates and test-runs probes
+	// through the registry this package sees and the strategy does not.
+	wireProbeHooks()
+
 	// Privilege gate runs before the subcommand dispatch, EXCEPT for
 	// diagnostic commands enumerated in readOnlyCommand. On Linux only
 	// service-lifecycle commands now require root; the daemon (`run`)
