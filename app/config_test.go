@@ -53,3 +53,21 @@ func TestExtractAgentKeyFromConfig_PlainKeyStillWorks(t *testing.T) {
 		t.Errorf("key=%q", key)
 	}
 }
+
+// A probe with a declared schema is checked against it by config check:
+// a missing required key, a bad enum value and an unknown key are errors.
+func TestValidateProbeParams_UsesDeclaredSchema(t *testing.T) {
+	probes.RegisterProbeSpec(probes.ProbeSpec{
+		Type: "zz-schema-check", DisplayName: "Schema check",
+		Params: []probes.ParamSpec{
+			{Key: "host", Kind: probes.KindString, Required: true},
+			{Key: "mode", Kind: probes.KindString, Enum: []string{"a", "b"}},
+		},
+	})
+	if errs, _ := validateProbeParams("p", "zz-schema-check", map[string]interface{}{"host": "h", "mode": "a"}); errs != 0 {
+		t.Errorf("valid params: %d errors, want 0", errs)
+	}
+	if errs, _ := validateProbeParams("p", "zz-schema-check", map[string]interface{}{"mode": "zzz", "hots": "h"}); errs != 3 {
+		t.Errorf("missing required + bad enum + unknown key: %d errors, want 3", errs)
+	}
+}
