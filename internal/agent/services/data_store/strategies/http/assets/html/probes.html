@@ -82,6 +82,11 @@
                     <label><input type="checkbox" id="f-enabled" checked /> Enabled</label>
                 </div>
                 <div id="form-params"></div>
+                <fieldset class="block" id="form-governance">
+                    <legend>governance</legend>
+                    <div class="hint">Who owns what this probe observes, how critical it is, where it is, and which application chain it belongs to (label <code>application</code>). Optional. Stamped on the entities, metrics and logs of this probe only; the agent's own governance describes the host.</div>
+                    <div id="governance-fields"></div>
+                </fieldset>
                 <div class="actions">
                     <button class="btn" id="btn-validate">Validate</button>
                     <button class="btn" id="btn-test">Test</button>
@@ -97,7 +102,7 @@
         window.AGENT_KEY = '{{.AgentKey}}';
         const API = '/api/' + window.AGENT_KEY;
         const $ = (id) => document.getElementById(id);
-        let catalog = [], probes = [], editing = null; // editing = existing probe name, or null for a new one
+        let catalog = [], probes = [], governanceSchema = [], editing = null; // editing = existing probe name, or null for a new one
 
         function banner(kind, msg) { const b = $('banner'); b.className = 'banner ' + kind; b.textContent = msg; b.style.display = 'block'; window.scrollTo({top: 0}); }
         async function getJSON(url) { const r = await fetch(url); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }
@@ -107,7 +112,7 @@
         async function load() {
             try {
                 const [c, p] = await Promise.all([getJSON(API + '/catalog/probes'), getJSON(API + '/config/probes')]);
-                catalog = c.probes || []; probes = p.probes || [];
+                catalog = c.probes || []; probes = p.probes || []; governanceSchema = c.governance || [];
                 renderRows(); renderTypeSelect();
             } catch (e) { banner('err', 'Could not load: ' + e.message); }
         }
@@ -216,10 +221,17 @@
             }
         }
 
-        function readForm() {
-            const spec = specOf($('f-type').value); const params = {};
-            const set = (path, v) => { const parts = path.split('.'); let o = params; for (let i = 0; i < parts.length - 1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; } o[parts[parts.length - 1]] = v; };
-            for (const el of $('form-params').querySelectorAll('[data-path]')) {
+        function renderGovernance(gov) {
+            const box = $('governance-fields'); box.innerHTML = '';
+            for (const f of governanceSchema) box.appendChild(control(f, 'governance.' + f.key, gov ? gov[f.key] : undefined));
+        }
+
+        // collect reads every control under container into a nested object,
+        // following the dotted data-path of each control.
+        function collect(container) {
+            const out = {};
+            const set = (path, v) => { const parts = path.split('.'); let o = out; for (let i = 0; i < parts.length - 1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; } o[parts[parts.length - 1]] = v; };
+            for (const el of container.querySelectorAll('[data-path]')) {
                 const kind = el.dataset.kind, raw = el.value;
                 if (raw === '' || raw === null) continue;
                 let v = raw;
@@ -231,7 +243,16 @@
                 else if (kind === 'block_list') { try { v = JSON.parse(raw); } catch (e) { throw new Error(el.dataset.path + ': not valid JSON'); } }
                 set(el.dataset.path, v);
             }
-            return { name: $('f-name').value.trim(), type: spec ? spec.type : $('f-type').value, enabled: $('f-enabled').checked, params };
+            return out;
+        }
+
+        function readForm() {
+            const spec = specOf($('f-type').value);
+            const params = collect($('form-params'));
+            const body = { name: $('f-name').value.trim(), type: spec ? spec.type : $('f-type').value, enabled: $('f-enabled').checked, params };
+            const gov = collect($('governance-fields')).governance;
+            if (gov && Object.keys(gov).length) body.governance = gov;
+            return body;
         }
 
         function openEditor(p) {
@@ -239,8 +260,8 @@
             $('editor').hidden = false; $('preview').hidden = true;
             $('editor-title').textContent = p ? 'Edit ' + p.name : 'New probe';
             $('f-type').disabled = !!p; $('f-name').disabled = !!p;
-            if (p) { $('f-type').value = p.type; $('f-name').value = p.name; $('f-enabled').checked = !!p.enabled; renderForm(p.type, p.params); }
-            else { $('f-name').value = ''; $('f-enabled').checked = true; const first = catalog.find(c => c.authorized); if (first) $('f-type').value = first.type; renderForm($('f-type').value, null); }
+            if (p) { $('f-type').value = p.type; $('f-name').value = p.name; $('f-enabled').checked = !!p.enabled; renderForm(p.type, p.params); renderGovernance(p.governance); }
+            else { $('f-name').value = ''; $('f-enabled').checked = true; const first = catalog.find(c => c.authorized); if (first) $('f-type').value = first.type; renderForm($('f-type').value, null); renderGovernance(null); }
             $('editor').scrollIntoView({ behavior: 'smooth' });
         }
 
@@ -267,7 +288,7 @@
             catch (e) { banner('err', e.message); }
         };
         async function toggle(p) {
-            try { const d = await send('PUT', API + '/config/probes/' + encodeURIComponent(p.name), { type: p.type, enabled: !p.enabled, params: stripRedacted(p.params) }); banner('ok', d.applied || 'Saved.'); setTimeout(load, 1200); }
+            try { const d = await send('PUT', API + '/config/probes/' + encodeURIComponent(p.name), { type: p.type, enabled: !p.enabled, params: stripRedacted(p.params), governance: p.governance }); banner('ok', d.applied || 'Saved.'); setTimeout(load, 1200); }
             catch (e) { banner('err', e.message); }
         }
         async function remove(p) {

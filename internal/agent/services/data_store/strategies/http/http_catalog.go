@@ -22,6 +22,9 @@ type catalogEntry struct {
 type catalogResponse struct {
 	Probes  []catalogEntry `json:"probes"`
 	License licenseView    `json:"license"`
+	// Governance is the schema of the block every instance accepts, so the
+	// page renders it once, outside the per-type parameters.
+	Governance []spec.ParamSpec `json:"governance"`
 }
 
 // handleCatalogProbes lists the probe types that declare a schema, each
@@ -40,7 +43,7 @@ func (h *HTTPSyncStrategy) handleCatalogProbes(w http.ResponseWriter, r *http.Re
 	if entries == nil {
 		entries = []catalogEntry{}
 	}
-	writeJSON(w, http.StatusOK, catalogResponse{Probes: entries, License: view})
+	writeJSON(w, http.StatusOK, catalogResponse{Probes: entries, License: view, Governance: spec.GovernanceFields()})
 }
 
 // currentLicense returns the validated licence on disk, or nil when none
