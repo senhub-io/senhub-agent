@@ -799,16 +799,29 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 }
 
 // reportSchemaProblems checks params against the probe's declared schema
-// when it has one. Without a schema it says nothing; the constructor
-// probe below still runs.
+// when it has one, for what nothing else reports: a required key that is
+// missing, and a key the probe never reads. A legacy name is left to
+// reportLegacyProbeParams, which knows its replacement; a value of the
+// wrong shape is left to the constructor probe, which says what the
+// probe does with it (#847).
 func reportSchemaProblems(name, probeType string, params map[string]interface{}) (errors, warnings int) {
 	spec, ok := probes.ProbeSpecFor(probeType)
 	if !ok {
 		return 0, 0
 	}
+	legacy := probes.LegacyParamsFor(probeType)
 	for _, problem := range spec.CheckParams(params) {
-		fmt.Printf("         [ERROR] Probe %q: param %q %s\n", name, problem.Key, problem.Message)
-		errors++
+		switch problem.Kind {
+		case probes.ProblemMissing:
+			fmt.Printf("         [ERROR] Probe %q: param %q is required\n", name, problem.Key)
+			errors++
+		case probes.ProblemUnknown:
+			if _, isLegacy := legacy[problem.Key]; isLegacy {
+				continue
+			}
+			fmt.Printf("         [ERROR] Probe %q: param %q is not read by this probe\n", name, problem.Key)
+			errors++
+		}
 	}
 	return errors, warnings
 }

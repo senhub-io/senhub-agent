@@ -3,6 +3,7 @@ package probes
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -19,6 +20,13 @@ const (
 	KindDuration   ParamKind = "duration"
 	KindStringList ParamKind = "string_list"
 	KindBlock      ParamKind = "block"
+	// KindMap is a free-form mapping of string keys to string values
+	// (environment variables for exec); its keys are the operator's, so
+	// none are declared and none are reported as unknown.
+	KindMap ParamKind = "map"
+	// KindBlockList is a list of mappings, each checked against Fields
+	// (SNMP custom mappings, v3 users, governance rules).
+	KindBlockList ParamKind = "block_list"
 )
 
 // ParamSpec describes one key an operator may write under a probe's
@@ -115,7 +123,7 @@ func (s ProbeSpec) DeclaredKeys() map[string]struct{} {
 			for _, alt := range p.AlsoAccepts {
 				out[prefix+alt] = struct{}{}
 			}
-			if p.Kind == KindBlock {
+			if p.Kind == KindBlock || p.Kind == KindBlockList {
 				walk(prefix+p.Key+".", p.Fields)
 			}
 		}
@@ -124,9 +132,22 @@ func (s ProbeSpec) DeclaredKeys() map[string]struct{} {
 	return out
 }
 
+// ProblemKind says what a SpecProblem is about, so a consumer can decide
+// which problems it owns: config check reports missing and unknown keys
+// from the spec and leaves shapes to the constructor, which already
+// reports what it could not read.
+type ProblemKind string
+
+const (
+	ProblemMissing ProblemKind = "missing"
+	ProblemUnknown ProblemKind = "unknown"
+	ProblemShape   ProblemKind = "shape"
+)
+
 // SpecProblem is one thing wrong with a params map against its spec.
 type SpecProblem struct {
 	Key     string
+	Kind    ProblemKind
 	Message string
 }
 
@@ -166,22 +187,31 @@ func checkBlock(prefix string, specs []ParamSpec, params map[string]interface{},
 			}
 		}
 		if !present {
-			*out = append(*out, SpecProblem{Key: prefix + p.Key, Message: "required"})
+			*out = append(*out, SpecProblem{Key: prefix + p.Key, Kind: ProblemMissing, Message: "required"})
 		}
 	}
 	for key, value := range params {
 		p, ok := known[key]
 		if !ok {
-			*out = append(*out, SpecProblem{Key: prefix + key, Message: "not a parameter of this probe"})
+			*out = append(*out, SpecProblem{Key: prefix + key, Kind: ProblemUnknown, Message: "not a parameter of this probe"})
 			continue
 		}
 		if msg := checkKind(p, value); msg != "" {
-			*out = append(*out, SpecProblem{Key: prefix + key, Message: msg})
+			*out = append(*out, SpecProblem{Key: prefix + key, Kind: ProblemShape, Message: msg})
 			continue
 		}
-		if p.Kind == KindBlock {
+		switch p.Kind {
+		case KindBlock:
 			if nested, ok := asStringMap(value); ok {
 				checkBlock(prefix+key+".", p.Fields, nested, out)
+			}
+		case KindBlockList:
+			if items, ok := value.([]interface{}); ok {
+				for i, item := range items {
+					if nested, ok := asStringMap(item); ok {
+						checkBlock(fmt.Sprintf("%s%s[%d].", prefix, key, i), p.Fields, nested, out)
+					}
+				}
 			}
 		}
 	}
@@ -196,6 +226,16 @@ func checkKind(p ParamSpec, v interface{}) string {
 		}
 		if len(p.Enum) > 0 && !contains(p.Enum, s) {
 			return fmt.Sprintf("must be one of %v", p.Enum)
+		}
+	case KindMap:
+		m, ok := asStringMap(v)
+		if !ok {
+			return fmt.Sprintf("must be a mapping of names to values, got %T", v)
+		}
+		for k, val := range m {
+			if _, isStr := val.(string); !isStr {
+				return fmt.Sprintf("value of %q must be a string, got %T", k, val)
+			}
 		}
 	case KindInt:
 		switch n := v.(type) {
@@ -240,6 +280,16 @@ func checkKind(p ParamSpec, v interface{}) string {
 				return fmt.Sprintf("items must be one of %v", p.Enum)
 			}
 		}
+	case KindBlockList:
+		items, ok := v.([]interface{})
+		if !ok {
+			return fmt.Sprintf("must be a list of blocks, got %T", v)
+		}
+		for _, it := range items {
+			if _, ok := asStringMap(it); !ok {
+				return fmt.Sprintf("list items must be blocks of settings, got %T", it)
+			}
+		}
 	case KindBlock:
 		if _, ok := asStringMap(v); !ok {
 			// A few parsers accept a bare bool for a block (mysql tls:
@@ -272,9 +322,12 @@ func asStringMap(v interface{}) (map[string]interface{}, bool) {
 	return nil, false
 }
 
+// contains is case-insensitive: the parsers that use closed sets (event
+// levels, ssl modes) fold case, and the spec must not reject a value the
+// probe accepts.
 func contains(list []string, s string) bool {
 	for _, x := range list {
-		if x == s {
+		if strings.EqualFold(x, s) {
 			return true
 		}
 	}
