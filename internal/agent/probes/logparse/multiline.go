@@ -1,6 +1,6 @@
-package filetail
+package logparse
 
-// multilineAssembler folds physical lines into logical records per the
+// Assembler folds physical lines into logical records per the
 // MultilineConfig. It is stateful per file: a partial record may span
 // several Append calls. Not safe for concurrent use — one assembler per
 // tailed file.
@@ -15,28 +15,30 @@ package filetail
 // record — it is appended and then the record is flushed.
 //
 // Negate inverts the match test.
-type multilineAssembler struct {
+type Assembler struct {
 	cfg     MultilineConfig
 	maxLen  int
 	pending []string
 	curLen  int
 }
 
-func newMultilineAssembler(cfg MultilineConfig, maxLen int) *multilineAssembler {
+// NewAssembler builds an assembler for cfg; maxLen caps a logical record
+// (0 means DefaultMaxBytesPerLine).
+func NewAssembler(cfg MultilineConfig, maxLen int) *Assembler {
 	if maxLen <= 0 {
 		maxLen = DefaultMaxBytesPerLine
 	}
-	return &multilineAssembler{cfg: cfg, maxLen: maxLen}
+	return &Assembler{cfg: cfg, maxLen: maxLen}
 }
 
 // enabled reports whether multiline folding is active. When false the
 // assembler is a pass-through: every Append returns the line as its own
 // record.
-func (a *multilineAssembler) enabled() bool {
+func (a *Assembler) enabled() bool {
 	return a.cfg.compiled != nil
 }
 
-func (a *multilineAssembler) matches(line string) bool {
+func (a *Assembler) matches(line string) bool {
 	if a.cfg.compiled == nil {
 		return false
 	}
@@ -50,9 +52,9 @@ func (a *multilineAssembler) matches(line string) bool {
 // Append feeds one physical line. It returns the set of completed
 // logical records produced by this line (usually zero or one). The
 // records are already truncated to maxLen.
-func (a *multilineAssembler) Append(line string) []string {
+func (a *Assembler) Append(line string) []string {
 	if !a.enabled() {
-		return []string{truncate(line, a.maxLen)}
+		return []string{Truncate(line, a.maxLen)}
 	}
 
 	if a.cfg.Match == "before" {
@@ -72,7 +74,7 @@ func (a *multilineAssembler) Append(line string) []string {
 	if len(a.pending) == 0 {
 		// Continuation with nothing started yet (file opens mid-stack):
 		// emit the orphan line on its own rather than swallow it.
-		return []string{truncate(line, a.maxLen)}
+		return []string{Truncate(line, a.maxLen)}
 	}
 	a.push(line)
 	return nil
@@ -80,14 +82,14 @@ func (a *multilineAssembler) Append(line string) []string {
 
 // Flush returns any record still being assembled. Called when the file
 // goes idle / on shutdown so a trailing partial message is not lost.
-func (a *multilineAssembler) Flush() []string {
+func (a *Assembler) Flush() []string {
 	if !a.enabled() {
 		return nil
 	}
 	return a.flush()
 }
 
-func (a *multilineAssembler) push(line string) {
+func (a *Assembler) push(line string) {
 	if a.curLen >= a.maxLen {
 		return // already at cap; drop further continuation bytes
 	}
@@ -95,14 +97,14 @@ func (a *multilineAssembler) push(line string) {
 	a.curLen += len(line) + 1 // +1 for the joining newline
 }
 
-func (a *multilineAssembler) flush() []string {
+func (a *Assembler) flush() []string {
 	if len(a.pending) == 0 {
 		return nil
 	}
 	joined := joinLines(a.pending)
 	a.pending = a.pending[:0]
 	a.curLen = 0
-	return []string{truncate(joined, a.maxLen)}
+	return []string{Truncate(joined, a.maxLen)}
 }
 
 func joinLines(lines []string) string {
@@ -116,7 +118,8 @@ func joinLines(lines []string) string {
 	return out
 }
 
-func truncate(s string, max int) string {
+// Truncate cuts s to max bytes; max <= 0 means no cap.
+func Truncate(s string, max int) string {
 	if max <= 0 || len(s) <= max {
 		return s
 	}

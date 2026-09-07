@@ -1,4 +1,4 @@
-package filetail
+package logparse
 
 import (
 	"reflect"
@@ -20,7 +20,7 @@ func mlConfig(t *testing.T, pattern, match string, negate bool) MultilineConfig 
 }
 
 func TestMultiline_DisabledPassThrough(t *testing.T) {
-	a := newMultilineAssembler(MultilineConfig{}, 0)
+	a := NewAssembler(MultilineConfig{}, 0)
 	got := a.Append("a single line")
 	if !reflect.DeepEqual(got, []string{"a single line"}) {
 		t.Errorf("got %v", got)
@@ -31,7 +31,7 @@ func TestMultiline_DisabledPassThrough(t *testing.T) {
 }
 
 func TestMultiline_AfterFoldsStacktrace(t *testing.T) {
-	a := newMultilineAssembler(mlConfig(t, `^\d{4}-`, "after", false), 0)
+	a := NewAssembler(mlConfig(t, `^\d{4}-`, "after", false), 0)
 
 	var out []string
 	feed := []string{
@@ -55,7 +55,7 @@ func TestMultiline_AfterFoldsStacktrace(t *testing.T) {
 }
 
 func TestMultiline_OrphanContinuationEmittedAlone(t *testing.T) {
-	a := newMultilineAssembler(mlConfig(t, `^START`, "after", false), 0)
+	a := NewAssembler(mlConfig(t, `^START`, "after", false), 0)
 	// File opens mid-message: first line is a continuation with nothing
 	// started — must not be swallowed.
 	got := a.Append("  trailing fragment")
@@ -66,7 +66,7 @@ func TestMultiline_OrphanContinuationEmittedAlone(t *testing.T) {
 
 func TestMultiline_BeforeFlushesOnMatch(t *testing.T) {
 	// "before": the matching line is the LAST line of a record.
-	a := newMultilineAssembler(mlConfig(t, `END$`, "before", false), 0)
+	a := NewAssembler(mlConfig(t, `END$`, "before", false), 0)
 	var out []string
 	for _, l := range []string{"line1", "line2", "tail END"} {
 		out = append(out, a.Append(l)...)
@@ -79,7 +79,7 @@ func TestMultiline_BeforeFlushesOnMatch(t *testing.T) {
 
 func TestMultiline_Negate(t *testing.T) {
 	// Negate inverts: a line NOT matching the pattern starts a new record.
-	a := newMultilineAssembler(mlConfig(t, `^\s`, "after", true), 0)
+	a := NewAssembler(mlConfig(t, `^\s`, "after", true), 0)
 	var out []string
 	for _, l := range []string{"head one", "  cont", "head two"} {
 		out = append(out, a.Append(l)...)
@@ -92,7 +92,7 @@ func TestMultiline_Negate(t *testing.T) {
 }
 
 func TestMultiline_TruncatesAtMaxLen(t *testing.T) {
-	a := newMultilineAssembler(mlConfig(t, `^X`, "after", false), 5)
+	a := NewAssembler(mlConfig(t, `^X`, "after", false), 5)
 	a.Append("Xabcdefghij")
 	got := a.Flush()
 	if len(got) != 1 || len(got[0]) != 5 {
@@ -101,10 +101,10 @@ func TestMultiline_TruncatesAtMaxLen(t *testing.T) {
 }
 
 func TestTruncate(t *testing.T) {
-	if truncate("hello", 0) != "hello" {
+	if Truncate("hello", 0) != "hello" {
 		t.Errorf("max=0 should not truncate")
 	}
-	if truncate("hello", 3) != "hel" {
-		t.Errorf("got %q", truncate("hello", 3))
+	if Truncate("hello", 3) != "hel" {
+		t.Errorf("got %q", Truncate("hello", 3))
 	}
 }

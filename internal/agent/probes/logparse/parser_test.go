@@ -1,4 +1,4 @@
-package filetail
+package logparse
 
 import (
 	"regexp"
@@ -19,20 +19,17 @@ func mustRegex(t *testing.T, pat string) *regexp.Regexp {
 
 func TestParseLine_Raw(t *testing.T) {
 	now := time.Unix(1700000000, 0)
-	rec, ok := parseLine(ParserConfig{Type: ParserRaw}, "anything goes here", now, "p1", "/var/log/app.log")
+	rec, ok := ParseLine(ParserConfig{Type: ParserRaw}, "anything goes here", now, "p1", "filetail")
 	if !ok {
 		t.Fatal("raw should always parse")
 	}
 	if rec.Body != "anything goes here" {
 		t.Errorf("Body=%q", rec.Body)
 	}
-	if rec.Attributes["log.file.path"] != "/var/log/app.log" {
-		t.Errorf("file attr=%q", rec.Attributes["log.file.path"])
-	}
 	if !rec.Timestamp.Equal(now) {
 		t.Errorf("Timestamp=%v want %v", rec.Timestamp, now)
 	}
-	if rec.ProducerProbeType != ProbeType {
+	if rec.ProducerProbeType != "filetail" {
 		t.Errorf("producer type=%q", rec.ProducerProbeType)
 	}
 }
@@ -45,7 +42,7 @@ func TestParseLine_Regex(t *testing.T) {
 		TimestampFormat: "2006-01-02 15:04:05.000",
 	}
 	line := "2026-06-01 12:30:45.123 [ERROR] Broker: connection refused"
-	rec, ok := parseLine(pc, line, time.Now(), "p1", "f")
+	rec, ok := ParseLine(pc, line, time.Now(), "p1", "filetail")
 	if !ok {
 		t.Fatal("regex should parse")
 	}
@@ -66,14 +63,14 @@ func TestParseLine_Regex(t *testing.T) {
 
 func TestParseLine_RegexNoMatchKeepsRawBody(t *testing.T) {
 	pc := ParserConfig{Type: ParserRegex, compiled: mustRegex(t, `^(?P<a>\d+)$`)}
-	rec, ok := parseLine(pc, "not digits", time.Now(), "p1", "f")
+	rec, ok := ParseLine(pc, "not digits", time.Now(), "p1", "filetail")
 	if !ok {
 		t.Fatal("non-matching regex line should still emit raw")
 	}
 	if rec.Body != "not digits" {
 		t.Errorf("Body=%q, want raw fallback", rec.Body)
 	}
-	if len(rec.Attributes) != 1 { // only log.file.path
+	if len(rec.Attributes) != 0 {
 		t.Errorf("unexpected attrs: %v", rec.Attributes)
 	}
 }
@@ -81,7 +78,7 @@ func TestParseLine_RegexNoMatchKeepsRawBody(t *testing.T) {
 func TestParseLine_JSON(t *testing.T) {
 	pc := ParserConfig{Type: ParserJSON, TimestampField: "ts", TimestampFormat: time.RFC3339}
 	line := `{"ts":"2026-06-01T10:00:00Z","level":"warn","msg":"disk almost full","pct":95}`
-	rec, ok := parseLine(pc, line, time.Now(), "p1", "f")
+	rec, ok := ParseLine(pc, line, time.Now(), "p1", "filetail")
 	if !ok {
 		t.Fatal("json should parse")
 	}
@@ -102,7 +99,7 @@ func TestParseLine_JSON(t *testing.T) {
 
 func TestParseLine_JSONMalformedSkips(t *testing.T) {
 	pc := ParserConfig{Type: ParserJSON}
-	if _, ok := parseLine(pc, "this is not json", time.Now(), "p1", "f"); ok {
+	if _, ok := ParseLine(pc, "this is not json", time.Now(), "p1", "filetail"); ok {
 		t.Errorf("non-json line under json parser should be skipped (ok=false)")
 	}
 }
@@ -110,7 +107,7 @@ func TestParseLine_JSONMalformedSkips(t *testing.T) {
 func TestParseLine_Logfmt(t *testing.T) {
 	pc := ParserConfig{Type: ParserLogfmt}
 	line := `level=error msg="db connection lost" host=db01 attempts=3`
-	rec, ok := parseLine(pc, line, time.Now(), "p1", "f")
+	rec, ok := ParseLine(pc, line, time.Now(), "p1", "filetail")
 	if !ok {
 		t.Fatal("logfmt should parse")
 	}
