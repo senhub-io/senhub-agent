@@ -162,7 +162,7 @@ jobs:
         # .NET Framework targeting packs; DTF wraps the assembly into the
         # native SenHubCA.CA.dll that WiX embeds.
         run: |
-          dotnet build packaging/windows/ca/SenHubCA.csproj -c Release -nologo
+          dotnet build packaging/windows/ca/SenHubCA.csproj -c Release -p:Platform=x64 -nologo
           CA_DLL=$(find packaging/windows/ca/bin -name 'SenHubCA.CA.dll' | head -1)
           test -n "$CA_DLL" || { echo "::error::SenHubCA.CA.dll not produced"; exit 1; }
           echo "CA_DIR=$(dirname "$CA_DLL")" >> "$GITHUB_ENV"

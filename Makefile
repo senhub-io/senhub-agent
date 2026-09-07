@@ -181,7 +181,7 @@ package-windows: build-windows ## Create ZIP package for Windows
 # (Windows only: it targets .NET Framework 4.7.2 and Windows Forms).
 build-windows-ca: ## Build the MSI custom action DLL (Windows + .NET SDK)
 	@command -v dotnet >/dev/null 2>&1 || { echo "$(RED)dotnet SDK not found$(NC)"; exit 1; }
-	@dotnet build packaging/windows/ca/SenHubCA.csproj -c Release -nologo
+	@dotnet build packaging/windows/ca/SenHubCA.csproj -c Release -p:Platform=x64 -nologo
 
 CA_DIR ?= $(shell find packaging/windows/ca/bin -name 'SenHubCA.CA.dll' 2>/dev/null | head -1 | xargs -I{} dirname {})
 
