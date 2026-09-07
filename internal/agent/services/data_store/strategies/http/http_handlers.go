@@ -113,6 +113,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/web/{agentkey}/settings", h.HandleWebSettings).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsGet).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsSet).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/catalog/probes", h.HandleCatalogProbes).Methods("GET")
 		// router.HandleFunc("/web/{agentkey}/guide", h.HandleWebGuide).Methods("GET") // Temporarily disabled
 
 		// Static assets
@@ -187,6 +188,10 @@ func (h *HTTPHandlers) HandleConfigSettingsGet(w http.ResponseWriter, r *http.Re
 
 func (h *HTTPHandlers) HandleConfigSettingsSet(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleConfigSettingsSet(w, r)
+}
+
+func (h *HTTPHandlers) HandleCatalogProbes(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleCatalogProbes(w, r)
 }
 
 func (h *HTTPHandlers) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {

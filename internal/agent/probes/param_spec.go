@@ -25,33 +25,33 @@ const (
 // params block. Secret fields are stored in the secret store by the
 // configurator and referenced from the fragment, never written in clear.
 type ParamSpec struct {
-	Key         string
-	Kind        ParamKind
-	Required    bool
-	Default     interface{}
-	Secret      bool
-	Description string
-	Enum        []string
-	Group       string
-	Example     string
-	Fields      []ParamSpec
+	Key         string      `json:"key"`
+	Kind        ParamKind   `json:"kind"`
+	Required    bool        `json:"required,omitempty"`
+	Default     interface{} `json:"default,omitempty"`
+	Secret      bool        `json:"secret,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Enum        []string    `json:"enum,omitempty"`
+	Group       string      `json:"group,omitempty"`
+	Example     string      `json:"example,omitempty"`
+	Fields      []ParamSpec `json:"fields,omitempty"`
 	// AlsoAccepts lists alternative spellings the parser reads for the
 	// same meaning (tls.ca_cert for ca_file), so the guard test does not
 	// flag them and the configurator writes the canonical one.
-	AlsoAccepts []string
+	AlsoAccepts []string `json:"also_accepts,omitempty"`
 }
 
 // ProbeSpec is what the configurator, config check and the docs need
 // about a probe type that its constructor alone cannot tell them.
 type ProbeSpec struct {
-	Type            string
-	DisplayName     string
-	Category        string
-	Summary         string
-	DocsPath        string
-	MultiInstance   bool
-	DefaultInterval int
-	Params          []ParamSpec
+	Type            string      `json:"type"`
+	DisplayName     string      `json:"display_name"`
+	Category        string      `json:"category,omitempty"`
+	Summary         string      `json:"summary,omitempty"`
+	DocsPath        string      `json:"docs_path,omitempty"`
+	MultiInstance   bool        `json:"multi_instance"`
+	DefaultInterval int         `json:"default_interval,omitempty"`
+	Params          []ParamSpec `json:"params"`
 }
 
 var (
