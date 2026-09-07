@@ -494,6 +494,7 @@ func checkConfig(configPath string) {
 			e, w := validateProbeParams(p.Name, p.Type, p.Params)
 			errorCount += e
 			warnings += w
+			errorCount += reportGovernanceProblems(p)
 		}
 	}
 
@@ -824,6 +825,27 @@ func reportSchemaProblems(name, probeType string, params map[string]interface{})
 		}
 	}
 	return errors, warnings
+}
+
+// reportGovernanceProblems checks the instance's governance block: a key
+// the vocabulary does not have, a wrong shape, or a value outside a closed
+// set. The block is optional; absent is silent.
+func reportGovernanceProblems(p configuration.ProbeConfig) (errors int) {
+	if p.Governance == nil {
+		return 0
+	}
+	for _, problem := range probes.CheckGovernance(p.Governance) {
+		fmt.Printf("         [ERROR] Probe %q: %s: %s\n", p.Name, problem.Key, problem.Message)
+		errors++
+	}
+	if errors > 0 {
+		return errors
+	}
+	if _, err := p.ParseGovernance(); err != nil {
+		fmt.Printf("         [ERROR] Probe %q: governance: %v\n", p.Name, err)
+		errors++
+	}
+	return errors
 }
 
 // reportProbeParamProblems builds the probe and reports what it refuses.
