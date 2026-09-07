@@ -27,6 +27,7 @@ import (
 
 	"github.com/nxadm/tail"
 
+	"senhub-agent.go/internal/agent/probes/logparse"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -272,7 +273,7 @@ func (p *FileTailProbe) startTail(file string) {
 func (p *FileTailProbe) consume(file string, t *tail.Tail) {
 	defer p.wg.Done()
 
-	asm := newMultilineAssembler(p.config.Multiline, p.config.MaxBytesPerLine)
+	asm := logparse.NewAssembler(p.config.Multiline, p.config.MaxBytesPerLine)
 	probeName := p.GetName()
 
 	lastFlush := time.Now()
@@ -323,11 +324,14 @@ func (p *FileTailProbe) consume(file string, t *tail.Tail) {
 }
 
 func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time, probeName, file string) {
-	rec, ok := parseLine(pc, line, readTime, probeName, file)
+	rec, ok := logparse.ParseLine(pc, line, readTime, probeName, ProbeType)
 	if !ok {
-		p.moduleLogger.Debug().Str("file", file).Str("line", truncate(line, 200)).
+		p.moduleLogger.Debug().Str("file", file).Str("line", logparse.Truncate(line, 200)).
 			Msg("line did not parse as declared json; skipping")
 		return
+	}
+	if file != "" {
+		rec.Attributes["log.file.path"] = file
 	}
 	rec.TargetStrategies = p.LogTargets()
 	agentstate.PublishLog(rec)
