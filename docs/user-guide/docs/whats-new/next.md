@@ -31,6 +31,18 @@ Changes land here as they are merged to `dev`.
   that can actually consume logs are accepted — `agent config check`
   rejects anything else instead of letting the records go nowhere.
 
+- **Say who owns what a probe observes, and which application it belongs
+  to.** Governance (owner, criticality, location, lifecycle, labels) could
+  only be stated for the host, in the OTLP output, or per device inside
+  `snmp_poll`. A database on a host had the host's governance, and so did
+  the one next to it that belongs to another application. Every probe entry
+  now takes an optional `governance` block with the same vocabulary; it is
+  stamped on the entities, metrics and logs of that probe only. The label
+  `application` names the application chain an instance takes part in, so
+  one filter finds everything in the chain across hosts and probe types.
+  `agent config check` reports an unknown key or a value outside a closed
+  set, and the Probes page edits the block below the parameters.
+
 ## Fixes
 
 - **The `depends_on` warning no longer tells root to run as root.** An agent

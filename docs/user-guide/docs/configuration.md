@@ -96,6 +96,7 @@ Each probe entry defines a monitoring target. The agent collects metrics at regu
 | `type` | Yes | Probe type (see Available Probe Types below) |
 | `params` | Yes | Probe-specific parameters |
 | `custom_tags` | No | Additional key-value tags attached to all metrics from this probe |
+| `governance` | No | Who owns what this probe observes, how critical it is, where it is, and which application chain it belongs to. Stamped on this probe's entities, metrics and logs. See [Governance per probe](#governance-per-probe). |
 | `enabled` | No | Set to `false` to stop the probe without deleting its configuration. Absent means enabled, so existing files are unaffected. A disabled probe collects nothing and reports no topology. |
 
 ### Turning a probe off
@@ -147,6 +148,68 @@ probes:
 ```
 
 Tags appear in PRTG, Nagios, and other monitoring tool outputs, allowing you to filter and organize your metrics.
+
+### Governance per probe
+
+The agent-level `governance` block (see [OpenTelemetry output](otlp.md))
+describes the host the agent runs on. It says nothing about what a probe
+observes: the database on that host may belong to one application and the
+one next to it to another, and a probe that reads a remote system observes
+something with an owner of its own. A `governance` block on the probe entry
+states that, with the same vocabulary:
+
+```yaml
+probes:
+  - name: erp-db
+    type: mysql
+    params:
+      host: 127.0.0.1
+      username: monitor
+      password: "${secret:erp-db.password}"
+    governance:
+      criticality: high
+      owner:
+        team: dba
+        contact: dba@example.com
+      lifecycle: active
+      labels:
+        application: erp
+
+  - name: crm-db
+    type: mysql
+    params:
+      host: 127.0.0.1
+      port: 3307
+      username: monitor
+      password: "${secret:crm-db.password}"
+    governance:
+      criticality: medium
+      labels:
+        application: crm
+```
+
+The block is stamped on the entities the probe reports, and on every metric
+and log record it produces, as the same attributes a topology consumer
+already reads: `entity.owner.team`, `entity.owner.contact`,
+`service.criticality`, `entity.location.*`, `entity.lifecycle.status` and
+`entity.label.<key>`. Nothing is inherited from the agent-level block, and
+the host entity is never touched by a probe's governance.
+
+An application is not an entity. It is the label `application`, put on
+every instance that takes part in an application chain: with it, every
+entity, metric and log of that chain can be found by one filter, across
+hosts and probe types. Two instances on the same host can belong to two
+different chains.
+
+Precedence, key by key, is the most specific statement: a governance rule
+matched by `snmp_poll` discovery, then the probe's `governance` block, then
+the agent-level block for the host. On a key present in both, a probe's
+`custom_tags` win over its `governance`.
+
+`criticality` takes `critical` / `high` / `medium` / `low`; `lifecycle`
+takes `active` / `maintenance` / `decommissioning` / `retired`. An unknown
+key or a value outside those sets is an error in `agent config check` and
+is refused by the web console.
 
 ## Storage Section
 
