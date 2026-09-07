@@ -65,6 +65,25 @@ func (h *HTTPSyncStrategy) handleWebSettings(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// handleWebPage renders one of the embedded console pages.
+func (h *HTTPSyncStrategy) handleWebPage(w http.ResponseWriter, r *http.Request, template string) {
+	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
+	if !ok {
+		return
+	}
+	content, err := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg")).RenderTemplate(template)
+	if err != nil {
+		h.logger.Error().Err(err).Str("template", template).Msg("Failed to render console page")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	if _, err := w.Write([]byte(content)); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to write console page")
+	}
+}
+
 // handleConfigSettingsGet returns the current, editable settings as JSON.
 func (h *HTTPSyncStrategy) handleConfigSettingsGet(w http.ResponseWriter, r *http.Request) {
 	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
