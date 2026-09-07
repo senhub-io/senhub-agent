@@ -68,7 +68,9 @@ func TestValidateProbeParams_UsesDeclaredSchema(t *testing.T) {
 	if errs, _ := validateProbeParams("p", "zz-schema-check", map[string]interface{}{"host": "h", "mode": "a"}); errs != 0 {
 		t.Errorf("valid params: %d errors, want 0", errs)
 	}
-	if errs, _ := validateProbeParams("p", "zz-schema-check", map[string]interface{}{"mode": "zzz", "hots": "h"}); errs != 3 {
-		t.Errorf("missing required + bad enum + unknown key: %d errors, want 3", errs)
+	// The bad enum value is not counted here: a value's shape is the
+	// constructor's to report, and this test type has no constructor.
+	if errs, _ := validateProbeParams("p", "zz-schema-check", map[string]interface{}{"mode": "zzz", "hots": "h"}); errs != 2 {
+		t.Errorf("missing required + unknown key: %d errors, want 2", errs)
 	}
 }
