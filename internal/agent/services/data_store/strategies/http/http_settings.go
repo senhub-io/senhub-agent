@@ -224,10 +224,19 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 	writeJSON(w, http.StatusOK, result)
 }
 
+// writeJSON encodes before it writes the status: a value the encoder
+// refuses (a map keyed by interface{}, a channel) must come back as a 500
+// that names the problem, not as a 200 with an empty body the page then
+// fails to parse without a clue.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		status = http.StatusInternalServerError
+		body, _ = json.Marshal(map[string]string{"status": "error", "error": "response could not be encoded: " + err.Error()})
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(append(body, '\n'))
 }
 
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
