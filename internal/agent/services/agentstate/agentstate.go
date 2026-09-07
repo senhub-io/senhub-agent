@@ -136,6 +136,31 @@ func RecordProbeHealth(probeID string, ok bool) {
 	}
 }
 
+// ProbeRunState is what the configurator shows for one configured probe:
+// whether its poller is running and how its last collect went.
+type ProbeRunState struct {
+	Running bool
+	Health  string // "ok", "failed", "unknown", or "" when not running
+}
+
+// GetProbeRunState reports the live state of a probe by its ID (from
+// probes.GenerateProbeId), for the configured-probes listing.
+func GetProbeRunState(probeID string) ProbeRunState {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	if _, running := activeProbeIDs[probeID]; !running {
+		return ProbeRunState{}
+	}
+	switch probeHealth[probeID] {
+	case probeHealthOK:
+		return ProbeRunState{Running: true, Health: "ok"}
+	case probeHealthFailed:
+		return ProbeRunState{Running: true, Health: "failed"}
+	default:
+		return ProbeRunState{Running: true, Health: "unknown"}
+	}
+}
+
 // GetProbeCounts returns (total, healthy) for the currently-active probes.
 // Probes that have not yet run a collect cycle (state=unknown) are NOT
 // counted as healthy — until they prove they can collect, they're suspect.
