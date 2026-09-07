@@ -51,7 +51,7 @@ type Probe interface {
 
 4. **Register in `internal/agent/probes/registry.go`** with the canonical type name. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `postgresql.yaml`).
 
-5. **Entity source** — call `SetEntitySource()` in the constructor for remote-target probes (see §Mandatory wiring — five touch-points below). Host-level probes and log conduits inherit `NoOpEntitySource` from `BaseProbe` automatically.
+5. **Entity source** — call `SetEntitySource()` in the constructor for remote-target probes (see §Mandatory wiring — six touch-points below). Host-level probes and log conduits inherit `NoOpEntitySource` from `BaseProbe` automatically.
 
 ## commonTags shape
 
@@ -141,9 +141,9 @@ insert-if-absent centrally, so calling it twice never duplicates a tag —
 but it is no longer the only thing standing between a new probe and
 silently broken output.
 
-## Mandatory wiring — five touch-points, every new probe, same PR
+## Mandatory wiring — six touch-points, every new probe, same PR
 
-When adding a probe, register it in the **five** places below in the **same PR**. The structural invariant tests in `internal/agent/probes/registry_invariant_test.go` make the license and entity source halves non-skippable — CI fails if either is missing. The other places are not test-enforced today but matter just as much.
+When adding a probe, register it in the **six** places below in the **same PR**. The structural invariant tests in `internal/agent/probes/registry_invariant_test.go` make the license and entity source halves non-skippable, and `spec_guard_test.go` makes the parameter schema match the parser — CI fails if any is missing. The other places are not test-enforced today but matter just as much.
 
 1. **`internal/agent/probes/registry.go`** — add the entry to `probeConstructors`. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `ibmi.yaml`).
 2. **License authorization** — pick one:
@@ -153,6 +153,13 @@ When adding a probe, register it in the **five** places below in the **same PR**
 4. **YAML transformer** at `internal/agent/services/data_store/transformers/definitions/<probe>.yaml` (unless the probe is a pure log conduit like `linux_logs` — in that case document the absence in `senhub-semantic-conventions.md`). Every metric in the YAML needs an `otel:` block (see `feedback_otel_first.md`); the prometheus mapper warns once per unmapped metric and silently drops, so a missing block ships as a silent feature gap.
 5. **Entity source** in the probe's constructor — non-negotiable, enforced by
    `TestEveryRegisteredProbeHasEntitySource` in `registry_invariant_test.go`.
+6. **Parameter schema** in `<probe>/spec.go`: `probes.RegisterProbeSpec(...)` from
+   `init()`, declaring every params key the parser reads (kind, required,
+   default, secret, enum, nested blocks, alternative spellings). It drives
+   `config check`, the web configurator's forms and the catalogue.
+   `TestProbeSpecs_MatchWhatParsersRead` in `spec_guard_test.go` fails when the
+   schema and the parser disagree in either direction; use the allow-list
+   there, with a reason, only for a key that is not an operator setting.
 
    **Remote-target probes** (anything monitoring a distinct external system — a DB instance, a message broker, an HTTP endpoint): call `SetEntitySource()` in the constructor and nothing else. The `ProbePoller` registers `EntitySource()` with the detector on Start and unregisters it on Shutdown — probes MUST NOT call `entity.RegisterSource` themselves (enforced by `TestProbePackagesDoNotRegisterEntitySourcesDirectly`; the dual probe-side path was removed in #471):
 
