@@ -27,6 +27,7 @@ restrict to a subset.
 | Parameter | Default | Description |
 |---|---|---|
 | `services` | all | List of service names to monitor (empty = all services). Case-insensitive, matches the service's short name (`sc query` output) |
+| `interval` | `30s` | Collection interval, in seconds or as a duration such as `1m` |
 
 ## Metrics
 
