@@ -101,6 +101,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 					Msg("Legacy monolithic config detected (top-level probes:/storage: present) — *.d/ directories are IGNORED. Migrate by trimming probes and storage out of the top file.")
 			}
 		}
+		data = normalizeYAMLTypes(data)
 		if err := Substitute(&data); err != nil {
 			return LocalConfigurationData{}, fmt.Errorf("substituting variables in %s: %w", configPath, err)
 		}
@@ -120,7 +121,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		return LocalConfigurationData{}, err
 	}
 
-	merged := mergeConfigs(data, extraProbes, extraStrategies)
+	merged := normalizeYAMLTypes(mergeConfigs(data, extraProbes, extraStrategies))
 	if err := Substitute(&merged); err != nil {
 		return LocalConfigurationData{}, fmt.Errorf("substituting variables: %w", err)
 	}
