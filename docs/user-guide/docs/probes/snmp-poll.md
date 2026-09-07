@@ -147,6 +147,11 @@ params:
 | `interval` | `topology_interval` | Crawl cadence |
 | `governance_rules` | none | Per-device governance, matched as the crawl finds devices (see below) |
 
+The `governance` parameter of this probe and the `governance` block every
+probe entry accepts (see [Governance per probe](../configuration.md#governance-per-probe))
+share one vocabulary. Both stamp the polled device; on a key present in both,
+the probe-level parameter wins, and a matched discovery rule wins over either.
+
 #### Governance for discovered devices
 
 A crawl finds devices you never listed, so their ownership, criticality and
