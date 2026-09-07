@@ -249,6 +249,14 @@ func (p *ProbePoller) registerEntitySource() {
 	if _, isNoOp := src.(types.NoOpEntitySource); isNoOp {
 		return
 	}
+	// The instance's governance rides on every entity it observes. A block
+	// that does not parse is reported by `config check`; here it is only
+	// skipped, so a typo in a label never stops a probe from collecting.
+	if gov, err := p.config.ParseGovernance(); err != nil {
+		p.moduleLogger.Warn().Err(err).Msg("governance block ignored")
+	} else if !gov.IsZero() {
+		src = entity.WithAttributes(src, gov.Attributes())
+	}
 	p.unregisterEntitySource = entity.RegisterSource(src)
 }
 
