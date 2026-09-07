@@ -109,6 +109,16 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
     the network egress from Azure, the intake and the storage, where a
     backend-side rule would only save the disk.
 
+!!! note "What the stream endpoint does, measured"
+    Azure closes every console stream about ten minutes after it was
+    attached, all of them at once; the probe re-attaches within seconds
+    and, on a bench of twenty-four containers, no line was lost across
+    the cut. Attaches are paced (one every 400 ms) because a burst of
+    twenty is refused with 429 "request rate is too high"; a refused
+    attach is retried with the delay the endpoint asks for. Expect the
+    `stream.reconnects` counter to grow by the number of streams every
+    ten minutes: that is normal.
+
 !!! note "A live stream, not an archive"
     The stream carries lines as they are written. While the agent is stopped, lines are not kept for it: on restart the probe re-reads the last `tail_lines` of each container, skips the ones its bookmark says were published, and resumes. Lines written beyond that window while the agent was down are lost to it. An application that needs every line kept keeps Azure's own Log Analytics as well; this probe is the low-latency path.
 
