@@ -1,5 +1,12 @@
 package configuration
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"regexp"
+)
+
 // Shared configuration data types — extracted from the
 // (now-deleted) remoteConfiguration.go so both LocalConfiguration and
 // the test mocks can keep using them without re-importing the SaaS
@@ -115,4 +122,26 @@ type ConfigurationData struct {
 	Probes        []ProbeConfig   `json:"probes"`
 	Agent         AgentConfig     `json:"agent"`
 	Cache         *CacheConfig    `json:"cache,omitempty"`
+}
+
+// validProbeName matches names safe in URLs and file names: letters,
+// digits, hyphens and underscores, not starting with a punctuation mark.
+var validProbeName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// IsValidProbeName reports whether a probe name may be used: the sensor
+// skips a probe whose name fails this, and the configurator refuses it
+// before writing.
+func IsValidProbeName(name string) bool {
+	return name != "" && validProbeName.MatchString(name)
+}
+
+// ID is the identity of a configured probe: a hash of its name and
+// parameters, so any change to either yields a new probe and a restart
+// of that probe alone. The sensor keys its running pollers by it, and
+// agentstate publishes their state under it.
+func (p ProbeConfig) ID() string {
+	input := fmt.Sprintf("%s-%v", p.Name, p.Params)
+	hash := sha256.New()
+	hash.Write([]byte(input))
+	return hex.EncodeToString(hash.Sum(nil))
 }

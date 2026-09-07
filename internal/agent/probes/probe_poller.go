@@ -3,8 +3,6 @@ package probes
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -60,10 +58,7 @@ func (d *defaultStrategyRouter) GetTargetStrategies() []string {
 // GenerateProbeId creates a unique identifier for a probe configuration
 // by hashing its name and parameters
 func GenerateProbeId(config configuration.ProbeConfig) string {
-	input := fmt.Sprintf("%s-%v", config.Name, config.Params)
-	hash := sha256.New()
-	hash.Write([]byte(input))
-	return hex.EncodeToString(hash.Sum(nil))
+	return config.ID()
 }
 
 // NewProbePoller creates and initializes a new probe instance from the given configuration.
