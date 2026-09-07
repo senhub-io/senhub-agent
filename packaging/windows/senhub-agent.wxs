@@ -115,11 +115,9 @@
          seeding step, which runs as SYSTEM: a mapped drive letter is not
          visible there, use a local path or a UNC path. -->
     <Property Id="LICENSE_FILE" Secure="yes" />
-    <!-- The wizard's Browse button opens the Windows file dialog through
-         the BrowseLicenseFile custom action (packaging/windows/ca), which
-         writes the chosen path into LICENSE_FILE. Windows Installer has no
-         native file picker; only a DLL action can set a property from a
-         dialog. -->
+    <!-- The wizard's Browse button opens the Explorer file picker through
+         the BrowseLicenseFile script action below, which writes the chosen
+         path into LICENSE_FILE. -->
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
@@ -343,7 +341,7 @@
         <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
         <Control Id="Title" Type="Text" X="15" Y="6" Width="300" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent options" />
         <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="Licence, console port and shortcut. Everything else is set from the web console." />
-        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="373" Height="0" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
 
         <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="Licence file (the .jwt file you received; leave empty for the Free tier, a licence can be added later from the web console):" />
         <Control Id="LicenseFileEdit" Type="Edit" X="20" Y="84" Width="264" Height="18" Property="LICENSE_FILE" />
@@ -361,7 +359,7 @@
         <Control Id="ShortcutCheck" Type="CheckBox" X="20" Y="172" Width="330" Height="17" Property="DESKTOP_SHORTCUT" CheckBoxValue="1" Text="Create a desktop shortcut to the web console" />
         <Control Id="OpenConsoleCheck" Type="CheckBox" X="20" Y="192" Width="330" Height="17" Property="OPEN_CONSOLE" CheckBoxValue="1" Text="Open the web console when setup completes" />
 
-        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="373" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
           <Publish Event="NewDialog" Value="InstallDirDlg" />
         </Control>
@@ -401,12 +399,16 @@
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchConsole" Order="2" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
     </UI>
 
-    <!-- Managed custom action (DTF). CaDir is passed by the build:
-         -d CaDir=packaging\windows\ca\bin\x64\Release\net472 -->
-    <Binary Id="SenHubCA" SourceFile="$(CaDir)\SenHubCA.CA.dll" />
+    <!-- The wizard's Browse button. Windows Installer has no file picker of
+         its own; this script action opens the Explorer folder browser in
+         "include files" mode and writes the chosen path into LICENSE_FILE.
+         A script action needs no DLL and no runtime: two builds of a managed
+         (DTF) DLL were called by the engine and returned in three
+         milliseconds without ever reaching their code. -->
+    <Binary Id="BrowseLicenseScript" SourceFile="packaging/windows/browse-license.vbs" />
     <CustomAction Id="BrowseLicenseFile"
-                  BinaryRef="SenHubCA"
-                  DllEntry="BrowseLicenseFile"
+                  BinaryRef="BrowseLicenseScript"
+                  VBScriptCall="BrowseLicenseFile"
                   Execute="immediate"
                   Return="ignore" />
 
