@@ -1,12 +1,12 @@
-package probes
+package spec
 
 import (
 	"strings"
 	"testing"
 )
 
-func sampleSpec() ProbeSpec {
-	return ProbeSpec{
+func sampleSpec() Probe {
+	return Probe{
 		Type: "sample", DisplayName: "Sample",
 		Params: []ParamSpec{
 			{Key: "host", Kind: KindString, Required: true},
@@ -23,7 +23,7 @@ func sampleSpec() ProbeSpec {
 	}
 }
 
-func TestProbeSpec_DeclaredKeys(t *testing.T) {
+func TestProbe_DeclaredKeys(t *testing.T) {
 	keys := sampleSpec().DeclaredKeys()
 	for _, want := range []string{"host", "port", "tls", "tls.enabled", "tls.ca_file", "tls.ca_cert"} {
 		if _, ok := keys[want]; !ok {
@@ -32,7 +32,7 @@ func TestProbeSpec_DeclaredKeys(t *testing.T) {
 	}
 }
 
-func TestProbeSpec_CheckParams(t *testing.T) {
+func TestProbe_CheckParams(t *testing.T) {
 	spec := sampleSpec()
 	cases := []struct {
 		name   string
@@ -70,11 +70,11 @@ func TestProbeSpec_CheckParams(t *testing.T) {
 	}
 }
 
-func TestRegisterProbeSpec(t *testing.T) {
-	spec := ProbeSpec{Type: "zz-test-spec"}
-	RegisterProbeSpec(spec)
-	t.Cleanup(func() { unregisterProbeSpec("zz-test-spec") })
-	if _, ok := ProbeSpecFor("zz-test-spec"); !ok {
+func TestRegister(t *testing.T) {
+	spec := Probe{Type: "zz-test-spec"}
+	Register(spec)
+	t.Cleanup(func() { unregister("zz-test-spec") })
+	if _, ok := For("zz-test-spec"); !ok {
 		t.Fatal("registered spec not found")
 	}
 	defer func() {
@@ -82,5 +82,5 @@ func TestRegisterProbeSpec(t *testing.T) {
 			t.Error("a duplicate registration must panic")
 		}
 	}()
-	RegisterProbeSpec(spec)
+	Register(spec)
 }

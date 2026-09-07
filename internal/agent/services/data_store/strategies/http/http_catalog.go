@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/spec"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/license"
 )
@@ -13,7 +13,7 @@ import (
 // licence verdict the form needs to grey it out honestly rather than let
 // the operator configure a probe the agent will refuse to start.
 type catalogEntry struct {
-	probes.ProbeSpec
+	spec.Probe
 	Tier       string `json:"tier"`
 	Authorized bool   `json:"authorized"`
 	Reason     string `json:"reason,omitempty"`
@@ -34,8 +34,8 @@ func (h *HTTPSyncStrategy) handleCatalogProbes(w http.ResponseWriter, r *http.Re
 	lic := h.currentLicense()
 	view := h.currentLicenseView(agentKey)
 	var entries []catalogEntry
-	for _, spec := range probes.RegisteredProbeSpecs() {
-		entries = append(entries, annotateCatalogEntry(spec, lic, agentKey))
+	for _, ps := range spec.Registered() {
+		entries = append(entries, annotateCatalogEntry(ps, lic, agentKey))
 	}
 	if entries == nil {
 		entries = []catalogEntry{}
@@ -69,9 +69,9 @@ func (h *HTTPSyncStrategy) currentLicense() *license.License {
 // annotateCatalogEntry applies the same rules the sensor applies at
 // start: free-tier probes always run; a paid probe needs a licence that
 // is valid, bound to this agent, not expired, and that authorises it.
-func annotateCatalogEntry(spec probes.ProbeSpec, lic *license.License, agentKey string) catalogEntry {
-	e := catalogEntry{ProbeSpec: spec, Tier: "free", Authorized: true}
-	if license.IsProbeAuthorizable(spec.Type) && !isFreeTier(spec.Type) {
+func annotateCatalogEntry(ps spec.Probe, lic *license.License, agentKey string) catalogEntry {
+	e := catalogEntry{Probe: ps, Tier: "free", Authorized: true}
+	if license.IsProbeAuthorizable(ps.Type) && !isFreeTier(ps.Type) {
 		e.Tier = "pro"
 		switch {
 		case lic == nil:
@@ -85,7 +85,7 @@ func annotateCatalogEntry(spec probes.ProbeSpec, lic *license.License, agentKey 
 			e.Reason = "the licence has expired"
 		default:
 			validator, err := license.GetDefaultValidator(7)
-			if err != nil || !validator.IsProbeAuthorized(lic, spec.Type) {
+			if err != nil || !validator.IsProbeAuthorized(lic, ps.Type) {
 				e.Authorized = false
 				e.Reason = "not covered by this licence"
 			}
