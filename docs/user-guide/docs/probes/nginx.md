@@ -24,6 +24,9 @@ state breakdown (reading, writing, waiting).
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost/nginx_status` | URL to the stub_status page |
+| `interval` | `60` | Seconds between collections |
+| `timeout` | `10` | Request timeout in seconds |
+| `instance_name` | none | Stable identity of this server; set it when two nginx probes run on one host, or their entities merge |
 
 ## Metrics
 

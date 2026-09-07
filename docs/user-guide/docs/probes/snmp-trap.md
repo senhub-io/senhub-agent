@@ -36,7 +36,7 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 | `version` | `v2c` | `v2c` or `v3` |
 | `community` | empty | v2c community check. Empty accepts any community — always set it on production receivers. Reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
 | `mib_paths` | `[]` | Local directories or files of MIB modules for OID-to-name resolution |
-| `v3` | none | SNMPv3 USM users (see below) |
+| `v3` | none | SNMPv3 USM users, as a list under `v3.users` (see below) |
 
 ### SNMPv3 users
 
