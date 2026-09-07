@@ -192,8 +192,13 @@ The block is stamped on the entities the probe reports, and on every metric
 and log record it produces, as the same attributes a topology consumer
 already reads: `entity.owner.team`, `entity.owner.contact`,
 `service.criticality`, `entity.location.*`, `entity.lifecycle.status` and
-`entity.label.<key>`. Nothing is inherited from the agent-level block, and
-the host entity is never touched by a probe's governance.
+`entity.label.<key>`. The host entity is never touched by a probe's
+governance. From the agent-level block, only the location (`site`,
+`datacenter`, `rack`, `room`) descends, and only to the entities the agent
+places on its own host: a database reached on the loopback address is where
+the host is, a database reached across the network is not. Owner,
+criticality, lifecycle and labels never descend; a database on a machine is
+often another team's, and a host runs more than one application.
 
 An application is not an entity. It is the label `application`, put on
 every instance that takes part in an application chain: with it, every
@@ -203,7 +208,7 @@ different chains.
 
 Precedence, key by key, is the most specific statement: a governance rule
 matched by `snmp_poll` discovery, then the probe's `governance` block, then
-the agent-level block for the host. On a key present in both, a probe's
+the host's location for what runs on it. On a key present in both, a probe's
 `custom_tags` win over its `governance`.
 
 `criticality` takes `critical` / `high` / `medium` / `low`; `lifecycle`
