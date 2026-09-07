@@ -30,6 +30,9 @@ One probe instance follows one application; add an instance per application. Rep
     resource_group: rg-squash
     app: squash-tm
     bookmark_path: /var/lib/senhub-agent/squash-logs.bookmark
+    min_severity: warn                 # INFO and below never leave the agent
+    exclude:
+      - 'GET /health '                 # the platform's own probes
     parser:
       type: raw
     multiline:
@@ -59,6 +62,8 @@ The `governance` block is the agent's per-probe governance (see [Configuration](
 | `parser` | block | No | `type: raw` | Line parser: `type` (`raw`, `regex`, `json`, `logfmt`), `pattern` (regex with named groups), `timestamp_field`, `timestamp_format`. Same block as [File Tail](filetail.md). |
 | `multiline` | block | No | off | Folding of physical lines into one record: `pattern`, `negate`, `match` (`after` or `before`). Same block as [File Tail](filetail.md). |
 | `max_bytes_per_line` | integer | No | `1048576` | Cap on one assembled record |
+| `min_severity` | string | No | - | Drop records below this severity: `trace`, `debug`, `info`, `warn`, `error` or `fatal`. Applies to the severity the parser read, or, for a raw line, to the level word found at its head (`INFO`, `WARN`, `[error]`...). A record whose severity cannot be read is kept. |
+| `exclude` | list | No | - | Regular expressions; a line matching one is dropped before parsing (health checks, heartbeats, a noisy component). |
 | `authority_host` | string | No | `login.microsoftonline.com` | Entra ID authority, for sovereign clouds |
 | `management_host` | string | No | `management.azure.com` | Azure Resource Manager endpoint, for sovereign clouds |
 
@@ -87,6 +92,7 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
 | `senhub.azure_container_apps.replicas` | `{replica}` | Replicas of the active revisions seen at the last scan |
 | `senhub.azure_container_apps.streams.open` | `{stream}` | Streams currently attached, one per replica and container |
 | `senhub.azure_container_apps.records_emitted` | `{record}` | Cumulative records published to the log rail |
+| `senhub.azure_container_apps.records_dropped` | `{record}` | Cumulative lines dropped at the source by `exclude` or `min_severity` |
 | `senhub.azure_container_apps.stream.reconnects` | `{reconnect}` | Cumulative streams re-attached after a drop |
 
 # Requirements
@@ -94,6 +100,14 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
 - An **Entra ID app registration** with a **client secret**.
 - A role assignment on the Container App (or its resource group) that includes `Microsoft.App/containerApps/read`, `Microsoft.App/containerApps/revisions/read`, `Microsoft.App/containerApps/revisions/replicas/read` and the action `Microsoft.App/containerApps/getAuthtoken/action`. **Reader is not enough**: it lacks the last one. Contributor covers all four; a custom role with those four is the least privilege.
 - Outbound HTTPS from the agent host to `login.microsoftonline.com`, `management.azure.com` and the log stream endpoint of the application's environment (`*.azurecontainerapps.dev`).
+
+!!! tip "Filter at the source"
+    Every line read is sent, stored and billed somewhere. A Java application
+    at INFO level writes tens of thousands of lines a day per replica; with
+    `min_severity: warn` most of them never leave the agent, and the
+    `records_dropped` metric shows what was left out. Filtering here saves
+    the network egress from Azure, the intake and the storage, where a
+    backend-side rule would only save the disk.
 
 !!! note "A live stream, not an archive"
     The stream carries lines as they are written. While the agent is stopped, lines are not kept for it: on restart the probe re-reads the last `tail_lines` of each container, skips the ones its bookmark says were published, and resumes. Lines written beyond that window while the agent was down are lost to it. An application that needs every line kept keeps Azure's own Log Analytics as well; this probe is the low-latency path.

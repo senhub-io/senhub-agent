@@ -53,6 +53,17 @@ metrics:
       unit: "{record}"
       type: counter
 
+  - name: "azure_container_apps_records_dropped"
+    channel: "records_dropped"
+    display_name: "Records Dropped"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of lines dropped at the source by exclude patterns or min_severity"
+    otel:
+      name: senhub.azure_container_apps.records_dropped
+      unit: "{record}"
+      type: counter
+
   - name: "azure_container_apps_stream_reconnects"
     channel: "stream_reconnects"
     display_name: "Stream Reconnects"

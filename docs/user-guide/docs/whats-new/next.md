@@ -55,7 +55,9 @@ Changes land here as they are merged to `dev`.
   carry the application, revision, replica and container they came
   from. Replicas that appear and disappear are followed; the probe
   reports its open streams and reconnections so a broken stream shows
-  in PRTG even when the logs go elsewhere.
+  in PRTG even when the logs go elsewhere. `min_severity` and `exclude`
+  drop the lines nobody reads before they leave the agent, and a
+  counter shows what was left out.
 
 ## Fixes
 
