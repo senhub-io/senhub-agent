@@ -1,0 +1,104 @@
+package http
+
+import (
+	"net/http"
+	"strings"
+
+	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/license"
+)
+
+// catalogEntry is one probe type the configurator can offer, with the
+// licence verdict the form needs to grey it out honestly rather than let
+// the operator configure a probe the agent will refuse to start.
+type catalogEntry struct {
+	probes.ProbeSpec
+	Tier       string `json:"tier"`
+	Authorized bool   `json:"authorized"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+type catalogResponse struct {
+	Probes  []catalogEntry `json:"probes"`
+	License licenseView    `json:"license"`
+}
+
+// handleCatalogProbes lists the probe types that declare a schema, each
+// with its tier and whether this agent's licence authorises it.
+func (h *HTTPSyncStrategy) handleCatalogProbes(w http.ResponseWriter, r *http.Request) {
+	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
+	if !ok {
+		return
+	}
+	lic := h.currentLicense()
+	view := h.currentLicenseView(agentKey)
+	var entries []catalogEntry
+	for _, spec := range probes.RegisteredProbeSpecs() {
+		entries = append(entries, annotateCatalogEntry(spec, lic, agentKey))
+	}
+	if entries == nil {
+		entries = []catalogEntry{}
+	}
+	writeJSON(w, http.StatusOK, catalogResponse{Probes: entries, License: view})
+}
+
+// currentLicense returns the validated licence on disk, or nil when none
+// is configured or it does not validate. The Free tier is the answer in
+// both cases; the settings page explains which.
+func (h *HTTPSyncStrategy) currentLicense() *license.License {
+	configPath := h.agentConfig.GetConfigPath()
+	if configPath == "" {
+		return nil
+	}
+	effective, err := configuration.ResolveEffectiveLicense(configPath, "")
+	if err != nil || strings.TrimSpace(effective) == "" {
+		return nil
+	}
+	validator, err := license.GetDefaultValidator(7)
+	if err != nil {
+		return nil
+	}
+	lic, err := validator.ValidateLicense(effective)
+	if err != nil {
+		return nil
+	}
+	return lic
+}
+
+// annotateCatalogEntry applies the same rules the sensor applies at
+// start: free-tier probes always run; a paid probe needs a licence that
+// is valid, bound to this agent, not expired, and that authorises it.
+func annotateCatalogEntry(spec probes.ProbeSpec, lic *license.License, agentKey string) catalogEntry {
+	e := catalogEntry{ProbeSpec: spec, Tier: "free", Authorized: true}
+	if license.IsProbeAuthorizable(spec.Type) && !isFreeTier(spec.Type) {
+		e.Tier = "pro"
+		switch {
+		case lic == nil:
+			e.Authorized = false
+			e.Reason = "requires a licence"
+		case !license.VerifyBinding("", agentKey, lic):
+			e.Authorized = false
+			e.Reason = "the licence is issued for another agent"
+		case lic.IsExpired:
+			e.Authorized = false
+			e.Reason = "the licence has expired"
+		default:
+			validator, err := license.GetDefaultValidator(7)
+			if err != nil || !validator.IsProbeAuthorized(lic, spec.Type) {
+				e.Authorized = false
+				e.Reason = "not covered by this licence"
+			}
+		}
+	}
+	return e
+}
+
+func isFreeTier(probeType string) bool {
+	for _, p := range license.GetFreeTierProbes() {
+		if p == probeType {
+			return true
+		}
+	}
+	return false
+}
