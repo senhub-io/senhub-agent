@@ -176,23 +176,12 @@ package-windows: build-windows ## Create ZIP package for Windows
 # (see docs/deployment/windows-msi.md). CI builds the canonical signed
 # MSI via .github/workflows/windows-msi.yml; this target is for local
 # unsigned test builds.
-# The MSI embeds a managed custom action (packaging/windows/ca, DTF) for
-# the wizard's licence file picker; build it first with `dotnet build`
-# (Windows only: it targets .NET Framework 4.7.2 and Windows Forms).
-build-windows-ca: ## Build the MSI custom action DLL (Windows + .NET SDK)
-	@command -v dotnet >/dev/null 2>&1 || { echo "$(RED)dotnet SDK not found$(NC)"; exit 1; }
-	@dotnet build packaging/windows/ca/SenHubCA.csproj -c Release -p:Platform=x64 -nologo
-
-CA_DIR ?= $(shell find packaging/windows/ca/bin -name 'SenHubCA.CA.dll' 2>/dev/null | head -1 | xargs -I{} dirname {})
-
-package-windows-msi: build-windows ## Build Windows MSI (requires WiX v4 `wix` tool + build-windows-ca)
+package-windows-msi: build-windows ## Build Windows MSI (requires WiX v4 `wix` tool)
 	@command -v wix >/dev/null 2>&1 || { echo "$(RED)wix tool not found. Install: dotnet tool install --global wix --version '4.*'$(NC)"; exit 1; }
-	@test -n "$(CA_DIR)" || { echo "$(RED)SenHubCA.CA.dll not found: run make build-windows-ca first$(NC)"; exit 1; }
 	@echo "$(GREEN)📦 Building Windows MSI (version $(VERSION))...$(NC)"
 	@wix build packaging/windows/senhub-agent.wxs \
 		-d Version="$(VERSION)" \
 		-d BinDir="$(WINDOWS_AMD64_DIR)" \
-		-d CaDir="$(CA_DIR)" \
 		-arch x64 \
 		-ext WixToolset.Util.wixext \
 		-ext WixToolset.UI.wixext \

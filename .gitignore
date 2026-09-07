@@ -152,6 +152,3 @@ docs/user-guide/site/
 # Agent worktrees (transient, never part of the repo)
 .claude/worktrees/
 
-# MSI custom action build output (dotnet)
-packaging/windows/ca/bin/
-packaging/windows/ca/obj/
