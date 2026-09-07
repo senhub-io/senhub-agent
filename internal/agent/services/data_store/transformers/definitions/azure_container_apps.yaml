@@ -1,0 +1,65 @@
+probe_name: "azure_container_apps"
+friendly_name: "Azure Container Apps"
+version: "1.0.0"
+host_level: false
+
+# azure_container_apps is a log conduit: the lines read from the console
+# log stream ride the OTLP log rail (agentstate.PublishLog) and are NOT
+# mapped here. Collect() emits the conduit's own state so an operator
+# sees, from any metric output, whether the streams are attached.
+
+metrics:
+  - name: "azure_container_apps_up"
+    channel: "up"
+    display_name: "Control Plane Reachable"
+    unit: "#"
+    category: "status"
+    description: "1 when Azure Resource Manager answered the last replica scan, else 0"
+    otel:
+      name: senhub.azure_container_apps.up
+      unit: "{status}"
+      type: gauge
+
+  - name: "azure_container_apps_replicas"
+    channel: "replicas"
+    display_name: "Replicas"
+    unit: "#"
+    category: "status"
+    description: "Replicas of the active revisions seen at the last scan"
+    otel:
+      name: senhub.azure_container_apps.replicas
+      unit: "{replica}"
+      type: gauge
+
+  - name: "azure_container_apps_streams_open"
+    channel: "streams_open"
+    display_name: "Streams Open"
+    unit: "#"
+    category: "status"
+    description: "Console log streams currently attached (one per replica and container)"
+    otel:
+      name: senhub.azure_container_apps.streams.open
+      unit: "{stream}"
+      type: gauge
+
+  - name: "azure_container_apps_records_emitted"
+    channel: "records_emitted"
+    display_name: "Records Emitted"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of log records this probe has published to the log rail"
+    otel:
+      name: senhub.azure_container_apps.records_emitted
+      unit: "{record}"
+      type: counter
+
+  - name: "azure_container_apps_stream_reconnects"
+    channel: "stream_reconnects"
+    display_name: "Stream Reconnects"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of console log streams re-attached after a drop"
+    otel:
+      name: senhub.azure_container_apps.stream.reconnects
+      unit: "{reconnect}"
+      type: counter

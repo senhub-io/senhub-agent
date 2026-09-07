@@ -602,6 +602,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">Mail flow, mailboxes, storage, and service health</span>
   </a>
 
+  <a href="azure_container_apps/" class="probe-card" data-family="cloud" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="https://cdn.simpleicons.org/microsoftazure" alt="" loading="lazy">
+    <span class="probe-name">Azure Container Apps</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Console log stream of every replica, read through ARM</span>
+  </a>
+
 </div>
 
 <p class="catalog-empty" id="catalog-empty" style="display:none">No probes match your search.</p>

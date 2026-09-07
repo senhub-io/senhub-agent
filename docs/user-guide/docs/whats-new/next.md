@@ -46,6 +46,17 @@ Changes land here as they are merged to `dev`.
   the host, a database or a service reached on the loopback address; owner,
   criticality and labels never do.
 
+- **Read the console log stream of an Azure Container App (Pro).** The
+  new `azure_container_apps` probe reads stdout and stderr of every
+  replica of an application through Azure Resource Manager, the same
+  stream `az containerapp logs show --follow` reads, without a volume,
+  a sidecar or any change to the container. Lines ride the log rail like
+  `filetail` lines, with the same parsers and multiline folding, and
+  carry the application, revision, replica and container they came
+  from. Replicas that appear and disappear are followed; the probe
+  reports its open streams and reconnections so a broken stream shows
+  in PRTG even when the logs go elsewhere.
+
 ## Fixes
 
 - **The `depends_on` warning no longer tells root to run as root.** An agent
