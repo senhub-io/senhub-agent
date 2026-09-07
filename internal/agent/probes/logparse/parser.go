@@ -1,4 +1,4 @@
-package filetail
+package logparse
 
 import (
 	"encoding/json"
@@ -9,10 +9,6 @@ import (
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 )
-
-// ProbeType is the canonical type name used across the registry, the
-// licence catalogue, and the LogRecord producer identity.
-const ProbeType = "filetail"
 
 // commonTimestampLayouts is the fallback set tried (in order) when a
 // parser declares a TimestampField but no explicit TimestampFormat.
@@ -48,26 +44,23 @@ func severityFromText(level string) (agentstate.LogSeverity, string) {
 	}
 }
 
-// parseLine turns one assembled logical line into a LogRecord according
+// ParseLine turns one assembled logical line into a LogRecord according
 // to the parser config. readTime is the wall-clock instant the line was
 // read; it is used as the record timestamp unless the parser extracts
-// one from the content. probeName / file annotate the producer.
+// one from the content. probeName / probeType identify the producer.
 //
 // Returns ok=false only for the JSON parser on a line that is not a
 // JSON object — such a line is malformed for a declared jsonl source
 // and the caller logs+skips it. Every other parser always produces a
 // record (raw is the universal fallback).
-func parseLine(pc ParserConfig, line string, readTime time.Time, probeName, file string) (agentstate.LogRecord, bool) {
+func ParseLine(pc ParserConfig, line string, readTime time.Time, probeName, probeType string) (agentstate.LogRecord, bool) {
 	rec := agentstate.LogRecord{
 		Timestamp:         readTime,
 		Severity:          agentstate.LogSeverityUnspecified,
 		Body:              line,
 		Attributes:        map[string]string{},
 		ProducerProbeName: probeName,
-		ProducerProbeType: ProbeType,
-	}
-	if file != "" {
-		rec.Attributes["log.file.path"] = file
+		ProducerProbeType: probeType,
 	}
 
 	switch pc.Type {
