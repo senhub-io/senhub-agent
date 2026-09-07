@@ -32,6 +32,9 @@ func TestCreateProbeFragment_RoundTripsAndSealsSecrets(t *testing.T) {
 	p := ProbeConfig{Name: "mysql-prod", Type: "mysql", Params: map[string]interface{}{
 		"host": "db1", "port": 3306, "username": "monitor", "password": "s3cr3t",
 		"tls": map[string]interface{}{"enabled": true},
+	}, Governance: map[string]interface{}{
+		"criticality": "high",
+		"labels":      map[string]interface{}{"application": "erp"},
 	}}
 	path, err := CreateProbeFragment(main, p, []string{"password"})
 	if err != nil {
@@ -68,6 +71,13 @@ func TestCreateProbeFragment_RoundTripsAndSealsSecrets(t *testing.T) {
 	}
 	if !IsManagedProbeFragment(path) {
 		t.Error("IsManagedProbeFragment must recognise the file")
+	}
+	gov, err := found.ParseGovernance()
+	if err != nil {
+		t.Fatalf("governance did not round-trip: %v", err)
+	}
+	if gov.Criticality != "high" || gov.Labels["application"] != "erp" {
+		t.Errorf("governance did not round-trip: %+v", gov)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/services/configuration"
 	"strings"
 	"testing"
 )
@@ -72,5 +73,26 @@ func TestValidateProbeParams_UsesDeclaredSchema(t *testing.T) {
 	// constructor's to report, and this test type has no constructor.
 	if errs, _ := validateProbeParams("p", "zz-schema-check", map[string]interface{}{"mode": "zzz", "hots": "h"}); errs != 2 {
 		t.Errorf("missing required + unknown key: %d errors, want 2", errs)
+	}
+}
+
+func TestReportGovernanceProblems(t *testing.T) {
+	if n := reportGovernanceProblems(configuration.ProbeConfig{Name: "p"}); n != 0 {
+		t.Fatalf("no block must be silent, got %d", n)
+	}
+	if n := reportGovernanceProblems(configuration.ProbeConfig{Name: "p", Governance: map[string]interface{}{
+		"criticality": "high", "labels": map[string]interface{}{"application": "erp"},
+	}}); n != 0 {
+		t.Fatalf("valid block reported %d errors", n)
+	}
+	if n := reportGovernanceProblems(configuration.ProbeConfig{Name: "p", Governance: map[string]interface{}{
+		"criticality": "urgent",
+	}}); n != 1 {
+		t.Fatalf("a criticality outside the closed set must be one error, got %d", n)
+	}
+	if n := reportGovernanceProblems(configuration.ProbeConfig{Name: "p", Governance: map[string]interface{}{
+		"owner": map[string]interface{}{"squad": "x"}, "colour": "red",
+	}}); n != 2 {
+		t.Fatalf("two unknown keys must be two errors, got %d", n)
 	}
 }
