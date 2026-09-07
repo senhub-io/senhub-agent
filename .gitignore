@@ -141,3 +141,7 @@ internal/agent/probes/ibmi/bridge/jt400runner
 docs/user-guide/site/
 
 # Agent worktrees (transient, never part of the repo)
+
+# MSI custom action build output (dotnet)
+packaging/windows/ca/bin/
+packaging/windows/ca/obj/

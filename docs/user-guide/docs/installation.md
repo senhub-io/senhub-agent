@@ -122,8 +122,7 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 
 | Property | Purpose |
 |---|---|
-| `LICENSEDIR` | Folder holding the licence file (what the wizard browses to; `license.jwt` or the single `*.jwt` inside is installed; local or UNC path) |
-| `LICENSE_FILE` | Path to the licence file itself, for scripted installs |
+| `LICENSE_FILE` | Path to the licence file (`.jwt`), what the wizard's Browse button fills in (local or UNC path) |
 | `LICENSE_KEY` | The licence token itself, for scripted installs |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
@@ -134,7 +133,7 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 
 Properties are consumed only on first install; they do not overwrite an existing `agent.yaml`.
 
-The guided install (double-click) asks for the licence folder, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
+The guided install (double-click) asks for the licence file, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^

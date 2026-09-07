@@ -38,8 +38,7 @@ agent installs in the offline Free-tier default.
 
 | Property | Purpose |
 |---|---|
-| `LICENSEDIR` | Folder holding the licence file; what the wizard browses to. `license.jwt` or the single `*.jwt` inside is installed; a missing or empty folder means Free tier, several files are refused. Local or UNC path (the seeding step runs as SYSTEM and cannot see mapped drives) |
-| `LICENSE_FILE` | Path to the licence file itself, for scripted installs |
+| `LICENSE_FILE` | Path to the licence file (`.jwt`); what the wizard's Browse button fills in. Local or UNC path (the seeding step runs as SYSTEM and cannot see mapped drives) |
 | `LICENSE_KEY` | The licence token itself, for scripted installs (see the note on log exposure below) |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
@@ -78,11 +77,10 @@ nothing, its only trace being one `binding HTTP server` line in
 Double-clicking the MSI runs the standard wizard with one extra page,
 after the install directory:
 
-- **Licence folder**: browse to the folder holding the `.jwt` file
-  received from Sensor Factory (the installer has a folder picker, not a
-  file picker). Leave the default for the Free tier; a licence can be
-  added later from the web console. A customer licence is the same file
-  for every agent of that customer.
+- **Licence file**: Browse to the `.jwt` file received from Sensor
+  Factory, or leave empty for the Free tier (a licence can be added later
+  from the web console). A customer licence is the same file for every
+  agent of that customer.
 - **Port**: the port of the web console and of the PRTG / Nagios
   endpoints, `8080` by default. The field takes integers only and the
   wizard refuses a value outside 1 to 65535 before anything is
