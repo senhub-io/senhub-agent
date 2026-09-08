@@ -77,3 +77,18 @@ func TestUpdateFragmentsKeepStoredSecrets(t *testing.T) {
 		t.Errorf("an update without the headers must keep the stored token: %v", params)
 	}
 }
+
+func TestDropNilValuesRemovesAStoredEntryOnRequest(t *testing.T) {
+	existing := map[string]interface{}{"headers": map[string]interface{}{"Authorization": "${secret:a}", "X-Tenant": "${secret:b}"}}
+	incoming := KeepStoredReferences(existing, map[string]interface{}{"headers": map[string]interface{}{"Authorization": nil}})
+	DropNilValues(incoming)
+	h, _ := incoming["headers"].(map[string]interface{})
+	if _, kept := h["Authorization"]; kept || h["X-Tenant"] != "${secret:b}" {
+		t.Errorf("null removes one entry and the other reference stays: %v", incoming)
+	}
+	only := map[string]interface{}{"headers": map[string]interface{}{"Authorization": nil}, "endpoint": "c:4317"}
+	DropNilValues(only)
+	if _, has := only["headers"]; has || only["endpoint"] != "c:4317" {
+		t.Errorf("a mapping emptied by removals goes with it: %v", only)
+	}
+}

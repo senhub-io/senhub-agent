@@ -47,6 +47,24 @@ func KeepStoredReferences(existing, incoming map[string]interface{}) map[string]
 	return incoming
 }
 
+// DropNilValues removes, in place, every nil leaf and every mapping left
+// empty by it. A form says "remove this stored value" by sending null
+// for it: the merge above keeps the key as set, so the reference is not
+// carried over, and this takes the null out before the file is written.
+func DropNilValues(params map[string]interface{}) {
+	for k, v := range params {
+		switch val := v.(type) {
+		case nil:
+			delete(params, k)
+		case map[string]interface{}:
+			DropNilValues(val)
+			if len(val) == 0 {
+				delete(params, k)
+			}
+		}
+	}
+}
+
 // ReadProbeFragmentParams returns the params of a managed probe fragment
 // as written, references included, or nil when there is no such file.
 func ReadProbeFragmentParams(configPath, name string) (map[string]interface{}, error) {
