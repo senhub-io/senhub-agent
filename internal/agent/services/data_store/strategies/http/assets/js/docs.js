@@ -3,6 +3,10 @@
 /**
  * Documentation main functionality
  */
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 class DocsPage {
     constructor(agentKey) {
         this.base = new SenHubBase(agentKey);
@@ -84,9 +88,9 @@ class DocsPage {
         
         // Define category order and metadata (only showing main categories, others accessible via Explorer)
         const categoryInfo = {
-            health: { title: '💊 Health & Status', description: 'Monitor agent health and status' },
-            discovery: { title: '🔍 Discovery', description: 'Discover available probes, metrics, and schemas' },
-            admin: { title: '⚙️ Administration', description: 'Manage agent configuration, logs, and cache' }
+            health: { title: 'Health and status', description: 'Monitor agent health and status' },
+            discovery: { title: 'Discovery', description: 'Discover available probes, metrics, and schemas' },
+            admin: { title: 'Administration', description: 'Manage agent configuration, logs, and cache' }
         };
         
         // Render each category
@@ -103,9 +107,9 @@ class DocsPage {
         
         section.innerHTML = `
             <div class="card">
-                <h2>${categoryInfo.title}</h2>
-                <p style="color: var(--gray-600); margin-bottom: 1rem;">${categoryInfo.description}</p>
-                <div class="endpoint-grid" id="category-${categoryKey}">
+                <div class="card-h"><h2>${esc(categoryInfo.title)}</h2></div>
+                <p class="desc">${esc(categoryInfo.description)}</p>
+                <div class="endpoint-grid" id="category-${esc(categoryKey)}">
                     <!-- Endpoints will be added here -->
                 </div>
             </div>
@@ -127,7 +131,7 @@ class DocsPage {
         
         // Create methods badges
         const methodBadges = endpoint.methods.map(method => 
-            `<span class="method-badge ${method.toLowerCase()}">${method}</span>`
+            `<span class="pill ${method === 'GET' ? 'ok' : 'acc'}">${esc(method)}</span>`
         ).join('');
         
         // Create clickable URL
@@ -137,18 +141,17 @@ class DocsPage {
         
         div.innerHTML = `
             <div class="endpoint-header">
-                <a href="${fullPath}" class="endpoint-path" ${target}>${endpoint.path}</a>
+                <a href="${esc(fullPath)}" class="endpoint-path" ${target}>${esc(endpoint.path)}</a>
                 <div class="endpoint-methods">${methodBadges}</div>
             </div>
-            <div class="endpoint-description">${endpoint.description}</div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
-                <span class="endpoint-category category-${categoryKey}">${categoryKey}</span>
-                <button class="btn btn-sm btn-secondary" onclick="docs.testEndpoint('${fullPath}')">
-                    🧪 Test
-                </button>
+            <div class="endpoint-description">${esc(endpoint.description)}</div>
+            <div class="endpoint-foot">
+                <span class="pill off">${esc(categoryKey)}</span>
+                <button class="btn sm" type="button">Open</button>
             </div>
         `;
-        
+        div.querySelector('button').addEventListener('click', () => this.testEndpoint(fullPath));
+
         return div;
     }
 

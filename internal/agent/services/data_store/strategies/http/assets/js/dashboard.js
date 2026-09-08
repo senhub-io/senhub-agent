@@ -1,599 +1,470 @@
-// SenHub Agent - Dashboard JavaScript
+// SenHub Agent console: Overview page.
+//
+// Reads the agent's APIs and renders the cards: getting started, probes,
+// outputs, agent, licence, recent events. Every card renders on its own so
+// one failing API does not blank the page; the failures are listed in the
+// banner at the top.
+(function () {
+    const KEY = (window.AGENT_KEY || '').trim();
+    const API = '/api/' + KEY + '/';
+    const WEB = '/web/' + KEY + '/';
+    const GS_FLAG = 'senhub.overview.gettingStartedHidden';
+    const $ = (id) => document.getElementById(id);
 
-/**
- * Dashboard main functionality
- */
-class Dashboard {
-    constructor(agentKey) {
-        this.base = new SenHubBase(agentKey);
-        this.refreshInterval = null;
-        
-        this.initializeElements();
-        this.loadDashboard();
-        this.startAutoRefresh();
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function pill(state, label) {
+        const dot = (state === 'ok' || state === 'err' || state === 'warn') ? '<span class="dot ' + state + '"></span>' : '';
+        return '<span class="pill ' + state + '">' + dot + esc(label) + '</span>';
+    }
+    function num(n) { return Number(n || 0).toLocaleString('en-US'); }
+    function plural(n, word) { return num(n) + ' ' + word + (n === 1 ? '' : 's'); }
+
+    // Go duration string ("26h3m12.5s") to "1d 2h" / "3h 4m" / "12m" / "30s".
+    function uptime(s) {
+        const m = String(s || '').match(/^(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?$/);
+        if (!m) return String(s || '-');
+        const h = parseInt(m[1] || '0', 10), mi = parseInt(m[2] || '0', 10), sec = Math.floor(parseFloat(m[3] || '0'));
+        if (h >= 24) return Math.floor(h / 24) + 'd ' + (h % 24) + 'h ' + mi + 'm';
+        if (h) return h + 'h ' + mi + 'm';
+        if (mi) return mi + 'm ' + sec + 's';
+        return sec + 's';
+    }
+    function parseTime(t) {
+        if (!t) return null;
+        const d = typeof t === 'number' ? new Date(t * 1000) : new Date(t);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    // "12 s", "3 min", "2 h", "5 d" since t.
+    function rel(t) {
+        const d = parseTime(t);
+        if (!d) return '';
+        const s = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+        if (s < 60) return s + ' s';
+        if (s < 3600) return Math.floor(s / 60) + ' min';
+        if (s < 86400) return Math.floor(s / 3600) + ' h';
+        return Math.floor(s / 86400) + ' d';
+    }
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function clock(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
+    // HH:MM:SS when today, "Sep 5, 07:02" otherwise.
+    function when(t) {
+        const d = parseTime(t);
+        if (!d) return '';
+        const now = new Date();
+        if (d.toDateString() === now.toDateString()) return clock(d);
+        return MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+    function dateOnly(t) {
+        const d = parseTime(t);
+        if (!d) return String(t || '-');
+        return MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    }
+    // Long error texts get cut; the full text stays in the tooltip.
+    function short(text, max) {
+        const t = String(text == null ? '' : text);
+        if (t.length <= max) return esc(t);
+        return '<span title="' + esc(t) + '">' + esc(t.slice(0, max).replace(/\s+\S*$/, '')) + '…</span>';
+    }
+    function shortKey(k) { return k.length > 12 ? k.slice(0, 8) + '…' + k.slice(-4) : k; }
+
+    async function get(path) {
+        const r = await fetch(API + path, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
     }
 
-    initializeElements() {
-        // Status elements
-        this.loadingDiv = this.base.$('#loading');
-        this.errorDiv = this.base.$('#error');
-        this.contentDiv = this.base.$('#content');
-        
-        // Agent status
-        this.agentStatusIndicator = this.base.$('#agent-status-indicator');
-        this.agentStatus = this.base.$('#agent-status');
-        this.agentVersion = this.base.$('#agent-version');
-        this.agentCommit = this.base.$('#agent-commit');
-        this.agentCommitRow = this.base.$('#agent-commit-row');
-        this.agentPort = this.base.$('#agent-port');
-        this.agentUptime = this.base.$('#agent-uptime');
-        
-        // Health check
-        this.healthHttp = this.base.$('#health-http');
-        this.healthCache = this.base.$('#health-cache');
-        this.healthMetrics = this.base.$('#health-metrics');
-        this.healthTimestamp = this.base.$('#health-timestamp');
-        
-        // Resources
-        this.resourceMemory = this.base.$('#resource-memory');
-        this.resourceGoroutines = this.base.$('#resource-goroutines');
-        this.resourceCacheTtl = this.base.$('#resource-cache-ttl');
-        this.resourceCpuUsage = this.base.$('#resource-cpu-usage');
-
-        // License
-        this.licenseStatusIndicator = this.base.$('#license-status-indicator');
-        this.licenseStatus = this.base.$('#license-status');
-        this.licenseTier = this.base.$('#license-tier');
-        this.licenseExpires = this.base.$('#license-expires');
-        this.licenseExpiresRow = this.base.$('#license-expires-row');
-        this.licenseDays = this.base.$('#license-days');
-        this.licenseDaysRow = this.base.$('#license-days-row');
-        this.licenseProbesList = this.base.$('#license-probes-list');
-
-        // Probes
-        this.probesCount = this.base.$('#probes-count');
-        this.probesList = this.base.$('#probes-list');
-        this.noProbesDiv = this.base.$('#no-probes');
-
-        // OTLP self-metrics (card is hidden until /info/otlp returns data)
-        this.otlpCard            = this.base.$('#otlp-card');
-        this.otlpMetricsPushed   = this.base.$('#otlp-metrics-pushed');
-        this.otlpLogsPushed      = this.base.$('#otlp-logs-pushed');
-        this.otlpExportErrors    = this.base.$('#otlp-export-errors');
-        this.otlpDropped         = this.base.$('#otlp-dropped');
-        this.otlpDroppedBreakdown= this.base.$('#otlp-dropped-breakdown');
-        this.otlpStoreSize       = this.base.$('#otlp-store-size');
-        this.otlpLogFill         = this.base.$('#otlp-log-fill');
-        this.otlpExportLast      = this.base.$('#otlp-export-last');
-        this.otlpExportMean      = this.base.$('#otlp-export-mean');
-        this.otlpCpSize          = this.base.$('#otlp-cp-size');
-        this.otlpCpAge           = this.base.$('#otlp-cp-age');
-        this.otlpCpRestored      = this.base.$('#otlp-cp-restored');
-        this.otlpCpErrors        = this.base.$('#otlp-cp-errors');
-        this.otlpCpErrorsBreakdown = this.base.$('#otlp-cp-errors-breakdown');
-        this.otlpSubBatches      = this.base.$('#otlp-subbatches');
-        this.otlpPath            = this.base.$('#otlp-path');
+    function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text).then(() => true, () => copyFallback(text));
+        }
+        return Promise.resolve(copyFallback(text));
+    }
+    function copyFallback(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.className = 'sr-only';
+        ta.setAttribute('readonly', '');
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
     }
 
-    async loadDashboard() {
-        try {
-            this.showLoading();
-
-            // Load system info, probes data, and license status
-            const [systemData, probesData, licenseData] = await Promise.all([
-                this.base.fetchAPI('info/system'),
-                this.base.fetchAPI('info/probes'),
-                this.base.fetchAPI('license/status')
-            ]);
-
-            this.updateAgentStatus(systemData);
-            this.updateHealthStatus(systemData.health);
-            this.updateResources(systemData);
-            this.updateLicenseStatus(licenseData);
-            this.updateProbesList(probesData);
-
-            // OTLP info is best-effort: older agents don't expose it, and
-            // a failure here must not blank the dashboard. The card hides
-            // itself when the fetch fails.
-            this.base.fetchAPI('info/otlp')
-                .then((otlp) => this.updateOtlp(otlp))
-                .catch(() => this.updateOtlp(null));
-
-            this.showContent();
-
-        } catch (error) {
-            console.error('Failed to load dashboard:', error);
-            this.showError();
-        }
+    function gsHidden() {
+        try { return localStorage.getItem(GS_FLAG) === '1'; } catch (e) { return false; }
+    }
+    function gsHide() {
+        try { localStorage.setItem(GS_FLAG, '1'); } catch (e) { /* storage unavailable: hide for this view only */ }
+        $('gs-card').classList.add('hide');
     }
 
-    updateAgentStatus(systemData) {
-        // Update agent status
-        this.agentStatus.textContent = systemData.status || 'unknown';
-        this.agentVersion.textContent = systemData.version || 'unknown';
-        this.agentPort.textContent = systemData.port || 'unknown';
-        this.agentUptime.textContent = systemData.uptime || 'unknown';
-        
-        // Update commit information if available
-        if (systemData.commit && systemData.commit.trim() !== '') {
-            this.agentCommit.textContent = systemData.commit;
-            this.agentCommitRow.style.display = 'flex';
-        } else {
-            this.agentCommitRow.style.display = 'none';
-        }
-        
-        // Update status indicator
-        this.agentStatusIndicator.className = 'status-indicator';
-        if (systemData.status === 'running') {
-            this.agentStatusIndicator.classList.add('status-running');
-        } else {
-            this.agentStatusIndicator.classList.add('status-warning');
-        }
+    // ---- Probes -----------------------------------------------------------
+
+    function probeState(p) {
+        if (!p.enabled) return 'disabled';
+        if (p.health === 'failed') return 'failing';
+        if (p.running) return 'running';
+        if (p.authorized === false) return 'locked';
+        return 'stopped';
     }
-
-    updateHealthStatus(health) {
-        if (!health) return;
-        
-        // Update health services
-        const services = health.services || {};
-        this.healthHttp.textContent = services.http_server || 'unknown';
-        this.healthCache.textContent = services.cache || 'unknown';
-        this.healthMetrics.textContent = services.metrics || 'unknown';
-        
-        // Update timestamp
-        if (health.timestamp) {
-            const date = new Date(health.timestamp * 1000);
-            this.healthTimestamp.textContent = date.toLocaleTimeString();
-        }
-    }
-
-    updateResources(systemData) {
-        const resources = systemData.resources || {};
-        const cache = systemData.cache || {};
-
-        // Update resource metrics
-        if (resources.memory_usage_mb !== undefined) {
-            this.resourceMemory.textContent = `${resources.memory_usage_mb.toFixed(2)} MB`;
-        }
-
-        if (resources.goroutines !== undefined) {
-            this.resourceGoroutines.textContent = resources.goroutines.toString();
-        }
-
-        if (resources.cpu_percent !== undefined) {
-            this.resourceCpuUsage.textContent = `${resources.cpu_percent.toFixed(1)}%`;
-        }
-
-        this.resourceCacheTtl.textContent = cache.ttl || 'unknown';
-    }
-
-    updateLicenseStatus(licenseData) {
-        if (!licenseData) {
-            this.licenseStatus.textContent = 'Error';
-            this.licenseTier.textContent = 'Unknown';
-            if (this.licenseProbesList) {
-                this.licenseProbesList.innerHTML = '<span style="color: var(--gray-500);">-</span>';
-            }
-            this.licenseStatusIndicator.className = 'status-indicator status-warning';
-            return;
-        }
-
-        // Update status text and indicator
-        const status = licenseData.status || 'none';
-        const tier = licenseData.tier || 'free';
-
-        // Set status text with appropriate formatting
-        let statusText = status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
-        this.licenseStatus.textContent = statusText;
-
-        // Update tier
-        this.licenseTier.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
-
-        // Update status indicator color
-        this.licenseStatusIndicator.className = 'status-indicator';
-        if (status === 'active') {
-            this.licenseStatusIndicator.classList.add('status-running');
-        } else if (status === 'grace_period') {
-            this.licenseStatusIndicator.classList.add('status-warning');
-        } else if (status === 'none') {
-            this.licenseStatusIndicator.classList.add('status-info');
-        } else {
-            this.licenseStatusIndicator.classList.add('status-warning');
-        }
-
-        // Update expiration date and days remaining
-        if (licenseData.expires_at) {
-            const expiresDate = new Date(licenseData.expires_at);
-            this.licenseExpires.textContent = expiresDate.toLocaleDateString();
-            this.licenseExpiresRow.style.display = 'flex';
-        } else {
-            this.licenseExpiresRow.style.display = 'none';
-        }
-
-        if (licenseData.days_remaining !== undefined) {
-            this.licenseDays.textContent = licenseData.days_remaining.toString();
-            this.licenseDaysRow.style.display = 'flex';
-        } else {
-            this.licenseDaysRow.style.display = 'none';
-        }
-
-        // Update authorized probes list
-        this.updateProbesBadges(licenseData);
-    }
-
-    updateProbesBadges(licenseData) {
-        const authorizedProbes = licenseData.authorized_probes || [];
-        const freeTierProbes = licenseData.free_tier_probes || [];
-
-        // Clear existing badges
-        if (!this.licenseProbesList) {
-            console.error('License probes list element not found');
-            return;
-        }
-        this.licenseProbesList.innerHTML = '';
-
-        if (authorizedProbes.length > 0) {
-            // Check for wildcard (Enterprise tier)
-            if (authorizedProbes.includes('*')) {
-                const badge = document.createElement('span');
-                badge.className = 'probe-badge wildcard';
-                badge.textContent = '⭐ All Probes (Enterprise)';
-                this.licenseProbesList.appendChild(badge);
-            } else {
-                // Pro tier - show specific probes
-                const sortedProbes = [...authorizedProbes].sort();
-                sortedProbes.forEach(probe => {
-                    const badge = document.createElement('span');
-                    badge.className = 'probe-badge';
-                    badge.textContent = probe;
-                    this.licenseProbesList.appendChild(badge);
-                });
-            }
-        } else {
-            // Free tier only - show free tier probes
-            const sortedFreeProbes = [...freeTierProbes].sort();
-            sortedFreeProbes.forEach(probe => {
-                const badge = document.createElement('span');
-                badge.className = 'probe-badge free';
-                badge.textContent = probe;
-                this.licenseProbesList.appendChild(badge);
-            });
-        }
-    }
-
-    updateProbesList(probesData) {
-        const probes = probesData.probes || [];
-        const probeMetrics = probesData.probe_metrics || {};
-
-        this.probesCount.textContent = probes.length.toString();
-        this.probesList.textContent = '';
-
-        if (probes.length === 0) {
-            this.probesList.style.display = 'none';
-            this.noProbesDiv.style.display = 'block';
-
-            const uptimeText = this.agentUptime.textContent;
-            const isStartingUp = this.isAgentStartingUp(uptimeText);
-
-            const notice = document.createElement('div');
-            notice.className = 'info-notice';
-            notice.style.textAlign = 'center';
-
-            const icon = document.createElement('div');
-            icon.style.fontSize = '24px';
-            icon.style.marginBottom = '10px';
-            icon.textContent = isStartingUp ? '🔄' : '⚠️';
-            notice.appendChild(icon);
-
-            const title = document.createElement('strong');
-            title.textContent = isStartingUp ? 'Probes starting up...' : 'No active probes detected';
-            notice.appendChild(title);
-
-            const desc = document.createElement('p');
-            desc.style.margin = '10px 0 0 0';
-            desc.style.color = '#666';
-            desc.textContent = isStartingUp
-                ? 'The agent just started. Probes are initializing and will appear here shortly.'
-                : 'No probes are configured or all probes failed to start. Check your configuration file.';
-            notice.appendChild(desc);
-
-            this.noProbesDiv.textContent = '';
-            this.noProbesDiv.appendChild(notice);
-            return;
-        }
-
-        this.probesList.style.display = 'block';
-        this.noProbesDiv.style.display = 'none';
-
-        const sortedProbes = [...probes].sort();
-
-        sortedProbes.forEach(probeName => {
-            const li = document.createElement('li');
-            li.className = 'probe-item';
-
-            const metricsCount = probeMetrics[probeName] || 0;
-            const isActive = metricsCount > 0;
-
-            // Probe info row
-            const infoDiv = document.createElement('div');
-            infoDiv.className = 'probe-info';
-
-            const statusDot = document.createElement('div');
-            statusDot.className = `probe-status ${isActive ? 'active' : 'inactive'}`;
-            infoDiv.appendChild(statusDot);
-
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'probe-name';
-            nameSpan.textContent = probeName;
-            infoDiv.appendChild(nameSpan);
-
-            li.appendChild(infoDiv);
-
-            // Metrics count
-            const metricsDiv = document.createElement('div');
-            metricsDiv.className = 'probe-metrics';
-            metricsDiv.textContent = `${metricsCount} metrics`;
-            li.appendChild(metricsDiv);
-
-            // Key values container
-            const valuesDiv = document.createElement('div');
-            valuesDiv.className = 'probe-key-values';
-            valuesDiv.id = `probe-values-${probeName}`;
-            li.appendChild(valuesDiv);
-
-            this.probesList.appendChild(li);
-
-            if (isActive) {
-                this.loadProbeKeyValues(probeName);
-            }
+    function probeStats(list) {
+        const st = { total: list.length, running: 0, failing: 0, disabled: 0, other: 0 };
+        list.forEach(p => {
+            const s = probeState(p);
+            if (s === 'running') st.running++;
+            else if (s === 'failing') st.failing++;
+            else if (s === 'disabled') st.disabled++;
+            else st.other++;
         });
+        return st;
     }
+    function renderProbes(data, system) {
+        const list = (data && data.probes) || [];
+        const st = probeStats(list);
+        $('probes-count').textContent = st.total;
+        let pills = '';
+        if (st.running) pills += pill('ok', st.running + ' running');
+        if (st.failing) pills += pill('err', st.failing + ' failing');
+        if (st.other) pills += pill('warn', st.other + ' stopped');
+        if (st.disabled) pills += pill('off', st.disabled + ' disabled');
+        $('probes-pills').innerHTML = pills;
 
-    // updateOtlp renders the OTLP self-metric snapshot from /info/otlp.
-    // Hides the card when data is null (endpoint absent / unreachable)
-    // so dashboards on older agents look unchanged.
-    updateOtlp(data) {
-        if (!data) { this.otlpCard.style.display = 'none'; return; }
-        this.otlpCard.style.display = 'block';
-
-        const p = data.pipeline || {};
-        const s = data.store || {};
-        const d = data.export_duration || {};
-        const c = data.checkpoint || {};
-        const par = data.parallel || {};
-
-        this.otlpMetricsPushed.textContent = (p.metrics_pushed_total || 0).toLocaleString();
-        this.otlpLogsPushed.textContent    = (p.logs_pushed_total || 0).toLocaleString();
-
-        const errCount = p.export_errors_total || 0;
-        this.otlpExportErrors.textContent = errCount;
-        this.otlpExportErrors.className = 'metric-value' + (errCount > 0 ? ' otlp-err' : '');
-
-        const dropCount = p.dropped_total || 0;
-        this.otlpDropped.textContent = dropCount;
-        this.otlpDropped.className = 'metric-value' + (dropCount > 0 ? ' otlp-warn' : '');
-        this.renderOtlpBreakdown(this.otlpDroppedBreakdown, p.dropped_by_reason, '↳');
-
-        this.otlpStoreSize.textContent = (s.size || 0).toLocaleString() + ' series';
-        this.otlpLogFill.textContent   = ((s.log_buffer_fill_ratio || 0) * 100).toFixed(1) + '%';
-        this.otlpExportLast.textContent = this.fmtMs(d.last_ms);
-        this.otlpExportMean.textContent = this.fmtMs(d.mean_ms);
-
-        const cpDisabled = (c.size_bytes || 0) === 0 && (c.last_save_age_seconds || 0) === 0 && (c.restored_entries || 0) === 0;
-        if (cpDisabled) {
-            this.otlpCpSize.textContent = 'disabled';
-            this.otlpCpAge.textContent = '—';
-            this.otlpCpRestored.textContent = '—';
+        if (!list.length) {
+            $('probes-body').innerHTML = '<div class="empty-line">No probe configured yet. <a href="' + WEB + 'probes?new=1">Add a probe</a> to start collecting.</div>';
         } else {
-            this.otlpCpSize.textContent = this.fmtBytes(c.size_bytes);
-            this.otlpCpAge.textContent = this.fmtAge(c.last_save_age_seconds);
-            this.otlpCpRestored.textContent = (c.restored_entries || 0).toLocaleString();
-        }
-        const cpErrCount = c.errors_total || 0;
-        this.otlpCpErrors.textContent = cpErrCount;
-        this.otlpCpErrors.className = 'metric-value' + (cpErrCount > 0 ? ' otlp-err' : '');
-        this.renderOtlpBreakdown(this.otlpCpErrorsBreakdown, c.errors_by_stage, '↳ at');
-
-        const subN = par.sub_batches || 0;
-        this.otlpSubBatches.textContent = subN;
-        this.otlpPath.textContent = subN > 1 ? 'fan-out by probe' : 'single-batch';
-    }
-
-    // renderOtlpBreakdown writes a sub-list of `prefix key: count` rows
-    // using DOM APIs only — reason/stage strings come from server-side
-    // enums but are never interpreted as HTML.
-    renderOtlpBreakdown(el, m, prefix) {
-        while (el.firstChild) el.removeChild(el.firstChild);
-        if (!m || Object.keys(m).length === 0) { el.style.display = 'none'; return; }
-        el.style.display = 'block';
-        const keys = Object.keys(m).sort();
-        keys.forEach((k, i) => {
-            if (i > 0) el.appendChild(document.createElement('br'));
-            el.appendChild(document.createTextNode(prefix + ' '));
-            const strong = document.createElement('strong');
-            strong.textContent = k;
-            el.appendChild(strong);
-            el.appendChild(document.createTextNode(': ' + m[k]));
-        });
-    }
-
-    fmtBytes(b) {
-        if (!b || b < 1024) return (b || 0) + ' B';
-        if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KiB';
-        return (b / (1024 * 1024)).toFixed(1) + ' MiB';
-    }
-    fmtMs(ms) {
-        if (!ms || ms <= 0) return '—';
-        if (ms < 1000) return ms.toFixed(0) + ' ms';
-        return (ms / 1000).toFixed(2) + ' s';
-    }
-    fmtAge(sec) {
-        if (!sec || sec <= 0) return 'never';
-        sec = Math.round(sec);
-        if (sec < 60) return sec + 's';
-        if (sec < 3600) return Math.floor(sec / 60) + 'm' + (sec % 60) + 's';
-        return Math.floor(sec / 3600) + 'h' + Math.floor((sec % 3600) / 60) + 'm';
-    }
-
-    async loadProbeKeyValues(probeName) {
-        try {
-            const data = await this.base.fetchAPI(`prtg/metrics/${probeName}`);
-            const results = data?.prtg?.result || [];
-            if (results.length === 0) return;
-
-            const container = this.base.$(`#probe-values-${probeName}`);
-            if (!container) return;
-
-            const keyMetrics = this.selectKeyMetrics(results, probeName);
-
-            keyMetrics.forEach(m => {
-                const span = document.createElement('span');
-                span.className = 'key-metric';
-                span.title = m.channel;
-
-                const valueEl = document.createElement('strong');
-                valueEl.textContent = typeof m.value === 'number'
-                    ? (Number.isInteger(m.value) ? m.value : m.value.toFixed(1))
-                    : m.value;
-                span.appendChild(valueEl);
-
-                const unit = m.customunit || m.unit || '';
-                if (unit && unit !== '#') {
-                    span.appendChild(document.createTextNode(' ' + unit));
+            const order = { failing: 0, stopped: 1, locked: 1, running: 2, disabled: 3 };
+            const rows = list.slice().sort((a, b) => order[probeState(a)] - order[probeState(b)]);
+            let html = '<table class="tbl compact"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
+            rows.forEach(p => {
+                const s = probeState(p);
+                let state, last;
+                if (s === 'failing') {
+                    state = pill('err', 'failing');
+                    last = '<span class="reason">' + short(p.last_error || p.reason || 'collection failed', 80) + '</span>';
+                } else if (s === 'running') {
+                    state = pill('ok', 'running');
+                    last = p.last_update ? esc(rel(p.last_update)) : '-';
+                } else if (s === 'disabled') {
+                    state = pill('off', 'disabled');
+                    last = '-';
+                } else if (s === 'locked') {
+                    state = pill('pro', 'licence needed');
+                    last = '<span class="reason">' + short(p.reason || 'not authorized', 80) + '</span>';
+                } else {
+                    state = pill('warn', 'stopped');
+                    last = p.reason ? '<span class="reason">' + short(p.reason, 80) + '</span>' : '-';
                 }
-
-                const label = document.createElement('small');
-                label.textContent = ' ' + this.shortenLabel(m.channel);
-                span.appendChild(label);
-
-                container.appendChild(span);
+                const metrics = s === 'disabled' ? '-' : num(p.metrics_count);
+                html += '<tr><td class="name">' + esc(p.name) + '</td><td><code>' + esc(p.type) + '</code></td><td>' + state +
+                    '</td><td class="num">' + metrics + '</td><td class="num">' + last + '</td></tr>';
             });
+            html += '</tbody></table>';
+            $('probes-body').innerHTML = html;
+        }
+
+        const total = system && system.cache ? system.cache.total_metrics : null;
+        let newest = null;
+        list.forEach(p => { const d = parseTime(p.last_update); if (d && (!newest || d > newest)) newest = d; });
+        let foot = total == null ? '' : num(total) + ' metrics cached';
+        if (newest) foot += (foot ? ', ' : '') + 'refreshed ' + rel(newest) + ' ago';
+        $('probes-foot').textContent = foot || '-';
+        return st;
+    }
+
+    // ---- Outputs ----------------------------------------------------------
+
+    function outputPill(o) {
+        if (!o.enabled || o.state === 'disabled') return pill('off', 'disabled');
+        switch (o.state) {
+            case 'listening': return pill('ok', 'listening');
+            case 'exporting': return pill('ok', 'exporting');
+            case 'failing': return pill('err', 'failing');
+            case 'idle': return pill('off', 'idle');
+            default: return pill('off', o.state || 'unknown');
+        }
+    }
+    function outputTarget(p) {
+        p = p || {};
+        return p.endpoint || p.url || p.host || p.server || '';
+    }
+    function pollers(o) {
+        return (o.readers || []).filter(r => r.endpoint !== 'web');
+    }
+    function httpLine(o) {
+        const p = o.params || {};
+        const parts = [];
+        if (p.port) parts.push('<code>' + esc((p.bind_address || '0.0.0.0') + ':' + p.port) + '</code>');
+        const eps = (o.readers || []).filter(r => r.enabled).map(r => r.endpoint);
+        if (eps.length) parts.push(esc(eps.join(', ')));
+        const seen = pollers(o).filter(r => r.total > 0).sort((a, b) => (parseTime(b.last) || 0) - (parseTime(a.last) || 0));
+        if (seen.length) {
+            const r = seen[0];
+            parts.push('last ' + esc(r.endpoint) + ' read ' + esc(rel(r.last)) + ' ago' + (r.from ? ' from ' + esc(r.from) : ''));
+        }
+        if (o.state === 'listening' && !seen.length && pollers(o).some(r => r.enabled)) parts.push('<span class="warn">no poller seen yet</span>');
+        if (o.state === 'failing' && o.reason) parts.push('<span class="bad">' + short(o.reason, 120) + '</span>');
+        return parts.join(' &middot; ');
+    }
+    function pushLine(o) {
+        const p = o.params || {};
+        const parts = [];
+        const target = outputTarget(p);
+        let head = target ? '<code>' + esc(target) + '</code>' : '';
+        const extra = [];
+        if (p.protocol) extra.push(esc(String(p.protocol).toUpperCase()));
+        if (p.tls && p.tls.enabled) extra.push('TLS');
+        if (head && extra.length) head += ' ' + extra.join(', ');
+        if (head) parts.push((!o.enabled ? 'Push to ' : '') + head);
+        if (p.signals && typeof p.signals === 'object') {
+            const sig = [];
+            Object.keys(p.signals).forEach(k => {
+                const v = p.signals[k];
+                if (v && v.enabled !== false) sig.push(k + (v.interval ? ' every ' + v.interval : ''));
+            });
+            if (sig.length) parts.push(esc(sig.join(', ')));
+        } else if (p.interval) {
+            parts.push('every ' + esc(p.interval) + (typeof p.interval === 'number' ? ' s' : ''));
+        }
+        const a = o.activity;
+        if (o.enabled && a) {
+            if (a.last_success) parts.push('last export ' + esc(rel(a.last_success)) + ' ago');
+            if (a.failures) parts.push('<span class="' + (o.state === 'failing' ? 'bad' : 'warn') + '">' + num(a.failures) + ' failed export' + (a.failures === 1 ? '' : 's') + '</span>');
+            else if (a.last_success) parts.push('0 errors');
+        }
+        if (o.enabled && o.state === 'failing' && (o.reason || (a && a.last_error))) parts.push('<span class="bad">' + short(o.reason || a.last_error, 120) + '</span>');
+        else if (o.enabled && o.state === 'idle' && !(a && a.successes)) parts.push('nothing exported yet');
+        return parts.join(' &middot; ');
+    }
+    function renderOutputs(data) {
+        const list = (data && data.outputs) || [];
+        $('outputs-count').textContent = list.length;
+        if (!list.length) {
+            $('outputs-body').innerHTML = '<div class="empty-line">No output configured. <a href="' + WEB + 'outputs">Add an output</a>.</div>';
+        } else {
+            let html = '';
+            list.forEach(o => {
+                const off = !o.enabled || o.state === 'disabled';
+                const title = o.type === 'http' ? (o.display_name || 'Console and pull endpoints') : o.name;
+                let action;
+                if (o.type === 'http') action = '<a class="btn sm" href="' + WEB + 'outputs/http#urls">Sensor URLs</a>';
+                else if (off) action = '<button type="button" class="btn sm" data-enable="' + esc(o.name) + '">Enable</button>';
+                else action = '<a class="btn sm" href="' + WEB + 'outputs/' + encodeURIComponent(o.name) + '">Edit</a>';
+                html += '<div class="orow"><div class="oicon' + (off ? ' off' : '') + '">' + esc(String(o.type).toUpperCase().slice(0, 6)) + '</div>' +
+                    '<div><div class="t">' + esc(title) + ' ' + outputPill(o) + '</div>' +
+                    '<div class="d">' + (o.type === 'http' ? httpLine(o) : pushLine(o)) + '</div></div>' + action + '</div>';
+            });
+            $('outputs-body').innerHTML = html;
+            $('outputs-body').querySelectorAll('button[data-enable]').forEach(b => b.addEventListener('click', () => enableOutput(b.dataset.enable, list, b)));
+        }
+        const paths = list.filter(o => o.enabled && o.state !== 'disabled' && o.state !== 'failing').length;
+        $('outputs-foot').textContent = 'Data leaves this host on ' + plural(paths, 'path');
+        return list;
+    }
+    async function enableOutput(name, list, btn) {
+        const o = list.find(x => x.name === name);
+        if (!o) return;
+        btn.disabled = true;
+        try {
+            const r = await fetch(API + 'config/outputs/' + encodeURIComponent(name), {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: true, params: o.params || {} })
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+            showBanner('ok', 'Output ' + name + ' enabled.');
+            refresh();
         } catch (e) {
-            // Silently fail — key values are optional enhancement
+            showBanner('err', 'Could not enable ' + name + ': ' + e.message);
+            btn.disabled = false;
         }
     }
 
-    selectKeyMetrics(results, probeName) {
-        const priorities = {
-            cpu: ['CPU Total Usage', 'CPU Load Average 1min'],
-            memory: ['Memory Usage', 'Memory Used', 'Memory Free'],
-            logicaldisk: ['Used Percent', 'Free Bytes', 'Available Bytes'],
-            citrix: ['Sessions Connected', 'Sessions Disconnected', 'Logon Duration Total', 'Machines Total'],
-            netscaler: ['System CPU Usage', 'System Memory Usage', 'System HTTP Requests Rate'],
-        };
+    // ---- Getting started --------------------------------------------------
 
-        const probeType = probeName.toLowerCase();
-        const priorityList = priorities[probeType] || [];
+    function renderGettingStarted(system, probeSt, outputs) {
+        const card = $('gs-card');
+        if (gsHidden()) { card.classList.add('hide'); return; }
+        const steps = [];
+        const s1 = { done: true, title: 'Agent is running', desc: 'Service up for ' + esc(uptime(system && system.uptime)) + '. Console on port ' + esc(system && system.port || '?') + '.' };
+        steps.push(s1);
 
-        const selected = [];
-        for (const prio of priorityList) {
-            const match = results.find(r => r.channel && r.channel.includes(prio));
-            if (match && selected.length < 4) selected.push(match);
+        const s2 = { done: !!(probeSt && probeSt.total > 0), title: 'Probes configured' };
+        if (s2.done) s2.desc = esc(plural(probeSt.total, 'probe') + ', ' + probeSt.running + ' running, ' + probeSt.failing + ' failing') + '. <a href="' + WEB + 'probes">Review</a>';
+        else s2.desc = 'Nothing is collected yet. <a href="' + WEB + 'probes?new=1">Add a probe</a>';
+        steps.push(s2);
+
+        const push = (outputs || []).filter(o => o.mode === 'push' && o.enabled && o.state !== 'disabled' && o.state !== 'failing');
+        const http = (outputs || []).find(o => o.type === 'http');
+        const readAny = http ? pollers(http).some(r => r.total > 0) : false;
+        const s3 = { done: push.length > 0 || readAny, title: 'Data is sent somewhere' };
+        if (s3.done) {
+            const bits = push.map(o => esc(String(o.type).toUpperCase()) + ' push' + (outputTarget(o.params) ? ' to <code>' + esc(outputTarget(o.params)) + '</code>' : ''));
+            if (readAny) bits.push('pull endpoints read');
+            s3.desc = bits.join(', ') + '. <a href="' + WEB + 'outputs">Outputs</a>';
+        } else {
+            const failing = (outputs || []).filter(o => o.mode === 'push' && o.enabled && o.state === 'failing');
+            s3.desc = (failing.length ? failing.map(o => esc(o.name)).join(', ') + ' is failing. ' : 'No output delivers data yet. ') + '<a href="' + WEB + 'outputs">Outputs</a>';
         }
+        steps.push(s3);
 
-        if (selected.length < 4) {
-            for (const r of results) {
-                if (selected.length >= 4) break;
-                if (!selected.includes(r) && r.value !== 0) selected.push(r);
-            }
+        const polls = http ? pollers(http).filter(r => r.total > 0) : [];
+        const s4 = { done: polls.length > 0, title: 'Give the poller its sensor URL' };
+        if (s4.done) {
+            const r = polls.sort((a, b) => (parseTime(b.last) || 0) - (parseTime(a.last) || 0))[0];
+            s4.desc = 'Last ' + esc(r.endpoint) + ' poll ' + esc(rel(r.last)) + ' ago' + (r.from ? ' from ' + esc(r.from) : '') + '. <a href="' + WEB + 'outputs/http#urls">Sensor URLs</a>';
+        } else {
+            s4.desc = 'No PRTG, Nagios or Prometheus poll seen yet. <a href="' + WEB + 'outputs/http#urls">Build a sensor URL</a>';
         }
+        steps.push(s4);
 
-        return selected.slice(0, 4);
+        const done = steps.filter(s => s.done).length;
+        if (done === steps.length) { card.classList.add('hide'); return; }
+        $('gs-count').textContent = done + ' of ' + steps.length + ' done';
+        let nowSet = false, html = '';
+        steps.forEach((s, i) => {
+            let cls = 'step';
+            if (s.done) cls += ' done';
+            else if (!nowSet) { cls += ' now'; nowSet = true; }
+            html += '<div class="' + cls + '"><span class="num">' + (s.done ? '&#10003;' : (i + 1)) + '</span><div><div class="t">' + esc(s.title) + '</div><div class="d">' + s.desc + '</div></div></div>';
+        });
+        $('gs-steps').innerHTML = html;
+        card.classList.remove('hide');
     }
 
-    shortenLabel(channel) {
-        return channel
-            .replace(/^(CPU |Memory |System |Sessions |Logon |Machines )/, '')
-            .replace(/\s*\(.*\)$/, '');
-    }
+    // ---- Agent ------------------------------------------------------------
 
-    /**
-     * Check if agent is starting up (uptime < 2 minutes)
-     * @param {string} uptimeText - Uptime string (e.g., "1m 30s", "2h 15m")
-     * @returns {boolean} - True if uptime < 2 minutes
-     */
-    isAgentStartingUp(uptimeText) {
-        if (!uptimeText || uptimeText === 'unknown') {
-            return true; // Assume starting if uptime unknown
+    function renderAgent(d, outputs) {
+        const failedOutputs = (d.outputs_failing || []).concat((d.strategy_failures || []).map(f => f.strategy))
+            .concat(((outputs && outputs.outputs) || []).filter(o => o.enabled && o.state === 'failing').map(o => o.name))
+            .filter((n, i, a) => a.indexOf(n) === i);
+        const failing = failedOutputs.length > 0;
+        $('agent-pill').innerHTML = failing ? pill('warn', 'output failing') : pill('ok', d.status === 'running' || !d.status ? 'running' : d.status);
+        const commit = d.commit ? ' (' + String(d.commit).slice(0, 7) + ')' : '';
+        const res = d.resources || {};
+        const cache = d.cache || {};
+        const rows = [
+            ['Version', esc((d.version || '?') + commit)],
+            ['Host', esc(d.hostname || '?') + (d.os ? ', ' + esc(d.os + (d.arch ? '/' + d.arch : '')) : '')],
+            ['Uptime', esc(uptime(d.uptime))],
+            ['Port', esc(d.port || '?')],
+            ['Config', d.config_path ? esc(d.config_path) : '-'],
+            ['Memory', res.memory_usage_mb != null ? esc(Number(res.memory_usage_mb).toFixed(1)) + ' MB' : '-'],
+            ['CPU', res.cpu_percent != null ? esc(Number(res.cpu_percent).toFixed(1)) + ' %' : '-'],
+            ['Goroutines', res.goroutines != null ? num(res.goroutines) : '-'],
+            ['Cache', cache.total_metrics != null ? num(cache.total_metrics) + ' series' + (cache.ttl ? ', TTL ' + esc(cache.ttl) : '') : '-']
+        ];
+        $('agent-kv').innerHTML = rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
+        const w = $('agent-watch');
+        if (d.config_watch) {
+            w.textContent = 'Configuration watch off: edits by hand need a restart' + (d.config_watch.reason ? ' (' + d.config_watch.reason + ')' : '') + '.';
+            w.classList.remove('hide');
+        } else {
+            w.classList.add('hide');
         }
+        const ts = d.health && d.health.timestamp ? parseTime(d.health.timestamp) : null;
+        let foot = ts ? 'Health checked ' + clock(ts) : 'Health ' + esc((d.health && d.health.status) || '-');
+        if (failing) foot += ', ' + failedOutputs.join(', ') + ' failing';
+        $('agent-foot').textContent = foot;
+    }
 
-        // Parse uptime string: "1h 2m 3s", "1m 30s", "45s", etc.
-        const parts = uptimeText.split(' ');
-        let totalSeconds = 0;
+    // ---- Licence ----------------------------------------------------------
 
-        for (const part of parts) {
-            if (part.includes('h')) {
-                totalSeconds += parseInt(part) * 3600;
-            } else if (part.includes('m')) {
-                totalSeconds += parseInt(part) * 60;
-            } else if (part.includes('s')) {
-                totalSeconds += parseInt(part);
-            } else if (part.includes('d')) {
-                totalSeconds += parseInt(part) * 86400;
-            }
+    function renderLicence(lic, catalog) {
+        lic = lic || {};
+        const tier = (lic.tier || 'free').toLowerCase();
+        const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+        let p;
+        if (lic.status === 'expired') p = pill('err', 'expired');
+        else if (lic.status === 'grace_period') p = pill('warn', tierLabel + ', grace period');
+        else if (lic.status === 'active') p = pill('pro', tierLabel);
+        else p = pill('off', 'Free');
+        $('lic-pill').innerHTML = p;
+        const probes = (catalog && catalog.probes) || [];
+        const available = probes.filter(x => x.authorized !== false).length;
+        const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false).length;
+        let expires = '-';
+        if (lic.expires_at) {
+            expires = esc(dateOnly(lic.expires_at));
+            if (lic.days_remaining != null) expires += ' <span class="muted">(' + num(lic.days_remaining) + ' d)</span>';
         }
-
-        // Starting up if uptime < 2 minutes (120 seconds)
-        return totalSeconds < 120;
+        const rows = [
+            ['Tier', esc(tierLabel)],
+            ['Expires', expires],
+            ['Probe types', catalog ? num(available) + ' available' : '-'],
+            ['Pro types', catalog ? num(locked) + ' need a licence' : '-'],
+            ['Agent key', '<span title="' + esc(KEY) + '">' + esc(shortKey(KEY)) + '</span><button type="button" class="btn sm" id="copy-key">Copy</button><span class="copied hide" id="copied">copied</span>']
+        ];
+        $('lic-kv').innerHTML = rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
+        $('copy-key').addEventListener('click', async () => {
+            const ok = await copyText(KEY);
+            const c = $('copied');
+            c.textContent = ok ? 'copied' : 'copy failed';
+            c.classList.remove('hide');
+            setTimeout(() => c.classList.add('hide'), 1500);
+        });
     }
 
-    showLoading() {
-        this.loadingDiv.style.display = 'block';
-        this.errorDiv.style.display = 'none';
-        this.contentDiv.style.display = 'none';
-    }
+    // ---- Events -----------------------------------------------------------
 
-    showContent() {
-        this.loadingDiv.style.display = 'none';
-        this.errorDiv.style.display = 'none';
-        this.contentDiv.style.display = 'block';
-    }
-
-    showError() {
-        this.loadingDiv.style.display = 'none';
-        this.errorDiv.style.display = 'block';
-        this.contentDiv.style.display = 'none';
-    }
-
-    startAutoRefresh() {
-        // Auto-refresh every 30 seconds
-        this.refreshInterval = setInterval(() => {
-            this.loadDashboard();
-        }, 30000);
-    }
-
-    stopAutoRefresh() {
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-            this.refreshInterval = null;
+    function renderEvents(data) {
+        const list = ((data && data.events) || []).slice(0, 10);
+        $('events-count').textContent = data && data.count ? data.count : '';
+        if (!list.length) {
+            $('events-body').innerHTML = '<div class="empty-line">None yet</div>';
+            return;
         }
+        $('events-body').innerHTML = list.map(e => {
+            const lvl = e.level === 'error' ? 'err' : (e.level === 'warn' ? 'warn' : 'ok');
+            return '<div class="ev"><span class="dot ' + lvl + '"></span><div class="msg">' +
+                (e.subject ? '<b>' + esc(e.subject) + '</b> ' : '') + short(e.message, 160) +
+                '<div class="xs muted">' + esc(when(e.time)) + (e.kind ? ' &middot; ' + esc(e.kind) : '') + '</div></div></div>';
+        }).join('');
     }
-}
 
-// Global function for error retry
-function loadDashboard() {
-    if (window.dashboard) {
-        window.dashboard.loadDashboard();
-    }
-}
+    // ---- Page -------------------------------------------------------------
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    // Get agent key from template
-    const agentKey = window.AGENT_KEY || document.querySelector('meta[name="agent-key"]')?.content;
-    
-    if (agentKey) {
-        window.dashboard = new Dashboard(agentKey);
-    } else {
-        console.error('Agent key not found');
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('error').style.display = 'block';
+    let bannerTimer = null;
+    function showBanner(kind, msg) {
+        const b = $('banner');
+        b.className = 'banner ' + kind;
+        b.textContent = msg;
+        clearTimeout(bannerTimer);
+        if (kind === 'ok') bannerTimer = setTimeout(hideBanner, 4000);
     }
-});
+    function hideBanner() { $('banner').className = 'banner err hide'; }
 
-// Cleanup on page unload
-window.addEventListener('beforeunload', () => {
-    if (window.dashboard) {
-        window.dashboard.stopAutoRefresh();
+    async function refresh() {
+        const names = ['info/system', 'config/probes', 'config/outputs', 'license/status', 'catalog/probes', 'info/events'];
+        const res = await Promise.allSettled(names.map(get));
+        const val = (i) => res[i].status === 'fulfilled' ? res[i].value : null;
+        const failed = names.filter((n, i) => res[i].status === 'rejected');
+        const system = val(0), probes = val(1), outputs = val(2), lic = val(3), catalog = val(4), events = val(5);
+
+        let probeSt = null, outputList = null;
+        if (system) renderAgent(system, outputs);
+        else { $('agent-pill').innerHTML = pill('err', 'unreachable'); $('agent-kv').innerHTML = ''; }
+        if (probes) probeSt = renderProbes(probes, system);
+        else $('probes-body').innerHTML = '<div class="empty-line">Probe list unavailable.</div>';
+        if (outputs) outputList = renderOutputs(outputs);
+        else $('outputs-body').innerHTML = '<div class="empty-line">Output list unavailable.</div>';
+        if (lic || catalog) renderLicence(lic, catalog);
+        else $('lic-kv').innerHTML = '';
+        if (events) renderEvents(events);
+        else $('events-body').innerHTML = '<div class="empty-line">Events unavailable.</div>';
+        if (system && probeSt && outputList) renderGettingStarted(system, probeSt, outputList);
+        else $('gs-card').classList.add('hide');
+
+        if (failed.length) showBanner('err', 'Could not load ' + failed.join(', ') + '. The rest of the page is current; the agent may be restarting.');
+        else if ($('banner').classList.contains('err') && !$('banner').classList.contains('hide')) hideBanner();
+        $('refresh-note').textContent = ', last ' + clock(new Date());
     }
-});
+
+    $('gs-hide').addEventListener('click', gsHide);
+    refresh();
+    setInterval(refresh, 30000);
+})();
