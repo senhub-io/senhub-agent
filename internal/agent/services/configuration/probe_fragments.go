@@ -141,23 +141,34 @@ func writeManagedProbeFragment(path string, p ProbeConfig) error {
 // typed in the console and one sealed at boot land in the same place.
 // A value that is already a ${...} reference is left as written.
 func sealProbeParams(p *ProbeConfig, secretPaths []string) error {
+	if p.Params == nil {
+		return nil
+	}
+	return sealParams(p.Name, p.Params, secretPaths)
+}
+
+// sealParams moves the credentials of one params map into the secret
+// store, under <instance>.<dotted path>, leaving references behind. A
+// secret path that names a mapping (the headers of an OTLP output)
+// seals every value inside it.
+func sealParams(instance string, params map[string]interface{}, secretPaths []string) error {
 	want := map[string]bool{}
 	for _, sp := range secretPaths {
 		want[sp] = true
 	}
 	var prov secret.Provider
-	var walk func(path []string, m map[string]interface{}) error
-	walk = func(path []string, m map[string]interface{}) error {
+	var walk func(path []string, m map[string]interface{}, inSecret bool) error
+	walk = func(path []string, m map[string]interface{}, inSecret bool) error {
 		for k, v := range m {
 			full := append(append([]string{}, path...), k)
+			dotted := strings.Join(full, ".")
 			switch val := v.(type) {
 			case map[string]interface{}:
-				if err := walk(full, val); err != nil {
+				if err := walk(full, val, inSecret || want[dotted]); err != nil {
 					return err
 				}
 			case string:
-				dotted := strings.Join(full, ".")
-				if !(want[dotted] || secret.IsSensitiveKey(k)) || val == "" || strings.HasPrefix(val, "${") {
+				if !(inSecret || want[dotted] || secret.IsSensitiveKey(k)) || val == "" || strings.HasPrefix(val, "${") {
 					continue
 				}
 				if prov == nil {
@@ -167,7 +178,7 @@ func sealProbeParams(p *ProbeConfig, secretPaths []string) error {
 					}
 					prov = backend
 				}
-				key := secret.SanitizeKey(p.Name + "." + dotted)
+				key := secret.SanitizeKey(instance + "." + dotted)
 				if err := prov.Set(key, secret.New(val)); err != nil {
 					return fmt.Errorf("storing secret %q: %w", key, err)
 				}
@@ -176,8 +187,8 @@ func sealProbeParams(p *ProbeConfig, secretPaths []string) error {
 		}
 		return nil
 	}
-	if p.Params == nil {
+	if params == nil {
 		return nil
 	}
-	return walk(nil, p.Params)
+	return walk(nil, params, false)
 }
