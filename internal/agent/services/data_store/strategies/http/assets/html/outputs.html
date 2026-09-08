@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agent-key" content="{{.AgentKey}}">
+    <title>SenHub Agent - Outputs</title>
+    <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
+</head>
+<body>
+    <div class="hdr"><div class="hdr-in">
+        <a class="brand" href="/web/{{.AgentKey}}/overview"><img src="/web/{{.AgentKey}}/assets/logo.png" alt=""> SenHub Agent</a>
+        <nav class="nav">
+            <a href="/web/{{.AgentKey}}/overview">Overview</a>
+            <a href="/web/{{.AgentKey}}/probes">Probes</a>
+            <a href="/web/{{.AgentKey}}/outputs" class="on">Outputs</a>
+            <a href="/web/{{.AgentKey}}/settings">Settings</a>
+            <a href="https://agent.senhub.io/docs" target="_blank" rel="noopener">Docs</a>
+        </nav>
+        <div class="hdr-status"></div>
+    </div></div>
+    <div class="page"><div class="card"><h2>Outputs</h2><p class="muted">This page is being built.</p></div></div>
+    <script>window.AGENT_KEY = '{{.AgentKey}}';</script>
+    <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
+</body>
+</html>

@@ -48,6 +48,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/info/tags/{probe}", h.HandleInfoTags).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.HandleInfoSchema).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/otlp", h.HandleInfoOTLP).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/events", h.HandleInfoEvents).Methods("GET")
 
 	// Debug endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/debug/cache", h.HandleDebugCache).Methods("GET")
@@ -108,16 +109,29 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		// Web UI endpoints
 		router.HandleFunc("/web/{agentkey}/", h.HandleWebDashboard).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/dashboard", h.HandleWebDashboard).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/overview", h.HandleWebDashboard).Methods("GET")
+		// The Sensor Builder became the Sensor URLs tab of the http
+		// output; the old address keeps working for bookmarks.
 		router.HandleFunc("/web/{agentkey}/explorer", h.HandleWebExplorer).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/docs", h.HandleWebDocs).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/settings", h.HandleWebSettings).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/probes", h.HandleWebProbes).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/outputs", h.HandleWebOutputs).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/outputs/http", h.HandleWebOutputHTTP).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/outputs/{name}", h.HandleWebOutputEditor).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsGet).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsSet).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/catalog/probes", h.HandleCatalogProbes).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/probes", h.HandleProbeCreate).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.HandleProbeUpdate).Methods("PUT")
 		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.HandleProbeDelete).Methods("DELETE")
+		router.HandleFunc("/api/{agentkey}/catalog/outputs", h.HandleCatalogOutputs).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/outputs", h.HandleConfigOutputs).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/outputs", h.HandleOutputCreate).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs/validate", h.HandleOutputValidate).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs/test", h.HandleOutputTest).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.HandleOutputUpdate).Methods("PUT")
+		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.HandleOutputDelete).Methods("DELETE")
 		// router.HandleFunc("/web/{agentkey}/guide", h.HandleWebGuide).Methods("GET") // Temporarily disabled
 
 		// Static assets
@@ -188,6 +202,50 @@ func (h *HTTPHandlers) HandleWebSettings(w http.ResponseWriter, r *http.Request)
 
 func (h *HTTPHandlers) HandleWebProbes(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleWebPage(w, r, "probes")
+}
+
+func (h *HTTPHandlers) HandleWebOutputs(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleWebPage(w, r, "outputs")
+}
+
+func (h *HTTPHandlers) HandleWebOutputHTTP(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleWebPage(w, r, "output-http")
+}
+
+func (h *HTTPHandlers) HandleWebOutputEditor(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleWebPage(w, r, "output-editor")
+}
+
+func (h *HTTPHandlers) HandleInfoEvents(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleInfoEvents(w, r)
+}
+
+func (h *HTTPHandlers) HandleCatalogOutputs(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleCatalogOutputs(w, r)
+}
+
+func (h *HTTPHandlers) HandleConfigOutputs(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleConfiguredOutputs(w, r)
+}
+
+func (h *HTTPHandlers) HandleOutputCreate(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleOutputCreate(w, r)
+}
+
+func (h *HTTPHandlers) HandleOutputUpdate(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleOutputUpdate(w, r)
+}
+
+func (h *HTTPHandlers) HandleOutputDelete(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleOutputDelete(w, r)
+}
+
+func (h *HTTPHandlers) HandleOutputValidate(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleOutputValidate(w, r)
+}
+
+func (h *HTTPHandlers) HandleOutputTest(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleOutputTest(w, r)
 }
 
 func (h *HTTPHandlers) HandleConfigSettingsGet(w http.ResponseWriter, r *http.Request) {

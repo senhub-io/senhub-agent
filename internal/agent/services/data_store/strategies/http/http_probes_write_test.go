@@ -31,3 +31,22 @@ func TestProbeWriteRequestToConfigDropsAnEmptyGovernance(t *testing.T) {
 		t.Error("a filled block must be carried to the fragment")
 	}
 }
+
+func TestIntervalOf(t *testing.T) {
+	cases := []struct {
+		params map[string]interface{}
+		want   int
+	}{
+		{map[string]interface{}{"interval": 30}, 30},
+		{map[string]interface{}{"interval": int64(45)}, 45},
+		{map[string]interface{}{"interval": 15.0}, 15},
+		{map[string]interface{}{"interval": "5m"}, 300},
+		{map[string]interface{}{"interval": "soon"}, 60},
+		{map[string]interface{}{}, 60},
+	}
+	for _, c := range cases {
+		if got := intervalOf(c.params, 60); got != c.want {
+			t.Errorf("%v: want %d, got %d", c.params, c.want, got)
+		}
+	}
+}
