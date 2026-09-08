@@ -3,6 +3,7 @@ package logparse
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -75,8 +76,41 @@ func ParseLine(pc ParserConfig, line string, readTime time.Time, probeName, prob
 	case ParserRaw:
 		// body already set
 	}
+	if rec.Severity == agentstate.LogSeverityUnspecified {
+		if sev, text := SniffSeverity(line); sev != agentstate.LogSeverityUnspecified {
+			rec.Severity, rec.SeverityText = sev, text
+		}
+	}
 
 	return rec, true
+}
+
+// levelToken is a level word as logging libraries write it at the head
+// of a line: upper case on its own ("2026-09-07 10:00:00 INFO ...",
+// "SquashTM - 13 ERROR [main]", "WARNING: ...") or any case in brackets
+// ("[error] 9#9: ...", "[INFO] Starting gunicorn"). Prose is not a level:
+// "the user reported an error" names none.
+var levelToken = regexp.MustCompile(`(?:^|\s)(TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|ERR|FATAL|CRITICAL|CRIT|PANIC)(?:[\s:]|$)|\[(?i:(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))\]`)
+
+const sniffHead = 160
+
+// SniffSeverity reads the level word at the head of a line that no
+// structured parser handled, so a raw application log still carries a
+// severity a consumer can filter and colour on. Unspecified when none.
+func SniffSeverity(line string) (agentstate.LogSeverity, string) {
+	head := line
+	if len(head) > sniffHead {
+		head = head[:sniffHead]
+	}
+	m := levelToken.FindStringSubmatch(head)
+	if m == nil {
+		return agentstate.LogSeverityUnspecified, ""
+	}
+	word := m[1]
+	if word == "" {
+		word = m[2]
+	}
+	return severityFromText(word)
 }
 
 func applyRegex(pc ParserConfig, line string, rec *agentstate.LogRecord) {
