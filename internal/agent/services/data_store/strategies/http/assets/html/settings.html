@@ -6,89 +6,84 @@
     <meta name="agent-key" content="{{.AgentKey}}">
     <title>SenHub Agent - Settings</title>
     <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
     <style>
-        .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
-        .field { margin-bottom: 1rem; }
-        .field label { display: block; font-weight: 600; margin-bottom: 0.35rem; color: var(--gray-700); }
-        .field input, .field textarea { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 0.95rem; box-sizing: border-box; }
-        .field textarea { font-family: 'Monaco','Menlo',monospace; font-size: 0.8rem; min-height: 90px; }
-        .hint { font-size: 0.8rem; color: var(--gray-600); margin-top: 0.3rem; }
-        .agentkey-box { font-family: 'Monaco','Menlo',monospace; background: var(--gray-100); padding: 0.5rem 0.6rem; border-radius: 6px; word-break: break-all; border: 1px solid var(--gray-200); }
-        .row { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid var(--gray-200); }
-        .row:last-child { border-bottom: none; }
-        .row .k { color: var(--gray-600); }
-        .row .v { font-family: 'Monaco','Menlo',monospace; color: var(--gray-900); }
-        .banner { padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 1rem; display: none; }
-        .banner.ok { background: #e7f7ec; color: #1a7f43; border: 1px solid #b7e4c7; }
-        .banner.err { background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; }
-        .banner.warn { background: #fff6e5; color: #8a5a00; border: 1px solid #ffe0a3; }
-        .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-        .pill.ok { background: #e7f7ec; color: #1a7f43; }
-        .pill.no { background: #fdecea; color: #b3261e; }
-        .actions { margin-top: 0.5rem; }
-        button.copy { background: none; border: 1px solid var(--gray-300); border-radius: 6px; padding: 0.2rem 0.5rem; cursor: pointer; font-size: 0.8rem; }
+        .card > .stack { gap: var(--s3); }
+        .card p.lead { color: var(--muted); font-size: var(--fs-sm); margin-bottom: var(--s3); }
+        .agentkey-box { font-family: var(--mono); font-size: var(--fs-sm); background: var(--well); padding: 8px 10px; border-radius: var(--r-md); word-break: break-all; border: 1px solid var(--line); }
+        .actions { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+        .kv.left dd { font-family: inherit; }
+        .kv .v { font-family: var(--mono); }
+        .in[type="file"] { padding: 5px 10px; line-height: 22px; }
+        #banner { margin-bottom: var(--s4); }
+        .locked { font-size: var(--fs-sm); color: var(--ink-2); }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-top">
-            <h1>
-                <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
-                SenHub Agent
-            </h1>
-            <nav class="main-nav">
-                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
-                <a href="/web/{{.AgentKey}}/probes" class="nav-link">Probes</a>
-                <a href="/web/{{.AgentKey}}/explorer" class="nav-link">Sensor Builder</a>
-                <a href="/web/{{.AgentKey}}/settings" class="nav-link active">Settings</a>
-                <a href="/web/{{.AgentKey}}/docs" class="nav-link">Documentation</a>
-            </nav>
+    <div class="hdr"><div class="hdr-in">
+        <a class="brand" href="/web/{{.AgentKey}}/overview"><img src="/web/{{.AgentKey}}/assets/logo.png" alt=""> SenHub Agent</a>
+        <nav class="nav">
+            <a href="/web/{{.AgentKey}}/overview">Overview</a>
+            <a href="/web/{{.AgentKey}}/probes">Probes</a>
+            <a href="/web/{{.AgentKey}}/outputs">Outputs</a>
+            <a href="/web/{{.AgentKey}}/settings" class="on">Settings</a>
+            <a href="https://agent.senhub.io/docs" target="_blank" rel="noopener">Docs</a>
+        </nav>
+        <div class="hdr-status"></div>
+    </div></div>
+
+    <div class="page">
+        <div class="page-h">
+            <div>
+                <h1>Settings</h1>
+                <p class="sub">Where this console listens, and which licence unlocks the Pro probes.</p>
+            </div>
         </div>
-    </div>
 
-    <div class="container">
-        <div id="banner" class="banner"></div>
+        <div id="banner" class="banner hide"></div>
 
-        <div class="settings-grid">
+        <div class="grid g2">
             <div class="card">
-                <h2>Connection</h2>
-                <p class="hint">The port of this web console and of the PRTG / Nagios endpoints. Changing it moves the interface to the new address; this page will point you there.</p>
-                <div class="field">
-                    <label for="port">HTTP port</label>
-                    <input type="number" id="port" min="1" max="65535" />
-                </div>
-                <div class="field">
-                    <label for="bind">Bind address</label>
-                    <input type="text" id="bind" />
-                    <div class="hint">127.0.0.1 for local only, 0.0.0.0 to accept connections from other machines (use TLS when doing so).</div>
+                <div class="card-h"><h2>Connection</h2><span class="pill acc">HTTP output</span></div>
+                <p class="lead">These are the settings of the HTTP output: the port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there. <a href="/web/{{.AgentKey}}/outputs/http">Endpoints, TLS and the sensor URLs are there</a>.</p>
+                <div class="stack">
+                    <div class="field">
+                        <label class="lbl" for="port">HTTP port</label>
+                        <input class="in" type="number" id="port" min="1" max="65535" />
+                    </div>
+                    <div class="field">
+                        <label class="lbl" for="bind">Bind address</label>
+                        <input class="in" type="text" id="bind" />
+                        <div class="hint">127.0.0.1 for local only, 0.0.0.0 to accept connections from other machines (use TLS when doing so).</div>
+                    </div>
                 </div>
                 <div class="actions">
-                    <button class="btn btn-primary" id="save-conn">Save connection settings</button>
+                    <button class="btn primary" id="save-conn" type="button">Save connection settings</button>
                 </div>
             </div>
 
             <div class="card">
-                <h2>Licence</h2>
-                <div class="row"><span class="k">Agent key</span></div>
-                <div class="agentkey-box" id="agentkey">{{.AgentKey}}</div>
-                <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A licence is bound to it — give it to Sensor Factory when ordering one, and the licence you receive is checked against it here. <button class="copy" id="copy-key" type="button">Copy</button></div>
-                <div class="row" style="margin-top:0.8rem;"><span class="k">Status</span><span class="v" id="lic-status">…</span></div>
-                <div class="row"><span class="k">Tier</span><span class="v" id="lic-tier">…</span></div>
-                <div class="row"><span class="k">Expires</span><span class="v" id="lic-exp">…</span></div>
-                <div class="field" style="margin-top:0.8rem;">
-                    <label for="license-file">Activate a licence</label>
-                    <input type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" />
-                    <div class="hint">Choose the licence file you received, or paste the token below. It is checked against this agent key before it is saved.</div>
-                    <textarea id="license" placeholder="…or paste the licence token (JWT)" style="margin-top:0.5rem;"></textarea>
+                <div class="card-h"><h2>Licence</h2><span id="lic-status"></span></div>
+                <div class="stack">
+                    <div class="field">
+                        <span class="lbl">Agent key</span>
+                        <div class="agentkey-box" id="agentkey">{{.AgentKey}}</div>
+                        <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A licence is bound to it: give it to Sensor Factory when ordering one, and the licence you receive is checked against it here. <button class="btn sm" id="copy-key" type="button">Copy</button> <span class="xs hide" id="copied" style="color:var(--ok)">copied</span></div>
+                    </div>
+                    <dl class="kv left">
+                        <dt>Tier</dt><dd class="v" id="lic-tier">...</dd>
+                        <dt>Expires</dt><dd class="v" id="lic-exp">...</dd>
+                        <dt>Pro probe types</dt><dd id="lic-locked" class="locked">...</dd>
+                    </dl>
+                    <div class="field">
+                        <label class="lbl" for="license-file">Activate a licence</label>
+                        <input class="in" type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" />
+                        <div class="hint">Choose the licence file you received, or paste the token below. It is checked against this agent key before it is saved.</div>
+                        <textarea class="ta" id="license" placeholder="...or paste the licence token (JWT)"></textarea>
+                    </div>
                 </div>
                 <div class="actions">
-                    <button class="btn btn-primary" id="save-lic">Activate licence</button>
+                    <button class="btn primary" id="save-lic" type="button">Activate licence</button>
                 </div>
             </div>
         </div>
@@ -97,13 +92,16 @@
     <script>
         window.AGENT_KEY = '{{.AgentKey}}';
         const api = '/api/' + window.AGENT_KEY + '/config/settings';
+        const catalogApi = '/api/' + window.AGENT_KEY + '/catalog/probes';
         const $ = (id) => document.getElementById(id);
+
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+        function pill(kind, label) { return '<span class="pill ' + kind + '">' + esc(label) + '</span>'; }
 
         function banner(kind, msg) {
             const b = $('banner');
             b.className = 'banner ' + kind;
             b.textContent = msg;
-            b.style.display = 'block';
         }
 
         async function load() {
@@ -115,18 +113,35 @@
                 $('bind').value = d.bind_address;
                 const lic = d.license || {};
                 if (!lic.configured) {
-                    $('lic-status').innerHTML = '<span class="pill no">Free tier</span>';
+                    $('lic-status').innerHTML = pill('off', 'Free tier');
                     $('lic-tier').textContent = 'Free';
-                    $('lic-exp').textContent = '—';
+                    $('lic-exp').textContent = '-';
                 } else {
-                    const bound = lic.bound ? '<span class="pill ok">bound</span>' : '<span class="pill no">not bound to this key</span>';
-                    const exp = lic.expired ? '<span class="pill no">expired</span>' : bound;
-                    $('lic-status').innerHTML = exp;
-                    $('lic-tier').textContent = lic.tier || '—';
-                    $('lic-exp').textContent = lic.expires_at || '—';
+                    const bound = lic.bound ? pill('ok', 'bound') : pill('err', 'not bound to this key');
+                    $('lic-status').innerHTML = lic.expired ? pill('err', 'expired') : bound;
+                    $('lic-tier').textContent = lic.tier || '-';
+                    $('lic-exp').textContent = lic.expires_at || '-';
                 }
             } catch (e) {
                 banner('err', 'Could not load settings: ' + e.message);
+            }
+        }
+
+        async function loadLocked() {
+            const el = $('lic-locked');
+            try {
+                const r = await fetch(catalogApi);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const d = await r.json();
+                const probes = d.probes || [];
+                const locked = probes.filter(p => p.tier === 'pro' && p.authorized === false).length;
+                const pro = probes.filter(p => p.tier === 'pro').length;
+                const link = ' <a href="/web/' + window.AGENT_KEY + '/probes?new=1#picker">See the catalogue</a>';
+                if (locked) el.innerHTML = esc(locked + ' Pro probe type' + (locked === 1 ? ' is' : 's are') + ' locked.') + link;
+                else if (pro) el.innerHTML = esc('All ' + pro + ' Pro probe types are unlocked.') + link;
+                else el.innerHTML = esc('None locked.') + link;
+            } catch (e) {
+                el.textContent = '-';
             }
         }
 
@@ -146,7 +161,7 @@
             try {
                 const d = await post(body);
                 let msg = (d.applied || []).join('; ');
-                if (d.warnings && d.warnings.length) msg += ' — ' + d.warnings.join('; ');
+                if (d.warnings && d.warnings.length) msg += (msg ? '. ' : '') + d.warnings.join('; ');
                 banner('warn', msg || 'Saved.');
             } catch (e) {
                 banner('err', e.message);
@@ -161,6 +176,7 @@
                 banner('ok', (d.applied || ['Licence activated.']).join('; '));
                 $('license').value = '';
                 load();
+                loadLocked();
             } catch (e) {
                 banner('err', e.message);
             }
@@ -178,11 +194,34 @@
             reader.readAsText(f);
         });
 
-        $('copy-key').addEventListener('click', () => {
-            navigator.clipboard && navigator.clipboard.writeText(window.AGENT_KEY);
+        function copyFallback(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'absolute';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            document.body.removeChild(ta);
+            return ok;
+        }
+        $('copy-key').addEventListener('click', async () => {
+            let ok = false;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                ok = await navigator.clipboard.writeText(window.AGENT_KEY).then(() => true, () => copyFallback(window.AGENT_KEY));
+            } else {
+                ok = copyFallback(window.AGENT_KEY);
+            }
+            const c = $('copied');
+            c.textContent = ok ? 'copied' : 'copy failed';
+            c.classList.remove('hide');
+            setTimeout(() => c.classList.add('hide'), 1500);
         });
 
         load();
+        loadLocked();
     </script>
+    <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
 </body>
 </html>
