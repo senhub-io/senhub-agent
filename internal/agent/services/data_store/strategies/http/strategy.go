@@ -351,6 +351,11 @@ type SystemInfoResponse struct {
 	// separate process: reading the in-memory state there would always
 	// find it empty while the daemon holds the truth (#826).
 	StrategyFailures []StrategyFailureInfo `json:"strategy_failures,omitempty"`
+	// OutputsFailing names every output that is not delivering: the
+	// ones that could not start and the ones whose last export failed.
+	OutputsFailing []string `json:"outputs_failing,omitempty"`
+	// ConfigPath is the directory the configuration is read from.
+	ConfigPath string `json:"config_path,omitempty"`
 	// ConfigWatch is set only when the agent is running WITHOUT a
 	// configuration watch: an edit then needs a restart to apply. Same
 	// reasoning as above — the daemon holds the truth, the CLI does not.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -303,6 +304,8 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 		Uptime:           systemHealth.Uptime,
 		Health:           systemHealth.Health,
 		StrategyFailures: strategyFailureList(),
+		OutputsFailing:   outputsFailing(),
+		ConfigPath:       filepath.Dir(a.strategy.agentConfig.GetConfigPath()),
 		ConfigWatch:      configWatchInfo(),
 		Cache: CacheInfoResponse{
 			TotalMetrics: totalMetrics,
@@ -825,6 +828,27 @@ func configWatchInfo() *ConfigWatchInfo {
 
 // strategyFailureList snapshots the configured outputs that are not
 // running, sorted by name so the payload is stable between scrapes.
+// outputsFailing merges start failures and export failures into one
+// sorted list of names, for the header pill of every console page.
+func outputsFailing() []string {
+	seen := map[string]bool{}
+	for name := range agentstate.GetStrategyFailures() {
+		seen[name] = true
+	}
+	for _, name := range agentstate.FailingExports() {
+		seen[name] = true
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func strategyFailureList() []StrategyFailureInfo {
 	failures := agentstate.GetStrategyFailures()
 	if len(failures) == 0 {

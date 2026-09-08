@@ -30,3 +30,12 @@ func TestExportActivityTransitionsBecomeEvents(t *testing.T) {
 		t.Error("an unknown strategy has a zero snapshot")
 	}
 }
+
+func TestExportFailureReasonIsPrintable(t *testing.T) {
+	ResetExportActivityForTest()
+	defer ResetExportActivityForTest()
+	RecordExportFailure("otlp", "401 Unauthorized (body: \x08\x10\x12>provided authorization\ndoes not match)")
+	if got := GetExportActivity("otlp").LastError; got != "401 Unauthorized (body: >provided authorization does not match)" {
+		t.Errorf("control characters must be dropped, got %q", got)
+	}
+}
