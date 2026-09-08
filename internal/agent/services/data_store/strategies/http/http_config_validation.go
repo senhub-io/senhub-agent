@@ -101,7 +101,10 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	// reset, and lets a caller pin handler goroutines).
 	req.Timeout = clampConnectivityTimeout(req.Timeout)
 
+	// A null is the form's word for "remove this stored entry"; it only
+	// means something to a write, so a check or a test does without it.
 	dropRedactedValues(req.Config)
+	configuration.DropNilValues(req.Config)
 	if req.Name != "" {
 		if err := cm.withStoredSecrets(req); err != nil {
 			response.Valid = false

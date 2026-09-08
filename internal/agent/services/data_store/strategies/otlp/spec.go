@@ -8,9 +8,9 @@ import (
 func init() {
 	transport := func() []spec.ParamSpec {
 		return []spec.ParamSpec{
-			{Key: "endpoint", Kind: spec.KindString, Description: "Endpoint for this signal only; the root endpoint otherwise"},
-			{Key: "headers", Kind: spec.KindMap, Description: "Headers for this signal only; they replace the root headers"},
-			{Key: "tls", Kind: spec.KindBlock, Description: "TLS for this signal only; it replaces the root block", Fields: tlsFields()},
+			{Key: "endpoint", Kind: spec.KindString, Advanced: true, Description: "Endpoint for this signal only; the root endpoint otherwise"},
+			{Key: "headers", Kind: spec.KindMap, Secret: true, Advanced: true, Description: "Headers for this signal only; they replace the root headers"},
+			{Key: "tls", Kind: spec.KindBlock, Advanced: true, Description: "TLS for this signal only; it replaces the root block", Fields: tlsFields()},
 		}
 	}
 	outputspec.Register(outputspec.Output{
@@ -42,16 +42,16 @@ func init() {
 					{Key: "batch_timeout", Kind: spec.KindDuration, Default: "5s"},
 					{Key: "buffer_size", Kind: spec.KindInt, Default: 2048},
 					{Key: "sample_ratio", Kind: spec.KindFloat, Default: 1.0},
-					{Key: "relay_enrichment", Kind: spec.KindBool, Default: true, Description: "Deprecated; use relay.enrichment"},
+					{Key: "relay_enrichment", Kind: spec.KindBool, Default: true, Advanced: true, Description: "Deprecated; use relay.enrichment"},
 				}, transport()...)},
 				{Key: "entities", Kind: spec.KindBlock, Description: "Entity events for a topology backend such as Toise", Fields: []spec.ParamSpec{
 					{Key: "enabled", Kind: spec.KindBool, Default: false},
 					{Key: "interval", Kind: spec.KindDuration, Default: "60s"},
 					{Key: "buffer_size", Kind: spec.KindInt, Default: 256},
-					{Key: "depends_on_enabled", Kind: spec.KindBool, Default: true, Description: "Emit depends_on relationships from observed connections"},
-					{Key: "depends_on_debounce", Kind: spec.KindInt, Default: 3, Description: "Sweeps a connection must survive before it becomes a relationship"},
-					{Key: "depends_on_exclude_cidrs", Kind: spec.KindStringList, Description: "Peers in these ranges never become relationships"},
-					{Key: "redact_attributes", Kind: spec.KindStringList, Description: "Entity attributes replaced by [REDACTED] before export"},
+					{Key: "depends_on_enabled", Kind: spec.KindBool, Default: true, Advanced: true, Description: "Emit depends_on relationships from observed connections"},
+					{Key: "depends_on_debounce", Kind: spec.KindInt, Default: 3, Advanced: true, Description: "Sweeps a connection must survive before it becomes a relationship"},
+					{Key: "depends_on_exclude_cidrs", Kind: spec.KindStringList, Advanced: true, Description: "Peers in these ranges never become relationships"},
+					{Key: "redact_attributes", Kind: spec.KindStringList, Advanced: true, Description: "Entity attributes replaced by [REDACTED] before export"},
 				}},
 			}},
 			{Key: "relay", Kind: spec.KindBlock, Group: "signals", Description: "Telemetry forwarded on behalf of applications (otlp_receiver)", Fields: []spec.ParamSpec{

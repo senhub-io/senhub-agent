@@ -55,3 +55,17 @@ func TestDropRedactedValues(t *testing.T) {
 		t.Errorf("only placeholders go, got %v", h)
 	}
 }
+
+func TestWithoutNils(t *testing.T) {
+	in := map[string]interface{}{"endpoint": "c", "headers": map[string]interface{}{"Authorization": nil}, "tls": map[string]interface{}{"enabled": false, "ca_file": nil}}
+	out := withoutNils(in)
+	if _, has := out["headers"]; has {
+		t.Error("an emptied mapping is dropped from the checked copy")
+	}
+	if tls := out["tls"].(map[string]interface{}); tls["enabled"] != false || len(tls) != 1 {
+		t.Errorf("only the nil leaf goes: %v", tls)
+	}
+	if in["headers"].(map[string]interface{})["Authorization"] != nil || len(in["headers"].(map[string]interface{})) != 1 {
+		t.Error("the original keeps its nulls for the write")
+	}
+}

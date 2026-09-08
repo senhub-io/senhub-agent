@@ -140,7 +140,7 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey strin
 		writeJSONError(w, http.StatusForbidden, fmt.Sprintf("probe type %q: %s", req.Type, verdict.Reason))
 		return ps, nil, false
 	}
-	if problems := ps.CheckParams(req.Params); len(problems) > 0 {
+	if problems := ps.CheckParams(withoutNils(req.Params)); len(problems) > 0 {
 		msgs := make([]string, 0, len(problems))
 		for _, p := range problems {
 			msgs = append(msgs, p.String())
@@ -154,7 +154,7 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey strin
 	}
 	var warnings []string
 	if ProbeChecker != nil {
-		issues, err := ProbeChecker(req.Type, req.Params)
+		issues, err := ProbeChecker(req.Type, withoutNils(req.Params))
 		if err != nil {
 			writeJSONError(w, http.StatusBadRequest, "the probe refuses this configuration: "+err.Error())
 			return ps, nil, false

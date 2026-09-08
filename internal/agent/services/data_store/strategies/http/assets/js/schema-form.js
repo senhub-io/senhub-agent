@@ -65,10 +65,15 @@
             this.params = opts.params || [];
             this.groupLabels = Object.assign({}, GROUP_LABELS, opts.groupLabels || {});
             this.hide = opts.hide || [];
+            // secretName is the instance the server seals secrets under
+            // (${secret:<secretName>.<path>}); the preview shows that
+            // reference in place of a value the operator just typed.
+            this.secretName = opts.secretName || '';
             this.onChange = typeof opts.onChange === 'function' ? opts.onChange : function () {};
             this.uid = 'sf' + (++uidCounter);
             this._open = new Set();
             this._rows = {};
+            this._removed = {};
             this._errors = [];
             this.setValues(opts.values || {}, true);
         }
@@ -92,6 +97,7 @@
         setValues(obj, silent) {
             this._values = this._normalise(clone(obj) || {}, this.params);
             this._rows = {};
+            this._removed = {};
             if (!silent) this.render();
         }
         // values() is the nested object of what the operator set. It skips
@@ -111,6 +117,48 @@
                 const v = this._clean(this._values[k]);
                 if (v !== undefined) out[k] = v;
             }
+            // A stored entry the operator removed is sent as null: the
+            // server keeps what the form leaves out, so absence would
+            // keep it, and null is the word for "drop it".
+            for (const path of Object.keys(this._removed)) {
+                const parts = path.split('.');
+                let o = out;
+                for (let i = 0; i < parts.length - 1; i++) { if (!isObj(o[parts[i]])) o[parts[i]] = {}; o = o[parts[i]]; }
+                if (o[parts[parts.length - 1]] === undefined) o[parts[parts.length - 1]] = null;
+            }
+            return out;
+        }
+        // removed lists the dotted paths of stored entries taken out.
+        removed() { return Object.keys(this._removed); }
+        // preview is values() plus the stored references the server will
+        // keep, and without the nulls that ask it to drop one: what the
+        // file will hold, for the operator to read.
+        preview() {
+            const out = this.values();
+            const overlay = (src, dst, prefix) => {
+                for (const k of Object.keys(src || {})) {
+                    const v = src[k], path = prefix + k;
+                    if (isObj(v)) { if (dst[k] === undefined) dst[k] = {}; if (isObj(dst[k])) { overlay(v, dst[k], path + '.'); if (!Object.keys(dst[k]).length) delete dst[k]; } }
+                    else if (typeof v === 'string' && v.startsWith('${') && dst[k] === undefined && !this._removed[path]) dst[k] = v;
+                }
+            };
+            overlay(this._values, out, '');
+            const strip = (o) => { for (const k of Object.keys(o)) { if (o[k] === null) delete o[k]; else if (isObj(o[k])) { strip(o[k]); if (!Object.keys(o[k]).length) delete o[k]; } } };
+            strip(out);
+            // A typed secret never appears on screen: the file will hold a
+            // reference, and so does the preview.
+            const ref = (path) => '${secret:' + (this.secretName ? this.secretName + '.' : '') + path + '}';
+            const seal = (params, obj, prefix) => {
+                for (const p of params || []) {
+                    const v = obj[p.key];
+                    if (v === undefined) continue;
+                    const path = prefix + p.key;
+                    if (p.secret && typeof v === 'string' && !v.startsWith('${')) obj[p.key] = ref(path);
+                    else if (p.secret && p.kind === 'map' && isObj(v)) { for (const k of Object.keys(v)) if (typeof v[k] === 'string' && !v[k].startsWith('${')) v[k] = ref(path + '.' + k); }
+                    else if (p.kind === 'block' && isObj(v)) seal(p.fields, v, path + '.');
+                }
+            };
+            seal(this.params, out, '');
             return out;
         }
         _clean(v) {
@@ -452,9 +500,22 @@
             h.innerHTML = '<span class="t">' + esc(p.key) + (p.required ? ' <span class="req">Required</span>' : '') + '</span><span class="hint">' + esc(p.description || '') + '</span>';
             b.appendChild(h);
             const g = el('div', 'fgrid');
-            for (const f of p.fields || []) {
-                const node = this._paramNode(f, path + '.' + f.key, false);
-                g.appendChild(node);
+            const plain = (p.fields || []).filter(f => !f.advanced);
+            const more = (p.fields || []).filter(f => f.advanced);
+            for (const f of plain) g.appendChild(this._paramNode(f, path + '.' + f.key, false));
+            if (more.length) {
+                // Overrides few configurations set stay folded; a value set
+                // in one of them opens the fold so nothing set is hidden.
+                const d = el('details', 'more');
+                const setCount = more.filter(f => !isEmpty(this.get(path + '.' + f.key))).length;
+                if (setCount) d.open = true;
+                const sm = el('summary');
+                sm.textContent = (setCount ? setCount + ' of ' : '') + more.length + ' more setting' + (more.length > 1 ? 's' : '') + (setCount ? ' set' : '');
+                d.appendChild(sm);
+                const mg = el('div', 'fgrid');
+                for (const f of more) mg.appendChild(this._paramNode(f, path + '.' + f.key, false));
+                d.appendChild(mg);
+                g.appendChild(d);
             }
             b.appendChild(g);
             const ferr = el('span', 'ferr'); ferr.hidden = true; b.appendChild(ferr);
@@ -562,11 +623,22 @@
                 const tr = el('tr');
                 const k = el('input', 'in'); k.placeholder = 'key'; k.value = r[0];
                 k.oninput = (e) => { rows[i][0] = e.target.value; sync(); self._changed(false, path); };
-                const v = el('input', 'in'); v.placeholder = 'value'; v.value = isStored(r[1]) ? '' : String(r[1] == null ? '' : r[1]);
-                if (isStored(r[1])) v.placeholder = 'Stored';
-                v.oninput = (e) => { rows[i][1] = e.target.value; sync(); self._changed(false, path); };
+                const storedRow = isStored(r[1]);
+                let v;
+                if (storedRow) {
+                    // A stored value is a state, as for a scalar secret:
+                    // Replace empties the row for a new value.
+                    v = el('div', 'secret-state');
+                    const ref = String(r[1]).startsWith('${') ? String(r[1]) : '';
+                    v.innerHTML = '<span aria-hidden="true">&#9679;</span><span>Stored</span><code title="' + esc(ref || 'kept by the agent') + '">' + esc(ref || 'value kept by the agent') + '</code><button type="button" class="btn sm">Replace</button>';
+                    v.querySelector('button').onclick = () => { rows[i][1] = ''; if (r[0].trim()) self._removed[path + '.' + r[0].trim()] = true; sync(); self._changed(true, path); };
+                } else {
+                    v = el('input', 'in'); v.placeholder = 'value'; v.value = String(r[1] == null ? '' : r[1]);
+                    if (p.secret) { v.type = 'password'; v.autocomplete = 'new-password'; v.placeholder = 'value, kept in the secret store'; }
+                    v.oninput = (e) => { rows[i][1] = e.target.value; if (r[0].trim() && e.target.value !== '') delete self._removed[path + '.' + r[0].trim()]; sync(); self._changed(false, path); };
+                }
                 const x = el('button', 'btn sm ghost', '&times;'); x.type = 'button'; x.title = 'Remove';
-                x.onclick = () => { rows.splice(i, 1); sync(); self._changed(true, path); };
+                x.onclick = () => { if (storedRow && r[0].trim()) self._removed[path + '.' + r[0].trim()] = true; rows.splice(i, 1); sync(); self._changed(true, path); };
                 const td1 = el('td'), td2 = el('td'), td3 = el('td'); td3.style.width = '32px';
                 td1.appendChild(k); td2.appendChild(v); td3.appendChild(x);
                 tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);

@@ -8,12 +8,6 @@
     <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
     <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
     <style>
-        /* Controls the form engine emits (blocks, key/value tables) */
-        .blk { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--well); padding: 10px 12px; }
-        .blk .bh { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-        .blk .bh .t { font-weight: 600; font-size: var(--fs-sm); font-family: var(--mono); }
-        .blk .fgrid { gap: 10px 14px; }
-        .blk .blk { background: var(--surface); }
         .field .lbl { font-family: var(--mono); }
         .field .lbl .opt, .field .lbl .req { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         table.rows { width: 100%; border-collapse: collapse; }
@@ -144,32 +138,21 @@
 
         // The engine renders a secret map as plain key/value inputs; mask
         // the value column of every secret map so tokens are not echoed.
-        function maskSecretMaps() {
-            for (const p of entry.params) {
-                if (p.kind !== 'map' || !p.secret) continue;
-                document.querySelectorAll('[data-path="' + p.key + '"] table.rows tbody tr').forEach(tr => {
-                    const inputs = tr.querySelectorAll('input.in');
-                    if (inputs.length >= 2) { inputs[1].type = 'password'; inputs[1].autocomplete = 'new-password'; }
-                });
-            }
-        }
-
         function openSignals() {
             const d = $('sections').querySelector('details[data-group="signals"]');
             if (d && !d.dataset.touched) { d.open = true; d.dataset.touched = '1'; }
         }
 
         function refresh() {
-            const values = form.values();
             const missing = form.missing();
-            $('yaml').innerHTML = O.yamlHTML(toYAML(values));
-            $('yaml-ta').value = toYAML(values);
+            const shown = form.preview ? form.preview() : form.values();
+            $('yaml').innerHTML = O.yamlHTML(toYAML(shown));
+            $('yaml-ta').value = toYAML(shown);
             const st = $('state');
             if (missing.length) st.innerHTML = '<span class="dot err"></span>' + esc(missing.map(m => m.label).join(', ')) + ' still needed';
             else st.innerHTML = '<span class="dot ok"></span>Ready to save';
             $('btn-save').disabled = missing.length > 0;
             $('btn-test').disabled = missing.length > 0;
-            maskSecretMaps();
         }
 
         function describe() {
@@ -202,6 +185,7 @@
                 params: entry.params || [],
                 values: existing ? (existing.params || {}) : {},
                 hide: ['governance'],
+                secretName: 'strategies.' + type,
                 onChange: () => { refresh(); }
             });
             form.render();
