@@ -122,4 +122,6 @@ func init() {
 		_, err := event.ValidateParams(params)
 		return err
 	})
+
+	http.OutputValidator = data_store.ValidateStrategyParams
 }

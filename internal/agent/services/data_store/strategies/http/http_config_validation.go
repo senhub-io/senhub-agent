@@ -108,6 +108,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	if !schemaResult.Passed {
 		response.Valid = false
 		response.Errors = append(response.Errors, schemaResult.Error)
+		response.Field = guessField(req.Probe, schemaResult.Error)
 		response.Duration = time.Since(startTime).Milliseconds()
 
 		cm.logger.Error().
@@ -126,6 +127,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		if !connectivityResult.Passed {
 			response.Valid = false
 			response.Errors = append(response.Errors, connectivityResult.Error)
+			response.Field = guessField(req.Probe, connectivityResult.Error)
 			response.Duration = time.Since(startTime).Milliseconds()
 
 			cm.logger.Warn().
@@ -147,11 +149,12 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		if !metricsResult.Passed {
 			response.Valid = false
 			response.Errors = append(response.Errors, metricsResult.Error)
+			response.Field = guessField(req.Probe, metricsResult.Error)
 		}
 	}
 
 	// Final result
-	response.Valid = true
+	response.Valid = len(response.Errors) == 0
 	response.Duration = time.Since(startTime).Milliseconds()
 
 	cm.logger.Info().

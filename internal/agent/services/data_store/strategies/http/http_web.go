@@ -61,29 +61,15 @@ func (w *WebInterface) HandleWebDashboard(req *http.Request, writer http.Respons
 	}
 }
 
-// HandleWebExplorer serves the API explorer interface
+// HandleWebExplorer redirects the old Sensor Builder address to the
+// Sensor URLs tab of the http output, where the builder now lives.
 func (w *WebInterface) HandleWebExplorer(req *http.Request, writer http.ResponseWriter) {
 	agentKey, authenticated := w.strategy.authManager.AuthenticateAndExtract(writer, req)
 	if !authenticated {
 		return
 	}
-
-	// Create asset handler
-	assetHandler := NewAssetHandler(agentKey)
-
-	// Render API Explorer template
-	html, err := assetHandler.RenderTemplate("api-explorer")
-	if err != nil {
-		w.logger.Error().Err(err).Msg("Failed to render API Explorer template")
-		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.setNoCacheHeaders(writer)
-	if _, err := writer.Write([]byte(html)); err != nil {
-		w.logger.Error().Err(err).Msg("Failed to write HTML content")
-	}
+	http.Redirect(writer, req, "/web/"+agentKey+"/outputs/http#urls", http.StatusFound)
 }
 
 // HandleWebDocs serves the documentation interface
