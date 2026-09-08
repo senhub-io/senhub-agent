@@ -12,6 +12,7 @@ type (
 	ParamSpec   = spec.ParamSpec
 	ProbeSpec   = spec.Probe
 	SpecProblem = spec.SpecProblem
+	Condition   = spec.Condition
 	ProblemKind = spec.ProblemKind
 )
 

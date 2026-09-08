@@ -9,7 +9,7 @@ func init() {
 		DocsPath: "docs/user-guide/docs/probes/postgresql.md", MultiInstance: true, DefaultInterval: 60,
 		Params: []probes.ParamSpec{
 			{Key: "host", Kind: probes.KindString, Required: true, Group: "connection", Description: "Server hostname or address"},
-			{Key: "port", Kind: probes.KindInt, Default: 5432, Group: "connection", Description: "Server port"},
+			{Key: "port", Kind: probes.KindInt, Default: 5432, Essential: true, Group: "connection", Description: "Server port"},
 			{Key: "username", Kind: probes.KindString, Required: true, Group: "auth", Description: "Monitoring role"},
 			{Key: "password", Kind: probes.KindString, Required: true, Secret: true, Group: "auth", Description: "Role's password"},
 			{Key: "database", Kind: probes.KindString, Default: "postgres", AlsoAccepts: []string{"databases"}, Group: "connection", Description: "Database the connection opens on"},

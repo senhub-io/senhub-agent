@@ -12,6 +12,7 @@ import ispec "senhub-agent.go/internal/agent/probes/spec"
 type (
 	ParamKind = ispec.ParamKind
 	ParamSpec = ispec.ParamSpec
+	Condition = ispec.Condition
 	Probe     = ispec.Probe
 )
 
@@ -33,3 +34,6 @@ func Register(p Probe) { ispec.Register(p) }
 
 // For returns the declaration of a probe type, if it has one.
 func For(probeType string) (Probe, bool) { return ispec.For(probeType) }
+
+// Registered returns every declared schema, sorted by type.
+func Registered() []Probe { return ispec.Registered() }

@@ -10,9 +10,9 @@ func init() {
 		Params: []probes.ParamSpec{
 			{Key: "target", Kind: probes.KindString, Required: true, Group: "connection", Description: "Device address or hostname"},
 			{Key: "port", Kind: probes.KindInt, Default: 161, Group: "connection", Description: "SNMP UDP port"},
-			{Key: "version", Kind: probes.KindString, Default: "v2c", Enum: []string{"v2c", "v3", "2c", "3", "2"}, Group: "connection", Description: "SNMP version; v1 is refused"},
-			{Key: "community", Kind: probes.KindString, Default: "public", Secret: true, Group: "auth", Description: "Community string (v2c)"},
-			{Key: "v3", Kind: probes.KindBlock, Group: "auth", Description: "USM credentials, required with version v3", Fields: []probes.ParamSpec{
+			{Key: "version", Kind: probes.KindString, Default: "v2c", Enum: []string{"v2c", "v3", "2c", "3", "2"}, Essential: true, Group: "connection", Description: "SNMP version; v1 is refused"},
+			{Key: "community", Kind: probes.KindString, Default: "public", Secret: true, EssentialWhen: []probes.Condition{{Key: "version", Values: []string{"v2c", "2c", "2"}}}, Group: "auth", Description: "Community string (v2c)"},
+			{Key: "v3", Kind: probes.KindBlock, EssentialWhen: []probes.Condition{{Key: "version", Values: []string{"v3", "3"}}}, Group: "auth", Description: "USM credentials, required with version v3", Fields: []probes.ParamSpec{
 				{Key: "username", Kind: probes.KindString, Required: true, Description: "USM user"},
 				{Key: "auth_protocol", Kind: probes.KindString, Enum: []string{"MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512"}, Description: "Authentication protocol; empty for none"},
 				{Key: "auth_passphrase", Kind: probes.KindString, Secret: true, Description: "Required with auth_protocol"},
@@ -23,7 +23,7 @@ func init() {
 			{Key: "timeout", Kind: probes.KindDuration, Default: "5s", Group: "collection", Description: "Per-request timeout"},
 			{Key: "interval", Kind: probes.KindDuration, Default: "60s", Group: "collection", Description: "Metric polling cadence"},
 			{Key: "topology_interval", Kind: probes.KindDuration, Default: "10m", Group: "collection", Description: "Entity and topology sweep cadence"},
-			{Key: "mibs", Kind: probes.KindStringList, Enum: []string{"mib-2", "if-mib"}, Group: "metrics", Description: "Built-in MIB modules to poll; this or custom_mappings is required"},
+			{Key: "mibs", Kind: probes.KindStringList, Enum: []string{"mib-2", "if-mib"}, Essential: true, Group: "metrics", Description: "Built-in MIB modules to poll; this or custom_mappings is required"},
 			{Key: "mib_paths", Kind: probes.KindStringList, Group: "metrics", Description: "Local MIB files or folders used to name custom mappings"},
 			{Key: "custom_mappings", Kind: probes.KindBlockList, Group: "metrics", Description: "OID to metric mappings", Fields: []probes.ParamSpec{
 				{Key: "oid", Kind: probes.KindString, Required: true, Description: "OID, leading dot optional"},

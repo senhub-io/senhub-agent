@@ -8,9 +8,9 @@ func init() {
 		Summary:  "Health, memory, clients and keyspace of a Redis or Valkey server; one instance per server.",
 		DocsPath: "docs/user-guide/docs/probes/redis.md", MultiInstance: true, DefaultInterval: 60,
 		Params: []probes.ParamSpec{
-			{Key: "host", Kind: probes.KindString, Default: "127.0.0.1", Group: "connection", Description: "Server hostname or address"},
-			{Key: "port", Kind: probes.KindInt, Default: 6379, Group: "connection", Description: "Server port"},
-			{Key: "password", Kind: probes.KindString, Secret: true, Group: "auth", Description: "AUTH password, when required"},
+			{Key: "host", Kind: probes.KindString, Default: "127.0.0.1", Essential: true, Group: "connection", Description: "Server hostname or address"},
+			{Key: "port", Kind: probes.KindInt, Default: 6379, Essential: true, Group: "connection", Description: "Server port"},
+			{Key: "password", Kind: probes.KindString, Secret: true, Essential: true, Group: "auth", Description: "AUTH password, when required"},
 			{Key: "tls", Kind: probes.KindBool, Default: false, Group: "tls", Description: "Use TLS for the connection"},
 			{Key: "tls_cert_file", Kind: probes.KindString, Group: "tls", Description: "Client certificate (PEM) for mutual TLS; needs tls_key_file and tls: true"},
 			{Key: "tls_key_file", Kind: probes.KindString, Group: "tls", Description: "Private key (PEM) matching tls_cert_file"},
