@@ -235,9 +235,9 @@ netscaler.lbvserver.state:
 
 The agent provides **automatic lookup file generation** accessible via the Web UI:
 
-1. **Open Dashboard**: Navigate to `http://localhost:8080/web/{agentkey}/dashboard`
-2. **Go to API Explorer**: Click on "API Explorer" in navigation
-3. **Download Lookups**: Click the **"Download PRTG Lookups"** button
+1. **Open the console**: Navigate to `http://localhost:8080/web/{agentkey}/`
+2. **Go to the Sensor URLs tab**: Outputs, then the HTTP output, tab "Sensor URLs"
+3. **Download Lookups**: Click **"Download PRTG lookups"**
 4. **Extract Files**: Unzip the downloaded archive to get `.ovl` files
 
 **File Naming Convention**: `{lookup_id}.ovl` — the filename must match the `id` attribute in the XML.

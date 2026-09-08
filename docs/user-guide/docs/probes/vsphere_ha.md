@@ -15,7 +15,7 @@ The vSphere HA probe monitors VMware vSphere high-availability infrastructure fr
 - NSX transport-node counts (total and up), logical-switch count
 - Per-edge-cluster NSX health
 
-All metrics are emitted under the `senhub.vsphere_ha.*` namespace. vSAN metrics carry a `cluster` attribute (one series per cluster); NSX edge-cluster health carries an `edge_cluster_id` attribute (one series per edge cluster). Both act as filters in the Web UI Sensor Builder. NSX-T monitoring is only performed when `nsx_endpoint` and `nsx_username` are configured; a vCenter-only setup collects vSAN metrics alone.
+All metrics are emitted under the `senhub.vsphere_ha.*` namespace. vSAN metrics carry a `cluster` attribute (one series per cluster); NSX edge-cluster health carries an `edge_cluster_id` attribute (one series per edge cluster). Both act as filters in the Sensor URLs tab of the console. NSX-T monitoring is only performed when `nsx_endpoint` and `nsx_username` are configured; a vCenter-only setup collects vSAN metrics alone.
 
 # Quick Start
 
@@ -99,9 +99,9 @@ vSAN metrics carry a `cluster` attribute identifying the vSAN cluster; the objec
 | `senhub.vsphere_ha.nsx.logical_switches` | `{switch}` | Number of logical switches (segments) |
 | `senhub.vsphere_ha.nsx.edge_cluster.health` | `1` | Per-edge-cluster health (1 = all members UP, else 0), attribute `nsx.edge_cluster.id` |
 
-## Filtering (Web UI Sensor Builder)
+## Filtering (Sensor URLs tab of the console)
 
-The PRTG/Web UI Sensor Builder exposes filters for this probe:
+The Sensor URLs tab of the console exposes filters for this probe:
 
 - **Metric Type** (category) — overview, vSAN, NSX-T
 - **vSAN Cluster** — pick a specific cluster

@@ -86,9 +86,9 @@ distinct in OTLP/Prometheus.
 | `senhub.hyperv_ha.cluster.node.state` | `1` | `cluster.node` | Cluster node state (1 = Up, 0 = Down/Paused/Joining) |
 | `senhub.hyperv_ha.cluster.group.state` | `1` | `cluster.group` | Cluster resource-group state (1 = Online, 0 = Offline/Failed/Partial) |
 
-## Filtering (Web UI Sensor Builder)
+## Filtering (Sensor URLs tab of the console)
 
-The PRTG/Web UI Sensor Builder exposes filters for this probe:
+The Sensor URLs tab of the console exposes filters for this probe:
 
 - **Replicated VM** — pick a specific replicated virtual machine
 - **Cluster Node** — pick a specific Failover Cluster node

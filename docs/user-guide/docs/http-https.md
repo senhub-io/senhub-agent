@@ -179,10 +179,13 @@ All API endpoints require the authentication key in the URL path, except `/healt
 
 | Endpoint | Description |
 |----------|-------------|
-| `/web/{key}/` | Main dashboard |
-| `/web/{key}/dashboard` | Dashboard (same as above) |
-| `/web/{key}/explorer` | Sensor Builder (interactive API testing) |
-| `/web/{key}/docs` | Embedded documentation |
+| `/web/{key}/` | Overview |
+| `/web/{key}/overview` | Overview (same as above; `/dashboard` still works) |
+| `/web/{key}/probes` | Probes list and editor |
+| `/web/{key}/outputs` | Outputs list; `/outputs/{name}` edits one, `/outputs/http` holds the Sensor URLs tab |
+| `/web/{key}/settings` | Port, bind address, licence |
+| `/web/{key}/docs` | Embedded API reference |
+| `/web/{key}/explorer` | Former Sensor Builder; redirects to `/outputs/http#urls` |
 
 ### PRTG Lookups
 

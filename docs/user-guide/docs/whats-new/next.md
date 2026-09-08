@@ -6,6 +6,31 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **The web console puts what you need to start in front, and shows where
+  the data goes.** The menu now follows the operator's path: Overview,
+  Probes, Outputs, Settings, Docs. The probe editor opens on a block
+  "Required to start" (name, enabled, and the parameters the probe does
+  nothing useful without: host, user and password for a database, target,
+  version and community for SNMP), with a sticky action bar and every
+  optional group folded behind a summary of what is set. Errors are
+  anchored on their field, a stored secret is shown as a state with a
+  Replace button, the type is chosen in a filterable grid, and a fresh
+  install offers four starters instead of an empty table. The new Outputs
+  page lists every output with its state (listening, exporting, idle,
+  failing with the reason, disabled) and who last read each endpoint;
+  push outputs are created and edited from a form generated from their
+  schema, and an OTLP output is tested step by step (name resolution,
+  TCP, TLS, one real export) before it is saved. The Sensor Builder
+  became the Sensor URLs tab of the HTTP output; the old address
+  redirects there. The Overview replaces the dashboard with a
+  getting-started list, compact probe and output summaries, one agent
+  card, a licence card without the list of sixty names, and the recent
+  events of the agent (a probe that started failing, an output that could
+  not start, a save from the console). The Docs entry opens the
+  documentation on agent.senhub.io. Scripts get the same through
+  `/api/{key}/catalog/outputs`, `/api/{key}/config/outputs` and
+  `/api/{key}/info/events`.
+
 - **Push OTLP straight to a backend that serves it under a base path.**
   `endpoint` is a `host:port` pair and cannot carry a path, which ruled
   out backends exposing OTLP under a prefix. The new

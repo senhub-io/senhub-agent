@@ -91,7 +91,7 @@ nav:
   - Configuration: configuration.md
   - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md
-  - Web interface: web-interface.md
+  - Web console: web-interface.md
   - Prometheus / VictoriaMetrics:
       - Overview: prometheus/index.md
       - Metrics reference: prometheus/metrics-reference.md

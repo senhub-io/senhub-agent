@@ -24,7 +24,7 @@ One probe instance monitors one Oracle service (SID / PDB); add more instances f
 - RAC (optional): open instance count and per-instance SQL*Net traffic and global-cache blocks received
 - Data Guard: redo apply lag and transport lag on the standby
 
-All metrics are emitted under the `senhub.oracle_enterprise.*` namespace. Wait-class and per-RAC-instance series carry attributes (`wait_class`, `rac.instance`) that keep instances distinct in OTLP/Prometheus and act as filters in the Web UI Sensor Builder.
+All metrics are emitted under the `senhub.oracle_enterprise.*` namespace. Wait-class and per-RAC-instance series carry attributes (`wait_class`, `rac.instance`) that keep instances distinct in OTLP/Prometheus and act as filters in the Sensor URLs tab of the console.
 
 # Quick Start
 

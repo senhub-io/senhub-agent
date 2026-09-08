@@ -173,19 +173,9 @@ define service {
 ```
 
 
-### Web Interface
+### Web console
 
-View gateway metrics in the built-in dashboard:
-
-```
-http://localhost:8080/web/{agentkey}/dashboard
-```
-
-Features:
-- Real-time latency visualization
-- Packet loss monitoring
-- Historical trend graphs
-- Network connectivity status
+The Probes page of the console shows the probe's state and the time of its last run; the Sensor URLs tab of the HTTP output previews the latency and packet loss values as a poller sees them. Graphs and history belong to the poller or the OTLP backend.
 
 ## Use Cases
 

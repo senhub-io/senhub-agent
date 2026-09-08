@@ -655,9 +655,9 @@ you can read without scraping Prometheus, via three surfaces:
 - **CLI** — `senhub-agent status --otlp` appends a four-section block
   (Pipeline / Store & Export / Checkpoint / Parallel) to the standard
   status view. See the [CLI reference](cli.md#status).
-- **Web dashboard** — when the HTTP strategy is enabled the dashboard
-  renders an **OTLP Pipeline** card with the same four sections,
-  refreshed every 30 seconds. See [Web Interface](web-interface.md#otlp-pipeline-card).
+- **Web console** — the OTLP output page shows the same counters in
+  its right column, next to the connection test. See
+  [Web console](web-interface.md#otlp-output).
 - **JSON endpoint** — `GET /api/{agentkey}/info/otlp` returns the same
   data as a single JSON snapshot. Useful for custom dashboards or
   external alerting. The field reference lives in

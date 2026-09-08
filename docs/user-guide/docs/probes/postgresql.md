@@ -184,7 +184,7 @@ Emitted only when role is primary or replica.
 
 ## Output formats
 
-- **PRTG / Sensor Builder** — pick chips per family.
+- **PRTG / Sensor URLs tab** — pick chips per family.
 - **Nagios** — filter by family: `?tags=metric_type:replication`.
 - **Prometheus** — `/api/{key}/prometheus/metrics`; metric names
   start with `senhub_db_*` and `postgresql_*`.

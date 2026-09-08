@@ -192,7 +192,7 @@ role via `SHOW REPLICA STATUS` — no per-host configuration needed.
 The probe emits the catalog above; each sink picks the metrics it
 wants via the `metric_type` tag.
 
-- **PRTG / Sensor Builder** — pick chips per family. A typical setup
+- **PRTG / Sensor URLs tab** — pick chips per family. A typical setup
   uses one "MySQL Overview" sensor (6 channels) and a "MySQL
   Replication" sensor (4 channels) per instance.
 - **Nagios** — `/api/{key}/nagios/metrics/{probe-name}?tags=metric_type:overview`
