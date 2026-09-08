@@ -8,10 +8,10 @@ func init() {
 		Summary:  "Connections, queries, InnoDB, replication and storage of a MySQL or MariaDB server; one instance per server.",
 		DocsPath: "docs/user-guide/docs/probes/mysql.md", MultiInstance: true, DefaultInterval: 60,
 		Params: []probes.ParamSpec{
-			{Key: "host", Kind: probes.KindString, Default: "127.0.0.1", Group: "connection", Description: "Server hostname or address"},
-			{Key: "port", Kind: probes.KindInt, Default: 3306, Group: "connection", Description: "Server port"},
-			{Key: "username", Kind: probes.KindString, Group: "auth", Description: "Monitoring user"},
-			{Key: "password", Kind: probes.KindString, Secret: true, Group: "auth", Description: "Monitoring user's password"},
+			{Key: "host", Kind: probes.KindString, Default: "127.0.0.1", Essential: true, Group: "connection", Description: "Server hostname or address"},
+			{Key: "port", Kind: probes.KindInt, Default: 3306, Essential: true, Group: "connection", Description: "Server port"},
+			{Key: "username", Kind: probes.KindString, Essential: true, Group: "auth", Description: "Monitoring user"},
+			{Key: "password", Kind: probes.KindString, Secret: true, Essential: true, Group: "auth", Description: "Monitoring user's password"},
 			{Key: "database", Kind: probes.KindString, Group: "connection", Description: "Database the connection opens on; optional"},
 			{Key: "tls", Kind: probes.KindBlock, Group: "tls", Description: "TLS settings, or simply true", Fields: []probes.ParamSpec{
 				{Key: "enabled", Kind: probes.KindBool, Default: false, Description: "Use TLS"},
