@@ -268,9 +268,11 @@ func (s *SyncStrategyPrtg) DoSync() error {
 	}
 	if err := s.doSyncData(data); err != nil {
 		agentstate.IncrementExportSendFailed("prtg", exporterrors.Reason(err))
+		agentstate.RecordExportFailure("prtg", err.Error())
 		s.logger.Error().Err(err).Msg("error synchronizing data")
 		return err
 	}
+	agentstate.RecordExportSuccess("prtg")
 
 	return nil
 }

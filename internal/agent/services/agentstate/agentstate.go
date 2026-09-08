@@ -126,14 +126,27 @@ func SetActiveProbes(probeIDs []string) {
 //
 // Replaces the prior IsHealthy()-at-scrape design which re-executed
 // Collect() inline at scrape time (wasted work + races).
-func RecordProbeHealth(probeID string, ok bool) {
+//
+// The returned transition is "failed" when the probe was not failing
+// before this call, "recovered" when it was and is now fine, and empty
+// when nothing changed. A probe's first successful cycle is not a
+// transition; its first failed one is.
+func RecordProbeHealth(probeID string, ok bool) (transition string) {
 	probeStateMu.Lock()
 	defer probeStateMu.Unlock()
+	before := probeHealth[probeID]
 	if ok {
 		probeHealth[probeID] = probeHealthOK
-	} else {
-		probeHealth[probeID] = probeHealthFailed
+		if before == probeHealthFailed {
+			return "recovered"
+		}
+		return ""
 	}
+	probeHealth[probeID] = probeHealthFailed
+	if before != probeHealthFailed {
+		return "failed"
+	}
+	return ""
 }
 
 // ProbeRunState is what the configurator shows for one configured probe:
