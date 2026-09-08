@@ -52,6 +52,11 @@ type ParamSpec struct {
 	// SNMP community). The console asks for it before anything optional;
 	// Required stays the parser's word and is checked, Essential is not.
 	Essential bool `json:"essential,omitempty"`
+	// Advanced marks a field of a block that a form folds away until the
+	// operator asks for it: an override few configurations set (the
+	// per-signal transport of an OTLP output). It changes nothing for
+	// the parser or the checks.
+	Advanced bool `json:"advanced,omitempty"`
 	// EssentialWhen makes the parameter essential only while every
 	// listed condition holds against the current values (the v3 block
 	// of snmp_poll when version is v3). A condition reads the sibling

@@ -326,7 +326,7 @@ func (h *HTTPSyncStrategy) handleOutputValidate(w http.ResponseWriter, r *http.R
 	if req.Params == nil {
 		req.Params = map[string]interface{}{}
 	}
-	if err := checkOutputParams(req.Type, req.Params); err != nil {
+	if err := checkOutputParams(req.Type, withoutNils(req.Params)); err != nil {
 		writeJSON(w, http.StatusOK, outputValidateResponse{Valid: false, Errors: []string{err.Error()}, Field: guessOutputField(req.Type, err.Error())})
 		return
 	}
@@ -363,6 +363,7 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 			req.Params = configuration.KeepStoredReferences(existing, req.Params)
 		}
 	}
+	configuration.DropNilValues(req.Params)
 	start := time.Now()
 	timeout := time.Duration(clampConnectivityTimeout(req.Timeout)) * time.Second
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -465,7 +466,7 @@ func (h *HTTPSyncStrategy) checkOutputWrite(w http.ResponseWriter, req outputWri
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("output type %q is not in the catalogue of this agent", req.Type))
 		return spec, false
 	}
-	if err := checkOutputParams(req.Type, req.Params); err != nil {
+	if err := checkOutputParams(req.Type, withoutNils(req.Params)); err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return spec, false
 	}

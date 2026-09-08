@@ -89,3 +89,22 @@ func dropRedactedValues(params map[string]interface{}) {
 		}
 	}
 }
+
+// withoutNils returns a deep copy of params with every nil leaf and every
+// mapping emptied by it removed: what a shape check should see when a
+// form sends null to remove a stored entry.
+func withoutNils(params map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		switch val := v.(type) {
+		case nil:
+		case map[string]interface{}:
+			if sub := withoutNils(val); len(sub) > 0 {
+				out[k] = sub
+			}
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}

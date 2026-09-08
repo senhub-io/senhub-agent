@@ -121,6 +121,7 @@ func CreateStrategyFragment(configPath, name string, params StorageConfigParams,
 	if _, err := os.Stat(path); err == nil {
 		return "", fmt.Errorf("%s already exists", path)
 	}
+	DropNilValues(params)
 	if err := sealParams("strategies."+name, params, secretPaths); err != nil {
 		return "", err
 	}
@@ -148,6 +149,7 @@ func UpdateStrategyFragment(configPath, name string, params StorageConfigParams,
 		return "", err
 	}
 	params = KeepStoredReferences(existing, params)
+	DropNilValues(params)
 	if err := sealParams("strategies."+name, params, secretPaths); err != nil {
 		return "", err
 	}
