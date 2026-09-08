@@ -24,6 +24,9 @@ type probeWriteRequest struct {
 	// Governance is the instance's optional governance block; an empty
 	// object means none, so a form with nothing filled in writes nothing.
 	Governance map[string]interface{} `json:"governance,omitempty"`
+	// CustomTags are stamped on every datapoint of the instance, for
+	// filtering in a poller; labels in Governance describe ownership.
+	CustomTags map[string]string `json:"custom_tags,omitempty"`
 }
 
 type probeWriteResponse struct {
@@ -166,6 +169,9 @@ func (req probeWriteRequest) toConfig() configuration.ProbeConfig {
 	cfg := configuration.ProbeConfig{Name: req.Name, Type: req.Type, Enabled: req.Enabled, Params: req.Params}
 	if len(req.Governance) > 0 {
 		cfg.Governance = req.Governance
+	}
+	if len(req.CustomTags) > 0 {
+		cfg.CustomTags = req.CustomTags
 	}
 	return cfg
 }

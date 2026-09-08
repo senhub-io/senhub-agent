@@ -30,6 +30,12 @@ func TestProbeWriteRequestToConfigDropsAnEmptyGovernance(t *testing.T) {
 	if cfg := (probeWriteRequest{Name: "a", Type: "cpu", Governance: gov}).toConfig(); cfg.Governance["criticality"] != "low" {
 		t.Error("a filled block must be carried to the fragment")
 	}
+	if cfg := (probeWriteRequest{Name: "a", Type: "cpu", CustomTags: map[string]string{}}).toConfig(); cfg.CustomTags != nil {
+		t.Error("an empty custom_tags map must not be written")
+	}
+	if cfg := (probeWriteRequest{Name: "a", Type: "cpu", CustomTags: map[string]string{"env": "lab"}}).toConfig(); cfg.CustomTags["env"] != "lab" {
+		t.Error("custom tags must be carried to the fragment")
+	}
 }
 
 func TestIntervalOf(t *testing.T) {
