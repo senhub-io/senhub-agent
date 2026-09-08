@@ -4,202 +4,84 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="agent-key" content="{{.AgentKey}}">
-    <title>SenHub Agent - API Documentation</title>
+    <title>SenHub Agent - API reference</title>
     <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
-    
-    <!-- CSS Assets -->
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
-    
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
     <style>
-        .api-section {
-            margin-bottom: 2rem;
-        }
-        
-        .endpoint-grid {
-            display: grid;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        
-        .endpoint-item {
-            background: white;
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius-md);
-            padding: 1rem;
-            transition: border-color 0.2s ease;
-        }
-        
-        .endpoint-item:hover {
-            border-color: var(--primary-color);
-        }
-        
-        .endpoint-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }
-        
-        .endpoint-path {
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 0.9rem;
-            color: var(--primary-color);
-            font-weight: 600;
-        }
-        
-        .endpoint-methods {
-            display: flex;
-            gap: 0.25rem;
-        }
-        
-        .method-badge {
-            background-color: var(--gray-100);
-            color: var(--gray-700);
-            padding: 0.125rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 500;
-        }
-        
-        .method-badge.get {
-            background-color: #dcfce7;
-            color: #15803d;
-        }
-        
-        .method-badge.post {
-            background-color: #dbeafe;
-            color: #1d4ed8;
-        }
-        
-        .endpoint-description {
-            color: var(--gray-600);
-            font-size: 0.875rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .endpoint-category {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            padding: 0.125rem 0.5rem;
-            background-color: var(--gray-100);
-            color: var(--gray-600);
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 500;
-        }
-        
-        .category-health { background-color: #dcfce7; color: #15803d; }
-        .category-discovery { background-color: #e0f7f7; color: #0891b2; }
-        .category-metrics { background-color: #f3e8ff; color: #7c3aed; }
-        .category-admin { background-color: #fff3e0; color: #ea580c; }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .stat-card {
-            background: white;
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius-md);
-            padding: 1rem;
-            text-align: center;
-        }
-        
-        .stat-number {
-            font-size: 2rem;
-            font-weight: bold;
-            color: var(--primary-color);
-            margin-bottom: 0.25rem;
-        }
-        
-        .stat-label {
-            color: var(--gray-600);
-            font-size: 0.875rem;
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: var(--gray-600);
-        }
-        
-        .error {
-            background-color: #fef2f2;
-            color: var(--danger-color);
-            padding: 1rem;
-            border-radius: var(--radius-md);
-            margin-bottom: 1rem;
-        }
+        #intro { margin-bottom: var(--s4); }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s4); margin-bottom: var(--s4); }
+        @media (max-width: 900px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
+        .stat-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: var(--s3) var(--s4); text-align: center; }
+        .stat-number { font-size: var(--fs-2xl); font-weight: 600; color: var(--accent-ink); font-family: var(--mono); }
+        .stat-label { color: var(--muted); font-size: var(--fs-sm); }
+        .api-section { margin-bottom: var(--s4); }
+        .api-section .card-h { margin-bottom: 2px; }
+        .api-section .desc { color: var(--muted); font-size: var(--fs-sm); margin-bottom: var(--s3); }
+        .endpoint-grid { display: grid; gap: var(--s2); }
+        .endpoint-item { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; background: var(--surface); }
+        .endpoint-item:hover { border-color: var(--accent); }
+        .endpoint-header { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); margin-bottom: 4px; flex-wrap: wrap; }
+        .endpoint-path { font-family: var(--mono); font-size: var(--fs-sm); font-weight: 600; color: var(--accent-ink); overflow-wrap: anywhere; }
+        .endpoint-methods { display: flex; gap: 4px; }
+        .endpoint-description { color: var(--muted); font-size: var(--fs-sm); }
+        .endpoint-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+        .loading { text-align: center; padding: var(--s6); color: var(--muted); }
+        .error { margin-bottom: var(--s4); }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-top">
-            <h1>
-                <img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo">
-                SenHub Agent
-            </h1>
-            <nav class="main-nav">
-                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
-                <a href="/web/{{.AgentKey}}/probes" class="nav-link">Probes</a>
-                <a href="/web/{{.AgentKey}}/explorer" class="nav-link">Sensor Builder</a>
-                <a href="/web/{{.AgentKey}}/settings" class="nav-link">Settings</a>
-                <a href="/web/{{.AgentKey}}/docs" class="nav-link active">Documentation</a>
-            </nav>
+    <div class="hdr"><div class="hdr-in">
+        <a class="brand" href="/web/{{.AgentKey}}/overview"><img src="/web/{{.AgentKey}}/assets/logo.png" alt=""> SenHub Agent</a>
+        <nav class="nav">
+            <a href="/web/{{.AgentKey}}/overview">Overview</a>
+            <a href="/web/{{.AgentKey}}/probes">Probes</a>
+            <a href="/web/{{.AgentKey}}/outputs">Outputs</a>
+            <a href="/web/{{.AgentKey}}/settings">Settings</a>
+            <a href="https://agent.senhub.io/docs" target="_blank" rel="noopener">Docs</a>
+        </nav>
+        <div class="hdr-status"></div>
+    </div></div>
+
+    <div class="page">
+        <div class="page-h">
+            <div>
+                <h1>API reference</h1>
+                <p class="sub">The endpoints this agent serves, with their live URLs.</p>
+            </div>
         </div>
-    </div>
-    
-    <div class="container">
-        <div id="loading" class="loading">
-            Loading API documentation...
-        </div>
-        
-        <div id="error" class="error" style="display: none;">
-            Failed to load API documentation. Please check if the agent is running.
-        </div>
-        
+
+        <div id="intro" class="banner info">This is the API reference of this agent. The user documentation is at <a href="https://agent.senhub.io/docs" target="_blank" rel="noopener">https://agent.senhub.io/docs</a></div>
+
+        <div id="loading" class="loading">Loading the API reference...</div>
+
+        <div id="error" class="banner err error" style="display: none;">Failed to load the API reference. Check that the agent is running.</div>
+
         <div id="content" style="display: none;">
-            <!-- API Statistics -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-number" id="total-endpoints">-</div>
-                    <div class="stat-label">Total Endpoints</div>
+                    <div class="stat-label">Endpoints</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number" id="active-probes">-</div>
-                    <div class="stat-label">Active Probes</div>
+                    <div class="stat-label">Active probes</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number" id="enabled-formats">-</div>
-                    <div class="stat-label">Output Formats</div>
+                    <div class="stat-label">Output formats</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number" id="cached-metrics">-</div>
-                    <div class="stat-label">Cached Metrics</div>
+                    <div class="stat-label">Cached metrics</div>
                 </div>
             </div>
-            
-            <!-- API Endpoints by Category -->
-            <div id="api-sections">
-                <!-- Will be populated by JavaScript -->
-            </div>
+
+            <div id="api-sections"></div>
         </div>
     </div>
-    
-    <!-- JavaScript -->
-    <script>
-        // Make agent key available globally
-        window.AGENT_KEY = '{{.AgentKey}}';
-    </script>
+
+    <script>window.AGENT_KEY = '{{.AgentKey}}';</script>
+    <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
     <script src="/web/{{.AgentKey}}/assets/js/base.js"></script>
     <script src="/web/{{.AgentKey}}/assets/js/docs.js"></script>
 </body>
