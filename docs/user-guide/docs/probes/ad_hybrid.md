@@ -17,7 +17,7 @@ The probe authenticates as a service principal (app registration) with the clien
 - Directory-sync export error counts, bucketed by error type
 - Per-agent liveness — seconds since each sync agent last reported to Azure AD Connect Health
 
-All metrics are emitted under the `senhub.ad_hybrid.*` namespace. Sync-service and per-agent series carry attributes (`service.name`, `agent.server`, `error.bucket`) that keep instances distinct in OTLP/Prometheus and act as filters in the Web UI Sensor Builder.
+All metrics are emitted under the `senhub.ad_hybrid.*` namespace. Sync-service and per-agent series carry attributes (`service.name`, `agent.server`, `error.bucket`) that keep instances distinct in OTLP/Prometheus and act as filters in the Sensor URLs tab of the console.
 
 # Quick Start
 

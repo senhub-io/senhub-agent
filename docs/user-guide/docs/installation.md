@@ -426,7 +426,7 @@ After installing and starting the agent, verify the following:
 
 1. The service is running: `senhub-agent status`
 2. The health endpoint responds: `curl http://localhost:8080/health`
-3. The web dashboard is accessible: open `http://localhost:8080/web/{key}/` in a browser
+3. The web console is accessible: open `http://localhost:8080/web/{key}/` in a browser
 4. Probes are collecting metrics: check the probes endpoint `curl http://localhost:8080/api/{key}/info/probes`
 5. The log file exists and is being written to
 
@@ -437,7 +437,7 @@ After installation:
 1. Configure your monitoring probes (see [Configuration](configuration.md))
 2. Activate your license if you have premium probes (see License section in [Configuration](configuration.md))
 3. Set up HTTPS if required (see [HTTP/HTTPS Configuration](http-https.md))
-4. Configure your monitoring system (PRTG, Nagios) to collect metrics (see [Web Interface](web-interface.md))
+4. Configure your monitoring system (PRTG, Nagios) to collect metrics (see [Web console](web-interface.md))
 
 ## Uninstallation
 

@@ -61,7 +61,7 @@ environments where no callback to the SenHub backend is allowed.
 
 | Path | Protocol | Use case |
 |---|---|---|
-| `/api/{key}/prtg/metrics/{probe}` | HTTPS, JSON | Native PRTG sensor templates (Sensor Builder) |
+| `/api/{key}/prtg/metrics/{probe}` | HTTPS, JSON | Native PRTG sensor templates (Sensor URLs tab of the console) |
 | `/api/{key}/nagios/metrics/{probe}` | HTTPS, text | NRPE / Nagios performance line |
 | `/api/{key}/prometheus/metrics` | HTTPS, text exposition | Prometheus / VictoriaMetrics scrape |
 | OTLP gRPC client | gRPC, mTLS | Push to OTel collector, vmagent, Tempo, Grafana Cloud OTLP |

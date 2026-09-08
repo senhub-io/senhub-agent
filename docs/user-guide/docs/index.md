@@ -53,7 +53,7 @@ observability tool you already operate (PRTG, Nagios, Prometheus, OTLP).
 
     ---
 
-    Dashboard, API Explorer and Sensor Builder for your monitoring tool.
+    Overview, probe and output editors, and the sensor URLs for your poller.
 
     [:octicons-arrow-right-24: Web interface](web-interface.md)
 

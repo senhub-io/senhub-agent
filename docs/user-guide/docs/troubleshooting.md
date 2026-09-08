@@ -406,7 +406,7 @@ Response for an expired license:
 - **Probe name mismatch**: Check available probe names with `curl http://localhost:8080/api/{key}/prtg/probes`
 - **Authentication key invalid**: Verify the key in the URL matches the agent's key
 - **Agent not reachable from PRTG server**: Test with `curl` from the PRTG server itself
-- **Missing lookups**: Install PRTG Lookups for status metrics (see [Web Interface section](web-interface.md))
+- **Missing lookups**: Install PRTG Lookups for status metrics (see [Web console](web-interface.md))
 
 ### High Memory Usage
 

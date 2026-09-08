@@ -18,7 +18,7 @@ The SQL Server AlwaysOn probe monitors the health of SQL Server AlwaysOn Availab
 All metrics are emitted under the `senhub.mssql_ha.*` namespace. Replica series
 carry an availability-group and replica attribute; database series carry an
 availability-group and database attribute. These attributes also act as filters
-in the Web UI Sensor Builder.
+in the Sensor URLs tab of the console.
 
 The probe also emits a `db` entity for the monitored SQL Server instance so that
 the topology view can build a node from it — surfaced even when the server is
@@ -112,9 +112,9 @@ Each database series carries an `ag.name` (availability group) and
 | `senhub.mssql_ha.log_send_rate` | `By/s` | Rate at which log is sent from the primary to the secondary |
 | `senhub.mssql_ha.redo_rate` | `By/s` | Rate at which received log is redone on the secondary |
 
-## Filtering (Web UI Sensor Builder)
+## Filtering (Sensor URLs tab of the console)
 
-The PRTG/Web UI Sensor Builder exposes filters for this probe:
+The Sensor URLs tab of the console exposes filters for this probe:
 
 - **Metric Type** (category) — overview, replicas, databases
 - **Availability Group** — pick a specific AG
