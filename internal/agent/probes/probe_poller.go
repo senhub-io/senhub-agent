@@ -316,13 +316,13 @@ func (p *ProbePoller) collect() error {
 // says — the failure is real either way.
 func (p *ProbePoller) recordHealth(collectErr error) {
 	if collectErr != nil {
-		agentstate.RecordProbeHealth(p.ProbeId, false)
+		p.noteHealth(false, collectErr)
 		return
 	}
 
 	listener, ok := p.Probe.(types.ListenerProbe)
 	if !ok {
-		agentstate.RecordProbeHealth(p.ProbeId, true)
+		p.noteHealth(true, nil)
 		return
 	}
 
@@ -332,10 +332,26 @@ func (p *ProbePoller) recordHealth(collectErr error) {
 			Str("probe_name", p.Probe.GetName()).
 			Msg("listener is not able to receive; probe reported unhealthy")
 		agentstate.IncrementCollectErrors(p.probeType(), "listener")
-		agentstate.RecordProbeHealth(p.ProbeId, false)
+		p.noteHealth(false, err)
 		return
 	}
-	agentstate.RecordProbeHealth(p.ProbeId, true)
+	p.noteHealth(true, nil)
+}
+
+// noteHealth publishes the health and turns a transition into an event
+// the console lists: the first failure after healthy cycles, and the
+// first healthy cycle after failures. Steady states stay quiet.
+func (p *ProbePoller) noteHealth(ok bool, cause error) {
+	switch agentstate.RecordProbeHealth(p.ProbeId, ok) {
+	case "failed":
+		msg := "collect failed"
+		if cause != nil {
+			msg += ": " + cause.Error()
+		}
+		agentstate.RecordEvent(agentstate.EventError, agentstate.EventKindProbe, p.Probe.GetName(), msg)
+	case "recovered":
+		agentstate.RecordEvent(agentstate.EventInfo, agentstate.EventKindProbe, p.Probe.GetName(), "collecting again")
+	}
 }
 
 // withIdentityTags guarantees every datapoint leaving a probe carries
@@ -445,7 +461,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 		}
 		if err != nil {
 			agentstate.IncrementCollectErrors(p.probeType(), "route")
-			agentstate.RecordProbeHealth(p.ProbeId, false)
+			p.noteHealth(false, err)
 		} else {
 			p.recordHealth(nil)
 		}
