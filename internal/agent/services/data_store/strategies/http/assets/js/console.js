@@ -27,12 +27,13 @@
             const r = await fetch('/api/' + key + '/info/system');
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
-            const failing = (d.strategy_failures || []).length > 0;
+            const failing = (d.outputs_failing || []).length > 0;
             const state = failing ? 'warn' : 'ok';
             const label = failing ? 'output failing' : 'running';
+            const version = String(d.version || '?');
             box.innerHTML = '<span class="host">' + esc(d.hostname || d.host || '') + '</span>' +
                 '<span class="pill ' + state + '"><span class="dot ' + state + '"></span>' + label + '</span>' +
-                '<span>v' + esc(d.version || '?') + '</span>' +
+                '<span>' + (/^\d/.test(version) ? 'v' : '') + esc(version) + '</span>' +
                 '<span title="uptime">up ' + uptime(d.uptime) + '</span>';
         } catch (e) {
             box.innerHTML = '<span class="pill err"><span class="dot err"></span>unreachable</span>';
