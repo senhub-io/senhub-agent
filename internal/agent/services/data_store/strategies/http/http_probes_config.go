@@ -22,10 +22,12 @@ type configuredProbe struct {
 	Managed    bool                   `json:"managed"`
 	Running    bool                   `json:"running"`
 	Health     string                 `json:"health,omitempty"`
-	Tier       string                 `json:"tier"`
-	Authorized bool                   `json:"authorized"`
-	Reason     string                 `json:"reason,omitempty"`
-	HasSchema  bool                   `json:"has_schema"`
+	// LastError says why the last cycle failed while Health is "failed".
+	LastError  string `json:"last_error,omitempty"`
+	Tier       string `json:"tier"`
+	Authorized bool   `json:"authorized"`
+	Reason     string `json:"reason,omitempty"`
+	HasSchema  bool   `json:"has_schema"`
 	// Interval is the collection cadence in seconds as configured, or
 	// the type's default; 0 when neither is known (a listener probe).
 	Interval int `json:"interval,omitempty"`
@@ -77,6 +79,7 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 			Managed:    configuration.IsManagedProbeFragment(configuration.ProbeFragmentPath(configPath, p.Name)),
 			Running:    state.Running,
 			Health:     state.Health,
+			LastError:  state.LastError,
 			Tier:       "free",
 			Authorized: true,
 		}

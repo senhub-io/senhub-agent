@@ -342,6 +342,9 @@ func (p *ProbePoller) recordHealth(collectErr error) {
 // the console lists: the first failure after healthy cycles, and the
 // first healthy cycle after failures. Steady states stay quiet.
 func (p *ProbePoller) noteHealth(ok bool, cause error) {
+	if !ok && cause != nil {
+		agentstate.RecordProbeError(p.ProbeId, cause.Error())
+	}
 	switch agentstate.RecordProbeHealth(p.ProbeId, ok) {
 	case "failed":
 		msg := "collect failed"

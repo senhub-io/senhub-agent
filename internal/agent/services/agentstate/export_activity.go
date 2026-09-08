@@ -1,9 +1,27 @@
 package agentstate
 
 import (
+	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
+
+// printable drops the control characters a receiver's binary error body
+// can carry (a protobuf status echoed back), so the reason reads as text
+// on the console and in the journal.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return ' '
+		}
+		if unicode.IsControl(r) || !unicode.IsPrint(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
 
 // Export activity is what the outputs page shows per strategy: when the
 // last delivery succeeded, when the last one failed and why. The
@@ -53,6 +71,7 @@ func RecordExportSuccess(strategy string) {
 // RecordExportFailure notes one failed delivery with its (already
 // redacted) reason. The first failure after a success is an event.
 func RecordExportFailure(strategy, reason string) {
+	reason = printable(reason)
 	exportActivity.mu.Lock()
 	a := activityFor(strategy)
 	first := !a.LastSuccess.Before(a.LastFailure) || a.Failures == 0
@@ -63,6 +82,21 @@ func RecordExportFailure(strategy, reason string) {
 	if first {
 		RecordEvent(EventError, EventKindOutput, strategy, "export failed: "+reason)
 	}
+}
+
+// FailingExports lists the strategies whose last delivery failed after
+// their last success, sorted.
+func FailingExports() []string {
+	exportActivity.mu.Lock()
+	defer exportActivity.mu.Unlock()
+	var out []string
+	for name, a := range exportActivity.m {
+		if !a.LastFailure.IsZero() && a.LastFailure.After(a.LastSuccess) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // GetExportActivity returns a copy of the snapshot for one strategy; the
