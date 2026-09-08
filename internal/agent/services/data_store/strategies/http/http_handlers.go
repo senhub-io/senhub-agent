@@ -132,7 +132,6 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/config/outputs/test", h.HandleOutputTest).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.HandleOutputUpdate).Methods("PUT")
 		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.HandleOutputDelete).Methods("DELETE")
-		// router.HandleFunc("/web/{agentkey}/guide", h.HandleWebGuide).Methods("GET") // Temporarily disabled
 
 		// Static assets
 		router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.HandleWebAssets).Methods("GET")
@@ -333,10 +332,6 @@ func (h *HTTPHandlers) HandleWebExplorer(w http.ResponseWriter, r *http.Request)
 func (h *HTTPHandlers) HandleWebDocs(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleWebDocs(w, r)
 }
-
-// func (h *HTTPHandlers) HandleWebGuide(w http.ResponseWriter, r *http.Request) {
-// 	h.strategy.handleWebGuide(w, r)
-// }
 
 func (h *HTTPHandlers) HandleWebAssets(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleWebAssets(w, r)

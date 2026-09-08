@@ -29,9 +29,6 @@ var htmlFiles embed.FS
 //go:embed web/logo-senhubagent.png
 var logoFile embed.FS
 
-//go:embed assets/USER_GUIDE.md
-var markdownFiles embed.FS
-
 // Template data structure
 type TemplateData struct {
 	AgentKey    string
@@ -76,7 +73,7 @@ func NewAssetHandlerWithPRTG(agentKey string, prtgEnabled bool) *AssetHandler {
 // parseTemplates loads and parses all HTML templates
 // consolePages lists the embedded pages, by template name; each is
 // assets/html/<name>.html.
-var consolePages = []string{"dashboard", "probes", "outputs", "output-editor", "output-http", "settings", "docs", "guide"}
+var consolePages = []string{"dashboard", "probes", "outputs", "output-editor", "output-http", "settings", "docs"}
 
 func (ah *AssetHandler) parseTemplates() {
 	for _, name := range consolePages {
@@ -134,11 +131,6 @@ func (ah *AssetHandler) ServeAsset(w http.ResponseWriter, r *http.Request, asset
 		// Serve the embedded logo file
 		content, err = logoFile.ReadFile("web/logo-senhubagent.png")
 		contentType = "image/png"
-
-	case strings.HasSuffix(filePath, "USER_GUIDE.md"):
-		// Serve the user guide markdown file
-		content, err = markdownFiles.ReadFile("assets/USER_GUIDE.md")
-		contentType = "text/markdown; charset=utf-8"
 
 	default:
 		http.NotFound(w, r)
@@ -221,8 +213,6 @@ func GetTemplateName(urlPath string) string {
 		return "probes"
 	case strings.Contains(urlPath, "/docs"):
 		return "docs"
-	case strings.Contains(urlPath, "/admin"):
-		return "admin"
 	default:
 		return ""
 	}
