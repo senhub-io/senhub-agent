@@ -392,10 +392,12 @@
            and the address itself is not shown anywhere in the wizard,
            since it ends with the agent key, which the wizard cannot read
            back (sealed for SYSTEM and elevated administrators).
-           LaunchConsole runs as the person installing; the agent asks
-           for elevation itself to read the sealed key, then opens the
-           browser with the user's rights. -->
-      <Publish Dialog="ExitDialog" Control="Finish" Property="LaunchConsole" Value="&quot;[#SenHubAgentExe]&quot; console" Order="1" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
+           Finish hands the Start Menu shortcut to the shell, exactly what
+           a click on it does: the agent asks for elevation itself to read
+           the sealed key, then opens the browser with the user's rights.
+           A hidden, waited-for launch (WixQuietExec) of the same command
+           never showed a browser. -->
+      <Publish Dialog="ExitDialog" Control="Finish" Property="WixShellExecTarget" Value="[ProgramMenuDir]SenHub Agent Console.lnk" Order="1" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchConsole" Order="2" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
     </UI>
 
@@ -414,8 +416,9 @@
 
     <CustomAction Id="LaunchConsole"
                   BinaryRef="Wix4UtilCA_X64"
-                  DllEntry="WixQuietExec64"
+                  DllEntry="WixShellExec"
                   Execute="immediate"
+                  Impersonate="yes"
                   Return="ignore" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />
     <!-- SenHub-branded wizard art (mascot + brand accent), replacing the
@@ -442,6 +445,9 @@
     </StandardDirectory>
 
     <StandardDirectory Id="DesktopFolder" />
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuDir" Name="SenHub Agent" />
+    </StandardDirectory>
 
 
     <ComponentGroup Id="ProductComponents">
@@ -496,6 +502,27 @@
         `console` verb, which reads the sealed key (asking for elevation
         once) and opens the browser. Removed with the product.
       -->
+      <!-- Start Menu shortcut, always present: it is what the Finish page
+           launches when "open the web console" is ticked, exactly the
+           shortcut a person would click. -->
+      <Component Id="ConsoleMenuShortcut" Directory="ProgramMenuDir" Guid="*">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                       Name="MenuShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+        <Shortcut Id="ConsoleMenuShortcutLnk"
+                  Name="SenHub Agent Console"
+                  Description="Open the SenHub Agent web console"
+                  Target="[#SenHubAgentExe]"
+                  Arguments="console"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="senhub.ico"
+                  Show="minimized" />
+        <RemoveFolder Id="RemoveProgramMenuDir" Directory="ProgramMenuDir" On="uninstall" />
+      </Component>
+
       <Component Id="ConsoleShortcut" Directory="DesktopFolder" Guid="*" Condition="DESKTOP_SHORTCUT = 1">
         <RegistryValue Root="HKLM"
                        Key="SOFTWARE\Sensor Factory\SenHub Agent"
