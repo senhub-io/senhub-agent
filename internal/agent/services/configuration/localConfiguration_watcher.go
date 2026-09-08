@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
 // watchConfigFile monitors the configuration file AND the multi-file
@@ -79,6 +81,7 @@ func (lc *LocalConfiguration) watchConfigFile() {
 						Msg("Failed to reload configuration")
 				} else {
 					lc.logger.Info().Msg("Configuration reloaded successfully")
+					agentstate.RecordEvent(agentstate.EventInfo, agentstate.EventKindConfig, "reload", "configuration reloaded from disk")
 				}
 			} else if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
 				if isMainFile {

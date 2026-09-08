@@ -46,8 +46,12 @@ func RecordStrategyFailure(name, reason, detail string) {
 		reason = "unknown"
 	}
 	strategyFailures.mu.Lock()
+	_, again := strategyFailures.m[name]
 	strategyFailures.m[name] = StrategyFailure{Reason: reason, Detail: detail}
 	strategyFailures.mu.Unlock()
+	if !again {
+		RecordEvent(EventError, EventKindOutput, name, "not running ("+reason+"): "+detail)
+	}
 }
 
 // ClearStrategyFailure drops the failure state for a strategy that is
@@ -55,8 +59,12 @@ func RecordStrategyFailure(name, reason, detail string) {
 // configuration stops alerting without an agent restart.
 func ClearStrategyFailure(name string) {
 	strategyFailures.mu.Lock()
+	_, was := strategyFailures.m[name]
 	delete(strategyFailures.m, name)
 	strategyFailures.mu.Unlock()
+	if was {
+		RecordEvent(EventInfo, EventKindOutput, name, "running again")
+	}
 }
 
 // PruneStrategyFailures drops failures for strategies that are no

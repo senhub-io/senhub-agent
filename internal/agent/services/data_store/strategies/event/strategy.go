@@ -400,6 +400,7 @@ collect:
 
 	if err != nil {
 		agentstate.IncrementExportSendFailed("event", exporterrors.Reason(err))
+		agentstate.RecordExportFailure("event", err.Error())
 
 		if !exporterrors.IsRetryable(err) {
 			// Nothing a later tick can change. Keeping the batch would
@@ -427,6 +428,7 @@ collect:
 		Int("events_sent", len(events)).
 		Int64("batch_size_bytes", currentBatchSize).
 		Msg("Successfully synced events")
+	agentstate.RecordExportSuccess("event")
 
 	return nil
 }

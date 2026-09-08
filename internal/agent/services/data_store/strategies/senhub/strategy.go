@@ -198,6 +198,7 @@ func (s *SyncStrategySenhub) doSync() error {
 	s.logger.Debug().Any("data", transformedData).Msg("synchronizing data")
 	if err := s.doSyncData(transformedData); err != nil {
 		agentstate.IncrementExportSendFailed("senhub", exporterrors.Reason(err))
+		agentstate.RecordExportFailure("senhub", err.Error())
 
 		if !exporterrors.IsRetryable(err) {
 			// Nothing a later tick can change: a permanent 4xx (400
@@ -224,6 +225,7 @@ func (s *SyncStrategySenhub) doSync() error {
 		}
 		return err
 	}
+	agentstate.RecordExportSuccess("senhub")
 
 	return nil
 }

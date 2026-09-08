@@ -35,6 +35,7 @@ var configWatch = struct {
 
 // RecordConfigWatchDisabled marks the configuration as unwatched.
 func RecordConfigWatchDisabled(reason, detail string) {
+	RecordEvent(EventWarn, EventKindConfig, "watch", "configuration watch disabled ("+reason+"): "+detail)
 	if reason == "" {
 		reason = "unknown"
 	}
