@@ -1,314 +1,846 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="agent-key" content="{{.AgentKey}}">
-    <title>SenHub Agent - Probes</title>
-    <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/variables.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/base.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/layout.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/forms.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/buttons.css">
-    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/components.css">
-    <style>
-        .probes-layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.4fr); gap: 1.5rem; }
-        @media (max-width: 900px) { .probes-layout { grid-template-columns: 1fr; } }
-        table.probes { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        table.probes th, table.probes td { text-align: left; padding: 0.45rem 0.4rem; border-bottom: 1px solid var(--gray-200); vertical-align: middle; }
-        table.probes th { color: var(--gray-600); font-weight: 600; font-size: 0.8rem; }
-        .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
-        .pill.ok { background: #e7f7ec; color: #1a7f43; } .pill.no { background: #fdecea; color: #b3261e; } .pill.mid { background: #fff6e5; color: #8a5a00; } .pill.off { background: var(--gray-100); color: var(--gray-600); }
-        .row-actions button { margin-left: 0.25rem; }
-        .field { margin-bottom: 0.8rem; }
-        .field label { display: block; font-weight: 600; margin-bottom: 0.3rem; color: var(--gray-700); font-size: 0.9rem; }
-        .field input[type=text], .field input[type=number], .field input[type=password], .field select, .field textarea { width: 100%; padding: 0.45rem 0.55rem; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 0.92rem; box-sizing: border-box; }
-        .field textarea { font-family: 'Monaco','Menlo',monospace; font-size: 0.8rem; min-height: 70px; }
-        .hint { font-size: 0.78rem; color: var(--gray-600); margin-top: 0.25rem; }
-        fieldset.block { border: 1px solid var(--gray-200); border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.8rem; }
-        fieldset.block legend { font-weight: 600; font-size: 0.85rem; color: var(--gray-700); padding: 0 0.3rem; }
-        .banner { padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 1rem; display: none; white-space: pre-wrap; }
-        .banner.ok { background: #e7f7ec; color: #1a7f43; border: 1px solid #b7e4c7; } .banner.err { background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; } .banner.warn { background: #fff6e5; color: #8a5a00; border: 1px solid #ffe0a3; }
-        .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
-        .muted { color: var(--gray-600); }
-        .preview { font-family: 'Monaco','Menlo',monospace; font-size: 0.78rem; background: var(--gray-100); padding: 0.5rem; border-radius: 6px; max-height: 220px; overflow: auto; margin-top: 0.6rem; }
-        option:disabled { color: var(--gray-400); }
-        button.btn-small { font-size: 0.78rem; padding: 0.2rem 0.5rem; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="agent-key" content="{{.AgentKey}}">
+<title>SenHub Agent - Probes</title>
+<link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
+<link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
+<style>
+  .blk { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; background: var(--well); }
+  .blk .bh { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .blk .bh .t { font-weight: 600; font-size: var(--fs-sm); }
+  .blk .blk { background: var(--surface); }
+  .rows { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  .rows th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 2px 6px 4px; }
+  .rows td { padding: 3px 4px; }
+  .rows .in, .rows .sel { height: 30px; font-size: var(--fs-sm); }
+  .field .lbl .opt { margin-left: 2px; }
+  .field.span .in[disabled] { color: var(--muted); }
+  .loc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tbl td .why { display: block; font-size: var(--fs-xs); color: var(--err); margin-top: 2px; max-width: 320px; white-space: normal; }
+  .tbl td .locked-why { display: block; font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+  .menu-wrap { position: relative; display: inline-block; }
+  .menu { position: absolute; right: 0; top: 30px; z-index: 20; min-width: 150px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 4px 14px rgba(17,24,39,.12); padding: 4px; text-align: left; }
+  .menu button { display: block; width: 100%; text-align: left; border: none; background: none; padding: 6px 10px; font: inherit; font-size: var(--fs-sm); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; }
+  .menu button:hover { background: var(--well); }
+  .menu button.danger { color: var(--err); }
+  .menu button[disabled] { color: var(--muted-2); cursor: not-allowed; }
+  .check-msg { color: var(--err); font-family: var(--mono); font-size: 12px; word-break: break-word; white-space: pre-wrap; margin-top: 6px; }
+  .yaml-err { margin-top: 6px; }
+  .empty .starters .scard { cursor: pointer; }
+  .scard .go { margin-top: 6px; color: var(--accent-ink); font-size: var(--fs-xs); }
+  .type-line { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .type-line .grow { min-width: 120px; }
+  #picker { margin-bottom: 12px; }
+  .tcard .n .pill { font-size: 10px; padding: 0 6px; }
+  .loading { color: var(--muted); font-size: var(--fs-sm); padding: 12px 0; }
+  .metric-list .t { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  .banner .err-list { margin: 4px 0 0; padding-left: 18px; }
+  .banner .err-list a { color: inherit; text-decoration: underline; }
+  .banner .close { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; font: inherit; font-size: 16px; line-height: 1; padding: 0 2px; }
+  @media (max-width: 720px) { .loc { grid-template-columns: 1fr 1fr; } }
+</style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-top">
-            <h1><img src="/web/{{.AgentKey}}/assets/logo.png" alt="SenHub Agent" class="logo"> SenHub Agent</h1>
-            <nav class="main-nav">
-                <a href="/web/{{.AgentKey}}/dashboard" class="nav-link">Dashboard</a>
-                <a href="/web/{{.AgentKey}}/probes" class="nav-link active">Probes</a>
-                <a href="/web/{{.AgentKey}}/explorer" class="nav-link">Sensor Builder</a>
-                <a href="/web/{{.AgentKey}}/settings" class="nav-link">Settings</a>
-                <a href="/web/{{.AgentKey}}/docs" class="nav-link">Documentation</a>
-            </nav>
-        </div>
+<div class="hdr"><div class="hdr-in">
+    <a class="brand" href="/web/{{.AgentKey}}/overview"><img src="/web/{{.AgentKey}}/assets/logo.png" alt=""> SenHub Agent</a>
+    <nav class="nav">
+        <a href="/web/{{.AgentKey}}/overview">Overview</a>
+        <a href="/web/{{.AgentKey}}/probes" class="on">Probes</a>
+        <a href="/web/{{.AgentKey}}/outputs">Outputs</a>
+        <a href="/web/{{.AgentKey}}/settings">Settings</a>
+        <a href="https://agent.senhub.io/docs" target="_blank" rel="noopener">Docs</a>
+    </nav>
+    <div class="hdr-status"></div>
+</div></div>
+
+<div class="page">
+
+  <!-- ===================== LIST VIEW ===================== -->
+  <div id="view-list" class="hide">
+    <div class="page-h">
+      <div>
+        <h1>Probes</h1>
+        <p class="sub">What this agent collects. One probe is one thing watched: a service, a device, an endpoint.</p>
+      </div>
+      <a class="btn primary" id="btn-add" href="?new=1">Add a probe</a>
+    </div>
+    <div id="list-banner" class="mb3"></div>
+
+    <div class="card" id="list-card">
+      <div class="toolbar">
+        <input class="search" id="search" placeholder="Search by name or type" autocomplete="off">
+        <button type="button" class="chip on" data-f="all">All <span class="n" id="n-all">0</span></button>
+        <button type="button" class="chip" data-f="running">Running <span class="n" id="n-running">0</span></button>
+        <button type="button" class="chip" data-f="failing">Failing <span class="n" id="n-failing">0</span></button>
+        <button type="button" class="chip" data-f="disabled">Disabled <span class="n" id="n-disabled">0</span></button>
+        <span class="grow"></span>
+        <span class="small muted">Hover a row for actions</span>
+      </div>
+      <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr><th>Name</th><th>Type</th><th>State</th><th>Interval</th><th class="right">Metrics</th><th class="right">Last run</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="7" class="loading">Loading the probes of this agent.</td></tr></tbody>
+      </table>
+      </div>
+      <div class="card-foot" id="list-foot"></div>
     </div>
 
-    <div class="container">
-        <div id="banner" class="banner"></div>
-        <div class="probes-layout">
-            <div class="card">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2>Configured probes</h2>
-                    <button class="btn btn-primary" id="btn-new">Add a probe</button>
-                </div>
-                <p class="hint">What the configuration declares, and what the agent is doing with it. Files written by hand are listed but edited by hand.</p>
-                <table class="probes">
-                    <thead><tr><th>Name</th><th>Type</th><th>State</th><th></th></tr></thead>
-                    <tbody id="probe-rows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
-                </table>
-            </div>
-
-            <div class="card" id="editor" hidden>
-                <h2 id="editor-title">New probe</h2>
-                <div class="field">
-                    <label for="f-type">Type</label>
-                    <select id="f-type"></select>
-                    <div class="hint" id="type-hint"></div>
-                </div>
-                <div class="field">
-                    <label for="f-name">Name</label>
-                    <input type="text" id="f-name" placeholder="mysql-prod" />
-                    <div class="hint">Letters, digits, hyphens and underscores. It identifies the probe and its secrets; it cannot be changed later.</div>
-                </div>
-                <div class="field">
-                    <label><input type="checkbox" id="f-enabled" checked /> Enabled</label>
-                </div>
-                <div id="form-params"></div>
-                <fieldset class="block" id="form-governance">
-                    <legend>governance</legend>
-                    <div class="hint">Who owns what this probe observes, how critical it is, where it is, and which application chain it belongs to (label <code>application</code>). Optional. Stamped on the entities, metrics and logs of this probe only; the agent's own governance describes the host.</div>
-                    <div id="governance-fields"></div>
-                </fieldset>
-                <div class="actions">
-                    <button class="btn" id="btn-validate">Validate</button>
-                    <button class="btn" id="btn-test">Test</button>
-                    <button class="btn btn-primary" id="btn-save">Save</button>
-                    <button class="btn" id="btn-cancel">Cancel</button>
-                </div>
-                <div id="preview" class="preview" hidden></div>
-            </div>
+    <div class="card hide" id="empty-card">
+      <div class="empty">
+        <h2>No probe yet</h2>
+        <p class="muted">Start with what this machine should watch. Each starter opens the editor with the type chosen and the minimum to fill in.</p>
+        <div class="starters">
+          <div class="scard" id="starter-host" role="button" tabindex="0"><div class="t">This host</div><div class="d">CPU, memory, disks, network. Four probes, no parameter to fill. Ready in one click.</div><div class="go">Add the four</div></div>
+          <a class="scard" href="?new=1&type=mysql"><div class="t">A database</div><div class="d">MySQL, PostgreSQL, SQL Server, MongoDB, Redis. Host, user, password.</div><div class="go">Choose a database</div></a>
+          <a class="scard" href="?new=1&type=snmp_poll"><div class="t">A network device</div><div class="d">Switch, router, firewall, UPS over SNMP. Address and community.</div><div class="go">SNMP poll</div></a>
+          <a class="scard" href="?new=1&type=http_check"><div class="t">A web endpoint</div><div class="d">Availability and latency of a URL. Nothing but the URL.</div><div class="go">HTTP check</div></a>
         </div>
+        <p class="small muted mt4" id="empty-more">Something else? <a href="?new=1#picker">Browse the probe types</a>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== EDITOR VIEW ===================== -->
+  <div id="view-editor" class="hide">
+    <div class="crumb"><a href="/web/{{.AgentKey}}/probes">Probes</a> &rsaquo; <span id="crumb-title">New probe</span></div>
+    <div class="page-h">
+      <div>
+        <h1 id="page-title">New probe</h1>
+        <p class="sub" id="page-sub">Fill the block at the top, test, save. Everything below it has a working default.</p>
+      </div>
     </div>
 
-    <script>
-        window.AGENT_KEY = '{{.AgentKey}}';
-        const API = '/api/' + window.AGENT_KEY;
-        const $ = (id) => document.getElementById(id);
-        let catalog = [], probes = [], governanceSchema = [], editing = null; // editing = existing probe name, or null for a new one
+    <div id="banner-slot" class="mb3"></div>
 
-        function banner(kind, msg) { const b = $('banner'); b.className = 'banner ' + kind; b.textContent = msg; b.style.display = 'block'; window.scrollTo({top: 0}); }
-        async function getJSON(url) { const r = await fetch(url); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }
-        async function send(method, url, body) { const r = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body) }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }
-        function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    <div class="grid g-editor">
+      <div>
+        <div id="type-line" class="card tight type-line">
+          <span class="small muted">Type</span>
+          <b id="type-name" class="nowrap">Not chosen</b>
+          <span id="type-tier"></span>
+          <span class="small muted grow" id="type-summary">Pick one below.</span>
+          <a href="#picker" class="small" id="type-change">Change</a>
+        </div>
 
-        async function load() {
-            try {
-                const [c, p] = await Promise.all([getJSON(API + '/catalog/probes'), getJSON(API + '/config/probes')]);
-                catalog = c.probes || []; probes = p.probes || []; governanceSchema = c.governance || [];
-                renderRows(); renderTypeSelect();
-            } catch (e) { banner('err', 'Could not load: ' + e.message); }
+        <div id="picker" class="picker hide">
+          <div class="top">
+            <input class="search" id="picker-search" placeholder="Search the probe types" autocomplete="off">
+            <span id="picker-cats"></span>
+            <span class="grow"></span>
+            <span class="xs muted" id="picker-foot">Pro types unlock with a licence. <a href="/web/{{.AgentKey}}/settings">Settings</a></span>
+          </div>
+          <div class="list" id="picker-list"></div>
+        </div>
+
+        <div class="starter" id="starter">
+          <div class="ttl"><h2>Required to start</h2><span class="muted">Only these. Test runs one real collection.</span></div>
+          <div class="fgrid" id="starter-fields">
+            <div class="field" data-path="name" id="f-name">
+              <span class="lbl">Name <span class="req">Required</span></span>
+              <input class="in" id="in-name" placeholder="e.g. probe-prod" autocomplete="off">
+              <span class="hint" id="name-hint">Identifies the probe and its secrets. Letters, digits, hyphens, underscores.</span>
+              <span class="ferr" id="e-name" hidden></span>
+            </div>
+            <div class="field" id="f-enabled">
+              <span class="lbl">Enabled</span>
+              <label class="sw" style="height:34px"><input type="checkbox" id="in-enabled" checked><span class="k"></span><span id="enabled-text">Collect as soon as saved</span></label>
+              <span class="hint">Off keeps the probe and its secrets without running it.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="actbar">
+          <button type="button" class="btn" id="btn-validate">Validate</button>
+          <button type="button" class="btn" id="btn-test">Test</button>
+          <button type="button" class="btn primary" id="btn-save" disabled>Save and start</button>
+          <a class="btn ghost" href="/web/{{.AgentKey}}/probes">Cancel</a>
+          <span class="state" id="act-state"></span>
+        </div>
+
+        <div class="sec-group">Optional settings <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">, folded, each with a working default</span></div>
+        <div id="sections"><p class="small muted">Choose a type first.</p></div>
+
+        <div class="sec-group">Ownership and tags</div>
+        <details class="sec" id="gov">
+          <summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 6 6 6-6 6"/></svg><span class="t">Governance and tags</span><span class="sum" id="gov-sum">Not set</span></summary>
+          <div class="body">
+            <p class="hint" style="margin:6px 0 12px">Who owns what this probe watches, how critical it is, where it is. Stamped on this probe's metrics, logs and entities. The agent's own governance describes the host.</p>
+            <div class="fgrid">
+              <div class="field" data-path="governance.owner.team"><span class="lbl">Owning team</span><input class="in gov" id="g-team" placeholder="dba" autocomplete="off"><span class="ferr" hidden></span></div>
+              <div class="field" data-path="governance.owner.contact"><span class="lbl">Contact</span><input class="in gov" id="g-contact" placeholder="dba@corp.local" autocomplete="off"><span class="ferr" hidden></span></div>
+              <div class="field" data-path="governance.criticality"><span class="lbl">Criticality</span><select class="sel gov" id="g-crit"><option value="">Not set</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select><span class="ferr" hidden></span></div>
+              <div class="field" data-path="governance.lifecycle"><span class="lbl">Lifecycle</span><select class="sel gov" id="g-life"><option value="">Not set</option><option>active</option><option>maintenance</option><option>decommissioning</option><option>retired</option></select><span class="ferr" hidden></span></div>
+              <div class="field span" data-path="governance.location"><span class="lbl">Location <span class="opt">site, datacenter, room, rack</span></span>
+                <div class="loc"><input class="in gov" id="g-site" placeholder="site" autocomplete="off"><input class="in gov" id="g-dc" placeholder="datacenter" autocomplete="off"><input class="in gov" id="g-room" placeholder="room" autocomplete="off"><input class="in gov" id="g-rack" placeholder="rack" autocomplete="off"></div>
+                <span class="ferr" hidden></span>
+              </div>
+              <div class="field span" data-path="governance.labels.application"><span class="lbl">Application chain <span class="opt">label application</span></span><input class="in gov" id="g-app" placeholder="billing" autocomplete="off"><span class="hint">Names the application this instance belongs to, so its metrics, logs and entities join the same chain in the map.</span><span class="ferr" hidden></span></div>
+              <div class="field span" data-path="governance.labels"><span class="lbl">Other labels <span class="opt">key = value</span></span>
+                <table class="rows"><tbody id="label-rows"></tbody></table>
+                <div><button type="button" class="btn sm" id="btn-add-label">Add a label</button></div>
+                <span class="ferr" hidden></span>
+              </div>
+              <div class="field span" data-path="custom_tags"><span class="lbl">Custom tags <span class="opt">on every metric of this probe</span></span><input class="in" id="g-tags" placeholder="env=prod, tier=db" autocomplete="off"><span class="hint" id="tags-hint">Comma-separated key=value pairs. Tags are for filtering in PRTG or Prometheus; labels above describe ownership.</span></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="sec" id="yaml-sec" style="margin-top:8px">
+          <summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 6 6 6-6 6"/></svg><span class="t">Edit as YAML</span><span class="sum">for what the form cannot express</span></summary>
+          <div class="body">
+            <p class="hint" style="margin:6px 0 8px">The same probe, as it will be written to <code id="yaml-path-2">probes.d/</code>. Edits here go back into the form when you leave the box; name and type stay as they are.</p>
+            <textarea class="ta" style="min-height:160px" id="yaml-edit" spellcheck="false"></textarea>
+            <span class="ferr yaml-err" id="yaml-err" hidden></span>
+          </div>
+        </details>
+      </div>
+
+      <div class="side">
+        <div class="card" id="check-card">
+          <h3>Check</h3>
+          <div id="check-body"><p class="small muted">Nothing checked yet. <b>Validate</b> checks the values. <b>Test</b> runs one real collection from this host and shows what comes back.</p></div>
+        </div>
+        <div class="card">
+          <h3>What will be written</h3>
+          <p class="xs muted mb2" id="yaml-path">probes.d/</p>
+          <pre class="yaml" id="yaml-preview"></pre>
+        </div>
+        <div class="card" id="docs-card">
+          <h3>About this probe</h3>
+          <p class="small" id="doc-summary">Choose a type to see what it collects.</p>
+          <p class="xs muted mt2" id="doc-links"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>window.AGENT_KEY = '{{.AgentKey}}';</script>
+<script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
+<script src="/web/{{.AgentKey}}/assets/js/schema-form.js"></script>
+<script>
+(function () {
+  'use strict';
+  const KEY = window.AGENT_KEY;
+  const API = '/api/' + KEY;
+  const WEB = '/web/' + KEY;
+  const $ = (id) => document.getElementById(id);
+  const esc = SchemaForm.esc;
+  const q = new URLSearchParams(location.search);
+  const MODE = q.has('edit') ? 'edit' : (q.has('new') ? 'new' : 'list');
+  const BANNER_KEY = 'senhub.probes.banner';
+
+  async function getJSON(url) {
+    const r = await fetch(url);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  }
+  async function send(method, url, body) {
+    const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  }
+  function hhmmss(t) {
+    if (!t) return '';
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return '';
+    return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
+  }
+  function stripRedacted(v) {
+    if (Array.isArray(v)) return v.map(stripRedacted).filter(x => x !== undefined);
+    if (v && typeof v === 'object') {
+      const o = {};
+      for (const k of Object.keys(v)) { const c = stripRedacted(v[k]); if (c !== undefined) o[k] = c; }
+      return o;
+    }
+    if (SchemaForm.isStored(v)) return undefined;
+    return v;
+  }
+  function bannerHTML(kind, title, body, listHTML) {
+    const icon = kind === 'ok' ? '&#10003;' : (kind === 'err' ? '&#9888;' : '&#8505;');
+    return '<div class="banner ' + kind + '"><span>' + icon + '</span><div class="grow">' + (title ? '<strong>' + esc(title) + '</strong> ' : '') + esc(body || '') + (listHTML || '') + '</div><button type="button" class="close" title="Dismiss">&times;</button></div>';
+  }
+  function setBanner(slot, kind, title, body, listHTML) {
+    slot.innerHTML = kind ? bannerHTML(kind, title, body, listHTML) : '';
+    const c = slot.querySelector('.close');
+    if (c) c.onclick = () => { slot.innerHTML = ''; };
+  }
+  function firstEssentialValue(spec, params) {
+    if (!spec || !params) return '';
+    const ess = spec.params.filter(p => p.required || p.essential);
+    const host = params.host, port = params.port;
+    if (host && ess.some(p => p.key === 'host')) return String(host) + (port ? ':' + port : '');
+    for (const p of ess) {
+      const v = params[p.key];
+      if (v === undefined || v === null || v === '' || SchemaForm.isStored(v)) continue;
+      if (Array.isArray(v)) return v.length ? String(v[0]) + (v.length > 1 ? ' +' + (v.length - 1) : '') : '';
+      if (typeof v === 'object') continue;
+      return String(v);
+    }
+    return '';
+  }
+
+  // ===================== LIST =====================
+  const List = {
+    probes: [], catalog: [], types: {}, filter: 'all', search: '', timer: null,
+    async init() {
+      $('view-list').classList.remove('hide');
+      const saved = sessionStorage.getItem(BANNER_KEY);
+      if (saved) { sessionStorage.removeItem(BANNER_KEY); try { const b = JSON.parse(saved); setBanner($('list-banner'), b.kind, b.title, b.body); } catch (e) { /* ignore */ } }
+      $('search').oninput = (e) => { List.search = e.target.value.trim().toLowerCase(); List.render(); };
+      document.querySelectorAll('#list-card .chip').forEach(c => c.onclick = () => { List.filter = c.dataset.f; document.querySelectorAll('#list-card .chip').forEach(x => x.classList.toggle('on', x === c)); List.render(); });
+      $('starter-host').onclick = List.addHost;
+      $('starter-host').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); List.addHost(); } };
+      document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) document.querySelectorAll('.menu').forEach(m => m.remove()); });
+      try { const c = await getJSON(API + '/catalog/probes'); List.catalog = c.probes || []; for (const t of List.catalog) List.types[t.type] = t; } catch (e) { /* the list works without the catalogue */ }
+      await List.load();
+      List.timer = setInterval(List.load, 30000);
+    },
+    async load() {
+      try {
+        const d = await getJSON(API + '/config/probes');
+        List.probes = d.probes || [];
+        List.render();
+      } catch (e) {
+        $('rows').innerHTML = '<tr><td colspan="7"><span class="pill err"><span class="dot err"></span>could not load</span> <span class="small muted">' + esc(e.message) + '</span></td></tr>';
+      }
+    },
+    stateOf(p) {
+      if (!p.authorized) return 'locked';
+      if (!p.enabled) return 'disabled';
+      if (p.health === 'failed') return 'failing';
+      if (p.running) return 'running';
+      return 'starting';
+    },
+    render() {
+      const all = List.probes.slice();
+      const counts = { all: all.length, running: 0, failing: 0, disabled: 0 };
+      for (const p of all) { const s = List.stateOf(p); if (s === 'running' || s === 'starting') counts.running++; else if (s === 'failing') counts.failing++; else if (s === 'disabled') counts.disabled++; }
+      for (const k of Object.keys(counts)) $('n-' + k).textContent = counts[k];
+      if (!all.length) {
+        $('list-card').classList.add('hide'); $('empty-card').classList.remove('hide');
+        const n = List.catalog.length, locked = List.catalog.filter(t => !t.authorized).length;
+        $('empty-more').innerHTML = 'Something else? <a href="?new=1#picker">Browse the ' + (n ? n + ' ' : '') + 'probe types</a>.' + (locked ? ' ' + locked + ' Pro type' + (locked > 1 ? 's' : '') + ' show a lock until a licence is activated.' : '');
+        return;
+      }
+      $('list-card').classList.remove('hide'); $('empty-card').classList.add('hide');
+      const order = { failing: 0, locked: 1, starting: 2, running: 3, disabled: 4 };
+      all.sort((a, b) => (order[List.stateOf(a)] - order[List.stateOf(b)]) || a.name.localeCompare(b.name));
+      const rows = all.filter(p => {
+        const s = List.stateOf(p);
+        if (List.filter === 'running' && !(s === 'running' || s === 'starting')) return false;
+        if (List.filter === 'failing' && s !== 'failing') return false;
+        if (List.filter === 'disabled' && s !== 'disabled') return false;
+        if (List.search && !(p.name.toLowerCase().includes(List.search) || p.type.toLowerCase().includes(List.search))) return false;
+        return true;
+      });
+      const tb = $('rows');
+      tb.innerHTML = '';
+      if (!rows.length) tb.innerHTML = '<tr><td colspan="7" class="muted small">No probe matches.</td></tr>';
+      for (const p of rows) tb.appendChild(List.row(p));
+      const files = all.filter(p => !p.managed).length;
+      $('list-foot').innerHTML = '<span>' + (files ? files + (files > 1 ? ' probes come' : ' probe comes') + ' from files written by hand. They are listed, not editable here.' : 'Every probe here was written from the console.') + '</span><span>The <b>&#8230;</b> menu holds Disable and Delete.</span>';
+    },
+    row(p) {
+      const s = List.stateOf(p);
+      const tr = document.createElement('tr');
+      if (s === 'failing') tr.classList.add('bad');
+      const spec = List.types[p.type];
+      const sub = firstEssentialValue(spec, p.params);
+      let name = '<span class="name">' + esc(p.name) + '</span>';
+      if (!p.managed) name += ' <span class="pill file" title="Declared in a file written by hand; edit the file">file</span>';
+      if (sub) name += '<span class="sub">' + esc(sub) + '</span>';
+      let state = '';
+      if (s === 'running') state = '<span class="pill ok"><span class="dot ok"></span>running</span>';
+      else if (s === 'failing') state = '<span class="pill err"><span class="dot err"></span>failing</span>' + (p.reason ? '<span class="why">' + esc(p.reason) + '</span>' : '');
+      else if (s === 'starting') state = '<span class="pill warn"><span class="dot warn"></span>starting</span>';
+      else if (s === 'disabled') state = '<span class="pill off">disabled</span>';
+      else state = '<span class="pill lock" title="' + esc(p.reason || '') + '">&#128274; not licensed</span> <span class="pill pro">Pro</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
+      const editable = p.managed && p.has_schema;
+      let acts = '';
+      if (s === 'failing' && editable) acts += '<a class="btn sm primary" href="?edit=' + encodeURIComponent(p.name) + '">Fix</a> ';
+      if (editable && s !== 'failing') acts += '<a class="btn sm" href="?edit=' + encodeURIComponent(p.name) + '">Edit</a> ';
+      if (s !== 'disabled') acts += '<a class="btn sm" href="' + WEB + '/outputs/http#urls&probe=' + encodeURIComponent(p.name) + '">Sensor URL</a> ';
+      if (p.managed) acts += '<span class="menu-wrap"><button type="button" class="btn sm ghost" data-menu title="More">&#8230;</button></span>';
+      tr.innerHTML = '<td>' + name + '</td><td><code>' + esc(p.type) + '</code></td><td>' + state + '</td>' +
+        '<td class="num">' + (p.interval ? esc(p.interval) + ' s' : '&ndash;') + '</td>' +
+        '<td class="num">' + (p.enabled ? esc(p.metrics_count || 0) : '&ndash;') + '</td>' +
+        '<td class="num">' + (p.last_update ? esc(hhmmss(p.last_update)) : '&ndash;') + '</td>' +
+        '<td class="acts">' + acts + '</td>';
+      const mb = tr.querySelector('[data-menu]');
+      if (mb) mb.onclick = (e) => { e.stopPropagation(); List.openMenu(mb, p); };
+      return tr;
+    },
+    openMenu(btn, p) {
+      document.querySelectorAll('.menu').forEach(m => m.remove());
+      const m = document.createElement('div'); m.className = 'menu';
+      const tog = document.createElement('button'); tog.type = 'button'; tog.textContent = p.enabled ? 'Disable' : 'Enable';
+      tog.onclick = () => List.toggle(p);
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'danger'; del.textContent = 'Delete';
+      del.onclick = () => List.remove(p);
+      m.appendChild(tog); m.appendChild(del);
+      btn.parentNode.appendChild(m);
+    },
+    async toggle(p) {
+      document.querySelectorAll('.menu').forEach(m => m.remove());
+      try {
+        const body = { name: p.name, type: p.type, enabled: !p.enabled, params: stripRedacted(p.params || {}) };
+        if (p.governance && Object.keys(p.governance).length) body.governance = p.governance;
+        const d = await send('PUT', API + '/config/probes/' + encodeURIComponent(p.name), body);
+        setBanner($('list-banner'), 'ok', '', d.applied || 'Saved.');
+        setTimeout(List.load, 1200);
+      } catch (e) { setBanner($('list-banner'), 'err', 'Could not change ' + p.name + '.', e.message); }
+    },
+    async remove(p) {
+      document.querySelectorAll('.menu').forEach(m => m.remove());
+      if (!confirm('Delete the probe "' + p.name + '"? Its settings and secrets are removed. Disabling keeps them.')) return;
+      try {
+        const d = await send('DELETE', API + '/config/probes/' + encodeURIComponent(p.name));
+        setBanner($('list-banner'), 'ok', '', d.applied || 'Removed.');
+        setTimeout(List.load, 800);
+      } catch (e) { setBanner($('list-banner'), 'err', 'Could not delete ' + p.name + '.', e.message); }
+    },
+    async addHost() {
+      const card = $('starter-host');
+      if (card.dataset.busy) return;
+      card.dataset.busy = '1';
+      card.querySelector('.go').textContent = 'Adding the four probes';
+      const have = new Set(List.probes.map(p => p.name));
+      const failed = [];
+      let created = 0;
+      for (const t of ['cpu', 'memory', 'logicaldisk', 'network']) {
+        if (have.has(t)) continue;
+        try { await send('POST', API + '/config/probes', { name: t, type: t, enabled: true, params: {} }); created++; }
+        catch (e) { failed.push(t + ': ' + e.message); }
+      }
+      delete card.dataset.busy;
+      card.querySelector('.go').textContent = 'Add the four';
+      if (failed.length) setBanner($('list-banner'), 'err', 'Some host probes could not be created.', failed.join('; '));
+      else setBanner($('list-banner'), 'ok', '', created + ' host probe' + (created === 1 ? '' : 's') + ' created; the agent starts them on its own.');
+      await List.load();
+    },
+  };
+
+  // ===================== EDITOR =====================
+  const HINTS = [
+    [/1045|access denied/i, 'The server refused the credentials. Check the user and password; the monitoring user needs PROCESS and REPLICATION CLIENT.'],
+    [/2003|can't connect to mysql|cannot connect to mysql/i, 'The server did not accept the connection. Check the host and port, and that the server listens on the network from this host.'],
+    [/snmp.*(timeout|no response)|no response from|request timeout \(id/i, 'The device did not answer. Check the address, that UDP 161 is open from this host, and the community or v3 credentials.'],
+    [/x509|certificate/i, 'The certificate is not trusted by this host. Install the CA, or accept unverified certificates in the TLS section for a test only.'],
+    [/connection refused/i, 'Nothing listens at that address and port from this host. Check the port and any firewall in between.'],
+    [/\b401\b|unauthori[sz]ed/i, 'The endpoint wants credentials it did not get. Check the user, password or token.'],
+    [/\b403\b|forbidden/i, 'The endpoint refused this account. Check its permissions.'],
+    [/no such host|name resolution|could not resolve|server misbehaving/i, 'The name does not resolve from this host. Check the spelling, or use the address.'],
+    [/timeout|timed out|deadline exceeded/i, 'No answer in time. Check the address, the port and the network path from this host.'],
+    [/\bdb\.up = 0/, 'The database did not answer. Check the host and port from this host, then the user and password.'],
+    [/httpcheck\.up = 0|http\.up = 0/, 'The URL did not answer with success from this host. Check the address, the port, the certificate, and the expected status.'],
+    [/snmp\.up = 0/, 'The device did not answer. Check the address, that UDP 161 is open from this host, and the community or v3 credentials.'],
+    [/\.up = 0/, 'The target did not answer from this host. Check the address and the port.'],
+  ];
+  function hintFor(msg) { for (const [re, t] of HINTS) if (re.test(msg)) return t; return ''; }
+
+  const Ed = {
+    catalog: [], types: {}, license: null, spec: null, form: null, probe: null, hostname: '', labelRows: [], cat: 'all', pickerSearch: '',
+    editing: MODE === 'edit' ? q.get('edit') : null,
+    async init() {
+      $('view-editor').classList.remove('hide');
+      getJSON(API + '/info/system').then(d => { Ed.hostname = d.hostname || ''; }).catch(() => {});
+      try {
+        const c = await getJSON(API + '/catalog/probes');
+        Ed.catalog = c.probes || []; Ed.license = c.license || null;
+        for (const t of Ed.catalog) Ed.types[t.type] = t;
+      } catch (e) { setBanner($('banner-slot'), 'err', 'Could not load the catalogue.', e.message); return; }
+      Ed.buildPicker();
+      Ed.wire();
+      if (Ed.editing) {
+        try {
+          const d = await getJSON(API + '/config/probes');
+          Ed.probe = (d.probes || []).find(p => p.name === Ed.editing) || null;
+        } catch (e) { setBanner($('banner-slot'), 'err', 'Could not load the probe.', e.message); return; }
+        if (!Ed.probe) { setBanner($('banner-slot'), 'err', 'No probe named ' + Ed.editing + '.', 'It may have been removed. Go back to the list.'); return; }
+        $('crumb-title').textContent = Ed.probe.name; $('page-title').textContent = Ed.probe.name;
+        $('page-sub').textContent = 'Saved in probes.d/50-' + Ed.probe.name + '.yaml. Changes apply on save, no restart.';
+        $('in-name').value = Ed.probe.name; $('in-name').disabled = true;
+        $('name-hint').textContent = 'Fixed once saved: it names the secrets.';
+        $('in-enabled').checked = !!Ed.probe.enabled; $('enabled-text').textContent = Ed.probe.enabled ? 'Collecting' : 'Kept, not collecting';
+        $('btn-save').textContent = 'Save';
+        $('type-change').classList.add('hide');
+        Ed.writeGov(Ed.probe.governance || {});
+        Ed.writeTags(Ed.probe.custom_tags || {});
+        Ed.selectType(Ed.probe.type, Ed.probe.params || {});
+        if (!Ed.probe.managed) setBanner($('banner-slot'), 'warn', 'This probe comes from a file written by hand.', 'The console cannot save it; edit the file instead.');
+      } else {
+        const t = q.get('type');
+        if (t && Ed.types[t]) Ed.selectType(t, {});
+        else { Ed.openPicker(true); Ed.refresh(); }
+        if (location.hash === '#picker') Ed.openPicker(true);
+      }
+    },
+    wire() {
+      $('type-change').onclick = (e) => { e.preventDefault(); Ed.openPicker($('picker').classList.contains('hide')); };
+      $('picker-search').oninput = (e) => { Ed.pickerSearch = e.target.value.trim().toLowerCase(); Ed.renderPicker(); };
+      $('in-name').oninput = () => { Ed.refresh(); };
+      $('in-enabled').onchange = (e) => { if (Ed.editing) $('enabled-text').textContent = e.target.checked ? 'Collecting' : 'Kept, not collecting'; Ed.refresh(); };
+      document.querySelectorAll('#gov .gov').forEach(i => i.oninput = () => Ed.refresh());
+      document.querySelectorAll('#gov select.gov').forEach(i => i.onchange = () => Ed.refresh());
+      $('btn-add-label').onclick = () => { Ed.labelRows.push(['', '']); Ed.renderLabels(); const last = $('label-rows').querySelector('tr:last-child input'); if (last) last.focus(); Ed.refresh(); };
+      $('btn-validate').onclick = Ed.validate;
+      $('btn-test').onclick = Ed.test;
+      $('btn-save').onclick = Ed.save;
+      $('yaml-edit').onchange = Ed.applyYAML;
+      $('yaml-edit').onblur = Ed.applyYAML;
+      Ed.renderLabels();
+    },
+    // ---- type picker ----
+    buildPicker() {
+      const cats = [...new Set(Ed.catalog.map(t => t.category || 'other'))].sort();
+      const box = $('picker-cats');
+      box.innerHTML = '<button type="button" class="chip on" data-cat="all">All</button>' + cats.map(c => '<button type="button" class="chip" data-cat="' + esc(c) + '">' + esc(SchemaForm.titleCase(c)) + '</button>').join('');
+      box.querySelectorAll('.chip').forEach(c => c.onclick = () => { Ed.cat = c.dataset.cat; box.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === c)); Ed.renderPicker(); });
+      $('picker-search').placeholder = 'Search ' + Ed.catalog.length + ' probe types';
+      const locked = Ed.catalog.filter(t => !t.authorized).length;
+      $('picker-foot').innerHTML = (locked ? locked + ' Pro type' + (locked > 1 ? 's' : '') + ' unlock with a licence. ' : 'Pro types unlock with a licence. ') + '<a href="' + WEB + '/settings">Settings</a>';
+      Ed.renderPicker();
+    },
+    renderPicker() {
+      const l = $('picker-list'); l.innerHTML = '';
+      const list = Ed.catalog.filter(t => (Ed.cat === 'all' || (t.category || 'other') === Ed.cat) && (!Ed.pickerSearch || (t.type + ' ' + t.display_name + ' ' + (t.summary || '')).toLowerCase().includes(Ed.pickerSearch)));
+      if (!list.length) { l.innerHTML = '<p class="small muted">No type matches.</p>'; return; }
+      for (const t of list) {
+        const d = document.createElement('div');
+        d.className = 'tcard' + (Ed.spec && Ed.spec.type === t.type ? ' on' : '') + (t.authorized ? '' : ' lock');
+        d.setAttribute('role', 'button'); d.tabIndex = 0;
+        if (!t.authorized) d.title = t.reason || 'Needs a licence';
+        d.innerHTML = '<div class="n"><span>' + esc(t.display_name || t.type) + '</span>' + (t.tier === 'pro' ? '<span class="pill pro">' + (t.authorized ? '' : '&#128274; ') + 'Pro</span>' : '') + '</div><div class="d">' + esc(t.summary || ('Type ' + t.type)) + '</div>';
+        if (t.authorized) {
+          const pick = () => { Ed.selectType(t.type, {}); Ed.openPicker(false); };
+          d.onclick = pick; d.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
         }
-
-        function statePill(p) {
-            if (!p.enabled) return '<span class="pill off">disabled</span>';
-            if (!p.authorized) return '<span class="pill no">' + esc(p.reason || 'not licensed') + '</span>';
-            if (!p.running) return '<span class="pill mid">not running</span>';
-            if (p.health === 'ok') return '<span class="pill ok">running</span>';
-            if (p.health === 'failed') return '<span class="pill no">failing</span>';
-            return '<span class="pill mid">starting</span>';
+        l.appendChild(d);
+      }
+    },
+    openPicker(open) { $('picker').classList.toggle('hide', !open); if (open) $('picker-search').focus(); },
+    // ---- type + form ----
+    selectType(type, values) {
+      const spec = Ed.types[type];
+      if (!spec) { setBanner($('banner-slot'), 'err', 'Unknown probe type ' + type + '.', 'It is not in the catalogue of this agent.'); return; }
+      Ed.spec = spec;
+      Ed.clearCheck();
+      $('type-name').textContent = spec.display_name || spec.type;
+      $('type-tier').innerHTML = spec.tier === 'pro' ? '<span class="pill pro">Pro</span>' : '<span class="pill off">Free</span>';
+      $('type-summary').textContent = spec.summary || '';
+      $('doc-summary').textContent = spec.summary || '';
+      const slug = (spec.docs_path || '').split('/').pop().replace(/\.md$/, '');
+      $('doc-links').innerHTML = (slug ? '<a href="https://agent.senhub.io/docs/probes/' + esc(slug) + '/" target="_blank" rel="noopener">Documentation</a> &middot; ' : '') + '<a href="' + WEB + '/outputs/http#urls">Metrics it emits</a>';
+      if (!Ed.editing) $('in-name').placeholder = 'e.g. ' + spec.type + '-prod';
+      if (!spec.authorized) setBanner($('banner-slot'), 'warn', 'This type needs a licence.', spec.reason || '');
+      Ed.form = new SchemaForm({
+        starter: $('starter-fields'), sections: $('sections'), params: spec.params || [], values: values || {},
+        hide: ['governance'], onChange: () => Ed.refresh(),
+      });
+      $('sections').innerHTML = '';
+      Ed.form.render();
+      if (!(spec.params || []).some(p => !Ed.form.isEssential(p) && !Ed.form.isHidden(p) && p.key !== 'governance')) $('sections').innerHTML = '<p class="small muted">This type has no optional setting.</p>';
+      Ed.renderPicker();
+      Ed.refresh();
+    },
+    // ---- governance ----
+    readGov() {
+      const g = {};
+      const v = (id) => $(id).value.trim();
+      const owner = {}; if (v('g-team')) owner.team = v('g-team'); if (v('g-contact')) owner.contact = v('g-contact');
+      if (Object.keys(owner).length) g.owner = owner;
+      if (v('g-crit')) g.criticality = v('g-crit');
+      if (v('g-life')) g.lifecycle = v('g-life');
+      const loc = {}; for (const [id, k] of [['g-site', 'site'], ['g-dc', 'datacenter'], ['g-room', 'room'], ['g-rack', 'rack']]) if (v(id)) loc[k] = v(id);
+      if (Object.keys(loc).length) g.location = loc;
+      const labels = {}; if (v('g-app')) labels.application = v('g-app');
+      for (const [k, val] of Ed.labelRows) if (k.trim() && k.trim() !== 'application') labels[k.trim()] = val;
+      if (Object.keys(labels).length) g.labels = labels;
+      return g;
+    },
+    writeGov(g) {
+      g = g || {};
+      $('g-team').value = (g.owner && g.owner.team) || ''; $('g-contact').value = (g.owner && g.owner.contact) || '';
+      $('g-crit').value = g.criticality || ''; $('g-life').value = g.lifecycle || '';
+      const loc = g.location || {};
+      $('g-site').value = loc.site || ''; $('g-dc').value = loc.datacenter || ''; $('g-room').value = loc.room || ''; $('g-rack').value = loc.rack || '';
+      const labels = g.labels || {};
+      $('g-app').value = labels.application || '';
+      Ed.labelRows = Object.keys(labels).filter(k => k !== 'application').map(k => [k, String(labels[k])]);
+      Ed.renderLabels();
+    },
+    renderLabels() {
+      const tb = $('label-rows'); tb.innerHTML = '';
+      if (!Ed.labelRows.length) { tb.innerHTML = '<tr><td class="hint" style="padding:4px">None.</td></tr>'; return; }
+      Ed.labelRows.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td><input class="in" placeholder="key" autocomplete="off"></td><td><input class="in" placeholder="value" autocomplete="off"></td><td style="width:32px"><button type="button" class="btn sm ghost" title="Remove">&times;</button></td>';
+        const [k, v] = tr.querySelectorAll('input');
+        k.value = r[0]; v.value = r[1];
+        k.oninput = (e) => { Ed.labelRows[i][0] = e.target.value; Ed.refresh(); };
+        v.oninput = (e) => { Ed.labelRows[i][1] = e.target.value; Ed.refresh(); };
+        tr.querySelector('button').onclick = () => { Ed.labelRows.splice(i, 1); Ed.renderLabels(); Ed.refresh(); };
+        tb.appendChild(tr);
+      });
+    },
+    govSummary(g) {
+      const parts = [];
+      if (g.owner && g.owner.team) parts.push(g.owner.team);
+      if (g.criticality) parts.push(g.criticality);
+      if (g.location && g.location.site) parts.push(g.location.site);
+      if (g.labels && g.labels.application) parts.push('app ' + g.labels.application);
+      const extra = g.labels ? Object.keys(g.labels).filter(k => k !== 'application').length : 0;
+      if (extra) parts.push(extra + ' label' + (extra > 1 ? 's' : ''));
+      const tags = Object.keys(Ed.readTags()).length;
+      if (tags) parts.push(tags + ' tag' + (tags > 1 ? 's' : ''));
+      return parts.join(' · ');
+    },
+    // ---- body, preview, state ----
+    name() { return $('in-name').value.trim(); },
+    body() {
+      const b = { name: Ed.name(), type: Ed.spec ? Ed.spec.type : '', enabled: $('in-enabled').checked, params: Ed.form ? Ed.form.values() : {} };
+      const g = Ed.readGov();
+      if (Object.keys(g).length) b.governance = g;
+      const tags = Ed.readTags();
+      if (Object.keys(tags).length) b.custom_tags = tags;
+      return b;
+    },
+    readTags() {
+      const out = {};
+      for (const part of $('g-tags').value.split(',')) {
+        const i = part.indexOf('=');
+        if (i > 0) { const k = part.slice(0, i).trim(), v = part.slice(i + 1).trim(); if (k) out[k] = v; }
+      }
+      return out;
+    },
+    writeTags(tags) {
+      $('g-tags').value = Object.entries(tags || {}).map(([k, v]) => k + '=' + v).join(', ');
+    },
+    secretPaths() {
+      const out = [];
+      const walk = (prefix, params) => { for (const p of params || []) { if (p.secret) out.push(prefix + p.key); if (p.kind === 'block') walk(prefix + p.key + '.', p.fields); } };
+      if (Ed.spec) walk('', Ed.spec.params);
+      return out;
+    },
+    fragment() {
+      const b = Ed.body();
+      const name = b.name || '<name>';
+      const params = JSON.parse(JSON.stringify(b.params));
+      const raw = Ed.form ? Ed.form._values : {};
+      const get = (o, path) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
+      const set = (o, path, v) => { const ps = path.split('.'); let c = o; for (let i = 0; i < ps.length - 1; i++) { if (!c[ps[i]] || typeof c[ps[i]] !== 'object') c[ps[i]] = {}; c = c[ps[i]]; } c[ps[ps.length - 1]] = v; };
+      for (const sp of Ed.secretPaths()) {
+        const typed = get(params, sp), kept = get(raw, sp);
+        if (typeof typed === 'string' && typed && !typed.startsWith('${')) set(params, sp, '${secret:' + name + '.' + sp + '}');
+        else if (typed === undefined && SchemaForm.isStored(kept)) set(params, sp, kept.startsWith('${') ? kept : '${secret:' + name + '.' + sp + '}');
+      }
+      const frag = { name, type: b.type || '<type>', enabled: b.enabled, params };
+      if (b.governance) frag.governance = b.governance;
+      return frag;
+    },
+    refresh() {
+      const name = Ed.name();
+      const path = 'probes.d/50-' + (name || '<name>') + '.yaml';
+      $('yaml-path').textContent = path; $('yaml-path-2').textContent = path;
+      const text = SchemaForm.toYAML([Ed.fragment()]);
+      $('yaml-preview').innerHTML = text.split('\n').map(l => esc(l).replace(/^(\s*-?\s*)([\w.-]+):/, '$1<span class="k">$2</span>:').replace(/(\$\{[^}]+\})/g, '<span class="s">$1</span>')).join('\n');
+      if (document.activeElement !== $('yaml-edit')) $('yaml-edit').value = text;
+      const g = Ed.readGov();
+      const gs = Ed.govSummary(g);
+      $('gov-sum').textContent = gs || 'Not set'; $('gov-sum').className = 'sum' + (gs ? ' set' : '');
+      const missing = [];
+      if (!Ed.spec) missing.push('Type');
+      if (!name) missing.push('Name');
+      else if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) missing.push('a valid name');
+      if (Ed.form) for (const m of Ed.form.missing()) missing.push(m.label);
+      const locked = Ed.spec && !Ed.spec.authorized;
+      const file = Ed.probe && !Ed.probe.managed;
+      const ok = !missing.length && !locked && !file;
+      $('btn-save').disabled = !ok;
+      let state;
+      if (file) state = '<span class="dot off"></span>Edited by hand, not from here';
+      else if (locked) state = '<span class="dot warn"></span>Licence needed';
+      else if (ok) state = '<span class="dot ok"></span>Ready to save';
+      else state = '<span class="dot warn"></span>' + esc(missing.join(', ')) + ' still needed';
+      $('act-state').innerHTML = state;
+    },
+    // ---- YAML editing ----
+    applyYAML() {
+      const ta = $('yaml-edit'), err = $('yaml-err');
+      const text = ta.value;
+      if (text === SchemaForm.toYAML([Ed.fragment()])) { err.hidden = true; ta.classList.remove('err'); return; }
+      let v;
+      try { v = SchemaForm.parseYAML(text); } catch (e) { err.hidden = false; err.textContent = 'Not applied: ' + e.message; ta.classList.add('err'); return; }
+      if (Array.isArray(v)) v = v[0];
+      if (!v || typeof v !== 'object') { err.hidden = false; err.textContent = 'Not applied: expected a probe mapping (name, type, params).'; ta.classList.add('err'); return; }
+      err.hidden = true; ta.classList.remove('err');
+      if (v.params && typeof v.params === 'object' && Ed.form) Ed.form.setValues(v.params);
+      else if (Ed.form) Ed.form.setValues({});
+      if (typeof v.enabled === 'boolean') { $('in-enabled').checked = v.enabled; if (Ed.editing) $('enabled-text').textContent = v.enabled ? 'Collecting' : 'Kept, not collecting'; }
+      Ed.writeGov(v.governance && typeof v.governance === 'object' ? v.governance : {});
+      if (!Ed.editing && typeof v.name === 'string' && v.name !== '<name>') $('in-name').value = v.name;
+      const notes = [];
+      if (v.type && Ed.spec && v.type !== Ed.spec.type) notes.push('the type stays ' + Ed.spec.type + ' (use Change above)');
+      if (Ed.editing && v.name && v.name !== Ed.editing) notes.push('the name stays ' + Ed.editing);
+      if (notes.length) { err.hidden = false; err.textContent = 'Applied, but ' + notes.join('; ') + '.'; }
+      Ed.refresh();
+    },
+    // ---- check card, errors ----
+    clearCheck() {
+      setBanner($('banner-slot'), null);
+      $('check-body').innerHTML = '<p class="small muted">Nothing checked yet. <b>Validate</b> checks the values. <b>Test</b> runs one real collection from this host and shows what comes back.</p>';
+      if (Ed.form) Ed.form.clearErrors();
+      $('e-name').hidden = true; $('in-name').classList.remove('err');
+    },
+    runLine() { return 'Run from ' + (Ed.hostname || 'this host') + ', ' + hhmmss(new Date()); },
+    // anchor(errors, field): pairs each error message with the field it most
+    // probably concerns: the server's `field` for the first one, then any
+    // rendered path named in the message as a whole word.
+    anchor(errors, field) {
+      const paths = Ed.form ? Ed.form.paths().sort((a, b) => b.length - a.length) : [];
+      let fieldUsed = false;
+      return errors.map((msg) => {
+        let key = '';
+        const m = String(msg).match(/(?:^|[\s:"'`])(?:params\.)?([a-z0-9_]+(?:\.[a-z0-9_]+)*)(?=[\s:"'`,;)]|$)/gi) || [];
+        for (const cand of m.map(x => x.replace(/^[\s:"'`]+/, '').replace(/^params\./, ''))) { if (paths.includes(cand)) { key = cand; break; } }
+        if (!key) for (const p of paths) { if (new RegExp('(^|[^a-z0-9_.])' + p.replace(/\./g, '\\.') + '([^a-z0-9_]|$)', 'i').test(String(msg))) { key = p; break; } }
+        if (!key && field && !fieldUsed && paths.includes(field.replace(/^params\./, ''))) { key = field.replace(/^params\./, ''); fieldUsed = true; }
+        let message = String(msg);
+        if (key && message.startsWith(key + ': ')) message = message.slice(key.length + 2);
+        return { key, message };
+      });
+    },
+    // splitErrors turns the server's "parameters: a; b; c" into one
+    // error per parameter so each one anchors on its own field.
+    splitErrors(list) {
+      const out = [];
+      for (const e of list || []) {
+        const s = String(e);
+        if (/^parameters: /.test(s)) out.push(...s.replace(/^parameters: /, '').split('; '));
+        else out.push(s);
+      }
+      return out;
+    },
+    showErrors(title, errs) {
+      const anchored = errs.filter(e => e.key);
+      if (Ed.form) Ed.form.showErrors(anchored.filter(e => e.key !== 'name'));
+      const nameErr = errs.find(e => e.key === 'name');
+      if (nameErr) { $('e-name').hidden = false; $('e-name').textContent = nameErr.message; $('in-name').classList.add('err'); }
+      const list = '<ul class="err-list">' + errs.map(e => '<li>' + (e.key ? '<a href="#" data-focus="' + esc(e.key) + '">' + esc(e.key) + '</a>: ' : '') + esc(e.message) + '</li>').join('') + '</ul>';
+      setBanner($('banner-slot'), 'err', title, '', list);
+      $('banner-slot').querySelectorAll('[data-focus]').forEach(a => a.onclick = (ev) => { ev.preventDefault(); Ed.focusField(a.dataset.focus); });
+      if (anchored.length) Ed.focusField(anchored[0].key);
+    },
+    focusField(key) {
+      if (key === 'name') { $('in-name').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('in-name').focus({ preventScroll: true }); return; }
+      if (Ed.form) Ed.form.focus(key);
+    },
+    localErrors() {
+      const errs = [];
+      const name = Ed.name();
+      if (!name) errs.push({ key: 'name', message: 'A name is required.' });
+      else if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) errs.push({ key: 'name', message: 'Letters, digits, hyphens and underscores only.' });
+      if (Ed.form) for (const m of Ed.form.missing()) errs.push({ key: m.key, message: m.label + ' is required.' });
+      return errs;
+    },
+    async validate() {
+      if (!Ed.spec) { setBanner($('banner-slot'), 'warn', 'Choose a type first.', ''); return; }
+      Ed.clearCheck();
+      const btn = $('btn-validate'); btn.disabled = true;
+      const t0 = Date.now();
+      let errs = Ed.localErrors();
+      try {
+        const d = await send('POST', API + '/config/validate', { probe: Ed.spec.type, name: Ed.editing || undefined, config: Ed.body().params, validation: 'schema' });
+        if (!d.valid) errs = errs.concat(Ed.anchor(Ed.splitErrors(d.errors && d.errors.length ? d.errors : ['The values were refused.']), d.field));
+      } catch (e) { errs.push({ key: '', message: e.message }); }
+      btn.disabled = false;
+      const ms = Date.now() - t0;
+      if (errs.length) {
+        Ed.showErrors('Not valid yet.', errs);
+        $('check-body').innerHTML = '<div class="row"><span class="pill err"><span class="dot err"></span>not valid</span><span class="small muted">' + errs.length + ' problem' + (errs.length > 1 ? 's' : '') + ', ' + ms + ' ms</span></div><p class="xs muted mt2">' + esc(Ed.runLine()) + '</p>';
+        return;
+      }
+      setBanner($('banner-slot'), 'ok', 'Valid.', 'Every value has the right shape. Test to make sure the target answers.');
+      $('check-body').innerHTML = '<div class="row"><span class="pill ok"><span class="dot ok"></span>valid</span><span class="small muted">schema check, ' + ms + ' ms</span></div><p class="xs muted mt2">' + esc(Ed.runLine()) + '</p>';
+    },
+    async test() {
+      if (!Ed.spec) { setBanner($('banner-slot'), 'warn', 'Choose a type first.', ''); return; }
+      Ed.clearCheck();
+      const btn = $('btn-test'); btn.disabled = true; btn.textContent = 'Testing…';
+      $('check-body').innerHTML = '<p class="small muted">Running one collection from this host.</p>';
+      let d;
+      try {
+        d = await send('POST', API + '/config/test', { probe: Ed.spec.type, name: Ed.editing || undefined, config: Ed.body().params, validation: 'full', timeout: 8 });
+      } catch (e) { d = { valid: false, errors: [e.message], duration_ms: 0 }; }
+      btn.disabled = false; btn.textContent = 'Test';
+      const ms = d.duration_ms || 0;
+      // The server reports a collection that ran as valid even when the
+      // target did not answer: the probe then emits its "up" metric at 0.
+      // Read that as the failure it is.
+      const down = d.valid ? (d.preview_metrics || []).find(m => /(^|\.)up$/.test(m.name || '') && Number(m.value) === 0) : null;
+      if (!d.valid || down) {
+        let msgs = (d.errors && d.errors.length) ? Ed.splitErrors(d.errors) : Object.values(d.tests || {}).filter(t => t && !t.passed && t.error).map(t => t.error);
+        let field = d.field;
+        if (down) {
+          const where = down.tags ? (down.tags.instance || down.tags.target || down.tags['server.address'] || '') : '';
+          msgs = [down.name + ' = 0' + (where ? ' for ' + where : '') + ': the target did not answer as expected.'];
+          const ess = Ed.form ? Ed.form.essentialKeys() : [];
+          field = ess.find(k => /^(host|target|targets|endpoint|url|address|server)$/.test(k)) || ess[0] || '';
         }
+        const errs = Ed.anchor(msgs.length ? msgs : ['The test failed without a message.'], field);
+        Ed.showErrors('Test failed after ' + (ms >= 1000 ? (ms / 1000).toFixed(1) + ' s' : ms + ' ms') + '.', errs);
+        const raw = msgs.join('\n');
+        const hint = hintFor(raw);
+        $('check-body').innerHTML = '<div class="row"><span class="pill err"><span class="dot err"></span>test failed</span><span class="small muted">' + ms + ' ms, 0 metrics</span></div>' +
+          '<p class="check-msg">' + esc(raw) + '</p>' + (hint ? '<p class="small muted mt2">' + esc(hint) + '</p>' : '') + '<p class="xs muted mt2">' + esc(Ed.runLine()) + '</p>';
+        return;
+      }
+      const metrics = d.preview_metrics || [];
+      setBanner($('banner-slot'), 'ok', 'Test passed.', metrics.length + ' metric' + (metrics.length === 1 ? '' : 's') + ' collected in ' + ms + ' ms. The values are on the right; save to start collecting.');
+      const fmtV = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/\.?0+$/, '')) : String(v));
+      const row = (m) => { const tag = m.tags ? Object.keys(m.tags).filter(k => !/^(host|hostname|probe|probe_name|agent)$/i.test(k)).map(k => m.tags[k]).slice(0, 1).join('') : ''; return '<div><span>' + esc(m.name) + (tag ? '<span class="t">' + esc(tag) + '</span>' : '') + '</span><span class="v">' + esc(fmtV(m.value)) + (m.unit ? ' ' + esc(m.unit) : '') + '</span></div>'; };
+      const render = (all) => {
+        const shown = all ? metrics : metrics.slice(0, 6);
+        $('check-body').innerHTML = '<div class="row mb2"><span class="pill ok"><span class="dot ok"></span>test passed</span><span class="small muted">' + metrics.length + ' metrics, ' + ms + ' ms</span></div>' +
+          (shown.length ? '<div class="metric-list">' + shown.map(row).join('') + '</div>' : '<p class="small muted">No metric came back; the probe may need a full interval.</p>') +
+          '<p class="xs muted mt2">' + (metrics.length > 6 ? (all ? 'All ' + metrics.length + '. <a href="#" id="m-less">First 6</a> &middot; ' : 'First 6 of ' + metrics.length + '. <a href="#" id="m-all">All metrics</a> &middot; ') : '') + esc(Ed.runLine()) + '</p>';
+        const a = $('m-all'), l = $('m-less');
+        if (a) a.onclick = (e) => { e.preventDefault(); render(true); };
+        if (l) l.onclick = (e) => { e.preventDefault(); render(false); };
+      };
+      render(false);
+    },
+    async save() {
+      if (!Ed.spec) return;
+      const local = Ed.localErrors();
+      if (local.length) { Ed.clearCheck(); Ed.showErrors('Not saved.', local); return; }
+      const btn = $('btn-save'); btn.disabled = true;
+      const body = Ed.body();
+      try {
+        const d = Ed.editing
+          ? await send('PUT', API + '/config/probes/' + encodeURIComponent(Ed.editing), body)
+          : await send('POST', API + '/config/probes', body);
+        const warn = (d.warnings || []).length ? ' ' + d.warnings.join(' ') : '';
+        sessionStorage.setItem(BANNER_KEY, JSON.stringify({ kind: warn ? 'warn' : 'ok', title: '', body: (d.applied || 'Saved.') + warn }));
+        location.href = WEB + '/probes';
+      } catch (e) {
+        btn.disabled = false;
+        Ed.clearCheck();
+        const msg = e.message;
+        const parts = /^parameters: /.test(msg) ? msg.replace(/^parameters: /, '').split('; ') : [msg];
+        Ed.showErrors('Not saved.', Ed.anchor(parts, ''));
+      }
+    },
+  };
 
-        function renderRows() {
-            const tb = $('probe-rows'); tb.innerHTML = '';
-            if (!probes.length) { tb.innerHTML = '<tr><td colspan="4" class="muted">No probe configured.</td></tr>'; return; }
-            for (const p of probes) {
-                const tr = document.createElement('tr');
-                const managedNote = p.managed ? '' : ' <span class="muted" title="Written by hand; edit the file">(by hand)</span>';
-                tr.innerHTML = '<td><strong>' + esc(p.name) + '</strong>' + managedNote + '</td><td>' + esc(p.type) + '</td><td>' + statePill(p) + '</td>' +
-                    '<td class="row-actions"></td>';
-                const act = tr.querySelector('.row-actions');
-                if (p.managed && p.has_schema) {
-                    const e = document.createElement('button'); e.className = 'btn btn-small'; e.textContent = 'Edit'; e.onclick = () => openEditor(p); act.appendChild(e);
-                    const t = document.createElement('button'); t.className = 'btn btn-small'; t.textContent = p.enabled ? 'Disable' : 'Enable'; t.onclick = () => toggle(p); act.appendChild(t);
-                    const d = document.createElement('button'); d.className = 'btn btn-small'; d.textContent = 'Delete'; d.onclick = () => remove(p); act.appendChild(d);
-                }
-                tb.appendChild(tr);
-            }
-        }
-
-        function renderTypeSelect() {
-            const s = $('f-type'); s.innerHTML = '';
-            const byCat = {};
-            for (const c of catalog) { (byCat[c.category || 'other'] = byCat[c.category || 'other'] || []).push(c); }
-            for (const cat of Object.keys(byCat).sort()) {
-                const og = document.createElement('optgroup'); og.label = cat;
-                for (const c of byCat[cat].sort((a, b) => a.display_name.localeCompare(b.display_name))) {
-                    const o = document.createElement('option'); o.value = c.type; o.textContent = c.display_name + (c.tier !== 'free' ? ' (' + c.tier + ')' : '');
-                    if (!c.authorized) { o.disabled = true; o.textContent += ' — ' + (c.reason || 'not licensed'); }
-                    og.appendChild(o);
-                }
-                s.appendChild(og);
-            }
-        }
-
-        function specOf(type) { return catalog.find(c => c.type === type); }
-
-        // --- form generation from the schema ---
-        function control(p, path, value) {
-            const id = 'p:' + path;
-            const wrap = document.createElement('div'); wrap.className = 'field';
-            if (p.kind === 'block') {
-                const fs = document.createElement('fieldset'); fs.className = 'block';
-                const lg = document.createElement('legend'); lg.textContent = p.key + (p.required ? ' *' : ''); fs.appendChild(lg);
-                if (p.description) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = p.description; fs.appendChild(h); }
-                const v = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
-                for (const f of (p.fields || [])) fs.appendChild(control(f, path + '.' + f.key, v[f.key]));
-                return fs;
-            }
-            const label = document.createElement('label'); label.htmlFor = id; label.textContent = p.key + (p.required ? ' *' : '');
-            wrap.appendChild(label);
-            let input;
-            if (p.enum && p.enum.length && p.kind !== 'string_list') {
-                input = document.createElement('select');
-                const none = document.createElement('option'); none.value = ''; none.textContent = p.default !== undefined ? '(default: ' + p.default + ')' : '(default)'; input.appendChild(none);
-                for (const e of p.enum) { const o = document.createElement('option'); o.value = e; o.textContent = e; input.appendChild(o); }
-                if (value !== undefined && value !== null) input.value = String(value);
-            } else if (p.kind === 'bool') {
-                input = document.createElement('select');
-                for (const [v, t] of [['', p.default !== undefined ? '(default: ' + p.default + ')' : '(default)'], ['true', 'true'], ['false', 'false']]) { const o = document.createElement('option'); o.value = v; o.textContent = t; input.appendChild(o); }
-                if (value !== undefined && value !== null) input.value = String(value);
-            } else if (p.kind === 'string_list' || p.kind === 'map' || p.kind === 'block_list') {
-                input = document.createElement('textarea');
-                if (p.kind === 'string_list') { input.placeholder = 'one per line'; if (Array.isArray(value)) input.value = value.join('\n'); }
-                else if (p.kind === 'map') { input.placeholder = 'KEY=value, one per line'; if (value && typeof value === 'object') input.value = Object.entries(value).map(([k, v]) => k + '=' + v).join('\n'); }
-                else { input.placeholder = 'JSON list of objects, e.g. [{"oid":"1.3.6.1.2.1.1.3.0","metric":"uptime"}]'; if (Array.isArray(value)) input.value = JSON.stringify(value, null, 1); }
-            } else {
-                input = document.createElement('input');
-                input.type = p.secret ? 'password' : ((p.kind === 'int' || p.kind === 'float') ? 'number' : 'text');
-                if (p.kind === 'float') input.step = 'any';
-                if (p.example) input.placeholder = p.example; else if (p.default !== undefined && p.default !== null) input.placeholder = 'default: ' + p.default;
-                if (value !== undefined && value !== null) input.value = (p.secret && String(value).startsWith('${')) ? '' : String(value);
-                if (p.secret) input.autocomplete = 'new-password';
-            }
-            input.id = id; input.dataset.kind = p.kind; input.dataset.path = path;
-            wrap.appendChild(input);
-            const hint = [];
-            if (p.description) hint.push(p.description);
-            if (p.secret) hint.push(value && String(value).startsWith('${') ? 'Stored in the secret store; leave empty to keep it.' : 'Stored in the secret store, never in the file.');
-            if (hint.length) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = hint.join(' '); wrap.appendChild(h); }
-            return wrap;
-        }
-
-        function renderForm(type, params) {
-            const spec = specOf(type); const box = $('form-params'); box.innerHTML = '';
-            $('type-hint').textContent = spec ? (spec.summary || '') : '';
-            if (!spec) return;
-            const groups = {};
-            for (const p of spec.params) (groups[p.group || 'settings'] = groups[p.group || 'settings'] || []).push(p);
-            for (const g of Object.keys(groups)) {
-                const fs = document.createElement('fieldset'); fs.className = 'block';
-                const lg = document.createElement('legend'); lg.textContent = g; fs.appendChild(lg);
-                for (const p of groups[g]) fs.appendChild(control(p, p.key, params ? params[p.key] : undefined));
-                box.appendChild(fs);
-            }
-        }
-
-        function renderGovernance(gov) {
-            const box = $('governance-fields'); box.innerHTML = '';
-            for (const f of governanceSchema) box.appendChild(control(f, 'governance.' + f.key, gov ? gov[f.key] : undefined));
-        }
-
-        // collect reads every control under container into a nested object,
-        // following the dotted data-path of each control.
-        function collect(container) {
-            const out = {};
-            const set = (path, v) => { const parts = path.split('.'); let o = out; for (let i = 0; i < parts.length - 1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; } o[parts[parts.length - 1]] = v; };
-            for (const el of container.querySelectorAll('[data-path]')) {
-                const kind = el.dataset.kind, raw = el.value;
-                if (raw === '' || raw === null) continue;
-                let v = raw;
-                if (kind === 'int') v = parseInt(raw, 10);
-                else if (kind === 'float') v = parseFloat(raw);
-                else if (kind === 'bool') v = (raw === 'true');
-                else if (kind === 'string_list') v = raw.split('\n').map(s => s.trim()).filter(Boolean);
-                else if (kind === 'map') { v = {}; for (const line of raw.split('\n')) { const i = line.indexOf('='); if (i > 0) v[line.slice(0, i).trim()] = line.slice(i + 1).trim(); } }
-                else if (kind === 'block_list') { try { v = JSON.parse(raw); } catch (e) { throw new Error(el.dataset.path + ': not valid JSON'); } }
-                set(el.dataset.path, v);
-            }
-            return out;
-        }
-
-        function readForm() {
-            const spec = specOf($('f-type').value);
-            const params = collect($('form-params'));
-            const body = { name: $('f-name').value.trim(), type: spec ? spec.type : $('f-type').value, enabled: $('f-enabled').checked, params };
-            const gov = collect($('governance-fields')).governance;
-            if (gov && Object.keys(gov).length) body.governance = gov;
-            return body;
-        }
-
-        function openEditor(p) {
-            editing = p ? p.name : null;
-            $('editor').hidden = false; $('preview').hidden = true;
-            $('editor-title').textContent = p ? 'Edit ' + p.name : 'New probe';
-            $('f-type').disabled = !!p; $('f-name').disabled = !!p;
-            if (p) { $('f-type').value = p.type; $('f-name').value = p.name; $('f-enabled').checked = !!p.enabled; renderForm(p.type, p.params); renderGovernance(p.governance); }
-            else { $('f-name').value = ''; $('f-enabled').checked = true; const first = catalog.find(c => c.authorized); if (first) $('f-type').value = first.type; renderForm($('f-type').value, null); renderGovernance(null); }
-            $('editor').scrollIntoView({ behavior: 'smooth' });
-        }
-
-        $('btn-new').onclick = () => openEditor(null);
-        $('btn-cancel').onclick = () => { $('editor').hidden = true; editing = null; };
-        $('f-type').onchange = () => renderForm($('f-type').value, null);
-
-        $('btn-validate').onclick = async () => {
-            try { const b = readForm(); const d = await send('POST', API + '/config/validate', { probe: b.type, config: b.params, validation: 'schema' });
-                const t = d.tests && d.tests.schema; banner(d.valid ? 'ok' : 'err', d.valid ? ('Valid.' + (t && t.details ? ' ' + t.details : '')) : (d.errors || []).join('\n')); }
-            catch (e) { banner('err', e.message); }
-        };
-        $('btn-test').onclick = async () => {
-            try { const b = readForm(); banner('warn', 'Testing…'); const d = await send('POST', API + '/config/test', { probe: b.type, config: b.params, validation: 'full', timeout: 8 });
-                const pv = $('preview'); if (d.preview_metrics && d.preview_metrics.length) { pv.hidden = false; pv.textContent = d.preview_metrics.slice(0, 40).map(m => m.name + ' = ' + m.value + (m.tags && Object.keys(m.tags).length ? '  ' + JSON.stringify(m.tags) : '')).join('\n'); }
-                banner(d.valid ? 'ok' : 'err', d.valid ? 'Test passed: ' + ((d.tests && d.tests.metrics && d.tests.metrics.details) || 'collected') : (d.errors || []).join('\n')); }
-            catch (e) { banner('err', e.message); }
-        };
-        $('btn-save').onclick = async () => {
-            try { const b = readForm();
-                const d = editing ? await send('PUT', API + '/config/probes/' + encodeURIComponent(editing), b) : await send('POST', API + '/config/probes', b);
-                banner('ok', (d.applied || 'Saved.') + (d.warnings && d.warnings.length ? '\n' + d.warnings.join('\n') : ''));
-                $('editor').hidden = true; editing = null; setTimeout(load, 1200); }
-            catch (e) { banner('err', e.message); }
-        };
-        async function toggle(p) {
-            try { const d = await send('PUT', API + '/config/probes/' + encodeURIComponent(p.name), { type: p.type, enabled: !p.enabled, params: stripRedacted(p.params), governance: p.governance }); banner('ok', d.applied || 'Saved.'); setTimeout(load, 1200); }
-            catch (e) { banner('err', e.message); }
-        }
-        async function remove(p) {
-            if (!window.confirm('Delete probe "' + p.name + '"? Its settings and stored secrets are lost. Disabling keeps them.')) return;
-            try { const d = await send('DELETE', API + '/config/probes/' + encodeURIComponent(p.name)); banner('ok', d.applied || 'Deleted.'); setTimeout(load, 1200); }
-            catch (e) { banner('err', e.message); }
-        }
-        // The listing redacts secrets; sending them back unchanged would
-        // overwrite the stored value with the placeholder. Drop them, the
-        // server keeps a reference it already holds.
-        function stripRedacted(params) {
-            const out = {};
-            for (const [k, v] of Object.entries(params || {})) {
-                if (v && typeof v === 'object' && !Array.isArray(v)) { out[k] = stripRedacted(v); }
-                else if (typeof v === 'string' && (v === '***' || v === '[REDACTED]' || v.startsWith('${secret:'))) { continue; }
-                else out[k] = v;
-            }
-            return out;
-        }
-        load();
-    </script>
+  if (MODE === 'list') List.init(); else Ed.init();
+})();
+</script>
 </body>
 </html>
