@@ -69,14 +69,28 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 	out := make([]configuredProbe, 0, len(cfg.Probes))
 	for _, p := range cfg.Probes {
 		state := agentstate.GetProbeRunState(p.ID())
+		var secretPaths []string
+		if ps, has := spec.For(p.Type); has {
+			secretPaths = secretPathsOf(ps)
+		}
+		// The loaded configuration has its references resolved; the form
+		// needs the file's own words, where a stored secret is a
+		// ${secret:...} reference it can show as such.
+		params := p.Params
+		managed := configuration.IsManagedProbeFragment(configuration.ProbeFragmentPath(configPath, p.Name))
+		if managed {
+			if raw, err := configuration.ReadProbeFragmentParams(configPath, p.Name); err == nil && raw != nil {
+				params = raw
+			}
+		}
 		entry := configuredProbe{
 			Name:       p.Name,
 			Type:       p.Type,
 			Enabled:    p.IsEnabled(),
-			Params:     configuration.SanitizeParamsForLog(p.Params),
+			Params:     sanitizeForConsole(params, secretPaths),
 			Governance: p.Governance,
 			CustomTags: p.CustomTags,
-			Managed:    configuration.IsManagedProbeFragment(configuration.ProbeFragmentPath(configPath, p.Name)),
+			Managed:    managed,
 			Running:    state.Running,
 			Health:     state.Health,
 			LastError:  state.LastError,

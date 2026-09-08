@@ -1,0 +1,86 @@
+package configuration
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"gopkg.in/yaml.v2"
+)
+
+// The console never sees a stored secret: the listing shows a reference
+// and the form sends nothing back for it. A rewrite from the form must
+// therefore carry the references the file already holds, or every save
+// would drop the credentials that took effort to get right.
+
+// KeepStoredReferences copies into incoming every string leaf of existing
+// that is a ${...} reference and that incoming does not set at the same
+// path. A path incoming sets, to anything, wins.
+func KeepStoredReferences(existing, incoming map[string]interface{}) map[string]interface{} {
+	if incoming == nil {
+		incoming = map[string]interface{}{}
+	}
+	for k, v := range existing {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			sub, has := incoming[k].(map[string]interface{})
+			if !has {
+				if _, set := incoming[k]; set {
+					continue
+				}
+				merged := KeepStoredReferences(val, map[string]interface{}{})
+				if len(merged) > 0 {
+					incoming[k] = merged
+				}
+				continue
+			}
+			KeepStoredReferences(val, sub)
+		case string:
+			if _, set := incoming[k]; set {
+				continue
+			}
+			if strings.HasPrefix(val, "${") {
+				incoming[k] = val
+			}
+		}
+	}
+	return incoming
+}
+
+// ReadProbeFragmentParams returns the params of a managed probe fragment
+// as written, references included, or nil when there is no such file.
+func ReadProbeFragmentParams(configPath, name string) (map[string]interface{}, error) {
+	path := ProbeFragmentPath(configPath, name)
+	raw, err := os.ReadFile(path) // #nosec G304 - path is under probes.d/
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	var list []ProbeConfig
+	if err := yaml.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	for _, p := range list {
+		if p.Name == name {
+			return convertMapTypes(map[string]interface{}(p.Params)).(map[string]interface{}), nil
+		}
+	}
+	return nil, nil
+}
+
+// StrategyFragmentParams returns the params of an output's file as
+// written, references included, or nil when there is none.
+func StrategyFragmentParams(configPath, name string) (map[string]interface{}, error) {
+	frags, err := ListStrategyFragments(configPath)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range frags {
+		if f.Name == name {
+			return f.Params, nil
+		}
+	}
+	return nil, nil
+}
