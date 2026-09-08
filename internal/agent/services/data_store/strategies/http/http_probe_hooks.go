@@ -22,6 +22,11 @@ type ProbeIssue struct {
 // reports the parameters it could not read and the error it returned.
 var ProbeChecker func(probeType string, params map[string]interface{}) (issues []ProbeIssue, err error)
 
+// OutputValidator runs a strategy's own parser on the params of an
+// output, the check `config check` applies to a file. Provided by the
+// strategy registry, which this package cannot import.
+var OutputValidator func(outputType string, params map[string]interface{}) error
+
 // ProbeCollector builds a probe, starts it, runs one collect cycle and
 // stops it, returning what it collected. The context bounds the whole
 // attempt; the caller keeps it short.

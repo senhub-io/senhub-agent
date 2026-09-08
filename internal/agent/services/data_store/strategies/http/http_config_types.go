@@ -32,6 +32,10 @@ type UniversalConfigResponse struct {
 	Errors          []string                        `json:"errors,omitempty"`          // Validation errors
 	PreviewMetrics  []PreviewMetric                 `json:"preview_metrics,omitempty"` // Sample metrics (for full validation)
 	Duration        int64                           `json:"duration_ms"`               // Total validation time in milliseconds
+	// Field names the parameter the first error most probably concerns
+	// (a dotted path such as tls.ca_file), so the console can anchor the
+	// message on it. Empty when nothing in the message points anywhere.
+	Field string `json:"field,omitempty"`
 }
 
 // ValidationTestResult represents the result of an individual validation test
