@@ -47,6 +47,34 @@ type ParamSpec struct {
 	// same meaning (tls.ca_cert for ca_file), so the guard test does not
 	// flag them and the configurator writes the canonical one.
 	AlsoAccepts []string `json:"also_accepts,omitempty"`
+	// Essential marks a parameter the probe does nothing useful without,
+	// even though the parser accepts its absence (a database user, an
+	// SNMP community). The console asks for it before anything optional;
+	// Required stays the parser's word and is checked, Essential is not.
+	Essential bool `json:"essential,omitempty"`
+	// EssentialWhen makes the parameter essential only while every
+	// listed condition holds against the current values (the v3 block
+	// of snmp_poll when version is v3). A condition reads the sibling
+	// key's value, or its default when unset.
+	EssentialWhen []Condition `json:"essential_when,omitempty"`
+}
+
+// Condition is one "sibling key has one of these values" test.
+type Condition struct {
+	Key    string   `json:"key"`
+	Values []string `json:"values"`
+}
+
+// HasStartSet reports whether at least one top-level parameter is
+// Required, Essential or conditionally essential: what the console puts
+// in front of the operator before the optional settings.
+func (s Probe) HasStartSet() bool {
+	for _, p := range s.Params {
+		if p.Required || p.Essential || len(p.EssentialWhen) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Probe is what the configurator, config check and the docs need

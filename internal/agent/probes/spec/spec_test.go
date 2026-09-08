@@ -84,3 +84,15 @@ func TestRegister(t *testing.T) {
 	}()
 	Register(spec)
 }
+
+func TestProbe_HasStartSet(t *testing.T) {
+	if (Probe{Params: []ParamSpec{{Key: "interval", Kind: KindInt}}}).HasStartSet() {
+		t.Error("no required or essential parameter must mean no start set")
+	}
+	if !(Probe{Params: []ParamSpec{{Key: "user", Kind: KindString, Essential: true}}}).HasStartSet() {
+		t.Error("an essential parameter is a start set")
+	}
+	if !(Probe{Params: []ParamSpec{{Key: "v3", Kind: KindBlock, EssentialWhen: []Condition{{Key: "version", Values: []string{"v3"}}}}}}).HasStartSet() {
+		t.Error("a conditional essential is a start set")
+	}
+}
