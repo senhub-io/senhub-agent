@@ -4,9 +4,55 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="agent-key" content="{{.AgentKey}}">
-    <title>SenHub Agent - Outputs</title>
+    <title>SenHub Agent - HTTP output</title>
     <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
     <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
+    <style>
+        .sw.on34 { height: 34px; }
+        .kv.left dd.warn { color: var(--warn); }
+        .kv.left dd .mono { font-size: var(--fs-xs); }
+        .fmt { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .fmt label { border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; }
+        .fmt label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+        .fmt input { margin-top: 3px; }
+        .fmt .t { font-weight: 600; font-size: var(--fs-sm); }
+        .fmt .d { font-size: var(--fs-xs); color: var(--muted); }
+        @media (max-width: 720px) { .fmt { grid-template-columns: 1fr; } }
+        .resp table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+        .resp th { text-align: left; font-size: 11px; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .03em; }
+        .resp td { padding: 4px 6px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+        .resp { max-height: 520px; overflow: auto; }
+        pre.dark { max-height: 520px; margin: 0; }
+        /* Tag filters (tag-filters.js), restyled on the console system */
+        #su-tags .loading { font-size: var(--fs-sm); color: var(--muted); padding: 4px 0; }
+        #su-tags .error { font-size: var(--fs-sm); color: var(--err); }
+        #su-tags .info-notice { font-size: var(--fs-xs); color: var(--muted); }
+        .category-selector { margin-bottom: var(--s2); }
+        .category-label, .resource-label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+        .category-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+        .category-pill { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font: inherit; font-size: var(--fs-xs); font-weight: 500; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        .category-pill.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+        .pill-close { opacity: 0; font-size: 13px; line-height: 1; }
+        .category-pill.active .pill-close { opacity: .7; }
+        .resource-filters { margin-top: var(--s3); border-top: 1px solid var(--line); padding-top: var(--s3); }
+        .tags-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s2); }
+        .tag-filter-container { border: 1px solid var(--line); border-radius: var(--r-md); padding: 6px 8px; background: var(--surface); }
+        .tag-header { display: flex; align-items: center; gap: var(--s2); }
+        .tag-header input[type="checkbox"] { margin: 0; }
+        .tag-header-clickable { display: flex; align-items: center; justify-content: space-between; flex: 1; cursor: pointer; padding: 2px 6px; border-radius: var(--r-sm); }
+        .tag-header-clickable:hover { background: var(--well); }
+        .tag-header-clickable label { pointer-events: none; font-size: var(--fs-sm); font-weight: 500; color: var(--ink-2); }
+        .toggle-indicator { font-size: 10px; color: var(--muted-2); margin-left: 6px; }
+        .mode-select { font: inherit; font-size: var(--fs-xs); height: 26px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface); }
+        .values-container { max-height: 150px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 4px 6px; margin-top: 6px; background: var(--well); }
+        .value-option { display: flex; align-items: center; gap: 6px; padding: 1px 2px; font-size: var(--fs-xs); }
+        .value-option label { cursor: pointer; flex: 1; color: var(--ink-2); }
+        .all-values-label { font-weight: 600; color: var(--accent-ink); }
+        .expression-container { margin-top: 6px; }
+        .expression-input { width: 100%; height: 30px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-family: var(--mono); font-size: var(--fs-xs); }
+        .expression-help { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .steps-ol { margin: 0; padding-left: 18px; line-height: 1.7; font-size: var(--fs-sm); }
+    </style>
 </head>
 <body>
     <div class="hdr"><div class="hdr-in">
@@ -20,8 +66,334 @@
         </nav>
         <div class="hdr-status"></div>
     </div></div>
-    <div class="page"><div class="card"><h2>Outputs</h2><p class="muted">This page is being built.</p></div></div>
+
+    <div class="page">
+        <div class="crumb"><a href="/web/{{.AgentKey}}/outputs">Outputs</a> &rsaquo; Console and pull endpoints</div>
+        <div class="page-h">
+            <div>
+                <h1>Console and pull endpoints <span id="state-pill" style="vertical-align:middle"></span></h1>
+                <p class="sub">The HTTP output. This console, and the endpoints PRTG, Nagios and Prometheus read. Saved in <code id="file-name">strategies.d/</code>.</p>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <a class="on" id="t-settings" href="#settings">Settings</a>
+            <a id="t-urls" href="#urls">Sensor URLs</a>
+        </div>
+
+        <div id="p-settings" class="grid g-editor">
+            <div>
+                <div id="banner" class="banner hide mb3"></div>
+                <div class="starter">
+                    <div class="ttl"><h2>Required to start</h2><span class="muted">Port, who may reach it, which endpoints answer.</span></div>
+                    <div class="fgrid">
+                        <div class="field">
+                            <span class="lbl">Port <span class="opt">default 8080</span></span>
+                            <input class="in" type="number" id="h-port" min="1" max="65535" placeholder="Default: 8080">
+                            <span class="hint">Saving a new port moves this console; a link to the new address is shown after save.</span>
+                            <span class="ferr hide" id="h-port-err"></span>
+                        </div>
+                        <div class="field">
+                            <span class="lbl">Reachable from</span>
+                            <div class="row wrap">
+                                <div class="seg" id="h-bind">
+                                    <label><input type="radio" name="bind" value="local"><span>This machine only</span></label>
+                                    <label><input type="radio" name="bind" value="all"><span>Other machines</span></label>
+                                    <label class="hide" id="h-bind-custom-opt"><input type="radio" name="bind" value="custom"><span>Custom</span></label>
+                                </div>
+                                <input class="in mono hide" id="h-bind-custom" style="width:160px" placeholder="10.0.0.5">
+                            </div>
+                            <span class="hint">Other machines binds 0.0.0.0. Required for PRTG or Prometheus to poll. Use TLS then.</span>
+                        </div>
+                        <div class="field span">
+                            <span class="lbl">Endpoints</span>
+                            <div class="row wrap" style="gap:16px">
+                                <label class="sw"><input type="checkbox" data-ep="web" checked disabled><span class="k"></span><span>Web console</span></label>
+                                <label class="sw"><input type="checkbox" data-ep="prtg"><span class="k"></span><span>PRTG</span></label>
+                                <label class="sw"><input type="checkbox" data-ep="nagios"><span class="k"></span><span>Nagios</span></label>
+                                <label class="sw"><input type="checkbox" data-ep="prometheus"><span class="k"></span><span>Prometheus</span></label>
+                            </div>
+                            <span class="hint">Every endpoint is a URL under <code>/api/&lt;agent key&gt;/</code>. Prometheus also answers on <code>/metrics</code> with the agent key as bearer token. The web console cannot be switched off from itself.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actbar">
+                    <button class="btn primary" id="h-save">Save</button>
+                    <a class="btn ghost" href="/web/{{.AgentKey}}/outputs">Cancel</a>
+                    <span class="state" id="h-state"><span class="dot ok"></span>Ready to save</span>
+                </div>
+
+                <div class="sec-group">Optional settings</div>
+                <details class="sec" id="sec-tls">
+                    <summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 6 6 6-6 6"/></svg><span class="t">TLS (HTTPS)</span><span class="sum" id="sum-tls">Off</span></summary>
+                    <div class="body">
+                        <div class="fgrid">
+                            <div class="field span"><label class="sw on34"><input type="checkbox" id="h-tls"><span class="k"></span><span>Serve HTTPS</span></label><span class="hint">The installer can generate a self-signed pair with <code>--enable-https</code>. Or point to your own files.</span></div>
+                            <div class="field"><span class="lbl">Certificate file</span><input class="in mono" id="h-cert" placeholder="/etc/senhub-agent/certs/agent-cert.pem"></div>
+                            <div class="field"><span class="lbl">Key file</span><input class="in mono" id="h-key" placeholder="/etc/senhub-agent/certs/agent-key.pem"></div>
+                            <div class="field"><span class="lbl">Minimum version <span class="opt">default 1.2</span></span>
+                                <select class="sel" id="h-min"><option value="">Default: 1.2</option><option value="1.2">1.2</option><option value="1.3">1.3</option></select></div>
+                        </div>
+                    </div>
+                </details>
+                <details class="sec" id="sec-cache">
+                    <summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 6 6 6-6 6"/></svg><span class="t">Cache</span><span class="sum" id="sum-cache">Default</span></summary>
+                    <div class="body">
+                        <div class="fgrid">
+                            <div class="field"><span class="lbl">Max cache size <span class="opt">series</span></span><input class="in" type="number" id="h-cache" min="1" placeholder="Default: agent limit"><span class="hint">Past it, new series are refused and counted. Fed by every probe, including receivers.</span></div>
+                            <div class="field"><span class="lbl">Retention</span><input class="in" value="" id="h-ttl" disabled><span class="hint">How long a value stays servable to a poller. Set by <code>cache.retention_minutes</code> in <code>agent.yaml</code>, not by this output.</span></div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <div class="side">
+                <div class="card">
+                    <h3>Who is reading</h3>
+                    <dl class="kv left" id="h-readers"><dt>Loading</dt><dd class="muted">...</dd></dl>
+                    <p class="xs muted mt2">A poller that has never come is the usual sign that the URL is not yet in its sensor. <a href="#urls">Build it</a>.</p>
+                </div>
+                <div class="card">
+                    <h3>What will be written</h3>
+                    <p class="xs muted mb2" id="h-file">strategies.d/</p>
+                    <pre class="yaml" id="h-yaml"></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="p-urls" class="grid g-editor hide">
+            <div>
+                <div class="card mb3">
+                    <div class="card-h"><h2>Build a sensor URL</h2><span class="small muted">Three choices, one URL to paste in the poller</span></div>
+                    <div class="stack" style="gap:16px">
+                        <div class="field"><span class="lbl">1. Poller</span><div class="fmt" id="su-fmt"><p class="hint">Loading endpoints...</p></div></div>
+                        <div class="fgrid">
+                            <div class="field"><span class="lbl">2. Probe</span><select class="sel" id="su-probe"><option value="">Loading probes...</option></select><span class="hint">Not needed for Prometheus: one URL serves every probe.</span></div>
+                        </div>
+                        <div class="field hide" id="su-filter-wrap"><span class="lbl">3. Filter <span class="opt">optional</span></span><div id="su-tags"></div><span class="hint">Tags come from the probe. Fewer channels, faster sensor.</span></div>
+                        <label class="sw"><input type="checkbox" id="su-showtags" checked><span class="k"></span><span>Include the resource name in channel names <span class="muted" style="font-weight:400">("Interface LO/1 - State" rather than "State")</span></span></label>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-h"><h2>Sensor URL</h2><a class="small" id="su-lookups" href="/api/{{.AgentKey}}/lookups/prtg" download="senhub-prtg-lookups.zip">Download PRTG lookups</a></div>
+                    <div class="urlbox"><input class="in" id="su-url" readonly placeholder="Pick a poller to build the URL"><button class="btn primary" id="su-copy" disabled>Copy</button><button class="btn" id="su-preview" disabled>Preview</button></div>
+                    <p class="hint mt2" id="su-hint"></p>
+                    <div id="su-resp" class="hide mt3">
+                        <div class="row between mb2" id="su-resp-head"></div>
+                        <div id="su-resp-body"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="side">
+                <div class="card">
+                    <h3>In PRTG</h3>
+                    <ol class="steps-ol">
+                        <li>Device: this host, <code id="su-host"></code>.</li>
+                        <li>Add Sensor, <b>HTTP Data Advanced</b>.</li>
+                        <li>URL: paste. Leave method GET.</li>
+                        <li>Scanning interval: same as the probe.</li>
+                        <li>Import the lookups once, for state channels.</li>
+                    </ol>
+                </div>
+                <div class="card">
+                    <h3>All probes at once</h3>
+                    <p class="small muted">Prometheus scrapes everything from one URL:</p>
+                    <pre class="yaml mt2" id="su-prom-url"></pre>
+                    <p class="xs muted mt2">Send the agent key as <code>Authorization: Bearer</code>, or as <code>?token=</code>. The builder URL above carries it in the path instead.</p>
+                    <p class="small muted mt2">Nagios reads <code id="su-nagios-url"></code> for a summary of every probe.</p>
+                </div>
+                <div class="card">
+                    <h3>Reference</h3>
+                    <p class="small"><a href="/web/{{.AgentKey}}/docs">API reference</a>: every endpoint, its parameters and formats.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>window.AGENT_KEY = '{{.AgentKey}}';</script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/base.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/tag-filters.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/outputs.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/sensor-urls.js"></script>
+    <script>
+    (function () {
+        const O = window.Outputs, esc = O.esc;
+        const $ = id => document.getElementById(id);
+        let saved = null;        // the http output as listed
+        let dirtyTLS = false;
+
+        // Tabs
+        function tab(n) {
+            for (const t of ['settings', 'urls']) {
+                $('p-' + t).classList.toggle('hide', t !== n);
+                $('t-' + t).classList.toggle('on', t === n);
+            }
+        }
+        const deep = SensorURLs.parseHash();
+        tab(deep.tab === 'urls' ? 'urls' : 'settings');
+        document.querySelectorAll('.tabs a, a[href="#urls"]').forEach(a => a.addEventListener('click', ev => {
+            const h = a.getAttribute('href');
+            if (h === '#urls' || h === '#settings') { ev.preventDefault(); history.replaceState({}, '', location.pathname + location.search + h); tab(h.slice(1)); }
+        }));
+
+        // Sensor URLs tab
+        $('su-host').textContent = location.hostname;
+        $('su-prom-url').textContent = location.origin + '/metrics';
+        $('su-nagios-url').textContent = '/api/' + O.key + '/nagios/checks';
+        const su = new SensorURLs(O.key, $('p-urls'));
+        su.load(deep);
+        // A deep link reached by changing only the hash (a link from the
+        // Probes page while this page is open) applies without a reload.
+        window.addEventListener('hashchange', () => {
+            const d = SensorURLs.parseHash();
+            tab(d.tab === 'urls' ? 'urls' : 'settings');
+            if (d.tab === 'urls' && (d.probe || d.fmt)) su.load(d);
+        });
+
+        // Settings tab
+        function bindMode() { const r = document.querySelector('input[name="bind"]:checked'); return r ? r.value : 'all'; }
+        function currentBind() {
+            const m = bindMode();
+            if (m === 'local') return '127.0.0.1';
+            if (m === 'all') return '0.0.0.0';
+            return $('h-bind-custom').value.trim();
+        }
+        function endpoints() {
+            const out = [];
+            document.querySelectorAll('[data-ep]').forEach(cb => { if (cb.checked) out.push(cb.dataset.ep); });
+            return out;
+        }
+        function params() {
+            const p = JSON.parse(JSON.stringify((saved && saved.params) || {}));
+            const port = parseInt($('h-port').value, 10);
+            if (!isNaN(port)) p.port = port; else delete p.port;
+            p.bind_address = currentBind() || '127.0.0.1';
+            p.endpoints = endpoints();
+            const tlsOn = $('h-tls').checked;
+            if (tlsOn || (p.tls && typeof p.tls === 'object') || dirtyTLS) {
+                const tls = Object.assign({}, p.tls || {});
+                tls.enabled = tlsOn;
+                const cert = $('h-cert').value.trim(), key = $('h-key').value.trim(), min = $('h-min').value;
+                if (cert) tls.cert_file = cert; else delete tls.cert_file;
+                if (key) tls.key_file = key; else delete tls.key_file;
+                if (min) tls.min_tls_version = min; else delete tls.min_tls_version;
+                if (tlsOn || Object.keys(tls).length > 1 || p.tls) p.tls = tls;
+            }
+            const cache = parseInt($('h-cache').value, 10);
+            if (!isNaN(cache) && cache > 0) p.max_cache_size = cache; else delete p.max_cache_size;
+            return p;
+        }
+        function fill(o) {
+            saved = o;
+            const p = o.params || {};
+            const file = O.basename(o.path) || '00-http.yaml';
+            $('file-name').textContent = 'strategies.d/' + file;
+            $('h-file').textContent = 'strategies.d/' + file;
+            $('state-pill').innerHTML = O.statePill(o.state);
+            $('h-port').value = p.port != null ? p.port : '';
+            const bind = p.bind_address || '127.0.0.1';
+            let mode = bind === '127.0.0.1' || bind === 'localhost' || bind === '::1' ? 'local' : bind === '0.0.0.0' || bind === '::' || bind === '' ? 'all' : 'custom';
+            if (mode === 'custom') { $('h-bind-custom-opt').classList.remove('hide'); $('h-bind-custom').classList.remove('hide'); $('h-bind-custom').value = bind; }
+            document.querySelector('input[name="bind"][value="' + mode + '"]').checked = true;
+            const eps = Array.isArray(p.endpoints) && p.endpoints.length ? p.endpoints : ['web', 'prtg', 'nagios', 'prometheus'];
+            document.querySelectorAll('[data-ep]').forEach(cb => { if (cb.dataset.ep !== 'web') cb.checked = eps.includes(cb.dataset.ep); });
+            const tls = p.tls || {};
+            $('h-tls').checked = !!tls.enabled;
+            $('h-cert').value = tls.cert_file || '';
+            $('h-key').value = tls.key_file || '';
+            $('h-min').value = tls.min_tls_version ? String(tls.min_tls_version) : '';
+            $('h-cache').value = p.max_cache_size != null ? p.max_cache_size : '';
+            readers(o.readers || []);
+            refresh();
+        }
+        function readers(list) {
+            const order = ['prtg', 'nagios', 'prometheus', 'web'];
+            const rows = list.slice().sort((a, b) => order.indexOf(a.endpoint) - order.indexOf(b.endpoint)).map(r => {
+                const name = O.FAMILY[r.endpoint] || r.endpoint;
+                if (!r.enabled) return '<dt>' + esc(name) + '</dt><dd class="muted">endpoint off</dd>';
+                if (r.endpoint === 'web') return '<dt>' + esc(name) + '</dt><dd>you' + (r.from ? ', ' + esc(r.from) : '') + '</dd>';
+                if (!r.last) return '<dt>' + esc(name) + '</dt><dd class="warn">no request since start</dd>';
+                return '<dt>' + esc(name) + '</dt><dd>' + (r.from ? esc(r.from) + ', ' : '') + 'last ' + esc(O.rel(r.last)) + ', ' + esc(r.total) + ' request' + (r.total === 1 ? '' : 's') + '</dd>';
+            });
+            $('h-readers').innerHTML = rows.join('') || '<dt>Readers</dt><dd class="muted">no data</dd>';
+        }
+        function refresh() {
+            const p = params();
+            $('h-yaml').innerHTML = O.yamlHTML(O.fragmentYAML('http', p));
+            const tls = p.tls || {};
+            $('sum-tls').textContent = tls.enabled ? 'On' + (tls.min_tls_version ? ', min ' + tls.min_tls_version : '') + (tls.cert_file ? ', ' + O.basename(tls.cert_file) : ', no certificate file') : 'Off';
+            $('sum-tls').classList.toggle('set', !!tls.enabled);
+            $('sum-cache').textContent = p.max_cache_size ? p.max_cache_size + ' series' : 'Default';
+            $('sum-cache').classList.toggle('set', !!p.max_cache_size);
+            const open = bindMode() !== 'local' && !tls.enabled;
+            const port = parseInt($('h-port').value, 10);
+            const badPort = isNaN(port) || port < 1 || port > 65535;
+            const badBind = bindMode() === 'custom' && !currentBind();
+            $('h-port-err').classList.toggle('hide', !badPort);
+            $('h-port-err').textContent = badPort ? 'A port between 1 and 65535 is required.' : '';
+            $('h-port').classList.toggle('err', badPort);
+            const st = $('h-state');
+            if (badPort) st.innerHTML = '<span class="dot err"></span>Port still needed';
+            else if (badBind) st.innerHTML = '<span class="dot err"></span>Custom address still needed';
+            else if (tls.enabled && !(tls.cert_file && tls.key_file)) st.innerHTML = '<span class="dot warn"></span>TLS on without certificate and key files';
+            else if (open) st.innerHTML = '<span class="dot warn"></span>Reachable from other machines without TLS';
+            else st.innerHTML = '<span class="dot ok"></span>Ready to save';
+            $('h-save').disabled = badPort || badBind;
+        }
+        $('p-settings').addEventListener('input', refresh);
+        $('p-settings').addEventListener('change', ev => {
+            if (ev.target.name === 'bind') {
+                const custom = ev.target.value === 'custom';
+                $('h-bind-custom').classList.toggle('hide', !custom);
+            }
+            if (ev.target.closest('#sec-tls')) dirtyTLS = true;
+            refresh();
+        });
+
+        O.api('info/system').then(s => { if (s.cache && s.cache.ttl) $('h-ttl').value = String(s.cache.ttl).replace(/^(\d+m)0s$/, '$1'); }).catch(() => {});
+
+        async function load() {
+            try {
+                const d = await O.api('config/outputs');
+                const o = (d.outputs || []).find(x => x.name === 'http');
+                if (!o) throw new Error('no http output in strategies.d');
+                fill(o);
+            } catch (e) {
+                O.banner($('banner'), 'err', esc('Could not load the http output: ' + e.message));
+            }
+        }
+        $('h-save').addEventListener('click', async () => {
+            const p = params();
+            const btn = $('h-save');
+            btn.disabled = true; btn.textContent = 'Saving...';
+            try {
+                const oldPort = saved && saved.params ? saved.params.port : null;
+                const res = await O.api('config/outputs/http', { method: 'PUT', body: { enabled: true, params: p } });
+                let html = esc(res.applied || 'http output updated');
+                if (oldPort != null && p.port !== oldPort) {
+                    const url = location.protocol + '//' + location.hostname + ':' + p.port + O.webBase + 'outputs/http';
+                    html += '<br>The console moves to port ' + esc(p.port) + ' once the listener restarts: <a href="' + esc(url) + '">' + esc(url) + '</a>';
+                }
+                O.banner($('banner'), 'ok', html);
+                dirtyTLS = false;
+                setTimeout(load, 1500);
+            } catch (e) {
+                O.banner($('banner'), 'err', esc(e.message));
+            }
+            btn.disabled = false; btn.textContent = 'Save';
+        });
+
+        load();
+        setInterval(async () => {
+            try {
+                const d = await O.api('config/outputs');
+                const o = (d.outputs || []).find(x => x.name === 'http');
+                if (o) { $('state-pill').innerHTML = O.statePill(o.state); readers(o.readers || []); }
+            } catch (e) { /* the next tick retries */ }
+        }, 30000);
+    })();
+    </script>
 </body>
 </html>

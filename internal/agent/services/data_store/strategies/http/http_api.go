@@ -35,26 +35,6 @@ func NewAPIManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *API
 	}
 }
 
-// formatProbeDisplayName formats probe names for display in the UI
-// Capitalizes the first letter (e.g., "netscaler" -> "Netscaler")
-func formatProbeDisplayName(probeName string) string {
-	if probeName == "" {
-		return probeName
-	}
-
-	// Acronym-only special cases for built-in probes; user-configured
-	// instance names are shown verbatim (a lowercase "powerstore-1" must
-	// not be displayed as "Powerstore-1" — the configured casing wins).
-	switch strings.ToLower(probeName) {
-	case "cpu":
-		return "CPU"
-	case "prtg":
-		return "PRTG"
-	default:
-		return probeName
-	}
-}
-
 // SenHub API Endpoints
 
 // PRTG API Endpoints
@@ -173,7 +153,7 @@ func (a *APIManager) HandleListProbes(w http.ResponseWriter, r *http.Request) {
 		}
 
 		probes = append(probes, ProbeInfo{
-			Name:         formatProbeDisplayName(stats.Name), // Format name for UI display
+			Name:         stats.Name,
 			MetricsCount: stats.MetricsCount,
 			LastUpdate:   lastUpdate,
 		})
@@ -214,9 +194,8 @@ func (a *APIManager) HandleInfoProbes(w http.ResponseWriter, r *http.Request) {
 
 	for probe, tsKeys := range a.strategy.cache.probeIndex {
 		count := len(tsKeys)
-		displayName := formatProbeDisplayName(probe) // Format name for UI display
-		probes = append(probes, displayName)
-		probeMetrics[displayName] = count
+		probes = append(probes, probe)
+		probeMetrics[probe] = count
 		totalMetrics += count
 	}
 

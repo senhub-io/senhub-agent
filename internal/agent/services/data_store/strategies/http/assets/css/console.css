@@ -305,3 +305,12 @@ details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary::before { content: "\25B8"; display: inline-block; width: 12px; color: var(--muted-2); }
 details.more[open] > summary::before { content: "\25BE"; }
 details.more > .fgrid { margin-top: 8px; }
+
+/* Narrow screens: the header wraps instead of pushing the page sideways */
+.brand { white-space: nowrap; }
+.hdr-status { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 900px) {
+  .hdr-in { flex-wrap: wrap; height: auto; min-height: 56px; padding: 8px 16px; gap: var(--s3); }
+  .nav { margin-left: 0; flex-wrap: wrap; }
+  .hdr-status { margin-left: 0; width: 100%; justify-content: flex-start; }
+}
