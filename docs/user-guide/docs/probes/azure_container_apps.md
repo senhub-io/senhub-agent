@@ -76,7 +76,7 @@ Each record's body is the line (or the folded multiline record). Attributes:
 | `cloud.provider` | `azure` |
 | `cloud.region` | The application's Azure region |
 | `cloud.resource_id` | The ARM resource ID of the application |
-| `service.name` | The application name |
+| `senhub.azure_container_apps.app` | The application name. Not `service.name`: that key stays the identity of the resource that emits the record, the agent, and a record-level copy of it collides with it in every store. |
 | `senhub.azure_container_apps.revision` | The revision the line came from |
 | `senhub.azure_container_apps.replica` | The replica the line came from |
 | `container.name` | The container the line came from |
