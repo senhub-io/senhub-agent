@@ -502,6 +502,15 @@
         `console` verb, which reads the sealed key (asking for elevation
         once) and opens the browser. Removed with the product.
       -->
+      <!-- Hidden launcher for the console shortcuts: without it a
+           shortcut aimed at the console program flashes a terminal. -->
+      <Component Id="OpenConsoleLauncher" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="OpenConsoleVbs"
+              Name="open-console.vbs"
+              Source="packaging/windows/open-console.vbs"
+              KeyPath="yes" />
+      </Component>
+
       <!-- Start Menu shortcut, always present: it is what the Finish page
            launches when "open the web console" is ticked, exactly the
            shortcut a person would click. -->
@@ -515,11 +524,11 @@
         <Shortcut Id="ConsoleMenuShortcutLnk"
                   Name="SenHub Agent Console"
                   Description="Open the SenHub Agent web console"
-                  Target="[#SenHubAgentExe]"
-                  Arguments="console"
+                  Target="[System64Folder]wscript.exe"
+                  Arguments="&quot;[#OpenConsoleVbs]&quot;"
                   WorkingDirectory="INSTALLFOLDER"
                   Icon="senhub.ico"
-                  Show="minimized" />
+                  Show="normal" />
         <RemoveFolder Id="RemoveProgramMenuDir" Directory="ProgramMenuDir" On="uninstall" />
       </Component>
 
@@ -533,11 +542,11 @@
         <Shortcut Id="ConsoleDesktopShortcut"
                   Name="SenHub Agent Console"
                   Description="Open the SenHub Agent web console"
-                  Target="[#SenHubAgentExe]"
-                  Arguments="console"
+                  Target="[System64Folder]wscript.exe"
+                  Arguments="&quot;[#OpenConsoleVbs]&quot;"
                   WorkingDirectory="INSTALLFOLDER"
                   Icon="senhub.ico"
-                  Show="minimized" />
+                  Show="normal" />
       </Component>
 
       <!--
