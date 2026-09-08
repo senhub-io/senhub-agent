@@ -98,6 +98,11 @@ func UpdateProbeFragment(configPath string, p ProbeConfig, secretPaths []string)
 	if !IsManagedProbeFragment(path) {
 		return "", fmt.Errorf("%s is not managed by the console (missing, or written by hand); edit it by hand or remove it first", path)
 	}
+	existing, err := ReadProbeFragmentParams(configPath, p.Name)
+	if err != nil {
+		return "", err
+	}
+	p.Params = KeepStoredReferences(existing, p.Params)
 	if err := sealProbeParams(&p, secretPaths); err != nil {
 		return "", err
 	}

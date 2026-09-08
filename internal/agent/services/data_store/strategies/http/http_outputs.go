@@ -151,13 +151,15 @@ func (h *HTTPSyncStrategy) describeOutput(f configuration.StrategyFragment) conf
 	entry := configuredOutput{
 		Name: f.Name, Type: f.Name, DisplayName: f.Name, Mode: string(outputspec.ModePush),
 		Enabled: f.Enabled, Managed: f.Managed, Path: f.Path,
-		Params: configuration.SanitizeParamsForLog(f.Params),
 	}
+	var secretPaths []string
 	if spec, has := outputspec.For(f.Name); has {
 		entry.HasSchema = true
 		entry.DisplayName = spec.DisplayName
 		entry.Mode = string(spec.Mode)
+		secretPaths = spec.SecretPaths()
 	}
+	entry.Params = sanitizeForConsole(f.Params, secretPaths)
 	if entry.Params == nil {
 		entry.Params = map[string]interface{}{}
 	}
@@ -352,6 +354,15 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 	if req.Params == nil {
 		req.Params = map[string]interface{}{}
 	}
+	dropRedactedValues(req.Params)
+	// The form never sends a stored secret back; the test of an existing
+	// output runs with the references its file holds, resolved the way
+	// the strategy resolves them.
+	if configPath := h.agentConfig.GetConfigPath(); configPath != "" {
+		if existing, err := configuration.StrategyFragmentParams(configPath, req.Type); err == nil && existing != nil {
+			req.Params = configuration.KeepStoredReferences(existing, req.Params)
+		}
+	}
 	start := time.Now()
 	timeout := time.Duration(clampConnectivityTimeout(req.Timeout)) * time.Second
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -442,6 +453,7 @@ func (h *HTTPSyncStrategy) decodeOutputWrite(w http.ResponseWriter, r *http.Requ
 	if req.Params == nil {
 		req.Params = map[string]interface{}{}
 	}
+	dropRedactedValues(req.Params)
 	return req, true
 }
 

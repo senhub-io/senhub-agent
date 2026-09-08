@@ -143,6 +143,11 @@ func UpdateStrategyFragment(configPath, name string, params StorageConfigParams,
 	if path == "" {
 		return "", fmt.Errorf("no output named %q under strategies.d", name)
 	}
+	existing, err := StrategyFragmentParams(configPath, name)
+	if err != nil {
+		return "", err
+	}
+	params = KeepStoredReferences(existing, params)
 	if err := sealParams("strategies."+name, params, secretPaths); err != nil {
 		return "", err
 	}

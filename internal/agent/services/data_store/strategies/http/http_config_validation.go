@@ -101,14 +101,24 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	// reset, and lets a caller pin handler goroutines).
 	req.Timeout = clampConnectivityTimeout(req.Timeout)
 
+	dropRedactedValues(req.Config)
+	if req.Name != "" {
+		if err := cm.withStoredSecrets(req); err != nil {
+			response.Valid = false
+			response.Errors = append(response.Errors, err.Error())
+			response.Duration = time.Since(startTime).Milliseconds()
+			return response, nil
+		}
+	}
+
 	// Step 1: Schema Validation (always performed)
 	schemaResult := cm.validateProbeSchema(req.Probe, req.Config)
 	response.Tests["schema"] = schemaResult
 
 	if !schemaResult.Passed {
 		response.Valid = false
-		response.Errors = append(response.Errors, schemaResult.Error)
-		response.Field = guessField(req.Probe, schemaResult.Error)
+		response.Errors = append(response.Errors, splitParameterProblems(schemaResult.Error)...)
+		response.Field = guessField(req.Probe, response.Errors[0])
 		response.Duration = time.Since(startTime).Milliseconds()
 
 		cm.logger.Error().
@@ -322,6 +332,11 @@ func (cm *ConfigurationManager) validateProbeMetrics(probeName string, config ma
 		return result, nil
 	}
 	previewMetrics = collected
+	if down := deadTarget(collected); down != "" {
+		result.Error = down
+		result.Duration = time.Since(startTime).Milliseconds()
+		return result, previewMetrics
+	}
 	result.Passed = true
 	result.Details = fmt.Sprintf("collected %d metrics", len(collected))
 
@@ -726,4 +741,74 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 		Int64("duration_ms", response.Duration).
 		Int("preview_metrics_count", len(response.PreviewMetrics)).
 		Msg("Universal configuration test request completed")
+}
+
+// withStoredSecrets completes the values of an existing probe with the
+// secret references its file holds and resolves them, so a test from
+// the form runs with the real credentials without the form ever seeing
+// them.
+func (cm *ConfigurationManager) withStoredSecrets(req *UniversalConfigRequest) error {
+	configPath := cm.agentConfig.GetConfigPath()
+	if configPath == "" {
+		return nil
+	}
+	existing, err := configuration.ReadProbeFragmentParams(configPath, req.Name)
+	if err != nil || existing == nil {
+		return err
+	}
+	req.Config = configuration.KeepStoredReferences(existing, req.Config)
+	if err := configuration.Substitute(&req.Config); err != nil {
+		return fmt.Errorf("resolving the stored values of %q: %w", req.Name, err)
+	}
+	return nil
+}
+
+// splitParameterProblems turns the schema's "parameters: a; b" message
+// into one error per problem, so each can be anchored on its field.
+func splitParameterProblems(msg string) []string {
+	const prefix = "parameters: "
+	if !strings.HasPrefix(msg, prefix) {
+		return []string{msg}
+	}
+	parts := strings.Split(strings.TrimPrefix(msg, prefix), "; ")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return []string{msg}
+	}
+	return out
+}
+
+// deadTarget reports a collection that succeeded only in saying that the
+// target is down: an availability metric ("up", "*.up", "*.available",
+// "*.reachable") at zero. A test that passes on such a cycle would tell
+// the operator that the values are right when the server refused them.
+func deadTarget(metrics []PreviewMetric) string {
+	for _, m := range metrics {
+		name := strings.ToLower(m.Name)
+		last := name
+		if i := strings.LastIndex(name, "."); i >= 0 {
+			last = name[i+1:]
+		}
+		switch last {
+		case "up", "available", "reachable", "connected":
+		default:
+			continue
+		}
+		if m.Value == 0 {
+			target := ""
+			for _, k := range []string{"target", "host", "url", "endpoint", "server"} {
+				if v, ok := m.Tags[k]; ok && v != "" {
+					target = " (" + v + ")"
+					break
+				}
+			}
+			return fmt.Sprintf("the target did not answer%s: %s = 0", target, m.Name)
+		}
+	}
+	return ""
 }
