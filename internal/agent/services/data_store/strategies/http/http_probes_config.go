@@ -18,6 +18,7 @@ type configuredProbe struct {
 	Enabled    bool                   `json:"enabled"`
 	Params     map[string]interface{} `json:"params"`
 	Governance map[string]interface{} `json:"governance,omitempty"`
+	CustomTags map[string]string      `json:"custom_tags,omitempty"`
 	Managed    bool                   `json:"managed"`
 	Running    bool                   `json:"running"`
 	Health     string                 `json:"health,omitempty"`
@@ -72,6 +73,7 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 			Enabled:    p.IsEnabled(),
 			Params:     configuration.SanitizeParamsForLog(p.Params),
 			Governance: p.Governance,
+			CustomTags: p.CustomTags,
 			Managed:    configuration.IsManagedProbeFragment(configuration.ProbeFragmentPath(configPath, p.Name)),
 			Running:    state.Running,
 			Health:     state.Health,
