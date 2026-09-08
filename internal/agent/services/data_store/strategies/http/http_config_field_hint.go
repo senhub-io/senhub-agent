@@ -70,7 +70,7 @@ var fieldHintRules = []struct {
 }{
 	{regexp.MustCompile(`access denied|authentication failed|password|auth(entication)? (failed|error)|401|403|unauthori[sz]ed|login failed|bad credentials|invalid credentials|wrong community|no such user|usm`), []string{"password", "username", "community", "bearer_token", "v3", "auth"}},
 	{regexp.MustCompile(`no such host|name resolution|lookup .* no such|dns|unknown host|could not resolve`), []string{"host", "target", "targets", "endpoint", "server", "url"}},
-	{regexp.MustCompile(`connection refused|timed? ?out|no route to host|unreachable|i/o timeout|deadline exceeded|dial tcp|dial udp|request timeout`), []string{"host", "target", "targets", "endpoint", "port", "url"}},
+	{regexp.MustCompile(`connection refused|timed? ?out|no route to host|unreachable|i/o timeout|deadline exceeded|dial tcp|dial udp|request timeout|did not answer|no response`), []string{"host", "target", "targets", "endpoint", "port", "url"}},
 	{regexp.MustCompile(`x509|certificate|tls handshake|ssl`), []string{"tls", "insecure_skip_verify", "ca_file"}},
 	{regexp.MustCompile(`no such file|permission denied|not found`), []string{"paths", "path", "command", "socket_path", "bookmark_path"}},
 }

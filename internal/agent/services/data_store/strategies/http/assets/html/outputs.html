@@ -7,6 +7,28 @@
     <title>SenHub Agent - Outputs</title>
     <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
     <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
+    <style>
+        .orow.dis .t, .orow.dis .d { color: var(--muted); }
+        .orow.dis .t { font-weight: 500; }
+        .lifewarn { color: var(--warn); }
+        .lifebad { color: var(--err); }
+        .orow .acts { display: flex; gap: var(--s2); align-items: center; justify-content: flex-end; }
+        .menu { position: relative; }
+        .menu > summary { list-style: none; }
+        .menu > summary::-webkit-details-marker { display: none; }
+        .menu .items { position: absolute; right: 0; top: 30px; z-index: 20; min-width: 160px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 6px 20px rgba(17,24,39,.12); padding: 4px; display: flex; flex-direction: column; }
+        .menu .items button { text-align: left; border: none; background: none; font: inherit; font-size: var(--fs-sm); padding: 7px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-2); }
+        .menu .items button:hover { background: var(--well); }
+        .menu .items button.danger { color: var(--err); }
+        .otest { grid-column: 2 / -1; margin: -4px 0 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--well); }
+        .otest .metric-list div.bad .v { color: var(--err); font-weight: 500; }
+        .otest .metric-list .v { text-align: right; overflow-wrap: anywhere; }
+        .orow.testing { border-bottom: none; padding-bottom: 6px; }
+        .scard.off { opacity: .55; pointer-events: none; }
+        .scard .need { margin-top: 6px; color: var(--accent-ink); font-size: var(--fs-xs); }
+        .scard .need.done { color: var(--muted); }
+        .empty-note { padding: var(--s4) 0; color: var(--muted); font-size: var(--fs-sm); }
+    </style>
 </head>
 <body>
     <div class="hdr"><div class="hdr-in">
@@ -20,8 +42,176 @@
         </nav>
         <div class="hdr-status"></div>
     </div></div>
-    <div class="page"><div class="card"><h2>Outputs</h2><p class="muted">This page is being built.</p></div></div>
+
+    <div class="page">
+        <div class="page-h">
+            <div>
+                <h1>Outputs</h1>
+                <p class="sub">Where collected data goes. Pull outputs wait for a poller; push outputs send on their own.</p>
+            </div>
+            <a class="btn primary" href="#add">Add an output</a>
+        </div>
+
+        <div id="banner" class="banner ok hide mb4"></div>
+
+        <div class="card mb4">
+            <div class="card-h"><h2>Configured <span class="count" id="count"></span></h2><span class="small muted">One file each under <code>strategies.d/</code></span></div>
+            <div id="list"><div class="empty-note">Loading outputs...</div></div>
+            <div class="card-foot"><span>The <b>...</b> menu holds Disable and Delete. Disable renames the file to <code>.disabled</code>; nothing is lost.</span></div>
+        </div>
+
+        <div class="card" id="add">
+            <div class="card-h"><h2>Add an output</h2><span class="small muted">Pick where the data should go</span></div>
+            <div class="starters" id="cards" style="margin-top:0"></div>
+            <p class="small muted mt3">The HTTP output exists once per agent and cannot be added twice. Prometheus, PRTG pull and Nagios are endpoints of that one output.</p>
+        </div>
+    </div>
+
     <script>window.AGENT_KEY = '{{.AgentKey}}';</script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/outputs.js"></script>
+    <script>
+    (function () {
+        const O = window.Outputs, esc = O.esc;
+        const list = document.getElementById('list');
+        const cards = document.getElementById('cards');
+        const countEl = document.getElementById('count');
+        const bannerEl = document.getElementById('banner');
+        const tests = {};      // name -> last test result html, kept across refreshes
+        let outputs = [];
+
+        const NEED = { otlp: 'Endpoint and a token', prtg: 'Server URL', senhub: 'Interval', event: 'Server URL' };
+
+        const q = new URLSearchParams(location.search);
+        if (q.get('msg')) {
+            O.banner(bannerEl, 'ok', esc(q.get('msg')));
+            history.replaceState({}, '', location.pathname + location.hash);
+        }
+
+        function editHref(o) {
+            return O.webBase + 'outputs/' + encodeURIComponent(o.name === 'http' ? 'http' : o.name);
+        }
+
+        function row(o) {
+            const dis = !o.enabled || o.state === 'disabled';
+            let acts = '';
+            if (o.type === 'http') {
+                acts = '<a class="btn sm" href="' + O.webBase + 'outputs/http#urls">Sensor URLs</a><a class="btn sm" href="' + editHref(o) + '">Edit</a>';
+            } else {
+                acts = (dis ? '<button class="btn sm" data-act="enable">Enable</button>' : '<button class="btn sm" data-act="test">Test</button>') +
+                    '<a class="btn sm" href="' + editHref(o) + '">Edit</a>' +
+                    '<details class="menu"><summary class="btn sm ghost" title="More">...</summary><div class="items">' +
+                    (dis ? '<button data-act="enable">Enable</button>' : '<button data-act="disable">Disable</button>') +
+                    '<button class="danger" data-act="delete">Delete</button></div></details>';
+            }
+            const testHtml = tests[o.name] ? '<div class="otest">' + tests[o.name] + '</div>' : '';
+            return '<div class="orow' + (dis ? ' dis' : '') + (testHtml ? ' testing' : '') + '" data-name="' + esc(o.name) + '">' +
+                '<div class="oicon' + (dis ? ' off' : '') + '">' + esc(O.shortType(o.type)) + '</div>' +
+                '<div class="grow">' +
+                '<div class="t">' + esc(o.display_name || o.name) + ' ' + O.statePill(o.state) + ' ' + O.modePill(o.mode) +
+                (o.managed ? '' : ' <span class="pill file" title="Written by hand; the console takes it over on save">file</span>') + '</div>' +
+                '<div class="d">' + O.facts(o) + '</div>' +
+                '<div class="d">' + O.life(o) + '</div>' +
+                '</div>' +
+                '<div class="acts">' + acts + '</div>' +
+                '</div>' + testHtml;
+        }
+
+        function render() {
+            countEl.textContent = outputs.length;
+            if (!outputs.length) {
+                list.innerHTML = '<div class="empty-note">No output file under strategies.d. The agent keeps its data in memory until one exists.</div>';
+                return;
+            }
+            const order = { http: 0, otlp: 1, prtg: 2, senhub: 3, event: 4 };
+            const sorted = outputs.slice().sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9) || a.name.localeCompare(b.name));
+            list.innerHTML = sorted.map(row).join('');
+        }
+
+        function renderCards(catalog) {
+            const order = { otlp: 0, prtg: 1, senhub: 2, event: 3 };
+            const entries = (catalog.outputs || []).filter(c => !c.singleton).sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9));
+            cards.innerHTML = entries.map(c => {
+                const done = !!c.configured;
+                const href = O.webBase + 'outputs/' + encodeURIComponent(c.type) + '?new=' + encodeURIComponent(c.type);
+                return '<a class="scard' + (done ? ' off' : '') + '" href="' + href + '"' + (done ? ' aria-disabled="true"' : '') + '>' +
+                    '<div class="t">' + esc(c.display_name) + '</div>' +
+                    '<div class="d">' + esc(c.summary || '') + '</div>' +
+                    '<div class="need' + (done ? ' done' : '') + '">' + (done ? 'Already configured' : esc(NEED[c.type] || 'A few values')) + '</div></a>';
+            }).join('');
+        }
+
+        async function load() {
+            try {
+                const [cfg, cat] = await Promise.all([O.api('config/outputs'), O.api('catalog/outputs')]);
+                outputs = cfg.outputs || [];
+                render();
+                renderCards(cat);
+            } catch (e) {
+                list.innerHTML = '<div class="empty-note">' + esc('Could not load the outputs: ' + e.message) + '</div>';
+            }
+        }
+
+        function find(name) { return outputs.find(o => o.name === name); }
+
+        async function runTest(o, btn) {
+            const { params, stripped } = O.stripRedacted(o.params);
+            btn.disabled = true; btn.textContent = 'Testing...';
+            try {
+                const res = await O.api('config/outputs/test', { method: 'POST', body: { type: o.type, params, timeout: 8 } });
+                tests[o.name] = '<div class="row mb2">' + O.testPill(res) + '</div>' + O.stepsHTML(res, params) +
+                    '<p class="xs muted mt2">Run ' + esc(O.clock()) + ' with the saved values' +
+                    (stripped.length ? ', stored secrets included' : '') + '.</p>';
+            } catch (e) {
+                tests[o.name] = '<span class="pill err"><span class="dot err"></span>test failed</span> <span class="small">' + esc(e.message) + '</span>';
+            }
+            render();
+        }
+
+        async function setEnabled(o, enabled) {
+            const { params } = O.stripRedacted(o.params);
+            try {
+                const res = await O.api('config/outputs/' + encodeURIComponent(o.name), { method: 'PUT', body: { enabled, params } });
+                O.banner(bannerEl, 'ok', esc(res.applied || ('output ' + o.name + (enabled ? ' enabled' : ' disabled'))));
+            } catch (e) {
+                O.banner(bannerEl, 'err', esc(e.message));
+            }
+            await load();
+        }
+
+        async function remove(o) {
+            if (!confirm('Delete the output "' + o.name + '"? Its file under strategies.d is removed and the agent stops it.')) return;
+            try {
+                const res = await O.api('config/outputs/' + encodeURIComponent(o.name), { method: 'DELETE' });
+                delete tests[o.name];
+                O.banner(bannerEl, 'ok', esc(res.applied || ('output ' + o.name + ' removed')));
+            } catch (e) {
+                O.banner(bannerEl, 'err', esc(e.message));
+            }
+            await load();
+        }
+
+        list.addEventListener('click', ev => {
+            const btn = ev.target.closest('[data-act]');
+            if (!btn) return;
+            const rowEl = btn.closest('.orow');
+            const o = rowEl && find(rowEl.dataset.name);
+            if (!o) return;
+            const menu = btn.closest('details.menu');
+            if (menu) menu.removeAttribute('open');
+            const act = btn.dataset.act;
+            if (act === 'test') runTest(o, btn);
+            else if (act === 'enable') setEnabled(o, true);
+            else if (act === 'disable') setEnabled(o, false);
+            else if (act === 'delete') remove(o);
+        });
+        document.addEventListener('click', ev => {
+            document.querySelectorAll('details.menu[open]').forEach(m => { if (!m.contains(ev.target)) m.removeAttribute('open'); });
+        });
+
+        load();
+        setInterval(load, 30000);
+    })();
+    </script>
 </body>
 </html>

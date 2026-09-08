@@ -4,9 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="agent-key" content="{{.AgentKey}}">
-    <title>SenHub Agent - Outputs</title>
+    <title>SenHub Agent - Output</title>
     <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
     <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
+    <style>
+        /* Controls the form engine emits (blocks, key/value tables) */
+        .blk { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--well); padding: 10px 12px; }
+        .blk .bh { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+        .blk .bh .t { font-weight: 600; font-size: var(--fs-sm); font-family: var(--mono); }
+        .blk .fgrid { gap: 10px 14px; }
+        .blk .blk { background: var(--surface); }
+        .field .lbl { font-family: var(--mono); }
+        .field .lbl .opt, .field .lbl .req { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        table.rows { width: 100%; border-collapse: collapse; }
+        table.rows td, table.rows th { padding: 3px 4px; vertical-align: middle; }
+        table.rows th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+        table.rows .in, table.rows .sel { height: 30px; font-size: var(--fs-sm); }
+        .sw .sw-t { font-weight: 500; }
+        .sub .why { color: var(--err); }
+        .conn .metric-list div.bad .v { color: var(--err); font-weight: 500; }
+        .conn .metric-list .v { text-align: right; overflow-wrap: anywhere; }
+        .conn .metric-list span:first-child { flex: none; }
+        .kv dd.ok { color: var(--ok); } .kv dd.bad { color: var(--err); }
+        .actbar .btn-row { display: contents; }
+        .err-list { margin: 4px 0 0; padding-left: 18px; }
+    </style>
 </head>
 <body>
     <div class="hdr"><div class="hdr-in">
@@ -20,8 +42,294 @@
         </nav>
         <div class="hdr-status"></div>
     </div></div>
-    <div class="page"><div class="card"><h2>Outputs</h2><p class="muted">This page is being built.</p></div></div>
+
+    <div class="page">
+        <div class="crumb"><a href="/web/{{.AgentKey}}/outputs">Outputs</a> &rsaquo; <span id="crumb-name">Output</span></div>
+        <div class="page-h">
+            <div>
+                <h1><span id="title">Output</span> <span id="state-pill" style="vertical-align:middle"></span></h1>
+                <p class="sub" id="sub">Loading...</p>
+            </div>
+            <div class="btn-row hide" id="top-actions" style="flex:none">
+                <button class="btn" id="btn-toggle">Disable</button>
+                <button class="btn danger" id="btn-delete">Delete</button>
+            </div>
+        </div>
+
+        <div class="grid g-editor">
+            <div>
+                <div id="banner" class="banner hide mb3"></div>
+                <div class="starter">
+                    <div class="ttl"><h2>Required to start</h2><span class="muted" id="starter-note">Without these the output does nothing.</span></div>
+                    <div class="fgrid" id="starter">
+                        <div class="field">
+                            <span class="lbl">Name <span class="req">Required</span></span>
+                            <input class="in mono" id="f-name" disabled>
+                            <span class="hint">One file per output under strategies.d, named by its type.</span>
+                        </div>
+                        <div class="field">
+                            <span class="lbl">Enabled</span>
+                            <label class="sw" style="height:34px"><input type="checkbox" id="f-enabled" checked><span class="k"></span><span class="sw-t">Starts as soon as saved</span></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actbar">
+                    <button class="btn" id="btn-test">Test connection</button>
+                    <button class="btn primary" id="btn-save">Save</button>
+                    <a class="btn ghost" href="/web/{{.AgentKey}}/outputs">Cancel</a>
+                    <span class="state" id="state"><span class="dot"></span>Loading</span>
+                </div>
+
+                <div class="sec-group" id="opt-title">Optional settings</div>
+                <div id="sections"></div>
+
+                <details class="sec" style="margin-top:8px">
+                    <summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 6 6 6-6 6"/></svg><span class="t">Edit as YAML</span><span class="sum">the same file, live</span></summary>
+                    <div class="body"><textarea class="ta" id="yaml-ta" style="min-height:160px" readonly></textarea><p class="hint mt2">Read-only here: the form above is the editor. The text follows every change.</p></div>
+                </details>
+            </div>
+
+            <div class="side">
+                <div class="card conn">
+                    <h3>Connection</h3>
+                    <div id="conn"><p class="small muted">Press <b>Test connection</b> to open a fresh connection with the values on this page and push one test metric.</p></div>
+                </div>
+                <div class="card hide" id="pipe-card">
+                    <h3>Since start</h3>
+                    <dl class="kv" id="pipe"></dl>
+                    <p class="xs muted mt2">Counters of this agent's OTLP pipeline since it started. Was the "OTLP pipeline" card of the dashboard; it lives with the output it describes.</p>
+                </div>
+                <div class="card">
+                    <h3>What will be written</h3>
+                    <p class="xs muted mb2" id="file">strategies.d/</p>
+                    <pre class="yaml" id="yaml"></pre>
+                </div>
+                <div class="card" id="about-card">
+                    <h3>About this output</h3>
+                    <p class="small" id="about"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>window.AGENT_KEY = '{{.AgentKey}}';</script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/outputs.js"></script>
+    <script src="/web/{{.AgentKey}}/assets/js/schema-form.js"></script>
+    <script>
+    (function () {
+        const O = window.Outputs, esc = O.esc;
+        const $ = id => document.getElementById(id);
+        const listURL = O.webBase + 'outputs';
+
+        const segs = location.pathname.replace(/\/+$/, '').split('/');
+        const nameInPath = decodeURIComponent(segs[segs.length - 1] || '');
+        const q = new URLSearchParams(location.search);
+        let type = q.get('new') || nameInPath;
+        if (type === 'http') { location.replace(O.webBase + 'outputs/http'); return; }
+
+        let entry = null;      // catalogue entry
+        let existing = null;   // listed output, when it exists
+        let form = null;
+        let hostname = '';
+        let strippedSecrets = [];
+
+        function toYAML(values) {
+            const keys = Object.keys(values || {});
+            if (!keys.length) return type + ': {}';
+            const body = (window.SchemaForm && SchemaForm.toYAML) ? SchemaForm.toYAML(values, 2) : O.toYAML(values, 2);
+            return type + ':\n' + body;
+        }
+
+        // The engine renders a secret map as plain key/value inputs; mask
+        // the value column of every secret map so tokens are not echoed.
+        function maskSecretMaps() {
+            for (const p of entry.params) {
+                if (p.kind !== 'map' || !p.secret) continue;
+                document.querySelectorAll('[data-path="' + p.key + '"] table.rows tbody tr').forEach(tr => {
+                    const inputs = tr.querySelectorAll('input.in');
+                    if (inputs.length >= 2) { inputs[1].type = 'password'; inputs[1].autocomplete = 'new-password'; }
+                });
+            }
+        }
+
+        function openSignals() {
+            const d = $('sections').querySelector('details[data-group="signals"]');
+            if (d && !d.dataset.touched) { d.open = true; d.dataset.touched = '1'; }
+        }
+
+        function refresh() {
+            const values = form.values();
+            const missing = form.missing();
+            $('yaml').innerHTML = O.yamlHTML(toYAML(values));
+            $('yaml-ta').value = toYAML(values);
+            const st = $('state');
+            if (missing.length) st.innerHTML = '<span class="dot err"></span>' + esc(missing.map(m => m.label).join(', ')) + ' still needed';
+            else st.innerHTML = '<span class="dot ok"></span>Ready to save';
+            $('btn-save').disabled = missing.length > 0;
+            $('btn-test').disabled = missing.length > 0;
+            maskSecretMaps();
+        }
+
+        function describe() {
+            const dn = entry.display_name || type;
+            $('crumb-name').textContent = existing ? dn : 'New ' + dn;
+            $('title').textContent = dn;
+            document.title = 'SenHub Agent - ' + dn;
+            $('f-name').value = type;
+            const file = existing ? O.basename(existing.path) : '50-' + type + '.yaml';
+            $('file').textContent = 'strategies.d/' + file;
+            let sub = (entry.mode === 'pull' ? 'Pull' : 'Push') + ' output. ' +
+                (existing ? 'Saved in <code>strategies.d/' + esc(file) + '</code>. Changes apply on save; the agent restarts the output on its own.'
+                    : 'Will be saved as <code>strategies.d/' + esc(file) + '</code>. The agent starts it as soon as the file exists.');
+            if (existing && existing.state === 'failing' && existing.reason) sub += '<br><span class="why">' + esc(existing.reason) + '</span>';
+            $('sub').innerHTML = sub;
+            $('state-pill').innerHTML = existing ? O.statePill(existing.state) : '<span class="pill off">new</span>';
+            $('about').textContent = entry.summary || '';
+            if (existing) {
+                $('top-actions').classList.remove('hide');
+                $('btn-toggle').textContent = existing.enabled ? 'Disable' : 'Enable';
+                $('f-enabled').checked = !!existing.enabled;
+            }
+            $('f-enabled').nextElementSibling.nextElementSibling.textContent = $('f-enabled').checked ? (existing ? 'Running when saved' : 'Starts as soon as saved') : 'Kept as a .disabled file';
+        }
+
+        function build() {
+            form = new SchemaForm({
+                starter: $('starter'),
+                sections: $('sections'),
+                params: entry.params || [],
+                values: existing ? (existing.params || {}) : {},
+                hide: ['governance'],
+                onChange: () => { refresh(); }
+            });
+            form.render();
+            if (type === 'otlp') openSignals();
+            if (!$('sections').children.length) $('opt-title').classList.add('hide');
+            refresh();
+        }
+
+        async function load() {
+            try {
+                const [cat, cfg, sys] = await Promise.all([O.api('catalog/outputs'), O.api('config/outputs'), O.api('info/system').catch(() => ({}))]);
+                hostname = sys.hostname || '';
+                entry = (cat.outputs || []).find(e => e.type === type);
+                if (!entry) {
+                    $('sub').textContent = '';
+                    O.banner($('banner'), 'err', 'No output type named <code>' + esc(type) + '</code>. <a href="' + listURL + '">Back to the outputs</a>.');
+                    $('btn-save').disabled = $('btn-test').disabled = true;
+                    $('state').innerHTML = '<span class="dot err"></span>Unknown type';
+                    return;
+                }
+                existing = (cfg.outputs || []).find(o => o.name === type) || null;
+                if (existing) strippedSecrets = O.stripRedacted(existing.params).stripped;
+                describe();
+                build();
+                if (type === 'otlp') { $('pipe-card').classList.remove('hide'); pipeline(); setInterval(pipeline, 30000); }
+            } catch (e) {
+                O.banner($('banner'), 'err', esc('Could not load the output: ' + e.message));
+            }
+        }
+
+        async function pipeline() {
+            try {
+                const d = await O.api('info/otlp');
+                const p = d.pipeline || {}, ed = d.export_duration || {}, lq = d.logs_queue || {}, st = d.store || {};
+                const n = v => (v == null ? '0' : Number(v).toLocaleString('en-US'));
+                $('pipe').innerHTML =
+                    '<dt>Metrics pushed</dt><dd>' + n(p.metrics_pushed_total) + '</dd>' +
+                    '<dt>Logs pushed</dt><dd>' + n(p.logs_pushed_total) + '</dd>' +
+                    '<dt>Export errors</dt><dd class="' + (p.export_errors_total ? 'bad' : 'ok') + '">' + n(p.export_errors_total) + '</dd>' +
+                    '<dt>Dropped</dt><dd class="' + (p.dropped_total ? 'bad' : '') + '">' + n(p.dropped_total) + '</dd>' +
+                    '<dt>Mean export</dt><dd>' + n(Math.round(ed.mean_ms || 0)) + ' ms</dd>' +
+                    '<dt>Log queue</dt><dd>' + n(lq.records) + ' records</dd>' +
+                    '<dt>Store</dt><dd>' + n(st.size) + ' series</dd>';
+            } catch (e) {
+                $('pipe').innerHTML = '<dt>Pipeline</dt><dd class="muted">not available</dd>';
+            }
+        }
+
+        $('f-enabled').addEventListener('change', () => {
+            $('f-enabled').nextElementSibling.nextElementSibling.textContent = $('f-enabled').checked ? (existing ? 'Running when saved' : 'Starts as soon as saved') : 'Kept as a .disabled file';
+        });
+
+        $('btn-test').addEventListener('click', async () => {
+            const btn = $('btn-test');
+            const params = form.values();
+            btn.disabled = true; btn.textContent = 'Testing...';
+            $('conn').innerHTML = '<p class="small muted">Testing...</p>';
+            try {
+                const res = await O.api('config/outputs/test', { method: 'POST', body: { type, params, timeout: 8 } });
+                $('conn').innerHTML = '<div class="row mb2">' + O.testPill(res) + '</div>' + O.stepsHTML(res, params) +
+                    '<p class="xs muted mt2">From ' + esc(hostname || location.hostname) + ', ' + esc(O.clock()) + '. The test uses the values on this page, saved or not' +
+                    (strippedSecrets.length ? ', stored secrets included' : '') + '.</p>';
+                if (!res.valid && res.errors && res.errors.length) {
+                    O.banner($('banner'), 'err', '<strong>Test failed.</strong> ' + esc(res.errors[0]));
+                } else if (res.valid) {
+                    O.banner($('banner'), 'ok', '<strong>Test passed.</strong> ' + ((res.steps || []).length) + ' steps in ' + esc(res.duration_ms || 0) + ' ms. Save to keep these values.');
+                }
+            } catch (e) {
+                $('conn').innerHTML = '<span class="pill err"><span class="dot err"></span>test failed</span><p class="small mt2">' + esc(e.message) + '</p>';
+            }
+            btn.disabled = false; btn.textContent = 'Test connection';
+            refresh();
+        });
+
+        $('btn-save').addEventListener('click', async () => {
+            const btn = $('btn-save');
+            const params = form.values();
+            const enabled = $('f-enabled').checked;
+            form.clearErrors();
+            btn.disabled = true; btn.textContent = 'Saving...';
+            try {
+                const v = await O.api('config/outputs/validate', { method: 'POST', body: { type, params } });
+                if (!v.valid) {
+                    const errors = v.errors || ['invalid configuration'];
+                    let html = '<strong>Not saved.</strong><ul class="err-list">' + errors.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul>';
+                    O.banner($('banner'), 'err', html);
+                    if (v.field) { form.showErrors([{ key: v.field, message: errors[0] }]); form.focus(v.field); }
+                    btn.disabled = false; btn.textContent = 'Save';
+                    return;
+                }
+                let res;
+                if (existing) res = await O.api('config/outputs/' + encodeURIComponent(type), { method: 'PUT', body: { enabled, params } });
+                else res = await O.api('config/outputs', { method: 'POST', body: { type, enabled, params } });
+                location.href = listURL + '?msg=' + encodeURIComponent(res.applied || ('output ' + type + ' saved'));
+                return;
+            } catch (e) {
+                O.banner($('banner'), 'err', '<strong>Not saved.</strong> ' + esc(e.message));
+                const f = e.data && e.data.field;
+                if (f) { form.showErrors([{ key: f, message: e.message }]); form.focus(f); }
+            }
+            btn.disabled = false; btn.textContent = 'Save';
+        });
+
+        $('btn-toggle').addEventListener('click', async () => {
+            if (!existing) return;
+            const enabled = !existing.enabled;
+            const { params } = O.stripRedacted(existing.params);
+            try {
+                const res = await O.api('config/outputs/' + encodeURIComponent(type), { method: 'PUT', body: { enabled, params } });
+                location.href = listURL + '?msg=' + encodeURIComponent(res.applied || '');
+            } catch (e) {
+                O.banner($('banner'), 'err', esc(e.message));
+            }
+        });
+
+        $('btn-delete').addEventListener('click', async () => {
+            if (!existing) return;
+            if (!confirm('Delete the output "' + type + '"? Its file under strategies.d is removed and the agent stops it.')) return;
+            try {
+                const res = await O.api('config/outputs/' + encodeURIComponent(type), { method: 'DELETE' });
+                location.href = listURL + '?msg=' + encodeURIComponent(res.applied || '');
+            } catch (e) {
+                O.banner($('banner'), 'err', esc(e.message));
+            }
+        });
+
+        load();
+    })();
+    </script>
 </body>
 </html>
