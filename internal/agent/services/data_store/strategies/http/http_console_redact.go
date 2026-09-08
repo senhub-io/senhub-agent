@@ -1,0 +1,91 @@
+package http
+
+import (
+	"regexp"
+	"strings"
+)
+
+// The console needs a different view of a params map than a log line:
+// a ${secret:...} or ${env:...} reference is what the file holds and is
+// safe to show (it is how the form knows a secret is stored), and an
+// identifier such as a user name is something the operator has to be
+// able to read and edit. Only the values themselves are hidden.
+
+var consoleSecretKeyPattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|community|authorization|bearer|dsn|license|jwt)`)
+
+const redactedForConsole = "***"
+
+// sanitizeForConsole returns a deep copy of params where a string value
+// under a schema secret path, or under a key that looks like a secret,
+// is replaced by "***" unless it is a ${...} reference. Everything else
+// is returned as written.
+func sanitizeForConsole(params map[string]interface{}, secretPaths []string) map[string]interface{} {
+	if params == nil {
+		return nil
+	}
+	secret := map[string]bool{}
+	for _, p := range secretPaths {
+		secret[p] = true
+	}
+	var walk func(prefix string, m map[string]interface{}, inSecret bool) map[string]interface{}
+	walk = func(prefix string, m map[string]interface{}, inSecret bool) map[string]interface{} {
+		out := make(map[string]interface{}, len(m))
+		for k, v := range m {
+			path := prefix + k
+			hide := inSecret || secret[path] || consoleSecretKeyPattern.MatchString(k)
+			switch val := v.(type) {
+			case map[string]interface{}:
+				out[k] = walk(path+".", val, hide)
+			case map[interface{}]interface{}:
+				conv := make(map[string]interface{}, len(val))
+				for kk, vv := range val {
+					if ks, ok := kk.(string); ok {
+						conv[ks] = vv
+					}
+				}
+				out[k] = walk(path+".", conv, hide)
+			case []interface{}:
+				items := make([]interface{}, len(val))
+				for i, item := range val {
+					if im, ok := item.(map[string]interface{}); ok {
+						items[i] = walk(path+".", im, hide)
+					} else if s, ok := item.(string); ok && hide && !strings.HasPrefix(s, "${") {
+						items[i] = redactedForConsole
+					} else {
+						items[i] = item
+					}
+				}
+				out[k] = items
+			case string:
+				if hide && val != "" && !strings.HasPrefix(val, "${") {
+					out[k] = redactedForConsole
+				} else {
+					out[k] = val
+				}
+			default:
+				out[k] = v
+			}
+		}
+		return out
+	}
+	return walk("", params, false)
+}
+
+// dropRedactedValues removes, in place, every string leaf that is the
+// console's own placeholder for a hidden value. A page that echoes the
+// listing back must never turn "***" into a stored credential.
+func dropRedactedValues(params map[string]interface{}) {
+	for k, v := range params {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			dropRedactedValues(val)
+			if len(val) == 0 {
+				delete(params, k)
+			}
+		case string:
+			if val == redactedForConsole || val == "[REDACTED]" {
+				delete(params, k)
+			}
+		}
+	}
+}

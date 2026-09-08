@@ -32,3 +32,19 @@ func TestGuessField(t *testing.T) {
 		t.Error("a probe without a schema has no hint")
 	}
 }
+
+func TestSplitParameterProblemsAndDeadTarget(t *testing.T) {
+	if got := splitParameterProblems("parameters: port: must be a number; tls.ca_file: must be a string"); len(got) != 2 || got[0] != "port: must be a number" {
+		t.Errorf("problems must be split one per entry, got %v", got)
+	}
+	if got := splitParameterProblems("the probe refuses this configuration: x"); len(got) != 1 {
+		t.Errorf("another message stays whole, got %v", got)
+	}
+	metrics := []PreviewMetric{{Name: "senhub.db.up", Value: 0, Tags: map[string]string{"host": "127.0.0.1:1"}}, {Name: "mysql.uptime", Value: 12}}
+	if msg := deadTarget(metrics); msg != "the target did not answer (127.0.0.1:1): senhub.db.up = 0" {
+		t.Errorf("an availability metric at zero is a dead target, got %q", msg)
+	}
+	if msg := deadTarget([]PreviewMetric{{Name: "senhub.db.up", Value: 1}, {Name: "cpu.usage", Value: 0}}); msg != "" {
+		t.Errorf("a live target passes, got %q", msg)
+	}
+}

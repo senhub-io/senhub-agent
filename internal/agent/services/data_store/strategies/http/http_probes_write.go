@@ -123,6 +123,7 @@ func (h *HTTPSyncStrategy) decodeProbeWrite(w http.ResponseWriter, r *http.Reque
 	if req.Params == nil {
 		req.Params = map[string]interface{}{}
 	}
+	dropRedactedValues(req.Params)
 	return req, true
 }
 
