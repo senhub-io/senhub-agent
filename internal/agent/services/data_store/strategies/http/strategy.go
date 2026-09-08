@@ -335,6 +335,7 @@ type EndpointInfoStatus struct {
 // SystemInfoResponse represents the response for /info/system
 type SystemInfoResponse struct {
 	Status    string              `json:"status"`
+	Hostname  string              `json:"hostname"`
 	Version   string              `json:"version"`
 	Commit    string              `json:"commit"`
 	GoVersion string              `json:"go_version"`

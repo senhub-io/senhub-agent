@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"runtime"
 	"sort"
 	"strings"
@@ -289,8 +290,10 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	version := versionInfo.Version
 	commit := versionInfo.Commit
 
+	hostname, _ := os.Hostname()
 	response := SystemInfoResponse{
 		Status:           "running",
+		Hostname:         hostname,
 		Version:          version,
 		Commit:           commit,
 		GoVersion:        runtime.Version(),
