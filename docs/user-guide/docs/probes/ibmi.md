@@ -22,7 +22,7 @@ The IBM i probe monitors IBM i / Power Systems partitions (formerly OS/400, AS/4
 - Compliance: PTF group levels, watch sessions, licensed-product usage
 - Probe self-observability: per-collector success/failure counters, duration and last-success timestamp
 
-All metrics are emitted under the `senhub.ibmi.*` namespace. Partition-level aggregates are complemented by **per-resource series** (per ASP, disk unit, job, queue, memory pool, table, journal, interface, HTTP server, …), each carrying an `ibmi.*` attribute that also acts as a filter in the Web UI Sensor Builder.
+All metrics are emitted under the `senhub.ibmi.*` namespace. Partition-level aggregates are complemented by **per-resource series** (per ASP, disk unit, job, queue, memory pool, table, journal, interface, HTTP server, …), each carrying an `ibmi.*` attribute that also acts as a filter in the Sensor URLs tab of the console.
 
 # Quick Start
 

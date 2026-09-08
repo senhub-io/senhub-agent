@@ -20,7 +20,7 @@ The PowerStore probe monitors Dell PowerStore storage arrays through the PowerSt
 All metrics are emitted under the `senhub.powerstore.*` namespace. Cluster-level
 aggregates are complemented by **per-resource series** (per volume, appliance,
 node, drive and replication session), each carrying a resource attribute that
-also acts as a filter in the Web UI Sensor Builder.
+also acts as a filter in the Sensor URLs tab of the console.
 
 # Quick Start
 
@@ -204,9 +204,9 @@ OTLP/Prometheus and become filterable in the Web UI.
     with many volumes. Appliance- and node-level performance cover the array
     without that per-volume cost.
 
-## Filtering (Web UI Sensor Builder)
+## Filtering (Sensor URLs tab of the console)
 
-The PRTG/Web UI Sensor Builder exposes filters for this probe:
+The Sensor URLs tab of the console exposes filters for this probe:
 
 - **Metric Type** (category) — cluster, hardware, volumes, alerts, capacity, performance, replication
 - **Alert Severity** — Critical / Major / Minor / Info

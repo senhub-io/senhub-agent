@@ -243,7 +243,7 @@ storage:
 | Endpoint | Description |
 |----------|-------------|
 | `prtg` | PRTG-formatted JSON API for PRTG Network Monitor integration |
-| `web` | Built-in web dashboard (Dashboard, Sensor Builder, Documentation) |
+| `web` | Built-in web console (Overview, Probes, Outputs, Settings) |
 | `nagios` | Nagios-compatible check output |
 
 ### HTTPS Configuration

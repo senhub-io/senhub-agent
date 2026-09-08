@@ -162,19 +162,9 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=syslog
 - `syslog_event_rate` - Events per second
 
 
-### Web Interface
+### Web console
 
-View syslog events in the built-in dashboard:
-
-```
-http://localhost:8080/web/{agentkey}/dashboard
-```
-
-Features:
-- Real-time syslog event stream
-- Event filtering by severity, facility, hostname
-- Event search and correlation
-- Historical event trends
+The Probes page of the console shows the probe's state and the counters it emits; the Sensor URLs tab of the HTTP output previews them as a poller sees them. The events themselves go to the outputs that read logs (OTLP, events); the console does not display them.
 
 ## Use Cases
 

@@ -29,7 +29,7 @@ or pushes them to the monitoring stack you already run.
   any point in time.
 - **Outputs**: PRTG and Nagios (pull, primary), Prometheus exposition,
   OTLP push (gRPC/HTTP — metrics, logs and entity events), plus a built-in
-  web dashboard.
+  web console.
 - **Paid probes** (Pro/Enterprise license): IBM i, MySQL, PostgreSQL,
   Citrix, NetScaler, Veeam, Redfish, and more.
 
@@ -50,8 +50,8 @@ sudo ./senhub-agent start
 ```
 
 The agent runs from local YAML configuration only — no account or SaaS
-required. Open the dashboard at
-`http://localhost:8080/web/{agentkey}/dashboard` (the agent key is printed
+required. Open the console at
+`http://localhost:8080/web/{agentkey}/` (the agent key is printed
 at install time and stored in the config).
 
 ## Configure
