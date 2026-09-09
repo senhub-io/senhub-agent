@@ -42,6 +42,17 @@ metrics:
       unit: "{stream}"
       type: gauge
 
+  - name: "azure_container_apps_arm_reads_remaining"
+    channel: "arm_reads_remaining"
+    display_name: "ARM Reads Remaining"
+    unit: "#"
+    category: "status"
+    description: "Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it"
+    otel:
+      name: senhub.azure_container_apps.arm.reads_remaining
+      unit: "{request}"
+      type: gauge
+
   - name: "azure_container_apps_records_emitted"
     channel: "records_emitted"
     display_name: "Records Emitted"
