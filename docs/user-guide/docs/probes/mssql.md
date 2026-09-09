@@ -30,6 +30,9 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 | `port` | `1433` | SQL Server TCP port |
 | `username` | — | SQL Server login. Omit for Windows Integrated Authentication (the agent's OS account is used) |
 | `password` | — | Password for SQL login — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
+| `encrypt` | `true` | Encryption of the connection, as the driver reads it: `true`, `false`, `disable` or `strict`. Any other value stops the probe |
+| `trust_server_cert` | `false` | Accept the server certificate without verifying it. For a lab, not for production |
+| `interval` | `60` | Seconds between collections |
 
 ## Metrics
 
