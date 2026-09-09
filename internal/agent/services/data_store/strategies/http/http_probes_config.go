@@ -69,8 +69,9 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 	out := make([]configuredProbe, 0, len(cfg.Probes))
 	for _, p := range cfg.Probes {
 		state := agentstate.GetProbeRunState(p.ID())
+		ps, hasSpec := spec.For(p.Type)
 		var secretPaths []string
-		if ps, has := spec.For(p.Type); has {
+		if hasSpec {
 			secretPaths = secretPathsOf(ps)
 		}
 		// The loaded configuration has its references resolved; the form
@@ -104,16 +105,14 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 				entry.LastUpdate = &t
 			}
 		}
-		if ps, has := spec.For(p.Type); has {
-			entry.HasSchema = true
-			entry.Interval = intervalOf(p.Params, ps.DefaultInterval)
-			verdict := annotateCatalogEntry(ps, lic, agentKey)
-			entry.Tier, entry.Authorized, entry.Reason = verdict.Tier, verdict.Authorized, verdict.Reason
-		} else {
-			entry.Interval = intervalOf(p.Params, 0)
-			verdict := annotateCatalogEntry(spec.Probe{Type: p.Type}, lic, agentKey)
-			entry.Tier, entry.Authorized, entry.Reason = verdict.Tier, verdict.Authorized, verdict.Reason
+		known := ps
+		if !hasSpec {
+			known = spec.Probe{Type: p.Type}
 		}
+		entry.HasSchema = hasSpec
+		entry.Interval = intervalOf(p.Params, known.DefaultInterval)
+		verdict := annotateCatalogEntry(known, lic, agentKey)
+		entry.Tier, entry.Authorized, entry.Reason = verdict.Tier, verdict.Authorized, verdict.Reason
 		out = append(out, entry)
 	}
 	writeJSON(w, http.StatusOK, configuredProbesResponse{Probes: out, Count: len(out)})

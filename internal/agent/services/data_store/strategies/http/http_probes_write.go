@@ -50,7 +50,7 @@ func (h *HTTPSyncStrategy) handleProbeCreate(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	ps, warnings, ok := h.checkProbeWrite(w, agentKey, req)
+	ps, warnings, ok := h.checkProbeWrite(w, agentKey, req, nil)
 	if !ok {
 		return
 	}
@@ -80,7 +80,12 @@ func (h *HTTPSyncStrategy) handleProbeUpdate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	req.Name = name
-	ps, warnings, ok := h.checkProbeWrite(w, agentKey, req)
+	stored, err := configuration.ReadProbeFragmentParams(h.agentConfig.GetConfigPath(), name)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ps, warnings, ok := h.checkProbeWrite(w, agentKey, req, stored)
 	if !ok {
 		return
 	}
@@ -130,7 +135,11 @@ func (h *HTTPSyncStrategy) decodeProbeWrite(w http.ResponseWriter, r *http.Reque
 // checkProbeWrite applies, in order, the checks that decide whether the
 // fragment is worth writing: known type, licence, schema, constructor.
 // It returns the schema (for secret paths) and constructor warnings.
-func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey string, req probeWriteRequest) (spec.Probe, []string, bool) {
+// checkProbeWrite validates what the fragment will hold once the values
+// the form left out are taken back from the file: a required secret
+// already in the store is not missing because the form did not resend
+// the reference it only ever displayed as "Stored".
+func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey string, req probeWriteRequest, stored map[string]interface{}) (spec.Probe, []string, bool) {
 	ps, has := spec.For(req.Type)
 	if !has {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("probe type %q is not in the catalogue of this agent", req.Type))
@@ -140,7 +149,7 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey strin
 		writeJSONError(w, http.StatusForbidden, fmt.Sprintf("probe type %q: %s", req.Type, verdict.Reason))
 		return ps, nil, false
 	}
-	if problems := ps.CheckParams(withoutNils(req.Params)); len(problems) > 0 {
+	if problems := ps.CheckParams(paramsAsWritten(stored, req.Params)); len(problems) > 0 {
 		msgs := make([]string, 0, len(problems))
 		for _, p := range problems {
 			msgs = append(msgs, p.String())

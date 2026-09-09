@@ -132,7 +132,7 @@
         function toYAML(values) {
             const keys = Object.keys(values || {});
             if (!keys.length) return type + ': {}';
-            const body = (window.SchemaForm && SchemaForm.toYAML) ? SchemaForm.toYAML(values, 2) : O.toYAML(values, 2);
+            const body = SchemaForm.toYAML(values, 2);
             return type + ':\n' + body;
         }
 
