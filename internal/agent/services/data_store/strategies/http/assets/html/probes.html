@@ -349,7 +349,7 @@
       if (sub) name += '<span class="sub">' + esc(sub) + '</span>';
       let state = '';
       if (s === 'running') state = '<span class="pill ok"><span class="dot ok"></span>running</span>';
-      else if (s === 'failing') state = '<span class="pill err"><span class="dot err"></span>failing</span>' + (p.reason ? '<span class="why">' + esc(p.reason) + '</span>' : '');
+      else if (s === 'failing') state = '<span class="pill err"><span class="dot err"></span>failing</span>' + ((p.last_error || p.reason) ? '<span class="why">' + esc(p.last_error || p.reason) + '</span>' : '');
       else if (s === 'starting') state = '<span class="pill warn"><span class="dot warn"></span>starting</span>';
       else if (s === 'disabled') state = '<span class="pill off">disabled</span>';
       else if (p.tier !== 'pro') state = '<span class="pill off" title="' + esc(p.reason || '') + '">not on this platform</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
@@ -384,6 +384,7 @@
       try {
         const body = { name: p.name, type: p.type, enabled: !p.enabled, params: stripRedacted(p.params || {}) };
         if (p.governance && Object.keys(p.governance).length) body.governance = p.governance;
+        if (p.custom_tags && Object.keys(p.custom_tags).length) body.custom_tags = p.custom_tags;
         const d = await send('PUT', API + '/config/probes/' + encodeURIComponent(p.name), body);
         setBanner($('list-banner'), 'ok', '', d.applied || 'Saved.');
         setTimeout(List.load, 1200);
@@ -619,7 +620,7 @@
     },
     secretPaths() {
       const out = [];
-      const walk = (prefix, params) => { for (const p of params || []) { if (p.secret) out.push(prefix + p.key); if (p.kind === 'block') walk(prefix + p.key + '.', p.fields); } };
+      const walk = (prefix, params) => { for (const p of params || []) { if (p.secret) out.push(prefix + p.key); if (p.kind === 'block' || p.kind === 'block_list') walk(prefix + p.key + '.', p.fields); } };
       if (Ed.spec) walk('', Ed.spec.params);
       return out;
     },
@@ -636,6 +637,7 @@
         else if (typed === undefined && SchemaForm.isStored(kept)) set(params, sp, kept.startsWith('${') ? kept : '${secret:' + name + '.' + sp + '}');
       }
       const frag = { name, type: b.type || '<type>', enabled: b.enabled, params };
+      if (b.custom_tags) frag.custom_tags = b.custom_tags;
       if (b.governance) frag.governance = b.governance;
       return frag;
     },
@@ -675,8 +677,19 @@
       if (Array.isArray(v)) v = v[0];
       if (!v || typeof v !== 'object') { err.hidden = false; err.textContent = 'Not applied: expected a probe mapping (name, type, params).'; ta.classList.add('err'); return; }
       err.hidden = true; ta.classList.remove('err');
-      if (v.params && typeof v.params === 'object' && Ed.form) Ed.form.setValues(v.params);
-      else if (Ed.form) Ed.form.setValues({});
+      if (v.params && typeof v.params === 'object' && Ed.form) {
+        // The box shows a typed secret as the reference the file will get;
+        // reading that placeholder back must not lose what was typed.
+        const name = Ed.name() || '<name>';
+        const get = (o, path) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
+        const set = (o, path, val) => { const ps = path.split('.'); let c = o; for (let i = 0; i < ps.length - 1; i++) { if (!c[ps[i]] || typeof c[ps[i]] !== 'object') c[ps[i]] = {}; c = c[ps[i]]; } c[ps[ps.length - 1]] = val; };
+        for (const sp of Ed.secretPaths()) {
+          const typed = get(Ed.form._values, sp);
+          if (typeof typed === 'string' && typed && !typed.startsWith('${') && get(v.params, sp) === '${secret:' + name + '.' + sp + '}') set(v.params, sp, typed);
+        }
+        Ed.form.setValues(v.params);
+      } else if (Ed.form) Ed.form.setValues({});
+      if (v.custom_tags && typeof v.custom_tags === 'object') Ed.writeTags(v.custom_tags);
       if (typeof v.enabled === 'boolean') { $('in-enabled').checked = v.enabled; if (Ed.editing) $('enabled-text').textContent = v.enabled ? 'Collecting' : 'Kept, not collecting'; }
       Ed.writeGov(v.governance && typeof v.governance === 'object' ? v.governance : {});
       if (!Ed.editing && typeof v.name === 'string' && v.name !== '<name>') $('in-name').value = v.name;

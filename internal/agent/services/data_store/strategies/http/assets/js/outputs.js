@@ -209,17 +209,15 @@
             return '<span class="lifebad">' + esc(o.reason || 'failing') + '</span>';
         }
         if (o.type === 'http') {
-            const readers = o.readers || [];
+            const readers = (o.readers || []).filter(r => r.endpoint !== 'web');
             const parts = [];
-            let pollerSeen = false;
             for (const r of readers) {
-                if (r.endpoint === 'web') continue;
-                if (r.last) {
-                    if (r.endpoint === 'prtg' || r.endpoint === 'nagios') pollerSeen = true;
-                    parts.push('Last ' + FAMILY[r.endpoint] + ' request ' + rel(r.last) + (r.from ? ' from ' + esc(r.from) : ''));
-                }
+                if (r.last) parts.push('Last ' + FAMILY[r.endpoint] + ' request ' + rel(r.last) + (r.from ? ' from ' + esc(r.from) : ''));
             }
-            if (!pollerSeen) parts.push('<span class="lifewarn">no PRTG or Nagios request seen since start</span>');
+            const enabled = readers.filter(r => r.enabled);
+            const silent = enabled.filter(r => !r.last);
+            if (enabled.length && silent.length) parts.push('<span class="lifewarn">no ' + esc(silent.map(r => FAMILY[r.endpoint]).join(' or ')) + ' request seen since start</span>');
+            if (!enabled.length) parts.push('no pull endpoint enabled; the console only');
             return parts.join(' &middot; ');
         }
         const a = o.activity || {};
