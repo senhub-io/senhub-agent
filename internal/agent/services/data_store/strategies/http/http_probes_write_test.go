@@ -1,6 +1,10 @@
 package http
 
-import "testing"
+import (
+	"testing"
+
+	"senhub-agent.go/internal/agent/probes/spec"
+)
 
 func TestCheckGovernanceBlock(t *testing.T) {
 	if err := checkGovernanceBlock(nil); err != nil {
@@ -54,5 +58,18 @@ func TestIntervalOf(t *testing.T) {
 		if got := intervalOf(c.params, 60); got != c.want {
 			t.Errorf("%v: want %d, got %d", c.params, c.want, got)
 		}
+	}
+}
+
+func TestCatalogEntryOffPlatform(t *testing.T) {
+	e := annotateCatalogEntry(spec.Probe{Type: "cpu", Platforms: []string{"plan9"}}, nil, "k")
+	if e.Authorized || e.Reason != "plan9 only" {
+		t.Errorf("a probe for another platform must be refused with the reason, got %+v", e)
+	}
+	if e := annotateCatalogEntry(spec.Probe{Type: "cpu"}, nil, "k"); !e.Authorized {
+		t.Error("no platform list means every platform")
+	}
+	if platformReason([]string{"linux", "windows"}) != "Linux and Windows only" {
+		t.Error("platform names are spelled for the operator")
 	}
 }

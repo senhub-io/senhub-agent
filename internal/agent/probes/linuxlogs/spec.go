@@ -10,6 +10,7 @@ func init() {
 		Summary:       "Streams systemd journal entries as logs (Linux only).",
 		DocsPath:      "docs/user-guide/docs/probes/linux-logs.md",
 		MultiInstance: true,
+		Platforms:     []string{"linux"},
 		Params: []probes.ParamSpec{
 			{Key: "units", Kind: probes.KindStringList, Group: "filter", Description: "systemd units to follow; empty means every unit", Example: "nginx.service"},
 			{Key: "identifiers", Kind: probes.KindStringList, Group: "filter", Description: "Program names (SYSLOG_IDENTIFIER) to follow", Example: "sshd"},
