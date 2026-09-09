@@ -80,10 +80,16 @@ func (h *HTTPSyncStrategy) handleProbeUpdate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	req.Name = name
-	stored, err := configuration.ReadProbeFragmentParams(h.agentConfig.GetConfigPath(), name)
+	existing, found, err := configuration.ReadProbeFragment(h.agentConfig.GetConfigPath(), name)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	stored := existing.Params
+	// A body that says nothing about enabled asks for a params-only
+	// edit: it must not bring back a probe the operator disabled.
+	if req.Enabled == nil && found {
+		req.Enabled = existing.Enabled
 	}
 	ps, warnings, ok := h.checkProbeWrite(w, agentKey, req, stored)
 	if !ok {

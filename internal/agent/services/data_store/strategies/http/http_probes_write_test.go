@@ -161,3 +161,32 @@ func TestProbeUpdateGivesTheProbeCheckerTheStoredValues(t *testing.T) {
 		t.Errorf("the validator must be given the stored reference, got %q", v)
 	}
 }
+
+// The same rule as for outputs: a body that says nothing about enabled
+// is a params-only edit and must not restart a probe the operator
+// switched off.
+func TestProbeUpdateKeepsADisabledProbeDisabled(t *testing.T) {
+	spec.Register(spec.Probe{Type: "offtest", DisplayName: "Off test", Params: []spec.ParamSpec{
+		{Key: "host", Kind: spec.KindString, Required: true},
+	}})
+	router, dir := newOutputsTestRouter(t)
+	base := "/api/test-agent-key"
+	no := false
+	if code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
+		"name": "off", "type": "offtest", "enabled": no, "params": map[string]interface{}{"host": "a"},
+	}); code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+	if code, resp := doJSON(t, router, "PUT", base+"/config/probes/off", map[string]interface{}{
+		"name": "off", "type": "offtest", "params": map[string]interface{}{"host": "b"},
+	}); code != 200 {
+		t.Fatalf("update: %d %v", code, resp)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "probes.d", "50-off.yaml"))
+	if !strings.Contains(string(raw), "enabled: false") {
+		t.Errorf("a params-only update must keep the probe disabled:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "host: b") {
+		t.Errorf("the edit must still land:\n%s", raw)
+	}
+}
