@@ -28,7 +28,7 @@ func checkHTTPPortFree(bindAddress string, port int) error {
 	addr := net.JoinHostPort(bindAddress, strconv.Itoa(port))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("port %d is not available on %s (%v); choose another with --http-port", port, bindAddress, err)
+		return fmt.Errorf("port %d is not available on %s (%w); choose another with --http-port", port, bindAddress, err)
 	}
 	return ln.Close()
 }

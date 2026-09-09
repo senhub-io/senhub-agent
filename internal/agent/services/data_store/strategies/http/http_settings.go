@@ -119,7 +119,7 @@ func (h *HTTPSyncStrategy) currentLicenseView(agentKey string) licenseView {
 	if err != nil {
 		return licenseView{Configured: true, Detail: "invalid licence on disk"}
 	}
-	scope := "valid on any agent"
+	var scope string
 	switch {
 	case lic.Subject == "":
 		scope = "valid on any agent"
