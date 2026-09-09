@@ -65,7 +65,7 @@ func TestUpdateFragmentsKeepStoredSecrets(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateStrategyFragment(main, "otlp", map[string]interface{}{"endpoint": "c:4317", "headers": map[string]interface{}{"Authorization": "Bearer t"}}, []string{"headers"}); err != nil {
+	if _, err := CreateStrategyFragment(main, "otlp", map[string]interface{}{"endpoint": "c:4317", "headers": map[string]interface{}{"Authorization": "Bearer t"}}, true, []string{"headers"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := UpdateStrategyFragment(main, "otlp", map[string]interface{}{"endpoint": "c:4318"}, true, []string{"headers"}); err != nil {
@@ -90,5 +90,36 @@ func TestDropNilValuesRemovesAStoredEntryOnRequest(t *testing.T) {
 	DropNilValues(only)
 	if _, has := only["headers"]; has || only["endpoint"] != "c:4317" {
 		t.Errorf("a mapping emptied by removals goes with it: %v", only)
+	}
+}
+
+func TestSecretsInsideAListOfBlocks(t *testing.T) {
+	main := multiFileForFragments(t)
+	users := []interface{}{
+		map[string]interface{}{"username": "u1", "auth_password": "p1"},
+		map[string]interface{}{"username": "u2", "auth_password": "p2"},
+	}
+	p := ProbeConfig{Name: "traps", Type: "snmp_trap", Params: map[string]interface{}{"v3": map[string]interface{}{"users": users}}}
+	if _, err := CreateProbeFragment(main, p, []string{"v3.users.auth_password"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(ProbeFragmentPath(main, "traps"))
+	if strings.Contains(string(raw), "p1") || strings.Contains(string(raw), "p2") {
+		t.Fatalf("passwords inside a list must be sealed:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "${secret:traps.v3.users.0.auth_password}") || !strings.Contains(string(raw), "${secret:traps.v3.users.1.auth_password}") {
+		t.Errorf("each row gets its own store key:\n%s", raw)
+	}
+	// An update that re-sends the rows without their passwords keeps them.
+	again := ProbeConfig{Name: "traps", Type: "snmp_trap", Params: map[string]interface{}{"v3": map[string]interface{}{"users": []interface{}{
+		map[string]interface{}{"username": "u1"},
+		map[string]interface{}{"username": "u2-renamed"},
+	}}}}
+	if _, err := UpdateProbeFragment(main, again, []string{"v3.users.auth_password"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(ProbeFragmentPath(main, "traps"))
+	if !strings.Contains(string(raw), "${secret:traps.v3.users.0.auth_password}") || !strings.Contains(string(raw), "${secret:traps.v3.users.1.auth_password}") || !strings.Contains(string(raw), "u2-renamed") {
+		t.Errorf("stored passwords of list rows must survive an update:\n%s", raw)
 	}
 }

@@ -9,7 +9,7 @@ func init() {
 	outputspec.Register(outputspec.Output{
 		Type: "prtg", DisplayName: "PRTG push", Mode: outputspec.ModePush,
 		Summary:  "Pushes sensor results to a PRTG HTTP Push Data sensor, for hosts the PRTG probe cannot reach.",
-		DocsPath: "docs/user-guide/docs/configuration.md",
+		DocsPath: "docs/user-guide/docs/configuration.md", TestURLKey: "server_url",
 		Params: []spec.ParamSpec{
 			{Key: "server_url", Kind: spec.KindString, Required: true, Group: "connection", Description: "URL of the PRTG push sensor", Example: "https://prtg.example.com:5050/token"},
 			{Key: "interval", Kind: spec.KindDuration, Default: "5s", Group: "delivery", Description: "Push cadence"},

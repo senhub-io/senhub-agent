@@ -162,6 +162,26 @@ func Registered() []Probe {
 	return out
 }
 
+// SecretPaths lists the dotted paths of the parameters marked secret, at
+// every depth; a field of a block list is named without its index
+// (v3.users.auth_password), and a secret mapping by its own path.
+func (s Probe) SecretPaths() []string {
+	var out []string
+	var walk func(prefix string, params []ParamSpec)
+	walk = func(prefix string, params []ParamSpec) {
+		for _, p := range params {
+			if p.Secret {
+				out = append(out, prefix+p.Key)
+			}
+			if p.Kind == KindBlock || p.Kind == KindBlockList {
+				walk(prefix+p.Key+".", p.Fields)
+			}
+		}
+	}
+	walk("", s.Params)
+	return out
+}
+
 // DeclaredKeys returns the flattened set of keys a spec declares, with
 // nested block fields as "block.field" and alternative spellings
 // included, so a static guard can compare it to what the parser reads.
