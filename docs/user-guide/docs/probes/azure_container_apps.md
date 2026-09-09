@@ -109,6 +109,21 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
     the network egress from Azure, the intake and the storage, where a
     backend-side rule would only save the disk.
 
+!!! note "How many applications one agent can follow"
+    Each scan asks the control plane three questions per application, so
+    two hundred applications at the default interval means ten calls a
+    second. Measured on a bench of two hundred: five calls a second held
+    for minutes with no refusal, ten a second was refused almost
+    entirely, and two idle minutes restored the budget. The streams
+    themselves were never the problem, and a refused scan costs no line:
+    the streams already attached keep running, but a replica that
+    appears while scans are refused is not picked up.
+
+    Keep the scan under five calls a second: about a hundred
+    applications at the default sixty-second `interval`, five hundred at
+    `interval: 300`. Past that, split them across several agents, each
+    with its own app registration, since the limit follows the caller.
+
 !!! note "What the stream endpoint does, measured"
     Azure closes every console stream about ten minutes after it was
     attached, all of them at once; the probe re-attaches within seconds
