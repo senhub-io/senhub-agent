@@ -140,16 +140,17 @@ func (h *HTTPSyncStrategy) handleConfiguredOutputs(w http.ResponseWriter, r *htt
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	failures := agentstate.GetStrategyFailures()
 	out := make([]configuredOutput, 0, len(frags))
 	for _, f := range frags {
-		out = append(out, h.describeOutput(f))
+		out = append(out, h.describeOutput(f, failures))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	writeJSON(w, http.StatusOK, configuredOutputsResponse{Outputs: out, Count: len(out)})
 }
 
 // describeOutput joins what the file says with what the agent is doing.
-func (h *HTTPSyncStrategy) describeOutput(f configuration.StrategyFragment) configuredOutput {
+func (h *HTTPSyncStrategy) describeOutput(f configuration.StrategyFragment, failures map[string]agentstate.StrategyFailure) configuredOutput {
 	entry := configuredOutput{
 		Name: f.Name, Type: f.Name, DisplayName: f.Name, Mode: string(outputspec.ModePush),
 		Enabled: f.Enabled, Managed: f.Managed, Path: f.Path,
@@ -173,7 +174,7 @@ func (h *HTTPSyncStrategy) describeOutput(f configuration.StrategyFragment) conf
 		entry.State = "disabled"
 		return entry
 	}
-	if failure, failing := agentstate.GetStrategyFailures()[f.Name]; failing {
+	if failure, failing := failures[f.Name]; failing {
 		entry.State, entry.Reason = "failing", failure.Detail
 		if entry.Reason == "" {
 			entry.Reason = failure.Reason
@@ -283,7 +284,13 @@ func (h *HTTPSyncStrategy) handleOutputUpdate(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	enabled := true
+	// A body that says nothing about enabled asks for a params-only edit:
+	// it must not bring back an output the operator disabled.
+	enabled, err := configuration.StrategyFragmentEnabled(h.agentConfig.GetConfigPath(), name)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}

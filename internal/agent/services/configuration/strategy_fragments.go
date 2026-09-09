@@ -101,6 +101,22 @@ func findStrategyFile(configPath, name string) (string, error) {
 	return "", nil
 }
 
+// StrategyFragmentEnabled says whether an output's file is the enabled
+// one. It lets a partial update keep the state the operator chose
+// instead of assuming enabled.
+func StrategyFragmentEnabled(configPath, name string) (bool, error) {
+	frags, err := ListStrategyFragments(configPath)
+	if err != nil {
+		return false, err
+	}
+	for _, f := range frags {
+		if f.Name == name {
+			return f.Enabled, nil
+		}
+	}
+	return false, fmt.Errorf("no output named %q under strategies.d", name)
+}
+
 // strategyFragmentPath is where the console creates a new output: after
 // the 00-http.yaml the install writes, before nothing in particular.
 func strategyFragmentPath(configPath, name string) string {
