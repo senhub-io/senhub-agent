@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"senhub-agent.go/internal/agent/probes/spec"
+
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/outputspec"
 )
@@ -56,4 +58,34 @@ var outputGuardAllowList = map[string]map[string]string{}
 func outputGuardAllowed(output, key string) bool {
 	_, ok := outputGuardAllowList[output][key]
 	return ok
+}
+
+func TestOTLPSealsPerSignalHeadersToo(t *testing.T) {
+	out, ok := outputspec.For("otlp")
+	if !ok {
+		t.Fatal("the otlp output must be registered")
+	}
+	paths := strings.Join(out.SecretPaths(), ",")
+	for _, want := range []string{"headers", "signals.metrics.headers", "signals.logs.headers", "signals.traces.headers"} {
+		if !strings.Contains(paths, want) {
+			t.Errorf("%s must be sealed into the secret store, got %s", want, paths)
+		}
+	}
+}
+
+func TestNoSchemaDefaultTurnsOnAnOptIn(t *testing.T) {
+	out, ok := outputspec.For("otlp")
+	if !ok {
+		t.Fatal("the otlp output must be registered")
+	}
+	var walk func(prefix string, ps []spec.ParamSpec)
+	walk = func(prefix string, ps []spec.ParamSpec) {
+		for _, p := range ps {
+			if p.Key == "depends_on_enabled" && p.Default == true {
+				t.Errorf("%s%s is an opt-in: the form must not pre-fill it on", prefix, p.Key)
+			}
+			walk(prefix+p.Key+".", p.Fields)
+		}
+	}
+	walk("", out.Params)
 }

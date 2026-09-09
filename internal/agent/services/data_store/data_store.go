@@ -383,6 +383,7 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 	// A strategy the operator deleted outright must stop being reported
 	// as failing; only the ones still in the configuration can fail.
 	agentstate.PruneStrategyFailures(configuredNames)
+	agentstate.PruneExportActivity(configuredNames)
 
 	for _, storageConfig := range storageConfigs {
 		strategy := d.retrieveOrCreate(storageConfig)
