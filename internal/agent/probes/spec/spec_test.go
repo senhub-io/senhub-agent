@@ -96,3 +96,13 @@ func TestProbe_HasStartSet(t *testing.T) {
 		t.Error("a conditional essential is a start set")
 	}
 }
+
+func TestCheckParams_BoolForAStringEnum(t *testing.T) {
+	sp := Probe{Type: "x", Params: []ParamSpec{{Key: "encrypt", Kind: KindString, Enum: []string{"true", "false", "disable"}}, {Key: "mode", Kind: KindString, Enum: []string{"a", "b"}}}}
+	if problems := sp.CheckParams(map[string]interface{}{"encrypt": true}); len(problems) != 0 {
+		t.Errorf("an unquoted true must pass an enum that lists it: %v", problems)
+	}
+	if problems := sp.CheckParams(map[string]interface{}{"mode": true}); len(problems) != 1 {
+		t.Errorf("a bool for an enum without it is still a shape problem: %v", problems)
+	}
+}
