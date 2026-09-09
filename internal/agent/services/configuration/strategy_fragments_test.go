@@ -125,3 +125,25 @@ func TestStrategyFragments_CreateUpdateDisableDelete(t *testing.T) {
 		t.Error("updating an unknown output must fail")
 	}
 }
+
+// A file the listing could not parse is not found by name, so the
+// create path must look at the name it is about to write, not only at
+// the enabled one.
+func TestCreateRefusesToLandOnAnUnreadableDisabledFile(t *testing.T) {
+	main := multiFileForFragments(t)
+	dir := filepath.Join(filepath.Dir(main), "strategies.d")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	broken := filepath.Join(dir, "50-prtg.yaml.disabled")
+	if err := os.WriteFile(broken, []byte("prtg: [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreateStrategyFragment(main, "prtg", map[string]interface{}{"server_url": "http://p"}, false, nil); err == nil {
+		t.Error("an existing disabled file must not be overwritten")
+	}
+	raw, _ := os.ReadFile(broken)
+	if string(raw) != "prtg: [\n" {
+		t.Errorf("the operator's file must be untouched, got:\n%s", raw)
+	}
+}
