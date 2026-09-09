@@ -31,6 +31,25 @@ Changes land here as they are merged to `dev`.
   `/api/{key}/catalog/outputs`, `/api/{key}/config/outputs` and
   `/api/{key}/info/events`.
 
+    A few details an operator will meet. An output can be created
+    disabled: its file is written as `.disabled` from the start. A file
+    under `strategies.d` the agent cannot read is listed as failing with
+    its error instead of being hidden. An edit that does not mention
+    `enabled` leaves a disabled output disabled. A stored secret is shown
+    as Stored and never sent back by the form, inside a block or a list
+    of blocks (the users of an SNMP v3 device) as well; Replace, then an
+    empty field, drops it. The probe catalogue tells a type that needs a
+    licence from one that does not run on this operating system.
+
+- **Every probe type says what it reads.** All 66 probe types of the
+  agent now carry a parameter schema: the keys the probe reads, their
+  kind and default, which ones it cannot start without, which ones are
+  secrets. The console's editor is generated from it, so every type is
+  added and edited from the Probes page with the same form, Validate
+  reports a key the probe never reads or a value of the wrong shape
+  before anything is written, and the catalogue lists every type with
+  its tier and where it runs.
+
 - **Push OTLP straight to a backend that serves it under a base path.**
   `endpoint` is a `host:port` pair and cannot carry a path, which ruled
   out backends exposing OTLP under a prefix. The new
@@ -82,7 +101,10 @@ Changes land here as they are merged to `dev`.
   reports its open streams and reconnections so a broken stream shows
   in PRTG even when the logs go elsewhere. `min_severity` and `exclude`
   drop the lines nobody reads before they leave the agent, and a
-  counter shows what was left out.
+  counter shows what was left out. The probe also reports the reads
+  left in the subscription's Azure Resource Manager budget
+  (`senhub.azure_container_apps.arm.reads_remaining`), so a scan
+  interval that eats into the quota is visible.
 
 ## Fixes
 
