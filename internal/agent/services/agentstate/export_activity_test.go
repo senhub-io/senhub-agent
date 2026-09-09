@@ -39,3 +39,23 @@ func TestExportFailureReasonIsPrintable(t *testing.T) {
 		t.Errorf("control characters must be dropped, got %q", got)
 	}
 }
+
+func TestPruneExportActivityForgetsDeletedOutputs(t *testing.T) {
+	ResetExportActivityForTest()
+	defer ResetExportActivityForTest()
+
+	RecordExportFailure("otlp/logs", "collector refused the batch")
+	RecordExportSuccess("prtg")
+	if got := FailingExports(); len(got) != 1 || got[0] != "otlp" {
+		t.Fatalf("the failing signal must make its strategy failing, got %v", got)
+	}
+	// The operator deletes the otlp output; the header must stop saying
+	// an output is failing without waiting for a restart.
+	PruneExportActivity([]string{"prtg"})
+	if got := FailingExports(); len(got) != 0 {
+		t.Errorf("a deleted output must not stay failing, got %v", got)
+	}
+	if act := GetExportActivity("prtg"); act.LastSuccess.IsZero() {
+		t.Error("a configured output keeps its activity")
+	}
+}

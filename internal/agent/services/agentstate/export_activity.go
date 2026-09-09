@@ -84,6 +84,23 @@ func RecordExportFailure(strategy, reason string) {
 	}
 }
 
+// PruneExportActivity drops the activity of strategies that are no
+// longer configured. Without it, deleting a failing output would leave
+// the console header saying "output failing" until the agent restarts.
+func PruneExportActivity(configured []string) {
+	keep := make(map[string]bool, len(configured))
+	for _, name := range configured {
+		keep[name] = true
+	}
+	exportActivity.mu.Lock()
+	for key := range exportActivity.m {
+		if !keep[strings.SplitN(key, "/", 2)[0]] {
+			delete(exportActivity.m, key)
+		}
+	}
+	exportActivity.mu.Unlock()
+}
+
 // FailingExports lists the strategies whose last delivery failed after
 // their last success, sorted. A signal recorded as "<strategy>/<signal>"
 // counts for its strategy.

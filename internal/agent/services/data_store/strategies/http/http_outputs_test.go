@@ -251,3 +251,32 @@ func TestOutputsAPI_CreateDisabledAndListUnreadable(t *testing.T) {
 		t.Error("the unreadable file must be listed, not hidden")
 	}
 }
+
+func TestOutputsAPI_PartialUpdateKeepsADisabledOutputDisabled(t *testing.T) {
+	router, _ := newOutputsTestRouter(t)
+	base := "/api/test-agent-key"
+	if code, resp := doJSON(t, router, "POST", base+"/config/outputs", map[string]interface{}{
+		"type": "prtg", "enabled": false, "params": map[string]interface{}{"server_url": "http://prtg"},
+	}); code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+	// A body that says nothing about enabled is a params-only edit.
+	code, resp := doJSON(t, router, "PUT", base+"/config/outputs/prtg", map[string]interface{}{
+		"params": map[string]interface{}{"server_url": "http://prtg2"},
+	})
+	if code != 200 {
+		t.Fatalf("update: %d %v", code, resp)
+	}
+	_, list := doJSON(t, router, "GET", base+"/config/outputs", nil)
+	for _, e := range list["outputs"].([]interface{}) {
+		m := e.(map[string]interface{})
+		if m["name"] == "prtg" {
+			if m["enabled"] != false || m["state"] != "disabled" {
+				t.Errorf("a params-only update must not re-enable a disabled output, got %v", m)
+			}
+			if !strings.HasSuffix(m["path"].(string), ".disabled") {
+				t.Errorf("the file must stay the disabled one, got %v", m["path"])
+			}
+		}
+	}
+}

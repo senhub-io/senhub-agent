@@ -48,7 +48,7 @@ func init() {
 					{Key: "enabled", Kind: spec.KindBool, Default: false},
 					{Key: "interval", Kind: spec.KindDuration, Default: "60s"},
 					{Key: "buffer_size", Kind: spec.KindInt, Default: 256},
-					{Key: "depends_on_enabled", Kind: spec.KindBool, Default: true, Advanced: true, Description: "Emit depends_on relationships from observed connections"},
+					{Key: "depends_on_enabled", Kind: spec.KindBool, Default: false, Advanced: true, Description: "Emit depends_on relationships from observed connections"},
 					{Key: "depends_on_debounce", Kind: spec.KindInt, Default: 3, Advanced: true, Description: "Sweeps a connection must survive before it becomes a relationship"},
 					{Key: "depends_on_exclude_cidrs", Kind: spec.KindStringList, Advanced: true, Description: "Peers in these ranges never become relationships"},
 					{Key: "redact_attributes", Kind: spec.KindStringList, Advanced: true, Description: "Entity attributes replaced by [REDACTED] before export"},
