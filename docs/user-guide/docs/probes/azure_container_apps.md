@@ -14,7 +14,7 @@ One probe instance follows one application; add an instance per application. Rep
 **Collected data:**
 
 - Every stdout and stderr line of every replica and container of the application, as log records
-- The probe's own state as metrics: control-plane reachability, replicas seen, streams attached, records emitted, streams re-attached after a drop
+- The probe's own state as metrics: control-plane reachability, replicas seen, streams attached, records emitted, streams re-attached after a drop, and the reads left in the subscription's Azure Resource Manager budget
 
 # Quick Start
 
@@ -94,6 +94,7 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
 | `senhub.azure_container_apps.records_emitted` | `{record}` | Cumulative records published to the log rail |
 | `senhub.azure_container_apps.records_dropped` | `{record}` | Cumulative lines dropped at the source by `exclude` or `min_severity` |
 | `senhub.azure_container_apps.stream.reconnects` | `{reconnect}` | Cumulative streams re-attached after a drop |
+| `senhub.azure_container_apps.arm.reads_remaining` | `{request}` | Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it |
 
 # Requirements
 
