@@ -134,7 +134,7 @@
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const d = await r.json();
                 const probes = d.probes || [];
-                const locked = probes.filter(p => p.tier === 'pro' && p.authorized === false).length;
+                const locked = probes.filter(p => p.tier === 'pro' && p.authorized === false && !/ only$/.test(p.reason || '')).length;
                 const pro = probes.filter(p => p.tier === 'pro').length;
                 const link = ' <a href="/web/' + window.AGENT_KEY + '/probes?new=1#picker">See the catalogue</a>';
                 if (locked) el.innerHTML = esc(locked + ' Pro probe type' + (locked === 1 ? ' is' : 's are') + ' locked.') + link;

@@ -109,7 +109,7 @@
         if (!p.enabled) return 'disabled';
         if (p.health === 'failed') return 'failing';
         if (p.running) return 'running';
-        if (p.authorized === false) return 'locked';
+        if (p.authorized === false) return p.tier === 'pro' ? 'locked' : 'unsupported';
         return 'stopped';
     }
     function probeStats(list) {
@@ -155,6 +155,9 @@
                 } else if (s === 'locked') {
                     state = pill('pro', 'licence needed');
                     last = '<span class="reason">' + short(p.reason || 'not authorized', 80) + '</span>';
+                } else if (s === 'unsupported') {
+                    state = pill('off', 'not on this platform');
+                    last = '<span class="reason">' + short(p.reason || 'another platform', 80) + '</span>';
                 } else {
                     state = pill('warn', 'stopped');
                     last = p.reason ? '<span class="reason">' + short(p.reason, 80) + '</span>' : '-';
@@ -198,7 +201,7 @@
     function httpLine(o) {
         const p = o.params || {};
         const parts = [];
-        if (p.port) parts.push('<code>' + esc((p.bind_address || '0.0.0.0') + ':' + p.port) + '</code>');
+        if (p.port) parts.push('<code>' + esc((p.bind_address || '127.0.0.1') + ':' + p.port) + '</code>');
         const eps = (o.readers || []).filter(r => r.enabled).map(r => r.endpoint);
         if (eps.length) parts.push(esc(eps.join(', ')));
         const seen = pollers(o).filter(r => r.total > 0).sort((a, b) => (parseTime(b.last) || 0) - (parseTime(a.last) || 0));
@@ -261,7 +264,7 @@
             $('outputs-body').innerHTML = html;
             $('outputs-body').querySelectorAll('button[data-enable]').forEach(b => b.addEventListener('click', () => enableOutput(b.dataset.enable, list, b)));
         }
-        const paths = list.filter(o => o.enabled && o.state !== 'disabled' && o.state !== 'failing').length;
+        const paths = list.filter(o => o.enabled && (o.state === 'exporting' || (o.state === 'listening' && pollers(o).some(r => r.total > 0)))).length;
         $('outputs-foot').textContent = 'Data leaves this host on ' + plural(paths, 'path');
         return list;
     }
@@ -313,8 +316,12 @@
         steps.push(s3);
 
         const polls = http ? pollers(http).filter(r => r.total > 0) : [];
-        const s4 = { done: polls.length > 0, title: 'Give the poller its sensor URL' };
-        if (s4.done) {
+        const pullEnabled = http ? pollers(http).some(r => r.enabled) : false;
+        const pushing = (outputs || []).some(o => o.mode === 'push' && o.enabled && o.state === 'exporting');
+        const s4 = { done: polls.length > 0 || (!pullEnabled && pushing), title: 'Give the poller its sensor URL' };
+        if (s4.done && !polls.length) {
+            s4.desc = 'No pull endpoint is enabled; data leaves by push. <a href="' + WEB + 'outputs/http">HTTP output</a>';
+        } else if (s4.done) {
             const r = polls.sort((a, b) => (parseTime(b.last) || 0) - (parseTime(a.last) || 0))[0];
             s4.desc = 'Last ' + esc(r.endpoint) + ' poll ' + esc(rel(r.last)) + ' ago' + (r.from ? ' from ' + esc(r.from) : '') + '. <a href="' + WEB + 'outputs/http#urls">Sensor URLs</a>';
         } else {
@@ -361,7 +368,8 @@
         $('agent-kv').innerHTML = rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
         const w = $('agent-watch');
         if (d.config_watch) {
-            w.textContent = 'Configuration watch off: edits by hand need a restart' + (d.config_watch.reason ? ' (' + d.config_watch.reason + ')' : '') + '.';
+            const why = d.config_watch.detail || d.config_watch.reason;
+            w.textContent = 'Configuration watch off: edits by hand need a restart' + (why ? ' (' + why + ')' : '') + '.';
             w.classList.remove('hide');
         } else {
             w.classList.add('hide');
@@ -386,7 +394,8 @@
         $('lic-pill').innerHTML = p;
         const probes = (catalog && catalog.probes) || [];
         const available = probes.filter(x => x.authorized !== false).length;
-        const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false).length;
+        // A Pro type refused for its platform is not one a licence would unlock.
+        const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false && !/ only$/.test(x.reason || '')).length;
         let expires = '-';
         if (lic.expires_at) {
             expires = esc(dateOnly(lic.expires_at));
