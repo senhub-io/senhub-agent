@@ -46,7 +46,7 @@ The Probes page lists what the agent collects and lets you add, edit, enable, di
 
 ### The list
 
-Each row shows the probe's name, its type, its state (running, failing with the reason, starting, disabled, or the licence reason it cannot run), its interval, the number of series it holds and the time of its last collection. Failing rows come first and keep their actions visible; other rows show them on hover: Edit, Sensor URL, Enable or Disable, Delete. Chips filter the list by state and a search box filters by name or type.
+Each row shows the probe's name, its type, its state (running, failing with the reason, starting, disabled, not licensed, or not on this platform), its interval, the number of series it holds and the time of its last collection. Failing rows come first and keep their actions visible; other rows show them on hover: Edit, Sensor URL, Enable or Disable, Delete. Chips filter the list by state and a search box filters by name or type.
 
 Probes declared in files written by hand carry a `file` pill: they are listed but left to the file. Only the fragments the console wrote, one file per instance under `probes.d` with a header comment, are edited from the page.
 
@@ -58,9 +58,9 @@ On a fresh install the page shows four starters instead of an empty table: **Thi
 
 The editor puts first what the probe needs to start, and folds everything else.
 
-- **Type** is chosen in a grid of cards, filterable by name and by category. Pro types show a lock until a licence is activated. Once chosen, the type collapses to one line with a Change link.
+- **Type** is chosen in a grid of cards, filterable by name and by category. Pro types show a lock until a licence is activated; a type that does not run on this operating system says so instead (Windows only, Linux only), so a lock always means a licence and never a platform. Once chosen, the type collapses to one line with a Change link.
 - **Required to start** holds the name, the enabled switch and the parameters the probe does nothing useful without: for MySQL the host, port, user and password; for SNMP the target, version and community, replaced by the v3 credentials when the version is v3; for an HTTP check the URLs. Everything below this block has a working default.
-- The **action bar** stays visible while you scroll: Validate checks the values against the schema and asks the probe what it would refuse; Test runs one real collection from this host and shows the first metrics that came back; Save writes the file, and the agent starts, restarts or stops the probe on its own. Save stays disabled until the name and every required value are present, and the bar says what is missing.
+- The **action bar** stays visible while you scroll: Validate checks the values against the schema and asks the probe what it would refuse; Test runs one real collection from this host and shows the first metrics that came back; Save (Save and start for a new probe) writes the file, and the agent starts, restarts or stops the probe on its own. Save stays disabled until the name and every required value are present, and the bar says what is missing.
 - **Optional settings** are one collapsed section per group of the schema. A section whose values are all at their default says so in grey; a section with a value set shows a count and the values, so you know what is set without opening it. A section holding an error opens on its own with a red mark.
 - **Governance and tags** is one section: owning team and contact, criticality, lifecycle, location, the application chain (the `application` label) and other labels. It is stamped on the entities, metrics and logs of this probe only; see [Governance per probe](configuration.md#governance-per-probe).
 - **Edit as YAML** shows the fragment as it will be written and accepts edits, checked with the same rules as the form.
@@ -70,7 +70,7 @@ Validation and test errors are anchored: the banner lists them, each one is a li
 
 ### Secrets
 
-A password typed in the form goes to the agent's secret store; the file holds a `${secret:...}` reference. A stored secret is shown as a state, not as a value: a lock, the reference, and a Replace button. Leaving it alone keeps it. A field can also take a reference you already have, `${secret:...}` or `${env:...}`. Without a usable secret store the save is refused with the alternative rather than writing a password in clear.
+A password typed in the form goes to the agent's secret store; the file holds a `${secret:...}` reference. A stored secret is shown as a state, not as a value: the word Stored, the reference, and a Replace button. Leaving it alone keeps it; the form never sends a stored value back to the agent. Replace clears the field: type a new value to change the secret, or leave the field empty and save to drop it. This holds for a secret inside a block and inside a list of blocks, such as the users of an SNMP v3 device. A field can also take a reference you already have, `${secret:...}` or `${env:...}`. Without a usable secret store the save is refused with the alternative rather than writing a password in clear.
 
 Delete removes the file and its stored secrets; Disable keeps them, which is the better choice during an incident.
 
@@ -91,6 +91,10 @@ Each output is one file under `strategies.d`. The list shows, per output, its st
 | disabled | The file is renamed `.disabled`; nothing is lost. |
 
 Add an output picks a type: OTLP push, PRTG push, SenHub cloud, or events. The HTTP output exists once per agent and is created by the installer; PRTG pull, Nagios and Prometheus are endpoints of that one output.
+
+The switch at the top of the editor, Starts as soon as saved, can be turned off before the first save: the file is then written as `.disabled` from the start, so an output can be prepared before its collector exists and enabled later from the list.
+
+A file under `strategies.d` the agent cannot read, because of a YAML error or because it holds more than one output, is listed as failing with that error rather than left out, so the list shows every file on disk.
 
 ### OTLP output
 
@@ -264,10 +268,12 @@ Everything the console does goes through the agent's JSON API, so scripts can do
 | `POST /api/{key}/config/validate`, `POST /api/{key}/config/test` | Check values against the schema; run one real collection |
 | `GET /api/{key}/catalog/outputs` | Output types with their parameter schema |
 | `GET /api/{key}/config/outputs` | Configured outputs with their state, delivery record and, for HTTP, the last poller per endpoint |
-| `POST /api/{key}/config/outputs`, `PUT` and `DELETE` on `.../{name}` | Create, update (including enable and disable), delete an output file |
+| `POST /api/{key}/config/outputs`, `PUT` and `DELETE` on `.../{name}` | Create (with `enabled: false` to write the file as `.disabled`), update, delete an output file |
 | `POST /api/{key}/config/outputs/validate`, `POST /api/{key}/config/outputs/test` | Check values; test the connection step by step |
 | `GET /api/{key}/config/settings`, `POST` | Port, bind address, licence |
 | `GET /api/{key}/info/events` | The recent events shown on the Overview |
+
+An update sends only what it changes. A `PUT` on an output without `enabled` keeps it in its current state, so a parameter edit never re-enables what an operator disabled. A stored secret the body does not mention is kept, for probes and outputs alike; to drop one, send its key with the value `null`, inside a block or a list of blocks as well.
 
 ## Useful API queries
 
