@@ -272,6 +272,11 @@ func checkKind(p ParamSpec, v interface{}) string {
 	switch p.Kind {
 	case KindString:
 		s, ok := v.(string)
+		if b, isBool := v.(bool); isBool && !ok && contains(p.Enum, fmt.Sprint(b)) {
+			// A closed set spelled true/false/disable is written unquoted
+			// by most operators, and the parser reads both forms.
+			s, ok = fmt.Sprint(b), true
+		}
 		if !ok {
 			return fmt.Sprintf("must be a string, got %T", v)
 		}
