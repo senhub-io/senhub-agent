@@ -143,11 +143,15 @@ func CreateStrategyFragment(configPath, name string, params StorageConfigParams,
 		return "", fmt.Errorf("an output %q already exists (%s); edit it instead", name, existing)
 	}
 	path := strategyFragmentPath(configPath, name)
-	if _, err := os.Stat(path); err == nil {
-		return "", fmt.Errorf("%s already exists", path)
-	}
 	if !enabled {
 		path += ".disabled"
+	}
+	// Both names are checked: a file the listing could not parse is not
+	// found by name, and writing over it would destroy what it holds.
+	for _, taken := range []string{strategyFragmentPath(configPath, name), path} {
+		if _, err := os.Stat(taken); err == nil {
+			return "", fmt.Errorf("%s already exists", taken)
+		}
 	}
 	DropNilValues(params)
 	if err := sealParams("strategies."+name, params, secretPaths); err != nil {

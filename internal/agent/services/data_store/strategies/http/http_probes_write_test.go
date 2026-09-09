@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,5 +122,42 @@ func TestProbeUpdateKeepsWorkingWhenARequiredSecretIsStored(t *testing.T) {
 	})
 	if code != 400 {
 		t.Errorf("dropping a required secret must be refused, got %d", code)
+	}
+}
+
+// The probe's own validator must judge the configuration the file will
+// hold, like the schema check: it is the constructor that refuses a
+// missing password on the shipped probes, and the form never resends a
+// stored one.
+func TestProbeUpdateGivesTheProbeCheckerTheStoredValues(t *testing.T) {
+	spec.Register(spec.Probe{Type: "pgcheck", DisplayName: "PG check", Params: []spec.ParamSpec{
+		{Key: "host", Kind: spec.KindString, Required: true},
+		{Key: "password", Kind: spec.KindString, Required: true, Secret: true},
+	}})
+	var seen map[string]interface{}
+	ProbeChecker = func(_ string, params map[string]interface{}) ([]ProbeIssue, error) {
+		seen = params
+		if v, _ := params["password"].(string); v == "" {
+			return nil, fmt.Errorf("pgcheck: password is required")
+		}
+		return nil, nil
+	}
+	defer func() { ProbeChecker = nil }()
+
+	router, _ := newOutputsTestRouter(t)
+	base := "/api/test-agent-key"
+	if code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
+		"name": "pgc", "type": "pgcheck", "params": map[string]interface{}{"host": "db1", "password": "s3cret"},
+	}); code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+	code, resp := doJSON(t, router, "PUT", base+"/config/probes/pgc", map[string]interface{}{
+		"name": "pgc", "type": "pgcheck", "params": map[string]interface{}{"host": "db2"},
+	})
+	if code != 200 {
+		t.Fatalf("the probe's validator must see the stored password: %d %v", code, resp)
+	}
+	if v, _ := seen["password"].(string); v != "${secret:pgc.password}" {
+		t.Errorf("the validator must be given the stored reference, got %q", v)
 	}
 }
