@@ -212,3 +212,42 @@ func TestInfoEvents(t *testing.T) {
 		t.Errorf("event wrong: %v", ev)
 	}
 }
+
+func TestExplorerRedirectsToTheSensorURLsTab(t *testing.T) {
+	router, _ := newOutputsTestRouter(t)
+	req := httptest.NewRequest("GET", "/web/test-agent-key/explorer", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/web/test-agent-key/outputs/http#urls" {
+		t.Errorf("want a redirect to the Sensor URLs tab, got %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+func TestOutputsAPI_CreateDisabledAndListUnreadable(t *testing.T) {
+	router, dir := newOutputsTestRouter(t)
+	base := "/api/test-agent-key"
+	code, resp := doJSON(t, router, "POST", base+"/config/outputs", map[string]interface{}{"type": "prtg", "enabled": false, "params": map[string]interface{}{"server_url": "http://prtg"}})
+	if code != 201 || !strings.HasSuffix(resp["path"].(string), "50-prtg.yaml.disabled") {
+		t.Fatalf("a disabled create must write the .disabled file directly: %d %v", code, resp)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "strategies.d", "30-bad.yaml"), []byte("otlp: [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, list := doJSON(t, router, "GET", base+"/config/outputs", nil)
+	found := false
+	for _, e := range list["outputs"].([]interface{}) {
+		m := e.(map[string]interface{})
+		if m["name"] == "30-bad" {
+			found = true
+			if m["state"] != "failing" || !strings.Contains(m["reason"].(string), "cannot be read") {
+				t.Errorf("an unreadable file is listed as failing with the parse error, got %v", m)
+			}
+		}
+		if m["name"] == "prtg" && m["state"] != "disabled" {
+			t.Errorf("the disabled create is listed as disabled, got %v", m)
+		}
+	}
+	if !found {
+		t.Error("the unreadable file must be listed, not hidden")
+	}
+}

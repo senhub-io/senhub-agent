@@ -198,19 +198,4 @@ func checkGovernanceBlock(v map[string]interface{}) error {
 }
 
 // secretPathsOf lists the dotted param paths the schema marks secret.
-func secretPathsOf(ps spec.Probe) []string {
-	var out []string
-	var walk func(prefix string, params []spec.ParamSpec)
-	walk = func(prefix string, params []spec.ParamSpec) {
-		for _, p := range params {
-			if p.Secret {
-				out = append(out, prefix+p.Key)
-			}
-			if p.Kind == spec.KindBlock {
-				walk(prefix+p.Key+".", p.Fields)
-			}
-		}
-	}
-	walk("", ps.Params)
-	return out
-}
+func secretPathsOf(ps spec.Probe) []string { return ps.SecretPaths() }

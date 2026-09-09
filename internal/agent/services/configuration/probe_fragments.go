@@ -164,15 +164,27 @@ func sealParams(instance string, params map[string]interface{}, secretPaths []st
 		want[sp] = true
 	}
 	var prov secret.Provider
-	var walk func(path []string, m map[string]interface{}, inSecret bool) error
-	walk = func(path []string, m map[string]interface{}, inSecret bool) error {
+	// path is the dotted path without list indexes, the form the schema
+	// declares; storePath carries the index so two users of one list do
+	// not share a key in the store.
+	var walk func(path, storePath []string, m map[string]interface{}, inSecret bool) error
+	walk = func(path, storePath []string, m map[string]interface{}, inSecret bool) error {
 		for k, v := range m {
 			full := append(append([]string{}, path...), k)
+			stored := append(append([]string{}, storePath...), k)
 			dotted := strings.Join(full, ".")
 			switch val := v.(type) {
 			case map[string]interface{}:
-				if err := walk(full, val, inSecret || want[dotted]); err != nil {
+				if err := walk(full, stored, val, inSecret || want[dotted]); err != nil {
 					return err
+				}
+			case []interface{}:
+				for i, item := range val {
+					if im, ok := item.(map[string]interface{}); ok {
+						if err := walk(full, append(append([]string{}, stored...), fmt.Sprint(i)), im, inSecret || want[dotted]); err != nil {
+							return err
+						}
+					}
 				}
 			case string:
 				if !(inSecret || want[dotted] || secret.IsSensitiveKey(k)) || val == "" || strings.HasPrefix(val, "${") {
@@ -185,7 +197,7 @@ func sealParams(instance string, params map[string]interface{}, secretPaths []st
 					}
 					prov = backend
 				}
-				key := secret.SanitizeKey(instance + "." + dotted)
+				key := secret.SanitizeKey(instance + "." + strings.Join(stored, "."))
 				if err := prov.Set(key, secret.New(val)); err != nil {
 					return fmt.Errorf("storing secret %q: %w", key, err)
 				}
@@ -197,5 +209,5 @@ func sealParams(instance string, params map[string]interface{}, secretPaths []st
 	if params == nil {
 		return nil
 	}
-	return walk(nil, params, false)
+	return walk(nil, nil, params, false)
 }

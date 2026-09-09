@@ -1,6 +1,7 @@
 package http
 
 import (
+	"strings"
 	"testing"
 
 	"senhub-agent.go/internal/agent/probes/spec"
@@ -46,5 +47,8 @@ func TestSplitParameterProblemsAndDeadTarget(t *testing.T) {
 	}
 	if msg := deadTarget([]PreviewMetric{{Name: "senhub.db.up", Value: 1}, {Name: "cpu.usage", Value: 0}}); msg != "" {
 		t.Errorf("a live target passes, got %q", msg)
+	}
+	if msg := deadTarget([]PreviewMetric{{Name: "senhub.kubernetes.up", Value: 1}, {Name: "k8s.deployment.available", Value: 0}, {Name: "ceph.osd.up", Value: 0}}); msg == "" || !strings.Contains(msg, "ceph.osd.up") {
+		t.Errorf("only an up metric at zero counts, a scaled-down count does not, got %q", msg)
 	}
 }

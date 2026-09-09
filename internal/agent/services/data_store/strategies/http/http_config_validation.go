@@ -105,13 +105,11 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	// means something to a write, so a check or a test does without it.
 	dropRedactedValues(req.Config)
 	configuration.DropNilValues(req.Config)
-	if req.Name != "" {
-		if err := cm.withStoredSecrets(req); err != nil {
-			response.Valid = false
-			response.Errors = append(response.Errors, err.Error())
-			response.Duration = time.Since(startTime).Milliseconds()
-			return response, nil
-		}
+	if err := cm.withStoredSecrets(req); err != nil {
+		response.Valid = false
+		response.Errors = append(response.Errors, err.Error())
+		response.Duration = time.Since(startTime).Milliseconds()
+		return response, nil
 	}
 
 	// Step 1: Schema Validation (always performed)
@@ -751,17 +749,24 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 // the form runs with the real credentials without the form ever seeing
 // them.
 func (cm *ConfigurationManager) withStoredSecrets(req *UniversalConfigRequest) error {
-	configPath := cm.agentConfig.GetConfigPath()
-	if configPath == "" {
-		return nil
+	if req.Name != "" {
+		if configPath := cm.agentConfig.GetConfigPath(); configPath != "" {
+			existing, found, err := configuration.ReadProbeFragment(configPath, req.Name)
+			if err != nil {
+				return err
+			}
+			if found && existing.Type != req.Probe {
+				return fmt.Errorf("probe %q is a %s, not a %s", req.Name, existing.Type, req.Probe)
+			}
+			if found {
+				req.Config = configuration.KeepStoredReferences(existing.Params, req.Config)
+			}
+		}
 	}
-	existing, err := configuration.ReadProbeFragmentParams(configPath, req.Name)
-	if err != nil || existing == nil {
-		return err
-	}
-	req.Config = configuration.KeepStoredReferences(existing, req.Config)
+	// A reference typed in the form (${secret:...}, ${env:...}) is resolved
+	// the way the loader resolves it, so the test runs with the value.
 	if err := configuration.Substitute(&req.Config); err != nil {
-		return fmt.Errorf("resolving the stored values of %q: %w", req.Name, err)
+		return fmt.Errorf("resolving the values: %w", err)
 	}
 	return nil
 }
@@ -787,19 +792,14 @@ func splitParameterProblems(msg string) []string {
 }
 
 // deadTarget reports a collection that succeeded only in saying that the
-// target is down: an availability metric ("up", "*.up", "*.available",
-// "*.reachable") at zero. A test that passes on such a cycle would tell
-// the operator that the values are right when the server refused them.
+// target is down: the probe's own availability metric ("up" or "*.up")
+// at zero. A test that passes on such a cycle would tell the operator
+// that the values are right when the server refused them. Counts that
+// happen to end in "available" (a deployment scaled to zero) are not it.
 func deadTarget(metrics []PreviewMetric) string {
 	for _, m := range metrics {
 		name := strings.ToLower(m.Name)
-		last := name
-		if i := strings.LastIndex(name, "."); i >= 0 {
-			last = name[i+1:]
-		}
-		switch last {
-		case "up", "available", "reachable", "connected":
-		default:
+		if name != "up" && !strings.HasSuffix(name, ".up") {
 			continue
 		}
 		if m.Value == 0 {

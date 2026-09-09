@@ -9,7 +9,7 @@ func init() {
 	outputspec.Register(outputspec.Output{
 		Type: "event", DisplayName: "Events (syslog and Windows events)", Mode: outputspec.ModePush,
 		Summary:  "Pushes syslog and Windows event records to an event intake as batches.",
-		DocsPath: "docs/user-guide/docs/configuration.md",
+		DocsPath: "docs/user-guide/docs/configuration.md", TestURLKey: "server_url",
 		Params: []spec.ParamSpec{
 			{Key: "server_url", Kind: spec.KindString, Required: true, Group: "connection", Description: "Base URL of the event intake; /event/insert is appended", Example: "https://events.example.com"},
 			{Key: "queue_size", Kind: spec.KindInt, Default: 1000, Group: "delivery", Description: "Records held before the oldest are dropped"},

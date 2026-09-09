@@ -111,10 +111,12 @@ func (h *HTTPSyncStrategy) handleCatalogOutputs(w http.ResponseWriter, r *http.R
 	}
 	configured := map[string]bool{}
 	if path := h.agentConfig.GetConfigPath(); path != "" {
-		if frags, err := configuration.ListStrategyFragments(path); err == nil {
-			for _, f := range frags {
-				configured[f.Name] = true
-			}
+		frags, err := configuration.ListStrategyFragments(path)
+		if err != nil {
+			h.logger.Warn().Err(err).Msg("Listing strategies.d for the outputs catalogue")
+		}
+		for _, f := range frags {
+			configured[f.Name] = true
 		}
 	}
 	entries := make([]outputCatalogEntry, 0, 8)
@@ -163,6 +165,10 @@ func (h *HTTPSyncStrategy) describeOutput(f configuration.StrategyFragment) conf
 	if entry.Params == nil {
 		entry.Params = map[string]interface{}{}
 	}
+	if f.Error != "" {
+		entry.State, entry.Reason = "failing", "the file cannot be read: "+f.Error
+		return entry
+	}
 	if !f.Enabled {
 		entry.State = "disabled"
 		return entry
@@ -179,20 +185,36 @@ func (h *HTTPSyncStrategy) describeOutput(f configuration.StrategyFragment) conf
 		entry.Readers = h.describeReaders()
 		return entry
 	}
-	act := agentstate.GetExportActivity(f.Name)
-	entry.Activity = &outputActivity{Successes: act.Successes, Failures: act.Failures, LastError: act.LastError}
-	if !act.LastSuccess.IsZero() {
-		t := act.LastSuccess
-		entry.Activity.LastSuccess = &t
+	// A strategy that exports several signals records each on its own
+	// key; the listing shows them as one output: failing when any signal
+	// is, with that signal's reason, exporting when one delivered.
+	entry.Activity = &outputActivity{}
+	var failing []string
+	for key, act := range agentstate.GetExportActivities(f.Name) {
+		entry.Activity.Successes += act.Successes
+		entry.Activity.Failures += act.Failures
+		if !act.LastSuccess.IsZero() && (entry.Activity.LastSuccess == nil || act.LastSuccess.After(*entry.Activity.LastSuccess)) {
+			t := act.LastSuccess
+			entry.Activity.LastSuccess = &t
+		}
+		if !act.LastFailure.IsZero() && (entry.Activity.LastFailure == nil || act.LastFailure.After(*entry.Activity.LastFailure)) {
+			t := act.LastFailure
+			entry.Activity.LastFailure = &t
+			entry.Activity.LastError = act.LastError
+		}
+		if !act.LastFailure.IsZero() && act.LastFailure.After(act.LastSuccess) {
+			msg := act.LastError
+			if i := strings.Index(key, "/"); i >= 0 {
+				msg = key[i+1:] + ": " + msg
+			}
+			failing = append(failing, msg)
+		}
 	}
-	if !act.LastFailure.IsZero() {
-		t := act.LastFailure
-		entry.Activity.LastFailure = &t
-	}
+	sort.Strings(failing)
 	switch {
-	case !act.LastFailure.IsZero() && act.LastFailure.After(act.LastSuccess):
-		entry.State, entry.Reason = "failing", act.LastError
-	case !act.LastSuccess.IsZero():
+	case len(failing) > 0:
+		entry.State, entry.Reason = "failing", strings.Join(failing, "; ")
+	case entry.Activity.LastSuccess != nil:
 		entry.State = "exporting"
 	default:
 		entry.State = "idle"
@@ -232,16 +254,11 @@ func (h *HTTPSyncStrategy) handleOutputCreate(w http.ResponseWriter, r *http.Req
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("output %q exists once and is created by the install; edit it instead", req.Type))
 		return
 	}
-	path, err := configuration.CreateStrategyFragment(h.agentConfig.GetConfigPath(), req.Type, req.Params, spec.SecretPaths())
+	enabled := req.Enabled == nil || *req.Enabled
+	path, err := configuration.CreateStrategyFragment(h.agentConfig.GetConfigPath(), req.Type, req.Params, enabled, spec.SecretPaths())
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-	if req.Enabled != nil && !*req.Enabled {
-		if path, err = configuration.UpdateStrategyFragment(h.agentConfig.GetConfigPath(), req.Type, req.Params, false, spec.SecretPaths()); err != nil {
-			writeJSONError(w, http.StatusBadRequest, err.Error())
-			return
-		}
 	}
 	agentstate.RecordEvent(agentstate.EventInfo, agentstate.EventKindConsole, req.Type, "output created from the console")
 	writeJSON(w, http.StatusCreated, outputWriteResponse{Status: "success", Path: path,
@@ -404,15 +421,16 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 		steps = append(steps, s)
 		return err == nil
 	}
-	// The key is read through a variable: the known-params guard scans
-	// this package for literal lookups and would take it for a key of
-	// the http strategy itself.
-	const urlKey = "server" + "_url"
-	target, _ := params[urlKey].(string)
+	var target string
 	if !run("config", func() (string, error) {
 		if err := checkOutputParams(outputType, params); err != nil {
 			return "", err
 		}
+		spec, _ := outputspec.For(outputType)
+		if spec.TestURLKey == "" {
+			return "", fmt.Errorf("output %q declares no address to reach", outputType)
+		}
+		target, _ = params[spec.TestURLKey].(string)
 		return target, nil
 	}) {
 		return steps
