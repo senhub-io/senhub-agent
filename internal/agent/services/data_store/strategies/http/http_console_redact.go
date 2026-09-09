@@ -100,9 +100,6 @@ func dropRedactedValues(params map[string]interface{}) {
 	}
 }
 
-// withoutNils returns a deep copy of params with every nil leaf and every
-// mapping emptied by it removed: what a shape check should see when a
-// form sends null to remove a stored entry.
 // paramsAsWritten is what the fragment will hold once the values the
 // form left out are taken back from the file: the checks must run on
 // that, not on what the form re-sent, or a stored required secret would
@@ -138,6 +135,9 @@ func copyParamValue(v interface{}) interface{} {
 	}
 }
 
+// withoutNils returns a deep copy of params with every nil leaf and every
+// mapping emptied by it removed: what a shape check should see when a
+// form sends null to remove a stored entry.
 func withoutNils(params map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(params))
 	for k, v := range params {

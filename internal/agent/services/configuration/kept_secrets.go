@@ -101,6 +101,14 @@ func DropNilValues(params map[string]interface{}) {
 			if len(val) == 0 {
 				delete(params, k)
 			}
+		case []interface{}:
+			// A list of blocks carries secrets too, so a row can hold the
+			// null that asks for one to be dropped.
+			for _, item := range val {
+				if row, ok := item.(map[string]interface{}); ok {
+					DropNilValues(row)
+				}
+			}
 		}
 	}
 }

@@ -123,3 +123,20 @@ func TestSecretsInsideAListOfBlocks(t *testing.T) {
 		t.Errorf("stored passwords of list rows must survive an update:\n%s", raw)
 	}
 }
+
+func TestDropNilValuesReachesInsideListRows(t *testing.T) {
+	params := map[string]interface{}{
+		"v3": map[string]interface{}{"users": []interface{}{
+			map[string]interface{}{"username": "u1", "auth_password": nil},
+			map[string]interface{}{"username": "u2"},
+		}},
+	}
+	DropNilValues(params)
+	rows := params["v3"].(map[string]interface{})["users"].([]interface{})
+	if _, still := rows[0].(map[string]interface{})["auth_password"]; still {
+		t.Error("a null inside a list row asks for the stored value to be dropped")
+	}
+	if rows[0].(map[string]interface{})["username"] != "u1" {
+		t.Error("the rest of the row must survive")
+	}
+}
