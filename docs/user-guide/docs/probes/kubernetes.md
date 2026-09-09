@@ -36,6 +36,7 @@ moved.
 | Parameter | Default | Description |
 |---|---|---|
 | `kubeconfig` | — | Path to a kubeconfig file. When empty, the probe uses the in-cluster ServiceAccount token |
+| `interval` | `30` | Seconds between collections |
 | `namespaces.include` | all | List of namespaces to monitor |
 | `namespaces.exclude` | `[kube-system]` | Namespaces to skip |
 | `collect.nodes` | `true` | Node health, capacity and pressure conditions |
