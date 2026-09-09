@@ -62,7 +62,25 @@ func TestProbeSpecs_MatchWhatParsersRead(t *testing.T) {
 // guardAllowed lists keys a package reads that are not operator settings,
 // or settings read somewhere the scan cannot follow. Every entry needs a
 // reason; a stale entry should be removed when the reason goes away.
-var guardAllowList = map[string]map[string]string{}
+var guardAllowList = map[string]map[string]string{
+	"syslog": {
+		// Fields of the parsed syslog message handed to processLogMessage,
+		// not settings; "host" is the scan seeing Str("host", hostname).
+		"app_name": "parsed message field", "client": "parsed message field", "content": "parsed message field",
+		"facility": "parsed message field", "hostname": "parsed message field", "message": "parsed message field",
+		"priority": "parsed message field", "severity": "parsed message field", "tag": "parsed message field",
+		"timestamp": "parsed message field", "host": "log field name, not a setting",
+	},
+	"event": {
+		// Fields of the decoded JSON body of a posted event, not settings.
+		"host": "event body field", "message": "event body field", "severity": "event body field", "timestamp": "event body field",
+	},
+	"solr": {
+		"count":   "field of the decoded /admin/metrics response, not a setting",
+		"hits":    "field of the decoded /admin/metrics response, not a setting",
+		"inserts": "field of the decoded /admin/metrics response, not a setting",
+	},
+}
 
 func guardAllowed(probeType, key string) bool {
 	_, ok := guardAllowList[probeType][key]
