@@ -188,3 +188,14 @@ func TestFileWriter_SecretsAreStillMaskedInTextForm(t *testing.T) {
 		t.Errorf("a secret reached the log file in clear: %s", buf.String())
 	}
 }
+
+func TestJournaldAttachedFollowsTheSystemdVariable(t *testing.T) {
+	t.Setenv("JOURNAL_STREAM", "")
+	if journaldAttached() {
+		t.Error("no variable means no journal")
+	}
+	t.Setenv("JOURNAL_STREAM", "8:12345")
+	if !journaldAttached() {
+		t.Error("systemd sets this when it captures our standard error")
+	}
+}
