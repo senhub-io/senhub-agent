@@ -20,7 +20,7 @@ func TestStrategyFragments_CreateUpdateDisableDelete(t *testing.T) {
 	path, err := CreateStrategyFragment(main, "otlp", map[string]interface{}{
 		"endpoint": "collector:4317",
 		"headers":  map[string]interface{}{"Authorization": "Bearer tok", "X-Tenant": "acme"},
-	}, []string{"headers"})
+	}, true, []string{"headers"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -28,22 +28,35 @@ func TestStrategyFragments_CreateUpdateDisableDelete(t *testing.T) {
 	if !strings.HasPrefix(string(raw), managedFragmentHeader) || strings.Contains(string(raw), "tok") || strings.Contains(string(raw), "acme") || !strings.Contains(string(raw), "${secret:strategies.otlp.headers.Authorization}") {
 		t.Errorf("fragment must be managed with every header value sealed, got:\n%s", raw)
 	}
-	if _, err := CreateStrategyFragment(main, "otlp", map[string]interface{}{"endpoint": "x"}, nil); err == nil {
+	if _, err := CreateStrategyFragment(main, "otlp", map[string]interface{}{"endpoint": "x"}, true, nil); err == nil {
 		t.Error("a second otlp must be refused")
 	}
-	if _, err := CreateStrategyFragment(main, "Bad Name", nil, nil); err == nil {
+	if _, err := CreateStrategyFragment(main, "Bad Name", nil, true, nil); err == nil {
 		t.Error("an invalid name must be refused")
+	}
+	if p, err := CreateStrategyFragment(main, "prtg", map[string]interface{}{"server_url": "http://p"}, false, nil); err != nil || !strings.HasSuffix(p, ".disabled") {
+		t.Errorf("a disabled create writes the .disabled file directly, got %s %v", p, err)
+	}
+	if _, err := CreateStrategyFragment(main, "prtg", map[string]interface{}{"server_url": "http://p"}, true, nil); err == nil {
+		t.Error("a disabled output is still an existing one")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "20-broken.yaml"), []byte("otlp: [\nprtg: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
 	frags, err := ListStrategyFragments(main)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(frags) != 2 {
-		t.Fatalf("want http and otlp, got %+v", frags)
+	if len(frags) != 4 {
+		t.Fatalf("want http, otlp, the disabled prtg and the broken file, got %+v", frags)
 	}
 	for _, f := range frags {
 		switch f.Name {
+		case "20-broken":
+			if f.Error == "" || f.Params != nil {
+				t.Errorf("an unreadable file is listed with its error: %+v", f)
+			}
 		case "http":
 			if f.Managed || !f.Enabled || f.Params["port"] != 8080 {
 				t.Errorf("http fragment read wrong: %+v", f)
@@ -55,6 +68,10 @@ func TestStrategyFragments_CreateUpdateDisableDelete(t *testing.T) {
 		}
 	}
 
+	// The broken file has served its purpose; the loader itself still refuses it.
+	if err := os.Remove(filepath.Join(dir, "20-broken.yaml")); err != nil {
+		t.Fatal(err)
+	}
 	disabled, err := UpdateStrategyFragment(main, "otlp", map[string]interface{}{"endpoint": "collector:4318", "protocol": "http"}, false, nil)
 	if err != nil {
 		t.Fatalf("disable: %v", err)

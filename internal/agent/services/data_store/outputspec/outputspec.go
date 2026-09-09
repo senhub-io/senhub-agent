@@ -32,9 +32,12 @@ type Output struct {
 	// Singleton outputs exist at most once and are never added from the
 	// console: the HTTP strategy is created by the install and the
 	// console itself runs on it.
-	Singleton bool             `json:"singleton,omitempty"`
-	DocsPath  string           `json:"docs_path,omitempty"`
-	Params    []spec.ParamSpec `json:"params"`
+	Singleton bool   `json:"singleton,omitempty"`
+	DocsPath  string `json:"docs_path,omitempty"`
+	// TestURLKey names the parameter holding the address a connection
+	// test reaches for a push output that speaks plain HTTP.
+	TestURLKey string           `json:"test_url_key,omitempty"`
+	Params     []spec.ParamSpec `json:"params"`
 }
 
 var (
@@ -89,20 +92,8 @@ func (o Output) DeclaredKeys() map[string]struct{} {
 }
 
 // SecretPaths lists the dotted parameter paths the schema marks secret;
-// a secret mapping seals every value it holds.
+// a secret mapping seals every value it holds, and a field of a block
+// list is named without its index.
 func (o Output) SecretPaths() []string {
-	var out []string
-	var walk func(prefix string, params []spec.ParamSpec)
-	walk = func(prefix string, params []spec.ParamSpec) {
-		for _, p := range params {
-			if p.Secret {
-				out = append(out, prefix+p.Key)
-			}
-			if p.Kind == spec.KindBlock {
-				walk(prefix+p.Key+".", p.Fields)
-			}
-		}
-	}
-	walk("", o.Params)
-	return out
+	return spec.Probe{Type: o.Type, Params: o.Params}.SecretPaths()
 }

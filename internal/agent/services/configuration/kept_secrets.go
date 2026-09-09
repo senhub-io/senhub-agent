@@ -35,6 +35,22 @@ func KeepStoredReferences(existing, incoming map[string]interface{}) map[string]
 				continue
 			}
 			KeepStoredReferences(val, sub)
+		case []interface{}:
+			// A list of blocks is merged item by item, in order: the form
+			// re-sends every row, a stored value inside one row is kept.
+			list, has := incoming[k].([]interface{})
+			if !has {
+				continue
+			}
+			for i, item := range val {
+				em, ok := item.(map[string]interface{})
+				if !ok || i >= len(list) {
+					continue
+				}
+				if im, ok := list[i].(map[string]interface{}); ok {
+					KeepStoredReferences(em, im)
+				}
+			}
 		case string:
 			if _, set := incoming[k]; set {
 				continue
@@ -45,6 +61,30 @@ func KeepStoredReferences(existing, incoming map[string]interface{}) map[string]
 		}
 	}
 	return incoming
+}
+
+// ReadProbeFragment returns a managed probe fragment as written,
+// references included, or false when there is no such file.
+func ReadProbeFragment(configPath, name string) (ProbeConfig, bool, error) {
+	path := ProbeFragmentPath(configPath, name)
+	raw, err := os.ReadFile(path) // #nosec G304 - path is under probes.d/
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ProbeConfig{}, false, nil
+		}
+		return ProbeConfig{}, false, fmt.Errorf("reading %s: %w", path, err)
+	}
+	var list []ProbeConfig
+	if err := yaml.Unmarshal(raw, &list); err != nil {
+		return ProbeConfig{}, false, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	for _, p := range list {
+		if p.Name == name {
+			p.Params = convertMapTypes(map[string]interface{}(p.Params)).(map[string]interface{})
+			return p, true, nil
+		}
+	}
+	return ProbeConfig{}, false, nil
 }
 
 // DropNilValues removes, in place, every nil leaf and every mapping left
@@ -68,24 +108,11 @@ func DropNilValues(params map[string]interface{}) {
 // ReadProbeFragmentParams returns the params of a managed probe fragment
 // as written, references included, or nil when there is no such file.
 func ReadProbeFragmentParams(configPath, name string) (map[string]interface{}, error) {
-	path := ProbeFragmentPath(configPath, name)
-	raw, err := os.ReadFile(path) // #nosec G304 - path is under probes.d/
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("reading %s: %w", path, err)
+	p, found, err := ReadProbeFragment(configPath, name)
+	if err != nil || !found {
+		return nil, err
 	}
-	var list []ProbeConfig
-	if err := yaml.Unmarshal(raw, &list); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", path, err)
-	}
-	for _, p := range list {
-		if p.Name == name {
-			return convertMapTypes(map[string]interface{}(p.Params)).(map[string]interface{}), nil
-		}
-	}
-	return nil, nil
+	return p.Params, nil
 }
 
 // StrategyFragmentParams returns the params of an output's file as

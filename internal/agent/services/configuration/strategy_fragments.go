@@ -30,6 +30,9 @@ type StrategyFragment struct {
 	Enabled bool
 	Managed bool
 	Params  StorageConfigParams
+	// Error says why the file could not be read as one strategy; the
+	// name is then the file's, and Params is nil.
+	Error string
 }
 
 // ListStrategyFragments reads every strategies.d file, enabled or
@@ -64,7 +67,12 @@ func ListStrategyFragments(configPath string) ([]StrategyFragment, error) {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
 		var single map[string]StorageConfigParams
-		if err := yaml.Unmarshal(raw, &single); err != nil || len(single) != 1 {
+		if err := yaml.Unmarshal(raw, &single); err != nil {
+			out = append(out, StrategyFragment{Name: strings.TrimSuffix(strings.TrimSuffix(name, ".disabled"), ".yaml"), Path: path, Enabled: enabled, Error: err.Error()})
+			continue
+		}
+		if len(single) != 1 {
+			out = append(out, StrategyFragment{Name: strings.TrimSuffix(strings.TrimSuffix(name, ".disabled"), ".yaml"), Path: path, Enabled: enabled, Error: fmt.Sprintf("expected exactly one top-level strategy key, got %d", len(single))})
 			continue
 		}
 		for sname, params := range single {
@@ -99,11 +107,12 @@ func strategyFragmentPath(configPath, name string) string {
 	return filepath.Join(filepath.Dir(configPath), "strategies.d", "50-"+safeFilenameComponent(name)+".yaml")
 }
 
-// CreateStrategyFragment writes a new output as its own managed file.
-// It refuses a name already present in strategies.d (enabled or not)
-// and the legacy layout. Secret values are sealed the way probe
-// fragments seal theirs, under the key strategies.<name>.<path>.
-func CreateStrategyFragment(configPath, name string, params StorageConfigParams, secretPaths []string) (string, error) {
+// CreateStrategyFragment writes a new output as its own managed file,
+// under the .disabled name when it is created disabled so the watcher
+// never starts it. It refuses a name already present in strategies.d
+// (enabled or not) and the legacy layout. Secret values are sealed the
+// way probe fragments seal theirs, under the key strategies.<name>.<path>.
+func CreateStrategyFragment(configPath, name string, params StorageConfigParams, enabled bool, secretPaths []string) (string, error) {
 	if err := refuseUnlessMultiFile(configPath); err != nil {
 		return "", err
 	}
@@ -120,6 +129,9 @@ func CreateStrategyFragment(configPath, name string, params StorageConfigParams,
 	path := strategyFragmentPath(configPath, name)
 	if _, err := os.Stat(path); err == nil {
 		return "", fmt.Errorf("%s already exists", path)
+	}
+	if !enabled {
+		path += ".disabled"
 	}
 	DropNilValues(params)
 	if err := sealParams("strategies."+name, params, secretPaths); err != nil {
@@ -160,7 +172,7 @@ func UpdateStrategyFragment(configPath, name string, params StorageConfigParams,
 	case !enabled && !strings.HasSuffix(path, ".disabled"):
 		target = path + ".disabled"
 	}
-	if err := writeManagedStrategyFragment(target, name, params); err != nil {
+	if err := writeManagedStrategyFragmentAs(target, name, params, fileModeOr(path, 0o600)); err != nil {
 		return "", err
 	}
 	if target != path {
@@ -187,6 +199,10 @@ func DeleteStrategyFragment(configPath, name string) (string, error) {
 }
 
 func writeManagedStrategyFragment(path, name string, params StorageConfigParams) error {
+	return writeManagedStrategyFragmentAs(path, name, params, fileModeOr(path, 0o600))
+}
+
+func writeManagedStrategyFragmentAs(path, name string, params StorageConfigParams, mode os.FileMode) error {
 	body, err := yaml.Marshal(map[string]StorageConfigParams{name: params})
 	if err != nil {
 		return fmt.Errorf("encoding output %q: %w", name, err)
@@ -195,7 +211,7 @@ func writeManagedStrategyFragment(path, name string, params StorageConfigParams)
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}
-	if err := atomicWriteFile(path, out, fileModeOr(path, 0o600)); err != nil {
+	if err := atomicWriteFile(path, out, mode); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil

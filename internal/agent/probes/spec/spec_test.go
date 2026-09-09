@@ -106,3 +106,16 @@ func TestCheckParams_BoolForAStringEnum(t *testing.T) {
 		t.Errorf("a bool for an enum without it is still a shape problem: %v", problems)
 	}
 }
+
+func TestProbe_SecretPaths(t *testing.T) {
+	sp := Probe{Params: []ParamSpec{
+		{Key: "password", Kind: KindString, Secret: true},
+		{Key: "headers", Kind: KindMap, Secret: true},
+		{Key: "tls", Kind: KindBlock, Fields: []ParamSpec{{Key: "key_file", Kind: KindString}}},
+		{Key: "v3", Kind: KindBlock, Fields: []ParamSpec{{Key: "users", Kind: KindBlockList, Fields: []ParamSpec{{Key: "auth_password", Kind: KindString, Secret: true}}}}},
+	}}
+	got := strings.Join(sp.SecretPaths(), ",")
+	if got != "password,headers,v3.users.auth_password" {
+		t.Errorf("secret paths wrong: %s", got)
+	}
+}

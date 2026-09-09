@@ -11,7 +11,9 @@ import (
 // identifier such as a user name is something the operator has to be
 // able to read and edit. Only the values themselves are hidden.
 
-var consoleSecretKeyPattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|community|authorization|bearer|dsn|license|jwt)`)
+// A superset of the keys the boot-time sealer treats as sensitive
+// (secret.IsSensitiveKey), so nothing sealed is ever shown resolved.
+var consoleSecretKeyPattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|community|dsn|uri|authorization|bearer|license|jwt)`)
 
 const redactedForConsole = "***"
 
@@ -81,6 +83,12 @@ func dropRedactedValues(params map[string]interface{}) {
 			dropRedactedValues(val)
 			if len(val) == 0 {
 				delete(params, k)
+			}
+		case []interface{}:
+			for _, item := range val {
+				if im, ok := item.(map[string]interface{}); ok {
+					dropRedactedValues(im)
+				}
 			}
 		case string:
 			if val == redactedForConsole || val == "[REDACTED]" {
