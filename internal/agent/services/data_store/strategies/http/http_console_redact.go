@@ -3,6 +3,8 @@ package http
 import (
 	"regexp"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/configuration"
 )
 
 // The console needs a different view of a params map than a log line:
@@ -101,6 +103,41 @@ func dropRedactedValues(params map[string]interface{}) {
 // withoutNils returns a deep copy of params with every nil leaf and every
 // mapping emptied by it removed: what a shape check should see when a
 // form sends null to remove a stored entry.
+// paramsAsWritten is what the fragment will hold once the values the
+// form left out are taken back from the file: the checks must run on
+// that, not on what the form re-sent, or a stored required secret would
+// read as missing on every edit.
+func paramsAsWritten(stored, incoming map[string]interface{}) map[string]interface{} {
+	out := configuration.KeepStoredReferences(stored, copyParams(incoming))
+	configuration.DropNilValues(out)
+	return out
+}
+
+// copyParams deep-copies params, nulls included: a null is the console
+// saying "drop the stored value", and the check must see it.
+func copyParams(params map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		out[k] = copyParamValue(v)
+	}
+	return out
+}
+
+func copyParamValue(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		return copyParams(val)
+	case []interface{}:
+		list := make([]interface{}, len(val))
+		for i, item := range val {
+			list[i] = copyParamValue(item)
+		}
+		return list
+	default:
+		return v
+	}
+}
+
 func withoutNils(params map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(params))
 	for k, v := range params {

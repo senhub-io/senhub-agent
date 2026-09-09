@@ -247,7 +247,7 @@ func (h *HTTPSyncStrategy) handleOutputCreate(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	spec, ok := h.checkOutputWrite(w, req)
+	spec, ok := h.checkOutputWrite(w, req, nil)
 	if !ok {
 		return
 	}
@@ -280,7 +280,12 @@ func (h *HTTPSyncStrategy) handleOutputUpdate(w http.ResponseWriter, r *http.Req
 		return
 	}
 	req.Type = name
-	spec, ok := h.checkOutputWrite(w, req)
+	stored, err := configuration.StrategyFragmentParams(h.agentConfig.GetConfigPath(), name)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	spec, ok := h.checkOutputWrite(w, req, stored)
 	if !ok {
 		return
 	}
@@ -350,7 +355,13 @@ func (h *HTTPSyncStrategy) handleOutputValidate(w http.ResponseWriter, r *http.R
 	if req.Params == nil {
 		req.Params = map[string]interface{}{}
 	}
-	if err := checkOutputParams(req.Type, withoutNils(req.Params)); err != nil {
+	var stored map[string]interface{}
+	if req.Name != "" {
+		if p, err := configuration.StrategyFragmentParams(h.agentConfig.GetConfigPath(), req.Name); err == nil {
+			stored = p
+		}
+	}
+	if err := checkOutputParams(req.Type, paramsAsWritten(stored, req.Params)); err != nil {
 		writeJSON(w, http.StatusOK, outputValidateResponse{Valid: false, Errors: []string{err.Error()}, Field: guessOutputField(req.Type, err.Error())})
 		return
 	}
@@ -484,14 +495,16 @@ func (h *HTTPSyncStrategy) decodeOutputWrite(w http.ResponseWriter, r *http.Requ
 }
 
 // checkOutputWrite refuses an unknown type and params the schema or the
-// strategy's own parser rejects, before anything is written.
-func (h *HTTPSyncStrategy) checkOutputWrite(w http.ResponseWriter, req outputWriteRequest) (outputspec.Output, bool) {
+// strategy's own parser rejects, before anything is written. stored is
+// the fragment as it stands, so a required secret already in the store
+// is not reported missing when the form does not resend it.
+func (h *HTTPSyncStrategy) checkOutputWrite(w http.ResponseWriter, req outputWriteRequest, stored map[string]interface{}) (outputspec.Output, bool) {
 	spec, has := outputspec.For(req.Type)
 	if !has {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("output type %q is not in the catalogue of this agent", req.Type))
 		return spec, false
 	}
-	if err := checkOutputParams(req.Type, withoutNils(req.Params)); err != nil {
+	if err := checkOutputParams(req.Type, paramsAsWritten(stored, req.Params)); err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return spec, false
 	}

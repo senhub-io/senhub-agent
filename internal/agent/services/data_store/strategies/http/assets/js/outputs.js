@@ -93,46 +93,10 @@
         return { params: walk(obj || {}, ''), stripped };
     }
 
-    // toYAML writes a nested object as the fragment the agent reads:
-    // lists inline, strings quoted only when YAML would misread them.
-    function yamlScalar(v) {
-        if (v === null || v === undefined) return '';
-        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-        const s = String(v);
-        if (s === '' || /^[\s]|[\s]$/.test(s) || /^[-?:,\[\]{}#&*!|>'"%@`]/.test(s) || /[:#]\s|^\s*$/.test(s) ||
-            /^(true|false|yes|no|on|off|null|~)$/i.test(s) || /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s) || s.indexOf('\n') >= 0) {
-            return JSON.stringify(s);
-        }
-        return s;
-    }
+    // The form engine owns the one YAML writer; every page that shows a
+    // fragment loads it, so there is a single set of quoting rules.
     function toYAML(obj, indent) {
-        indent = indent || 0;
-        const pad = ' '.repeat(indent);
-        const lines = [];
-        if (!obj || typeof obj !== 'object') return pad + yamlScalar(obj);
-        for (const k of Object.keys(obj)) {
-            const v = obj[k];
-            if (v === undefined || v === null) continue;
-            if (Array.isArray(v)) {
-                if (v.length && v.some(x => x && typeof x === 'object')) {
-                    lines.push(pad + k + ':');
-                    for (const item of v) {
-                        const body = toYAML(item, indent + 4).split('\n');
-                        body[0] = pad + '  - ' + body[0].trimStart();
-                        lines.push(body.join('\n'));
-                    }
-                } else {
-                    lines.push(pad + k + ': [' + v.map(yamlScalar).join(', ') + ']');
-                }
-            } else if (v && typeof v === 'object') {
-                if (Object.keys(v).length === 0) { lines.push(pad + k + ': {}'); continue; }
-                lines.push(pad + k + ':');
-                lines.push(toYAML(v, indent + 2));
-            } else {
-                lines.push(pad + k + ': ' + yamlScalar(v));
-            }
-        }
-        return lines.join('\n');
+        return SchemaForm.toYAML(obj, indent || 0);
     }
 
     // yamlHTML colours keys and ${...} references the way pre.yaml expects.

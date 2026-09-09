@@ -1,6 +1,9 @@
 package http
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"senhub-agent.go/internal/agent/probes/spec"
@@ -71,5 +74,52 @@ func TestCatalogEntryOffPlatform(t *testing.T) {
 	}
 	if platformReason([]string{"linux", "windows"}) != "Linux and Windows only" {
 		t.Error("platform names are spelled for the operator")
+	}
+}
+
+// A probe whose schema makes a secret required must stay editable once
+// that secret is in the store: the form only ever showed it as "Stored"
+// and does not re-send it.
+func TestProbeUpdateKeepsWorkingWhenARequiredSecretIsStored(t *testing.T) {
+	spec.Register(spec.Probe{Type: "pgtest", DisplayName: "PG test", Params: []spec.ParamSpec{
+		{Key: "host", Kind: spec.KindString, Required: true},
+		{Key: "password", Kind: spec.KindString, Required: true, Secret: true},
+	}})
+	router, dir := newOutputsTestRouter(t)
+	base := "/api/test-agent-key"
+	code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
+		"name": "pg", "type": "pgtest", "params": map[string]interface{}{
+			"host": "db1", "password": "s3cret",
+		},
+	})
+	if code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "probes.d", "50-pg.yaml"))
+	if strings.Contains(string(raw), "s3cret") {
+		t.Fatalf("the password must be sealed:\n%s", raw)
+	}
+	// The form re-sends everything but the stored password.
+	code, resp = doJSON(t, router, "PUT", base+"/config/probes/pg", map[string]interface{}{
+		"name": "pg", "type": "pgtest", "params": map[string]interface{}{
+			"host": "db2",
+		},
+	})
+	if code != 200 {
+		t.Fatalf("a stored required secret must not block the edit: %d %v", code, resp)
+	}
+	raw, _ = os.ReadFile(filepath.Join(dir, "probes.d", "50-pg.yaml"))
+	if !strings.Contains(string(raw), "db2") || !strings.Contains(string(raw), "${secret:pg.password}") {
+		t.Errorf("the edit must land and the stored password stay referenced:\n%s", raw)
+	}
+	// Removing it explicitly is a different thing: the schema says the
+	// probe cannot run without it, so that must be refused.
+	code, _ = doJSON(t, router, "PUT", base+"/config/probes/pg", map[string]interface{}{
+		"name": "pg", "type": "pgtest", "params": map[string]interface{}{
+			"host": "db2", "password": nil,
+		},
+	})
+	if code != 400 {
+		t.Errorf("dropping a required secret must be refused, got %d", code)
 	}
 }
