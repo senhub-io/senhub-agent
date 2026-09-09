@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -49,6 +50,52 @@ func TestProbeConnection_HTTPReceiverAcceptsOneMetric(t *testing.T) {
 	}
 	if hits.Load() != 1 {
 		t.Errorf("the receiver must see exactly one export, saw %d", hits.Load())
+	}
+}
+
+func TestProbeConnection_EveryStepUsesTheCallersDialer(t *testing.T) {
+	// A signal endpoint override is where the export goes; the dialer
+	// must see that address, and the exporter must not dial on its own.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	endpoint := strings.TrimPrefix(srv.URL, "http://")
+	var dialed []string
+	recorder := func(ctx context.Context, network, address string) (net.Conn, error) {
+		dialed = append(dialed, address)
+		var d net.Dialer
+		return d.DialContext(ctx, network, address)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	steps := ProbeConnection(ctx, map[string]interface{}{
+		"endpoint": "127.0.0.1:1", "protocol": "http", "tls": map[string]interface{}{"enabled": false},
+		"fallback_endpoints": []interface{}{"127.0.0.1:2"},
+		"signals":            map[string]interface{}{"metrics": map[string]interface{}{"endpoint": endpoint}},
+	}, recorder)
+	for _, s := range steps {
+		if !s.Passed {
+			t.Fatalf("step %s failed: %s", s.Name, s.Error)
+		}
+	}
+	if len(dialed) < 2 {
+		t.Fatalf("the dialer must carry the tcp step and the export, saw %v", dialed)
+	}
+	for _, a := range dialed {
+		if a != endpoint {
+			t.Errorf("only the resolved signal endpoint may be dialed, saw %s", a)
+		}
+	}
+	refusing := func(ctx context.Context, network, address string) (net.Conn, error) {
+		return nil, fmt.Errorf("blocked %s", address)
+	}
+	steps = ProbeConnection(ctx, map[string]interface{}{
+		"endpoint": endpoint, "protocol": "http", "tls": map[string]interface{}{"enabled": false},
+	}, refusing)
+	if last := steps[len(steps)-1]; last.Name != "tcp" || last.Passed || !strings.Contains(last.Error, "blocked") {
+		t.Errorf("a refusing dialer must stop the test at tcp, got %+v", steps)
 	}
 }
 

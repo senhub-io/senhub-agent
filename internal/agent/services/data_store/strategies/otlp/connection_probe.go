@@ -5,13 +5,18 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
+	"google.golang.org/grpc"
 
 	"senhub-agent.go/internal/agent/services/configuration"
 )
@@ -47,21 +52,28 @@ func ProbeConnection(ctx context.Context, params configuration.StorageConfigPara
 		return err == nil
 	}
 
+	// The test reaches one address, the one the metrics signal exports
+	// to, through the caller's dialer at every step: a signal endpoint
+	// override or a fallback must not open a connection the guard has
+	// not seen.
 	var cfg Config
+	var rt resolvedTransport
 	if !run("config", func() (string, error) {
 		var err error
 		cfg, err = ParseConfig(params)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%s over %s", cfg.Endpoint, cfg.Protocol), nil
+		cfg.FallbackEndpoints = nil
+		rt = resolveTransport(cfg, cfg.Metrics.SignalTransport)
+		return fmt.Sprintf("%s over %s", rt.endpoint, cfg.Protocol), nil
 	}) {
 		return steps
 	}
 
-	host, port, err := net.SplitHostPort(cfg.Endpoint)
+	host, port, err := net.SplitHostPort(rt.endpoint)
 	if err != nil {
-		steps = append(steps, ConnectionStep{Name: "dns", Error: fmt.Sprintf("endpoint must be host:port, got %q", cfg.Endpoint)})
+		steps = append(steps, ConnectionStep{Name: "dns", Error: fmt.Sprintf("endpoint must be host:port, got %q", rt.endpoint)})
 		return steps
 	}
 	var addrs []net.IPAddr
@@ -92,9 +104,9 @@ func ProbeConnection(ctx context.Context, params configuration.StorageConfigPara
 		return steps
 	}
 
-	if cfg.TLS.Enabled {
+	if rt.tls.Enabled {
 		ok := run("tls", func() (string, error) {
-			tlsConf, _, err := buildTLSConfig(cfg.TLS)
+			tlsConf, _, err := buildTLSConfig(rt.tls)
 			if err != nil {
 				return "", err
 			}
@@ -125,7 +137,7 @@ func ProbeConnection(ctx context.Context, params configuration.StorageConfigPara
 	}
 
 	run("export", func() (string, error) {
-		exp, err := buildMetricExporter(ctx, cfg)
+		exp, err := testMetricExporter(ctx, cfg, rt, dial)
 		if err != nil {
 			return "", err
 		}
@@ -150,6 +162,64 @@ func ProbeConnection(ctx context.Context, params configuration.StorageConfigPara
 		return "one metric accepted", nil
 	})
 	return steps
+}
+
+// testMetricExporter builds the metrics exporter the way the strategy
+// does, except that every connection goes through the caller's dialer.
+func testMetricExporter(ctx context.Context, cfg Config, rt resolvedTransport, dial Dialer) (sdkmetric.Exporter, error) {
+	if cfg.Protocol == "http" {
+		tlsConf, insec, err := buildTLSConfig(rt.tls)
+		if err != nil {
+			return nil, err
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsConf
+		transport.DialContext = dial
+		transport.Proxy = nil
+		opts := []otlpmetrichttp.Option{
+			otlpmetrichttp.WithEndpoint(rt.endpoint),
+			otlpmetrichttp.WithTimeout(cfg.Timeout),
+			otlpmetrichttp.WithHTTPClient(&http.Client{Transport: transport, Timeout: cfg.Timeout}),
+			otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{Enabled: false}),
+		}
+		if insec {
+			opts = append(opts, otlpmetrichttp.WithInsecure())
+		}
+		if cfg.URLPathPrefix != "" {
+			opts = append(opts, otlpmetrichttp.WithURLPath(cfg.URLPathPrefix+signalPathMetrics))
+		}
+		if len(rt.headers) > 0 {
+			opts = append(opts, otlpmetrichttp.WithHeaders(rt.headers))
+		}
+		if cfg.Compression == "gzip" {
+			opts = append(opts, otlpmetrichttp.WithCompression(otlpmetrichttp.GzipCompression))
+		}
+		return otlpmetrichttp.New(ctx, opts...)
+	}
+	creds, insec, err := tlsCredentials(rt.tls)
+	if err != nil {
+		return nil, err
+	}
+	opts := []otlpmetricgrpc.Option{
+		otlpmetricgrpc.WithEndpoint(rt.endpoint),
+		otlpmetricgrpc.WithTimeout(cfg.Timeout),
+		otlpmetricgrpc.WithRetry(otlpmetricgrpc.RetryConfig{Enabled: false}),
+		otlpmetricgrpc.WithDialOption(grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return dial(ctx, "tcp", addr)
+		})),
+	}
+	if insec {
+		opts = append(opts, otlpmetricgrpc.WithInsecure())
+	} else {
+		opts = append(opts, otlpmetricgrpc.WithTLSCredentials(creds))
+	}
+	if len(rt.headers) > 0 {
+		opts = append(opts, otlpmetricgrpc.WithHeaders(rt.headers))
+	}
+	if cfg.Compression == "gzip" {
+		opts = append(opts, otlpmetricgrpc.WithCompressor("gzip"))
+	}
+	return otlpmetricgrpc.New(ctx, opts...)
 }
 
 func tlsVersionName(v uint16) string {
