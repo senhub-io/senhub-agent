@@ -319,6 +319,13 @@ func interactiveLogPath(p string) string {
 // - 30-day retention period
 // - Masking of sensitive information
 // Console output is automatically added when running in interactive mode (run command)
+// journaldAttached reports whether the service manager connected our
+// standard error to the journal. systemd sets JOURNAL_STREAM for exactly
+// that, so the test needs no platform guard.
+func journaldAttached() bool {
+	return os.Getenv("JOURNAL_STREAM") != ""
+}
+
 func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
 	logPath := getLogPath(args)
 
@@ -345,6 +352,13 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
 		bootstrapLog().Info().Msg("Running in interactive mode - console output enabled")
+	} else if journaldAttached() {
+		// systemd says it captures our standard error into the journal.
+		// Without this an operator running journalctl -u sees the unit
+		// start and stop and nothing in between, which is where a
+		// refused port or a broken output would have been said.
+		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, NoColor: true, TimeFormat: consoleTimeFormat}
+		writers = append(writers, NewMaskingWriter(consoleWriter))
 	}
 
 	// Add debug log shipper if configured
