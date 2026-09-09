@@ -85,14 +85,32 @@ func (s Probe) HasStartSet() bool {
 // Probe is what the configurator, config check and the docs need
 // about a probe type that its constructor alone cannot tell them.
 type Probe struct {
-	Type            string      `json:"type"`
-	DisplayName     string      `json:"display_name"`
-	Category        string      `json:"category,omitempty"`
-	Summary         string      `json:"summary,omitempty"`
-	DocsPath        string      `json:"docs_path,omitempty"`
-	MultiInstance   bool        `json:"multi_instance"`
-	DefaultInterval int         `json:"default_interval,omitempty"`
-	Params          []ParamSpec `json:"params"`
+	Type            string `json:"type"`
+	DisplayName     string `json:"display_name"`
+	Category        string `json:"category,omitempty"`
+	Summary         string `json:"summary,omitempty"`
+	DocsPath        string `json:"docs_path,omitempty"`
+	MultiInstance   bool   `json:"multi_instance"`
+	DefaultInterval int    `json:"default_interval,omitempty"`
+	// Platforms lists the operating systems (GOOS names) the probe can
+	// run on; empty means every platform. A probe registers everywhere
+	// through a stub so one configuration serves a mixed fleet, and the
+	// catalogue uses this to say why it will not start here.
+	Platforms []string    `json:"platforms,omitempty"`
+	Params    []ParamSpec `json:"params"`
+}
+
+// RunsOn reports whether the probe can run on the given GOOS.
+func (s Probe) RunsOn(goos string) bool {
+	if len(s.Platforms) == 0 {
+		return true
+	}
+	for _, p := range s.Platforms {
+		if p == goos {
+			return true
+		}
+	}
+	return false
 }
 
 var (

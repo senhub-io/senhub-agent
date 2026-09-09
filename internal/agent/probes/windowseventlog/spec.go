@@ -10,6 +10,7 @@ func init() {
 		Summary:         "Subscribes to Windows Event Log channels and emits events as logs (Windows only).",
 		DocsPath:        "docs/user-guide/docs/probes/windows-eventlog.md",
 		MultiInstance:   true,
+		Platforms:       []string{"windows"},
 		DefaultInterval: 30,
 		Params: []probes.ParamSpec{
 			{Key: "channels", Kind: probes.KindStringList, Required: true, Group: "source", Description: "Channel names", Example: "System, Security"},
