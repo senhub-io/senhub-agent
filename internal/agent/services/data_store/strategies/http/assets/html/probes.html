@@ -316,7 +316,7 @@
       for (const k of Object.keys(counts)) $('n-' + k).textContent = counts[k];
       if (!all.length) {
         $('list-card').classList.add('hide'); $('empty-card').classList.remove('hide');
-        const n = List.catalog.length, locked = List.catalog.filter(t => !t.authorized).length;
+        const n = List.catalog.length, locked = List.catalog.filter(t => !t.authorized && t.tier === 'pro').length;
         $('empty-more').innerHTML = 'Something else? <a href="?new=1#picker">Browse the ' + (n ? n + ' ' : '') + 'probe types</a>.' + (locked ? ' ' + locked + ' Pro type' + (locked > 1 ? 's' : '') + ' show a lock until a licence is activated.' : '');
         return;
       }
@@ -352,6 +352,7 @@
       else if (s === 'failing') state = '<span class="pill err"><span class="dot err"></span>failing</span>' + (p.reason ? '<span class="why">' + esc(p.reason) + '</span>' : '');
       else if (s === 'starting') state = '<span class="pill warn"><span class="dot warn"></span>starting</span>';
       else if (s === 'disabled') state = '<span class="pill off">disabled</span>';
+      else if (p.tier !== 'pro') state = '<span class="pill off" title="' + esc(p.reason || '') + '">not on this platform</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
       else state = '<span class="pill lock" title="' + esc(p.reason || '') + '">&#128274; not licensed</span> <span class="pill pro">Pro</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
       const editable = p.managed && p.has_schema;
       let acts = '';
@@ -495,8 +496,9 @@
       box.innerHTML = '<button type="button" class="chip on" data-cat="all">All</button>' + cats.map(c => '<button type="button" class="chip" data-cat="' + esc(c) + '">' + esc(SchemaForm.titleCase(c)) + '</button>').join('');
       box.querySelectorAll('.chip').forEach(c => c.onclick = () => { Ed.cat = c.dataset.cat; box.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === c)); Ed.renderPicker(); });
       $('picker-search').placeholder = 'Search ' + Ed.catalog.length + ' probe types';
-      const locked = Ed.catalog.filter(t => !t.authorized).length;
-      $('picker-foot').innerHTML = (locked ? locked + ' Pro type' + (locked > 1 ? 's' : '') + ' unlock with a licence. ' : 'Pro types unlock with a licence. ') + '<a href="' + WEB + '/settings">Settings</a>';
+      const locked = Ed.catalog.filter(t => !t.authorized && t.tier === 'pro').length;
+      const elsewhere = Ed.catalog.filter(t => !t.authorized && t.tier !== 'pro').length;
+      $('picker-foot').innerHTML = (locked ? locked + ' Pro type' + (locked > 1 ? 's' : '') + ' unlock with a licence. ' : 'Pro types unlock with a licence. ') + '<a href="' + WEB + '/settings">Settings</a>' + (elsewhere ? ' &middot; ' + elsewhere + ' type' + (elsewhere > 1 ? 's run' : ' runs') + ' on another platform only.' : '');
       Ed.renderPicker();
     },
     renderPicker() {
@@ -508,7 +510,8 @@
         d.className = 'tcard' + (Ed.spec && Ed.spec.type === t.type ? ' on' : '') + (t.authorized ? '' : ' lock');
         d.setAttribute('role', 'button'); d.tabIndex = 0;
         if (!t.authorized) d.title = t.reason || 'Needs a licence';
-        d.innerHTML = '<div class="n"><span>' + esc(t.display_name || t.type) + '</span>' + (t.tier === 'pro' ? '<span class="pill pro">' + (t.authorized ? '' : '&#128274; ') + 'Pro</span>' : '') + '</div><div class="d">' + esc(t.summary || ('Type ' + t.type)) + '</div>';
+        const badge = t.tier === 'pro' ? '<span class="pill pro">' + (t.authorized ? '' : '&#128274; ') + 'Pro</span>' : (!t.authorized ? '<span class="pill off">' + esc(t.reason || 'not here') + '</span>' : '');
+        d.innerHTML = '<div class="n"><span>' + esc(t.display_name || t.type) + '</span>' + badge + '</div><div class="d">' + esc(t.summary || ('Type ' + t.type)) + '</div>';
         if (t.authorized) {
           const pick = () => { Ed.selectType(t.type, {}); Ed.openPicker(false); };
           d.onclick = pick; d.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
@@ -530,7 +533,7 @@
       const slug = (spec.docs_path || '').split('/').pop().replace(/\.md$/, '');
       $('doc-links').innerHTML = (slug ? '<a href="https://agent.senhub.io/docs/probes/' + esc(slug) + '/" target="_blank" rel="noopener">Documentation</a> &middot; ' : '') + '<a href="' + WEB + '/outputs/http#urls">Metrics it emits</a>';
       if (!Ed.editing) $('in-name').placeholder = 'e.g. ' + spec.type + '-prod';
-      if (!spec.authorized) setBanner($('banner-slot'), 'warn', 'This type needs a licence.', spec.reason || '');
+      if (!spec.authorized) setBanner($('banner-slot'), 'warn', spec.tier === 'pro' ? 'This type needs a licence.' : 'This type does not run on this platform.', spec.reason || '');
       Ed.form = new SchemaForm({
         starter: $('starter-fields'), sections: $('sections'), params: spec.params || [], values: values || {},
         hide: ['governance'], onChange: () => Ed.refresh(),
@@ -657,7 +660,7 @@
       $('btn-save').disabled = !ok;
       let state;
       if (file) state = '<span class="dot off"></span>Edited by hand, not from here';
-      else if (locked) state = '<span class="dot warn"></span>Licence needed';
+      else if (locked) state = '<span class="dot warn"></span>' + (Ed.spec.tier === 'pro' ? 'Licence needed' : esc(Ed.spec.reason || 'Not on this platform'));
       else if (ok) state = '<span class="dot ok"></span>Ready to save';
       else state = '<span class="dot warn"></span>' + esc(missing.join(', ')) + ' still needed';
       $('act-state').innerHTML = state;

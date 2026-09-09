@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"runtime"
 	"strings"
 
 	"senhub-agent.go/internal/agent/probes/spec"
@@ -74,6 +75,14 @@ func (h *HTTPSyncStrategy) currentLicense() *license.License {
 // is valid, bound to this agent, not expired, and that authorises it.
 func annotateCatalogEntry(ps spec.Probe, lic *license.License, agentKey string) catalogEntry {
 	e := catalogEntry{Probe: ps, Tier: "free", Authorized: true}
+	if !ps.RunsOn(runtime.GOOS) {
+		e.Authorized = false
+		e.Reason = platformReason(ps.Platforms)
+		if license.IsProbeAuthorizable(ps.Type) && !isFreeTier(ps.Type) {
+			e.Tier = "pro"
+		}
+		return e
+	}
 	if license.IsProbeAuthorizable(ps.Type) && !isFreeTier(ps.Type) {
 		e.Tier = "pro"
 		switch {
@@ -95,6 +104,20 @@ func annotateCatalogEntry(ps spec.Probe, lic *license.License, agentKey string) 
 		}
 	}
 	return e
+}
+
+// platformReason says where the probe runs, in words an operator reads.
+func platformReason(platforms []string) string {
+	names := map[string]string{"windows": "Windows", "linux": "Linux", "darwin": "macOS"}
+	out := make([]string, 0, len(platforms))
+	for _, p := range platforms {
+		if n, ok := names[p]; ok {
+			out = append(out, n)
+		} else {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, " and ") + " only"
 }
 
 func isFreeTier(probeType string) bool {
