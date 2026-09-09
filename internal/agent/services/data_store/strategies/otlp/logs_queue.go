@@ -382,7 +382,7 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 
 		classified := classifyExportError(err)
 		agentstate.IncrementExportSendFailed("otlp", exporterrors.Reason(classified))
-		agentstate.RecordExportFailure("otlp", redactSensitive(err.Error()))
+		agentstate.RecordExportFailure("otlp/logs", redactSensitive(err.Error()))
 		e.healthy.Store(false)
 
 		if !exporterrors.IsRetryable(classified) {
@@ -410,7 +410,7 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		})
 		return err
 	}
-	agentstate.RecordExportSuccess("otlp")
+	agentstate.RecordExportSuccess("otlp/logs")
 	// Export succeeded: if we were unhealthy, the backend just recovered.
 	if e.healthy.CompareAndSwap(false, true) {
 		if p := e.onRecovered.Load(); p != nil && *p != nil {

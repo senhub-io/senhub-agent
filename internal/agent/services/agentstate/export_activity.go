@@ -85,17 +85,36 @@ func RecordExportFailure(strategy, reason string) {
 }
 
 // FailingExports lists the strategies whose last delivery failed after
-// their last success, sorted.
+// their last success, sorted. A signal recorded as "<strategy>/<signal>"
+// counts for its strategy.
 func FailingExports() []string {
 	exportActivity.mu.Lock()
 	defer exportActivity.mu.Unlock()
-	var out []string
+	seen := map[string]bool{}
 	for name, a := range exportActivity.m {
 		if !a.LastFailure.IsZero() && a.LastFailure.After(a.LastSuccess) {
-			out = append(out, name)
+			seen[strings.SplitN(name, "/", 2)[0]] = true
 		}
 	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
 	sort.Strings(out)
+	return out
+}
+
+// GetExportActivities returns the snapshots recorded for a strategy and
+// its signals ("<strategy>" and "<strategy>/<signal>"), keyed as stored.
+func GetExportActivities(strategy string) map[string]ExportActivity {
+	exportActivity.mu.Lock()
+	defer exportActivity.mu.Unlock()
+	out := map[string]ExportActivity{}
+	for name, a := range exportActivity.m {
+		if name == strategy || strings.HasPrefix(name, strategy+"/") {
+			out[name] = *a
+		}
+	}
 	return out
 }
 
