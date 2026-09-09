@@ -267,9 +267,12 @@
             else if (k === 'fmt' || k === 'endpoint') out.fmt = v;
             else if (k.startsWith('tag_')) out.tags[k.slice(4)] = v;
         };
+        const dec = (s) => { try { return decodeURIComponent(s); } catch (e) { return null; } };
         for (const p of parts.slice(1)) {
             const i = p.indexOf('=');
-            if (i > 0) read(decodeURIComponent(p.slice(0, i)), decodeURIComponent(p.slice(i + 1)));
+            if (i <= 0) continue;
+            const k = dec(p.slice(0, i)), v = dec(p.slice(i + 1));
+            if (k !== null && v !== null) read(k, v);
         }
         for (const [k, v] of new URLSearchParams(location.search).entries()) read(k, v);
         if (out.probe && out.tab === 'settings' && location.search) out.tab = 'urls';

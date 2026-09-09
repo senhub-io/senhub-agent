@@ -241,6 +241,10 @@
         // Sensor URLs tab
         $('su-host').textContent = location.hostname;
         $('su-prom-url').textContent = location.origin + '/metrics';
+        O.api('info/endpoints').then(d => {
+            const prom = (d.endpoints || []).find(e => e.name === 'prometheus');
+            if (prom && !prom.enabled) $('su-prom-url').textContent = 'Prometheus endpoint off; enable it in Settings';
+        }).catch(() => {});
         $('su-nagios-url').textContent = '/api/' + O.key + '/nagios/checks';
         const su = new SensorURLs(O.key, $('p-urls'));
         su.load(deep);
@@ -297,7 +301,9 @@
             let mode = bind === '127.0.0.1' || bind === 'localhost' || bind === '::1' ? 'local' : bind === '0.0.0.0' || bind === '::' || bind === '' ? 'all' : 'custom';
             if (mode === 'custom') { $('h-bind-custom-opt').classList.remove('hide'); $('h-bind-custom').classList.remove('hide'); $('h-bind-custom').value = bind; }
             document.querySelector('input[name="bind"][value="' + mode + '"]').checked = true;
-            const eps = Array.isArray(p.endpoints) && p.endpoints.length ? p.endpoints : ['web', 'prtg', 'nagios', 'prometheus'];
+            // Absent means none enabled (the agent's own default); the page
+            // is served, so web is on whatever the file says.
+            const eps = Array.isArray(p.endpoints) ? p.endpoints : ['web'];
             document.querySelectorAll('[data-ep]').forEach(cb => { if (cb.dataset.ep !== 'web') cb.checked = eps.includes(cb.dataset.ep); });
             const tls = p.tls || {};
             $('h-tls').checked = !!tls.enabled;
@@ -328,7 +334,7 @@
             $('sum-cache').textContent = p.max_cache_size ? p.max_cache_size + ' series' : 'Default';
             $('sum-cache').classList.toggle('set', !!p.max_cache_size);
             const open = bindMode() !== 'local' && !tls.enabled;
-            const port = parseInt($('h-port').value, 10);
+            const port = $('h-port').value.trim() === '' ? 8080 : parseInt($('h-port').value, 10);
             const badPort = isNaN(port) || port < 1 || port > 65535;
             const badBind = bindMode() === 'custom' && !currentBind();
             $('h-port-err').classList.toggle('hide', !badPort);
@@ -373,7 +379,8 @@
                 const res = await O.api('config/outputs/http', { method: 'PUT', body: { enabled: true, params: p } });
                 let html = esc(res.applied || 'http output updated');
                 if (oldPort != null && p.port !== oldPort) {
-                    const url = location.protocol + '//' + location.hostname + ':' + p.port + O.webBase + 'outputs/http';
+                    const scheme = (p.tls && p.tls.enabled) ? 'https:' : 'http:';
+                    const url = scheme + '//' + location.hostname + ':' + p.port + O.webBase + 'outputs/http';
                     html += '<br>The console moves to port ' + esc(p.port) + ' once the listener restarts: <a href="' + esc(url) + '">' + esc(url) + '</a>';
                 }
                 O.banner($('banner'), 'ok', html);

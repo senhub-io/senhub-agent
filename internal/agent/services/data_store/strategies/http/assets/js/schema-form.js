@@ -156,6 +156,7 @@
                     if (p.secret && typeof v === 'string' && !v.startsWith('${')) obj[p.key] = ref(path);
                     else if (p.secret && p.kind === 'map' && isObj(v)) { for (const k of Object.keys(v)) if (typeof v[k] === 'string' && !v[k].startsWith('${')) v[k] = ref(path + '.' + k); }
                     else if (p.kind === 'block' && isObj(v)) seal(p.fields, v, path + '.');
+                    else if (p.kind === 'block_list' && Array.isArray(v)) v.forEach((row, i) => { if (isObj(row)) seal(p.fields, row, path + '.' + i + '.'); });
                 }
             };
             seal(this.params, out, '');
@@ -390,7 +391,9 @@
                 const st = el('div', 'secret-state');
                 const ref = v.startsWith('${') ? v : '';
                 st.innerHTML = '<span aria-hidden="true">&#9679;</span><span>Stored</span><code title="' + esc(ref || 'kept by the agent') + '">' + esc(ref || 'value kept by the agent') + '</code><button type="button" class="btn sm">Replace</button>';
-                st.querySelector('button').onclick = () => { self.set(path, ''); self._changed(true, path); self.focus(path); };
+                // Replace clears the field; leaving it empty asks the server
+                // to drop the stored value rather than keep it.
+                st.querySelector('button').onclick = () => { self.set(path, ''); self._removed[path] = true; self._changed(true, path); self.focus(path); };
                 wrap.appendChild(st);
                 return this._finish(wrap, p, true);
             }
@@ -469,6 +472,7 @@
                     const n = Number(val);
                     val = Number.isFinite(n) ? n : val;
                 }
+                if (val !== '') delete self._removed[path];
                 self.set(path, val);
                 self._changed(false, path);
             };
@@ -659,7 +663,7 @@
             let p = String(path).replace(/^params\./, '').replace(/\[\d+\]/g, '');
             while (p) {
                 for (const r of roots) {
-                    const n = r.querySelector('[data-path="' + p.replace(/"/g, '\\"') + '"]');
+                    const n = r.querySelector('[data-path="' + (window.CSS && CSS.escape ? CSS.escape(p) : p.replace(/"/g, '\\"')) + '"]');
                     if (n) return n;
                 }
                 const i = p.lastIndexOf('.');
