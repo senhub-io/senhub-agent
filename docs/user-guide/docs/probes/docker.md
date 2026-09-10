@@ -57,6 +57,21 @@ to override it; a Windows pipe may be written `npipe://./pipe/<name>` or
 Each metric is tagged with `container_name` and `container_id`; CPU metrics are
 additionally tagged with `core`.
 
+## What a Windows container reports
+
+The engine answers a different shape on Windows, so a few channels come
+from different fields there and a few are absent:
+
+| Channel | Linux | Windows |
+|---|---|---|
+| Memory usage | cgroup usage, minus the page cache for the working set | private working set, plus the commit charge and its peak |
+| Memory limit | the cgroup limit | not reported by the engine, so zero |
+| CPU percentage | container time against host time | container time against the wall time between two samples, times the processors the container may use |
+| Block I/O | `blkio` counters per device | the storage counters the engine reports for the container |
+| Per-core CPU, throttling, page-cache breakdown | reported | not reported by the engine |
+
+A value the engine does not send is left at zero rather than guessed.
+
 ## Running without access to the Docker socket
 
 `/var/run/docker.sock` is `root:docker` mode `0660`, so an agent running as the
