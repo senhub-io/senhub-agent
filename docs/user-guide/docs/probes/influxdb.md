@@ -36,11 +36,6 @@ for the buckets endpoint.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8086` | InfluxDB base URL |
-| `token` | — | InfluxDB API token (needed for `/api/v2/buckets`; omit for metrics-only monitoring) |
-
 ## Metrics
 
 | Metric | Unit | Description |
