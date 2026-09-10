@@ -33,10 +33,6 @@ connections and requests, and per-cluster upstream metrics.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:9901` | Envoy admin interface base URL |
-
 ## Metrics
 
 | Metric | Unit | Description |

@@ -50,14 +50,8 @@ mode so the producing application is never blocked.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `paths` | required | File paths or glob patterns. Globs are re-evaluated every 15 seconds, so new files are picked up without a restart |
-| `bookmark_path` | none | JSON file persisting per-file read offsets across restarts. Without it the probe tails from end-of-file on every start |
-| `from_beginning` | `false` | Read existing content from offset 0 the first time a file is seen (when no bookmark exists) |
-| `max_bytes_per_line` | `1048576` | Cap on a single logical record after multiline folding (protects memory against runaway lines) |
-| `multiline` | none | Fold continuation lines into one record (see below) |
-| `parser` | `raw` | Structured parsing of each record (see below) |
+Without `bookmark_path` the probe tails from the end of each file on every
+start. `from_beginning` only applies to a file no bookmark knows yet.
 
 ### Multiline folding
 
@@ -74,11 +68,9 @@ params:
     match: after
 ```
 
-| Field | Default | Description |
-|---|---|---|
-| `pattern` | none | Regex tested against each physical line |
-| `negate` | `false` | Invert the pattern match |
-| `match` | `after` | `after`: a matching line starts a new record, non-matching lines are continuations. `before`: a matching line flushes the accumulated record first |
+With `match: after`, a matching line starts a new record and non-matching
+lines are continuations. With `match: before`, a matching line flushes the
+accumulated record first.
 
 ### Structured parsing
 
@@ -92,15 +84,10 @@ params:
     timestamp_format: "02/Jan/2006:15:04:05 -0700"
 ```
 
-| Field | Default | Description |
-|---|---|---|
-| `type` | `raw` | `raw`, `regex`, `json`, or `logfmt` |
-| `pattern` | none | Required for `regex`; must contain named capture groups — each group becomes a log attribute |
-| `timestamp_field` | none | Field (capture group or JSON/logfmt key) carrying the record timestamp |
-| `timestamp_format` | none | Go reference-time layout for parsing `timestamp_field` |
-
-With `json` and `logfmt`, every key becomes a log attribute. With
-`raw`, the line is the record body, unparsed.
+With `regex`, each named capture group becomes a log attribute. With
+`json` and `logfmt`, every key becomes a log attribute. With `raw`, the
+line is the record body, unparsed. `timestamp_field` names a capture group
+or a JSON/logfmt key.
 
 ## Operational notes
 

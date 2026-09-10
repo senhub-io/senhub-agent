@@ -34,15 +34,6 @@ single probe instance.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of hostnames or IPs to ping |
-| `count` | 4 | Echo requests per target per cycle |
-| `timeout` | 5 | Per-target budget in seconds for the whole round |
-| `interval` | 60 | Seconds between collection cycles |
-| `packet_size` | 56 | ICMP payload size in bytes |
-| `privileged` | OS-dependent | Raw ICMP sockets (`true`) vs ICMP datagram sockets (`false`). Defaults to `true` on Windows and on Linux when running as root, `false` elsewhere |
-
 Targets are pinged in parallel (bounded), so a large list does not
 stretch the cycle by the sum of timeouts.
 

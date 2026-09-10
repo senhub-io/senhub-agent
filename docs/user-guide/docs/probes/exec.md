@@ -49,15 +49,8 @@ output contracts are supported:
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `command` | required | Absolute path to the program. Relative paths and PATH lookup are refused |
-| `args` | `[]` | Arguments, passed verbatim — no shell is involved |
-| `format` | `nagios` | `nagios` or `json` |
-| `interval` | `60` | Seconds between runs |
-| `timeout` | `10` | Hard deadline in seconds; on expiry the whole process group is killed |
-| `env` | none | Extra environment variables (the agent's environment is inherited) |
-| `workdir` | agent's | Working directory for the run |
+`env` entries are added on top of the agent's own environment, which the
+program inherits.
 
 ## Nagios contract
 

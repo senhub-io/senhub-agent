@@ -35,12 +35,6 @@ and server component.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8080/stats;csv` | HAProxy stats CSV endpoint URL |
-| `username` | — | Basic-auth username (if the stats page is protected) |
-| `password` | — | Basic-auth password |
-
 ## Metrics
 
 | Metric | Unit | Description |
