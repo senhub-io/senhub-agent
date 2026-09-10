@@ -11,7 +11,7 @@ func init() {
 			{Key: "endpoint", Kind: probes.KindString, Default: "http://localhost:8123", Essential: true, Group: "connection", Description: "Base URL of the HTTP interface", Example: "http://clickhouse01:8123"},
 			{Key: "username", Kind: probes.KindString, Default: "default", Essential: true, Group: "auth", Description: "User with SELECT on the system tables"},
 			{Key: "password", Kind: probes.KindString, Secret: true, Essential: true, Group: "auth", Description: "User's password; empty for a password-less user"},
-			{Key: "database", Kind: probes.KindString, Default: "system", Group: "connection", Description: "Accepted and stored but unused: the probe scrapes /metrics, which is not scoped to a database"},
+			{Key: "database", Kind: probes.KindString, Default: "system", Group: "connection", Description: "Accepted and stored but unused: every query the probe issues names the system database explicitly"},
 			{Key: "timeout", Kind: probes.KindInt, Default: 10, Group: "collection", Description: "HTTP request timeout in seconds"},
 			{Key: "interval", Kind: probes.KindInt, Default: 60, Group: "collection", Description: "Seconds between collections"},
 			{Key: "instance_name", Kind: probes.KindString, Group: "identity", Description: "Stable identity override for this server"},

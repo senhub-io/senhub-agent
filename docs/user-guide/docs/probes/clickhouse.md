@@ -29,7 +29,7 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 | `endpoint` | No | `http://localhost:8123` | Base URL of the HTTP interface. Example: `http://clickhouse01:8123` |
 | `username` | No | `default` | User with SELECT on the system tables |
 | `password` | No | - | User's password; empty for a password-less user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `database` | No | `system` | Accepted and stored but unused: the probe scrapes /metrics, which is not scoped to a database |
+| `database` | No | `system` | Accepted and stored but unused: every query the probe issues names the system database explicitly |
 | `timeout` | No | `10` | HTTP request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |
 | `instance_name` | No | - | Stable identity override for this server |

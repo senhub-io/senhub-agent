@@ -118,8 +118,10 @@ func parseEventProbeConfig(config map[string]interface{}) (EventProbeConfig, err
 
 	if protocolVal, ok := config["protocol"].(string); ok {
 		protocol = protocolVal
-		if protocol != "tcp" && protocol != "udp" {
-			errs = append(errs, fmt.Errorf("protocol must be 'tcp' or 'udp'"))
+		// The listener is an HTTP server: udp was accepted and then
+		// ignored, so a configuration asking for it never got it.
+		if protocol != "tcp" {
+			errs = append(errs, fmt.Errorf("protocol must be 'tcp': the listener serves HTTP, it cannot listen on %q", protocol))
 		}
 	}
 
