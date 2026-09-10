@@ -35,11 +35,6 @@ cache hit/miss ratios, command throughput and eviction counters.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `host` | `localhost` | Memcached server hostname or IP |
-| `port` | `11211` | Memcached TCP port |
-
 ## Metrics
 
 | Metric | Unit | Description |
