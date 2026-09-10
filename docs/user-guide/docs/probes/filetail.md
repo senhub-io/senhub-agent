@@ -29,6 +29,27 @@ mode so the producing application is never blocked.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `paths` | Yes | - | File paths or glob patterns, re-expanded every 15 seconds. Example: `/var/log/app/*.log` |
+| `bookmark_path` | No | - | File persisting read offsets across restarts; use a distinct one per instance. Example: `/var/lib/senhub-agent/filetail-app.json` |
+| `from_beginning` | No | `false` | Read existing content the first time a file is seen |
+| `max_bytes_per_line` | No | `1048576` | Cap on one record after multiline folding, in bytes |
+| `multiline` | No | - | Fold continuation lines into one record |
+| `multiline.pattern` | No | - | Regular expression tested against each line. Example: `^\d{4}-\d{2}-\d{2}` |
+| `multiline.negate` | No | `false` | Invert the pattern match |
+| `multiline.match` | No | `after` | Whether a matching line starts a record or flushes the previous one. One of `after`, `before` |
+| `parser` | No | - | Structured parsing of each record |
+| `parser.type` | No | `raw` | Record format. One of `raw`, `regex`, `json`, `logfmt` |
+| `parser.pattern` | No | - | Regular expression with named groups; required for the regex type |
+| `parser.timestamp_field` | No | - | Field carrying the record timestamp |
+| `parser.timestamp_format` | No | - | Go reference-time layout of that field. Example: `2006-01-02 15:04:05` |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `paths` | required | File paths or glob patterns. Globs are re-evaluated every 15 seconds, so new files are picked up without a restart |

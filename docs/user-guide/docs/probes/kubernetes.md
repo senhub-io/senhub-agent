@@ -33,6 +33,33 @@ moved.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `kubeconfig` | No | - | Path of a kubeconfig file; empty uses the in-cluster service account. Example: `/home/agent/.kube/config` |
+| `interval` | No | `30` | Seconds between collections |
+| `namespaces` | No | - | Namespace selection |
+| `namespaces.include` | No | - | Namespaces to watch; empty means all |
+| `namespaces.exclude` | No | `[kube-system]` | Namespaces to skip |
+| `collect` | No | - | Resource kinds to collect |
+| `collect.nodes` | No | `true` | Node readiness, capacity and pressure conditions |
+| `collect.pods` | No | `true` | Pod phase, readiness, restarts and resource requests |
+| `collect.containers` | No | `true` | Per-container state, waiting reason and resources |
+| `collect.deployments` | No | `true` | Deployment replica health |
+| `collect.statefulsets` | No | `true` | StatefulSet replica health |
+| `collect.daemonsets` | No | `true` | DaemonSet scheduling health |
+| `collect.replicasets` | No | `false` | ReplicaSet replicas; off because each Deployment revision keeps one |
+| `collect.jobs` | No | `true` | Job active, succeeded and failed counts |
+| `collect.cronjobs` | No | `true` | CronJob active jobs and suspended state |
+| `collect.storage` | No | `true` | PersistentVolumes and claims |
+| `collect.quotas` | No | `true` | ResourceQuota limits and use |
+| `collect.autoscalers` | No | `true` | HorizontalPodAutoscaler replica counts |
+| `collect.events` | No | `true` | Cluster events, published on the log rail |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `kubeconfig` | — | Path to a kubeconfig file. When empty, the probe uses the in-cluster ServiceAccount token |

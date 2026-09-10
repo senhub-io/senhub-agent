@@ -22,6 +22,24 @@ keyspace size, replication state and persistence (RDB/AOF) health.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | No | `127.0.0.1` | Server hostname or address |
+| `port` | No | `6379` | Server port |
+| `password` | No | - | AUTH password, when required. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `tls` | No | `false` | Use TLS for the connection |
+| `tls_cert_file` | No | - | Client certificate (PEM) for mutual TLS; needs tls_key_file and tls: true |
+| `tls_key_file` | No | - | Private key (PEM) matching tls_cert_file |
+| `tls_ca_file` | No | - | CA bundle (PEM) to verify the server; system trust store by default |
+| `timeout` | No | `5` | Connection and command timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity instead of host:port |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `host` | `127.0.0.1` | Redis server hostname or IP |

@@ -24,6 +24,20 @@ metrics.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost:9990` | Base URL of the management interface. Example: `http://wildfly.example.com:9990` |
+| `username` | No | `admin` | Management user |
+| `password` | No | - | Management user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this server instead of the one derived from the endpoint |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost:9990` | WildFly HTTP Management API base URL |

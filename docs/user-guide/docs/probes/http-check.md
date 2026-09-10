@@ -22,6 +22,21 @@ validity of the TLS certificate as a first-class metric.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `targets` | Yes | - | URLs to check. Example: `https://app.example.com/health` |
+| `method` | No | `GET` | HTTP method. One of `GET`, `HEAD`, `POST`, `PUT`, `DELETE`, `OPTIONS`, `PATCH` |
+| `timeout` | No | `10` | Whole-request budget in seconds |
+| `interval` | No | `60` | Seconds between cycles |
+| `expected_status` | No | - | Exact status that counts as up; empty means any 2xx or 3xx |
+| `content_match` | No | - | Regular expression the body must match. Example: `"status":"ok"` |
+| `insecure_skip_verify` | No | `false` | Accept self-signed certificates |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `targets` | required | List of URLs to check |

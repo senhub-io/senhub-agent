@@ -21,6 +21,18 @@ connections and requests, and per-cluster upstream metrics.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost:9901` | Base URL of the admin interface |
+| `interval` | No | `30` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this proxy; set it when two envoy probes run on one host |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost:9901` | Envoy admin interface base URL |

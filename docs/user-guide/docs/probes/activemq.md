@@ -23,6 +23,22 @@ reporting broker-level resource usage (memory, store, temp) and per-destination
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `jolokia_url` | No | `http://localhost:8161/api/jolokia` | Jolokia REST endpoint of the broker. Example: `http://broker.example.com:8161/api/jolokia` |
+| `broker_name` | No | `localhost` | Broker name the MBean queries are scoped to |
+| `username` | No | `admin` | Basic-auth user; empty sends no credentials |
+| `password` | No | `admin` | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `queue_filter` | No | - | Glob patterns of the destinations to report; empty reports every queue and topic. Example: `orders.*` |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this broker; set it when the broker is reachable under several names |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `jolokia_url` | `http://localhost:8161/api/jolokia` | Jolokia REST endpoint on the ActiveMQ broker |

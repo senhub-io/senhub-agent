@@ -32,6 +32,19 @@ to override it; a Windows pipe may be written `npipe://./pipe/<name>` or
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `socket_path` | No | - | Engine socket; /var/run/docker.sock on Unix, npipe://./pipe/docker_engine on Windows by default |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Engine request timeout in seconds |
+| `include` | No | - | Container name patterns to keep; empty means all. Example: `web-*` |
+| `exclude` | No | - | Container name patterns to drop; wins over include |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `socket_path` | per platform (see above) | Where the Docker Engine listens. A Unix socket path, or a Windows named pipe as `npipe://./pipe/<name>`. |

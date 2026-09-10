@@ -24,6 +24,21 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | Server hostname or address; use host\Instance for a named instance. Example: `sql01.example.com` |
+| `port` | No | `1433` | Server TCP port |
+| `username` | No | - | SQL login; empty selects Windows integrated authentication with the agent's account |
+| `password` | No | - | SQL login password; empty with an empty username selects integrated authentication. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `encrypt` | No | `true` | Encryption of the connection, as go-mssqldb reads it; true by default. One of `true`, `false`, `disable`, `strict` |
+| `trust_server_cert` | No | `false` | Accept the server certificate without verifying it |
+| `interval` | No | `60` | Seconds between collections |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `host` | required | SQL Server hostname or IP |

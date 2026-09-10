@@ -24,6 +24,21 @@ throughput and connected-client totals.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `https://localhost:8443` | Base URL of the controller |
+| `username` | Yes | - | Controller local user |
+| `password` | Yes | - | Controller local user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `site` | No | `default` | Controller site to watch |
+| `verify_tls` | No | `true` | Verify the controller certificate; false accepts a self-signed one |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `15` | Request timeout in seconds |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `https://localhost:8443` | UniFi Controller base URL |

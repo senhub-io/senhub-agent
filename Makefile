@@ -237,6 +237,11 @@ test:
 	@echo "Testing..."
 	@go test ./... -v
 
+docs-params: ## Regenerate the parameter tables of the probe pages from their schemas
+	@echo "Regenerating the probe parameter tables..."
+	@UPDATE_DOCS=1 go test ./internal/agent/probes/ -run TestProbePagesCarryTheirSchema -count=1
+	@echo "Done. Review the diff before committing."
+
 # Database probes (mysql, postgresql) moved to senhub-agent-enterprise
 # with the OSS split; their integration tier runs there. See the
 # senhub-agent-enterprise Makefile (`make test-database`).
@@ -372,4 +377,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params help

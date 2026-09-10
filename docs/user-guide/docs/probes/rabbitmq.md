@@ -23,6 +23,20 @@ usage, connection counts and exchange statistics.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost:15672` | Base URL of the Management API. Example: `http://rabbit.example.com:15672` |
+| `username` | No | `guest` | Management user |
+| `password` | No | `guest` | Management user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this broker instead of the one derived from the endpoint |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost:15672` | RabbitMQ Management API base URL |

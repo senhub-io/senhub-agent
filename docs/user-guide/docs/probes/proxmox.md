@@ -24,6 +24,22 @@ usage.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | Yes | - | HTTPS base URL of the cluster API. Example: `https://pve.example.com:8006` |
+| `token_id` | Yes | - | API token identifier as user@realm!tokenname. Example: `monitor@pve!agent` |
+| `token_secret` | Yes | - | API token secret. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_tls` | No | `true` | Verify the API certificate; false accepts a self-signed one |
+| `node` | No | - | Only this node is collected; empty means every node of the cluster |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `15` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity override for this cluster |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | required | Proxmox VE HTTPS base URL (e.g. `https://pve.example.com:8006`) |

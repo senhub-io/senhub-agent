@@ -22,6 +22,19 @@ cache hit/miss ratios, command throughput and eviction counters.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | No | `localhost` | Server hostname or address |
+| `port` | No | `11211` | Server TCP port |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `5` | Connection and command timeout in seconds |
+| `instance_name` | No | - | Stable identity of this server instead of host:port |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `host` | `localhost` | Memcached server hostname or IP |

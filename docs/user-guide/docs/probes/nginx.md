@@ -21,6 +21,18 @@ state breakdown (reading, writing, waiting).
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost/nginx_status` | URL of the stub_status page |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this server; set it when two nginx probes run on one host |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost/nginx_status` | URL to the stub_status page |

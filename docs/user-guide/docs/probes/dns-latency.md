@@ -21,6 +21,18 @@ to compare them. Slow DNS is a frequent cause of perceived slowness
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `names` | Yes | - | Names to resolve. Example: `intranet.corp.lan, www.example.com` |
+| `resolvers` | No | - | DNS servers as ip or ip:port, each name measured against each; empty uses the system resolver. Example: `10.0.0.53, 1.1.1.1` |
+| `timeout` | No | `5` | Budget in seconds per lookup |
+| `interval` | No | `60` | Seconds between cycles |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `names` | required | Names to resolve |
