@@ -26,6 +26,8 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"sort"
+	"strings"
 )
 
 // Data store is responsible for storing and synchronizing data to the server.
@@ -289,6 +291,21 @@ func (d *dataStore) Start(ctx context.Context) error {
 	d.refreshMu.Unlock()
 
 	d.OnConfigRefreshed("initial")
+
+	// An agent whose every output refused to start collects into the
+	// void: nothing leaves the host and, when the refusal is the HTTP
+	// output, there is no console left to say so. Refuse to run rather
+	// than look healthy. One working output is enough; the others are
+	// reported as failing and retried on the next reload.
+	if configured := len(d.configProvider.GetConfiguration().StorageConfig); configured > 0 && len(d.activeStrategies()) == 0 {
+		reasons := make([]string, 0, configured)
+		for name, failure := range agentstate.GetStrategyFailures() {
+			reasons = append(reasons, name+": "+failure.Reason)
+		}
+		sort.Strings(reasons)
+		return fmt.Errorf("no output could be started, so nothing would leave this host: %s", strings.Join(reasons, "; "))
+	}
+
 	d.configProvider.OnConfigChanged(d.OnConfigRefreshed)
 	return nil
 }

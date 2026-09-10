@@ -2,6 +2,7 @@ package data_store
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -204,4 +205,32 @@ func TestOnConfigRefreshed_InPlaceEditKeepsReplacementAlive(t *testing.T) {
 		t.Fatalf("after no-change refresh: %d strategies, want 1", got)
 	}
 	_ = ds.Shutdown(context.Background())
+}
+
+// An agent whose every output refused to start has nowhere to send what
+// it collects, and when the refusal is the HTTP output there is not even
+// a console to say so. It must refuse to run rather than look healthy.
+func TestStartRefusesWhenNoOutputCouldStart(t *testing.T) {
+	agentstate.ResetStrategyFailuresForTest()
+	t.Cleanup(agentstate.ResetStrategyFailuresForTest)
+
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	mockConfig := &MockAgentConfig{authKey: "k", serverURL: "https://example.com"}
+	provider := &MockConfigProvider{
+		config: configuration.ConfigurationData{
+			StorageConfig: []configuration.StorageConfig{
+				// No endpoint: the OTLP strategy refuses this configuration.
+				{Name: "otlp", Params: configuration.StorageConfigParams{"compression": "gzip"}},
+			},
+		},
+	}
+	ds, _ := NewDataStore(mockConfig, provider, baseLogger).(*dataStore)
+
+	err := ds.Start(context.Background())
+	if err == nil {
+		t.Fatal("an agent with no working output must not start")
+	}
+	if !strings.Contains(err.Error(), "nothing would leave this host") {
+		t.Errorf("the error must say what is wrong, got %v", err)
+	}
 }

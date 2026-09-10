@@ -808,6 +808,10 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	}()
 }
 
+// exporterShutdownBudget caps the final drain and the closing of the
+// exporters. Past it, whatever is still queued is lost either way.
+const exporterShutdownBudget = 10 * time.Second
+
 // Shutdown stops the strategy: signals the push goroutine, waits for it
 // to drain, performs a final push (so the last interval's data isn't
 // lost), then closes the gRPC exporters. Idempotent: once shut down,
@@ -887,12 +891,13 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		return nil
 	}
 
-	// If the caller passed a context without a deadline, apply a
-	// reasonable default so a stuck collector doesn't hang shutdown
-	// forever.
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+	// A last push to a collector that is not answering is worth a few
+	// seconds, not the whole stop budget: the caller's deadline is the
+	// time the service manager gives the entire agent, and spending it
+	// here is what made systemctl stop take the best part of a minute.
+	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > exporterShutdownBudget {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		ctx, cancel = context.WithTimeout(ctx, exporterShutdownBudget)
 		defer cancel()
 	}
 

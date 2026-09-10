@@ -145,6 +145,21 @@ func (h *HTTPSyncStrategy) currentLicenseView(agentKey string) licenseView {
 // handleConfigSettingsSet applies changed settings. Each field is validated
 // before it is written; the config watcher reloads the change, so the HTTP
 // listener moves to a new port on its own.
+// samePort reports whether the file already holds this port. YAML gives
+// an integer as int or as one of its wider forms depending on the
+// loader, so every shape it can take is compared.
+func samePort(current map[string]interface{}, port int) bool {
+	switch v := current["port"].(type) {
+	case int:
+		return v == port
+	case int64:
+		return v == int64(port)
+	case float64:
+		return v == float64(port)
+	}
+	return false
+}
+
 func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *http.Request) {
 	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
 	if !ok {
@@ -162,6 +177,9 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 	}
 
 	result := settingsResult{Status: "success"}
+	// What the file holds now, so saving a value that did not change
+	// does not announce a move that will not happen.
+	current, _ := configuration.StrategyFragmentParams(configPath, "http")
 
 	if req.Port != nil {
 		port := *req.Port
@@ -173,8 +191,12 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("setting port: %v", err))
 			return
 		}
-		result.Applied = append(result.Applied, fmt.Sprintf("port set to %d", port))
-		result.Warnings = append(result.Warnings, fmt.Sprintf("the console and the PRTG / Nagios endpoints move to port %d; reconnect on the new address", port))
+		if samePort(current, port) {
+			result.Applied = append(result.Applied, fmt.Sprintf("port unchanged (%d)", port))
+		} else {
+			result.Applied = append(result.Applied, fmt.Sprintf("port set to %d", port))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("the console and the PRTG / Nagios endpoints move to port %d; reconnect on the new address", port))
+		}
 	}
 
 	if req.BindAddress != nil {
@@ -187,7 +209,11 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("setting bind_address: %v", err))
 			return
 		}
-		result.Applied = append(result.Applied, "bind_address set to "+bind)
+		if s, _ := current["bind_address"].(string); s == bind {
+			result.Applied = append(result.Applied, "bind address unchanged ("+bind+")")
+		} else {
+			result.Applied = append(result.Applied, "bind_address set to "+bind)
+		}
 	}
 
 	if req.License != nil {
