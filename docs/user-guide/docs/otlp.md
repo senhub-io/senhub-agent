@@ -332,12 +332,32 @@ configuration on every host.
 takes `active` / `maintenance` / `decommissioning` / `retired`. `labels` is a
 free key/value map for anything that is yours alone.
 
-This block describes the host. Its location alone (`site`, `datacenter`,
-`rack`, `room`) also descends to what the agent places on this host, a
-database or a service reached on the loopback address; owner, criticality,
-lifecycle and labels stay with the host. What a probe observes (a database, a
-device, a remote application) is governed on the probe entry instead, with the
-same vocabulary: see [Governance per probe](configuration.md#governance-per-probe).
+This block describes the host, and descends from it, on two rules that
+differ because the two halves of the vocabulary answer different questions.
+
+The location (`site`, `datacenter`, `rack`, `room`) says where a thing
+physically is. What runs on this host is where the host is, so it descends to
+every entity the agent places here: a database on the loopback address, a
+container, a listening port.
+
+Ownership (`owner`, `criticality`, `lifecycle`, `labels`) says who answers for
+a thing. It descends to the entities an operator reasons about — a service
+instance, a container, a database, a network device — and not to a listening
+port, which reaches its host in one `runs_on` hop, so the graph already
+answers "who owns this port" by traversal rather than by copying the fact onto
+several hundred entities.
+
+Neither descends to anything remote. A probe reading a database on another
+machine reports an entity that does not run here, and giving it this host's
+owner would be wrong rather than merely noisy. What a probe observes is
+governed on the probe entry instead, with the same vocabulary: see
+[Governance per probe](configuration.md#governance-per-probe). A value the
+probe sets itself always wins over what it would inherit.
+
+These attributes are the producer's facts, in the frozen `entity.*` and
+semantic-convention vocabulary. An annotation a consumer adds beside them is a
+comment, never a correction: once the agent asserts an owner, the way to change
+it is this configuration.
 
 `depends_on_enabled` turns on outbound dependency discovery — the edges that
 say "this service talks to that endpoint". It is off by default because mapping
