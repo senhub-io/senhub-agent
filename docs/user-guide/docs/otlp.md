@@ -340,12 +340,23 @@ physically is. What runs on this host is where the host is, so it descends to
 every entity the agent places here: a database on the loopback address, a
 container, a listening port.
 
-Ownership (`owner`, `criticality`, `lifecycle`, `labels`) says who answers for
-a thing. It descends to the entities an operator reasons about — a service
-instance, a container, a database, a network device — and not to a listening
-port, which reaches its host in one `runs_on` hop, so the graph already
-answers "who owns this port" by traversal rather than by copying the fact onto
-several hundred entities.
+Ownership (`owner`, `criticality`, `lifecycle`) says who answers for a thing.
+It descends to the entities an operator reasons about, a service instance, a
+container, a database, a network device, and not to a listening port, which
+reaches its host in one `runs_on` hop: the graph already answers "who owns
+this port" by traversal rather than by copying the fact onto several hundred
+entities. Criticality descends knowing it errs high, since a backup daemon on
+a critical host is not itself critical; claiming too much is safer than
+claiming too little, and a probe that knows better overrides it.
+
+`labels` do **not** descend, and the head of an application chain is why.
+"This host is part of application X" is not "everything running on this host
+is application X". That holds on a dedicated machine and fails on a shared
+one, and a cluster node is the shared case: on a host carrying one application
+label, thirteen entities belonging to five different sets would have inherited
+it, so a filter that returns exactly the chain would have returned a mixture.
+Labels stay at host grain. Put one on a probe entry when you want it on what
+that probe reports.
 
 Neither descends to anything remote. A probe reading a database on another
 machine reports an entity that does not run here, and giving it this host's

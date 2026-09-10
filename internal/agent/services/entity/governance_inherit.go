@@ -1,7 +1,5 @@
 package entity
 
-import "strings"
-
 // locationKeys are the governance attributes that describe where a thing
 // physically is. Anything that runs on this host is where the host is, so
 // these four keys, and only these, descend from the host's governance to
@@ -30,7 +28,10 @@ var ownedTypes = map[string]bool{
 
 // ownershipKeys are the governance attributes that say who answers for a
 // thing. Unlike location they do not describe a place, so they descend
-// only to the types above.
+// only to the types above. Criticality descends knowing it errs high: a
+// backup daemon on a critical host is not itself critical, but claiming
+// too much is safer than claiming too little, and a probe that knows
+// better overrides it.
 var ownershipKeys = [...]string{
 	"entity.owner.team",
 	"entity.owner.contact",
@@ -38,9 +39,17 @@ var ownershipKeys = [...]string{
 	"entity.lifecycle.status",
 }
 
-// labelPrefix marks the operator's own labels, of which the head of an
-// application chain is one. They travel with ownership.
-const labelPrefix = "entity.label."
+// Labels do NOT descend, and the head of an application chain is why.
+// "This host is part of application X" is not "everything running on
+// this host is application X": true on a dedicated machine, false on a
+// shared one, and a cluster node is the shared case. Measured on a
+// production host carrying one application label, thirteen entities
+// would have inherited it, belonging to five different sets — the
+// filter that today returns exactly the chain would have returned a
+// mixture. It is the same mistake as inheriting onto a remote entity,
+// one hop closer. A label that descends would have to be the
+// operator's explicit choice, per label, not the default for the
+// prefix.
 
 // inheritHostGovernance stamps the host's governance onto the entities of
 // obs that a `runs_on` relation places on this host, on the keys the
@@ -68,11 +77,6 @@ func inheritHostGovernance(obs Observation, hostID string, hostAttrs map[string]
 	owner := map[string]any{}
 	for _, k := range ownershipKeys {
 		if v, ok := hostAttrs[k]; ok && v != "" {
-			owner[k] = v
-		}
-	}
-	for k, v := range hostAttrs {
-		if strings.HasPrefix(k, labelPrefix) && v != "" {
 			owner[k] = v
 		}
 	}
