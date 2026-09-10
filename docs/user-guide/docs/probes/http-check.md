@@ -37,17 +37,7 @@ validity of the TLS certificate as a first-class metric.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of URLs to check |
-| `method` | GET | HTTP method |
-| `timeout` | 10 | Per-target budget in seconds |
-| `interval` | 60 | Seconds between cycles |
-| `expected_status` | any 2xx/3xx | Exact status code that counts as up |
-| `content_match` | none | Regexp the response body must match for the check to be up |
-| `insecure_skip_verify` | false | Accept self-signed certificates (labs) |
-
-Targets are checked in parallel (bounded). Redirects are reported, not
+`insecure_skip_verify` is for a lab, not for production. Targets are checked in parallel (bounded). Redirects are reported, not
 followed: a 301 is the measured answer of the target.
 
 ## Metrics

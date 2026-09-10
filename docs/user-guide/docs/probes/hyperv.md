@@ -19,7 +19,8 @@ memory assignment and running state.
   type: hyperv
 ```
 
-No parameters are required — the probe reads WMI on the local host automatically.
+No parameter is required: the probe reads WMI on the local host. Only the
+collection interval can be tuned.
 
 ## Parameters
 
@@ -32,20 +33,18 @@ No parameters are required — the probe reads WMI on the local host automatical
 
 <!-- schema:params:end -->
 
-This probe takes no configuration parameters.
-
 ## Metrics
 
 | Metric | Unit | Description |
 |---|---|---|
 | `senhub.hyperv.up` | 1 | 1 when the Hyper-V WMI namespace is reachable |
-| `hyperv.vm.cpu.usage` | 1 | CPU utilization ratio (0–1) per virtual machine, tagged with `hyperv.vm.name` |
-| `hyperv.vm.memory.assigned` | By | Memory currently assigned to the VM |
-| `hyperv.vm.memory.demand` | By | Memory the VM is actively demanding |
-| `hyperv.vm.state` | 1 | VM running state: 1 = Running, 0 = not running, tagged with `state` |
+| `hyperv.vm.cpu.usage` | % | CPU utilization (0 to 100) per virtual machine, tagged with `hyperv.vm.name` |
+| `hyperv.vm.memory.usage` | By | Memory currently used by the VM, as reported by Hyper-V |
+| `hyperv.vm.state` | 1 | 1 when the VM is running, 0 otherwise |
+| `hyperv.vm.count` | {vm} | Number of VMs per state, tagged with `state` (`running`, `stopped`, `paused`) |
 
 ## Operational notes
 
 - The agent must run with administrator privileges — the Hyper-V WMI namespace is access-controlled.
-- One set of metrics per discovered VM; the `hyperv.vm.name` tag carries the VM's display name.
-- The `state` tag on `hyperv.vm.state` carries the raw Hyper-V enabled-state string for informational display.
+- One set of metrics per discovered VM; the `hyperv.vm.name` tag carries the VM's display name and the `vmid` tag its immutable identifier.
+- Per-VM CPU and memory are read from the summary information Hyper-V keeps for each VM; a VM without it only reports its state.

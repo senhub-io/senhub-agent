@@ -35,12 +35,6 @@ and thread pool queue depths.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:9200` | Elasticsearch base URL |
-| `username` | — | Basic-auth username (for clusters with security enabled) |
-| `password` | — | Basic-auth password — reference via `${secret:elasticsearch.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-
 ## Metrics
 
 | Metric | Unit | Description |
