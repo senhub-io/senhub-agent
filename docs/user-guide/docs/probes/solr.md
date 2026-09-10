@@ -36,9 +36,9 @@ size.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8983` | Solr base URL (without trailing slash) |
+`jolokia_url` does not switch the probe to Jolokia: the native metrics API
+is always what it reads. It is accepted so a configuration written for the
+JVM probes keeps working, and only its scheme, host and port are used.
 
 ## Metrics
 

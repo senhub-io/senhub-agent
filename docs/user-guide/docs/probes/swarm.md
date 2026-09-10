@@ -46,11 +46,7 @@ probes:
       timeout: 10                         # seconds, default 10
 ```
 
-| Key | Default | Meaning |
-|---|---|---|
-| `socket_path` | per platform | Where the Docker Engine listens: `/var/run/docker.sock` on Linux and macOS, `npipe://./pipe/docker_engine` on Windows. A pipe may also be written `\\.\pipe\<name>`. |
-| `interval` | `60` | Collection cadence in seconds |
-| `timeout` | `10` | Per-request timeout in seconds |
+On Windows the pipe may also be written `\\.\pipe\docker_engine`.
 
 ## What it reports
 

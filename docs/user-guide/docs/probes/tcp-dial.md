@@ -31,12 +31,6 @@ dependable than an HTTP round trip.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of `host:port` |
-| `timeout` | 5 | Connect budget in seconds |
-| `interval` | 60 | Seconds between cycles |
-
 ## Metrics
 
 | Metric | Unit | Description |
