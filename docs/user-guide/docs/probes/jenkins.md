@@ -37,12 +37,6 @@ executor counts, and build queue depth.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | required | Base URL of the Jenkins controller (e.g. `https://jenkins.example.com`) |
-| `username` | — | Jenkins username for API authentication |
-| `api_token` | — | Jenkins API token for the user (preferred over a password) — reference a stored secret via `${secret:<name>.api_token}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-
 ## Metrics
 
 | Metric | Unit | Description |
