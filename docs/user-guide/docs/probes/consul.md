@@ -34,11 +34,6 @@ health-check state distribution and leader status.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8500` | Consul HTTP API base URL |
-| `token` | — | Consul ACL token (required if ACLs are enabled) — reference via `${secret:consul.token}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-
 ## Metrics
 
 | Metric | Unit | Description |

@@ -37,12 +37,6 @@ database read/write throughput and I/O byte counters.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:5984` | CouchDB base URL |
-| `username` | — | Admin username |
-| `password` | — | Admin password — reference via `${secret:couchdb.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-
 ## Metrics
 
 | Metric | Unit | Description |
