@@ -22,18 +22,22 @@ Use cases:
   params:
     address: 127.0.0.1   # Bind address (default: 127.0.0.1)
     port: 5656           # Listening port (default: 5656)
-    protocol: tcp        # tcp or udp (default: tcp)
 ```
 
 Once started, the probe listens on `http://<address>:<port>/event` and accepts `POST` requests with a JSON body.
 
 ## Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `address` | string | No | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
-| `port` | integer | No | `5656` | HTTP listening port (1–65535) |
-| `protocol` | string | No | `tcp` | Transport protocol (`tcp` or `udp`) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+| `port` | No | `5656` | HTTP port to listen on |
+| `protocol` | No | `tcp` | Transport of the listener. The listener serves HTTP, so tcp is the only transport it can take. One of `tcp` |
+
+<!-- schema:params:end -->
 
 ## Event Format
 
@@ -196,16 +200,3 @@ Or start the agent with:
 ```bash
 ./senhub-agent run --verbose --debug-modules probe.event
 ```
-
-## Parameters
-
-<!-- schema:params:start -->
-<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
-| `port` | No | `5656` | HTTP port to listen on |
-| `protocol` | No | `tcp` | Transport of the listener. The listener serves HTTP, so tcp is the only transport it can take. One of `tcp` |
-
-<!-- schema:params:end -->

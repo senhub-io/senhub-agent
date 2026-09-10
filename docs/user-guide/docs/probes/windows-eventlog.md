@@ -49,17 +49,10 @@ you asked for leave the host.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `channels` | required | Channel names, e.g. `System`, `Security`, `Citrix-XenDesktop-VdaPlugin/Operational` |
-| `levels` | all | Filter: `Critical`, `Error`, `Warning`, `Information`, `Verbose` (case-insensitive). Evaluated by the Event Log engine itself, so filtered events are never rendered |
-| `include_event_ids` | all | Allow-list of EventIDs — only these are emitted |
-| `exclude_event_ids` | none | Deny-list of EventIDs; takes precedence over the allow-list. The standard noise-suppression knob |
-| `sources` | all | Provider name globs, e.g. `Citrix*`, `FSLogix*` |
-| `bookmark_path` | none | File persisting the per-channel subscription position, so a restart resumes without loss or duplication. Without it, the probe tails from now on each start |
-| `backlog` | `false` | Replay events from the persisted bookmark (or from the start of the channel) before switching to live tail |
-| `redact_pii` | `false` | Blank sensitive Security-channel fields (account names, IP addresses) in the rendered body and event data — for GDPR-constrained environments |
-| `poll_interval` | `30s` | Bookmark flush cadence. Event delivery itself is push-based; this does not add latency |
+Level names are matched without regard to case, and `info` is accepted for
+`Information`. Provider patterns are shell globs matched without regard to
+case; a pattern without a wildcard is an exact match. Without
+`bookmark_path`, each start tails from now.
 
 ## Output
 

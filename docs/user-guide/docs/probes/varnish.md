@@ -34,11 +34,6 @@ shared memory file.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `instance_name` | — | Varnish instance name (`-n` flag for `varnishstat`). Required when multiple Varnish instances run on the same host |
-| `varnishstat_path` | `varnishstat` | Path to the `varnishstat` binary if not in PATH |
-
 ## Metrics
 
 | Metric | Unit | Description |

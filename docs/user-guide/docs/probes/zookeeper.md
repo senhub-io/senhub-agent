@@ -36,11 +36,6 @@ state (leader/follower/observer).
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `host` | `localhost` | ZooKeeper node hostname or IP |
-| `port` | `2181` | ZooKeeper client port |
-
 ## Metrics
 
 | Metric | Unit | Description |

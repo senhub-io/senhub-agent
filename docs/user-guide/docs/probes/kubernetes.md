@@ -60,25 +60,9 @@ moved.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `kubeconfig` | — | Path to a kubeconfig file. When empty, the probe uses the in-cluster ServiceAccount token |
-| `interval` | `30` | Seconds between collections |
-| `namespaces.include` | all | List of namespaces to monitor |
-| `namespaces.exclude` | `[kube-system]` | Namespaces to skip |
-| `collect.nodes` | `true` | Node health, capacity and pressure conditions |
-| `collect.pods` | `true` | Pod phase, readiness, restarts and resource requests |
-| `collect.containers` | `true` | Per-container state, waiting reason and resources |
-| `collect.deployments` | `true` | Deployment replica health |
-| `collect.statefulsets` | `true` | StatefulSet replica health |
-| `collect.daemonsets` | `true` | DaemonSet scheduling health |
-| `collect.replicasets` | **`false`** | Off by default: a Deployment owns one ReplicaSet per revision, so they multiply series without adding a fact the Deployment does not carry. Turn on while chasing a stuck rollout, where the previous ReplicaSet staying non-zero is exactly the symptom |
-| `collect.jobs` | `true` | Job active/succeeded/failed counts |
-| `collect.cronjobs` | `true` | CronJob active jobs and suspended state |
-| `collect.storage` | `true` | PersistentVolumes and Claims |
-| `collect.quotas` | `true` | ResourceQuota hard limits and use |
-| `collect.autoscalers` | `true` | HorizontalPodAutoscaler replica counts |
-| `collect.events` | `true` | Cluster Events, published on the log rail |
+Turn `collect.replicasets` on while chasing a stuck rollout: the previous
+ReplicaSet staying non-zero is exactly the symptom, and the Deployment
+alone does not show it.
 
 ## Metrics
 

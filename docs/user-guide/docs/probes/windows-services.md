@@ -34,10 +34,9 @@ restrict to a subset.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `services` | all | List of service names to monitor (empty = all services). Case-insensitive, matches the service's short name (`sc query` output) |
-| `interval` | `30s` | Collection interval, in seconds or as a duration such as `1m` |
+`interval` accepts a number of seconds or a duration such as `1m`. A listed
+service that cannot be opened or queried is skipped for that cycle rather
+than failing the whole collection.
 
 ## Metrics
 
