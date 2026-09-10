@@ -86,6 +86,9 @@ type OTLPSyncStrategy struct {
 	logs     *logsPipeline
 	logsPump *logsPump
 
+	// logsReplayer retries the queued batches on its own clock.
+	logsReplayer *logsReplayer
+
 	// logsQueue is the on-disk dead-letter queue for the logs signal,
 	// set when persistence is enabled and logs are emitted (#217).
 	logsQueue *logsQueue
@@ -380,6 +383,9 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	if logExp != nil && s.logs != nil {
 		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
 		logExp.setOnRecovered(rp.replay)
+		logExp.setOnQueued(rp.kick)
+		s.logsReplayer = rp
+		rp.start()
 		go rp.replay()
 	}
 
@@ -864,6 +870,11 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	s.entitySourceUnregisters = nil
 	if s.entityPump != nil {
 		s.entityPump.stop(ctx)
+	}
+
+	if s.logsReplayer != nil {
+		s.logsReplayer.stop()
+		s.logsReplayer = nil
 	}
 
 	// Stop the logs pump and unsubscribe from agentstate. The
