@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 )
 
 func TestKeepStoredReferences(t *testing.T) {
@@ -138,5 +140,60 @@ func TestDropNilValuesReachesInsideListRows(t *testing.T) {
 	}
 	if rows[0].(map[string]interface{})["username"] != "u1" {
 		t.Error("the rest of the row must survive")
+	}
+}
+
+func TestDeletingAProbeDropsItsStoredSecrets(t *testing.T) {
+	main := multiFileForFragments(t)
+	p := ProbeConfig{Name: "db", Type: "mysql", Params: map[string]interface{}{
+		"host": "h", "password": "s3cret",
+	}}
+	if _, err := CreateProbeFragment(main, p, []string{"password"}); err != nil {
+		t.Fatal(err)
+	}
+	// A neighbour whose name starts the same must not be swept away.
+	other := ProbeConfig{Name: "db2", Type: "mysql", Params: map[string]interface{}{"host": "h", "password": "keepme"}}
+	if _, err := CreateProbeFragment(main, other, []string{"password"}); err != nil {
+		t.Fatal(err)
+	}
+	backend, err := secret.Backend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Get("db.password"); err != nil {
+		t.Fatalf("the secret must be in the store first: %v", err)
+	}
+	if _, err := DeleteProbeFragment(main, "db"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Get("db.password"); err == nil {
+		t.Error("deleting a probe must drop the secrets nothing reads any more")
+	}
+	if _, err := backend.Get("db2.password"); err != nil {
+		t.Errorf("a probe whose name merely starts the same must be untouched: %v", err)
+	}
+}
+
+func TestClearingASecretDropsItFromTheStore(t *testing.T) {
+	main := multiFileForFragments(t)
+	p := ProbeConfig{Name: "api", Type: "http_check", Params: map[string]interface{}{
+		"targets": []interface{}{"http://x"}, "password": "s3cret",
+	}}
+	if _, err := CreateProbeFragment(main, p, []string{"password"}); err != nil {
+		t.Fatal(err)
+	}
+	backend, _ := secret.Backend()
+	if _, err := backend.Get("api.password"); err != nil {
+		t.Fatalf("sealed first: %v", err)
+	}
+	// The console sends null to drop it.
+	again := ProbeConfig{Name: "api", Type: "http_check", Params: map[string]interface{}{
+		"targets": []interface{}{"http://x"}, "password": nil,
+	}}
+	if _, err := UpdateProbeFragment(main, again, []string{"password"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Get("api.password"); err == nil {
+		t.Error("a secret the fragment no longer references must leave the store")
 	}
 }

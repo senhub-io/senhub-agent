@@ -108,7 +108,10 @@ func UpdateProbeFragment(configPath string, p ProbeConfig, secretPaths []string)
 	if err := sealProbeParams(&p, secretPaths); err != nil {
 		return "", err
 	}
-	return path, writeManagedProbeFragment(path, p)
+	if err := writeManagedProbeFragment(path, p); err != nil {
+		return "", err
+	}
+	return path, pruneInstanceSecrets(p.Name, p.Params)
 }
 
 // DeleteProbeFragment removes a managed fragment. A hand-written file
@@ -121,7 +124,7 @@ func DeleteProbeFragment(configPath, name string) (string, error) {
 	if err := os.Remove(path); err != nil {
 		return "", fmt.Errorf("removing %s: %w", path, err)
 	}
-	return path, nil
+	return path, pruneInstanceSecrets(name, nil)
 }
 
 // writeManagedProbeFragment serialises one probe as a one-element list
