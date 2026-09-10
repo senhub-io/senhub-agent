@@ -119,3 +119,24 @@ func TestProbe_SecretPaths(t *testing.T) {
 		t.Errorf("secret paths wrong: %s", got)
 	}
 }
+
+// A parser that grew a block out of a plain setting usually keeps
+// reading the old form. The check must not report a shape problem on a
+// file the agent runs.
+func TestABlockThatAlsoAcceptsAScalar(t *testing.T) {
+	sp := Probe{Type: "t", Params: []ParamSpec{
+		{Key: "license_server", Kind: KindBlock, ScalarMeans: "url", Fields: []ParamSpec{
+			{Key: "url", Kind: KindString},
+		}},
+		{Key: "strict", Kind: KindBlock, Fields: []ParamSpec{{Key: "url", Kind: KindString}}},
+	}}
+	if pbs := sp.CheckParams(map[string]interface{}{"license_server": "https://lic:8083"}); len(pbs) != 0 {
+		t.Errorf("the legacy scalar form must pass, got %v", pbs)
+	}
+	if pbs := sp.CheckParams(map[string]interface{}{"license_server": map[string]interface{}{"url": "https://lic:8083"}}); len(pbs) != 0 {
+		t.Errorf("the block form must still pass, got %v", pbs)
+	}
+	if pbs := sp.CheckParams(map[string]interface{}{"strict": "https://x"}); len(pbs) != 1 {
+		t.Errorf("a block that takes no scalar must still refuse one, got %v", pbs)
+	}
+}

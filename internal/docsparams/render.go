@@ -30,7 +30,13 @@ func Render(p spec.Probe) string {
 	b.WriteString(Start + "\n")
 	b.WriteString("<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->\n\n")
 	if len(p.Params) == 0 {
-		b.WriteString("This probe reads no parameters.\n\n")
+		// The cadence is the one thing a reader still wants when there is
+		// nothing to set, and it is fixed in the code for these probes.
+		if p.DefaultInterval > 0 {
+			fmt.Fprintf(&b, "This probe reads no parameters. It collects every %d seconds, a cadence fixed in the code.\n\n", p.DefaultInterval)
+		} else {
+			b.WriteString("This probe reads no parameters.\n\n")
+		}
 		b.WriteString(End + "\n")
 		return b.String()
 	}

@@ -50,3 +50,12 @@ func TestRenderEscapesAPipe(t *testing.T) {
 		t.Errorf("a pipe must be escaped, got:\n%s", out)
 	}
 }
+
+// A probe whose cadence is not a parameter must still say what it is:
+// it is the one thing a reader wants when there is nothing to set.
+func TestRenderStatesAFixedCadence(t *testing.T) {
+	out := Render(spec.Probe{Type: "wifi", DefaultInterval: 60})
+	if !strings.Contains(out, "every 60 seconds") || !strings.Contains(out, "fixed in the code") {
+		t.Errorf("a parameterless probe must state its cadence:\n%s", out)
+	}
+}
