@@ -58,9 +58,14 @@ All metrics include the `interface` tag to identify the specific network interfa
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `interval` | integer | `30` | Collection interval in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `interval` | No | `30` | Collection interval in seconds |
+
+<!-- schema:params:end -->
 
 ### Example Configurations
 
@@ -500,14 +505,3 @@ The Network probe requires no authentication as it collects local system metrics
 - Link-local IPv6 addresses are excluded
 - Virtual interfaces (bridges, tun/tap) are excluded if not UP/RUNNING
 - First collection provides no rate data (requires 2 samples)
-
-## Parameters
-
-<!-- schema:params:start -->
-<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `interval` | No | `30` | Collection interval in seconds |
-
-<!-- schema:params:end -->

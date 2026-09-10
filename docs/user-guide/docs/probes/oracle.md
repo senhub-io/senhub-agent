@@ -39,14 +39,6 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `host` | required | Oracle Database server hostname or IP |
-| `port` | `1521` | Oracle listener port |
-| `service_name` | required | Oracle service name (not SID) |
-| `username` | required | Database user with at least `SELECT` on v$ views |
-| `password` | — | User password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-
 ## Metrics
 
 | Metric | Unit | Description |
@@ -66,4 +58,4 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 
 - The minimum grant for the monitoring user: `GRANT CREATE SESSION TO monitor; GRANT SELECT ON V_$SESSION TO monitor;` plus similar grants on other v$ views used.
 - No Oracle client (OCI) installation is needed — `go-ora` speaks the Oracle wire protocol directly.
-- The probe connects using the service name, not the SID. Use `oracle://host:port/service_name` DSN shape internally.
+- The probe connects using the service name, not the SID.
