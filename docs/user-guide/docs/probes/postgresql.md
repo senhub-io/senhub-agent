@@ -59,22 +59,11 @@ when the extension is installed.
 
 <!-- schema:params:end -->
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `host` | Yes | - | Database hostname or IP |
-| `port` | No | `5432` | TCP port |
-| `username` | Yes | - | Monitoring role |
-| `password` | Yes | - | Role's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `database` | No | `postgres` | Database the connection opens on. The probe reads cluster-wide views, so this selects the connection and nothing else |
-| `databases` | No | — | List form of the same thing; only the first entry is used |
-| `interval` | No | `60` | Collection interval in seconds |
-| `timeout` | No | `10` | Seconds a query may take. Accepts `30` or `30s` |
-| `sslmode` | No | `prefer` | libpq mode, passed to the driver as written: `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`. An unknown value stops the probe rather than reaching the server |
-| `sslrootcert` | No | `""` | CA certificate path, libpq's name for it. `tls.ca_file` and `tls.ca_cert` are the same setting |
-| `tls.ca_file` | No | `""` | CA the server's certificate is verified against. Setting it selects `verify-full` unless `sslmode` says otherwise |
-| `tls.skip_verify` | No | `false` | Accept the server certificate without verifying it (`insecure_skip_verify` is accepted too). Selects `require`. For a lab, not for production |
-| `max_replication_lag_seconds` | No | `300` | Replay lag past which a streaming replica counts as unhealthy. `0` turns the lag term off |
-| `instance_name` | No | derived | Stable identity override for this instance. Set it when the same server is reachable under several names, so the entity does not split |
+- The probe reads cluster-wide views, so `database` only selects the connection. The list form `databases` uses its first entry.
+- `sslmode` is passed to the driver as written and wins over the `tls` block. An unknown value stops the probe instead of reaching the server.
+- Without `sslmode`, the connection negotiates TLS opportunistically (`prefer`). Setting a `tls` block selects `verify-full`; setting `tls.skip_verify` selects `require`, which is for a lab, not for production.
+- `sslrootcert`, `tls.ca_file` and `tls.ca_cert` are the same setting.
+- Set `instance_name` when the same server is reachable under several names, so the entity does not split.
 
 #### Parameters this probe does not read
 
