@@ -60,10 +60,15 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 
 ## Configuration Parameters
 
-| Parameter | Type | Required | Default | Range | Description |
-|-----------|------|----------|---------|-------|-------------|
-| `url` | string | Yes | - | - | Full HTTP/HTTPS URL to monitor |
-| `timeout` | integer | No | `30` | 1-300 | Request timeout in seconds |
+<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `url` | Yes | - | HTTP or HTTPS URL fetched with a GET, for example `https://app.example.com/health`; a status outside 200-399 counts as a failure |
+| `timeout` | No | `30` | Whole-request timeout, between 1 and 300 seconds. Written as a number of seconds (`45`) or a duration (`"45s"`); any other form is rejected |
+| `instance_name` | No | - | Stable identity of the watched application, used to publish it as an entity. Empty publishes no entity; the URL is never used as an identity |
+
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored.
 
 ### URL Requirements
 
@@ -507,15 +512,11 @@ The Load WebApp probe overhead:
 - **CPU**: Minimal (HTTP client + timing tracking ~5-10ms)
 - **Memory**: ~2-5 MB per active request
 
-### Recommended Intervals
+### Collection cadence
 
-| Use Case | Interval | Reason |
-|----------|----------|--------|
-| Critical API monitoring | 30s | Detect issues quickly |
-| Standard web monitoring | 60s | Balance accuracy and load |
-| Long-term trending | 300s | Reduce network traffic |
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored.
 
-**Important:** Frequent polling can impact target server:
+**Important:** one full request every 30 seconds per instance reaches the target server:
 - Generates real traffic to monitored URLs
 - Consumes server resources
 - May trigger rate limiting
@@ -523,7 +524,7 @@ The Load WebApp probe overhead:
 
 ### Response Body Handling
 
-The probe downloads the complete response body to accurately measure transfer time:
+The probe downloads the complete response body, with a 10 second cap on the download, so that the total time covers the whole transfer:
 - **Small responses** (< 100KB): Negligible impact
 - **Large responses** (> 1MB): Consider impact on agent bandwidth
 - **Very large responses** (> 10MB): May want to use dedicated endpoints

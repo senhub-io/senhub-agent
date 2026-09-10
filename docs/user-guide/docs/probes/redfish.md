@@ -34,16 +34,15 @@ The probe automatically detects the hardware vendor via the Redfish API and adap
 - name: "hardware-server01"
   type: redfish
   params:
-    base_url: "https://idrac-server01.company.com"
+    endpoint: "https://idrac-server01.company.com"
     username: "monitoring"
     password: ${secret:hardware-server01.password}   # OS secret store; inline plaintext is auto-sealed on install
     interval: 300
-    tls:
-      verify_ssl: false
+    verify_ssl: false
 ```
 
 **Important notes:**
-- `base_url`: The Redfish API endpoint (iDRAC, iLO, or BMC management address)
+- `endpoint`: The Redfish API endpoint (iDRAC, iLO, or BMC management address). The probe refuses to start without it
 - `interval`: 300 seconds is a good starting point for hardware monitoring. Do
   not go above it if you read this probe through PRTG — see
   [Interval and the PRTG TTL](#interval-and-the-prtg-ttl).
@@ -134,23 +133,34 @@ Monitor multiple hardware targets with separate probe instances:
 - name: "dell-storage-me5024"
   type: redfish
   params:
-    base_url: "https://dell-me5024.company.com"
+    endpoint: "https://dell-me5024.company.com"
     username: "admin"
     password: ${secret:dell-storage-me5024.password}   # OS secret store; inline plaintext is auto-sealed on install
     interval: 300
-    tls:
-      verify_ssl: false
+    verify_ssl: false
 
 - name: "hpe-proliant-dl380"
   type: redfish
   params:
-    base_url: "https://ilo-dl380.company.com"
+    endpoint: "https://ilo-dl380.company.com"
     username: "monitoring"
     password: ${secret:hpe-proliant-dl380.password}   # OS secret store; inline plaintext is auto-sealed on install
     interval: 300
-    tls:
-      verify_ssl: false
+    verify_ssl: false
 ```
+
+# Configuration Parameters
+
+<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | Yes | - | BMC management address, for example `https://idrac-server01.example.com` |
+| `username` | Yes | - | BMC user with read access to the Redfish API |
+| `password` | Yes | - | Password of the BMC user. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
+| `verify_ssl` | No | `true` | Validate the BMC's TLS certificate; `false` for the self-signed certificate most BMCs ship with. A top-level key, not a `tls` block |
+| `interval` | No | `300` | Seconds between collections; see [Interval and the PRTG TTL](#interval-and-the-prtg-ttl) |
+| `collections` | No | - | Subsystems to collect; replaces the default set (`system`, `thermal`, `power`, `processor`, `memory`, `storage`) rather than filtering it. Also `drives`, `network`, `networkadapter` |
 
 # Metrics Collected
 
@@ -390,8 +400,7 @@ BMC management interfaces typically use self-signed certificates. Set `verify_ss
 
 ```yaml
 params:
-  tls:
-    verify_ssl: false
+  verify_ssl: false
 ```
 
 If your environment uses properly signed certificates, ensure the CA chain is trusted by the system running the agent.
