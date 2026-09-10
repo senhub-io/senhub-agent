@@ -105,6 +105,7 @@ func TestProbeSpecs_DescribeRegisteredProbes(t *testing.T) {
 // useful with every parameter left at its default, with the reason.
 var startsWithDefaults = map[string]string{
 	"linux_logs": "follows every journal unit when none is listed",
+	"kubernetes": "reads the cluster it runs in when no kubeconfig is given; a second instance names another cluster's kubeconfig",
 }
 
 // A condition must name a sibling parameter and, when that sibling has
