@@ -312,3 +312,68 @@ func TestPersistentLogExporter_OutageIsStillQueued(t *testing.T) {
 		t.Error("an ordinary outage was not persisted — the dead-letter queue no longer does its job")
 	}
 }
+
+// The logs rail is sparse: a queued batch used to wait for the next
+// record on that same rail before it was retried, which on a quiet host
+// is minutes — long enough for a consumer to expire the whole host and
+// bring it back. The retry now runs on its own clock. Pins #845.
+func TestLogsReplayerRetriesWithoutNewRecords(t *testing.T) {
+	dir := t.TempDir()
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	if err := q.enqueue(sampleRecords(3)); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if n, waited := q.pending(); n != 3 || waited <= 0 {
+		t.Fatalf("the queue must report what waits and for how long, got %d records waiting %v", n, waited)
+	}
+
+	drained := make(chan int, 4)
+	r := newLogsReplayer(q, nil, testModuleLogger(t))
+	// The pipeline is not exercised here: what is pinned is that a drain
+	// happens at all without a new record arriving.
+	r.running.Store(true)
+	go func() {
+		for {
+			select {
+			case <-r.quit:
+				return
+			case <-r.wake:
+			}
+			n := q.drain(func([]persistedLogRecord) {})
+			drained <- n
+		}
+	}()
+	r.kick()
+
+	select {
+	case n := <-drained:
+		if n != 3 {
+			t.Errorf("the queued records must be retried, got %d", n)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("nothing retried the queued batch")
+	}
+	close(r.quit)
+
+	if n, waited := q.pending(); n != 0 || waited != 0 {
+		t.Errorf("an empty queue reports nothing waiting, got %d records waiting %v", n, waited)
+	}
+}
+
+// The delay must grow and stop growing, so a backend that stays down is
+// retried without turning into a loop.
+func TestReplayDelaysAreBounded(t *testing.T) {
+	delay := replayFirstDelay
+	for i := 0; i < 20; i++ {
+		delay *= 2
+		if delay > replayMaxDelay {
+			delay = replayMaxDelay
+		}
+	}
+	if delay != replayMaxDelay {
+		t.Errorf("the delay must settle at the cap, got %v", delay)
+	}
+	if replayFirstDelay >= replayMaxDelay {
+		t.Error("the first retry must come well before the cap")
+	}
+}

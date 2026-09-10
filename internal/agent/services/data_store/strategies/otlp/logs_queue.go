@@ -113,6 +113,20 @@ type logsQueue struct {
 	seq       uint64 // monotonic file sequence
 	sizeBytes int64
 	records   int
+	// oldestAt is when the batch that has waited longest was queued, so
+	// how late the rail is running can be read without touching the disk.
+	oldestAt time.Time
+}
+
+// pending reports how many records wait on disk and how long the oldest
+// has waited. A zero duration means nothing is waiting.
+func (q *logsQueue) pending() (int, time.Duration) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.records == 0 || q.oldestAt.IsZero() {
+		return q.records, 0
+	}
+	return q.records, time.Since(q.oldestAt)
 }
 
 func newLogsQueue(path string, maxBytes int64, log *logger.ModuleLogger) *logsQueue {
@@ -159,6 +173,11 @@ func (q *logsQueue) recover() {
 	}
 	q.sizeBytes = total
 	q.records = recs
+	// Whatever survived a restart has waited at least since now; the real
+	// age is on the file, and it is only used to say how late the rail is.
+	if recs > 0 {
+		q.oldestAt = time.Now()
+	}
 	q.seq = maxSeq
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
 }
@@ -194,6 +213,9 @@ func (q *logsQueue) enqueue(records []persistedLogRecord) error {
 
 	q.sizeBytes += int64(len(data))
 	q.records += len(records)
+	if q.oldestAt.IsZero() {
+		q.oldestAt = time.Now()
+	}
 	agentstate.IncrementOTLPLogsQueued(len(records))
 	q.evictLocked()
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
@@ -322,6 +344,9 @@ func (q *logsQueue) removeFile(name string) {
 	if q.records < 0 {
 		q.records = 0
 	}
+	if q.records == 0 {
+		q.oldestAt = time.Time{}
+	}
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
 }
 
@@ -342,6 +367,9 @@ type persistentLogExporter struct {
 
 	healthy     atomic.Bool
 	onRecovered atomic.Pointer[func()]
+	// onQueued is called when a batch lands on disk, so the retry loop
+	// starts its clock then rather than at the next record.
+	onQueued atomic.Pointer[func()]
 
 	// lastFailWarnNs throttles the export-failure warning. Log batches
 	// can flush every few seconds; one warning per interval is enough to
@@ -365,6 +393,10 @@ func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *lo
 
 func (e *persistentLogExporter) setOnRecovered(fn func()) {
 	e.onRecovered.Store(&fn)
+}
+
+func (e *persistentLogExporter) setOnQueued(fn func()) {
+	e.onQueued.Store(&fn)
 }
 
 func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
@@ -403,6 +435,9 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		}
 
 		e.persist(records)
+		if p := e.onQueued.Load(); p != nil && *p != nil {
+			(*p)()
+		}
 		e.warnThrottled(func(ev *zerolog.Event) {
 			ev.Str("error", redactSensitive(err.Error())).
 				Int("records", len(records)).
@@ -466,10 +501,87 @@ type logsReplayer struct {
 	pipeline *logsPipeline
 	logger   *logger.ModuleLogger
 	running  atomic.Bool
+
+	wake chan struct{}
+	quit chan struct{}
+	wg   sync.WaitGroup
 }
 
+// The logs rail is the sparse one, and a queued batch used to wait for
+// the next record on that same rail to be retried: on a quiet host that
+// is minutes, long enough for a consumer to expire the whole host. These
+// bound the wait instead.
+const (
+	replayFirstDelay = 15 * time.Second
+	replayMaxDelay   = 5 * time.Minute
+)
+
 func newLogsReplayer(q *logsQueue, p *logsPipeline, log *logger.ModuleLogger) *logsReplayer {
-	return &logsReplayer{queue: q, pipeline: p, logger: log}
+	return &logsReplayer{
+		queue: q, pipeline: p, logger: log,
+		wake: make(chan struct{}, 1),
+		quit: make(chan struct{}),
+	}
+}
+
+// start runs the retry loop: a queued batch is tried again on its own,
+// on a doubling delay, until it leaves or the agent stops.
+func (r *logsReplayer) start() {
+	r.wg.Add(1)
+	go r.loop()
+}
+
+// stop ends the retry loop. Safe to call once.
+func (r *logsReplayer) stop() {
+	close(r.quit)
+	r.wg.Wait()
+}
+
+// kick asks for an early retry: something was just queued.
+func (r *logsReplayer) kick() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (r *logsReplayer) loop() {
+	defer r.wg.Done()
+	delay := replayFirstDelay
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-r.quit:
+			return
+		case <-r.wake:
+			delay = replayFirstDelay
+		case <-timer.C:
+		}
+
+		if n, waited := r.queue.pending(); n > 0 {
+			if r.logger != nil {
+				r.logger.Info().Int("records", n).Dur("waiting", waited).Msg("OTLP logs queue: retrying the queued records")
+			}
+			r.replay()
+		}
+
+		if n, _ := r.queue.pending(); n > 0 {
+			delay *= 2
+			if delay > replayMaxDelay {
+				delay = replayMaxDelay
+			}
+		} else {
+			delay = replayMaxDelay
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(delay)
+	}
 }
 
 // replay drains the queue once. Concurrent calls collapse to one (the

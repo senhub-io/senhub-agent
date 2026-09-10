@@ -86,6 +86,10 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// The authentication key always comes from the configuration file
 	// in 0.2.0+ — the CLI flag was removed with the legacy remote-config loader.
 	agentKey := ""
+	// Why the running agent could not be asked. Printed before the local
+	// view, which otherwise reads as the agent's own answer.
+	keyProblem := ""
+	reachProblem := ""
 	if args != nil {
 		// Read agent key from config file
 		{
@@ -101,6 +105,8 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 
 			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
 				agentKey = extractedKey
+			} else {
+				keyProblem = fmt.Sprintf("the agent key could not be read from %s (%v)", configPath, err)
 			}
 		}
 	}
@@ -116,7 +122,11 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// Try HTTP endpoint first (for running agent with HTTP strategy)
 	if agentKey != "" {
 		httpPort := resolveHTTPStrategyPort(configPath)
-		if systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, httpPort); err == nil {
+		systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, httpPort)
+		if err != nil {
+			reachProblem = fmt.Sprintf("the running agent did not answer on port %d (%v)", httpPort, err)
+		}
+		if err == nil {
 			// Enrich with dashboard URL from config
 			if configPath != "" {
 				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
@@ -139,6 +149,14 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 		// HTTP failed, fall back to direct method
 		// Note: this happens when the HTTP strategy is not enabled, or the
 		// agent is not listening on the resolved port
+	}
+
+	// The local view describes this process, not the daemon: it cannot
+	// say which outputs are running or whether the configuration is
+	// watched. Saying so, and why, is the difference between a degraded
+	// answer and a wrong one.
+	if notice := daemonUnreachableNotice(keyProblem, reachProblem); notice != "" {
+		fmt.Print(notice)
 	}
 
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
@@ -325,4 +343,19 @@ func tlsEnabledParam(v interface{}) bool {
 		return enabled
 	}
 	return false
+}
+
+// daemonUnreachableNotice explains why the local view is about to be
+// printed instead of the running agent's own state. Empty when the
+// daemon answered. The key problem comes first: it is the one the
+// operator can act on, and it is what makes the port unreachable.
+func daemonUnreachableNotice(keyProblem, reachProblem string) string {
+	why := keyProblem
+	if why == "" {
+		why = reachProblem
+	}
+	if why == "" {
+		return ""
+	}
+	return fmt.Sprintf("The running agent could not be asked: %s.\nWhat follows is what this command sees on its own. It is not the service's state: it cannot say which outputs are running, nor whether the configuration is watched.\n\n", why)
 }
