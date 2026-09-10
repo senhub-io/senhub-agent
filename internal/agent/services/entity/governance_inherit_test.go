@@ -103,8 +103,8 @@ func TestOwnershipDescendsToTheTypesAnOperatorReasonsAbout(t *testing.T) {
 	if got := byType["service.instance"]["entity.owner.team"]; got != "sre" {
 		t.Errorf("a service instance must inherit the owner, got %v", got)
 	}
-	if got := byType["service.instance"]["entity.label.application"]; got != "opspilot" {
-		t.Errorf("the head-of-chain label travels with ownership, got %v", got)
+	if _, set := byType["service.instance"]["entity.label.application"]; set {
+		t.Error("an application label must not descend: this host being part of an application does not make everything on it that application")
 	}
 	if _, set := byType["service.listener"]["entity.owner.team"]; set {
 		t.Error("a listener reaches its host in one hop; copying the owner onto it duplicates a fact")
@@ -132,5 +132,39 @@ func TestTheSourcesOwnValueWins(t *testing.T) {
 	}
 	if got := out.Entities[0].Attributes["service.criticality"]; got != "high" {
 		t.Errorf("a key the source does not set is still filled, got %v", got)
+	}
+}
+
+// Measured on a production host: one label on a shared machine would
+// have been copied onto thirteen entities belonging to five different
+// sets, so a filter that returns exactly the chain would have returned a
+// mixture. The chain stays at host grain until an operator asks for
+// otherwise, label by label.
+func TestAnApplicationLabelStaysOnTheHost(t *testing.T) {
+	svc := map[string]any{"service.instance.id": "vmalert"}
+	db := map[string]any{"db.id": "pg"}
+	local := map[string]any{"host.id": "sha001"}
+	obs := Observation{
+		Entities: []Entity{
+			{Type: "service.instance", ID: svc},
+			{Type: "db", ID: db},
+		},
+		Relations: []Relation{
+			{Type: "runs_on", FromType: "service.instance", FromID: svc, ToType: "host", ToID: local},
+			{Type: "runs_on", FromType: "db", FromID: db, ToType: "host", ToID: local},
+		},
+	}
+	out := inheritHostGovernance(obs, "sha001", map[string]any{
+		"entity.label.app":    "opspilot",
+		"entity.owner.team":   "sre",
+		"service.criticality": "critical",
+	})
+	for _, e := range out.Entities {
+		if _, set := e.Attributes["entity.label.app"]; set {
+			t.Errorf("%s inherited an application label it does not belong to", e.Type)
+		}
+		if got := e.Attributes["entity.owner.team"]; got != "sre" {
+			t.Errorf("%s must still inherit the owner, got %v", e.Type, got)
+		}
 	}
 }
