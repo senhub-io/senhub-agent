@@ -52,6 +52,11 @@ type ParamSpec struct {
 	// SNMP community). The console asks for it before anything optional;
 	// Required stays the parser's word and is checked, Essential is not.
 	Essential bool `json:"essential,omitempty"`
+	// ScalarMeans names the field a bare scalar fills when a block also
+	// accepts one. A parser that grew a block out of a plain setting
+	// usually keeps reading the old form, and without this the check
+	// reports a shape problem on a file the agent runs.
+	ScalarMeans string `json:"scalar_means,omitempty"`
 	// Advanced marks a field of a block that a form folds away until the
 	// operator asks for it: an override few configurations set (the
 	// per-signal transport of an OTLP output). It changes nothing for
@@ -370,7 +375,9 @@ func checkKind(p ParamSpec, v interface{}) string {
 		if _, ok := asStringMap(v); !ok {
 			// A few parsers accept a bare bool for a block (mysql tls:
 			// true); the parser decides, the spec only refuses nonsense.
-			if _, isBool := v.(bool); !isBool {
+			_, isBool := v.(bool)
+			_, isStr := v.(string)
+			if !isBool && !(isStr && p.ScalarMeans != "") {
 				return fmt.Sprintf("must be a block of settings, got %T", v)
 			}
 		}
