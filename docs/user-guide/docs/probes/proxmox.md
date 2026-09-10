@@ -40,12 +40,6 @@ usage.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | required | Proxmox VE HTTPS base URL (e.g. `https://pve.example.com:8006`) |
-| `token_id` | required | PVE API token ID in `user@realm!tokenname` format |
-| `token_secret` | required | PVE API token secret UUID — reference a stored secret via `${secret:<name>.token_secret}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-
 ## Metrics
 
 | Metric | Unit | Description |
@@ -68,5 +62,5 @@ usage.
 ## Operational notes
 
 - Create an API token in Proxmox at **Datacenter → Permissions → API Tokens**. Grant it `PVEAuditor` role on `/` for read-only cluster-wide monitoring.
-- The `endpoint` must use `https://`. Proxmox self-signed certificates are accepted by default; configure a proper certificate for production.
+- The `endpoint` must use `https://`. The API certificate is verified by default; a self-signed Proxmox certificate needs `verify_tls: false`, or better, a proper certificate for production.
 - Both QEMU VMs and LXC containers are monitored; they are distinguished by the `proxmox.vmid` tag.

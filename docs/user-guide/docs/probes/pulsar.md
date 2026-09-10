@@ -33,10 +33,6 @@ reporting broker health, throughput, storage and backlog at the broker level.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8080` | Pulsar broker admin/metrics base URL |
-
 ## Metrics
 
 | Metric | Unit | Description |

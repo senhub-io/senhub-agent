@@ -37,13 +37,6 @@ Monitors all processes by default. Add a `filter` block to narrow the scope.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `filter.by_name` | — | Regex pattern to restrict monitoring to matching process names |
-| `filter.by_user` | — | Restrict to processes owned by this OS user |
-| `filter.top_n` | — | Keep only the N processes with highest CPU utilization |
-| `aggregate.enabled` | `true` | Emit an additional rolled-up count per distinct process name |
-
 ## Metrics
 
 | Metric | Unit | Description |

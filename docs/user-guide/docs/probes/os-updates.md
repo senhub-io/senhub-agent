@@ -35,10 +35,7 @@ All queries are read-only and run without privilege escalation.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `interval` | `3600` | Collection interval in seconds. Update status changes slowly; 30-60 minutes is a sensible range. |
-| `command_timeout` | `120` | Timeout in seconds for the package-manager queries on Linux. |
+An interval of 30 to 60 minutes is a sensible range.
 
 ## Metrics
 

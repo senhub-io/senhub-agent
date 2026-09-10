@@ -37,12 +37,6 @@ usage, connection counts and exchange statistics.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:15672` | RabbitMQ Management API base URL |
-| `username` | `guest` | RabbitMQ management user |
-| `password` | `guest` | Management user password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-
 ## Metrics
 
 | Metric | Unit | Description |

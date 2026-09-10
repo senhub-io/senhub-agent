@@ -41,14 +41,8 @@ push (OTLP) and pull (Prometheus) sources.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of exposition URLs |
-| `interval` | `60` | Seconds between scrape cycles |
-| `timeout` | `10` | Per-target budget in seconds |
-| `metric_match` | none | Regexp filter on metric family names; non-matching families are skipped |
-| `bearer_token` | none | Sent as `Authorization: Bearer ...`; reference a stored secret via `${secret:<name>.bearer_token}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `insecure_skip_verify` | `false` | Accept self-signed exporter certificates |
+The timeout applies to each target's request. Metric families that do not
+match `metric_match` are skipped.
 
 Targets are scraped in parallel (bounded). An unreachable exporter is
 a measurement (`senhub.promscrape.up = 0`), never a probe failure.
