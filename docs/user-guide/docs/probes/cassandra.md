@@ -33,11 +33,6 @@ pending tasks, storage load, JVM heap and garbage collection.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `jolokia_url` | `http://localhost:8778/jolokia` | URL to the Jolokia agent endpoint on the Cassandra node |
-| `instance_name` | — | Override for the entity instance id (useful in multi-agent setups monitoring the same cluster) |
-
 ## Metrics
 
 | Metric | Unit | Description |

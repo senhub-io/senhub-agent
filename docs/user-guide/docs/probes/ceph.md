@@ -37,12 +37,6 @@ I/O statistics.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `https://localhost:8443` | Base URL of the Ceph Manager Dashboard / REST API |
-| `username` | — | Ceph dashboard username (required) |
-| `password` | — | Ceph dashboard password (required) — reference via `${secret:ceph.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-
 ## Metrics
 
 | Metric | Unit | Description |
@@ -63,5 +57,5 @@ I/O statistics.
 ## Operational notes
 
 - The Ceph Manager Dashboard must be enabled: `ceph mgr module enable dashboard`.
-- The default endpoint uses a self-signed TLS certificate; the probe skips verification by default. For production, configure a proper certificate.
+- The dashboard ships with a self-signed TLS certificate, which the probe rejects by default. Set `verify_tls: false` to accept it in a lab; for production, configure a proper certificate.
 - The API requires Ceph Nautilus (14+) or newer for the `/api/` v1 interface.

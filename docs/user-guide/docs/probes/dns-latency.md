@@ -33,13 +33,6 @@ to compare them. Slow DNS is a frequent cause of perceived slowness
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `names` | required | Names to resolve |
-| `resolvers` | system | DNS servers (`ip` or `ip:port`); each name is measured against each resolver |
-| `timeout` | 5 | Per-lookup budget in seconds |
-| `interval` | 60 | Seconds between cycles |
-
 ## Metrics
 
 One series per (name, resolver) pair — `resolver` is `system` when no
