@@ -357,14 +357,21 @@ a host's connections can be privacy-sensitive.
 
 `depends_on_debounce` controls how durable an outbound connection must be
 before it appears as a `depends_on` edge: a peer endpoint must be seen on
-this many consecutive emission scrapes before its edge is emitted, which
-keeps ephemeral connections out of the graph. The latency to surface a
-dependency is `depends_on_debounce x interval` (so the default `3 x 60s` is
-about three minutes); lower it for a more responsive graph, raise it to
-filter out shorter-lived connections.
+this many emission scrapes before its edge is emitted, which keeps a
+single stray socket out of the graph. The scrapes need not run
+consecutively. A peer keeps its progress across up to fifteen scrapes
+without being seen, because a short-lived flow is precisely one that is
+missing from most samples: a reverse proxy that opens a request to a
+backend and closes it may appear in four samples out of fifteen and
+never in two running ones, and it is still a real dependency. The
+soonest a dependency can surface is `depends_on_debounce x interval` (so
+the default `3 x 60s` is about three minutes); lower it for a more
+responsive graph, raise it to demand more evidence.
 
-The tolerance is symmetric: an edge that took `depends_on_debounce` scrapes to
-appear survives the same number of missed ones before it is given up. A
+The tolerance is symmetric once the edge exists: an edge that took
+`depends_on_debounce` scrapes to appear survives the same number of missed
+ones before it is given up. The wider memory above applies only while a
+peer is still earning its edge. A
 long-lived connection the socket table happens to miss once is not a dependency
 that ended, and retracting it on a single miss would reach a topology consumer
 as an edge flapping in and out.
@@ -766,3 +773,14 @@ Verify:
 If you want a pull-based scrape model instead of push, use the
 [Prometheus endpoint](prometheus/index.md) — same data,
 same names, different transport.
+
+### What the dependency discovery can and cannot see
+
+The discovery reads the socket table on each emission scrape. It sees a
+connection that is open at the moment of a scrape. It does not see a flow
+that opens and closes entirely between two scrapes, however many times
+that happens: nothing on the host records it by then. An absent edge
+therefore means "not observed", never "does not exist", and that
+distinction matters before concluding from a map that two machines do
+not talk to each other. A shorter `interval` narrows the blind spot; it
+does not close it.
