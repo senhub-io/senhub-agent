@@ -39,10 +39,9 @@ No parameters are required — the probe reads the local chrony daemon.
 
 <!-- schema:params:end -->
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `chronyc_path` | string | `chronyc` | Path to the `chronyc` binary. Set this when it is not on the agent's `PATH` — a hardened service unit does not inherit an interactive shell's `PATH`, so an absolute path such as `/usr/bin/chronyc` is the usual fix. |
-| `interval` | int (seconds) | `30` | Collection interval. |
+A hardened service unit does not inherit an interactive shell's `PATH`, so when
+the probe reports `not_installed` on a host that has chrony, an absolute
+`chronyc_path` such as `/usr/bin/chronyc` is the usual fix.
 
 ## Metrics
 

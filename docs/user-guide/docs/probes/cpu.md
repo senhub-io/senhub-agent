@@ -85,9 +85,14 @@ This ensures the probe stays functional even when platform limitations exist, pr
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `interval` | integer | `30` | Collection interval in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `interval` | No | `30` | Collection interval in seconds |
+
+<!-- schema:params:end -->
 
 ### Example Configurations
 
@@ -355,14 +360,3 @@ The CPU probe requires no authentication as it collects local system metrics onl
 ### Network
 - No network access required (local metrics only)
 - HTTP strategy required for remote access to metrics
-
-## Parameters
-
-<!-- schema:params:start -->
-<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `interval` | No | `30` | Collection interval in seconds |
-
-<!-- schema:params:end -->

@@ -39,14 +39,9 @@ reporting broker-level resource usage (memory, store, temp) and per-destination
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `jolokia_url` | `http://localhost:8161/api/jolokia` | Jolokia REST endpoint on the ActiveMQ broker |
-| `username` | `admin` | Basic-auth username |
-| `password` | `admin` | Basic-auth password — reference via `${secret:activemq.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-| `broker_name` | `localhost` | Broker name used to scope MBean queries |
-| `queue_filter` | all queues | Only report these destinations, by exact name. A broker with hundreds of short-lived queues otherwise emits a series per queue |
-| `instance_name` | derived | Stable identity override for this broker, so the entity does not split when the broker is reachable under several names |
+`queue_filter` takes shell-style globs (`orders.*`, `*.dlq`), matched against
+the destination name; a destination matching any pattern is reported. A broker
+with hundreds of short-lived queues otherwise emits a series per queue.
 
 ## Metrics
 
@@ -66,4 +61,4 @@ reporting broker-level resource usage (memory, store, temp) and per-destination
 ## Operational notes
 
 - Jolokia must be installed and enabled on the broker. The classic ActiveMQ distribution ships Jolokia at `/api/jolokia` by default; broker-only installs without the web console may require separate Jolokia configuration.
-- Per-destination metrics tag on `destination` + `destination_type` (queue or topic). A broker with many destinations generates a large number of PRTG channels — consider restricting with `broker_name` if monitoring a specific broker in a network-of-brokers setup.
+- Per-destination metrics tag on `destination` + `destination_type` (queue or topic). A broker with many destinations generates a large number of PRTG channels; restrict them with `queue_filter`. In a network-of-brokers setup, `broker_name` selects which broker the queries are scoped to.
