@@ -36,12 +36,6 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8123` | ClickHouse HTTP interface base URL |
-| `username` | `default` | ClickHouse user (must have SELECT access to system tables) |
-| `password` | — | User password — reference via `${secret:clickhouse.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-
 ## Metrics
 
 | Metric | Unit | Description |

@@ -10,33 +10,33 @@ The WiFi Signal Strength probe monitors wireless network connectivity quality by
 
 ## Quick Start
 
-### Basic Configuration
 ```yaml
 # probes.d/10-wifi_signal_strength.yaml — each file under probes.d/ is a YAML array of probes
 - name: wifi_signal_strength
   type: wifi_signal_strength
-  params:
-    interval: 60
 ```
 
-### Minimal Configuration
-```yaml
-# probes.d/10-wifi_signal_strength.yaml
-- name: wifi_signal_strength
-  type: wifi_signal_strength
-```
+That is the whole configuration. The probe reads no parameters and collects
+every 60 seconds; the cadence is fixed in the code and a `params` block,
+`interval` included, is ignored.
 
 ## Key Metrics
 
 | Metric | Description | Unit | Platform |
 |--------|-------------|------|----------|
-| `wifi_signal_strength` | Signal strength level | % (Windows), dBm (Linux) | Windows, Linux |
-| `wifi_quality` | Link quality percentage | % | Linux only |
+| `wifi_signal_strength` | Signal level | dBm | Windows, Linux |
+| `wifi_quality` | Link quality | % | Linux only |
+
+On Linux the signal level is the one `iwconfig` reports. On Windows `netsh`
+reports a percentage, which the probe converts to dBm with the usual
+approximation (dBm = percentage / 2 - 100), so 100% reads as -50 dBm and 60%
+as -70 dBm. `wifi_quality` is emitted only when `iwconfig` prints the link
+quality on the same line as the signal level, which is its normal layout.
 
 ## Platform Support
 
-- **Windows** - Uses `netsh wlan show interfaces` (Signal strength %)
-- **Linux** - Uses `iwconfig` (Signal strength dBm, Link quality %)
+- **Windows** - Uses `netsh wlan show interfaces` (signal percentage, converted to dBm)
+- **Linux** - Uses `iwconfig` (signal level in dBm, link quality in %)
 - **macOS** - Not supported
 - **BSD** - Not supported
 
@@ -44,25 +44,20 @@ The WiFi Signal Strength probe monitors wireless network connectivity quality by
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `interval` | integer | 60 | Collection interval in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-**Note**: No additional configuration required. Probe auto-detects WiFi connection.
+This probe reads no parameters.
+
+<!-- schema:params:end -->
+
+The probe collects every 60 seconds. There is no way to change that cadence,
+and no other setting: it detects the WiFi connection by itself and starts
+only when one is up.
 
 ## Signal Strength Interpretation
 
-### Windows (Percentage)
-
-| Range | Quality | Description |
-|-------|---------|-------------|
-| 90-100% | Excellent | Maximum performance |
-| 75-89% | Good | Reliable connection |
-| 60-74% | Fair | Minor connectivity issues |
-| 40-59% | Poor | Frequent disconnections |
-| <40% | Very Poor | Unusable connection |
-
-### Linux (dBm)
+The metric is in dBm on both platforms, so one scale applies everywhere.
 
 | Range | Quality | Description |
 |-------|---------|-------------|
@@ -72,6 +67,10 @@ The WiFi Signal Strength probe monitors wireless network connectivity quality by
 | -71 to -80 dBm | Poor | Slow speeds |
 | -81 to -90 dBm | Very Poor | Barely connected |
 | < -90 dBm | Unusable | No connection |
+
+On Windows the value is derived from the `netsh` percentage, so it never goes
+above -50 dBm: a full-strength connection reads -50 dBm, and the "Poor" band
+starts where `netsh` shows about 60%.
 
 ## Tags
 
@@ -95,7 +94,7 @@ http:
 Access: `http://localhost:8080/api/{key}/prtg/metrics`
 
 **PRTG Channels**:
-- WiFi Signal Strength (%, dBm)
+- WiFi Signal Strength (dBm)
 - WiFi Quality (%) - Linux only
 
 ### Nagios
@@ -106,7 +105,7 @@ http:
   endpoints: ["nagios"]
 ```
 
-Returns: `OK - WiFi connected | signal=85% quality=90%`
+The signal level is reported in dBm, the link quality in percent (Linux only).
 
 
 ## Use Cases
@@ -117,7 +116,7 @@ Returns: `OK - WiFi connected | signal=85% quality=90%`
 
 **Metrics**: `wifi_signal_strength`, `wifi_quality`
 
-**Alert**: Signal <60% (Windows) or <-70dBm (Linux)
+**Alert**: Signal below -70 dBm
 
 **Benefits**:
 - Identify coverage dead zones
@@ -129,18 +128,12 @@ Returns: `OK - WiFi connected | signal=85% quality=90%`
 
 **Objective**: Monitor home office WiFi quality
 
-**Configuration**:
-```yaml
-# probes.d/10-wifi_signal_strength.yaml
-- name: wifi_signal_strength
-  type: wifi_signal_strength
-  params:
-    interval: 30  # More frequent checks
-```
+**Configuration**: the quick start above; the 60-second cadence cannot be
+tightened.
 
 **Alert Rules**:
-- Signal <50% → Warning (ask user to move closer)
-- Signal <30% → Critical (connectivity issues)
+- Signal below -75 dBm: warning (ask the user to move closer)
+- Signal below -85 dBm: critical (connectivity issues)
 
 ### 3. Mobile Device Monitoring
 
@@ -153,12 +146,8 @@ Returns: `OK - WiFi connected | signal=85% quality=90%`
 # probes.d/00-host.yaml
 - name: wifi_signal_strength
   type: wifi_signal_strength
-  params:
-    interval: 60
 - name: ping_gateway
   type: ping_gateway
-  params:
-    interval: 30
 ```
 
 ### 4. Access Point Performance
@@ -229,7 +218,9 @@ sudo pacman -S wireless_tools
 
 ### Linux: Alternative with nmcli
 
-If `iwconfig` is not available, probe falls back to `nmcli`:
+Without `iwconfig`, the probe can still detect that WiFi is up through
+`nmcli`, but it cannot read the signal level: install `wireless-tools` for
+the metrics.
 
 ```bash
 # Check WiFi status
@@ -275,35 +266,19 @@ iwconfig
 
 ## Alert Thresholds
 
-### Windows (Percentage)
-
-| Metric | Warning | Critical | Action |
-|--------|---------|----------|--------|
-| Signal Strength | <60% | <40% | Move closer to AP |
-
-### Linux (dBm)
-
 | Metric | Warning | Critical | Action |
 |--------|---------|----------|--------|
 | Signal Strength | <-70 dBm | <-80 dBm | Move closer to AP |
-| Link Quality | <60% | <40% | Check interference |
+| Link Quality (Linux) | <60% | <40% | Check interference |
 
 ## Performance
 
 - **CPU**: <0.1% (command execution overhead)
 - **Memory**: ~5MB
 - **Network**: None (local command execution)
-- **Collection Time**: ~100-500ms per interval
+- **Collection Time**: ~100-500ms per collection, every 60 seconds
 
 ## Best Practices
-
-### Collection Interval
-
-| Interval | Use Case | Impact |
-|----------|----------|--------|
-| 30s | Real-time monitoring | Higher CPU usage |
-| 60s | Standard monitoring (recommended) | Balanced |
-| 300s | Periodic checks | Minimal impact |
 
 ### Combined Monitoring
 
@@ -318,16 +293,11 @@ For complete connectivity monitoring, combine with:
 # probes.d/00-host.yaml
 - name: wifi_signal_strength
   type: wifi_signal_strength
-  params:
-    interval: 60
 - name: ping_gateway
   type: ping_gateway
-  params:
-    interval: 30
 - name: ping_webapp
   type: ping_webapp
   params:
-    interval: 60
     url: "https://www.google.com"
 ```
 
@@ -338,57 +308,3 @@ For complete connectivity monitoring, combine with:
 2. **Signal Timeline** - Trend over time
 3. **SSID Table** - Connected networks
 4. **Quality vs Strength** - Correlation chart (Linux)
-
-## Alert Examples
-
-### Basic Signal Alert
-
-```yaml
-alerts:
-  - name: Weak WiFi Signal
-    condition: wifi_signal_strength < 60  # Windows
-    duration: 5m
-    severity: warning
-    action: notify_user
-```
-
-### Linux Signal Alert
-
-```yaml
-alerts:
-  - name: Weak WiFi Signal
-    condition: wifi_signal_strength < -70  # Linux dBm
-    duration: 5m
-    severity: warning
-    action: notify_user
-```
-
-### Quality Alert (Linux Only)
-
-```yaml
-alerts:
-  - name: Poor WiFi Quality
-    condition: wifi_quality < 50
-    duration: 3m
-    severity: warning
-    action: check_interference
-```
-
-### SSID-Specific Alert
-
-```yaml
-alerts:
-  - name: Office WiFi Weak
-    condition: wifi_signal_strength < 60 AND ssid == "OfficeWiFi"
-    severity: warning
-    action: notify_admin
-```
-
-## Parameters
-
-<!-- schema:params:start -->
-<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-
-This probe reads no parameters.
-
-<!-- schema:params:end -->
