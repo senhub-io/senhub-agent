@@ -102,25 +102,15 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `target` | required | Device IP or hostname |
-| `port` | `161` | SNMP UDP port |
-| `version` | `2c` | `2c` or `3`. SNMPv1 is rejected (table walks need GETBULK) |
-| `community` | `public` | Community string (v2c) — reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `v3` | none | USM credentials, required with `version: 3` (see below) |
-| `timeout` | `5s` | Per-request timeout (duration string or seconds) |
-| `retries` | `2` | Retries per request before the device counts as unanswered. UDP loses packets; a congested link needs more than one attempt, and each one costs `timeout` |
-| `interval` | `60s` | Metric polling cadence |
-| `topology_interval` | `10m` | Entity/topology sweep cadence (slower rail, independent of metrics) |
-| `mibs` | `[]` | Built-in MIB modules to poll: `mib-2`, `if-mib` |
-| `mib_paths` | `[]` | Local directories or files of MIB modules used to name custom mappings (never fetched over the network) |
-| `custom_mappings` | `[]` | Operator-supplied OID-to-metric mappings (see below) |
-| `discovery` | none | Topology crawl from seed devices (see below) |
-
 At least one entry under `mibs` or `custom_mappings` is required.
 Configuration errors are accumulated and reported together at
 startup, not one at a time.
+
+`retries` matters on a congested link: UDP loses packets, and each
+attempt costs one `timeout` before the device counts as unanswered.
+`topology_interval` is a slower rail, independent of `interval`, so a
+dense topology sweep never delays the traffic counters. `mib_paths` is
+read locally; the probe never fetches a MIB over the network.
 
 ### SNMPv3 (USM)
 
@@ -136,14 +126,6 @@ params:
     priv_protocol: AES256
     priv_passphrase: "${file:/etc/senhub-agent/snmp_priv}"
 ```
-
-| Field | Description |
-|---|---|
-| `username` | required |
-| `auth_protocol` | `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, or omitted for no authentication |
-| `auth_passphrase` | Required with `auth_protocol` |
-| `priv_protocol` | `DES`, `AES`, `AES192`, `AES256`; requires an `auth_protocol` |
-| `priv_passphrase` | Required with `priv_protocol` |
 
 The security level (noAuthNoPriv / authNoPriv / authPriv) is derived
 from which protocols are set — there is no separate field to
@@ -167,12 +149,11 @@ params:
       index_label: if_index
 ```
 
-| Field | Default | Description |
-|---|---|---|
-| `oid` | required | OID, leading dot optional |
-| `metric` | required unless `mib_paths` is set | Metric name to emit. When omitted and `mib_paths` is configured, the name is resolved from your MIB files at startup (e.g. `upsAdvBatteryCapacity`); an unresolvable OID is a startup error, never a silent gap |
-| `type` | `gauge` | `gauge` or `counter` |
-| `index_label` | none | When set, the OID is walked as a table and the row index becomes this tag |
+`metric` may be omitted only when `mib_paths` is set: the name is then
+resolved from your MIB files at startup (for example
+`upsAdvBatteryCapacity`), and an OID that cannot be resolved is a startup
+error, never a silent gap. With `index_label`, the OID is walked as a
+table and the row index becomes that tag.
 
 ### Discovery
 
@@ -204,15 +185,9 @@ params:
     max_hops: 4
 ```
 
-| Field | Default | Description |
-|---|---|---|
-| `seeds` | required | Entry-point device IPs |
-| `profile` | required | Credentials used for crawled devices (`version`, `community`) |
-| `allowed_cidrs` | required | The crawl never leaves these ranges |
-| `max_devices` | `200` | Hard cap on discovered devices |
-| `max_hops` | `4` | BFS depth bound from the seeds |
-| `interval` | `topology_interval` | Crawl cadence |
-| `governance_rules` | none | Per-device governance, matched as the crawl finds devices (see below) |
+`max_devices` is a hard cap on discovered devices and `max_hops` bounds
+the crawl depth from the seeds. `governance_rules` stamps governance on
+devices as the crawl finds them (see below).
 
 The `governance` parameter of this probe and the `governance` block every
 probe entry accepts (see [Governance per probe](../configuration.md#governance-per-probe))

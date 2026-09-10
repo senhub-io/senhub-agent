@@ -19,7 +19,7 @@ tagged with `systemd.unit`.
   type: systemd
 ```
 
-All non-transient units are monitored by default. No parameters are required.
+All non-transient units are monitored by default; every parameter is optional.
 
 ## Parameters
 
@@ -34,7 +34,9 @@ All non-transient units are monitored by default. No parameters are required.
 
 <!-- schema:params:end -->
 
-This probe takes no configuration parameters.
+Without `units`, every non-transient unit of the included types is
+watched. Restrict `units` on a host with many units: each one costs several
+series per cycle.
 
 ## Metrics
 
@@ -43,7 +45,7 @@ This probe takes no configuration parameters.
 | `systemd.unit.active_state` | 1 | 1 when the unit active state is `active`, 0 otherwise, tagged with `systemd.unit` |
 | `systemd.unit.sub_state` | 1 | 1 when the unit sub-state is `running` or `listening`, 0 otherwise; the raw sub-state value is available in the `sub_state` tag |
 | `systemd.unit.load_state` | 1 | 1 when the unit load state is `loaded`, 0 otherwise |
-| `systemd.unit.restart_count` | {restart} | Number of times the unit has been restarted by systemd |
+| `systemd.unit.restarts` | {restart} | Number of times the unit has been restarted by systemd; service units only |
 
 ## Operational notes
 

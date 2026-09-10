@@ -35,12 +35,6 @@ and the Tomcat thread pool state.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `jolokia_url` | `http://localhost:8080/jolokia` | URL to the Jolokia agent endpoint on the Tomcat instance |
-| `username` | — | Jolokia Basic-auth username (if required) |
-| `password` | — | Jolokia Basic-auth password — reference a stored secret via `${secret:tomcat.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-
 ## Metrics
 
 | Metric | Unit | Description |

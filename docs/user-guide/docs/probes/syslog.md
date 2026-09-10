@@ -68,11 +68,16 @@ The Syslog probe is platform-independent. It listens on the loopback interface b
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Valid Values | Description |
-|-----------|------|---------|--------------|-------------|
-| `port` | integer | `514` | `1-65535` | UDP/TCP port to listen on |
-| `protocol` | string | `udp` | `udp`, `tcp` | Transport protocol |
-| `bind_address` | string | `127.0.0.1` | IP address | Listen interface. Loopback by default; set `"0.0.0.0"` (or an interface IP) to accept remote senders |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `port` | No | `514` | Port to listen on; 514 needs root or CAP_NET_BIND_SERVICE |
+| `protocol` | No | `udp` | Transport the listener accepts. One of `udp`, `tcp` |
+| `bind_address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+
+<!-- schema:params:end -->
 
 ### Example Configurations
 
@@ -634,16 +639,3 @@ The Syslog probe requires no authentication for incoming syslog messages. Access
 ### Syslog Sources
 - RFC 3164 (BSD Syslog) or RFC 5424 (IETF Syslog) format
 - UDP or TCP transport support
-
-## Parameters
-
-<!-- schema:params:start -->
-<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `port` | No | `514` | Port to listen on; 514 needs root or CAP_NET_BIND_SERVICE |
-| `protocol` | No | `udp` | Transport the listener accepts. One of `udp`, `tcp` |
-| `bind_address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
-
-<!-- schema:params:end -->
