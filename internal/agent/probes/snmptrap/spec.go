@@ -14,7 +14,7 @@ func init() {
 			{Key: "mib_paths", Kind: probes.KindStringList, Group: "metrics", Description: "Local MIB files or folders for OID names"},
 			{Key: "v3", Kind: probes.KindBlock, Group: "auth", Description: "SNMPv3 users", Fields: []probes.ParamSpec{
 				{Key: "users", Kind: probes.KindBlockList, Required: true, Fields: []probes.ParamSpec{
-					{Key: "username", Kind: probes.KindString, Required: true},
+					{Key: "username", Kind: probes.KindString, Required: true, Description: "USM user name"},
 					{Key: "auth_protocol", Kind: probes.KindString, Enum: []string{"MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512"}},
 					{Key: "auth_password", Kind: probes.KindString, Secret: true},
 					{Key: "priv_protocol", Kind: probes.KindString, Enum: []string{"DES", "AES", "AES192", "AES256"}},

@@ -41,7 +41,7 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 | `mib_paths` | No | - | Local MIB files or folders for OID names |
 | `v3` | No | - | SNMPv3 users |
 | `v3.users` | Yes | - | A list of blocks |
-| `v3.users[].username` | Yes | - | A string |
+| `v3.users[].username` | Yes | - | USM user name |
 | `v3.users[].auth_protocol` | No | - | A string. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
 | `v3.users[].auth_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `v3.users[].priv_protocol` | No | - | A string. One of `DES`, `AES`, `AES192`, `AES256` |
