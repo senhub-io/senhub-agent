@@ -33,9 +33,7 @@ request and connection statistics.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost/fpm-status` | URL to the PHP-FPM status page (must return JSON: add `?json` or configure `pm.status_path` with the right format) |
+The status page must answer in JSON: add `?json` to the endpoint or configure the web server to pass it.
 
 ## Metrics
 
