@@ -206,6 +206,6 @@ Or start the agent with:
 |---|---|---|---|
 | `address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
 | `port` | No | `5656` | HTTP port to listen on |
-| `protocol` | No | `tcp` | Transport of the listener. One of `tcp`, `udp` |
+| `protocol` | No | `tcp` | Transport of the listener. The listener serves HTTP, so tcp is the only transport it can take. One of `tcp` |
 
 <!-- schema:params:end -->

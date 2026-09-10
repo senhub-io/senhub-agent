@@ -144,6 +144,9 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 		cfg.Password = v
 	}
 	if v, ok := config["database"].(string); ok && v != "" {
+		// Every query the probe issues names the system database, so this
+		// changes nothing. It is still read so an existing configuration
+		// does not start reporting an unknown key.
 		cfg.Database = v
 	}
 	if v, ok := types.IntParam(config, "timeout"); ok && v > 0 {

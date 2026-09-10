@@ -6,9 +6,9 @@ func init() {
 	probes.RegisterProbeSpec(probes.ProbeSpec{
 		Type: "kubernetes", DisplayName: "Kubernetes", Category: "containers",
 		Summary:  "Nodes, pods, containers, workloads, storage, quotas, autoscalers and events of the cluster the agent belongs to or a kubeconfig points at.",
-		DocsPath: "docs/user-guide/docs/probes/kubernetes.md", MultiInstance: false, DefaultInterval: 30,
+		DocsPath: "docs/user-guide/docs/probes/kubernetes.md", MultiInstance: true, DefaultInterval: 30,
 		Params: []probes.ParamSpec{
-			{Key: "kubeconfig", Kind: probes.KindString, Group: "connection", Description: "Path of a kubeconfig file; empty uses the in-cluster service account", Example: "/home/agent/.kube/config"},
+			{Key: "kubeconfig", Kind: probes.KindString, Group: "connection", Description: "Path of a kubeconfig file; empty uses the in-cluster service account. One instance per cluster: the identity comes from the cluster, so two instances pointing at two clusters do not collide", Example: "/home/agent/.kube/config"},
 			{Key: "interval", Kind: probes.KindInt, Default: 30, Group: "collection", Description: "Seconds between collections"},
 			{Key: "namespaces", Kind: probes.KindBlock, Group: "filter", Description: "Namespace selection", Fields: []probes.ParamSpec{
 				{Key: "include", Kind: probes.KindStringList, Description: "Namespaces to watch; empty means all"},

@@ -38,7 +38,7 @@ moved.
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
-| `kubeconfig` | No | - | Path of a kubeconfig file; empty uses the in-cluster service account. Example: `/home/agent/.kube/config` |
+| `kubeconfig` | No | - | Path of a kubeconfig file; empty uses the in-cluster service account. One instance per cluster: the identity comes from the cluster, so two instances pointing at two clusters do not collide. Example: `/home/agent/.kube/config` |
 | `interval` | No | `30` | Seconds between collections |
 | `namespaces` | No | - | Namespace selection |
 | `namespaces.include` | No | - | Namespaces to watch; empty means all |
