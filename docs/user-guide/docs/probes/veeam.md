@@ -30,15 +30,19 @@ Monitors Veeam Backup & Replication v13 via the REST API. Collects job status, r
 
 ### Parameters
 
+<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+
 | Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `endpoint` | Yes | - | Veeam server hostname or IP (without port) |
-| `port` | No | `9419` | REST API port |
-| `username` | Yes | - | Veeam account with Backup Administrator role |
-| `password` | Yes | - | Account password — reference a stored secret via `${secret:veeam-prod.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `interval` | No | `300` | Collection interval in seconds |
-| `verify_ssl` | No | `true` | Verify TLS certificate |
-| `hours_to_check` | No | `24` | Time window for job history (hours) |
+|---|---|---|---|
+| `endpoint` | Yes | - | Backup server hostname or URL, for example `https://veeam.example.com`. The port is appended when the address carries none |
+| `port` | No | `9419` | REST API port, used when `endpoint` carries none. An integer |
+| `username` | Yes | - | Veeam account with the Backup Administrator role |
+| `password` | Yes | - | Password of the Veeam account. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
+| `verify_ssl` | No | `true` | Validate the server's TLS certificate; `false` for a self-signed certificate |
+| `interval` | No | `300` | Seconds between collections. An integer |
+| `hours_to_check` | No | `24` | Job history window in hours; a job with no run inside it counts as stale. An integer |
+
+The three integer parameters must be written as plain numbers (`300`, not `"300"` or `300s`); any other form is ignored and the default applies.
 
 ## Collected Metrics
 

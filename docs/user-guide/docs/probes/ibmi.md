@@ -81,27 +81,46 @@ Monitor several LPARs with separate probe instances:
     password: "${secret:ibmi-qa.password}"
     bridge_runner_dir: "/opt/senhub/ibmi-bridge"
     environment: "qa"
-    disabled_collectors: ["index_advisor", "table"]   # skip heavy DB queries in QA
+    disabled_collectors: ["index_advisor", "sys_table_stats"]   # skip heavy DB queries in QA
 ```
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `host` | string | Yes | - | IBM i hostname or IP the JT400 bridge connects to |
-| `user` | string | Yes | - | IBM i user profile used for the SQL session |
-| `password` | string | Yes | - | User password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `bridge_runner_dir` | string | Conditional | - | Directory containing `Jt400Runner.class` and `jt400.jar`. Required unless `native_runner` is set. |
-| `native_runner` | string | No | - | Path to a GraalVM native-image `jt400runner` binary. When set, the bridge runs it directly — no JRE required — and `bridge_runner_dir` / `java_home` become optional. |
-| `java_home` | string | No | - | Override for `JAVA_HOME` used to launch the JT400 bridge |
-| `interval` | integer | No | `30` | Collection interval in seconds |
-| `query_timeout_s` | integer | No | `10` | Per-query timeout in seconds |
-| `startup_timeout_s` | integer | No | `15` | Bridge startup timeout in seconds |
-| `enabled_collectors` | list | No | all | Allowlist of collector names to activate. Empty = every collector runs. |
-| `disabled_collectors` | list | No | - | Denylist applied on top of the enabled set — e.g. drop heavy DB queries |
-| `message_queues` | list | No | `QSYSOPR` | Message queues to watch. Each entry: `library` (default `QSYS`), `name` (required), `min_severity` (default `0`). |
-| `environment` | string | No | - | Deployment environment name (e.g. `production`, `qa`); rides the partition entity as `deployment.environment.name` |
-| `db_instance_name` | string | No | derived | Overrides the Db2 for i entity identity (`db.instance.id`). Derived from `CURRENT SERVER` when empty. |
+<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | IBM i hostname or address the JT400 bridge connects to |
+| `user` | Yes | - | IBM i user profile of the SQL session |
+| `password` | Yes | - | Password of the user profile. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
+| `bridge_runner_dir` | Unless `native_runner` is set | - | Directory holding `Jt400Runner.class` and `jt400.jar`. With `native_runner` set it is optional and only serves as the working directory |
+| `native_runner` | No | - | Path to a GraalVM native-image `jt400runner` binary, run instead of a JVM. When set, `bridge_runner_dir` and `java_home` become optional |
+| `java_home` | No | - | `JAVA_HOME` used to launch the bridge; empty uses the environment |
+| `interval` | No | `30` | Seconds between collections |
+| `query_timeout_s` | No | `10` | Per-query timeout, in seconds |
+| `startup_timeout_s` | No | `15` | Bridge startup timeout, in seconds |
+| `enabled_collectors` | No | - | Collectors to run, by name (list below). Empty runs the default set. This is the only way to turn on the collectors that are off by default |
+| `disabled_collectors` | No | - | Collectors removed from the enabled set, by name |
+| `message_queues` | No | - | Message queues to watch, one collector each. Empty watches `QSYS/QSYSOPR`; a non-empty list replaces that default |
+| `message_queues[].name` | Yes | - | Queue name, for example `QSYSOPR` |
+| `message_queues[].library` | No | `QSYS` | Library of the queue |
+| `message_queues[].min_severity` | No | `0` | Messages below this severity are not relayed |
+| `environment` | No | - | Deployment environment name carried by the partition entity as `deployment.environment.name`, for example `production` |
+| `db_instance_name` | No | - | Identity override of the Db2 for i entity (`db.instance.id`); empty derives it from the relational database name (`CURRENT SERVER`) |
+
+## Collector names
+
+`enabled_collectors` and `disabled_collectors` take the names below, exactly as written. A name that is not in this list is ignored without a warning, so a typo silently leaves the collector in its default state.
+
+Run by default:
+
+`system_status`, `asp`, `subsystem`, `memory_pool`, `output_queue`, `active_job`, `job_queue`, `scheduled_job`, `user_profile`, `system_value`, `netstat_listener`, `netstat_interface`, `netstat_connection`, `http_server`, `jvm`, `disk_status`, `sys_table_stats`, `journal_info`, `journal_receiver`, `library_list`, `license`, `media_library`, `spooled_file`, `user_storage`, `index_advisor`, `hardware_resource`, `message_queue`, `history_log`, `msgw_job`.
+
+Off by default, turned on only by listing them in `enabled_collectors`:
+
+`audit_journal`, `authority_collection`, `ptf_group`, `ptf`, `service_agent`, `watch_info`, `query_supervisor`.
+
+When `enabled_collectors` is set, only the listed collectors run; the default set is not added to it.
 
 # Metrics Collected
 

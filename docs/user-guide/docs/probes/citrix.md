@@ -70,20 +70,21 @@ Minimal configuration for single-site Citrix environment:
 - name: "production-citrix"
   type: citrix
   params:
-    base_url: "https://director.company.com"
-    interval: 120  # 2 minutes recommended
-    auth:
-      username: "DOMAIN\\svc-monitoring"  # Note: double backslash
-      password: ${secret:production-citrix.password}   # OS secret store; inline plaintext is auto-sealed on install
-    tls:
+    director:
+      url: "https://director.company.com"
+      auth:
+        username: "DOMAIN\\svc-monitoring"  # Note: double backslash
+        password: ${secret:production-citrix.password}   # OS secret store; inline plaintext is auto-sealed on install
       verify_ssl: true
+    interval: 120  # 2 minutes recommended
     timeout: 30
 ```
 
 **Important notes:**
-- `base_url`: Director URL **without** `/Director` path suffix
-- `username`: Must use double backslash `DOMAIN\\username` format in YAML
+- `director.url`: Director URL **without** `/Director` path suffix
+- `director.auth.username`: Must use double backslash `DOMAIN\\username` format in YAML
 - `interval`: 120 seconds (2 minutes) balances data freshness with API load
+- Each component (Director, Delivery Controller, License Server) has its own block. An older flat layout (`base_url` with top-level `auth` and `tls`) is still accepted but deprecated; see [Deprecated flat layout](#deprecated-flat-layout).
 
 ## Configuration with Site Filtering (Multi-Site)
 
@@ -94,18 +95,23 @@ For multi-site deployments requiring site-specific metrics:
 - name: "citrix-paris-site"
   type: citrix
   params:
-    base_url: "https://director-paris.company.com"
+    director:
+      url: "https://director-paris.company.com"
+      auth:
+        username: "DOMAIN\\svc-monitoring"
+        password: ${secret:citrix-paris-site.password}   # OS secret store; inline plaintext is auto-sealed on install
 
     delivery_controller:
       url: "https://citrix-ddc-paris.company.com"
       fallback_urls:
         - "https://citrix-ddc-paris-backup.company.com"
       site_filter: "SITE-PARIS"  # Filter to specific site
+      # No auth block: the Director account is reused
+
+    license_server:
+      url: "https://license.company.com"   # optional, enables the licence metrics
 
     interval: 120
-    auth:
-      username: "DOMAIN\\svc-monitoring"
-      password: ${secret:citrix-paris-site.password}   # OS secret store; inline plaintext is auto-sealed on install
     retry:
       max_attempts: 3
       backoff_factor: 2.0
@@ -120,42 +126,102 @@ For multi-site deployments requiring site-specific metrics:
 
 ## Complete Parameter Reference
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `base_url` | string | Yes | - | Citrix Director URL (without `/Director` path) |
-| `interval` | integer | No | `120` | Metric collection interval (seconds) |
-| `auth.username` | string | Yes | - | Domain account (`DOMAIN\\username`) |
-| `auth.password` | string | Yes | - | Account password — reference via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-| `tls.verify_ssl` | boolean | No | `true` | Validate SSL certificates |
-| `timeout` | integer | No | `30` | API request timeout (seconds) |
-| `delivery_controller.url` | string | No | - | DDC URL for site filtering |
-| `delivery_controller.fallback_urls` | array | No | `[]` | Backup DDC URLs for failover |
-| `delivery_controller.site_filter` | string | No | - | Site name to filter metrics |
-| `retry.max_attempts` | integer | No | `3` | Retry count for failed API calls |
-| `retry.backoff_factor` | float | No | `2.0` | Exponential backoff multiplier |
-| `custom_tags` | array | No | `[]` | Additional tags for all metrics |
+<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `director` | Yes | - | Citrix Director, queried over OData with NTLM. Its presence selects the per-component layout |
+| `director.url` | Yes | - | Director URL without the `/Director` path |
+| `director.auth.username` | Yes | - | Domain account with the Read Only Administrator role, written `DOMAIN\\user` |
+| `director.auth.password` | Yes | - | Account password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
+| `director.verify_ssl` | No | `true` | Verify the Director certificate |
+| `director.fallback_urls` | No | - | Other Director URLs tried when the first one fails |
+| `delivery_controller` | No | - | Delivery Controller REST API, queried with Basic auth. Absent: no site inventory and no site filtering |
+| `delivery_controller.url` | No | - | Controller URL |
+| `delivery_controller.fallback_urls` | No | - | Other controllers tried when the first one fails |
+| `delivery_controller.site_filter` | No | - | Site name the metrics are restricted to; empty keeps every site |
+| `delivery_controller.verify_ssl` | No | `true` | Verify the controller certificate |
+| `delivery_controller.auth.username` | No | - | Account for the controller; empty reuses the Director account |
+| `delivery_controller.auth.password` | No | - | Its password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` |
+| `license_server` | No | - | Citrix License Server, queried with Basic auth. Absent: no licence metrics |
+| `license_server.url` | No | - | License Server URL |
+| `license_server.fallback_urls` | No | - | Other license servers tried when the first one fails |
+| `license_server.verify_ssl` | No | `true` | Verify the license server certificate |
+| `license_server.auth.username` | No | - | Account for the license server; empty reuses the Director account |
+| `license_server.auth.password` | No | - | Its password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` |
+| `interval` | No | `120` | Seconds between collections; logon metrics are computed on a two-minute window |
+| `timeout` | No | `30` | API request timeout in seconds, shared by every component |
+| `retry.max_attempts` | No | `3` | Attempts per API call |
+| `retry.backoff_factor` | No | `2.0` | Multiplier applied to the wait between attempts |
+| `debug_identifiers` | No | `false` | Log how session and machine identifiers map instead of collecting metrics, for support |
+
+## Deprecated flat layout
+
+Configurations written before the per-component blocks used one URL and one
+account for everything. The probe still accepts that layout, logs a warning
+at start, and maps it as follows:
+
+| Flat key | Reads as |
+|---|---|
+| `director_url` (or the older `base_url`) | `director.url` |
+| `auth.username`, `auth.password` | `director.auth`, reused for the Delivery Controller and the License Server |
+| `tls.verify_ssl` | `verify_ssl` of every component |
+| `delivery_controller.url`, `fallback_urls`, `site_filter` | the same keys of the block |
+| `license_server.url`, or `license_server` as a plain URL string | `license_server.url` |
+
+The flat keys are read only when no `director` block is present. Once you
+add a `director` block, `director_url`, `base_url`, top-level `auth` and
+`tls` are ignored, so migrate the whole file at once:
+
+```yaml
+# Deprecated, still accepted
+- name: "production-citrix"
+  type: citrix
+  params:
+    director_url: "https://director.company.com"
+    auth:
+      username: "DOMAIN\\svc-monitoring"
+      password: ${secret:production-citrix.password}
+    tls:
+      verify_ssl: true
+
+# Equivalent current layout
+- name: "production-citrix"
+  type: citrix
+  params:
+    director:
+      url: "https://director.company.com"
+      auth:
+        username: "DOMAIN\\svc-monitoring"
+        password: ${secret:production-citrix.password}
+      verify_ssl: true
+```
 
 ## Authentication Methods
 
-The Citrix probe automatically selects authentication based on configuration:
+Each component uses the method its API requires; nothing is selected by
+configuration:
 
 | API | Authentication Type | When Used |
 |-----|-------------------|-----------|
-| **Director OData API** | NTLM | Always (automatic) |
-| **DDC REST API** | Basic Auth | When `delivery_controller.url` configured |
+| **Director OData API** | NTLM | Always |
+| **DDC REST API** | Basic Auth | When `delivery_controller.url` is configured |
+| **License Server API** | Basic Auth | When `license_server.url` is configured |
 
-Both methods use the same credentials from `auth.username` and `auth.password`.
+The Delivery Controller and the License Server reuse the Director account
+unless their block carries its own `auth`.
 
-## Base URL Format
+## Director URL Format
 
 **Correct formats:**
 ```yaml
 # Correct - no path suffix
-base_url: "https://director.company.com"
-base_url: "https://citrix.company.com"
+director:
+  url: "https://director.company.com"
 
 # Incorrect - includes path
-base_url: "https://director.company.com/Director"
+director:
+  url: "https://director.company.com/Director"
 ```
 
 The probe automatically appends required API paths (`/Odata/v4/Data`, `/Controller`, etc.).
@@ -349,7 +415,7 @@ username: "DOMAIN\\user"  # Note: double backslash in YAML
 
 **Diagnosis:**
 
-1. **Verify base_url points to Director** (not StoreFront)
+1. **Verify `director.url` points to Director** (not StoreFront)
 2. **Check Director is configured** - Director must be installed and configured with a functional database connection
 
 ### Error: Connection timeout
