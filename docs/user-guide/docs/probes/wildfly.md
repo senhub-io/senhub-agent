@@ -38,12 +38,6 @@ metrics.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:9990` | WildFly HTTP Management API base URL |
-| `username` | `admin` | Management user username |
-| `password` | — | Management user password — reference a stored secret via `${secret:wildfly.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-
 ## Metrics
 
 | Metric | Unit | Description |
