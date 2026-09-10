@@ -36,12 +36,6 @@ Elasticsearch; metric names use the `opensearch.*` namespace.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:9200` | OpenSearch base URL |
-| `username` | — | Basic-auth username (for clusters with security plugin enabled) |
-| `password` | — | Basic-auth password |
-
 ## Metrics
 
 | Metric | Unit | Description |

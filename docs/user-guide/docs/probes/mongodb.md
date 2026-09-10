@@ -34,12 +34,6 @@ usage, replication state and database storage.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `uri` | `mongodb://localhost:27017` | MongoDB connection URI. Credentials can be embedded: `mongodb://user:pass@host:27017` |
-| `direct_connection` | `true` | Connect directly to the specified host (skips topology discovery). Set to `false` for Atlas or replica-set-aware routing |
-| `instance_name` | — | Override for the entity instance ID (stable name across restarts) |
-
 ## Metrics
 
 | Metric | Unit | Description |

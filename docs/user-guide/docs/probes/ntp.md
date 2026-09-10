@@ -48,13 +48,6 @@ There is no default server, on purpose. See [Choosing servers](#choosing-servers
 
 <!-- schema:params:end -->
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `servers` | list of strings | **required** | Reference servers to measure against. Each entry is a hostname or IP, optionally with a port (`ntp.example.org:1123`); port 123 is used otherwise. |
-| `samples` | int | `4` | Exchanges per server per cycle. The least delayed one is kept. Maximum 16. |
-| `timeout` | int (seconds) | `5` | Per-exchange timeout. |
-| `interval` | int (seconds) | `300` | Collection interval. Longer than most probes on purpose: clock error moves slowly and every query is traffic sent to somebody else's server. |
-
 ## Metrics
 
 Every series is tagged with the `server` it was measured against, so two
