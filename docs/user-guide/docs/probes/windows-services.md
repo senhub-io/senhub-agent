@@ -24,6 +24,16 @@ restrict to a subset.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `services` | No | - | Service short names to monitor; empty means every service. Example: `wuauserv, Spooler` |
+| `interval` | No | `30s` | Collection interval |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `services` | all | List of service names to monitor (empty = all services). Case-insensitive, matches the service's short name (`sc query` output) |

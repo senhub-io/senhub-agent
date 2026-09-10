@@ -35,6 +35,30 @@ STATUS` and `information_schema`.
 
 ### Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | No | `127.0.0.1` | Server hostname or address |
+| `port` | No | `3306` | Server port |
+| `username` | No | - | Monitoring user |
+| `password` | No | - | Monitoring user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `database` | No | - | Database the connection opens on; optional |
+| `tls` | No | - | TLS settings, or simply true |
+| `tls.enabled` | No | `false` | Use TLS |
+| `tls.skip_verify` | No | `false` | Accept the server certificate without verifying it. Also accepted: `insecure_skip_verify` |
+| `tls.ca_file` | No | - | CA certificate (PEM) the server is verified against. Also accepted: `ca_cert` |
+| `timeout` | No | `10s` | Query timeout, seconds or a duration |
+| `interval` | No | `60` | Seconds between collections |
+| `max_replication_lag_seconds` | No | `300s` | Lag past which a replica counts as unhealthy; 0 turns the lag term off |
+| `per_database` | No | `false` | Emit per-database metrics. Also accepted: `expose_per_database` |
+| `per_table` | No | `false` | Emit per-table metrics for the largest tables; needs per_database |
+| `top_n_tables` | No | `20` | How many tables per_table covers. Also accepted: `expose_top_tables` |
+| `instance_name` | No | - | Stable identity override for this server |
+
+<!-- schema:params:end -->
+
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `host` | Yes | - | Database hostname or IP |

@@ -22,6 +22,17 @@ dependencies — uses the stdlib HTTP client.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost:8222` | Base URL of the NATS monitoring HTTP API. Example: `http://nats.example.com:8222` |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this server instead of the server id it reports |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost:8222` | NATS management HTTP API base URL |

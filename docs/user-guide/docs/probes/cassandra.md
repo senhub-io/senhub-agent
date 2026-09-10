@@ -21,6 +21,18 @@ pending tasks, storage load, JVM heap and garbage collection.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `jolokia_url` | No | `http://localhost:8778/jolokia` | URL of the Jolokia agent attached to the Cassandra JVM. Example: `http://cassandra01:8778/jolokia` |
+| `timeout` | No | `10` | HTTP request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this node |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `jolokia_url` | `http://localhost:8778/jolokia` | URL to the Jolokia agent endpoint on the Cassandra node |

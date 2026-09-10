@@ -34,6 +34,21 @@ output contracts are supported:
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `command` | Yes | - | Absolute path of the program; no shell, no PATH lookup. Example: `/usr/local/bin/check_backup` |
+| `args` | No | - | Arguments passed verbatim; anything secret here is stored as typed |
+| `format` | No | `nagios` | Output format. One of `nagios`, `json` |
+| `interval` | No | `60` | Seconds between runs; keep it above the timeout |
+| `timeout` | No | `10` | Seconds before the process group is killed |
+| `workdir` | No | - | Working directory; the agent's by default |
+| `env` | No | - | Extra environment variables; values named like credentials are sealed |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `command` | required | Absolute path to the program. Relative paths and PATH lookup are refused |

@@ -582,3 +582,17 @@ The LogicalDisk probe requires no authentication as it collects local system met
 ### Network
 - No network access required (local metrics only)
 - HTTP strategy required for remote access to metrics
+
+## Parameters
+
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `interval` | No | `30` | Collection interval in seconds |
+| `filters` | No | - | Drive selection (Windows only) |
+| `filters.include` | No | - | Drive patterns to include |
+| `filters.exclude` | No | `[HarddiskVolume* _Total]` | Drive patterns to exclude |
+
+<!-- schema:params:end -->

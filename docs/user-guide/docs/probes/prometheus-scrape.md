@@ -27,6 +27,20 @@ push (OTLP) and pull (Prometheus) sources.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `targets` | Yes | - | Exposition URLs. Example: `http://localhost:9100/metrics` |
+| `interval` | No | `60` | Seconds between scrapes |
+| `timeout` | No | `10` | Whole-request budget in seconds |
+| `metric_match` | No | - | Regular expression on metric family names |
+| `bearer_token` | No | - | Sent as Authorization: Bearer. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `insecure_skip_verify` | No | `false` | Accept self-signed exporter certificates |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `targets` | required | List of exposition URLs |

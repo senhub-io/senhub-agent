@@ -196,3 +196,16 @@ Or start the agent with:
 ```bash
 ./senhub-agent run --verbose --debug-modules probe.event
 ```
+
+## Parameters
+
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+| `port` | No | `5656` | HTTP port to listen on |
+| `protocol` | No | `tcp` | Transport of the listener. One of `tcp`, `udp` |
+
+<!-- schema:params:end -->

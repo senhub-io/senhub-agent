@@ -383,3 +383,12 @@ alerts:
     severity: warning
     action: notify_admin
 ```
+
+## Parameters
+
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+This probe reads no parameters.
+
+<!-- schema:params:end -->

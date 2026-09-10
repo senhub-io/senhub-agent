@@ -29,6 +29,26 @@ metric with a name and unit you define. Supports `uint16`, `int16`, `uint32`,
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | Device address or hostname. Example: `192.168.1.100` |
+| `port` | No | `502` | Modbus TCP port |
+| `unit_id` | No | `1` | Modbus unit (slave) identifier |
+| `timeout` | No | `10s` | Per-read timeout, seconds or a duration |
+| `interval` | No | `30` | Seconds between collections |
+| `registers` | Yes | - | Registers to read and how to decode them |
+| `registers[].name` | Yes | - | Register name, the register.name attribute of the value |
+| `registers[].address` | Yes | - | Holding-register address, Modicon 1-based (40001) or 0-based on non-standard devices |
+| `registers[].type` | Yes | - | How the raw bytes are decoded. One of `uint16`, `int16`, `uint32`, `int32`, `float32_abcd`, `float32_cdab` |
+| `registers[].scale` | No | `1` | Multiplier applied after decoding; 0 counts as 1 |
+| `registers[].unit` | No | `1` | OTel unit of the value. Example: `Cel` |
+| `registers[].description` | No | - | Human-readable label for dashboards |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `host` | required | IP address or hostname of the Modbus TCP device |

@@ -32,6 +32,23 @@ you asked for leave the host.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `channels` | Yes | - | Channel names. Example: `System, Security` |
+| `levels` | No | - | Levels to keep; empty means all. One of `Critical`, `Error`, `Warning`, `Information`, `Verbose` |
+| `include_event_ids` | No | - | Event IDs to keep; empty means all |
+| `exclude_event_ids` | No | - | Event IDs to drop; wins over the include list |
+| `sources` | No | - | Provider name patterns. Example: `Citrix*` |
+| `bookmark_path` | No | - | File persisting the subscription position; use a distinct one per instance |
+| `backlog` | No | `false` | Replay events from the bookmark, or the whole channel without one, before tailing live |
+| `redact_pii` | No | `false` | Blank account names and addresses in Security events |
+| `poll_interval` | No | `30s` | Bookmark flush cadence; delivery itself is push-based |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `channels` | required | Channel names, e.g. `System`, `Security`, `Citrix-XenDesktop-VdaPlugin/Operational` |

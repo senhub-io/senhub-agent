@@ -23,6 +23,17 @@ shared memory file.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `varnishstat_path` | No | `varnishstat` | Path of the varnishstat binary when it is not on the PATH. Example: `/usr/bin/varnishstat` |
+| `instance_name` | No | - | Varnish instance name passed as -n; needed when several instances run on the host |
+| `interval` | No | `60` | Seconds between collections |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `instance_name` | — | Varnish instance name (`-n` flag for `varnishstat`). Required when multiple Varnish instances run on the same host |

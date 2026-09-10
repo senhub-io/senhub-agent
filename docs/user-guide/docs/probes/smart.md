@@ -25,6 +25,20 @@ No parameters are required — the probe auto-discovers all drives visible to
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `devices` | No | - | Device paths to poll; empty means smartctl --scan. Example: `/dev/sda, /dev/nvme0` |
+| `exclude_devices` | No | - | Device paths to skip from the scan, matched exactly |
+| `smartctl_path` | No | `smartctl` | Path of the smartctl binary when it is not on PATH |
+| `use_sudo` | No | `false` | Prefix every smartctl call with sudo (Unix) |
+| `interval` | No | `300` | Seconds between collections |
+| `exec_timeout` | No | `10` | Seconds one smartctl call may take |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `devices` | auto-scan | Explicit list of device paths to poll (e.g. `["/dev/sda", "/dev/nvme0"]`). Skips the scan entirely |

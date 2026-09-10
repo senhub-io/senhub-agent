@@ -23,6 +23,15 @@ No parameters are required — the probe reads WMI on the local host automatical
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `interval` | No | `60` | Seconds between collections |
+
+<!-- schema:params:end -->
+
 This probe takes no configuration parameters.
 
 ## Metrics
