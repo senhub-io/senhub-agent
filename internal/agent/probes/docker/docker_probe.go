@@ -128,7 +128,26 @@ type containerStats struct {
 		Usage uint64            `json:"usage"`
 		Limit uint64            `json:"limit"`
 		Stats map[string]uint64 `json:"stats"` // cgroupsv1: rss/cache/swap; cgroupsv2: anon/file/inactive_file
+		// Windows containers report neither usage nor limit nor stats:
+		// the engine sends the working set and the commit charge instead.
+		PrivateWorkingSet uint64 `json:"privateworkingset"`
+		CommitBytes       uint64 `json:"commitbytes"`
+		CommitPeakBytes   uint64 `json:"commitpeakbytes"`
 	} `json:"memory_stats"`
+	// NumProcs is the Windows processor count; online_cpus is absent there.
+	NumProcs uint32 `json:"num_procs"`
+	// Read and PreRead bracket the two samples in the payload. Windows has
+	// no system_cpu_usage, so the wall time between them is what a
+	// percentage can be derived from.
+	Read    time.Time `json:"read"`
+	PreRead time.Time `json:"preread"`
+	// StorageStats is the Windows counterpart of blkio_stats.
+	StorageStats struct {
+		ReadCountNormalized  uint64 `json:"read_count_normalized"`
+		ReadSizeBytes        uint64 `json:"read_size_bytes"`
+		WriteCountNormalized uint64 `json:"write_count_normalized"`
+		WriteSizeBytes       uint64 `json:"write_size_bytes"`
+	} `json:"storage_stats"`
 	Networks map[string]struct {
 		TxBytes   uint64 `json:"tx_bytes"`
 		RxBytes   uint64 `json:"rx_bytes"`
@@ -454,6 +473,9 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 	if cpuOnline == 0 {
 		cpuOnline = len(s.CPUStats.CPUUsage.PercpuUsage)
 	}
+	if cpuOnline == 0 {
+		cpuOnline = int(s.NumProcs) // Windows
+	}
 	points = append(points,
 		data_store.DataPoint{Name: "container.cpu.usage.total", Value: float64(s.CPUStats.CPUUsage.TotalUsage), Timestamp: ts, Tags: cpuTags},
 		data_store.DataPoint{Name: "container.cpu.usage.kernelmode", Value: float64(s.CPUStats.CPUUsage.UsageInKernelmode), Timestamp: ts, Tags: cpuTags},
@@ -462,11 +484,24 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		data_store.DataPoint{Name: "senhub.docker.cpu.online", Value: float64(cpuOnline), Timestamp: ts, Tags: cpuTags},
 	)
 
-	// Derived cpu.percent — same formula used by `docker stats`.
+	// Derived cpu.percent — same formulas `docker stats` uses, and there
+	// are two: the Linux one divides the container's nanoseconds by the
+	// host's, while Windows sends neither a host total nor nanoseconds.
+	// There the usage counts 100 ns intervals, and what they are measured
+	// against is the wall time between the two samples times the
+	// processors the container may use.
 	cpuDelta := float64(s.CPUStats.CPUUsage.TotalUsage) - float64(s.PreCPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(s.CPUStats.SystemCPUUsage) - float64(s.PreCPUStats.SystemCPUUsage)
-	if systemDelta > 0 && cpuDelta >= 0 {
-		cpuPercent := (cpuDelta / systemDelta) * float64(cpuOnline) * 100.0
+	cpuPercent, hasPercent := 0.0, false
+	switch {
+	case systemDelta > 0 && cpuDelta >= 0:
+		cpuPercent, hasPercent = (cpuDelta/systemDelta)*float64(cpuOnline)*100.0, true
+	case systemDelta == 0 && cpuDelta >= 0 && cpuOnline > 0:
+		if intervals := float64(s.Read.Sub(s.PreRead).Nanoseconds()/100) * float64(cpuOnline); intervals > 0 {
+			cpuPercent, hasPercent = cpuDelta/intervals*100.0, true
+		}
+	}
+	if hasPercent {
 		points = append(points,
 			data_store.DataPoint{Name: "senhub.docker.cpu.percent", Value: float64(cpuPercent), Timestamp: ts, Tags: cpuTags},
 		)
@@ -492,13 +527,26 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 
 	// Memory metrics — cgroups v1/v2 detection via presence of "rss" key.
 	memTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "memory"})
+	usage := s.MemoryStats.Usage
+	if usage == 0 {
+		usage = s.MemoryStats.PrivateWorkingSet // Windows
+	}
 	points = append(points,
-		data_store.DataPoint{Name: "container.memory.usage", Value: float64(s.MemoryStats.Usage), Timestamp: ts, Tags: memTags},
+		data_store.DataPoint{Name: "container.memory.usage", Value: float64(usage), Timestamp: ts, Tags: memTags},
 		data_store.DataPoint{Name: "senhub.docker.memory.limit", Value: float64(s.MemoryStats.Limit), Timestamp: ts, Tags: memTags},
 	)
 
+	// A Windows container answers with the working set and the commit
+	// charge and nothing else: no cgroup breakdown to choose between.
+	isWindows := s.MemoryStats.Stats == nil && s.MemoryStats.PrivateWorkingSet > 0
 	_, isCgroupV1 := s.MemoryStats.Stats["rss"]
-	if isCgroupV1 {
+	if isWindows {
+		points = append(points,
+			data_store.DataPoint{Name: "senhub.docker.memory.working_set", Value: float64(s.MemoryStats.PrivateWorkingSet), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "senhub.docker.memory.commit", Value: float64(s.MemoryStats.CommitBytes), Timestamp: ts, Tags: memTags},
+			data_store.DataPoint{Name: "senhub.docker.memory.commit_peak", Value: float64(s.MemoryStats.CommitPeakBytes), Timestamp: ts, Tags: memTags},
+		)
+	} else if isCgroupV1 {
 		// cgroups v1 keys.
 		rss := s.MemoryStats.Stats["rss"]
 		cache := s.MemoryStats.Stats["cache"]
@@ -598,6 +646,12 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 	// Block I/O metrics — op="Total" is the canonical sum on cgroupsv1; fall
 	// back to summing Read+Write when Total is absent (cgroupsv2 path).
 	blkTotal, blkRead, blkWrite := blkioSplit(s.BlkioStats.IOServiceBytesRecursive)
+	if blkTotal == 0 && (s.StorageStats.ReadSizeBytes > 0 || s.StorageStats.WriteSizeBytes > 0) {
+		// Windows sends storage_stats where Linux sends blkio_stats.
+		blkRead = s.StorageStats.ReadSizeBytes
+		blkWrite = s.StorageStats.WriteSizeBytes
+		blkTotal = blkRead + blkWrite
+	}
 	blkioTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "blkio"})
 	points = append(points,
 		data_store.DataPoint{Name: "container.blockio.usage.total", Value: float64(blkTotal), Timestamp: ts, Tags: blkioTags},
