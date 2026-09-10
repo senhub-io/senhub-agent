@@ -59,21 +59,11 @@ STATUS` and `information_schema`.
 
 <!-- schema:params:end -->
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `host` | Yes | - | Database hostname or IP |
-| `port` | No | `3306` | TCP port |
-| `username` | Yes | - | Monitoring user |
-| `password` | Yes | - | Monitoring user's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `database` | No | `""` | Database the connection opens on. Optional: every query the probe issues names its own schema |
-| `interval` | No | `60` | Collection interval in seconds |
-| `timeout` | No | `10` | Seconds a query may take. Accepts `30` or `30s` |
-| `tls` | No | `false` | `true` / `false`, or a block (below) |
-| `max_replication_lag_seconds` | No | `300` | Lag past which a replica whose threads are both running still counts as unhealthy. `0` turns the lag term off, for a deliberately delayed replica |
-| `per_database` | No | `false` | Emit per-database metrics (cardinality scales with the number of databases) |
-| `per_table` | No | `false` | Emit per-table metrics for the largest tables |
-| `top_n_tables` | No | `20` | How many tables `per_table` covers, largest first |
-| `instance_name` | No | derived | Stable identity override for this instance. Set it when the same server is reachable under several names, so the entity does not split |
+`per_database` scales the series count with the number of databases;
+`per_table` adds the largest tables on top of it. A replica whose two
+threads are both running still counts as unhealthy once its lag passes
+`max_replication_lag_seconds`; set it to `0` for a deliberately delayed
+replica.
 
 #### TLS
 

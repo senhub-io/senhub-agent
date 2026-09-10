@@ -33,10 +33,6 @@ dependencies — uses the stdlib HTTP client.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8222` | NATS management HTTP API base URL |
-
 ## Metrics
 
 | Metric | Unit | Description |
