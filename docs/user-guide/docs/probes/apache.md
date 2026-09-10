@@ -21,6 +21,20 @@ Requires `mod_status` enabled with the `?auto` format.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost/server-status?auto` | URL of the mod_status page, with ?auto |
+| `username` | No | - | Basic-auth user when the status page is protected; empty for none |
+| `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this server; set it when two apache probes run on one host |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost/server-status?auto` | URL to the mod_status endpoint (must include `?auto`) |

@@ -20,6 +20,17 @@ dependable than an HTTP round trip.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `targets` | Yes | - | host:port pairs to dial. Example: `10.0.0.10:443, dc01.lan:389` |
+| `timeout` | No | `5` | Connect budget in seconds per target |
+| `interval` | No | `60` | Seconds between cycles |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `targets` | required | List of `host:port` |

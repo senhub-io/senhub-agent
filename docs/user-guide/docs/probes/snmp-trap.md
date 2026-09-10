@@ -30,6 +30,25 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `bind_address` | No | `127.0.0.1:162` | UDP listen address; port 162 needs root or CAP_NET_BIND_SERVICE |
+| `version` | No | `v2c` | A string. One of `v2c`, `v3` |
+| `community` | No | - | v2c community check; empty accepts any. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `mib_paths` | No | - | Local MIB files or folders for OID names |
+| `v3` | No | - | SNMPv3 users |
+| `v3.users` | Yes | - | A list of blocks |
+| `v3.users[].username` | Yes | - | A string |
+| `v3.users[].auth_protocol` | No | - | A string. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
+| `v3.users[].auth_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.users[].priv_protocol` | No | - | A string. One of `DES`, `AES`, `AES192`, `AES256` |
+| `v3.users[].priv_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `bind_address` | `127.0.0.1:162` | UDP listen address. Loopback by default — receiving traps from network devices requires an explicit address (e.g. `"0.0.0.0:162"`). Port 162 is privileged: run as root or grant `CAP_NET_BIND_SERVICE`, or move to a port above 1024 |

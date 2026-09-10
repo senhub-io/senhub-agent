@@ -37,6 +37,28 @@ when the extension is installed.
 
 ### Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | Server hostname or address |
+| `port` | No | `5432` | Server port |
+| `username` | Yes | - | Monitoring role |
+| `password` | Yes | - | Role's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `database` | No | `postgres` | Database the connection opens on. Also accepted: `databases` |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10s` | Query timeout, seconds or a duration |
+| `max_replication_lag_seconds` | No | `300s` | Replay lag past which a replica counts as unhealthy; 0 turns the lag term off |
+| `sslmode` | No | - | libpq SSL mode; prefer by default. One of `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full` |
+| `sslrootcert` | No | - | CA certificate path, libpq's name for tls.ca_file |
+| `tls` | No | - | TLS settings; the block alone selects verify-full |
+| `tls.skip_verify` | No | `false` | Accept the server certificate without verifying it (selects require). Also accepted: `insecure_skip_verify` |
+| `tls.ca_file` | No | - | CA certificate the server is verified against. Also accepted: `ca_cert` |
+| `instance_name` | No | - | Stable identity override for this cluster |
+
+<!-- schema:params:end -->
+
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `host` | Yes | - | Database hostname or IP |

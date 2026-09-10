@@ -22,6 +22,20 @@ for the buckets endpoint.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost:8086` | Base URL of the server. Example: `http://influx01:8086` |
+| `token` | No | - | API token; empty skips the bucket count, /health and /metrics need none. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `org` | No | - | Organisation the bucket listing is scoped to; empty lists every bucket the token sees |
+| `timeout` | No | `10` | HTTP request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this server |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost:8086` | InfluxDB base URL |

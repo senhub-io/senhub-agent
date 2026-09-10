@@ -23,6 +23,19 @@ state (leader/follower/observer).
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | No | `localhost` | Node hostname or address |
+| `port` | No | `2181` | Client port the four-letter commands are sent to |
+| `timeout` | No | `10` | Connection and command timeout in seconds |
+| `interval` | No | `30` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this node instead of host:port |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `host` | `localhost` | ZooKeeper node hostname or IP |

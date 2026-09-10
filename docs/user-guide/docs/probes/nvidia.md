@@ -22,6 +22,17 @@ No parameters are required. The probe auto-detects all GPUs visible to
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `nvidia_smi_path` | No | `nvidia-smi` | Path of the nvidia-smi binary when it is not on the PATH. Example: `/usr/bin/nvidia-smi` |
+| `gpus` | No | - | GPU indices to report, as nvidia-smi numbers them; empty means all. Example: `0, 1` |
+| `interval` | No | `30` | Seconds between collections |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `nvidia_smi_path` | `nvidia-smi` | Path to the `nvidia-smi` binary if not in PATH |

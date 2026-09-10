@@ -24,6 +24,26 @@ against the local BMC.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `mode` | No | `local` | local reads the host's own BMC; remote polls a BMC over LAN. One of `local`, `remote` |
+| `remote` | No | - | Remote BMC access, used with mode remote |
+| `remote.host` | No | - | BMC address or hostname; required with mode remote |
+| `remote.username` | No | - | IPMI user |
+| `remote.password` | No | - | IPMI user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `remote.interface` | No | `lanplus` | ipmitool interface; lanplus for IPMI 2.0, lan for IPMI 1.5 |
+| `sensors` | No | - | Sensor selection |
+| `sensors.include_types` | No | - | Only these sensor types; empty means all. Example: `Temperature, Fan` |
+| `sensors.exclude_names` | No | - | Regular expressions of sensor names to skip |
+| `ipmitool_path` | No | `ipmitool` | Path of the ipmitool binary when it is not on the PATH. Example: `/usr/bin/ipmitool` |
+| `interval` | No | `60` | Seconds between collections |
+| `exec_timeout` | No | `10` | Seconds an ipmitool run may take before it is killed |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `mode` | `local` | `local` (host's own BMC) or `remote` (poll a remote BMC over LAN) |

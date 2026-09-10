@@ -23,6 +23,20 @@ database read/write throughput and I/O byte counters.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `http://localhost:5984` | Base URL of the node. Example: `http://couch01:5984` |
+| `username` | No | - | Admin user; the stats endpoint needs admin credentials by default |
+| `password` | No | - | Admin user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `timeout` | No | `10` | HTTP request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this node |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `http://localhost:5984` | CouchDB base URL |

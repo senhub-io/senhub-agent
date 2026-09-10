@@ -25,6 +25,20 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | Listener hostname or address. Example: `db.example.com` |
+| `port` | No | `1521` | Listener port |
+| `service_name` | Yes | - | Oracle service name, not the SID. Example: `ORCL` |
+| `username` | Yes | - | Database user with SELECT on the v$ views |
+| `password` | No | - | User's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `60` | Seconds between collections |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `host` | required | Oracle Database server hostname or IP |

@@ -22,6 +22,21 @@ Monitors all processes by default. Add a `filter` block to narrow the scope.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `interval` | No | `30` | Seconds between collections |
+| `filter` | No | - | Narrows the process table; empty watches every process |
+| `filter.by_name` | No | - | Regular expression (RE2) a process name must match. Example: `^(nginx\|php-fpm)` |
+| `filter.by_user` | No | - | OS user owning the processes; empty accepts every user. Example: `www-data` |
+| `filter.top_n` | No | `0` | Keep only the N processes with the highest CPU usage; 0 keeps all |
+| `aggregate` | No | - | Roll-up of the processes sharing a name |
+| `aggregate.enabled` | No | `true` | Emit one process count per distinct process name |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `filter.by_name` | — | Regex pattern to restrict monitoring to matching process names |

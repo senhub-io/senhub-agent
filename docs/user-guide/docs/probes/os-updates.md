@@ -25,6 +25,16 @@ All queries are read-only and run without privilege escalation.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `interval` | No | `3600` | Seconds between collections; update status changes slowly |
+| `command_timeout` | No | `120` | Seconds allowed to the package-manager queries on Linux |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `interval` | `3600` | Collection interval in seconds. Update status changes slowly; 30-60 minutes is a sensible range. |

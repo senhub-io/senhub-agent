@@ -29,6 +29,16 @@ No parameters are required — the probe reads the local chrony daemon.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `chronyc_path` | No | `chronyc` | Path of the chronyc binary when it is not on the service's PATH. Example: `/usr/bin/chronyc` |
+| `interval` | No | `30` | Seconds between collections |
+
+<!-- schema:params:end -->
+
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `chronyc_path` | string | `chronyc` | Path to the `chronyc` binary. Set this when it is not on the agent's `PATH` — a hardened service unit does not inherit an interactive shell's `PATH`, so an absolute path such as `/usr/bin/chronyc` is the usual fix. |

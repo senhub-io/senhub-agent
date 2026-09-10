@@ -634,3 +634,16 @@ The Syslog probe requires no authentication for incoming syslog messages. Access
 ### Syslog Sources
 - RFC 3164 (BSD Syslog) or RFC 5424 (IETF Syslog) format
 - UDP or TCP transport support
+
+## Parameters
+
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `port` | No | `514` | Port to listen on; 514 needs root or CAP_NET_BIND_SERVICE |
+| `protocol` | No | `udp` | Transport the listener accepts. One of `udp`, `tcp` |
+| `bind_address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+
+<!-- schema:params:end -->

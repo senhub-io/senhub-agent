@@ -38,6 +38,18 @@ identical to records produced by the `syslog` and `event` probes
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `units` | No | - | systemd units to follow; empty means every unit. Example: `nginx.service` |
+| `identifiers` | No | - | Program names (SYSLOG_IDENTIFIER) to follow. Example: `sshd` |
+| `priority` | No | `7` | Highest syslog priority to include, 0 (emergency) to 7 (debug) |
+| `include_boot` | No | `false` | Replay entries since the current boot instead of streaming only new ones |
+
+<!-- schema:params:end -->
+
 All parameters are optional.
 
 | Parameter | Default | Description |

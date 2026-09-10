@@ -36,6 +36,18 @@ There is no default server, on purpose. See [Choosing servers](#choosing-servers
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `servers` | Yes | - | Reference servers as host or host:port; port 123 otherwise. Example: `ntp.example.org, 10.0.0.1:123` |
+| `samples` | No | `4` | Exchanges per server per cycle, the least delayed is kept; at most 16 |
+| `timeout` | No | `5` | Per-exchange timeout in seconds |
+| `interval` | No | `300` | Seconds between cycles; every query is traffic to somebody else's server |
+
+<!-- schema:params:end -->
+
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `servers` | list of strings | **required** | Reference servers to measure against. Each entry is a hostname or IP, optionally with a port (`ntp.example.org:1123`); port 123 is used otherwise. |

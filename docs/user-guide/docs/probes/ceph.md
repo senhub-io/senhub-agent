@@ -23,6 +23,20 @@ I/O statistics.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | No | `https://localhost:8443` | Base URL of the Manager dashboard / REST API |
+| `username` | Yes | - | Dashboard user |
+| `password` | Yes | - | Dashboard user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_tls` | No | `true` | Verify the dashboard certificate; false accepts a self-signed one |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this cluster |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | `https://localhost:8443` | Base URL of the Ceph Manager Dashboard / REST API |

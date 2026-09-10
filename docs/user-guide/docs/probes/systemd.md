@@ -23,6 +23,17 @@ All non-transient units are monitored by default. No parameters are required.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `units` | No | - | Unit names or shell globs to watch; empty watches every unit of the included types. Example: `nginx.service, ssh*.service` |
+| `include_types` | No | `[service socket timer mount]` | Unit type suffixes to include. Example: `service, timer` |
+| `interval` | No | `30` | Seconds between collections |
+
+<!-- schema:params:end -->
+
 This probe takes no configuration parameters.
 
 ## Metrics

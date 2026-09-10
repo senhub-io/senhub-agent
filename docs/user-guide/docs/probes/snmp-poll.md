@@ -35,6 +35,73 @@ one series per interface (`if_index` tag).
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `target` | Yes | - | Device address or hostname |
+| `port` | No | `161` | SNMP UDP port |
+| `version` | No | `v2c` | SNMP version; v1 is refused. One of `v2c`, `v3`, `2c`, `3`, `2` |
+| `community` | No | `public` | Community string (v2c). A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3` | No | - | USM credentials, required with version v3 |
+| `v3.username` | Yes | - | USM user |
+| `v3.auth_protocol` | No | - | Authentication protocol; empty for none. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
+| `v3.auth_passphrase` | No | - | Required with auth_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.priv_protocol` | No | - | Privacy protocol; needs auth_protocol. One of `DES`, `AES`, `AES192`, `AES256` |
+| `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `retries` | No | `2` | Retries per request |
+| `timeout` | No | `5s` | Per-request timeout |
+| `interval` | No | `60s` | Metric polling cadence |
+| `topology_interval` | No | `10m` | Entity and topology sweep cadence |
+| `mibs` | No | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
+| `mib_paths` | No | - | Local MIB files or folders used to name custom mappings |
+| `custom_mappings` | No | - | OID to metric mappings |
+| `custom_mappings[].oid` | Yes | - | OID, leading dot optional |
+| `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
+| `custom_mappings[].type` | No | `gauge` | A string. One of `gauge`, `counter` |
+| `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
+| `discovery` | No | - | Topology crawl from seed devices |
+| `discovery.seeds` | Yes | - | Entry-point device addresses |
+| `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
+| `discovery.profile.version` | No | `v2c` | A string. One of `v2c`, `2c`, `2` |
+| `discovery.profile.community` | Yes | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `discovery.allowed_cidrs` | Yes | - | The crawl never leaves these ranges |
+| `discovery.max_devices` | No | `200` | A int |
+| `discovery.max_hops` | No | `4` | A int |
+| `discovery.interval` | No | - | Crawl cadence; topology_interval by default |
+| `discovery.governance_rules` | No | - | Per-device governance by match |
+| `discovery.governance_rules[].match` | No | - | A block of settings |
+| `discovery.governance_rules[].match.cidr` | No | - | A string |
+| `discovery.governance_rules[].match.vendor` | No | - | A string |
+| `discovery.governance_rules[].match.sysname` | No | - | Regular expression |
+| `discovery.governance_rules[].governance` | No | - | A block of settings |
+| `discovery.governance_rules[].governance.owner` | No | - | Who owns what this instance observes |
+| `discovery.governance_rules[].governance.owner.team` | No | - | Owning team |
+| `discovery.governance_rules[].governance.owner.contact` | No | - | Contact for the team |
+| `discovery.governance_rules[].governance.criticality` | No | - | Business criticality. One of `critical`, `high`, `medium`, `low` |
+| `discovery.governance_rules[].governance.location` | No | - | Where it is |
+| `discovery.governance_rules[].governance.location.site` | No | - | A string |
+| `discovery.governance_rules[].governance.location.datacenter` | No | - | A string |
+| `discovery.governance_rules[].governance.location.rack` | No | - | A string |
+| `discovery.governance_rules[].governance.location.room` | No | - | A string |
+| `discovery.governance_rules[].governance.lifecycle` | No | - | active, maintenance, decommissioning or retired |
+| `discovery.governance_rules[].governance.labels` | No | - | Free-form labels, emitted as entity.label.<key>; use application to name the application chain |
+| `governance` | No | - | Ownership, criticality and location of the device |
+| `governance.owner` | No | - | Who owns what this instance observes |
+| `governance.owner.team` | No | - | Owning team |
+| `governance.owner.contact` | No | - | Contact for the team |
+| `governance.criticality` | No | - | Business criticality. One of `critical`, `high`, `medium`, `low` |
+| `governance.location` | No | - | Where it is |
+| `governance.location.site` | No | - | A string |
+| `governance.location.datacenter` | No | - | A string |
+| `governance.location.rack` | No | - | A string |
+| `governance.location.room` | No | - | A string |
+| `governance.lifecycle` | No | - | active, maintenance, decommissioning or retired |
+| `governance.labels` | No | - | Free-form labels, emitted as entity.label.<key>; use application to name the application chain |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `target` | required | Device IP or hostname |

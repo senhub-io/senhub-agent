@@ -23,6 +23,20 @@ executor counts, and build queue depth.
 
 ## Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `endpoint` | Yes | - | Base URL of the controller. Example: `https://jenkins.example.com` |
+| `username` | No | - | User the API calls authenticate as; empty queries anonymously |
+| `api_token` | No | - | API token of that user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `15` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this controller instead of the one it reports |
+
+<!-- schema:params:end -->
+
 | Parameter | Default | Description |
 |---|---|---|
 | `endpoint` | required | Base URL of the Jenkins controller (e.g. `https://jenkins.example.com`) |
