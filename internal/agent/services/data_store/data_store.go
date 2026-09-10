@@ -22,6 +22,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/data_store/outputspec"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -292,21 +293,62 @@ func (d *dataStore) Start(ctx context.Context) error {
 
 	d.OnConfigRefreshed("initial")
 
-	// An agent whose every output refused to start collects into the
-	// void: nothing leaves the host and, when the refusal is the HTTP
-	// output, there is no console left to say so. Refuse to run rather
-	// than look healthy. One working output is enough; the others are
-	// reported as failing and retried on the next reload.
-	if configured := len(d.configProvider.GetConfiguration().StorageConfig); configured > 0 && len(d.activeStrategies()) == 0 {
-		reasons := make([]string, 0, configured)
-		for name, failure := range agentstate.GetStrategyFailures() {
+	if err := d.refuseToRunBlind(); err != nil {
+		return err
+	}
+
+	d.configProvider.OnConfigChanged(d.OnConfigRefreshed)
+	return nil
+}
+
+// refuseToRunBlind stops an agent that would look healthy while doing
+// nothing useful. Two cases, both settled at start because neither is
+// transient: every output refused, so nothing leaves the host at all;
+// or an output that serves a poller could not take its socket, which no
+// retry will fix and which, for the HTTP output, also takes away the
+// console that would have said so.
+func (d *dataStore) refuseToRunBlind() error {
+	configured := d.configProvider.GetConfiguration().StorageConfig
+	if len(configured) == 0 {
+		return nil
+	}
+	failures := agentstate.GetStrategyFailures()
+	running := map[string]bool{}
+	for _, s := range d.activeStrategies() {
+		running[s.GetStrategyName()] = true
+	}
+
+	var blocked []string
+	for _, sc := range configured {
+		if running[sc.Name] {
+			continue
+		}
+		out, known := outputspec.For(sc.Name)
+		if !known || out.Mode != outputspec.ModePull {
+			continue
+		}
+		reason := "did not start"
+		if f, ok := failures[sc.Name]; ok {
+			reason = f.Detail
+			if reason == "" {
+				reason = f.Reason
+			}
+		}
+		blocked = append(blocked, sc.Name+": "+reason)
+	}
+	if len(blocked) > 0 {
+		sort.Strings(blocked)
+		return fmt.Errorf("an output that a poller reads could not start, and no retry will take the address it was refused: %s", strings.Join(blocked, "; "))
+	}
+
+	if len(running) == 0 {
+		reasons := make([]string, 0, len(configured))
+		for name, failure := range failures {
 			reasons = append(reasons, name+": "+failure.Reason)
 		}
 		sort.Strings(reasons)
 		return fmt.Errorf("no output could be started, so nothing would leave this host: %s", strings.Join(reasons, "; "))
 	}
-
-	d.configProvider.OnConfigChanged(d.OnConfigRefreshed)
 	return nil
 }
 
