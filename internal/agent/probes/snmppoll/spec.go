@@ -38,14 +38,14 @@ func init() {
 					{Key: "community", Kind: probes.KindString, Required: true, Secret: true},
 				}},
 				{Key: "allowed_cidrs", Kind: probes.KindStringList, Required: true, Description: "The crawl never leaves these ranges"},
-				{Key: "max_devices", Kind: probes.KindInt, Default: 200},
-				{Key: "max_hops", Kind: probes.KindInt, Default: 4},
+				{Key: "max_devices", Kind: probes.KindInt, Default: 200, Description: "Hard cap on the number of discovered devices"},
+				{Key: "max_hops", Kind: probes.KindInt, Default: 4, Description: "Crawl depth from the seeds"},
 				{Key: "interval", Kind: probes.KindDuration, Description: "Crawl cadence; topology_interval by default"},
 				{Key: "governance_rules", Kind: probes.KindBlockList, Description: "Per-device governance by match", Fields: []probes.ParamSpec{
-					{Key: "match", Kind: probes.KindBlock, Fields: []probes.ParamSpec{
-						{Key: "cidr", Kind: probes.KindString},
-						{Key: "vendor", Kind: probes.KindString},
-						{Key: "sysname", Kind: probes.KindString, Description: "Regular expression"},
+					{Key: "match", Kind: probes.KindBlock, Description: "Conditions a device must all meet; an empty match applies to every device", Fields: []probes.ParamSpec{
+						{Key: "cidr", Kind: probes.KindString, Description: "Address range the polled address must fall in"},
+						{Key: "vendor", Kind: probes.KindString, Description: "Vendor name from sysObjectID, compared case-insensitively"},
+						{Key: "sysname", Kind: probes.KindString, Description: "Regular expression the device sysName must match"},
 					}},
 					{Key: "governance", Kind: probes.KindBlock, Fields: probes.GovernanceFields()},
 				}},

@@ -67,24 +67,24 @@ one series per interface (`if_index` tag).
 | `discovery.profile.version` | No | `v2c` | A string. One of `v2c`, `2c`, `2` |
 | `discovery.profile.community` | Yes | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `discovery.allowed_cidrs` | Yes | - | The crawl never leaves these ranges |
-| `discovery.max_devices` | No | `200` | A int |
-| `discovery.max_hops` | No | `4` | A int |
+| `discovery.max_devices` | No | `200` | Hard cap on the number of discovered devices |
+| `discovery.max_hops` | No | `4` | Crawl depth from the seeds |
 | `discovery.interval` | No | - | Crawl cadence; topology_interval by default |
 | `discovery.governance_rules` | No | - | Per-device governance by match |
-| `discovery.governance_rules[].match` | No | - | A block of settings |
-| `discovery.governance_rules[].match.cidr` | No | - | A string |
-| `discovery.governance_rules[].match.vendor` | No | - | A string |
-| `discovery.governance_rules[].match.sysname` | No | - | Regular expression |
+| `discovery.governance_rules[].match` | No | - | Conditions a device must all meet; an empty match applies to every device |
+| `discovery.governance_rules[].match.cidr` | No | - | Address range the polled address must fall in |
+| `discovery.governance_rules[].match.vendor` | No | - | Vendor name from sysObjectID, compared case-insensitively |
+| `discovery.governance_rules[].match.sysname` | No | - | Regular expression the device sysName must match |
 | `discovery.governance_rules[].governance` | No | - | A block of settings |
 | `discovery.governance_rules[].governance.owner` | No | - | Who owns what this instance observes |
 | `discovery.governance_rules[].governance.owner.team` | No | - | Owning team |
 | `discovery.governance_rules[].governance.owner.contact` | No | - | Contact for the team |
 | `discovery.governance_rules[].governance.criticality` | No | - | Business criticality. One of `critical`, `high`, `medium`, `low` |
 | `discovery.governance_rules[].governance.location` | No | - | Where it is |
-| `discovery.governance_rules[].governance.location.site` | No | - | A string |
-| `discovery.governance_rules[].governance.location.datacenter` | No | - | A string |
-| `discovery.governance_rules[].governance.location.rack` | No | - | A string |
-| `discovery.governance_rules[].governance.location.room` | No | - | A string |
+| `discovery.governance_rules[].governance.location.site` | No | - | Site name |
+| `discovery.governance_rules[].governance.location.datacenter` | No | - | Datacenter name |
+| `discovery.governance_rules[].governance.location.rack` | No | - | Rack identifier |
+| `discovery.governance_rules[].governance.location.room` | No | - | Room identifier |
 | `discovery.governance_rules[].governance.lifecycle` | No | - | active, maintenance, decommissioning or retired |
 | `discovery.governance_rules[].governance.labels` | No | - | Free-form labels, emitted as entity.label.<key>; use application to name the application chain |
 | `governance` | No | - | Ownership, criticality and location of the device |
@@ -93,10 +93,10 @@ one series per interface (`if_index` tag).
 | `governance.owner.contact` | No | - | Contact for the team |
 | `governance.criticality` | No | - | Business criticality. One of `critical`, `high`, `medium`, `low` |
 | `governance.location` | No | - | Where it is |
-| `governance.location.site` | No | - | A string |
-| `governance.location.datacenter` | No | - | A string |
-| `governance.location.rack` | No | - | A string |
-| `governance.location.room` | No | - | A string |
+| `governance.location.site` | No | - | Site name |
+| `governance.location.datacenter` | No | - | Datacenter name |
+| `governance.location.rack` | No | - | Rack identifier |
+| `governance.location.room` | No | - | Room identifier |
 | `governance.lifecycle` | No | - | active, maintenance, decommissioning or retired |
 | `governance.labels` | No | - | Free-form labels, emitted as entity.label.<key>; use application to name the application chain |
 
