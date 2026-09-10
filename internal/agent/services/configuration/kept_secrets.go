@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v2"
+
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 )
 
 // The console never sees a stored secret: the listing shows a reference
@@ -136,4 +138,65 @@ func StrategyFragmentParams(configPath, name string) (map[string]interface{}, er
 		}
 	}
 	return nil, nil
+}
+
+// pruneInstanceSecrets drops from the store every secret of an instance
+// that its fragment no longer references. Without it, deleting a probe
+// or clearing one of its passwords leaves the value behind: `secret
+// list` keeps showing a name nothing reads, and a probe recreated under
+// the same name would silently inherit it.
+func pruneInstanceSecrets(instance string, params map[string]interface{}) error {
+	backend, err := secret.Backend()
+	if err != nil {
+		// No store means nothing was ever sealed.
+		return nil
+	}
+	names, err := backend.List()
+	if err != nil {
+		return fmt.Errorf("listing the secret store: %w", err)
+	}
+	keep := referencedSecrets(params)
+	prefix := secret.SanitizeKey(instance) + "."
+	for _, name := range names {
+		if !strings.HasPrefix(name, prefix) || keep[name] {
+			continue
+		}
+		if err := backend.Delete(name); err != nil {
+			return fmt.Errorf("dropping the stored secret %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// referencedSecrets collects the store keys a set of params points at.
+func referencedSecrets(params map[string]interface{}) map[string]bool {
+	out := map[string]bool{}
+	var walk func(v interface{})
+	walk = func(v interface{}) {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			for _, item := range val {
+				walk(item)
+			}
+		case []interface{}:
+			for _, item := range val {
+				walk(item)
+			}
+		case string:
+			if name, ok := secretReference(val); ok {
+				out[name] = true
+			}
+		}
+	}
+	walk(params)
+	return out
+}
+
+// secretReference reads the store key out of a ${secret:...} reference.
+func secretReference(v string) (string, bool) {
+	const open = "${secret:"
+	if !strings.HasPrefix(v, open) || !strings.HasSuffix(v, "}") {
+		return "", false
+	}
+	return v[len(open) : len(v)-1], true
 }

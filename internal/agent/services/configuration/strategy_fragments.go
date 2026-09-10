@@ -200,7 +200,7 @@ func UpdateStrategyFragment(configPath, name string, params StorageConfigParams,
 			return "", fmt.Errorf("removing %s after writing %s: %w", path, target, err)
 		}
 	}
-	return target, nil
+	return target, pruneInstanceSecrets("strategies."+name, params)
 }
 
 // DeleteStrategyFragment removes an output's file, enabled or disabled.
@@ -215,7 +215,7 @@ func DeleteStrategyFragment(configPath, name string) (string, error) {
 	if err := os.Remove(path); err != nil {
 		return "", fmt.Errorf("removing %s: %w", path, err)
 	}
-	return path, nil
+	return path, pruneInstanceSecrets("strategies."+name, nil)
 }
 
 func writeManagedStrategyFragment(path, name string, params StorageConfigParams) error {
