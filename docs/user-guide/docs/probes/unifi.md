@@ -39,14 +39,6 @@ throughput and connected-client totals.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `https://localhost:8443` | UniFi Controller base URL |
-| `username` | required | Controller local user username |
-| `password` | required | Controller local user password — reference a stored secret via `${secret:unifi.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `site` | `default` | Controller site name to monitor |
-| `verify_tls` | `true` | Set to `false` to accept self-signed certificates (lab use only) |
-
 ## Metrics
 
 | Metric | Unit | Description |

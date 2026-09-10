@@ -49,13 +49,11 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 
 <!-- schema:params:end -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `bind_address` | `127.0.0.1:162` | UDP listen address. Loopback by default — receiving traps from network devices requires an explicit address (e.g. `"0.0.0.0:162"`). Port 162 is privileged: run as root or grant `CAP_NET_BIND_SERVICE`, or move to a port above 1024 |
-| `version` | `v2c` | `v2c` or `v3` |
-| `community` | empty | v2c community check. Empty accepts any community — always set it on production receivers. Reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `mib_paths` | `[]` | Local directories or files of MIB modules for OID-to-name resolution |
-| `v3` | none | SNMPv3 USM users, as a list under `v3.users` (see below) |
+The listener is on loopback by default; traps from network devices need
+an explicit address such as `"0.0.0.0:162"`. When the agent cannot bind a
+privileged port, move to a port above 1024 and point the devices at it.
+An empty `community` accepts every datagram, so set it on a production
+receiver.
 
 ### SNMPv3 users
 
@@ -71,13 +69,8 @@ params:
         priv_password: "${env:TRAP_PRIV_PWD}"
 ```
 
-| Field | Description |
-|---|---|
-| `username` | required |
-| `auth_protocol` | `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, or empty for no authentication |
-| `auth_password` | Authentication passphrase |
-| `priv_protocol` | `DES`, `AES`, `AES192`, `AES256`, or empty for no privacy |
-| `priv_password` | Privacy passphrase |
+Leave `auth_protocol` empty for no authentication and `priv_protocol`
+empty for no privacy.
 
 ## Output
 
