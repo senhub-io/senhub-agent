@@ -5,7 +5,7 @@
 
 # Ping Gateway Probe
 
-The Ping Gateway probe monitors network connectivity to the default gateway or a specified IP address, providing essential metrics for detecting network routing issues, ISP quality problems, and local network connectivity.
+The Ping Gateway probe monitors network connectivity to the host's default gateway, providing essential metrics for detecting network routing issues, ISP quality problems, and local network connectivity.
 
 ## Quick Start
 
@@ -15,20 +15,10 @@ The Ping Gateway probe monitors network connectivity to the default gateway or a
 # probes.d/10-ping-gateway.yaml — each file under probes.d/ is a YAML array of probes
 - name: ping_gateway
   type: ping_gateway
-  params:
-    interval: 30  # Collection interval in seconds (default: 30)
-```
-
-### Minimal Configuration
-
-```yaml
-# probes.d/10-ping-gateway.yaml
-- name: ping_gateway
-  type: ping_gateway
   params: {}
 ```
 
-The Ping Gateway probe requires no mandatory parameters and automatically detects the default gateway. It works out-of-the-box with default settings.
+The Ping Gateway probe reads no parameters. It detects the default gateway from the routing table and pings it every 30 seconds.
 
 ## Supported Platforms
 
@@ -47,50 +37,23 @@ Platform-specific ping implementations are automatically selected based on the o
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `interval` | integer | `30` | Collection interval in seconds |
+<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
 
-### Example Configurations
+This probe reads no parameters.
 
-**High-frequency monitoring (every 10 seconds):**
-```yaml
-# probes.d/10-ping-gateway.yaml
-- name: ping_gateway
-  type: ping_gateway
-  params:
-    interval: 10
-```
-
-**Standard monitoring (every minute):**
-```yaml
-# probes.d/10-ping-gateway.yaml
-- name: ping_gateway
-  type: ping_gateway
-  params:
-    interval: 60
-```
-
-**Low-frequency monitoring (every 5 minutes):**
-```yaml
-# probes.d/10-ping-gateway.yaml
-- name: ping_gateway
-  type: ping_gateway
-  params:
-    interval: 300
-```
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored. Run one instance per host: a second instance pings the same gateway again.
 
 ## How It Works
 
 ### Gateway Auto-Detection
 
-The probe automatically detects the default gateway by:
+The probe reads the default route from the operating system's routing table:
 
-1. **Enumerating network interfaces** - Identifies all active, non-loopback interfaces
-2. **Selecting primary interface** - Chooses the first interface with an IPv4 address
-3. **Extracting gateway IP** - Uses the interface's network configuration
+- **Linux**: the `0.0.0.0` route with a gateway flag in `/proc/net/route`
+- **Windows**: the `0.0.0.0` destination in `route print 0.0.0.0`
+- **macOS**: the `gateway:` line of `route -n get default`
 
-**Note:** The current implementation returns the local interface IP, not the actual gateway. This is a known limitation that will be addressed in future versions.
+Only IPv4 routes are considered. When no default route is found the collection fails with an error and no metric is emitted.
 
 ### Ping Collection Process
 
@@ -414,37 +377,15 @@ Network impact is negligible:
 - **Bandwidth**: ~640 bytes every 30 seconds = ~170 bits/sec
 - **Total overhead**: < 0.001% on 10 Mbps link
 
-### Recommended Intervals
+### Collection cadence
 
-| Use Case | Interval | Reason |
-|----------|----------|--------|
-| Real-time network monitoring | 10-15s | Catch short-lived network issues |
-| Standard monitoring | 30-60s | Balance accuracy and overhead |
-| Periodic health check | 120-300s | Low-frequency connectivity verification |
-| Baseline establishment | 300-600s | Long-term trend analysis |
-
-**Recommendation for Most Environments:** 30-60 seconds provides good balance between detection speed and system overhead.
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored. Ten pings every 30 seconds is the fixed load on the gateway.
 
 ## Advanced Configuration
 
 ### Multiple Gateway Monitoring
 
-Monitor multiple gateways or network paths:
-
-```yaml
-# probes.d/10-ping-gateway.yaml
-- name: ping_gateway_primary
-  type: ping_gateway
-  params:
-    interval: 30
-
-- name: ping_gateway_secondary
-  type: ping_gateway
-  params:
-    interval: 60
-```
-
-**Note:** Current implementation auto-detects only the default gateway. Manual gateway specification will be supported in future versions.
+The probe pings the default gateway only, and every instance on a host resolves the same gateway. Configure one instance per host; there is no parameter to point an instance at another gateway.
 
 ### Integration with Other Probes
 
@@ -455,17 +396,18 @@ Comprehensive network monitoring setup:
 # Local network connectivity
 - name: ping_gateway
   type: ping_gateway
-  params:
-    interval: 30
+  params: {}
 
-# External connectivity and DNS
-- name: ping_webapp
+# External connectivity and DNS, one ping_webapp instance per URL
+- name: ping_webapp_google
   type: ping_webapp
   params:
-    interval: 60
-    targets:
-      - url: "https://www.google.com"
-      - url: "https://1.1.1.1"
+    url: "https://www.google.com"
+
+- name: ping_webapp_cloudflare
+  type: ping_webapp
+  params:
+    url: "https://1.1.1.1"
 
 # Interface metrics
 - name: network
@@ -481,13 +423,11 @@ This combination provides:
 
 ## Known Limitations
 
-1. **Gateway Detection**: Currently returns the local interface IP instead of the actual gateway IP. This will be improved in future versions.
+1. **IPv6 Support**: The probe currently focuses on IPv4 connectivity. IPv6 support is planned for future releases.
 
-2. **IPv6 Support**: The probe currently focuses on IPv4 connectivity. IPv6 support is planned for future releases.
+2. **Manual Gateway Override**: No option to specify a custom gateway IP. Auto-detection is the only supported mode.
 
-3. **Manual Gateway Override**: No option to specify a custom gateway IP. Auto-detection is the only supported mode.
-
-4. **Jitter Metrics**: The probe does not currently calculate jitter (latency variance). This is planned for future releases.
+3. **Jitter Metrics**: The probe does not currently calculate jitter (latency variance). This is planned for future releases.
 
 ## Requirements
 

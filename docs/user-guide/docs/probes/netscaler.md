@@ -75,40 +75,46 @@ Basic configuration for single NetScaler:
 
 ## Recommended Production Configuration
 
-Full configuration with SSL validation and custom tags:
+Full configuration for an HA pair, with SSL validation and custom tags:
 
 ```yaml
 # probes.d/20-netscaler.yaml
 - name: "netscaler-prod"
   type: netscaler
   params:
-    base_url: "https://netscaler.company.com"
+    base_url: "https://netscaler-1.company.com"      # primary node NSIP
+    secondary_url: "https://netscaler-2.company.com" # other HA node, the probe follows the primary role
     username: "monitoring-user"
     password: ${secret:netscaler-prod.password}   # OS secret store; inline plaintext is auto-sealed on install
     insecure_skip_verify: false  # Validate SSL certificates
     timeout: 30                   # API request timeout (seconds)
     interval: 60                  # Collection interval (seconds)
-  custom_tags:
-    - key: "environment"
-      value: "production"
-    - key: "datacenter"
-      value: "dc-paris-01"
+    custom_tags:                  # key: value pairs, attached to every metric
+      environment: "production"
+      datacenter: "dc-paris-01"
 ```
+
+`custom_tags` is a map under `params`, not a list of `key` / `value`
+entries: a list is ignored without a warning, and so is a map placed
+outside `params`. Values must be strings.
 
 # Configuration Parameters
 
 ## Complete Parameter Reference
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `base_url` | string | Yes | - | NetScaler management URL (primary node IP recommended) |
-| `secondary_url` | string | No | - | Secondary NetScaler URL for HA automatic failover |
-| `username` | string | Yes | - | NITRO API username |
-| `password` | string | Yes | - | NITRO API password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `insecure_skip_verify` | boolean | No | `false` | Skip SSL certificate verification (set `true` when using IPs) |
-| `timeout` | integer | No | `30` | API request timeout in seconds |
-| `interval` | integer | No | `60` | Metric collection interval in seconds |
-| `custom_tags` | array | No | `[]` | Additional tags to attach to all metrics |
+<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `base_url` | Yes | - | Management (NSIP) URL of the appliance, or of the primary node of an HA pair |
+| `secondary_url` | No | - | Management URL of the other HA node; the probe follows the primary role. Empty disables failover |
+| `username` | Yes | - | NITRO API user |
+| `password` | No | - | NITRO API password; this or `api_key` is required. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
+| `api_key` | No | - | NITRO API key used instead of the password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` |
+| `insecure_skip_verify` | No | `false` | Accept the management certificate without verifying it, for example when the URL is an IP address |
+| `timeout` | No | `30` | API request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `custom_tags` | No | - | Extra tags attached to every metric, as `key: value` pairs |
 
 # Metrics Overview
 
