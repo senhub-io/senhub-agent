@@ -892,6 +892,49 @@ type ProbeStatistics struct {
 	Name         string    `json:"name"`
 	MetricsCount int       `json:"metrics_count"`
 	LastUpdate   time.Time `json:"last_update"`
+	// TargetUp carries the probe's own verdict on whether what it watches
+	// answered, read from the `senhub.<area>.up` series that 49 probe
+	// types emit. Nil when the probe emits none, which is the case for
+	// every probe that measures this host rather than reaching out.
+	//
+	// It is deliberately NOT the probe's health: a database that refuses
+	// the connection is a successful collection reporting a down target,
+	// so health stays "ok" and this says the other half. Without it the
+	// console called such a probe green and the operator had only a line
+	// in the log to tell them otherwise.
+	TargetUp *bool `json:"target_up,omitempty"`
+	// TargetMetric names the series TargetUp was read from, so the
+	// console can say which measurement it is quoting.
+	TargetMetric string `json:"target_metric,omitempty"`
+}
+
+// upVerdict reads a `senhub.<area>.up` series as a boolean. Probes write
+// it as a number (1 or 0); anything else is not a verdict and is ignored
+// rather than guessed at.
+func upVerdict(v interface{}) (bool, bool) {
+	switch n := v.(type) {
+	case int:
+		return n != 0, true
+	case int32:
+		return n != 0, true
+	case int64:
+		return n != 0, true
+	case float32:
+		return n != 0, true
+	case float64:
+		return n != 0, true
+	case bool:
+		return n, true
+	}
+	return false, false
+}
+
+// isUpMetric matches the naming convention the probes share:
+// senhub.<area>.up, and nothing deeper (senhub.db.replica.up is about
+// one replica, not about the target as a whole).
+func isUpMetric(name string) bool {
+	return strings.HasPrefix(name, "senhub.") && strings.HasSuffix(name, ".up") &&
+		strings.Count(name, ".") == 2
 }
 
 // GetProbeStatistics returns statistics for each probe
@@ -908,13 +951,32 @@ func (c *MetricCache) GetProbeStatistics() map[string]ProbeStatistics {
 
 		metricCount := len(tsKeys)
 		var lastUpdate time.Time
+		var targetUp *bool
+		targetMetric := ""
 
 		// Track latest update time for each probe
 		for tsKey := range tsKeys {
-			if metric, exists := c.timeSeries[tsKey]; exists {
-				if lastUpdate.IsZero() || metric.Timestamp.After(lastUpdate) {
-					lastUpdate = metric.Timestamp
-				}
+			metric, exists := c.timeSeries[tsKey]
+			if !exists {
+				continue
+			}
+			if lastUpdate.IsZero() || metric.Timestamp.After(lastUpdate) {
+				lastUpdate = metric.Timestamp
+			}
+			if !isUpMetric(metric.MetricName) {
+				continue
+			}
+			up, ok := upVerdict(metric.Value)
+			if !ok {
+				continue
+			}
+			// A probe can watch several targets from one configuration
+			// (several URLs, several hosts). One down among them is what
+			// the operator needs to see, so a single false wins.
+			if targetUp == nil || *targetUp {
+				v := up
+				targetUp = &v
+				targetMetric = metric.MetricName
 			}
 		}
 
@@ -922,6 +984,8 @@ func (c *MetricCache) GetProbeStatistics() map[string]ProbeStatistics {
 			Name:         probeName,
 			MetricsCount: metricCount,
 			LastUpdate:   lastUpdate,
+			TargetUp:     targetUp,
+			TargetMetric: targetMetric,
 		}
 	}
 
