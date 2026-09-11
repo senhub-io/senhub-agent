@@ -18,6 +18,9 @@ ARG VERSION
 ARG VARIANT=""
 ARG TARGETARCH
 RUN test -n "$VERSION" || (echo "VERSION build-arg is required" >&2; exit 1)
+# buildx sets TARGETARCH on its own. A builder that does not (the classic
+# docker builder, az acr build) needs it passed, and the message says so.
+RUN test -n "$TARGETARCH" || (echo "TARGETARCH build-arg is required: build with buildx, or pass --build-arg TARGETARCH=amd64" >&2; exit 1)
 RUN apk add --no-cache curl unzip
 WORKDIR /out
 # The release publishes senhub-agent-linux-<arch>.zip and the oss variant
