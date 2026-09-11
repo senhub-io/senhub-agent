@@ -20,6 +20,7 @@ set -eu
 CONFIG_DIR="${SENHUB_CONFIG_DIR:-/etc/senhub-agent}"
 CONFIG="$CONFIG_DIR/agent.yaml"
 STATE_DIR="${SENHUB_STATE_DIR:-/var/lib/senhub-agent}"
+MACHINE_ID_PATH="${SENHUB_MACHINE_ID_PATH:-/etc/machine-id}"
 
 log() { printf '%s entrypoint: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 
@@ -64,10 +65,10 @@ resolve_machine_id() {
     fi
   fi
 
-  if [ -w /etc/machine-id ]; then
-    printf '%s\n' "$wanted" > /etc/machine-id
+  if [ -w "$MACHINE_ID_PATH" ]; then
+    printf '%s\n' "$wanted" > "$MACHINE_ID_PATH"
   else
-    log "/etc/machine-id is not writable: this host reports the identity the platform gives it"
+    log "$MACHINE_ID_PATH is not writable: this host reports the identity the platform gives it"
   fi
 }
 
