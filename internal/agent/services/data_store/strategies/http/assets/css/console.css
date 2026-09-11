@@ -103,6 +103,20 @@ p { margin: 0; }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover { background: var(--well); }
 .btn.danger { color: var(--err); }
+.btn.danger:hover { border-color: var(--err); }
+
+/* In-page confirmation for destructive actions, in place of the browser's
+   own dialog: it can carry the console's style and it does not block the
+   renderer. */
+.sh-confirm-back { position: fixed; inset: 0; background: rgba(0,0,0,.38); display: flex; align-items: center; justify-content: center; z-index: 100; padding: var(--s5); }
+.sh-confirm { max-width: 460px; width: 100%; }
+.sh-confirm-t { font-size: 1.05rem; margin: 0 0 var(--s2); }
+.sh-confirm-b { color: var(--muted); margin: 0 0 var(--s4); }
+.sh-confirm-a { justify-content: flex-end; gap: var(--s2); }
+@media (prefers-reduced-motion: no-preference) {
+  .sh-confirm { animation: sh-confirm-in .12s ease-out; }
+  @keyframes sh-confirm-in { from { transform: translateY(4px); opacity: 0 } to { transform: none; opacity: 1 } }
+}
 .btn.sm { height: 26px; padding: 0 8px; font-size: var(--fs-xs); }
 .btn.lg { height: 38px; padding: 0 16px; font-size: var(--fs-md); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }

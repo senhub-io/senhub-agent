@@ -180,7 +180,7 @@
         }
 
         async function remove(o) {
-            if (!confirm('Delete the output "' + o.name + '"? Its file under strategies.d is removed and the agent stops it.')) return;
+            if (!await confirmDestructive({ title: 'Delete the output "' + o.name + '"?', body: 'Its file under strategies.d is removed and the agent stops it.' })) return;
             try {
                 const res = await O.api('config/outputs/' + encodeURIComponent(o.name), { method: 'DELETE' });
                 delete tests[o.name];

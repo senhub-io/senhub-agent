@@ -303,7 +303,7 @@
 
         $('btn-delete').addEventListener('click', async () => {
             if (!existing) return;
-            if (!confirm('Delete the output "' + type + '"? Its file under strategies.d is removed and the agent stops it.')) return;
+            if (!await confirmDestructive({ title: 'Delete the output "' + type + '"?', body: 'Its file under strategies.d is removed and the agent stops it.' })) return;
             try {
                 const res = await O.api('config/outputs/' + encodeURIComponent(type), { method: 'DELETE' });
                 location.href = listURL + '?msg=' + encodeURIComponent(res.applied || '');
