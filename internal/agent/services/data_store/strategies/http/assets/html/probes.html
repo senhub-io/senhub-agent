@@ -306,13 +306,24 @@
       if (!p.authorized) return 'locked';
       if (!p.enabled) return 'disabled';
       if (p.health === 'failed') return 'failing';
+      // A probe can collect perfectly and report that what it watches is
+      // down: a database refusing the connection is a successful cycle
+      // carrying db.up = 0. That is not a failing probe, but it is the
+      // thing the operator came to see, and calling the row "running"
+      // hides it behind a green dot.
+      if (p.running && p.target_up === false) return 'target-down';
       if (p.running) return 'running';
       return 'starting';
     },
     render() {
       const all = List.probes.slice();
       const counts = { all: all.length, running: 0, failing: 0, disabled: 0 };
-      for (const p of all) { const s = List.stateOf(p); if (s === 'running' || s === 'starting') counts.running++; else if (s === 'failing') counts.failing++; else if (s === 'disabled') counts.disabled++; }
+      for (const p of all) {
+        const s = List.stateOf(p);
+        if (s === 'running' || s === 'starting') counts.running++;
+        else if (s === 'failing' || s === 'target-down') counts.failing++;
+        else if (s === 'disabled') counts.disabled++;
+      }
       for (const k of Object.keys(counts)) $('n-' + k).textContent = counts[k];
       if (!all.length) {
         $('list-card').classList.add('hide'); $('empty-card').classList.remove('hide');
@@ -321,12 +332,12 @@
         return;
       }
       $('list-card').classList.remove('hide'); $('empty-card').classList.add('hide');
-      const order = { failing: 0, locked: 1, starting: 2, running: 3, disabled: 4 };
+      const order = { failing: 0, 'target-down': 1, locked: 2, starting: 3, running: 4, disabled: 5 };
       all.sort((a, b) => (order[List.stateOf(a)] - order[List.stateOf(b)]) || a.name.localeCompare(b.name));
       const rows = all.filter(p => {
         const s = List.stateOf(p);
         if (List.filter === 'running' && !(s === 'running' || s === 'starting')) return false;
-        if (List.filter === 'failing' && s !== 'failing') return false;
+        if (List.filter === 'failing' && s !== 'failing' && s !== 'target-down') return false;
         if (List.filter === 'disabled' && s !== 'disabled') return false;
         if (List.search && !(p.name.toLowerCase().includes(List.search) || p.type.toLowerCase().includes(List.search))) return false;
         return true;
@@ -341,7 +352,7 @@
     row(p) {
       const s = List.stateOf(p);
       const tr = document.createElement('tr');
-      if (s === 'failing') tr.classList.add('bad');
+      if (s === 'failing' || s === 'target-down') tr.classList.add('bad');
       const spec = List.types[p.type];
       const sub = firstEssentialValue(spec, p.params);
       let name = '<span class="name">' + esc(p.name) + '</span>';
@@ -350,14 +361,15 @@
       let state = '';
       if (s === 'running') state = '<span class="pill ok"><span class="dot ok"></span>running</span>';
       else if (s === 'failing') state = '<span class="pill err"><span class="dot err"></span>failing</span>' + ((p.last_error || p.reason) ? '<span class="why">' + esc(p.last_error || p.reason) + '</span>' : '');
+      else if (s === 'target-down') state = '<span class="pill err"><span class="dot err"></span>target down</span><span class="why">collecting, and ' + esc(p.target_metric || 'its up metric') + ' reads 0</span>';
       else if (s === 'starting') state = '<span class="pill warn"><span class="dot warn"></span>starting</span>';
       else if (s === 'disabled') state = '<span class="pill off">disabled</span>';
       else if (p.tier !== 'pro') state = '<span class="pill off" title="' + esc(p.reason || '') + '">not on this platform</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
       else state = '<span class="pill lock" title="' + esc(p.reason || '') + '">&#128274; not licensed</span> <span class="pill pro">Pro</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
       const editable = p.managed && p.has_schema;
       let acts = '';
-      if (s === 'failing' && editable) acts += '<a class="btn sm primary" href="?edit=' + encodeURIComponent(p.name) + '">Fix</a> ';
-      if (editable && s !== 'failing') acts += '<a class="btn sm" href="?edit=' + encodeURIComponent(p.name) + '">Edit</a> ';
+      if ((s === 'failing' || s === 'target-down') && editable) acts += '<a class="btn sm primary" href="?edit=' + encodeURIComponent(p.name) + '">Fix</a> ';
+      if (editable && s !== 'failing' && s !== 'target-down') acts += '<a class="btn sm" href="?edit=' + encodeURIComponent(p.name) + '">Edit</a> ';
       if (s !== 'disabled') acts += '<a class="btn sm" href="' + WEB + '/outputs/http#urls&probe=' + encodeURIComponent(p.name) + '">Sensor URL</a> ';
       if (p.managed) acts += '<span class="menu-wrap"><button type="button" class="btn sm ghost" data-menu title="More">&#8230;</button></span>';
       tr.innerHTML = '<td>' + name + '</td><td><code>' + esc(p.type) + '</code></td><td>' + state + '</td>' +
@@ -392,7 +404,7 @@
     },
     async remove(p) {
       document.querySelectorAll('.menu').forEach(m => m.remove());
-      if (!confirm('Delete the probe "' + p.name + '"? Its settings and secrets are removed. Disabling keeps them.')) return;
+      if (!await confirmDestructive({ title: 'Delete the probe "' + p.name + '"?', body: 'Its settings and secrets are removed. Disabling keeps them.' })) return;
       try {
         const d = await send('DELETE', API + '/config/probes/' + encodeURIComponent(p.name));
         setBanner($('list-banner'), 'ok', '', d.applied || 'Removed.');

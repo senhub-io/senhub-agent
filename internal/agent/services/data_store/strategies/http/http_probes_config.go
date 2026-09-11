@@ -35,6 +35,14 @@ type configuredProbe struct {
 	// series this probe holds and when it last wrote one.
 	MetricsCount int        `json:"metrics_count"`
 	LastUpdate   *time.Time `json:"last_update,omitempty"`
+	// TargetUp is the probe's own verdict on what it watches, read from
+	// its `senhub.<area>.up` series. Nil for a probe that measures this
+	// host and reaches out to nothing. It is not Health: a database that
+	// refuses the connection is a successful collection reporting a down
+	// target, so Health stays "ok" and this carries the other half.
+	TargetUp *bool `json:"target_up,omitempty"`
+	// TargetMetric names the series TargetUp was read from.
+	TargetMetric string `json:"target_metric,omitempty"`
 }
 
 type configuredProbesResponse struct {
@@ -104,6 +112,8 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 				t := st.LastUpdate
 				entry.LastUpdate = &t
 			}
+			entry.TargetUp = st.TargetUp
+			entry.TargetMetric = st.TargetMetric
 		}
 		known := ps
 		if !hasSpec {
