@@ -233,9 +233,13 @@ watch: clean
 # ========================================
 
 # Test the application (original)
-test:
+test: test-entrypoint
 	@echo "Testing..."
 	@go test ./... -v
+
+test-entrypoint: ## Check the container entrypoint's identity resolution (no daemon needed)
+	@echo "Testing the container entrypoint..."
+	@sh packaging/docker/entrypoint_test.sh
 
 docs-params: ## Regenerate the parameter tables of the probe pages from their schemas
 	@echo "Regenerating the probe parameter tables..."
