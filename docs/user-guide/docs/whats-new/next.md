@@ -133,6 +133,28 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **A poller can no longer chart a measurement the agent never reported.**
+  The pull endpoints sent no cache directive at all. A response with
+  neither a validator nor an expiry lets a client apply its own heuristic
+  freshness, so PRTG, Nagios, a Prometheus scraper or any proxy between
+  them was free to reuse an earlier answer, and nothing on either side
+  would say so. Every route the HTTP output serves now says `no-store`.
+  The console's own assets keep revalidating, where caching is safe and
+  useful.
+
+- **The sensor URL preview follows the URL instead of waiting for a
+  click.** Every choice on the Sensor URLs tab (poller, probe, tag
+  filter, whether channel names carry the resource) changes what the
+  poller would receive, so after any of them the panel below showed the
+  answer to a URL no longer on screen, while reading as the current one.
+  It now refreshes on its own, debounced so a tag filter picked value by
+  value sends one request; the button remains as an explicit re-read and
+  is named Refresh. The view also opens on the raw response rather than
+  the channel table: it is what the poller actually receives, and the
+  only view that shows a field the table does not carry. The table is one
+  click away, and whichever is picked is the one that comes back next
+  time.
+
 - **A container host no longer drowns the agent's own log.** On a machine
   that runs containers, veth interfaces appear and disappear constantly.
   The network probe enumerates the counters, then looks each interface up
