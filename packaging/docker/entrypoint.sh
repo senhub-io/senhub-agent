@@ -23,6 +23,52 @@ STATE_DIR="${SENHUB_STATE_DIR:-/var/lib/senhub-agent}"
 
 log() { printf '%s entrypoint: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 
+valid_machine_id() {
+  case "$1" in
+    *[!0-9a-f]*) return 1 ;;
+  esac
+  [ ${#1} -eq 32 ]
+}
+
+# host.id is not the agent's own key: it is the operating system's
+# machine-id, read by gopsutil from /etc/machine-id. An image carries no
+# machine-id, so without one gopsutil falls back to the kernel boot id,
+# which it documents as "not stable between reboot". Measured in a real
+# Container App: three runs of the same image reported three different
+# host.id, so the fleet saw three hosts where there is one service.
+#
+# The identity is resolved here, in this order:
+#   1. SENHUB_HOST_ID, when the deployment already knows this host;
+#   2. the machine-id kept in the state directory, so a mounted volume
+#      carries one identity across restarts and image upgrades;
+#   3. a fresh one, kept in the state directory when that is possible.
+resolve_machine_id() {
+  kept="$STATE_DIR/machine-id"
+
+  if [ -n "${SENHUB_HOST_ID:-}" ]; then
+    wanted=$(printf '%s' "$SENHUB_HOST_ID" | tr -d '-' | tr 'ABCDEF' 'abcdef')
+    if ! valid_machine_id "$wanted"; then
+      log "SENHUB_HOST_ID is not a machine id: 32 hexadecimal characters, dashes optional"
+      exit 1
+    fi
+  elif [ -r "$kept" ] && valid_machine_id "$(cat "$kept")"; then
+    wanted=$(cat "$kept")
+  else
+    wanted=$(tr -d '-' < /proc/sys/kernel/random/uuid)
+    if (umask 077; printf '%s\n' "$wanted" > "$kept") 2>/dev/null; then
+      log "host identity generated and kept in $kept"
+    else
+      log "host identity generated for this container only: $kept is not writable"
+    fi
+  fi
+
+  if [ -w /etc/machine-id ]; then
+    printf '%s\n' "$wanted" > /etc/machine-id
+  else
+    log "/etc/machine-id is not writable: this host reports the identity the platform gives it"
+  fi
+}
+
 # init_config writes agent.yaml and the output from the environment.
 # The flags are assembled with `set --` inside this function on purpose:
 # doing it in the body would overwrite the command the container was
@@ -60,6 +106,45 @@ init_config() {
   fi
 }
 
+# The agent key is the agent's own identity, distinct from host.id: it is
+# what service.instance.id carries, and what tells two agents apart on the
+# receiving side. `config init` mints a fresh one, and the configuration
+# lives in the container layer, so without this every container would
+# introduce a brand new agent while claiming to be the same host. Keeping
+# it beside the machine-id gives one agent identity per volume.
+keep_agent_key() {
+  kept="$STATE_DIR/agent.key"
+
+  if [ ! -r "$kept" ]; then
+    key=$(sed -n 's/^  key: "\(.*\)"$/\1/p' "$CONFIG" | head -1)
+    if [ -z "$key" ]; then
+      log "cannot read the agent key from $CONFIG; leaving it as generated"
+      return 0
+    fi
+    if (umask 077; printf '%s\n' "$key" > "$kept") 2>/dev/null; then
+      log "agent key kept in $kept"
+    else
+      log "agent key generated for this container only: $kept is not writable"
+    fi
+    return 0
+  fi
+
+  key=$(cat "$kept")
+  case "$key" in
+    "" | *[!0-9a-fA-F-]*)
+      log "the agent key kept in $kept is not usable; leaving the generated one"
+      return 0
+      ;;
+  esac
+  tmp="$CONFIG.new"
+  if sed "s|^  key: \".*\"$|  key: \"$key\"|" "$CONFIG" > "$tmp" 2>/dev/null && mv "$tmp" "$CONFIG"; then
+    log "agent key restored from $kept"
+  else
+    rm -f "$tmp"
+    log "could not restore the agent key from $kept; leaving the generated one"
+  fi
+}
+
 write_azure_probe() {
   missing=""
   for name in SENHUB_AZURE_TENANT_ID SENHUB_AZURE_CLIENT_ID SENHUB_AZURE_CLIENT_SECRET \
@@ -92,11 +177,14 @@ YAML
   log "reading the console log stream of the Container App ${SENHUB_AZURE_APP}"
 }
 
+resolve_machine_id
+
 if [ -f "$CONFIG" ]; then
   log "configuration already present at $CONFIG; every SENHUB_* variable is ignored"
 else
   log "no configuration found; writing one from the environment"
   init_config
+  keep_agent_key
 
   # Any probe, without a mount: the variable carries the same YAML a
   # file in probes.d would. Container platforms make a file harder to
@@ -133,17 +221,17 @@ fi
 
 # The state directory is always writable: it belongs to this user inside
 # the image. What matters is whether it is a MOUNT. Without one it lives
-# in the container's own layer and disappears with the container, so the
-# agent generates a new key on every restart and the same host arrives
-# under a new identity each time. That is worth saying out loud, because
-# it is invisible until someone reads the graph weeks later.
+# in the container's own layer and goes with the container, taking the
+# host identity, the agent key and the log bookmarks with it. That is
+# worth saying out loud, because it is invisible until someone reads the
+# graph weeks later and finds one service spread over thirty hosts.
 if [ ! -w "$STATE_DIR" ]; then
-  log "$STATE_DIR is not writable: the agent cannot keep its key or its bookmarks"
+  log "$STATE_DIR is not writable: the agent cannot keep its identity, its key or its bookmarks"
   log "mount a volume there, or fix its ownership"
 elif ! awk -v d="$STATE_DIR" '$2 == d { found = 1 } END { exit !found }' /proc/mounts 2>/dev/null; then
-  log "$STATE_DIR is not a mounted volume: the agent key and the log bookmarks live in this container only"
-  log "every restart will give this agent a new identity, and every log probe will re-read its tail"
-  log "mount a volume on $STATE_DIR to keep them"
+  log "$STATE_DIR is not a mounted volume: identity, agent key and log bookmarks live in this container only"
+  log "every new container will arrive as a new host, and every log probe will re-read its tail"
+  log "mount a volume on $STATE_DIR, or set SENHUB_HOST_ID, to keep one identity"
 fi
 
 exec senhub-agent "$@" --config-path "$CONFIG"
