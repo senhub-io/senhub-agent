@@ -133,6 +133,23 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **A probe whose target is down is no longer shown as healthy.** A
+  database probe pointed at a host that refuses the connection was listed
+  as running, counted under "Running", and left the Overview saying "0
+  failing", while the agent logged the refused ping and emitted
+  `db.up = 0`. Health was right: a refused connection is a successful
+  collection reporting a down target. What was missing is the other half,
+  and the probes already publish it, since 49 types emit a
+  `senhub.<area>.up` series. Such a probe now has its own state, "target
+  down", naming the series it quotes, sorted to the top of the list and
+  counted where an operator looks for what needs them.
+
+- **Deletions ask in the page.** They used the browser's own dialog, the
+  one interaction that left the console's style: unstyleable, blocking,
+  and silently disabled for good once a viewer ticks Chrome's "prevent
+  this page from creating more dialogs". Escape cancels, Enter confirms,
+  and focus starts on Cancel.
+
 - **The probe editor no longer contradicts itself.** Validate reported
   the same missing field twice, once in the form's words and once in the
   schema's, so a blank PostgreSQL form announced seven problems for four
