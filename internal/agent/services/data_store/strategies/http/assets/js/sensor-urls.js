@@ -218,11 +218,25 @@
 
         updateHash() {
             if (!this.ready) return;
+            // This page has two tabs and one address. Writing the URL state
+            // while the other tab is showing makes the address bar name a
+            // tab the operator is not on, so a copied link, or a plain
+            // reload, lands somewhere else than what was on screen.
+            if (!this.isVisible()) return;
             const parts = ['urls'];
             if (this.format) parts.push('fmt=' + encodeURIComponent(this.format));
             if (this.probe) parts.push('probe=' + encodeURIComponent(this.probe));
             for (const [k, v] of Object.entries(this.tags)) parts.push('tag_' + encodeURIComponent(k) + '=' + encodeURIComponent(v));
             history.replaceState({}, '', location.pathname + location.search + '#' + parts.join('&'));
+        }
+
+        // isVisible answers whether the Sensor URLs tab is the one showing.
+        // The tab is a container the page hides and shows, so asking one of
+        // our own fields whether it is laid out is the honest test: it needs
+        // no selector to match the markup, and it stays true if the tab
+        // machinery is ever rewritten.
+        isVisible() {
+            return !!(this.urlIn && this.urlIn.offsetParent !== null);
         }
 
         async copy() {

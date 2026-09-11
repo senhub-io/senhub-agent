@@ -76,8 +76,16 @@
                         <dt>Pro probe types</dt><dd id="lic-locked" class="locked">...</dd>
                     </dl>
                     <div class="field">
-                        <label class="lbl" for="license-file">Activate a licence</label>
-                        <input class="in" type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" />
+                        <span class="lbl">Activate a licence</span>
+                        <!-- The native file control draws its own labels in the
+                             browser's language, which reads as French text in the
+                             middle of an English console. A button of our own with
+                             the input hidden behind it keeps one language. -->
+                        <div class="row" style="gap:10px;align-items:center">
+                            <label class="btn" for="license-file">Choose a file</label>
+                            <span class="small muted" id="license-file-name">No file chosen</span>
+                        </div>
+                        <input type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" hidden />
                         <div class="hint">Choose the licence file you received, or paste the token below. It is checked against this agent key before it is saved.</div>
                         <textarea class="ta" id="license" placeholder="...or paste the licence token (JWT)"></textarea>
                     </div>
@@ -184,6 +192,7 @@
 
         $('license-file').addEventListener('change', (ev) => {
             const f = ev.target.files && ev.target.files[0];
+            $('license-file-name').textContent = f ? f.name : 'No file chosen';
             if (!f) return;
             const reader = new FileReader();
             reader.onload = () => {
