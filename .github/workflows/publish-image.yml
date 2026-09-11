@@ -1,0 +1,91 @@
+name: Publish container image
+
+# Builds the container image for a published release tag and pushes it
+# to the GitHub container registry.
+#
+# The image does not compile the agent: it fetches the binary the
+# release already published, so what runs in a container is byte for
+# byte what runs on a host, and the build stays reproducible from a tag.
+# That also means this workflow can only run AFTER the release exists.
+#
+# Manual on purpose for now: a first image is a promise to keep the base
+# rebuilt, and that promise is made deliberately, not by a tag push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package (for example 0.5.5-beta)"
+        required: true
+      variant:
+        description: "Which build of the release: full (paid probes) or oss"
+        required: true
+        default: full
+        type: choice
+        options: [full, oss]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse a tag that has no release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null \
+            || { echo "::error::no release $TAG; the image is built from what the release published"; exit 1; }
+
+      - name: Name the image
+        id: name
+        env:
+          TAG: ${{ inputs.tag }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          set -euo pipefail
+          repo=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          suffix=""
+          arg=""
+          if [ "$VARIANT" = "oss" ]; then suffix="-oss"; arg="oss"; fi
+          {
+            echo "image=${repo}${suffix}"
+            echo "variant_arg=${arg}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          build-args: |
+            VERSION=${{ inputs.tag }}
+            VARIANT=${{ steps.name.outputs.variant_arg }}
+          tags: ${{ steps.name.outputs.image }}:${{ inputs.tag }}
+
+      - name: Say what it starts with
+        run: |
+          echo "### Image published" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo 'docker run -d -e OTLP_BEARER_TOKEN=<token> \' >> "$GITHUB_STEP_SUMMARY"
+          echo '  -v senhub-state:/var/lib/senhub-agent \' >> "$GITHUB_STEP_SUMMARY"
+          echo "  ${{ steps.name.outputs.image }}:${{ inputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

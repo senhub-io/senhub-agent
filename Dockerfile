@@ -16,7 +16,7 @@ ARG ALPINE_VERSION=3.20
 FROM alpine:${ALPINE_VERSION} AS fetch
 ARG VERSION
 ARG VARIANT=""
-ARG TARGETARCH=amd64
+ARG TARGETARCH
 RUN test -n "$VERSION" || (echo "VERSION build-arg is required" >&2; exit 1)
 RUN apk add --no-cache curl unzip
 WORKDIR /out
