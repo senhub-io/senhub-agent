@@ -643,6 +643,15 @@
     },
     refresh() {
       const name = Ed.name();
+      // A check answers the values it was run on. As soon as one of them
+      // changes, the answer below is about a probe the operator no longer
+      // has on screen, while still reading as the current verdict; the
+      // page would then show four field errors and "Ready to save" at the
+      // same time. Drop it and say nothing rather than say something stale.
+      if (Ed.checked !== null && Ed.checked !== undefined) {
+        const now = SchemaForm.toYAML([Ed.fragment()]);
+        if (now !== Ed.checked) { Ed.checked = null; Ed.clearCheck(); }
+      }
       const path = 'probes.d/50-' + (name || '<name>') + '.yaml';
       $('yaml-path').textContent = path; $('yaml-path-2').textContent = path;
       const text = SchemaForm.toYAML([Ed.fragment()]);
@@ -735,6 +744,21 @@
       }
       return out;
     },
+    // dedupe keeps the first message reported for a field. The local one
+    // comes first and names the field in full ("host is required"), which
+    // is the better of the two.
+    dedupe(errs) {
+      const seen = new Set();
+      return errs.filter(e => {
+        if (!e.key) return true;
+        if (seen.has(e.key)) return false;
+        seen.add(e.key);
+        return true;
+      });
+    },
+    // remember records the values a check was run on, so any later edit
+    // can drop the verdict instead of leaving it to contradict the form.
+    remember() { Ed.checked = SchemaForm.toYAML([Ed.fragment()]); },
     showErrors(title, errs) {
       const anchored = errs.filter(e => e.key);
       if (Ed.form) Ed.form.showErrors(anchored.filter(e => e.key !== 'name'));
@@ -767,15 +791,21 @@
         const d = await send('POST', API + '/config/validate', { probe: Ed.spec.type, name: Ed.editing || undefined, config: Ed.body().params, validation: 'schema' });
         if (!d.valid) errs = errs.concat(Ed.anchor(Ed.splitErrors(d.errors && d.errors.length ? d.errors : ['The values were refused.']), d.field));
       } catch (e) { errs.push({ key: '', message: e.message }); }
+      // The form and the schema both notice a missing required value, in
+      // their own words. Reporting it twice inflates the count and makes
+      // the operator read the same problem again looking for a second one.
+      errs = Ed.dedupe(errs);
       btn.disabled = false;
       const ms = Date.now() - t0;
       if (errs.length) {
         Ed.showErrors('Not valid yet.', errs);
         $('check-body').innerHTML = '<div class="row"><span class="pill err"><span class="dot err"></span>not valid</span><span class="small muted">' + errs.length + ' problem' + (errs.length > 1 ? 's' : '') + ', ' + ms + ' ms</span></div><p class="xs muted mt2">' + esc(Ed.runLine()) + '</p>';
+        Ed.remember();
         return;
       }
       setBanner($('banner-slot'), 'ok', 'Valid.', 'Every value has the right shape. Test to make sure the target answers.');
       $('check-body').innerHTML = '<div class="row"><span class="pill ok"><span class="dot ok"></span>valid</span><span class="small muted">schema check, ' + ms + ' ms</span></div><p class="xs muted mt2">' + esc(Ed.runLine()) + '</p>';
+      Ed.remember();
     },
     async test() {
       if (!Ed.spec) { setBanner($('banner-slot'), 'warn', 'Choose a type first.', ''); return; }
@@ -807,10 +837,12 @@
         const hint = hintFor(raw);
         $('check-body').innerHTML = '<div class="row"><span class="pill err"><span class="dot err"></span>test failed</span><span class="small muted">' + ms + ' ms, 0 metrics</span></div>' +
           '<p class="check-msg">' + esc(raw) + '</p>' + (hint ? '<p class="small muted mt2">' + esc(hint) + '</p>' : '') + '<p class="xs muted mt2">' + esc(Ed.runLine()) + '</p>';
+        Ed.remember();
         return;
       }
       const metrics = d.preview_metrics || [];
       setBanner($('banner-slot'), 'ok', 'Test passed.', metrics.length + ' metric' + (metrics.length === 1 ? '' : 's') + ' collected in ' + ms + ' ms. The values are on the right; save to start collecting.');
+      Ed.remember();
       const fmtV = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/\.?0+$/, '')) : String(v));
       const row = (m) => { const tag = m.tags ? Object.keys(m.tags).filter(k => !/^(host|hostname|probe|probe_name|agent)$/i.test(k)).map(k => m.tags[k]).slice(0, 1).join('') : ''; return '<div><span>' + esc(m.name) + (tag ? '<span class="t">' + esc(tag) + '</span>' : '') + '</span><span class="v">' + esc(fmtV(m.value)) + (m.unit ? ' ' + esc(m.unit) : '') + '</span></div>'; };
       const render = (all) => {
@@ -827,7 +859,7 @@
     async save() {
       if (!Ed.spec) return;
       const local = Ed.localErrors();
-      if (local.length) { Ed.clearCheck(); Ed.showErrors('Not saved.', local); return; }
+      if (local.length) { Ed.clearCheck(); Ed.showErrors('Not saved.', Ed.dedupe(local)); Ed.remember(); return; }
       const btn = $('btn-save'); btn.disabled = true;
       const body = Ed.body();
       try {
@@ -842,7 +874,8 @@
         Ed.clearCheck();
         const msg = e.message;
         const parts = /^parameters: /.test(msg) ? msg.replace(/^parameters: /, '').split('; ') : [msg];
-        Ed.showErrors('Not saved.', Ed.anchor(parts, ''));
+        Ed.showErrors('Not saved.', Ed.dedupe(Ed.anchor(parts, '')));
+        Ed.remember();
       }
     },
   };
