@@ -20,6 +20,11 @@ type interfaceInfo struct {
 	isMonitored bool
 	addresses   []string
 	err         error
+	// gone marks the interface as having disappeared between the counter
+	// enumeration and the lookup. On a container host the veth interfaces
+	// come and go constantly, so this is the expected outcome of a race,
+	// not a failure worth an operator's attention.
+	gone bool
 }
 
 func getValidIPAddresses(addrs []net.Addr) []string {
@@ -46,6 +51,7 @@ func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interf
 		return interfaceInfo{
 			isMonitored: false,
 			err:         fmt.Errorf("error getting interface %s: %w", interfaceName, err),
+			gone:        true,
 		}
 	}
 
@@ -127,7 +133,17 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 		// Check if interface should be monitored and get its addresses
 		interfaceInfo := u.isInterfaceMonitored(counter.Name)
 		if interfaceInfo.err != nil {
-			fmt.Printf("Error checking interface %s status: %v\n", counter.Name, interfaceInfo.err)
+			if interfaceInfo.gone {
+				u.logger.Debug().
+					Str("interface", counter.Name).
+					Err(interfaceInfo.err).
+					Msg("Interface disappeared between enumeration and lookup, skipping")
+			} else {
+				u.logger.Warn().
+					Str("interface", counter.Name).
+					Err(interfaceInfo.err).
+					Msg("Cannot read interface status, skipping")
+			}
 			continue
 		}
 		if !interfaceInfo.isMonitored {
