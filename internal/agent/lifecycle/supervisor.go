@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -102,6 +103,19 @@ func (s *Supervisor) Shutdown(ctx context.Context) []error {
 		svcCancel()
 
 		if err != nil {
+			// A backend that does not answer in time is not a failed
+			// shutdown: the service stopped, within its budget, without
+			// delivering what it still held. Reporting it as a failure
+			// made a clean stop print "forced to shutdown with error",
+			// which reads like a crash in the journal.
+			if errors.Is(err, context.DeadlineExceeded) {
+				s.logger.Warn().
+					Str("service", svc.GetName()).
+					Dur("duration", time.Since(started)).
+					Err(err).
+					Msg("Service stopped without delivering everything it still held: its backend did not answer in time")
+				continue
+			}
 			s.logger.Error().
 				Str("service", svc.GetName()).
 				Dur("duration", time.Since(started)).
