@@ -52,12 +52,12 @@ COPY --from=fetch /out/senhub-agent /usr/local/bin/senhub-agent
 COPY packaging/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# /etc/senhub-agent holds the configuration; /var/lib/senhub-agent holds
-# what must survive a restart: the sealed secret store and the bookmarks
-# a log probe keeps. Mount the second one, or a restart re-reads the tail
-# of every log and seals its secrets again.
-RUN mkdir -p /etc/senhub-agent /var/lib/senhub-agent \
- && chown -R senhub:senhub /etc/senhub-agent /var/lib/senhub-agent
+# /etc/senhub-agent holds the configuration, /var/lib/senhub-agent what
+# must survive a restart, and /var/log/senhub-agent the log file whose
+# path the agent does not take from configuration: without it the agent
+# falls back to the directory of its own binary, which is read-only here.
+RUN mkdir -p /etc/senhub-agent /var/lib/senhub-agent /var/log/senhub-agent \
+ && chown -R senhub:senhub /etc/senhub-agent /var/lib/senhub-agent /var/log/senhub-agent
 VOLUME ["/var/lib/senhub-agent"]
 
 USER senhub
