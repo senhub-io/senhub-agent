@@ -157,6 +157,26 @@ docker run -d --name senhub-agent \
   ghcr.io/senhub-io/senhub-agent:0.5.5-beta
 ```
 
+Your configuration wins completely, and that includes the agent key
+under `agent: key:`. The entrypoint does not touch it, so a
+configuration shared between several instances makes them one agent: the
+receiving side reads that key to tell agents apart, and their health
+metrics land on the same series with different values. Nothing signals
+it, and the counters it hides are the ones read when looking for missing
+data.
+
+Two ways out, both cheap. Give each instance its own value through the
+environment, which works because substitution is applied to the whole
+file before it is parsed:
+
+```yaml
+agent:
+  key: "${env:SENHUB_AGENT_KEY}"
+```
+
+Or leave the key out of the shared configuration entirely and let each
+instance generate its own, kept in its own state volume.
+
 ## What the container does not do
 
 - **No service commands.** `install`, `start`, `stop` and their kin
