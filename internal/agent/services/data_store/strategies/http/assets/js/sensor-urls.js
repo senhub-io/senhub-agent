@@ -17,6 +17,25 @@
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    // The raw response is the default: it is what the poller receives, and
+    // it is the only view that shows a field the table does not carry. The
+    // table stays one click away, and whichever the operator picks is the
+    // one they get next time. Storage is unavailable in some browsers, so
+    // every access falls back to the default rather than throwing.
+    const VIEW_KEY = 'senhub.sensor-urls.view';
+
+    function readView() {
+        try {
+            const v = localStorage.getItem(VIEW_KEY);
+            if (v === 'table' || v === 'json') return v;
+        } catch (e) { /* storage blocked: the default stands */ }
+        return 'json';
+    }
+
+    function writeView(v) {
+        try { localStorage.setItem(VIEW_KEY, v); } catch (e) { /* storage blocked: the choice lasts this visit */ }
+    }
+
     class SensorURLs {
         constructor(agentKey, root) {
             this.key = agentKey;
@@ -38,9 +57,11 @@
             this.format = '';
             this.probe = '';
             this.tags = {};
-            this.view = 'table';
+            this.view = readView();
             this.last = null;
             this.ready = false;
+            this.previewSeq = 0;
+            this.previewTimer = null;
             this.tagFilters = new TagFilters(this.base, this.tagsBox, tags => { this.tags = tags; this.build(); });
             this.wire();
         }
@@ -74,7 +95,6 @@
             }
             this.ready = true;
             this.build();
-            if (this.format && (this.probe || this.format === 'prometheus')) this.preview();
         }
 
         async loadEndpoints() {
@@ -176,6 +196,24 @@
                         : 'For PRTG: Add Sensor, HTTP Data Advanced, paste as URL. Uses the host name of this console; replace it with one PRTG can reach.';
             }
             this.updateHash();
+            this.schedulePreview();
+        }
+
+        // schedulePreview keeps the answer in step with the URL above it.
+        // Every option on this page changes what the poller would receive,
+        // and a panel answering a URL the operator has since edited is
+        // worse than no panel: it reads as the current answer. Debounced so
+        // a tag filter picked value by value sends one request.
+        schedulePreview() {
+            if (!this.ready) return;
+            clearTimeout(this.previewTimer);
+            if (!this.path()) {
+                this.previewSeq++;
+                this.resp.classList.add('hide');
+                this.last = null;
+                return;
+            }
+            this.previewTimer = setTimeout(() => this.preview(), 350);
         }
 
         updateHash() {
@@ -198,6 +236,12 @@
         async preview() {
             const p = this.path();
             if (!p) return;
+            clearTimeout(this.previewTimer);
+            // Previews now fire on their own, so two can be in flight at
+            // once; without this the slower answer would overwrite the
+            // newer one and show the operator a response to a URL that is
+            // no longer on screen.
+            const seq = ++this.previewSeq;
             this.resp.classList.remove('hide');
             this.respHead.innerHTML = '<span class="small muted">Loading...</span>';
             this.respBody.innerHTML = '';
@@ -206,13 +250,17 @@
                 const r = await fetch(p);
                 const ms = Math.round(performance.now() - t0);
                 const text = await r.text();
+                if (seq !== this.previewSeq) return;
                 let json = null;
                 if (this.format === 'prtg') { try { json = JSON.parse(text); } catch (e) { json = null; } }
                 const results = json && json.prtg && Array.isArray(json.prtg.result) ? json.prtg.result : null;
                 this.last = { status: r.status, ms, text, json, results };
-                this.view = results ? 'table' : 'json';
+                // The operator's choice of view is kept; only a response
+                // with nothing to tabulate forces the raw one.
+                if (!results) this.view = 'json';
                 this.renderResp();
             } catch (e) {
+                if (seq !== this.previewSeq) return;
                 this.respHead.innerHTML = '<span class="pill err"><span class="dot err"></span>request failed</span>';
                 this.respBody.innerHTML = '<p class="hint">' + esc(e.message) + '</p>';
             }
@@ -251,7 +299,7 @@
             }
         }
 
-        switchView(v) { this.view = v; this.renderResp(); }
+        switchView(v) { this.view = v; writeView(v); this.renderResp(); }
     }
 
     // parseHash reads "#urls&fmt=prtg&probe=cpu&tag_core=0,1" into
