@@ -23,6 +23,43 @@ STATE_DIR="${SENHUB_STATE_DIR:-/var/lib/senhub-agent}"
 
 log() { printf '%s entrypoint: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 
+# init_config writes agent.yaml and the output from the environment.
+# The flags are assembled with `set --` inside this function on purpose:
+# doing it in the body would overwrite the command the container was
+# given, and the agent would then be started with the init flags.
+init_config() {
+  set -- --config-path "$CONFIG" --http-port "${SENHUB_HTTP_PORT:-8080}"
+
+  endpoint="${SENHUB_OTLP_ENDPOINT:-}"
+  if [ -z "$endpoint" ] && [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
+    endpoint="eu-west-1.intake.senhub.io:443"
+  fi
+  if [ -n "$endpoint" ]; then
+    set -- "$@" --otlp-endpoint "$endpoint" --otlp-protocol "${SENHUB_OTLP_PROTOCOL:-grpc}"
+  fi
+  if [ -n "${SENHUB_LICENSE:-}" ]; then
+    set -- "$@" --license "$SENHUB_LICENSE"
+  fi
+  if [ -n "${SENHUB_TAGS:-}" ]; then
+    set -- "$@" --tags "$SENHUB_TAGS"
+  fi
+
+  senhub-agent config init "$@"
+
+  if [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
+    fragment="$CONFIG_DIR/strategies.d/10-otlp.yaml"
+    if [ -f "$fragment" ] && ! grep -q 'Authorization' "$fragment"; then
+      # The token stays out of the file: the fragment carries the
+      # reference and the agent resolves it at every start.
+      # shellcheck disable=SC2016 # ${env:...} must reach the file literally
+      printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
+      log "OTLP export authenticates with OTLP_BEARER_TOKEN"
+    fi
+  else
+    log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"
+  fi
+}
+
 write_azure_probe() {
   missing=""
   for name in SENHUB_AZURE_TENANT_ID SENHUB_AZURE_CLIENT_ID SENHUB_AZURE_CLIENT_SECRET \
@@ -59,36 +96,7 @@ if [ -f "$CONFIG" ]; then
   log "configuration already present at $CONFIG; every SENHUB_* variable is ignored"
 else
   log "no configuration found; writing one from the environment"
-
-  set -- --config-path "$CONFIG" --http-port "${SENHUB_HTTP_PORT:-8080}"
-
-  endpoint="${SENHUB_OTLP_ENDPOINT:-}"
-  if [ -z "$endpoint" ] && [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
-    endpoint="eu-west-1.intake.senhub.io:443"
-  fi
-  if [ -n "$endpoint" ]; then
-    set -- "$@" --otlp-endpoint "$endpoint" --otlp-protocol "${SENHUB_OTLP_PROTOCOL:-grpc}"
-  fi
-  if [ -n "${SENHUB_LICENSE:-}" ]; then
-    set -- "$@" --license "$SENHUB_LICENSE"
-  fi
-  if [ -n "${SENHUB_TAGS:-}" ]; then
-    set -- "$@" --tags "$SENHUB_TAGS"
-  fi
-
-  senhub-agent config init "$@"
-
-  if [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
-    fragment="$CONFIG_DIR/strategies.d/10-otlp.yaml"
-    if [ -f "$fragment" ] && ! grep -q 'Authorization' "$fragment"; then
-      # The token stays out of the file: the fragment carries the
-      # reference and the agent resolves it at every start.
-      printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
-      log "OTLP export authenticates with OTLP_BEARER_TOKEN"
-    fi
-  else
-    log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"
-  fi
+  init_config
 
   # Any probe, without a mount: the variable carries the same YAML a
   # file in probes.d would. Container platforms make a file harder to
@@ -123,9 +131,19 @@ else
   fi
 fi
 
+# The state directory is always writable: it belongs to this user inside
+# the image. What matters is whether it is a MOUNT. Without one it lives
+# in the container's own layer and disappears with the container, so the
+# agent generates a new key on every restart and the same host arrives
+# under a new identity each time. That is worth saying out loud, because
+# it is invisible until someone reads the graph weeks later.
 if [ ! -w "$STATE_DIR" ]; then
-  log "$STATE_DIR is not writable: the agent key and the log bookmarks will not survive a restart"
-  log "mount a volume there, or every restart gives this agent a new identity"
+  log "$STATE_DIR is not writable: the agent cannot keep its key or its bookmarks"
+  log "mount a volume there, or fix its ownership"
+elif ! awk -v d="$STATE_DIR" '$2 == d { found = 1 } END { exit !found }' /proc/mounts 2>/dev/null; then
+  log "$STATE_DIR is not a mounted volume: the agent key and the log bookmarks live in this container only"
+  log "every restart will give this agent a new identity, and every log probe will re-read its tail"
+  log "mount a volume on $STATE_DIR to keep them"
 fi
 
 exec senhub-agent "$@" --config-path "$CONFIG"
