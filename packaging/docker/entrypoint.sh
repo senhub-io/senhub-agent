@@ -51,8 +51,10 @@ resolve_machine_id() {
       log "SENHUB_HOST_ID is not a machine id: 32 hexadecimal characters, dashes optional"
       exit 1
     fi
+    log "host identity taken from SENHUB_HOST_ID"
   elif [ -r "$kept" ] && valid_machine_id "$(cat "$kept")"; then
     wanted=$(cat "$kept")
+    log "host identity restored from $kept"
   else
     wanted=$(tr -d '-' < /proc/sys/kernel/random/uuid)
     if (umask 077; printf '%s\n' "$wanted" > "$kept") 2>/dev/null; then
