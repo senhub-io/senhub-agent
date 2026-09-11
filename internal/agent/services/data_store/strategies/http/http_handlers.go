@@ -34,6 +34,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// disabled). Placed AFTER CountRequests so counters always increment
 	// even if a future tracing change introduces a regression.
 	router.Use(TraceRequests)
+	router.Use(NoStore)
 
 	// Always expose health check endpoint
 	router.HandleFunc("/health", h.HandleHealth).Methods("GET")
