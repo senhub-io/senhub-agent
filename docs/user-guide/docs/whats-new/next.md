@@ -6,6 +6,31 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **The agent ships as a container image.** `ghcr.io/senhub-io/senhub-agent`
+  starts from one required variable and one mount: an export token, and a
+  volume on the state directory. An entrypoint writes a configuration from
+  the environment when none is mounted and checks it before the agent
+  starts, so a container whose variables produce a file the agent would
+  refuse stops with the reason instead of restarting in a loop. Probes come
+  through three doors: `SENHUB_PROBES` carrying the YAML a `probes.d` file
+  would hold, a mounted `probes.d`, or a whole mounted configuration
+  directory. Credentials are never written to a file; the fragments carry
+  `${env:...}` references the agent resolves at every start. Linux amd64 and
+  arm64, running as an unprivileged user, with a health check on the
+  console.
+
+    Identity is the part worth reading twice. A container has no
+    machine-id, and `host.id` is read from it, so without one the underlying
+    library falls back to the kernel boot identifier and every container
+    arrives as a new host: measured on a real deployment, three runs of the
+    same image, three hosts in the graph. The agent key has the same shape
+    of problem for the other identity, since it lives in `agent.yaml`. Both
+    are now resolved at startup and kept in the state volume, so one volume
+    is one host and one agent, and `SENHUB_HOST_ID` settles the first where
+    the deployment already knows it. Nothing is baked into the image: an
+    identity that belongs to an image belongs to all of its instances at
+    once.
+
 - **The web console puts what you need to start in front, and shows where
   the data goes.** The menu now follows the operator's path: Overview,
   Probes, Outputs, Settings, Docs. The probe editor opens on a block
@@ -107,6 +132,21 @@ Changes land here as they are merged to `dev`.
   interval that eats into the quota is visible.
 
 ## Fixes
+
+- **A container host no longer drowns the agent's own log.** On a machine
+  that runs containers, veth interfaces appear and disappear constantly.
+  The network probe enumerates the counters, then looks each interface up
+  by name; between the two, a veth can be gone. That race is the normal
+  state of a container host, not a failure, and it was reported straight to
+  standard output with no level, no structured field and no respect for the
+  configured verbosity. Measured on a fleet host with 26 containers and 23
+  container creations in 24 hours: 42 of the agent's 87 journal lines were
+  this one message, 48 per cent of its output, all of a single kind. Two
+  machines with 6 and 7 containers but little churn produced none, which
+  matches the mechanism: it is the birth and death of the interfaces that
+  produces the race, not their number. The vanish case is now a Debug line
+  through the logger, any other failure to read an interface stays a Warn,
+  and both carry the interface as a structured field.
 
 - **The `depends_on` warning no longer tells root to run as root.** An agent
   that sees outbound sockets and can name none of their owners said so and
