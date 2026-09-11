@@ -15,10 +15,31 @@ That is the whole of it for a first run: one variable, one mount.
 
 ## The one mount that matters
 
-`/var/lib/senhub-agent` holds the agent's own key and the bookmarks its
-log probes keep. **Mount it, or every restart gives this agent a new
-identity** and re-reads the tail of every log it follows. The agent says
-so on startup when the directory is not writable.
+`/var/lib/senhub-agent` holds everything that makes this agent *this*
+agent: its host identity, its own key, and the bookmarks its log probes
+keep. **Mount it, or every container arrives as a new host** and
+re-reads the tail of every log it follows. The entrypoint says so on
+startup when the directory is not a mounted volume.
+
+Two identities live there, and they answer different questions.
+
+`machine-id` is the host identity. It is what a container has none of:
+on a real machine the operating system provides it, and the agent reads
+it to decide which host its measurements belong to. Without one the
+underlying library falls back to the kernel's boot identifier, which it
+documents as not stable, so each container is seen as a different
+machine. Measured on a real deployment: three runs of the same image,
+three hosts in the graph.
+
+`agent.key` is the agent identity. It is generated on first start and it
+is what the receiving side reads to tell two agents apart, so two agents
+carrying the same key are one agent to everything downstream. Keeping it
+in the volume means one agent per volume, not one per container.
+
+If your platform already knows what this host is, `SENHUB_HOST_ID`
+settles the first without a volume. Give each instance its own value:
+an identity shared between several running agents is worse than one
+that changes, because nothing signals it.
 
 Nothing else needs a mount. The configuration lives inside the container
 unless you choose otherwise, and the log file is written to
@@ -38,13 +59,18 @@ feature they configure is wanted.
 | `SENHUB_TAGS` | No | - | Tags on every metric, as `key=value,key2=value2` |
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
-| `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the key and the bookmarks live |
+| `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key and the bookmarks live |
+| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance |
 | `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
 
 The agent key is **not** a variable: the agent generates its own on
-first start and keeps it in the state directory. That is why the mount
-matters.
+first start, and the entrypoint keeps it in the state directory so the
+next container reuses it. That is why the mount matters.
+
+Never bake either identity into an image. An image is deployed in
+several copies by construction, so an identity that belongs to the image
+belongs to all of its instances at once.
 
 ## Starting other probes
 

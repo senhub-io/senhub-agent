@@ -61,6 +61,12 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # falls back to the directory of its own binary, which is read-only here.
 RUN mkdir -p /etc/senhub-agent /var/lib/senhub-agent /var/log/senhub-agent \
  && chown -R senhub:senhub /etc/senhub-agent /var/lib/senhub-agent /var/log/senhub-agent
+
+# host.id is read from /etc/machine-id. The file is created empty and owned
+# by the agent user so the entrypoint can settle the identity at startup;
+# empty, it is ignored exactly as an absent file would be, so an image run
+# without the entrypoint behaves as before.
+RUN install -o senhub -g senhub -m 0644 /dev/null /etc/machine-id
 VOLUME ["/var/lib/senhub-agent"]
 
 USER senhub
