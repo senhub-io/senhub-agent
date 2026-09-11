@@ -138,6 +138,9 @@ type OTLPSyncStrategy struct {
 	pushTicker *time.Ticker
 	// pushDone signals the push goroutine to exit. Closed by Shutdown.
 	pushDone chan struct{}
+	// pushCancel aborts a push already in flight. Only Shutdown calls it:
+	// while the agent runs, a push must finish on its own.
+	pushCancel context.CancelFunc
 	// pushWG tracks the push goroutine for clean Shutdown.
 	pushWG sync.WaitGroup
 
@@ -479,6 +482,12 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 	s.pushTicker = time.NewTicker(s.cfg.Metrics.Interval)
 	s.pushDone = make(chan struct{})
 	runCtx := s.runCtx
+	// Not derived from runCtx, deliberately: an agent-wide cancellation
+	// must not abort a push in flight. Shutdown cancels this one on its
+	// own, because there the caller is a service manager holding a stop
+	// budget.
+	pushCtx, pushCancel := context.WithCancel(context.Background())
+	s.pushCancel = pushCancel
 	s.pushWG.Add(1)
 	go func() {
 		defer s.pushWG.Done()
@@ -492,11 +501,11 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 				// refresh that cancelled the context).
 				return
 			case <-s.pushTicker.C:
-				// Deliberately NOT runCtx: cancellation ends the
+				// Not runCtx: an agent-wide cancellation ends the
 				// loop, it must not abort a push already in flight
-				// and drop the batch it carries. The exporter has
-				// its own per-export timeout.
-				s.pushPeriodic(context.Background())
+				// and drop the batch it carries. Shutdown is the one
+				// exception, and it cancels pushCtx.
+				s.pushPeriodic(pushCtx)
 			}
 		}
 	}()
@@ -839,6 +848,14 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	if s.pushTicker != nil {
 		s.pushTicker.Stop()
 		close(s.pushDone)
+		// A collector that drops packets rather than refusing them
+		// leaves an export in flight until its own timeout, a minute by
+		// default. Waiting for that spends the whole stop budget the
+		// service manager gives the agent, on a batch that is about to
+		// fail anyway. The drain below gets its own bounded attempt.
+		if s.pushCancel != nil {
+			s.pushCancel()
+		}
 		s.pushWG.Wait()
 	}
 
