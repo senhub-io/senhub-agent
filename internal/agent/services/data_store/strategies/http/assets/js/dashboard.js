@@ -108,16 +108,21 @@
     function probeState(p) {
         if (!p.enabled) return 'disabled';
         if (p.health === 'failed') return 'failing';
+        // Collecting and reporting the target down is not a failing probe,
+        // but it is what the operator needs to see: the Overview said
+        // "0 failing" for a database that had never answered.
+        if (p.running && p.target_up === false) return 'target-down';
         if (p.running) return 'running';
         if (p.authorized === false) return p.tier === 'pro' ? 'locked' : 'unsupported';
         return 'stopped';
     }
     function probeStats(list) {
-        const st = { total: list.length, running: 0, failing: 0, disabled: 0, other: 0 };
+        const st = { total: list.length, running: 0, failing: 0, targetDown: 0, disabled: 0, other: 0 };
         list.forEach(p => {
             const s = probeState(p);
             if (s === 'running') st.running++;
             else if (s === 'failing') st.failing++;
+            else if (s === 'target-down') st.targetDown++;
             else if (s === 'disabled') st.disabled++;
             else st.other++;
         });
@@ -130,6 +135,7 @@
         let pills = '';
         if (st.running) pills += pill('ok', st.running + ' running');
         if (st.failing) pills += pill('err', st.failing + ' failing');
+        if (st.targetDown) pills += pill('err', st.targetDown + ' target down');
         if (st.other) pills += pill('warn', st.other + ' stopped');
         if (st.disabled) pills += pill('off', st.disabled + ' disabled');
         $('probes-pills').innerHTML = pills;
@@ -137,7 +143,7 @@
         if (!list.length) {
             $('probes-body').innerHTML = '<div class="empty-line">No probe configured yet. <a href="' + WEB + 'probes?new=1">Add a probe</a> to start collecting.</div>';
         } else {
-            const order = { failing: 0, stopped: 1, locked: 1, running: 2, disabled: 3 };
+            const order = { failing: 0, 'target-down': 1, stopped: 2, locked: 2, running: 3, disabled: 4 };
             const rows = list.slice().sort((a, b) => order[probeState(a)] - order[probeState(b)]);
             let html = '<table class="tbl compact"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
             rows.forEach(p => {
@@ -146,6 +152,9 @@
                 if (s === 'failing') {
                     state = pill('err', 'failing');
                     last = '<span class="reason">' + short(p.last_error || p.reason || 'collection failed', 80) + '</span>';
+                } else if (s === 'target-down') {
+                    state = pill('err', 'target down');
+                    last = '<span class="reason">' + short('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0', 80) + '</span>';
                 } else if (s === 'running') {
                     state = pill('ok', 'running');
                     last = p.last_update ? esc(rel(p.last_update)) : '-';
@@ -297,7 +306,13 @@
         steps.push(s1);
 
         const s2 = { done: !!(probeSt && probeSt.total > 0), title: 'Probes configured' };
-        if (s2.done) s2.desc = esc(plural(probeSt.total, 'probe') + ', ' + probeSt.running + ' running, ' + probeSt.failing + ' failing') + '. <a href="' + WEB + 'probes">Review</a>';
+        if (s2.done) {
+            // A probe whose target is down belongs in the number that tells
+            // the operator something needs them, not hidden behind a count
+            // of probes that merely execute.
+            const wrong = probeSt.failing + probeSt.targetDown;
+            s2.desc = esc(plural(probeSt.total, 'probe') + ', ' + probeSt.running + ' running, ' + wrong + ' needing attention') + '. <a href="' + WEB + 'probes">Review</a>';
+        }
         else s2.desc = 'Nothing is collected yet. <a href="' + WEB + 'probes?new=1">Add a probe</a>';
         steps.push(s2);
 
