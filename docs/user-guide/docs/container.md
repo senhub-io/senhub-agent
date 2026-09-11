@@ -109,10 +109,12 @@ entrypoint still writes `agent.yaml` and the output from the variables,
 so you keep the one-variable start and add only what the platform can
 mount.
 
-### Your own configuration
+### A whole mounted configuration
 
 Mount `/etc/senhub-agent` whole. Nothing is written and every variable
-is ignored, which the entrypoint says on startup.
+is ignored, which the entrypoint says on startup. This door has a trap
+of its own when the same directory serves several instances: see
+[Bringing your own configuration](#bringing-your-own-configuration).
 
 Whichever you choose, the configuration is checked before the agent
 starts: a container whose variables produce a file the agent would
