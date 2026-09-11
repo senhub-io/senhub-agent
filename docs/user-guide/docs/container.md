@@ -39,15 +39,65 @@ feature they configure is wanted.
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the key and the bookmarks live |
+| `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it |
+| `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
 
 The agent key is **not** a variable: the agent generates its own on
 first start and keeps it in the state directory. That is why the mount
 matters.
 
+## Starting other probes
+
+The variables above configure the agent. The probes are configuration of
+their own, and there are sixty-six types of them, so they are not each
+given a variable. Three ways in, from the least to the most work:
+
+### A variable carrying the fragment
+
+`SENHUB_PROBES` holds the same YAML a file in `probes.d` would. It is
+the way in on a platform where placing a file is harder than setting a
+variable, which is the usual case for a managed container service:
+
+```yaml
+SENHUB_PROBES: |
+  - name: db
+    type: mysql
+    params:
+      host: "${env:DB_HOST}"
+      username: monitor
+      password: "${env:DB_PASSWORD}"
+  - name: web
+    type: http_check
+    params:
+      targets: ["https://example.test/health"]
+```
+
+A `${env:...}` reference inside it is resolved by the agent at every
+start, so a password is set as its own variable and never appears in
+this one. `SENHUB_OUTPUT` does the same for one output.
+
+### A mounted drop-in directory
+
+Mount `/etc/senhub-agent/probes.d` and drop one file per probe. The
+entrypoint still writes `agent.yaml` and the output from the variables,
+so you keep the one-variable start and add only what the platform can
+mount.
+
+### Your own configuration
+
+Mount `/etc/senhub-agent` whole. Nothing is written and every variable
+is ignored, which the entrypoint says on startup.
+
+Whichever you choose, the configuration is checked before the agent
+starts: a container whose variables produce a file the agent would
+refuse stops with the reason rather than restarting in a loop.
+
 ### Reading an Azure Container App
 
-Set the application and its credentials, and the agent reads the console
-log stream of that Container App. Setting `SENHUB_AZURE_APP` without the
+This is a shorthand for the fragment `SENHUB_PROBES` would carry, kept
+because it is the probe this image is most often asked for. Set the
+application and its credentials, and the agent reads the console log
+stream of that Container App. Setting `SENHUB_AZURE_APP` without the
 rest stops the container with the list of what is missing, rather than
 starting half configured.
 

@@ -90,8 +90,36 @@ else
     log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"
   fi
 
+  # Any probe, without a mount: the variable carries the same YAML a
+  # file in probes.d would. Container platforms make a file harder to
+  # place than a variable, which is the whole reason this exists.
+  if [ -n "${SENHUB_PROBES:-}" ]; then
+    mkdir -p "$CONFIG_DIR/probes.d"
+    printf '%s\n' "$SENHUB_PROBES" > "$CONFIG_DIR/probes.d/50-from-env.yaml"
+    log "probes read from SENHUB_PROBES"
+  fi
+
+  # The same door for outputs: one file per output, as strategies.d
+  # expects, so several outputs mean several variables or a mount.
+  if [ -n "${SENHUB_OUTPUT:-}" ]; then
+    mkdir -p "$CONFIG_DIR/strategies.d"
+    printf '%s\n' "$SENHUB_OUTPUT" > "$CONFIG_DIR/strategies.d/50-from-env.yaml"
+    log "output read from SENHUB_OUTPUT"
+  fi
+
+  # A shorthand for the one probe this image is most often asked for.
+  # It writes the same kind of fragment SENHUB_PROBES would carry.
   if [ -n "${SENHUB_AZURE_APP:-}" ]; then
     write_azure_probe
+  fi
+
+  if senhub-agent config check --config-path "$CONFIG" >/dev/null 2>&1; then
+    log "configuration written and checked"
+  else
+    log "the configuration that was written does not pass config check:"
+    senhub-agent config check --config-path "$CONFIG" >&2 || true
+    log "fix the variables, or mount a configuration of your own"
+    exit 1
   fi
 fi
 
