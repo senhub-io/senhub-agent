@@ -262,8 +262,15 @@ func (h *HTTPSyncStrategy) handleOutputCreate(w http.ResponseWriter, r *http.Req
 		return
 	}
 	agentstate.RecordEvent(agentstate.EventInfo, agentstate.EventKindConsole, req.Type, "output created from the console")
+	// An output created disabled is written as a .disabled file and the
+	// agent leaves it alone; saying otherwise contradicts the row the
+	// operator is looking at right under the message.
+	applied := fmt.Sprintf("output %q created; the agent starts it on its own", req.Type)
+	if !enabled {
+		applied = fmt.Sprintf("output %q created, disabled; enable it when you want the agent to start it", req.Type)
+	}
 	writeJSON(w, http.StatusCreated, outputWriteResponse{Status: "success", Path: path,
-		Applied: fmt.Sprintf("output %q created; the agent starts it on its own", req.Type)})
+		Applied: applied})
 }
 
 func (h *HTTPSyncStrategy) handleOutputUpdate(w http.ResponseWriter, r *http.Request) {

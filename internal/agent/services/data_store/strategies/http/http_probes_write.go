@@ -59,8 +59,14 @@ func (h *HTTPSyncStrategy) handleProbeCreate(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// A probe created disabled is kept with its secrets and never started;
+	// saying the agent starts it contradicts the row it lands on.
+	applied := fmt.Sprintf("probe %q created; the agent starts it on its own", req.Name)
+	if req.Enabled != nil && !*req.Enabled {
+		applied = fmt.Sprintf("probe %q created, disabled; enable it when you want the agent to collect", req.Name)
+	}
 	writeJSON(w, http.StatusCreated, probeWriteResponse{Status: "success", Path: path,
-		Applied: fmt.Sprintf("probe %q created; the agent starts it on its own", req.Name), Warnings: warnings})
+		Applied: applied, Warnings: warnings})
 }
 
 // handleProbeUpdate rewrites a managed fragment. The name in the path is
