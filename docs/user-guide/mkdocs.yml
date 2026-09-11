@@ -88,6 +88,7 @@ nav:
   - Home: index.md
   - Presentation: presentation.md
   - Installation: installation.md
+  - Container: container.md
   - Configuration: configuration.md
   - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md
