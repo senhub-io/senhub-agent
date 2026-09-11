@@ -133,6 +133,25 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **The probe editor no longer contradicts itself.** Validate reported
+  the same missing field twice, once in the form's words and once in the
+  schema's, so a blank PostgreSQL form announced seven problems for four
+  empty fields. And nothing cleared as the operator typed: with all four
+  filled, the page said "Ready to save" in green while still showing the
+  red banner, the four field errors and a stale problem count. A verdict
+  answers the values it was run on, so any edit now drops it.
+
+- **A probe or output created disabled is no longer announced as
+  started.** Both said "the agent starts it on its own", in green,
+  directly above a row reading "disabled".
+
+- **The address bar names the tab on screen.** Arriving on the HTTP
+  output's Settings tab left the address reading `#urls`, so a copied
+  link or a plain reload landed on the other tab. The licence file
+  control also drew its labels in the browser's language, putting French
+  text in the middle of an English console; it is now the console's own
+  button.
+
 - **A poller can no longer chart a measurement the agent never reported.**
   The pull endpoints sent no cache directive at all. A response with
   neither a validator nor an expiry lets a client apply its own heuristic
