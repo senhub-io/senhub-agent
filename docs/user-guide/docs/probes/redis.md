@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/redis" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/redis.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -25,11 +25,11 @@ keyspace size, replication state and persistence (RDB/AOF) health.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `host` | No | `127.0.0.1` | Server hostname or address |
-| `port` | No | `6379` | Server port |
-| `password` | No | - | AUTH password, when required. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `host` | In practice | `127.0.0.1` | Server hostname or address |
+| `port` | In practice | `6379` | Server port |
+| `password` | In practice | - | AUTH password, when required. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `tls` | No | `false` | Use TLS for the connection |
 | `tls_cert_file` | No | - | Client certificate (PEM) for mutual TLS; needs tls_key_file and tls: true |
 | `tls_key_file` | No | - | Private key (PEM) matching tls_cert_file |

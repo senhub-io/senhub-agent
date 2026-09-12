@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/vscode-icons/file-type-systemd.svg" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/systemd.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,7 +26,7 @@ All non-transient units are monitored by default; every parameter is optional.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `units` | No | - | Unit names or shell globs to watch; empty watches every unit of the included types. Example: `nginx.service, ssh*.service` |
 | `include_types` | No | `[service socket timer mount]` | Unit type suffixes to include. Example: `service, timer` |

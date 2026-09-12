@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/memcached" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/memcached.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -25,10 +25,10 @@ cache hit/miss ratios, command throughput and eviction counters.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `host` | No | `localhost` | Server hostname or address |
-| `port` | No | `11211` | Server TCP port |
+| `host` | In practice | `localhost` | Server hostname or address |
+| `port` | In practice | `11211` | Server TCP port |
 | `interval` | No | `60` | Seconds between collections |
 | `timeout` | No | `5` | Connection and command timeout in seconds |
 | `instance_name` | No | - | Stable identity of this server instead of host:port |

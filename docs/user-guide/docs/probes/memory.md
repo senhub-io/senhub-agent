@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/memory.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/memory.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** - No license required. Available in all tiers.
@@ -82,7 +82,7 @@ Platform-specific metrics are automatically detected and collected based on the 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Collection interval in seconds |
 

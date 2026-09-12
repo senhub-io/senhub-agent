@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/nvidia" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/nvidia.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -25,7 +25,7 @@ No parameters are required. The probe auto-detects all GPUs visible to
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `nvidia_smi_path` | No | `nvidia-smi` | Path of the nvidia-smi binary when it is not on the PATH. Example: `/usr/bin/nvidia-smi` |
 | `gpus` | No | - | GPU indices to report, as nvidia-smi numbers them; empty means all. Example: `0, 1` |

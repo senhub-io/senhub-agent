@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/proxmox" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/proxmox.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -27,7 +27,7 @@ usage.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `endpoint` | Yes | - | HTTPS base URL of the cluster API. Example: `https://pve.example.com:8006` |
 | `token_id` | Yes | - | API token identifier as user@realm!tokenname. Example: `monitor@pve!agent` |

@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/router.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/ping-gateway.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -37,9 +37,12 @@ Platform-specific ping implementations are automatically selected based on the o
 
 ## Configuration Parameters
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-This probe reads no parameters.
+This probe reads no parameters. It collects every 30 seconds, a cadence fixed in the code.
+
+<!-- schema:params:end -->
 
 The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored. Run one instance per host: a second instance pings the same gateway again.
 

@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/update.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/os-updates.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -28,7 +28,7 @@ All queries are read-only and run without privilege escalation.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `3600` | Seconds between collections; update status changes slowly |
 | `command_timeout` | No | `120` | Seconds allowed to the package-manager queries on Linux |

@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/apachesolr" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/solr.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,9 +26,9 @@ size.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost:8983` | Base URL of the node, without the /solr path. Example: `http://solr01:8983` |
+| `endpoint` | In practice | `http://localhost:8983` | Base URL of the node, without the /solr path. Example: `http://solr01:8983` |
 | `jolokia_url` | No | - | Alternative spelling of endpoint kept for consistency with the JVM probes; its scheme, host and port replace endpoint, the path is dropped |
 | `timeout` | No | `10` | HTTP request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |

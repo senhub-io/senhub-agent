@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/vmware" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/vsphere_ha.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -58,17 +58,22 @@ When `nsx_endpoint` or `nsx_username` is omitted, the probe collects vSAN metric
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `vcenter_url` | string | Yes | - | vCenter management address (`https://` assumed if no scheme) |
-| `username` | string | Yes | - | vCenter user with read access (vSAN health view) |
-| `password` | string | Yes | - | vCenter user password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `insecure_skip_verify` | boolean | No | `false` | Skip TLS certificate validation for vCenter and NSX (set `true` for self-signed certificates) |
-| `nsx_endpoint` | string | No | - | NSX manager base URL. Enables NSX-T collection when set together with `nsx_username` |
-| `nsx_username` | string | No | - | NSX manager user with read access to the REST API |
-| `nsx_password` | string | No | - | NSX manager user password — reference a stored secret via `${secret:<name>.nsx_password}` |
-| `interval` | integer | No | `300` | Collection interval in seconds |
-| `timeout` | integer | No | `30` | Per-request deadline (seconds) for vCenter and NSX calls |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `vcenter_url` | Yes | - | vCenter management address. Example: `https://vcenter.example.com` |
+| `username` | Yes | - | vCenter user with read access to the vSAN health view. Example: `monitor@vsphere.local` |
+| `password` | In practice | - | Password of the vCenter user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `insecure_skip_verify` | No | `false` | Accept the vCenter and NSX certificates without validating them |
+| `nsx_endpoint` | No | - | NSX manager base URL; empty turns NSX-T collection off. Example: `https://nsx.example.com` |
+| `nsx_username` | No | - | NSX manager user with read access to the REST API; NSX-T collection needs nsx_endpoint and this user |
+| `nsx_password` | No | - | Password of the NSX manager user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `300` | Seconds between collections |
+| `timeout` | No | `30` | Per-request deadline for vCenter and NSX calls, in seconds |
+
+<!-- schema:params:end -->
 
 # Metrics Collected
 

@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/clock-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/chrony.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -32,7 +32,7 @@ No parameters are required — the probe reads the local chrony daemon.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `chronyc_path` | No | `chronyc` | Path of the chronyc binary when it is not on the service's PATH. Example: `/usr/bin/chronyc` |
 | `interval` | No | `30` | Seconds between collections |

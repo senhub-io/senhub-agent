@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/opentelemetry" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/otlp-receiver.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -38,13 +38,13 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `protocol` | No | `grpc` | Listener transport: OTLP/gRPC or OTLP/HTTP protobuf. One of `grpc`, `http` |
-| `address` | No | - | Listen address (host:port); 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address. Example: `0.0.0.0:4317` |
+| `protocol` | In practice | `grpc` | Listener transport: OTLP/gRPC or OTLP/HTTP protobuf. One of `grpc`, `http` |
+| `address` | In practice | - | Listen address (host:port); 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address. Example: `0.0.0.0:4317` |
 | `port` | No | - | Replaces only the port part of the address |
 | `http_path` | No | `/v1/metrics` | Route the HTTP receiver serves metrics on; logs and traces keep /v1/logs and /v1/traces; ignored for grpc |
-| `signals` | No | `[metrics]` | Signals the listener accepts; empty means metrics only. One of `metrics`, `logs`, `traces` |
+| `signals` | In practice | `[metrics]` | Signals the listener accepts; empty means metrics only. One of `metrics`, `logs`, `traces` |
 | `bearer_token` | No | - | Token senders must present as Authorization: Bearer; empty accepts unauthenticated senders. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `allowed_cidrs` | No | - | Source ranges (CIDR) allowed to send, checked on the transport peer address; empty allows any. Example: `10.0.0.0/8` |
 | `rate_limit_rps` | No | `0` | Accepted requests per second; 0 turns rate limiting off |

@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/microsoftsqlserver" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/mssql_ha.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -69,16 +69,21 @@ Monitor several SQL Server instances with separate probe instances:
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `host` | string | Yes | - | SQL Server hostname or IP. For a named instance use `host\InstanceName` |
-| `port` | integer | No | `1433` | SQL Server TCP port |
-| `username` | string | Yes | - | SQL Server login with read access to the AlwaysOn DMVs |
-| `password` | string | No | - | Password for the SQL login — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `encrypt` | string | No | `true` | TLS negotiation: `true`, `false` or `disable` (go-mssqldb convention) |
-| `trust_server_cert` | boolean | No | `false` | Trust the server TLS certificate without validation (set `true` for self-signed server certificates) |
-| `interval` | integer | No | `60` | Collection interval in seconds |
-| `timeout` | integer | No | `30` | Per-cycle connection and query timeout in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | SQL Server hostname or address; host\Instance for a named instance. Example: `sql01.example.com` |
+| `port` | No | `1433` | SQL Server TCP port |
+| `username` | Yes | - | SQL login with read access to the AlwaysOn DMVs |
+| `password` | In practice | - | Password of the SQL login; empty for an unauthenticated login. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `encrypt` | No | `true` | TLS negotiation with the server (go-mssqldb convention). One of `true`, `false`, `disable` |
+| `trust_server_cert` | No | `false` | Accept the server certificate without validating it |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `30` | Connection and query timeout per cycle, in seconds |
+
+<!-- schema:params:end -->
 
 # Metrics Collected
 

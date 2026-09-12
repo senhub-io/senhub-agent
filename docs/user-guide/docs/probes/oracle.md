@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/oracle" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/oracle.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -28,13 +28,13 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `host` | Yes | - | Listener hostname or address. Example: `db.example.com` |
-| `port` | No | `1521` | Listener port |
+| `port` | In practice | `1521` | Listener port |
 | `service_name` | Yes | - | Oracle service name, not the SID. Example: `ORCL` |
 | `username` | Yes | - | Database user with SELECT on the v$ views |
-| `password` | No | - | User's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `password` | In practice | - | User's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `interval` | No | `60` | Seconds between collections |
 
 <!-- schema:params:end -->

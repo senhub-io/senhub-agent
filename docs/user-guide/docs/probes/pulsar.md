@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/devicon/pulsar.svg" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/pulsar.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,9 @@ reporting broker health, throughput, storage and backlog at the broker level.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost:8080` | Base URL of the broker admin and metrics HTTP service. Example: `http://pulsar.example.com:8080` |
+| `endpoint` | In practice | `http://localhost:8080` | Base URL of the broker admin and metrics HTTP service. Example: `http://pulsar.example.com:8080` |
 | `timeout` | No | `10` | Request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |
 | `instance_name` | No | - | Stable identity of this broker instead of the one derived from the endpoint |

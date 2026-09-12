@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/server-network.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/redfish.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -151,16 +151,21 @@ Monitor multiple hardware targets with separate probe instances:
 
 # Configuration Parameters
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | Yes | - | BMC management address, for example `https://idrac-server01.example.com` |
+| `endpoint` | Yes | - | BMC management address. Example: `https://idrac-server01.example.com` |
 | `username` | Yes | - | BMC user with read access to the Redfish API |
-| `password` | Yes | - | Password of the BMC user. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
-| `verify_ssl` | No | `true` | Validate the BMC's TLS certificate; `false` for the self-signed certificate most BMCs ship with. A top-level key, not a `tls` block |
-| `interval` | No | `300` | Seconds between collections; see [Interval and the PRTG TTL](#interval-and-the-prtg-ttl) |
-| `collections` | No | - | Subsystems to collect; replaces the default set (`system`, `thermal`, `power`, `processor`, `memory`, `storage`) rather than filtering it. Also `drives`, `network`, `networkadapter` |
+| `password` | Yes | - | Password of the BMC user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_ssl` | No | `true` | Validate the BMC's TLS certificate; false for the self-signed certificate most BMCs ship with |
+| `interval` | No | `300` | Seconds between collections |
+| `collections` | No | - | Subsystems to collect; replaces the default set (system, thermal, power, processor, memory, storage) rather than filtering it. One of `system`, `thermal`, `power`, `processor`, `memory`, `storage`, `drives`, `network`, `networkadapter` |
+
+<!-- schema:params:end -->
+
+The cadence set by `interval` interacts with the PRTG sensor TTL: see [Interval and the PRTG TTL](#interval-and-the-prtg-ttl).
 
 # Metrics Collected
 

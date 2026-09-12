@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/bell-ring-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/event.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -31,10 +31,10 @@ Once started, the probe listens on `http://<address>:<port>/event` and accepts `
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
-| `port` | No | `5656` | HTTP port to listen on |
+| `address` | In practice | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+| `port` | In practice | `5656` | HTTP port to listen on |
 | `protocol` | No | `tcp` | Transport of the listener. The listener serves HTTP, so tcp is the only transport it can take. One of `tcp` |
 
 <!-- schema:params:end -->

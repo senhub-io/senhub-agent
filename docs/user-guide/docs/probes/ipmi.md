@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/server.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/ipmi.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -27,10 +27,10 @@ against the local BMC.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `mode` | No | `local` | local reads the host's own BMC; remote polls a BMC over LAN. One of `local`, `remote` |
-| `remote` | No | - | Remote BMC access, used with mode remote |
+| `remote` | If `mode` is `remote` | - | Remote BMC access, used with mode remote |
 | `remote.host` | No | - | BMC address or hostname; required with mode remote |
 | `remote.username` | No | - | IPMI user |
 | `remote.password` | No | - | IPMI user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |

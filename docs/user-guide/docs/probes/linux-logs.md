@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/linux" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/linux-logs.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — included in the free tier alongside CPU, memory,
@@ -41,7 +41,7 @@ identical to records produced by the `syslog` and `event` probes
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `units` | No | - | systemd units to follow; empty means every unit. Example: `nginx.service` |
 | `identifiers` | No | - | Program names (SYSLOG_IDENTIFIER) to follow. Example: `sshd` |

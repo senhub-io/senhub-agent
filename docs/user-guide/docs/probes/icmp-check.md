@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/check-network.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/icmp-check.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 # icmp_check — multi-target ping
 
@@ -23,7 +23,7 @@ single probe instance.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `targets` | Yes | - | Hostnames or addresses to ping. Example: `10.0.0.1, gw.example.com` |
 | `count` | No | `4` | Echo requests per target per cycle |

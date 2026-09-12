@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/windows" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/windows-eventlog.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -35,7 +35,7 @@ you asked for leave the host.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `channels` | Yes | - | Channel names. Example: `System, Security` |
 | `levels` | No | - | Levels to keep; empty means all. One of `Critical`, `Error`, `Warning`, `Information`, `Verbose` |
