@@ -83,6 +83,7 @@ The `agent` section defines the agent identity.
 |-----------|----------|-------------|
 | `key` | Yes | Authentication key (UUID format), provided by SenHub support |
 | `license` | No | License token for premium probes (see License section) |
+| `global_tags` | No | Key-value tags applied to every datapoint of every probe. A probe's own `custom_tags` win on a key present in both. Keep the set small — every key multiplies the series a backend stores |
 
 ## Probes Section
 
@@ -218,7 +219,7 @@ is refused by the web console.
 
 ## Storage Section
 
-The `storage` section defines how the agent exposes collected metrics. The main storage type is `http`, which provides the REST API and web dashboard.
+The `storage` section defines how the agent exposes collected metrics. The main storage type is `http`, which provides the REST API and the [web console](web-interface.md).
 
 ```yaml
 storage:
@@ -235,7 +236,7 @@ storage:
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
-| `endpoints` | `["prtg", "web"]` | Enabled endpoint types |
+| `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios"]` |
 | `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
 
 ### Available Endpoint Types
@@ -245,6 +246,7 @@ storage:
 | `prtg` | PRTG-formatted JSON API for PRTG Network Monitor integration |
 | `web` | Built-in web console (Overview, Probes, Outputs, Settings) |
 | `nagios` | Nagios-compatible check output |
+| `prometheus` | Prometheus text exposition on `/metrics` (see [Prometheus](prometheus/index.md)) |
 
 ### HTTPS Configuration
 
@@ -517,7 +519,7 @@ Without a license the agent runs every Free-tier probe: the whole universal coll
 
 Contact SenHub support (support@senhub.io) to request a license token. Specify the probe types you need:
 
-- **Pro license**: adds the deep vendor, HA, cloud and active-check integrations — `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`
+- **Pro license**: adds the deep vendor, HA, cloud and active-check integrations — `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `azure_container_apps`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`
 - **Enterprise license**: all current and future probe types
 
 ### Where the license is stored
@@ -600,7 +602,7 @@ Free tier — the whole universal collection tier, abbreviated above; see the
 | Tier | Available Probes |
 |------|-----------------|
 | **Free** | The universal collection tier — OS/host, logs, network checks, application, database and broker probes. See the [probe catalog](probes/index.md) for the tier badge on each probe. |
-| **Pro** | All free + citrix, netscaler, veeam, redfish, ibmi, powerstore, mssql_ha, oracle_enterprise, hyperv_ha, vsphere_ha, ad_hybrid, exchange_online, event, ping_gateway, ping_webapp, load_webapp |
+| **Pro** | All free + citrix, netscaler, veeam, redfish, ibmi, powerstore, mssql_ha, oracle_enterprise, hyperv_ha, vsphere_ha, ad_hybrid, exchange_online, azure_container_apps, event, ping_gateway, ping_webapp, load_webapp |
 | **Enterprise** | All probes (including future additions) |
 
 ### Grace Period
@@ -630,7 +632,8 @@ auto_update:
 |-----------|---------|-------------|
 | `enabled` | `false` | Automatically install new versions when available |
 | `include_beta` | `false` | Include beta versions in update checks |
-| `url` | SenHub releases | Update server URL |
+| `url` | SenHub releases | Update server URL. The **base** the agent appends to — a value carrying `/releases` or `/download` makes every derived URL double it |
+| `version` | `latest` | Target the periodic updater tracks. `latest` resolves the newest stable; an explicit version pins to it |
 
 Even with `enabled: false`, the agent checks for new versions at startup and logs a message if an update is available. Use `senhub-agent update --list` to see available versions and `senhub-agent update <version>` to install manually.
 
@@ -780,15 +783,15 @@ A missing required reference (file not found, no default) **aborts agent boot** 
 The `agent config show` command prints the final, merged configuration as YAML with map keys sorted alphabetically:
 
 ```bash
-senhub-agent config show              # default: --resolved
-senhub-agent config show --resolved   # references substituted
-senhub-agent config show --raw        # references preserved
+senhub-agent config show              # default: --redact
 senhub-agent config show --redact     # secrets masked with ***
+senhub-agent config show --resolved   # references substituted, secrets in cleartext
+senhub-agent config show --raw        # references preserved
 ```
 
-- `--resolved` (default): the same configuration the agent boots with — `${env:..}` / `${file:..}` resolved against the current environment and filesystem.
+- `--redact` (default): resolved configuration, but with values that came from `${file:..}` and any value whose YAML key matches `(?i)(key|token|password|secret)` masked with `***`. Safe to copy into a support ticket or commit to source control.
+- `--resolved`: the same configuration the agent boots with — `${env:..}` / `${file:..}` / `${secret:..}` resolved against the current environment, filesystem and secret store, secrets in cleartext. Ask for it explicitly.
 - `--raw`: the merged configuration BEFORE substitution. Useful for auditing the layout (which files contributed which entries) before comparing against the resolved output.
-- `--redact`: resolved configuration but with values that came from `${file:..}` AND any value whose YAML key matches `(?i)(key|token|password|secret)` masked with `***`. Safe to copy into a support ticket or commit to source control.
 
 Output is deterministic — two runs of the same input produce byte-identical output, suitable for `diff` and CI checks.
 

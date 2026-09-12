@@ -92,7 +92,7 @@ storage:
       idle_conn_timeout: 45s
 
       compression: gzip               # gzip | none — default gzip
-      timeout: 10s                    # per-export deadline
+      timeout: 60s                    # per-export deadline — default 60s
 
       retry:
         enabled: true
@@ -117,8 +117,11 @@ storage:
           batch_timeout: 5s
           buffer_size: 2048           # bounded queue; drop beyond
           sample_ratio: 1.0           # head sampling, 0.0-1.0
-          relay_enrichment: true      # default true; add agent correlation
-                                      # context to relayed spans (see below)
+
+      # Telemetry forwarded on behalf of applications (otlp_receiver).
+      relay:
+        enrichment: true              # default true; add the agent's context
+                                      # to relayed telemetry (see below)
 
       # How many exports may be in flight at once. The push splits a
       # large cycle per probe and ships the parts in parallel; 1 means
@@ -138,8 +141,10 @@ storage:
       # disk and restored at boot, so cumulative counters continue
       # instead of resetting.
       persistence:
-        enabled: false                # default false
-        path: /var/lib/senhub-agent/otlp
+        enabled: true                 # default true, but the checkpoint stays
+                                      # off until `path` is set; enabled: false
+                                      # turns it off even with a path
+        path: /var/lib/senhub-agent/otlp   # empty means no checkpoint
         interval: 30s                 # default 30s
         # Disk cap for the logs dead-letter queue, which holds batches
         # the receiver could not take during an outage. Past it the
@@ -258,7 +263,7 @@ received by an [otlp_receiver probe](probes/otlp-receiver.md) configured
 with `signals: [traces]`; without such a probe there is nothing to
 export and the signal stays idle.
 
-**Correlation enrichment (`relay_enrichment`, default `true`).** Relayed
+**Correlation enrichment (`relay.enrichment`, default `true`).** Relayed
 spans keep the emitting application's own identity (`service.name`,
 `service.instance.id`, `host.*`) — the agent never overwrites it. On top of
 that, the agent inserts its own tenancy context so you can pivot from an app
@@ -267,7 +272,10 @@ trace to the infrastructure telemetry of the same tenant: your `global_tags`
 if the application didn't already set that key**. Only standard /
 operator-defined attributes are used — no product-specific keys.
 
-Set `relay_enrichment: false` for a verbatim pass-through. When a single
+Set `relay.enrichment: false` for a verbatim pass-through. The older
+spelling `signals.traces.relay_enrichment` is still read, so a host that set
+it keeps its behaviour, but `relay.enrichment` is the key to write: it covers
+every relayed signal, not traces alone. When a single
 agent relays traffic for several clients (a shared gateway), assign each
 source its own tenant with per-source rules:
 
@@ -472,7 +480,7 @@ the OTLP push automatically applies the same transforms when storing
 into a Prometheus-compatible TSDB, so the **observed metric names are
 identical** at the query layer.
 
-| OTel name (OTLP wire) | Prometheus exposition | After OTLP→PromQL ingest in VM |
+| OTel name (OTLP wire) | Prometheus exposition | After OTLP ingest in VictoriaMetrics |
 |---|---|---|
 | `system.cpu.utilization` (gauge, `1`, `cpu.mode=user`) | `senhub_system_cpu_utilization_ratio` | `system_cpu_utilization_ratio` |
 | `system.memory.usage` (updowncounter, `By`) | `senhub_system_memory_usage_bytes` | `system_memory_usage_bytes` |
