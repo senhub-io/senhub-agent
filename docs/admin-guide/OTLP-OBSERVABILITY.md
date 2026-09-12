@@ -6,7 +6,7 @@ This page documents the agent's OTLP self-metric surfaces — the operator-side 
 - `senhub-agent status --otlp` (CLI block)
 - The **OTLP Pipeline** card on the web dashboard
 
-All three surfaces read the same in-process snapshot, so values are identical (modulo poll timing). End users get a high-level overview in the [OTLP user guide](../user-guide/content/docs/otlp/_index.md#monitoring-the-otlp-pipeline); this page is the field-level reference for operators alerting on the data.
+All three surfaces read the same in-process snapshot, so values are identical (modulo poll timing). End users get a high-level overview in the [OTLP user guide](../user-guide/docs/otlp.md#monitoring-the-otlp-pipeline); this page is the field-level reference for operators alerting on the data.
 
 ## The `/info/otlp` endpoint
 
@@ -146,11 +146,11 @@ The endpoint, the CLI flag and the dashboard card behave identically on Windows,
 | Windows | `C:\SenHub\state\otlp-checkpoint` |
 | macOS | `/usr/local/senhub/state/otlp-checkpoint` |
 
-The directory must be writable by the user the agent runs as. On systemd, that is typically the `senhub-agent` system user — make sure `/var/lib/senhub-agent/` is owned by it.
+The directory must be writable by the user the agent runs as. Under the shipped systemd unit that is the `senhub` system user — make sure `/var/lib/senhub-agent/` is owned by it.
 
 ## Related
 
 - [Backpressure & Resilience](./BACKPRESSURE.md) — configuring the cardinality caps, memory limiter and persistent checkpoint that drive these counters.
 - [HTTP Strategy](./HTTP-STRATEGY.md) — how the HTTP endpoint that serves `/info/otlp` is wired up.
-- [OTLP user guide](../user-guide/content/docs/otlp/_index.md) — end-user view of the OTLP push pipeline.
+- [OTLP user guide](../user-guide/docs/otlp.md) — end-user view of the OTLP push pipeline.
 - [Logging](./LOGGING.md) — log levels and where to look when these counters indicate something is wrong.

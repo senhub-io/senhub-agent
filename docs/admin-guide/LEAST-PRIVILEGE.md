@@ -4,9 +4,10 @@ The SenHub Agent daemon does **not** require root on Linux. The `.deb`
 and `.rpm` packages — and, since 0.2.3, the `senhub-agent install` CLI
 command — install it to run as a dedicated, unprivileged system user
 (`senhub`) under a hardened systemd unit. Only the service-lifecycle
-commands (`install`, `uninstall`, `start`, `stop`, `restart`) need
-root, because they register and control the systemd unit and own the
-on-disk install.
+commands (`install`, `uninstall`, `start`, `stop`, `restart`,
+`refresh-unit`, `update`) need root, because they register and control
+the systemd unit and own the on-disk install. `run` is **not** among
+them.
 
 Running a long-lived, network-facing daemon as root widens the blast
 radius of any vulnerability from "service account" to "host root".
@@ -286,11 +287,18 @@ commands keep the root requirement:
 sudo senhub-agent install      # register + enable the service
 sudo senhub-agent start|stop|restart
 sudo senhub-agent uninstall
+sudo senhub-agent refresh-unit       # rewrite the unit / migrate the layout
 sudo senhub-agent update <version>   # installs the binary (the daemon cannot)
 ```
 
-Inspection commands (`version`, `status`, `config check`,
-`config show`) never require elevation.
+On Linux, everything else — `run`, `version`, `status`, `console`,
+`config check`, `config show`, `update --list` — runs as any user that
+can read what it needs.
+
+> **Windows is the other way round.** The gate there is not per command:
+> every invocation that is not purely informational (`version`, `help`,
+> `console`, `config check`, `config show`, `update --list`) requires an
+> elevated prompt — `status` and `run` included.
 
 ## One binary, which the daemon cannot write
 
@@ -379,6 +387,30 @@ Two things to know before you upgrade a host:
   there, because it is not a path anyone chose — it is a layout we
   shipped and are migrating off. A genuinely custom path, such as
   `/opt/senhub/bin/senhub-agent`, is still left alone.
+
+## In a container
+
+The published image runs the same binary with none of this to set up: it
+creates a `senhub` user and group (uid/gid 10001), owns
+`/etc/senhub-agent`, `/var/lib/senhub-agent` and `/var/log/senhub-agent`
+to it, and drops to that user before the entrypoint runs. Nothing in the
+image needs root, because a container never calls a service-lifecycle
+command — there is no systemd unit and no service to install, start or
+refresh. The agent is PID 1 and the platform restarts it.
+
+Two consequences worth knowing before you deploy one:
+
+- **Mount a volume on `/var/lib/senhub-agent`.** Without it the machine-id,
+  the agent key and the log bookmarks live in the container layer and go
+  with the container: every restart arrives as a new host, and every log
+  probe re-reads its tail. The entrypoint says so in its log when the
+  directory is not a mount.
+- **A mounted `/etc/senhub-agent` wins.** When a configuration is already
+  present the entrypoint writes nothing and every `SENHUB_*` variable is
+  ignored.
+
+The user-guide [container page](../user-guide/docs/container.md) covers the
+variables and the deployment recipes.
 
 ## Verifying the security posture
 
