@@ -239,7 +239,15 @@ pre.yaml .k { color: #0b6b7a; } pre.yaml .c { color: var(--muted-2); } pre.yaml 
 .picker { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .picker .top { display: flex; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); flex-wrap: wrap; align-items: center; }
 .picker .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s2); padding: var(--s3) var(--s4); max-height: 380px; overflow: auto; }
-.tcard { border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; background: var(--surface); }
+.tcard { border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; cursor: pointer; display: flex; align-items: flex-start; gap: 9px; background: var(--surface); }
+.tcard .tbody { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.tcard .tico { width: 20px; height: 20px; flex: none; margin-top: 1px; color: var(--muted); }
+/* The same glyph in the Type column, so a long list reads by shape before
+   it reads by word. inline-flex on a span, not on the cell: a td in flex
+   stops being a table cell and takes its borders and alignment with it. */
+.tcell { display: inline-flex; align-items: center; gap: 7px; }
+.tcell .tico { width: 16px; height: 16px; flex: none; color: var(--muted-2, var(--muted)); }
+.tcard:hover .tico, .tcard.on .tico { color: var(--accent); }
 .tcard:hover { border-color: var(--accent); }
 .tcard.on { border-color: var(--accent); background: var(--accent-soft); }
 .tcard .n { font-weight: 600; font-size: var(--fs-sm); display: flex; justify-content: space-between; gap: 6px; align-items: center; }
