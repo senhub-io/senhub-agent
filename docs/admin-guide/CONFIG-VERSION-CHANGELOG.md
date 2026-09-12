@@ -186,7 +186,9 @@ Future config versions will be documented here with:
 
 ### How do I know which config version I have?
 
-Check the top of your `agent-config.yaml`:
+Check the top of your configuration file — `agent-config.yaml` in the
+monolithic layout, `agent.yaml` in the multi-file one. `senhub-agent config
+show` prints it too:
 - **Has `config_version: 3`**: You have version 3 (current — reached
   after inline secrets were sealed into the OS secret store)
 - **Has `config_version: 2`**: You have version 2 (still supported)
@@ -209,12 +211,16 @@ If your config version is newer than what the agent supports, the agent will:
 
 ### Where are backups stored?
 
-Backups are created in the same directory as your config file with format:
+Beside the configuration file, named after it:
 ```
-agent-config.yaml.backup.YYYYMMDD-HHMMSS
+<config file>.backup.YYYYMMDD-HHMMSS
 ```
 
-Example: `agent-config.yaml.backup.20251013-143022`
+Example: `agent-config.yaml.backup.20251013-143022`, or
+`agent.yaml.backup.20251013-143022` in the multi-file layout.
+
+The migration to the multi-file layout and the sealing of inline secrets take
+their own backups the same way.
 
 ### How do I revert a migration?
 
@@ -261,5 +267,6 @@ if configVersion < CurrentConfigVersion {
 
 ---
 
-**Current Version**: 3
-**Maintainer**: SenHub Agent Team
+**Current Version**: 3 (`CurrentConfigVersion` in
+`internal/agent/services/configuration/config_version.go`; the minimum
+accepted is 1)

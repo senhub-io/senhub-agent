@@ -31,46 +31,56 @@ The SenHub Agent uses a modular logging system based on [zerolog](https://github
 └─────────────────┘
 ```
 
-## Predefined Modules
+## Modules
 
-The system defines 16 modules for different components:
+A module name is a dotted path. The set present in a binary depends on which
+probes and outputs that build ships, so the authoritative list is the one the
+binary itself prints:
 
-| Module | Description |
-|--------|-------------|
-| `agent.core` | Main agent and orchestration |
-| `agent.config` | Configuration and parsing |
-| `agent.scheduler` | Task scheduler |
-| `probe.cpu` | CPU probe |
-| `probe.memory` | Memory probe |
-| `probe.network` | Network probe |
-| `probe.disk` | Logical disk probe |
-| `probe.redfish` | Redfish probe |
-| `probe.otel` | OpenTelemetry probe |
-| `probe.webapp` | Web application probe |
-| `probe.gateway` | Gateway/ping probe |
-| `probe.wifi` | WiFi signal probe |
-| `probe.syslog` | Syslog probe |
-| `probe.event` | Event probe (HTTP endpoint) |
-| `pdh.windows` | Windows Performance Data Helper (low-level) |
-| `strategy.senhub` | SenHub sending strategy |
-| `strategy.prtg` | PRTG sending strategy |
-| `strategy.http` | HTTP/cache strategy |
+```bash
+senhub-agent debug-modules-list
+```
+
+The families, and what they cover:
+
+| Prefix | Covers | Examples |
+|---|---|---|
+| `probe.` | one probe type each | `probe.host`, `probe.logicaldisk`, `probe.postgresql`, `probe.snmp_trap`, `probe.otlp_receiver` |
+| `strategy.` | one output each | `strategy.http`, `strategy.otlp`, `strategy.senhub`, `strategy.prtg`, `strategy.event` |
+| `configuration.` | loading, watching, migrating, sealing | `configuration.local`, `configuration.agent`, `configuration.migrator` |
+| `status.` | the status service behind `agent status` and `/info/*` | `status.service`, `status.helper` |
+| `transformer`, `lookups`, `data_store` | metric naming, PRTG lookups, routing | — |
+| `sensor`, `server`, `lifecycle` | probe scheduling and the agent's own lifecycle | — |
+| `service.auto_update` | update checks | — |
+| `pdh.windows` | Windows Performance Data Helper (low-level) | — |
+
+A filter matches a module exactly **or by prefix**, so `probe` selects every
+probe module and `probe.postgresql` selects one.
 
 ## Usage
 
 ### CLI Arguments
 
-#### Full verbose mode (backward compatible)
+These are flags of `run`, the verb the service's `ExecStart` uses. To raise
+the level of an already-installed service, either add the flag to `ExecStart`
+in a unit drop-in and restart, or use the runtime HTTP API below, which needs
+no restart at all.
+
+#### Full verbose mode
 ```bash
-./senhub-agent --verbose
+senhub-agent run --verbose
 ```
 Enables DEBUG level for all modules.
 
 #### Selective debug mode
 ```bash
-./senhub-agent --debug-modules "strategy.http,probe.redfish"
+senhub-agent run --filter "strategy.http,probe.postgresql"
 ```
-Enables DEBUG level only for specified modules.
+Enables DEBUG level only for the matching modules. `--filter` implies
+`--verbose`; you do not need both.
+
+`--debug-modules` is the **deprecated** spelling of the same flag, kept so
+existing unit drop-ins keep working. `--filter` wins when both are given.
 
 ### Runtime HTTP API
 
@@ -85,12 +95,19 @@ POST /api/{agentkey}/debug/logs
 Content-Type: application/json
 
 {
-  "modules": [
-    {"module": "probe.redfish", "level": "debug"},
+  "module_levels": [
+    {"module": "probe.postgresql", "level": "debug"},
     {"module": "strategy.http", "level": "info"}
   ]
 }
 ```
+
+The key is `module_levels`. A body using any other key decodes to an empty
+list: the agent answers `200 {"status":"success"}` and changes nothing.
+
+The GET returns the same shape (`{"module_levels": [...]}`) and lists only the
+modules whose level was **overridden** — a module absent from the answer
+follows the global level.
 
 ### Supported Log Levels
 
@@ -163,10 +180,57 @@ func (p *newProbe) method() {
 
 ### Output Destinations
 
-The agent automatically detects the execution mode and routes logs accordingly:
+The agent detects the execution mode and routes logs accordingly:
 
-- **Interactive mode** (`./agent run`): Logs to console (stderr) AND file/shipper
-- **Service mode** (daemon): Logs only to file/shipper (no console)
+- **Interactive** (`senhub-agent run` from a shell): console (stderr) **and** a
+  log file **and** the debug shipper when one is configured.
+- **Service** (daemon): the log file, the debug shipper, and — when the service
+  manager captured standard error, which systemd signals with
+  `JOURNAL_STREAM` — the journal as well, so `journalctl -u senhub-agent`
+  shows more than the unit starting and stopping.
+
+#### Where the log file is
+
+| OS | Directory | File |
+|---|---|---|
+| Linux | `/var/log/senhub-agent/` | `senhubagent.log` |
+| Windows | `%ProgramData%\SenHub\logs\` | `senhubagent.log` |
+| macOS | `/Library/Logs/SenHub/` | `senhubagent.log` |
+
+Two carve-outs, both to stop two processes from truncating one file:
+
+- An **interactive** run writes `senhubagent-console.log` beside the service's
+  file, never the file itself.
+- A **second instance** — one started with a different `--config-path` — writes
+  `senhubagent-<8 hex>.log`, the suffix derived from that path.
+
+If the directory cannot be created or is not writable, the agent falls back to
+the directory holding its own binary and says so at startup.
+
+#### Rotation
+
+Rotation is built in; no `logrotate` rule is needed:
+
+| Setting | Value |
+|---|---|
+| Rotate at | 10 MB |
+| Backups kept | 5 |
+| Maximum age | 30 days |
+| Compression | on (rotated files are gzipped) |
+
+These are not configurable.
+
+#### File format
+
+The file is human-readable text by default. `--log-format json` (or
+`SENHUB_LOG_FORMAT=json`) writes one JSON object per line instead, for a log
+collector. The console always uses the readable form; the debug shipper always
+sends JSON.
+
+#### Redaction
+
+Every writer — file, console, shipper — passes through a masking writer, so a
+password or token that reaches a log line is masked before it is written.
 
 ### Log Level Behavior
 
@@ -179,7 +243,7 @@ The agent automatically detects the execution mode and routes logs accordingly:
 - **Debug**: ALL modules (enabled)
 - **Result**: All logs from all components are visible
 
-### Selective mode (`--verbose --debug-modules "module1,module2"`)
+### Selective mode (`--filter "module1,module2"`)
 - **Global level**: INFO (for non-module logs)
 - **Specified modules**: DEBUG
 - **Non-specified modules**: INFO
@@ -191,30 +255,30 @@ The agent automatically detects the execution mode and routes logs accordingly:
 
 #### Debug only HTTP cache issues
 ```bash
-./senhub-agent --debug-modules "strategy.http"
+senhub-agent run --filter "strategy.http"
 ```
 
-#### Debug Redfish and network probes
+#### Debug every probe at once
 ```bash
-./senhub-agent --debug-modules "probe.redfish,probe.network"
+senhub-agent run --filter "probe"
 ```
 
 #### Debug Windows performance counters (PDH)
 ```bash
-./senhub-agent --debug-modules "pdh.windows"
+senhub-agent run --filter "pdh.windows"
 ```
 
 #### Runtime level changes
 ```bash
-# Enable debug for probe.redfish
+# Enable debug for one probe
 curl -X POST http://localhost:8080/api/mykey/debug/logs \
   -H "Content-Type: application/json" \
-  -d '{"modules":[{"module":"probe.redfish","level":"debug"}]}'
+  -d '{"module_levels":[{"module":"probe.postgresql","level":"debug"}]}'
 
 # Disable all logs from a module
 curl -X POST http://localhost:8080/api/mykey/debug/logs \
   -H "Content-Type: application/json" \
-  -d '{"modules":[{"module":"probe.cpu","level":"disabled"}]}'
+  -d '{"module_levels":[{"module":"probe.host","level":"disabled"}]}'
 ```
 
 ## Technical Details
@@ -337,19 +401,19 @@ The system is fully compatible with zerolog API:
 # Problem: Metrics not appearing in PRTG endpoint
 # Solution: Enable cache and HTTP strategy logs
 
-./senhub-agent --debug-modules "strategy.http"
+senhub-agent run --filter "strategy.http"
 
-# Or via API:
+# Or via API, without restarting the service:
 curl -X POST http://localhost:8080/api/mykey/debug/logs \
-  -d '{"modules":[{"module":"strategy.http","level":"debug"}]}'
+  -d '{"module_levels":[{"module":"strategy.http","level":"debug"}]}'
 ```
 
-### Scenario 2: Diagnose Redfish probe issues
+### Scenario 2: Diagnose one probe
 ```bash
-# Problem: Redfish probe not collecting metrics
-# Solution: Enable only Redfish logs
+# Problem: a probe is not collecting metrics
+# Solution: enable debug for that probe only
 
-./senhub-agent --debug-modules "probe.redfish"
+senhub-agent run --filter "probe.postgresql"
 ```
 
 ### Scenario 3: Reduce log noise in production
@@ -359,10 +423,10 @@ curl -X POST http://localhost:8080/api/mykey/debug/logs \
 
 curl -X POST http://localhost:8080/api/mykey/debug/logs \
   -d '{
-    "modules": [
-      {"module": "probe.cpu", "level": "error"},
-      {"module": "probe.memory", "level": "error"},
-      {"module": "probe.network", "level": "warn"}
+    "module_levels": [
+      {"module": "probe.host", "level": "error"},
+      {"module": "probe.logicaldisk", "level": "error"},
+      {"module": "strategy.http", "level": "warn"}
     ]
   }'
 ```
@@ -371,46 +435,34 @@ curl -X POST http://localhost:8080/api/mykey/debug/logs \
 
 ### Verify the system works
 ```bash
-# 1. Start agent with specific module
-./senhub-agent --debug-modules "strategy.http"
+# 1. Start the agent with one module selected
+senhub-agent run --filter "strategy.http"
 
 # 2. Verify only strategy.http debug logs appear
-# 3. Other components should only show errors
+# 3. Other components still show info/warn/error
 
-# 4. Test API
-curl http://localhost:8080/api/test/debug/logs
+# 4. Read back the overrides in force
+curl http://localhost:8080/api/{agentkey}/debug/logs
 ```
 
 ### Module Naming Convention
 
 Modules follow a hierarchical convention:
-- **Top-level**: `agent`, `probe`, `strategy`
-- **Sub-modules**: `agent.core`, `probe.cpu`, `strategy.http`
+- **Top-level**: `probe`, `strategy`, `configuration`, `status`
+- **Sub-modules**: `probe.host`, `strategy.http`, `configuration.local`
 
 This convention enables granular filtering and logical organization of logs.
 
 ## Implementation Notes
 
-### Probe Migration Status
+### Which modules a build actually has
 
-The following probes have been migrated to use ModuleLogger:
+Do not rely on a list written down here — probes and outputs come and go, and
+the enterprise build carries modules the OSS build does not. Ask the binary:
 
-- ✅ `probe.cpu` - CPU probe
-- ✅ `probe.memory` - Memory probe  
-- ✅ `probe.network` - Network probe
-- ✅ `probe.disk` - Logical disk probe
-- ✅ `probe.redfish` - Redfish probe
-- ✅ `probe.otel` - OpenTelemetry probe
-- ✅ `probe.webapp` - Web application probes (ping, load)
-- ✅ `probe.gateway` - Gateway ping probe
-- ✅ `probe.wifi` - WiFi signal strength probe
-- ✅ `probe.syslog` - Syslog probe
-- ✅ `probe.event` - Event probe (HTTP endpoint)
-- ✅ `pdh.windows` - Windows Performance Data Helper utilities
-
-### Strategy Migration Status
-
-- ✅ `strategy.http` - HTTP strategy with cache
+```bash
+senhub-agent debug-modules-list
+```
 
 ### Parameter Naming
 

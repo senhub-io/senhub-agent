@@ -173,5 +173,5 @@ Observability](./OTLP-OBSERVABILITY.md).
 ## Related
 
 - [OTLP Pipeline Observability](./OTLP-OBSERVABILITY.md) — reading the counters.
-- [OTLP user guide](../user-guide/content/docs/otlp/_index.md) — the push pipeline.
+- [OTLP user guide](../user-guide/docs/otlp.md) — the push pipeline.
 - [Logging](./LOGGING.md) — where the warnings land.
