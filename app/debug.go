@@ -11,6 +11,7 @@ import (
 	"github.com/kardianos/service"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/spec"
 	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
@@ -21,23 +22,19 @@ func showDebugModules() {
 
 	fmt.Println("Available debug filters:")
 	fmt.Println()
+	// The probe list is read from the registry rather than kept by hand.
+	// The hand-written one named twelve types out of sixty-six, advertised
+	// three prefixes no module ever used, and could only fall further
+	// behind: a filter that selects nothing looks like a silent agent.
 	fmt.Println("  Probes:")
-	fmt.Println("    probe                 All probes")
-	fmt.Println("    probe.veeam           Veeam Backup & Replication")
-	fmt.Println("    probe.citrix          Citrix Virtual Apps & Desktops")
-	fmt.Println("    probe.netscaler       Citrix NetScaler / ADC")
-	fmt.Println("    probe.redfish         Redfish hardware monitoring")
-	fmt.Println("    probe.cpu             CPU usage")
-	fmt.Println("    probe.memory          Memory usage")
-	fmt.Println("    probe.network         Network interfaces")
-	fmt.Println("    probe.logicaldisk     Disk usage")
-	fmt.Println("    probe.webapp          Web application monitoring")
-	fmt.Println("    probe.loadwebapp      Web application load testing")
-	fmt.Println("    probe.gateway         Gateway connectivity")
-	fmt.Println("    probe.wifi            WiFi signal strength")
-	fmt.Println("    probe.syslog          Syslog collector")
-	fmt.Println("    probe.event           Event collector")
-	fmt.Println("    probe.otel            OpenTelemetry collector")
+	fmt.Println("    probe                 Every probe")
+	for _, ps := range spec.Registered() {
+		name := ps.DisplayName
+		if name == "" {
+			name = ps.Type
+		}
+		fmt.Printf("    %-21s %s\n", "probe."+ps.Type, name)
+	}
 	fmt.Println()
 	fmt.Println("  Agent:")
 	fmt.Println("    sensor                Probe lifecycle management")
