@@ -247,6 +247,9 @@ test-entrypoint: ## Check the container entrypoint's identity resolution (no dae
 # that module, against this checkout:
 #   GOWORK=off UPDATE_DOCS=1 go test ./probes/specguard/ \
 #       -run TestProbePagesCarryTheirSchema -count=1
+third-party-notices: ## Regenerate THIRD-PARTY-NOTICES.md from the build's dependency graph
+	@python3 scripts/third-party-notices.py
+
 docs-params: ## Regenerate the parameter tables of the probe pages from their schemas
 	@echo "Regenerating the probe parameter tables..."
 	@UPDATE_DOCS=1 go test ./internal/agent/probes/ -run TestProbePagesCarryTheirSchema -count=1
