@@ -93,6 +93,7 @@ nav:
   - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md
   - Web console: web-interface.md
+  - Licence: licence.md
   - Prometheus / VictoriaMetrics:
       - Overview: prometheus/index.md
       - Metrics reference: prometheus/metrics-reference.md
