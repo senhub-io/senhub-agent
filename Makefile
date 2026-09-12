@@ -241,10 +241,17 @@ test-entrypoint: ## Check the container entrypoint's identity resolution (no dae
 	@echo "Testing the container entrypoint..."
 	@sh packaging/docker/entrypoint_test.sh
 
+# The commercial probes register their schemas in senhub-agent-enterprise,
+# which this module never links, so this target regenerates the pages of the
+# probes compiled here only. The other half runs the same generator from
+# that module, against this checkout:
+#   GOWORK=off UPDATE_DOCS=1 go test ./probes/specguard/ \
+#       -run TestProbePagesCarryTheirSchema -count=1
 docs-params: ## Regenerate the parameter tables of the probe pages from their schemas
 	@echo "Regenerating the probe parameter tables..."
 	@UPDATE_DOCS=1 go test ./internal/agent/probes/ -run TestProbePagesCarryTheirSchema -count=1
 	@echo "Done. Review the diff before committing."
+	@echo "Commercial probe pages are generated from senhub-agent-enterprise; see the comment above this target."
 
 # Database probes (mysql, postgresql) moved to senhub-agent-enterprise
 # with the OSS split; their integration tier runs there. See the

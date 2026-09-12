@@ -58,6 +58,27 @@ mention is right. A page can still document a key the code stopped
 reading — the mysql and postgresql pages did, for a whole parameter set
 each — and only a reader comparing the two catches that.
 
+## The generated parameter tables
+
+Every probe page carries its parameter table between
+`<!-- schema:params:start -->` and `<!-- schema:params:end -->`, rendered
+from the probe's schema by `internal/docsparams`. Never edit inside those
+markers: the next run overwrites it. Prose that belongs to the page — a
+cross-reference, a note on a format — goes outside them.
+
+The generator runs from whichever module registers the schema:
+
+- the probes compiled here, through `make docs-params`;
+- the commercial probes of senhub-agent-enterprise, which this module
+  never links, through `TestProbePagesCarryTheirSchema` in that module's
+  `probes/specguard` package (it reuses the same renderer through
+  `probesdk/docsparams` and writes into this checkout).
+
+Each guard only sees the schemas its own build registers, so a page it
+does not know is left alone rather than reported. A commercial page is
+therefore guarded by the enterprise test alone: nothing here fails when
+it drifts.
+
 ## Release notes
 
 - One file per release: `docs/releases/X.Y.Z-beta.md`.
