@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/jenkins" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/jenkins.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,11 +26,11 @@ executor counts, and build queue depth.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `endpoint` | Yes | - | Base URL of the controller. Example: `https://jenkins.example.com` |
-| `username` | No | - | User the API calls authenticate as; empty queries anonymously |
-| `api_token` | No | - | API token of that user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `username` | In practice | - | User the API calls authenticate as; empty queries anonymously |
+| `api_token` | In practice | - | API token of that user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `interval` | No | `60` | Seconds between collections |
 | `timeout` | No | `15` | Request timeout in seconds |
 | `instance_name` | No | - | Stable identity of this controller instead of the one it reports |

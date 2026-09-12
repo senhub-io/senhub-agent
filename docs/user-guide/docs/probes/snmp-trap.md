@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/lan-connect.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/snmp-trap.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -33,7 +33,7 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `bind_address` | No | `127.0.0.1:162` | UDP listen address; port 162 needs root or CAP_NET_BIND_SERVICE |
 | `version` | No | `v2c` | A string. One of `v2c`, `v3` |

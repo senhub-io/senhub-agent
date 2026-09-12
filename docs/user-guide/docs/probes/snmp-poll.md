@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/lan.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/snmp-poll.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier. SNMP
@@ -38,13 +38,13 @@ one series per interface (`if_index` tag).
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `target` | Yes | - | Device address or hostname |
 | `port` | No | `161` | SNMP UDP port |
-| `version` | No | `v2c` | SNMP version; v1 is refused. One of `v2c`, `v3`, `2c`, `3`, `2` |
-| `community` | No | `public` | Community string (v2c). A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `v3` | No | - | USM credentials, required with version v3 |
+| `version` | In practice | `v2c` | SNMP version; v1 is refused. One of `v2c`, `v3`, `2c`, `3`, `2` |
+| `community` | If `version` is `v2c`, `2c`, `2` | `public` | Community string (v2c). A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3` | If `version` is `v3`, `3` | - | USM credentials, required with version v3 |
 | `v3.username` | Yes | - | USM user |
 | `v3.auth_protocol` | No | - | Authentication protocol; empty for none. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
 | `v3.auth_passphrase` | No | - | Required with auth_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
@@ -54,7 +54,7 @@ one series per interface (`if_index` tag).
 | `timeout` | No | `5s` | Per-request timeout |
 | `interval` | No | `60s` | Metric polling cadence |
 | `topology_interval` | No | `10m` | Entity and topology sweep cadence |
-| `mibs` | No | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
+| `mibs` | In practice | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
 | `mib_paths` | No | - | Local MIB files or folders used to name custom mappings |
 | `custom_mappings` | No | - | OID to metric mappings |
 | `custom_mappings[].oid` | Yes | - | OID, leading dot optional |

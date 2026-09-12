@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/devicon/hyperv.svg" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/hyperv.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -27,7 +27,7 @@ collection interval can be tuned.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `60` | Seconds between collections |
 

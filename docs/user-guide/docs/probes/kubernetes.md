@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/kubernetes" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/kubernetes.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -36,7 +36,7 @@ moved.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `kubeconfig` | No | - | Path of a kubeconfig file; empty uses the in-cluster service account. One instance per cluster: the identity comes from the cluster, so two instances pointing at two clusters do not collide. Example: `/home/agent/.kube/config` |
 | `interval` | No | `30` | Seconds between collections |

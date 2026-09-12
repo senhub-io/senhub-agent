@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/file-document-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/filetail.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -32,7 +32,7 @@ mode so the producing application is never blocked.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `paths` | Yes | - | File paths or glob patterns, re-expanded every 15 seconds. Example: `/var/log/app/*.log` |
 | `bookmark_path` | No | - | File persisting read offsets across restarts; use a distinct one per instance. Example: `/var/lib/senhub-agent/filetail-app.json` |

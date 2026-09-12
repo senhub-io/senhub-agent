@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/mysql" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/mysql.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 # MySQL / MariaDB
 
@@ -38,12 +38,12 @@ STATUS` and `information_schema`.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `host` | No | `127.0.0.1` | Server hostname or address |
-| `port` | No | `3306` | Server port |
-| `username` | No | - | Monitoring user |
-| `password` | No | - | Monitoring user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `host` | In practice | `127.0.0.1` | Server hostname or address |
+| `port` | In practice | `3306` | Server port |
+| `username` | In practice | - | Monitoring user |
+| `password` | In practice | - | Monitoring user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `database` | No | - | Database the connection opens on; optional |
 | `tls` | No | - | TLS settings, or simply true |
 | `tls.enabled` | No | `false` | Use TLS |

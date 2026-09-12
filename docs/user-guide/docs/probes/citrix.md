@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/citrix" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/citrix.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -126,34 +126,47 @@ For multi-site deployments requiring site-specific metrics:
 
 ## Complete Parameter Reference
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `director` | Yes | - | Citrix Director, queried over OData with NTLM. Its presence selects the per-component layout |
-| `director.url` | Yes | - | Director URL without the `/Director` path |
-| `director.auth.username` | Yes | - | Domain account with the Read Only Administrator role, written `DOMAIN\\user` |
-| `director.auth.password` | Yes | - | Account password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
+| `director` | In practice | - | Citrix Director, queried over OData with NTLM |
+| `director.url` | Yes | - | Director URL without the /Director path. Example: `https://director.example.com` |
+| `director.auth` | Yes | - | Domain account with the Read Only Administrator role |
+| `director.auth.username` | Yes | - | Account as DOMAIN\user. Example: `DOMAIN\svc-monitoring` |
+| `director.auth.password` | Yes | - | Account password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `director.verify_ssl` | No | `true` | Verify the Director certificate |
 | `director.fallback_urls` | No | - | Other Director URLs tried when the first one fails |
-| `delivery_controller` | No | - | Delivery Controller REST API, queried with Basic auth. Absent: no site inventory and no site filtering |
-| `delivery_controller.url` | No | - | Controller URL |
+| `delivery_controller` | No | - | Delivery Controller REST API, queried with Basic auth; empty skips site inventory and site filtering |
+| `delivery_controller.url` | No | - | Controller URL. Example: `https://ddc.example.com` |
 | `delivery_controller.fallback_urls` | No | - | Other controllers tried when the first one fails |
 | `delivery_controller.site_filter` | No | - | Site name the metrics are restricted to; empty keeps every site |
 | `delivery_controller.verify_ssl` | No | `true` | Verify the controller certificate |
-| `delivery_controller.auth.username` | No | - | Account for the controller; empty reuses the Director account |
-| `delivery_controller.auth.password` | No | - | Its password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` |
-| `license_server` | No | - | Citrix License Server, queried with Basic auth. Absent: no licence metrics |
-| `license_server.url` | No | - | License Server URL |
+| `delivery_controller.auth` | No | - | Credentials for the controller; empty reuses the Director account |
+| `delivery_controller.auth.username` | No | - | Account for the controller |
+| `delivery_controller.auth.password` | No | - | Password of that account. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `license_server` | No | - | Citrix License Server, queried with Basic auth; empty skips licence metrics. The deprecated flat layout also accepts a bare URL here |
+| `license_server.url` | No | - | License Server URL. Example: `https://license.example.com` |
 | `license_server.fallback_urls` | No | - | Other license servers tried when the first one fails |
 | `license_server.verify_ssl` | No | `true` | Verify the license server certificate |
-| `license_server.auth.username` | No | - | Account for the license server; empty reuses the Director account |
-| `license_server.auth.password` | No | - | Its password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` |
+| `license_server.auth` | No | - | Credentials for the license server; empty reuses the Director account |
+| `license_server.auth.username` | No | - | Account for the license server |
+| `license_server.auth.password` | No | - | Password of that account. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `interval` | No | `120` | Seconds between collections; logon metrics are computed on a two-minute window |
-| `timeout` | No | `30` | API request timeout in seconds, shared by every component |
-| `retry.max_attempts` | No | `3` | Attempts per API call |
-| `retry.backoff_factor` | No | `2.0` | Multiplier applied to the wait between attempts |
+| `timeout` | No | `30` | API request timeout in seconds |
+| `retry` | No | - | Retry policy for failed API calls |
+| `retry.max_attempts` | No | `3` | Attempts per call |
+| `retry.backoff_factor` | No | `2` | Multiplier applied to the wait between attempts |
 | `debug_identifiers` | No | `false` | Log how session and machine identifiers map instead of collecting metrics, for support |
+| `director_url` | No | - | Deprecated flat layout: Director URL, read only when no director block is set. Also accepted: `base_url` |
+| `auth` | No | - | Deprecated flat layout: account shared by every component, read only when no director block is set |
+| `auth.username` | No | - | Account used for every component |
+| `auth.password` | No | - | Password of that account. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `tls` | No | - | Deprecated flat layout: certificate verification shared by every component |
+| `tls.verify_ssl` | No | `true` | Verify the certificate of every component |
+
+<!-- schema:params:end -->
 
 ## Deprecated flat layout
 

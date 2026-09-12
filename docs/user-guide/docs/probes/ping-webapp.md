@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/earth.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/ping-webapp.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -53,12 +53,15 @@ Platform-specific ping commands are automatically used based on the operating sy
 
 ## Configuration Parameters
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `url` | Yes | - | HTTP or HTTPS URL, for example `https://app.example.com`; only its hostname is resolved and pinged |
-| `instance_name` | No | - | Stable identity of the watched application, used to publish it as an entity. Empty publishes no entity; the URL is never used as an identity |
+| `url` | Yes | - | HTTP or HTTPS URL; only its hostname is resolved and pinged. Example: `https://app.example.com` |
+| `instance_name` | No | - | Stable identity of the watched application; empty publishes no entity |
+
+<!-- schema:params:end -->
 
 The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored.
 

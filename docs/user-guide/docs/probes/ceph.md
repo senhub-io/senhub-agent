@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/ceph" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/ceph.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,9 +26,9 @@ I/O statistics.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `https://localhost:8443` | Base URL of the Manager dashboard / REST API |
+| `endpoint` | In practice | `https://localhost:8443` | Base URL of the Manager dashboard / REST API |
 | `username` | Yes | - | Dashboard user |
 | `password` | Yes | - | Dashboard user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `verify_tls` | No | `true` | Verify the dashboard certificate; false accepts a self-signed one |

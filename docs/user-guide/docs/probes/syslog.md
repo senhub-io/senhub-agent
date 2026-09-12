@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/text-box-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/syslog.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Free** — part of the universal collection tier (moved from Pro in 0.2.2).
@@ -71,11 +71,11 @@ The Syslog probe is platform-independent. It listens on the loopback interface b
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `port` | No | `514` | Port to listen on; 514 needs root or CAP_NET_BIND_SERVICE |
-| `protocol` | No | `udp` | Transport the listener accepts. One of `udp`, `tcp` |
-| `bind_address` | No | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+| `port` | In practice | `514` | Port to listen on; 514 needs root or CAP_NET_BIND_SERVICE |
+| `protocol` | In practice | `udp` | Transport the listener accepts. One of `udp`, `tcp` |
+| `bind_address` | In practice | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
 
 <!-- schema:params:end -->
 

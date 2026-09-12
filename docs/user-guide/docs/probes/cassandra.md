@@ -1,4 +1,4 @@
-<img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Cassandra_logo.svg" alt="" class="probe-page-logo probe-page-logo-wm">
+<img src="../../assets/probe-logos/cassandra.svg" alt="" class="probe-page-logo probe-page-logo-wm">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,9 @@ pending tasks, storage load, JVM heap and garbage collection.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `jolokia_url` | No | `http://localhost:8778/jolokia` | URL of the Jolokia agent attached to the Cassandra JVM. Example: `http://cassandra01:8778/jolokia` |
+| `jolokia_url` | In practice | `http://localhost:8778/jolokia` | URL of the Jolokia agent attached to the Cassandra JVM. Example: `http://cassandra01:8778/jolokia` |
 | `timeout` | No | `10` | HTTP request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |
 | `instance_name` | No | - | Stable identity override for this node |

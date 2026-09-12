@@ -1,4 +1,4 @@
-<img src="https://upload.wikimedia.org/wikipedia/commons/f/fe/Apache_Tomcat_logo.svg" alt="" class="probe-page-logo probe-page-logo-wm">
+<img src="../../assets/probe-logos/tomcat.svg" alt="" class="probe-page-logo probe-page-logo-wm">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,9 @@ and the Tomcat thread pool state.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `jolokia_url` | No | `http://localhost:8080/jolokia` | URL of the Jolokia agent deployed in Tomcat. Example: `http://tomcat.example.com:8080/jolokia` |
+| `jolokia_url` | In practice | `http://localhost:8080/jolokia` | URL of the Jolokia agent deployed in Tomcat. Example: `http://tomcat.example.com:8080/jolokia` |
 | `username` | No | - | Basic-auth user; empty sends no credentials |
 | `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `timeout` | No | `10` | Request timeout in seconds |

@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/web.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/http-check.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 # http_check — HTTP(S) checks with TLS expiry
 
@@ -25,7 +25,7 @@ validity of the TLS certificate as a first-class metric.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `targets` | Yes | - | URLs to check. Example: `https://app.example.com/health` |
 | `method` | No | `GET` | HTTP method. One of `GET`, `HEAD`, `POST`, `PUT`, `DELETE`, `OPTIONS`, `PATCH` |

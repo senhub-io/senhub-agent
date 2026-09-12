@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/chip.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/modbus.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -32,7 +32,7 @@ metric with a name and unit you define. Supports `uint16`, `int16`, `uint32`,
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `host` | Yes | - | Device address or hostname. Example: `192.168.1.100` |
 | `port` | No | `502` | Modbus TCP port |

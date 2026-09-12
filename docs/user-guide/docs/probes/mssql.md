@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/microsoftsqlserver" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/mssql.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -27,12 +27,12 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `host` | Yes | - | Server hostname or address; use host\Instance for a named instance. Example: `sql01.example.com` |
-| `port` | No | `1433` | Server TCP port |
-| `username` | No | - | SQL login; empty selects Windows integrated authentication with the agent's account |
-| `password` | No | - | SQL login password; empty with an empty username selects integrated authentication. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `port` | In practice | `1433` | Server TCP port |
+| `username` | In practice | - | SQL login; empty selects Windows integrated authentication with the agent's account |
+| `password` | In practice | - | SQL login password; empty with an empty username selects integrated authentication. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `encrypt` | No | `true` | Encryption of the connection, as go-mssqldb reads it; true by default. One of `true`, `false`, `disable`, `strict` |
 | `trust_server_cert` | No | `false` | Accept the server certificate without verifying it |
 | `interval` | No | `60` | Seconds between collections |

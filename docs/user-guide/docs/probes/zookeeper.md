@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/sitemap.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/zookeeper.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,10 +26,10 @@ state (leader/follower/observer).
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `host` | No | `localhost` | Node hostname or address |
-| `port` | No | `2181` | Client port the four-letter commands are sent to |
+| `host` | In practice | `localhost` | Node hostname or address |
+| `port` | In practice | `2181` | Client port the four-letter commands are sent to |
 | `timeout` | No | `10` | Connection and command timeout in seconds |
 | `interval` | No | `30` | Seconds between collections |
 | `instance_name` | No | - | Stable identity of this node instead of host:port |

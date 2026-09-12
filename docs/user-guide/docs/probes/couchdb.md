@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/couchdb" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/couchdb.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,11 +26,11 @@ database read/write throughput and I/O byte counters.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost:5984` | Base URL of the node. Example: `http://couch01:5984` |
-| `username` | No | - | Admin user; the stats endpoint needs admin credentials by default |
-| `password` | No | - | Admin user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `endpoint` | In practice | `http://localhost:5984` | Base URL of the node. Example: `http://couch01:5984` |
+| `username` | In practice | - | Admin user; the stats endpoint needs admin credentials by default |
+| `password` | In practice | - | Admin user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `timeout` | No | `10` | HTTP request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |
 | `instance_name` | No | - | Stable identity override for this node |

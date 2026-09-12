@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/cached.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/varnish.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,7 +26,7 @@ shared memory file.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `varnishstat_path` | No | `varnishstat` | Path of the varnishstat binary when it is not on the PATH. Example: `/usr/bin/varnishstat` |
 | `instance_name` | No | - | Varnish instance name passed as -n; needed when several instances run on the host |

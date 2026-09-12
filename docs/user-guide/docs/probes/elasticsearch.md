@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/elasticsearch" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/elasticsearch.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,11 +24,11 @@ and thread pool queue depths.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost:9200` | Base URL of the node; https:// for a secured cluster. Example: `https://es01:9200` |
-| `username` | No | - | Basic-auth user; empty when security is disabled |
-| `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `endpoint` | In practice | `http://localhost:9200` | Base URL of the node; https:// for a secured cluster. Example: `https://es01:9200` |
+| `username` | In practice | - | Basic-auth user; empty when security is disabled |
+| `password` | In practice | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `timeout` | No | `10` | HTTP request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |
 | `instance_name` | No | - | Stable identity override for this node |

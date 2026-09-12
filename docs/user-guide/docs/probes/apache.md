@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/apache" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/apache.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,9 @@ Requires `mod_status` enabled with the `?auto` format.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost/server-status?auto` | URL of the mod_status page, with ?auto |
+| `endpoint` | In practice | `http://localhost/server-status?auto` | URL of the mod_status page, with ?auto |
 | `username` | No | - | Basic-auth user when the status page is protected; empty for none |
 | `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `interval` | No | `60` | Seconds between collections |

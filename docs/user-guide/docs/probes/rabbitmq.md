@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/rabbitmq" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/rabbitmq.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,11 +26,11 @@ usage, connection counts and exchange statistics.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost:15672` | Base URL of the Management API. Example: `http://rabbit.example.com:15672` |
-| `username` | No | `guest` | Management user |
-| `password` | No | `guest` | Management user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `endpoint` | In practice | `http://localhost:15672` | Base URL of the Management API. Example: `http://rabbit.example.com:15672` |
+| `username` | In practice | `guest` | Management user |
+| `password` | In practice | `guest` | Management user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `interval` | No | `60` | Seconds between collections |
 | `timeout` | No | `10` | Request timeout in seconds |
 | `instance_name` | No | - | Stable identity of this broker instead of the one derived from the endpoint |

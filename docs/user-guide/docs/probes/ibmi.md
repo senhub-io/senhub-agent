@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/ibm" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/ibmi.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -86,27 +86,30 @@ Monitor several LPARs with separate probe instances:
 
 # Configuration Parameters
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `host` | Yes | - | IBM i hostname or address the JT400 bridge connects to |
+| `host` | Yes | - | IBM i hostname or address the bridge connects to. Example: `ibmi01.example.com` |
 | `user` | Yes | - | IBM i user profile of the SQL session |
-| `password` | Yes | - | Password of the user profile. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
-| `bridge_runner_dir` | Unless `native_runner` is set | - | Directory holding `Jt400Runner.class` and `jt400.jar`. With `native_runner` set it is optional and only serves as the working directory |
-| `native_runner` | No | - | Path to a GraalVM native-image `jt400runner` binary, run instead of a JVM. When set, `bridge_runner_dir` and `java_home` become optional |
-| `java_home` | No | - | `JAVA_HOME` used to launch the bridge; empty uses the environment |
+| `password` | Yes | - | Password of the user profile. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `bridge_runner_dir` | In practice | - | Directory holding Jt400Runner.class and jt400.jar; required unless native_runner is set, then only the working directory. Example: `/opt/senhub-agent/jt400` |
+| `native_runner` | No | - | GraalVM native-image jt400runner binary run instead of a JVM; bridge_runner_dir and java_home become optional. Example: `/opt/senhub-agent/jt400runner` |
+| `java_home` | No | - | JAVA_HOME used to launch the bridge; empty uses the environment |
 | `interval` | No | `30` | Seconds between collections |
 | `query_timeout_s` | No | `10` | Per-query timeout, in seconds |
 | `startup_timeout_s` | No | `15` | Bridge startup timeout, in seconds |
-| `enabled_collectors` | No | - | Collectors to run, by name (list below). Empty runs the default set. This is the only way to turn on the collectors that are off by default |
-| `disabled_collectors` | No | - | Collectors removed from the enabled set, by name |
-| `message_queues` | No | - | Message queues to watch, one collector each. Empty watches `QSYS/QSYSOPR`; a non-empty list replaces that default |
-| `message_queues[].name` | Yes | - | Queue name, for example `QSYSOPR` |
+| `enabled_collectors` | No | - | Collectors to run; empty runs the default set, and this is the only way to turn on audit_journal, authority_collection, ptf, ptf_group, query_supervisor, service_agent and watch_info. One of `system_status`, `asp`, `subsystem`, `memory_pool`, `output_queue`, `active_job`, `job_queue`, `scheduled_job`, `user_profile`, `system_value`, `netstat_listener`, `netstat_interface`, `netstat_connection`, `http_server`, `jvm`, `disk_status`, `sys_table_stats`, `journal_info`, `journal_receiver`, `library_list`, `license`, `media_library`, `spooled_file`, `user_storage`, `index_advisor`, `hardware_resource`, `message_queue`, `history_log`, `msgw_job`, `audit_journal`, `authority_collection`, `ptf_group`, `ptf`, `service_agent`, `watch_info`, `query_supervisor` |
+| `disabled_collectors` | No | - | Collectors removed from the enabled set; unknown names are ignored. One of `system_status`, `asp`, `subsystem`, `memory_pool`, `output_queue`, `active_job`, `job_queue`, `scheduled_job`, `user_profile`, `system_value`, `netstat_listener`, `netstat_interface`, `netstat_connection`, `http_server`, `jvm`, `disk_status`, `sys_table_stats`, `journal_info`, `journal_receiver`, `library_list`, `license`, `media_library`, `spooled_file`, `user_storage`, `index_advisor`, `hardware_resource`, `message_queue`, `history_log`, `msgw_job`, `audit_journal`, `authority_collection`, `ptf_group`, `ptf`, `service_agent`, `watch_info`, `query_supervisor` |
+| `message_queues` | No | - | Message queues to watch, one collector each; empty watches QSYS/QSYSOPR |
+| `message_queues[].name` | Yes | - | Queue name. Example: `QSYSOPR` |
 | `message_queues[].library` | No | `QSYS` | Library of the queue |
 | `message_queues[].min_severity` | No | `0` | Messages below this severity are not relayed |
-| `environment` | No | - | Deployment environment name carried by the partition entity as `deployment.environment.name`, for example `production` |
-| `db_instance_name` | No | - | Identity override of the Db2 for i entity (`db.instance.id`); empty derives it from the relational database name (`CURRENT SERVER`) |
+| `environment` | No | - | Deployment environment name carried by the partition entity. Example: `production` |
+| `db_instance_name` | No | - | Identity override of the Db2 for i entity; empty derives it from the relational database name |
+
+<!-- schema:params:end -->
 
 ## Collector names
 

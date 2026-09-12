@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/clock-check-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/ntp.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -39,7 +39,7 @@ There is no default server, on purpose. See [Choosing servers](#choosing-servers
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `servers` | Yes | - | Reference servers as host or host:port; port 123 otherwise. Example: `ntp.example.org, 10.0.0.1:123` |
 | `samples` | No | `4` | Exchanges per server per cycle, the least delayed is kept; at most 16 |

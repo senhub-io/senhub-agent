@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/apachekafka" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/kafka.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -26,14 +26,14 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `brokers` | No | `[localhost:9092]` | Bootstrap brokers as host:port entries. Example: `kafka-1.example.com:9092` |
+| `brokers` | In practice | `[localhost:9092]` | Bootstrap brokers as host:port entries. Example: `kafka-1.example.com:9092` |
 | `protocol_version` | No | `2.0.0` | Kafka protocol version negotiated with the brokers |
 | `tls` | No | `false` | Connect to the brokers over TLS |
 | `sasl_mechanism` | No | - | SASL mechanism; empty connects without authentication. One of `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` |
-| `sasl_username` | No | - | SASL user, required with sasl_mechanism |
-| `sasl_password` | No | - | SASL password, required with sasl_mechanism. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `sasl_username` | If `sasl_mechanism` is `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` | - | SASL user, required with sasl_mechanism |
+| `sasl_password` | If `sasl_mechanism` is `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` | - | SASL password, required with sasl_mechanism. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `topic_filter` | No | - | Glob patterns of the topics to monitor; empty monitors every non-internal topic. Example: `orders-*` |
 | `group_filter` | No | - | Glob patterns of the consumer groups to monitor; empty monitors every group |
 | `interval` | No | `60` | Seconds between collections |

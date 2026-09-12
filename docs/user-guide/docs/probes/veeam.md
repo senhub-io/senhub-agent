@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/veeam" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/veeam.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 # Veeam Backup & Replication
 
@@ -30,17 +30,20 @@ Monitors Veeam Backup & Replication v13 via the REST API. Collects job status, r
 
 ### Parameters
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | Yes | - | Backup server hostname or URL, for example `https://veeam.example.com`. The port is appended when the address carries none |
-| `port` | No | `9419` | REST API port, used when `endpoint` carries none. An integer |
+| `endpoint` | Yes | - | Backup server hostname or URL; port is appended when the address carries none. Example: `https://veeam.example.com` |
+| `port` | No | `9419` | REST API port, used when endpoint carries none |
 | `username` | Yes | - | Veeam account with the Backup Administrator role |
-| `password` | Yes | - | Password of the Veeam account. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
-| `verify_ssl` | No | `true` | Validate the server's TLS certificate; `false` for a self-signed certificate |
-| `interval` | No | `300` | Seconds between collections. An integer |
-| `hours_to_check` | No | `24` | Job history window in hours; a job with no run inside it counts as stale. An integer |
+| `password` | Yes | - | Password of the Veeam account. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_ssl` | No | `true` | Validate the server's TLS certificate; false for a self-signed certificate |
+| `interval` | No | `300` | Seconds between collections |
+| `hours_to_check` | No | `24` | Job history window in hours; a job with no run inside it counts as stale |
+
+<!-- schema:params:end -->
 
 The three integer parameters must be written as plain numbers (`300`, not `"300"` or `300s`); any other form is ignored and the default applies.
 
