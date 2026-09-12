@@ -3,6 +3,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -145,6 +146,19 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 		keyFile = "./certs/agent-key.pem"
 	}
 
+	// The configured minimum was logged and reported by the API but never
+	// reached the listener, so an operator who required TLS 1.3 was served
+	// by a socket that still accepted 1.2 and had nothing on screen saying
+	// so. A security control that is announced and not applied is worse
+	// than one that is absent.
+	configured := s.strategy.configManager.GetTLSMinVersion()
+	minVersion := tlsVersionOf(configured)
+	if s.server.TLSConfig == nil {
+		s.server.TLSConfig = &tls.Config{MinVersion: minVersion}
+	} else {
+		s.server.TLSConfig.MinVersion = minVersion
+	}
+
 	s.logger.Info().
 		Str("address", address).
 		Int("port", s.strategy.port).
@@ -152,11 +166,24 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 		Bool("tls_enabled", true).
 		Str("cert_file", certFile).
 		Str("key_file", keyFile).
-		Str("min_tls_version", s.strategy.configManager.GetTLSMinVersion()).
+		Str("min_tls_version", configured).
 		Msg("HTTPS server listening")
 
 	if err := s.server.ServeTLS(ln, certFile, keyFile); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTPS server error")
+	}
+}
+
+// tlsVersionOf maps the configured minimum to the constant the listener
+// takes. The schema admits "1.2" and "1.3" only; anything else means the
+// configuration was not the one this build validates, and TLS 1.2 is the
+// safe reading of an unknown value rather than the library's older default.
+func tlsVersionOf(configured string) uint16 {
+	switch configured {
+	case "1.3":
+		return tls.VersionTLS13
+	default:
+		return tls.VersionTLS12
 	}
 }
 
