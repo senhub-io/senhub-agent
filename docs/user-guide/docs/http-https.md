@@ -17,9 +17,11 @@ storage:
   - name: http
     params:
       port: 8080
-      bind_address: "0.0.0.0"
+      bind_address: "127.0.0.1"
       endpoints: ["prtg", "web", "nagios"]
 ```
+
+Loopback is what the installer writes. A remote poller needs an explicit `bind_address: "0.0.0.0"` or an interface IP.
 
 ### Storage Parameters
 
@@ -27,7 +29,7 @@ storage:
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
-| `endpoints` | `["prtg", "web"]` | Enabled endpoint types (prtg, web, nagios) |
+| `endpoints` | none | Enabled endpoint types (`prtg`, `nagios`, `prometheus`, `web`). There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios"]` |
 
 To change the port or other parameters, edit the `storage` section in `agent-config.yaml`. The change is applied automatically without restarting the service.
 
@@ -129,7 +131,7 @@ The `-k` flag is required for self-signed certificates. For CA-signed certificat
 
 Expected response:
 ```json
-{"status":"ok","version":"0.1.80","uptime":"2h30m","probes_active":4,"metrics_cached":156}
+{"status":"ok","version":"0.5.5","uptime":"2h30m","probes_active":4,"metrics_cached":156}
 ```
 
 ## API Endpoints Reference
@@ -206,7 +208,7 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "ok",
-  "version": "0.1.80",
+  "version": "0.5.5",
   "commit": "a1b2c3d",
   "uptime": "2h30m15s",
   "probes_active": 4,
@@ -242,7 +244,7 @@ curl http://localhost:8080/api/{key}/info/system
 ```json
 {
   "status": "running",
-  "version": "0.1.80",
+  "version": "0.5.5",
   "os": "linux",
   "arch": "amd64",
   "port": 8080,

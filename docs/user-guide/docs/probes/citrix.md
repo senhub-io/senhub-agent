@@ -448,7 +448,7 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 
 **Or start agent with verbose logging:**
 ```bash
-./senhub-agent run --verbose --debug-modules probe.citrix
+senhub-agent run --filter probe.citrix
 ```
 
 ## License Requirements

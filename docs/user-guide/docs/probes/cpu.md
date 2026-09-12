@@ -206,7 +206,7 @@ Diagnose system issues:
 **Check probe status:**
 ```bash
 # View agent logs with CPU probe debugging
-./agent run --verbose --debug-modules probe.cpu
+senhub-agent run --filter probe.cpu
 ```
 
 **Verify probe is enabled:**
@@ -240,10 +240,10 @@ grep -rA5 "name: cpu" /etc/senhub-agent/probes.d/
 Run the agent with appropriate permissions:
 ```bash
 # Option 1: Run as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant capabilities (Linux)
-sudo setcap cap_sys_ptrace=eip ./agent
+sudo setcap cap_sys_ptrace=eip /opt/senhub/bin/senhub-agent
 ```
 
 ### High CPU Usage from Agent

@@ -271,7 +271,7 @@ ss -tulpn | grep 514
 **Check agent logs:**
 ```bash
 # View syslog probe debugging
-./agent run --verbose --debug-modules probe.syslog
+senhub-agent run --filter probe.syslog
 ```
 
 **Verify probe configuration:**
@@ -289,10 +289,10 @@ Ports below 1024 require elevated privileges on Unix/Linux:
 
 ```bash
 # Option 1: Run agent as root (not recommended)
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant port binding capability (Linux)
-sudo setcap cap_net_bind_service=+ep ./agent
+sudo setcap cap_net_bind_service=+ep /opt/senhub/bin/senhub-agent
 
 # Option 3: Use alternate port (>1024) and configure syslog sources
 # /etc/senhub-agent/probes.d/10-syslog.yaml:
