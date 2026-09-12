@@ -215,13 +215,6 @@ senhub-agent install --enable-https \
 
 ## TLS Security Configuration
 
-> **Known limitation (#866).** `min_tls_version` and `cipher_suites` are read
-> and reported — they appear in the startup log line and in `agent status` —
-> but they are not applied to the TLS listener: the server is started with
-> Go's defaults, which place the floor at TLS 1.2. Setting `1.3` today does
-> not refuse a TLS 1.2 client. Terminate on a reverse proxy (see below) when
-> a policy has to be enforced.
-
 ### Minimum TLS Versions
 
 #### TLS 1.2 (Default)
@@ -242,35 +235,16 @@ senhub-agent install --enable-https --min-tls-version 1.2
 senhub-agent install --enable-https --min-tls-version 1.3
 ```
 
-### Cipher Suite Configuration
+### Cipher Suites
 
-#### Default (Secure)
-The agent serves Go's default cipher suite selection:
+There is no `cipher_suites` key. The agent serves the suites Go selects for
+the negotiated version, which is a deliberate and maintained set: for TLS
+1.3 the three suites the standard defines, and for TLS 1.2 the forward-secret
+AEAD suites, with the insecure ones already excluded.
 
-```yaml
-cipher_suites: []  # Uses Go's default secure cipher suites
-```
-
-#### Custom Configuration
-The shape below is accepted by the parser but **not applied today** (#866);
-enforce a suite list on a reverse proxy until it is:
-
-```yaml
-tls:
-  cipher_suites:
-    # TLS 1.3 (if min_tls_version: "1.3")
-    - "TLS_AES_256_GCM_SHA384"
-    - "TLS_CHACHA20_POLY1305_SHA256"
-    - "TLS_AES_128_GCM_SHA256"
-    
-    # TLS 1.2 compatible
-    - "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
-    - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
-    - "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305"
-    - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
-    - "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
-    - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-```
+Overriding that list is more often a downgrade than a hardening, which is
+why the option does not exist. Where a policy names a suite list, terminate
+TLS on a reverse proxy and let it enforce the policy, as described below.
 
 ## Certificate Management
 
