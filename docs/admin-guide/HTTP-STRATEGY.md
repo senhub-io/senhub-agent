@@ -26,56 +26,72 @@ The HTTP Strategy provides a REST API interface for external monitoring tools to
 
 ### Basic Configuration
 
-```json
-{
-  "name": "http",
-  "params": {
-    "port": 8080,
-    "naming": {
-      "redfish": "friendly",
-      "host": "friendly"
-    }
-  }
-}
+Monolithic layout (`agent-config.yaml`):
+
+```yaml
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+```
+
+Multi-file layout (`strategies.d/00-http.yaml`), one top-level key per file:
+
+```yaml
+http:
+  port: 8080
+  bind_address: "127.0.0.1"
+  endpoints: ["prtg", "web", "nagios"]
 ```
 
 ### Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `port` | integer | 8080 | HTTP server listening port |
-| `naming` | object | see below | Metric name transformation styles per probe |
+| `port` | integer | 8080 | Listening port |
+| `bind_address` | string | `127.0.0.1` | Interface to bind; `0.0.0.0` to accept remote pollers |
+| `endpoints` | string list | none | Which endpoint families are served: `prtg`, `nagios`, `prometheus`, `web`. An unknown value is refused at startup |
+| `max_cache_size` | integer | 50000 | Cap on cached series; `0` = unbounded |
+| `tls.enabled` | boolean | `false` | Serve HTTPS — see [HTTPS Configuration](./HTTPS-CONFIGURATION.md) |
+| `tls.min_tls_version` | string | `1.2` | `1.2` or `1.3` |
+| `tls.cert_file` / `tls.key_file` | string | generated pair | Server certificate and key (PEM) |
+| `prometheus.include_probe_tags` | boolean | `true` | Emit probe tags as Prometheus labels |
+| `prometheus.expose_host_metrics` | boolean | `true` | Include the host probes in `/metrics` |
 
-### Naming Styles
+No endpoint is served unless it is listed in `endpoints`.
 
-- **`friendly`**: User-friendly names suitable for non-technical users
-  - Example: `thermal.cpu.0.temperature` → `"CPU Temperature - Processor 0"`
-- **`technical`**: Preserves technical metric names
-  - Example: `thermal.cpu.0.temperature` → `"thermal.cpu.0.temperature"`
-- **`prtg_standard`**: PRTG-optimized naming conventions (future)
+### Metric Naming
+
+Channel names are not configured on the output. They come from the shipped
+transformer definitions, which map an OTel metric name to a display name and a
+unit per probe. There is no `naming` parameter.
 
 ## Endpoints
 
 ### PRTG Metrics Endpoint
 
-**`POST /api/{agentkey}/prtg/metrics`**
+**`GET /api/{agentkey}/prtg/metrics/{probe}`**
 
-Retrieves metrics in PRTG-compatible JSON format.
+Returns what the named probe last collected, in PRTG-compatible JSON. This is
+the form a PRTG sensor uses.
+
+**`POST /api/{agentkey}/prtg/metrics`** is the legacy form, kept for older
+sensors. It reads `probe` from the body and answers the same payload; the
+`target` and `config` fields are accepted and **ignored**. The agent serves
+what its own configured probes collected — an endpoint cannot ask it to go and
+poll a device it is not configured for, and credentials do not belong in a
+sensor definition.
 
 #### Authentication
 - Agent key must be provided in the URL path
 - Invalid keys return `HTTP 401 Unauthorized`
 
-#### Request Format
+#### Legacy request format
 ```json
 {
-  "probe": "redfish",
-  "target": "server1",
-  "config": {
-    "host": "192.168.1.100",
-    "username": "admin",
-    "password": "secret"
-  }
+  "probe": "redfish"
 }
 ```
 
@@ -114,7 +130,8 @@ Retrieves metrics in PRTG-compatible JSON format.
 
 **`GET /health`**
 
-Returns server health status.
+Returns server health status. It is the only route served without an agent
+key — the container image's `HEALTHCHECK` uses it.
 
 #### Response
 ```json
@@ -123,14 +140,26 @@ Returns server health status.
 }
 ```
 
+### Caching
+
+Every pull endpoint answers with `Cache-Control: no-store`. These routes carry
+the current value of a measurement, with no validator and no expiry; without
+the header a poller or an intermediary is free to reuse an earlier answer and
+chart a value the agent never reported at that instant. The embedded console
+assets set their own policy and are still revalidated normally.
+
 ## Metric Transformations
 
 ### Configuration Files
 
-Transformations are defined in YAML files located in `internal/agent/services/data_store/transformers/`:
+Transformations are defined in YAML files under
+`internal/agent/services/data_store/transformers/` and **embedded in the
+binary at build time**:
 
-- `redfish_friendly.yaml`: Redfish hardware metrics
-- `host_friendly.yaml`: System/host metrics
+- `definitions/<probe>.yaml`: the current per-probe definitions (format v3)
+- `cpu_friendly.yaml`, `memory_friendly.yaml`, `network_friendly.yaml`,
+  `logicaldisk_friendly.yaml`, `system_friendly.yaml`, `redfish_friendly.yaml`:
+  the older friendly-name maps
 
 ### Transformation Patterns
 
@@ -158,7 +187,8 @@ units:
 
 1. Edit the appropriate YAML file
 2. Add pattern mappings using the template syntax
-3. Restart the agent to load new configurations
+3. **Rebuild the agent** (`make build`) — the definitions are embedded, so a
+   restart alone changes nothing
 
 ### Fallback Behavior
 
@@ -214,22 +244,38 @@ netscaler.lbvserver.state:
 
 ### Available Lookups
 
-#### NetScaler ADC Probes
+The authoritative list is what the agent serves at
+`GET /api/{agentkey}/lookups`. At the time of writing the shipped set covers:
 
-- **`netscaler.lbvserver.state`** - Load Balancer Virtual Server state (UP/DOWN/OUT OF SERVICE/BUSY/UNKNOWN)
-- **`netscaler.service.state`** - Backend Service state (UP/DOWN/OUT OF SERVICE/BUSY/UNKNOWN)
-- **`netscaler.servicegroup.state`** - Service Group state (UP/DOWN/OUT OF SERVICE/BUSY/UNKNOWN)
+#### NetScaler ADC
+
+- **`netscaler.lbvserver.state`**, **`netscaler.csvserver.state`**,
+  **`netscaler.gslbvserver.state`** - virtual server state
+- **`netscaler.service.state`**, **`netscaler.servicegroup.state`** - backend state
 - **`netscaler.interface.state`** - Network Interface state (ENABLED/DISABLED)
 - **`netscaler.ssl.certificate.status`** - SSL Certificate validity (VALID/INVALID)
-- **`netscaler.ha.state`** - HA Node Role (PRIMARY/SECONDARY/UNKNOWN)
-- **`netscaler.ha.node.state`** - HA Node Operational State (UP/DOWN)
-- **`netscaler.ha.sync_status`** - HA Configuration Sync Status (SUCCESS/FAILED)
+- **`netscaler.ha.state`**, **`netscaler.ha.node.state`**,
+  **`netscaler.ha.sync_status`** - HA role, node state, config sync
 
-#### Redfish Hardware Probes
+#### Veeam
 
-- **`redfish.health`** - Component health status (OK/WARNING/CRITICAL)
-- **`redfish.state`** - Component state (ENABLED/DISABLED/STANDBY/ABSENT)
-- **`redfish.power_state`** - System power state (ON/OFF/POWERING_ON/POWERING_OFF)
+- **`senhub.veeam.job_status`**, **`senhub.veeam.server_status`**,
+  **`senhub.veeam.proxy_status`**, **`senhub.veeam.license_status`**,
+  **`senhub.veeam.bottleneck`**
+
+#### Databases and stores
+
+- **`senhub.db.up`**, **`senhub.db.replication.role`**,
+  **`senhub.db.replication.health`**, **`mssql.database.status`**
+- **`redis.replication.role`**, **`redis.cluster.state`**
+- **`elasticsearch.cluster.health`**, **`opensearch.cluster.health`**
+
+#### Storage and hardware
+
+- **`senhub.powerstore.up`**, **`senhub.powerstore.health`**,
+  **`senhub.powerstore.cluster.state`**, **`senhub.powerstore.volume.state`**,
+  **`senhub.powerstore.replication.state`**
+- **`smart.disk.health`**
 
 ### Downloading Lookups
 
@@ -240,7 +286,9 @@ The agent provides **automatic lookup file generation** accessible via the Web U
 3. **Download Lookups**: Click **"Download PRTG lookups"**
 4. **Extract Files**: Unzip the downloaded archive to get `.ovl` files
 
-**File Naming Convention**: `{lookup_id}.ovl` — the filename must match the `id` attribute in the XML.
+**File Naming Convention**: `{lookup_id}.ovl` — the filename must match the
+`id` attribute in the XML, which is the lookup key exactly as it appears in
+`lookups.yaml` (no prefix is added).
 
 Example files:
 ```
@@ -306,13 +354,7 @@ Generated `.ovl` files use PRTG's XML format:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  SenHub Agent - PRTG Value Lookup
-  Lookup: netscaler.lbvserver.state
-  Description: NetScaler Load Balancer Virtual Server State
-  Source: Citrix ADC NITRO API - lbvserver state field
--->
-<ValueLookup id="senhub.netscaler.lbvserver.state" desiredValue="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="PrtgLookup.xsd">
+<ValueLookup id="netscaler.lbvserver.state" desiredValue="1">
   <Lookups>
     <SingleInt state="Error" value="0">
       DOWN
@@ -372,21 +414,25 @@ To add a new lookup:
 
 **Solutions:**
 1. Verify `.ovl` file exists in `C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\`
-2. Check file naming: Must be `senhub.{exact.metric.name}.ovl`
+2. Check file naming: must be the lookup id exactly, e.g.
+   `netscaler.lbvserver.state.ovl` or `senhub.veeam.job_status.ovl`
 3. Refresh PRTG lookups: **Setup → Administrative Tools → Load Lookups**
 4. Check PRTG logs for lookup parsing errors
 5. Verify metric name matches exactly (case-sensitive)
 
 #### Download Button Not Visible
 
-**Symptom**: "Download PRTG Lookups" button missing in API Explorer
+**Symptom**: the "Download PRTG lookups" link is missing from the HTTP
+output's **Sensor URLs** tab
 
-**Cause**: No lookups defined or embedded assets not loaded
+**Cause**: the `web` endpoint is not enabled, or the embedded assets were not
+rebuilt
 
 **Solutions:**
-1. Verify `lookups.yaml` exists and contains lookup definitions
-2. Rebuild agent to embed updated assets
-3. Check browser console for JavaScript errors
+1. Check `web` is listed in the output's `endpoints`
+2. Verify `lookups.yaml` contains lookup definitions
+3. Rebuild the agent to embed updated assets
+4. Check the browser console for JavaScript errors
 
 #### Incorrect Colors in PRTG
 
@@ -433,8 +479,9 @@ curl -o netscaler.ha.state.ovl \
 
 ### TTL and Cleanup
 
-- **Default TTL**: 5 minutes
-- **Cleanup Interval**: 1 minute (automatic background process)
+- **Default TTL**: 5 minutes, from `cache.retention_minutes` in `agent.yaml`
+- **Cleanup Interval**: half the TTL (2m30s at the default), as a background process
+- **Cardinality cap**: `max_cache_size`, 50 000 series by default
 - **Thread Safety**: All cache operations are protected by read-write mutexes
 
 ### Memory Management
@@ -449,25 +496,18 @@ The cache automatically removes expired metrics to prevent memory leaks. Cache s
 ### PRTG Network Monitor
 
 1. Create an HTTP Advanced sensor in PRTG
-2. Configure POST request to agent endpoint
+2. Point it at the probe you want, one sensor per probe
 3. Set up JSON parsing for PRTG channels
 4. Schedule regular monitoring intervals
 
 ```bash
 # Example PRTG sensor configuration
-URL: http://agent-host:8080/api/your-agent-key/prtg/metrics
-Method: POST
-Content-Type: application/json
-Post Data: {
-  "probe": "redfish",
-  "target": "server1", 
-  "config": {
-    "host": "192.168.1.100",
-    "username": "admin",
-    "password": "secret"
-  }
-}
+URL: http://agent-host:8080/api/your-agent-key/prtg/metrics/redfish
+Method: GET
 ```
+
+The agent's console generates these URLs for you: **Outputs**, the HTTP
+output, tab **Sensor URLs**.
 
 ### Custom Monitoring Tools
 
@@ -475,14 +515,9 @@ The JSON response format can be easily parsed by custom scripts:
 
 ```python
 import requests
-import json
 
-response = requests.post(
-    'http://agent-host:8080/api/your-agent-key/prtg/metrics',
-    json={
-        'probe': 'host',
-        'target': 'localhost'
-    }
+response = requests.get(
+    'http://agent-host:8080/api/your-agent-key/prtg/metrics/host'
 )
 
 metrics = response.json()
@@ -536,15 +571,20 @@ Monitor these metrics for optimal performance:
 - Memory usage of cached metrics
 - Transformation processing time
 
-## Future Enhancements
+## Shipped since this page was first written
 
-### Planned Features
+- **Prometheus format**: add `prometheus` to `endpoints` and scrape
+  `/metrics`, which authenticates with `Authorization: Bearer <agentkey>` or
+  `?token=<agentkey>` — what vmagent, Prometheus and Grafana Alloy send
+  natively. `/api/{agentkey}/prometheus/metrics` serves the same exposition
+  with the key in the path.
+- **Configuration from the console**: the `web` endpoint creates, edits and
+  deletes probes and outputs, writing managed files under `probes.d/` and
+  `strategies.d/`.
+- **Metric filtering**: the PRTG GET route accepts tag filters as query
+  parameters.
 
-1. **Prometheus Format Support**: Native Prometheus metrics endpoint
-2. **Dynamic Configuration**: Real-time probe configuration updates
-3. **Metric Filtering**: Advanced filtering and aggregation capabilities
-4. **Rate Limiting**: Request throttling for resource protection
-5. **Metrics Export**: Bulk export capabilities for analysis tools
+Still open: request rate limiting, and bulk export for analysis tools.
 
 ### Extension Points
 

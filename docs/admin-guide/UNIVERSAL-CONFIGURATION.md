@@ -9,7 +9,7 @@ The Universal Configuration API enables:
 - **Connectivity testing** for network-based probes
 - **Full metrics testing** with preview data collection
 - **Support for all probe types** (Redfish, WebApp, System probes, etc.)
-- **Integration with any monitoring system** (PRTG, Nagios, Zabbix, etc.)
+- **Integration with any monitoring system** (PRTG, Nagios, Prometheus, etc.)
 
 ## API Endpoints
 
@@ -45,7 +45,8 @@ All endpoints accept the same JSON request structure:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `probe` | string | ✅ | Target probe name (redfish, cpu, memory, etc.) |
+| `probe` | string | ✅ | Probe **type** (`redfish`, `postgresql`, `cpu`, …) |
+| `name` | string | ❌ | Name of an existing configured instance. Given it, the stored secrets of that instance — which a form never sends back — are read from its file for the test |
 | `target` | string | ❌ | Target system URL or identifier |
 | `config` | object | ✅ | Probe-specific configuration parameters |
 | `validation` | string | ❌ | Validation level: `schema`, `connectivity`, `full` |
@@ -125,6 +126,7 @@ All endpoints return a structured JSON response:
 | `errors` | array | Validation errors (if any) |
 | `preview_metrics` | array | Sample metrics (full validation only) |
 | `duration_ms` | integer | Total validation time |
+| `field` | string | Dotted path of the parameter the first error concerns (e.g. `tls.ca_file`), when the message points at one. The console uses it to anchor the error on the right input |
 
 ## Probe-Specific Configuration
 
@@ -432,8 +434,8 @@ When validation fails, the response includes detailed error information:
 Enable debug logging for detailed validation information:
 
 ```bash
-# Start agent with debug logging for HTTP strategy
-./agent run --verbose --debug-modules strategy.http
+# Start agent with debug logging for the HTTP output
+senhub-agent run --filter strategy.http
 ```
 
 This will provide detailed logs for all Universal Configuration API operations, including validation steps and error details.
