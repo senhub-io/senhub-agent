@@ -33,23 +33,6 @@ type serviceRemover interface {
 // reason to leave the sealed secret store on the machine. Gating it
 // meant `uninstall --yes` on such a machine printed nothing, removed
 // nothing and exited 0, which reads exactly like success (#849).
-
-// printLicenceNotice names, at install time, the two licences the binary
-// ships under. The Windows installer shows this on a page the operator
-// must pass; on Linux the install is a command, so the same words are
-// printed where the operator is looking. Saying "your commercial
-// agreement" without naming a document is how a customer ends up unable
-// to find one.
-func printLicenceNotice() {
-	fmt.Println()
-	fmt.Println("Licences: the SenHub Agent core is open source under Apache 2.0")
-	fmt.Println("  (https://github.com/senhub-io/senhub-agent). The Pro and Enterprise")
-	fmt.Println("  probes are licensed commercially under the SenHub Agent licence")
-	fmt.Println("  agreement (https://agent.senhub.io/docs/licence/), drawn up in French,")
-	fmt.Println("  which is its only binding version. Installing without a licence file")
-	fmt.Println("  runs the free tier and needs no agreement.")
-}
-
 func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Writer) error {
 	err := s.Uninstall()
 	if err == nil {
@@ -193,7 +176,6 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		err = s.Install()
 		if err == nil {
 			fmt.Println("Service installed successfully")
-			printLicenceNotice()
 
 			// A fresh configuration is about to be written: say now if
 			// its HTTP port is already taken, while the operator is
