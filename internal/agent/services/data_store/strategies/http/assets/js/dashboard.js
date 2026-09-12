@@ -128,7 +128,17 @@
         });
         return st;
     }
-    function renderProbes(data, system) {
+    // byType indexes the catalogue so a row can name its category, which is
+    // what picks the glyph. The catalogue can fail on its own without the
+    // list failing, so an absent one costs a generic glyph, not a row.
+    function byType(catalog) {
+        const out = {};
+        for (const t of ((catalog && catalog.probes) || [])) out[t.type] = t;
+        return out;
+    }
+
+    function renderProbes(data, system, catalog) {
+        const types = byType(catalog);
         const list = (data && data.probes) || [];
         const st = probeStats(list);
         $('probes-count').textContent = st.total;
@@ -172,7 +182,8 @@
                     last = p.reason ? '<span class="reason">' + short(p.reason, 80) + '</span>' : '-';
                 }
                 const metrics = s === 'disabled' ? '-' : num(p.metrics_count);
-                html += '<tr><td class="name">' + esc(p.name) + '</td><td><code>' + esc(p.type) + '</code></td><td>' + state +
+                const cat = (types[p.type] && types[p.type].category) || 'other';
+                html += '<tr><td class="name">' + esc(p.name) + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state +
                     '</td><td class="num">' + metrics + '</td><td class="num">' + last + '</td></tr>';
             });
             html += '</tbody></table>';
@@ -472,7 +483,7 @@
         let probeSt = null, outputList = null;
         if (system) renderAgent(system, outputs);
         else { $('agent-pill').innerHTML = pill('err', 'unreachable'); $('agent-kv').innerHTML = ''; }
-        if (probes) probeSt = renderProbes(probes, system);
+        if (probes) probeSt = renderProbes(probes, system, catalog);
         else $('probes-body').innerHTML = '<div class="empty-line">Probe list unavailable.</div>';
         if (outputs) outputList = renderOutputs(outputs);
         else $('outputs-body').innerHTML = '<div class="empty-line">Output list unavailable.</div>';
