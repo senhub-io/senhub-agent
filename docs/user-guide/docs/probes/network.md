@@ -205,7 +205,7 @@ Detect anomalies:
 **Check probe status:**
 ```bash
 # View agent logs with Network probe debugging
-./agent run --verbose --debug-modules probe.network
+senhub-agent run --filter probe.network
 ```
 
 **Verify probe is enabled:**
@@ -249,7 +249,7 @@ ifconfig
 
 4. **Enable debug logging:**
    ```bash
-   ./agent run --verbose --debug-modules probe.host
+   senhub-agent run --filter probe.host
    ```
 
 ### Unix/Linux: Missing Interfaces

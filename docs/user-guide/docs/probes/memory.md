@@ -201,7 +201,7 @@ Monitor memory health:
 **Check probe status:**
 ```bash
 # View agent logs with memory probe debugging
-./agent run --verbose --debug-modules probe.memory
+senhub-agent run --filter probe.memory
 ```
 
 **Verify probe is enabled:**
@@ -235,10 +235,10 @@ grep -rA5 "name: memory" /etc/senhub-agent/probes.d/
 Run the agent with appropriate permissions:
 ```bash
 # Option 1: Run as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant capabilities (Linux)
-sudo setcap cap_sys_admin=eip ./agent
+sudo setcap cap_sys_admin=eip /opt/senhub/bin/senhub-agent
 ```
 
 ### High Memory Usage from Agent

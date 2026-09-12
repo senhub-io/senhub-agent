@@ -30,7 +30,7 @@ The Overview is the landing page.
 ![Overview](images/web-interface/overview.webp "Overview with the getting-started steps, the probe and output summaries, the agent, the licence and the recent events")
 
 - **Getting started** lists four steps and computes their state from the agent: the agent runs, probes are configured, data is sent somewhere, the poller has its sensor URL. The current step is highlighted and carries the link that resolves it. Hide it once you are done; it disappears on its own when every step is complete.
-- **Probes** is a compact table of the configured probes, failing ones first, with their state, the number of series they hold and the time of their last collection.
+- **Probes** is a compact table of the configured probes, the ones needing attention first, with their state, the number of series they hold and the time of their last collection. Probes whose target is down are counted on their own, not under "running".
 - **Outputs** lists every output with its state and the action that matters: build a sensor URL for the HTTP output, edit a push output, enable a disabled one.
 - **Agent** merges the former status, health and resources cards: version, host, uptime, port, memory, CPU, goroutines and cache size. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
 - **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button.
@@ -46,7 +46,7 @@ The Probes page lists what the agent collects and lets you add, edit, enable, di
 
 ### The list
 
-Each row shows the probe's name, its type, its state (running, failing with the reason, starting, disabled, not licensed, or not on this platform), its interval, the number of series it holds and the time of its last collection. Failing rows come first and keep their actions visible; other rows show them on hover: Edit, Sensor URL, Enable or Disable, Delete. Chips filter the list by state and a search box filters by name or type.
+Each row shows the probe's name, its type, its state (running, target down, failing with the reason, starting, disabled, not licensed, or not on this platform), its interval, the number of series it holds and the time of its last collection. A probe that collects while the system it reads does not answer is shown as **target down**, naming the `up` series that reads zero: the collection succeeded, the target is what is missing. Failing and target-down rows come first and keep their actions visible; other rows show them on hover: Edit, Sensor URL, Enable or Disable, Delete. Chips filter the list by state and a search box filters by name or type.
 
 Probes declared in files written by hand carry a `file` pill: they are listed but left to the file. Only the fragments the console wrote, one file per instance under `probes.d` with a header comment, are edited from the page.
 
@@ -58,7 +58,9 @@ On a fresh install the page shows four starters instead of an empty table: **Thi
 
 The editor puts first what the probe needs to start, and folds everything else.
 
-- **Type** is chosen in a grid of cards, filterable by name and by category. Pro types show a lock until a licence is activated; a type that does not run on this operating system says so instead (Windows only, Linux only), so a lock always means a licence and never a platform. Once chosen, the type collapses to one line with a Change link.
+![Probe types](images/web-interface/probe-types.webp "The type grid, filterable by name and by category, with a picture per category")
+
+- **Type** is chosen in a grid of cards, filterable by name and by category. Each card carries a picture of its category, so a database, a queue and a web server are told apart before the words are read. Pro types show a lock until a licence is activated; a type that does not run on this operating system says so instead (Windows only, Linux only), so a lock always means a licence and never a platform. Once chosen, the type collapses to one line with a Change link.
 - **Required to start** holds the name, the enabled switch and the parameters the probe does nothing useful without: for MySQL the host, port, user and password; for SNMP the target, version and community, replaced by the v3 credentials when the version is v3; for an HTTP check the URLs. Everything below this block has a working default.
 - The **action bar** stays visible while you scroll: Validate checks the values against the schema and asks the probe what it would refuse; Test runs one real collection from this host and shows the first metrics that came back; Save (Save and start for a new probe) writes the file, and the agent starts, restarts or stops the probe on its own. Save stays disabled until the name and every required value are present, and the bar says what is missing.
 - **Optional settings** are one collapsed section per group of the schema. A section whose values are all at their default says so in grey; a section with a value set shows a count and the values, so you know what is set without opening it. A section holding an error opens on its own with a red mark.
@@ -72,13 +74,13 @@ Validation and test errors are anchored: the banner lists them, each one is a li
 
 A password typed in the form goes to the agent's secret store; the file holds a `${secret:...}` reference. A stored secret is shown as a state, not as a value: the word Stored, the reference, and a Replace button. Leaving it alone keeps it; the form never sends a stored value back to the agent. Replace clears the field: type a new value to change the secret, or leave the field empty and save to drop it. This holds for a secret inside a block and inside a list of blocks, such as the users of an SNMP v3 device. A field can also take a reference you already have, `${secret:...}` or `${env:...}`. Without a usable secret store the save is refused with the alternative rather than writing a password in clear.
 
-Delete removes the file and its stored secrets; Disable keeps them, which is the better choice during an incident.
+Delete removes the file and its stored secrets; Disable keeps them, which is the better choice during an incident. Every deletion is confirmed in the page itself, not in a browser dialog: Escape cancels, Enter confirms, and the focus starts on Cancel.
 
 ## Outputs
 
 The Outputs page shows where the collected data goes. Pull outputs wait for a poller; push outputs send on their own.
 
-![Outputs](images/web-interface/outputs.webp "Outputs list with the HTTP output listening and an OTLP output exporting")
+![Outputs](images/web-interface/outputs.webp "Outputs list with the HTTP output listening and an OTLP output kept disabled")
 
 Each output is one file under `strategies.d`. The list shows, per output, its state and a line of life: which poller last read an endpoint and when, or when the last export succeeded and when the last one failed and why.
 
@@ -116,13 +118,15 @@ The HTTP output page has two tabs.
 2. The probe.
 3. An optional filter on the probe's tags, for probes that return many components.
 
-Copy pastes the URL into the poller's sensor; Preview shows the response as a table or as JSON. The page also offers the PRTG lookups for download and lists the steps on the PRTG side. The old address `/web/{agent-key}/explorer` redirects here.
+Copy pastes the URL into the poller's sensor. Below it, a preview reads the URL on screen and follows it: change the poller, the probe or the filter and the panel refreshes on its own, and the Refresh button re-reads the same URL on demand. It opens on the raw response — what the poller actually receives — with the channel table one click away; whichever view you pick is the one you get next time. The page also offers the PRTG lookups for download and lists the steps on the PRTG side. The old address `/web/{agent-key}/explorer` redirects here.
 
 ![Sensor URLs](images/web-interface/sensor-urls.webp "Sensor URLs tab with a PRTG URL and its preview")
 
 ## Settings
 
 The Settings page changes the agent's own configuration from the browser, so a Windows operator does not have to edit YAML on the server.
+
+![Settings](images/web-interface/settings.webp "Settings with the connection block on the left and the licence block on the right")
 
 - **Connection** shows the port and bind address of the HTTP output, the same values the Outputs page edits, and links to it for the endpoints, TLS and the sensor URLs. Changing the port moves the console to the new address; the page tells you where to reconnect. The change is applied live, with no restart.
 - **Licence** uploads the licence file you received, or takes the pasted token. A customer licence is valid across the whole fleet, so the same file activates every agent; a licence issued for one specific agent is checked against that agent. The card shows how many Pro probe types are locked and links to the catalogue.

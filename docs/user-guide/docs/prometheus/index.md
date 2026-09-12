@@ -9,8 +9,8 @@ The exposition is **OpenTelemetry-aligned**: metric names follow OTel
 semantic conventions where they apply (`system.cpu.*`, `system.memory.*`,
 `system.network.*`, `system.filesystem.*`, `hw.*`), and use `senhub.*`
 extensions for vendor-specific domains (NetScaler, Citrix, Veeam, Redfish).
-A future native OTLP push exporter will produce the **same** names without
-any query rewrite.
+The native [OTLP push exporter](../otlp.md) produces the **same** names
+without any query rewrite.
 
 ## Quick start
 
@@ -68,11 +68,11 @@ probes:
   - name: netscaler-prod-paris
     type: netscaler
     custom_tags:
-      - {key: env, value: prod}
-      - {key: site, value: paris}
+      env: prod
+      site: paris
 ```
 
-→ All series for this probe carry `env="prod"` and `site="paris"`. Set to
+All series for this probe then carry `env="prod"` and `site="paris"`. Set to
 `false` if you'd rather keep the label set minimal and inject those
 dimensions via `metric_relabel_configs` on the scraper side.
 
@@ -132,8 +132,9 @@ Rules applied:
 - Counters get `_total` suffix when not already present
 - Annotated units in braces (`{packet}`, `{error}`) drop the brackets
 
-See the [metrics reference](metrics-reference.md) for the
-exhaustive list across all 15 supported probes.
+See the [metrics reference](metrics-reference.md) for the metrics of the
+agent itself and of the system, network, active-check, SNMP, hardware and
+vendor probes.
 
 ## Strict OTel for status enums
 

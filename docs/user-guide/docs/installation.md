@@ -8,6 +8,9 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 |----------|----------|--------------|
 | **Windows** | Server 2016+, Windows 10+ | x64 |
 | **Linux** | RHEL 7+, Ubuntu 18.04+, Debian 10+ | x64, ARM64 |
+| **Container** | any host running a container runtime | x64, ARM64 |
+
+A container is a supported deployment and has its own page: see [Running the agent in a container](container.md). The rest of this page installs the agent as a system service.
 
 **Resource requirements**: 1 CPU core, 512 MB RAM, 500 MB disk space.
 
@@ -89,10 +92,10 @@ Release artifacts are ZIP archives named with dashes between OS and architecture
 | Windows x86_64 | `senhub-agent-windows-amd64.zip` | `senhub-agent.exe` |
 | Linux x86_64 | `senhub-agent-linux-amd64.zip` | `senhub-agent` |
 | Linux ARM64 | `senhub-agent-linux-arm64.zip` | `senhub-agent` |
-| macOS Intel | `senhub-agent-darwin-amd64.zip` | `senhub-agent` |
-| macOS Apple Silicon | `senhub-agent-darwin-arm64.zip` | `senhub-agent` |
 
 Each ZIP contains a binary already named `senhub-agent` (or `senhub-agent.exe` on Windows). No renaming is needed after extraction.
+
+These three are the platforms the release publishes. The agent also builds and runs on macOS, but no macOS archive is published: it is a development target, and a build from source is the way to get one.
 
 On Windows, the release also ships a Windows Installer package, `senhub-agent-<version>-amd64.msi` (amd64 only), which is the recommended way to install on servers and managed fleets.
 
@@ -219,7 +222,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.1.87","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.5.5","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
 ![Windows service running](images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
@@ -415,7 +418,7 @@ senhub-agent update --list
 Install a specific version:
 
 ```bash
-senhub-agent update 0.1.87
+senhub-agent update 0.5.4
 ```
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).

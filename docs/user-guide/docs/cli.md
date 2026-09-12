@@ -1,6 +1,6 @@
 # CLI Reference
 
-All commands are run from the agent binary. Release artifacts are ZIP archives named `senhub-agent-<os>-<arch>.zip` (e.g. `senhub-agent-linux-amd64.zip`, `senhub-agent-windows-amd64.zip`). Each ZIP contains a binary already named `senhub-agent` (Linux/macOS) or `senhub-agent.exe` (Windows) — no renaming needed after extraction. See the [Installation guide](installation.md) for details.
+All commands are run from the agent binary. Release artifacts are ZIP archives named `senhub-agent-<os>-<arch>.zip` (e.g. `senhub-agent-linux-amd64.zip`, `senhub-agent-windows-amd64.zip`). Each ZIP contains a binary already named `senhub-agent` (Linux) or `senhub-agent.exe` (Windows) — no renaming needed after extraction. See the [Installation guide](installation.md) for details.
 
 ## Output conventions
 
@@ -260,7 +260,7 @@ Lists all stable versions. If `auto_update.include_beta: true` is set in the con
 ### Install a specific version
 
 ```bash
-senhub-agent update 0.1.87
+senhub-agent update 0.5.4
 ```
 
 Downloads and installs the specified version. Restart the service to apply.

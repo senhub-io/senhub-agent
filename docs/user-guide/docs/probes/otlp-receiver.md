@@ -129,7 +129,7 @@ Run two instances to serve both protocols at once:
   agent logs a throttled warning.
 
     !!! note "Changed behaviour"
-        Before this release, ingested logs were re-emitted through the
+        Before 0.5.4, ingested logs were re-emitted through the
         agent's own log pipeline, which replaced the sender's resource
         with the agent's — a record sent with `service.name=my-app` was
         stored under the agent's `service.name`, making applications

@@ -343,7 +343,7 @@ fs_inodes_used_percent{mount_point="/",device="/dev/disk1s1",fs_type="apfs"} = 0
 **Check probe status:**
 ```bash
 # View agent logs with LogicalDisk probe debugging
-./agent run --verbose --debug-modules probe.logicaldisk
+senhub-agent run --filter probe.logicaldisk
 ```
 
 **Verify probe is enabled:**
@@ -377,10 +377,10 @@ grep -rA5 "name: logicaldisk" /etc/senhub-agent/probes.d/
 Run the agent with appropriate permissions:
 ```bash
 # Option 1: Run as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant capabilities (Linux)
-sudo setcap cap_sys_ptrace=eip ./agent
+sudo setcap cap_sys_ptrace=eip /opt/senhub/bin/senhub-agent
 ```
 
 ### Windows: Drives Not Appearing
@@ -418,7 +418,7 @@ sudo setcap cap_sys_ptrace=eip ./agent
 cat /proc/mounts
 
 # Check which filesystems are collected
-./agent run --verbose --debug-modules probe.logicaldisk
+senhub-agent run --filter probe.logicaldisk
 ```
 
 **Solution (if needed):**

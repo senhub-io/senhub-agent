@@ -194,7 +194,7 @@ Diagnose network issues:
 **Check probe status:**
 ```bash
 # View agent logs with gateway probe debugging
-./agent run --verbose --debug-modules probe.gateway
+senhub-agent run --filter probe.gateway
 ```
 
 **Verify probe is enabled:**
@@ -328,7 +328,7 @@ Most modern systems allow unprivileged users to ping, but if you encounter permi
 
 ```bash
 # Option 1: Run agent as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant ping capabilities (Linux)
 sudo setcap cap_net_raw+ep /usr/bin/ping

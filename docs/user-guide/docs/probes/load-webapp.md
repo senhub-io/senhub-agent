@@ -306,7 +306,7 @@ Compare connect times and total times to optimize CDN configuration.
 **Check probe status:**
 ```bash
 # View agent logs with Load WebApp probe debugging
-./agent run --verbose --debug-modules probe.loadwebapp
+senhub-agent run --filter probe.loadwebapp
 ```
 
 **Verify probe is enabled:**

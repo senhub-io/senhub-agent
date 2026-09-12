@@ -84,7 +84,7 @@ attributes (mapped per the OTel semantic conventions):
 
 | Attribute | Source |
 |---|---|
-| Severity (number + text) | `PRIORITY` field, mapped via RFC 5424 → OTel table |
+| Severity (number + text) | `PRIORITY` field, mapped with the RFC 5424 to OTel table |
 | Body | `MESSAGE` field |
 | `systemd.hostname` | `_HOSTNAME` |
 | `systemd.unit` | `_SYSTEMD_UNIT` |

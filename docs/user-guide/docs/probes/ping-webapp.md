@@ -213,7 +213,7 @@ Monitor load balancer endpoints:
 **Check probe status:**
 ```bash
 # View agent logs with WebApp probe debugging
-./agent run --verbose --debug-modules probe.webapp
+senhub-agent run --filter probe.webapp
 ```
 
 **Verify probe is enabled:**
@@ -278,10 +278,10 @@ ping -n 4 app.example.com  # Windows
 **Solution:**
 ```bash
 # Option 1: Run agent as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant raw socket capabilities (Linux)
-sudo setcap cap_net_raw=eip ./agent
+sudo setcap cap_net_raw=eip /opt/senhub/bin/senhub-agent
 
 # Option 3: Allow ICMP for agent user
 sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
