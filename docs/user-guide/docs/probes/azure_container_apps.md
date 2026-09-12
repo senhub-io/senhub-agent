@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/microsoftazure" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/azure_container_apps.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -47,25 +47,40 @@ The `governance` block is the agent's per-probe governance (see [Configuration](
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `tenant_id` | string | Yes | - | Entra ID tenant (directory) ID |
-| `client_id` | string | Yes | - | Application (client) ID of the app registration |
-| `client_secret` | string | Yes | - | App registration client secret. Reference a stored secret via `${secret:<name>.client_secret}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install. |
-| `subscription_id` | string | Yes | - | Subscription that holds the Container App |
-| `resource_group` | string | Yes | - | Resource group of the Container App |
-| `app` | string | Yes | - | Name of the Container App |
-| `containers` | list | No | all | Container names to read; the others in each replica are ignored |
-| `tail_lines` | integer | No | `100` | Lines re-read when a stream is (re)attached; the probe drops the ones it already published |
-| `bookmark_path` | string | No | - | File where the probe keeps, per stream, the timestamp of the last line it published, so a restart of the agent does not publish the re-read lines a second time. Without it, only reconnections within one run are deduplicated. |
-| `interval` | integer | No | `60` | Seconds between replica scans, and the cadence of the state metrics |
-| `parser` | block | No | `type: raw` | Line parser: `type` (`raw`, `regex`, `json`, `logfmt`), `pattern` (regex with named groups), `timestamp_field`, `timestamp_format`. Same block as [File Tail](filetail.md). |
-| `multiline` | block | No | off | Folding of physical lines into one record: `pattern`, `negate`, `match` (`after` or `before`). Same block as [File Tail](filetail.md). |
-| `max_bytes_per_line` | integer | No | `1048576` | Cap on one assembled record |
-| `min_severity` | string | No | - | Drop records below this severity: `trace`, `debug`, `info`, `warn`, `error` or `fatal`. Applies to the severity the parser read, or, for a raw line, to the level word found at its head (`INFO`, `WARN`, `[error]`...). A record whose severity cannot be read is kept. |
-| `exclude` | list | No | - | Regular expressions; a line matching one is dropped before parsing (health checks, heartbeats, a noisy component). |
-| `authority_host` | string | No | `login.microsoftonline.com` | Entra ID authority, for sovereign clouds |
-| `management_host` | string | No | `management.azure.com` | Azure Resource Manager endpoint, for sovereign clouds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `tenant_id` | Yes | - | Entra ID tenant (directory) ID |
+| `client_id` | Yes | - | Application (client) ID of the app registration |
+| `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `subscription_id` | Yes | - | Subscription that holds the Container App |
+| `resource_group` | Yes | - | Resource group of the Container App |
+| `app` | Yes | - | Name of the Container App |
+| `containers` | No | - | Container names to read; empty reads every container |
+| `tail_lines` | No | `100` | Lines re-read when a stream is (re)attached, 0 to 300; already published lines are dropped |
+| `interval` | No | `60` | Seconds between replica scans |
+| `bookmark_path` | No | - | File keeping the last published timestamp per stream, so a restart does not publish the re-read tail twice |
+| `parser` | No | - | How each line is read |
+| `parser.type` | No | `raw` | Shape of a line; raw keeps it whole. One of `raw`, `regex`, `json`, `logfmt` |
+| `parser.pattern` | No | - | Regular expression with named groups (type regex) |
+| `parser.timestamp_field` | No | - | Parsed field that carries the record timestamp |
+| `parser.timestamp_format` | No | - | Go layout of the timestamp field |
+| `multiline` | No | - | Fold physical lines into one record |
+| `multiline.pattern` | No | - | Regular expression that marks a record boundary |
+| `multiline.negate` | No | `false` | Fold the lines that do not match the pattern instead of those that do |
+| `multiline.match` | No | `after` | Whether a folded line joins the record before it or the one after it. One of `after`, `before` |
+| `max_bytes_per_line` | No | `1048576` | Cap on one assembled record |
+| `min_severity` | No | - | Drop records below this severity; a record whose severity cannot be read is kept. One of `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+| `exclude` | No | - | Regular expressions; a line matching one is dropped before parsing |
+| `attach_spacing_ms` | No | `400` | Milliseconds between two stream attaches of this instance; the endpoint refuses a burst with 429 |
+| `authority_host` | No | `login.microsoftonline.com` | Entra ID authority, for sovereign clouds |
+| `management_host` | No | `management.azure.com` | Azure Resource Manager endpoint, for sovereign clouds |
+
+<!-- schema:params:end -->
+
+The `parser` and `multiline` blocks are the same ones [File Tail](filetail.md) documents, with the same fields and the same meaning.
 
 # Log Records
 

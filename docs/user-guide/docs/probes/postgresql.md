@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/postgresql" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/postgresql.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 # PostgreSQL
 
@@ -40,10 +40,10 @@ when the extension is installed.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `host` | Yes | - | Server hostname or address |
-| `port` | No | `5432` | Server port |
+| `port` | In practice | `5432` | Server port |
 | `username` | Yes | - | Monitoring role |
 | `password` | Yes | - | Role's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `database` | No | `postgres` | Database the connection opens on. Also accepted: `databases` |

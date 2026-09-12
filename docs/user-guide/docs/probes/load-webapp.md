@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/timer-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/load-webapp.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -60,13 +60,16 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 
 ## Configuration Parameters
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `url` | Yes | - | HTTP or HTTPS URL fetched with a GET, for example `https://app.example.com/health`; a status outside 200-399 counts as a failure |
-| `timeout` | No | `30` | Whole-request timeout, between 1 and 300 seconds. Written as a number of seconds (`45`) or a duration (`"45s"`); any other form is rejected |
-| `instance_name` | No | - | Stable identity of the watched application, used to publish it as an entity. Empty publishes no entity; the URL is never used as an identity |
+| `url` | Yes | - | HTTP or HTTPS URL fetched with a GET; a status outside 200-399 counts as a failure. Example: `https://app.example.com/health` |
+| `timeout` | No | `30s` | Whole-request timeout, between 1s and 300s |
+| `instance_name` | No | - | Stable identity of the watched application; empty publishes no entity |
+
+<!-- schema:params:end -->
 
 The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored.
 

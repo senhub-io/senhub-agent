@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/cpu-64-bit.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/cpu.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** - No license required. Available in all tiers.
@@ -88,7 +88,7 @@ This ensures the probe stays functional even when platform limitations exist, pr
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Collection interval in seconds |
 

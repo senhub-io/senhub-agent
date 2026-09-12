@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/console.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/exec.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -37,7 +37,7 @@ output contracts are supported:
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `command` | Yes | - | Absolute path of the program; no shell, no PATH lookup. Example: `/usr/local/bin/check_backup` |
 | `args` | No | - | Arguments passed verbatim; anything secret here is stored as typed |

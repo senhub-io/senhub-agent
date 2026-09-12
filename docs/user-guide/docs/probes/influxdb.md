@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/influxdb" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/influxdb.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -25,10 +25,10 @@ for the buckets endpoint.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost:8086` | Base URL of the server. Example: `http://influx01:8086` |
-| `token` | No | - | API token; empty skips the bucket count, /health and /metrics need none. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `endpoint` | In practice | `http://localhost:8086` | Base URL of the server. Example: `http://influx01:8086` |
+| `token` | In practice | - | API token; empty skips the bucket count, /health and /metrics need none. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `org` | No | - | Organisation the bucket listing is scoped to; empty lists every bucket the token sees |
 | `timeout` | No | `10` | HTTP request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |

@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/wifi.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/wifi-signal-strength.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 **License**: Free
 

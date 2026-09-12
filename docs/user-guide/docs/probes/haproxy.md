@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/haproxy" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/haproxy.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,9 @@ and server component.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost:8080/stats;csv` | URL of the stats page in CSV form |
+| `endpoint` | In practice | `http://localhost:8080/stats;csv` | URL of the stats page in CSV form |
 | `username` | No | - | Basic-auth user when the stats page is protected; empty for none |
 | `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `interval` | No | `60` | Seconds between collections |

@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/ubiquiti" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/unifi.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -27,9 +27,9 @@ throughput and connected-client totals.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `https://localhost:8443` | Base URL of the controller |
+| `endpoint` | In practice | `https://localhost:8443` | Base URL of the controller |
 | `username` | Yes | - | Controller local user |
 | `password` | Yes | - | Controller local user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `site` | No | `default` | Controller site to watch |

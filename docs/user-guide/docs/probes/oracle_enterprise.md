@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/oracle" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/oracle_enterprise.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -59,12 +59,17 @@ Disable the `gv$` cluster queries on a non-clustered instance to avoid needless 
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `dsn` | string | Yes | - | Oracle connection string, `oracle://user:password@host:port/service`. Reference the password via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. |
-| `interval` | integer | No | `300` | Collection interval in seconds |
-| `timeout` | integer | No | `30` | Per-cycle query timeout in seconds |
-| `collect_rac` | boolean | No | `true` | Query the `gv$` cluster views for RAC metrics (set `false` on single-instance databases) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `dsn` | Yes | - | Connection string carrying user, password, host, port and service name. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file. Example: `oracle://monitor:secret@db01.example.com:1521/ORCL` |
+| `interval` | No | `300` | Seconds between collections |
+| `timeout` | No | `30` | Query timeout per cycle, in seconds |
+| `collect_rac` | No | `true` | Query the gv$ cluster views for RAC metrics; false on a single-instance database |
+
+<!-- schema:params:end -->
 
 # Metrics Collected
 

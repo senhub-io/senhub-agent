@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/scale-balance.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/netscaler.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -102,19 +102,22 @@ outside `params`. Values must be strings.
 
 ## Complete Parameter Reference
 
-<!-- Hand-maintained: this probe's schema lives in senhub-agent-enterprise; check its parser before editing. -->
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `base_url` | Yes | - | Management (NSIP) URL of the appliance, or of the primary node of an HA pair |
-| `secondary_url` | No | - | Management URL of the other HA node; the probe follows the primary role. Empty disables failover |
+| `base_url` | Yes | - | Management (NSIP) URL of the appliance, or of the primary node of an HA pair. Example: `https://netscaler.example.com` |
+| `secondary_url` | No | - | Management URL of the other HA node; the probe follows the primary role, empty disables failover. Example: `https://netscaler-2.example.com` |
 | `username` | Yes | - | NITRO API user |
-| `password` | No | - | NITRO API password; this or `api_key` is required. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` rather than writing it in the file |
-| `api_key` | No | - | NITRO API key used instead of the password. A secret: reference it with `${secret:...}`, `${env:...}` or `${file:...}` |
-| `insecure_skip_verify` | No | `false` | Accept the management certificate without verifying it, for example when the URL is an IP address |
+| `password` | In practice | - | NITRO API password; this or api_key is required. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `api_key` | No | - | NITRO API key used instead of the password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `insecure_skip_verify` | No | `false` | Accept the management certificate without verifying it |
 | `timeout` | No | `30` | API request timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |
-| `custom_tags` | No | - | Extra tags attached to every metric, as `key: value` pairs |
+| `custom_tags` | No | - | Extra tags attached to every metric, as key: value pairs |
+
+<!-- schema:params:end -->
 
 # Metrics Overview
 

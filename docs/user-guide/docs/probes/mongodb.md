@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/mongodb" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/mongodb.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,9 @@ usage, replication state and database storage.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `uri` | No | `mongodb://localhost:27017` | Connection URI; credentials go in it (mongodb://user:pass@host:27017/admin?authSource=admin). A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file. Example: `mongodb://monitor:secret@db01:27017/admin?authSource=admin` |
+| `uri` | In practice | `mongodb://localhost:27017` | Connection URI; credentials go in it (mongodb://user:pass@host:27017/admin?authSource=admin). A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file. Example: `mongodb://monitor:secret@db01:27017/admin?authSource=admin` |
 | `direct_connection` | No | `true` | Connect to the named host only; false for Atlas or replica-set aware routing |
 | `timeout` | No | `10` | Connection and command timeout in seconds |
 | `interval` | No | `60` | Seconds between collections |

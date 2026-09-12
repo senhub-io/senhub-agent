@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/nginx" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/nginx.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,9 @@ state breakdown (reading, writing, waiting).
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `endpoint` | No | `http://localhost/nginx_status` | URL of the stub_status page |
+| `endpoint` | In practice | `http://localhost/nginx_status` | URL of the stub_status page |
 | `interval` | No | `60` | Seconds between collections |
 | `timeout` | No | `10` | Request timeout in seconds |
 | `instance_name` | No | - | Stable identity of this server; set it when two nginx probes run on one host |

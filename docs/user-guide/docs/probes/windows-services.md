@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/windows" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/windows-services.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -27,7 +27,7 @@ restrict to a subset.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `services` | No | - | Service short names to monitor; empty means every service. Example: `wuauserv, Spooler` |
 | `interval` | No | `30s` | Collection interval |

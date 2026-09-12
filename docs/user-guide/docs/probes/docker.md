@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/docker" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/docker.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -35,7 +35,7 @@ to override it; a Windows pipe may be written `npipe://./pipe/<name>` or
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `socket_path` | No | - | Engine socket; /var/run/docker.sock on Unix, npipe://./pipe/docker_engine on Windows by default |
 | `interval` | No | `60` | Seconds between collections |

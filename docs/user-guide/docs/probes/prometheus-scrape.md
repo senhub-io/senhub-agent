@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/prometheus" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/prometheus-scrape.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -30,7 +30,7 @@ push (OTLP) and pull (Prometheus) sources.
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Required | Default | Description |
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `targets` | Yes | - | Exposition URLs. Example: `http://localhost:9100/metrics` |
 | `interval` | No | `60` | Seconds between scrapes |
