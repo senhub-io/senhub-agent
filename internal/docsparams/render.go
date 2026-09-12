@@ -40,7 +40,7 @@ func Render(p spec.Probe) string {
 		b.WriteString(End + "\n")
 		return b.String()
 	}
-	b.WriteString("| Parameter | Required | Default | Description |\n")
+	b.WriteString("| Parameter | Must set | Default | Description |\n")
 	b.WriteString("|---|---|---|---|\n")
 	for _, row := range rows(p.Params, "") {
 		b.WriteString(row)
@@ -67,11 +67,31 @@ func rows(params []spec.ParamSpec, prefix string) []string {
 	return out
 }
 
-func line(p spec.ParamSpec, prefix string) string {
-	req := "No"
+// mustSet answers the question the column asks, which is "do I have to
+// set this", not "does the parser refuse without it". Those differ: a
+// database password is accepted absent by the parser and the probe then
+// collects nothing, and a table that answers No there is answering a
+// question nobody asked. Three values instead of two, and the condition
+// spelled out when there is one.
+func mustSet(p spec.ParamSpec) string {
 	if p.Required {
-		req = "Yes"
+		return "Yes"
 	}
+	if len(p.EssentialWhen) > 0 {
+		parts := make([]string, 0, len(p.EssentialWhen))
+		for _, c := range p.EssentialWhen {
+			parts = append(parts, "`"+c.Key+"` is "+quotedList(c.Values))
+		}
+		return "If " + strings.Join(parts, " and ")
+	}
+	if p.Essential {
+		return "In practice"
+	}
+	return "No"
+}
+
+func line(p spec.ParamSpec, prefix string) string {
+	req := mustSet(p)
 	desc := strings.TrimSpace(p.Description)
 	if desc == "" {
 		desc = kindWord(p.Kind)
