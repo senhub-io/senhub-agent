@@ -229,15 +229,15 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 		}
 		lic, err := validator.ValidateLicense(jwt)
 		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid licence: %v", err))
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid license: %v", err))
 			return
 		}
 		if !license.VerifyBinding("", agentKey, lic) {
-			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("this licence is issued for another agent (%q), not this one (%q); use your customer licence", lic.Subject, agentKey))
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("this license is issued for another agent (%q), not this one (%q); use your customer license", lic.Subject, agentKey))
 			return
 		}
 		if err := configuration.WriteLicenseSidecar(configPath, jwt); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("saving licence: %v", err))
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("saving license: %v", err))
 			return
 		}
 		result.Applied = append(result.Applied, "licence activated (tier "+string(lic.Tier)+")")

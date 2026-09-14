@@ -88,7 +88,7 @@ func annotateCatalogEntry(ps spec.Probe, lic *license.License, agentKey string) 
 		switch {
 		case lic == nil:
 			e.Authorized = false
-			e.Reason = "requires a licence"
+			e.Reason = "requires a license"
 		case !license.VerifyBinding("", agentKey, lic):
 			e.Authorized = false
 			e.Reason = "the licence is issued for another agent"
