@@ -266,7 +266,7 @@ func findLicenseInDir(dir string) (string, error) {
 			// empty folder.
 			return "", nil
 		}
-		return "", fmt.Errorf("reading licence folder %s: %w", dir, err)
+		return "", fmt.Errorf("reading license folder %s: %w", dir, err)
 	}
 	var candidates []string
 	for _, e := range entries {
@@ -287,7 +287,7 @@ func findLicenseInDir(dir string) (string, error) {
 	case 1:
 		return candidates[0], nil
 	default:
-		return "", fmt.Errorf("%d licence files (*.jwt) in %s; keep only the one to install, or name it license.jwt", len(candidates), dir)
+		return "", fmt.Errorf("%d license files (*.jwt) in %s; keep only the one to install, or name it license.jwt", len(candidates), dir)
 	}
 }
 
