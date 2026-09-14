@@ -291,20 +291,27 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		lc.logger.Warn().Err(err).Msg("Configuration migration failed, continuing with current format")
 	}
 
-	// Seal any inline plaintext secrets into the OS-native store (default
-	// policy). Non-fatal by design: SealInlineSecrets restores its own backups
-	// on any error, and we continue with the existing config rather than
-	// refusing to start — a sealing fault must never brick the agent.
-	if err := SealInlineSecrets(lc.configPath, lc.logger); err != nil {
-		lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
-	}
+	// Both steps below read the configuration file. On a first install there
+	// is none yet — loadOrCreateConfiguration writes it a few lines down — so
+	// there is nothing to seal and nothing to migrate. Running them anyway
+	// made a clean install report two warnings naming a missing file, which
+	// is the first thing an operator sees on a machine that is in fact fine.
+	if _, statErr := os.Stat(lc.configPath); statErr == nil {
+		// Seal any inline plaintext secrets into the OS-native store (default
+		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
+		// on any error, and we continue with the existing config rather than
+		// refusing to start — a sealing fault must never brick the agent.
+		if err := SealInlineSecrets(lc.configPath, lc.logger); err != nil {
+			lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
+		}
 
-	// Converge on the file-based license: an install carrying a JWT inline in
-	// agent.yaml is moved to the license.jwt sidecar. Non-fatal by design, and
-	// a no-op once migrated or when the field is a ${...} reference — like the
-	// seal above, a migration fault must never brick the agent.
-	if err := MigrateLicenseToSidecar(lc.configPath, lc.logger); err != nil {
-		lc.logger.Warn().Err(err).Msg("Migrating inline license to sidecar failed; continuing with the existing config")
+		// Converge on the file-based license: an install carrying a JWT inline in
+		// agent.yaml is moved to the license.jwt sidecar. Non-fatal by design, and
+		// a no-op once migrated or when the field is a ${...} reference — like the
+		// seal above, a migration fault must never brick the agent.
+		if err := MigrateLicenseToSidecar(lc.configPath, lc.logger); err != nil {
+			lc.logger.Warn().Err(err).Msg("Migrating inline license to sidecar failed; continuing with the existing config")
+		}
 	}
 
 	// Load or create configuration
