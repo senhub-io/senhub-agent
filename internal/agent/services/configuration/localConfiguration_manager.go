@@ -426,6 +426,44 @@ func (lc *LocalConfiguration) validateConfiguration(config *LocalConfigurationDa
 	return nil
 }
 
+// EnsureSelfSignedCert writes a self-signed pair at the given paths if
+// either is missing, and does nothing if both are already there.
+//
+// It exists because "tls.enabled: true" with no certificate was a silent
+// outage: the listener could not start, and an operator who had asked for
+// TLS got no console, no PRTG endpoint and no Nagios endpoint while the
+// service still reported healthy (#879). Refusing to start was correct and
+// still is when the operator named their own files — a missing file at a
+// path they chose is a mistake to report, not to paper over. This is for
+// the case where they named nothing.
+//
+// The pair goes next to the configuration for the reason generateTLSCertificates
+// already records: a hardened unit runs with ProtectHome=true, and anything
+// written under a home directory is unreadable by the service user.
+func EnsureSelfSignedCert(certPath, keyPath string, hosts []string) error {
+	_, certErr := os.Stat(certPath)
+	_, keyErr := os.Stat(keyPath)
+	if certErr == nil && keyErr == nil {
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(certPath), 0750); err != nil {
+		return fmt.Errorf("creating the certificate directory %s: %w", filepath.Dir(certPath), err)
+	}
+
+	certPEM, keyPEM, err := SelfSignedPEM(hosts)
+	if err != nil {
+		return fmt.Errorf("generating a self-signed certificate: %w", err)
+	}
+	if err := os.WriteFile(certPath, certPEM, 0600); err != nil {
+		return fmt.Errorf("writing %s: %w", certPath, err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		return fmt.Errorf("writing %s: %w", keyPath, err)
+	}
+	return nil
+}
+
 // generateTLSCertificates generates certificates for HTTPS (always when HTTPS enabled)
 func (lc *LocalConfiguration) generateTLSCertificates() error {
 	if !lc.args.EnableHttps {
@@ -470,6 +508,15 @@ func (lc *LocalConfiguration) generateTLSCertificates() error {
 
 // generateSelfSignedCert generates a self-signed certificate
 func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
+	return SelfSignedPEM(lc.args.HttpsHosts)
+}
+
+// SelfSignedPEM builds a self-signed certificate and its key, in PEM. It is
+// the single implementation behind both callers: the installer, which writes
+// a pair when it creates a configuration, and the HTTPS listener, which
+// writes one when tls is enabled and none was ever produced. Two generators
+// would drift, and the one nobody looks at is the one that would.
+func SelfSignedPEM(hosts []string) ([]byte, []byte, error) {
 	// Generate RSA private key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -496,7 +543,7 @@ func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
 	}
 
 	// Add Subject Alternative Names
-	for _, host := range lc.args.HttpsHosts {
+	for _, host := range hosts {
 		if ip := net.ParseIP(host); ip != nil {
 			template.IPAddresses = append(template.IPAddresses, ip)
 		} else {
