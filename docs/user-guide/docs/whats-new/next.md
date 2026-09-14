@@ -6,6 +6,32 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Enabling TLS no longer requires supplying a certificate.** `tls.enabled:
+  true` with nothing else now produces a self-signed pair on first start, next
+  to the configuration at `<config directory>/certs/`, readable only by the
+  service user. The log says the certificate is self-signed and how to replace
+  it, rather than letting a browser warning be the first news of it. The pair
+  is generated once: replacing those two files with your own keeps them, and a
+  restart or an upgrade will not undo your certificate.
+
+    Naming a `cert_file` that does not exist is a different case and generates
+    nothing. The agent refuses to start the listener and names the file and the
+    directory it looked in, because a path you wrote and that is not there is
+    more likely a typo than an invitation, and writing a certificate over it
+    would hide the mistake.
+
+- **The licence that covers the paid probes is published, and the agent says
+  where to read it.** The SenHub Agent licence agreement is now a page rather
+  than a file to request: the French text, which is the only binding version,
+  and an English courtesy translation carrying the same article numbering so a
+  cross-reference resolves in either language, each with a printable PDF. The
+  installer names it on Windows, the install command prints it on Linux, and
+  the console's Settings page links to it from the activation field, so an
+  operator can read what activating a token places under contract before doing
+  it. Annex 1, the third-party component list, is generated from the build's
+  dependency graph and describes what actually ships rather than what the
+  dependency file declares.
+
 - **The agent ships as a container image.** `ghcr.io/senhub-io/senhub-agent`
   starts from one required variable and one mount: an export token, and a
   volume on the state directory. An entrypoint writes a configuration from
@@ -132,6 +158,57 @@ Changes land here as they are merged to `dev`.
   interval that eats into the quota is visible.
 
 ## Fixes
+
+- **A configured minimum TLS version now reaches the listener.** `min_tls_version`
+  was parsed, defaulted, logged at startup and returned by the configuration
+  API, and never applied: `ServeTLS` ran on a server whose `TLSConfig` was nil.
+  An operator who required TLS 1.3 was served by a socket that still accepted
+  1.2, with the agent's own log line telling them 1.3 was in force. A security
+  control that is announced and not applied is worse than one that is absent,
+  because it is the one nobody re-checks.
+
+- **A missing certificate no longer reports a listening HTTPS server.** Enabling
+  TLS without usable certificate files logged "HTTPS server listening", naming
+  the configured minimum version, and only then discovered the file was absent.
+  The port then refused every connection while the service still reported
+  active: the console, the PRTG endpoint and the Nagios endpoint were gone with
+  nothing on screen saying so. The default made it easy to reach, since
+  `./certs/agent-cert.pem` resolves against the unit's working directory while
+  an install writes its certificates beside the configuration — the producer and
+  the consumer never agreed on the path, and the log printed the relative form,
+  which reads as the configuration directory. Both files are now checked before
+  anything is announced, and the failure names the absolute paths.
+
+- **The console URL printed after an install carries the key.** It said
+  `http://localhost:8080/web/{agentkey}/dashboard`, with the placeholder left
+  in, two lines after generating the key. It is the last line an operator reads
+  and the only one telling them where to go, and it could not be opened.
+
+- **A clean first install no longer opens with two warnings.** Sealing inline
+  secrets and migrating an inline licence both read the configuration. On a
+  first install there is none yet — it is written a few lines later — so both
+  failed and both warned, naming a missing file. Neither has anything to do
+  when the file is absent, so neither runs.
+
+- **`uninstall` says how much it removed.** It reported "removed 0 files and 3
+  directories" after deleting a tree holding `agent.yaml`, `license.jwt`, the
+  sealed secret store and the fragment directories: the counter reported the
+  top-level file list while `RemoveAll` took everything under the directories
+  without counting any of it. On a destructive command the summary is the one
+  line an operator reads to confirm what happened, and "0 files" on a tree
+  holding a licence token reads like nothing was removed.
+
+- **The Overview no longer scrolls sideways on a phone.** Its probe table is
+  wider than a 390px screen and pushed the whole document to 589px. Wrapping
+  the table was not enough: the grid track holding the card would not shrink
+  past it, since a bare `1fr` track is `minmax(auto, 1fr)` and its automatic
+  minimum is the width of what it holds. The card grids now use `minmax(0, 1fr)`
+  and the table scrolls inside its card.
+
+- **One spelling for "license" across the console.** The Settings page, the
+  Overview, the probe picker and the probe editor disagreed within a single
+  session, and the API supplied part of it: the catalogue returned "requires a
+  licence" as the reason string the picker renders verbatim.
 
 - **A probe whose target is down is no longer shown as healthy.** A
   database probe pointed at a host that refuses the connection was listed
