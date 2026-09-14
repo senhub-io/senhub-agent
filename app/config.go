@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -175,21 +176,44 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 		}
 	}
 
-	// Remove directories
+	// Remove directories. What they hold is counted before they go:
+	// RemoveAll deletes the whole tree, and reporting only the top-level
+	// file list made "removed 0 files" the summary of an uninstall that
+	// had just deleted a sealed secret store and a licence token. On a
+	// destructive command the summary is the one line the operator reads
+	// to confirm what happened.
+	filesInDirs := 0
 	for _, dir := range dirsToRemove {
+		n := countFilesUnder(dir)
 		if err := os.RemoveAll(dir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not remove directory %s: %v\n", dir, err)
-		} else {
-			fmt.Printf("Removed directory: %s\n", dir)
+			continue
 		}
+		fmt.Printf("Removed directory: %s (%d files)\n", dir, n)
+		filesInDirs += n
 	}
 
 	if len(filesToRemove) == 0 && len(dirsToRemove) == 0 {
 		fmt.Println("No additional files to clean up")
 	} else {
 		fmt.Printf("\nCleanup completed - removed %d files and %d directories\n",
-			len(filesToRemove), len(dirsToRemove))
+			len(filesToRemove)+filesInDirs, len(dirsToRemove))
 	}
+}
+
+// countFilesUnder counts the regular files a directory holds, so an
+// uninstall can say how much it removed rather than how many paths it
+// was handed. A directory already taken by an earlier RemoveAll counts
+// zero, which is correct: its contents were counted with its parent.
+func countFilesUnder(dir string) int {
+	n := 0
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && d != nil && !d.IsDir() {
+			n++
+		}
+		return nil
+	})
+	return n
 }
 
 // showDebugModules displays all available debug modules
