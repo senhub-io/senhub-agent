@@ -215,10 +215,12 @@ Changes land here as they are merged to `dev`.
   minimum is the width of what it holds. The card grids now use `minmax(0, 1fr)`
   and the table scrolls inside its card.
 
-- **One spelling for "license" across the console.** The Settings page, the
+- **One spelling for "license", everywhere it is read.** The Settings page, the
   Overview, the probe picker and the probe editor disagreed within a single
   session, and the API supplied part of it: the catalogue returned "requires a
-  licence" as the reason string the picker renders verbatim.
+  licence" as the reason string the picker renders verbatim. The Windows
+  installer disagreed with itself too, on the Options page description, the
+  licence-file label, and the file picker's title and filter.
 
 - **A probe whose target is down is no longer shown as healthy.** A
   database probe pointed at a host that refuses the connection was listed
