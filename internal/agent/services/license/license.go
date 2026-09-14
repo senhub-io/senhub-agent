@@ -29,7 +29,7 @@ const legacyCompactPrefix = "SH-"
 // JWT. Callers can match it with errors.Is to distinguish "operator
 // still on the legacy format, needs a JWT re-issue" from a generic
 // malformed token.
-var ErrLegacyCompactLicense = errors.New("legacy compact (SH-XXXX) licence is no longer supported; re-issue a JWT licence (see docs/LICENSE-SYSTEM.md)")
+var ErrLegacyCompactLicense = errors.New("legacy compact (SH-XXXX) license is no longer supported; re-issue a JWT license (see docs/LICENSE-SYSTEM.md)")
 
 // looksLikeLegacyCompactLicense reports whether the token is a retired
 // compact licence. A real JWT is three base64url segments separated by
