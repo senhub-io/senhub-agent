@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/utils/netbind"
 )
@@ -140,12 +141,26 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 	certFile := s.strategy.configManager.GetTLSCertFile()
 	keyFile := s.strategy.configManager.GetTLSKeyFile()
 
-	// Fallback to relative paths if not configured (for backward compatibility)
-	if certFile == "" {
-		certFile = "./certs/agent-cert.pem"
-	}
-	if keyFile == "" {
-		keyFile = "./certs/agent-key.pem"
+	// Nothing configured means the operator asked for TLS and left the
+	// files to us. The pair then goes next to the configuration, which is
+	// where the installer puts its own and the one directory a hardened
+	// unit is guaranteed to read, and it is generated if it is not there.
+	// Naming a file that does not exist is a different case and stays an
+	// error below: a wrong path is a mistake to report, not to paper over.
+	selfManaged := certFile == "" && keyFile == ""
+	if selfManaged {
+		certsDir := filepath.Join(filepath.Dir(s.strategy.agentConfig.GetConfigPath()), "certs")
+		certFile = filepath.Join(certsDir, "agent-cert.pem")
+		keyFile = filepath.Join(certsDir, "agent-key.pem")
+
+		if err := configuration.EnsureSelfSignedCert(certFile, keyFile, s.selfSignedHosts()); err != nil {
+			s.logger.Error().Err(err).
+				Str("cert_file", certFile).
+				Str("key_file", keyFile).
+				Msg("TLS is enabled and no certificate is configured, and generating one failed; " +
+					"the HTTPS listener is not started. Set tls.cert_file and tls.key_file, or disable tls.")
+			return
+		}
 	}
 
 	// The configured minimum was logged and reported by the API but never
@@ -192,11 +207,34 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 		Str("cert_file", certAbs).
 		Str("key_file", keyAbs).
 		Str("min_tls_version", configured).
+		Bool("self_signed", selfManaged).
 		Msg("HTTPS server listening")
+	if selfManaged {
+		s.logger.Info().
+			Str("cert_file", certAbs).
+			Msg("Using a self-signed certificate the agent manages; replace these files with your own to be trusted by a browser")
+	}
 
 	if err := s.server.ServeTLS(ln, certAbs, keyAbs); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTPS server error")
 	}
+}
+
+// selfSignedHosts names what the generated certificate should stand for.
+// localhost is always there because that is how the console is reached on
+// the machine itself; the bind address joins it when it designates one
+// interface rather than all of them, since a certificate for 0.0.0.0
+// matches nothing a client would type.
+func (s *ServerManager) selfSignedHosts() []string {
+	hosts := []string{"localhost", "127.0.0.1"}
+	bind := s.strategy.bindAddress
+	if bind != "" && bind != "0.0.0.0" && bind != "::" && bind != "127.0.0.1" {
+		hosts = append(hosts, bind)
+	}
+	if name, err := os.Hostname(); err == nil && name != "" {
+		hosts = append(hosts, name)
+	}
+	return hosts
 }
 
 // absolutePathOf resolves a configured certificate path so the log names
