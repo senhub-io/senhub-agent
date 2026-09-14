@@ -159,6 +159,16 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **A container without a mounted volume now says so.** The entrypoint has
+  always warned when the state directory is not a mount, because without one
+  the host identity, the agent key and the log bookmarks go with the
+  container. Under Docker the warning could not fire: the image declared
+  `VOLUME` on that directory, so Docker created an anonymous volume, the
+  mount check was satisfied and nothing was said — while the volume was
+  orphaned by `docker rm` and the next run started as a new host anyway. The
+  directive is gone. A named volume behaves as before and keeps its identity
+  across a `docker rm`; a run without one is told what it is losing.
+
 - **A configured minimum TLS version now reaches the listener.** `min_tls_version`
   was parsed, defaulted, logged at startup and returned by the configuration
   API, and never applied: `ServeTLS` ran on a server whose `TLSConfig` was nil.
