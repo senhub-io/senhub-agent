@@ -48,6 +48,22 @@ func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Wr
 	return err
 }
 
+// printLicenseNotice names, at install time, the two licenses the binary
+// ships under. The Windows installer shows this on a page the operator
+// must pass; on Linux the install is a command, so the same words are
+// printed where the operator is looking. Saying "your commercial
+// agreement" without naming a document is how a customer ends up unable
+// to find one.
+func printLicenseNotice() {
+	fmt.Println()
+	fmt.Println("Licenses: the SenHub Agent core is open source under Apache 2.0")
+	fmt.Println("  (https://github.com/senhub-io/senhub-agent). The Pro and Enterprise")
+	fmt.Println("  probes are licensed commercially under the SenHub Agent license")
+	fmt.Println("  agreement (https://agent.senhub.io/docs/license/), drawn up in French,")
+	fmt.Println("  which is its only binding version. Installing without a license file")
+	fmt.Println("  runs the free tier and needs no agreement.")
+}
+
 func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// Build the ExecStart arguments for the installed service: pass
 	// --config-path with the resolved absolute path so the service
@@ -176,6 +192,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		err = s.Install()
 		if err == nil {
 			fmt.Println("Service installed successfully")
+			printLicenseNotice()
 
 			// A fresh configuration is about to be written: say now if
 			// its HTTP port is already taken, while the operator is
