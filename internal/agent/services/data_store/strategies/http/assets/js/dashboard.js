@@ -1,7 +1,7 @@
 // SenHub Agent console: Overview page.
 //
 // Reads the agent's APIs and renders the cards: getting started, probes,
-// outputs, agent, licence, recent events. Every card renders on its own so
+// outputs, agent, license, recent events. Every card renders on its own so
 // one failing API does not blank the page; the failures are listed in the
 // banner at the top.
 (function () {
@@ -155,7 +155,10 @@
         } else {
             const order = { failing: 0, 'target-down': 1, stopped: 2, locked: 2, running: 3, disabled: 4 };
             const rows = list.slice().sort((a, b) => order[probeState(a)] - order[probeState(b)]);
-            let html = '<table class="tbl compact"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
+            // Same wrapper as the Probes page: this table is wider than a
+            // phone, and without its own scroller it pushes the whole
+            // document sideways instead of scrolling inside its card.
+            let html = '<div style="overflow-x:auto"><table class="tbl compact"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
             rows.forEach(p => {
                 const s = probeState(p);
                 let state, last;
@@ -172,7 +175,7 @@
                     state = pill('off', 'disabled');
                     last = '-';
                 } else if (s === 'locked') {
-                    state = pill('pro', 'licence needed');
+                    state = pill('pro', 'license needed');
                     last = '<span class="reason">' + short(p.reason || 'not authorized', 80) + '</span>';
                 } else if (s === 'unsupported') {
                     state = pill('off', 'not on this platform');
@@ -186,7 +189,7 @@
                 html += '<tr><td class="name">' + esc(p.name) + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state +
                     '</td><td class="num">' + metrics + '</td><td class="num">' + last + '</td></tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             $('probes-body').innerHTML = html;
         }
 
@@ -406,9 +409,9 @@
         $('agent-foot').textContent = foot;
     }
 
-    // ---- Licence ----------------------------------------------------------
+    // ---- License ----------------------------------------------------------
 
-    function renderLicence(lic, catalog) {
+    function renderLicense(lic, catalog) {
         lic = lic || {};
         const tier = (lic.tier || 'free').toLowerCase();
         const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
@@ -420,7 +423,7 @@
         $('lic-pill').innerHTML = p;
         const probes = (catalog && catalog.probes) || [];
         const available = probes.filter(x => x.authorized !== false).length;
-        // A Pro type refused for its platform is not one a licence would unlock.
+        // A Pro type refused for its platform is not one a license would unlock.
         const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false && !/ only$/.test(x.reason || '')).length;
         let expires = '-';
         if (lic.expires_at) {
@@ -431,7 +434,7 @@
             ['Tier', esc(tierLabel)],
             ['Expires', expires],
             ['Probe types', catalog ? num(available) + ' available' : '-'],
-            ['Pro types', catalog ? num(locked) + ' need a licence' : '-'],
+            ['Pro types', catalog ? num(locked) + ' need a license' : '-'],
             ['Agent key', '<span title="' + esc(KEY) + '">' + esc(shortKey(KEY)) + '</span><button type="button" class="btn sm" id="copy-key">Copy</button><span class="copied hide" id="copied">copied</span>']
         ];
         $('lic-kv').innerHTML = rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
@@ -487,7 +490,7 @@
         else $('probes-body').innerHTML = '<div class="empty-line">Probe list unavailable.</div>';
         if (outputs) outputList = renderOutputs(outputs);
         else $('outputs-body').innerHTML = '<div class="empty-line">Output list unavailable.</div>';
-        if (lic || catalog) renderLicence(lic, catalog);
+        if (lic || catalog) renderLicense(lic, catalog);
         else $('lic-kv').innerHTML = '';
         if (events) renderEvents(events);
         else $('events-body').innerHTML = '<div class="empty-line">Events unavailable.</div>';
