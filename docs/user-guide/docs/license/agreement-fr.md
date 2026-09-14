@@ -159,9 +159,9 @@ retrouve dans le Jeton de Licence.
 
 5.2 — Le périmètre concédé ne se lit pas dans le présent Contrat de Licence, qui ne
 le fige pas, mais dans la documentation du Logiciel et dans le Devis accepté. Chaque
-Agent indique en outre, dans sa console et par la commande
-`senhub-agent license show`, les types de sondes qui requièrent une licence et
-ceux que la sienne autorise.
+Agent indique en outre, dans sa console et par la commande en ligne que la
+documentation du Logiciel désigne à cet effet, les types de sondes qui requièrent
+une licence et ceux que la sienne autorise.
 
 Cette indication est fournie à titre informatif et pour la commodité du Client. Une
 erreur d'affichage ne crée aucun droit d'usage : en cas de divergence, le Devis
