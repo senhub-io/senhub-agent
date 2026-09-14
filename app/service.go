@@ -59,7 +59,7 @@ func printLicenseNotice() {
 	fmt.Println("Licenses: the SenHub Agent core is open source under Apache 2.0")
 	fmt.Println("  (https://github.com/senhub-io/senhub-agent). The Pro and Enterprise")
 	fmt.Println("  probes are licensed commercially under the SenHub Agent license")
-	fmt.Println("  agreement (https://agent.senhub.io/docs/license/), drawn up in French,")
+	fmt.Println("  agreement (https://agent.senhub.io/docs/latest/license/), drawn up in French,")
 	fmt.Println("  which is its only binding version. Installing without a license file")
 	fmt.Println("  runs the free tier and needs no agreement.")
 }
