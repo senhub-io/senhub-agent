@@ -165,7 +165,7 @@ Form and is reflected in the License Token.
 5.2 — The granted scope is not to be read in this License Agreement, which does
 not fix it, but in the documentation of the Software and in the accepted Order
 Form. Each Agent further indicates, in its console and through the
-`senhub-agent license status` command, which probe types require a license and
+`senhub-agent license show` command, which probe types require a license and
 which ones its own license authorises.
 
 That indication is provided for information and for the Customer's convenience. A

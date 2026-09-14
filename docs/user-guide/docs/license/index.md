@@ -66,7 +66,7 @@ means a license and never a platform.
 From the command line:
 
 ```bash
-senhub-agent license status
+senhub-agent license show
 ```
 
 [apache]: https://www.apache.org/licenses/LICENSE-2.0
