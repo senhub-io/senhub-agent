@@ -103,8 +103,38 @@ storage:
 |-----------|---------|-------------|
 | `tls.enabled` | `false` | Enable HTTPS |
 | `tls.min_tls_version` | `1.2` | Minimum TLS version (1.2 or 1.3) |
-| `tls.cert_file` | - | Absolute path to the certificate file (.pem or .crt) |
-| `tls.key_file` | - | Absolute path to the private key file (.pem or .key) |
+| `tls.cert_file` | generated | Absolute path to the certificate file (.pem or .crt) |
+| `tls.key_file` | generated | Absolute path to the private key file (.pem or .key) |
+
+### If you set neither
+
+Enabling `tls` without naming a certificate is a valid configuration. On
+first start the agent generates a self-signed pair next to its
+configuration, at `<config directory>/certs/agent-cert.pem` and
+`agent-key.pem`, readable only by the service user, and says so in the
+log:
+
+```
+INF HTTPS server listening ... self_signed=true
+INF Using a self-signed certificate the agent manages; replace these
+    files with your own to be trusted by a browser
+```
+
+The pair is generated once. Replacing those two files with your own
+keeps them: the agent regenerates nothing that is already there, so an
+upgrade or a restart will not undo your certificate.
+
+Naming a `cert_file` that does not exist is a different case, and the
+agent does not generate anything for it. It refuses to start the HTTPS
+listener and names the file and the directory it looked in, because a
+path you wrote and that is not there is more likely a typo than an
+invitation:
+
+```
+ERR TLS is enabled but the certificate file is missing; the HTTPS
+    listener is not started. Set tls.cert_file and tls.key_file to
+    absolute paths, or disable tls.
+```
 
 ### Using a CA-Signed Certificate
 
