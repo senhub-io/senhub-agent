@@ -67,10 +67,15 @@ p { margin: 0; }
 .crumb { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--s2); }
 .crumb a { color: var(--muted); }
 .grid { display: grid; gap: var(--s4); }
-.g2 { grid-template-columns: 1fr 1fr; }
-.g3 { grid-template-columns: repeat(3, 1fr); }
+/* minmax(0, ...) rather than 1fr: a bare 1fr track is minmax(auto, 1fr),
+   and its auto minimum is the min-content width of what it holds. A card
+   carrying a wide table then refuses to shrink, and on a phone it pushed
+   the whole document sideways — 589px of layout in a 390px window —
+   whatever scroller the table itself had. .g-editor already had it. */
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .g-editor { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
-@media (max-width: 960px) { .g2, .g3, .g-editor { grid-template-columns: 1fr; } }
+@media (max-width: 960px) { .g2, .g3, .g-editor { grid-template-columns: minmax(0, 1fr); } }
 
 /* Cards */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: var(--s4) var(--s5); }
@@ -258,16 +263,16 @@ pre.yaml .k { color: #0b6b7a; } pre.yaml .c { color: var(--muted-2); } pre.yaml 
 /* Empty state / starters */
 .empty { text-align: center; padding: var(--s6) var(--s4); }
 .empty h2 { margin-bottom: 4px; }
-.starters { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s3); margin-top: var(--s4); text-align: left; }
-@media (max-width: 900px) { .starters { grid-template-columns: 1fr 1fr; } }
+.starters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); margin-top: var(--s4); text-align: left; }
+@media (max-width: 900px) { .starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .scard { border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s3) var(--s4); background: var(--surface); }
 .scard:hover { border-color: var(--accent); }
 .scard .t { font-weight: 600; margin-bottom: 2px; }
 .scard .d { font-size: var(--fs-xs); color: var(--muted); }
 
 /* Checklist */
-.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s3); }
-@media (max-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } }
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); }
+@media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .step { border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s3) var(--s4); display: flex; gap: var(--s3); align-items: flex-start; }
 .step .num { width: 22px; height: 22px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: var(--fs-xs); font-weight: 700; border: 1.5px solid var(--line-2); color: var(--muted); }
 .step.done .num { background: var(--ok); border-color: var(--ok); color: #fff; }
