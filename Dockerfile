@@ -67,7 +67,15 @@ RUN mkdir -p /etc/senhub-agent /var/lib/senhub-agent /var/log/senhub-agent \
 # empty, it is ignored exactly as an absent file would be, so an image run
 # without the entrypoint behaves as before.
 RUN install -o senhub -g senhub -m 0644 /dev/null /etc/machine-id
-VOLUME ["/var/lib/senhub-agent"]
+# No VOLUME for the state directory, deliberately. The directive makes
+# Docker create an anonymous volume when none is given, which looks like
+# persistence and is not: it is per-container, it is orphaned by
+# docker rm, and the next run gets a fresh one with a fresh identity. It
+# also defeats the entrypoint check that exists to catch exactly that,
+# since /proc/mounts then shows a mount and the warning never fires.
+# Without it, a run with no -v keeps its state in the container layer,
+# the entrypoint says so, and an operator who wants persistence asks for
+# it. Kubernetes and Container Apps ignore VOLUME either way.
 
 USER senhub
 WORKDIR /var/lib/senhub-agent
