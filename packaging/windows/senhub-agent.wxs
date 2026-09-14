@@ -340,10 +340,10 @@
       <Dialog Id="SenHubOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
         <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
         <Control Id="Title" Type="Text" X="15" Y="6" Width="300" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent options" />
-        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="Licence, console port and shortcut. Everything else is set from the web console." />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="License, console port and shortcut. Everything else is set from the web console." />
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
 
-        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="Licence file (the .jwt file you received; leave empty for the Free tier, a licence can be added later from the web console):" />
+        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="License file (the .jwt file you received; leave empty for the Free tier, a license can be added later from the web console):" />
         <Control Id="LicenseFileEdit" Type="Edit" X="20" Y="84" Width="264" Height="18" Property="LICENSE_FILE" />
         <Control Id="LicenseBrowse" Type="PushButton" X="290" Y="84" Width="60" Height="18" Text="B&amp;rowse...">
           <Publish Event="DoAction" Value="BrowseLicenseFile" Order="1" />
