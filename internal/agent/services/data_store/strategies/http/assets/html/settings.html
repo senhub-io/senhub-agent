@@ -36,7 +36,7 @@
         <div class="page-h">
             <div>
                 <h1>Settings</h1>
-                <p class="sub">Where this console listens, and which licence unlocks the Pro probes.</p>
+                <p class="sub">Where this console listens, and which license unlocks the Pro probes.</p>
             </div>
         </div>
 
@@ -63,12 +63,12 @@
             </div>
 
             <div class="card">
-                <div class="card-h"><h2>Licence</h2><span id="lic-status"></span></div>
+                <div class="card-h"><h2>License</h2><span id="lic-status"></span></div>
                 <div class="stack">
                     <div class="field">
                         <span class="lbl">Agent key</span>
                         <div class="agentkey-box" id="agentkey">{{.AgentKey}}</div>
-                        <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A licence is bound to it: give it to Sensor Factory when ordering one, and the licence you receive is checked against it here. <button class="btn sm" id="copy-key" type="button">Copy</button> <span class="xs hide" id="copied" style="color:var(--ok)">copied</span></div>
+                        <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A license is bound to it: give it to Sensor Factory when ordering one, and the license you receive is checked against it here. <button class="btn sm" id="copy-key" type="button">Copy</button> <span class="xs hide" id="copied" style="color:var(--ok)">copied</span></div>
                     </div>
                     <dl class="kv left">
                         <dt>Tier</dt><dd class="v" id="lic-tier">...</dd>
@@ -76,7 +76,7 @@
                         <dt>Pro probe types</dt><dd id="lic-locked" class="locked">...</dd>
                     </dl>
                     <div class="field">
-                        <span class="lbl">Activate a licence</span>
+                        <span class="lbl">Activate a license</span>
                         <!-- The native file control draws its own labels in the
                              browser's language, which reads as French text in the
                              middle of an English console. A button of our own with
@@ -86,12 +86,12 @@
                             <span class="small muted" id="license-file-name">No file chosen</span>
                         </div>
                         <input type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" hidden />
-                        <div class="hint">Choose the licence file you received, or paste the token below. It is checked against this agent key before it is saved.</div>
-                        <textarea class="ta" id="license" placeholder="...or paste the licence token (JWT)"></textarea>
+                        <div class="hint">Choose the license file you received, or paste the token below. It is checked against this agent key before it is saved. Activating a license places the Pro and Enterprise probes under the <a href="https://agent.senhub.io/docs/license/" target="_blank" rel="noreferrer">SenHub Agent license agreement</a>; the core stays open source either way.</div>
+                        <textarea class="ta" id="license" placeholder="...or paste the license token (JWT)"></textarea>
                     </div>
                 </div>
                 <div class="actions">
-                    <button class="btn primary" id="save-lic" type="button">Activate licence</button>
+                    <button class="btn primary" id="save-lic" type="button">Activate license</button>
                 </div>
             </div>
         </div>
@@ -178,10 +178,10 @@
 
         $('save-lic').addEventListener('click', async () => {
             const jwt = $('license').value.trim();
-            if (!jwt) { banner('err', 'Paste a licence token first.'); return; }
+            if (!jwt) { banner('err', 'Paste a license token first.'); return; }
             try {
                 const d = await post({ license: jwt });
-                banner('ok', (d.applied || ['Licence activated.']).join('; '));
+                banner('ok', (d.applied || ['License activated.']).join('; '));
                 $('license').value = '';
                 load();
                 loadLocked();
@@ -197,7 +197,7 @@
             const reader = new FileReader();
             reader.onload = () => {
                 $('license').value = (reader.result || '').toString().trim();
-                banner('warn', 'Licence file loaded from ' + f.name + '. Click "Activate licence" to apply it.');
+                banner('warn', 'License file loaded from ' + f.name + '. Click "Activate license" to apply it.');
             };
             reader.onerror = () => banner('err', 'Could not read the file.');
             reader.readAsText(f);
