@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
@@ -124,6 +127,33 @@ func resolveTransport(cfg Config, sig SignalTransport) resolvedTransport {
 	}
 }
 
+// Standard OTLP/HTTP signal paths. The exporters append these to the
+// endpoint on their own; they are spelled out here only to build the
+// prefixed variants for a backend that serves OTLP under a base path
+// (see Config.URLPathPrefix).
+const (
+	signalPathMetrics = "/v1/metrics"
+	signalPathLogs    = "/v1/logs"
+	signalPathTraces  = "/v1/traces"
+)
+
+// newHTTPClient builds the http.Client the OTLP/HTTP exporters use when
+// an idle-connection timeout is configured.
+//
+// It clones http.DefaultTransport rather than building a Transport from
+// scratch, so proxy support (ProxyFromEnvironment), dial and TLS
+// handshake timeouts, connection pool sizing and HTTP/2 negotiation keep
+// the standard-library defaults. Only the two fields we mean to change
+// are overridden. This matters because WithHTTPClient takes precedence
+// over WithTLSClientConfig, WithTimeout and WithProxy: whatever this
+// function forgets, the exporter silently loses.
+func newHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConf
+	transport.IdleConnTimeout = idleConnTimeout
+	return &http.Client{Transport: transport, Timeout: timeout}
+}
+
 // ── Metrics ──────────────────────────────────────────────────────────
 
 func buildMetricExporter(ctx context.Context, cfg Config) (sdkmetric.Exporter, error) {
@@ -173,6 +203,9 @@ func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporte
 		otlpmetrichttp.WithEndpoint(rt.endpoint),
 		otlpmetrichttp.WithTimeout(cfg.Timeout),
 	}
+	if cfg.URLPathPrefix != "" {
+		opts = append(opts, otlpmetrichttp.WithURLPath(cfg.URLPathPrefix+signalPathMetrics))
+	}
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
 		return nil, err
@@ -181,6 +214,9 @@ func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporte
 		opts = append(opts, otlpmetrichttp.WithInsecure())
 	} else {
 		opts = append(opts, otlpmetrichttp.WithTLSClientConfig(tlsConf))
+	}
+	if cfg.IdleConnTimeout > 0 {
+		opts = append(opts, otlpmetrichttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlpmetrichttp.WithHeaders(rt.headers))
@@ -250,6 +286,9 @@ func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, err
 		otlploghttp.WithEndpoint(rt.endpoint),
 		otlploghttp.WithTimeout(cfg.Timeout),
 	}
+	if cfg.URLPathPrefix != "" {
+		opts = append(opts, otlploghttp.WithURLPath(cfg.URLPathPrefix+signalPathLogs))
+	}
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
 		return nil, err
@@ -258,6 +297,9 @@ func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, err
 		opts = append(opts, otlploghttp.WithInsecure())
 	} else {
 		opts = append(opts, otlploghttp.WithTLSClientConfig(tlsConf))
+	}
+	if cfg.IdleConnTimeout > 0 {
+		opts = append(opts, otlploghttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlploghttp.WithHeaders(rt.headers))
@@ -327,6 +369,9 @@ func buildTraceExporterHTTP(ctx context.Context, cfg Config) (*otlptrace.Exporte
 		otlptracehttp.WithEndpoint(rt.endpoint),
 		otlptracehttp.WithTimeout(cfg.Timeout),
 	}
+	if cfg.URLPathPrefix != "" {
+		opts = append(opts, otlptracehttp.WithURLPath(cfg.URLPathPrefix+signalPathTraces))
+	}
 	tlsConf, insec, err := buildTLSConfig(rt.tls)
 	if err != nil {
 		return nil, err
@@ -335,6 +380,9 @@ func buildTraceExporterHTTP(ctx context.Context, cfg Config) (*otlptrace.Exporte
 		opts = append(opts, otlptracehttp.WithInsecure())
 	} else {
 		opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConf))
+	}
+	if cfg.IdleConnTimeout > 0 {
+		opts = append(opts, otlptracehttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
 		opts = append(opts, otlptracehttp.WithHeaders(rt.headers))
@@ -442,5 +490,5 @@ func (e *exporters) shutdown(ctx context.Context) error {
 	if len(errs) == 1 {
 		return errs[0]
 	}
-	return fmt.Errorf("multiple shutdown errors: %v", errs)
+	return fmt.Errorf("multiple shutdown errors: %w", errors.Join(errs...))
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/load"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -26,7 +27,7 @@ type unixCollector struct {
 	lastTimestamp time.Time
 }
 
-func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (osCollector, error) {
+func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
 	return &unixCollector{
 		logger: logger,
 	}, nil
@@ -77,7 +78,7 @@ func (u *unixCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, er
 func (u *unixCollector) getBaseTags() ([]tags.Tag, error) {
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 	return baseTags, nil
 }
@@ -85,7 +86,7 @@ func (u *unixCollector) getBaseTags() ([]tags.Tag, error) {
 func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	times, err := cpu.Times(false)
 	if err != nil {
-		return fmt.Errorf("error getting CPU times: %v", err)
+		return fmt.Errorf("error getting CPU times: %w", err)
 	}
 
 	if len(times) == 0 {
@@ -170,7 +171,7 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 func (u *unixCollector) collectCPUUsage(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	cpuPercent, err := cpu.Percent(time.Second, false)
 	if err != nil {
-		return fmt.Errorf("error getting CPU percentage metrics: %v", err)
+		return fmt.Errorf("error getting CPU percentage metrics: %w", err)
 	}
 
 	if len(cpuPercent) > 0 {
@@ -188,7 +189,7 @@ func (u *unixCollector) collectCPUUsage(dataPoints *[]data_store.DataPoint, time
 func (u *unixCollector) collectLoadAverage(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	loadAvg, err := load.Avg()
 	if err != nil {
-		return fmt.Errorf("error getting load average: %v", err)
+		return fmt.Errorf("error getting load average: %w", err)
 	}
 
 	metrics := []struct {
@@ -215,7 +216,7 @@ func (u *unixCollector) collectLoadAverage(dataPoints *[]data_store.DataPoint, t
 func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	perCpuPercent, err := cpu.Percent(time.Second, true)
 	if err != nil {
-		return fmt.Errorf("error getting per-CPU metrics: %v", err)
+		return fmt.Errorf("error getting per-CPU metrics: %w", err)
 	}
 
 	for i, cpuPercent := range perCpuPercent {
@@ -247,7 +248,7 @@ func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint
 func (u *unixCollector) collectProcessesCount(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	misc, err := load.Misc()
 	if err != nil {
-		return fmt.Errorf("error getting process count: %v", err)
+		return fmt.Errorf("error getting process count: %w", err)
 	}
 	*dataPoints = append(*dataPoints, data_store.DataPoint{
 		Name:      "cpu_processes_total",

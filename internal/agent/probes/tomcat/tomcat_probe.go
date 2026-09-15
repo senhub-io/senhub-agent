@@ -78,10 +78,10 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	if v, ok := config["password"].(string); ok {
 		cfg.Password = v
 	}
-	if v, ok := config["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	if v, ok := config["instance_name"].(string); ok {
@@ -95,14 +95,12 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 
 	// Wrap transport with BasicAuth if credentials are configured.
-	var roundTripper http.RoundTripper = transport
 	if cfg.Username != "" {
-		roundTripper = &basicAuthTransport{
+		httpClient.Transport = &basicAuthTransport{
 			wrapped:  transport,
 			username: cfg.Username,
 			password: cfg.Password,
 		}
-		httpClient.Transport = roundTripper
 	}
 
 	probe := &TomcatProbe{

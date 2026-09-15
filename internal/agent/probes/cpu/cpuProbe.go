@@ -1,103 +1,26 @@
-//go:build windows || !windows
-
 // internal/agent/probes/cpu/cpuProbe.go
 package cpu
 
 import (
-	"context"
-	"fmt"
-	"runtime"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
-	"time"
 )
 
-// cpuProbe représente le collecteur de métriques CPU
-type cpuProbe struct {
-	*types.BaseProbe // Ajout de BaseProbe
-	rawConfig        map[string]interface{}
-	moduleLogger     *logger.ModuleLogger
-	collector        osCollector
-	interval         time.Duration
-}
-
-// NewCpuProbe crée une nouvelle instance de CPU probe
+// NewCpuProbe crée une nouvelle instance de CPU probe. Le cycle de vie
+// (intervalle, enrichissement, arrêt) vient de hostpoll ; seule la
+// collecte OS appartient à ce paquet.
 func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
-	interval := 30 * time.Second
-	if cfgInterval, ok := config["interval"].(int); ok {
-		interval = time.Duration(cfgInterval) * time.Second
-	}
-
-	// Create module-specific logger for CPU probe
-	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.cpu")
-
-	probe := &cpuProbe{
-		BaseProbe:    &types.BaseProbe{}, // Initialisation de BaseProbe
-		rawConfig:    config,
-		moduleLogger: moduleLogger,
-		interval:     interval,
-	}
-	var err error
-	switch runtime.GOOS {
-	case "windows":
-		probe.collector, err = newCPUCollector(config, moduleLogger.Logger)
-	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-		probe.collector, err = newCPUCollector(config, moduleLogger.Logger)
-	default:
-		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
-	}
+	probe, err := hostpoll.New(config, baseLogger, hostpoll.Spec{
+		Module:   "probe.cpu",
+		Subject:  "CPU",
+		TypeName: "CPUProbe",
+		NewCollector: func(cfg map[string]interface{}, _ *logger.Logger, moduleLogger *logger.ModuleLogger) (hostpoll.Collector, error) {
+			return newCPUCollector(cfg, moduleLogger.Logger)
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create CPU collector: %v", err)
+		return nil, err
 	}
 	return probe, nil
-}
-
-func (p *cpuProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http", "otlp"}
-}
-
-// Note: GetName() is now inherited from BaseProbe and will return the unique
-// probe name from configuration (e.g., "cpu", "cpu2") instead of the
-// hardcoded type. This enables proper discriminant tagging for multiple instances.
-
-func (p *cpuProbe) ShouldStart() bool {
-	return true
-}
-
-func (p *cpuProbe) GetInterval() time.Duration {
-	return p.interval
-}
-
-func (p *cpuProbe) Collect() ([]data_store.DataPoint, error) {
-	timestamp := time.Now()
-	metrics, err := p.collector.Collect(timestamp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to collect CPU metrics: %v", err)
-	}
-
-	// Enrich datapoints with probe name
-	enrichedMetrics := p.EnrichDataPointsWithProbeName(metrics, p.GetName())
-
-	return enrichedMetrics, nil
-}
-
-func (p *cpuProbe) OnStart(quitChannel chan struct{}) error {
-	return nil
-}
-
-func (p *cpuProbe) OnShutdown(ctx context.Context) error {
-	if p.collector != nil {
-		return p.collector.Close()
-	}
-	return nil
-}
-
-func (p *cpuProbe) IsHealthy() bool {
-	_, err := p.Collect()
-	return err == nil
-}
-
-func (p *cpuProbe) String() string {
-	return fmt.Sprintf("CPUProbe{name=%s, interval=%v}", p.GetName(), p.GetInterval())
 }

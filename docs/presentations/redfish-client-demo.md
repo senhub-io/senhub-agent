@@ -454,7 +454,7 @@ Semaine 5-6 : Extension & Optimisation
 - **Troubleshooting** : `/docs/troubleshooting/README.md`
 
 #### Ressources disponibles
-- 📖 **Documentation en ligne** : https://docs.senhub.io
+- 📖 **Documentation en ligne** : https://agent.senhub.io/docs
 - 💬 **Support technique** : support@senhub.io
 - 🐙 **GitHub** : https://github.com/senhub-io/senhub-agent
 - 📝 **Exemples configuration** : Inclus dans le repo

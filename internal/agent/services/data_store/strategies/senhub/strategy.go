@@ -5,14 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"sync"
+	"io"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/tags"
@@ -24,30 +26,22 @@ var (
 	DEFAULT_SENHUB_INTERVAL = 5 * time.Second
 )
 
-// Buffer interface for local use to avoid import cycles
+// Buffer is the backlog contract this strategy uses. The implementation
+// is the shared bounded queue: this used to be a verbatim fork of the
+// same code the PRTG sink carried, and a fork is how the two drifted
+// (#287).
 type Buffer interface {
-	// Append appends data to the buffer
 	Append(newData []datapoint.DataPoint) error
-	// Flush the buffer data and return the data
 	Sync() []datapoint.DataPoint
-	// Revert the sync operation
 	AbortSync(failedData []datapoint.DataPoint) error
-}
-
-// buffer implements Buffer interface
-type buffer struct {
-	data      *[]datapoint.DataPoint
-	mutex     sync.Mutex
-	maxPoints int // 0 = unbounded
+	Len() int
 }
 
 // DefaultMaxBufferPoints bounds the cloud push buffer. Before the cap
 // an intake outage grew the buffer until OOM (#267, audit A3): every
 // failed sync re-prepended the whole backlog while collection kept
-// appending. 100k points is hours of typical agent volume; oldest
-// points are dropped first — the freshest data is the valuable part
-// of a monitoring stream when the backlog cannot be shipped anyway.
-const DefaultMaxBufferPoints = 100000
+// appending.
+const DefaultMaxBufferPoints = pushqueue.DefaultMaxItems
 
 // NewBuffer creates a buffer bounded at DefaultMaxBufferPoints.
 func NewBuffer() Buffer {
@@ -56,49 +50,7 @@ func NewBuffer() Buffer {
 
 // NewBufferWithCap creates a buffer bounded at maxPoints (0 = unbounded).
 func NewBufferWithCap(maxPoints int) Buffer {
-	return &buffer{
-		data:      &[]datapoint.DataPoint{},
-		maxPoints: maxPoints,
-	}
-}
-
-// trimToCap drops the OLDEST points so the buffer holds at most
-// maxPoints, recording the drops. Callers hold the mutex.
-func (b *buffer) trimToCap() {
-	if b.maxPoints <= 0 || len(*b.data) <= b.maxPoints {
-		return
-	}
-	dropped := len(*b.data) - b.maxPoints
-	*b.data = (*b.data)[dropped:]
-	agentstate.IncrementPushBufferDropped("senhub", dropped)
-}
-
-// Append appends data to the buffer
-func (b *buffer) Append(newData []datapoint.DataPoint) error {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	*b.data = append(*b.data, newData...)
-	b.trimToCap()
-	return nil
-}
-
-// Sync returns all buffered data and clears the buffer
-func (b *buffer) Sync() []datapoint.DataPoint {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	data := *b.data
-	b.data = &[]datapoint.DataPoint{}
-	return data
-}
-
-// AbortSync re-prepends failed data (oldest first) so ordering
-// survives a retry; the cap then trims from the oldest end.
-func (b *buffer) AbortSync(failedData []datapoint.DataPoint) error {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	*b.data = append(failedData, *b.data...)
-	b.trimToCap()
-	return nil
+	return pushqueue.New[datapoint.DataPoint]("senhub", maxPoints)
 }
 
 type SenhubDataPoint struct {
@@ -185,7 +137,7 @@ func ParseSyncStrategySenhubParams(config configuration.StorageConfigParams) (Sy
 	}
 
 	if len(errs) > 0 {
-		return params, fmt.Errorf("error parsing config: %v", errs)
+		return params, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return params, nil
@@ -200,7 +152,7 @@ func (s *SyncStrategySenhub) ValidateConfigParams(params configuration.StorageCo
 	return nil
 }
 
-func (s *SyncStrategySenhub) Start() error {
+func (s *SyncStrategySenhub) Start(ctx context.Context) error {
 	if (s.scheduler) != nil {
 		return nil
 	}
@@ -212,7 +164,7 @@ func (s *SyncStrategySenhub) Start() error {
 	}, s.logger.Logger)
 	s.scheduler = scheduler
 
-	return s.scheduler.Start(nil)
+	return s.scheduler.Start(ctx)
 }
 
 func (s *SyncStrategySenhub) Shutdown(ctx context.Context) error {
@@ -245,17 +197,25 @@ func (s *SyncStrategySenhub) doSync() error {
 
 	s.logger.Debug().Any("data", transformedData).Msg("synchronizing data")
 	if err := s.doSyncData(transformedData); err != nil {
-		var permErr *permanentClientError
-		if errors.As(err, &permErr) {
-			// A permanent 4xx (e.g. 400 malformed, 422 unprocessable)
-			// will never be accepted no matter how often we resend it.
-			// Re-prepending it via AbortSync would pin the batch at the
+		agentstate.IncrementExportSendFailed("senhub", exporterrors.Reason(err))
+		agentstate.RecordExportFailure("senhub", err.Error())
+
+		if !exporterrors.IsRetryable(err) {
+			// Nothing a later tick can change: a permanent 4xx (400
+			// malformed, 422 unprocessable), a payload we cannot even
+			// serialise, or an endpoint URL the operator has to fix.
+			// Re-prepending the batch via AbortSync would pin it at the
 			// head of the buffer forever, so the buffer never drains and
 			// every scheduler tick wastes a round-trip. Drop it instead.
-			s.logger.Warn().
-				Int("status_code", permErr.statusCode).
+			event := s.logger.Warn()
+			var permErr *permanentClientError
+			if errors.As(err, &permErr) {
+				event = event.Int("status_code", permErr.statusCode)
+			}
+			event.
+				Err(err).
 				Int("dropped_points", len(data)).
-				Msg("permanent client error from intake; discarding batch (no retry)")
+				Msg("unrecoverable error from intake; discarding batch (no retry)")
 			agentstate.IncrementPushBufferDropped("senhub", len(data))
 			return nil
 		}
@@ -265,6 +225,7 @@ func (s *SyncStrategySenhub) doSync() error {
 		}
 		return err
 	}
+	agentstate.RecordExportSuccess("senhub")
 
 	return nil
 }
@@ -273,49 +234,73 @@ func (s *SyncStrategySenhub) doSync() error {
 // the payload is rejected for a reason resending cannot fix.
 type permanentClientError struct {
 	statusCode int
+	// reason is what the intake said. Empty when it said nothing.
+	reason string
 }
 
 func (e *permanentClientError) Error() string {
-	return fmt.Sprintf("permanent client error: status %d", e.statusCode)
+	if e.reason == "" {
+		return fmt.Sprintf("permanent client error: status %d", e.statusCode)
+	}
+	return fmt.Sprintf("permanent client error: status %d: %s", e.statusCode, e.reason)
 }
 
-// isPermanentClientStatus reports whether a 4xx status is a permanent
-// client error for a metrics push. Every 4xx is treated as permanent
-// except the ones a resend can plausibly recover from:
-//   - 408 (Request Timeout) and 429 (Too Many Requests): transient by
-//     definition.
-//   - 401 (Unauthorized) and 403 (Forbidden): an intake-side auth blip or a
-//     slow key-rotation propagation clears on its own; dropping the batch would
-//     lose data during a window a retry would ride out. The bounded push buffer
-//     caps the backlog if the key is genuinely bad, so retrying is safe.
-//
-// Non-4xx (network errors, 5xx) are never classified here and keep their
-// existing retry behavior.
-func isPermanentClientStatus(status int) bool {
-	if status < 400 || status >= 500 {
-		return false
-	}
-	switch status {
-	case http.StatusRequestTimeout, http.StatusTooManyRequests,
-		http.StatusUnauthorized, http.StatusForbidden:
-		return false
-	default:
-		return true
-	}
-}
+// Unwrap places the status-code detail inside the shared taxonomy: the
+// intake looked at what we sent and refused it, which is exactly
+// ErrValidation. Callers that only need "retry or drop" ask
+// exporterrors.IsRetryable; the ones that want the status code still
+// reach it with errors.As.
+func (e *permanentClientError) Unwrap() error { return exporterrors.ErrValidation }
+
+// maxRejectionBodyBytes bounds how much of a refusal the agent reads
+// back. A rejection carries a sentence, not a stream; reading without a
+// bound would let a misbehaving endpoint stream into a log line.
+const maxRejectionBodyBytes = 4096
 
 func (s *SyncStrategySenhub) doSyncData(data []SenhubDataPoint) error {
 	response, err := s.server.Post("/metrics", data)
 	if err != nil {
 		return err
 	}
+	// Drain and close so the transport can reuse the connection. The
+	// body was never closed here, on any path — one leaked connection
+	// per sync, the same defect PRTG had in #277.
+	defer func() {
+		_, _ = io.Copy(io.Discard, response.Body)
+		_ = response.Body.Close()
+	}()
 
 	if response.StatusCode != 200 {
-		if isPermanentClientStatus(response.StatusCode) {
-			return &permanentClientError{statusCode: response.StatusCode}
+		// The intake's own explanation of the refusal, which is the only
+		// thing that matters on this failure. It used to be formatted
+		// with %v against the io.ReadCloser, so the log carried the
+		// pointer — "&{0xc000...}" — and never the reason (#832).
+		reason := readRejectionReason(response.Body)
+		if exporterrors.IsPermanentHTTPStatus(response.StatusCode) {
+			return &permanentClientError{statusCode: response.StatusCode, reason: reason}
 		}
-		return fmt.Errorf("unexpected status code: %d\n%v", response.StatusCode, response.Body)
+		if reason == "" {
+			return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+		}
+		return fmt.Errorf("unexpected status code: %d: %s", response.StatusCode, reason)
 	}
 
 	return nil
+}
+
+// readRejectionReason reads a bounded, single-line rendering of an error
+// body. Returns "" when the body is empty or unreadable — the status
+// code alone is still worth reporting, so a read failure must not lose
+// the error it was describing.
+func readRejectionReason(body io.Reader) string {
+	if body == nil {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(body, maxRejectionBodyBytes))
+	if err != nil {
+		return ""
+	}
+	// Collapse to one line: this lands in a structured log field, and a
+	// multi-line body would break the record it is embedded in.
+	return strings.TrimSpace(strings.Join(strings.Fields(string(raw)), " "))
 }

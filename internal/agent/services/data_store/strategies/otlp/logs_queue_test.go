@@ -3,6 +3,8 @@ package otlp
 import (
 	"context"
 	"errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"os"
 	"path/filepath"
 	"sync"
@@ -185,5 +187,194 @@ func TestPersistentLogExporter_PersistThenReplay(t *testing.T) {
 	}
 	if files := countQueueFiles(t, dir); files != 0 {
 		t.Errorf("queue not drained after replay: %d files", files)
+	}
+}
+
+// TestPersistentLogExporter_FailureCountsBySignal locks the #821 fix: a
+// failed logs export must move the per-signal error counter, not only
+// land in the dead-letter queue. In production a receiver rejecting
+// every logs batch with 400 left export_errors_total flat.
+func TestPersistentLogExporter_FailureCountsBySignal(t *testing.T) {
+	dir := t.TempDir()
+	exp := &controllableExporter{failUntil: 1}
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	ple := newPersistentLogExporter(exp, q, testModuleLogger(t))
+
+	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
+	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
+
+	before := agentstate.GetOTLPExportErrorsBySignal()["logs"]
+	ctx := context.Background()
+	pipe.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1700000000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "count-me",
+		ProducerProbeName: "syslog",
+	})
+	_ = pipe.provider.ForceFlush(ctx)
+
+	if got := agentstate.GetOTLPExportErrorsBySignal()["logs"] - before; got != 1 {
+		t.Errorf("logs export-error delta=%d, want 1", got)
+	}
+}
+
+// rejectingExporter always refuses the payload on its merits, the way a
+// receiver answers a malformed batch.
+type rejectingExporter struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (e *rejectingExporter) Export(context.Context, []sdklog.Record) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.calls++
+	return status.Error(codes.InvalidArgument, "unsupported attribute type")
+}
+func (e *rejectingExporter) ForceFlush(context.Context) error { return nil }
+func (e *rejectingExporter) Shutdown(context.Context) error   { return nil }
+func (e *rejectingExporter) attempts() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.calls
+}
+
+// TestPersistentLogExporter_RejectedBatchIsNotQueued is #833's answer in
+// one behaviour: the dead-letter queue is for outages, not for payloads
+// the receiver refuses.
+//
+// A rejected batch used to be written to disk, replayed at boot and on
+// every recovery, rejected again, and written back — occupying space
+// that the drop-oldest eviction then takes from batches that could
+// still be delivered. An outage's worth of real event logs gets evicted
+// to keep re-sending something the receiver has refused every time.
+func TestPersistentLogExporter_RejectedBatchIsNotQueued(t *testing.T) {
+	dir := t.TempDir()
+	exp := &rejectingExporter{}
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	ple := newPersistentLogExporter(exp, q, testModuleLogger(t))
+
+	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
+	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
+
+	ctx := context.Background()
+	pipe.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1700000000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "the receiver will never take this",
+		ProducerProbeName: "syslog",
+	})
+	_ = pipe.provider.ForceFlush(ctx)
+
+	if exp.attempts() == 0 {
+		t.Fatal("the exporter was never called; the test proves nothing")
+	}
+
+	q.mu.Lock()
+	recs := q.records
+	q.mu.Unlock()
+	if recs != 0 {
+		t.Errorf("a rejected batch was persisted: queue holds %d records", recs)
+	}
+	if files := countQueueFiles(t, dir); files != 0 {
+		t.Errorf("a rejected batch left %d files on disk", files)
+	}
+}
+
+// TestPersistentLogExporter_OutageIsStillQueued is the other half: the
+// classification must not turn the dead-letter queue off. An unreachable
+// backend is exactly what it exists for.
+func TestPersistentLogExporter_OutageIsStillQueued(t *testing.T) {
+	dir := t.TempDir()
+	exp := &controllableExporter{failUntil: 1}
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	ple := newPersistentLogExporter(exp, q, testModuleLogger(t))
+
+	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
+	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
+
+	ctx := context.Background()
+	pipe.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1700000000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "keep me for the replay",
+		ProducerProbeName: "syslog",
+	})
+	_ = pipe.provider.ForceFlush(ctx)
+
+	q.mu.Lock()
+	recs := q.records
+	q.mu.Unlock()
+	if recs == 0 {
+		t.Error("an ordinary outage was not persisted — the dead-letter queue no longer does its job")
+	}
+}
+
+// The logs rail is sparse: a queued batch used to wait for the next
+// record on that same rail before it was retried, which on a quiet host
+// is minutes — long enough for a consumer to expire the whole host and
+// bring it back. The retry now runs on its own clock. Pins #845.
+func TestLogsReplayerRetriesWithoutNewRecords(t *testing.T) {
+	dir := t.TempDir()
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	if err := q.enqueue(sampleRecords(3)); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond) // the Windows clock does not resolve below that
+	if n, waited := q.pending(); n != 3 || waited <= 0 {
+		t.Fatalf("the queue must report what waits and for how long, got %d records waiting %v", n, waited)
+	}
+
+	drained := make(chan int, 4)
+	r := newLogsReplayer(q, nil, testModuleLogger(t))
+	// The pipeline is not exercised here: what is pinned is that a drain
+	// happens at all without a new record arriving.
+	r.running.Store(true)
+	go func() {
+		for {
+			select {
+			case <-r.quit:
+				return
+			case <-r.wake:
+			}
+			n := q.drain(func([]persistedLogRecord) {})
+			drained <- n
+		}
+	}()
+	r.kick()
+
+	select {
+	case n := <-drained:
+		if n != 3 {
+			t.Errorf("the queued records must be retried, got %d", n)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("nothing retried the queued batch")
+	}
+	close(r.quit)
+
+	if n, waited := q.pending(); n != 0 || waited != 0 {
+		t.Errorf("an empty queue reports nothing waiting, got %d records waiting %v", n, waited)
+	}
+}
+
+// The delay must grow and stop growing, so a backend that stays down is
+// retried without turning into a loop.
+func TestReplayDelaysAreBounded(t *testing.T) {
+	delay := replayFirstDelay
+	for i := 0; i < 20; i++ {
+		delay *= 2
+		if delay > replayMaxDelay {
+			delay = replayMaxDelay
+		}
+	}
+	if delay != replayMaxDelay {
+		t.Errorf("the delay must settle at the cap, got %v", delay)
+	}
+	if replayFirstDelay >= replayMaxDelay {
+		t.Error("the first retry must come well before the cap")
 	}
 }

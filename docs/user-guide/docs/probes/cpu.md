@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/cpu-64-bit.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/cpu.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** - No license required. Available in all tiers.
@@ -85,9 +85,14 @@ This ensures the probe stays functional even when platform limitations exist, pr
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `interval` | integer | `30` | Collection interval in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `interval` | No | `30` | Collection interval in seconds |
+
+<!-- schema:params:end -->
 
 ### Example Configurations
 
@@ -201,7 +206,7 @@ Diagnose system issues:
 **Check probe status:**
 ```bash
 # View agent logs with CPU probe debugging
-./agent run --verbose --debug-modules probe.cpu
+senhub-agent run --filter probe.cpu
 ```
 
 **Verify probe is enabled:**
@@ -235,10 +240,10 @@ grep -rA5 "name: cpu" /etc/senhub-agent/probes.d/
 Run the agent with appropriate permissions:
 ```bash
 # Option 1: Run as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant capabilities (Linux)
-sudo setcap cap_sys_ptrace=eip ./agent
+sudo setcap cap_sys_ptrace=eip /opt/senhub/bin/senhub-agent
 ```
 
 ### High CPU Usage from Agent

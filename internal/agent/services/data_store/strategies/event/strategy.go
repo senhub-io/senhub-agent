@@ -15,6 +15,8 @@ import (
 	eventFormatter "senhub-agent.go/internal/agent/formats/event"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -49,11 +51,22 @@ type EventSyncStrategy struct {
 	buffer         chan eventtypes.EventDataPoint
 	syncInProgress atomic.Bool
 	currentSize    atomic.Int64 // Current size of buffered events in bytes
-	failedEvents   []eventtypes.EventDataPoint
-	mutex          sync.Mutex // Protects failedEvents
+	// failedEvents is the retry backlog for batches the intake refused.
+	// It is the shared bounded queue rather than a plain slice: an
+	// unbounded retry backlog is the OOM class the two metric sinks
+	// closed in #267, and this sink was the one place it was still live
+	// — every failed sync appended the whole batch with no cap, so an
+	// intake outage grew it until the process died (#287).
+	failedEvents *pushqueue.Bounded[eventtypes.EventDataPoint]
 
 	syncTriggerSize  int   // Number of events that triggers a sync
 	syncTriggerBytes int64 // Size in bytes that triggers a sync
+
+	// retryAttempts / retryDelay drive the short in-tick retry. They are
+	// fields rather than the bare constants so a test can exercise the
+	// outage path without paying seconds of real sleep per cycle.
+	retryAttempts uint
+	retryDelay    time.Duration
 
 	config      EventSyncStrategyParams
 	server      server.Server
@@ -119,11 +132,14 @@ func NewEventSyncStrategy(
 
 	strategy := &EventSyncStrategy{
 		buffer:           make(chan eventtypes.EventDataPoint, config.QueueSize),
+		failedEvents:     pushqueue.NewDefault[eventtypes.EventDataPoint]("event"),
 		config:           config,
 		server:           srv,
 		agentConfig:      agentConfig,
 		logger:           moduleLogger,
 		formatter:        eventFormatter.NewFormatter(),
+		retryAttempts:    DefaultRetryAttempts,
+		retryDelay:       DefaultRetryDelay,
 		syncTriggerSize:  DefaultChunkSize,
 		syncTriggerBytes: MaxMessageSize / 2, // Trigger at 50% of max message size
 	}
@@ -149,15 +165,21 @@ func (s *EventSyncStrategy) GetStrategyParams() map[string]interface{} {
 	}
 }
 
-// ValidateConfigParams validates the provided configuration parameters
-func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageConfigParams) error {
+// ValidateParams reads the parameters without touching any strategy.
+//
+// Kept separate from the method below because a caller that only wants
+// to know whether a configuration is acceptable — `agent config check`
+// — must not resize a live buffer to find out, and could not call the
+// method at all: on a zero-value strategy it closes a nil channel
+// (#848).
+func ValidateParams(params configuration.StorageConfigParams) (EventSyncStrategyParams, error) {
 	config := EventSyncStrategyParams{
 		QueueSize:    DefaultQueueSize,
 		SyncInterval: DefaultSyncInterval,
 	}
 
 	if url, ok := params["server_url"].(string); !ok || url == "" {
-		return fmt.Errorf("server_url is required")
+		return config, fmt.Errorf("server_url is required")
 	} else {
 		config.ServerURL = url
 		config.ServerURLFull = url + "/event/insert"
@@ -170,9 +192,20 @@ func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageCon
 	if interval, ok := params["sync_interval"].(string); ok {
 		duration, err := time.ParseDuration(interval)
 		if err != nil {
-			return fmt.Errorf("invalid sync_interval: %w", err)
+			return config, fmt.Errorf("invalid sync_interval: %w", err)
 		}
 		config.SyncInterval = duration
+	}
+
+	return config, nil
+}
+
+// ValidateConfigParams validates the provided configuration parameters
+// and adopts them.
+func (s *EventSyncStrategy) ValidateConfigParams(params configuration.StorageConfigParams) error {
+	config, err := ValidateParams(params)
+	if err != nil {
+		return err
 	}
 
 	s.config = config
@@ -299,15 +332,12 @@ func (s *EventSyncStrategy) doSync() error {
 	var currentBatchSize int64
 
 	// First handle any previously failed events
-	s.mutex.Lock()
-	if len(s.failedEvents) > 0 {
+	if retryBacklog := s.failedEvents.Sync(); len(retryBacklog) > 0 {
 		s.logger.Info().
-			Int("count", len(s.failedEvents)).
+			Int("count", len(retryBacklog)).
 			Msg("Processing previously failed events")
-		events = append(events, s.failedEvents...)
-		s.failedEvents = nil
+		events = append(events, retryBacklog...)
 	}
-	s.mutex.Unlock()
 
 	// Collect events up to chunk limits. The breaks must exit the
 	// LOOP, not just the select: an unlabeled break here caused an
@@ -347,13 +377,18 @@ collect:
 		return nil
 	}
 
-	// Try to send events with retry mechanism
+	// Try to send events with retry mechanism. RetryIf keeps the short
+	// in-tick retry for a transport blip but skips it entirely for a
+	// payload the intake refused on its merits: three attempts and two
+	// seconds of sleep inside the scheduler tick buy nothing when the
+	// same bytes get the same rejection.
 	err := retry.Do(
 		func() error {
 			return s.sendEvents(events)
 		},
-		retry.Attempts(DefaultRetryAttempts),
-		retry.Delay(DefaultRetryDelay),
+		retry.Attempts(s.retryAttempts),
+		retry.Delay(s.retryDelay),
+		retry.RetryIf(exporterrors.IsRetryable),
 		retry.OnRetry(func(n uint, err error) {
 			s.logger.Warn().
 				Err(err).
@@ -364,17 +399,36 @@ collect:
 	)
 
 	if err != nil {
-		// Preserve failed events for next sync attempt
-		s.mutex.Lock()
-		s.failedEvents = append(s.failedEvents, events...)
-		s.mutex.Unlock()
-		return fmt.Errorf("failed to sync events after %d attempts: %w", DefaultRetryAttempts, err)
+		agentstate.IncrementExportSendFailed("event", exporterrors.Reason(err))
+		agentstate.RecordExportFailure("event", err.Error())
+
+		if !exporterrors.IsRetryable(err) {
+			// Nothing a later tick can change. Keeping the batch would
+			// pin it at the head of the retry backlog forever, so the
+			// backlog never drains and every tick re-sends bytes the
+			// intake already refused.
+			s.logger.Warn().
+				Err(err).
+				Int("dropped_events", len(events)).
+				Msg("unrecoverable error from intake; discarding events (no retry)")
+			agentstate.IncrementPushBufferDropped("event", len(events))
+			return nil
+		}
+
+		// Preserve failed events for next sync attempt. The backlog is
+		// bounded: past the cap the oldest events go, which is what an
+		// outage longer than the queue depth costs.
+		if abortErr := s.failedEvents.AbortSync(events); abortErr != nil {
+			s.logger.Error().Err(abortErr).Msg("failed to queue events for retry")
+		}
+		return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
 	}
 
 	s.logger.Info().
 		Int("events_sent", len(events)).
 		Int64("batch_size_bytes", currentBatchSize).
 		Msg("Successfully synced events")
+	agentstate.RecordExportSuccess("event")
 
 	return nil
 }
@@ -388,7 +442,9 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 	// Marshal all events as a single JSON array
 	eventsJSON, err := json.Marshal(events)
 	if err != nil {
-		return fmt.Errorf("error marshaling events array: %w", err)
+		// The agent could not even serialise what it holds: retrying the
+		// same values produces the same failure.
+		return exporterrors.Validation("marshaling events array", err)
 	}
 
 	s.logger.Debug().
@@ -398,18 +454,27 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 
 	response, err := s.server.PostStream("/event/insert", string(eventsJSON))
 	if err != nil {
-		return fmt.Errorf("error sending events: %w", err)
+		// The far end was not reached. Keep the batch.
+		return exporterrors.Transport("sending events", err)
 	}
 	defer response.Body.Close()
 
 	respBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
+		return exporterrors.Transport("reading response body", err)
 	}
 
 	// Accept both 200 OK and 202 Accepted as successful responses
 	if response.StatusCode != http.StatusAccepted && response.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
+		statusErr := fmt.Errorf("unexpected status code: %d - body: %s", response.StatusCode, string(respBody))
+		// Same split as the cloud metrics sink: a 4xx is permanent
+		// except the ones a resend plausibly recovers from (408, 429,
+		// and the auth pair, which clears on an intake blip or a slow
+		// key rotation). 5xx and everything else stays retryable.
+		if exporterrors.IsPermanentHTTPStatus(response.StatusCode) {
+			return exporterrors.Validation("intake rejected the batch", statusErr)
+		}
+		return exporterrors.Transport("intake did not accept the batch", statusErr)
 	}
 
 	s.logger.Info().
@@ -421,10 +486,19 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 }
 
 // Start initializes and starts the sync strategy
-func (s *EventSyncStrategy) Start() error {
+func (s *EventSyncStrategy) Start(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.tickerOnce.Do(func() {
 		s.ticker = time.NewTicker(s.config.SyncInterval)
 		s.tickerStop = make(chan struct{})
+		// Agent-wide cancellation stops the ticker goroutine even when
+		// nothing calls Shutdown; stopOnce keeps the two paths from
+		// double-closing.
+		context.AfterFunc(ctx, func() {
+			s.stopOnce.Do(func() { close(s.tickerStop) })
+		})
 		s.logger.Info().
 			Dur("interval", s.config.SyncInterval).
 			Int("queue_size", s.config.QueueSize).
@@ -444,7 +518,7 @@ func (s *EventSyncStrategy) Start() error {
 			}
 		}(s.ticker, s.tickerStop)
 	})
-	s.startLogPump()
+	s.startLogPump(ctx)
 	return nil
 }
 
@@ -455,11 +529,11 @@ func (s *EventSyncStrategy) Start() error {
 // onto /event/insert. Each record is converted with the format-preserving
 // FromSyslogLog / FromEventLog so the payload is byte-identical to the old
 // metric datapoint path.
-func (s *EventSyncStrategy) startLogPump() {
+func (s *EventSyncStrategy) startLogPump(parent context.Context) {
 	s.logPumpOnce.Do(func() {
 		ch := agentstate.SubscribeLogs(s.config.QueueSize)
 		s.logSub = ch
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(parent)
 		s.logCancel = cancel
 		s.logWG.Add(1)
 		go func() {

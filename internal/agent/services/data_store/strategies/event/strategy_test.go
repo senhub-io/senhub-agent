@@ -12,6 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	eventFormatter "senhub-agent.go/internal/agent/formats/event"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	eventtypes "senhub-agent.go/internal/agent/types/event"
@@ -25,6 +26,7 @@ type stubAgentConfig struct{}
 
 func (stubAgentConfig) GetAuthenticationKey() string     { return "test-key" }
 func (stubAgentConfig) GetGlobalTags() map[string]string { return nil }
+func (stubAgentConfig) GetConfigPath() string            { return "" }
 
 func testBaseLogger() *logger.Logger {
 	return logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"})
@@ -83,6 +85,7 @@ func TestDoSync_OversizedBatchTerminates(t *testing.T) {
 	baseLogger := testBaseLogger()
 	s := &EventSyncStrategy{
 		buffer:           make(chan eventtypes.EventDataPoint, 16),
+		failedEvents:     pushqueue.NewDefault[eventtypes.EventDataPoint]("event"),
 		server:           server.NewServer("test-key", srv.URL, baseLogger),
 		logger:           logger.NewModuleLogger(baseLogger, "strategy.event.test"),
 		formatter:        eventFormatter.NewFormatter(),
@@ -154,7 +157,7 @@ func TestStartShutdown_TickerGoroutineExits(t *testing.T) {
 		t.Fatalf("constructor: %v", err)
 	}
 
-	if err := strategy.Start(); err != nil {
+	if err := strategy.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	// Relative count, not an absolute baseline: the test logger owns

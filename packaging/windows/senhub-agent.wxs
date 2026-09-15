@@ -21,13 +21,26 @@
   auth token to seed:
 
       msiexec /i senhub-agent.msi /qn ^
-        LICENSE_KEY=eyJhbGci... ^
-        TAGS=site=paris,env=prod
+        LICENSE_FILE=C:\licences\license-client1-Pro.jwt ^
+        TAGS=site=paris,env=prod ^
+        HTTP_PORT=9080 DESKTOP_SHORTCUT=0
 
-  Uninstall keeps operator state under %ProgramData%\SenHub (config,
-  sealed secret store, license) by default so upgrades and reinstalls
-  never lose it. The transient subfolders logs\ and update\ (rotated
-  logs and staged auto-update MSIs — both regenerated on next run) are
+  LICENSE_FILE=<path> names the licence file (what the wizard's Browse
+  button fills in); LICENSE_KEY=<jwt> carries the token itself, for
+  scripted installs.
+
+  HTTP_PORT moves the local HTTP endpoints (PRTG, Web UI, Nagios) off
+  the 8080 default. The seeding step refuses a port already in use, and
+  the install fails with it: a service that starts on a taken port runs,
+  logs one line and answers nothing, which is worse than a refusal.
+
+  An upgrade keeps operator state under %ProgramData%\SenHub (config,
+  sealed secret store, license) so it is never lost across versions. A
+  genuine uninstall removes the whole tree, so removing the product
+  leaves the machine clean and a later fresh install starts from the
+  installer's inputs rather than a stale kept config. The transient
+  subfolders logs\ and update\ (rotated logs and staged auto-update
+  MSIs — both regenerated on next run) are
   removed on a plain uninstall so it leaves a clean tree. A full data
   purge, including config and secrets, is opt-in:
 
@@ -97,9 +110,26 @@
       cloud backend/token: the agent is offline by default (see header).
     -->
     <Property Id="LICENSE_KEY" Secure="yes" Hidden="yes" />
+    <!-- Path to the licence file (.jwt) the customer received. This is what
+         the wizard asks for: a token is far too long to type. Read by the
+         seeding step, which runs as SYSTEM: a mapped drive letter is not
+         visible there, use a local path or a UNC path. -->
+    <Property Id="LICENSE_FILE" Secure="yes" />
+    <!-- The wizard's Browse button opens the Explorer file picker through
+         the BrowseLicenseFile script action below, which writes the chosen
+         path into LICENSE_FILE. -->
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
+    <!-- Port of the local HTTP endpoints. Defaulted so the options page
+         shows the value the seeding step will use. -->
+    <Property Id="HTTP_PORT" Value="8080" Secure="yes" />
+    <!-- Desktop shortcut to the web console (1 = create, the default;
+         DESKTOP_SHORTCUT=0 on the command line skips it). -->
+    <Property Id="DESKTOP_SHORTCUT" Value="1" Secure="yes" />
+    <!-- Open the web console when the wizard finishes (guided install
+         only: the launch is wired to the finish page's button). -->
+    <Property Id="OPEN_CONSOLE" Value="1" Secure="yes" />
     <!--
       PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
       on uninstall (config, sealed secret store, license, logs, staged
@@ -111,6 +141,9 @@
       additionally removes the preserved state. See the PurgeDataFolder
       authoring on the DataFolderMarker component below.
     -->
+    <!-- PURGE_DATA is retained for backward compatibility only: a genuine
+         uninstall now removes %ProgramData%\SenHub in full regardless, so
+         this property no longer changes anything. -->
     <Property Id="PURGE_DATA" Secure="yes" />
 
     <!--
@@ -158,11 +191,20 @@
       We invoke the installed binary's `config init` path rather than
       templating YAML inside the MSI, so the schema stays owned by the
       agent: it writes the default offline multi-file layout, then applies
-      the license + tags. Validated on a real Windows host (see
+      the license + tags (a genuine uninstall later removes the whole
+      tree, so a fresh install always starts from the installer inputs).
+      Validated on a real Windows host (see
       docs/deployment/windows-msi.md, "Config seeding").
+
+      Return="check": a failed seeding fails the install. config init
+      exits non-zero on an invalid property value and on an HTTP port
+      already in use; both used to be swallowed, leaving a service that
+      started on its defaults with nothing the operator asked for. The
+      idempotency guard makes a rerun on an existing config a no-op, so
+      repair and reinstall are unaffected.
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -173,7 +215,7 @@
                   Execute="deferred"
                   Impersonate="no"
                   HideTarget="yes"
-                  Return="ignore" />
+                  Return="check" />
 
     <!--
       ADOPT migration: stop and delete the foreign service before our
@@ -251,7 +293,7 @@
       <Custom Action="SetPurgeLogsDefault"   After="SetPurgeDataDefault" />
       <Custom Action="SetPurgeUpdateDefault" After="SetPurgeLogsDefault" />
       <Custom Action="SetPurgeDataReal"      After="SetPurgeUpdateDefault"
-              Condition="(PURGE_DATA=&quot;1&quot;) AND Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
+              Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="SetPurgeLogsReal"      After="SetPurgeDataReal"
               Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="SetPurgeUpdateReal"    After="SetPurgeLogsReal"
@@ -274,12 +316,110 @@
     <!-- silent install (/qn) skips the UI entirely and drives the     -->
     <!-- same properties from the command line / transform.            -->
     <!--                                                               -->
-    <!-- Entering LICENSE_KEY / TAGS / OTLP_ENDPOINT inside the wizard  -->
-    <!-- (a custom dialog) is a follow-up validated interactively on   -->
-    <!-- Windows; today those are set via properties (silent install), -->
-    <!-- and a guided install lands the offline default.               -->
+    <!-- The SenHub options page (SenHubOptionsDlg below) is inserted   -->
+    <!-- after the directory page: licence key, HTTP port and the      -->
+    <!-- desktop shortcut, open the console at the end. TAGS and       -->
+    <!-- OTLP_ENDPOINT stay command-line                               -->
+    <!-- properties: they belong to fleet provisioning, not to a       -->
+    <!-- person clicking through a wizard.                             -->
     <!-- ============================================================ -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <UI>
+      <!--
+        Options page. Licence and port are the two settings a person
+        installing by hand needs before the service starts: the port
+        decides whether the console answers at all, and the web console
+        cannot set the port that keeps it from answering.
+
+        The port field takes integers only; the range is checked on Next
+        and refused with SenHubBadPortDlg before anything is installed.
+        A port already in use is refused later by the seeding step, which
+        fails the install (see SeedConfig).
+      -->
+      <Dialog Id="SenHubOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="300" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent options" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="License, console port and shortcut. Everything else is set from the web console." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+
+        <Control Id="LicenseLabel" Type="Text" X="20" Y="58" Width="330" Height="24" NoPrefix="yes" Text="License file (the .jwt file you received; leave empty for the Free tier, a license can be added later from the web console):" />
+        <Control Id="LicenseFileEdit" Type="Edit" X="20" Y="84" Width="264" Height="18" Property="LICENSE_FILE" />
+        <Control Id="LicenseBrowse" Type="PushButton" X="290" Y="84" Width="60" Height="18" Text="B&amp;rowse...">
+          <Publish Event="DoAction" Value="BrowseLicenseFile" Order="1" />
+          <!-- An edit control does not repaint when an action changes its
+               property; publishing the property to itself does. -->
+          <Publish Property="LICENSE_FILE" Value="[LICENSE_FILE]" Order="2" />
+        </Control>
+
+        <Control Id="PortLabel" Type="Text" X="20" Y="112" Width="330" Height="24" NoPrefix="yes" Text="Port of the web console and of the PRTG / Nagios endpoints, on this machine only (default 8080):" />
+        <Control Id="PortEdit" Type="Edit" X="20" Y="138" Width="60" Height="18" Property="HTTP_PORT" Integer="yes" />
+        <Control Id="PortHint" Type="Text" X="86" Y="141" Width="264" Height="15" NoPrefix="yes" Text="The console will answer on http://localhost:&lt;port&gt;/" />
+
+        <Control Id="ShortcutCheck" Type="CheckBox" X="20" Y="172" Width="330" Height="17" Property="DESKTOP_SHORTCUT" CheckBoxValue="1" Text="Create a desktop shortcut to the web console" />
+        <Control Id="OpenConsoleCheck" Type="CheckBox" X="20" Y="192" Width="330" Height="17" Property="OPEN_CONSOLE" CheckBoxValue="1" Text="Open the web console when setup completes" />
+
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
+          <Publish Event="NewDialog" Value="InstallDirDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
+          <Publish Event="SpawnDialog" Value="SenHubBadPortDlg" Order="1" Condition="NOT HTTP_PORT OR HTTP_PORT &lt; 1 OR HTTP_PORT &gt; 65535" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="2" Condition="HTTP_PORT &gt;= 1 AND HTTP_PORT &lt;= 65535" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="SenHubBadPortDlg" Width="260" Height="85" Title="[ProductName] Setup" NoMinimize="yes">
+        <Control Id="Text" Type="Text" X="48" Y="15" Width="194" Height="30" NoPrefix="yes" Text="The port must be a number between 1 and 65535." />
+        <Control Id="Icon" Type="Icon" X="15" Y="15" Width="24" Height="24" ToolTip="Information icon" FixedSize="yes" IconSize="32" Text="WixUI_Ico_Info" />
+        <Control Id="Return" Type="PushButton" X="100" Y="57" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+
+      <!-- Insert the options page between the directory page and the
+           summary. A later Order on the same control wins over the
+           NewDialog the built-in set publishes. -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="SenHubOptionsDlg" Order="5" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="SenHubOptionsDlg" Order="3" Condition="NOT Installed" />
+
+      <!-- Finish page: standard, untouched. The "open the console" choice
+           lives on the options page: the built-in optional checkbox of
+           ExitDialog paints an opaque grey band over the dialog image,
+           and the address itself is not shown anywhere in the wizard,
+           since it ends with the agent key, which the wizard cannot read
+           back (sealed for SYSTEM and elevated administrators).
+           Finish hands the Start Menu shortcut to the shell, exactly what
+           a click on it does: the agent asks for elevation itself to read
+           the sealed key, then opens the browser with the user's rights.
+           A hidden, waited-for launch (WixQuietExec) of the same command
+           never showed a browser. -->
+      <Publish Dialog="ExitDialog" Control="Finish" Property="WixShellExecTarget" Value="[ProgramMenuDir]SenHub Agent Console.lnk" Order="1" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchConsole" Order="2" Condition="OPEN_CONSOLE = 1 AND NOT Installed" />
+    </UI>
+
+    <!-- The wizard's Browse button. Windows Installer has no file picker of
+         its own; this script action opens the Explorer folder browser in
+         "include files" mode and writes the chosen path into LICENSE_FILE.
+         A script action needs no DLL and no runtime: two builds of a managed
+         (DTF) DLL were called by the engine and returned in three
+         milliseconds without ever reaching their code. -->
+    <Binary Id="BrowseLicenseScript" SourceFile="packaging/windows/browse-license.vbs" />
+    <CustomAction Id="BrowseLicenseFile"
+                  BinaryRef="BrowseLicenseScript"
+                  VBScriptCall="BrowseLicenseFile"
+                  Execute="immediate"
+                  Return="ignore" />
+
+    <CustomAction Id="LaunchConsole"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixShellExec"
+                  Execute="immediate"
+                  Impersonate="yes"
+                  Return="ignore" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/windows/license.rtf" />
     <!-- SenHub-branded wizard art (mascot + brand accent), replacing the
          default WiX bitmaps. Dialog = 493x312 (Welcome/Finish background),
@@ -303,6 +443,12 @@
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="DATAFOLDER" Name="SenHub" />
     </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuDir" Name="SenHub Agent" />
+    </StandardDirectory>
+
 
     <ComponentGroup Id="ProductComponents">
 
@@ -351,6 +497,59 @@
       </Component>
 
       <!--
+        Desktop shortcut to the web console, on the all-users desktop of
+        a per-machine install. It carries no address: it runs the agent's
+        `console` verb, which reads the sealed key (asking for elevation
+        once) and opens the browser. Removed with the product.
+      -->
+      <!-- Hidden launcher for the console shortcuts: without it a
+           shortcut aimed at the console program flashes a terminal. -->
+      <Component Id="OpenConsoleLauncher" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="OpenConsoleVbs"
+              Name="open-console.vbs"
+              Source="packaging/windows/open-console.vbs"
+              KeyPath="yes" />
+      </Component>
+
+      <!-- Start Menu shortcut, always present: it is what the Finish page
+           launches when "open the web console" is ticked, exactly the
+           shortcut a person would click. -->
+      <Component Id="ConsoleMenuShortcut" Directory="ProgramMenuDir" Guid="*">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                       Name="MenuShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+        <Shortcut Id="ConsoleMenuShortcutLnk"
+                  Name="SenHub Agent Console"
+                  Description="Open the SenHub Agent web console"
+                  Target="[System64Folder]wscript.exe"
+                  Arguments="&quot;[#OpenConsoleVbs]&quot;"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="senhub.ico"
+                  Show="normal" />
+        <RemoveFolder Id="RemoveProgramMenuDir" Directory="ProgramMenuDir" On="uninstall" />
+      </Component>
+
+      <Component Id="ConsoleShortcut" Directory="DesktopFolder" Guid="*" Condition="DESKTOP_SHORTCUT = 1">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                       Name="DesktopShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+        <Shortcut Id="ConsoleDesktopShortcut"
+                  Name="SenHub Agent Console"
+                  Description="Open the SenHub Agent web console"
+                  Target="[System64Folder]wscript.exe"
+                  Arguments="&quot;[#OpenConsoleVbs]&quot;"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="senhub.ico"
+                  Show="normal" />
+      </Component>
+
+      <!--
         Config directory ownership.
 
         The config file itself is intentionally NOT installed as an MSI
@@ -375,14 +574,13 @@
         authoring above. Only config, the sealed secret store and the
         license are preserved.
 
-        Exception, opt-in only: since 0.5.0 the tree also holds the sealed
-        secret store, the license and staged auto-update MSIs, so an
-        operator who wants a truly clean removal (including that preserved
-        state) can pass PURGE_DATA=1 on `msiexec /x`. RemoveFolderEx reads
-        PURGEDATAFOLDER, which is set to the whole tree ONLY on a genuine
-        full uninstall with PURGE_DATA=1 (never on a MajorUpgrade); on every
-        other transaction it points at the never-existing sentinel path, so
-        it no-ops without aborting the sibling purges (#707).
+        A genuine uninstall removes the whole tree — config, the sealed
+        secret store, the license and staged MSIs — so removing the product
+        leaves nothing behind. RemoveFolderEx reads PURGEDATAFOLDER, set to
+        the whole tree on a genuine full uninstall and to the never-existing
+        sentinel path on a MajorUpgrade (which must preserve operator
+        state); the sentinel no-ops without aborting the sibling purges
+        (#707). PURGE_DATA is no longer consulted for this.
       -->
       <Component Id="DataFolderMarker" Directory="DATAFOLDER" Guid="*">
         <RegistryValue Root="HKLM"

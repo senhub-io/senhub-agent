@@ -1,0 +1,107 @@
+# golangci-lint configuration.
+#
+# The repository had none, so `make lint` inherited whatever the tool's
+# defaults happened to be that month. This file chooses the set
+# deliberately, and every linter that is OFF says why — an unexplained
+# absence is indistinguishable from an oversight, and the next person
+# would have to rediscover the reasoning (#834).
+#
+# The gate is BLOCKING. A gate that reports and passes trains people to
+# ignore it.
+version: "2"
+
+linters:
+  default: none
+
+  enable:
+    # The reason this file exists. #292 converted 80 `%v`-wrapped causes
+    # to `%w` and moved the error tests onto errors.Is/errors.As; without
+    # a gate nothing stops the eighty-first.
+    - errorlint
+
+    # Correctness, cheap, no style opinions.
+    - govet
+    - ineffassign
+    - staticcheck
+    - errcheck
+
+    # unused is deliberately OFF, and this is the evidence rather than an
+    # opinion. It analyses ONE GOOS at a time, and this repository ships
+    # three. Running it on darwin reported 26 dead symbols; 5 of them —
+    # chownToUser, runCommand, newLinuxCollector, launchInstaller,
+    # isDMIPlaceholder — are live on Linux or Windows. Deleting the
+    # darwin list would have broken both other builds.
+    #
+    # A blocking gate on a single-platform CI runner therefore fails on
+    # working code. The 21 symbols dead on ALL THREE platforms were
+    # deleted when this file was written (two whole files among them:
+    # solr/jolokia.go and wildfly/jolokia.go, unwired copies of the
+    # activemq client). To repeat the sweep, run the linter under each
+    # GOOS and intersect — do not trust one run.
+
+  settings:
+    govet:
+      disable:
+        # Stylistic, not a correctness check: it wants reflect.Ptr
+        # spelled out at the three call sites that use it. Nothing
+        # breaks either way.
+        - inline
+
+    staticcheck:
+      # SA = correctness. The QF / ST / S1 families are quickfix and
+      # style suggestions (embedded-field selectors, redundant type
+      # arguments, WriteString over Write) — 41 of the 44 findings and
+      # not one of them a defect. They are excluded deliberately, not
+      # forgotten; enable them in a dedicated cleanup, not in a gate.
+      checks:
+        - "SA*"
+
+    errcheck:
+      # Ignoring these returns is the correct call at every site in this
+      # repository, and writing `_ =` at all of them would add noise
+      # without adding a check:
+      #   - Close on a reader/response/row we are done with. The write
+      #     path is what can fail, and it is checked; a failed Close on a
+      #     drained body has nothing the caller can do.
+      #   - os.Remove of a temporary file already superseded.
+      #   - fmt.Fprintf to stdout/stderr, where a failure means the
+      #     terminal is gone and the message is moot.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - (*os.File).Close
+        - (net.Conn).Close
+        - os.Remove
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+  exclusions:
+    rules:
+      # Tests may ignore a teardown error: the assertion has already
+      # run, and a failed Shutdown in a t.Cleanup would mask the real
+      # failure rather than report a new one.
+      - path: _test\.go
+        linters:
+          - errcheck
+
+      # periodic_scheduler tolerates a nil context on purpose — strategy
+      # recreation and config-change restarts used to pass one, and the
+      # scheduler treats it as context.Background() rather than leaving a
+      # goroutine with no termination signal (#270, #285). These tests
+      # exist to cover that branch, so passing nil IS the assertion.
+      # "Fixing" SA1012 here by passing context.TODO() would delete the
+      # coverage the linter thinks it is protecting.
+      - path: internal/agent/periodic_scheduler/periodic_scheduler_test\.go
+        text: "SA1012"
+        linters:
+          - staticcheck
+
+issues:
+  # Report everything. A cap turns a growing problem into a constant
+  # number, which is the shape that lets it grow.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt

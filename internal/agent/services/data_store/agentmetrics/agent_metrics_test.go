@@ -20,14 +20,17 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// always-on-core-metrics count.
 	agentstate.ResetCollectErrorsForTest()
 	t.Cleanup(agentstate.ResetCollectErrorsForTest)
+	agentstate.ResetOTLPExportErrorsBySignalForTest()
+	t.Cleanup(agentstate.ResetOTLPExportErrorsBySignalForTest)
 
 	recs := BuildAgentRecords(snap)
-	// 34 records when neither build info nor http_requests is set and no
-	// collect errors / OTLP drops / checkpoint errors have occurred yet:
+	// 33 records when neither build info nor http_requests is set and no
+	// collect errors / OTLP export errors / drops / checkpoint errors
+	// have occurred yet:
 	//   6 core         (uptime, cache.entries, probes.{active,total,healthy},
 	//                   transformer.fallback)
-	//  12 OTLP push    (metrics.pushed, logs.pushed, spans.relayed,
-	//                   logs.relayed, metrics.relayed, export.errors,
+	//  11 OTLP push    (metrics.pushed, logs.pushed, spans.relayed,
+	//                   logs.relayed, metrics.relayed,
 	//                   dropped_log_records,
 	//                   dropped_span_batches, buffer.fill_ratio, store_size,
 	//                   export.duration{window=last},
@@ -40,13 +43,16 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	//   6 process      (cpu.time, memory.{resident,heap}, goroutines,
 	//                   gc.cycles, open_fds)
 	//
-	// Note: `senhub.agent.collect.errors{probe,reason}`,
+	// Note: `senhub.agent.otlp.export.errors{signal=...}` is emitted only
+	// for signals that have actually failed (#821), so like the other
+	// attribute-keyed counters it contributes nothing here.
+	// `senhub.agent.collect.errors{probe,reason}`,
 	// `senhub.agent.otlp.dropped{reason=...}`,
 	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	if len(recs) != 34 {
-		t.Fatalf("expected 34 records (no build info, no http requests, no collect errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
+	if len(recs) != 33 {
+		t.Fatalf("expected 33 records (no build info, no http requests, no collect errors, no OTLP export errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
 	}
 
 	names := map[string]bool{}
@@ -65,7 +71,6 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.otlp.spans.relayed",
 		"senhub.agent.otlp.logs.relayed",
 		"senhub.agent.otlp.metrics.relayed",
-		"senhub.agent.otlp.export.errors",
 		"senhub.agent.otlp.dropped_log_records",
 		"senhub.agent.otlp.dropped_span_batches",
 		"senhub.agent.otlp.buffer.fill_ratio",
@@ -313,5 +318,40 @@ func TestSelfMetricsDeclareNoFalseRatios(t *testing.T) {
 		t.Errorf("%s declares unit \"1\" and is not a ratio: Prometheus will name it %s_ratio. "+
 			"Use an annotation unit such as {index}, {status} or {connection}",
 			r.Name, strings.ReplaceAll(r.Name, ".", "_"))
+	}
+}
+
+func TestBuildAgentRecords_ExportErrorsEmittedPerSignal(t *testing.T) {
+	// The counter is attribute-keyed: nothing is emitted until a signal
+	// has actually failed, and then one series per failing signal. This
+	// is what makes a dying logs pipeline visible next to healthy metric
+	// pushes (#821).
+	agentstate.ResetOTLPExportErrorsBySignalForTest()
+	t.Cleanup(agentstate.ResetOTLPExportErrorsBySignalForTest)
+
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name == "senhub.agent.otlp.export.errors" {
+			t.Fatalf("export.errors emitted before any failure: %+v", r.Attributes)
+		}
+	}
+
+	agentstate.IncrementOTLPExportErrors("logs")
+	agentstate.IncrementOTLPExportErrors("logs")
+
+	var got []otelmapper.OtelRecord
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name == "senhub.agent.otlp.export.errors" {
+			got = append(got, r)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 export.errors series, got %d", len(got))
+	}
+	if got[0].Attributes["signal"] != "logs" {
+		t.Errorf("signal attribute=%q, want %q", got[0].Attributes["signal"], "logs")
+	}
+	if got[0].Value != 2 {
+		t.Errorf("value=%v, want 2", got[0].Value)
 	}
 }

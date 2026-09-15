@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/text-box-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/syslog.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Free** — part of the universal collection tier (moved from Pro in 0.2.2).
@@ -68,11 +68,16 @@ The Syslog probe is platform-independent. It listens on the loopback interface b
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Valid Values | Description |
-|-----------|------|---------|--------------|-------------|
-| `port` | integer | `514` | `1-65535` | UDP/TCP port to listen on |
-| `protocol` | string | `udp` | `udp`, `tcp` | Transport protocol |
-| `bind_address` | string | `127.0.0.1` | IP address | Listen interface. Loopback by default; set `"0.0.0.0"` (or an interface IP) to accept remote senders |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `port` | In practice | `514` | Port to listen on; 514 needs root or CAP_NET_BIND_SERVICE |
+| `protocol` | In practice | `udp` | Transport the listener accepts. One of `udp`, `tcp` |
+| `bind_address` | In practice | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+
+<!-- schema:params:end -->
 
 ### Example Configurations
 
@@ -162,19 +167,9 @@ curl http://localhost:8080/api/{agentkey}/nagios/metrics?probe=syslog
 - `syslog_event_rate` - Events per second
 
 
-### Web Interface
+### Web console
 
-View syslog events in the built-in dashboard:
-
-```
-http://localhost:8080/web/{agentkey}/dashboard
-```
-
-Features:
-- Real-time syslog event stream
-- Event filtering by severity, facility, hostname
-- Event search and correlation
-- Historical event trends
+The Probes page of the console shows the probe's state and the counters it emits; the Sensor URLs tab of the HTTP output previews them as a poller sees them. The events themselves go to the outputs that read logs (OTLP, events); the console does not display them.
 
 ## Use Cases
 
@@ -276,7 +271,7 @@ ss -tulpn | grep 514
 **Check agent logs:**
 ```bash
 # View syslog probe debugging
-./agent run --verbose --debug-modules probe.syslog
+senhub-agent run --filter probe.syslog
 ```
 
 **Verify probe configuration:**
@@ -294,10 +289,10 @@ Ports below 1024 require elevated privileges on Unix/Linux:
 
 ```bash
 # Option 1: Run agent as root (not recommended)
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant port binding capability (Linux)
-sudo setcap cap_net_bind_service=+ep ./agent
+sudo setcap cap_net_bind_service=+ep /opt/senhub/bin/senhub-agent
 
 # Option 3: Use alternate port (>1024) and configure syslog sources
 # /etc/senhub-agent/probes.d/10-syslog.yaml:

@@ -8,8 +8,10 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
+	"io"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"strconv"
 )
 
 // newTextParser returns a TextParser initialized with LegacyValidation,
@@ -453,5 +455,37 @@ func TestSerialize_HistogramTypeWithoutPayloadFallsBackToScalar(t *testing.T) {
 	p := newTextParser()
 	if _, err := p.TextToMetricFamilies(strings.NewReader(body)); err != nil {
 		t.Fatalf("expfmt parse failed: %v\nbody:\n%s", err, body)
+	}
+}
+
+// BenchmarkWriteGroup_ManySeries exercises the path a Prometheus scrape
+// takes on a host with high-cardinality series, which is where the sort
+// key cost shows up (#295).
+func BenchmarkWriteGroup_ManySeries(b *testing.B) {
+	rows := make([]otelmapper.OtelRecord, 0, 500)
+	for i := 0; i < 500; i++ {
+		rows = append(rows, otelmapper.OtelRecord{
+			Name: "system.cpu.utilization",
+			Unit: "1",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"probe_name":         "cpu",
+				"probe_type":         "cpu",
+				"cpu.logical_number": strconv.Itoa(i),
+				"host.name":          "bench-host",
+				"cpu.mode":           "user",
+			},
+			Value: float64(i),
+		})
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		local := make([]otelmapper.OtelRecord, len(rows))
+		copy(local, rows)
+		if err := writeGroup(io.Discard, "senhub_system_cpu_utilization_ratio", "gauge", "help", local, SerializeOptions{}); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

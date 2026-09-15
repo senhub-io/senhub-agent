@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/redis" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/redis.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -22,17 +22,25 @@ keyspace size, replication state and persistence (RDB/AOF) health.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `host` | `127.0.0.1` | Redis server hostname or IP |
-| `port` | `6379` | Redis server port |
-| `password` | — | Redis `AUTH` password (if required) — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `tls` | `false` | Enable TLS for the Redis connection |
-| `tls_cert_file` | — | Path to a PEM client certificate, presented to the server for mutual TLS (requires `tls_key_file`) |
-| `tls_key_file` | — | Path to the PEM private key matching `tls_cert_file` (requires `tls_cert_file`) |
-| `tls_ca_file` | — | Path to a PEM CA bundle used to verify the server certificate (defaults to the system trust store) |
-| `timeout` | `5` | Connection and command timeout in seconds |
-| `instance_name` | — | Logical name used as the entity instance identifier instead of `host:port`; set it to keep the identity stable if the address changes |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `host` | In practice | `127.0.0.1` | Server hostname or address |
+| `port` | In practice | `6379` | Server port |
+| `password` | In practice | - | AUTH password, when required. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `tls` | No | `false` | Use TLS for the connection |
+| `tls_cert_file` | No | - | Client certificate (PEM) for mutual TLS; needs tls_key_file and tls: true |
+| `tls_key_file` | No | - | Private key (PEM) matching tls_cert_file |
+| `tls_ca_file` | No | - | CA bundle (PEM) to verify the server; system trust store by default |
+| `timeout` | No | `5` | Connection and command timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity instead of host:port |
+
+<!-- schema:params:end -->
+
+Set `instance_name` to keep the entity identity stable when the address changes.
 
 ## Metrics
 

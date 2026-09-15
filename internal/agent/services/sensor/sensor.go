@@ -4,10 +4,10 @@ package sensor
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -16,22 +16,17 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// validProbeNameRegex matches URL-safe probe names: letters, digits, hyphens, underscores
-var validProbeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
-
-// isValidProbeName checks if a probe name is safe for use in HTTP URLs
+// isValidProbeName checks if a probe name is safe for use in HTTP URLs;
+// the rule lives with ProbeConfig so the configurator applies the same.
 func isValidProbeName(name string) bool {
-	return name != "" && validProbeNameRegex.MatchString(name)
+	return configuration.IsValidProbeName(name)
 }
 
-// Sensor defines interface for starting and stopping probes
+// Sensor manages the pool of running probes. It is an agent service:
+// Start launches the configured probes under the caller's context and
+// they run until that context is cancelled or Shutdown is called.
 type Sensor interface {
-	// GetName returns service identifier
-	GetName() string
-	// Start launches configured probes
-	Start(chan struct{}) error
-	// Shutdown gracefully stops probes
-	Shutdown(context.Context) error
+	lifecycle.Service
 }
 
 type sensor struct {
@@ -39,8 +34,14 @@ type sensor struct {
 	// callbacks are dispatched by EventNotifier on fresh goroutines, so
 	// rapid config changes would otherwise mutate startedProbes and
 	// license concurrently.
-	mu               sync.Mutex
-	startedProbes    []*probes.ProbePoller
+	mu            sync.Mutex
+	startedProbes []*probes.ProbePoller
+	// runCtx is the lifecycle context the sensor was started with. It is
+	// the cancellation root every probe started here inherits — including
+	// the ones a config reload starts long after Start returned, which
+	// used to be handed a nil quit channel and depended entirely on the
+	// scheduler's internal stop path to ever terminate (#285).
+	runCtx           context.Context
 	addDataPoint     data_store.AddCallback
 	configProvider   configuration.ConfigurationProvider
 	moduleLogger     *logger.ModuleLogger
@@ -255,7 +256,7 @@ func (s *sensor) SyncConfiguration() error {
 				Any("probe_params", configuration.SanitizeParamsForLog(probeConfig.Params)).
 				Msg("Starting new probe")
 
-			err := s.startProbe(probeConfig, nil)
+			err := s.startProbe(probeConfig)
 			if err != nil {
 				probeLogger.Error().Err(err).Msgf("Error starting probe")
 			} else {
@@ -327,8 +328,18 @@ func (s *sensor) SyncConfiguration() error {
 	return nil
 }
 
-func (s *sensor) Start(quitChannel chan struct{}) error {
+// StopBudget gives the probe pool longer than the default: probes close
+// remote connections (DB handles, SSH sessions, IPMI, listeners) and a
+// pool of a few dozen of them serialises those closes.
+func (s *sensor) StopBudget() time.Duration { return 8 * time.Second }
+
+func (s *sensor) Start(ctx context.Context) error {
 	s.moduleLogger.Info().Msg("Starting sensor")
+
+	s.mu.Lock()
+	s.runCtx = ctx
+	s.mu.Unlock()
+
 	if err := s.SyncConfiguration(); err != nil {
 		return fmt.Errorf("failed to sync configuration: %w", err)
 	}
@@ -348,7 +359,9 @@ func (s *sensor) getLoggerForProbe(probeConfig configuration.ProbeConfig) *logge
 	return s.moduleLogger.Logger
 }
 
-func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel chan struct{}) error {
+// startProbe brings up one probe under the sensor's lifecycle context.
+// Callers hold s.mu, which is also what makes reading s.runCtx safe here.
+func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 	probeId := probes.GenerateProbeId(probeConfig)
 
 	for _, startedProbe := range s.startedProbes {
@@ -407,8 +420,16 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig, quitChannel c
 		return fmt.Errorf("Failed to create probe poller: %w", err)
 	}
 
+	runCtx := s.runCtx
+	if runCtx == nil {
+		// Only reachable when a caller drives SyncConfiguration without
+		// Start (tests, the config-show path). Shutdown still stops the
+		// probe; it simply has no external cancellation.
+		runCtx = context.Background()
+	}
+
 	s.startedProbes = append(s.startedProbes, probePoller)
-	return probePoller.Start(quitChannel)
+	return probePoller.Start(runCtx)
 }
 
 func (s *sensor) Shutdown(ctx context.Context) error {
@@ -430,6 +451,12 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 				Msg("Error shutting down probe")
 		}
 	}
+
+	// Drop the pool so a second Shutdown is a no-op and a restart does
+	// not re-stop pollers that are already gone.
+	s.startedProbes = nil
+	s.runCtx = nil
+	publishActiveProbes(nil)
 	return nil
 }
 

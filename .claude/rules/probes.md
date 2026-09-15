@@ -51,7 +51,7 @@ type Probe interface {
 
 4. **Register in `internal/agent/probes/registry.go`** with the canonical type name. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `postgresql.yaml`).
 
-5. **Entity source** — call `SetEntitySource()` in the constructor for remote-target probes (see §Mandatory wiring — five touch-points below). Host-level probes and log conduits inherit `NoOpEntitySource` from `BaseProbe` automatically.
+5. **Entity source** — call `SetEntitySource()` in the constructor for remote-target probes (see §Mandatory wiring — six touch-points below). Host-level probes and log conduits inherit `NoOpEntitySource` from `BaseProbe` automatically.
 
 ## commonTags shape
 
@@ -100,9 +100,50 @@ Each `tag_to_attribute` in the YAML maps probe tags to OTel attributes. Add the 
 - `Collect`: one cycle. Ping/validate the connection before issuing queries (server restarts, idle timeouts). Emit datapoints even on partial failure (always emit `senhub.db.up` for DB probes).
 - `OnShutdown`: close connections cleanly; cancel any in-flight context.
 
-## Mandatory wiring — five touch-points, every new probe, same PR
+### Listener probes must implement `types.ListenerProbe`
 
-When adding a probe, register it in the **five** places below in the **same PR**. The structural invariant tests in `internal/agent/probes/registry_invariant_test.go` make the license and entity source halves non-skippable — CI fails if either is missing. The other places are not test-enforced today but matter just as much.
+A probe whose data arrives by subscription — a socket, a receiver, an OS
+event log — has nothing useful to do in `Collect`. Health cannot be
+inferred from "the no-op cycle returned nil": that is true whether or
+not the listener is alive, and it is how `syslog`, `event` and
+`otlp_receiver` reported healthy with a dead socket for the life of the
+agent (#289).
+
+Such a probe MUST implement:
+
+```go
+// ListenerHealth returns nil while the listener can receive, and the
+// reason it cannot otherwise. Must not block.
+func (p *MyListenerProbe) ListenerHealth() error
+```
+
+Hold the state in an atomic set by `OnStart` / the serve goroutine /
+`OnShutdown` — the serve error in particular, which is otherwise logged
+on a background goroutine and dropped. `ProbePoller` calls
+`ListenerHealth` on every cycle instead of inferring health from the
+collection. `TestListenerProbesImplementListenerHealth` pins the list;
+a new listener probe adds itself there.
+
+Emitting real self-metrics from `Collect` (records emitted, rejects,
+decode failures — what `filetail`, `snmptrap`, `linux_logs` and
+`windows_eventlog` do) is complementary and encouraged, but it does not
+replace `ListenerHealth`: a counter that stops moving is not the same
+signal as a socket that is closed.
+
+### `probe_name` / `probe_type` are guaranteed centrally
+
+`ProbePoller` adds `probe_name` and `probe_type` to every datapoint that
+does not already carry them, so a probe that forgets
+`EnrichDataPointsWithProbeName` no longer ships untagged datapoints
+(colliding cache keys, indistinguishable series at the sinks). The
+probe-side call in §Mandatory wiring stays the convention — it is
+insert-if-absent centrally, so calling it twice never duplicates a tag —
+but it is no longer the only thing standing between a new probe and
+silently broken output.
+
+## Mandatory wiring — six touch-points, every new probe, same PR
+
+When adding a probe, register it in the **six** places below in the **same PR**. The structural invariant tests in `internal/agent/probes/registry_invariant_test.go` make the license and entity source halves non-skippable, and `spec_guard_test.go` makes the parameter schema match the parser — CI fails if any is missing. The other places are not test-enforced today but matter just as much.
 
 1. **`internal/agent/probes/registry.go`** — add the entry to `probeConstructors`. The registry name MUST match the YAML transformer file name (`mysql.yaml`, `ibmi.yaml`).
 2. **License authorization** — pick one:
@@ -112,6 +153,13 @@ When adding a probe, register it in the **five** places below in the **same PR**
 4. **YAML transformer** at `internal/agent/services/data_store/transformers/definitions/<probe>.yaml` (unless the probe is a pure log conduit like `linux_logs` — in that case document the absence in `senhub-semantic-conventions.md`). Every metric in the YAML needs an `otel:` block (see `feedback_otel_first.md`); the prometheus mapper warns once per unmapped metric and silently drops, so a missing block ships as a silent feature gap.
 5. **Entity source** in the probe's constructor — non-negotiable, enforced by
    `TestEveryRegisteredProbeHasEntitySource` in `registry_invariant_test.go`.
+6. **Parameter schema** in `<probe>/spec.go`: `probes.RegisterProbeSpec(...)` from
+   `init()`, declaring every params key the parser reads (kind, required,
+   default, secret, enum, nested blocks, alternative spellings). It drives
+   `config check`, the web configurator's forms and the catalogue.
+   `TestProbeSpecs_MatchWhatParsersRead` in `spec_guard_test.go` fails when the
+   schema and the parser disagree in either direction; use the allow-list
+   there, with a reason, only for a key that is not an operator setting.
 
    **Remote-target probes** (anything monitoring a distinct external system — a DB instance, a message broker, an HTTP endpoint): call `SetEntitySource()` in the constructor and nothing else. The `ProbePoller` registers `EntitySource()` with the detector on Start and unregisters it on Shutdown — probes MUST NOT call `entity.RegisterSource` themselves (enforced by `TestProbePackagesDoNotRegisterEntitySourcesDirectly`; the dual probe-side path was removed in #471):
 
@@ -128,6 +176,8 @@ When adding a probe, register it in the **five** places below in the **same PR**
    // On failure:
    entitySrc.SetUp(false, nil)
    ```
+
+   **Governance is not the probe's business.** The operator's per-instance `governance` block (owner / criticality / location / lifecycle / labels) is stamped by the `ProbePoller` on every entity the source reports (`entity.WithAttributes`, absent keys only) and by the data store on the instance's metrics and logs. A probe never parses or stamps it; the one exception is `snmp_poll`, whose discovery rules stamp a more specific block per device and therefore win. The detector also lets the host's location (and only that) descend to every entity a `runs_on` relation places on this host, so a probe that reports a local target with `entity.LocalRunsOn` gets it for free.
 
    **Host-level probes and log conduits** (cpu, memory, network, logicaldisk, linux_logs, syslog, filetail, windowseventlog, event): do NOT call `SetEntitySource()`. They inherit the `NoOpEntitySource` fallback from `BaseProbe`, which satisfies the invariant without emitting extra entity events — the host entity is already reported by the entity detector.
 
@@ -177,6 +227,42 @@ When adding a probe, register it in the **five** places below in the **same PR**
 For probes that emit collapsed metrics (one OTel name + discriminator attribute), also add the discriminator tag key to `DiscriminantTagsRegistry["<probe>"]` in `internal/agent/services/data_store/strategies/http/http_cache.go`. Without this, the cache key collapses all variants onto one slot.
 
 The probe **type name** must be a deliberate, stable identifier — it's part of license JWT claims, transformer file paths, `DiscriminantTagsRegistry` keys, and customer JWTs already in the wild. Renaming a probe type is a breaking change for every customer holding a license that names it.
+
+## Renaming or dropping a parameter
+
+A parameter name outlives the code that reads it. An unknown key in a
+probe's `params` block is not rejected — it is simply not read — so a
+rename ships as a silent loss of function for every configuration that
+still uses the old spelling. That is how `sslmode: require` came to mean
+a plaintext connection (#842).
+
+When you rename a parameter, or stop reading one:
+
+1. **Keep reading the old name** when the option still exists. Read the
+   legacy spelling FIRST and let the current one override it, so a
+   half-migrated file lands on what the operator wrote most recently.
+2. **Declare it**, in the probe package's `init()`:
+
+   ```go
+   probes.RegisterLegacyParams(ProbeType, map[string]probes.LegacyParam{
+       "expose_per_database": {Replacement: "per_database", Accepted: true},
+       "bloat_top_n":         {Note: "this probe does not measure table bloat"},
+   })
+   ```
+
+   `Accepted: true` means the probe still honours it: `agent config
+   check` reports a WARNING naming the current spelling, and the probe
+   logs one line at startup. No `Accepted` means the option is gone:
+   `config check` reports an **ERROR**, because the operator asked for
+   something that will not happen.
+
+3. Every entry carries a `Replacement`, a `Note`, or both — a test
+   fails otherwise. "That name is wrong" without saying what to write
+   instead is worse than silence.
+
+A parameter that IS read needs no entry, even if it is an alias: a
+warning about something that works as written is noise. Document it in
+the page's parameter table instead.
 
 ## Tests
 

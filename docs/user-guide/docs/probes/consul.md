@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/consul" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/consul.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,10 +21,18 @@ health-check state distribution and leader status.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8500` | Consul HTTP API base URL |
-| `token` | — | Consul ACL token (required if ACLs are enabled) — reference via `${secret:consul.token}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost:8500` | Base URL of the Consul HTTP API. Example: `http://consul.example.com:8500` |
+| `token` | No | - | ACL token sent with every request; empty when ACLs are disabled. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `interval` | No | `30` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this agent instead of the node id it reports |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

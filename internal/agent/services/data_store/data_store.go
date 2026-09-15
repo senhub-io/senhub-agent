@@ -12,23 +12,23 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/prtg"
-	"senhub-agent.go/internal/agent/services/data_store/strategies/senhub"
+	"senhub-agent.go/internal/agent/services/data_store/outputspec"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"sort"
+	"strings"
 )
 
 // Data store is responsible for storing and synchronizing data to the server.
@@ -47,8 +47,10 @@ type SyncStrategy interface {
 	// ValidateConfigParams verifies if provided configuration is valid
 	ValidateConfigParams(configuration.StorageConfigParams) error
 
-	// Start initiates the strategy's background processes
-	Start() error
+	// Start initiates the strategy's background processes. They run
+	// until ctx is cancelled or Shutdown is called; a strategy never
+	// stops itself (#285).
+	Start(ctx context.Context) error
 
 	// AddDataPoints queues data points for synchronization
 	AddDataPoints([]datapoint.DataPoint) error
@@ -59,9 +61,7 @@ type SyncStrategy interface {
 
 // DataStore coordinates data collection and routing between probes and sync strategies
 type DataStore interface {
-	GetName() string
-	Start(chan struct{}) error
-	Shutdown(context.Context) error
+	lifecycle.Service
 	GetCallback() AddCallback
 }
 
@@ -71,8 +71,21 @@ type dataStore struct {
 	// the config watcher builds a NEW slice and Store()s it — readers
 	// never observe a partially rebuilt list (#260).
 	strategies atomic.Pointer[[]SyncStrategy]
-	// refreshMu serializes configuration refreshes (single writer).
-	refreshMu           sync.Mutex
+	// refreshMu serializes configuration refreshes (single writer). It
+	// also guards runCtx and replacedThisRefresh.
+	refreshMu sync.Mutex
+	// runCtx is the lifecycle context the store was started with — the
+	// cancellation root every strategy inherits, including the ones a
+	// config reload creates after Start returned.
+	runCtx context.Context
+	// replacedThisRefresh collects the instances retrieveOrCreate already
+	// shut down as replaced during the current refresh. The cleanup loop
+	// re-Shutdowns them (idempotent) but must not log them as if a live
+	// strategy were being removed: both lines carry the same strategy
+	// NAME, so an operator reading the journal saw the replacement start
+	// and be "removed" in the same millisecond (#827). Guarded by
+	// refreshMu, like every field it touches.
+	replacedThisRefresh map[SyncStrategy]bool
 	logger              *logger.ModuleLogger
 	configProvider      configuration.ConfigurationProvider
 	agentConfig         configuration.AgentConfiguration
@@ -146,10 +159,11 @@ func truncateString(s string, maxLen int) string {
 }
 
 // enrichWithConfiguredTags overlays the agent-level global_tags and each
-// probe instance's custom_tags onto every datapoint, in one place for all
-// sinks. Priority on a key conflict is custom_tags > global_tags > built-in
-// (the tags the probe already emitted). Per-probe custom_tags are matched to
-// a datapoint by its probe_name tag. No-op (and no allocation) when neither
+// probe instance's operator tags (its governance attributes, then its
+// custom_tags) onto every datapoint, in one place for all sinks. Priority
+// on a key conflict is custom_tags > governance > global_tags > built-in
+// (the tags the probe already emitted). Per-probe tags are matched to a
+// datapoint by its probe_name tag. No-op (and no allocation) when nothing
 // is configured.
 func (d *dataStore) enrichWithConfiguredTags(data []datapoint.DataPoint) []datapoint.DataPoint {
 	cfg := d.configProvider.GetConfiguration()
@@ -157,13 +171,18 @@ func (d *dataStore) enrichWithConfiguredTags(data []datapoint.DataPoint) []datap
 
 	var customByProbe map[string][]tags.Tag
 	for _, p := range cfg.Probes {
-		if len(p.CustomTags) == 0 {
+		operator, err := operatorTagsForProbe(p)
+		if err != nil {
+			d.logger.Warn().Err(err).Msg("governance block ignored on datapoints")
+			continue
+		}
+		if len(operator) == 0 {
 			continue
 		}
 		if customByProbe == nil {
 			customByProbe = make(map[string][]tags.Tag)
 		}
-		customByProbe[p.Name] = tags.MapToTags(p.CustomTags)
+		customByProbe[p.Name] = tags.MapToTags(operator)
 	}
 
 	if len(global) == 0 && customByProbe == nil {
@@ -260,10 +279,76 @@ func (d *dataStore) GetCallback() AddCallback {
 	}
 }
 
-func (d *dataStore) Start(quitChannel chan struct{}) error {
+// StopBudget gives the strategies longer than the default: the senhub
+// and otlp sinks flush a buffer over the network on shutdown, and a
+// timed-out flush is a batch of metrics silently lost.
+func (d *dataStore) StopBudget() time.Duration { return 10 * time.Second }
+
+func (d *dataStore) Start(ctx context.Context) error {
 	d.logger.Debug().Msg("Starting DataStore service")
+
+	d.refreshMu.Lock()
+	d.runCtx = ctx
+	d.refreshMu.Unlock()
+
 	d.OnConfigRefreshed("initial")
+
+	if err := d.refuseToRunBlind(); err != nil {
+		return err
+	}
+
 	d.configProvider.OnConfigChanged(d.OnConfigRefreshed)
+	return nil
+}
+
+// refuseToRunBlind stops an agent that would look healthy while doing
+// nothing useful. Two cases, both settled at start because neither is
+// transient: every output refused, so nothing leaves the host at all;
+// or an output that serves a poller could not take its socket, which no
+// retry will fix and which, for the HTTP output, also takes away the
+// console that would have said so.
+func (d *dataStore) refuseToRunBlind() error {
+	configured := d.configProvider.GetConfiguration().StorageConfig
+	if len(configured) == 0 {
+		return nil
+	}
+	failures := agentstate.GetStrategyFailures()
+	running := map[string]bool{}
+	for _, s := range d.activeStrategies() {
+		running[s.GetStrategyName()] = true
+	}
+
+	var blocked []string
+	for _, sc := range configured {
+		if running[sc.Name] {
+			continue
+		}
+		out, known := outputspec.For(sc.Name)
+		if !known || out.Mode != outputspec.ModePull {
+			continue
+		}
+		reason := "did not start"
+		if f, ok := failures[sc.Name]; ok {
+			reason = f.Detail
+			if reason == "" {
+				reason = f.Reason
+			}
+		}
+		blocked = append(blocked, sc.Name+": "+reason)
+	}
+	if len(blocked) > 0 {
+		sort.Strings(blocked)
+		return fmt.Errorf("an output that a poller reads could not start, and no retry will take the address it was refused: %s", strings.Join(blocked, "; "))
+	}
+
+	if len(running) == 0 {
+		reasons := make([]string, 0, len(configured))
+		for name, failure := range failures {
+			reasons = append(reasons, name+": "+failure.Reason)
+		}
+		sort.Strings(reasons)
+		return fmt.Errorf("no output could be started, so nothing would leave this host: %s", strings.Join(reasons, "; "))
+	}
 	return nil
 }
 
@@ -277,7 +362,7 @@ func (d *dataStore) Shutdown(ctx context.Context) error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("errors shutting down strategies: %v", errs)
+		return fmt.Errorf("errors shutting down strategies: %w", errors.Join(errs...))
 	}
 	return nil
 }
@@ -347,8 +432,19 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 
 	previous := d.activeStrategies()
 	newStrategies := make(map[string]SyncStrategy)
+	d.replacedThisRefresh = make(map[SyncStrategy]bool)
 
-	for _, storageConfig := range d.configProvider.GetConfiguration().StorageConfig {
+	storageConfigs := d.configProvider.GetConfiguration().StorageConfig
+	configuredNames := make([]string, 0, len(storageConfigs))
+	for _, sc := range storageConfigs {
+		configuredNames = append(configuredNames, sc.Name)
+	}
+	// A strategy the operator deleted outright must stop being reported
+	// as failing; only the ones still in the configuration can fail.
+	agentstate.PruneStrategyFailures(configuredNames)
+	agentstate.PruneExportActivity(configuredNames)
+
+	for _, storageConfig := range storageConfigs {
 		strategy := d.retrieveOrCreate(storageConfig)
 		if strategy == nil {
 			continue
@@ -393,9 +489,19 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 		if kept[old] {
 			continue
 		}
-		d.logger.Info().
-			Str("strategy", old.GetStrategyName()).
-			Msg("Shutting down strategy removed by config refresh")
+		if d.replacedThisRefresh[old] {
+			// Already stopped above, when its replacement was created.
+			// Shutdown is idempotent, so this second call is a no-op; log
+			// it at debug so the journal does not read as "the strategy
+			// that just started was removed" (#827).
+			d.logger.Debug().
+				Str("strategy", old.GetStrategyName()).
+				Msg("Replaced strategy instance already shut down; cleanup pass is a no-op")
+		} else {
+			d.logger.Info().
+				Str("strategy", old.GetStrategyName()).
+				Msg("Shutting down strategy removed by config refresh")
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		if err := old.Shutdown(ctx); err != nil {
 			d.logger.Error().
@@ -414,25 +520,26 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 }
 
 // publishSignalContext snapshots the agent's global_tags and per-probe
-// custom_tags into agentstate so the log rail can stamp them for
-// cross-signal correlation. Rebuilt on every config refresh; the maps are
+// operator tags (governance attributes, then custom_tags) into agentstate
+// so the log rail can stamp them for cross-signal correlation. Rebuilt on every config refresh; the maps are
 // plain string maps so agentstate stays free of configuration types.
 func (d *dataStore) publishSignalContext() {
 	cfg := d.configProvider.GetConfiguration()
 
 	var customByProbe map[string]map[string]string
 	for _, p := range cfg.Probes {
-		if len(p.CustomTags) == 0 {
+		operator, err := operatorTagsForProbe(p)
+		if err != nil {
+			d.logger.Warn().Err(err).Msg("governance block ignored on log records")
+			continue
+		}
+		if len(operator) == 0 {
 			continue
 		}
 		if customByProbe == nil {
 			customByProbe = make(map[string]map[string]string, len(cfg.Probes))
 		}
-		customTags := make(map[string]string, len(p.CustomTags))
-		for k, v := range p.CustomTags {
-			customTags[k] = v
-		}
-		customByProbe[p.Name] = customTags
+		customByProbe[p.Name] = operator
 	}
 
 	var global map[string]string
@@ -481,8 +588,8 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 					Msg("Strategy configuration changed, attempting update")
 
 				// Try to update the strategy if it supports live updates
-				if httpStrategy, ok := strategy.(*http.HTTPSyncStrategy); ok {
-					if err := httpStrategy.UpdateConfiguration(strategyConfig.Params); err != nil {
+				if updatable, ok := strategy.(LiveUpdatable); ok {
+					if err := updatable.UpdateConfiguration(strategyConfig.Params); err != nil {
 						d.logger.Warn().
 							Err(err).
 							Msg("Failed to update strategy configuration, will recreate")
@@ -508,6 +615,9 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	// (#495). Shutdown is idempotent, so the post-refresh cleanup in
 	// OnConfigRefreshed re-calling it is a no-op.
 	if replaced != nil {
+		if d.replacedThisRefresh != nil {
+			d.replacedThisRefresh[replaced] = true
+		}
 		d.logger.Info().
 			Str("strategy", replaced.GetStrategyName()).
 			Msg("Shutting down replaced strategy before starting its replacement")
@@ -526,35 +636,29 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 		Msg("Creating new strategy")
 
-	var strategy SyncStrategy
-	switch strategyConfig.Name {
-	case "senhub":
-		d.logger.Debug().Msg("Initializing senhub strategy")
-		strategy = senhub.NewSyncStrategySenhub(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
-	case "prtg":
-		d.logger.Debug().Msg("Initializing prtg strategy")
-		strategy = prtg.NewSyncStrategyPrtg(d.agentConfig, strategyConfig.Params, d.logger.Logger)
-	case "event":
-		d.logger.Debug().Msg("Initializing event strategy")
-		eventStrategy, err := event.NewEventSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger)
-		if err != nil {
-			d.logger.Error().
-				Err(err).
-				Msg("Invalid event strategy configuration, strategy skipped")
-			return nil
-		}
-		strategy = eventStrategy
-	case "http":
-		d.logger.Debug().Msg("Initializing HTTP strategy")
-		strategy = http.NewHTTPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
-		d.logger.Debug().Bool("initialized", strategy != nil).Msg("HTTP strategy created")
-	case "otlp":
-		d.logger.Debug().Msg("Initializing OTLP strategy")
-		strategy = otlp.NewOTLPSyncStrategy(d.agentConfig, strategyConfig.Params, d.logger.Logger).(SyncStrategy)
-	default:
+	factory, known := lookupStrategyFactory(strategyConfig.Name)
+	if !known {
 		d.logger.Error().
+			Str("strategy", strategyConfig.Name).
+			Strs("available", RegisteredStrategyNames()).
 			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Unknown strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureUnknownType, "no strategy of this type is compiled into this build")
+		return nil
+	}
+
+	strategy, err := factory(strategyConfig.Params, StrategyDeps{
+		AgentConfig: d.agentConfig,
+		Logger:      d.logger.Logger,
+		Registry:    d.transformerRegistry,
+	})
+	if err != nil {
+		d.logger.Error().
+			Err(err).
+			Str("strategy", strategyConfig.Name).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+			Msg("Invalid strategy configuration, strategy skipped")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
 		return nil
 	}
 
@@ -562,6 +666,7 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		d.logger.Error().
 			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Msg("Failed to create strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureCreate, "strategy constructor returned nothing")
 		return nil
 	}
 
@@ -570,16 +675,31 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
 			Err(err).
 			Msg("Invalid strategy configuration")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
 		return nil
 	}
 
-	if err := strategy.Start(); err != nil {
+	// runCtx is read under refreshMu, which every caller of this
+	// function already holds. A nil means the store was never Started
+	// (config-show, tests): the strategy still stops via Shutdown, it
+	// just has no external cancellation.
+	runCtx := d.runCtx
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
+
+	if err := strategy.Start(runCtx); err != nil {
 		d.logger.Error().
 			Err(err).
 			Msg("Failed to start strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureStart, err.Error())
 		return nil
 	}
 
+	// Running: drop any failure recorded by an earlier attempt, so a
+	// fixed configuration stops alerting on the next refresh without an
+	// agent restart.
+	agentstate.ClearStrategyFailure(strategyConfig.Name)
 	d.logger.Debug().Msg("Strategy created successfully")
 	return strategy
 }
@@ -639,13 +759,20 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 				correctedValue = newValue
 				correctionCount++
 
-				d.logger.Info().
+				// Debug, not Info, and without a derived ratio: a unit
+				// correction is a permanent property of the probe's
+				// definition, not an event. At Info this printed a
+				// five-field line for EVERY corrected datapoint of every
+				// cycle, burying the journal under a restatement of the
+				// YAML (#295). The factor is the two values divided,
+				// which a reader can do and a disabled log line should
+				// not compute.
+				d.logger.Debug().
 					Str("metric", dp.Name).
 					Str("probe", probeName).
 					Float64("original_value", originalFloat64).
 					Float64("corrected_value", newValue).
-					Float64("correction_factor", newValue/originalFloat64).
-					Msg("Unit correction applied to datapoint - ensuring consistent units across all strategies")
+					Msg("Unit correction applied")
 			}
 		} else {
 			// Only the legacy fallback transformer (created when a probe
@@ -688,10 +815,13 @@ func (d *dataStore) applyUnitCorrections(datapoints []datapoint.DataPoint) []dat
 	}
 
 	if correctionCount > 0 {
-		d.logger.Info().
+		// Also Debug: on a host whose definitions declare corrections this
+		// fires on every collection cycle, forever, saying nothing that
+		// changed.
+		d.logger.Debug().
 			Int("total_datapoints", len(datapoints)).
 			Int("corrections_applied", correctionCount).
-			Msg("Unit corrections completed - all strategies will receive corrected metrics")
+			Msg("Unit corrections applied to batch")
 	}
 
 	return correctedDatapoints

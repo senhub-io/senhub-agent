@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agent-key" content="{{.AgentKey}}">
+    <title>SenHub Agent - Settings</title>
+    <link rel="icon" type="image/png" href="/web/{{.AgentKey}}/assets/logo.png">
+    <link rel="stylesheet" href="/web/{{.AgentKey}}/assets/css/console.css">
+    <style>
+        .card > .stack { gap: var(--s3); }
+        .card p.lead { color: var(--muted); font-size: var(--fs-sm); margin-bottom: var(--s3); }
+        .agentkey-box { font-family: var(--mono); font-size: var(--fs-sm); background: var(--well); padding: 8px 10px; border-radius: var(--r-md); word-break: break-all; border: 1px solid var(--line); }
+        .actions { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+        .kv.left dd { font-family: inherit; }
+        .kv .v { font-family: var(--mono); }
+        .in[type="file"] { padding: 5px 10px; line-height: 22px; }
+        #banner { margin-bottom: var(--s4); }
+        .locked { font-size: var(--fs-sm); color: var(--ink-2); }
+    </style>
+</head>
+<body>
+    <div class="hdr"><div class="hdr-in">
+        <a class="brand" href="/web/{{.AgentKey}}/overview"><img src="/web/{{.AgentKey}}/assets/logo.png" alt=""> SenHub Agent</a>
+        <nav class="nav">
+            <a href="/web/{{.AgentKey}}/overview">Overview</a>
+            <a href="/web/{{.AgentKey}}/probes">Probes</a>
+            <a href="/web/{{.AgentKey}}/outputs">Outputs</a>
+            <a href="/web/{{.AgentKey}}/settings" class="on">Settings</a>
+            <a href="https://agent.senhub.io/docs" target="_blank" rel="noopener">Docs</a>
+        </nav>
+        <div class="hdr-status"></div>
+    </div></div>
+
+    <div class="page">
+        <div class="page-h">
+            <div>
+                <h1>Settings</h1>
+                <p class="sub">Where this console listens, and which license unlocks the Pro probes.</p>
+            </div>
+        </div>
+
+        <div id="banner" class="banner hide"></div>
+
+        <div class="grid g2">
+            <div class="card">
+                <div class="card-h"><h2>Connection</h2><span class="pill acc">HTTP output</span></div>
+                <p class="lead">These are the settings of the HTTP output: the port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there. <a href="/web/{{.AgentKey}}/outputs/http">Endpoints, TLS and the sensor URLs are there</a>.</p>
+                <div class="stack">
+                    <div class="field">
+                        <label class="lbl" for="port">HTTP port</label>
+                        <input class="in" type="number" id="port" min="1" max="65535" />
+                    </div>
+                    <div class="field">
+                        <label class="lbl" for="bind">Bind address</label>
+                        <input class="in" type="text" id="bind" />
+                        <div class="hint">127.0.0.1 for local only, 0.0.0.0 to accept connections from other machines (use TLS when doing so).</div>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button class="btn primary" id="save-conn" type="button">Save connection settings</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-h"><h2>License</h2><span id="lic-status"></span></div>
+                <div class="stack">
+                    <div class="field">
+                        <span class="lbl">Agent key</span>
+                        <div class="agentkey-box" id="agentkey">{{.AgentKey}}</div>
+                        <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A license is bound to it: give it to Sensor Factory when ordering one, and the license you receive is checked against it here. <button class="btn sm" id="copy-key" type="button">Copy</button> <span class="xs hide" id="copied" style="color:var(--ok)">copied</span></div>
+                    </div>
+                    <dl class="kv left">
+                        <dt>Tier</dt><dd class="v" id="lic-tier">...</dd>
+                        <dt>Expires</dt><dd class="v" id="lic-exp">...</dd>
+                        <dt>Pro probe types</dt><dd id="lic-locked" class="locked">...</dd>
+                    </dl>
+                    <div class="field">
+                        <span class="lbl">Activate a license</span>
+                        <!-- The native file control draws its own labels in the
+                             browser's language, which reads as French text in the
+                             middle of an English console. A button of our own with
+                             the input hidden behind it keeps one language. -->
+                        <div class="row" style="gap:10px;align-items:center">
+                            <label class="btn" for="license-file">Choose a file</label>
+                            <span class="small muted" id="license-file-name">No file chosen</span>
+                        </div>
+                        <input type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" hidden />
+                        <div class="hint">Choose the license file you received, or paste the token below. It is checked against this agent key before it is saved. Activating a license places the Pro and Enterprise probes under the <a href="https://agent.senhub.io/docs/latest/license/" target="_blank" rel="noreferrer">SenHub Agent license agreement</a>; the core stays open source either way.</div>
+                        <textarea class="ta" id="license" placeholder="...or paste the license token (JWT)"></textarea>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button class="btn primary" id="save-lic" type="button">Activate license</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.AGENT_KEY = '{{.AgentKey}}';
+        const api = '/api/' + window.AGENT_KEY + '/config/settings';
+        const catalogApi = '/api/' + window.AGENT_KEY + '/catalog/probes';
+        const $ = (id) => document.getElementById(id);
+
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+        function pill(kind, label) { return '<span class="pill ' + kind + '">' + esc(label) + '</span>'; }
+
+        function banner(kind, msg) {
+            const b = $('banner');
+            b.className = 'banner ' + kind;
+            b.textContent = msg;
+        }
+
+        async function load() {
+            try {
+                const r = await fetch(api);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const d = await r.json();
+                $('port').value = d.port;
+                $('bind').value = d.bind_address;
+                const lic = d.license || {};
+                if (!lic.configured) {
+                    $('lic-status').innerHTML = pill('off', 'Free tier');
+                    $('lic-tier').textContent = 'Free';
+                    $('lic-exp').textContent = '-';
+                } else {
+                    const bound = lic.bound ? pill('ok', 'bound') : pill('err', 'not bound to this key');
+                    $('lic-status').innerHTML = lic.expired ? pill('err', 'expired') : bound;
+                    $('lic-tier').textContent = lic.tier || '-';
+                    $('lic-exp').textContent = lic.expires_at || '-';
+                }
+            } catch (e) {
+                banner('err', 'Could not load settings: ' + e.message);
+            }
+        }
+
+        async function loadLocked() {
+            const el = $('lic-locked');
+            try {
+                const r = await fetch(catalogApi);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const d = await r.json();
+                const probes = d.probes || [];
+                const locked = probes.filter(p => p.tier === 'pro' && p.authorized === false && !/ only$/.test(p.reason || '')).length;
+                const pro = probes.filter(p => p.tier === 'pro').length;
+                const link = ' <a href="/web/' + window.AGENT_KEY + '/probes?new=1#picker">See the catalogue</a>';
+                if (locked) el.innerHTML = esc(locked + ' Pro probe type' + (locked === 1 ? ' is' : 's are') + ' locked.') + link;
+                else if (pro) el.innerHTML = esc('All ' + pro + ' Pro probe types are unlocked.') + link;
+                else el.innerHTML = esc('None locked.') + link;
+            } catch (e) {
+                el.textContent = '-';
+            }
+        }
+
+        async function post(body) {
+            const r = await fetch(api, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+            return d;
+        }
+
+        $('save-conn').addEventListener('click', async () => {
+            const body = {};
+            const port = parseInt($('port').value, 10);
+            if (!isNaN(port)) body.port = port;
+            const bind = $('bind').value.trim();
+            if (bind) body.bind_address = bind;
+            try {
+                const d = await post(body);
+                let msg = (d.applied || []).join('; ');
+                if (d.warnings && d.warnings.length) msg += (msg ? '. ' : '') + d.warnings.join('; ');
+                banner('warn', msg || 'Saved.');
+            } catch (e) {
+                banner('err', e.message);
+            }
+        });
+
+        $('save-lic').addEventListener('click', async () => {
+            const jwt = $('license').value.trim();
+            if (!jwt) { banner('err', 'Paste a license token first.'); return; }
+            try {
+                const d = await post({ license: jwt });
+                banner('ok', (d.applied || ['License activated.']).join('; '));
+                $('license').value = '';
+                load();
+                loadLocked();
+            } catch (e) {
+                banner('err', e.message);
+            }
+        });
+
+        $('license-file').addEventListener('change', (ev) => {
+            const f = ev.target.files && ev.target.files[0];
+            $('license-file-name').textContent = f ? f.name : 'No file chosen';
+            if (!f) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                $('license').value = (reader.result || '').toString().trim();
+                banner('warn', 'License file loaded from ' + f.name + '. Click "Activate license" to apply it.');
+            };
+            reader.onerror = () => banner('err', 'Could not read the file.');
+            reader.readAsText(f);
+        });
+
+        function copyFallback(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'absolute';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            document.body.removeChild(ta);
+            return ok;
+        }
+        $('copy-key').addEventListener('click', async () => {
+            let ok = false;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                ok = await navigator.clipboard.writeText(window.AGENT_KEY).then(() => true, () => copyFallback(window.AGENT_KEY));
+            } else {
+                ok = copyFallback(window.AGENT_KEY);
+            }
+            const c = $('copied');
+            c.textContent = ok ? 'copied' : 'copy failed';
+            c.classList.remove('hide');
+            setTimeout(() => c.classList.add('hide'), 1500);
+        });
+
+        load();
+        loadLocked();
+    </script>
+    <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
+</body>
+</html>

@@ -151,3 +151,4 @@ docs/user-guide/site/
 
 # Agent worktrees (transient, never part of the repo)
 .claude/worktrees/
+

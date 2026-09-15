@@ -243,8 +243,8 @@ func (s *Source) Observe() (entity.Observation, bool) {
 		if _, present := seen[k]; present {
 			continue // handled below, with its hit
 		}
-		if st.misses+1 > s.threshold {
-			continue // gone for as long as it took to appear: drop it
+		if st.misses+1 > s.forgetAfter(st) {
+			continue // gone long enough: drop it
 		}
 		next[k] = streakState{hits: st.hits, misses: st.misses + 1, dep: st.dep}
 	}
@@ -258,6 +258,31 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	s.streak = next
 
 	return buildObservation(next, s.threshold, hostID).WithScope(entity.ScopeHostDep), true
+}
+
+// earnWindow is how many scrapes a peer that has not yet earned its edge
+// keeps its progress while absent. A short-lived flow is precisely one
+// that is missing from most scrapes: a reverse proxy opening a request
+// to a backend and closing it appears in a minority of samples and never
+// in two running ones, so a peer that forgot its progress after as many
+// misses as the threshold could never assert an edge, however long the
+// agent ran. That is not a gap that averages out, it is a bias: the map
+// showed what stays open and not what matters (#855).
+const earnWindow = 15
+
+// forgetAfter is how many consecutive misses a peer may collect before
+// its progress is dropped. An edge already asserted keeps the tolerance
+// it earned, so absence retires it as fast as it appeared (#808); one
+// still earning gets the wider window, because being missing is what a
+// short-lived flow does.
+func (s *Source) forgetAfter(st streakState) int {
+	if st.hits >= s.threshold {
+		return s.threshold
+	}
+	if s.threshold > earnWindow {
+		return s.threshold
+	}
+	return earnWindow
 }
 
 // hasAttributableDependant reports whether the scrape named at least one owning

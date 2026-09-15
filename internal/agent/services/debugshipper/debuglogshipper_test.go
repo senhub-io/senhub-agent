@@ -1,6 +1,7 @@
 package debugshipper
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -214,7 +215,7 @@ func TestDebugLogShipper_Close(t *testing.T) {
 
 	// Write after close should fail
 	_, err = shipper.Write([]byte(`{"level":"debug","message":"test log after close"}`))
-	if err != ErrShipperClosed {
+	if !errors.Is(err, ErrShipperClosed) {
 		t.Errorf("Write() after Close() error = %v, expected ErrShipperClosed", err)
 	}
 }

@@ -86,6 +86,9 @@ type OTLPSyncStrategy struct {
 	logs     *logsPipeline
 	logsPump *logsPump
 
+	// logsReplayer retries the queued batches on its own clock.
+	logsReplayer *logsReplayer
+
 	// logsQueue is the on-disk dead-letter queue for the logs signal,
 	// set when persistence is enabled and logs are emitted (#217).
 	logsQueue *logsQueue
@@ -135,6 +138,9 @@ type OTLPSyncStrategy struct {
 	pushTicker *time.Ticker
 	// pushDone signals the push goroutine to exit. Closed by Shutdown.
 	pushDone chan struct{}
+	// pushCancel aborts a push already in flight. Only Shutdown calls it:
+	// while the agent runs, a push must finish on its own.
+	pushCancel context.CancelFunc
 	// pushWG tracks the push goroutine for clean Shutdown.
 	pushWG sync.WaitGroup
 
@@ -150,12 +156,21 @@ type OTLPSyncStrategy struct {
 	startMu  sync.Mutex
 	started  bool
 	shutdown bool
+	// runCtx is the lifecycle context Start received — the cancellation
+	// root for the push loop, the memory-limiter poller, the
+	// checkpointer and the entity detector. Guarded by startMu.
+	runCtx context.Context
 
 	// missingMappingWarned dedups the "metric has no OTel mapping"
 	// warning. Same idea as the prometheus side — keyed by
 	// "probe_type:metric_name" — so a single misconfigured probe does
 	// not flood logs on every push tick.
 	missingMappingWarned sync.Map
+
+	// psReporter accounts for the records a consumer refuses on the
+	// metrics rail. The logs rail has its own, on the exporter that owns
+	// the dead-letter queue.
+	psReporter *partialSuccessReporter
 }
 
 // NewOTLPSyncStrategy constructs (but does not start) the OTLP strategy.
@@ -232,6 +247,7 @@ func NewOTLPSyncStrategy(
 		globalTagKeys: globalTagKeys,
 		globalTags:    globalTags,
 		memLimiter:    ml,
+		psReporter:    newPartialSuccessReporter(moduleLogger, "export"),
 	}
 
 	if cfg.Persistence.Path != "" {
@@ -270,7 +286,7 @@ func (s *OTLPSyncStrategy) ValidateConfigParams(params configuration.StorageConf
 // when metrics are enabled, launches the periodic push goroutine.
 // Idempotent — subsequent calls are no-ops while running. Once Shutdown
 // has been called, Start returns an error rather than silently restarting.
-func (s *OTLPSyncStrategy) Start() error {
+func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
 
@@ -281,10 +297,23 @@ func (s *OTLPSyncStrategy) Start() error {
 		return fmt.Errorf("strategy already shut down — cannot restart")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// runCtx is the lifecycle root for everything this strategy spawns
+	// (memory limiter poller, checkpointer, entity emission). Cancelling
+	// the agent context stops them without waiting for Shutdown.
+	s.runCtx = ctx
+
+	// Before the first exporter exists: the SDK reports a consumer's
+	// partial rejection through the global error handler, and anything
+	// the handler misses is lost to stderr (#819).
+	installSDKErrorHandler(s.logger)
+
+	buildCtx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
 
-	exp, err := buildExporters(ctx, s.cfg, s.logger)
+	exp, err := buildExporters(buildCtx, s.cfg, s.logger)
 	if err != nil {
 		return fmt.Errorf("build exporters: %w", err)
 	}
@@ -294,7 +323,7 @@ func (s *OTLPSyncStrategy) Start() error {
 	// Start the memory limiter poller before the metrics pusher so
 	// the first cycle's upsert path sees an accurate state flag.
 	if s.memLimiter != nil {
-		s.memLimiter.start(context.Background())
+		s.memLimiter.start(ctx)
 	}
 
 	// Restore the LWW store from the on-disk checkpoint (if any)
@@ -307,7 +336,27 @@ func (s *OTLPSyncStrategy) Start() error {
 		} else if n > 0 {
 			s.logger.Info().Int("entries", n).Msg("OTLP checkpoint restored")
 		}
-		s.chkpt.start(context.Background())
+	}
+
+	// Say once, at start, whether series eviction is on and how wide its
+	// window is.
+	//
+	// With it OFF, a series whose producer disappears — a target removed
+	// from a probe, a probe denied by licence — keeps being exported at
+	// its last value with FRESH timestamps, forever, and a restart does
+	// not clear it because the checkpoint restores it. The alert stays
+	// red on something that no longer exists, and nothing in the agent
+	// says why. That cost an operator a tcpdump and a hand-edited
+	// checkpoint file to diagnose (#812). One line at start turns the
+	// same question into a journal grep.
+	if s.cfg.StalenessTTL <= 0 {
+		s.logger.Warn().
+			Msg("OTLP series eviction is DISABLED (staleness_ttl <= 0): a series whose producer disappears will be re-exported at its last value with fresh timestamps indefinitely, across restarts. Set staleness_ttl to re-enable.")
+	} else {
+		s.logger.Info().
+			Dur("staleness_ttl", s.cfg.StalenessTTL).
+			Msg("OTLP series eviction enabled")
+		s.chkpt.start(ctx)
 	}
 
 	if s.cfg.Metrics.Enabled {
@@ -337,6 +386,9 @@ func (s *OTLPSyncStrategy) Start() error {
 	if logExp != nil && s.logs != nil {
 		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
 		logExp.setOnRecovered(rp.replay)
+		logExp.setOnQueued(rp.kick)
+		s.logsReplayer = rp
+		rp.start()
 		go rp.replay()
 	}
 
@@ -429,6 +481,13 @@ func (s *OTLPSyncStrategy) Start() error {
 func (s *OTLPSyncStrategy) startMetricsPusher() {
 	s.pushTicker = time.NewTicker(s.cfg.Metrics.Interval)
 	s.pushDone = make(chan struct{})
+	runCtx := s.runCtx
+	// Not derived from runCtx, deliberately: an agent-wide cancellation
+	// must not abort a push in flight. Shutdown cancels this one on its
+	// own, because there the caller is a service manager holding a stop
+	// budget.
+	pushCtx, pushCancel := context.WithCancel(context.Background())
+	s.pushCancel = pushCancel
 	s.pushWG.Add(1)
 	go func() {
 		defer s.pushWG.Done()
@@ -436,8 +495,17 @@ func (s *OTLPSyncStrategy) startMetricsPusher() {
 			select {
 			case <-s.pushDone:
 				return
+			case <-runCtx.Done():
+				// Agent-wide cancellation without a Shutdown call
+				// (strategy dropped from the config in the same
+				// refresh that cancelled the context).
+				return
 			case <-s.pushTicker.C:
-				s.pushPeriodic(context.Background())
+				// Not runCtx: an agent-wide cancellation ends the
+				// loop, it must not abort a push already in flight
+				// and drop the batch it carries. Shutdown is the one
+				// exception, and it cancels pushCtx.
+				s.pushPeriodic(pushCtx)
 			}
 		}
 	}()
@@ -534,7 +602,10 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		s.globalTagKeys,
 		extraRecords,
 		func(ctx context.Context, rm *metricdata.ResourceMetrics) error {
-			return s.exporters.metric.Export(ctx, rm)
+			// Datapoints the consumer refuses are counted and dropped from
+			// the error: the push landed, and reporting it as a failed
+			// export would hide a partial loss behind a total one (#819).
+			return s.psReporter.reportRejections(s.exporters.metric.Export(ctx, rm))
 		},
 		s.warnMissingMappingOnce,
 		s.cfg.MaxConcurrentExports,
@@ -547,11 +618,13 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		span.RecordError(err)
 		span.SetStatus(codes.Error, redacted)
 		s.logger.Warn().Str("error", redacted).Dur("duration", exportDuration).Msg("OTLP metrics export failed")
-		agentstate.IncrementOTLPExportErrors()
+		agentstate.IncrementOTLPExportErrors("metrics")
+		agentstate.RecordExportFailure("otlp", redacted)
 		return
 	}
 	span.SetStatus(codes.Ok, "")
 	if count > 0 {
+		agentstate.RecordExportSuccess("otlp")
 		s.logger.Debug().Int("records_pushed", count).Dur("duration", exportDuration).Msg("OTLP metrics exported")
 		agentstate.IncrementOTLPMetricsPushed(count)
 		agentstate.RecordOTLPExportDuration(exportDuration)
@@ -613,6 +686,20 @@ func dataPointTag(dp datapoint.DataPoint, key string) string {
 	return ""
 }
 
+// agentSelfIdentity builds the identity of the agent's own service.instance
+// entity. service.name always names the SERVICE: the operator's
+// resource.service.name override stays a telemetry-grouping knob, and letting
+// it leak here made every host publish a different service.name for the same
+// agent software, breaking any fleet inventory filtered on it (#825). The
+// host is already carried by the runs_on edge and service.instance.id.
+func agentSelfIdentity(cfg Config) entity.AgentIdentity {
+	return entity.AgentIdentity{
+		InstanceID:     cfg.Resource.ServiceInstance,
+		ServiceName:    DefaultServiceName,
+		ServiceVersion: cliArgs.Version,
+	}
+}
+
 // startEntityEmission wires the entity pump (consumer of the neutral
 // entity-event channel) and the Detector (producer of the Lot 1 foundation
 // events: host + service.instance + runs_on). Called from Start only when
@@ -624,10 +711,6 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.cfg.Entities.RedactAttributes, s.logger)
 	s.entityPump.start()
 
-	serviceName := s.cfg.Resource.ServiceName
-	if serviceName == "" {
-		serviceName = "senhub-agent"
-	}
 	hostFn := func() (entity.HostIdentity, error) {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
@@ -666,11 +749,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {
-		return entity.AgentIdentity{
-			InstanceID:     s.cfg.Resource.ServiceInstance,
-			ServiceName:    serviceName,
-			ServiceVersion: cliArgs.Version,
-		}
+		return agentSelfIdentity(s.cfg)
 	}
 	// Expose the agent's own service.instance.id to probe entity sources so
 	// they can stamp the From endpoint of their `monitors` edge to this same
@@ -712,10 +791,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 				Int("outbound_sockets", observed).
 				Int("unattributable", unattributable).
 				Str("running_as", processUsername()).
-				Msg("depends_on is enabled but this agent cannot attribute any socket to its owning process; " +
-					"mapping a socket to its owner reads /proc/<pid>/fd, which only the owner may read. " +
-					"No dependency edge can be produced for services owned by another user. " +
-					"Run the agent as root for this rail, or leave entities.depends_on_enabled off")
+				Msg(dependsOnBlindMessage(os.Geteuid()))
 		})
 		s.entitySourceUnregisters = append(s.entitySourceUnregisters, entity.RegisterSource(dep))
 	}
@@ -738,7 +814,7 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 				Msg("entity has no relation; dropped from the wire (anti-orphan guard)")
 		}
 	})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(s.runCtx)
 	s.entityDetectorCancel = cancel
 	s.entityDetectorWG.Add(1)
 	go func() {
@@ -746,6 +822,10 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 		det.Run(ctx)
 	}()
 }
+
+// exporterShutdownBudget caps the final drain and the closing of the
+// exporters. Past it, whatever is still queued is lost either way.
+const exporterShutdownBudget = 10 * time.Second
 
 // Shutdown stops the strategy: signals the push goroutine, waits for it
 // to drain, performs a final push (so the last interval's data isn't
@@ -768,6 +848,14 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	if s.pushTicker != nil {
 		s.pushTicker.Stop()
 		close(s.pushDone)
+		// A collector that drops packets rather than refusing them
+		// leaves an export in flight until its own timeout, a minute by
+		// default. Waiting for that spends the whole stop budget the
+		// service manager gives the agent, on a batch that is about to
+		// fail anyway. The drain below gets its own bounded attempt.
+		if s.pushCancel != nil {
+			s.pushCancel()
+		}
 		s.pushWG.Wait()
 	}
 
@@ -801,6 +889,11 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		s.entityPump.stop(ctx)
 	}
 
+	if s.logsReplayer != nil {
+		s.logsReplayer.stop()
+		s.logsReplayer = nil
+	}
+
 	// Stop the logs pump and unsubscribe from agentstate. The
 	// LoggerProvider's Shutdown (called below via s.logs.shutdown)
 	// drains the BatchProcessor, so any records still queued in the
@@ -826,12 +919,13 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		return nil
 	}
 
-	// If the caller passed a context without a deadline, apply a
-	// reasonable default so a stuck collector doesn't hang shutdown
-	// forever.
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+	// A last push to a collector that is not answering is worth a few
+	// seconds, not the whole stop budget: the caller's deadline is the
+	// time the service manager gives the entire agent, and spending it
+	// here is what made systemctl stop take the best part of a minute.
+	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > exporterShutdownBudget {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		ctx, cancel = context.WithTimeout(ctx, exporterShutdownBudget)
 		defer cancel()
 	}
 
@@ -904,6 +998,35 @@ func (s *OTLPSyncStrategy) relayEnricher() *relayEnricher {
 // processUsername names the account the daemon runs under, for the operator
 // message that explains why a rail is empty. Best effort: an unresolvable uid
 // is reported as the number, which still tells the operator it is not root.
+// dependsOnBlindMessage explains a dependency rail that can see sockets and
+// name none of their owners.
+//
+// The privilege answer is only half of it, and telling it to an operator who
+// already runs as root sends them to do what they are doing. Mapping a socket
+// to its owner reads /proc/<pid>/fd; unreadable is one reason, ABSENT is
+// another. A container that shares another's network namespace sees that
+// namespace's whole socket table while its /proc holds only its own
+// processes, so the owners do not exist in this agent's view at all and no
+// privilege can conjure them. Reproduced on a real host: two containers
+// sharing a network namespace, agent as root, every socket unattributable.
+func dependsOnBlindMessage(euid int) string {
+	const common = "depends_on is enabled but this agent cannot attribute any socket to its owning process; " +
+		"mapping a socket to its owner reads /proc/<pid>/fd. "
+
+	if euid == 0 {
+		return common +
+			"This agent already runs as root, so privileges are not the cause: the owning processes are not " +
+			"visible to it at all. That is what a shared network namespace looks like from inside a container — " +
+			"the socket table belongs to the namespace, the processes belong to their own. " +
+			"Run the agent in the same PID namespace as the processes it should attribute, or leave " +
+			"entities.depends_on_enabled off; no dependency edge can be produced as it stands."
+	}
+	return common +
+		"/proc/<pid>/fd is owner-only, so a daemon running as another user sees every other service's " +
+		"connections with no owner. No dependency edge can be produced for services owned by another user. " +
+		"Run the agent as root for this rail, or leave entities.depends_on_enabled off."
+}
+
 func processUsername() string {
 	if u, err := user.Current(); err == nil && u.Username != "" {
 		return u.Username

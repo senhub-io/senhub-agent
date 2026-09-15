@@ -38,14 +38,25 @@ agent installs in the offline Free-tier default.
 
 | Property | Purpose |
 |---|---|
-| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (see the note on log exposure below) |
+| `LICENSE_FILE` | Path to the licence file (`.jwt`); what the wizard's Browse button fills in. Local or UNC path (the seeding step runs as SYSTEM and cannot see mapped drives) |
+| `LICENSE_KEY` | The licence token itself, for scripted installs (see the note on log exposure below) |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
+| `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
+| `DESKTOP_SHORTCUT` | `1` (default) places a "SenHub Agent Console" shortcut on the desktop; `DESKTOP_SHORTCUT=0` skips it |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `PURGE_DATA` | Uninstall only — `PURGE_DATA=1` on `msiexec /x` deletes `%ProgramData%\SenHub\` in full (see [Uninstall and data purge](#uninstall-and-data-purge)) |
 
 Install-time properties are consumed only on first install; they do not
 overwrite an existing `agent.yaml`.
+
+The seeding step checks that the HTTP port is free before writing the
+configuration. A port already in use, or an invalid property value, makes
+the seeding fail and the install roll back; the reason is in the install
+log (`SeedConfig`). Rerun with `HTTP_PORT=<free port>`. Without this check
+the install used to exit 0 with a running service that answered on
+nothing, its only trace being one `binding HTTP server` line in
+`%ProgramData%\SenHub\logs`.
 
 > **`LICENSE_KEY` and install logs.** The license token is a secret. A
 > verbose install log (`/l*v`) records public property values and custom
@@ -61,12 +72,42 @@ overwrite an existing `agent.yaml`.
 > - The token equally appears in the shell history / job output of the
 >   deployment tool that invokes `msiexec`; scrub those the same way.
 
+## Guided install
+
+Double-clicking the MSI runs the standard wizard with one extra page,
+after the install directory:
+
+- **Licence file**: Browse to the `.jwt` file received from Sensor
+  Factory, or leave empty for the Free tier (a licence can be added later
+  from the web console). A customer licence is the same file for every
+  agent of that customer.
+- **Port**: the port of the web console and of the PRTG / Nagios
+  endpoints, `8080` by default. The field takes integers only and the
+  wizard refuses a value outside 1 to 65535 before anything is
+  installed. A port already in use is refused when the configuration is
+  seeded, and the install fails with the reason.
+- **Desktop shortcut**: checked by default, creates "SenHub Agent
+  Console" on the desktop with the agent icon.
+- **Open the web console when setup completes**: checked by default;
+  the browser opens on the console when the wizard closes.
+
+The console address ends with the agent key, generated on the machine
+and kept sealed, so it is not printed by the wizard: the shortcut, the
+end of the wizard and `senhub-agent console` open it, and
+`senhub-agent console --print` (as administrator) prints it.
+
+The shortcut runs `senhub-agent.exe console`. It carries no key: the
+agent reads the sealed key, asks for elevation once if the user is not
+already elevated, then opens the default browser with the user's own
+rights. It is removed with the product.
+
 ## Silent install
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^
   LICENSE_KEY=eyJhbGciOi... ^
   TAGS=site=paris,env=prod ^
+  HTTP_PORT=9080 DESKTOP_SHORTCUT=0 ^
   /l* %TEMP%\senhub-agent-install.log
 ```
 
@@ -89,31 +130,28 @@ Silent uninstall:
 msiexec /x senhub-agent-<version>-amd64.msi /qn
 ```
 
-By default, uninstalling removes what the MSI installed (the binary, the
-`senhub-agent` service and the registry marker) plus the two transient
-subfolders `%ProgramData%\SenHub\logs\` and `%ProgramData%\SenHub\update\`
-(rotated logs and staged auto-update packages — both regenerated on the
-next run), so a plain uninstall leaves a clean tree. Operator state under
-`%ProgramData%\SenHub\` — configuration (`agent.yaml`, `probes.d\`,
-`strategies.d\`), the sealed secret store and the license — is **kept**.
-This is deliberate: a later reinstall or an upgrade picks the existing
-configuration back up with no data loss. An in-place major upgrade never
-removes the transient folders either, so a staged auto-update in progress
-survives the upgrade.
+Uninstalling removes what the MSI installed (the binary, the
+`senhub-agent` service and the registry marker) **and the whole
+`%ProgramData%\SenHub\` tree** — configuration (`agent.yaml`,
+`probes.d\`, `strategies.d\`), the sealed secret store, the license and
+the transient `logs\` and `update\` subfolders. Removing the product
+leaves the machine clean, and a later fresh install starts from the
+installer's inputs (licence, port) rather than a stale kept
+configuration.
 
-To remove the machine's agent data as well, opt in with `PURGE_DATA=1`:
+This holds for an interactive uninstall from **Apps & features** as well
+as `msiexec /x`. It is not recoverable, so a host that will be
+reinstalled and must keep its licence should be **upgraded in place**
+(install the newer MSI over the older one) rather than uninstalled and
+reinstalled.
 
-```bat
-msiexec /x senhub-agent-<version>-amd64.msi /qn PURGE_DATA=1
-```
+An in-place major upgrade preserves everything under
+`%ProgramData%\SenHub\`: a newer MSI replacing an older one never
+touches the data tree, so configuration, licence, secret store and any
+staged auto-update survive the upgrade.
 
-This deletes the entire `%ProgramData%\SenHub\` tree, including the
-sealed secret store and the license. It is not recoverable; use it when
-decommissioning a host for good. The purge acts only on a real uninstall
-— a major upgrade (a newer MSI replacing an older one) never touches the
-data tree, with or without the property. An interactive uninstall from
-**Apps & features** always keeps the data (there is no way to pass the
-property there); run the `msiexec /x` command above instead.
+`PURGE_DATA` is accepted for backward compatibility but no longer changes
+anything: a genuine uninstall already removes the full tree.
 
 ## Existing installations
 

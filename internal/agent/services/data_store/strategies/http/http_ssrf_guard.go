@@ -72,19 +72,7 @@ func parseHostIP(host string) net.IP {
 //     near-universal), while the redirect destination is never dialed — and if
 //     it were, the same Control hook re-checks every hop's concrete IP.
 func newConnectivityClient(timeout time.Duration) *http.Client {
-	dialer := &net.Dialer{
-		Timeout: timeout,
-		Control: func(_, address string, _ syscall.RawConn) error {
-			host, _, err := net.SplitHostPort(address)
-			if err != nil {
-				return err
-			}
-			if ip := parseHostIP(host); ip != nil && blockedConnectivityIP(ip) {
-				return fmt.Errorf("%s (%s)", errConnectivityTargetBlocked, host)
-			}
-			return nil
-		},
-	}
+	dialer := &net.Dialer{Timeout: timeout, Control: connectivityDialControl}
 	return &http.Client{
 		Timeout:   timeout,
 		Transport: &http.Transport{DialContext: dialer.DialContext},
@@ -92,4 +80,17 @@ func newConnectivityClient(timeout time.Duration) *http.Client {
 			return http.ErrUseLastResponse
 		},
 	}
+}
+
+// connectivityDialControl refuses, at dial time, the addresses a
+// connectivity test must not reach.
+func connectivityDialControl(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	if ip := parseHostIP(host); ip != nil && blockedConnectivityIP(ip) {
+		return fmt.Errorf("%s (%s)", errConnectivityTargetBlocked, host)
+	}
+	return nil
 }

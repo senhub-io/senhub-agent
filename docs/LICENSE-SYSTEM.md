@@ -126,6 +126,7 @@ Source of truth: the `paidProbes` map in `internal/agent/services/license/probe_
 - **vsphere_ha** - VMware vSphere cluster / HA monitoring
 - **ad_hybrid** - Active Directory hybrid-identity monitoring
 - **exchange_online** - Microsoft Exchange Online / Microsoft 365 mail monitoring
+- **azure_container_apps** - Azure Container Apps console log stream (stdout/stderr of every replica), read through ARM without touching the container
 - **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability
@@ -243,7 +244,7 @@ cp license.jwt /etc/senhub-agent/license.jwt   # restart the agent
 # Check the "License" card for status
 ```
 
-The token stays in clear on disk: it is a JWT bound to the agent key, not a
+The token stays in clear on disk: it is a JWT bound to a customer (or a single agent), not a
 portable access secret, so it is deliberately excluded from the `${secret:}`
 seal. The loader reads the sidecar automatically when `agent.license` is empty;
 an inline `agent.license` **literal** JWT is auto-migrated to the sidecar on the

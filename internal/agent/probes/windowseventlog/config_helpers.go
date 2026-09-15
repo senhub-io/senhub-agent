@@ -8,28 +8,6 @@ import (
 	"time"
 )
 
-// stringSlice coerces a YAML-decoded value into []string, dropping empty
-// entries. Accepts the []interface{} the YAML loader produces as well as
-// a native []string (test convenience).
-func stringSlice(v interface{}) []string {
-	var out []string
-	switch raw := v.(type) {
-	case []interface{}:
-		for _, e := range raw {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-	case []string:
-		for _, s := range raw {
-			if s != "" {
-				out = append(out, s)
-			}
-		}
-	}
-	return out
-}
-
 // intSlice coerces a YAML-decoded value into []int. YAML numbers decode
 // as float64 (via the JSON-ish path) or int depending on the loader; we
 // accept both, plus numeric strings, and reject anything else with an

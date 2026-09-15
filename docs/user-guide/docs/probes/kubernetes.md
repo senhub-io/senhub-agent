@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/kubernetes" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/kubernetes.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -33,24 +33,36 @@ moved.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `kubeconfig` | — | Path to a kubeconfig file. When empty, the probe uses the in-cluster ServiceAccount token |
-| `namespaces.include` | all | List of namespaces to monitor |
-| `namespaces.exclude` | `[kube-system]` | Namespaces to skip |
-| `collect.nodes` | `true` | Node health, capacity and pressure conditions |
-| `collect.pods` | `true` | Pod phase, readiness, restarts and resource requests |
-| `collect.containers` | `true` | Per-container state, waiting reason and resources |
-| `collect.deployments` | `true` | Deployment replica health |
-| `collect.statefulsets` | `true` | StatefulSet replica health |
-| `collect.daemonsets` | `true` | DaemonSet scheduling health |
-| `collect.replicasets` | **`false`** | Off by default: a Deployment owns one ReplicaSet per revision, so they multiply series without adding a fact the Deployment does not carry. Turn on while chasing a stuck rollout, where the previous ReplicaSet staying non-zero is exactly the symptom |
-| `collect.jobs` | `true` | Job active/succeeded/failed counts |
-| `collect.cronjobs` | `true` | CronJob active jobs and suspended state |
-| `collect.storage` | `true` | PersistentVolumes and Claims |
-| `collect.quotas` | `true` | ResourceQuota hard limits and use |
-| `collect.autoscalers` | `true` | HorizontalPodAutoscaler replica counts |
-| `collect.events` | `true` | Cluster Events, published on the log rail |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `kubeconfig` | No | - | Path of a kubeconfig file; empty uses the in-cluster service account. One instance per cluster: the identity comes from the cluster, so two instances pointing at two clusters do not collide. Example: `/home/agent/.kube/config` |
+| `interval` | No | `30` | Seconds between collections |
+| `namespaces` | No | - | Namespace selection |
+| `namespaces.include` | No | - | Namespaces to watch; empty means all |
+| `namespaces.exclude` | No | `[kube-system]` | Namespaces to skip |
+| `collect` | No | - | Resource kinds to collect |
+| `collect.nodes` | No | `true` | Node readiness, capacity and pressure conditions |
+| `collect.pods` | No | `true` | Pod phase, readiness, restarts and resource requests |
+| `collect.containers` | No | `true` | Per-container state, waiting reason and resources |
+| `collect.deployments` | No | `true` | Deployment replica health |
+| `collect.statefulsets` | No | `true` | StatefulSet replica health |
+| `collect.daemonsets` | No | `true` | DaemonSet scheduling health |
+| `collect.replicasets` | No | `false` | ReplicaSet replicas; off because each Deployment revision keeps one |
+| `collect.jobs` | No | `true` | Job active, succeeded and failed counts |
+| `collect.cronjobs` | No | `true` | CronJob active jobs and suspended state |
+| `collect.storage` | No | `true` | PersistentVolumes and claims |
+| `collect.quotas` | No | `true` | ResourceQuota limits and use |
+| `collect.autoscalers` | No | `true` | HorizontalPodAutoscaler replica counts |
+| `collect.events` | No | `true` | Cluster events, published on the log rail |
+
+<!-- schema:params:end -->
+
+Turn `collect.replicasets` on while chasing a stuck rollout: the previous
+ReplicaSet staying non-zero is exactly the symptom, and the Deployment
+alone does not show it.
 
 ## Metrics
 

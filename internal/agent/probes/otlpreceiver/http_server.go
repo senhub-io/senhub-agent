@@ -64,10 +64,15 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 	p.listener = lis
 	p.mu.Unlock()
 
+	p.markServing()
 	go func() {
-		if serveErr := server.Serve(lis); serveErr != nil && serveErr != http.ErrServerClosed {
+		serveErr := server.Serve(lis)
+		if serveErr != nil && serveErr != http.ErrServerClosed {
 			p.moduleLogger.Error().Err(serveErr).Msg("OTLP HTTP server stopped with error")
+			p.markStopped(serveErr)
+			return
 		}
+		p.markStopped(nil)
 	}()
 
 	go func() {

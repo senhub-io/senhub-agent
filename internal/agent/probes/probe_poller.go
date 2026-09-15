@@ -3,8 +3,6 @@ package probes
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -20,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
@@ -59,10 +58,7 @@ func (d *defaultStrategyRouter) GetTargetStrategies() []string {
 // GenerateProbeId creates a unique identifier for a probe configuration
 // by hashing its name and parameters
 func GenerateProbeId(config configuration.ProbeConfig) string {
-	input := fmt.Sprintf("%s-%v", config.Name, config.Params)
-	hash := sha256.New()
-	hash.Write([]byte(input))
-	return hex.EncodeToString(hash.Sum(nil))
+	return config.ID()
 }
 
 // NewProbePoller creates and initializes a new probe instance from the given configuration.
@@ -83,12 +79,33 @@ func NewProbePoller(
 
 	probeConstructor, err := getProbeConstructorForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("No constructor for probe %s\n%v", config.Name, err)
+		return nil, fmt.Errorf("No constructor for probe %s\n%w", config.Name, err)
 	}
 
-	probe, err := probeConstructor(config.Params, baseLogger)
+	// Said here rather than in each probe: a parameter the probe stopped
+	// reading is silently ignored, so the operator's only signal that
+	// their option does nothing is this line (#842).
+	reportLegacyParams(moduleLogger, config.Name, config.Type, config.Params)
+
+	// A parameter the probe could not read is not a parsing detail: the
+	// operator wrote a value and the probe used its default instead.
+	// Collected around the construction so the warning can name the
+	// probe, which the helpers themselves cannot know (#847).
+	var probe types.Probe
+	issues := types.CollectParamIssues(func() {
+		probe, err = probeConstructor(config.Params, baseLogger)
+	})
+	for _, issue := range issues {
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Str("probe_type", config.Type).
+			Str("param", issue.Key).
+			Interface("value", issue.Got).
+			Str("expected", issue.Want).
+			Msg("Configured parameter could not be read and was ignored; the probe uses its default instead")
+	}
 	if err != nil {
-		return nil, fmt.Errorf("unable to start probe %s: %v", config.Name, err)
+		return nil, fmt.Errorf("unable to start probe %s: %w", config.Name, err)
 	}
 
 	// Set the unique probe name from configuration (v2 format: name field)
@@ -117,6 +134,18 @@ func NewProbePoller(
 			Str("probe_name", config.Name).
 			Str("probe_type", config.Type).
 			Msg("Probe does not support SetProbeType() - transformers and discriminant tags will not work. Probe should embed BaseProbe.")
+	}
+
+	// Log routing comes from configuration, not from the probe's metric
+	// target list — see BaseProbe.LogTargets for why the two must not be
+	// the same list (#836).
+	if routable, ok := probe.(interface{ SetLogTargets([]string) }); ok {
+		routable.SetLogTargets(config.LogStrategies)
+	} else if len(config.LogStrategies) > 0 {
+		moduleLogger.Warn().
+			Str("probe_name", config.Name).
+			Strs("log_strategies", config.LogStrategies).
+			Msg("Probe does not support SetLogTargets() - log_strategies will be ignored and its logs will reach every log output. Probe should embed BaseProbe.")
 	}
 
 	probePoller := &ProbePoller{
@@ -180,8 +209,10 @@ func (p *ProbePoller) GetProbeParams() configuration.ProbeConfigParams {
 }
 
 // Start begins the periodic collection of metrics from the probe.
-// It handles initialization, scheduling, and error recovery.
-func (p *ProbePoller) Start(quitChannel chan struct{}) error {
+// It handles initialization, scheduling, and error recovery. The probe
+// runs until ctx is cancelled or Shutdown is called; it never stops
+// itself.
+func (p *ProbePoller) Start(ctx context.Context) error {
 	p.moduleLogger.Debug().Msg("Starting probe")
 
 	if !p.Probe.ShouldStart() {
@@ -189,7 +220,7 @@ func (p *ProbePoller) Start(quitChannel chan struct{}) error {
 		return nil
 	}
 
-	if err := p.scheduler.Start(quitChannel); err != nil {
+	if err := p.scheduler.Start(ctx); err != nil {
 		return err
 	}
 	p.registerEntitySource()
@@ -217,6 +248,14 @@ func (p *ProbePoller) registerEntitySource() {
 	}
 	if _, isNoOp := src.(types.NoOpEntitySource); isNoOp {
 		return
+	}
+	// The instance's governance rides on every entity it observes. A block
+	// that does not parse is reported by `config check`; here it is only
+	// skipped, so a typo in a label never stops a probe from collecting.
+	if gov, err := p.config.ParseGovernance(); err != nil {
+		p.moduleLogger.Warn().Err(err).Msg("governance block ignored")
+	} else if !gov.IsZero() {
+		src = entity.WithAttributes(src, gov.Attributes())
 	}
 	p.unregisterEntitySource = entity.RegisterSource(src)
 }
@@ -246,12 +285,14 @@ func (p *ProbePoller) collect() error {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
-		agentstate.RecordProbeHealth(p.ProbeId, false)
-		return fmt.Errorf("collect failed: %v", err)
+		p.recordHealth(err)
+		return fmt.Errorf("collect failed: %w", err)
 	}
 	span.SetAttributes(attribute.Int("probe.datapoints_emitted", len(data)))
 	span.SetStatus(codes.Ok, "")
-	agentstate.RecordProbeHealth(p.ProbeId, true)
+	p.recordHealth(nil)
+
+	data = p.withIdentityTags(data)
 
 	if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
 		p.moduleLogger.Debug().Msg("Using probe's strategy router")
@@ -260,6 +301,107 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// recordHealth publishes the probe's health for this cycle.
+//
+// For a polling probe that is "did the last Collect succeed". For a
+// listener probe it is the state of the listener itself: its Collect
+// has nothing to do, so a successful no-op cycle says only that the
+// no-op ran. Seven probes reported healthy on that basis while their
+// socket could have been closed for hours (#289).
+//
+// collectErr is the error Collect returned, or nil. A listener probe
+// whose Collect failed is unhealthy regardless of what its listener
+// says — the failure is real either way.
+func (p *ProbePoller) recordHealth(collectErr error) {
+	if collectErr != nil {
+		p.noteHealth(false, collectErr)
+		return
+	}
+
+	listener, ok := p.Probe.(types.ListenerProbe)
+	if !ok {
+		p.noteHealth(true, nil)
+		return
+	}
+
+	if err := listener.ListenerHealth(); err != nil {
+		p.moduleLogger.Warn().
+			Err(err).
+			Str("probe_name", p.Probe.GetName()).
+			Msg("listener is not able to receive; probe reported unhealthy")
+		agentstate.IncrementCollectErrors(p.probeType(), "listener")
+		p.noteHealth(false, err)
+		return
+	}
+	p.noteHealth(true, nil)
+}
+
+// noteHealth publishes the health and turns a transition into an event
+// the console lists: the first failure after healthy cycles, and the
+// first healthy cycle after failures. Steady states stay quiet.
+func (p *ProbePoller) noteHealth(ok bool, cause error) {
+	if !ok && cause != nil {
+		agentstate.RecordProbeError(p.ProbeId, cause.Error())
+	}
+	switch agentstate.RecordProbeHealth(p.ProbeId, ok) {
+	case "failed":
+		msg := "collect failed"
+		if cause != nil {
+			msg += ": " + cause.Error()
+		}
+		agentstate.RecordEvent(agentstate.EventError, agentstate.EventKindProbe, p.Probe.GetName(), msg)
+	case "recovered":
+		agentstate.RecordEvent(agentstate.EventInfo, agentstate.EventKindProbe, p.Probe.GetName(), "collecting again")
+	}
+}
+
+// withIdentityTags guarantees every datapoint leaving a probe carries
+// probe_name and probe_type, whoever produced it.
+//
+// Probes are expected to call EnrichDataPointsWithProbeName themselves,
+// and most do — but "expected to" is the problem: a probe that forgets
+// ships untagged datapoints, which reach the cache with a colliding key
+// and the sinks with no way to tell one instance from another, silently.
+// Adding the tags here makes the guarantee structural instead of
+// conventional (#289).
+//
+// It adds only what is missing, so a probe that already enriched is
+// untouched and no tag is ever duplicated. That is what lets the
+// probe-side calls be removed later, one probe at a time, without a
+// flag day across two repositories.
+func (p *ProbePoller) withIdentityTags(data []datapoint.DataPoint) []datapoint.DataPoint {
+	probeName := p.Probe.GetName()
+	probeType := p.probeType()
+
+	for i := range data {
+		var hasName, hasType bool
+		for _, t := range data[i].Tags {
+			switch t.Key {
+			case "probe_name":
+				hasName = true
+			case "probe_type":
+				hasType = true
+			}
+		}
+		if hasName && hasType {
+			continue
+		}
+
+		// Copy before appending: the probe may hold the slice, and a
+		// shared backing array would let one datapoint's append clobber
+		// the next one's tags.
+		enriched := append([]tags.Tag{}, data[i].Tags...)
+		if !hasName {
+			enriched = append(enriched, tags.Tag{Key: "probe_name", Value: probeName})
+		}
+		if !hasType {
+			enriched = append(enriched, tags.Tag{Key: "probe_type", Value: probeType})
+		}
+		data[i].Tags = enriched
+	}
+	return data
 }
 
 // addDataPointCtx is a thin wrapper that exists so future code can
@@ -312,6 +454,8 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 	return func(data []datapoint.DataPoint) error {
 		p.moduleLogger.Debug().Int("datapoints_count", len(data)).Msg("Callback triggered")
 
+		data = p.withIdentityTags(data)
+
 		var err error
 		if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
 			err = p.addDataPoint(data, strategyRouter)
@@ -320,9 +464,9 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 		}
 		if err != nil {
 			agentstate.IncrementCollectErrors(p.probeType(), "route")
-			agentstate.RecordProbeHealth(p.ProbeId, false)
+			p.noteHealth(false, err)
 		} else {
-			agentstate.RecordProbeHealth(p.ProbeId, true)
+			p.recordHealth(nil)
 		}
 		return err
 	}

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -110,7 +111,7 @@ type windowsMemoryCollector struct {
 	logger      *logger.ModuleLogger
 }
 
-func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger) (osCollector, error) {
+func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger) (hostpoll.Collector, error) {
 	// Initialize PDH logger
 	pdh.InitializePDHLogger(baseLogger)
 
@@ -119,7 +120,7 @@ func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger
 
 	query, err := pdh.NewQuery()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create PDH query: %v", err)
+		return nil, fmt.Errorf("failed to create PDH query: %w", err)
 	}
 
 	collector := &windowsMemoryCollector{
@@ -160,7 +161,7 @@ func (w *windowsMemoryCollector) initializeCounters() error {
 
 		w.logger.Debug().Str("metric", metricName).Str("path", path).Msg("Adding counter")
 		if err := w.query.AddCounter(path); err != nil {
-			return fmt.Errorf("failed to add counter %s: %v", metricName, err)
+			return fmt.Errorf("failed to add counter %s: %w", metricName, err)
 		}
 	}
 	return nil
@@ -179,12 +180,12 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 	}
 
 	if err := w.query.Collect(); err != nil {
-		return nil, fmt.Errorf("failed to collect PDH metrics: %v", err)
+		return nil, fmt.Errorf("failed to collect PDH metrics: %w", err)
 	}
 
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 
 	metrics := NewMemoryMetrics()

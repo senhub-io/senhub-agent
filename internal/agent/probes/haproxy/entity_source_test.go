@@ -45,7 +45,7 @@ func TestEntitySource_NoNetworkInID(t *testing.T) {
 		t.Fatal("instanceID must not be empty")
 	}
 	for _, bad := range []string{"192.0.2.1", "9090", "haproxy://"} {
-		for _, c := range []rune(id) {
+		for _, c := range id {
 			_ = c
 		}
 		if contains(id, bad) {

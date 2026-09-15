@@ -50,6 +50,39 @@ Applies to string VALUES only — never to YAML keys.
 
 Substitution runs **after** the multi-file merge — a reference in a `strategies.d/` fragment sees the same environment as a reference in the monolithic file.
 
+## Per-probe log routing (`log_strategies`)
+
+A probe that publishes onto the log rail can be routed to specific
+outputs, the way the metric router already routes its datapoints:
+
+```yaml
+- name: app-tail
+  type: filetail
+  log_strategies: ["otlp"]     # its logs go to OTLP only
+  params: { ... }
+```
+
+Absent (the default) means every log output receives the records — what
+every existing configuration does today.
+
+Two rules, both load-bearing:
+
+- **Only `otlp` and `event` are accepted.** They are the outputs that can
+  consume a log record; the metric sinks (`senhub`, `prtg`, `http`) take
+  datapoints and would deliver the logs nowhere. `agent config check`
+  rejects an unroutable value rather than letting the operator find out
+  as missing data. The set is `configuration.LogCapableStrategies`.
+- **This is NOT the probe's metric target list.** They answer different
+  questions and reusing one for the other is a data-loss bug, not a
+  shortcut: the syslog probe sends its *metrics* to the legacy `event`
+  sink, so borrowing that list for its logs would cut them off the OTLP
+  rail entirely (#836). `BaseProbe.LogTargets()` is the log answer;
+  `GetTargetStrategies()` is the metric one.
+
+`ProbePoller` applies the configured value with `SetLogTargets`; a probe
+never sets its own. A log producer stamps it on the records it
+publishes: `rec.TargetStrategies = p.LogTargets()`.
+
 ## config_version bumps
 
 The schema version is in `config_version:` at the top of `agent.yaml`. Current version: **3**.

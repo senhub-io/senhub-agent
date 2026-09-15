@@ -15,6 +15,7 @@ package otelmapper
 import (
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"time"
 )
 
 // OtelRecord is a resolved, OTel-shaped data point ready for transport-
@@ -32,6 +33,17 @@ type OtelRecord struct {
 
 	// OTel unit (UCUM). Example: "s", "By", "1", "{packet}", "bit/s"
 	Unit string
+
+	// ObservedAt is when the value was actually measured. Zero means the
+	// producer did not say, and the serializer falls back to export time.
+	//
+	// It exists because re-exporting a stored series with `now` asserts a
+	// measurement that never happened: a target removed from a probe kept
+	// being published at 0 with fresh timestamps, and the alert stayed red
+	// on something nobody was querying any more (#812). A consumer can
+	// only tell a fresh zero from a stale one if the timestamp is the
+	// observation, not the export.
+	ObservedAt time.Time
 
 	// OTel metric type: "counter", "gauge", "updowncounter", "histogram"
 	Type string

@@ -97,7 +97,6 @@ type LinuxLogsProbe struct {
 	// quitOnce guards the close of the embedded quit channel — Probe
 	// pollers may signal shutdown via either OnShutdown(ctx) or by
 	// closing the channel passed to OnStart.
-	quitOnce sync.Once
 
 	// emitted counts log records published to the log rail across the
 	// probe's lifetime, surviving journalctl respawns (the counter lives
@@ -229,7 +228,7 @@ func (p *LinuxLogsProbe) OnStart(quitChannel chan struct{}) error {
 		Bool("include_boot", p.config.IncludeBoot).
 		Msg("Starting linux_logs probe")
 
-	reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
+	reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), p.LogTargets(), &p.emitted)
 	if err != nil {
 		return fmt.Errorf("start journal reader: %w", err)
 	}
@@ -295,7 +294,7 @@ func (p *LinuxLogsProbe) respawn(quitChannel chan struct{}, dead *journalReader,
 		case <-time.After(*backoff):
 		}
 
-		reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
+		reader, err := newJournalReader(p.config, p.moduleLogger, p.GetName(), p.LogTargets(), &p.emitted)
 		if err != nil {
 			p.moduleLogger.Error().
 				Err(err).

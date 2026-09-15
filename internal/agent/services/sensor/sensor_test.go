@@ -49,7 +49,7 @@ func (m *MockConfigProvider) TriggerConfigChange(reason string) {
 }
 
 func (m *MockConfigProvider) GetName() string                { return "MockConfigProvider" }
-func (m *MockConfigProvider) Start(chan struct{}) error      { return nil }
+func (m *MockConfigProvider) Start(context.Context) error    { return nil }
 func (m *MockConfigProvider) Shutdown(context.Context) error { return nil }
 
 func TestNewSensor(t *testing.T) {
@@ -84,9 +84,9 @@ func TestSensor_Start_NoProbes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start with no probes should not error, got: %v", err)
 	}
@@ -113,9 +113,9 @@ func TestSensor_Start_WithValidProbe(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start with valid probe should not error, got: %v", err)
 	}
@@ -146,10 +146,10 @@ func TestSensor_Start_WithInvalidProbe(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
 	// Start should not fail even if probe creation fails
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start should not error even with invalid probe, got: %v", err)
 	}
@@ -216,10 +216,10 @@ func TestSensor_OnConfigChanged(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
 	// Start sensor - registers config change callback
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start failed: %v", err)
 	}
@@ -271,10 +271,10 @@ func TestSensor_Shutdown_WithProbes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
 	// Start with multiple probes
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start failed: %v", err)
 	}
@@ -344,9 +344,9 @@ func TestSensor_MultipleProbes_DifferentTypes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
+	runCtx := context.Background()
 
-	err := sensor.Start(quitChannel)
+	err := sensor.Start(runCtx)
 	if err != nil {
 		t.Errorf("Start with multiple probes failed: %v", err)
 	}
@@ -492,7 +492,7 @@ func TestSensor_SyncConfiguration_ConcurrentConfigEvents(t *testing.T) {
 	}
 
 	s := NewSensor(addDataPoint, mockProvider, baseLogger).(*sensor)
-	if err := s.Start(make(chan struct{})); err != nil {
+	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
@@ -570,17 +570,18 @@ func TestSensor_SyncConfiguration_RejectsUnboundLicense(t *testing.T) {
 			Probes: []configuration.ProbeConfig{},
 			Agent: configuration.AgentConfig{
 				License:           "signed-but-bound-to-another-agent",
-				AuthenticationKey: "agent-key-A",
+				AuthenticationKey: "aaaaaaaa-1111-4111-8111-111111111111",
 			},
 		},
 	}
 
-	// The validator parses the token fine, but the license is bound to a
-	// different agent key (Subject) than the one configured here.
+	// The validator parses the token fine, but the license is a per-agent
+	// one (its Subject is an agent key, a UUID) issued for a different
+	// agent than the one configured here.
 	validator := &fakeLicenseValidator{
 		lic: &license.License{
 			Tier:    license.TierPro,
-			Subject: "agent-key-B",
+			Subject: "bbbbbbbb-2222-4222-8222-222222222222",
 		},
 	}
 
@@ -599,6 +600,46 @@ func TestSensor_SyncConfiguration_RejectsUnboundLicense(t *testing.T) {
 
 	if s.license != nil {
 		t.Errorf("license bound to a different agent key was accepted during sync (tier=%v); want rejected (nil)", s.license.Tier)
+	}
+}
+
+// TestSensor_SyncConfiguration_AcceptsCustomerLicense pins the customer
+// model: a licence whose Subject is a customer identifier (not a UUID) is
+// valid on every agent of the fleet, whatever this agent's key is.
+func TestSensor_SyncConfiguration_AcceptsCustomerLicense(t *testing.T) {
+	mockArgs := &cliArgs.ParsedArgs{}
+	baseLogger := logger.NewLogger(mockArgs)
+
+	mockProvider := &MockConfigProvider{
+		config: configuration.ConfigurationData{
+			Probes: []configuration.ProbeConfig{},
+			Agent: configuration.AgentConfig{
+				License:           "signed-customer-licence",
+				AuthenticationKey: "aaaaaaaa-1111-4111-8111-111111111111",
+			},
+		},
+	}
+	validator := &fakeLicenseValidator{
+		lic: &license.License{
+			Tier:    license.TierPro,
+			Subject: "client1",
+		},
+	}
+	addDataPoint := func(data []datapoint.DataPoint, router data_store.StrategyRouter) error { return nil }
+	s := &sensor{
+		addDataPoint:     addDataPoint,
+		configProvider:   mockProvider,
+		moduleLogger:     logger.NewModuleLogger(baseLogger, "sensor-test"),
+		licenseValidator: validator,
+	}
+	if err := s.SyncConfiguration(); err != nil {
+		t.Fatalf("SyncConfiguration returned error: %v", err)
+	}
+	if s.license == nil {
+		t.Fatal("a customer licence (non-UUID subject) must be accepted on any agent; it was rejected")
+	}
+	if s.license.Tier != license.TierPro {
+		t.Errorf("tier = %v, want pro", s.license.Tier)
 	}
 }
 
@@ -621,8 +662,8 @@ func TestSensor_Start_DisabledProbeIsNotStarted(t *testing.T) {
 	addDataPoint := func(data []datapoint.DataPoint, router data_store.StrategyRouter) error { return nil }
 
 	s := NewSensor(addDataPoint, mockProvider, baseLogger)
-	quitChannel := make(chan struct{})
-	if err := s.Start(quitChannel); err != nil {
+	runCtx := context.Background()
+	if err := s.Start(runCtx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })

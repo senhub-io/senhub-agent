@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/user"
 	"runtime"
@@ -16,10 +16,21 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 )
 
+// maxStopBudget caps the wall-clock the daemon spends stopping,
+// whatever the services ask for. Windows' SCM kills a service that
+// takes too long to acknowledge a stop, and systemd's TimeoutStopSec
+// then SIGKILLs — a budget past either of those buys nothing and turns
+// a clean stop into a kill.
+const maxStopBudget = 20 * time.Second
+
 type program struct {
 	agent agent.Agent
 	done  chan bool
 	args  *cliArgs.ParsedArgs
+	// cancel is the root of the agent's lifecycle context. Stop cancels
+	// it (through the supervisor) so every goroutine in the process
+	// descends from one cancellation.
+	cancel context.CancelFunc
 }
 
 func (p *program) Start(s service.Service) error {
@@ -29,29 +40,46 @@ func (p *program) Start(s service.Service) error {
 	} else {
 		p.agent = agent.NewAgent()
 	}
-	go p.run()
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancel = cancel
+	go p.run(ctx)
 	return nil
 }
 
 func (p *program) Stop(s service.Service) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// The budget is what the services declare they need, not a single
+	// flat allowance that whichever service stops first can consume in
+	// full (#285). The supervisor still bounds each one individually.
+	budget := maxStopBudget
+	if b, ok := p.agent.(interface{ StopBudget() time.Duration }); ok {
+		if d := b.StopBudget(); d > 0 && d < maxStopBudget {
+			budget = d
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 
 	if err := p.agent.Shutdown(ctx); err != nil {
-		log.Printf("Agent forced to shutdown with error: %v", err)
+		// The service manager is tearing the process down; the agent's
+		// own logger is part of what is being shut down, so this last
+		// word goes straight to stderr.
+		fmt.Fprintf(os.Stderr, "Agent forced to shutdown with error: %v\n", err)
+	}
+	if p.cancel != nil {
+		p.cancel()
 	}
 	p.done <- true
 	return nil
 }
 
-func (p *program) run() {
-	if err := p.agent.Start(); err != nil {
+func (p *program) run(ctx context.Context) {
+	if err := p.agent.Start(ctx); err != nil {
 		// handleStartError already calls os.Exit(1) before Start returns
 		// an error on misconfiguration. This path is a defence-in-depth
 		// fallback for callers that override exitFn (tests) or for future
 		// code that makes handleStartError non-fatal.
-		log.Printf("agent error: %s", err)
-		os.Exit(1)
+		fatalf("agent error: %s", err)
 	}
 }
 
@@ -111,7 +139,7 @@ func checkPrivileges(command string) error {
 
 	currentUser, err := user.Current()
 	if err != nil {
-		return fmt.Errorf("unable to determine current user: %v", err)
+		return fmt.Errorf("unable to determine current user: %w", err)
 	}
 	if currentUser.Uid != "0" {
 		return fmt.Errorf("the %q command manages the system service and must be run with root privileges. Please use 'sudo' or run as root", command)
@@ -120,10 +148,9 @@ func checkPrivileges(command string) error {
 }
 
 // fatalf prints a user-facing failure to stderr and exits non-zero. It
-// is the CLI's single fatal-error path: command handlers use it instead
-// of log.Fatalf so a failure reads as a plain "Error: ..." line on
-// stderr, consistent with the rest of the CLI, rather than a
-// timestamped log line (the default logger runs with LstdFlags).
+// is the CLI's single fatal-error path, so a failure reads as a plain
+// "Error: ..." line on stderr, consistent with the rest of the CLI
+// rather than with a timestamped log line.
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
@@ -240,7 +267,7 @@ func parseUpdateCommand(argv []string) (parsed *cliArgs.ParsedArgs, wantHelp boo
 		return nil, false, fmt.Errorf("building update parser: %w", perr)
 	}
 	if perr := p.Parse(argv); perr != nil {
-		if perr == arg.ErrHelp {
+		if errors.Is(perr, arg.ErrHelp) {
 			return nil, true, nil
 		}
 		return nil, false, perr
@@ -291,6 +318,10 @@ func readOnlyCommand(args []string) bool {
 	switch args[1] {
 	case "--help", "-h", "help", "--version", "version", "debug-modules-list":
 		return true
+	case "console":
+		// Reads the configuration only; when the sealed key needs more
+		// rights than the caller has, it asks for them itself.
+		return true
 	case "config":
 		if len(args) > 2 && (args[2] == "check" || args[2] == "show") {
 			return true
@@ -339,6 +370,7 @@ var knownTopLevelArgs = map[string]struct{}{
 	"start": {}, "stop": {}, "restart": {},
 	"status": {}, "run": {},
 	"refresh-unit": {},
+	"console":      {},
 }
 
 func Main() {
@@ -389,6 +421,10 @@ func Main() {
 
 	// If first argument is a service command
 	command := os.Args[1]
+
+	// The web console's probe configurator validates and test-runs probes
+	// through the registry this package sees and the strategy does not.
+	wireProbeHooks()
 
 	// Privilege gate runs before the subcommand dispatch, EXCEPT for
 	// diagnostic commands enumerated in readOnlyCommand. On Linux only
@@ -454,6 +490,13 @@ func Main() {
 			migrateConfig(configPath)
 			return
 		}
+		if len(os.Args) > 2 && os.Args[2] == "set" {
+			// agent config set <key> <value> [--config-path <path>]
+			// Change one setting in the multi-file layout without
+			// hand-editing YAML. The running agent reloads the change.
+			runConfigSet(os.Args[3:])
+			return
+		}
 		if len(os.Args) > 2 && os.Args[2] == "init" {
 			// agent config init [--config-path <path>] [--license <jwt>]
 			//                    [--tags k=v,k2=v2]
@@ -503,6 +546,9 @@ func Main() {
 		return
 	case "refresh-unit":
 		runRefreshUnit()
+		return
+	case "console":
+		runConsole(os.Args[2:])
 		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
 		// Commands that take no positional args: dispatched directly.
@@ -570,7 +616,7 @@ func showHelp() {
 	configPath, err := cliArgs.GetAbsoluteConfigPath("")
 	if err == nil {
 		if key, err := extractAgentKeyFromConfig(configPath); err == nil && key != "" {
-			consoleURL = fmt.Sprintf("http://127.0.0.1:8080/web/%s/dashboard", key)
+			consoleURL = buildDashboardURL(configPath, key)
 		}
 	}
 
@@ -608,12 +654,17 @@ License Commands:
 
 Other Commands:
     version              Show agent version
+    license key          Print this agent's key (order a licence for it)
+    console              Open the web console in the browser (--print to
+                          show the address only; asks for elevation when
+                          the sealed agent key requires it)
     update               Check for new versions
     update --list        List all available versions (stable + beta)
     update <version>     Install a specific version
     config init [opts]    Create the default offline configuration if none
                           exists (idempotent). Accepts --config-path,
-                          --license <jwt>, --tags k=v,..., --otlp-endpoint
+                          --http-port <n>, --license <jwt>, --tags k=v,...,
+                          --otlp-endpoint; refuses a port already in use
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML
@@ -653,6 +704,7 @@ Agent Options:
     --debug-modules module1,module2        [deprecated] Use --filter instead
 
 HTTPS/TLS Options:
+    --http-port PORT                       HTTP port (default: 8080)
     --enable-https                         Enable HTTPS on the HTTP strategy
     --https-port PORT                      HTTPS port (default: 8443)
     --https-hosts HOST1,HOST2              Hostnames for auto-generated certificate SAN
