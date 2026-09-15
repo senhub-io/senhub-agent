@@ -47,11 +47,14 @@ resolve_machine_id 2>/dev/null
 check "SENHUB_HOST_ID wins and is normalised" "$(cat "$MACHINE_ID_PATH")" "aabbccddeeff00112233445566778899"
 unset SENHUB_HOST_ID
 
-# 3. A corrupt kept machine-id is ignored rather than written through.
+# 3. A corrupt kept machine-id is ignored rather than written through: the
+#    file ends up with a fresh identity (Linux, where /proc provides one) or
+#    empty (macOS, where it does not), never with the corrupt value.
 printf 'not-a-machine-id\n' > "$STATE_DIR/machine-id"
 : > "$MACHINE_ID_PATH"
 resolve_machine_id 2>/dev/null || true
-check "a corrupt kept machine-id is not written through" "$(cat "$MACHINE_ID_PATH")" ""
+check "a corrupt kept machine-id is not written through" \
+  "$(printf '%s\n' "$(cat "$MACHINE_ID_PATH")" | grep -Ec '^([0-9a-f]{32})?$')" "1"
 
 # 4. The agent key kept in the state directory is put back into agent.yaml.
 printf 'config_version: 3\n\nagent:\n  key: "e313cd19-45d9-4711-8b09-3f58ac6e7595"\n  # a trailing comment\n\ncache:\n  retention_minutes: 5\n' > "$CONFIG"

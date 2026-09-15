@@ -92,7 +92,7 @@ func Sync(docsDir string, probes []spec.Probe, update bool) (Result, error) {
 		if err != nil {
 			return res, fmt.Errorf("reading %s: %w", page, err)
 		}
-		body := string(raw)
+		body := strings.ReplaceAll(string(raw), "\r\n", "\n")
 		want := Render(p)
 
 		i := strings.Index(body, Start)
