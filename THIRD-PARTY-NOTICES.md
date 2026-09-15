@@ -14,15 +14,15 @@ Regenerate with `make third-party-notices`.
 
 | Licence | Components |
 |---|---|
-| Apache-2.0 | 54 |
-| MIT | 34 |
+| Apache-2.0 | 56 |
+| MIT | 38 |
 | BSD-3-Clause | 28 |
-| BSD-2-Clause | 6 |
-| MPL-2.0 | 4 |
+| BSD-2-Clause | 7 |
+| MPL-2.0 | 3 |
 | ISC | 1 |
 | Zlib | 1 |
 
-Total: 128 components.
+Total: 134 components.
 
 ## Detail
 
@@ -33,20 +33,24 @@ Total: 128 components.
 | `filippo.io/edwards25519` | v1.2.0 | BSD-3-Clause |
 | `filippo.io/hpke` | v0.4.0 | BSD-3-Clause |
 | `github.com/IBM/sarama` | v1.50.2 | MIT |
+| `github.com/Microsoft/go-winio` | v0.6.2 | MIT |
 | `github.com/alecthomas/participle` | v0.4.1 | MIT |
 | `github.com/alexflint/go-arg` | v1.6.1 | BSD-2-Clause |
 | `github.com/alexflint/go-scalar` | v1.2.0 | BSD-2-Clause |
 | `github.com/avast/retry-go/v4` | v4.7.0 | MIT |
+| `github.com/billgraziano/dpapi` | v0.5.0 | MIT |
 | `github.com/cenkalti/backoff/v5` | v5.0.3 | MIT |
 | `github.com/cespare/xxhash/v2` | v2.3.0 | MIT |
 | `github.com/coreos/go-systemd/v22` | v22.7.0 | Apache-2.0 |
 | `github.com/davecgh/go-spew` | v1.1.2-0.20180830191138-d8f796af33cc | ISC |
+| `github.com/digitalocean/go-smbios` | v0.0.0-20180907143718-390a4f403a8e | Apache-2.0 |
 | `github.com/eapache/go-resiliency` | v1.7.0 | MIT |
 | `github.com/emicklei/go-restful/v3` | v3.13.0 | MIT |
 | `github.com/fsnotify/fsnotify` | v1.10.1 | BSD-2-Clause |
 | `github.com/fxamacker/cbor/v2` | v2.9.0 | MIT |
 | `github.com/go-logr/logr` | v1.4.4 | Apache-2.0 |
 | `github.com/go-logr/stdr` | v1.2.2 | Apache-2.0 |
+| `github.com/go-ole/go-ole` | v1.3.0 | MIT |
 | `github.com/go-openapi/jsonpointer` | v0.21.0 | Apache-2.0 |
 | `github.com/go-openapi/jsonreference` | v0.20.2 | Apache-2.0 |
 | `github.com/go-openapi/swag` | v0.23.0 | Apache-2.0 |
@@ -89,18 +93,19 @@ Total: 128 components.
 | `github.com/munnerz/goautoneg` | v0.0.0-20191010083416-a7dc8b61c822 | BSD-3-Clause |
 | `github.com/nxadm/tail` | v1.4.11 | MIT |
 | `github.com/pierrec/lz4/v4` | v4.1.27 | BSD-3-Clause |
+| `github.com/pkg/errors` | v0.9.1 | BSD-2-Clause |
 | `github.com/prometheus-community/pro-bing` | v0.9.0 | MIT |
 | `github.com/prometheus/client_model` | v0.6.2 | Apache-2.0 |
 | `github.com/prometheus/common` | v0.67.5 | Apache-2.0 |
 | `github.com/rcrowley/go-metrics` | v0.0.0-20250401214520-65e299d6c5c9 | BSD-2-Clause |
 | `github.com/rs/zerolog` | v1.35.1 | MIT |
 | `github.com/shirou/gopsutil/v3` | v3.24.5 | BSD-3-Clause |
-| `github.com/shoenig/go-m1cpu` | v0.1.6 | MPL-2.0 |
 | `github.com/shopspring/decimal` | v1.4.0 | MIT |
 | `github.com/sijms/go-ora/v2` | v2.9.0 | MIT |
 | `github.com/sleepinggenius2/gosmi` | v0.4.4 | MIT |
 | `github.com/spf13/pflag` | v1.0.9 | BSD-3-Clause |
 | `github.com/tklauser/go-sysconf` | v0.3.12 | BSD-3-Clause |
+| `github.com/tklauser/numcpus` | v0.6.1 | Apache-2.0 |
 | `github.com/toise-dev/toise/pkg/emit` | v0.9.0 | Apache-2.0 |
 | `github.com/x448/float16` | v0.8.4 | MIT |
 | `github.com/xdg-go/pbkdf2` | v1.0.0 | Apache-2.0 |
@@ -108,6 +113,7 @@ Total: 128 components.
 | `github.com/xdg-go/stringprep` | v1.0.4 | Apache-2.0 |
 | `github.com/ybbus/httpretry` | v1.0.2 | MIT |
 | `github.com/youmark/pkcs8` | v0.0.0-20240726163527-a2c0da244d78 | MIT |
+| `github.com/yusufpapurcu/wmi` | v1.2.4 | MIT |
 | `go.mongodb.org/mongo-driver` | v1.17.9 | Apache-2.0 |
 | `go.opentelemetry.io/auto/sdk` | v1.2.1 | Apache-2.0 |
 | `go.opentelemetry.io/otel` | v1.45.0 | Apache-2.0 |
