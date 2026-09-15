@@ -41,7 +41,7 @@ func TestRelativeCertificatePathIsReportedAbsolute(t *testing.T) {
 		t.Errorf("path %q still reads as relative", got)
 	}
 
-	abs := filepath.Join(string(filepath.Separator), "etc", "senhub-agent", "certs", "agent-cert.pem")
+	abs := filepath.Join(t.TempDir(), "certs", "agent-cert.pem")
 	if got := absolutePathOf(abs); got != abs {
 		t.Errorf("absolute path rewritten to %q, want %q unchanged", got, abs)
 	}

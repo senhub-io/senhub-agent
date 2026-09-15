@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -28,7 +29,7 @@ func TestEnsureSelfSignedCertProducesAUsablePair(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat on the generated key: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0600 {
 		t.Errorf("private key written with mode %#o, want 0600", perm)
 	}
 }

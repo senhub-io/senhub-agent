@@ -323,6 +323,7 @@ func TestLogsReplayerRetriesWithoutNewRecords(t *testing.T) {
 	if err := q.enqueue(sampleRecords(3)); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
+	time.Sleep(20 * time.Millisecond) // the Windows clock does not resolve below that
 	if n, waited := q.pending(); n != 3 || waited <= 0 {
 		t.Fatalf("the queue must report what waits and for how long, got %d records waiting %v", n, waited)
 	}
