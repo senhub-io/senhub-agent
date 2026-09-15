@@ -142,7 +142,7 @@ Managed server availability:
 
 ## PRTG Integration
 
-The probe includes PRTG lookups for status fields. When creating PRTG sensors, use the **REST Custom** sensor type pointing to:
+The probe includes PRTG lookups for status fields. When creating PRTG sensors, use the **HTTP Data Advanced** sensor type pointing to:
 
 ```
 http://<agent-ip>:<port>/api/<agent-key>/prtg/metrics/<probe-name>?tags=metric_type:<category>
