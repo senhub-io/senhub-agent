@@ -5,6 +5,7 @@ Ecrite depuis le graphe de dependances du build, pas depuis go.mod : go.mod
 porte aussi ce que seuls les tests utilisent, et une annexe contractuelle ne
 doit nommer que ce qui part chez le client.
 """
+import os
 import pathlib
 import re
 import subprocess
@@ -16,7 +17,10 @@ MAIN = "senhub-agent.go"
 # L'ordre compte : le premier motif qui matche gagne, et les licences BSD se
 # distinguent par une clause que la precedente n'a pas.
 LICENCES = [
-    ("Apache-2.0", r"Apache License\s+Version 2\.0"),
+    # go-smbios ecrit le titre en markdown ("Apache License", un filet de "=",
+    # puis "_Version 2.0_") ; yaml.v3 cite "Apache License, Version 2.0" dans
+    # un fichier MIT, la virgule ne doit donc pas passer.
+    ("Apache-2.0", r"Apache License[\s=_]+Version 2\.0"),
     # Certains modules ecrivent le titre en toutes lettres et en minuscules
     # ("Mozilla Public License, version 2.0"), d'autres en majuscules sans
     # virgule : un seul motif souple couvre les deux.
@@ -34,12 +38,20 @@ NAMES = ("LICENSE", "LICENCE", "LICENSE.md", "LICENSE.txt", "LICENSE-MIT",
 
 
 def linked_modules():
-    """Les modules dont au moins un paquet entre dans le binaire de l'agent."""
-    out = subprocess.run(
-        ["go", "list", "-deps", "-f",
-         "{{if .Module}}{{.Module.Path}}\t{{.Module.Version}}\t{{.Module.Dir}}{{end}}",
-         "./cmd/agent"],
-        cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    """Les modules dont au moins un paquet entre dans un binaire distribue.
+
+    Le graphe depend de GOOS (DPAPI, WMI et SMBIOS ne sont lies que sous
+    Windows, sysconf que sous Linux) : on prend l'union des deux systemes
+    livres, pour que le fichier ne depende pas de la machine qui le genere.
+    """
+    out = ""
+    for goos in ("linux", "windows"):
+        env = dict(os.environ, GOOS=goos)
+        out += subprocess.run(
+            ["go", "list", "-deps", "-f",
+             "{{if .Module}}{{.Module.Path}}\t{{.Module.Version}}\t{{.Module.Dir}}{{end}}",
+             "./cmd/agent"],
+            cwd=ROOT, capture_output=True, text=True, check=True, env=env).stdout
     seen = {}
     for line in out.splitlines():
         if not line.strip():
