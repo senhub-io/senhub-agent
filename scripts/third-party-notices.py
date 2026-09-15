@@ -57,9 +57,14 @@ def identify(directory):
     if not directory:
         return None
     base = pathlib.Path(directory)
+    if not base.is_dir():
+        return None
+    # Linux distingue la casse, macOS non : "license.md" doit etre trouve
+    # sur les deux, sinon le test passe ici et echoue en CI.
+    present = {f.name.lower(): f for f in base.iterdir() if f.is_file()}
     for name in NAMES:
-        f = base / name
-        if not f.is_file():
+        f = present.get(name.lower())
+        if f is None:
             continue
         text = f.read_text(errors="replace")[:8000]
         for label, pattern in LICENCES:
