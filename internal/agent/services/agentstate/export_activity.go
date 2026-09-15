@@ -35,6 +35,11 @@ type ExportActivity struct {
 	LastError   string
 	Successes   uint64
 	Failures    uint64
+	// failing is the delivery state itself rather than a comparison of the
+	// two timestamps above: on Windows the clock ticks coarsely enough for
+	// a success and a failure to share one instant, which made every
+	// failure in a burst read as the first one.
+	failing bool
 }
 
 var exportActivity = struct {
@@ -59,7 +64,8 @@ func activityFor(strategy string) *ExportActivity {
 func RecordExportSuccess(strategy string) {
 	exportActivity.mu.Lock()
 	a := activityFor(strategy)
-	recovered := a.LastFailure.After(a.LastSuccess) && !a.LastFailure.IsZero()
+	recovered := a.failing
+	a.failing = false
 	a.LastSuccess = time.Now()
 	a.Successes++
 	exportActivity.mu.Unlock()
@@ -74,7 +80,8 @@ func RecordExportFailure(strategy, reason string) {
 	reason = printable(reason)
 	exportActivity.mu.Lock()
 	a := activityFor(strategy)
-	first := !a.LastSuccess.Before(a.LastFailure) || a.Failures == 0
+	first := !a.failing
+	a.failing = true
 	a.LastFailure = time.Now()
 	a.LastError = reason
 	a.Failures++
@@ -109,7 +116,7 @@ func FailingExports() []string {
 	defer exportActivity.mu.Unlock()
 	seen := map[string]bool{}
 	for name, a := range exportActivity.m {
-		if !a.LastFailure.IsZero() && a.LastFailure.After(a.LastSuccess) {
+		if a.failing {
 			seen[strings.SplitN(name, "/", 2)[0]] = true
 		}
 	}
