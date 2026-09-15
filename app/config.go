@@ -2,7 +2,11 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,8 +15,11 @@ import (
 	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
@@ -50,14 +57,49 @@ func generateConfiguration(args *cliArgs.ParsedArgs) error {
 
 	localConfig := configuration.NewLocalConfiguration(args, appLogger)
 
-	quitChannel := make(chan struct{})
-	defer close(quitChannel)
+	// Install is a one-shot: the loader is started only to create and
+	// seal the configuration, then stopped so its watcher goroutine does
+	// not outlive the command.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	if err := localConfig.Start(quitChannel); err != nil {
+	if err := localConfig.Start(ctx); err != nil {
 		return fmt.Errorf("failed to create configuration: %w", err)
 	}
 
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), lifecycle.DefaultStopBudget)
+	defer stopCancel()
+	if err := localConfig.Shutdown(stopCtx); err != nil {
+		appLogger.Warn().Err(err).Msg("Configuration loader did not stop cleanly after install")
+	}
+
 	return nil
+}
+
+// cleanupTargets decides what an uninstall removes for the configuration
+// itself, split out so the decision is testable without deleting
+// anything.
+//
+// installed says whether the config lives in the directory this platform
+// installs into. When it does, the whole directory goes: it holds
+// probes.d/, strategies.d/ and the sealed secret store, and leaving
+// those behind is what #841 was about. When it does not — an explicit
+// --config-path pointing somewhere the agent does not own — only the
+// config file goes, because the neighbours are not ours to delete.
+func cleanupTargets(configPath string, installed bool) (files []string, dirs []string) {
+	if installed {
+		dir := filepath.Dir(configPath)
+		if dir != "" && dir != "." && dir != string(filepath.Separator) {
+			if _, err := os.Stat(dir); err == nil {
+				return nil, []string{dir}
+			}
+		}
+		return nil, nil
+	}
+	if _, err := os.Stat(configPath); err == nil {
+		return []string{configPath}, nil
+	}
+	return nil, nil
 }
 
 // cleanupFiles removes configuration files, logs, and certificates during uninstall
@@ -74,9 +116,19 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 			configPath = "./agent-config.yaml"
 		}
 	}
-	if _, statErr := os.Stat(configPath); statErr == nil {
-		filesToRemove = append(filesToRemove, configPath)
-	}
+	// The whole installed configuration directory goes, not just
+	// agent.yaml. It also holds probes.d/, strategies.d/ and the sealed
+	// secret store, and removing only the top file left an operator who
+	// answered "yes" with their probes, their outputs AND their sealed
+	// credentials still on disk under a "Cleanup completed" line (#841).
+	//
+	// Guarded on the INSTALLED directory: a config passed with an
+	// explicit --config-path may live next to files the agent does not
+	// own, and removing its parent would take them too. In that case the
+	// old, narrow behaviour applies — the config file only.
+	cfgFiles, cfgDirs := cleanupTargets(configPath, withinInstalledConfigDir(configPath))
+	filesToRemove = append(filesToRemove, cfgFiles...)
+	dirsToRemove = append(dirsToRemove, cfgDirs...)
 
 	// Certificate directory (use absolute path)
 	currentDir, err := os.Getwd()
@@ -124,21 +176,44 @@ func cleanupFiles(args *cliArgs.ParsedArgs) {
 		}
 	}
 
-	// Remove directories
+	// Remove directories. What they hold is counted before they go:
+	// RemoveAll deletes the whole tree, and reporting only the top-level
+	// file list made "removed 0 files" the summary of an uninstall that
+	// had just deleted a sealed secret store and a licence token. On a
+	// destructive command the summary is the one line the operator reads
+	// to confirm what happened.
+	filesInDirs := 0
 	for _, dir := range dirsToRemove {
+		n := countFilesUnder(dir)
 		if err := os.RemoveAll(dir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not remove directory %s: %v\n", dir, err)
-		} else {
-			fmt.Printf("Removed directory: %s\n", dir)
+			continue
 		}
+		fmt.Printf("Removed directory: %s (%d files)\n", dir, n)
+		filesInDirs += n
 	}
 
 	if len(filesToRemove) == 0 && len(dirsToRemove) == 0 {
 		fmt.Println("No additional files to clean up")
 	} else {
 		fmt.Printf("\nCleanup completed - removed %d files and %d directories\n",
-			len(filesToRemove), len(dirsToRemove))
+			len(filesToRemove)+filesInDirs, len(dirsToRemove))
 	}
+}
+
+// countFilesUnder counts the regular files a directory holds, so an
+// uninstall can say how much it removed rather than how many paths it
+// was handed. A directory already taken by an earlier RemoveAll counts
+// zero, which is correct: its contents were counted with its parent.
+func countFilesUnder(dir string) int {
+	n := 0
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && d != nil && !d.IsDir() {
+			n++
+		}
+		return nil
+	})
+	return n
 }
 
 // showDebugModules displays all available debug modules
@@ -162,19 +237,42 @@ func validateConfigPath(configPath string) error {
 		return fmt.Errorf("path contains directory traversal attempts")
 	}
 
-	// Only allow config files in current directory or subdirectories (no parent directory access)
+	// Accept the installed configuration, wherever the platform puts it,
+	// plus anything under the working directory (a local bench, a config
+	// staged next to the binary).
+	//
+	// Restricting this to the working directory alone made `status`
+	// unusable on every normal install: the config lives in
+	// /etc/senhub-agent or C:\ProgramData\SenHub, never under the
+	// directory an operator happens to run the command from. The key
+	// could not be read, so the command never reached the daemon and
+	// silently printed its degraded local view instead.
+	if withinInstalledConfigDir(absPath) {
+		return nil
+	}
+
 	workingDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
-
-	// Check if the file is within the working directory or its subdirectories
 	relPath, err := filepath.Rel(workingDir, absPath)
 	if err != nil || strings.HasPrefix(relPath, "..") {
-		return fmt.Errorf("config file must be within the current working directory or its subdirectories")
+		return fmt.Errorf("config file must be the installed configuration or live under the current directory")
 	}
 
 	return nil
+}
+
+// withinInstalledConfigDir reports whether path sits in the directory
+// this platform installs the agent configuration into.
+func withinInstalledConfigDir(path string) bool {
+	installed, err := cliArgs.GetAbsoluteConfigPath("")
+	if err != nil {
+		return false
+	}
+	dir := filepath.Dir(installed)
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && !strings.HasPrefix(rel, "..")
 }
 
 // extractAgentKeyFromConfig attempts to extract agent key from local config file
@@ -184,14 +282,24 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 		return "", fmt.Errorf("invalid config path: %w", err)
 	}
 
-	// This is a simplified version - in practice, we'd properly parse the YAML
+	// Resolve through the real loader first: since 0.5.x an install seals
+	// the key, so the file holds "${secret:agent.key}" and a text search
+	// hands that literal to the API. Auth then fails and `status` silently
+	// falls back to its degraded local view — on every modern host.
+	if cfg, err := configuration.LoadForShow(configPath, configuration.ShowResolved, nil); err == nil {
+		if key := strings.TrimSpace(cfg.Agent.Key); key != "" && !strings.Contains(key, "${") {
+			return key, nil
+		}
+	}
+
+	// Fallback: a plain key in a file the loader could not read (a partial
+	// or hand-written config still deserves a working status).
 	// #nosec G304 - path is validated by validateConfigPath function
 	content, err := os.ReadFile(configPath)
 	if err != nil {
 		return "", err
 	}
 
-	// Simple string search for agent key (not ideal, but functional)
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -199,7 +307,10 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
 				key := strings.TrimSpace(strings.Trim(parts[1], "\""))
-				if key != "" {
+				// An unresolved reference is not a key: handing it to the
+				// API fails authentication and sends the caller down the
+				// degraded path with no clue why.
+				if key != "" && !strings.Contains(key, "${") {
 					return key, nil
 				}
 			}
@@ -255,13 +366,25 @@ func checkConfig(configPath string) {
 		fmt.Println("  [ERROR] Configuration load failed")
 		fmt.Printf("           %v\n", err)
 		fmt.Println()
-		if strings.Contains(err.Error(), "yaml") {
-			showYAMLErrorContext(string(content), err)
+		var parseErr *configuration.ParseError
+		if errors.As(err, &parseErr) {
+			// Multi-file layouts fail on a probes.d/ or strategies.d/
+			// fragment, not on the top-level file we already read.
+			// Show the file the decoder actually choked on, and hand
+			// the unwrapped decoder error over — the "yaml: line N:"
+			// prefix it carries is what locates the offending line.
+			src := content
+			if parseErr.Path != configPath {
+				if raw, readErr := os.ReadFile(parseErr.Path); readErr == nil { // #nosec G304 - path came from the loader walking the configured *.d/ directories
+					src = raw
+				}
+			}
+			showYAMLErrorContext(string(src), parseErr.Err)
 		}
 		os.Exit(1)
 	}
 
-	errors := 0
+	errorCount := 0
 	warnings := 0
 
 	// Config version. Validate against the agent's supported range
@@ -272,11 +395,11 @@ func checkConfig(configPath string) {
 	switch {
 	case config.ConfigVersion == 0:
 		fmt.Printf("  [ERROR] config_version missing (expected %d)\n", configuration.CurrentConfigVersion)
-		errors++
+		errorCount++
 	case configuration.ValidateConfigVersion(config.ConfigVersion) != nil:
 		fmt.Printf("  [ERROR] config_version: %d (%v)\n",
 			config.ConfigVersion, configuration.ValidateConfigVersion(config.ConfigVersion))
-		errors++
+		errorCount++
 	case config.ConfigVersion < configuration.CurrentConfigVersion:
 		fmt.Printf("  [OK]   config_version: %d (agent supports up to %d; will migrate on next write)\n",
 			config.ConfigVersion, configuration.CurrentConfigVersion)
@@ -289,7 +412,7 @@ func checkConfig(configPath string) {
 		fmt.Printf("  [OK]   agent.key: %s\n", config.Agent.Key)
 	} else {
 		fmt.Println("  [ERROR] agent.key is missing")
-		errors++
+		errorCount++
 	}
 
 	// License
@@ -302,7 +425,7 @@ func checkConfig(configPath string) {
 			lic, licErr := validator.ValidateLicense(config.Agent.License)
 			if licErr != nil {
 				fmt.Printf("  [ERROR] agent.license: invalid (%v)\n", licErr)
-				errors++
+				errorCount++
 			} else {
 				fmt.Printf("  [OK]   agent.license: tier=%s, expires=%s\n",
 					lic.Tier, lic.ExpiresAt.Format("2006-01-02"))
@@ -315,7 +438,7 @@ func checkConfig(configPath string) {
 				// Verify binding
 				if config.Agent.Key != "" && !license.VerifyBinding(config.Agent.License, config.Agent.Key, lic) {
 					fmt.Println("  [ERROR] License is not bound to this agent key")
-					errors++
+					errorCount++
 				} else if config.Agent.Key != "" {
 					fmt.Println("  [OK]   License binding verified")
 				}
@@ -349,29 +472,53 @@ func checkConfig(configPath string) {
 		for _, p := range config.Probes {
 			if p.Name == "" {
 				fmt.Println("  [ERROR] Probe with empty name")
-				errors++
+				errorCount++
 				continue
 			}
 			if p.Type == "" {
 				fmt.Printf("  [ERROR] Probe %q: type is missing\n", p.Name)
-				errors++
+				errorCount++
 				continue
 			}
 			if !registeredProbes[p.Type] {
 				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
-				errors++
+				errorCount++
 				continue
 			}
+			// An output that cannot consume logs would silently swallow
+			// this probe's records: they would be routed to it, and it
+			// would never read the log rail. Refuse the value instead of
+			// letting the operator discover it as missing data (#836).
+			badRouting := false
+			for _, target := range p.LogStrategies {
+				if !configuration.IsLogCapableStrategy(target) {
+					fmt.Printf("  [ERROR] Probe %q: log_strategies names %q, which cannot receive logs (accepted: %s)\n",
+						p.Name, target, strings.Join(configuration.LogCapableStrategies, ", "))
+					errorCount++
+					badRouting = true
+				}
+			}
+			if badRouting {
+				// Don't follow an ERROR with an OK line describing the
+				// routing that was just rejected — the operator would
+				// have to read both to know which one holds.
+				continue
+			}
+
 			if !p.IsEnabled() {
 				fmt.Printf("  [OFF]  Probe %q (type: %s) - disabled, will not collect\n", p.Name, p.Type)
+			} else if len(p.LogStrategies) > 0 {
+				fmt.Printf("  [OK]   Probe %q (type: %s), logs routed to %s\n",
+					p.Name, p.Type, strings.Join(p.LogStrategies, ", "))
 			} else {
 				fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
 			}
 
 			// Validate required params per probe type
 			e, w := validateProbeParams(p.Name, p.Type, p.Params)
-			errors += e
+			errorCount += e
 			warnings += w
+			errorCount += reportGovernanceProblems(p)
 		}
 	}
 
@@ -387,10 +534,42 @@ func checkConfig(configPath string) {
 				warnings++
 				continue
 			}
+			// A key no strategy reads is invisible at runtime: the file
+			// says one thing and the agent does another, which is how
+			// `insecure: true` came to mean a TLS handshake (#846).
+			for _, unread := range data_store.UnreadParamsFor(s.Name, s.Params) {
+				if unread.Replacement != "" {
+					fmt.Printf("         [WARN] Storage %q: param %q is not read; write %s instead\n",
+						s.Name, unread.Key, unread.Replacement)
+					warnings++
+					continue
+				}
+				fmt.Printf("         [ERROR] Storage %q: param %q is not read by the %s strategy and has no effect\n",
+					s.Name, unread.Key, s.Name)
+				errorCount++
+			}
+
+			// And the validation the agent runs at construction: a
+			// configuration this refuses is a configuration that will be
+			// dropped, and reporting it valid here only moves the
+			// discovery to the restart (#848).
+			if verr := data_store.ValidateStrategyParams(s.Name, s.Params); verr != nil {
+				fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
+				errorCount++
+				continue
+			}
+
 			if s.Name == "otlp" {
+				if otlp.StalenessEvictionDisabled(s.Params) {
+					fmt.Printf("  [WARN] Strategy %q: staleness_ttl disables series eviction\n", s.Name)
+					fmt.Println("         A series whose producer disappears (a target removed from a probe,")
+					fmt.Println("         a probe denied by licence) keeps being exported at its last value")
+					fmt.Println("         with fresh timestamps, and a restart restores it from the checkpoint.")
+					warnings++
+				}
 				if verr := otlp.ValidateEntitiesRedactAttributes(s.Params); verr != nil {
 					fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
-					errors++
+					errorCount++
 					continue
 				}
 			}
@@ -406,6 +585,26 @@ func checkConfig(configPath string) {
 	// Checked whenever the agent is configured, not only when auto_update is
 	// enabled: on Linux a writable binary is a security finding on its own, and
 	// turning auto-update off does not make it safe.
+	// The registry URL is a BASE the agent appends to. A value carrying
+	// a path the agent adds itself doubles it, and updates then fail
+	// silently — the host stays on its installed version with
+	// `enabled: true` still in the file. Say so at check time rather
+	// than letting it be discovered months later (#747, #840).
+	if config.AutoUpdate != nil {
+		if p := configuration.CheckRegistryURL(config.AutoUpdate.URL); p != nil {
+			if p.Suggestion != "" {
+				fmt.Printf("  [WARN] auto_update.url %s\n", p.Reason)
+				fmt.Printf("         configured: %s\n", config.AutoUpdate.URL)
+				fmt.Printf("         write instead: %s\n", p.Suggestion)
+				warnings++
+			} else {
+				fmt.Printf("  [ERROR] auto_update.url %s\n", p.Reason)
+				fmt.Printf("          configured: %s\n", config.AutoUpdate.URL)
+				errorCount++
+			}
+		}
+	}
+
 	if warn := checkAutoUpdateWritability(); warn != "" {
 		fmt.Printf("  [WARN] %s\n", warn)
 		warnings++
@@ -419,12 +618,12 @@ func checkConfig(configPath string) {
 
 	// Summary
 	fmt.Println()
-	if errors == 0 && warnings == 0 {
+	if errorCount == 0 && warnings == 0 {
 		fmt.Println("Configuration is valid.")
-	} else if errors == 0 {
+	} else if errorCount == 0 {
 		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
 	} else {
-		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errors, warnings)
+		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errorCount, warnings)
 		os.Exit(1)
 	}
 }
@@ -556,10 +755,35 @@ func showYAMLErrorContext(content string, yamlErr error) {
 
 // validateProbeParams checks required parameters for each probe type
 func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	// Checked for every probe type, before anything else: a parameter the
+	// probe does not read is invisible at runtime, and this verb is where
+	// an operator finds out before deploying rather than after (#842).
+	errors, warnings = reportLegacyProbeParams(name, probeType, params)
+
+	// A probe that declares its schema is checked against it first: a
+	// missing required key, a value outside its closed set or of the
+	// wrong shape, and a key the probe never reads are all errors — the
+	// file asks for something that will not happen. This is the same
+	// front door the web configurator uses, so both give one answer.
+	schemaErrors, schemaWarnings := reportSchemaProblems(name, probeType, params)
+	errors += schemaErrors
+	warnings += schemaWarnings
+
+	// Then ask the probe itself. Every range and coherence check a probe
+	// performs lives in its constructor, so a check that never builds one
+	// passes on the mistakes operators actually make: `priority: 99` was
+	// reported [OK] and the probe then refused to start (#848). The probe
+	// is constructed and dropped — no Start, so nothing opens a socket or
+	// a file.
+	e, w := reportProbeParamProblems(name, probeType, params)
+	errors += e
+	warnings += w
+
 	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
 	// Validate manually instead of using a flat required-list.
 	if probeType == "citrix" {
-		return validateCitrixParams(name, params)
+		citrixErrors, citrixWarnings := validateCitrixParams(name, params)
+		return errors + citrixErrors, warnings + citrixWarnings
 	}
 
 	// Required params per probe type (flat format)
@@ -575,7 +799,7 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 
 	required, hasRequired := requiredParams[probeType]
 	if !hasRequired {
-		return 0, 0
+		return errors, warnings
 	}
 
 	for _, param := range required {
@@ -596,6 +820,124 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 		}
 	}
 
+	return errors, warnings
+}
+
+// reportSchemaProblems checks params against the probe's declared schema
+// when it has one, for what nothing else reports: a required key that is
+// missing, and a key the probe never reads. A legacy name is left to
+// reportLegacyProbeParams, which knows its replacement; a value of the
+// wrong shape is left to the constructor probe, which says what the
+// probe does with it (#847).
+func reportSchemaProblems(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	spec, ok := probes.ProbeSpecFor(probeType)
+	if !ok {
+		return 0, 0
+	}
+	legacy := probes.LegacyParamsFor(probeType)
+	for _, problem := range spec.CheckParams(params) {
+		switch problem.Kind {
+		case probes.ProblemMissing:
+			fmt.Printf("         [ERROR] Probe %q: param %q is required\n", name, problem.Key)
+			errors++
+		case probes.ProblemUnknown:
+			if _, isLegacy := legacy[problem.Key]; isLegacy {
+				continue
+			}
+			fmt.Printf("         [ERROR] Probe %q: param %q is not read by this probe\n", name, problem.Key)
+			errors++
+		}
+	}
+	return errors, warnings
+}
+
+// reportGovernanceProblems checks the instance's governance block: a key
+// the vocabulary does not have, a wrong shape, or a value outside a closed
+// set. The block is optional; absent is silent.
+func reportGovernanceProblems(p configuration.ProbeConfig) (errors int) {
+	if p.Governance == nil {
+		return 0
+	}
+	for _, problem := range probes.CheckGovernance(p.Governance) {
+		fmt.Printf("         [ERROR] Probe %q: %s: %s\n", p.Name, problem.Key, problem.Message)
+		errors++
+	}
+	if errors > 0 {
+		return errors
+	}
+	if _, err := p.ParseGovernance(); err != nil {
+		fmt.Printf("         [ERROR] Probe %q: governance: %v\n", p.Name, err)
+		errors++
+	}
+	return errors
+}
+
+// reportProbeParamProblems builds the probe and reports what it refuses.
+//
+// Two different answers matter to an operator: a value the probe rejects
+// outright (an error — the probe will not start), and a value the probe
+// could not read and silently replaced with its default (a warning — the
+// probe starts, doing something other than what the file says, #847).
+func reportProbeParamProblems(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	ctor, known := probes.LookupProbeConstructor(probeType)
+	if !known {
+		return 0, 0
+	}
+
+	// The probe's own logger goes nowhere: `config check` speaks in
+	// [OK]/[WARN]/[ERROR] lines, and a probe logging its construction
+	// would interleave with them.
+	discard := zerolog.New(io.Discard)
+	probeLogger := (*agentLogger.Logger)(&discard)
+
+	var ctorErr error
+	issues := types.CollectParamIssues(func() {
+		_, ctorErr = ctor(params, probeLogger)
+	})
+
+	for _, issue := range issues {
+		fmt.Printf("         [WARN] Probe %q: param %q reads %v, which is not %s — the probe ignores it and uses its default\n",
+			name, issue.Key, issue.Got, issue.Want)
+		warnings++
+	}
+
+	if ctorErr != nil {
+		fmt.Printf("         [ERROR] Probe %q: %v\n", name, ctorErr)
+		errors++
+	}
+
+	return errors, warnings
+}
+
+// reportLegacyProbeParams reports the parameter names a probe used to
+// answer to and no longer does.
+//
+// A renamed one is a warning: the configuration still works, and the
+// operator is told the spelling to converge on. One with no equivalent
+// is an ERROR — they asked for something that will not happen, and
+// silence about it is exactly how `sslmode: require` came to mean a
+// plaintext connection.
+func reportLegacyProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
+	declared := probes.LegacyParamsFor(probeType)
+	for _, key := range probes.LegacyParamsUsed(probeType, params) {
+		p := declared[key]
+
+		detail := ""
+		if p.Replacement != "" {
+			detail = fmt.Sprintf(" — use %q", p.Replacement)
+		}
+		if p.Note != "" {
+			detail += " (" + p.Note + ")"
+		}
+
+		if p.Accepted {
+			fmt.Printf("         [WARN] Probe %q: param %q has been renamed%s\n", name, key, detail)
+			warnings++
+			continue
+		}
+		fmt.Printf("         [ERROR] Probe %q: param %q is not read by the %s probe and has no effect%s\n", name, key, probeType, detail)
+		errors++
+	}
 	return errors, warnings
 }
 

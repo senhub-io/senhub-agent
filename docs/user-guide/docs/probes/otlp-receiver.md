@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/opentelemetry" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/otlp-receiver.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -35,17 +35,27 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `protocol` | `grpc` | `grpc` (OTLP/gRPC) or `http` (OTLP/HTTP protobuf) |
-| `signals` | `[metrics]` | Which OTLP signals the listener accepts: any combination of `metrics`, `logs`, `traces`. Logs and traces are relayed onward through a configured OTLP export strategy (see Behavior) |
-| `address` | `127.0.0.1:4317` (grpc), `127.0.0.1:4318` (http) | Listen address. Loopback by default — accepting remote OTLP requires an explicit address (e.g. `"0.0.0.0:4317"`); pair it with the protections below |
-| `port` | from `address` | Convenience override: replaces only the port part of the address |
-| `http_path` | `/v1/metrics` | Route the HTTP receiver serves metrics on (ignored for gRPC). Logs are always served on `/v1/logs`, traces on `/v1/traces` |
-| `bearer_token` | none | When set, senders must present `Authorization: Bearer <token>` (HTTP header or gRPC metadata). Reference a stored secret via `${secret:<name>.bearer_token}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
-| `allowed_cidrs` | none | Source IP allow-list (CIDR notation, IPv4/IPv6). Checked against the transport peer address — proxy headers are not trusted |
-| `rate_limit_rps` | `0` (off) | Accepted requests per second (token bucket). Excess requests get HTTP 429 / gRPC `ResourceExhausted` |
-| `rate_limit_burst` | `2 × rps` | Bucket burst capacity |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `protocol` | In practice | `grpc` | Listener transport: OTLP/gRPC or OTLP/HTTP protobuf. One of `grpc`, `http` |
+| `address` | In practice | - | Listen address (host:port); 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address. Example: `0.0.0.0:4317` |
+| `port` | No | - | Replaces only the port part of the address |
+| `http_path` | No | `/v1/metrics` | Route the HTTP receiver serves metrics on; logs and traces keep /v1/logs and /v1/traces; ignored for grpc |
+| `signals` | In practice | `[metrics]` | Signals the listener accepts; empty means metrics only. One of `metrics`, `logs`, `traces` |
+| `bearer_token` | No | - | Token senders must present as Authorization: Bearer; empty accepts unauthenticated senders. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `allowed_cidrs` | No | - | Source ranges (CIDR) allowed to send, checked on the transport peer address; empty allows any. Example: `10.0.0.0/8` |
+| `rate_limit_rps` | No | `0` | Accepted requests per second; 0 turns rate limiting off |
+| `rate_limit_burst` | No | - | Token bucket burst; twice rate_limit_rps when empty, needs rate_limit_rps |
+
+<!-- schema:params:end -->
+
+- The bearer token is read from the HTTP `Authorization` header or from the gRPC `authorization` metadata.
+- `allowed_cidrs` accepts IPv4 and IPv6 ranges. Proxy headers such as `X-Forwarded-For` are not trusted: a sender behind a proxy is checked on the proxy's address.
+- A request above the rate limit is refused with HTTP 429 or the gRPC `ResourceExhausted` status.
+- Logs and traces are relayed onward through a configured OTLP export strategy (see Behavior).
 
 Opening the receiver to the network with all protections:
 
@@ -119,7 +129,7 @@ Run two instances to serve both protocols at once:
   agent logs a throttled warning.
 
     !!! note "Changed behaviour"
-        Before this release, ingested logs were re-emitted through the
+        Before 0.5.4, ingested logs were re-emitted through the
         agent's own log pipeline, which replaced the sender's resource
         with the agent's — a record sent with `service.name=my-app` was
         stored under the agent's `service.name`, making applications

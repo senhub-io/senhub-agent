@@ -83,8 +83,16 @@ storage:
         cert_file: /etc/ssl/private/agent.pem    # mTLS, optional
         key_file:  /etc/ssl/private/agent.key    # required if cert_file set
 
+      # Base path for backends that serve OTLP under a prefix rather than
+      # at the root (see below). OTLP/HTTP only.
+      url_path_prefix: "/api/v2/otlp"
+
+      # Close an idle HTTP connection before the ingress does (see below).
+      # OTLP/HTTP only; unset keeps the Go default of 90s.
+      idle_conn_timeout: 45s
+
       compression: gzip               # gzip | none — default gzip
-      timeout: 10s                    # per-export deadline
+      timeout: 60s                    # per-export deadline — default 60s
 
       retry:
         enabled: true
@@ -109,8 +117,39 @@ storage:
           batch_timeout: 5s
           buffer_size: 2048           # bounded queue; drop beyond
           sample_ratio: 1.0           # head sampling, 0.0-1.0
-          relay_enrichment: true      # default true; add agent correlation
-                                      # context to relayed spans (see below)
+
+      # Telemetry forwarded on behalf of applications (otlp_receiver).
+      relay:
+        enrichment: true              # default true; add the agent's context
+                                      # to relayed telemetry (see below)
+
+      # How many exports may be in flight at once. The push splits a
+      # large cycle per probe and ships the parts in parallel; 1 means
+      # the single-batch path. Accepted range 1-64.
+      max_concurrent_exports: 4       # default 4
+
+      # Cap the memory the metric store may use, in MiB of Go heap.
+      # Past the soft limit the store keeps its existing series and
+      # refuses new ones; past the hard limit it refuses all writes and
+      # forces a collection. 0 disables either threshold.
+      memory_limit:
+        soft_mib: 200                 # default 200
+        hard_mib: 400                 # default 400
+        check_interval: 5s            # default 5s
+
+      # Survive a restart: the last value of every series is written to
+      # disk and restored at boot, so cumulative counters continue
+      # instead of resetting.
+      persistence:
+        enabled: true                 # default true, but the checkpoint stays
+                                      # off until `path` is set; enabled: false
+                                      # turns it off even with a path
+        path: /var/lib/senhub-agent/otlp   # empty means no checkpoint
+        interval: 30s                 # default 30s
+        # Disk cap for the logs dead-letter queue, which holds batches
+        # the receiver could not take during an outage. Past it the
+        # oldest batches are evicted. 0 keeps the default.
+        logs_queue_max_bytes: 134217728   # default 128 MiB
 
       # Resource attributes attached to every emitted batch. Defaults
       # are derived from agent identity if omitted.
@@ -150,6 +189,53 @@ primary recovers. See
 [the backpressure guide](https://github.com/senhub-io/senhub-agent/blob/master/docs/admin-guide/BACKPRESSURE.md)
 for the shape and the trade-offs.
 
+### `url_path_prefix` (OTLP/HTTP only)
+
+`endpoint` is a `host:port` pair, so it cannot carry a path. Backends that
+serve OTLP under a base path instead of at the root need this prefix, which
+the agent prepends to the standard signal paths: `/api/v2/otlp` yields
+`/api/v2/otlp/v1/metrics`, `/api/v2/otlp/v1/logs` and `/api/v2/otlp/v1/traces`.
+
+Setting it with `protocol: grpc` is refused at config load rather than
+silently ignored: the gRPC transport addresses services, not URL paths.
+
+Pushing straight to Dynatrace, which serves OTLP at `/api/v2/otlp`, expects
+delta temporality and authenticates with an API token:
+
+```yaml
+otlp:
+  protocol: http
+  endpoint: "abc12345.live.dynatrace.com:443"
+  url_path_prefix: "/api/v2/otlp"
+  tls:
+    enabled: true
+  headers:
+    Authorization: "Api-Token ${env:DT_API_TOKEN}"
+  signals:
+    metrics:
+      enabled: true
+      temporality: delta
+    logs:
+      enabled: true
+```
+
+### `idle_conn_timeout` (OTLP/HTTP only)
+
+Load balancers and reverse proxies close connections that have been idle for
+some time. A signal that pushes continuously never reaches that point, but a
+sparse one does: the agent then discovers the connection is gone only when it
+tries to use it, and pays a failed request before reconnecting. Logs are the
+signal this affects, since metrics push on a fixed interval and keep their
+connection warm.
+
+Setting `idle_conn_timeout` **below your ingress idle timeout** makes the
+agent close first, turning that failure into a clean reconnect. Unset, the Go
+default of 90 seconds applies, which is longer than most ingress timeouts.
+
+The cost is one extra TCP and TLS handshake per idle period, on a signal that
+by definition is not busy. Setting it with `protocol: grpc` is refused at
+config load: gRPC connection keepalive is a separate mechanism.
+
 ### `tls`
 
 Default is `enabled: true`. For **production push to a remote
@@ -177,7 +263,7 @@ received by an [otlp_receiver probe](probes/otlp-receiver.md) configured
 with `signals: [traces]`; without such a probe there is nothing to
 export and the signal stays idle.
 
-**Correlation enrichment (`relay_enrichment`, default `true`).** Relayed
+**Correlation enrichment (`relay.enrichment`, default `true`).** Relayed
 spans keep the emitting application's own identity (`service.name`,
 `service.instance.id`, `host.*`) — the agent never overwrites it. On top of
 that, the agent inserts its own tenancy context so you can pivot from an app
@@ -186,7 +272,10 @@ trace to the infrastructure telemetry of the same tenant: your `global_tags`
 if the application didn't already set that key**. Only standard /
 operator-defined attributes are used — no product-specific keys.
 
-Set `relay_enrichment: false` for a verbatim pass-through. When a single
+Set `relay.enrichment: false` for a verbatim pass-through. The older
+spelling `signals.traces.relay_enrichment` is still read, so a host that set
+it keeps its behaviour, but `relay.enrichment` is the key to write: it covers
+every relayed signal, not traces alone. When a single
 agent relays traffic for several clients (a shared gateway), assign each
 source its own tenant with per-source rules:
 
@@ -251,6 +340,44 @@ configuration on every host.
 takes `active` / `maintenance` / `decommissioning` / `retired`. `labels` is a
 free key/value map for anything that is yours alone.
 
+This block describes the host, and descends from it, on two rules that
+differ because the two halves of the vocabulary answer different questions.
+
+The location (`site`, `datacenter`, `rack`, `room`) says where a thing
+physically is. What runs on this host is where the host is, so it descends to
+every entity the agent places here: a database on the loopback address, a
+container, a listening port.
+
+Ownership (`owner`, `criticality`, `lifecycle`) says who answers for a thing.
+It descends to the entities an operator reasons about, a service instance, a
+container, a database, a network device, and not to a listening port, which
+reaches its host in one `runs_on` hop: the graph already answers "who owns
+this port" by traversal rather than by copying the fact onto several hundred
+entities. Criticality descends knowing it errs high, since a backup daemon on
+a critical host is not itself critical; claiming too much is safer than
+claiming too little, and a probe that knows better overrides it.
+
+`labels` do **not** descend, and the head of an application chain is why.
+"This host is part of application X" is not "everything running on this host
+is application X". That holds on a dedicated machine and fails on a shared
+one, and a cluster node is the shared case: on a host carrying one application
+label, thirteen entities belonging to five different sets would have inherited
+it, so a filter that returns exactly the chain would have returned a mixture.
+Labels stay at host grain. Put one on a probe entry when you want it on what
+that probe reports.
+
+Neither descends to anything remote. A probe reading a database on another
+machine reports an entity that does not run here, and giving it this host's
+owner would be wrong rather than merely noisy. What a probe observes is
+governed on the probe entry instead, with the same vocabulary: see
+[Governance per probe](configuration.md#governance-per-probe). A value the
+probe sets itself always wins over what it would inherit.
+
+These attributes are the producer's facts, in the frozen `entity.*` and
+semantic-convention vocabulary. An annotation a consumer adds beside them is a
+comment, never a correction: once the agent asserts an owner, the way to change
+it is this configuration.
+
 `depends_on_enabled` turns on outbound dependency discovery — the edges that
 say "this service talks to that endpoint". It is off by default because mapping
 a host's connections can be privacy-sensitive.
@@ -269,14 +396,21 @@ a host's connections can be privacy-sensitive.
 
 `depends_on_debounce` controls how durable an outbound connection must be
 before it appears as a `depends_on` edge: a peer endpoint must be seen on
-this many consecutive emission scrapes before its edge is emitted, which
-keeps ephemeral connections out of the graph. The latency to surface a
-dependency is `depends_on_debounce x interval` (so the default `3 x 60s` is
-about three minutes); lower it for a more responsive graph, raise it to
-filter out shorter-lived connections.
+this many emission scrapes before its edge is emitted, which keeps a
+single stray socket out of the graph. The scrapes need not run
+consecutively. A peer keeps its progress across up to fifteen scrapes
+without being seen, because a short-lived flow is precisely one that is
+missing from most samples: a reverse proxy that opens a request to a
+backend and closes it may appear in four samples out of fifteen and
+never in two running ones, and it is still a real dependency. The
+soonest a dependency can surface is `depends_on_debounce x interval` (so
+the default `3 x 60s` is about three minutes); lower it for a more
+responsive graph, raise it to demand more evidence.
 
-The tolerance is symmetric: an edge that took `depends_on_debounce` scrapes to
-appear survives the same number of missed ones before it is given up. A
+The tolerance is symmetric once the edge exists: an edge that took
+`depends_on_debounce` scrapes to appear survives the same number of missed
+ones before it is given up. The wider memory above applies only while a
+peer is still earning its edge. A
 long-lived connection the socket table happens to miss once is not a dependency
 that ended, and retracting it on a single miss would reach a topology consumer
 as an edge flapping in and out.
@@ -346,7 +480,7 @@ the OTLP push automatically applies the same transforms when storing
 into a Prometheus-compatible TSDB, so the **observed metric names are
 identical** at the query layer.
 
-| OTel name (OTLP wire) | Prometheus exposition | After OTLP→PromQL ingest in VM |
+| OTel name (OTLP wire) | Prometheus exposition | After OTLP ingest in VictoriaMetrics |
 |---|---|---|
 | `system.cpu.utilization` (gauge, `1`, `cpu.mode=user`) | `senhub_system_cpu_utilization_ratio` | `system_cpu_utilization_ratio` |
 | `system.memory.usage` (updowncounter, `By`) | `senhub_system_memory_usage_bytes` | `system_memory_usage_bytes` |
@@ -495,6 +629,11 @@ Notes:
   file (`${file:/etc/senhub-agent/bearer.token}`); never inline it.
 - `host.id`, `host.name` and `os.*` resource attributes are auto-detected
   and attached to every signal — don't set them manually.
+- The `resource: service.name` override groups **telemetry** only. The
+  agent's own `service.instance` entity always carries
+  `service.name: senhub-agent`, whatever the override says, so a fleet
+  inventory filtered on that name sees every agent. The per-host label
+  stays available on the telemetry resource and on the host entity.
 - gRPC works through standard reverse proxies. nginx needs one location for
   OTLP/gRPC and one for OTLP/HTTP (the agent uses the standard `/v1/*`
   paths):
@@ -562,9 +701,9 @@ you can read without scraping Prometheus, via three surfaces:
 - **CLI** — `senhub-agent status --otlp` appends a four-section block
   (Pipeline / Store & Export / Checkpoint / Parallel) to the standard
   status view. See the [CLI reference](cli.md#status).
-- **Web dashboard** — when the HTTP strategy is enabled the dashboard
-  renders an **OTLP Pipeline** card with the same four sections,
-  refreshed every 30 seconds. See [Web Interface](web-interface.md#otlp-pipeline-card).
+- **Web console** — the OTLP output page shows the same counters in
+  its right column, next to the connection test. See
+  [Web console](web-interface.md#otlp-output).
 - **JSON endpoint** — `GET /api/{agentkey}/info/otlp` returns the same
   data as a single JSON snapshot. Useful for custom dashboards or
   external alerting. The field reference lives in
@@ -673,3 +812,14 @@ Verify:
 If you want a pull-based scrape model instead of push, use the
 [Prometheus endpoint](prometheus/index.md) — same data,
 same names, different transport.
+
+### What the dependency discovery can and cannot see
+
+The discovery reads the socket table on each emission scrape. It sees a
+connection that is open at the moment of a scrape. It does not see a flow
+that opens and closes entirely between two scrapes, however many times
+that happens: nothing on the host records it by then. An absent edge
+therefore means "not observed", never "does not exist", and that
+distinction matters before concluding from a map that two machines do
+not talk to each other. A shorter `interval` narrows the blind spot; it
+does not close it.

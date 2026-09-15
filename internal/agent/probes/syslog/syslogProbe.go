@@ -3,7 +3,9 @@ package syslog
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/mcuadros/go-syslog.v2"
@@ -41,6 +43,20 @@ type SyslogProbe struct {
 	moduleLogger *logger.ModuleLogger
 	server       *syslog.Server
 	callback     func([]data_store.DataPoint) error
+	// listening reports whether the syslog socket is bound and booted.
+	// Without it the probe's no-op Collect made it look healthy whether
+	// or not anything was listening (#289).
+	listening atomic.Bool
+}
+
+// ListenerHealth implements types.ListenerProbe: this probe receives
+// syslog over a socket, so its health is whether that socket is bound,
+// not whether its no-op Collect returned.
+func (p *SyslogProbe) ListenerHealth() error {
+	if !p.listening.Load() {
+		return errors.New("syslog listener is not bound")
+	}
+	return nil
 }
 
 func (p *SyslogProbe) SetCallback(callback func([]data_store.DataPoint) error) {
@@ -93,7 +109,7 @@ func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, e
 	}
 
 	if len(errs) > 0 {
-		return SyslogProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
+		return SyslogProbeConfig{}, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return SyslogProbeConfig{
@@ -160,6 +176,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	}
 
 	p.server = server
+	p.listening.Store(true)
 	p.moduleLogger.Info().Msg("Syslog server started successfully")
 
 	go func() {
@@ -178,6 +195,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 }
 
 func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
+	p.listening.Store(false)
 	if p.server != nil {
 		p.moduleLogger.Info().Msg("Stopping syslog probe")
 		return p.server.Kill()
@@ -186,11 +204,11 @@ func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
 }
 
 func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
-	facility, _ := logParts["facility"].(int)
-	severity, _ := logParts["severity"].(int)
+	facility, _ := types.IntParam(logParts, "facility")
+	severity, _ := types.IntParam(logParts, "severity")
 	hostname, _ := logParts["hostname"].(string)
 	client, _ := logParts["client"].(string)
-	priority, _ := logParts["priority"].(int)
+	priority, _ := types.IntParam(logParts, "priority")
 	timestamp, _ := logParts["timestamp"].(time.Time)
 
 	// The server is configured with syslog.Automatic format
@@ -234,10 +252,11 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 	// DataPoint → data_store → event strategy path was dropped — it was a
 	// duplicate of the same message ("a log, not a metric").
 	agentstate.PublishLog(agentstate.LogRecord{
-		Timestamp:    timestamp,
-		Severity:     agentstate.SyslogPriorityToSeverity(severity),
-		SeverityText: agentstate.SyslogPriorityToText(severity),
-		Body:         content,
+		TargetStrategies: p.LogTargets(),
+		Timestamp:        timestamp,
+		Severity:         agentstate.SyslogPriorityToSeverity(severity),
+		SeverityText:     agentstate.SyslogPriorityToText(severity),
+		Body:             content,
 		Attributes: map[string]string{
 			"syslog.facility":      fmt.Sprintf("%d", facility),
 			"syslog.severity_code": fmt.Sprintf("%d", severity),

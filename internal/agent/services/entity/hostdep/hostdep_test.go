@@ -559,3 +559,57 @@ func TestBlind_AgentsOwnSocketsDoNotCountAsSight(t *testing.T) {
 		t.Error("the operator was not told")
 	}
 }
+
+// A reverse proxy opening a request to a backend and closing it appears
+// in a minority of scrapes and never in two running ones. It used to
+// forget its progress after as many misses as the threshold, so it could
+// never assert an edge however long the agent ran, while the permanent
+// tunnels beside it were emitted every time. The map showed what stays
+// open, not what matters. Pins #855.
+func TestShortLivedFlowStillEarnsItsEdge(t *testing.T) {
+	present := []gnet.ConnectionStat{
+		conn(statusEstablished, "192.0.2.1", 40000, "203.0.113.9", 443, 100),
+	}
+	s := New(func() string { return "h-1" }, 2, nil)
+	s.procName = func(int32) string { return "nginx" }
+
+	rows := present
+	s.connections = func(string) ([]gnet.ConnectionStat, error) { return rows, nil }
+
+	// Seen once, then absent for four scrapes, then seen again: never in
+	// two consecutive samples.
+	if _, ok := s.Observe(); !ok {
+		t.Fatal("first scrape")
+	}
+	rows = nil
+	for i := 0; i < 4; i++ {
+		obs, ok := s.Observe()
+		if !ok {
+			t.Fatal("scrape while absent")
+		}
+		if hasEndpoint(obs, "203.0.113.9", "443") {
+			t.Fatal("an edge must not be asserted before it is earned")
+		}
+	}
+	rows = present
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("scrape on return")
+	}
+	if !hasEndpoint(obs, "203.0.113.9", "443") {
+		t.Error("a flow seen twice within the window must produce its edge, whatever sat between")
+	}
+}
+
+// An edge already asserted keeps the tolerance it earned: absence retires
+// it as fast as it appeared (#808), and the wider window is only for one
+// still earning.
+func TestAnAssertedEdgeIsStillRetiredQuickly(t *testing.T) {
+	s := New(func() string { return "h-1" }, 1, nil)
+	if got := s.forgetAfter(streakState{hits: 1}); got != 1 {
+		t.Errorf("an asserted edge keeps the threshold tolerance, got %d", got)
+	}
+	if got := s.forgetAfter(streakState{hits: 0}); got != earnWindow {
+		t.Errorf("one still earning gets the window, got %d", got)
+	}
+}

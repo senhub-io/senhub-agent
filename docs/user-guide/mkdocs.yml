@@ -88,10 +88,16 @@ nav:
   - Home: index.md
   - Presentation: presentation.md
   - Installation: installation.md
+  - Container: container.md
   - Configuration: configuration.md
   - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md
-  - Web interface: web-interface.md
+  - Web console: web-interface.md
+  - License:
+      - Overview: license/index.md
+      - Contrat de licence (français, fait foi): license/agreement-fr.md
+      - License agreement (English translation): license/agreement-en.md
+      - Third-party components: license/third-party.md
   - Prometheus / VictoriaMetrics:
       - Overview: prometheus/index.md
       - Metrics reference: prometheus/metrics-reference.md
@@ -136,6 +142,7 @@ nav:
       - VMware vSphere HA: probes/vsphere_ha.md
       - Azure AD Connect Health: probes/ad_hybrid.md
       - Exchange Online: probes/exchange_online.md
+      - Azure Container Apps: probes/azure_container_apps.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md

@@ -95,7 +95,7 @@ func NewHypervProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe."+ProbeType)
 
 	cfg := probeConfig{Interval: defaultInterval}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 

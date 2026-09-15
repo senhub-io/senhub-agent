@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/console.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/exec.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -34,15 +34,23 @@ output contracts are supported:
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `command` | required | Absolute path to the program. Relative paths and PATH lookup are refused |
-| `args` | `[]` | Arguments, passed verbatim — no shell is involved |
-| `format` | `nagios` | `nagios` or `json` |
-| `interval` | `60` | Seconds between runs |
-| `timeout` | `10` | Hard deadline in seconds; on expiry the whole process group is killed |
-| `env` | none | Extra environment variables (the agent's environment is inherited) |
-| `workdir` | agent's | Working directory for the run |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `command` | Yes | - | Absolute path of the program; no shell, no PATH lookup. Example: `/usr/local/bin/check_backup` |
+| `args` | No | - | Arguments passed verbatim; anything secret here is stored as typed |
+| `format` | No | `nagios` | Output format. One of `nagios`, `json` |
+| `interval` | No | `60` | Seconds between runs; keep it above the timeout |
+| `timeout` | No | `10` | Seconds before the process group is killed |
+| `workdir` | No | - | Working directory; the agent's by default |
+| `env` | No | - | Extra environment variables; values named like credentials are sealed |
+
+<!-- schema:params:end -->
+
+`env` entries are added on top of the agent's own environment, which the
+program inherits.
 
 ## Nagios contract
 

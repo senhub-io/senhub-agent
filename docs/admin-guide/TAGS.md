@@ -24,7 +24,7 @@ SenHub cloud) — there is no per-output configuration.
 On a key conflict, the most specific value wins:
 
 ```
-probe custom_tags  >  agent global_tags  >  built-in probe tags
+probe custom_tags  >  probe governance attributes  >  agent global_tags  >  built-in probe tags
 ```
 
 So a probe's `custom_tags: {site: paris}` overrides a `global_tags:

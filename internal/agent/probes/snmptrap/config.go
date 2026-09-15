@@ -3,6 +3,8 @@ package snmptrap
 import (
 	"fmt"
 	"strings"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 const (
@@ -64,21 +66,21 @@ func parseConfig(config map[string]interface{}) (receiverConfig, error) {
 		Version:     defaultVersion,
 	}
 
-	if v, ok := config["bind_address"].(string); ok && v != "" {
+	if v, ok := types.StringParam(config, "bind_address"); ok && v != "" {
 		cfg.BindAddress = v
 	}
-	if v, ok := config["version"].(string); ok && v != "" {
+	if v, ok := types.StringParam(config, "version"); ok && v != "" {
 		cfg.Version = strings.ToLower(v)
 	}
 	if cfg.Version != "v2c" && cfg.Version != "v3" {
 		return cfg, fmt.Errorf("snmp_trap: version must be \"v2c\" or \"v3\", got %q", cfg.Version)
 	}
 
-	if v, ok := config["community"].(string); ok {
+	if v, ok := types.StringParam(config, "community"); ok {
 		cfg.Community = v
 	}
 
-	cfg.MibPaths = stringSlice(config["mib_paths"])
+	cfg.MibPaths, _ = types.StringSliceParam(config, "mib_paths")
 
 	users, err := parseV3Users(config["v3"])
 	if err != nil {
@@ -126,33 +128,11 @@ func parseV3Users(raw interface{}) ([]v3User, error) {
 	return out, nil
 }
 
+// stringField is the "absent means empty" form this file wants, over the
+// shared helper rather than over a bare assertion — so a value that
+// arrives as something other than a string is handled the same way here
+// as everywhere else (#831).
 func stringField(m map[string]interface{}, key string) string {
-	if v, ok := m[key].(string); ok {
-		return v
-	}
-	return ""
-}
-
-// stringSlice coerces a YAML-decoded value into []string (the loader
-// yields []interface{}), dropping empties. A lone string is accepted too.
-func stringSlice(raw interface{}) []string {
-	switch v := raw.(type) {
-	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, e := range v {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []string:
-		return v
-	case string:
-		if v == "" {
-			return nil
-		}
-		return []string{v}
-	default:
-		return nil
-	}
+	v, _ := types.StringParam(m, key)
+	return v
 }

@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,26 +32,6 @@ func NewAPIManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *API
 	return &APIManager{
 		logger:   logger,
 		strategy: strategy,
-	}
-}
-
-// formatProbeDisplayName formats probe names for display in the UI
-// Capitalizes the first letter (e.g., "netscaler" -> "Netscaler")
-func formatProbeDisplayName(probeName string) string {
-	if probeName == "" {
-		return probeName
-	}
-
-	// Acronym-only special cases for built-in probes; user-configured
-	// instance names are shown verbatim (a lowercase "powerstore-1" must
-	// not be displayed as "Powerstore-1" — the configured casing wins).
-	switch strings.ToLower(probeName) {
-	case "cpu":
-		return "CPU"
-	case "prtg":
-		return "PRTG"
-	default:
-		return probeName
 	}
 }
 
@@ -170,7 +153,7 @@ func (a *APIManager) HandleListProbes(w http.ResponseWriter, r *http.Request) {
 		}
 
 		probes = append(probes, ProbeInfo{
-			Name:         formatProbeDisplayName(stats.Name), // Format name for UI display
+			Name:         stats.Name,
 			MetricsCount: stats.MetricsCount,
 			LastUpdate:   lastUpdate,
 		})
@@ -211,9 +194,8 @@ func (a *APIManager) HandleInfoProbes(w http.ResponseWriter, r *http.Request) {
 
 	for probe, tsKeys := range a.strategy.cache.probeIndex {
 		count := len(tsKeys)
-		displayName := formatProbeDisplayName(probe) // Format name for UI display
-		probes = append(probes, displayName)
-		probeMetrics[displayName] = count
+		probes = append(probes, probe)
+		probeMetrics[probe] = count
 		totalMetrics += count
 	}
 
@@ -288,16 +270,22 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	version := versionInfo.Version
 	commit := versionInfo.Commit
 
+	hostname, _ := os.Hostname()
 	response := SystemInfoResponse{
-		Status:    "running",
-		Version:   version,
-		Commit:    commit,
-		GoVersion: runtime.Version(),
-		OS:        runtime.GOOS,
-		Arch:      runtime.GOARCH,
-		Port:      a.strategy.port,
-		Uptime:    systemHealth.Uptime,
-		Health:    systemHealth.Health,
+		Status:           "running",
+		Hostname:         hostname,
+		Version:          version,
+		Commit:           commit,
+		GoVersion:        runtime.Version(),
+		OS:               runtime.GOOS,
+		Arch:             runtime.GOARCH,
+		Port:             a.strategy.port,
+		Uptime:           systemHealth.Uptime,
+		Health:           systemHealth.Health,
+		StrategyFailures: strategyFailureList(),
+		OutputsFailing:   outputsFailing(),
+		ConfigPath:       filepath.Dir(a.strategy.agentConfig.GetConfigPath()),
+		ConfigWatch:      configWatchInfo(),
 		Cache: CacheInfoResponse{
 			TotalMetrics: totalMetrics,
 			TTL:          a.strategy.cache.ttl.String(),
@@ -760,14 +748,15 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 
 	resp := OTLPInfoResponse{
 		Pipeline: OTLPPipelineInfo{
-			MetricsPushedTotal:  agentstate.GetOTLPMetricsPushedTotal(),
-			LogsPushedTotal:     agentstate.GetOTLPLogsPushedTotal(),
-			SpansRelayedTotal:   agentstate.GetOTLPSpansRelayedTotal(),
-			LogsRelayedTotal:    agentstate.GetOTLPLogsRelayedTotal(),
-			MetricsRelayedTotal: agentstate.GetOTLPMetricsRelayedTotal(),
-			ExportErrorsTotal:   agentstate.GetOTLPExportErrorsTotal(),
-			DroppedTotal:        droppedTotal,
-			DroppedByReason:     droppedByReason,
+			MetricsPushedTotal:   agentstate.GetOTLPMetricsPushedTotal(),
+			LogsPushedTotal:      agentstate.GetOTLPLogsPushedTotal(),
+			SpansRelayedTotal:    agentstate.GetOTLPSpansRelayedTotal(),
+			LogsRelayedTotal:     agentstate.GetOTLPLogsRelayedTotal(),
+			MetricsRelayedTotal:  agentstate.GetOTLPMetricsRelayedTotal(),
+			ExportErrorsTotal:    agentstate.GetOTLPExportErrorsTotal(),
+			ExportErrorsBySignal: agentstate.GetOTLPExportErrorsBySignal(),
+			DroppedTotal:         droppedTotal,
+			DroppedByReason:      droppedByReason,
 		},
 		Store: OTLPStoreInfo{
 			Size:               agentstate.GetOTLPStoreSize(),
@@ -804,4 +793,58 @@ func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
 		a.logger.Error().Err(err).Msg("Failed to encode OTLP info response")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+// configWatchInfo reports the configuration watch only when it is NOT
+// running: the nominal payload is unchanged.
+func configWatchInfo() *ConfigWatchInfo {
+	state := agentstate.GetConfigWatchDisabled()
+	if state == nil {
+		return nil
+	}
+	return &ConfigWatchInfo{Reason: state.Reason, Detail: state.Detail}
+}
+
+// strategyFailureList snapshots the configured outputs that are not
+// running, sorted by name so the payload is stable between scrapes.
+// outputsFailing merges start failures and export failures into one
+// sorted list of names, for the header pill of every console page.
+func outputsFailing() []string {
+	seen := map[string]bool{}
+	for name := range agentstate.GetStrategyFailures() {
+		seen[name] = true
+	}
+	for _, name := range agentstate.FailingExports() {
+		seen[name] = true
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func strategyFailureList() []StrategyFailureInfo {
+	failures := agentstate.GetStrategyFailures()
+	if len(failures) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(failures))
+	for name := range failures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]StrategyFailureInfo, 0, len(names))
+	for _, name := range names {
+		out = append(out, StrategyFailureInfo{
+			Strategy: name,
+			Reason:   failures[name].Reason,
+			Detail:   failures[name].Detail,
+		})
+	}
+	return out
 }

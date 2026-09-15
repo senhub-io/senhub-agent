@@ -205,14 +205,6 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of ingested metric points forwarded verbatim, with the emitting application's Resource preserved. Distinct from metrics.pushed, which counts points re-encoded from the agent's own store.",
 		},
 		otelmapper.OtelRecord{
-			Name:        "senhub.agent.otlp.export.errors",
-			Unit:        "{error}",
-			Type:        "counter",
-			Attributes:  map[string]string{},
-			Value:       float64(agentstate.GetOTLPExportErrorsTotal()),
-			Description: "Cumulative count of OTLP exports that failed after retries were exhausted.",
-		},
-		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.dropped_log_records",
 			Unit:        "{record}",
 			Type:        "counter",
@@ -261,6 +253,63 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "All-time mean of successful OTLP metrics export durations.",
 		},
 	)
+
+	// Export-error counters — one OTel metric with a `signal` attribute
+	// (metrics / logs / traces). The total is the sum over signals; the
+	// breakdown exists because a failing logs pipeline was invisible in
+	// a total dominated by healthy metric pushes (#821). Until a signal
+	// has failed at least once it emits no series (standard counter
+	// semantics: absence = zero).
+	for signal, n := range agentstate.GetOTLPExportErrorsBySignal() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.export.errors",
+			Unit:        "{error}",
+			Type:        "counter",
+			Attributes:  map[string]string{"signal": signal},
+			Value:       float64(n),
+			Description: "Cumulative count of OTLP exports that failed after retries were exhausted, by signal.",
+		})
+	}
+
+	// Configured-but-not-running strategies. A gauge at 1 while the
+	// strategy fails to start, gone once it runs: the agent stays up and
+	// its other outputs keep working, so without this the only trace of
+	// a dead output is one ERR line at boot (#826). Both labels are
+	// bounded (strategy names and a fixed reason enum).
+	for name, f := range agentstate.GetStrategyFailures() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.strategy.failed",
+			// No unit: the Prometheus serializer reserves the "_ratio"
+			// suffix for the OTel unit "1", and a boolean state named
+			// strategy_failed_ratio reads as a proportion of something.
+			Unit: "",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"strategy": name,
+				"reason":   f.Reason,
+			},
+			Value:       1,
+			Description: "Set to 1 while a configured strategy is not running, by strategy and reason (unknown_type, create, invalid_config, start). No series means every configured strategy started.",
+		})
+	}
+
+	// Configuration watch. A gauge at 1 while the agent is running
+	// without one, gone once it has it. The agent collects and exports
+	// normally in that state, so nothing else would show it — and the
+	// host most likely to be in it is a host whose logs you are no
+	// longer reading (#850).
+	if watch := agentstate.GetConfigWatchDisabled(); watch != nil {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.config.watch.disabled",
+			Unit: "",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"reason": watch.Reason,
+			},
+			Value:       1,
+			Description: "Set to 1 while the agent is not watching its configuration, by reason (watcher_unavailable, path_not_watched). A configuration change then needs an agent restart to apply. No series means the configuration is watched.",
+		})
+	}
 
 	// Per-reason drop counters — emitted as a single OTel metric with
 	// `reason` attribute. Operators alert on this rising. Today the only
@@ -334,6 +383,37 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Attributes:  map[string]string{"strategy": strategy},
 			Value:       float64(n),
 			Description: "Cumulative count of oldest datapoints dropped by a bounded push buffer at its cap, by strategy.",
+		})
+	}
+
+	// Export send-failure counters (#287). A sink whose backlog is still
+	// under its cap sheds nothing while failing every send, so the drop
+	// counter above stays flat through an outage — this is the series
+	// that moves. One increment per failed attempt, not per datapoint.
+	for _, f := range agentstate.GetExportSendFailed() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.export.send.failed",
+			Unit:        "{attempt}",
+			Type:        "counter",
+			Attributes:  map[string]string{"strategy": f.Strategy, "reason": f.Reason},
+			Value:       float64(f.Count),
+			Description: "Cumulative count of failed delivery attempts by a push strategy, by strategy and reason (transport: batch kept and retried; validation/configuration: batch dropped).",
+		})
+	}
+
+	// Export rejection counters (#819). Distinct from the failure counter
+	// above and not derivable from it: the export SUCCEEDED, the consumer
+	// answered OK, and it kept only part of what it was given. Nothing on
+	// the failure path moves, so this is the only series that shows the
+	// loss from the producing host.
+	for _, rj := range agentstate.GetExportRejected() {
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.export.rejected",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{"strategy": rj.Strategy, "signal": rj.Signal},
+			Value:       float64(rj.Count),
+			Description: "Cumulative count of records refused by a consumer through an OTLP partial success, by strategy and signal. These records are lost — the export reported no error and they are not retried.",
 		})
 	}
 

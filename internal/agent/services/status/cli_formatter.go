@@ -50,6 +50,22 @@ func (f *CLIFormatter) FormatSystemStatus(status SystemStatus) string {
 	// Performance Metrics
 	output.WriteString(f.formatPerformanceInfo(status.Performance))
 
+	// Outputs that are configured but not running. Printed even though
+	// the agent is otherwise healthy: it is the failure operators miss
+	// (#826).
+	if block := f.formatStrategyFailures(status.StrategyFailures); block != "" {
+		output.WriteString("\n")
+		output.WriteString(block)
+	}
+
+	// Running without a configuration watch. The agent collects and
+	// exports normally, so nothing else in this view would say that an
+	// edit will not be picked up (#850).
+	if block := f.formatConfigWatch(status.ConfigWatch); block != "" {
+		output.WriteString("\n")
+		output.WriteString(block)
+	}
+
 	// Probe Status (only if we have probes)
 	if len(status.Probes) > 0 {
 		output.WriteString("\n")
@@ -104,6 +120,55 @@ func (f *CLIFormatter) formatAgentInfo(agent AgentInfo) string {
 		output.WriteString(fmt.Sprintf("Built:      %s\n", agent.BuildTime))
 	}
 
+	return output.String()
+}
+
+// formatStrategyFailures renders the configured strategies that are not
+// running. Returns an empty string when every output started, so the
+// nominal status view is unchanged.
+func (f *CLIFormatter) formatStrategyFailures(failures []StrategyFailure) string {
+	if len(failures) == 0 {
+		return ""
+	}
+
+	var output strings.Builder
+	if runtime.GOOS == "windows" {
+		output.WriteString("Outputs NOT running\n")
+	} else {
+		output.WriteString("⚠️  Outputs NOT running\n")
+	}
+	output.WriteString(strings.Repeat("-", 30) + "\n")
+
+	for _, failure := range failures {
+		output.WriteString(fmt.Sprintf("%-12s %s\n", failure.Strategy+":", failure.Reason))
+		if failure.Detail != "" {
+			output.WriteString(fmt.Sprintf("             %s\n", failure.Detail))
+		}
+	}
+	output.WriteString("\nThe agent is running; these outputs are not. Fix the configuration and restart.\n")
+	return output.String()
+}
+
+// formatConfigWatch renders the degraded configuration watch. Returns
+// an empty string when the configuration is watched, so the nominal
+// status view is unchanged.
+func (f *CLIFormatter) formatConfigWatch(watch *ConfigWatch) string {
+	if watch == nil {
+		return ""
+	}
+
+	var output strings.Builder
+	if runtime.GOOS == "windows" {
+		output.WriteString("Configuration NOT watched\n")
+	} else {
+		output.WriteString("⚠️  Configuration NOT watched\n")
+	}
+	output.WriteString(strings.Repeat("-", 30) + "\n")
+	output.WriteString(fmt.Sprintf("%-12s %s\n", "reason:", watch.Reason))
+	if watch.Detail != "" {
+		output.WriteString(fmt.Sprintf("             %s\n", watch.Detail))
+	}
+	output.WriteString("\nCollection and export are unaffected. A configuration change will not be\npicked up on its own: restart the agent to apply one.\n")
 	return output.String()
 }
 
@@ -261,6 +326,11 @@ func (f *CLIFormatter) FormatOTLPInfo(info *OTLPInfo) string {
 	output.WriteString(fmt.Sprintf("Logs relayed:      %d\n", info.Pipeline.LogsRelayedTotal))
 	output.WriteString(fmt.Sprintf("Metrics relayed:   %d\n", info.Pipeline.MetricsRelayedTotal))
 	output.WriteString(fmt.Sprintf("Export errors:     %d\n", info.Pipeline.ExportErrorsTotal))
+	if len(info.Pipeline.ExportErrorsBySignal) > 0 {
+		for _, signal := range sortedKeys(info.Pipeline.ExportErrorsBySignal) {
+			output.WriteString(fmt.Sprintf("  by %-14s %d\n", signal+":", info.Pipeline.ExportErrorsBySignal[signal]))
+		}
+	}
 	output.WriteString(fmt.Sprintf("Dropped:           %d\n", info.Pipeline.DroppedTotal))
 	if len(info.Pipeline.DroppedByReason) > 0 {
 		for _, reason := range sortedKeys(info.Pipeline.DroppedByReason) {

@@ -72,9 +72,9 @@ func TestProbePollerRegistersEntitySourceOnStart(t *testing.T) {
 	before := entity.RegisteredSourceCount()
 	poller := newEntityWirePoller(t, staticEntitySource{})
 
-	quit := make(chan struct{})
-	defer close(quit)
-	if err := poller.Start(quit); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := poller.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if got := entity.RegisteredSourceCount(); got != before+1 {
@@ -103,9 +103,9 @@ func TestProbePollerSkipsNoOpEntitySource(t *testing.T) {
 	before := entity.RegisteredSourceCount()
 	poller := newEntityWirePoller(t, nil)
 
-	quit := make(chan struct{})
-	defer close(quit)
-	if err := poller.Start(quit); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := poller.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if got := entity.RegisteredSourceCount(); got != before {

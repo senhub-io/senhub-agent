@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/update.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/os-updates.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -25,10 +25,17 @@ All queries are read-only and run without privilege escalation.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `interval` | `3600` | Collection interval in seconds. Update status changes slowly; 30-60 minutes is a sensible range. |
-| `command_timeout` | `120` | Timeout in seconds for the package-manager queries on Linux. |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `interval` | No | `3600` | Seconds between collections; update status changes slowly |
+| `command_timeout` | No | `120` | Seconds allowed to the package-manager queries on Linux |
+
+<!-- schema:params:end -->
+
+An interval of 30 to 60 minutes is a sensible range.
 
 ## Metrics
 

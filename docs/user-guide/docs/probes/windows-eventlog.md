@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/windows" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/windows-eventlog.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -32,23 +32,38 @@ you asked for leave the host.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `channels` | required | Channel names, e.g. `System`, `Security`, `Citrix-XenDesktop-VdaPlugin/Operational` |
-| `levels` | all | Filter: `Critical`, `Error`, `Warning`, `Information`, `Verbose` (case-insensitive). Evaluated by the Event Log engine itself, so filtered events are never rendered |
-| `include_event_ids` | all | Allow-list of EventIDs — only these are emitted |
-| `exclude_event_ids` | none | Deny-list of EventIDs; takes precedence over the allow-list. The standard noise-suppression knob |
-| `sources` | all | Provider name globs, e.g. `Citrix*`, `FSLogix*` |
-| `bookmark_path` | none | File persisting the per-channel subscription position, so a restart resumes without loss or duplication. Without it, the probe tails from now on each start |
-| `backlog` | `false` | Replay events from the persisted bookmark (or from the start of the channel) before switching to live tail |
-| `redact_pii` | `false` | Blank sensitive Security-channel fields (account names, IP addresses) in the rendered body and event data — for GDPR-constrained environments |
-| `poll_interval` | `30s` | Bookmark flush cadence. Event delivery itself is push-based; this does not add latency |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `channels` | Yes | - | Channel names. Example: `System, Security` |
+| `levels` | No | - | Levels to keep; empty means all. One of `Critical`, `Error`, `Warning`, `Information`, `Verbose` |
+| `include_event_ids` | No | - | Event IDs to keep; empty means all |
+| `exclude_event_ids` | No | - | Event IDs to drop; wins over the include list |
+| `sources` | No | - | Provider name patterns. Example: `Citrix*` |
+| `bookmark_path` | No | - | File persisting the subscription position; use a distinct one per instance |
+| `backlog` | No | `false` | Replay events from the bookmark, or the whole channel without one, before tailing live |
+| `redact_pii` | No | `false` | Blank account names and addresses in Security events |
+| `poll_interval` | No | `30s` | Bookmark flush cadence; delivery itself is push-based |
+
+<!-- schema:params:end -->
+
+Level names are matched without regard to case, and `info` is accepted for
+`Information`. Provider patterns are shell globs matched without regard to
+case; a pattern without a wildcard is an exact match. Without
+`bookmark_path`, each start tails from now.
 
 ## Output
 
 Each event becomes one OTel log record: channel, provider, EventID,
 level (mapped to OTel severity), task, keywords, the rendered
 message as the body, and the EventData fields as attributes.
+
+The machine name from the event XML is emitted as `winlog.computer`,
+the uppercase spelling Windows uses. The host a record belongs to is
+the FQDN on the resource — the same value the metrics carry — so the
+record never carries its own `host.name`.
 
 ## Operational notes
 

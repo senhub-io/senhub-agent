@@ -3,7 +3,7 @@ package app
 
 import (
 	"fmt"
-	"log"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,6 +16,53 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
+
+// serviceRemover is the part of service.Service removeService needs, so
+// the no-unit path is testable without a service manager.
+type serviceRemover interface {
+	Uninstall() error
+}
+
+// removeService removes the system service and then the installed
+// files, in that order and independently.
+//
+// The file cleanup is NOT gated on the service removal succeeding. The
+// operator confirmed the removal of the whole configuration directory,
+// and the absence of a service unit — removed by hand, an install that
+// never completed, a unit registered under another name — is not a
+// reason to leave the sealed secret store on the machine. Gating it
+// meant `uninstall --yes` on such a machine printed nothing, removed
+// nothing and exited 0, which reads exactly like success (#849).
+func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Writer) error {
+	err := s.Uninstall()
+	if err == nil {
+		fmt.Fprintln(out, "Service uninstalled successfully")
+	} else {
+		fmt.Fprintf(errOut, "Error removing the system service: %v\n", err)
+		fmt.Fprintln(out, "Removing the installed files anyway, as confirmed.")
+		fmt.Fprintln(out, "If a service registration survives, it will not start without them: remove it by hand.")
+	}
+
+	cleanupFiles(args)
+
+	return err
+}
+
+// printLicenseNotice names, at install time, the two licenses the binary
+// ships under. The Windows installer shows this on a page the operator
+// must pass; on Linux the install is a command, so the same words are
+// printed where the operator is looking. Saying "your commercial
+// agreement" without naming a document is how a customer ends up unable
+// to find one.
+func printLicenseNotice() {
+	fmt.Println()
+	fmt.Println("Licenses: the SenHub Agent core is open source under Apache 2.0")
+	fmt.Println("  (https://github.com/senhub-io/senhub-agent). The Pro and Enterprise")
+	fmt.Println("  probes are licensed commercially under the SenHub Agent license")
+	fmt.Println("  agreement (https://agent.senhub.io/docs/latest/license/), drawn up in French,")
+	fmt.Println("  which is its only binding version. Installing without a license file")
+	fmt.Println("  runs the free tier and needs no agreement.")
+}
 
 func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// Build the ExecStart arguments for the installed service: pass
@@ -145,6 +192,24 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		err = s.Install()
 		if err == nil {
 			fmt.Println("Service installed successfully")
+			printLicenseNotice()
+
+			// A fresh configuration is about to be written: say now if
+			// its HTTP port is already taken, while the operator is
+			// still reading. The service would otherwise start, log
+			// one line and answer nothing.
+			if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+				bindAddress, port := defaultHTTPBindAddress, args.HttpPort
+				if port == 0 {
+					port = defaultHTTPPort
+				}
+				if args.EnableHttps {
+					bindAddress, port = "0.0.0.0", args.HttpsPort
+				}
+				if portErr := checkHTTPPortFree(bindAddress, port); portErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: %v; the agent will not answer on this port until it is freed or changed in strategies.d/00-http.yaml\n", portErr)
+				}
+			}
 
 			// Always generate the local configuration at install time
 			if err := generateConfiguration(args); err != nil {
@@ -153,10 +218,16 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				fmt.Printf("Configuration generated: %s\n", configPath)
 				if args.EnableHttps {
 					fmt.Printf("HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
-					fmt.Printf("\nAccess your agent at: https://localhost:%d/web/{agentkey}/dashboard\n", args.HttpsPort)
-				} else {
-					fmt.Printf("\nAccess your agent at: http://localhost:8080/web/{agentkey}/dashboard\n")
 				}
+				scheme, port := resolveHTTPStrategyEndpoint(configPath)
+				// The key was generated two lines above; printing the
+				// template instead hands the operator a URL that cannot
+				// be opened, on the one line that tells them where to go.
+				key, keyErr := extractAgentKeyFromConfig(configPath)
+				if keyErr != nil || key == "" {
+					key = "{agentkey}"
+				}
+				fmt.Printf("\nAccess your agent at: %s://localhost:%d/web/%s/dashboard\n", scheme, port, key)
 			}
 
 			// The installer runs as root but the daemon does not; the
@@ -177,7 +248,11 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// left the service DOWN on a cancelled uninstall; --yes skips the
 		// prompt for unattended removal.
 		if !args.Yes {
-			fmt.Println("Uninstall will remove the agent configuration file, the certs/ directory, and log files/directories.")
+			fmt.Println("Uninstall will remove the whole agent configuration directory — agent.yaml,")
+			fmt.Println("probes.d/, strategies.d/ AND the sealed secret store, which holds the agent")
+			fmt.Println("key and every credential the agent sealed (database, BMC, API tokens).")
+			fmt.Println("That is irreversible: sealed values cannot be recovered afterwards.")
+			fmt.Println("The certs/ directory and log files/directories are removed too.")
 			fmt.Print("Proceed? [y/N] ")
 			if !readYesConfirmation() {
 				fmt.Println("Uninstall cancelled; nothing was removed.")
@@ -197,13 +272,8 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			time.Sleep(2 * time.Second)
 		}
 
-		// Uninstall the service
-		err = s.Uninstall()
-		if err == nil {
-			fmt.Println("Service uninstalled successfully")
-
-			// Clean up files and directories
-			cleanupFiles(args)
+		if removeService(s, args, os.Stdout, os.Stderr) != nil {
+			os.Exit(1)
 		}
 	case "start":
 		// Heal a pre-0.2.x Windows registration whose command line
@@ -311,14 +381,12 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 }
 
 func runAgent(args *cliArgs.ParsedArgs) {
-	// Configure logging based on verbose flag
-	if args.Verbose {
-		log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
-		log.Println("Verbose logging enabled")
-	}
-
 	// Create logger early for better logging
 	appLogger := agentLogger.NewLogger(args)
+
+	if args.Verbose {
+		appLogger.Debug().Msg("Verbose logging enabled")
+	}
 
 	svcConfig := &service.Config{
 		Name:        "SenHubService",

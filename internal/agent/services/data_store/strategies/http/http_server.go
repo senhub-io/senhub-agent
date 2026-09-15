@@ -3,13 +3,17 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gorilla/mux"
 
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/utils/netbind"
 )
@@ -20,6 +24,8 @@ type ServerManager struct {
 	strategy *HTTPSyncStrategy // Reference to parent strategy for access to modules
 	server   *http.Server
 	handlers *HTTPHandlers
+	// stopOnCancel releases the context.AfterFunc registered in Start.
+	stopOnCancel func() bool
 }
 
 // NewServerManager creates a new HTTP server manager
@@ -31,8 +37,9 @@ func NewServerManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *
 	}
 }
 
-// Start initializes and starts the HTTP server
-func (s *ServerManager) Start() error {
+// Start initializes and starts the HTTP server. It stops serving when
+// ctx is cancelled or Shutdown is called, whichever comes first.
+func (s *ServerManager) Start(ctx context.Context) error {
 	s.logger.Info().
 		Int("port", s.strategy.port).
 		Str("bind_address", s.strategy.bindAddress).
@@ -63,12 +70,35 @@ func (s *ServerManager) Start() error {
 	}
 	go s.serveAsync(ln)
 
+	// Cancelling the lifecycle context stops the server even when
+	// nobody calls Shutdown — the case where the agent context is
+	// cancelled but a strategy was dropped from the config in the same
+	// refresh. stopOnCancel is released in Shutdown so the registration
+	// does not outlive the server.
+	s.stopOnCancel = context.AfterFunc(ctx, func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), serverDrainBudget)
+		defer cancel()
+		if err := s.server.Shutdown(shutdownCtx); err != nil {
+			s.logger.Warn().Err(err).Msg("HTTP server did not drain within the budget on cancellation")
+		}
+	})
+
 	return nil
 }
+
+// serverDrainBudget bounds the drain of in-flight requests when the
+// server stops on context cancellation rather than through Shutdown
+// (which carries the caller's own budget).
+const serverDrainBudget = 2 * time.Second
 
 // Shutdown gracefully stops the HTTP server and cleanup routines
 func (s *ServerManager) Shutdown(ctx context.Context) error {
 	s.logger.Info().Msg("Shutting down HTTP server")
+
+	if s.stopOnCancel != nil {
+		s.stopOnCancel()
+		s.stopOnCancel = nil
+	}
 
 	// Stop cache cleanup
 	s.strategy.cache.Stop()
@@ -111,12 +141,62 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 	certFile := s.strategy.configManager.GetTLSCertFile()
 	keyFile := s.strategy.configManager.GetTLSKeyFile()
 
-	// Fallback to relative paths if not configured (for backward compatibility)
-	if certFile == "" {
-		certFile = "./certs/agent-cert.pem"
+	// Nothing configured means the operator asked for TLS and left the
+	// files to us. The pair then goes next to the configuration, which is
+	// where the installer puts its own and the one directory a hardened
+	// unit is guaranteed to read, and it is generated if it is not there.
+	// Naming a file that does not exist is a different case and stays an
+	// error below: a wrong path is a mistake to report, not to paper over.
+	selfManaged := certFile == "" && keyFile == ""
+	if selfManaged {
+		certsDir := filepath.Join(filepath.Dir(s.strategy.agentConfig.GetConfigPath()), "certs")
+		certFile = filepath.Join(certsDir, "agent-cert.pem")
+		keyFile = filepath.Join(certsDir, "agent-key.pem")
+
+		if err := configuration.EnsureSelfSignedCert(certFile, keyFile, s.selfSignedHosts()); err != nil {
+			s.logger.Error().Err(err).
+				Str("cert_file", certFile).
+				Str("key_file", keyFile).
+				Msg("TLS is enabled and no certificate is configured, and generating one failed; " +
+					"the HTTPS listener is not started. Set tls.cert_file and tls.key_file, or disable tls.")
+			return
+		}
 	}
-	if keyFile == "" {
-		keyFile = "./certs/agent-key.pem"
+
+	// The configured minimum was logged and reported by the API but never
+	// reached the listener, so an operator who required TLS 1.3 was served
+	// by a socket that still accepted 1.2 and had nothing on screen saying
+	// so. A security control that is announced and not applied is worse
+	// than one that is absent.
+	configured := s.strategy.configManager.GetTLSMinVersion()
+	minVersion := tlsVersionOf(configured)
+	if s.server.TLSConfig == nil {
+		s.server.TLSConfig = &tls.Config{MinVersion: minVersion}
+	} else {
+		s.server.TLSConfig.MinVersion = minVersion
+	}
+
+	// The certificate is checked before anything is announced. Serving used
+	// to log "HTTPS server listening", on the configured minimum version,
+	// and only then discover that the file was not there: the operator was
+	// told the listener was up while the port refused every connection and
+	// the service still reported active. A relative default makes that easy
+	// to hit, since it resolves against the unit's working directory and not
+	// against the configuration.
+	certAbs, keyAbs := absolutePathOf(certFile), absolutePathOf(keyFile)
+	for _, f := range []struct{ kind, path string }{{"certificate", certAbs}, {"key", keyAbs}} {
+		if _, err := os.Stat(f.path); err != nil {
+			wd, _ := os.Getwd()
+			s.logger.Error().
+				Str("address", address).
+				Str("cert_file", certAbs).
+				Str("key_file", keyAbs).
+				Str("working_directory", wd).
+				Err(err).
+				Msgf("TLS is enabled but the %s file is missing; the HTTPS listener is not started. "+
+					"Set tls.cert_file and tls.key_file to absolute paths, or disable tls.", f.kind)
+			return
+		}
 	}
 
 	s.logger.Info().
@@ -124,13 +204,64 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 		Int("port", s.strategy.port).
 		Str("bind_address", s.strategy.bindAddress).
 		Bool("tls_enabled", true).
-		Str("cert_file", certFile).
-		Str("key_file", keyFile).
-		Str("min_tls_version", s.strategy.configManager.GetTLSMinVersion()).
+		Str("cert_file", certAbs).
+		Str("key_file", keyAbs).
+		Str("min_tls_version", configured).
+		Bool("self_signed", selfManaged).
 		Msg("HTTPS server listening")
+	if selfManaged {
+		s.logger.Info().
+			Str("cert_file", certAbs).
+			Msg("Using a self-signed certificate the agent manages; replace these files with your own to be trusted by a browser")
+	}
 
-	if err := s.server.ServeTLS(ln, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+	if err := s.server.ServeTLS(ln, certAbs, keyAbs); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTPS server error")
+	}
+}
+
+// selfSignedHosts names what the generated certificate should stand for.
+// localhost is always there because that is how the console is reached on
+// the machine itself; the bind address joins it when it designates one
+// interface rather than all of them, since a certificate for 0.0.0.0
+// matches nothing a client would type.
+func (s *ServerManager) selfSignedHosts() []string {
+	hosts := []string{"localhost", "127.0.0.1"}
+	bind := s.strategy.bindAddress
+	if bind != "" && bind != "0.0.0.0" && bind != "::" && bind != "127.0.0.1" {
+		hosts = append(hosts, bind)
+	}
+	if name, err := os.Hostname(); err == nil && name != "" {
+		hosts = append(hosts, name)
+	}
+	return hosts
+}
+
+// absolutePathOf resolves a configured certificate path so the log names
+// the file the process actually opened. A relative path in the log is
+// unactionable: it reads as a path under the configuration directory and
+// is in fact one under the unit's working directory.
+func absolutePathOf(path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
+}
+
+// tlsVersionOf maps the configured minimum to the constant the listener
+// takes. The schema admits "1.2" and "1.3" only; anything else means the
+// configuration was not the one this build validates, and TLS 1.2 is the
+// safe reading of an unknown value rather than the library's older default.
+func tlsVersionOf(configured string) uint16 {
+	switch configured {
+	case "1.3":
+		return tls.VersionTLS13
+	default:
+		return tls.VersionTLS12
 	}
 }
 

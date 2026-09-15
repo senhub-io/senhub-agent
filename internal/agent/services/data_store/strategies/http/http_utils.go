@@ -102,6 +102,20 @@ func (u *UtilsManager) parseVersionInfo() VersionInfo {
 }
 
 // formatCommitHash formats a commit hash for human-readable display
+// isDescribeHash reports whether a field of a git describe output is the
+// abbreviated hash: a g followed by hexadecimal digits only.
+func isDescribeHash(part string) bool {
+	if len(part) < 8 || part[0] != 'g' {
+		return false
+	}
+	for _, c := range part[1:] {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return false
+		}
+	}
+	return true
+}
+
 func formatCommitHash(commit string) string {
 	if commit == "" {
 		return ""
@@ -117,11 +131,14 @@ func formatCommitHash(commit string) string {
 		return hashPart
 	}
 
-	// Handle git describe format: "tag-commits-ghash-dirty"
+	// Handle git describe format: "tag-commits-ghash-dirty". A tag can
+	// itself hold a word starting with g, so the hash is looked for from
+	// the end and must read as one.
 	if strings.Contains(commit, "-g") {
 		parts := strings.Split(commit, "-")
-		for i, part := range parts {
-			if strings.HasPrefix(part, "g") && len(part) > 1 {
+		for i := len(parts) - 1; i >= 0; i-- {
+			part := parts[i]
+			if isDescribeHash(part) {
 				// Extract short hash (first 7 chars after 'g')
 				hashPart := part[1:]
 				if len(hashPart) >= 7 {

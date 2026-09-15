@@ -5,7 +5,11 @@ package http
 
 // UniversalConfigRequest represents a universal configuration validation request
 type UniversalConfigRequest struct {
-	Probe      string                 `json:"probe"`                // Target probe name (e.g., "redfish", "host")
+	Probe string `json:"probe"` // Probe type (e.g., "redfish", "host")
+	// Name is the configured instance the values come from, when the
+	// form edits one: its stored secrets, which the form never sends
+	// back, are read from its file for the test.
+	Name       string                 `json:"name,omitempty"`
 	Target     string                 `json:"target,omitempty"`     // Target system/endpoint URL
 	Config     map[string]interface{} `json:"config"`               // Probe-specific configuration
 	Validation ConfigValidationMode   `json:"validation,omitempty"` // Validation level to perform
@@ -32,6 +36,10 @@ type UniversalConfigResponse struct {
 	Errors          []string                        `json:"errors,omitempty"`          // Validation errors
 	PreviewMetrics  []PreviewMetric                 `json:"preview_metrics,omitempty"` // Sample metrics (for full validation)
 	Duration        int64                           `json:"duration_ms"`               // Total validation time in milliseconds
+	// Field names the parameter the first error most probably concerns
+	// (a dotted path such as tls.ca_file), so the console can anchor the
+	// message on it. Empty when nothing in the message points anywhere.
+	Field string `json:"field,omitempty"`
 }
 
 // ValidationTestResult represents the result of an individual validation test

@@ -108,9 +108,23 @@ func writeGroup(w io.Writer, name, promType, help string, rows []otelmapper.Otel
 
 	// Sort rows deterministically for stable output (makes scraper diffs
 	// and test assertions easier).
-	sort.Slice(rows, func(i, j int) bool {
-		return labelString(rows[i].Attributes) < labelString(rows[j].Attributes)
-	})
+	//
+	// The sort key is computed ONCE per row. Building it inside the
+	// comparator meant labelString — which allocates a key slice, sorts
+	// it and builds a string — ran O(n log n) times per group instead of
+	// n, on the path a Prometheus scrape takes every interval (#295).
+	type keyed struct {
+		key string
+		row otelmapper.OtelRecord
+	}
+	keys := make([]keyed, len(rows))
+	for i, r := range rows {
+		keys[i] = keyed{key: labelString(r.Attributes), row: r}
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].key < keys[j].key })
+	for i := range keys {
+		rows[i] = keys[i].row
+	}
 
 	for _, r := range rows {
 		labelKeys := make([]string, 0, len(r.Attributes))

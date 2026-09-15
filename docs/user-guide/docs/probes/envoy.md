@@ -1,4 +1,4 @@
-<img src="https://cdn.jsdelivr.net/gh/cncf/artwork@main/projects/envoy/icon/color/envoy-icon-color.svg" alt="" class="probe-page-logo probe-page-logo-wm">
+<img src="../../assets/probe-logos/envoy.svg" alt="" class="probe-page-logo probe-page-logo-wm">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,9 +21,17 @@ connections and requests, and per-cluster upstream metrics.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:9901` | Envoy admin interface base URL |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost:9901` | Base URL of the admin interface |
+| `interval` | No | `30` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this proxy; set it when two envoy probes run on one host |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

@@ -2,12 +2,16 @@
 package http
 
 import (
+	"context"
+	"strings"
+
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/spec"
 
 	"senhub-agent.go/internal/agent/services/configuration"
 )
@@ -97,13 +101,25 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 	// reset, and lets a caller pin handler goroutines).
 	req.Timeout = clampConnectivityTimeout(req.Timeout)
 
+	// A null is the form's word for "remove this stored entry"; it only
+	// means something to a write, so a check or a test does without it.
+	dropRedactedValues(req.Config)
+	configuration.DropNilValues(req.Config)
+	if err := cm.withStoredSecrets(req); err != nil {
+		response.Valid = false
+		response.Errors = append(response.Errors, err.Error())
+		response.Duration = time.Since(startTime).Milliseconds()
+		return response, nil
+	}
+
 	// Step 1: Schema Validation (always performed)
 	schemaResult := cm.validateProbeSchema(req.Probe, req.Config)
 	response.Tests["schema"] = schemaResult
 
 	if !schemaResult.Passed {
 		response.Valid = false
-		response.Errors = append(response.Errors, schemaResult.Error)
+		response.Errors = append(response.Errors, splitParameterProblems(schemaResult.Error)...)
+		response.Field = guessField(req.Probe, response.Errors[0])
 		response.Duration = time.Since(startTime).Milliseconds()
 
 		cm.logger.Error().
@@ -122,6 +138,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		if !connectivityResult.Passed {
 			response.Valid = false
 			response.Errors = append(response.Errors, connectivityResult.Error)
+			response.Field = guessField(req.Probe, connectivityResult.Error)
 			response.Duration = time.Since(startTime).Milliseconds()
 
 			cm.logger.Warn().
@@ -143,11 +160,12 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		if !metricsResult.Passed {
 			response.Valid = false
 			response.Errors = append(response.Errors, metricsResult.Error)
+			response.Field = guessField(req.Probe, metricsResult.Error)
 		}
 	}
 
 	// Final result
-	response.Valid = true
+	response.Valid = len(response.Errors) == 0
 	response.Duration = time.Since(startTime).Milliseconds()
 
 	cm.logger.Info().
@@ -158,6 +176,38 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 		Msg("Universal configuration validation completed")
 
 	return response, nil
+}
+
+// validateAgainstSchema is the generic check: the declared schema, then
+// the probe's constructor through ProbeChecker when the application
+// wired it. Constructor warnings (a value read as its default) are
+// reported in Details; a constructor error fails the check.
+func validateAgainstSchema(ps spec.Probe, config map[string]interface{}) ValidationTestResult {
+	result := ValidationTestResult{}
+	if problems := ps.CheckParams(config); len(problems) > 0 {
+		msgs := make([]string, 0, len(problems))
+		for _, pr := range problems {
+			msgs = append(msgs, pr.String())
+		}
+		result.Error = "parameters: " + strings.Join(msgs, "; ")
+		return result
+	}
+	if ProbeChecker != nil {
+		issues, err := ProbeChecker(ps.Type, config)
+		if err != nil {
+			result.Error = "the probe refuses this configuration: " + err.Error()
+			return result
+		}
+		if len(issues) > 0 {
+			notes := make([]string, 0, len(issues))
+			for _, is := range issues {
+				notes = append(notes, fmt.Sprintf("%q reads %v, which is not %s (default used)", is.Key, is.Got, is.Want))
+			}
+			result.Details = strings.Join(notes, "; ")
+		}
+	}
+	result.Passed = true
+	return result
 }
 
 // validateProbeSchema validates the probe configuration against its expected schema
@@ -172,6 +222,15 @@ func (cm *ConfigurationManager) validateProbeSchema(probeName string, config map
 	result := ValidationTestResult{
 		Passed:   false,
 		Duration: 0,
+	}
+
+	// A probe that declares its schema is checked against it, then
+	// built by the application's hook to hear what it refuses; the
+	// hand-written validators below remain for the types without one.
+	if ps, has := spec.For(probeName); has {
+		result = validateAgainstSchema(ps, config)
+		result.Duration = time.Since(startTime).Milliseconds()
+		return result
 	}
 
 	// Validate based on probe type
@@ -257,13 +316,30 @@ func (cm *ConfigurationManager) validateProbeMetrics(probeName string, config ma
 	}
 	var previewMetrics []PreviewMetric
 
-	// This would require instantiating the actual probe temporarily
-	// For now, we'll simulate this functionality
+	// One real collect cycle through the application's hook, bounded by
+	// the same budget as the connectivity check. Without the hook the
+	// test says so rather than inventing metrics.
+	if ProbeCollector == nil {
+		result.Error = "test collection is not available in this build"
+		result.Duration = time.Since(startTime).Milliseconds()
+		return result, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(clampConnectivityTimeout(timeout))*time.Second)
+	defer cancel()
+	collected, err := ProbeCollector(ctx, probeName, config)
+	if err != nil {
+		result.Error = "collection failed: " + err.Error()
+		result.Duration = time.Since(startTime).Milliseconds()
+		return result, nil
+	}
+	previewMetrics = collected
+	if down := deadTarget(collected); down != "" {
+		result.Error = down
+		result.Duration = time.Since(startTime).Milliseconds()
+		return result, previewMetrics
+	}
 	result.Passed = true
-	result.Details = "Metrics validation not yet implemented - configuration appears valid"
-
-	// Create some mock preview metrics based on probe type
-	previewMetrics = cm.generateMockPreviewMetrics(probeName)
+	result.Details = fmt.Sprintf("collected %d metrics", len(collected))
 
 	result.Duration = time.Since(startTime).Milliseconds()
 
@@ -519,39 +595,6 @@ func (cm *ConfigurationManager) testSyslogConnectivity(config map[string]interfa
 	return result
 }
 
-// generateMockPreviewMetrics creates sample metrics for preview purposes
-func (cm *ConfigurationManager) generateMockPreviewMetrics(probeName string) []PreviewMetric {
-	timestamp := time.Now().Unix()
-
-	switch probeName {
-	case "redfish":
-		return []PreviewMetric{
-			{Name: "system.health", Value: 1, Tags: map[string]string{"system_id": "1"}, Timestamp: timestamp},
-			{Name: "thermal.cpu.0.temperature", Value: 45.2, Tags: map[string]string{"cpu_id": "0", "system_id": "1"}, Timestamp: timestamp},
-			{Name: "power.psu.0.output_watts", Value: 350.5, Tags: map[string]string{"psu_id": "0", "system_id": "1"}, Timestamp: timestamp},
-		}
-	case "cpu":
-		return []PreviewMetric{
-			{Name: "cpu.usage_percent", Value: 25.8, Tags: map[string]string{"cpu": "all"}, Timestamp: timestamp},
-			{Name: "cpu.cores", Value: 8, Tags: map[string]string{"cpu": "all"}, Timestamp: timestamp},
-		}
-	case "memory":
-		return []PreviewMetric{
-			{Name: "memory.usage_percent", Value: 62.3, Tags: map[string]string{}, Timestamp: timestamp},
-			{Name: "memory.available_mb", Value: 6144, Tags: map[string]string{}, Timestamp: timestamp},
-		}
-	case "ping_webapp":
-		return []PreviewMetric{
-			{Name: "webapp.ping_ms", Value: 45.2, Tags: map[string]string{"url": "example.com"}, Timestamp: timestamp},
-			{Name: "webapp.available", Value: 1, Tags: map[string]string{"url": "example.com"}, Timestamp: timestamp},
-		}
-	default:
-		return []PreviewMetric{
-			{Name: fmt.Sprintf("%s.status", probeName), Value: 1, Tags: map[string]string{"probe": probeName}, Timestamp: timestamp},
-		}
-	}
-}
-
 // HTTP Handler Methods for Universal Configuration
 
 // HandleUniversalConfigValidation handles POST requests for universal configuration validation
@@ -699,4 +742,76 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 		Int64("duration_ms", response.Duration).
 		Int("preview_metrics_count", len(response.PreviewMetrics)).
 		Msg("Universal configuration test request completed")
+}
+
+// withStoredSecrets completes the values of an existing probe with the
+// secret references its file holds and resolves them, so a test from
+// the form runs with the real credentials without the form ever seeing
+// them.
+func (cm *ConfigurationManager) withStoredSecrets(req *UniversalConfigRequest) error {
+	if req.Name != "" {
+		if configPath := cm.agentConfig.GetConfigPath(); configPath != "" {
+			existing, found, err := configuration.ReadProbeFragment(configPath, req.Name)
+			if err != nil {
+				return err
+			}
+			if found && existing.Type != req.Probe {
+				return fmt.Errorf("probe %q is a %s, not a %s", req.Name, existing.Type, req.Probe)
+			}
+			if found {
+				req.Config = configuration.KeepStoredReferences(existing.Params, req.Config)
+			}
+		}
+	}
+	// A reference typed in the form (${secret:...}, ${env:...}) is resolved
+	// the way the loader resolves it, so the test runs with the value.
+	if err := configuration.Substitute(&req.Config); err != nil {
+		return fmt.Errorf("resolving the values: %w", err)
+	}
+	return nil
+}
+
+// splitParameterProblems turns the schema's "parameters: a; b" message
+// into one error per problem, so each can be anchored on its field.
+func splitParameterProblems(msg string) []string {
+	const prefix = "parameters: "
+	if !strings.HasPrefix(msg, prefix) {
+		return []string{msg}
+	}
+	parts := strings.Split(strings.TrimPrefix(msg, prefix), "; ")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return []string{msg}
+	}
+	return out
+}
+
+// deadTarget reports a collection that succeeded only in saying that the
+// target is down: the probe's own availability metric ("up" or "*.up")
+// at zero. A test that passes on such a cycle would tell the operator
+// that the values are right when the server refused them. Counts that
+// happen to end in "available" (a deployment scaled to zero) are not it.
+func deadTarget(metrics []PreviewMetric) string {
+	for _, m := range metrics {
+		name := strings.ToLower(m.Name)
+		if name != "up" && !strings.HasSuffix(name, ".up") {
+			continue
+		}
+		if m.Value == 0 {
+			target := ""
+			for _, k := range []string{"target", "host", "url", "endpoint", "server"} {
+				if v, ok := m.Tags[k]; ok && v != "" {
+					target = " (" + v + ")"
+					break
+				}
+			}
+			return fmt.Sprintf("the target did not answer%s: %s = 0", target, m.Name)
+		}
+	}
+	return ""
 }

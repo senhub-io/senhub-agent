@@ -73,13 +73,17 @@ done
 echo
 echo "OK   both Windows ZIPs now carry an Authenticode-signed exe."
 echo
-echo "NEXT: dispatch the second half so the ZIPs are re-minisigned and the"
-echo "MSI is rebuilt from the signed exe:"
+echo "NEXT: dispatch the second half so the ZIPs are re-minisigned and both"
+echo "MSIs (full + oss) are rebuilt from their matching signed exe:"
 echo
 echo "  gh workflow run publish-signed-exe.yml \\"
 echo "    --repo senhub-io/senhub-agent-enterprise -f tag=$TAG"
 echo
-echo "Then (production tags) sign + publish the MSI as usual:"
-echo "  sign-release-msi.sh <downloaded unsigned MSI artifact> && \\"
-echo "  gh release upload $TAG <signed msi> --repo $REPO && \\"
+echo "Then (production tags) sign + publish BOTH MSI build artifacts:"
+echo "  sign-release-msi.sh <downloaded senhub-agent-\$TAG-amd64.msi>     && \\"
+echo "  sign-release-msi.sh <downloaded senhub-agent-oss-\$TAG-amd64.msi> && \\"
+echo "  gh release upload $TAG <signed full msi> <signed oss msi> --repo $REPO && \\"
 echo "  gh workflow run publish-signed-msi.yml --repo senhub-io/senhub-agent-enterprise -f tag=$TAG"
+echo
+echo "publish-signed-msi.yml publishes whichever of the two MSIs is"
+echo "already uploaded — a single dispatch after both are up covers both."

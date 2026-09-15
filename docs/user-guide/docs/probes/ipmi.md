@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/server.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/ipmi.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,16 +24,45 @@ against the local BMC.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `mode` | `local` | `local` (host's own BMC) or `remote` (poll a remote BMC over LAN) |
-| `remote_host` | — | IP or hostname of the remote BMC (required when `mode: remote`) |
-| `remote_user` | — | IPMI username for remote access |
-| `remote_password` | — | IPMI password for remote access — reference a stored secret via `${secret:<name>.remote_password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `remote_iface` | `lanplus` | IPMI LAN interface: `lanplus` (IPMI 2.0) or `lan` (IPMI 1.5) |
-| `include_types` | all | Restrict to these sensor types (e.g. `[Temperature, Fan]`) |
-| `exclude_names` | — | Regex patterns to skip specific sensor names |
-| `ipmitool_path` | `ipmitool` | Path to the `ipmitool` binary if not in PATH |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `mode` | No | `local` | local reads the host's own BMC; remote polls a BMC over LAN. One of `local`, `remote` |
+| `remote` | If `mode` is `remote` | - | Remote BMC access, used with mode remote |
+| `remote.host` | No | - | BMC address or hostname; required with mode remote |
+| `remote.username` | No | - | IPMI user |
+| `remote.password` | No | - | IPMI user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `remote.interface` | No | `lanplus` | ipmitool interface; lanplus for IPMI 2.0, lan for IPMI 1.5 |
+| `sensors` | No | - | Sensor selection |
+| `sensors.include_types` | No | - | Only these sensor types; empty means all. Example: `Temperature, Fan` |
+| `sensors.exclude_names` | No | - | Regular expressions of sensor names to skip |
+| `ipmitool_path` | No | `ipmitool` | Path of the ipmitool binary when it is not on the PATH. Example: `/usr/bin/ipmitool` |
+| `interval` | No | `60` | Seconds between collections |
+| `exec_timeout` | No | `10` | Seconds an ipmitool run may take before it is killed |
+
+<!-- schema:params:end -->
+
+To poll a BMC over the network instead of the host's own, set `mode: remote`
+and give the BMC under the `remote` block. Sensor filters live under the
+`sensors` block:
+
+```yaml
+# probes.d/10-ipmi.yaml
+- name: ipmi
+  type: ipmi
+  params:
+    mode: remote
+    remote:
+      host: 10.0.0.50
+      username: monitor
+      password: ${secret:ipmi.password}   # OS secret store; inline plaintext is auto-sealed on install
+      interface: lanplus                  # lan for an IPMI 1.5 BMC
+    sensors:
+      include_types: [Temperature, Fan]
+      exclude_names: ["^PSU2.*"]
+```
 
 ## Metrics
 

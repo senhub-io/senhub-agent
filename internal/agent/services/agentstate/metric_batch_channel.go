@@ -156,13 +156,3 @@ func MetricBatchSubscriberCount() int {
 	defer metricBatchCh.mu.RUnlock()
 	return len(metricBatchCh.subs)
 }
-
-// resetMetricBatchChannelForTest clears all subscribers and resets the drop
-// counter. Test-only helper to keep the package-level state from leaking
-// across test cases.
-func resetMetricBatchChannelForTest() {
-	metricBatchCh.mu.Lock()
-	metricBatchCh.subs = nil
-	metricBatchCh.dropped.Store(0)
-	metricBatchCh.mu.Unlock()
-}

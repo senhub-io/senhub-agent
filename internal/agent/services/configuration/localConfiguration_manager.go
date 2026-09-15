@@ -201,7 +201,7 @@ func (lc *LocalConfiguration) generateAgentYAML(agentKey string) ([]byte, error)
 // to 0.0.0.0; otherwise it stays on 127.0.0.1:8080 with PRTG / Web /
 // Nagios endpoints.
 func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
-	port := 8080
+	port := lc.defaultHTTPPort()
 	bindAddress := "127.0.0.1"
 	tlsSection := ""
 
@@ -251,9 +251,18 @@ func (lc *LocalConfiguration) generateAgentKey() (string, error) {
 }
 
 // createDefaultStorageConfig creates default storage configuration
+// defaultHTTPPort is the plain-HTTP port a fresh configuration listens
+// on: the one the installer asked for, else 8080.
+func (lc *LocalConfiguration) defaultHTTPPort() int {
+	if lc.args != nil && lc.args.HttpPort > 0 {
+		return lc.args.HttpPort
+	}
+	return 8080
+}
+
 func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 	httpParams := map[string]interface{}{
-		"port":         8080,
+		"port":         lc.defaultHTTPPort(),
 		"bind_address": "127.0.0.1",
 		"endpoints":    []string{"prtg", "web", "nagios"},
 	}
@@ -327,48 +336,54 @@ func (lc *LocalConfiguration) createDefaultCacheConfig() *CacheConfig {
 // This is needed because yaml.v2 unmarshals into map[interface{}]interface{}
 // but Go JSON expects map[string]interface{}
 func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
-	// Fix storage configs
+	return normalizeYAMLTypes(config)
+}
+
+// normalizeYAMLTypes rewrites every map yaml.v2 keyed by interface{} into
+// the string-keyed map the rest of the agent (and encoding/json) expects:
+// strategy params, probe params and the probe governance block, which
+// nests maps the same way. It runs in the loader so every reader of a
+// configuration gets the same shapes, not only the running agent.
+func normalizeYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
 	for i, storage := range config.Storage {
-		if converted := lc.convertMapTypes(storage.Params); converted != nil {
-			if convertedMap, ok := converted.(map[string]interface{}); ok {
-				config.Storage[i].Params = convertedMap
-			}
+		if converted, ok := convertMapTypes(storage.Params).(map[string]interface{}); ok {
+			config.Storage[i].Params = converted
 		}
 	}
-
-	// Fix probe configs
 	for i, probe := range config.Probes {
-		if converted := lc.convertMapTypes(probe.Params); converted != nil {
-			if convertedMap, ok := converted.(map[string]interface{}); ok {
-				config.Probes[i].Params = convertedMap
+		if converted, ok := convertMapTypes(probe.Params).(map[string]interface{}); ok {
+			config.Probes[i].Params = converted
+		}
+		if probe.Governance != nil {
+			if converted, ok := convertMapTypes(probe.Governance).(map[string]interface{}); ok {
+				config.Probes[i].Governance = converted
 			}
 		}
 	}
-
 	return config
 }
 
 // convertMapTypes recursively converts map[interface{}]interface{} to map[string]interface{}
-func (lc *LocalConfiguration) convertMapTypes(input interface{}) interface{} {
+func convertMapTypes(input interface{}) interface{} {
 	switch v := input.(type) {
 	case map[interface{}]interface{}:
 		result := make(map[string]interface{})
 		for key, value := range v {
 			if keyStr, ok := key.(string); ok {
-				result[keyStr] = lc.convertMapTypes(value)
+				result[keyStr] = convertMapTypes(value)
 			}
 		}
 		return result
 	case map[string]interface{}:
 		result := make(map[string]interface{})
 		for key, value := range v {
-			result[key] = lc.convertMapTypes(value)
+			result[key] = convertMapTypes(value)
 		}
 		return result
 	case []interface{}:
 		result := make([]interface{}, len(v))
 		for i, item := range v {
-			result[i] = lc.convertMapTypes(item)
+			result[i] = convertMapTypes(item)
 		}
 		return result
 	default:
@@ -408,6 +423,44 @@ func (lc *LocalConfiguration) validateConfiguration(config *LocalConfigurationDa
 		}
 	}
 
+	return nil
+}
+
+// EnsureSelfSignedCert writes a self-signed pair at the given paths if
+// either is missing, and does nothing if both are already there.
+//
+// It exists because "tls.enabled: true" with no certificate was a silent
+// outage: the listener could not start, and an operator who had asked for
+// TLS got no console, no PRTG endpoint and no Nagios endpoint while the
+// service still reported healthy (#879). Refusing to start was correct and
+// still is when the operator named their own files — a missing file at a
+// path they chose is a mistake to report, not to paper over. This is for
+// the case where they named nothing.
+//
+// The pair goes next to the configuration for the reason generateTLSCertificates
+// already records: a hardened unit runs with ProtectHome=true, and anything
+// written under a home directory is unreadable by the service user.
+func EnsureSelfSignedCert(certPath, keyPath string, hosts []string) error {
+	_, certErr := os.Stat(certPath)
+	_, keyErr := os.Stat(keyPath)
+	if certErr == nil && keyErr == nil {
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(certPath), 0750); err != nil {
+		return fmt.Errorf("creating the certificate directory %s: %w", filepath.Dir(certPath), err)
+	}
+
+	certPEM, keyPEM, err := SelfSignedPEM(hosts)
+	if err != nil {
+		return fmt.Errorf("generating a self-signed certificate: %w", err)
+	}
+	if err := os.WriteFile(certPath, certPEM, 0600); err != nil {
+		return fmt.Errorf("writing %s: %w", certPath, err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		return fmt.Errorf("writing %s: %w", keyPath, err)
+	}
 	return nil
 }
 
@@ -455,6 +508,15 @@ func (lc *LocalConfiguration) generateTLSCertificates() error {
 
 // generateSelfSignedCert generates a self-signed certificate
 func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
+	return SelfSignedPEM(lc.args.HttpsHosts)
+}
+
+// SelfSignedPEM builds a self-signed certificate and its key, in PEM. It is
+// the single implementation behind both callers: the installer, which writes
+// a pair when it creates a configuration, and the HTTPS listener, which
+// writes one when tls is enabled and none was ever produced. Two generators
+// would drift, and the one nobody looks at is the one that would.
+func SelfSignedPEM(hosts []string) ([]byte, []byte, error) {
 	// Generate RSA private key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -481,7 +543,7 @@ func (lc *LocalConfiguration) generateSelfSignedCert() ([]byte, []byte, error) {
 	}
 
 	// Add Subject Alternative Names
-	for _, host := range lc.args.HttpsHosts {
+	for _, host := range hosts {
 		if ip := net.ParseIP(host); ip != nil {
 			template.IPAddresses = append(template.IPAddresses, ip)
 		} else {

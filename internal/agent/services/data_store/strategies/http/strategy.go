@@ -13,10 +13,16 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"sort"
+	"strings"
 )
 
 // HTTPSyncStrategy implements an HTTP server that exposes metrics via REST endpoints
 type HTTPSyncStrategy struct {
+	// runCtx is the lifecycle context Start received, kept so a live
+	// reconfiguration restarts the server under the same cancellation
+	// root rather than an orphaned background one.
+	runCtx              context.Context
 	agentConfig         configuration.AgentConfiguration
 	params              map[string]interface{}
 	logger              *logger.ModuleLogger
@@ -221,14 +227,19 @@ func (h *HTTPSyncStrategy) ValidateConfigParams(params configuration.StorageConf
 }
 
 // Start initializes the HTTP server and cache cleanup
-func (h *HTTPSyncStrategy) Start() error {
+func (h *HTTPSyncStrategy) Start(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	h.runCtx = ctx
+
 	h.logger.Info().
 		Int("port", h.port).
 		Str("bind_address", h.bindAddress).
 		Msg("Starting HTTP strategy")
 
 	// Delegate server startup to ServerManager
-	if err := h.serverManager.Start(); err != nil {
+	if err := h.serverManager.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 
@@ -324,6 +335,7 @@ type EndpointInfoStatus struct {
 // SystemInfoResponse represents the response for /info/system
 type SystemInfoResponse struct {
 	Status    string              `json:"status"`
+	Hostname  string              `json:"hostname"`
 	Version   string              `json:"version"`
 	Commit    string              `json:"commit"`
 	GoVersion string              `json:"go_version"`
@@ -334,12 +346,39 @@ type SystemInfoResponse struct {
 	Health    HealthCheckResponse `json:"health"`
 	Cache     CacheInfoResponse   `json:"cache"`
 	Resources ResourcesInfo       `json:"resources"`
+	// StrategyFailures lists the configured outputs that are NOT running.
+	// Served here rather than computed by the CLI, because the CLI is a
+	// separate process: reading the in-memory state there would always
+	// find it empty while the daemon holds the truth (#826).
+	StrategyFailures []StrategyFailureInfo `json:"strategy_failures,omitempty"`
+	// OutputsFailing names every output that is not delivering: the
+	// ones that could not start and the ones whose last export failed.
+	OutputsFailing []string `json:"outputs_failing,omitempty"`
+	// ConfigPath is the directory the configuration is read from.
+	ConfigPath string `json:"config_path,omitempty"`
+	// ConfigWatch is set only when the agent is running WITHOUT a
+	// configuration watch: an edit then needs a restart to apply. Same
+	// reasoning as above — the daemon holds the truth, the CLI does not.
+	ConfigWatch *ConfigWatchInfo `json:"config_watch,omitempty"`
 }
 
 // OTLPInfoResponse represents the response for /info/otlp — a snapshot
 // of every OTLP self-metric exposed by `agentstate`. Designed to feed
 // the CLI `agent status --otlp` view and the web dashboard's OTLP card
 // without forcing either to scrape the Prometheus bridge.
+// StrategyFailureInfo is one configured output that failed to start.
+type StrategyFailureInfo struct {
+	Strategy string `json:"strategy"`
+	Reason   string `json:"reason"`
+	Detail   string `json:"detail,omitempty"`
+}
+
+// ConfigWatchInfo says why the agent is not watching its configuration.
+type ConfigWatchInfo struct {
+	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
+}
+
 type OTLPInfoResponse struct {
 	Pipeline       OTLPPipelineInfo       `json:"pipeline"`
 	Store          OTLPStoreInfo          `json:"store"`
@@ -368,14 +407,15 @@ type OTLPLogsQueueInfo struct {
 }
 
 type OTLPPipelineInfo struct {
-	MetricsPushedTotal  uint64            `json:"metrics_pushed_total"`
-	LogsPushedTotal     uint64            `json:"logs_pushed_total"`
-	SpansRelayedTotal   uint64            `json:"spans_relayed_total"`
-	LogsRelayedTotal    uint64            `json:"logs_relayed_total"`
-	MetricsRelayedTotal uint64            `json:"metrics_relayed_total"`
-	ExportErrorsTotal   uint64            `json:"export_errors_total"`
-	DroppedTotal        uint64            `json:"dropped_total"`
-	DroppedByReason     map[string]uint64 `json:"dropped_by_reason"`
+	MetricsPushedTotal   uint64            `json:"metrics_pushed_total"`
+	LogsPushedTotal      uint64            `json:"logs_pushed_total"`
+	SpansRelayedTotal    uint64            `json:"spans_relayed_total"`
+	LogsRelayedTotal     uint64            `json:"logs_relayed_total"`
+	MetricsRelayedTotal  uint64            `json:"metrics_relayed_total"`
+	ExportErrorsTotal    uint64            `json:"export_errors_total"`
+	ExportErrorsBySignal map[string]uint64 `json:"export_errors_by_signal"`
+	DroppedTotal         uint64            `json:"dropped_total"`
+	DroppedByReason      map[string]uint64 `json:"dropped_by_reason"`
 }
 
 type OTLPStoreInfo struct {
@@ -549,10 +589,6 @@ func (h *HTTPSyncStrategy) handleWebDocs(w http.ResponseWriter, r *http.Request)
 	h.webInterface.HandleWebDocs(r, w)
 }
 
-// func (h *HTTPSyncStrategy) handleWebGuide(w http.ResponseWriter, r *http.Request) {
-// 	h.webInterface.HandleWebGuide(r, w)
-// }
-
 func (h *HTTPSyncStrategy) handleWebAssets(w http.ResponseWriter, r *http.Request) {
 	h.webInterface.HandleWebAssets(r, w)
 }
@@ -564,7 +600,7 @@ func (h *HTTPSyncStrategy) handleStatsCache(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *HTTPSyncStrategy) handleConfigProbes(w http.ResponseWriter, r *http.Request) {
-	h.debugManager.HandleConfigProbes(w, r)
+	h.handleConfiguredProbes(w, r)
 }
 
 func (h *HTTPSyncStrategy) handleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
@@ -700,6 +736,12 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 		Any("new_params", configuration.SanitizeParamsForLog(newParams)).
 		Msg("Updating HTTP strategy configuration")
 
+	// Snapshot the endpoint set before the update: routes are registered
+	// once at Start behind IsEndpointEnabled guards, so enabling one at
+	// runtime changed the config and nothing else — the new endpoint kept
+	// answering 404 until someone restarted the service (#822).
+	previousEndpoints := endpointSetSignature(h.configManager.GetEnabledEndpoints())
+
 	// Update the configuration manager
 	if err := h.configManager.UpdateConfiguration(newParams); err != nil {
 		h.logger.Error().
@@ -710,6 +752,16 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 
 	// Update internal parameters
 	h.params = newParams
+
+	// The route table is built at server start, so an endpoint set change
+	// needs the same restart a port change gets.
+	if current := endpointSetSignature(h.configManager.GetEnabledEndpoints()); current != previousEndpoints {
+		h.logger.Info().
+			Str("old_endpoints", previousEndpoints).
+			Str("new_endpoints", current).
+			Msg("Enabled endpoints changed, restarting HTTP server to rebuild the routes")
+		return h.restartServer()
+	}
 
 	// Restart server if port or bind address changed
 	if portParam, exists := newParams["port"]; exists {
@@ -767,8 +819,14 @@ func (h *HTTPSyncStrategy) restartServer() error {
 		}
 	}
 
-	// Restart with new configuration
-	if err := h.serverManager.Start(); err != nil {
+	// Restart with new configuration, under the same lifecycle context
+	// the strategy was started with — a live reconfiguration must not
+	// quietly promote the server to an uncancellable one.
+	runCtx := h.runCtx
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
+	if err := h.serverManager.Start(runCtx); err != nil {
 		h.logger.Error().Err(err).Msg("Failed to restart HTTP server")
 		return err
 	}
@@ -786,4 +844,17 @@ func (h *HTTPSyncStrategy) restartServer() error {
 // GetStatusService returns the status service (read-only access)
 func (h *HTTPSyncStrategy) GetStatusService() *status.StatusService {
 	return h.statusService
+}
+
+// endpointSetSignature renders an enabled-endpoint set as a stable
+// string, so two sets can be compared regardless of map iteration order.
+func endpointSetSignature(endpoints map[string]bool) string {
+	names := make([]string, 0, len(endpoints))
+	for name, enabled := range endpoints {
+		if enabled {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }

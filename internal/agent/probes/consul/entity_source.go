@@ -70,13 +70,6 @@ func newConsulEntitySource(instanceName string, host string, port int) *consulEn
 	return s
 }
 
-// setPinnedIDFromConfig is used by tests to confirm the instance_name fast path.
-func (s *consulEntitySource) hasPinnedID() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.pinnedID != ""
-}
-
 // setReachable is called after each collect cycle. nodeID is the value of
 // Config.NodeID from /v1/agent/self (empty if the endpoint was unreachable or
 // the field was absent). version may be empty.

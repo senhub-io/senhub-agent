@@ -3,6 +3,7 @@ package process
 import (
 	"fmt"
 	"regexp"
+	"senhub-agent.go/internal/agent/probes/types"
 	"time"
 )
 
@@ -28,7 +29,7 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 		interval:  30 * time.Second,
 	}
 
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.interval = time.Duration(v) * time.Second
 	}
 
@@ -43,7 +44,7 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 		if s, ok := filter["by_user"].(string); ok {
 			cfg.byUser = s
 		}
-		if n, ok := filter["top_n"].(int); ok {
+		if n, ok := types.IntParam(filter, "top_n"); ok {
 			cfg.topN = n
 		}
 	}

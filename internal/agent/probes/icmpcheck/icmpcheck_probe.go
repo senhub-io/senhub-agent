@@ -148,19 +148,19 @@ func parseConfig(config map[string]interface{}) (checkConfig, error) {
 		return cfg, fmt.Errorf("icmp_check requires at least one target")
 	}
 
-	if v, ok := config["count"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "count"); ok && v > 0 {
 		cfg.Count = v
 	}
-	if v, ok := config["packet_size"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "packet_size"); ok && v > 0 {
 		cfg.PacketSize = v
 	}
 	if v, ok := config["privileged"].(bool); ok {
 		cfg.Privileged = v
 	}
-	if v, ok := config["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	return cfg, nil

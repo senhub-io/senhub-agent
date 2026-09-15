@@ -117,7 +117,7 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	if v, ok := raw["verify_tls"].(bool); ok {
 		cfg.VerifyTLS = v
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	if v, ok := raw["instance_name"].(string); ok {
@@ -325,13 +325,6 @@ func (p *CephProbe) collectHealth(now time.Time, instance string) ([]data_store.
 }
 
 // --- OSDs ---
-
-type osdDumpResponse struct {
-	OSDs []struct {
-		Up int `json:"up"`
-		In int `json:"in"`
-	} `json:"osds"`
-}
 
 func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.DataPoint, error) {
 	raw, err := p.apiGet("/api/osd")

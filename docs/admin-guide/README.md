@@ -16,6 +16,15 @@ This section contains documentation for system administrators and advanced users
 ### System Management
 - **[Logging](./LOGGING.md)** - Configure logging levels, outputs, and log management
 - **[Least-Privilege](./LEAST-PRIVILEGE.md)** - Run the daemon as a non-root user with per-probe capabilities
+- **[Global and custom tags](./TAGS.md)** - Attach site / tenant / region labels to every datapoint
+- **[Configuration Version Changelog](./CONFIG-VERSION-CHANGELOG.md)** - Config format versions and migration
+- **[Update Signing](./UPDATE-SIGNING.md)** - How a self-update artifact is verified before it is applied
+
+### OTLP Pipeline
+- **[Backpressure & Resilience](./BACKPRESSURE.md)** - Cardinality caps, memory limiter, persistent checkpoint
+
+### Build Notes
+- **[IBM i Native Runner](./IBMI-RUNTIME-BUILD.md)** - Building and deploying the `jt400runner` binary
 
 ## 🎯 Who This Is For
 
@@ -27,7 +36,7 @@ This section contains documentation for system administrators and advanced users
 ## 🔧 Prerequisites
 
 Before using this guide, you should:
-- Have SenHub Agent installed and running (see [User Guide](../user-guide/))
+- Have SenHub Agent installed and running (see [User Guide](../user-guide/docs/index.md))
 - Understand basic networking concepts
 - Have administrative access to the target systems
 - Be familiar with YAML configuration files
@@ -51,4 +60,4 @@ When configuring SenHub Agent in production:
 - Use appropriate network binding (avoid 0.0.0.0 in production unless necessary)
 - Set appropriate log levels to avoid sensitive data exposure
 
-For troubleshooting, see the [Troubleshooting Guide](../troubleshooting/).
+For troubleshooting, see the [Troubleshooting Guide](../user-guide/docs/troubleshooting.md).

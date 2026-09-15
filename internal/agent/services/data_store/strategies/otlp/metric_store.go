@@ -325,26 +325,6 @@ func escapeStoreKeyPart(s string) string {
 	return strings.NewReplacer(`\`, `\\`, "|", `\|`, "=", `\=`).Replace(s)
 }
 
-// coerceToFloat64 mirrors the http strategy helper: we may receive
-// values typed-opaque on the cache route, but here on AddDataPoints the
-// value comes as float32 from datapoint.DataPoint. Kept here so future
-// non-numeric extensions have one obvious place to extend.
-func coerceToFloat64(v interface{}) (float64, bool) {
-	switch x := v.(type) {
-	case float64:
-		return x, true
-	case float32:
-		return float64(x), true
-	case int:
-		return float64(x), true
-	case int32:
-		return float64(x), true
-	case int64:
-		return float64(x), true
-	}
-	return 0, false
-}
-
 // evictStale removes every entry whose last datapoint is older than ttl
 // at instant now, returning how many were evicted. Without this, a
 // series restored from the checkpoint after its producer disappeared

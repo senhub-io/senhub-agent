@@ -141,3 +141,4 @@ internal/agent/probes/ibmi/bridge/jt400runner
 docs/user-guide/site/
 
 # Agent worktrees (transient, never part of the repo)
+

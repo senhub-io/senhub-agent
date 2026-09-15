@@ -219,16 +219,6 @@ func agentBuildCommit() string {
 	return cliArgs.CommitHash
 }
 
-// resetPrometheusWarnedMetricsForTest clears the warn-once dedup map so
-// tests in this package can run independently. Not exported beyond the
-// package — tests are the only legitimate caller.
-func resetPrometheusWarnedMetricsForTest() {
-	prometheusWarnedMetrics.Range(func(k, _ interface{}) bool {
-		prometheusWarnedMetrics.Delete(k)
-		return true
-	})
-}
-
 // prometheusTargetResource builds the resource attributes exposed once as the
 // standard target_info series (#745).
 //

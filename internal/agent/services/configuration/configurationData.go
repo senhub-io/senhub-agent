@@ -1,5 +1,14 @@
 package configuration
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"regexp"
+
+	"senhub-agent.go/internal/agent/services/governance"
+)
+
 // Shared configuration data types — extracted from the
 // (now-deleted) remoteConfiguration.go so both LocalConfiguration and
 // the test mocks can keep using them without re-importing the SaaS
@@ -31,6 +40,14 @@ type ProbeConfig struct {
 	// they override agent global_tags (and built-in probe tags) on a key
 	// conflict. Matched to datapoints by probe name in the data store.
 	CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
+	// Governance is the operator-asserted ownership, criticality, location,
+	// lifecycle and labels of what THIS instance observes: the database, the
+	// device, the remote application. It is stamped on the entities the
+	// instance emits and on its metrics and logs, so two instances on one
+	// host can belong to two different application chains. The agent-level
+	// governance block describes the host itself and is not inherited here.
+	// Kept raw: the governance package owns the shape and the closed sets.
+	Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
 	// Enabled turns a probe off without deleting its configuration.
 	//
 	// A POINTER on purpose: absent must stay distinguishable from an explicit
@@ -42,6 +59,39 @@ type ProbeConfig struct {
 	// probe meant deleting its entry and with it the credentials, intervals and
 	// custom tags that took effort to get right.
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	// LogStrategies routes this probe's LOG records to specific outputs,
+	// the way the metric router already routes its datapoints.
+	//
+	// It is a separate field, and deliberately not the probe's metric
+	// target list, because the two answer different questions. The
+	// syslog probe sends its METRICS to the legacy event output; reusing
+	// that list for its logs would cut them off the OTLP rail entirely
+	// (#836). Only outputs that can consume logs are accepted — naming
+	// one that cannot would silently mute the probe.
+	//
+	// Absent (the default) means every log output receives the records,
+	// which is what every existing configuration does today.
+	LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
+}
+
+// LogCapableStrategies is the set of outputs that can consume a log
+// record. The metric sinks (senhub, prtg, http) are absent because they
+// take datapoints, not logs — routing a probe's logs to one of them
+// would deliver them nowhere.
+//
+// Kept here rather than in the data store so `agent config check` can
+// reject an unroutable value without importing the strategies.
+var LogCapableStrategies = []string{"otlp", "event"}
+
+// IsLogCapableStrategy reports whether name is an output that can
+// receive log records.
+func IsLogCapableStrategy(name string) bool {
+	for _, s := range LogCapableStrategies {
+		if s == name {
+			return true
+		}
+	}
+	return false
 }
 
 // IsEnabled reports whether the probe should run. An absent `enabled` key means
@@ -82,4 +132,35 @@ type ConfigurationData struct {
 	Probes        []ProbeConfig   `json:"probes"`
 	Agent         AgentConfig     `json:"agent"`
 	Cache         *CacheConfig    `json:"cache,omitempty"`
+}
+
+// validProbeName matches names safe in URLs and file names: letters,
+// digits, hyphens and underscores, not starting with a punctuation mark.
+var validProbeName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// IsValidProbeName reports whether a probe name may be used: the sensor
+// skips a probe whose name fails this, and the configurator refuses it
+// before writing.
+func IsValidProbeName(name string) bool {
+	return name != "" && validProbeName.MatchString(name)
+}
+
+// ID is the identity of a configured probe: a hash of its name and
+// parameters, so any change to either yields a new probe and a restart
+// of that probe alone. The sensor keys its running pollers by it, and
+// agentstate publishes their state under it.
+func (p ProbeConfig) ID() string {
+	input := fmt.Sprintf("%s-%v", p.Name, p.Params)
+	hash := sha256.New()
+	hash.Write([]byte(input))
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// ParseGovernance validates the instance's governance block. The zero
+// value comes back when none is declared.
+func (p ProbeConfig) ParseGovernance() (governance.Governance, error) {
+	if p.Governance == nil {
+		return governance.Governance{}, nil
+	}
+	return governance.Parse(p.Governance)
 }

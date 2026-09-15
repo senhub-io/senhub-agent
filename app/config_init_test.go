@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // parseInitConfigArgs must fail closed on unattended install paths: an
 // unknown flag (a typo'd --licence) or a value-taking flag with no value
@@ -44,6 +48,36 @@ func TestParseInitConfigArgs(t *testing.T) {
 	t.Run("dangling value flag rejected", func(t *testing.T) {
 		if _, err := parseInitConfigArgs([]string{"--license"}); err == nil {
 			t.Error("--license with no value must be rejected")
+		}
+	})
+
+	t.Run("http port parsed", func(t *testing.T) {
+		opts, err := parseInitConfigArgs([]string{"--http-port", "9080"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if opts.httpPort != 9080 {
+			t.Errorf("httpPort = %d, want 9080", opts.httpPort)
+		}
+	})
+
+	// The MSI always passes --http-port, expanded to "" when the operator
+	// set no HTTP_PORT property: empty must mean the default, not an error.
+	t.Run("empty http port means default", func(t *testing.T) {
+		opts, err := parseInitConfigArgs([]string{"--http-port", ""})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if opts.httpPort != 0 {
+			t.Errorf("httpPort = %d, want 0 (default)", opts.httpPort)
+		}
+	})
+
+	t.Run("http port out of range or not a number rejected", func(t *testing.T) {
+		for _, raw := range []string{"0", "65536", "-1", "http", "80 80"} {
+			if _, err := parseInitConfigArgs([]string{"--http-port", raw}); err == nil {
+				t.Errorf("--http-port %q must be rejected", raw)
+			}
 		}
 	})
 
@@ -102,5 +136,66 @@ func TestParseTagList(t *testing.T) {
 				t.Errorf("parseTagList(%q)[%q] = %q, want %q", tc.in, k, got[k], v)
 			}
 		}
+	}
+}
+
+func TestParseInitConfigArgs_LicenseAndHTTPPort(t *testing.T) {
+	opts, err := parseInitConfigArgs([]string{"--license", "j", "--http-port", "9080"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.license != "j" || opts.httpPort != 9080 {
+		t.Errorf("opts = %+v", opts)
+	}
+}
+
+func TestResolveLicenseInput(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "lic.jwt")
+	if err := os.WriteFile(f, []byte("  tok-from-file \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveLicenseInput("inline", f); err != nil || got != "tok-from-file" {
+		t.Errorf("file wins: got %q, %v", got, err)
+	}
+	if got, err := resolveLicenseInput("inline", ""); err != nil || got != "inline" {
+		t.Errorf("no file: got %q, %v", got, err)
+	}
+	if _, err := resolveLicenseInput("inline", filepath.Join(dir, "missing.jwt")); err == nil {
+		t.Error("a missing file must be an error, before anything is written")
+	}
+	empty := filepath.Join(dir, "empty.jwt")
+	os.WriteFile(empty, []byte("\n"), 0o600)
+	if got, _ := resolveLicenseInput("inline", empty); got != "inline" {
+		t.Errorf("empty file falls back to inline: got %q", got)
+	}
+}
+
+func TestFindLicenseInDir(t *testing.T) {
+	dir := t.TempDir()
+	if got, err := findLicenseInDir(dir); err != nil || got != "" {
+		t.Errorf("empty folder: got %q, %v; want no file and no error (Free tier)", got, err)
+	}
+	one := filepath.Join(dir, "license-client1-Pro.jwt")
+	os.WriteFile(one, []byte("tok"), 0o600)
+	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("x"), 0o600)
+	os.MkdirAll(filepath.Join(dir, "sub.jwt"), 0o700)
+	if got, err := findLicenseInDir(dir); err != nil || got != one {
+		t.Errorf("single jwt: got %q, %v; want %q", got, err, one)
+	}
+	os.WriteFile(filepath.Join(dir, "other.jwt"), []byte("tok2"), 0o600)
+	if _, err := findLicenseInDir(dir); err == nil {
+		t.Error("two jwt files must be refused, not guessed")
+	}
+	named := filepath.Join(dir, "license.jwt")
+	os.WriteFile(named, []byte("tok3"), 0o600)
+	if got, err := findLicenseInDir(dir); err != nil || got != named {
+		t.Errorf("license.jwt wins over siblings: got %q, %v", got, err)
+	}
+	if got, err := findLicenseInDir(filepath.Join(dir, "missing")); err != nil || got != "" {
+		t.Errorf("a missing folder is the installer default and means no licence: got %q, %v", got, err)
+	}
+	if _, err := parseInitConfigArgs([]string{"--license-dir", dir}); err != nil {
+		t.Errorf("--license-dir must parse: %v", err)
 	}
 }

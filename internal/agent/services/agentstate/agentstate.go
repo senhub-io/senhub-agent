@@ -92,6 +92,10 @@ const (
 // invoked at scrape time (which would re-trigger Collect() and cause races).
 var probeHealth = map[string]probeHealthState{}
 
+// probeLastError keeps the message of the last failed cycle per probe,
+// so the listing can say why a probe is failing, not only that it is.
+var probeLastError = map[string]string{}
+
 // SetActiveProbes replaces the set of currently-running probes by their IDs.
 // Called by the Sensor service after every successful configuration sync.
 // Health entries for probes no longer present are pruned to keep the map
@@ -108,6 +112,7 @@ func SetActiveProbes(probeIDs []string) {
 	for id := range probeHealth {
 		if _, alive := newSet[id]; !alive {
 			delete(probeHealth, id)
+			delete(probeLastError, id)
 		}
 	}
 }
@@ -126,13 +131,63 @@ func SetActiveProbes(probeIDs []string) {
 //
 // Replaces the prior IsHealthy()-at-scrape design which re-executed
 // Collect() inline at scrape time (wasted work + races).
-func RecordProbeHealth(probeID string, ok bool) {
+//
+// The returned transition is "failed" when the probe was not failing
+// before this call, "recovered" when it was and is now fine, and empty
+// when nothing changed. A probe's first successful cycle is not a
+// transition; its first failed one is.
+func RecordProbeHealth(probeID string, ok bool) (transition string) {
 	probeStateMu.Lock()
 	defer probeStateMu.Unlock()
+	before := probeHealth[probeID]
 	if ok {
 		probeHealth[probeID] = probeHealthOK
-	} else {
-		probeHealth[probeID] = probeHealthFailed
+		delete(probeLastError, probeID)
+		if before == probeHealthFailed {
+			return "recovered"
+		}
+		return ""
+	}
+	probeHealth[probeID] = probeHealthFailed
+	if before != probeHealthFailed {
+		return "failed"
+	}
+	return ""
+}
+
+// RecordProbeError keeps the reason of a probe's failed cycle; cleared
+// by the next healthy one.
+func RecordProbeError(probeID, message string) {
+	probeStateMu.Lock()
+	probeLastError[probeID] = message
+	probeStateMu.Unlock()
+}
+
+// ProbeRunState is what the configurator shows for one configured probe:
+// whether its poller is running and how its last collect went.
+type ProbeRunState struct {
+	Running bool
+	Health  string // "ok", "failed", "unknown", or "" when not running
+	// LastError is the message of the last failed cycle while Health is
+	// "failed"; empty otherwise.
+	LastError string
+}
+
+// GetProbeRunState reports the live state of a probe by its ID (from
+// probes.GenerateProbeId), for the configured-probes listing.
+func GetProbeRunState(probeID string) ProbeRunState {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	if _, running := activeProbeIDs[probeID]; !running {
+		return ProbeRunState{}
+	}
+	switch probeHealth[probeID] {
+	case probeHealthOK:
+		return ProbeRunState{Running: true, Health: "ok"}
+	case probeHealthFailed:
+		return ProbeRunState{Running: true, Health: "failed", LastError: probeLastError[probeID]}
+	default:
+		return ProbeRunState{Running: true, Health: "unknown"}
 	}
 }
 

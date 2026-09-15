@@ -10,6 +10,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"time"
 )
 
 func testBaseLogger() *logger.Logger {
@@ -908,5 +909,70 @@ func TestCollect_DeepMemoryStats_CgroupsV2(t *testing.T) {
 	// hierarchical_memory_limit absent from stats → metric must not be emitted.
 	if _, ok := byName["container.memory.hierarchical_memory_limit"]; ok {
 		t.Error("container.memory.hierarchical_memory_limit should be absent when not in stats map")
+	}
+}
+
+// A Windows container answers with a different shape: no cgroup stats,
+// no system_cpu_usage, no blkio. The engine sends the working set, the
+// processor count and the storage counters instead, and the probe used
+// to report zero for all of them on the platform where the customers
+// are. Pins the Windows half of #801.
+func TestWindowsStatsShapeIsRead(t *testing.T) {
+	payload := `{
+	  "read": "2026-09-10T09:45:16.8021567+02:00",
+	  "preread": "2026-09-10T09:45:15.7972958+02:00",
+	  "num_procs": 6,
+	  "cpu_stats": {"cpu_usage": {"total_usage": 90312500, "usage_in_kernelmode": 52031250, "usage_in_usermode": 38281250}},
+	  "precpu_stats": {"cpu_usage": {"total_usage": 89843750}},
+	  "memory_stats": {"commitbytes": 53178368, "commitpeakbytes": 105553920, "privateworkingset": 40988672},
+	  "storage_stats": {"read_size_bytes": 49470464, "write_size_bytes": 9814016}
+	}`
+	var s containerStats
+	if err := json.Unmarshal([]byte(payload), &s); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if s.NumProcs != 6 {
+		t.Errorf("num_procs read as %d", s.NumProcs)
+	}
+	if s.MemoryStats.PrivateWorkingSet != 40988672 {
+		t.Errorf("working set read as %d", s.MemoryStats.PrivateWorkingSet)
+	}
+	if s.Read.Sub(s.PreRead) <= 0 {
+		t.Error("the two samples must bracket a positive interval")
+	}
+
+	pr := &dockerProbe{}
+	pts := pr.buildDatapoints(statsResult{
+		container: containerListItem{ID: "abc", Names: []string{"/win"}, Image: "nanoserver", State: "running"},
+		stats:     &s,
+	}, time.Now())
+
+	want := map[string]float64{
+		"container.memory.usage":           40988672,
+		"senhub.docker.memory.working_set": 40988672,
+		"senhub.docker.memory.commit":      53178368,
+		"senhub.docker.cpu.online":         6,
+		"container.blockio.usage.total":    49470464 + 9814016,
+		"container.cpu.usage.total":        90312500,
+	}
+	got := map[string]float64{}
+	for _, p := range pts {
+		got[p.Name] = p.Value
+	}
+	for name, v := range want {
+		if got[name] != v {
+			t.Errorf("%s = %v, want %v", name, got[name], v)
+		}
+	}
+	// The percentage has no system_cpu_usage to lean on: it comes from the
+	// wall time between the two samples times the processor count.
+	// 468750 intervals of 100 ns used, against 1.0048609 s of wall time
+	// on six processors: 468750 / (10048609 x 6) x 100.
+	pct, ok := got["senhub.docker.cpu.percent"]
+	if !ok {
+		t.Fatal("a Windows container must still get a cpu percentage")
+	}
+	if want := 0.7775; pct < want*0.99 || pct > want*1.01 {
+		t.Errorf("cpu percent = %v, want about %v", pct, want)
 	}
 }

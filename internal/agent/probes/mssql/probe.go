@@ -114,7 +114,7 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	}
 	cfg.Host = host
 
-	if v, ok := raw["port"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "port"); ok && v > 0 {
 		cfg.Port = v
 	}
 	if v, ok := raw["username"].(string); ok {
@@ -134,7 +134,7 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	if v, ok := raw["trust_server_cert"].(bool); ok {
 		cfg.TrustServerCert = v
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 

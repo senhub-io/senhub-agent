@@ -60,6 +60,17 @@ var otlpDropped = struct {
 	m  map[string]uint64
 }{m: map[string]uint64{}}
 
+// otlpExportErrorsBySignal breaks the export-error total down by signal
+// ("metrics", "logs", "traces"), because a failing logs pipeline is
+// invisible in a total dominated by healthy metric pushes — the exact
+// blind spot of #820, where rejected log batches never moved any
+// counter (#821). Same locking trade-off as otlpDropped: errors are
+// rare, the mutex only costs on failure.
+var otlpExportErrorsBySignal = struct {
+	mu sync.RWMutex
+	m  map[string]uint64
+}{m: map[string]uint64{}}
+
 // IncrementOTLPMetricsPushed records `n` metric records successfully
 // exported in one batch. Called by the OTLP strategy after the
 // exporter returns nil.
@@ -118,11 +129,38 @@ func IncrementOTLPMetricsRelayed(n int) {
 }
 
 // IncrementOTLPExportErrors records one failed export (after retry
-// exhaustion). Independent of which signal (metrics or logs) failed —
-// the operator alerts on "any export failure". Specific signal-level
-// breakdown can come later if real-world ops shows a need.
-func IncrementOTLPExportErrors() {
+// exhaustion) for one signal ("metrics", "logs", "traces"). The total
+// stays for "any export failure" alerting; the per-signal breakdown is
+// what localises a failing pipeline (#821).
+func IncrementOTLPExportErrors(signal string) {
+	if signal == "" {
+		signal = "unknown"
+	}
 	otlpExportErrors.Add(1)
+	otlpExportErrorsBySignal.mu.Lock()
+	otlpExportErrorsBySignal.m[signal]++
+	otlpExportErrorsBySignal.mu.Unlock()
+}
+
+// ResetOTLPExportErrorsBySignalForTest clears the per-signal counters so
+// tests in other packages can assert on a known baseline. The total is
+// left alone: it is a plain atomic other tests may legitimately read.
+func ResetOTLPExportErrorsBySignalForTest() {
+	otlpExportErrorsBySignal.mu.Lock()
+	otlpExportErrorsBySignal.m = map[string]uint64{}
+	otlpExportErrorsBySignal.mu.Unlock()
+}
+
+// GetOTLPExportErrorsBySignal returns a snapshot copy of the
+// per-signal export-error counters. Safe for the caller to mutate.
+func GetOTLPExportErrorsBySignal() map[string]uint64 {
+	otlpExportErrorsBySignal.mu.RLock()
+	defer otlpExportErrorsBySignal.mu.RUnlock()
+	out := make(map[string]uint64, len(otlpExportErrorsBySignal.m))
+	for k, v := range otlpExportErrorsBySignal.m {
+		out[k] = v
+	}
+	return out
 }
 
 // GetOTLPMetricsPushedTotal / GetOTLPLogsPushedTotal /

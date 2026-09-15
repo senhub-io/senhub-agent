@@ -29,9 +29,6 @@ var htmlFiles embed.FS
 //go:embed web/logo-senhubagent.png
 var logoFile embed.FS
 
-//go:embed assets/USER_GUIDE.md
-var markdownFiles embed.FS
-
 // Template data structure
 type TemplateData struct {
 	AgentKey    string
@@ -74,32 +71,18 @@ func NewAssetHandlerWithPRTG(agentKey string, prtgEnabled bool) *AssetHandler {
 }
 
 // parseTemplates loads and parses all HTML templates
+// consolePages lists the embedded pages, by template name; each is
+// assets/html/<name>.html.
+var consolePages = []string{"dashboard", "probes", "outputs", "output-editor", "output-http", "settings", "docs"}
+
 func (ah *AssetHandler) parseTemplates() {
-	// Parse Dashboard template
-	if tmplContent, err := htmlFiles.ReadFile("assets/html/dashboard.html"); err == nil {
-		if tmpl, err := template.New("dashboard").Parse(string(tmplContent)); err == nil {
-			ah.templates["dashboard"] = tmpl
+	for _, name := range consolePages {
+		content, err := htmlFiles.ReadFile("assets/html/" + name + ".html")
+		if err != nil {
+			continue
 		}
-	}
-
-	// Parse API Explorer template
-	if tmplContent, err := htmlFiles.ReadFile("assets/html/api-explorer.html"); err == nil {
-		if tmpl, err := template.New("api-explorer").Parse(string(tmplContent)); err == nil {
-			ah.templates["api-explorer"] = tmpl
-		}
-	}
-
-	// Parse Documentation template
-	if tmplContent, err := htmlFiles.ReadFile("assets/html/docs.html"); err == nil {
-		if tmpl, err := template.New("docs").Parse(string(tmplContent)); err == nil {
-			ah.templates["docs"] = tmpl
-		}
-	}
-
-	// Parse Guide template
-	if tmplContent, err := htmlFiles.ReadFile("assets/html/guide.html"); err == nil {
-		if tmpl, err := template.New("guide").Parse(string(tmplContent)); err == nil {
-			ah.templates["guide"] = tmpl
+		if tmpl, err := template.New(name).Parse(string(content)); err == nil {
+			ah.templates[name] = tmpl
 		}
 	}
 }
@@ -148,11 +131,6 @@ func (ah *AssetHandler) ServeAsset(w http.ResponseWriter, r *http.Request, asset
 		// Serve the embedded logo file
 		content, err = logoFile.ReadFile("web/logo-senhubagent.png")
 		contentType = "image/png"
-
-	case strings.HasSuffix(filePath, "USER_GUIDE.md"):
-		// Serve the user guide markdown file
-		content, err = markdownFiles.ReadFile("assets/USER_GUIDE.md")
-		contentType = "text/markdown; charset=utf-8"
 
 	default:
 		http.NotFound(w, r)
@@ -221,14 +199,20 @@ func (ah *AssetHandler) listFiles(efs embed.FS, dir string) []string {
 // GetTemplateName gets the template name from a URL path
 func GetTemplateName(urlPath string) string {
 	switch {
-	case strings.Contains(urlPath, "/dashboard") || strings.HasSuffix(urlPath, "/"):
+	case strings.Contains(urlPath, "/dashboard"), strings.Contains(urlPath, "/overview"), strings.HasSuffix(urlPath, "/"):
 		return "dashboard"
-	case strings.Contains(urlPath, "/explorer"):
-		return "api-explorer"
+	case strings.Contains(urlPath, "/outputs/http"):
+		return "output-http"
+	case strings.Contains(urlPath, "/outputs/"):
+		return "output-editor"
+	case strings.Contains(urlPath, "/outputs"):
+		return "outputs"
+	case strings.Contains(urlPath, "/settings"):
+		return "settings"
+	case strings.Contains(urlPath, "/probes"):
+		return "probes"
 	case strings.Contains(urlPath, "/docs"):
 		return "docs"
-	case strings.Contains(urlPath, "/admin"):
-		return "admin"
 	default:
 		return ""
 	}

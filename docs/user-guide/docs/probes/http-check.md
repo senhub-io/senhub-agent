@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/web.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/http-check.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 # http_check — HTTP(S) checks with TLS expiry
 
@@ -22,17 +22,22 @@ validity of the TLS certificate as a first-class metric.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of URLs to check |
-| `method` | GET | HTTP method |
-| `timeout` | 10 | Per-target budget in seconds |
-| `interval` | 60 | Seconds between cycles |
-| `expected_status` | any 2xx/3xx | Exact status code that counts as up |
-| `content_match` | none | Regexp the response body must match for the check to be up |
-| `insecure_skip_verify` | false | Accept self-signed certificates (labs) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-Targets are checked in parallel (bounded). Redirects are reported, not
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `targets` | Yes | - | URLs to check. Example: `https://app.example.com/health` |
+| `method` | No | `GET` | HTTP method. One of `GET`, `HEAD`, `POST`, `PUT`, `DELETE`, `OPTIONS`, `PATCH` |
+| `timeout` | No | `10` | Whole-request budget in seconds |
+| `interval` | No | `60` | Seconds between cycles |
+| `expected_status` | No | - | Exact status that counts as up; empty means any 2xx or 3xx |
+| `content_match` | No | - | Regular expression the body must match. Example: `"status":"ok"` |
+| `insecure_skip_verify` | No | `false` | Accept self-signed certificates |
+
+<!-- schema:params:end -->
+
+`insecure_skip_verify` is for a lab, not for production. Targets are checked in parallel (bounded). Redirects are reported, not
 followed: a 301 is the measured answer of the target.
 
 ## Metrics

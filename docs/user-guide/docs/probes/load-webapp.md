@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/timer-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/load-webapp.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -60,10 +60,18 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 
 ## Configuration Parameters
 
-| Parameter | Type | Required | Default | Range | Description |
-|-----------|------|----------|---------|-------|-------------|
-| `url` | string | Yes | - | - | Full HTTP/HTTPS URL to monitor |
-| `timeout` | integer | No | `30` | 1-300 | Request timeout in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `url` | Yes | - | HTTP or HTTPS URL fetched with a GET; a status outside 200-399 counts as a failure. Example: `https://app.example.com/health` |
+| `timeout` | No | `30s` | Whole-request timeout, between 1s and 300s |
+| `instance_name` | No | - | Stable identity of the watched application; empty publishes no entity |
+
+<!-- schema:params:end -->
+
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored.
 
 ### URL Requirements
 
@@ -301,7 +309,7 @@ Compare connect times and total times to optimize CDN configuration.
 **Check probe status:**
 ```bash
 # View agent logs with Load WebApp probe debugging
-./agent run --verbose --debug-modules probe.loadwebapp
+senhub-agent run --filter probe.loadwebapp
 ```
 
 **Verify probe is enabled:**
@@ -507,15 +515,11 @@ The Load WebApp probe overhead:
 - **CPU**: Minimal (HTTP client + timing tracking ~5-10ms)
 - **Memory**: ~2-5 MB per active request
 
-### Recommended Intervals
+### Collection cadence
 
-| Use Case | Interval | Reason |
-|----------|----------|--------|
-| Critical API monitoring | 30s | Detect issues quickly |
-| Standard web monitoring | 60s | Balance accuracy and load |
-| Long-term trending | 300s | Reduce network traffic |
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored.
 
-**Important:** Frequent polling can impact target server:
+**Important:** one full request every 30 seconds per instance reaches the target server:
 - Generates real traffic to monitored URLs
 - Consumes server resources
 - May trigger rate limiting
@@ -523,7 +527,7 @@ The Load WebApp probe overhead:
 
 ### Response Body Handling
 
-The probe downloads the complete response body to accurately measure transfer time:
+The probe downloads the complete response body, with a 10 second cap on the download, so that the total time covers the whole transfer:
 - **Small responses** (< 100KB): Negligible impact
 - **Large responses** (> 1MB): Consider impact on agent bandwidth
 - **Very large responses** (> 10MB): May want to use dedicated endpoints

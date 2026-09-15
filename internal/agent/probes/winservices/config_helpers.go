@@ -5,36 +5,6 @@ import (
 	"time"
 )
 
-// stringSlice coerces a YAML scalar or list into a []string, dropping empty
-// entries. Accepts []interface{}, []string and a bare string.
-func stringSlice(v interface{}) []string {
-	switch t := v.(type) {
-	case []string:
-		out := make([]string, 0, len(t))
-		for _, s := range t {
-			if s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []interface{}:
-		out := make([]string, 0, len(t))
-		for _, item := range t {
-			if s, ok := item.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case string:
-		if t == "" {
-			return nil
-		}
-		return []string{t}
-	default:
-		return nil
-	}
-}
-
 // durationSeconds parses an interval expressed either as an integer number of
 // seconds (the YAML convention for the active-check probes) or as a Go
 // duration string ("45s", "2m"). ok is false when the key is absent; an
