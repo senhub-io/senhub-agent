@@ -170,6 +170,13 @@ func (cm *ConfigurationManager) loadConfiguration() {
 
 // ValidateConfigParams validates the provided configuration parameters
 func (cm *ConfigurationManager) ValidateConfigParams(params configuration.StorageConfigParams) error {
+	return ValidateParams(params)
+}
+
+// ValidateParams reads the parameters without a manager, so a caller
+// that only wants to know whether a configuration is acceptable does
+// not have to build one (#848).
+func ValidateParams(params configuration.StorageConfigParams) error {
 	// Validate port if provided
 	if portValue, exists := params["port"]; exists {
 		var port int

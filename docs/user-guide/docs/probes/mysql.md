@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/mysql" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/mysql.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 # MySQL / MariaDB
 
@@ -29,30 +29,69 @@ STATUS` and `information_schema`.
     password: ${secret:production-mysql.password}   # OS secret store; inline plaintext is auto-sealed on install
     interval: 60
     timeout: 10
-    tls:
-      enabled: true
-      skip_verify: false
-      ca_file: /etc/ssl/db-ca.pem
-    max_replication_lag_seconds: 60
+    tls: true
+    per_database: false
 ```
 
 ### Parameters
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `host` | Yes | - | Database hostname or IP |
-| `port` | No | `3306` | TCP port |
-| `username` | Yes | - | Monitoring user |
-| `password` | Yes | - | Monitoring user's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `database` | No | `""` | Default database (optional; leave empty for server-level only) |
-| `interval` | No | `60` | Collection interval in seconds |
-| `timeout` | No | `10` | Per-query timeout in seconds |
-| `tls.enabled` | No | `false` | Connect over TLS |
-| `tls.skip_verify` | No | `false` | Skip server certificate verification |
-| `tls.ca_file` | No | `""` | Path to CA certificate |
-| `max_replication_lag_seconds` | No | `60` | Threshold used by the composite `senhub.db.replication.health` channel |
-| `expose_per_database` | No | `false` | Emit per-database metrics (cardinality scales with #databases) |
-| `expose_top_tables` | No | `0` | Emit metrics for the top-N tables by size; `0` disables this feature |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `host` | In practice | `127.0.0.1` | Server hostname or address |
+| `port` | In practice | `3306` | Server port |
+| `username` | In practice | - | Monitoring user |
+| `password` | In practice | - | Monitoring user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `database` | No | - | Database the connection opens on; optional |
+| `tls` | No | - | TLS settings, or simply true |
+| `tls.enabled` | No | `false` | Use TLS |
+| `tls.skip_verify` | No | `false` | Accept the server certificate without verifying it. Also accepted: `insecure_skip_verify` |
+| `tls.ca_file` | No | - | CA certificate (PEM) the server is verified against. Also accepted: `ca_cert` |
+| `timeout` | No | `10s` | Query timeout, seconds or a duration |
+| `interval` | No | `60` | Seconds between collections |
+| `max_replication_lag_seconds` | No | `300s` | Lag past which a replica counts as unhealthy; 0 turns the lag term off |
+| `per_database` | No | `false` | Emit per-database metrics. Also accepted: `expose_per_database` |
+| `per_table` | No | `false` | Emit per-table metrics for the largest tables; needs per_database |
+| `top_n_tables` | No | `20` | How many tables per_table covers. Also accepted: `expose_top_tables` |
+| `instance_name` | No | - | Stable identity override for this server |
+
+<!-- schema:params:end -->
+
+`per_database` scales the series count with the number of databases;
+`per_table` adds the largest tables on top of it. A replica whose two
+threads are both running still counts as unhealthy once its lag passes
+`max_replication_lag_seconds`; set it to `0` for a deliberately delayed
+replica.
+
+#### TLS
+
+`tls: true` verifies the server's certificate against the system roots.
+For a database behind an internal authority, or a lab with a self-signed
+certificate, write a block instead:
+
+```yaml
+    tls:
+      ca_file: /etc/ssl/db-ca.pem   # verify against this authority
+      skip_verify: false            # true accepts any certificate — labs only
+```
+
+Naming a `ca_file`, or asking to skip verification, turns TLS on: there
+is no reading of "configure how TLS behaves, then don't use it". A
+`ca_file` the agent cannot read, or that holds no certificate, stops the
+probe with that reason — it never falls back to the system roots, which
+would verify against the wrong authority and look like it worked.
+
+#### Renamed parameters
+
+Two names changed when this probe replaced the paid one. Both still
+work, and `agent config check` names the current spelling:
+
+| Old | Now |
+|---|---|
+| `expose_per_database: true` | `per_database: true` |
+| `expose_top_tables: 25` | `per_table: true` + `top_n_tables: 25` |
 
 ## GRANTs
 
@@ -167,7 +206,7 @@ role via `SHOW REPLICA STATUS` — no per-host configuration needed.
 The probe emits the catalog above; each sink picks the metrics it
 wants via the `metric_type` tag.
 
-- **PRTG / Sensor Builder** — pick chips per family. A typical setup
+- **PRTG / Sensor URLs tab** — pick chips per family. A typical setup
   uses one "MySQL Overview" sensor (6 channels) and a "MySQL
   Replication" sensor (4 channels) per instance.
 - **Nagios** — `/api/{key}/nagios/metrics/{probe-name}?tags=metric_type:overview`

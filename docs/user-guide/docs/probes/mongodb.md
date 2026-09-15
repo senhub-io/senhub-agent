@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/mongodb" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/mongodb.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,11 +21,18 @@ usage, replication state and database storage.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `uri` | `mongodb://localhost:27017` | MongoDB connection URI. Credentials can be embedded: `mongodb://user:pass@host:27017` |
-| `direct_connection` | `true` | Connect directly to the specified host (skips topology discovery). Set to `false` for Atlas or replica-set-aware routing |
-| `instance_name` | — | Override for the entity instance ID (stable name across restarts) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `uri` | In practice | `mongodb://localhost:27017` | Connection URI; credentials go in it (mongodb://user:pass@host:27017/admin?authSource=admin). A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file. Example: `mongodb://monitor:secret@db01:27017/admin?authSource=admin` |
+| `direct_connection` | No | `true` | Connect to the named host only; false for Atlas or replica-set aware routing |
+| `timeout` | No | `10` | Connection and command timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this server |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

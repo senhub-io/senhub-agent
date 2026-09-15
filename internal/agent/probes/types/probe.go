@@ -49,3 +49,27 @@ type ProbeWithCallback interface {
 	// SetCallback registers handler for collected datapoints
 	SetCallback(func([]datapoint.DataPoint) error)
 }
+
+// ListenerProbe is implemented by a probe whose data arrives by
+// subscription — a socket, a receiver, an OS event log — rather than by
+// polling a target on a schedule.
+//
+// The distinction exists because health means something different for
+// the two. A polling probe is healthy when its last Collect succeeded;
+// a listener probe's Collect has nothing to do, so "it returned no
+// error" says only that the no-op ran. Seven probes reported healthy
+// that way while their listener could have been dead for hours (#289).
+//
+// A listener probe reports the state of the thing that actually carries
+// its data: the socket is bound, the receiver is serving, the
+// subscription is open. ProbePoller asks this instead of inferring
+// health from the collection cycle.
+type ListenerProbe interface {
+	Probe
+
+	// ListenerHealth returns nil while the listener is able to receive,
+	// and the reason it cannot otherwise. It must not block: it is
+	// called on every collection cycle and reports state the probe
+	// already holds.
+	ListenerHealth() error
+}

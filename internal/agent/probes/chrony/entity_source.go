@@ -12,7 +12,6 @@ import (
 // Reachability is updated by the collect cycle: setReachable(true) after a
 // successful chronyc tracking run, setReachable(false) on any subprocess error.
 type chronyEntitySource struct {
-	id     map[string]any
 	mu     sync.RWMutex
 	up     bool
 	attrs  map[string]any

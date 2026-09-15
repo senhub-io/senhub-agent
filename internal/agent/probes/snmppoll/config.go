@@ -236,7 +236,7 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 func resolveVersion(s string) (gosnmp.SnmpVersion, error) {
 	v, err := snmpcore.ParseVersion(s)
 	if err != nil {
-		return 0, fmt.Errorf("%v (use \"v2c\" or \"v3\")", err)
+		return 0, fmt.Errorf("%w (use \"v2c\" or \"v3\")", err)
 	}
 	if v == gosnmp.Version1 {
 		return 0, fmt.Errorf("SNMPv1 is not supported (table walks need GETBULK; use v2c)")

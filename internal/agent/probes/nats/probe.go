@@ -128,7 +128,7 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 		}
 		cfg.Endpoint = v
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	if v, ok := raw["instance_name"].(string); ok {

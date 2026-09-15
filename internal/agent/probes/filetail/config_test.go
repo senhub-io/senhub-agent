@@ -104,7 +104,7 @@ func TestParseConfig_MultilineDefaultsToAfter(t *testing.T) {
 	if cfg.Multiline.Match != "after" {
 		t.Errorf("multiline match=%q, want after", cfg.Multiline.Match)
 	}
-	if cfg.Multiline.compiled == nil {
+	if !cfg.Multiline.Enabled() {
 		t.Errorf("multiline pattern not compiled")
 	}
 }
@@ -144,7 +144,7 @@ func TestParseConfig_FullCitrixExample(t *testing.T) {
 	if len(cfg.Paths) != 2 {
 		t.Errorf("Paths=%v", cfg.Paths)
 	}
-	if cfg.Parser.Type != ParserRegex || cfg.Parser.compiled == nil {
+	if cfg.Parser.Type != ParserRegex || !cfg.Parser.Compiled() {
 		t.Errorf("regex parser not set up: %+v", cfg.Parser)
 	}
 	if cfg.Parser.TimestampField != "timestamp" {

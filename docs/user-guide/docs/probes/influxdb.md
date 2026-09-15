@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/influxdb" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/influxdb.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -22,10 +22,19 @@ for the buckets endpoint.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8086` | InfluxDB base URL |
-| `token` | — | InfluxDB API token (needed for `/api/v2/buckets`; omit for metrics-only monitoring) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost:8086` | Base URL of the server. Example: `http://influx01:8086` |
+| `token` | In practice | - | API token; empty skips the bucket count, /health and /metrics need none. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `org` | No | - | Organisation the bucket listing is scoped to; empty lists every bucket the token sees |
+| `timeout` | No | `10` | HTTP request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this server |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

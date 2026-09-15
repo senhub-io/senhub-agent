@@ -147,12 +147,12 @@ func parseConfig(config map[string]interface{}) (WindowsEventLogProbeConfig, err
 		PollInterval: DefaultPollInterval,
 	}
 
-	parsed.Channels = stringSlice(config["channels"])
+	parsed.Channels, _ = types.StringSliceParam(config, "channels")
 	if len(parsed.Channels) == 0 {
 		return parsed, fmt.Errorf("windows_eventlog: at least one channel is required")
 	}
 
-	parsed.Levels = stringSlice(config["levels"])
+	parsed.Levels, _ = types.StringSliceParam(config, "levels")
 	for _, lvl := range parsed.Levels {
 		n, ok := levelTextToInt(lvl)
 		if !ok {
@@ -169,7 +169,7 @@ func parseConfig(config map[string]interface{}) (WindowsEventLogProbeConfig, err
 		return parsed, fmt.Errorf("windows_eventlog: exclude_event_ids: %w", err)
 	}
 
-	parsed.Sources = stringSlice(config["sources"])
+	parsed.Sources, _ = types.StringSliceParam(config, "sources")
 
 	if s, ok := config["bookmark_path"].(string); ok {
 		parsed.BookmarkPath = s
@@ -233,7 +233,7 @@ func (p *WindowsEventLogProbe) OnStart(quitChannel chan struct{}) error {
 		Str("bookmark_path", p.config.BookmarkPath).
 		Msg("Starting windows_eventlog probe")
 
-	reader, err := newEventReader(p.config, p.moduleLogger, p.GetName(), &p.emitted)
+	reader, err := newEventReader(p.config, p.moduleLogger, p.GetName(), p.LogTargets(), &p.emitted)
 	if err != nil {
 		return fmt.Errorf("start windows event log reader: %w", err)
 	}

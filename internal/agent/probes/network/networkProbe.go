@@ -1,16 +1,10 @@
-//go:build windows || !windows
-
 // internal/agent/probes/network/networkProbe.go
 package network
 
 import (
-	"context"
-	"fmt"
-	"runtime"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
-	"time"
 )
 
 // interfaceNameTag is the identity key of the network.interface entity, and
@@ -25,97 +19,19 @@ import (
 // planes.
 const interfaceNameTag = "interface.name"
 
-// networkProbe représente le collecteur de métriques réseau
-type networkProbe struct {
-	*types.BaseProbe
-	rawConfig map[string]interface{}
-	logger    *logger.ModuleLogger
-	collector osNetworkCollector
-	interval  time.Duration
-}
-
-// Interface pour les collecteurs spécifiques à l'OS
-type osNetworkCollector interface {
-	Collect(timestamp time.Time) ([]data_store.DataPoint, error)
-	Close() error
-}
-
-func (p *networkProbe) GetTargetStrategies() []string {
-	return []string{"senhub", "prtg", "http", "otlp"}
-}
-
-// NewNetworkProbe crée une nouvelle instance de Network probe
+// NewNetworkProbe crée une nouvelle instance de Network probe. Le cycle
+// de vie vient de hostpoll ; seule la collecte OS appartient à ce paquet.
 func NewNetworkProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
-	interval := 30 * time.Second
-	if cfgInterval, ok := config["interval"].(int); ok {
-		interval = time.Duration(cfgInterval) * time.Second
-	}
-
-	probe := &networkProbe{
-		BaseProbe: &types.BaseProbe{},
-		rawConfig: config,
-		logger:    logger.NewModuleLogger(baseLogger, "probe.network"),
-		interval:  interval,
-	}
-
-	var err error
-	switch runtime.GOOS {
-	case "windows":
-		probe.collector, err = newNetworkCollector(config, baseLogger)
-	case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-		probe.collector, err = newNetworkCollector(config, baseLogger)
-	default:
-		return nil, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
-	}
-
+	probe, err := hostpoll.New(config, baseLogger, hostpoll.Spec{
+		Module:   "probe.network",
+		Subject:  "network",
+		TypeName: "NetworkProbe",
+		NewCollector: func(cfg map[string]interface{}, base *logger.Logger, _ *logger.ModuleLogger) (hostpoll.Collector, error) {
+			return newNetworkCollector(cfg, base)
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create network collector: %v", err)
+		return nil, err
 	}
-
 	return probe, nil
-}
-
-// Note: GetName() is now inherited from BaseProbe and will return the unique
-// probe name from configuration (e.g., "network", "network2") instead of the
-// hardcoded type. This enables proper discriminant tagging for multiple instances.
-
-func (p *networkProbe) ShouldStart() bool {
-	return true
-}
-
-func (p *networkProbe) GetInterval() time.Duration {
-	return p.interval
-}
-
-func (p *networkProbe) Collect() ([]data_store.DataPoint, error) {
-	timestamp := time.Now()
-	metrics, err := p.collector.Collect(timestamp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to collect network metrics: %v", err)
-	}
-
-	// Enrich datapoints with probe name and type tags
-	enrichedMetrics := p.BaseProbe.EnrichDataPointsWithProbeName(metrics, p.GetName())
-
-	return enrichedMetrics, nil
-}
-
-func (p *networkProbe) OnStart(quitChannel chan struct{}) error {
-	return nil
-}
-
-func (p *networkProbe) OnShutdown(ctx context.Context) error {
-	if p.collector != nil {
-		return p.collector.Close()
-	}
-	return nil
-}
-
-func (p *networkProbe) IsHealthy() bool {
-	_, err := p.Collect()
-	return err == nil
-}
-
-func (p *networkProbe) String() string {
-	return fmt.Sprintf("NetworkProbe{name=%s, interval=%v}", p.GetName(), p.GetInterval())
 }

@@ -144,7 +144,8 @@ func (p *KubernetesProbe) eventRecord(ev *corev1.Event, ts time.Time) agentstate
 		Attributes:        attrs,
 		ProducerProbeName: p.GetName(),
 		ProducerProbeType: "kubernetes",
-		TargetStrategies:  p.GetTargetStrategies(),
+		// The LOG routing, not the metric one — see BaseProbe.LogTargets (#836).
+		TargetStrategies: p.LogTargets(),
 	}
 }
 

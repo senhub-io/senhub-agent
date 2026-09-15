@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/toise-dev/toise/pkg/emit/wire"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -64,7 +65,7 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 	rec.SetTimestamp(ev.Time)
 	rec.SetObservedTimestamp(ev.Time)
 
-	var attrs []log.KeyValue
+	var attrs []attribute.KeyValue
 	switch ev.Kind {
 	case entity.EntityState, entity.EntityDelete:
 		e := ev.Entity
@@ -82,8 +83,8 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 			return scope, rec, err
 		}
 		// type AND id are required on both state and delete.
-		attrs = []log.KeyValue{
-			log.String(attrEntityType, e.Type),
+		attrs = []attribute.KeyValue{
+			attribute.String(attrEntityType, e.Type),
 			id,
 		}
 		// Why THIS PRODUCER retired the entity — a distinct axis from the
@@ -91,7 +92,7 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 		// on deletes only, and only when the detector could explain the
 		// disappearance; an unexplained one is a plain termination.
 		if ev.Kind == entity.EntityDelete && ev.DeleteReason != "" {
-			attrs = append(attrs, log.String(wire.AttrEntityDeleteReason, ev.DeleteReason))
+			attrs = append(attrs, attribute.String(wire.AttrEntityDeleteReason, ev.DeleteReason))
 		}
 		if ev.Kind == entity.EntityState && len(e.Attributes) > 0 {
 			a, err := scalarMap(attrEntityDescription, e.Attributes)
@@ -106,7 +107,7 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 		// die without a clean delete (kill -9, partition). Emitted on state
 		// only, in SECONDS per the merged spec; a delete needs no interval.
 		if ev.Kind == entity.EntityState && ev.Interval > 0 {
-			attrs = append(attrs, log.Int64(attrEntityReportInterval, int64(ev.Interval.Seconds())))
+			attrs = append(attrs, attribute.Int64(attrEntityReportInterval, int64(ev.Interval.Seconds())))
 		}
 		// Embedded outgoing edges. State only — a delete retires the whole
 		// node, relationships included. The set is full each heartbeat;
@@ -130,17 +131,17 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 // relationshipsValue encodes the embedded entity.relationships array: one bare
 // descriptor per outgoing edge, in producer order (the consumer treats it as a
 // set, so order is not significant).
-func relationshipsValue(rels []entity.Relationship) (log.KeyValue, error) {
-	vals := make([]log.Value, 0, len(rels))
+func relationshipsValue(rels []entity.Relationship) (attribute.KeyValue, error) {
+	vals := make([]attribute.Value, 0, len(rels))
 	for _, rel := range rels {
 		idKVs, err := scalarKVs(rel.TargetID)
 		if err != nil {
-			return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
+			return attribute.KeyValue{}, fmt.Errorf("%s[%s→%s]: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
 		}
-		kvs := []log.KeyValue{
-			log.String(attrRelationshipType, rel.Type),
-			log.String(attrEntityType, rel.TargetType),
-			log.Map(attrEntityID, idKVs...),
+		kvs := []attribute.KeyValue{
+			attribute.String(attrRelationshipType, rel.Type),
+			attribute.String(attrEntityType, rel.TargetType),
+			attribute.Map(attrEntityID, idKVs...),
 		}
 		// Edge attributes ride beside the structural keys. The consumer reads
 		// confidence and basis off a same_as edge and treats one without a
@@ -153,41 +154,41 @@ func relationshipsValue(rels []entity.Relationship) (log.KeyValue, error) {
 		if len(rel.Attributes) > 0 {
 			attrKVs, err := scalarKVs(rel.Attributes)
 			if err != nil {
-				return log.KeyValue{}, fmt.Errorf("%s[%s→%s] attributes: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
+				return attribute.KeyValue{}, fmt.Errorf("%s[%s→%s] attributes: %w", attrEntityRelationships, rel.Type, rel.TargetType, err)
 			}
 			for _, kv := range attrKVs {
 				switch kv.Key {
 				case attrRelationshipType, attrEntityType, attrEntityID:
-					return log.KeyValue{}, fmt.Errorf("%s[%s→%s]: attribute %q collides with a structural relationship key", attrEntityRelationships, rel.Type, rel.TargetType, kv.Key)
+					return attribute.KeyValue{}, fmt.Errorf("%s[%s→%s]: attribute %q collides with a structural relationship key", attrEntityRelationships, rel.Type, rel.TargetType, kv.Key)
 				}
 				kvs = append(kvs, kv)
 			}
 		}
-		vals = append(vals, log.MapValue(kvs...))
+		vals = append(vals, attribute.MapValue(kvs...))
 	}
-	return log.Slice(attrEntityRelationships, vals...), nil
+	return attribute.Slice(attrEntityRelationships, vals...), nil
 }
 
 // scalarMap builds a kvlist log attribute from a flat map of scalar values,
 // keys sorted for deterministic output.
-func scalarMap(key string, m map[string]any) (log.KeyValue, error) {
+func scalarMap(key string, m map[string]any) (attribute.KeyValue, error) {
 	kvs, err := scalarKVs(m)
 	if err != nil {
-		return log.KeyValue{}, fmt.Errorf("%s%w", key, err)
+		return attribute.KeyValue{}, fmt.Errorf("%s%w", key, err)
 	}
-	return log.Map(key, kvs...), nil
+	return attribute.Map(key, kvs...), nil
 }
 
-// scalarKVs renders a flat map of scalar values to sorted log.KeyValues. The
+// scalarKVs renders a flat map of scalar values to sorted attribute.KeyValues. The
 // returned error is prefixed with [key] so a caller can name the field.
-func scalarKVs(m map[string]any) ([]log.KeyValue, error) {
+func scalarKVs(m map[string]any) ([]attribute.KeyValue, error) {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	kvs := make([]log.KeyValue, 0, len(keys))
+	kvs := make([]attribute.KeyValue, 0, len(keys))
 	for _, k := range keys {
 		kv, err := scalarKV(k, m[k])
 		if err != nil {
@@ -198,22 +199,22 @@ func scalarKVs(m map[string]any) ([]log.KeyValue, error) {
 	return kvs, nil
 }
 
-// scalarKV converts a single scalar value to a log.KeyValue. Only the four
+// scalarKV converts a single scalar value to a attribute.KeyValue. Only the four
 // scalar kinds the entity contract allows are accepted; anything else (a
 // slice, a nested map) is an error so it surfaces rather than being dropped.
-func scalarKV(k string, v any) (log.KeyValue, error) {
+func scalarKV(k string, v any) (attribute.KeyValue, error) {
 	switch t := v.(type) {
 	case string:
-		return log.String(k, t), nil
+		return attribute.String(k, t), nil
 	case int64:
-		return log.Int64(k, t), nil
+		return attribute.Int64(k, t), nil
 	case int:
-		return log.Int64(k, int64(t)), nil
+		return attribute.Int64(k, int64(t)), nil
 	case float64:
-		return log.Float64(k, t), nil
+		return attribute.Float64(k, t), nil
 	case bool:
-		return log.Bool(k, t), nil
+		return attribute.Bool(k, t), nil
 	default:
-		return log.KeyValue{}, fmt.Errorf("non-scalar value of type %T", v)
+		return attribute.KeyValue{}, fmt.Errorf("non-scalar value of type %T", v)
 	}
 }

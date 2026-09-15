@@ -3,8 +3,11 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -12,20 +15,6 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
-
-// eventSeverityToOtel maps the event probe's accepted severity strings
-// (which mirror the syslog severity names) to OTel SeverityNumber per
-// the OTel logs data model. Entries match validSeverities exactly.
-var eventSeverityToOtel = map[string]agentstate.LogSeverity{
-	"EMERG":   24, // FATAL4
-	"ALERT":   23, // FATAL3
-	"CRIT":    22, // FATAL2
-	"ERR":     agentstate.LogSeverityError,
-	"WARNING": agentstate.LogSeverityWarn,
-	"NOTICE":  10, // INFO2
-	"INFO":    agentstate.LogSeverityInfo,
-	"DEBUG":   agentstate.LogSeverityDebug,
-}
 
 // Default values
 const (
@@ -37,18 +26,6 @@ const (
 	MaxPort             = 65535
 	MaxFields           = 20
 )
-
-// validSeverities is a map of valid severity levels.
-var validSeverities = map[string]struct{}{
-	"EMERG":   {},
-	"ALERT":   {},
-	"CRIT":    {},
-	"ERR":     {},
-	"WARNING": {},
-	"NOTICE":  {},
-	"INFO":    {},
-	"DEBUG":   {},
-}
 
 // EventProbeConfig holds the configuration for the EventProbe.
 type EventProbeConfig struct {
@@ -65,6 +42,37 @@ type EventProbe struct {
 	moduleLogger *logger.ModuleLogger
 	server       *http.Server
 	callback     func([]data_store.DataPoint) error
+	// serving reports whether the HTTP listener is up. serveErr holds
+	// the reason it is not. ListenAndServe runs on its own goroutine
+	// and its error used to be logged and dropped, so a port already in
+	// use killed the listener at boot while the probe kept reporting
+	// healthy for the life of the agent (#289).
+	serving  atomic.Bool
+	serveErr atomic.Pointer[string]
+}
+
+// ListenerHealth implements types.ListenerProbe: this probe receives
+// events over HTTP, so its health is whether that listener is serving,
+// not whether its no-op Collect returned.
+func (p *EventProbe) ListenerHealth() error {
+	if msg := p.serveErr.Load(); msg != nil {
+		return errors.New(*msg)
+	}
+	if !p.serving.Load() {
+		return errors.New("HTTP listener is not running")
+	}
+	return nil
+}
+
+// eventProbeSeverity maps an accepted severity name to its OTel
+// SeverityNumber. The ladder lives in agentstate, once: this used to be
+// a third hand-maintained copy of the same eight rungs, alongside a
+// separate validation set that had to be kept in step with it (#294).
+// An unaccepted name cannot reach here — the payload is rejected at
+// validation — so the miss returns Unspecified rather than guessing.
+func eventProbeSeverity(name string) agentstate.LogSeverity {
+	sev, _ := agentstate.EventProbeSeverityToOTel(name)
+	return sev
 }
 
 // SetCallback sets the callback function for the EventProbe.
@@ -110,8 +118,10 @@ func parseEventProbeConfig(config map[string]interface{}) (EventProbeConfig, err
 
 	if protocolVal, ok := config["protocol"].(string); ok {
 		protocol = protocolVal
-		if protocol != "tcp" && protocol != "udp" {
-			errs = append(errs, fmt.Errorf("protocol must be 'tcp' or 'udp'"))
+		// The listener is an HTTP server: udp was accepted and then
+		// ignored, so a configuration asking for it never got it.
+		if protocol != "tcp" {
+			errs = append(errs, fmt.Errorf("protocol must be 'tcp': the listener serves HTTP, it cannot listen on %q", protocol))
 		}
 	}
 
@@ -120,7 +130,7 @@ func parseEventProbeConfig(config map[string]interface{}) (EventProbeConfig, err
 	}
 
 	if len(errs) > 0 {
-		return EventProbeConfig{}, fmt.Errorf("error parsing config: %v", errs)
+		return EventProbeConfig{}, fmt.Errorf("error parsing config: %w", errors.Join(errs...))
 	}
 
 	return EventProbeConfig{
@@ -169,10 +179,15 @@ func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
 		IdleTimeout:  120 * time.Second,
 	}
 
+	p.serveErr.Store(nil)
+	p.serving.Store(true)
 	go func() {
 		if err := p.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			p.moduleLogger.Error().Err(err).Msg("Failed to start HTTP server")
+			msg := err.Error()
+			p.serveErr.Store(&msg)
 		}
+		p.serving.Store(false)
 	}()
 
 	p.moduleLogger.Info().Msg("Event probe started successfully")
@@ -181,6 +196,7 @@ func (p *EventProbe) OnStart(quitChannel chan struct{}) error {
 
 // OnShutdown stops the EventProbe.
 func (p *EventProbe) OnShutdown(ctx context.Context) error {
+	p.serving.Store(false)
 	if p.server != nil {
 		p.moduleLogger.Info().Msg("Stopping Event probe")
 		return p.server.Shutdown(ctx)
@@ -242,11 +258,12 @@ func (p *EventProbe) publishLog(event map[string]interface{}, timestamp time.Tim
 	}
 
 	agentstate.PublishLog(agentstate.LogRecord{
-		Timestamp:    timestamp,
-		Severity:     eventSeverityToOtel[severityStr],
-		SeverityText: severityStr,
-		Body:         body,
-		Attributes:   attrs,
+		TargetStrategies: p.LogTargets(),
+		Timestamp:        timestamp,
+		Severity:         eventProbeSeverity(severityStr),
+		SeverityText:     severityStr,
+		Body:             body,
+		Attributes:       attrs,
 		// Fields carries the raw event map so the /event/insert converter
 		// (FromEventLog) rebuilds the exact legacy payload, structure
 		// included — the flat Attributes above cannot hold arrays/objects
@@ -272,7 +289,7 @@ func validateEvent(event map[string]interface{}) error {
 
 	if ts, ok := event["timestamp"].(string); ok {
 		if _, err := time.Parse(time.RFC3339, ts); err != nil {
-			return fmt.Errorf("invalid timestamp format, must be ISO8601: %v", err)
+			return fmt.Errorf("invalid timestamp format, must be ISO8601: %w", err)
 		}
 	}
 
@@ -285,8 +302,9 @@ func validateEvent(event map[string]interface{}) error {
 	}
 
 	if severity, ok := event["severity"].(string); ok {
-		if _, valid := validSeverities[severity]; !valid {
-			return fmt.Errorf("invalid severity value: %s", severity)
+		if _, valid := agentstate.EventProbeSeverityToOTel(severity); !valid {
+			return fmt.Errorf("invalid severity value: %s (accepted: %s)",
+				severity, strings.Join(agentstate.EventProbeSeverityNames(), ", "))
 		}
 	} else {
 		return fmt.Errorf("severity must be a string")

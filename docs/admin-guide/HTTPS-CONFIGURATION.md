@@ -13,7 +13,7 @@ The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monit
 **Configuration**: No TLS parameters needed
 
 ```bash
-./agent install
+senhub-agent install
 # Access: http://localhost:8080/web/{agentkey}/dashboard
 ```
 
@@ -24,7 +24,7 @@ The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monit
 **Configuration**: Automatic certificate generation
 
 ```bash
-./agent install --enable-https
+senhub-agent install --enable-https
 # Access: https://localhost:8443/web/{agentkey}/dashboard
 ```
 
@@ -35,11 +35,16 @@ The SenHub Agent supports comprehensive HTTPS/TLS configuration for secure monit
 **Configuration**: User-provided certificate files
 
 ```bash
-./agent install --enable-https \
+senhub-agent install --enable-https \
   --cert-file /path/to/cert.pem \
   --key-file /path/to/key.pem
 # Access: https://your-domain.com:8443/web/{agentkey}/dashboard
 ```
+
+> **Today these two flags are recorded and dropped** (#867). Set `cert_file`
+> and `key_file` in the configuration after the install — see
+> [Provided Certificates](#provided-certificates) — or the agent serves the
+> self-signed pair it generated.
 
 ## Certificate Generation
 
@@ -49,9 +54,17 @@ When using `--enable-https` without custom certificates:
 
 1. **RSA Key Generation**: 2048-bit RSA private key
 2. **Certificate Creation**: X.509 certificate with proper extensions
-3. **SAN Configuration**: Subject Alternative Names for multiple hostnames
-4. **File Storage**: Secure storage in `./certs/` directory
-5. **Permission Setting**: Restricted access (600 for private key)
+3. **SAN Configuration**: Subject Alternative Names from `--https-hosts`
+4. **File Storage**: a `certs/` directory **next to the configuration file** —
+   `/etc/senhub-agent/certs/` on a standard Linux install. It is not the
+   working directory: a hardened unit runs with `ProtectHome=true`, and a
+   certificate written under a home directory would be unreadable by the
+   service user.
+5. **Permission Setting**: `agent-cert.pem` and `agent-key.pem` are both `0600`
+
+Certificates are generated **once**, when the installer creates a fresh
+configuration. They are not re-generated on later starts, and an existing
+`certs/` directory is left alone.
 
 ### Certificate Properties
 
@@ -61,28 +74,42 @@ Issuer: Self-signed
 Validity: 365 days from generation
 Key Usage: Digital Signature, Key Encipherment
 Extended Key Usage: Server Authentication
-Subject Alternative Names: DNS:localhost, IP:127.0.0.1, [custom hosts]
+Subject Alternative Names: the values of --https-hosts (default: DNS:localhost, IP:127.0.0.1)
 ```
 
 ### Custom Subject Alternative Names
 
 ```bash
 # Multiple hostnames for certificate
-./agent install --enable-https \
+senhub-agent install --enable-https \
   --https-hosts "agent.company.com,192.168.1.100,monitoring.local,10.0.0.50"
 ```
 
-This generates a certificate valid for:
+This generates a certificate valid for exactly:
 - `agent.company.com`
 - `192.168.1.100`
 - `monitoring.local`
 - `10.0.0.50`
-- `localhost` (always included)
-- `127.0.0.1` (always included)
+
+`--https-hosts` **replaces** the list, it does not extend it. `localhost` and
+`127.0.0.1` are the default only when the flag is omitted — list them yourself
+if you still want to reach the console over the loopback name:
+
+```bash
+senhub-agent install --enable-https \
+  --https-hosts "localhost,127.0.0.1,agent.company.com,192.168.1.100"
+```
 
 ## Configuration File TLS Section
 
+The agent reads exactly four keys under `tls`: `enabled`, `min_tls_version`,
+`cert_file` and `key_file`. There is no `mode` and no `auto_cert` block —
+"auto-generated" and "provided" differ only in where the two files came from.
+
 ### Auto-Generated Certificates
+
+What `install --enable-https` writes (paths are absolute, so the daemon's
+working directory does not matter):
 
 ```yaml
 storage:
@@ -90,44 +117,39 @@ storage:
     params:
       port: 8443
       bind_address: "0.0.0.0"
-      endpoints: ["prtg", "senhub", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios"]
       tls:
         enabled: true
-        mode: "auto"
-        auto_cert:
-          organization: "SenHub Agent"
-          common_name: "localhost"
-          san_hosts: 
-            - "localhost"
-            - "127.0.0.1"
-            - "agent.company.com"
-            - "192.168.1.100"
-          validity_days: 365
-          key_size: 2048
         min_tls_version: "1.2"
-        cipher_suites: []  # Empty = secure defaults
+        cert_file: "/etc/senhub-agent/certs/agent-cert.pem"
+        key_file: "/etc/senhub-agent/certs/agent-key.pem"
 ```
 
 ### Provided Certificates
 
+Point the same two keys at your own files:
+
 ```yaml
 storage:
   - name: http
     params:
       port: 8443
       bind_address: "0.0.0.0"
-      endpoints: ["prtg", "senhub", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios"]
       tls:
         enabled: true
-        mode: "provided"
+        min_tls_version: "1.2"
         cert_file: "/etc/ssl/certs/agent.pem"
         key_file: "/etc/ssl/private/agent.key"
-        min_tls_version: "1.3"
-        cipher_suites:
-          - "TLS_AES_256_GCM_SHA384"
-          - "TLS_CHACHA20_POLY1305_SHA256"
-          - "TLS_AES_128_GCM_SHA256"
 ```
+
+> **`--cert-file` / `--key-file` are accepted by `install` but do not reach the
+> generated configuration** (#867): the file it writes always points at the
+> self-signed pair. Until that is fixed, set `cert_file` / `key_file` in the
+> configuration yourself after the install, then restart the service.
+
+In the multi-file layout the same block lives in `strategies.d/00-http.yaml`
+under a single top-level `http:` key.
 
 ## Production Certificate Setup
 
@@ -150,7 +172,7 @@ certbot certonly --standalone \
 #### 2. Configure Agent
 
 ```bash
-./agent install --enable-https \
+senhub-agent install --enable-https \
   --cert-file /etc/letsencrypt/live/agent.company.com/fullchain.pem \
   --key-file /etc/letsencrypt/live/agent.company.com/privkey.pem \
   --https-port 443 \
@@ -184,7 +206,7 @@ Submit `agent.csr` to your certificate authority and receive signed certificate.
 #### 3. Configure Agent
 
 ```bash
-./agent install --enable-https \
+senhub-agent install --enable-https \
   --cert-file /etc/ssl/company/agent.crt \
   --key-file /etc/ssl/company/agent.key \
   --https-port 8443 \
@@ -201,7 +223,7 @@ Submit `agent.csr` to your certificate authority and receive signed certificate.
 - **Use Case**: General purpose, mixed environments
 
 ```bash
-./agent install --enable-https --min-tls-version 1.2
+senhub-agent install --enable-https --min-tls-version 1.2
 ```
 
 #### TLS 1.3 (Recommended)
@@ -210,37 +232,19 @@ Submit `agent.csr` to your certificate authority and receive signed certificate.
 - **Use Case**: High-security environments, modern infrastructure
 
 ```bash
-./agent install --enable-https --min-tls-version 1.3
+senhub-agent install --enable-https --min-tls-version 1.3
 ```
 
-### Cipher Suite Configuration
+### Cipher Suites
 
-#### Default (Secure)
-The agent uses secure defaults when no cipher suites are specified:
+There is no `cipher_suites` key. The agent serves the suites Go selects for
+the negotiated version, which is a deliberate and maintained set: for TLS
+1.3 the three suites the standard defines, and for TLS 1.2 the forward-secret
+AEAD suites, with the insecure ones already excluded.
 
-```yaml
-cipher_suites: []  # Uses Go's default secure cipher suites
-```
-
-#### Custom Configuration
-For compliance or specific security requirements:
-
-```yaml
-tls:
-  cipher_suites:
-    # TLS 1.3 (if min_tls_version: "1.3")
-    - "TLS_AES_256_GCM_SHA384"
-    - "TLS_CHACHA20_POLY1305_SHA256"
-    - "TLS_AES_128_GCM_SHA256"
-    
-    # TLS 1.2 compatible
-    - "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
-    - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
-    - "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305"
-    - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
-    - "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
-    - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-```
+Overriding that list is more often a downgrade than a hardening, which is
+why the option does not exist. Where a policy names a suite list, terminate
+TLS on a reverse proxy and let it enforce the policy, as described below.
 
 ## Certificate Management
 
@@ -249,13 +253,13 @@ tls:
 #### Check Certificate Details
 ```bash
 # View certificate information
-openssl x509 -in ./certs/agent-cert.pem -text -noout
+openssl x509 -in /etc/senhub-agent/certs/agent-cert.pem -text -noout
 
 # Check certificate validity
-openssl x509 -in ./certs/agent-cert.pem -checkend 86400  # Check if expires in 24h
+openssl x509 -in /etc/senhub-agent/certs/agent-cert.pem -checkend 86400  # Check if expires in 24h
 
 # Verify certificate chain
-openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt ./certs/agent-cert.pem
+openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /etc/senhub-agent/certs/agent-cert.pem
 ```
 
 #### Test TLS Connection
@@ -270,17 +274,24 @@ openssl s_client -connect localhost:8443 -tls1_3
 nmap --script ssl-enum-ciphers -p 8443 localhost
 ```
 
-### Automatic Renewal
+### Renewal
 
 #### Self-Signed Certificates
-The agent automatically renews self-signed certificates when they expire within 30 days:
+There is no automatic renewal. The pair is generated once, at install, and is
+valid for 365 days; the agent does not check its expiry at startup. Watch the
+expiry yourself (see *Certificate Expiration Monitoring* below) and renew by
+replacing the two files and restarting the service:
 
-```go
-// Auto-renewal check at startup
-if certificate.NotAfter.Sub(time.Now()) < 30*24*time.Hour {
-    regenerateCertificate()
-}
+```bash
+sudo senhub-agent stop
+# write a new pair to /etc/senhub-agent/certs/agent-cert.pem and agent-key.pem
+sudo chown senhub:senhub /etc/senhub-agent/certs/agent-*.pem
+sudo chmod 600 /etc/senhub-agent/certs/agent-*.pem
+sudo senhub-agent start
 ```
+
+A full `uninstall` + `install --enable-https` also regenerates the pair, at
+the cost of the rest of the configuration.
 
 #### External Certificates
 For Let's Encrypt or CA certificates, set up external renewal:
@@ -469,7 +480,7 @@ grep -A 10 "tls:" ./agent-config.yaml
 ```bash
 # Error: permission denied reading certificate
 # Solution: Fix permissions
-sudo chown senhub-agent:senhub-agent /path/to/certificates
+sudo chown senhub:senhub /path/to/certificates
 chmod 644 /path/to/cert.pem
 chmod 600 /path/to/key.pem
 ```
@@ -490,7 +501,7 @@ echo "Key:  $key_modulus"
 openssl x509 -in cert.pem -text -noout | grep -A1 "Subject Alternative Name"
 
 # Add missing hostnames
-./agent install --enable-https \
+senhub-agent install --enable-https \
   --https-hosts "missing-hostname.com,another-host.local"
 ```
 
@@ -552,10 +563,10 @@ curl --cacert cert.pem https://localhost:8443/health
 #### Agent Debugging
 ```bash
 # Enable TLS debugging
-./agent run --enable-https --verbose --debug-modules strategy.http
+senhub-agent run --enable-https --filter strategy.http
 
 # Check certificate loading
-./agent run --enable-https --debug-modules configuration
+senhub-agent run --enable-https --filter configuration
 ```
 
 ## Integration Examples
@@ -601,6 +612,4 @@ datasources:
 
 ---
 
-**Last Updated**: January 2025  
-**Version**: SenHub Agent v0.8.0+  
-**Security Level**: Production Ready
+**Applies to**: SenHub Agent 0.5.5 and later

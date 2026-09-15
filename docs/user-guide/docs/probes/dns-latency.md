@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/dns.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/dns-latency.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 # dns_latency — DNS resolution latency
 
@@ -21,12 +21,17 @@ to compare them. Slow DNS is a frequent cause of perceived slowness
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `names` | required | Names to resolve |
-| `resolvers` | system | DNS servers (`ip` or `ip:port`); each name is measured against each resolver |
-| `timeout` | 5 | Per-lookup budget in seconds |
-| `interval` | 60 | Seconds between cycles |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `names` | Yes | - | Names to resolve. Example: `intranet.corp.lan, www.example.com` |
+| `resolvers` | No | - | DNS servers as ip or ip:port, each name measured against each; empty uses the system resolver. Example: `10.0.0.53, 1.1.1.1` |
+| `timeout` | No | `5` | Budget in seconds per lookup |
+| `interval` | No | `60` | Seconds between cycles |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

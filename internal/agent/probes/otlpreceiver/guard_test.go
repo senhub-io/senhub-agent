@@ -119,8 +119,13 @@ func TestTokenBucket_BurstThenDenyThenRefill(t *testing.T) {
 
 	// 200ms at 10 rps refills 2 tokens.
 	clock = clock.Add(200 * time.Millisecond)
-	if !b.take() || !b.take() {
-		t.Fatal("refilled tokens must be usable")
+	// Two separate takes on purpose: take() consumes a token, so this
+	// asserts BOTH refilled tokens are usable and says which one failed.
+	if !b.take() {
+		t.Fatal("first refilled token must be usable")
+	}
+	if !b.take() {
+		t.Fatal("second refilled token must be usable")
 	}
 	if b.take() {
 		t.Fatal("third take after partial refill must fail")

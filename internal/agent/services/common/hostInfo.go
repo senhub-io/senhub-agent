@@ -83,7 +83,7 @@ func canonicalHostname(raw string) string {
 func GetHostIdentity() (HostIdentity, error) {
 	hostInfo, err := host.Info()
 	if err != nil {
-		return HostIdentity{}, fmt.Errorf("error getting host info: %v", err)
+		return HostIdentity{}, fmt.Errorf("error getting host info: %w", err)
 	}
 	virt := normalizeVirtualization(hostInfo.VirtualizationSystem, hostInfo.VirtualizationRole)
 	if virt == "none" {
@@ -304,7 +304,7 @@ func chassisName(code int, virt string) string {
 func GetHostResourceAttributes() (map[string]string, error) {
 	hostInfo, err := host.Info()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host info: %v", err)
+		return nil, fmt.Errorf("error getting host info: %w", err)
 	}
 
 	attrs := map[string]string{}
@@ -328,7 +328,7 @@ func GetHostResourceAttributes() (map[string]string, error) {
 func GetHostTags() ([]tags.Tag, error) {
 	hostInfo, err := host.Info()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host info: %v", err)
+		return nil, fmt.Errorf("error getting host info: %w", err)
 	}
 
 	return []tags.Tag{
@@ -344,7 +344,7 @@ func GetHostTags() ([]tags.Tag, error) {
 func IsWindows() (bool, error) {
 	hostInfo, err := host.Info()
 	if err != nil {
-		return false, fmt.Errorf("error getting host info: %v", err)
+		return false, fmt.Errorf("error getting host info: %w", err)
 	}
 	return hostInfo.OS == "windows", nil
 }
@@ -353,7 +353,7 @@ func IsWindows() (bool, error) {
 func IsLinux() (bool, error) {
 	hostInfo, err := host.Info()
 	if err != nil {
-		return false, fmt.Errorf("error getting host info: %v", err)
+		return false, fmt.Errorf("error getting host info: %w", err)
 	}
 	return hostInfo.OS == "linux", nil
 }

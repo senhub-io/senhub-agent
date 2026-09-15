@@ -1,4 +1,4 @@
-<img src="https://upload.wikimedia.org/wikipedia/commons/f/fe/Apache_Tomcat_logo.svg" alt="" class="probe-page-logo probe-page-logo-wm">
+<img src="../../assets/probe-logos/tomcat.svg" alt="" class="probe-page-logo probe-page-logo-wm">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,11 +21,19 @@ and the Tomcat thread pool state.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `jolokia_url` | `http://localhost:8080/jolokia` | URL to the Jolokia agent endpoint on the Tomcat instance |
-| `username` | — | Jolokia Basic-auth username (if required) |
-| `password` | — | Jolokia Basic-auth password — reference a stored secret via `${secret:tomcat.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `jolokia_url` | In practice | `http://localhost:8080/jolokia` | URL of the Jolokia agent deployed in Tomcat. Example: `http://tomcat.example.com:8080/jolokia` |
+| `username` | No | - | Basic-auth user; empty sends no credentials |
+| `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this server instead of the one derived from the URL |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

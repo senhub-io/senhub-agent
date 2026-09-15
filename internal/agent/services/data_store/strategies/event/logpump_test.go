@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func newPumpTestStrategy(t *testing.T) *EventSyncStrategy {
 	if err != nil {
 		t.Fatalf("NewEventSyncStrategy: %v", err)
 	}
-	s.startLogPump()
+	s.startLogPump(context.Background())
 	t.Cleanup(func() {
 		if s.logCancel != nil {
 			s.logCancel()
@@ -67,6 +68,7 @@ func TestLogPump_SyslogReachesEventInsert(t *testing.T) {
 // M2 re-injection.
 type tagsAgentConfig struct{ stubAgentConfig }
 
+func (tagsAgentConfig) GetConfigPath() string { return "" }
 func (tagsAgentConfig) GetGlobalTags() map[string]string {
 	return map[string]string{"site": "paris", "env": "prod"}
 }
@@ -82,7 +84,7 @@ func TestLogPump_ReinjectsGlobalTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEventSyncStrategy: %v", err)
 	}
-	s.startLogPump()
+	s.startLogPump(context.Background())
 	t.Cleanup(func() {
 		if s.logCancel != nil {
 			s.logCancel()

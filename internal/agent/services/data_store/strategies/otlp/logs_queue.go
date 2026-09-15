@@ -11,10 +11,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 
+	"github.com/rs/zerolog"
+
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -88,7 +91,7 @@ func serializeEventLog(r sdklog.Record) (persistedLogRecord, bool) {
 	if obs := r.ObservedTimestamp(); !obs.IsZero() {
 		out.ObservedTimestampUnixNano = obs.UnixNano()
 	}
-	r.WalkAttributes(func(kv log.KeyValue) bool {
+	r.WalkAttributes(func(kv attribute.KeyValue) bool {
 		if out.Attributes == nil {
 			out.Attributes = map[string]string{}
 		}
@@ -110,6 +113,20 @@ type logsQueue struct {
 	seq       uint64 // monotonic file sequence
 	sizeBytes int64
 	records   int
+	// oldestAt is when the batch that has waited longest was queued, so
+	// how late the rail is running can be read without touching the disk.
+	oldestAt time.Time
+}
+
+// pending reports how many records wait on disk and how long the oldest
+// has waited. A zero duration means nothing is waiting.
+func (q *logsQueue) pending() (int, time.Duration) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.records == 0 || q.oldestAt.IsZero() {
+		return q.records, 0
+	}
+	return q.records, time.Since(q.oldestAt)
 }
 
 func newLogsQueue(path string, maxBytes int64, log *logger.ModuleLogger) *logsQueue {
@@ -156,6 +173,11 @@ func (q *logsQueue) recover() {
 	}
 	q.sizeBytes = total
 	q.records = recs
+	// Whatever survived a restart has waited at least since now; the real
+	// age is on the file, and it is only used to say how late the rail is.
+	if recs > 0 {
+		q.oldestAt = time.Now()
+	}
 	q.seq = maxSeq
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
 }
@@ -191,6 +213,9 @@ func (q *logsQueue) enqueue(records []persistedLogRecord) error {
 
 	q.sizeBytes += int64(len(data))
 	q.records += len(records)
+	if q.oldestAt.IsZero() {
+		q.oldestAt = time.Now()
+	}
 	agentstate.IncrementOTLPLogsQueued(len(records))
 	q.evictLocked()
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
@@ -319,6 +344,9 @@ func (q *logsQueue) removeFile(name string) {
 	if q.records < 0 {
 		q.records = 0
 	}
+	if q.records == 0 {
+		q.oldestAt = time.Time{}
+	}
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
 }
 
@@ -331,12 +359,34 @@ type persistentLogExporter struct {
 	queue   *logsQueue
 	logger  *logger.ModuleLogger
 
+	// reporter takes the consumer's partial rejections out of the export
+	// error before it is classified. Without it a delivered batch the
+	// consumer partly refused reads as a transport failure and lands on
+	// disk, to be replayed against a consumer that already has it (#819).
+	reporter *partialSuccessReporter
+
 	healthy     atomic.Bool
 	onRecovered atomic.Pointer[func()]
+	// onQueued is called when a batch lands on disk, so the retry loop
+	// starts its clock then rather than at the next record.
+	onQueued atomic.Pointer[func()]
+
+	// lastFailWarnNs throttles the export-failure warning. Log batches
+	// can flush every few seconds; one warning per interval is enough to
+	// surface a dying pipeline without flooding the journal (#821).
+	lastFailWarnNs atomic.Int64
 }
 
+// logExportWarnInterval spaces the "OTLP logs export failed" warnings.
+const logExportWarnInterval = 30 * time.Second
+
 func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *logger.ModuleLogger) *persistentLogExporter {
-	e := &persistentLogExporter{wrapped: wrapped, queue: queue, logger: log}
+	e := &persistentLogExporter{
+		wrapped:  wrapped,
+		queue:    queue,
+		logger:   log,
+		reporter: newPartialSuccessReporter(log, "export"),
+	}
 	e.healthy.Store(true)
 	return e
 }
@@ -345,13 +395,57 @@ func (e *persistentLogExporter) setOnRecovered(fn func()) {
 	e.onRecovered.Store(&fn)
 }
 
+func (e *persistentLogExporter) setOnQueued(fn func()) {
+	e.onQueued.Store(&fn)
+}
+
 func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
-	err := e.wrapped.Export(ctx, records)
+	// A partial success is not a failed export: what came back with it is.
+	// Counting the refused records here and dropping them from the error
+	// is what keeps a delivered batch out of the dead-letter queue.
+	err := e.reporter.reportRejections(e.wrapped.Export(ctx, records))
 	if err != nil {
-		e.persist(records)
+		// Count BEFORE persisting: a rejected batch that lands in the
+		// dead-letter queue is still a failed export. In production a
+		// receiver rejecting every logs batch with 400 never moved any
+		// counter — the pipeline died silently behind queue/replay churn
+		// (#820, tracked as #821).
+		agentstate.IncrementOTLPExportErrors("logs")
+
+		classified := classifyExportError(err)
+		agentstate.IncrementExportSendFailed("otlp", exporterrors.Reason(classified))
+		agentstate.RecordExportFailure("otlp/logs", redactSensitive(err.Error()))
 		e.healthy.Store(false)
+
+		if !exporterrors.IsRetryable(classified) {
+			// The receiver refused the payload on its merits. Persisting
+			// it would put a batch on disk that is replayed at boot and
+			// on every recovery, rejected every time, and re-persisted —
+			// occupying space the drop-oldest eviction then takes from
+			// batches that could still be delivered (#833).
+			for i := 0; i < len(records); i++ {
+				agentstate.IncrementOTLPDropped("receiver_rejected")
+			}
+			e.warnThrottled(func(ev *zerolog.Event) {
+				ev.Str("error", redactSensitive(err.Error())).
+					Int("records", len(records)).
+					Msg("OTLP logs export rejected by the receiver; records discarded (not queued — a retry gets the same rejection)")
+			})
+			return err
+		}
+
+		e.persist(records)
+		if p := e.onQueued.Load(); p != nil && *p != nil {
+			(*p)()
+		}
+		e.warnThrottled(func(ev *zerolog.Event) {
+			ev.Str("error", redactSensitive(err.Error())).
+				Int("records", len(records)).
+				Msg("OTLP logs export failed; batch persisted to dead-letter queue")
+		})
 		return err
 	}
+	agentstate.RecordExportSuccess("otlp/logs")
 	// Export succeeded: if we were unhealthy, the backend just recovered.
 	if e.healthy.CompareAndSwap(false, true) {
 		if p := e.onRecovered.Load(); p != nil && *p != nil {
@@ -359,6 +453,20 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		}
 	}
 	return nil
+}
+
+// warnThrottled emits at most one warning per logExportWarnInterval, so
+// a sustained outage does not turn the journal into the incident.
+func (e *persistentLogExporter) warnThrottled(emit func(*zerolog.Event)) {
+	if e.logger == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := e.lastFailWarnNs.Load()
+	if now-last < int64(logExportWarnInterval) || !e.lastFailWarnNs.CompareAndSwap(last, now) {
+		return
+	}
+	emit(e.logger.Warn())
 }
 
 // persist serialises the event-log records of a failed batch to the
@@ -393,10 +501,87 @@ type logsReplayer struct {
 	pipeline *logsPipeline
 	logger   *logger.ModuleLogger
 	running  atomic.Bool
+
+	wake chan struct{}
+	quit chan struct{}
+	wg   sync.WaitGroup
 }
 
+// The logs rail is the sparse one, and a queued batch used to wait for
+// the next record on that same rail to be retried: on a quiet host that
+// is minutes, long enough for a consumer to expire the whole host. These
+// bound the wait instead.
+const (
+	replayFirstDelay = 15 * time.Second
+	replayMaxDelay   = 5 * time.Minute
+)
+
 func newLogsReplayer(q *logsQueue, p *logsPipeline, log *logger.ModuleLogger) *logsReplayer {
-	return &logsReplayer{queue: q, pipeline: p, logger: log}
+	return &logsReplayer{
+		queue: q, pipeline: p, logger: log,
+		wake: make(chan struct{}, 1),
+		quit: make(chan struct{}),
+	}
+}
+
+// start runs the retry loop: a queued batch is tried again on its own,
+// on a doubling delay, until it leaves or the agent stops.
+func (r *logsReplayer) start() {
+	r.wg.Add(1)
+	go r.loop()
+}
+
+// stop ends the retry loop. Safe to call once.
+func (r *logsReplayer) stop() {
+	close(r.quit)
+	r.wg.Wait()
+}
+
+// kick asks for an early retry: something was just queued.
+func (r *logsReplayer) kick() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (r *logsReplayer) loop() {
+	defer r.wg.Done()
+	delay := replayFirstDelay
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-r.quit:
+			return
+		case <-r.wake:
+			delay = replayFirstDelay
+		case <-timer.C:
+		}
+
+		if n, waited := r.queue.pending(); n > 0 {
+			if r.logger != nil {
+				r.logger.Info().Int("records", n).Dur("waiting", waited).Msg("OTLP logs queue: retrying the queued records")
+			}
+			r.replay()
+		}
+
+		if n, _ := r.queue.pending(); n > 0 {
+			delay *= 2
+			if delay > replayMaxDelay {
+				delay = replayMaxDelay
+			}
+		} else {
+			delay = replayMaxDelay
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(delay)
+	}
 }
 
 // replay drains the queue once. Concurrent calls collapse to one (the

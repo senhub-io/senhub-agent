@@ -216,6 +216,11 @@ func (s *DebugLogShipper) flush() {
 	go func(data string) {
 		err := s.sendLogs(data)
 		if err != nil {
+			// Deliberately the stdlib logger, not a module logger: this
+			// type IS a zerolog writer, so reporting a shipping failure
+			// through the agent logger would append the report to the
+			// very buffer that just failed to ship, and every retry
+			// would grow it. stderr is the only sink outside the loop.
 			log.Printf("Error sending logs to remote endpoint: %v", err)
 		}
 	}(payload)

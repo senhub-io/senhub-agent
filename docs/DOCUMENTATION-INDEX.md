@@ -215,9 +215,9 @@ curl http://localhost:8080/health
 - **Log Files**: `/var/log/senhub-agent/` (Linux), Event Viewer (Windows)
 
 ### Important URLs
-- **Dashboard**: `http://localhost:8080/web/{agentkey}/dashboard`
-- **HTTPS Dashboard**: `https://localhost:8443/web/{agentkey}/dashboard`
-- **API Explorer**: `http://localhost:8080/web/{agentkey}/explorer`
+- **Console**: `http://localhost:8080/web/{agentkey}/`
+- **HTTPS console**: `https://localhost:8443/web/{agentkey}/`
+- **Sensor URLs**: `http://localhost:8080/web/{agentkey}/outputs/http#urls`
 - **Health Check**: `http://localhost:8080/health`
 
 ### Default Ports

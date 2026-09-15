@@ -89,7 +89,7 @@ func NewChronyProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	if v, ok := config["chronyc_path"].(string); ok && v != "" {
 		cfg.ChronyPath = v
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 

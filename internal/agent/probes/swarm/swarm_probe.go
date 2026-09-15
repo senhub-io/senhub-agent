@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -36,10 +37,9 @@ import (
 const ProbeType = "swarm"
 
 const (
-	defaultSocketPath = "/var/run/docker.sock"
-	defaultInterval   = 60 * time.Second
-	defaultTimeout    = 10 * time.Second
-	apiVersion        = "v1.43"
+	defaultInterval = 60 * time.Second
+	defaultTimeout  = 10 * time.Second
+	apiVersion      = "v1.43"
 )
 
 type probeConfig struct {
@@ -84,7 +84,7 @@ func NewSwarmProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 
 func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	cfg := probeConfig{
-		SocketPath: defaultSocketPath,
+		SocketPath: dockerdial.DefaultAddress(),
 		Interval:   defaultInterval,
 		Timeout:    defaultTimeout,
 	}
@@ -119,7 +119,7 @@ func (p *swarmProbe) buildClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
+				return dockerdial.Dial(ctx, socketPath)
 			},
 		},
 		Timeout: p.cfg.Timeout,

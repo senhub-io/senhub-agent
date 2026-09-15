@@ -63,7 +63,7 @@ func TestHandleInfoOTLP_ReflectsCounters(t *testing.T) {
 	agentstate.IncrementOTLPLogsPushed()
 	agentstate.IncrementOTLPLogsPushed()
 	agentstate.IncrementOTLPLogsPushed() // 3
-	agentstate.IncrementOTLPExportErrors()
+	agentstate.IncrementOTLPExportErrors("metrics")
 	agentstate.IncrementOTLPDropped("store_cap")
 	agentstate.IncrementOTLPDropped("store_cap")
 	agentstate.IncrementOTLPDropped("memory_soft_limit") // 2 + 1 = 3 total

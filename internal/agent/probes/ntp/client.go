@@ -72,7 +72,7 @@ func query(server string, timeout time.Duration) (sample, error) {
 
 	conn, err := net.DialTimeout("udp", addr, timeout)
 	if err != nil {
-		return sample{}, fmt.Errorf("%w: connecting to %s: %v", errUnreachable, addr, err)
+		return sample{}, fmt.Errorf("%w: connecting to %s: %w", errUnreachable, addr, err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -90,14 +90,14 @@ func query(server string, timeout time.Duration) (sample, error) {
 	binary.BigEndian.PutUint64(req[40:48], toNTP(t1))
 
 	if _, err := conn.Write(req); err != nil {
-		return sample{}, fmt.Errorf("%w: sending to %s: %v", errUnreachable, addr, err)
+		return sample{}, fmt.Errorf("%w: sending to %s: %w", errUnreachable, addr, err)
 	}
 
 	resp := make([]byte, packetSize)
 	n, err := conn.Read(resp)
 	t4 := time.Now()
 	if err != nil {
-		return sample{}, fmt.Errorf("%w: waiting for %s: %v", errUnreachable, addr, err)
+		return sample{}, fmt.Errorf("%w: waiting for %s: %w", errUnreachable, addr, err)
 	}
 	if n < packetSize {
 		return sample{}, fmt.Errorf("%s answered %d bytes, want at least %d", addr, n, packetSize)

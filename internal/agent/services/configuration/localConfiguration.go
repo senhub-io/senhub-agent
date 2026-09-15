@@ -10,12 +10,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -78,14 +78,27 @@ type LocalConfiguration struct {
 	args          *cliArgs.ParsedArgs
 	eventNotifier *EventNotifier
 	watcher       *fsnotify.Watcher
-	quitChannel   chan struct{}
 	// stopCh + watcherWG make the watcher goroutines joinable:
 	// Shutdown closes stopCh and waits, so no goroutine outlives the
 	// instance (tests saw rewatch goroutines outlive t.TempDir()).
-	// quitChannel stays external (owned by the caller, may be nil).
-	stopCh    chan struct{}
-	stopOnce  sync.Once
-	watcherWG sync.WaitGroup
+	// stopCh is now the ONLY termination signal the watcher selects on:
+	// the lifecycle context closes it through an AfterFunc, so an agent
+	// cancellation and a Shutdown converge on one path instead of the
+	// watcher racing a caller-owned quit channel that could be nil (#285).
+	stopCh         chan struct{}
+	stopOnce       sync.Once
+	releaseStopCtx func() bool
+	watcherWG      sync.WaitGroup
+
+	// newWatcher is fsnotify.NewWatcher, replaceable so a test can
+	// exercise the kernel refusing one — the case that used to stop the
+	// agent from running at all (#850) and that no test could reach
+	// while the constructor was called directly.
+	newWatcher func() (*fsnotify.Watcher, error)
+
+	// lastCacheRetention is the retention GetCacheConfig last announced, so a
+	// value that has not changed is not re-announced on every call.
+	lastCacheRetention atomic.Int32
 }
 
 // snapshot returns the current immutable configuration snapshot
@@ -130,6 +143,7 @@ func NewLocalConfiguration(
 		configPath:    configPath,
 		args:          args,
 		eventNotifier: NewEventNotifier(moduleLogger.Logger),
+		newWatcher:    fsnotify.NewWatcher,
 	}
 	lc.storeData(LocalConfigurationData{})
 
@@ -158,6 +172,11 @@ func (lc *LocalConfiguration) GetAgentKey() string {
 }
 
 // GetAuthenticationKey implements AgentConfiguration interface
+// GetConfigPath returns the absolute path of the agent config file.
+func (lc *LocalConfiguration) GetConfigPath() string {
+	return lc.configPath
+}
+
 func (lc *LocalConfiguration) GetAuthenticationKey() string {
 	return lc.snapshot().Agent.Key
 }
@@ -180,55 +199,43 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 	}
 	cfg := *lc.snapshot().AutoUpdate
 	if fixed, changed := NormalizeRegistryURL(cfg.URL); changed {
-		lc.logger.Warn().
-			Str("configured", cfg.URL).
-			Str("using", fixed).
-			Msg("auto_update.url carried a trailing /releases; the agent appends that path itself, so the configured value resolved to a doubled path and updates were failing silently. Using the corrected base URL — fix the config to stop this warning")
+		// Once per configured value, not once per call: this function is
+		// on the hot path — GetConfiguration resolves the auto-update
+		// block and runs once per datapoint batch — so the previous
+		// unconditional warning meant one identical line per batch, for
+		// the life of the process (#840).
+		if ShouldWarnRegistryURL(cfg.URL) {
+			lc.logger.Warn().
+				Str("configured", cfg.URL).
+				Str("using", fixed).
+				Msg("auto_update.url carries a path the agent appends itself, so every derived URL doubled it and updates were failing silently. Using the corrected base — edit the config to stop this warning")
+		}
 		cfg.URL = fixed
 	}
 	return &cfg
 }
 
-// NormalizeRegistryURL strips what the agent appends itself from a configured
-// registry URL, and reports whether it had to.
+// GetCacheConfig returns the cache configuration.
 //
-// The agent builds the version-list URL with url.JoinPath(registry,
-// "/releases/releases.json"). A config whose url already ends in /releases —
-// which is what the installer scaffolded before #586 — therefore resolves to
-// .../releases/releases/releases.json, a 404. Auto-update then does nothing,
-// with `enabled: true` still in the file: the host silently stays on the
-// version it was installed with.
-//
-// Fixing the scaffold did nothing for the hosts already deployed, and those
-// are the ones running. Normalising on read repairs the whole fleet at the
-// next restart without anyone editing a file.
-func NormalizeRegistryURL(raw string) (normalized string, changed bool) {
-	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
-	if trimmed == "" {
-		return raw, false
-	}
-	if strings.HasSuffix(trimmed, "/releases") {
-		trimmed = strings.TrimSuffix(trimmed, "/releases")
-	}
-	if trimmed == raw {
-		return raw, false
-	}
-	return trimmed, true
-}
-
-// GetCacheConfig returns the cache configuration
+// It is called on every consumer that needs the retention, not once at load,
+// so it says as little as possible: an omitted `cache:` block is an accepted
+// default, not a fault, and warning about it on each call taught operators to
+// read a WARN as noise. The configured value is announced once, and again only
+// when a reload changes it.
 func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 	if lc.snapshot().Cache == nil {
-		lc.logger.Warn().Msg("Cache configuration is nil in YAML, using default (5 minutes)")
-		// Return default configuration
+		lc.logger.Debug().Msg("No cache block configured; using the default retention of 5 minutes")
 		return &CacheConfig{
 			RetentionMinutes: 5,
 		}
 	}
-	lc.logger.Info().
-		Int("retention_minutes", lc.snapshot().Cache.RetentionMinutes).
-		Msg("Cache configuration loaded from YAML")
-	return lc.snapshot().Cache
+	cfg := lc.snapshot().Cache
+	if lc.lastCacheRetention.Swap(int32(cfg.RetentionMinutes)) != int32(cfg.RetentionMinutes) {
+		lc.logger.Info().
+			Int("retention_minutes", cfg.RetentionMinutes).
+			Msg("Cache configuration loaded from YAML")
+	}
+	return cfg
 }
 
 // GetConfiguration returns the configuration data in ConfigurationData format
@@ -275,9 +282,8 @@ func (lc *LocalConfiguration) OnConfigChanged(callback func(string)) {
 }
 
 // Start initializes the local configuration and begins file watching
-func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
+func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	lc.logger.Info().Msg("Starting LocalConfiguration with file watching")
-	lc.quitChannel = quitChannel
 
 	// Migrate configuration if needed (before loading)
 	migrator := NewConfigMigrator(lc.configPath, lc.logger.Logger)
@@ -285,20 +291,27 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 		lc.logger.Warn().Err(err).Msg("Configuration migration failed, continuing with current format")
 	}
 
-	// Seal any inline plaintext secrets into the OS-native store (default
-	// policy). Non-fatal by design: SealInlineSecrets restores its own backups
-	// on any error, and we continue with the existing config rather than
-	// refusing to start — a sealing fault must never brick the agent.
-	if err := SealInlineSecrets(lc.configPath, lc.logger); err != nil {
-		lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
-	}
+	// Both steps below read the configuration file. On a first install there
+	// is none yet — loadOrCreateConfiguration writes it a few lines down — so
+	// there is nothing to seal and nothing to migrate. Running them anyway
+	// made a clean install report two warnings naming a missing file, which
+	// is the first thing an operator sees on a machine that is in fact fine.
+	if _, statErr := os.Stat(lc.configPath); statErr == nil {
+		// Seal any inline plaintext secrets into the OS-native store (default
+		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
+		// on any error, and we continue with the existing config rather than
+		// refusing to start — a sealing fault must never brick the agent.
+		if err := SealInlineSecrets(lc.configPath, lc.logger); err != nil {
+			lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
+		}
 
-	// Converge on the file-based license: an install carrying a JWT inline in
-	// agent.yaml is moved to the license.jwt sidecar. Non-fatal by design, and
-	// a no-op once migrated or when the field is a ${...} reference — like the
-	// seal above, a migration fault must never brick the agent.
-	if err := MigrateLicenseToSidecar(lc.configPath, lc.logger); err != nil {
-		lc.logger.Warn().Err(err).Msg("Migrating inline license to sidecar failed; continuing with the existing config")
+		// Converge on the file-based license: an install carrying a JWT inline in
+		// agent.yaml is moved to the license.jwt sidecar. Non-fatal by design, and
+		// a no-op once migrated or when the field is a ${...} reference — like the
+		// seal above, a migration fault must never brick the agent.
+		if err := MigrateLicenseToSidecar(lc.configPath, lc.logger); err != nil {
+			lc.logger.Warn().Err(err).Msg("Migrating inline license to sidecar failed; continuing with the existing config")
+		}
 	}
 
 	// Load or create configuration
@@ -316,15 +329,27 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 	//     triggers a reload without an agent restart. Pre-0.2.x
 	//     these directories were silently unwatched — operators had
 	//     to restart to pick up new fragments.
+	//
+	// None of this is fatal. The watch is a convenience — an edit picked
+	// up without a restart — and it can fail for reasons that have
+	// nothing to do with the operator's file: inotify has a per-user
+	// instance quota, and a host running k3s can hold most of it. Exiting
+	// there meant the agent restarted five times, systemd gave up, and
+	// the host stopped being monitored because a convenience could not
+	// start (#850). A configuration that cannot be LOADED is still fatal:
+	// that is the operator's file, and it is checked above.
 	var err error
-	lc.watcher, err = fsnotify.NewWatcher()
+	lc.watcher, err = lc.newWatcher()
 	if err != nil {
-		return fmt.Errorf("failed to create file watcher: %w", err)
+		lc.degradeToUnwatched(agentstate.ConfigWatchUnavailable, err)
+		return nil
 	}
 
 	if err := lc.watcher.Add(lc.configPath); err != nil {
 		_ = lc.watcher.Close()
-		return fmt.Errorf("failed to watch config file %s: %w", lc.configPath, err)
+		lc.watcher = nil
+		lc.degradeToUnwatched(agentstate.ConfigWatchNotWatched, err)
+		return nil
 	}
 	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
 
@@ -345,24 +370,54 @@ func (lc *LocalConfiguration) Start(quitChannel chan struct{}) error {
 		}
 		if err := lc.watcher.Add(dir); err != nil {
 			_ = lc.watcher.Close()
-			return fmt.Errorf("failed to watch fragment directory %s: %w", dir, err)
+			lc.watcher = nil
+			lc.degradeToUnwatched(agentstate.ConfigWatchNotWatched, err)
+			return nil
 		}
 		lc.logger.Info().Str("dir", dir).Msg("Started watching fragment directory")
 	}
 
 	// Start watching goroutine (joinable: Shutdown closes stopCh and
-	// waits on watcherWG).
+	// waits on watcherWG). Cancelling ctx closes the same channel, so
+	// the watcher has exactly one termination signal.
+	agentstate.ClearConfigWatchDisabled()
+
 	lc.stopCh = make(chan struct{})
+	if ctx != nil {
+		lc.releaseStopCtx = context.AfterFunc(ctx, func() {
+			lc.stopOnce.Do(func() { close(lc.stopCh) })
+		})
+	}
 	lc.watcherWG.Add(1)
 	go lc.watchConfigFile()
 
 	return nil
 }
 
+// degradeToUnwatched keeps the agent running without a configuration
+// watch, and makes the degraded state findable.
+//
+// The log line is the least reliable of the three surfaces — a host that
+// stops being monitored often stops shipping its logs too — so the state
+// also reaches a metric and `agent status`.
+func (lc *LocalConfiguration) degradeToUnwatched(reason string, cause error) {
+	detail := cause.Error()
+	agentstate.RecordConfigWatchDisabled(reason, detail)
+	lc.logger.Warn().
+		Err(cause).
+		Str("config_path", lc.configPath).
+		Str("reason", reason).
+		Msg("Configuration changes will NOT be picked up without a restart: the file watcher could not start. Collection and export are unaffected; edit the configuration and restart the agent to apply it.")
+}
+
 // Shutdown performs cleanup and stops file watching
 func (lc *LocalConfiguration) Shutdown(ctx context.Context) error {
 	lc.logger.Info().Msg("Shutting down LocalConfiguration")
 
+	if lc.releaseStopCtx != nil {
+		lc.releaseStopCtx()
+		lc.releaseStopCtx = nil
+	}
 	if lc.stopCh != nil {
 		lc.stopOnce.Do(func() { close(lc.stopCh) })
 	}

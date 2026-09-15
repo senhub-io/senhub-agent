@@ -9,6 +9,7 @@ import (
 	"time"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -19,6 +20,11 @@ type interfaceInfo struct {
 	isMonitored bool
 	addresses   []string
 	err         error
+	// gone marks the interface as having disappeared between the counter
+	// enumeration and the lookup. On a container host the veth interfaces
+	// come and go constantly, so this is the expected outcome of a race,
+	// not a failure worth an operator's attention.
+	gone bool
 }
 
 func getValidIPAddresses(addrs []net.Addr) []string {
@@ -44,7 +50,8 @@ func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interf
 	if err != nil {
 		return interfaceInfo{
 			isMonitored: false,
-			err:         fmt.Errorf("error getting interface %s: %v", interfaceName, err),
+			err:         fmt.Errorf("error getting interface %s: %w", interfaceName, err),
+			gone:        true,
 		}
 	}
 
@@ -77,7 +84,7 @@ func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interf
 	if err != nil {
 		return interfaceInfo{
 			isMonitored: false,
-			err:         fmt.Errorf("error getting addresses for interface %s: %v", interfaceName, err),
+			err:         fmt.Errorf("error getting addresses for interface %s: %w", interfaceName, err),
 		}
 	}
 
@@ -102,7 +109,7 @@ type counterWithTime struct {
 	Timestamp time.Time
 }
 
-func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (osNetworkCollector, error) {
+func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
 	return &unixNetworkCollector{
 		logger:       logger,
 		lastCounters: make(map[string]counterWithTime),
@@ -112,12 +119,12 @@ func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (osNet
 func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
 	counters, err := psnet.IOCounters(true)
 	if err != nil {
-		return nil, fmt.Errorf("error getting network metrics: %v", err)
+		return nil, fmt.Errorf("error getting network metrics: %w", err)
 	}
 
 	baseTags, err := common.GetHostTags()
 	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %v", err)
+		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 
 	dataPoints := make([]data_store.DataPoint, 0)
@@ -126,7 +133,17 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 		// Check if interface should be monitored and get its addresses
 		interfaceInfo := u.isInterfaceMonitored(counter.Name)
 		if interfaceInfo.err != nil {
-			fmt.Printf("Error checking interface %s status: %v\n", counter.Name, interfaceInfo.err)
+			if interfaceInfo.gone {
+				u.logger.Debug().
+					Str("interface", counter.Name).
+					Err(interfaceInfo.err).
+					Msg("Interface disappeared between enumeration and lookup, skipping")
+			} else {
+				u.logger.Warn().
+					Str("interface", counter.Name).
+					Err(interfaceInfo.err).
+					Msg("Cannot read interface status, skipping")
+			}
 			continue
 		}
 		if !interfaceInfo.isMonitored {

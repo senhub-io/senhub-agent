@@ -20,6 +20,7 @@ package smart
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
@@ -149,10 +150,10 @@ func parseConfig(config map[string]interface{}) (smartConfig, error) {
 	if v, ok := config["use_sudo"].(bool); ok {
 		cfg.UseSudo = v
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
-	if v, ok := config["exec_timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "exec_timeout"); ok && v > 0 {
 		cfg.ExecTimeout = time.Duration(v) * time.Second
 	}
 
@@ -493,7 +494,8 @@ func runSmartctl(ctx context.Context, path string, useSudo bool, args []string) 
 	cmd := exec.CommandContext(ctx, name, fullArgs...) //nolint:gosec
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			// Accept exit codes where bits 0 and 1 are clear: these indicate
 			// disk-health conditions only, not execution errors.
 			if exitErr.ExitCode()&0x03 == 0 {

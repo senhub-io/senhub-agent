@@ -66,7 +66,7 @@ func TestTransformerRegistry_ConcurrentAccess(t *testing.T) {
 func TestTransformerRegistry_EagerDefinitions(t *testing.T) {
 	registry := NewTransformerRegistry(logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
 
-	if len(registry.definitions) == 0 {
+	if len(registry.read().definitions) == 0 {
 		t.Fatal("registry constructed with no eager definitions")
 	}
 	first := registry.GetProbeDefinition("cpu")
@@ -82,9 +82,7 @@ func TestTransformerRegistry_EagerDefinitions(t *testing.T) {
 	if registry.GetProbeDefinition("nope") != nil {
 		t.Error("unknown probe returned a definition")
 	}
-	registry.mu.RLock()
-	_, memoized := registry.definitions["nope"]
-	registry.mu.RUnlock()
+	_, memoized := registry.read().definitions["nope"]
 	if !memoized {
 		t.Error("negative lookup was not memoized")
 	}

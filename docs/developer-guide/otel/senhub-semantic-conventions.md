@@ -931,7 +931,7 @@ Each record carries the attributes below, read from the JSON of `journalctl --ou
 
 | Attribute OTel | Source journalctl | Notes |
 |---|---|---|
-| `host.name` | `_HOSTNAME` | canonical resource attr |
+| `systemd.hostname` | `_HOSTNAME` | the short kernel name; **never** `host.name`, which the resource already carries as an FQDN (#844) |
 | `systemd.unit` | `_SYSTEMD_UNIT` | Canonical OTel attribute for the systemd service |
 | `syslog.appname` | `SYSLOG_IDENTIFIER` | Canonical OTel attribute (the RFC 5424 `appname` equivalent) |
 | `process.pid` | `_PID` | canonical OTel attr |
@@ -1004,7 +1004,7 @@ The record carries the keys mandated by issue #154, plus canonical OTel attribut
 | `event_provider` | `System/Provider/@Name` | key mandated by #154 |
 | `event_source` | `System/Provider/@Name` | key mandated by #154 (an alias of provider, for PRTG parity) |
 | `record_id` | `System/EventRecordID` | key mandated by #154 |
-| `host.name` | `System/Computer` | canonical OTel resource attr |
+| `winlog.computer` | `System/Computer` | as Windows spells it (uppercase); **never** `host.name`, which the resource already carries as an FQDN (#844) |
 | `process.pid` | `System/Execution/@ProcessID` | canonical OTel attr |
 | `user.id` | `System/Security/@UserID` | SID; omitted when `redact_pii: true` |
 | `eventdata.<Name>` | `EventData/Data` | Structured payload; sensitive fields masked in PII mode |
@@ -1046,7 +1046,7 @@ As with `linux_logs`: no `definitions/windows_eventlog.yaml`, no DataPoint. It n
 - [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
 - [OTel `log.file.*` attributes](https://opentelemetry.io/docs/specs/semconv/attributes-registry/log/) (`log.file.path`)
 
-**Strategy:** generic and cross-platform, the flat-file counterpart of `linux_logs`/`windows_eventlog`. **Exclusively a producer on the logs signal** (`Collect()` → `nil, nil`, no YAML transformer). Mapping in `internal/agent/probes/filetail/parser.go::parseLine`. Flow: `github.com/nxadm/tail (rotation/reopen) → assemblage multiline → parser (regex/json/logfmt/raw) → LogRecord → agentstate.LogChannel → OTLP logs`.
+**Strategy:** generic and cross-platform, the flat-file counterpart of `linux_logs`/`windows_eventlog`. **Exclusively a producer on the logs signal** (`Collect()` → `nil, nil`, no YAML transformer). Mapping in `internal/agent/probes/logparse/parser.go::ParseLine` (shared by every line conduit; `log.file.path` is added by filetail). Flow: `github.com/nxadm/tail (rotation/reopen) → assemblage multiline → parser (regex/json/logfmt/raw) → LogRecord → agentstate.LogChannel → OTLP logs`.
 
 #### 4.17.1 Attributes produced
 
@@ -1929,8 +1929,10 @@ VictoriaMetrics — a common bug to diagnose.
 The logs signal (the `syslog`, `event` and `linux_logs` probes) is purely
 OTel: there is no `senhub.*` convention at the log-record level itself —
 the attributes are the standard ones (`syslog.facility`,
-`syslog.hostname`, `syslog.appname`, `host.name`, `systemd.unit`,
-`process.pid`, `process.executable.name`). Only the `event` probe's payload —
+`syslog.hostname`, `syslog.appname`, `systemd.unit`, `process.pid`,
+`process.executable.name`). None of them is `host.name`: the host lives
+on the resource, and a record-level copy in another spelling splits one
+machine in two downstream (#844). Only the `event` probe's payload —
 free-form by construction — is namespaced `senhub.event.*`.
 
 Severity mapping: the RFC 5424 → OTel SeverityNumber table applied
@@ -1955,6 +1957,35 @@ signal; there is **no separate relation event**.
 | LogRecord | bare attributes | `entity.type`, `entity.id.*`, `entity.description.*`, `entity.report.interval` |
 | LogRecord | `entity.relationships` | an embedded array of bare descriptors `{relationship.type, entity.type, entity.id}` |
 | LogRecord | `entity.delete.reason` | on `entity.delete` only — see below |
+
+### Relationship types the consumer accepts
+
+An entity record naming a relationship type the consumer does not know is
+**rejected on arrival**. The rejection comes back as an OTLP partial success —
+the export itself succeeds — and it used to surface one hop away, in the
+collector's journal: a production fan-out lost six entity records per batch for
+37 minutes that way (#819).
+
+Since 0.5.5 the agent reads that answer itself. The refused records are counted
+in `senhub.agent.export.rejected{strategy,signal}` and the consumer's reason is
+logged, once per minute per distinct reason. Check that counter first when
+entities are missing downstream: a value above zero means the consumer is
+refusing what the agent sends, and the log line says why.
+
+Accepted set as of consumer read-layer **v0.14.0**:
+
+`runs_on`, `has_interface`, `bound_to`, `next_hop_via`, `listens_on`,
+`monitors`, `has_route`, `connected_to`, `depends_on`, `same_as`,
+`attached_to`, `has_segment`, `routes_via`, `forwards_to`, `adjacent_to`.
+
+Three of them carry a **version prerequisite**: `has_segment`, `attached_to`
+and the `network.segment` entity type were registered in v0.14.0. An agent
+emitting them against an older read-layer has those records dropped, silently
+from its side. Check the consumer version before enabling a probe that emits
+network topology.
+
+Adding a type to this list is a cross-team change: agree it with the consumer
+first, ship their side, then emit. The reverse order is silent data loss.
 
 ### Why a delete happened (#806)
 

@@ -155,13 +155,13 @@ func parseConfig(config map[string]interface{}) (checkConfig, error) {
 	if v, ok := config["method"].(string); ok && v != "" {
 		cfg.Method = v
 	}
-	if v, ok := config["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
-	if v, ok := config["expected_status"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "expected_status"); ok && v > 0 {
 		cfg.ExpectedStatus = v
 	}
 	if v, ok := config["content_match"].(string); ok {

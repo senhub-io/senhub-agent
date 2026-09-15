@@ -22,6 +22,7 @@ type mockAgentConfig struct {
 
 func (m *mockAgentConfig) GetAuthenticationKey() string     { return m.authKey }
 func (m *mockAgentConfig) GetGlobalTags() map[string]string { return nil }
+func (m *mockAgentConfig) GetConfigPath() string            { return "" }
 
 // Mock Server
 type mockServer struct {
@@ -286,7 +287,7 @@ func TestSyncStrategySenhub_Start(t *testing.T) {
 	mockSrv := &mockServer{}
 	strategy.server = mockSrv
 
-	err := strategy.Start()
+	err := strategy.Start(context.Background())
 	if err != nil {
 		t.Errorf("Start() returned error: %v", err)
 	}
@@ -306,7 +307,7 @@ func TestSyncStrategySenhub_Shutdown(t *testing.T) {
 	).(*SyncStrategySenhub)
 
 	// Must call Start() before Shutdown() to initialize scheduler
-	_ = strategy.Start()
+	_ = strategy.Start(context.Background())
 
 	ctx := context.Background()
 	err := strategy.Shutdown(ctx)

@@ -222,8 +222,12 @@ func (e parsedEvent) toLogRecord(probeName string, redactPII bool) agentstate.Lo
 		"event_source":   e.Provider,
 		"record_id":      e.RecordID,
 	}
+	// Namespaced, never host.name: the resource already carries the
+	// canonical FQDN, and Windows writes Computer uppercase. Two
+	// spellings of the same key at two levels split one host in two
+	// downstream (#844).
 	if e.Computer != "" {
-		attrs["host.name"] = e.Computer
+		attrs["winlog.computer"] = e.Computer
 	}
 	if e.ProcessID != "" {
 		attrs["process.pid"] = e.ProcessID

@@ -37,6 +37,48 @@ When you change a contract documented in one of these files, update the doc in t
 | Grafana | **Don't advertise** as a channel — Grafana is a viz tool consuming Prometheus / VictoriaMetrics, not an integration the agent speaks directly. Dashboards we ship are a sample, not a product. |
 | Icinga | **Don't advertise**. Compatible via Nagios output but not officially tested. |
 
+## The documented-key check
+
+`internal/docscoverage` fails `make test` when a configuration key the
+agent parses appears nowhere under `docs/user-guide/docs/`. It reads the
+parsers (probe params and strategy params) rather than a list someone
+maintains, so a new key is covered the moment it is added.
+
+Two things follow from that:
+
+- Adding a key means adding it to the page describing its block, in the
+  same commit. That is the rule above, made enforceable.
+- If the string is NOT an operator-facing key — a field of a parsed
+  syslog message, a value a formatter passes to itself — add it to
+  `allowed` in `config_keys_test.go` with the reason. A stale entry
+  fails its own test, so the list cannot become a place gaps hide in.
+
+The check is one-directional: it proves a key is mentioned, not that the
+mention is right. A page can still document a key the code stopped
+reading — the mysql and postgresql pages did, for a whole parameter set
+each — and only a reader comparing the two catches that.
+
+## The generated parameter tables
+
+Every probe page carries its parameter table between
+`<!-- schema:params:start -->` and `<!-- schema:params:end -->`, rendered
+from the probe's schema by `internal/docsparams`. Never edit inside those
+markers: the next run overwrites it. Prose that belongs to the page — a
+cross-reference, a note on a format — goes outside them.
+
+The generator runs from whichever module registers the schema:
+
+- the probes compiled here, through `make docs-params`;
+- the commercial probes of senhub-agent-enterprise, which this module
+  never links, through `TestProbePagesCarryTheirSchema` in that module's
+  `probes/specguard` package (it reuses the same renderer through
+  `probesdk/docsparams` and writes into this checkout).
+
+Each guard only sees the schemas its own build registers, so a page it
+does not know is left alone rather than reported. A commercial page is
+therefore guarded by the enterprise test alone: nothing here fails when
+it drifts.
+
 ## Release notes
 
 - One file per release: `docs/releases/X.Y.Z-beta.md`.

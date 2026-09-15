@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"gopkg.in/yaml.v2"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/spec"
+	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -21,23 +22,19 @@ func showDebugModules() {
 
 	fmt.Println("Available debug filters:")
 	fmt.Println()
+	// The probe list is read from the registry rather than kept by hand.
+	// The hand-written one named twelve types out of sixty-six, advertised
+	// three prefixes no module ever used, and could only fall further
+	// behind: a filter that selects nothing looks like a silent agent.
 	fmt.Println("  Probes:")
-	fmt.Println("    probe                 All probes")
-	fmt.Println("    probe.veeam           Veeam Backup & Replication")
-	fmt.Println("    probe.citrix          Citrix Virtual Apps & Desktops")
-	fmt.Println("    probe.netscaler       Citrix NetScaler / ADC")
-	fmt.Println("    probe.redfish         Redfish hardware monitoring")
-	fmt.Println("    probe.cpu             CPU usage")
-	fmt.Println("    probe.memory          Memory usage")
-	fmt.Println("    probe.network         Network interfaces")
-	fmt.Println("    probe.logicaldisk     Disk usage")
-	fmt.Println("    probe.webapp          Web application monitoring")
-	fmt.Println("    probe.loadwebapp      Web application load testing")
-	fmt.Println("    probe.gateway         Gateway connectivity")
-	fmt.Println("    probe.wifi            WiFi signal strength")
-	fmt.Println("    probe.syslog          Syslog collector")
-	fmt.Println("    probe.event           Event collector")
-	fmt.Println("    probe.otel            OpenTelemetry collector")
+	fmt.Println("    probe                 Every probe")
+	for _, ps := range spec.Registered() {
+		name := ps.DisplayName
+		if name == "" {
+			name = ps.Type
+		}
+		fmt.Printf("    %-21s %s\n", "probe."+ps.Type, name)
+	}
 	fmt.Println()
 	fmt.Println("  Agent:")
 	fmt.Println("    sensor                Probe lifecycle management")
@@ -86,6 +83,10 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// The authentication key always comes from the configuration file
 	// in 0.2.0+ — the CLI flag was removed with the legacy remote-config loader.
 	agentKey := ""
+	// Why the running agent could not be asked. Printed before the local
+	// view, which otherwise reads as the agent's own answer.
+	keyProblem := ""
+	reachProblem := ""
 	if args != nil {
 		// Read agent key from config file
 		{
@@ -101,6 +102,8 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 
 			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
 				agentKey = extractedKey
+			} else {
+				keyProblem = fmt.Sprintf("the agent key could not be read from %s (%v)", configPath, err)
 			}
 		}
 	}
@@ -115,7 +118,12 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 
 	// Try HTTP endpoint first (for running agent with HTTP strategy)
 	if agentKey != "" {
-		if systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, 8080); err == nil {
+		httpPort := resolveHTTPStrategyPort(configPath)
+		systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, httpPort)
+		if err != nil {
+			reachProblem = fmt.Sprintf("the running agent did not answer on port %d (%v)", httpPort, err)
+		}
+		if err == nil {
 			// Enrich with dashboard URL from config
 			if configPath != "" {
 				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
@@ -126,7 +134,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			// --otlp adds an OTLP self-metric block after the standard view.
 			// Failure here is non-fatal: the standard status already printed.
 			if args != nil && args.ShowOTLP {
-				if info, err := statusHelper.GetOTLPInfoFromHTTP(agentKey, 8080); err == nil {
+				if info, err := statusHelper.GetOTLPInfoFromHTTP(agentKey, httpPort); err == nil {
 					fmt.Print("\n")
 					fmt.Print(formatter.FormatOTLPInfo(info))
 				} else {
@@ -136,7 +144,16 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			return
 		}
 		// HTTP failed, fall back to direct method
-		// Note: This happens when HTTP strategy is not enabled or agent is not listening on port 8080
+		// Note: this happens when the HTTP strategy is not enabled, or the
+		// agent is not listening on the resolved port
+	}
+
+	// The local view describes this process, not the daemon: it cannot
+	// say which outputs are running or whether the configuration is
+	// watched. Saying so, and why, is the difference between a degraded
+	// answer and a wrong one.
+	if notice := daemonUnreachableNotice(keyProblem, reachProblem); notice != "" {
+		fmt.Print(notice)
 	}
 
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
@@ -236,60 +253,14 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 	return systemStatus, nil
 }
 
-// buildDashboardURL constructs the dashboard URL from the agent configuration file
+// buildDashboardURL constructs the dashboard URL from the agent
+// configuration, whichever layout it uses.
 func buildDashboardURL(configPath string, agentKey string) string {
 	if agentKey == "" {
 		return ""
 	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return ""
-	}
-
-	// Parse YAML to extract HTTP strategy params
-	var config struct {
-		Strategies []struct {
-			Type   string                 `yaml:"type"`
-			Params map[string]interface{} `yaml:"params"`
-		} `yaml:"strategies"`
-	}
-
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return ""
-	}
-
-	// Find HTTP strategy and extract port/https settings
-	for _, s := range config.Strategies {
-		if s.Type != "http" {
-			continue
-		}
-
-		port := 8080
-		scheme := "http"
-
-		if p, ok := s.Params["port"]; ok {
-			switch v := p.(type) {
-			case int:
-				port = v
-			case float64:
-				port = int(v)
-			}
-		}
-
-		if https, ok := s.Params["enable_https"]; ok {
-			if enabled, ok := https.(bool); ok && enabled {
-				scheme = "https"
-				if port == 8080 {
-					port = 8443
-				}
-			}
-		}
-
-		return fmt.Sprintf("%s://localhost:%d/web/%s/dashboard", scheme, port, agentKey)
-	}
-
-	return ""
+	scheme, port := resolveHTTPStrategyEndpoint(configPath)
+	return fmt.Sprintf("%s://localhost:%d/web/%s/dashboard", scheme, port, agentKey)
 }
 
 // isGitHash checks if a string looks like a git commit hash (hex characters only)
@@ -306,3 +277,82 @@ func isGitHash(s string) bool {
 }
 
 // validateConfigPath validates that the config path is safe to read
+
+// resolveHTTPStrategyPort finds the port the running agent's HTTP
+// strategy listens on, so `status` reaches a daemon configured on
+// anything other than the default.
+func resolveHTTPStrategyPort(configPath string) int {
+	_, port := resolveHTTPStrategyEndpoint(configPath)
+	return port
+}
+
+// resolveHTTPStrategyEndpoint returns the scheme and port of the HTTP
+// strategy as configured on disk, falling back to plain HTTP on 8080
+// when the configuration cannot be read.
+//
+// It goes through the real configuration loader rather than parsing the
+// main file by hand: an operator running the multi-file layout keeps the
+// http strategy in strategies.d/, invisible to a `strategies:` lookup in
+// agent.yaml. Status silently fell back to the degraded local view on
+// every such host, which also hid the dead-output report (#826), and
+// every printed console address named 8080 whatever the file said.
+func resolveHTTPStrategyEndpoint(configPath string) (scheme string, port int) {
+	scheme, port = "http", defaultHTTPPort
+	if configPath == "" {
+		return scheme, port
+	}
+	cfg, err := configuration.LoadFromDisk(configPath, nil)
+	if err != nil {
+		return scheme, port
+	}
+	for _, storage := range cfg.Storage {
+		if storage.Name != "http" {
+			continue
+		}
+		switch v := storage.Params["port"].(type) {
+		case int:
+			if v > 0 {
+				port = v
+			}
+		case float64:
+			if v > 0 {
+				port = int(v)
+			}
+		}
+		if tlsEnabledParam(storage.Params["tls"]) {
+			scheme = "https"
+		}
+		return scheme, port
+	}
+	return scheme, port
+}
+
+// tlsEnabledParam reads `tls.enabled` from a strategy parameter block.
+// The block arrives with string keys from the runtime parser and with
+// interface keys straight from the yaml.v2 loader; both are read.
+func tlsEnabledParam(v interface{}) bool {
+	switch m := v.(type) {
+	case map[string]interface{}:
+		enabled, _ := m["enabled"].(bool)
+		return enabled
+	case map[interface{}]interface{}:
+		enabled, _ := m["enabled"].(bool)
+		return enabled
+	}
+	return false
+}
+
+// daemonUnreachableNotice explains why the local view is about to be
+// printed instead of the running agent's own state. Empty when the
+// daemon answered. The key problem comes first: it is the one the
+// operator can act on, and it is what makes the port unreachable.
+func daemonUnreachableNotice(keyProblem, reachProblem string) string {
+	why := keyProblem
+	if why == "" {
+		why = reachProblem
+	}
+	if why == "" {
+		return ""
+	}
+	return fmt.Sprintf("The running agent could not be asked: %s.\nWhat follows is what this command sees on its own. It is not the service's state: it cannot say which outputs are running, nor whether the configuration is watched.\n\n", why)
+}

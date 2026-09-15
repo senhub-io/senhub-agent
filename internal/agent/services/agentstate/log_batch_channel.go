@@ -155,13 +155,3 @@ func LogBatchSubscriberCount() int {
 	defer logBatchCh.mu.RUnlock()
 	return len(logBatchCh.subs)
 }
-
-// resetLogBatchChannelForTest clears all subscribers and resets the drop
-// counter. Test-only helper to keep the package-level state from leaking
-// across test cases.
-func resetLogBatchChannelForTest() {
-	logBatchCh.mu.Lock()
-	logBatchCh.subs = nil
-	logBatchCh.dropped.Store(0)
-	logBatchCh.mu.Unlock()
-}

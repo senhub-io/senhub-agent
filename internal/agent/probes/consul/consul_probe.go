@@ -145,10 +145,10 @@ func parseConfig(config map[string]interface{}) (consulConfig, error) {
 	if v, ok := config["token"].(string); ok {
 		cfg.Token = v
 	}
-	if v, ok := config["timeout"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "timeout"); ok && v > 0 {
 		cfg.Timeout = time.Duration(v) * time.Second
 	}
-	if v, ok := config["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	if v, ok := config["instance_name"].(string); ok {

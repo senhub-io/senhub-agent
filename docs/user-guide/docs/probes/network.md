@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/ethernet.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/network.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** - No license required. Available in all tiers.
@@ -58,9 +58,14 @@ All metrics include the `interface` tag to identify the specific network interfa
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `interval` | integer | `30` | Collection interval in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `interval` | No | `30` | Collection interval in seconds |
+
+<!-- schema:params:end -->
 
 ### Example Configurations
 
@@ -200,7 +205,7 @@ Detect anomalies:
 **Check probe status:**
 ```bash
 # View agent logs with Network probe debugging
-./agent run --verbose --debug-modules probe.network
+senhub-agent run --filter probe.network
 ```
 
 **Verify probe is enabled:**
@@ -244,7 +249,7 @@ ifconfig
 
 4. **Enable debug logging:**
    ```bash
-   ./agent run --verbose --debug-modules probe.host
+   senhub-agent run --filter probe.host
    ```
 
 ### Unix/Linux: Missing Interfaces

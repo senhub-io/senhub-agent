@@ -719,3 +719,90 @@ func TestParseConfig_RejectsUnresolvedFileSecretRef(t *testing.T) {
 		t.Errorf("error should mention the unresolved reference: %v", err)
 	}
 }
+
+func TestParseConfig_URLPathPrefix(t *testing.T) {
+	// A backend serving OTLP under a base path (Dynatrace: /api/v2/otlp)
+	// cannot be reached through `endpoint`, which is a host:port (#823).
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint":        "abc12345.live.dynatrace.com:443",
+		"protocol":        "http",
+		"url_path_prefix": "/api/v2/otlp",
+	})
+	if err != nil {
+		t.Fatalf("valid prefix rejected: %v", err)
+	}
+	if cfg.URLPathPrefix != "/api/v2/otlp" {
+		t.Errorf("URLPathPrefix=%q", cfg.URLPathPrefix)
+	}
+
+	// A trailing slash would produce //v1/metrics.
+	cfg, err = ParseConfig(map[string]interface{}{
+		"endpoint":        "host:443",
+		"protocol":        "http",
+		"url_path_prefix": "/api/v2/otlp/",
+	})
+	if err != nil {
+		t.Fatalf("trailing slash rejected: %v", err)
+	}
+	if cfg.URLPathPrefix != "/api/v2/otlp" {
+		t.Errorf("trailing slash not trimmed: %q", cfg.URLPathPrefix)
+	}
+}
+
+func TestParseConfig_URLPathPrefixRejectedCases(t *testing.T) {
+	// Silently ignoring it over gRPC would send the operator hunting for
+	// a path that never leaves the agent.
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint":        "host:4317",
+		"url_path_prefix": "/api/v2/otlp",
+	}); err == nil {
+		t.Error("url_path_prefix accepted with the gRPC transport")
+	}
+
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint":        "host:443",
+		"protocol":        "http",
+		"url_path_prefix": "api/v2/otlp",
+	}); err == nil {
+		t.Error("prefix without a leading slash accepted")
+	}
+}
+
+func TestParseConfig_IdleConnTimeout(t *testing.T) {
+	cfg, err := ParseConfig(map[string]interface{}{
+		"endpoint":          "ingest.example.com:443",
+		"protocol":          "http",
+		"idle_conn_timeout": "45s",
+	})
+	if err != nil {
+		t.Fatalf("valid idle_conn_timeout rejected: %v", err)
+	}
+	if cfg.IdleConnTimeout != 45*time.Second {
+		t.Errorf("IdleConnTimeout=%s, want 45s", cfg.IdleConnTimeout)
+	}
+
+	// Unset keeps the Go default rather than imposing one.
+	cfg, err = ParseConfig(map[string]interface{}{"endpoint": "host:4317"})
+	if err != nil {
+		t.Fatalf("default config rejected: %v", err)
+	}
+	if cfg.IdleConnTimeout != 0 {
+		t.Errorf("IdleConnTimeout defaults to %s, want 0 (Go default)", cfg.IdleConnTimeout)
+	}
+
+	// Over gRPC it would do nothing; say so rather than ignore it.
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint":          "host:4317",
+		"idle_conn_timeout": "45s",
+	}); err == nil {
+		t.Error("idle_conn_timeout accepted with the gRPC transport")
+	}
+
+	if _, err := ParseConfig(map[string]interface{}{
+		"endpoint":          "host:443",
+		"protocol":          "http",
+		"idle_conn_timeout": 45,
+	}); err == nil {
+		t.Error("non-duration idle_conn_timeout accepted")
+	}
+}

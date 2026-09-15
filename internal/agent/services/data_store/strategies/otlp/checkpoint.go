@@ -16,6 +16,17 @@ import (
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
+// Why there is no failure-class branch on this path (#833).
+//
+// The logs signal has a dead-letter QUEUE — a backlog of batches — so a
+// batch the receiver refuses has to be kept out of it or it is replayed
+// forever and evicts deliverable data. This checkpoint is not a backlog:
+// it is a last-value-wins STATE store. A rejected push is superseded by
+// the next cycle's values on its own, and nothing accumulates, so a
+// class check here would change no behaviour. The counting still
+// happens — a failed metrics export moves the per-signal error counter
+// like any other.
+
 // Checkpoint format version. Bump when the on-disk schema changes in
 // a way an older reader cannot ignore. A reader that sees a higher
 // version than it knows refuses to restore (logs a warning, starts

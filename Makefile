@@ -15,12 +15,32 @@ LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
 WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
 DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
 DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
-# Version embedded in binaries: the nearest reachable tag from HEAD
-# (git describe), NOT the highest tag repo-wide — building an older
-# branch must not claim a newer version (poisons updater comparisons).
-# Falls back to 0.0.0-dev when no tag is reachable (fresh clones, CI
-# shallow checkouts without tags).
-VERSION=$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo 0.0.0-dev)
+# Version embedded in binaries.
+#
+# A build sitting exactly on a version tag takes that tag verbatim: that
+# is a release, and its version string must stay clean for the updater
+# and for the published artifacts.
+#
+# Anything else is a development build, named after the line it belongs
+# to (the VERSION file) plus the commit it was built from:
+# 0.5.5-dev.1234.gabc12345. It sorts above the previous release and below
+# its own, which is the truth about what the binary contains.
+#
+# The line comes from a file rather than from `git describe` because
+# release tags are not reachable from the development branch (they live
+# on the release branch), so describe reports the last tag merged there —
+# 0.5.2-beta while the code is well past 0.5.4. Deployed on a bench that
+# made the fleet inventory read as a DOWNGRADE, and it matters more now
+# that the agent publishes service.version onto the entity rail, where a
+# wrong value is worse than none (#830, found in the 0.5.5 recette).
+#
+# Bump VERSION when a new cycle opens. Falls back to the old describe
+# behaviour, then to 0.0.0-dev, when the file or the tags are missing
+# (fresh clones, shallow CI checkouts).
+VERSION_LINE=$(shell tr -d ' \n\r' < VERSION 2>/dev/null)
+VERSION_EXACT=$(shell git describe --tags --exact-match --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null)
+VERSION_DEV=$(VERSION_LINE)-dev.$(shell git rev-list --count HEAD 2>/dev/null || echo 0).g$(shell git rev-parse --short=8 HEAD 2>/dev/null || echo unknown)
+VERSION=$(strip $(or $(VERSION_EXACT),$(and $(VERSION_LINE),$(VERSION_DEV)),$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null),0.0.0-dev))
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
 ENV ?= production
 PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
@@ -94,19 +114,38 @@ all: create-dist build test ## Build all binaries and run tests
 build: build-windows build-linux build-darwin ## Build binaries
 	@echo version: $(VERSION) - commit: $(COMMIT_HASH)
 
+# CGO_ENABLED=0 on every target, matching what the release workflow
+# already does explicitly. Without it these targets only produce a static
+# binary by accident of the machine: cross-compiling disables cgo on its
+# own, so a developer on macOS gets static, and the same command on a
+# Linux workstation with a C toolchain gets DYNAMIC. That difference is
+# invisible until the binary meets a musl container, where the failure
+# reads "no such file or directory" — the missing interpreter, not a
+# missing file. Local builds must be the same shape as shipped ones.
 build-windows: create-dist ## Build for Windows
 		@mkdir -p $(WINDOWS_AMD64_DIR)
-		@env GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 build-linux: create-dist ## Build for Linux
 		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
-		@env GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
-		@env GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@$(MAKE) --no-print-directory verify-static
 
 build-darwin: create-dist ## Build for Darwin (macOS)
 		@mkdir -p $(DARWIN_AMD64_DIR) $(DARWIN_ARM64_DIR)
-		@env GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/
-		@env GOOS=darwin GOARCH=arm64 go build -o $(DARWIN_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $(DARWIN) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o $(DARWIN_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+
+verify-static: ## Fail if a linux binary carries an ELF interpreter (would not run on musl/scratch)
+		@for f in $(LINUX_AMD64) $(LINUX_ARM64); do \
+			if [ -f "$$f" ] && head -c 4096 "$$f" | grep -qa "/ld-linux\|/ld-musl"; then \
+				echo "ERROR: $$f is dynamically linked — it will not run on Alpine, scratch or distroless."; \
+				echo "       Build with CGO_ENABLED=0."; \
+				exit 1; \
+			fi; \
+		done
+		@echo "linux binaries are statically linked"
 
 # ========================================
 # PACKAGING TARGETS
@@ -194,9 +233,28 @@ watch: clean
 # ========================================
 
 # Test the application (original)
-test:
+test: test-entrypoint
 	@echo "Testing..."
 	@go test ./... -v
+
+test-entrypoint: ## Check the container entrypoint's identity resolution (no daemon needed)
+	@echo "Testing the container entrypoint..."
+	@sh packaging/docker/entrypoint_test.sh
+
+# The commercial probes register their schemas in senhub-agent-enterprise,
+# which this module never links, so this target regenerates the pages of the
+# probes compiled here only. The other half runs the same generator from
+# that module, against this checkout:
+#   GOWORK=off UPDATE_DOCS=1 go test ./probes/specguard/ \
+#       -run TestProbePagesCarryTheirSchema -count=1
+third-party-notices: ## Regenerate THIRD-PARTY-NOTICES.md from the build's dependency graph
+	@python3 scripts/third-party-notices.py
+
+docs-params: ## Regenerate the parameter tables of the probe pages from their schemas
+	@echo "Regenerating the probe parameter tables..."
+	@UPDATE_DOCS=1 go test ./internal/agent/probes/ -run TestProbePagesCarryTheirSchema -count=1
+	@echo "Done. Review the diff before committing."
+	@echo "Commercial probe pages are generated from senhub-agent-enterprise; see the comment above this target."
 
 # Database probes (mysql, postgresql) moved to senhub-agent-enterprise
 # with the OSS split; their integration tier runs there. See the
@@ -241,7 +299,7 @@ lint: ## Analyse de qualité du code (golangci-lint)
 		echo "$(RED)❌ golangci-lint non installé. Exécutez 'make install-tools'$(NC)"; \
 		exit 1; \
 	}
-	@golangci-lint run --timeout=5m
+	@golangci-lint run --timeout=10m
 	@echo "$(GREEN)✅ Analyse lint terminée$(NC)"
 
 # NEW: Correction automatique des problèmes
@@ -333,4 +391,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params help

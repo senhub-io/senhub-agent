@@ -56,7 +56,7 @@ func TestParseConfig_Overrides(t *testing.T) {
 	if cfg.Username != "monitor" {
 		t.Errorf("username = %q, want monitor", cfg.Username)
 	}
-	if !cfg.TLS {
+	if !cfg.TLS.Enabled {
 		t.Errorf("tls = false, want true")
 	}
 	if cfg.Interval != 30*time.Second {

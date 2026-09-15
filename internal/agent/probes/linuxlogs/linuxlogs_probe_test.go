@@ -150,8 +150,8 @@ func TestParseEntry_PopulatesFields(t *testing.T) {
 	if got.SeverityText != "WARN" {
 		t.Errorf("SeverityText=%q", got.SeverityText)
 	}
-	if got.Attributes["host.name"] != "edge-01" {
-		t.Errorf("host.name=%q", got.Attributes["host.name"])
+	if got.Attributes["systemd.hostname"] != "edge-01" {
+		t.Errorf("systemd.hostname=%q", got.Attributes["systemd.hostname"])
 	}
 	if got.Attributes["systemd.unit"] != "ssh.service" {
 		t.Errorf("systemd.unit=%q", got.Attributes["systemd.unit"])
@@ -184,7 +184,7 @@ not json at all
 `
 	r := bufioReaderFromString(input)
 	var emitted atomic.Uint64
-	drainReader(r, testLogger(), "linux-logs-test", &emitted)
+	drainReader(r, testLogger(), "linux-logs-test", nil, &emitted)
 
 	// Drain everything that was published.
 	deadline := time.After(2 * time.Second)
@@ -277,4 +277,23 @@ func contains(s []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// A journal hostname is the short kernel name; emitting it as a
+// record-level host.name collides with the canonical FQDN the resource
+// carries and splits one host in two downstream (#844).
+func TestParseEntry_NeverEmitsRecordLevelHostName(t *testing.T) {
+	entry := journalEntry{
+		Priority:   "6",
+		Message:    "hello",
+		Hostname:   "edge-01",
+		RealtimeUS: "1700000000000000",
+	}
+	got := parseEntry(entry, "linux-logs-1")
+	if v, ok := got.Attributes["host.name"]; ok {
+		t.Errorf("host.name must not be a record attribute, got %q", v)
+	}
+	if got.Attributes["systemd.hostname"] != "edge-01" {
+		t.Errorf("systemd.hostname=%q", got.Attributes["systemd.hostname"])
+	}
 }

@@ -95,7 +95,7 @@ func parseConfig(raw map[string]interface{}) probeConfig {
 	if v, ok := raw["nvidia_smi_path"].(string); ok && v != "" {
 		cfg.NvidiaSmiPath = v
 	}
-	if v, ok := raw["interval"].(int); ok && v > 0 {
+	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
 	switch v := raw["gpus"].(type) {

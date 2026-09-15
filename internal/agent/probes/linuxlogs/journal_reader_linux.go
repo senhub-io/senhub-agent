@@ -42,7 +42,7 @@ type journalReader struct {
 // starts a goroutine draining its stdout. Returns immediately — the
 // subprocess is asynchronous; failures arrive via the drain
 // goroutine's logging.
-func newJournalReader(cfg LinuxLogsProbeConfig, log *logger.ModuleLogger, probeName string, emitted *atomic.Uint64) (*journalReader, error) {
+func newJournalReader(cfg LinuxLogsProbeConfig, log *logger.ModuleLogger, probeName string, logTargets []string, emitted *atomic.Uint64) (*journalReader, error) {
 	args := buildJournalctlArgs(cfg)
 	cmd := exec.Command("journalctl", args...)
 	// Detach the subprocess from our process group so its stdin is
@@ -81,7 +81,7 @@ func newJournalReader(cfg LinuxLogsProbeConfig, log *logger.ModuleLogger, probeN
 	r.wg.Add(2)
 	go func() {
 		defer r.wg.Done()
-		drainReader(bufio.NewReader(stdout), log, probeName, emitted)
+		drainReader(bufio.NewReader(stdout), log, probeName, logTargets, emitted)
 	}()
 	go func() {
 		defer r.wg.Done()

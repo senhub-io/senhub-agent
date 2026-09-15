@@ -49,7 +49,7 @@ Expected response:
 ```json
 {
   "status": "ok",
-  "version": "0.1.80",
+  "version": "0.5.5",
   "uptime": "2h30m15s",
   "probes_active": 4,
   "metrics_cached": 156
@@ -70,7 +70,7 @@ Response:
 ```json
 {
   "status": "running",
-  "version": "0.1.80",
+  "version": "0.5.5",
   "os": "linux",
   "arch": "amd64",
   "port": 8080,
@@ -167,22 +167,28 @@ sudo journalctl -u senhub-agent -n 100
 
 ### Understanding Log Format
 
-Log entries are structured in JSON format:
+The log file is human-readable text: date, level, the sentence, then the
+structured fields.
 
-```json
-{"level":"info","module":"probe.citrix","time":"2025-03-03T10:30:00Z","message":"Collection completed: 85 metrics"}
-{"level":"error","module":"probe.netscaler","time":"2025-03-03T10:30:05Z","message":"Connection refused","error":"dial tcp 192.168.1.100:443: connect: connection refused"}
+```
+2026-08-13 11:12:58.102 INF Successfully sent datapoints module=data_store count=116 strategy=http
+2026-08-13 11:13:04.551 ERR Connection refused module=probe.netscaler error="dial tcp 192.168.1.100:443: connect: connection refused"
 ```
 
-Key fields:
+Each line carries:
 
-| Field | Description |
+| Part | Description |
 |-------|-------------|
-| `level` | Log severity: `debug`, `info`, `warn`, `error` |
-| `module` | Component that generated the log (e.g., `probe.citrix`, `strategy.http`, `cache`) |
-| `time` | Timestamp in ISO 8601 format |
-| `message` | Human-readable description |
-| `error` | Error details (only present for error-level logs) |
+| date and time | Local time with milliseconds |
+| level | `TRC`, `DBG`, `INF`, `WRN` or `ERR` |
+| message | Human-readable description |
+| `module=` | Component that produced the line (for example `probe.citrix`, `strategy.http`, `cache`) |
+| `error=` | Error details (only on error lines) |
+
+Run the agent with `--log-format json` (or set `SENHUB_LOG_FORMAT=json`) to
+write the same entries as one JSON object per line, for shipping the file to
+an aggregator. The remote log shipper always sends JSON, whatever this
+setting says.
 
 ### Filtering Logs
 
@@ -190,18 +196,18 @@ To find errors:
 
 **Linux:**
 ```bash
-grep '"level":"error"' /var/log/senhub-agent/senhubagent.log | tail -20
+grep ' ERR ' /var/log/senhub-agent/senhubagent.log | tail -20
 ```
 
 **Windows (PowerShell):**
 ```powershell
-Select-String -Path "C:\ProgramData\SenHub\logs\senhubagent.log" -Pattern '"level":"error"' | Select-Object -Last 20
+Select-String -Path "C:\ProgramData\SenHub\logs\senhubagent.log" -Pattern ' ERR ' | Select-Object -Last 20
 ```
 
 To find logs for a specific probe:
 
 ```bash
-grep '"module":"probe.citrix"' /var/log/senhub-agent/senhubagent.log | tail -20
+grep 'module=probe.citrix' /var/log/senhub-agent/senhubagent.log | tail -20
 ```
 
 ## Enabling Debug Logging
@@ -256,21 +262,25 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 
 ### Available Debug Modules
 
-| Module | Description |
-|--------|-------------|
-| `probe.cpu` | CPU probe collection |
-| `probe.memory` | Memory probe collection |
-| `probe.network` | Network probe collection |
-| `probe.logicaldisk` | Disk probe collection |
-| `probe.citrix` | Citrix probe |
-| `probe.netscaler` | NetScaler ADC probe |
-| `probe.redfish` | Redfish hardware probe |
-| `probe.syslog` | Syslog collection |
-| `strategy.http` | HTTP API and web interface |
-| `strategy.prtg` | PRTG data formatting |
-| `strategy.senhub` | SenHub platform sync |
-| `cache` | Metrics cache operations |
-| `config` | Configuration loading and reload |
+The agent prints its own list, one line per probe type it carries plus the
+agent's own modules:
+
+```bash
+senhub-agent debug-modules-list
+```
+
+Use that rather than a list written here: the probe entries are read from
+the registry, so they follow the build you are running, and a Pro binary
+shows the types a Free one does not.
+
+A filter matches by prefix, so `probe` selects every probe and
+`probe.postgresql` selects one. The agent's own modules are `sensor`
+(probe lifecycle), `configuration`, `strategy` and `strategy.http`,
+`transformer`, `data_store` and `service.auto_update`.
+
+Every log line names the module it came from in its `module=` field, so
+the fastest way to find the filter for something you are reading is to
+look at the line itself.
 
 ### Console Debug Mode
 
@@ -283,7 +293,7 @@ senhub-agent run --verbose
 
 **Specific modules only:**
 ```bash
-senhub-agent run --verbose --debug-modules probe.citrix,strategy.http
+senhub-agent run --filter probe.citrix,strategy.http
 ```
 
 This runs the agent in the foreground (not as a service) and outputs detailed logs to the console. Press Ctrl+C to stop. This is useful for:
@@ -406,7 +416,7 @@ Response for an expired license:
 - **Probe name mismatch**: Check available probe names with `curl http://localhost:8080/api/{key}/prtg/probes`
 - **Authentication key invalid**: Verify the key in the URL matches the agent's key
 - **Agent not reachable from PRTG server**: Test with `curl` from the PRTG server itself
-- **Missing lookups**: Install PRTG Lookups for status metrics (see [Web Interface section](web-interface.md))
+- **Missing lookups**: Install PRTG Lookups for status metrics (see [Web console](web-interface.md))
 
 ### High Memory Usage
 

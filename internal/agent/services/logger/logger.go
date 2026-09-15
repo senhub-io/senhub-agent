@@ -1,8 +1,10 @@
 package logger
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,27 +52,71 @@ type ModuleLogConfig struct {
 // Pre-0.2.0 the Linux path was /var/log/senhub (without "-agent" suffix).
 // LogBaseDir() exposes the canonical directory so install / uninstall
 // can share the same constant.
-func getLogPath() string {
+
+// logFileNameFor picks the log file this instance writes to.
+//
+// The default install keeps "senhubagent.log" unchanged — every log
+// collector, logrotate rule and support runbook in the field names it,
+// and renaming the fleet's log file to fix a second-instance problem
+// would be a far worse trade than the problem.
+//
+// A SECOND instance — a lab, a staging config, a probe under test beside
+// the service — necessarily runs with a different config path, or it
+// would be the same agent. It gets its own file, keyed by that path.
+//
+// Sharing one file between two processes is not untidy, it is
+// destructive: each carries its own rotator, and lumberjack's rotation
+// opens the target with O_TRUNC, so whichever rotates first truncates
+// the file the other is appending to and the other's history is gone
+// (#838). The agent already carves out the interactive `run` for the
+// same reason; this extends the carve-out from mode to instance.
+func logFileNameFor(args *cliArgs.ParsedArgs) string {
+	const defaultName = "senhubagent.log"
+	if args == nil || strings.TrimSpace(args.ConfigPath) == "" {
+		return defaultName
+	}
+
+	configured, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		return defaultName
+	}
+	installed, err := cliArgs.GetAbsoluteConfigPath("")
+	if err != nil {
+		return defaultName
+	}
+	if filepath.Clean(configured) == filepath.Clean(installed) {
+		return defaultName
+	}
+
+	// Short, stable, and derived only from the path — two runs of the
+	// same instance must land in the same file, and the name must not
+	// leak a directory layout into a log directory listing.
+	sum := sha256.Sum256([]byte(filepath.Clean(configured)))
+	return fmt.Sprintf("senhubagent-%s.log", hex.EncodeToString(sum[:4]))
+}
+
+func getLogPath(args *cliArgs.ParsedArgs) string {
 	basePath := LogBaseDir()
 
+	name := logFileNameFor(args)
+
 	// Attempt to create the log directory and test write permissions
-	logPath := filepath.Join(basePath, "senhubagent.log")
+	logPath := filepath.Join(basePath, name)
 	if err := os.MkdirAll(basePath, 0750); err != nil {
-		log.Printf("Unable to create log directory %s: %v", basePath, err)
+		bootstrapLog().Warn().Err(err).Str("dir", basePath).Msg("Unable to create log directory; falling back to the executable directory")
 		// Fall back to executable directory
 		exePath, _ := os.Executable()
 		basePath = filepath.Dir(exePath)
-		logPath = filepath.Join(basePath, "senhubagent.log")
+		logPath = filepath.Join(basePath, name)
 	} else {
 		// Test write permissions by trying to create a test file
 		testFile := filepath.Join(basePath, ".write_test")
 		if file, err := os.Create(filepath.Clean(testFile)); err != nil { // #nosec G304 - testFile is constructed from safe basePath
-			log.Printf("No write permissions for log directory %s: %v", basePath, err)
-			log.Printf("Falling back to local directory for logs")
+			bootstrapLog().Warn().Err(err).Str("dir", basePath).Msg("No write permissions for log directory; falling back to the executable directory")
 			// Fall back to executable directory
 			exePath, _ := os.Executable()
 			basePath = filepath.Dir(exePath)
-			logPath = filepath.Join(basePath, "senhubagent.log")
+			logPath = filepath.Join(basePath, name)
 		} else {
 			_ = file.Close()
 			_ = os.Remove(testFile)
@@ -79,7 +125,7 @@ func getLogPath() string {
 
 	// Only print log file path when not running status command or tests
 	if len(os.Args) < 2 || (os.Args[1] != "status" && !isInTestMode()) {
-		log.Printf("Using log file: %s", logPath)
+		bootstrapLog().Info().Str("path", logPath).Msg("Using log file")
 	}
 	return logPath
 }
@@ -131,12 +177,12 @@ func setupDebugLogShipper(args *cliArgs.ParsedArgs) (io.Writer, error) {
 		}
 	}
 
-	log.Printf("Initializing debug log shipper to %s", args.DebugLogShipperUrl)
+	bootstrapLog().Info().Str("endpoint", args.DebugLogShipperUrl).Msg("Initializing debug log shipper")
 
 	// Initialize the debug log shipper
 	shipper, err := debugshipper.NewDebugLogShipper(config)
 	if err != nil {
-		log.Printf("Failed to initialize debug log shipper: %v", err)
+		bootstrapLog().Error().Err(err).Msg("Failed to initialize debug log shipper")
 		return nil, err
 	}
 
@@ -149,7 +195,7 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 	// Create debug log shipper if configured
 	shipper, err := setupDebugLogShipper(args)
 	if err != nil {
-		log.Printf("Warning: Failed to create debug log shipper: %v", err)
+		bootstrapLog().Warn().Err(err).Msg("Failed to create debug log shipper")
 	}
 
 	// Create logger configuration
@@ -247,7 +293,7 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger
 		// Apply masking to the log shipper
 		maskedShipper := NewMaskingWriter(config.logShipper)
 		writer = zerolog.MultiLevelWriter(writer, maskedShipper)
-		log.Printf("Debug log shipping enabled in development mode")
+		bootstrapLog().Info().Msg("Debug log shipping enabled in development mode")
 	}
 
 	logger := zerolog.
@@ -273,8 +319,15 @@ func interactiveLogPath(p string) string {
 // - 30-day retention period
 // - Masking of sensitive information
 // Console output is automatically added when running in interactive mode (run command)
+// journaldAttached reports whether the service manager connected our
+// standard error to the journal. systemd sets JOURNAL_STREAM for exactly
+// that, so the test needs no platform guard.
+func journaldAttached() bool {
+	return os.Getenv("JOURNAL_STREAM") != ""
+}
+
 func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
-	logPath := getLogPath()
+	logPath := getLogPath(args)
 
 	// Detect interactive (`run`) vs service (daemon) mode.
 	isInteractive := service.Interactive()
@@ -288,14 +341,7 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		logPath = interactiveLogPath(logPath)
 	}
 
-	// Configure log rotation settings
-	logRotator := &lumberjack.Logger{
-		Filename:   logPath, // Path to the log file
-		MaxSize:    10,      // Megabytes before rotation
-		MaxBackups: 5,       // Number of backup files to keep
-		MaxAge:     30,      // Days to keep backup files
-		Compress:   true,    // Enable compression of rotated logs
-	}
+	logRotator := rotatorFor(logPath)
 
 	// Define masked writers - start with log file
 	writers := []io.Writer{NewMaskingWriter(fileWriter(logRotator, args))}
@@ -305,13 +351,20 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	if isInteractive {
 		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
-		log.Printf("Running in interactive mode - console output enabled")
+		bootstrapLog().Info().Msg("Running in interactive mode - console output enabled")
+	} else if journaldAttached() {
+		// systemd says it captures our standard error into the journal.
+		// Without this an operator running journalctl -u sees the unit
+		// start and stop and nothing in between, which is where a
+		// refused port or a broken output would have been said.
+		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, NoColor: true, TimeFormat: consoleTimeFormat}
+		writers = append(writers, NewMaskingWriter(consoleWriter))
 	}
 
 	// Add debug log shipper if configured
 	if config.logShipper != nil {
 		writers = append(writers, NewMaskingWriter(config.logShipper))
-		log.Printf("Debug log shipping enabled in production mode")
+		bootstrapLog().Info().Msg("Debug log shipping enabled in production mode")
 	}
 
 	// Set default production log level to info
@@ -330,9 +383,70 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	return &logger
 }
 
+// rotators holds one log rotator per file path, for the lifetime of the
+// process.
+//
+// Sharing is not an optimisation, it is the correct model, for two
+// independent reasons:
+//
+//   - Two rotators writing one file fight over the rotation rename. That
+//     is why an interactive `run` already gets its own path (see above);
+//     handing out a second rotator for the SAME path would reintroduce
+//     exactly the collision that carve-out avoids.
+//   - lumberjack starts a background "mill" goroutine on first write and
+//     keeps it for the rotator's lifetime. Its Close() closes the file
+//     but does NOT close the channel the mill ranges over, so the
+//     goroutine outlives Close and there is no upstream way to stop it.
+//     One rotator per path therefore means one mill goroutine per path,
+//     where building a rotator per logger meant one per construction —
+//     invisible in the daemon, which builds exactly one logger, and a
+//     steady leak in anything that builds them repeatedly (#835).
+//
+// There is deliberately no Close: the rotator is shared, so no single
+// holder may close it, and closing it would not stop the mill anyway.
+var rotators = struct {
+	mu sync.Mutex
+	m  map[string]*lumberjack.Logger
+}{m: map[string]*lumberjack.Logger{}}
+
+// rotatorFor returns the process-wide rotator for logPath, creating it
+// on first use.
+func rotatorFor(logPath string) *lumberjack.Logger {
+	rotators.mu.Lock()
+	defer rotators.mu.Unlock()
+
+	if r, ok := rotators.m[logPath]; ok {
+		return r
+	}
+	r := &lumberjack.Logger{
+		Filename:   logPath, // Path to the log file
+		MaxSize:    10,      // Megabytes before rotation
+		MaxBackups: 5,       // Number of backup files to keep
+		MaxAge:     30,      // Days to keep backup files
+		Compress:   true,    // Enable compression of rotated logs
+	}
+	rotators.m[logPath] = r
+	return r
+}
+
 // consoleTimeFormat dates every console line too: a line pasted into a ticket
 // without its date is a line nobody can correlate with anything.
 const consoleTimeFormat = "2006-01-02 15:04:05.000"
+
+// bootstrapLog reports on the construction of the logger itself —
+// picking the log file, falling back when the canonical directory is
+// unwritable, wiring the debug shipper. None of it can go through the
+// configured logger, which does not exist yet, so it goes to stderr in
+// the same shape the rest of the agent uses. Built once: the writer is
+// stateless and every caller here runs during start-up.
+var bootstrapLog = sync.OnceValue(func() *ModuleLogger {
+	l := zerolog.
+		New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}).
+		With().
+		Timestamp().
+		Logger()
+	return NewModuleLogger((*Logger)(&l), "logger.bootstrap")
+})
 
 // fileWriter wraps the rotating file in the layout chosen by --log-format.
 //

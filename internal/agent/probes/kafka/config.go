@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 const (
@@ -42,16 +44,16 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 		Timeout:         defaultTimeout,
 	}
 
-	if v := stringSlice(raw["brokers"]); len(v) > 0 {
+	if v, _ := types.StringSliceParam(raw, "brokers"); len(v) > 0 {
 		cfg.Brokers = v
 	}
-	if v, ok := raw["protocol_version"].(string); ok && v != "" {
+	if v, ok := types.StringParam(raw, "protocol_version"); ok && v != "" {
 		cfg.ProtocolVersion = v
 	}
-	if v, ok := raw["tls"].(bool); ok {
+	if v, ok := types.BoolParam(raw, "tls"); ok {
 		cfg.TLS = v
 	}
-	if v, ok := raw["sasl_mechanism"].(string); ok {
+	if v, ok := types.StringParam(raw, "sasl_mechanism"); ok {
 		mech := strings.ToUpper(v)
 		switch mech {
 		case "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512":
@@ -60,21 +62,21 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 			return cfg, fmt.Errorf("kafka: unsupported sasl_mechanism %q (valid: PLAIN, SCRAM-SHA-256, SCRAM-SHA-512)", v)
 		}
 	}
-	if v, ok := raw["sasl_username"].(string); ok {
+	if v, ok := types.StringParam(raw, "sasl_username"); ok {
 		cfg.SASLUsername = v
 	}
-	if v, ok := raw["sasl_password"].(string); ok {
+	if v, ok := types.StringParam(raw, "sasl_password"); ok {
 		cfg.SASLPassword = v
 	}
-	if secs, ok := raw["interval"].(int); ok && secs > 0 {
+	if secs, ok := types.IntParam(raw, "interval"); ok && secs > 0 {
 		cfg.Interval = time.Duration(secs) * time.Second
 	}
-	if secs, ok := raw["timeout"].(int); ok && secs > 0 {
+	if secs, ok := types.IntParam(raw, "timeout"); ok && secs > 0 {
 		cfg.Timeout = time.Duration(secs) * time.Second
 	}
-	cfg.TopicFilter = stringSlice(raw["topic_filter"])
-	cfg.GroupFilter = stringSlice(raw["group_filter"])
-	if v, ok := raw["instance_name"].(string); ok {
+	cfg.TopicFilter, _ = types.StringSliceParam(raw, "topic_filter")
+	cfg.GroupFilter, _ = types.StringSliceParam(raw, "group_filter")
+	if v, ok := types.StringParam(raw, "instance_name"); ok {
 		cfg.InstanceName = v
 	}
 
@@ -83,27 +85,4 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	}
 
 	return cfg, nil
-}
-
-// stringSlice coerces a YAML-decoded value into []string, dropping empties.
-func stringSlice(raw interface{}) []string {
-	switch v := raw.(type) {
-	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, e := range v {
-			if s, ok := e.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []string:
-		return v
-	case string:
-		if v == "" {
-			return nil
-		}
-		return []string{v}
-	default:
-		return nil
-	}
 }

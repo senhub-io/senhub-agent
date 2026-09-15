@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/lan.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/snmp-poll.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier. SNMP
@@ -35,24 +35,82 @@ one series per interface (`if_index` tag).
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `target` | required | Device IP or hostname |
-| `port` | `161` | SNMP UDP port |
-| `version` | `2c` | `2c` or `3`. SNMPv1 is rejected (table walks need GETBULK) |
-| `community` | `public` | Community string (v2c) — reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `v3` | none | USM credentials, required with `version: 3` (see below) |
-| `timeout` | `5s` | Per-request timeout (duration string or seconds) |
-| `interval` | `60s` | Metric polling cadence |
-| `topology_interval` | `10m` | Entity/topology sweep cadence (slower rail, independent of metrics) |
-| `mibs` | `[]` | Built-in MIB modules to poll: `mib-2`, `if-mib` |
-| `mib_paths` | `[]` | Local directories or files of MIB modules used to name custom mappings (never fetched over the network) |
-| `custom_mappings` | `[]` | Operator-supplied OID-to-metric mappings (see below) |
-| `discovery` | none | Topology crawl from seed devices (see below) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `target` | Yes | - | Device address or hostname |
+| `port` | No | `161` | SNMP UDP port |
+| `version` | In practice | `v2c` | SNMP version; v1 is refused. One of `v2c`, `v3`, `2c`, `3`, `2` |
+| `community` | If `version` is `v2c`, `2c`, `2` | `public` | Community string (v2c). A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3` | If `version` is `v3`, `3` | - | USM credentials, required with version v3 |
+| `v3.username` | Yes | - | USM user |
+| `v3.auth_protocol` | No | - | Authentication protocol; empty for none. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
+| `v3.auth_passphrase` | No | - | Required with auth_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.priv_protocol` | No | - | Privacy protocol; needs auth_protocol. One of `DES`, `AES`, `AES192`, `AES256` |
+| `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `retries` | No | `2` | Retries per request |
+| `timeout` | No | `5s` | Per-request timeout |
+| `interval` | No | `60s` | Metric polling cadence |
+| `topology_interval` | No | `10m` | Entity and topology sweep cadence |
+| `mibs` | In practice | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
+| `mib_paths` | No | - | Local MIB files or folders used to name custom mappings |
+| `custom_mappings` | No | - | OID to metric mappings |
+| `custom_mappings[].oid` | Yes | - | OID, leading dot optional |
+| `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
+| `custom_mappings[].type` | No | `gauge` | A string. One of `gauge`, `counter` |
+| `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
+| `discovery` | No | - | Topology crawl from seed devices |
+| `discovery.seeds` | Yes | - | Entry-point device addresses |
+| `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
+| `discovery.profile.version` | No | `v2c` | A string. One of `v2c`, `2c`, `2` |
+| `discovery.profile.community` | Yes | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `discovery.allowed_cidrs` | Yes | - | The crawl never leaves these ranges |
+| `discovery.max_devices` | No | `200` | Hard cap on the number of discovered devices |
+| `discovery.max_hops` | No | `4` | Crawl depth from the seeds |
+| `discovery.interval` | No | - | Crawl cadence; topology_interval by default |
+| `discovery.governance_rules` | No | - | Per-device governance by match |
+| `discovery.governance_rules[].match` | No | - | Conditions a device must all meet; an empty match applies to every device |
+| `discovery.governance_rules[].match.cidr` | No | - | Address range the polled address must fall in |
+| `discovery.governance_rules[].match.vendor` | No | - | Vendor name from sysObjectID, compared case-insensitively |
+| `discovery.governance_rules[].match.sysname` | No | - | Regular expression the device sysName must match |
+| `discovery.governance_rules[].governance` | No | - | A block of settings |
+| `discovery.governance_rules[].governance.owner` | No | - | Who owns what this instance observes |
+| `discovery.governance_rules[].governance.owner.team` | No | - | Owning team |
+| `discovery.governance_rules[].governance.owner.contact` | No | - | Contact for the team |
+| `discovery.governance_rules[].governance.criticality` | No | - | Business criticality. One of `critical`, `high`, `medium`, `low` |
+| `discovery.governance_rules[].governance.location` | No | - | Where it is |
+| `discovery.governance_rules[].governance.location.site` | No | - | Site name |
+| `discovery.governance_rules[].governance.location.datacenter` | No | - | Datacenter name |
+| `discovery.governance_rules[].governance.location.rack` | No | - | Rack identifier |
+| `discovery.governance_rules[].governance.location.room` | No | - | Room identifier |
+| `discovery.governance_rules[].governance.lifecycle` | No | - | active, maintenance, decommissioning or retired |
+| `discovery.governance_rules[].governance.labels` | No | - | Free-form labels, emitted as entity.label.<key>; use application to name the application chain |
+| `governance` | No | - | Ownership, criticality and location of the device |
+| `governance.owner` | No | - | Who owns what this instance observes |
+| `governance.owner.team` | No | - | Owning team |
+| `governance.owner.contact` | No | - | Contact for the team |
+| `governance.criticality` | No | - | Business criticality. One of `critical`, `high`, `medium`, `low` |
+| `governance.location` | No | - | Where it is |
+| `governance.location.site` | No | - | Site name |
+| `governance.location.datacenter` | No | - | Datacenter name |
+| `governance.location.rack` | No | - | Rack identifier |
+| `governance.location.room` | No | - | Room identifier |
+| `governance.lifecycle` | No | - | active, maintenance, decommissioning or retired |
+| `governance.labels` | No | - | Free-form labels, emitted as entity.label.<key>; use application to name the application chain |
+
+<!-- schema:params:end -->
 
 At least one entry under `mibs` or `custom_mappings` is required.
 Configuration errors are accumulated and reported together at
 startup, not one at a time.
+
+`retries` matters on a congested link: UDP loses packets, and each
+attempt costs one `timeout` before the device counts as unanswered.
+`topology_interval` is a slower rail, independent of `interval`, so a
+dense topology sweep never delays the traffic counters. `mib_paths` is
+read locally; the probe never fetches a MIB over the network.
 
 ### SNMPv3 (USM)
 
@@ -68,14 +126,6 @@ params:
     priv_protocol: AES256
     priv_passphrase: "${file:/etc/senhub-agent/snmp_priv}"
 ```
-
-| Field | Description |
-|---|---|
-| `username` | required |
-| `auth_protocol` | `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, or omitted for no authentication |
-| `auth_passphrase` | Required with `auth_protocol` |
-| `priv_protocol` | `DES`, `AES`, `AES192`, `AES256`; requires an `auth_protocol` |
-| `priv_passphrase` | Required with `priv_protocol` |
 
 The security level (noAuthNoPriv / authNoPriv / authPriv) is derived
 from which protocols are set — there is no separate field to
@@ -99,12 +149,11 @@ params:
       index_label: if_index
 ```
 
-| Field | Default | Description |
-|---|---|---|
-| `oid` | required | OID, leading dot optional |
-| `metric` | required unless `mib_paths` is set | Metric name to emit. When omitted and `mib_paths` is configured, the name is resolved from your MIB files at startup (e.g. `upsAdvBatteryCapacity`); an unresolvable OID is a startup error, never a silent gap |
-| `type` | `gauge` | `gauge` or `counter` |
-| `index_label` | none | When set, the OID is walked as a table and the row index becomes this tag |
+`metric` may be omitted only when `mib_paths` is set: the name is then
+resolved from your MIB files at startup (for example
+`upsAdvBatteryCapacity`), and an OID that cannot be resolved is a startup
+error, never a silent gap. With `index_label`, the OID is walked as a
+table and the row index becomes that tag.
 
 ### Discovery
 
@@ -136,14 +185,46 @@ params:
     max_hops: 4
 ```
 
-| Field | Default | Description |
-|---|---|---|
-| `seeds` | required | Entry-point device IPs |
-| `profile` | required | Credentials used for crawled devices (`version`, `community`) |
-| `allowed_cidrs` | required | The crawl never leaves these ranges |
-| `max_devices` | `200` | Hard cap on discovered devices |
-| `max_hops` | `4` | BFS depth bound from the seeds |
-| `interval` | `topology_interval` | Crawl cadence |
+`max_devices` is a hard cap on discovered devices and `max_hops` bounds
+the crawl depth from the seeds. `governance_rules` stamps governance on
+devices as the crawl finds them (see below).
+
+The `governance` parameter of this probe and the `governance` block every
+probe entry accepts (see [Governance per probe](../configuration.md#governance-per-probe))
+share one vocabulary. Both stamp the polled device; on a key present in both,
+the probe-level parameter wins, and a matched discovery rule wins over either.
+
+#### Governance for discovered devices
+
+A crawl finds devices you never listed, so their ownership, criticality and
+location cannot be written per device. `governance_rules` states them by
+match instead: the first rule whose conditions all hold stamps its
+`governance` block on the device's entity.
+
+```yaml
+discovery:
+  seeds: ["10.0.0.1"]
+  allowed_cidrs: ["10.0.0.0/16"]
+  governance_rules:
+    - match:
+        cidr: "10.0.10.0/24"
+      governance:
+        criticality: critical
+        owner:
+          team: network
+        location:
+          site: paris
+    - match:
+        vendor: "cisco"
+        sysname: "^edge-"      # regular expression
+      governance:
+        criticality: high
+```
+
+`match` accepts `cidr`, `vendor` and `sysname` — all optional, all must hold
+for the rule to apply, and a rule with no `match` applies to every device.
+The `governance` block takes the same keys as the per-agent one: `criticality`,
+`lifecycle`, `owner`, `location` and free-form `labels`.
 
 ## Metrics
 

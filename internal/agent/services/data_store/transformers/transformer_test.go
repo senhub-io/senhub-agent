@@ -29,7 +29,7 @@ func TestNewTransformerRegistry(t *testing.T) {
 		t.Fatal("Expected registry to be created, got nil")
 	}
 
-	if registry.transformers == nil {
+	if registry.read().transformers == nil {
 		t.Fatal("Expected transformers map to be initialized")
 	}
 }
@@ -115,8 +115,8 @@ func TestTransformerCaching(t *testing.T) {
 	}
 
 	// Verify cache contains the entry
-	if len(registry.transformers) != 1 {
-		t.Errorf("Expected 1 cached transformer, got %d", len(registry.transformers))
+	if len(registry.read().transformers) != 1 {
+		t.Errorf("Expected 1 cached transformer, got %d", len(registry.read().transformers))
 	}
 }
 
@@ -826,4 +826,24 @@ func TestDefinitionBasedTransformer_FindBestInstanceTag(t *testing.T) {
 			t.Logf("Best instance tag for %v: %s", tt.indexTags, result)
 		})
 	}
+}
+
+// BenchmarkLoadTransformer_Cached is the hot path: unit correction calls
+// this once per datapoint, so the cached lookup runs on every point of
+// every cycle (#286).
+func BenchmarkLoadTransformer_Cached(b *testing.B) {
+	registry := NewTransformerRegistry(createTestLogger())
+	if _, err := registry.LoadTransformer("cpu", "friendly"); err != nil {
+		b.Fatalf("warm-up: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if _, err := registry.LoadTransformer("cpu", "friendly"); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
