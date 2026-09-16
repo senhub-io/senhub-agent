@@ -148,6 +148,12 @@ keep_agent_key() {
   fi
 }
 
+# trim removes the spaces around a value, so a list written with them
+# ("a, b") names the same applications as one written without.
+trim() {
+  printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
 write_azure_probe() {
   missing=""
   for name in SENHUB_AZURE_TENANT_ID SENHUB_AZURE_CLIENT_ID SENHUB_AZURE_CLIENT_SECRET \
@@ -163,10 +169,52 @@ write_azure_probe() {
     exit 1
   fi
   mkdir -p "$CONFIG_DIR/probes.d"
-  # Every credential stays a reference: the secret is read from the
-  # environment at each start and never written to the file.
-  cat > "$CONFIG_DIR/probes.d/50-azure-container-apps.yaml" <<YAML
-- name: ${SENHUB_AZURE_APP}
+  fragment="$CONFIG_DIR/probes.d/50-azure-container-apps.yaml"
+  : > "$fragment"
+
+  # One probe instance follows one application, so a comma-separated
+  # list writes one entry per name, each with its own bookmark. A
+  # collector that watches an environment holding several applications
+  # is the ordinary case, and it must not require hand-written YAML in
+  # SENHUB_PROBES.
+  old_ifs=$IFS
+  IFS=,
+  # The function takes no arguments, so the positional parameters are
+  # free to carry the split.
+  # shellcheck disable=SC2086
+  set -- $SENHUB_AZURE_APP
+  IFS=$old_ifs
+
+  written=""
+  for raw in "$@"; do
+    app=$(trim "$raw")
+    if [ -z "$app" ]; then
+      continue
+    fi
+    # The name becomes a probe name and a bookmark file name. A
+    # separator or a space in it would place that file somewhere else,
+    # and no Container App is named that way.
+    case "$app" in
+      */*|*' '*|*'	'*)
+        log "SENHUB_AZURE_APP names \"$app\", which is not a Container App name"
+        exit 1
+        ;;
+    esac
+    for already in $written; do
+      if [ "$already" = "$app" ]; then
+        log "SENHUB_AZURE_APP names \"$app\" twice; the second one is ignored"
+        app=""
+        break
+      fi
+    done
+    if [ -z "$app" ]; then
+      continue
+    fi
+    written="$written $app"
+    # Every credential stays a reference: the secret is read from the
+    # environment at each start and never written to the file.
+    cat >> "$fragment" <<YAML
+- name: ${app}
   type: azure_container_apps
   params:
     tenant_id: "\${env:SENHUB_AZURE_TENANT_ID}"
@@ -174,10 +222,16 @@ write_azure_probe() {
     client_secret: "\${env:SENHUB_AZURE_CLIENT_SECRET}"
     subscription_id: "\${env:SENHUB_AZURE_SUBSCRIPTION_ID}"
     resource_group: "\${env:SENHUB_AZURE_RESOURCE_GROUP}"
-    app: "${SENHUB_AZURE_APP}"
-    bookmark_path: ${STATE_DIR}/${SENHUB_AZURE_APP}.bookmark
+    app: "${app}"
+    bookmark_path: ${STATE_DIR}/${app}.bookmark
 YAML
-  log "reading the console log stream of the Container App ${SENHUB_AZURE_APP}"
+  done
+
+  if [ -z "$written" ]; then
+    log "SENHUB_AZURE_APP is set but names no application"
+    exit 1
+  fi
+  log "reading the console log stream of the Container Apps:$written"
 }
 
 resolve_machine_id
@@ -209,6 +263,13 @@ else
   # A shorthand for the one probe this image is most often asked for.
   # It writes the same kind of fragment SENHUB_PROBES would carry.
   if [ -n "${SENHUB_AZURE_APP:-}" ]; then
+    # The two doors write two different files, so an application named
+    # in both is declared twice and its lines leave twice. Nothing in
+    # the configuration says so, hence the warning.
+    if [ -n "${SENHUB_PROBES:-}" ]; then
+      log "SENHUB_AZURE_APP and SENHUB_PROBES are both set; they write separate files and are not merged"
+      log "an application named in both is declared twice and its logs are collected twice — name each one in one place only"
+    fi
     write_azure_probe
   fi
 
