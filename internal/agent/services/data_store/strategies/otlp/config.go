@@ -776,6 +776,17 @@ func validateAuthHeaders(cfg Config) error {
 	return nil
 }
 
+// BlankCredentialError is the refusal of an Authorization header whose
+// credential resolved to nothing. It is a type so a diagnostic can tell
+// this case, which usually means a ${env:} variable missing from the
+// shell running it, from every other configuration error.
+type BlankCredentialError struct {
+	Where  string
+	Detail string
+}
+
+func (e *BlankCredentialError) Error() string { return e.Where + ": " + e.Detail }
+
 // checkAuthHeader rejects a present-but-blank Authorization header. The
 // name is matched case-insensitively (HTTP header names are), and an
 // empty value or a bare auth scheme with no credential after it (e.g.
@@ -788,7 +799,7 @@ func checkAuthHeader(headers map[string]string, where string) error {
 		}
 		trimmed := strings.TrimSpace(v)
 		if trimmed == "" {
-			return fmt.Errorf("%s: Authorization header is set but empty — provide a token or remove the header for unauthenticated export", where)
+			return &BlankCredentialError{Where: where, Detail: "Authorization header is set but empty — provide a token or remove the header for unauthenticated export"}
 		}
 		// A still-present ${...} means a ${file:}/${secret:} lookup failed with
 		// no default and expandEnv kept the literal template. That value passes
@@ -802,7 +813,7 @@ func checkAuthHeader(headers map[string]string, where string) error {
 		if fields := strings.Fields(trimmed); len(fields) == 1 {
 			switch strings.ToLower(fields[0]) {
 			case "bearer", "basic":
-				return fmt.Errorf("%s: Authorization header has scheme %q but no credential — the token resolved to empty (check ${env:}/${secret:}/${file:} references)", where, fields[0])
+				return &BlankCredentialError{Where: where, Detail: fmt.Sprintf("Authorization header has scheme %q but no credential — the token resolved to empty (check ${env:}/${secret:}/${file:} references)", fields[0])}
 			}
 		}
 	}
