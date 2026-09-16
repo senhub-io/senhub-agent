@@ -739,6 +739,25 @@ under runaway-cardinality conditions. Raise them only when you know
 what's generating the series, otherwise the agent will happily eat
 RAM tracking churning timeseries.
 
+### What time a point carries
+
+Every push re-exports the last value of every stored series, so the time
+stamped on a point decides what a consumer sees between two runs of a
+probe:
+
+- While the probe still vouches for the value, the point carries the
+  export time. A probe vouches for its last value for one and a half
+  times its `interval`, plus one push interval. A gauge from a probe
+  that runs every 30 minutes is therefore published as current every
+  30 seconds, and an alert with a five-minute lookback keeps seeing it.
+- Once that window has elapsed, the point carries the time the value was
+  measured: the probe missed its own next run, or the target it measured
+  is no longer in its configuration, and re-stamping the old value would
+  assert a measurement that never happened. The series is evicted after
+  `staleness_ttl`.
+- A series restored from the checkpoint at start-up carries its
+  measurement time until its probe observes it again in this process.
+
 ## Backward compatibility
 
 - **Existing storages** (PRTG, Nagios, SenHub, HTTP/Prometheus) are
