@@ -19,6 +19,12 @@ func init() {
 			{Key: "heartbeat_interval", Kind: spec.KindDuration, Default: "60s", Group: "delivery", Description: "Heartbeat cadence; the server declares the host unavailable after twice that"},
 			{Key: "timeout", Kind: spec.KindDuration, Default: "10s", Group: "delivery", Description: "Bound on one connection, request and reply"},
 			{Key: "key_prefix", Kind: spec.KindString, Default: defaultKeyPrefix, Group: "delivery", Description: "First segment of every item key"},
+			{Key: "passive", Kind: spec.KindBlock, Group: "passive", Description: "Listener the server polls like a classic agent: answers agent.ping and the same item keys", Fields: []spec.ParamSpec{
+				{Key: "enabled", Kind: spec.KindBool, Default: false, Description: "Answer the server's polls on the passive port"},
+				{Key: "bind_address", Kind: spec.KindString, Default: defaultPassiveBind, Description: "Address the listener binds to"},
+				{Key: "port", Kind: spec.KindInt, Default: defaultPassivePort, Description: "Port the listener binds to; sent to the server so autoregistration creates the interface on it"},
+				{Key: "allow", Kind: spec.KindStringList, Description: "Addresses or CIDR ranges allowed to poll; the server's addresses when empty"},
+			}},
 			{Key: "tls", Kind: spec.KindBlock, Group: "tls", Description: "Certificate-based encryption of the connection (Zabbix pre-shared keys are not supported)", Fields: []spec.ParamSpec{
 				{Key: "enabled", Kind: spec.KindBool, Default: false, Description: "Encrypt the connection with TLS"},
 				{Key: "ca_file", Kind: spec.KindString, Description: "CA certificate that signed the server's certificate"},

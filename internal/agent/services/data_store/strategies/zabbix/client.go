@@ -160,11 +160,17 @@ func (c *client) exchange(ctx context.Context, req interface{}) (response, error
 // request is also what registers the host: an unknown host with matching
 // metadata is created by the server's autoregistration action.
 func (c *client) activeChecks(ctx context.Context) ([]activeItem, error) {
-	resp, err := c.exchange(ctx, map[string]interface{}{
+	req := map[string]interface{}{
 		"request":       "active checks",
 		"host":          c.cfg.Hostname,
 		"host_metadata": c.cfg.HostMetadata,
-	})
+	}
+	if c.cfg.Passive.Enabled {
+		// The port the autoregistration action writes on the host's
+		// agent interface, so the server polls where the listener is.
+		req["port"] = c.cfg.Passive.Port
+	}
+	resp, err := c.exchange(ctx, req)
 	if err != nil {
 		return nil, err
 	}
