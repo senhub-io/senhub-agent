@@ -43,6 +43,10 @@ zabbix:
 | `heartbeat_interval` | `60s` | Heartbeat cadence; the server declares the host unavailable after twice that. |
 | `timeout` | `10s` | Bound on one connection, request and reply. |
 | `key_prefix` | `senhub` | First segment of every item key. |
+| `passive.enabled` | `false` | Answer the server's polls on the passive port (see below). |
+| `passive.bind_address` | `0.0.0.0` | Address the passive listener binds to. |
+| `passive.port` | `10050` | Port the passive listener binds to; sent to the server so autoregistration creates the agent interface on it. |
+| `passive.allow` | server addresses | Addresses or CIDR ranges allowed to poll the passive port. |
 | `tls.enabled` | `false` | Encrypt the connection with TLS (certificate). |
 | `tls.ca_file` | | CA certificate that signed the server's certificate. |
 | `tls.cert_file`, `tls.key_file` | | Client certificate and key, both or none. |
@@ -111,6 +115,30 @@ discovery on a lab). An enum metric with a lookup gets a value map.
 Import the files through **Data collection > Templates > Import**, or
 `configuration.import` on the API. Re-importing a regenerated template
 updates the same objects: the identifiers are derived from the keys.
+
+## Passive polling
+
+With `passive.enabled: true` the agent also listens on `passive.port`
+(10050 by default) and answers the server's polls the way a classic
+agent does: `agent.ping`, so the host's availability icon turns green,
+`agent.version`, `agent.hostname`, and every item key the active push
+sends, for an operator who prefers passive items. Both wire dialects are
+served, the bare key of servers before 7.0 and the JSON batch of 7.0 and
+later.
+
+Only the addresses in `passive.allow` may poll; when the list is empty,
+the addresses the configured `server` resolves to. The port is sent with
+the registration request so the autoregistration action creates the
+agent interface on it. The passive port is not encrypted.
+
+```yaml
+zabbix:
+  server: "zabbix.example.com:10051"
+  passive:
+    enabled: true
+    port: 10050
+    allow: ["10.20.0.0/24"]
+```
 
 ## Autoregistration
 
