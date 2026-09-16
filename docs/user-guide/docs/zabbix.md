@@ -81,3 +81,42 @@ as its raw code under one key.
 The server only receives the keys it asked for. Until the host exists on
 the server and a template gives it items, the log says so at start and
 nothing is pushed.
+
+## Templates and discovery
+
+The templates are generated from the same definitions the keys come from,
+one per probe type:
+
+```bash
+senhub-agent zabbix template --out ./templates            # every probe type
+senhub-agent zabbix template --probe memory --probe veeam # a selection
+senhub-agent zabbix template --probe veeam --version 6.0  # to standard output
+```
+
+Options: `--version 6.0|7.0` (export format, `7.0` by default), `--prefix`
+(must match the output's `key_prefix`), `--delay` (update interval of the
+items, `1m` by default), `--out` (directory; without it a single template
+goes to standard output).
+
+Every item of a template is a prototype under a low-level discovery rule,
+because the probe instance name is discovered too: the rule
+`senhub.discovery[memory]` returns `[{"{#PROBE}":"memory"}]`, and a
+metric with dimensions hangs under the rule of its dimension set,
+`senhub.discovery[logicaldisk,device,mount_point]`, with one macro per
+dimension. The agent serves these discovery keys like any other item, so
+a host gets its items within one discovery interval (1 hour by default,
+`--delay` does not change it; edit the rule in Zabbix if you want faster
+discovery on a lab). An enum metric with a lookup gets a value map.
+
+Import the files through **Data collection > Templates > Import**, or
+`configuration.import` on the API. Re-importing a regenerated template
+updates the same objects: the identifiers are derived from the keys.
+
+## Autoregistration
+
+Create an action under **Alerts > Actions > Autoregistration actions**
+with a condition on the host metadata (`contains senhub-agent`, or
+whatever you set in `host_metadata`) and three operations: add host, add
+to a host group, link the generated templates. Every agent whose
+metadata matches then appears by itself at its first check-list request,
+with its items created by discovery within the discovery interval.
