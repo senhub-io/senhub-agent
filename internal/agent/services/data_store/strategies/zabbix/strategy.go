@@ -28,8 +28,9 @@ type Strategy struct {
 	logger    *logger.ModuleLogger
 	defs      otelmapper.DefinitionLookup
 
-	store  *store
-	client *client
+	store   *store
+	client  *client
+	passive *passiveListener
 
 	mu        sync.Mutex
 	started   bool
@@ -96,6 +97,19 @@ func (s *Strategy) Start(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	runCtx, cancel := context.WithCancel(ctx)
+	if s.cfg.Passive.Enabled {
+		pl, err := newPassiveListener(s.cfg, s.valueOf, s.logger)
+		if err != nil {
+			cancel()
+			return err
+		}
+		if err := pl.start(runCtx); err != nil {
+			cancel()
+			return err
+		}
+		s.passive = pl
+		s.logger.Info().Str("listen", pl.addr()).Msg("Zabbix passive listener started")
+	}
 	s.cancel = cancel
 	s.done = make(chan struct{})
 	s.started = true
@@ -108,6 +122,17 @@ func (s *Strategy) Start(ctx context.Context) error {
 	return nil
 }
 
+// valueOf serves the passive listener: the current value of one key,
+// as the active push would send it.
+func (s *Strategy) valueOf(key string) (string, bool) {
+	for _, it := range s.items(time.Now()) {
+		if it.Key == key {
+			return it.Value, true
+		}
+	}
+	return "", false
+}
+
 func (s *Strategy) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	if !s.started {
@@ -115,10 +140,14 @@ func (s *Strategy) Shutdown(ctx context.Context) error {
 		return nil
 	}
 	s.started = false
-	cancel, done := s.cancel, s.done
+	cancel, done, passive := s.cancel, s.done, s.passive
+	s.passive = nil
 	s.mu.Unlock()
 
 	cancel()
+	if passive != nil {
+		passive.stop()
+	}
 	select {
 	case <-done:
 	case <-ctx.Done():

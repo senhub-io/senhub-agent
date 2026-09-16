@@ -69,7 +69,26 @@ type Config struct {
 	// KeyPrefix is the first segment of every item key.
 	KeyPrefix string
 	TLS       TLSConfig
+	Passive   PassiveConfig
 }
+
+// PassiveConfig is the optional listener the server polls, the way it
+// polls a classic Zabbix agent: it answers agent.ping so the host's
+// availability icon turns green, and serves the same item keys as the
+// active push for an operator who prefers passive items.
+type PassiveConfig struct {
+	Enabled     bool
+	BindAddress string
+	Port        int
+	// Allow lists the addresses (IP or CIDR) allowed to poll. Empty
+	// means the addresses the configured server resolves to.
+	Allow []string
+}
+
+const (
+	defaultPassiveBind = "0.0.0.0"
+	defaultPassivePort = 10050
+)
 
 var keyPrefixPattern = regexp.MustCompile(`^[0-9a-zA-Z_.-]+$`)
 
@@ -169,7 +188,86 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 		}
 		cfg.TLS = tlsCfg
 	}
+
+	cfg.Passive = PassiveConfig{BindAddress: defaultPassiveBind, Port: defaultPassivePort}
+	if raw, ok := params["passive"]; ok {
+		block, isMap := raw.(map[string]interface{})
+		if !isMap {
+			return cfg, fmt.Errorf("zabbix: 'passive' must be a block")
+		}
+		pc, err := parsePassive(block, cfg.Passive)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.Passive = pc
+	}
 	return cfg, nil
+}
+
+func parsePassive(block map[string]interface{}, cfg PassiveConfig) (PassiveConfig, error) {
+	if v, ok := block["enabled"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return cfg, fmt.Errorf("zabbix: 'passive.enabled' must be true or false")
+		}
+		cfg.Enabled = b
+	}
+	if v, ok := block["bind_address"]; ok {
+		s, isStr := v.(string)
+		if !isStr || net.ParseIP(strings.TrimSpace(s)) == nil {
+			return cfg, fmt.Errorf("zabbix: 'passive.bind_address' must be an IP address")
+		}
+		cfg.BindAddress = strings.TrimSpace(s)
+	}
+	if v, ok := block["port"]; ok {
+		port, err := parsePort(v)
+		if err != nil {
+			return cfg, fmt.Errorf("zabbix: 'passive.port': %w", err)
+		}
+		cfg.Port = port
+	}
+	if v, ok := block["allow"]; ok {
+		list, isList := v.([]interface{})
+		if !isList {
+			return cfg, fmt.Errorf("zabbix: 'passive.allow' must be a list of IP addresses or CIDR ranges")
+		}
+		for _, e := range list {
+			s, isStr := e.(string)
+			if !isStr {
+				return cfg, fmt.Errorf("zabbix: 'passive.allow' must be a list of IP addresses or CIDR ranges")
+			}
+			s = strings.TrimSpace(s)
+			if _, _, err := net.ParseCIDR(s); err != nil && net.ParseIP(s) == nil {
+				return cfg, fmt.Errorf("zabbix: 'passive.allow' entry %q is neither an IP address nor a CIDR range", s)
+			}
+			cfg.Allow = append(cfg.Allow, s)
+		}
+	}
+	return cfg, nil
+}
+
+func parsePort(v interface{}) (int, error) {
+	var port int
+	switch t := v.(type) {
+	case int:
+		port = t
+	case int64:
+		port = int(t)
+	case float64:
+		port = int(t)
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return 0, fmt.Errorf("%q is not a port number", t)
+		}
+		port = n
+	default:
+		return 0, fmt.Errorf("expected a port number, got %T", v)
+	}
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%d is outside 1-65535", port)
+	}
+	return port, nil
 }
 
 func parseTLS(block map[string]interface{}) (TLSConfig, error) {
