@@ -387,6 +387,21 @@ func checkConfig(configPath string) {
 	errorCount := 0
 	warnings := 0
 
+	// A ${env:NAME} whose variable is not set resolves to "" without a
+	// word from the loader. Under the service unit the variable is there;
+	// in the shell running this check it usually is not, and the
+	// resulting error then points at a file that has no defect (#892).
+	// Name the variable first so the errors below read in that light.
+	unsetEnv := configuration.UnsetEnvReferences(configPath)
+	for _, ref := range unsetEnv {
+		fmt.Printf("  [WARN] ${env:%s} in %s: %s is not set in this shell\n", ref.Name, ref.File, ref.Name)
+		warnings++
+	}
+	if len(unsetEnv) > 0 {
+		fmt.Println("         The service reads its variables from its unit; run the check with the same")
+		fmt.Println("         environment (systemctl show senhub-agent -p Environment) or export them first.")
+	}
+
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
 	// hardcoded literal, so `config check` tracks the source of truth
@@ -527,7 +542,10 @@ func checkConfig(configPath string) {
 		fmt.Println("  [WARN] No storage strategies configured")
 		warnings++
 	} else {
-		validStrategies := map[string]bool{"http": true, "prtg": true, "senhub": true, "event": true, "otlp": true}
+		validStrategies := map[string]bool{}
+		for _, name := range data_store.RegisteredStrategyNames() {
+			validStrategies[name] = true
+		}
 		for _, s := range config.Storage {
 			if !validStrategies[s.Name] {
 				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
@@ -555,6 +573,11 @@ func checkConfig(configPath string) {
 			// discovery to the restart (#848).
 			if verr := data_store.ValidateStrategyParams(s.Name, s.Params); verr != nil {
 				fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
+				var blank *otlp.BlankCredentialError
+				if errors.As(verr, &blank) && len(unsetEnv) > 0 {
+					fmt.Printf("          The credential is empty because %s is not set in this shell (see above);\n", unsetEnvNames(unsetEnv))
+					fmt.Println("          the file itself may be correct.")
+				}
 				errorCount++
 				continue
 			}
@@ -1008,4 +1031,15 @@ func validateCitrixParams(name string, params map[string]interface{}) (errors, w
 		}
 	}
 	return errors, warnings
+}
+
+// unsetEnvNames joins the distinct variable names of refs for a message.
+func unsetEnvNames(refs []configuration.EnvReference) string {
+	var names []string
+	for _, ref := range refs {
+		if len(names) == 0 || names[len(names)-1] != ref.Name {
+			names = append(names, ref.Name)
+		}
+	}
+	return strings.Join(names, ", ")
 }

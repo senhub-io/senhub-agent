@@ -18,7 +18,7 @@ func TestMetricStore_LWW(t *testing.T) {
 	store.upsert(datapoint.DataPoint{Name: "cpu.usage", Value: 1.0, Tags: identity})
 	store.upsert(datapoint.DataPoint{Name: "cpu.usage", Value: 2.0, Tags: identity})
 
-	cms, _ := store.snapshot()
+	cms, _ := store.snapshot(time.Now())
 	if len(cms) != 1 {
 		t.Fatalf("LWW collapse failed: got %d entries", len(cms))
 	}
@@ -77,7 +77,7 @@ func TestMetricStore_DefaultsTimestamp(t *testing.T) {
 	store.upsert(datapoint.DataPoint{Name: "m", Value: 1, Tags: identity})
 	after := time.Now()
 
-	_, times := store.snapshot()
+	_, times := store.snapshot(time.Now())
 	if len(times) != 1 {
 		t.Fatalf("times=%v", times)
 	}
@@ -99,7 +99,7 @@ func TestMetricStore_TagsCopied(t *testing.T) {
 
 	srcTags[2].Value = "after"
 
-	cms, _ := store.snapshot()
+	cms, _ := store.snapshot(time.Now())
 	if cms[0].Tags["host"] != "before" {
 		t.Errorf("stored tag mutated externally: got %q", cms[0].Tags["host"])
 	}
@@ -281,7 +281,7 @@ func TestMetricStore_EvictStale(t *testing.T) {
 	if store.size() != 1 {
 		t.Fatalf("store size = %d, want 1", store.size())
 	}
-	metrics, _ := store.snapshot()
+	metrics, _ := store.snapshot(time.Now())
 	if len(metrics) != 1 || metrics[0].MetricName != "system.cpu.utilization" {
 		t.Fatalf("survivor = %+v, want the live series", metrics)
 	}
@@ -295,7 +295,7 @@ func TestMetricStore_EvictStale(t *testing.T) {
 	if got := s2.probeSeriesCount("p"); got != 1 {
 		t.Fatalf("budget slot not released after eviction: count=%d", got)
 	}
-	if m2, _ := s2.snapshot(); len(m2) != 1 || m2[0].MetricName != "b" {
+	if m2, _ := s2.snapshot(time.Now()); len(m2) != 1 || m2[0].MetricName != "b" {
 		t.Fatalf("post-eviction admit failed: %+v", m2)
 	}
 }

@@ -45,3 +45,46 @@ func TestGetCallback_AnOtelMetricSinkReceivesWhatOTLPReceives(t *testing.T) {
 		t.Errorf("a probe that does not target otlp must not reach the sink, got %d batches", len(sink.dataPoints))
 	}
 }
+
+// cadenceSink records the cadence hints an output receives.
+type cadenceSink struct {
+	MockStrategy
+	cadence map[string]time.Duration
+}
+
+func (s *cadenceSink) NoteProbeCadence(name string, interval time.Duration) {
+	s.cadence[name] = interval
+}
+
+// periodicRouter is a probe that exposes its name and interval, the way
+// every scheduler-driven probe does.
+type periodicRouter struct{ *MockStrategyRouter }
+
+func (periodicRouter) GetName() string            { return "reboot-check" }
+func (periodicRouter) GetInterval() time.Duration { return 30 * time.Minute }
+
+// An output that asks for it learns the cadence of every probe whose
+// data it receives; a probe without a rhythm (callback-driven) tells
+// it nothing.
+func TestGetCallback_TellsACadenceSinkHowOftenTheProbeCollects(t *testing.T) {
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	ds := NewDataStore(&MockAgentConfig{}, &MockConfigProvider{}, baseLogger).(*dataStore)
+
+	sink := &cadenceSink{MockStrategy: MockStrategy{name: "otlp"}, cadence: map[string]time.Duration{}}
+	func() { v := []SyncStrategy{sink}; ds.strategies.Store(&v) }()
+	callback := ds.GetCallback()
+	data := []datapoint.DataPoint{{Name: "test", Value: 1.0, Timestamp: time.Now()}}
+
+	if err := callback(data, periodicRouter{&MockStrategyRouter{targets: []string{"otlp"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := sink.cadence["reboot-check"]; got != 30*time.Minute {
+		t.Errorf("cadence = %v, want 30m", got)
+	}
+	if err := callback(data, &MockStrategyRouter{targets: []string{"otlp"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.cadence) != 1 {
+		t.Errorf("a probe without a rhythm must add nothing, got %v", sink.cadence)
+	}
+}
