@@ -51,6 +51,32 @@ func TestParseConfigReadsEveryParameter(t *testing.T) {
 	}
 }
 
+func TestParseConfigReadsThePassiveBlock(t *testing.T) {
+	cfg, err := ParseConfig(configuration.StorageConfigParams{"server": "z"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Passive.Enabled || cfg.Passive.BindAddress != "0.0.0.0" || cfg.Passive.Port != 10050 || len(cfg.Passive.Allow) != 0 {
+		t.Errorf("defaults = %+v", cfg.Passive)
+	}
+	cfg, err = ParseConfig(configuration.StorageConfigParams{"server": "z", "passive": map[string]interface{}{
+		"enabled": true, "bind_address": "10.0.0.5", "port": "10250", "allow": []interface{}{"10.0.0.0/8", "192.0.2.7"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Passive.Enabled || cfg.Passive.BindAddress != "10.0.0.5" || cfg.Passive.Port != 10250 || len(cfg.Passive.Allow) != 2 {
+		t.Errorf("passive = %+v", cfg.Passive)
+	}
+	for _, bad := range []map[string]interface{}{
+		{"enabled": "yes"}, {"bind_address": "zabbix.local"}, {"port": 70000}, {"allow": "10.0.0.0/8"}, {"allow": []interface{}{"not-an-ip"}},
+	} {
+		if _, err := ParseConfig(configuration.StorageConfigParams{"server": "z", "passive": bad}); err == nil {
+			t.Errorf("passive %v must be refused", bad)
+		}
+	}
+}
+
 func TestParseConfigRefusesWhatTheAgentWouldRefuse(t *testing.T) {
 	cases := []struct {
 		name   string
