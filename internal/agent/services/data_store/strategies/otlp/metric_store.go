@@ -39,6 +39,13 @@ type metricStore struct {
 	probeBudget int            // per-probe cap; 0 = unbounded
 	probeCounts map[string]int // probe_name → currently active series count
 	memGuard    *memoryLimiter // optional; nil = no memory limiter
+	// cadence is how often each probe collects, by probe_name. It bounds
+	// how long a probe's last value is re-published as current.
+	cadence map[string]time.Duration
+	// grace is added to a probe's cadence before its value stops being
+	// vouched for: the push interval, so a run that lands just after a
+	// push is not stamped stale for one cycle.
+	grace time.Duration
 }
 
 // storedMetric is one LWW slot — the metadata we need to feed
@@ -53,10 +60,14 @@ type storedMetric struct {
 	tags       map[string]string
 	histogram  *datapoint.HistogramValue
 	observedAt time.Time
+	// restored marks an entry read back from the checkpoint and not
+	// observed since: its producer may be gone, so its value is never
+	// presented as current until a datapoint replaces it.
+	restored bool
 }
 
 func newMetricStore() *metricStore {
-	return &metricStore{entries: make(map[string]storedMetric), probeCounts: map[string]int{}}
+	return &metricStore{entries: make(map[string]storedMetric), probeCounts: map[string]int{}, cadence: map[string]time.Duration{}}
 }
 
 // newMetricStoreWithCap returns a store that drops new series past
@@ -66,7 +77,44 @@ func newMetricStoreWithCap(maxEntries int) *metricStore {
 		entries:     make(map[string]storedMetric),
 		maxEntries:  maxEntries,
 		probeCounts: map[string]int{},
+		cadence:     map[string]time.Duration{},
 	}
+}
+
+// withFreshnessGrace sets the slack added to a probe's cadence before
+// its last value stops being vouched for. Returns the store for chaining.
+func (s *metricStore) withFreshnessGrace(d time.Duration) *metricStore {
+	s.grace = d
+	return s
+}
+
+// noteProbeCadence records how often the named probe collects. A probe
+// with no recorded cadence, or a cadence of zero, has its values
+// exported at their measurement time only.
+func (s *metricStore) noteProbeCadence(probeName string, interval time.Duration) {
+	if probeName == "" {
+		return
+	}
+	s.mu.Lock()
+	s.cadence[probeName] = interval
+	s.mu.Unlock()
+}
+
+// vouched says whether the producing probe still stands behind the
+// stored value at instant now: the entry was observed by this process,
+// the probe's cadence is known, and less than one and a half cadences
+// plus the grace have elapsed since the observation. A vouched value is
+// the probe's current reading between two runs; an unvouched one is a
+// measurement of the past (#812, #890).
+func (s *metricStore) vouched(e storedMetric, now time.Time) bool {
+	if e.restored {
+		return false
+	}
+	interval := s.cadence[e.probeName]
+	if interval <= 0 {
+		return false
+	}
+	return now.Sub(e.observedAt) <= interval+interval/2+s.grace
 }
 
 // withProbeBudget sets the per-probe cardinality budget on top of any
@@ -233,22 +281,28 @@ func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
 			tags:       e.Tags,
 			histogram:  e.Histogram,
 			observedAt: e.ObservedAt,
+			restored:   true,
 		}
 		s.probeCounts[e.ProbeName]++
 	}
 }
 
 // snapshot returns a slice of CacheMetric ready to feed into
-// otelmapper.Resolve, plus the per-series observedAt time aligned by
-// index. Callers must not retain references — the maps inside are
-// snapshots and may be reused on the next call.
-func (s *metricStore) snapshot() ([]otelmapper.CacheMetric, []time.Time) {
+// otelmapper.Resolve, plus the time each series is exported with,
+// aligned by index: now for a series its probe still vouches for, the
+// measurement time otherwise. Callers must not retain references — the
+// maps inside are snapshots and may be reused on the next call.
+func (s *metricStore) snapshot(now time.Time) ([]otelmapper.CacheMetric, []time.Time) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	cms := make([]otelmapper.CacheMetric, 0, len(s.entries))
 	times := make([]time.Time, 0, len(s.entries))
 	for _, e := range s.entries {
+		when := e.observedAt
+		if s.vouched(e, now) {
+			when = now
+		}
 		cms = append(cms, otelmapper.CacheMetric{
 			ProbeName:  e.probeName,
 			ProbeType:  e.probeType,
@@ -258,7 +312,7 @@ func (s *metricStore) snapshot() ([]otelmapper.CacheMetric, []time.Time) {
 			Tags:       e.tags,
 			Histogram:  e.histogram,
 		})
-		times = append(times, e.observedAt)
+		times = append(times, when)
 	}
 	return cms, times
 }

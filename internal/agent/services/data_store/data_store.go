@@ -254,6 +254,12 @@ func (d *dataStore) GetCallback() AddCallback {
 				Int("datapoints_count", len(correctedData)).
 				Msg("Sending data to strategy")
 
+			if sink, ok := strategy.(ProbeCadenceSink); ok {
+				if pc, ok := probe.(probeCadence); ok {
+					sink.NoteProbeCadence(pc.GetName(), pc.GetInterval())
+				}
+			}
+
 			// Log the first few events for debugging
 			if strategy.GetStrategyName() == "event" && len(correctedData) > 0 {
 				for i := 0; i < min(3, len(correctedData)); i++ {

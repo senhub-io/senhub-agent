@@ -2,18 +2,19 @@ package auto_update
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"aead.dev/minisign"
 	"github.com/hashicorp/go-version"
 	"github.com/minio/selfupdate"
 	"github.com/ybbus/httpretry"
@@ -76,6 +77,9 @@ type autoUpdate struct {
 	// agent's cancellation root.
 	runCtx context.Context
 	dryRun bool
+	// targetPath is the executable to replace; empty means the running
+	// one. Set by tests so an update never lands on the test binary.
+	targetPath string
 	// operatorDriven is true for the root-run `senhub-agent update` CLI and
 	// false for the daemon's periodic checker. See selfApplyRefusal.
 	operatorDriven bool
@@ -395,19 +399,37 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 			contentType, downloadURL)
 	}
 
-	// Buffer the whole download in memory so we can open it as a ZIP.
-	// Release archives weigh ~10 MB compressed; that's an acceptable
-	// peak. Refuse anything > 200 MB as a sanity check.
-	const maxArchiveSize = 200 * 1024 * 1024
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxArchiveSize+1))
+	// The archive goes to disk, next to the binary it will replace, and
+	// the minisign digest is computed on the way through. Buffering it in
+	// memory, then the decompressed binary again, cost about 250 MB on a
+	// 100 MB binary and got the updater OOM-killed on a 2 GB host without
+	// swap (#891). The binary's directory is chosen over the system temp
+	// directory because the latter is often a tmpfs, which is RAM too.
+	target, err := a.targetBinaryPath()
 	if err != nil {
-		return fmt.Errorf("reading update archive body: %w", err)
+		return err
 	}
-	if int64(len(body)) > maxArchiveSize {
+	archive, err := os.CreateTemp(filepath.Dir(target), ".senhub-agent-update-*.zip")
+	if err != nil {
+		return fmt.Errorf("creating the update archive next to %s: %w", target, err)
+	}
+	archivePath := archive.Name()
+	defer os.Remove(archivePath)
+
+	const maxArchiveSize = 200 * 1024 * 1024
+	digest := minisign.NewReader(io.LimitReader(resp.Body, maxArchiveSize+1))
+	size, err := io.Copy(archive, digest)
+	if closeErr := archive.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return fmt.Errorf("writing update archive to %s: %w", archivePath, err)
+	}
+	if size > maxArchiveSize {
 		return fmt.Errorf("update archive too large (> %d bytes)", maxArchiveSize)
 	}
-	if len(body) < 1024*1024 {
-		return fmt.Errorf("update archive too small: %d bytes (expected at least 1MB)", len(body))
+	if size < 1024*1024 {
+		return fmt.Errorf("update archive too small: %d bytes (expected at least 1MB)", size)
 	}
 
 	// Verify the detached minisign signature of the archive BEFORE
@@ -420,16 +442,17 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 		agentstate.IncrementUpdateRejected("signature_unavailable")
 		return fmt.Errorf("update REJECTED — signature unavailable: %w", err)
 	}
-	if err := verifyArchiveSignature(body, signature); err != nil {
+	if err := verifyArchiveFile(digest, archivePath, signature); err != nil {
 		agentstate.IncrementUpdateRejected("signature_invalid")
 		return fmt.Errorf("update REJECTED — %w", err)
 	}
 	a.logger.Info().Msg("Update archive signature verified")
 
-	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return fmt.Errorf("opening update archive as zip: %w", err)
 	}
+	defer zr.Close()
 
 	// The archive ships exactly one entry: the agent binary. On
 	// Windows it's named `senhub-agent.exe`; everywhere else
@@ -452,7 +475,7 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 
 	a.logger.Info().
 		Str("content_type", contentType).
-		Int("archive_size", len(body)).
+		Int64("archive_size", size).
 		Uint64("binary_size", entry.UncompressedSize64).
 		Msg("Update archive download validation passed, applying update")
 
@@ -462,11 +485,64 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 	}
 	defer rc.Close()
 
-	if err := selfupdate.Apply(rc, selfupdate.Options{}); err != nil {
+	if err := applyBinary(rc, target); err != nil {
 		return fmt.Errorf("failed to apply update: %w", err)
 	}
 
 	a.logger.Info().Msg("Update applied successfully")
+	return nil
+}
+
+// targetBinaryPath is the executable the update replaces: the running
+// one, unless a test pointed the updater elsewhere.
+func (a *autoUpdate) targetBinaryPath() (string, error) {
+	if a.targetPath != "" {
+		return a.targetPath, nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("locating the running executable: %w", err)
+	}
+	return exe, nil
+}
+
+// applyBinary streams the new executable into a sibling file of the
+// target, then swaps it in with the rename dance of selfupdate (old
+// aside, new in place, old removed or, on Windows, hidden). Streaming
+// keeps the peak memory at one copy buffer whatever the binary weighs;
+// selfupdate.Apply would read the whole binary first (#891).
+func applyBinary(binary io.Reader, target string) error {
+	mode := os.FileMode(0755)
+	if info, err := os.Stat(target); err == nil {
+		mode = info.Mode().Perm()
+	}
+	dir, name := filepath.Split(target)
+	newPath := filepath.Join(dir, "."+name+".new")
+
+	fp, err := os.OpenFile(newPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode) // #nosec G304 - path derived from the executable being replaced
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", newPath, err)
+	}
+	if _, err := io.Copy(fp, binary); err != nil {
+		fp.Close()
+		os.Remove(newPath)
+		return fmt.Errorf("writing %s: %w", newPath, err)
+	}
+	if err := fp.Sync(); err != nil {
+		fp.Close()
+		os.Remove(newPath)
+		return fmt.Errorf("flushing %s: %w", newPath, err)
+	}
+	// Windows will not rename a file that is still open.
+	if err := fp.Close(); err != nil {
+		os.Remove(newPath)
+		return fmt.Errorf("closing %s: %w", newPath, err)
+	}
+
+	if err := selfupdate.CommitBinary(selfupdate.Options{TargetPath: target, TargetMode: mode}); err != nil {
+		os.Remove(newPath)
+		return err
+	}
 	return nil
 }
 
