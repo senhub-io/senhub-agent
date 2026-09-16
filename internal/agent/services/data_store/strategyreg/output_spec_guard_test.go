@@ -44,7 +44,7 @@ func TestOutputSpecsDeclareOnlyKeysTheStrategiesRead(t *testing.T) {
 			t.Errorf("output %q needs a DisplayName and a Mode", o.Type)
 		}
 	}
-	for _, name := range []string{"otlp", "http", "prtg", "senhub", "event"} {
+	for _, name := range []string{"otlp", "http", "prtg", "senhub", "event", "zabbix"} {
 		if _, ok := outputspec.For(name); !ok {
 			t.Errorf("strategy %q ships without an output schema", name)
 		}
