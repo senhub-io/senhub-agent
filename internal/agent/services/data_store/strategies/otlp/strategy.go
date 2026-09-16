@@ -213,7 +213,7 @@ func NewOTLPSyncStrategy(
 		ml = newMemoryLimiter(soft, hard, cfg.MemoryLimit.CheckInterval)
 	}
 
-	store := newMetricStoreWithCap(cfg.MaxStoreSize)
+	store := newMetricStoreWithCap(cfg.MaxStoreSize).withFreshnessGrace(cfg.Metrics.Interval)
 	if cfg.MaxActiveSeriesPerProbe > 0 {
 		store = store.withProbeBudget(cfg.MaxActiveSeriesPerProbe)
 	}
@@ -666,6 +666,13 @@ func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 		s.store.upsert(dp)
 	}
 	return nil
+}
+
+// NoteProbeCadence records how often a probe collects, so its last
+// value is exported as current between two runs and as a past
+// measurement once the probe stopped observing it (#890).
+func (s *OTLPSyncStrategy) NoteProbeCadence(probeName string, interval time.Duration) {
+	s.store.noteProbeCadence(probeName, interval)
 }
 
 // tagProbeType is the datapoint tag carrying the producing probe's type,
