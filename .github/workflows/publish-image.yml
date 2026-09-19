@@ -10,6 +10,11 @@ name: Publish container image
 #
 # Manual on purpose for now: a first image is a promise to keep the base
 # rebuilt, and that promise is made deliberately, not by a tag push.
+#
+# The image is built once for amd64 and scanned before anything is
+# pushed. A customer's registry scans what we deliver — Harbor ships
+# this same scanner — so a fixable high or critical finding stops the
+# publication here rather than surfacing in their pipeline.
 
 on:
   workflow_dispatch:
@@ -67,6 +72,54 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Built for amd64 only and kept local, so the scan below reads the
+      # exact layers the push would publish before anything is pushed.
+      - name: Build for the scan
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            VERSION=${{ inputs.tag }}
+            VARIANT=${{ steps.name.outputs.variant_arg }}
+          tags: senhub-agent-scan:${{ inputs.tag }}
+
+      # The gate. A customer's registry scans what we publish — Harbor's
+      # own scanner IS this one — so we look first rather than learn it
+      # from them. Only findings with a published fix fail the build: a
+      # vulnerability nobody can fix yet must not stop a delivery, and
+      # leaving it visible in the log is what lets us decide.
+      - name: Refuse an image with a fixable high or critical finding
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: senhub-agent-scan:${{ inputs.tag }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: List every finding, fixable or not
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: senhub-agent-scan:${{ inputs.tag }}
+          scanners: vuln
+          exit-code: '0'
+          format: table
+          output: trivy-full.txt
+
+      - name: Put the full report in the summary
+        if: always()
+        run: |
+          {
+            echo "### Vulnerability scan"
+            echo '```'
+            cat trivy-full.txt || echo "no report produced"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build and push
         uses: docker/build-push-action@v6
