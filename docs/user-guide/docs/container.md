@@ -61,7 +61,7 @@ feature they configure is wanted.
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key and the bookmarks live |
 | `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance |
-| `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it |
+| `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. Not merged with `SENHUB_AZURE_APP`, see [Reading Azure Container Apps](#reading-azure-container-apps) |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
 
 The agent key is **not** a variable: the agent generates its own on
@@ -120,18 +120,18 @@ Whichever you choose, the configuration is checked before the agent
 starts: a container whose variables produce a file the agent would
 refuse stops with the reason rather than restarting in a loop.
 
-### Reading an Azure Container App
+### Reading Azure Container Apps
 
 This is a shorthand for the fragment `SENHUB_PROBES` would carry, kept
 because it is the probe this image is most often asked for. Set the
-application and its credentials, and the agent reads the console log
-stream of that Container App. Setting `SENHUB_AZURE_APP` without the
-rest stops the container with the list of what is missing, rather than
-starting half configured.
+applications and their credentials, and the agent reads the console log
+stream of each one. Setting `SENHUB_AZURE_APP` without the rest stops
+the container with the list of what is missing, rather than starting
+half configured.
 
 | Variable | What it does |
 |---|---|
-| `SENHUB_AZURE_APP` | Name of the Container App to read |
+| `SENHUB_AZURE_APP` | Names of the Container Apps to read, comma-separated |
 | `SENHUB_AZURE_TENANT_ID` | Entra tenant of the app registration |
 | `SENHUB_AZURE_CLIENT_ID` | Application (client) ID |
 | `SENHUB_AZURE_CLIENT_SECRET` | Client secret |
@@ -141,6 +141,32 @@ starting half configured.
 None of these credentials is written to a file: the configuration holds
 a reference and the agent reads the value from the environment at every
 start.
+
+One probe instance follows one application, so `SENHUB_AZURE_APP` takes
+a list and writes one instance per name, each with its own bookmark:
+
+```yaml
+SENHUB_AZURE_APP: "oltp,billing,web"
+```
+
+The applications must share the credentials, the subscription and the
+resource group, since those are one variable each. An application in
+another subscription or another resource group belongs to another
+collector. Spaces around a name are absorbed, a name given twice is
+declared once, and a name that is not a Container App name stops the
+container.
+
+The credentials, and so the collector, are what this list is bounded
+by, not a limit of the probe. How many applications one agent can
+follow before the Azure control plane refuses its scans is measured
+under [Requirements](probes/azure_container_apps.md#requirements).
+
+`SENHUB_AZURE_APP` and `SENHUB_PROBES` write two different files and
+are **not merged**. An application named in both is declared twice, and
+every line of it is read twice, counted twice by whatever ingests it.
+The entrypoint says so on
+startup when both variables are set; name each application in one place
+only.
 
 The role behind the app registration needs four actions, and `Reader`
 is not enough. See [Azure Container Apps](probes/azure_container_apps.md).
