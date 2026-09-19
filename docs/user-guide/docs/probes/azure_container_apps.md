@@ -9,7 +9,9 @@ The Azure Container Apps probe reads the console log stream of an application ho
 
 Lines ride the agent's log rail exactly like lines read by `filetail`: the same parsers (raw, regex, json, logfmt), the same multiline folding for stack traces, and the same outputs (OTLP logs first). Each record carries the application, revision, replica and container it came from, so one stream never blends into another.
 
-One probe instance follows one application; add an instance per application. Replicas that appear with a scale-out or a new revision are attached on the next scan; replicas that disappear are released.
+One probe instance follows one application; to follow several, declare one instance per application, each with its own `name` and its own `bookmark_path`. Two instances sharing a bookmark would overwrite each other's position and replay or skip lines after a restart. In the container image the `SENHUB_AZURE_APP` variable takes a comma-separated list and writes those instances for you, see [Container image](../container.md#reading-azure-container-apps).
+
+Replicas that appear with a scale-out or a new revision are attached on the next scan; replicas that disappear are released.
 
 **Collected data:**
 

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Exercises the identity resolution of entrypoint.sh without a container.
-# The two functions decide whether a redeployed agent keeps being the same
-# host and the same agent, and that answer is invisible until weeks later
-# in the graph, so it is worth a test that does not need a daemon.
+# Exercises entrypoint.sh without a container: the identity resolution,
+# whose answer decides whether a redeployed agent keeps being the same host
+# and the same agent and stays invisible until weeks later in the graph, and
+# the Container Apps shorthand, which turns a variable into the probe list.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -68,5 +68,50 @@ rm -f "$STATE_DIR/agent.key"
 printf 'config_version: 3\n\nagent:\n  key: "e313cd19-45d9-4711-8b09-3f58ac6e7595"\n' > "$CONFIG"
 keep_agent_key 2>/dev/null
 check "a fresh agent key is kept for the next container" "$(cat "$STATE_DIR/agent.key")" "e313cd19-45d9-4711-8b09-3f58ac6e7595"
+
+# 6. The Container Apps shorthand writes one entry per name of the list,
+#    each with its own bookmark, so a collector follows several
+#    applications without hand-written YAML.
+SENHUB_AZURE_TENANT_ID=t
+SENHUB_AZURE_CLIENT_ID=c
+SENHUB_AZURE_CLIENT_SECRET=s
+SENHUB_AZURE_SUBSCRIPTION_ID=sub
+SENHUB_AZURE_RESOURCE_GROUP=rg
+export SENHUB_AZURE_TENANT_ID SENHUB_AZURE_CLIENT_ID SENHUB_AZURE_CLIENT_SECRET \
+       SENHUB_AZURE_SUBSCRIPTION_ID SENHUB_AZURE_RESOURCE_GROUP
+fragment="$CONFIG_DIR/probes.d/50-azure-container-apps.yaml"
+
+SENHUB_AZURE_APP="oltp, billing ,web"
+export SENHUB_AZURE_APP
+write_azure_probe 2>/dev/null
+check "one entry per application of the list" "$(grep -c '^- name: ' "$fragment")" "3"
+check "the spaces around a name are absorbed" "$(sed -n 's/^- name: //p' "$fragment" | tr '\n' ',')" "oltp,billing,web,"
+check "each application gets its own bookmark" \
+  "$(sed -n 's/.*bookmark_path: //p' "$fragment" | tr '\n' ',')" \
+  "$STATE_DIR/oltp.bookmark,$STATE_DIR/billing.bookmark,$STATE_DIR/web.bookmark,"
+check "the credentials stay references, never values" "$(grep -c 'env:SENHUB_AZURE_CLIENT_SECRET' "$fragment")" "3"
+check "no secret is written into the fragment" "$(grep -c 'client_secret: "s"' "$fragment")" "0"
+
+# 7. A single name keeps writing exactly what it wrote before the list.
+SENHUB_AZURE_APP=oltp
+write_azure_probe 2>/dev/null
+check "a single name writes a single entry" "$(grep -c '^- name: ' "$fragment")" "1"
+check "the fragment is rewritten, not appended to" "$(grep -c 'billing' "$fragment")" "0"
+
+# 8. A name repeated in the list is declared once: two entries of the same
+#    application would read the same stream twice into the same bookmark.
+SENHUB_AZURE_APP="oltp,billing,oltp"
+write_azure_probe 2>/dev/null
+check "a repeated name is declared once" "$(grep -c '^- name: ' "$fragment")" "2"
+
+# 9. A name that would place the bookmark elsewhere is refused rather than
+#    written through.
+SENHUB_AZURE_APP="oltp,../../etc/cron.d/x"
+if (write_azure_probe >/dev/null 2>&1); then
+  check "a name carrying a path separator is refused" "accepted" "refused"
+else
+  check "a name carrying a path separator is refused" "refused" "refused"
+fi
+unset SENHUB_AZURE_APP
 
 exit "$fail"
