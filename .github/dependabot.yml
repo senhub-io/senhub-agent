@@ -15,3 +15,24 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # Go dependencies. Without this, nothing raised a component version on
+  # its own: the two libraries a customer's registry scanner reported in
+  # September had a published fix for weeks and no pull request proposed
+  # it. Grouped so the week's raises arrive as one review rather than
+  # thirty, and patch/minor only — a major raise is a decision, not a
+  # maintenance chore, and deserves its own pull request.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
