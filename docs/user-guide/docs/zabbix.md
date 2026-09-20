@@ -1,0 +1,150 @@
+# Zabbix output (preview)
+
+!!! warning "Preview"
+    The Zabbix output is being built during the 0.6.0 cycle and is not
+    supported yet. This page documents the parameters the agent reads;
+    the templates and the discovery rules are still to come.
+
+The `zabbix` output makes the agent a native **Zabbix active agent**: it
+connects out to a Zabbix server or proxy on port 10051, registers the host
+through Zabbix autoregistration, asks which items the server wants for it,
+and pushes their latest values in batches. Nothing listens on the agent
+side; PRTG, Nagios and Prometheus keep working next to it.
+
+## Configuration
+
+```yaml
+# strategies.d/20-zabbix.yaml
+zabbix:
+  server: "zabbix.example.com:10051"
+  hostname: "web-01"            # default: the machine's host name
+  host_metadata: "senhub-agent" # matched by the autoregistration action
+  interval: 60s                 # push cadence
+  refresh_interval: 120s        # item list refresh
+  heartbeat_interval: 60s
+  timeout: 10s
+  key_prefix: senhub
+  tls:
+    enabled: false
+    ca_file: ""
+    cert_file: ""
+    key_file: ""
+    server_name: ""
+    insecure_skip_verify: false
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `server` | required | Zabbix server or proxy, `host:port`; `10051` when the port is omitted. |
+| `hostname` | machine host name | Name this host registers under. |
+| `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. Limited to 2034 bytes by Zabbix. |
+| `interval` | `60s` | Push cadence of the collected values. |
+| `refresh_interval` | `120s` | How often the item list is asked again. |
+| `heartbeat_interval` | `60s` | Heartbeat cadence; the server declares the host unavailable after twice that. |
+| `timeout` | `10s` | Bound on one connection, request and reply. |
+| `key_prefix` | `senhub` | First segment of every item key. |
+| `passive.enabled` | `false` | Answer the server's polls on the passive port (see below). |
+| `passive.bind_address` | `0.0.0.0` | Address the passive listener binds to. |
+| `passive.port` | `10050` | Port the passive listener binds to; sent to the server so autoregistration creates the agent interface on it. |
+| `passive.allow` | server addresses | Addresses or CIDR ranges allowed to poll the passive port. |
+| `tls.enabled` | `false` | Encrypt the connection with TLS (certificate). |
+| `tls.ca_file` | | CA certificate that signed the server's certificate. |
+| `tls.cert_file`, `tls.key_file` | | Client certificate and key, both or none. |
+| `tls.server_name` | server host | Name expected in the server's certificate. |
+| `tls.insecure_skip_verify` | `false` | Skip the server certificate check. |
+
+Zabbix pre-shared keys (PSK) are not supported: Go's TLS library has no
+PSK cipher suites. Encrypted autoregistration, which Zabbix only offers
+with PSK, is therefore not available; register in clear or through a
+local proxy, then encrypt the data connection with a certificate.
+
+## Item keys
+
+Every series is sent under a key built from the probe's definition:
+
+```
+<key_prefix>.<metric>[<probe name>,<dimension>,...,<static attribute>,...]
+```
+
+The metric is the OTel name of the series (`system.cpu.utilization`,
+`senhub.veeam.job.status`), so it is called the same thing here, on the
+Prometheus endpoint and on the OTLP output. The dimensions are the
+metric's `multi_instance_labels`, in the order the definition lists them.
+The static attributes are the values of the metric's `otel.attributes`,
+in attribute-key order: they tell apart the internal metrics that share
+one OTel name, so on a probe named `memory` the used memory is
+`senhub.system.memory.usage[memory,used]` and the free memory
+`senhub.system.memory.usage[memory,free]`, while a filesystem series
+carries its device and mount point first:
+`senhub.system.filesystem.usage[logicaldisk,/dev/sda1,/,,used]` (an
+empty dimension stays empty). A metric whose OTel name already starts
+with the prefix is not prefixed twice. Values follow the OTel unit (a
+percentage is a ratio, a duration is in seconds); an enum metric is sent
+as its raw code under one key.
+
+The server only receives the keys it asked for. Until the host exists on
+the server and a template gives it items, the log says so at start and
+nothing is pushed.
+
+## Templates and discovery
+
+The templates are generated from the same definitions the keys come from,
+one per probe type:
+
+```bash
+senhub-agent zabbix template --out ./templates            # every probe type
+senhub-agent zabbix template --probe memory --probe veeam # a selection
+senhub-agent zabbix template --probe veeam --version 6.0  # to standard output
+```
+
+Options: `--version 6.0|7.0` (export format, `7.0` by default), `--prefix`
+(must match the output's `key_prefix`), `--delay` (update interval of the
+items, `1m` by default), `--out` (directory; without it a single template
+goes to standard output).
+
+Every item of a template is a prototype under a low-level discovery rule,
+because the probe instance name is discovered too: the rule
+`senhub.discovery[memory]` returns `[{"{#PROBE}":"memory"}]`, and a
+metric with dimensions hangs under the rule of its dimension set,
+`senhub.discovery[logicaldisk,device,mount_point]`, with one macro per
+dimension. The agent serves these discovery keys like any other item, so
+a host gets its items within one discovery interval (1 hour by default,
+`--delay` does not change it; edit the rule in Zabbix if you want faster
+discovery on a lab). An enum metric with a lookup gets a value map.
+
+Import the files through **Data collection > Templates > Import**, or
+`configuration.import` on the API. Re-importing a regenerated template
+updates the same objects: the identifiers are derived from the keys.
+
+## Passive polling
+
+With `passive.enabled: true` the agent also listens on `passive.port`
+(10050 by default) and answers the server's polls the way a classic
+agent does: `agent.ping`, so the host's availability icon turns green,
+`agent.version`, `agent.hostname`, and every item key the active push
+sends, for an operator who prefers passive items. Both wire dialects are
+served, the bare key of servers before 7.0 and the JSON batch of 7.0 and
+later.
+
+Only the addresses in `passive.allow` may poll; when the list is empty,
+the addresses the configured `server` resolves to. The port is sent with
+the registration request so the autoregistration action creates the
+agent interface on it. The passive port is not encrypted.
+
+```yaml
+zabbix:
+  server: "zabbix.example.com:10051"
+  passive:
+    enabled: true
+    port: 10050
+    allow: ["10.20.0.0/24"]
+```
+
+## Autoregistration
+
+Create an action under **Alerts > Actions > Autoregistration actions**
+with a condition on the host metadata (`contains senhub-agent`, or
+whatever you set in `host_metadata`) and three operations: add host, add
+to a host group, link the generated templates. Every agent whose
+metadata matches then appears by itself at its first check-list request,
+with its items created by discovery within the discovery interval.
