@@ -13,7 +13,7 @@ import (
 // from a refactor) shows up as a failing test rather than as a
 // configuration that silently does nothing.
 func TestShippedStrategySet(t *testing.T) {
-	want := []string{"event", "http", "otlp", "prtg", "senhub"}
+	want := []string{"event", "http", "otlp", "prtg", "senhub", "zabbix"}
 	if got := data_store.RegisteredStrategyNames(); !reflect.DeepEqual(got, want) {
 		t.Errorf("shipped strategies = %v, want %v", got, want)
 	}

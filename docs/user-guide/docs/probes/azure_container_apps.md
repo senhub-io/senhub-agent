@@ -145,12 +145,30 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.azure_container_apps.up` | `{status}` | `1` when Azure Resource Manager answered the last replica scan, else `0` |
+| `senhub.azure_container_apps.scan.failures` | `{scan}` | Cumulative scans Azure refused, one series per `reason` |
 | `senhub.azure_container_apps.replicas` | `{replica}` | Replicas of the active revisions seen at the last scan |
+| `senhub.azure_container_apps.revisions.active` | `{revision}` | Revisions marked active at the last scan |
 | `senhub.azure_container_apps.streams.open` | `{stream}` | Streams currently attached, one per replica and container |
+| `senhub.azure_container_apps.streams.wanted` | `{stream}` | Streams the last scan decided to hold |
+| `senhub.azure_container_apps.stream.reconnects` | `{reconnect}` | Cumulative streams re-attached after a drop |
+| `senhub.azure_container_apps.stream.attach_throttled` | `{attach}` | Cumulative attaches refused for rate by the stream endpoint |
+| `senhub.azure_container_apps.stream.token.ttl` | `s` | Seconds left on the console stream token |
 | `senhub.azure_container_apps.records_emitted` | `{record}` | Cumulative records published to the log rail |
 | `senhub.azure_container_apps.records_dropped` | `{record}` | Cumulative lines dropped at the source by `exclude` or `min_severity` |
-| `senhub.azure_container_apps.stream.reconnects` | `{reconnect}` | Cumulative streams re-attached after a drop |
+| `senhub.azure_container_apps.records_unparsed` | `{record}` | Cumulative lines the declared parser could not read |
+| `senhub.azure_container_apps.records.last_age` | `s` | Seconds since a line last left this probe |
 | `senhub.azure_container_apps.arm.reads_remaining` | `{request}` | Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it |
+
+These describe the collection, not the application. What the containers themselves consume is Azure Monitor's to answer, through a different interface.
+
+Four of them answer a question the others cannot:
+
+- **`streams.wanted` against `streams.open`.** A gap means a replica the scan knows about whose stream is not attached, which the replica count alone cannot show once a replica holds more than one container or a container filter is set.
+- **`scan.failures` by `reason`.** Reachability reads the same for a refused secret, an application that was deleted and a control plane pushing back; the reasons are `denied`, `not_found`, `throttled`, `refused`, `timeout` and `unreachable`. A refused scan costs no line, but a replica that appears while scans are refused is not picked up, so this is where that gap becomes visible.
+- **`records_unparsed`.** A line the declared parser cannot read is dropped. Declare `json` on an application that also writes a plain startup banner and those lines leave no trace anywhere else.
+- **`records.last_age`.** Silence, not failure: an application with nothing to say is legitimately silent. Read against `streams.open`, it separates a pipe that is alive from one that is merely attached.
+
+`stream.reconnects` is expected to climb on its own. Azure closes every console stream about every ten minutes and the probe re-attaches; `stream.attach_throttled` is the one that says the pace is too fast for the environment.
 
 # Requirements
 
