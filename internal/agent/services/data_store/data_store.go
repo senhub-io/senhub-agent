@@ -237,6 +237,9 @@ func (d *dataStore) GetCallback() AddCallback {
 					break
 				}
 			}
+			if !shouldSendToStrategy && consumesOtelMetrics(strategy) && targetsStrategy(targetStrategies, "otlp") {
+				shouldSendToStrategy = true
+			}
 
 			if !shouldSendToStrategy {
 				// Skip strategies that are not in the target list
@@ -250,6 +253,12 @@ func (d *dataStore) GetCallback() AddCallback {
 				Str("strategy", strategy.GetStrategyName()).
 				Int("datapoints_count", len(correctedData)).
 				Msg("Sending data to strategy")
+
+			if sink, ok := strategy.(ProbeCadenceSink); ok {
+				if pc, ok := probe.(probeCadence); ok {
+					sink.NoteProbeCadence(pc.GetName(), pc.GetInterval())
+				}
+			}
 
 			// Log the first few events for debugging
 			if strategy.GetStrategyName() == "event" && len(correctedData) > 0 {
@@ -848,4 +857,28 @@ func (d *dataStore) noteTransformerFallback(probeName, probeType string, tagMap 
 		Str("probe_name", probeName).
 		Str("probe_type", probeType).
 		Msg("Probe has no transformer definition - datapoints ship without unit injection or corrections. Add a YAML under transformers/definitions to fix.")
+}
+
+// OtelMetricSink is implemented by a strategy that consumes the same
+// mapper-shaped metrics the OTLP output consumes. The probes name their
+// target strategies in a fixed list written before such sinks existed
+// (senhub, prtg, http, otlp); rather than editing every probe when one is
+// added, the store sends to any sink of this kind whatever it sends to
+// otlp.
+type OtelMetricSink interface {
+	ConsumesOtelMetrics() bool
+}
+
+func consumesOtelMetrics(s SyncStrategy) bool {
+	sink, ok := s.(OtelMetricSink)
+	return ok && sink.ConsumesOtelMetrics()
+}
+
+func targetsStrategy(targets []string, name string) bool {
+	for _, t := range targets {
+		if t == name {
+			return true
+		}
+	}
+	return false
 }

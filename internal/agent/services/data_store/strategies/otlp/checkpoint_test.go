@@ -245,7 +245,7 @@ func TestCheckpointer_RestoredZombiesEvictedByStaleness(t *testing.T) {
 	if n := restored.evictStale(now, 10*time.Minute); n != 1 {
 		t.Fatalf("evicted %d, want exactly the zombie", n)
 	}
-	metrics, _ := restored.snapshot()
+	metrics, _ := restored.snapshot(time.Now())
 	if len(metrics) != 1 || metrics[0].MetricName != "system.cpu.utilization" {
 		t.Fatalf("post-restart survivors = %+v, want only the live series", metrics)
 	}
@@ -294,7 +294,7 @@ func TestCheckpointer_HistogramSurvivesRoundtrip(t *testing.T) {
 		t.Fatalf("loadAndRestore: %v", err)
 	}
 
-	cms, _ := fresh.snapshot()
+	cms, _ := fresh.snapshot(time.Now())
 	if len(cms) != 1 {
 		t.Fatalf("restored series=%d, want 1", len(cms))
 	}

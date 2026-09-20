@@ -12,11 +12,13 @@ package strategyreg
 import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/event"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/prtg"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/senhub"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix"
 )
 
 func init() {
@@ -38,6 +40,14 @@ func init() {
 
 	data_store.RegisterStrategy("otlp", func(params configuration.StorageConfigParams, deps data_store.StrategyDeps) (data_store.SyncStrategy, error) {
 		return otlp.NewOTLPSyncStrategy(deps.AgentConfig, params, deps.Logger).(data_store.SyncStrategy), nil
+	})
+
+	data_store.RegisterStrategy("zabbix", func(params configuration.StorageConfigParams, deps data_store.StrategyDeps) (data_store.SyncStrategy, error) {
+		var defs otelmapper.DefinitionLookup
+		if deps.Registry != nil {
+			defs = deps.Registry
+		}
+		return zabbix.New(params, deps.Logger, defs), nil
 	})
 
 	// What each strategy reads, so `agent config check` can say that a
@@ -93,6 +103,13 @@ func init() {
 		"queue_size", "server_url", "sync_interval",
 	}, nil)
 
+	data_store.RegisterKnownParams("zabbix", []string{
+		"allow", "bind_address", "ca_file", "cert_file", "enabled",
+		"heartbeat_interval", "host_metadata", "hostname",
+		"insecure_skip_verify", "interval", "key_file", "key_prefix", "passive",
+		"port", "refresh_interval", "server", "server_name", "timeout", "tls",
+	}, nil)
+
 	// How to check a configuration without building anything, so
 	// `agent config check` refuses what the agent would refuse rather
 	// than reporting it valid and letting the strategy be dropped at
@@ -120,6 +137,11 @@ func init() {
 
 	data_store.RegisterParamValidator("event", func(params configuration.StorageConfigParams) error {
 		_, err := event.ValidateParams(params)
+		return err
+	})
+
+	data_store.RegisterParamValidator("zabbix", func(params configuration.StorageConfigParams) error {
+		_, err := zabbix.ParseConfig(params)
 		return err
 	})
 
