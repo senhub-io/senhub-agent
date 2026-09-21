@@ -8,7 +8,7 @@ else is a parameter.
 docker run -d --name senhub-agent \
   -e OTLP_BEARER_TOKEN=<your token> \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.5.5-beta
+  ghcr.io/senhub-io/senhub-agent:0.5.6
 ```
 
 That is the whole of it for a first run: one variable, one mount.
@@ -182,7 +182,7 @@ ignores your variables tells you why.
 docker run -d --name senhub-agent \
   -v /srv/senhub/conf:/etc/senhub-agent \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.5.5-beta
+  ghcr.io/senhub-io/senhub-agent:0.5.6
 ```
 
 Your configuration wins completely, and that includes the agent key
