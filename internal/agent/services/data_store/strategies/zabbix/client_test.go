@@ -23,7 +23,7 @@ func TestActiveChecksSendsTheHostAndItsMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	items, err := c.activeChecks(context.Background())
+	items, _, err := c.activeChecks(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestExchangeReadsACompressedReply(t *testing.T) {
 	srv.compressReplies = true
 	srv.setItems("senhub.x[p]")
 	c, _ := newClient(testConfig(srv.addr()))
-	items, err := c.activeChecks(context.Background())
+	items, _, err := c.activeChecks(context.Background())
 	if err != nil || len(items) != 1 {
 		t.Fatalf("items = %v, err = %v", items, err)
 	}
@@ -118,7 +118,7 @@ func TestActiveChecksTellsAnUnknownHostApart(t *testing.T) {
 	srv := newFakeServer(t)
 	srv.refuseInfo["active checks"] = "host [web-01] not found"
 	c, _ := newClient(testConfig(srv.addr()))
-	_, err := c.activeChecks(context.Background())
+	_, _, err := c.activeChecks(context.Background())
 	if !errors.Is(err, errHostUnknown) {
 		t.Fatalf("err = %v, want errHostUnknown", err)
 	}
@@ -136,7 +136,7 @@ func TestParseInfo(t *testing.T) {
 
 func TestConnectFailureNamesTheServer(t *testing.T) {
 	c, _ := newClient(testConfig("127.0.0.1:1"))
-	_, err := c.activeChecks(context.Background())
+	_, _, err := c.activeChecks(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "127.0.0.1:1") {
 		t.Fatalf("err = %v", err)
 	}

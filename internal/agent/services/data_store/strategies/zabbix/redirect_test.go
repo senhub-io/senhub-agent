@@ -23,7 +23,7 @@ func TestAProxyGroupRedirectIsFollowedAndThenUsedDirectly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	items, err := c.activeChecks(context.Background())
+	items, _, err := c.activeChecks(context.Background())
 	if err != nil {
 		t.Fatalf("the redirect was not followed: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestAProxyGroupRedirectIsFollowedAndThenUsedDirectly(t *testing.T) {
 		t.Fatalf("items = %+v", items)
 	}
 
-	if _, err := c.activeChecks(context.Background()); err != nil {
+	if _, _, err := c.activeChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if n := entry.requestCount(); n != 1 {
@@ -75,7 +75,7 @@ func TestAStaleRedirectRevisionIsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry.setRedirect(newHolder.addr(), 7)
-	if _, err := c.activeChecks(context.Background()); err != nil {
+	if _, _, err := c.activeChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	// A reply that overtook a newer one must not move us backwards.
@@ -96,7 +96,7 @@ func TestWhenTheHoldingMemberGoesDownTheAgentReturnsToTheConfiguredAddresses(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.activeChecks(context.Background()); err != nil {
+	if _, _, err := c.activeChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if c.target() != holder.addr() {
@@ -108,13 +108,13 @@ func TestWhenTheHoldingMemberGoesDownTheAgentReturnsToTheConfiguredAddresses(t *
 	holder.close()
 	entry.clearRedirect()
 	entry.setItems("senhub.k[p]")
-	if _, err := c.activeChecks(context.Background()); err == nil {
+	if _, _, err := c.activeChecks(context.Background()); err == nil {
 		t.Fatal("the dead member answered")
 	}
 	if got := c.target(); got != entry.addr() {
 		t.Fatalf("target = %s, want the configured address back", got)
 	}
-	items, err := c.activeChecks(context.Background())
+	items, _, err := c.activeChecks(context.Background())
 	if err != nil {
 		t.Fatalf("the agent did not recover: %v", err)
 	}
@@ -134,10 +134,10 @@ func TestSeveralConfiguredAddressesAreTriedInTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.activeChecks(context.Background()); err == nil {
+	if _, _, err := c.activeChecks(context.Background()); err == nil {
 		t.Fatal("a closed listener answered")
 	}
-	items, err := c.activeChecks(context.Background())
+	items, _, err := c.activeChecks(context.Background())
 	if err != nil {
 		t.Fatalf("the second address was not tried: %v", err)
 	}

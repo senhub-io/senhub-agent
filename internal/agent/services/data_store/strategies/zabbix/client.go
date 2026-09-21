@@ -37,6 +37,10 @@ type client struct {
 	idx      int
 	redirect string
 	rev      int64
+	// configRev is the item list's revision as the server last stated
+	// it. It has nothing to do with rev above, which orders a proxy
+	// group's redirections.
+	configRev int64
 }
 
 // activeItem is one item the server wants for this host.
@@ -61,6 +65,11 @@ type response struct {
 	Info     string       `json:"info"`
 	Data     []activeItem `json:"data"`
 	Redirect *redirection `json:"redirect"`
+	// ConfigRevision orders the server's view of this host's item list.
+	// Echoing it back is what lets the server answer "nothing changed"
+	// with no data at all, instead of resending the whole list on every
+	// refresh.
+	ConfigRevision int64 `json:"config_revision"`
 }
 
 // redirection is how a proxy group answers every request type when the
@@ -253,11 +262,23 @@ func (c *client) roundTrip(ctx context.Context, req interface{}) (response, erro
 // activeChecks asks which items the server wants for this host. The
 // request is also what registers the host: an unknown host with matching
 // metadata is created by the server's autoregistration action.
-func (c *client) activeChecks(ctx context.Context) ([]activeItem, error) {
+func (c *client) activeChecks(ctx context.Context) (items []activeItem, changed bool, err error) {
+	c.mu.Lock()
+	sent := c.configRev
+	c.mu.Unlock()
 	req := map[string]interface{}{
 		"request":       "active checks",
 		"host":          c.cfg.Hostname,
 		"host_metadata": metadataWithPlatform(c.cfg.HostMetadata),
+		// What a current agent says about itself. Without it the server
+		// treats us as an agent of unknown vintage, shows nothing in the
+		// host's agent columns, and resends the whole item list every
+		// time because incremental sync needs a session and a revision
+		// to hang on.
+		"version":         advertisedAgent,
+		"variant":         advertisedVariant,
+		"session":         c.session,
+		"config_revision": sent,
 	}
 	if c.cfg.Passive.Enabled {
 		// The port the autoregistration action writes on the host's
@@ -266,15 +287,28 @@ func (c *client) activeChecks(ctx context.Context) ([]activeItem, error) {
 	}
 	resp, err := c.exchange(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if resp.Response != "success" {
 		if strings.Contains(resp.Info, "not found") {
-			return nil, fmt.Errorf("%w: %s", errHostUnknown, resp.Info)
+			return nil, false, fmt.Errorf("%w: %s", errHostUnknown, resp.Info)
 		}
-		return nil, fmt.Errorf("server refused the check list: %s", firstNonEmpty(resp.Info, resp.Response))
+		return nil, false, fmt.Errorf("server refused the check list: %s", firstNonEmpty(resp.Info, resp.Response))
 	}
-	return resp.Data, nil
+	// Measured against a real 7.0.30: when the list has not changed the
+	// reply carries neither data nor a revision — not the revision we
+	// sent, which is what the shape of the protocol first suggests.
+	// Reading that as an empty list would silence every item on the host
+	// until the next configuration change.
+	if sent != 0 && resp.Data == nil && resp.ConfigRevision == 0 {
+		return nil, false, nil
+	}
+	if resp.ConfigRevision != 0 {
+		c.mu.Lock()
+		c.configRev = resp.ConfigRevision
+		c.mu.Unlock()
+	}
+	return resp.Data, true, nil
 }
 
 // errHostUnknown is the server's answer while the host does not exist
