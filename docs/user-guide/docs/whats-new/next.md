@@ -74,6 +74,19 @@ collection gaps that comparison exposed.
   action per platform, so a Linux host is linked to the Linux templates
   and a Windows host to the Windows ones without anyone choosing.
 
+- **The host's inventory fills itself.** The agent already discovers
+  what the machine is, and Zabbix keeps those facts in host inventory.
+  Nine text items carry the operating system, the hardware, the vendor,
+  the model and the serial number into the matching fields, and `setup`
+  puts new hosts in automatic inventory mode. A fact the agent did not
+  find is not sent, so a field an operator typed by hand is not blanked.
+
+- **Certificate encryption on the polled port.** The passive listener
+  takes its own `tls` block: with a certificate it encrypts what it
+  serves, and with an authority it also demands one from whoever polls.
+  A certificate that cannot be read stops the agent rather than leaving
+  a listener that serves in clear. (#904)
+
 - **The agent answers for itself.** `agent.ping`, `agent.version` and
   `agent.hostname` are served on both rails and declared in a template
   of their own, so a host monitored actively has the availability line
@@ -149,8 +162,6 @@ collection gaps that comparison exposed.
 
 ## Known follow-ups
 
-- The passive listener still serves in clear; certificate encryption on
-  that port is not implemented. (#904)
 - Pre-shared keys are not supported. The scope is measured and the
   decision is open. (#903)
 - The agent declares no version and ignores the configuration revision,
@@ -162,5 +173,5 @@ collection gaps that comparison exposed.
   (#907)
 - Six probes declare dimensions the discriminant registry does not list.
   (#915)
-- Host identity, which the agent already collects, does not reach
-  Zabbix; its home there is host inventory. (#909)
+- The collection gap with the native agent is closed on the families we
+  cover and measured; what remains is recorded there. (#909)
