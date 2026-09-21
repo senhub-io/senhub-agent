@@ -15,6 +15,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "1 when Azure Resource Manager answered the last replica scan, else 0"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.up
       unit: "{status}"
@@ -26,6 +28,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Replicas of the active revisions seen at the last scan"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.replicas
       unit: "{replica}"
@@ -37,6 +41,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Revisions marked active at the last scan; more than one means a rollout in flight or a traffic split left in place"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.revisions.active
       unit: "{revision}"
@@ -48,6 +54,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Console log streams currently attached (one per replica and container)"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.streams.open
       unit: "{stream}"
@@ -59,6 +67,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Streams the last scan decided to hold; the gap with the open ones is a replica known and not being read"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.streams.wanted
       unit: "{stream}"
