@@ -49,7 +49,7 @@ Expected response:
 ```json
 {
   "status": "ok",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "uptime": "2h30m15s",
   "probes_active": 4,
   "metrics_cached": 156
@@ -70,7 +70,7 @@ Response:
 ```json
 {
   "status": "running",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "os": "linux",
   "arch": "amd64",
   "port": 8080,

@@ -32,15 +32,15 @@ same artifacts:
 
 ```bash
 # GitHub — public, and the one to prefer for a container build
-https://github.com/senhub-io/senhub-agent/releases/download/0.5.4/senhub-agent-linux-amd64.zip
+https://github.com/senhub-io/senhub-agent/releases/download/0.5.6/senhub-agent-linux-amd64.zip
 
 # SenHub release server
-https://eu-west-1.intake.senhub.io/download/0.5.4/senhub-agent-linux-amd64.zip
+https://eu-west-1.intake.senhub.io/download/0.5.6/senhub-agent-linux-amd64.zip
 ```
 
 !!! warning "Release tags carry no `v` prefix"
 
-    The tag is `0.5.4`, not `v0.5.4`. A URL built with the `v` returns
+    The tag is `0.5.6`, not `v0.5.6`. A URL built with the `v` returns
     404, which reads like a missing file rather than a wrong name — this
     is the single most common reason a direct download fails.
 
@@ -70,7 +70,7 @@ signature next to it. Verify before you run it, especially in an
 automated build:
 
 ```bash
-VERSION=0.5.4
+VERSION=0.5.6
 BASE=https://github.com/senhub-io/senhub-agent/releases/download/$VERSION
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip"
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip.minisig"
@@ -222,7 +222,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.5.5","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.5.6","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
 ![Windows service running](images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
@@ -418,7 +418,7 @@ senhub-agent update --list
 Install a specific version:
 
 ```bash
-senhub-agent update 0.5.4
+senhub-agent update 0.5.6
 ```
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).

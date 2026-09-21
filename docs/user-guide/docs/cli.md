@@ -260,7 +260,7 @@ Lists all stable versions. If `auto_update.include_beta: true` is set in the con
 ### Install a specific version
 
 ```bash
-senhub-agent update 0.5.4
+senhub-agent update 0.5.6
 ```
 
 Downloads and installs the specified version. Restart the service to apply.
