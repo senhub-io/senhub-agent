@@ -24,7 +24,32 @@ type fakeServer struct {
 	refuseInfo map[string]string
 	// compressReplies makes the server send zlib-compressed frames.
 	compressReplies bool
+	// redirectTo makes the server answer every request the way a member
+	// of a proxy group does: "failed", no data, and the address of the
+	// member that currently holds this host.
+	redirectTo  string
+	redirectRev int64
 }
+
+func (s *fakeServer) setRedirect(addr string, rev int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.redirectTo, s.redirectRev = addr, rev
+}
+
+func (s *fakeServer) clearRedirect() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.redirectTo, s.redirectRev = "", 0
+}
+
+func (s *fakeServer) requestCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.requests)
+}
+
+func (s *fakeServer) close() { s.ln.Close() }
 
 func newFakeServer(t *testing.T) *fakeServer {
 	t.Helper()
@@ -91,10 +116,16 @@ func (s *fakeServer) handle(conn net.Conn) {
 	}
 	items := s.items
 	compress := s.compressReplies
+	redirectTo, redirectRev := s.redirectTo, s.redirectRev
 	s.mu.Unlock()
 
 	var reply map[string]interface{}
 	switch {
+	case redirectTo != "":
+		reply = map[string]interface{}{
+			"response": "failed",
+			"redirect": map[string]interface{}{"address": redirectTo, "revision": redirectRev},
+		}
 	case refused:
 		reply = map[string]interface{}{"response": "failed", "info": info}
 	case kind == "active checks":

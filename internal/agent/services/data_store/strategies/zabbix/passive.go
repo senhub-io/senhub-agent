@@ -60,16 +60,21 @@ func newPassiveListener(cfg Config, lookup itemLookup, log *logger.ModuleLogger)
 func allowedNets(cfg Config) ([]*net.IPNet, error) {
 	entries := cfg.Passive.Allow
 	if len(entries) == 0 {
-		host, _, err := net.SplitHostPort(cfg.Server)
-		if err != nil {
-			return nil, fmt.Errorf("zabbix: passive: cannot read the server host from %q", cfg.Server)
-		}
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return nil, fmt.Errorf("zabbix: passive: resolving %s to build the allow list: %w", host, err)
-		}
-		for _, ip := range ips {
-			entries = append(entries, ip.String())
+		// Every configured address, not just the first: in a proxy group
+		// any member may be the one polling us, and the member that
+		// polls today is not the one that polled yesterday.
+		for _, srv := range cfg.addresses() {
+			host, _, err := net.SplitHostPort(srv)
+			if err != nil {
+				return nil, fmt.Errorf("zabbix: passive: cannot read the server host from %q", srv)
+			}
+			ips, err := net.LookupIP(host)
+			if err != nil {
+				return nil, fmt.Errorf("zabbix: passive: resolving %s to build the allow list: %w", host, err)
+			}
+			for _, ip := range ips {
+				entries = append(entries, ip.String())
+			}
 		}
 	}
 	nets := make([]*net.IPNet, 0, len(entries))

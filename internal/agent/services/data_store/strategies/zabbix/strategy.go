@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -115,7 +116,7 @@ func (s *Strategy) Start(ctx context.Context) error {
 	s.started = true
 	go s.run(runCtx)
 	s.logger.Info().
-		Str("server", s.cfg.Server).
+		Str("server", strings.Join(s.cfg.addresses(), ",")).
 		Str("hostname", s.cfg.Hostname).
 		Dur("interval", s.cfg.Interval).
 		Msg("Zabbix active agent started")
