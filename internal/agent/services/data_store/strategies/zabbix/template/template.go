@@ -84,8 +84,21 @@ type Template struct {
 	Name           string          `yaml:"name"`
 	Description    string          `yaml:"description,omitempty"`
 	Groups         []GroupRef      `yaml:"groups"`
+	Items          []Item          `yaml:"items,omitempty"`
 	DiscoveryRules []DiscoveryRule `yaml:"discovery_rules,omitempty"`
 	ValueMaps      []ValueMap      `yaml:"valuemaps,omitempty"`
+}
+
+// Item is a plain item, not discovered: the agent's own three, which
+// exist on every host whatever it collects.
+type Item struct {
+	UUID        string `yaml:"uuid"`
+	Name        string `yaml:"name"`
+	Type        string `yaml:"type"`
+	Key         string `yaml:"key"`
+	Delay       string `yaml:"delay"`
+	ValueType   string `yaml:"value_type"`
+	Description string `yaml:"description,omitempty"`
 }
 
 type GroupRef struct {
@@ -434,4 +447,48 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// BaseName is the template carrying the agent's own items. It is a
+// template of its own rather than a copy in each probe template,
+// because Zabbix refuses two linked templates declaring one key.
+const BaseName = "SenHub Agent"
+
+// Base builds that template. Without it a host monitored actively has
+// no availability line, which a native agent gives for free and is the
+// first thing an operator looks at.
+func Base(opts Options) Export {
+	opts = opts.withDefaults()
+	tpl := Template{
+		UUID:        uid("template", BaseName),
+		Template:    BaseName,
+		Name:        BaseName,
+		Description: "The SenHub Agent's own items. Link it beside the probe templates; it is what turns the host's availability green.",
+		Groups:      []GroupRef{{Name: opts.Group}},
+		Items: []Item{
+			{
+				Name: "SenHub Agent ping", Type: "ZABBIX_ACTIVE", Key: "agent.ping",
+				Delay: opts.ItemDelay, ValueType: "UNSIGNED",
+				Description: "1 while the agent is pushing; the host is unavailable when it stops.",
+			},
+			{
+				Name: "SenHub Agent version", Type: "ZABBIX_ACTIVE", Key: "agent.version",
+				Delay: "1h", ValueType: "CHAR",
+				Description: "Version of the agent running on this host.",
+			},
+			{
+				Name: "SenHub Agent host name", Type: "ZABBIX_ACTIVE", Key: "agent.hostname",
+				Delay: "1h", ValueType: "CHAR",
+				Description: "Name the agent registers under.",
+			},
+		},
+	}
+	for i := range tpl.Items {
+		tpl.Items[i].UUID = uid("item", BaseName, tpl.Items[i].Key)
+	}
+	return Export{ZabbixExport: ExportBody{
+		Version:        opts.Version,
+		TemplateGroups: []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}},
+		Templates:      []Template{tpl},
+	}}
 }

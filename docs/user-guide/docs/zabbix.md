@@ -140,6 +140,20 @@ zabbix:
     allow: ["10.20.0.0/24"]
 ```
 
+## The agent's own items
+
+Beside the probe templates, `zabbix template` writes a small **SenHub
+Agent** template carrying `agent.ping`, `agent.version` and
+`agent.hostname`. Link it on every host: `agent.ping` is what turns the
+host's availability green, and the other two say which agent is running
+there. `zabbix setup` imports it and adds it to the autoregistration
+action by itself.
+
+It is a template of its own because Zabbix refuses two linked templates
+that declare the same key, and every probe template is linked beside the
+others. The three items are served on both rails, so they arrive whether
+the host is monitored actively or polled on the passive port.
+
 ## Through a proxy
 
 Point `server` at the proxy instead of the server and nothing else
