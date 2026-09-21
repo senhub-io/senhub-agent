@@ -328,6 +328,18 @@ func prototypeName(m transformers.MetricDefinition, labels []string) string {
 			display += " (" + strings.Join(parts, ", ") + ")"
 		}
 	}
+	// A metric discovered per instance must say which instance, or every
+	// prototype under the rule produces items with the same name and an
+	// operator opening the host sees identical lines they cannot tell
+	// apart. The display name only carries it when the definition wrote a
+	// placeholder, which most do not.
+	if len(labels) > 0 && !strings.Contains(display, "{#") {
+		macros := make([]string, 0, len(labels))
+		for _, l := range labels {
+			macros = append(macros, macroFor(l))
+		}
+		display += " (" + strings.Join(macros, ", ") + ")"
+	}
 	return "{#PROBE}: " + display
 }
 
