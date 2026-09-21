@@ -207,10 +207,10 @@ func (s *zabbixSetup) templateIDs(names []string) ([]string, error) {
 // turns a first contact into a host carrying the templates. Replacing
 // rather than patching keeps a re-run idempotent whatever the previous
 // state was.
-func (s *zabbixSetup) ensureAction(name, groupID string, templateIDs []string) error {
+func (s *zabbixSetup) ensureAction(name, metadata, groupID string, templateIDs []string) error {
 	if s.blind() {
 		s.say("would create or replace the action %q, matching host metadata containing %q, linking %d template(s)",
-			name, s.metadata, len(s.templates))
+			name, metadata, len(s.templates))
 		return nil
 	}
 	var found []struct {
@@ -230,7 +230,7 @@ func (s *zabbixSetup) ensureAction(name, groupID string, templateIDs []string) e
 		"eventsource": 2, // autoregistration
 		"status":      0,
 		"filter": map[string]interface{}{"evaltype": 0, "conditions": []map[string]interface{}{
-			{"conditiontype": 24, "operator": 2, "value": s.metadata}, // host metadata contains
+			{"conditiontype": 24, "operator": 2, "value": metadata}, // host metadata contains
 		}},
 		"operations": []map[string]interface{}{
 			{"operationtype": 2}, // add host
@@ -240,7 +240,7 @@ func (s *zabbixSetup) ensureAction(name, groupID string, templateIDs []string) e
 	}
 	if s.dryRun {
 		s.say("would %s the action %q, matching host metadata containing %q, linking %d template(s)",
-			map[bool]string{true: "replace", false: "create"}[len(found) > 0], name, s.metadata, len(templateIDs))
+			map[bool]string{true: "replace", false: "create"}[len(found) > 0], name, metadata, len(templateIDs))
 		return nil
 	}
 	if len(found) > 0 {
@@ -406,15 +406,9 @@ func runZabbixSetup(args []string) {
 		os.Exit(2)
 	}
 
-	rendered, names, err := renderTemplates(probes, opts)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
 	s := &zabbixSetup{
 		api: newZabbixAPI(rawURL, token), group: group, metadata: metadata,
-		discoveryWait: discoveryDelay, dryRun: dryRun, templates: rendered,
+		discoveryWait: discoveryDelay, dryRun: dryRun,
 	}
 
 	fmt.Printf("Preparing %s\n", rawURL)
@@ -425,31 +419,54 @@ func runZabbixSetup(args []string) {
 	}
 	s.say("Zabbix %s answered", version)
 
-	if err := s.importTemplates(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
 	groupID, err := s.ensureGroup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	var ids []string
-	if !dryRun {
-		if ids, err = s.templateIDs(names); err != nil {
+
+	// One set of templates per platform, and one autoregistration action
+	// per platform to link it. A Windows performance counter declared on
+	// a Linux host can never receive a value, and an operator reads that
+	// empty line as a defect rather than as an absence. The agent says
+	// which platform it is on in its host metadata, so the server picks
+	// without anyone choosing.
+	for _, platform := range supportedPlatforms {
+		platOpts := opts
+		platOpts.Platform = platform
+		rendered, names, rerr := renderTemplates(probes, platOpts)
+		if rerr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", rerr)
+			os.Exit(1)
+		}
+		s.templates = rendered
+		fmt.Printf("  for %s:\n", platform)
+		if err := s.importTemplates(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if len(ids) == 0 {
-			fmt.Fprintln(os.Stderr, "Error: the templates were imported but cannot be read back; check the account's permissions")
+		var ids []string
+		if !dryRun {
+			if ids, err = s.templateIDs(names); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			if len(ids) == 0 {
+				fmt.Fprintln(os.Stderr, "Error: the templates were imported but cannot be read back; check the account's permissions")
+				os.Exit(1)
+			}
+		}
+		if err := s.ensureAction(actionName+" ("+platform+")", metadata+" "+platform, groupID, ids); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := s.quickenDiscovery(ids); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
-	if err := s.ensureAction(actionName, groupID, ids); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	if err := s.quickenDiscovery(ids); err != nil {
+
+	if err := s.retireUnsplitAction(actionName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -477,4 +494,42 @@ func hostOf(rawURL string) string {
 		u = u[:i]
 	}
 	return u + ":10051"
+}
+
+// supportedPlatforms are the operating systems the agent is published
+// for, and therefore the template sets a server needs to carry.
+var supportedPlatforms = []string{"linux", "windows"}
+
+// retireUnsplitAction disables the single action earlier versions
+// created. Zabbix runs every matching autoregistration action, so
+// leaving it enabled would link the platform-blind templates beside the
+// platform ones and bring back the empty items this split removes.
+func (s *zabbixSetup) retireUnsplitAction(name string) error {
+	if s.blind() {
+		s.say("would disable the earlier single action %q if it exists", name)
+		return nil
+	}
+	var found []struct {
+		ActionID string `json:"actionid"`
+		Status   string `json:"status"`
+	}
+	if err := s.api.call("action.get", map[string]interface{}{
+		"filter": map[string]interface{}{"name": []string{name}}, "output": []string{"actionid", "status"},
+	}, &found); err != nil {
+		return err
+	}
+	if len(found) == 0 || found[0].Status == "1" {
+		return nil
+	}
+	if s.dryRun {
+		s.say("would disable the earlier single action %q", name)
+		return nil
+	}
+	if err := s.api.call("action.update", map[string]interface{}{
+		"actionid": found[0].ActionID, "status": 1,
+	}, nil); err != nil {
+		return err
+	}
+	s.say("earlier single action %q disabled; the per-platform ones replace it", name)
+	return nil
 }

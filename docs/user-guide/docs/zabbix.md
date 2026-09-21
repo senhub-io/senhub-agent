@@ -37,7 +37,7 @@ zabbix:
 |---|---|---|
 | `server` | required | Zabbix server or proxy, `host:port`; `10051` when the port is omitted. Several addresses separated by commas name a proxy group (see below). |
 | `hostname` | machine host name | Name this host registers under. |
-| `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. Limited to 2034 bytes by Zabbix. |
+| `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. The agent appends its operating system, so `senhub-agent linux`, which is how the per-platform actions tell hosts apart. Limited to 2034 bytes by Zabbix. |
 | `interval` | `60s` | Push cadence of the collected values. |
 | `refresh_interval` | `120s` | How often the item list is asked again. |
 | `heartbeat_interval` | `60s` | Heartbeat cadence; the server declares the host unavailable after twice that. |
@@ -139,6 +139,28 @@ zabbix:
     port: 10050
     allow: ["10.20.0.0/24"]
 ```
+
+## One template set per platform
+
+A definition declares every metric its probe can produce, and a probe
+does not produce the same ones everywhere: a processor's deferred
+procedure calls exist on Windows and nowhere else. Declaring them all on
+every host leaves items that can never receive a value, which an
+operator reads as a defect rather than as an absence.
+
+So `zabbix template` writes one set per platform and names the files for
+it, `senhub-cpu-linux-7.0.yaml` beside `senhub-cpu-windows-7.0.yaml`.
+Use `--platform linux` or `--platform windows`; without it the template
+carries every metric of the definition, which is what you want when you
+generate for reading rather than for import.
+
+Nothing has to be chosen per host. The agent appends its operating
+system to the host metadata it registers with, and `zabbix setup`
+creates one autoregistration action per platform matching on it, so a
+Linux host is linked to the Linux templates and a Windows host to the
+Windows ones by itself. A setup run on a server prepared by an earlier
+version disables the single action that version created, because Zabbix
+runs every matching action and leaving it would link both sets.
 
 ## The agent's own items
 
