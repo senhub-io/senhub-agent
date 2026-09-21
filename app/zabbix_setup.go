@@ -481,6 +481,10 @@ func runZabbixSetup(args []string) {
 		}
 	}
 
+	if err := s.reportCollidingActions(actionName, metadata); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	if err := s.retireUnsplitAction(actionName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -563,3 +567,66 @@ func (s *zabbixSetup) retireUnsplitAction(name string) error {
 // it, because a template whose probe is absent contributes nothing but
 // discovery rules that never answer.
 var defaultSetupProbes = []string{"cpu", "memory", "network", "logicaldisk", "process"}
+
+// reportCollidingActions names any other enabled autoregistration
+// action a registering agent would also match.
+//
+// Zabbix runs every action whose condition matches, and two that both
+// link templates do not merge: the second link fails, because Zabbix
+// refuses two linked templates declaring one key, and it fails in
+// silence. A host then comes up carrying whichever set won, with items
+// that never fill and nothing anywhere saying why. That happened on a
+// server prepared by hand months earlier.
+//
+// It is reported and not disabled. An action an operator wrote may
+// carry operations this command knows nothing about, and switching it
+// off unasked is not a preparation command's business. Naming it, and
+// saying what it will do, leaves the decision where it belongs.
+func (s *zabbixSetup) reportCollidingActions(ownName, metadata string) error {
+	if s.blind() {
+		s.say("would look for other autoregistration actions a registering agent also matches")
+		return nil
+	}
+	var found []struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+		Filter struct {
+			Conditions []struct {
+				ConditionType string `json:"conditiontype"`
+				Operator      string `json:"operator"`
+				Value         string `json:"value"`
+			} `json:"conditions"`
+		} `json:"filter"`
+	}
+	if err := s.api.call("action.get", map[string]interface{}{
+		"output": []string{"name", "status"}, "selectFilter": "extend",
+		"filter": map[string]interface{}{"eventsource": 2},
+	}, &found); err != nil {
+		return err
+	}
+	for _, a := range found {
+		if a.Status != "0" || strings.HasPrefix(a.Name, ownName) {
+			continue
+		}
+		for _, c := range a.Filter.Conditions {
+			// 24 is the host metadata; operator 2 is "contains", the
+			// only one this can reason about without guessing.
+			if c.ConditionType != "24" || c.Operator != "2" || c.Value == "" {
+				continue
+			}
+			for _, platform := range supportedPlatforms {
+				if !strings.Contains(metadata+" "+platform, c.Value) {
+					continue
+				}
+				fmt.Printf("\n  WARNING: the action %q also matches an agent registering as %q.\n",
+					a.Name, metadata+" "+platform)
+				fmt.Println("  Zabbix runs both, and because the two template sets declare the")
+				fmt.Println("  same keys the newer link fails silently: the host comes up with")
+				fmt.Println("  the other set and items that never fill. Disable it, or narrow")
+				fmt.Println("  its condition, before the next agent registers.")
+				break
+			}
+		}
+	}
+	return nil
+}
