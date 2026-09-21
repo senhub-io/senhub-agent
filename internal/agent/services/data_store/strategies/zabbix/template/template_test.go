@@ -146,3 +146,26 @@ func TestGenerateRefusesANamelessDefinition(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+// A metric discovered per instance must name its instance. Without it,
+// every prototype under one rule yields identically named items and an
+// operator opening the host sees a column of the same line repeated.
+// Seen on a bench: six filesystems, six items called the same thing.
+func TestPrototypeNameCarriesTheDiscoveredInstance(t *testing.T) {
+	m := transformers.MetricDefinition{Name: "x", DisplayName: "Control Plane Reachable"}
+
+	if got := prototypeName(m, nil); got != "{#PROBE}: Control Plane Reachable" {
+		t.Errorf("without a dimension the name is unchanged, got %q", got)
+	}
+	got := prototypeName(m, []string{"azure_app"})
+	if got != "{#PROBE}: Control Plane Reachable ({#AZURE_APP})" {
+		t.Errorf("name = %q, want the discovered instance appended", got)
+	}
+	// A display name that already carries a placeholder keeps its own
+	// wording rather than being appended to twice.
+	withPlaceholder := transformers.MetricDefinition{Name: "y", DisplayName: "Interface {interface} traffic"}
+	got = prototypeName(withPlaceholder, []string{"interface"})
+	if strings.Count(got, "{#INTERFACE}") != 1 {
+		t.Errorf("name = %q, want the macro once", got)
+	}
+}

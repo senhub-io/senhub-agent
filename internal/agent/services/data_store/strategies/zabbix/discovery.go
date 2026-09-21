@@ -68,6 +68,21 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 			r = &rule{probeType: cm.ProbeType, labels: labels, instances: map[string]map[string]string{}}
 			rules[key] = r
 		}
+		// A series that carries none of the rule's labels is not an
+		// instance: it is the probe's own aggregate, published beside
+		// the per-instance ones. Discovering it creates an item whose
+		// name ends in empty parentheses, which an operator reads as a
+		// defect rather than as a total.
+		blank := false
+		for _, l := range labels {
+			if cm.Tags[l] == "" {
+				blank = true
+				break
+			}
+		}
+		if blank && len(labels) > 0 {
+			continue
+		}
 		entry := map[string]string{probeMacro: cm.ProbeName}
 		id := cm.ProbeName
 		for _, l := range labels {
