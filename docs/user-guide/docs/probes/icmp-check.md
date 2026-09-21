@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/check-network.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/icmp-check.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 # icmp_check — multi-target ping
 
@@ -20,14 +20,19 @@ single probe instance.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of hostnames or IPs to ping |
-| `count` | 4 | Echo requests per target per cycle |
-| `timeout` | 5 | Per-target budget in seconds for the whole round |
-| `interval` | 60 | Seconds between collection cycles |
-| `packet_size` | 56 | ICMP payload size in bytes |
-| `privileged` | OS-dependent | Raw ICMP sockets (`true`) vs ICMP datagram sockets (`false`). Defaults to `true` on Windows and on Linux when running as root, `false` elsewhere |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `targets` | Yes | - | Hostnames or addresses to ping. Example: `10.0.0.1, gw.example.com` |
+| `count` | No | `4` | Echo requests per target per cycle |
+| `timeout` | No | `5` | Budget in seconds for the whole round on one target |
+| `interval` | No | `60` | Seconds between cycles |
+| `packet_size` | No | `56` | ICMP payload size in bytes |
+| `privileged` | No | - | Raw ICMP sockets (true) or datagram sockets (false); default true on Windows and as root on Linux |
+
+<!-- schema:params:end -->
 
 Targets are pinged in parallel (bounded), so a large list does not
 stretch the cycle by the sum of timeouts.

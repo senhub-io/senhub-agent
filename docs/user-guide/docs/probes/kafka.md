@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/apachekafka" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/kafka.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -23,16 +23,24 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `brokers` | `[localhost:9092]` | Bootstrap broker list (`host:port` entries) |
-| `tls` | `false` | Enable TLS for the broker connection |
-| `sasl_mechanism` | — | SASL authentication: `PLAIN`, `SCRAM-SHA-256` or `SCRAM-SHA-512` |
-| `sasl_username` | — | SASL username |
-| `sasl_password` | — | SASL password — reference a stored secret via `${secret:<name>.sasl_password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `protocol_version` | `2.0.0` | Kafka protocol version to negotiate |
-| `topic_filter` | all | Glob patterns to restrict which topics are monitored (internal topics starting with `__` are always excluded) |
-| `group_filter` | all | Glob patterns to restrict which consumer groups are monitored |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `brokers` | In practice | `[localhost:9092]` | Bootstrap brokers as host:port entries. Example: `kafka-1.example.com:9092` |
+| `protocol_version` | No | `2.0.0` | Kafka protocol version negotiated with the brokers |
+| `tls` | No | `false` | Connect to the brokers over TLS |
+| `sasl_mechanism` | No | - | SASL mechanism; empty connects without authentication. One of `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` |
+| `sasl_username` | If `sasl_mechanism` is `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` | - | SASL user, required with sasl_mechanism |
+| `sasl_password` | If `sasl_mechanism` is `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` | - | SASL password, required with sasl_mechanism. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `topic_filter` | No | - | Glob patterns of the topics to monitor; empty monitors every non-internal topic. Example: `orders-*` |
+| `group_filter` | No | - | Glob patterns of the consumer groups to monitor; empty monitors every group |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Broker request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this cluster instead of the cluster id it reports |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

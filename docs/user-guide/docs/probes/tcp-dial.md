@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/connection.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/tcp-dial.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 # tcp_dial — TCP connect latency
 
@@ -20,11 +20,16 @@ dependable than an HTTP round trip.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of `host:port` |
-| `timeout` | 5 | Connect budget in seconds |
-| `interval` | 60 | Seconds between cycles |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `targets` | Yes | - | host:port pairs to dial. Example: `10.0.0.10:443, dc01.lan:389` |
+| `timeout` | No | `5` | Connect budget in seconds per target |
+| `interval` | No | `60` | Seconds between cycles |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

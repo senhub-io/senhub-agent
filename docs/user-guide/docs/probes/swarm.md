@@ -16,7 +16,7 @@ you want per-container resource metrics as well.
 - The agent must run on a **manager** node. On a worker the Engine answers 503
   to every cluster query, and the probe reports that explicitly rather than
   showing an empty, healthy-looking cluster.
-- Read access to the Docker socket (`/var/run/docker.sock`).
+- Read access to the Docker Engine: the socket `/var/run/docker.sock` on Linux and macOS, the named pipe `npipe://./pipe/docker_engine` on Windows.
 
 Pointed at a worker or at an engine that is not in swarm mode, the probe still
 emits `senhub.swarm.up 0` plus a state series naming the reason — `worker`,
@@ -24,6 +24,17 @@ emits `senhub.swarm.up 0` plus a state series naming the reason — `worker`,
 wrong node, another is a machine that was never clustered.
 
 ## Configuration
+
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `socket_path` | No | - | Engine socket; /var/run/docker.sock on Unix, npipe://./pipe/docker_engine on Windows by default |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Engine request timeout in seconds |
+
+<!-- schema:params:end -->
 
 ```yaml
 probes:
@@ -35,11 +46,7 @@ probes:
       timeout: 10                         # seconds, default 10
 ```
 
-| Key | Default | Meaning |
-|---|---|---|
-| `socket_path` | `/var/run/docker.sock` | Docker Engine socket |
-| `interval` | `60` | Collection cadence in seconds |
-| `timeout` | `10` | Per-request timeout in seconds |
+On Windows the pipe may also be written `\\.\pipe\docker_engine`.
 
 ## What it reports
 

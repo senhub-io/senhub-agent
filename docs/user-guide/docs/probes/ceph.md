@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/ceph" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/ceph.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -23,11 +23,19 @@ I/O statistics.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `https://localhost:8443` | Base URL of the Ceph Manager Dashboard / REST API |
-| `username` | — | Ceph dashboard username (required) |
-| `password` | — | Ceph dashboard password (required) — reference via `${secret:ceph.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `https://localhost:8443` | Base URL of the Manager dashboard / REST API |
+| `username` | Yes | - | Dashboard user |
+| `password` | Yes | - | Dashboard user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_tls` | No | `true` | Verify the dashboard certificate; false accepts a self-signed one |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this cluster |
+
+<!-- schema:params:end -->
 
 ## Metrics
 
@@ -49,5 +57,5 @@ I/O statistics.
 ## Operational notes
 
 - The Ceph Manager Dashboard must be enabled: `ceph mgr module enable dashboard`.
-- The default endpoint uses a self-signed TLS certificate; the probe skips verification by default. For production, configure a proper certificate.
+- The dashboard ships with a self-signed TLS certificate, which the probe rejects by default. Set `verify_tls: false` to accept it in a lab; for production, configure a proper certificate.
 - The API requires Ceph Nautilus (14+) or newer for the `/api/` v1 interface.

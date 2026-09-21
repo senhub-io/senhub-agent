@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/clickhouse" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/clickhouse.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,11 +21,20 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8123` | ClickHouse HTTP interface base URL |
-| `username` | `default` | ClickHouse user (must have SELECT access to system tables) |
-| `password` | — | User password — reference via `${secret:clickhouse.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost:8123` | Base URL of the HTTP interface. Example: `http://clickhouse01:8123` |
+| `username` | In practice | `default` | User with SELECT on the system tables |
+| `password` | In practice | - | User's password; empty for a password-less user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `database` | No | `system` | Accepted and stored but unused: every query the probe issues names the system database explicitly |
+| `timeout` | No | `10` | HTTP request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this server |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

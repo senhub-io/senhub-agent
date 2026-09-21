@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/microsoftsqlserver" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/mssql.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,12 +24,23 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `host` | required | SQL Server hostname or IP |
-| `port` | `1433` | SQL Server TCP port |
-| `username` | — | SQL Server login. Omit for Windows Integrated Authentication (the agent's OS account is used) |
-| `password` | — | Password for SQL login — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | Server hostname or address; use host\Instance for a named instance. Example: `sql01.example.com` |
+| `port` | In practice | `1433` | Server TCP port |
+| `username` | In practice | - | SQL login; empty selects Windows integrated authentication with the agent's account |
+| `password` | In practice | - | SQL login password; empty with an empty username selects integrated authentication. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `encrypt` | No | `true` | Encryption of the connection, as go-mssqldb reads it; true by default. One of `true`, `false`, `disable`, `strict` |
+| `trust_server_cert` | No | `false` | Accept the server certificate without verifying it |
+| `interval` | No | `60` | Seconds between collections |
+
+<!-- schema:params:end -->
+
+- An `encrypt` value outside the four listed stops the probe at load time rather than reaching the server.
+- `trust_server_cert: true` is for a lab, not for production.
 
 ## Metrics
 

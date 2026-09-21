@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/pulse.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/smart.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -25,11 +25,26 @@ No parameters are required — the probe auto-discovers all drives visible to
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `include_types` | all | Restrict to these sensor/drive types (e.g. `[ata, nvme]`) |
-| `exclude_names` | — | Regex patterns to skip drives by device name (e.g. `/dev/sda`) |
-| `smartctl_path` | `smartctl` | Path to the `smartctl` binary if not in PATH |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `devices` | No | - | Device paths to poll; empty means smartctl --scan. Example: `/dev/sda, /dev/nvme0` |
+| `exclude_devices` | No | - | Device paths to skip from the scan, matched exactly |
+| `smartctl_path` | No | `smartctl` | Path of the smartctl binary when it is not on PATH |
+| `use_sudo` | No | `false` | Prefix every smartctl call with sudo (Unix) |
+| `interval` | No | `300` | Seconds between collections |
+| `exec_timeout` | No | `10` | Seconds one smartctl call may take |
+
+<!-- schema:params:end -->
+
+`devices` and `exclude_devices` take the paths `smartctl --scan` prints. On a
+host with many drives, listing the ones you care about is cheaper than
+scanning: each drive costs one `smartctl` invocation per cycle.
+
+`use_sudo` is for a packaged agent that does not run as root and has a
+sudoers rule for `smartctl`.
 
 ## Metrics
 

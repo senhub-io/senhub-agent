@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/earth.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/ping-webapp.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -17,7 +17,6 @@ The WebApp Ping probe monitors the network reachability and latency of web appli
   type: ping_webapp
   params:
     url: "https://example.com"
-    interval: 30  # Collection interval in seconds (default: 30)
 ```
 
 ### Monitoring Multiple Web Applications
@@ -28,25 +27,22 @@ The WebApp Ping probe monitors the network reachability and latency of web appli
   type: ping_webapp
   params:
     url: "https://app.example.com"
-    interval: 30
 
 - name: webapp_ping_api
   type: ping_webapp
   params:
     url: "https://api.example.com"
-    interval: 60
 ```
 
-The WebApp Ping probe requires only a URL parameter and performs DNS resolution followed by ICMP ping tests.
+The WebApp Ping probe requires only a URL and performs DNS resolution followed by ICMP ping tests, every 30 seconds.
 
 ## Supported Platforms
 
 - **Windows**: Windows Server 2012+ / Windows 10+
 - **Linux**: All modern distributions (Ubuntu, RHEL, CentOS, Debian, etc.)
 - **macOS**: macOS 10.13+
-- **BSD**: FreeBSD, OpenBSD, NetBSD
 
-Platform-specific ping commands are automatically used based on the operating system.
+Platform-specific ping commands are automatically used based on the operating system. Any other operating system fails the collection with an error.
 
 ## Key Metrics Summary
 
@@ -57,10 +53,17 @@ Platform-specific ping commands are automatically used based on the operating sy
 
 ## Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `url` | string | **Yes** | - | Target web application URL (HTTP/HTTPS) |
-| `interval` | integer | No | `30` | Collection interval in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `url` | Yes | - | HTTP or HTTPS URL; only its hostname is resolved and pinged. Example: `https://app.example.com` |
+| `instance_name` | No | - | Stable identity of the watched application; empty publishes no entity |
+
+<!-- schema:params:end -->
+
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored.
 
 ### URL Parameter Format
 
@@ -74,34 +77,14 @@ The probe accepts any valid HTTP or HTTPS URL:
 
 ### Example Configurations
 
-**High-frequency monitoring (every 10 seconds):**
+**Naming the application so it appears as an entity:**
 ```yaml
 # probes.d/10-ping-webapp.yaml
 - name: webapp_ping_critical
   type: ping_webapp
   params:
     url: "https://critical-app.example.com"
-    interval: 10
-```
-
-**Standard monitoring (every minute):**
-```yaml
-# probes.d/10-ping-webapp.yaml
-- name: webapp_ping_standard
-  type: ping_webapp
-  params:
-    url: "https://app.example.com"
-    interval: 60
-```
-
-**Low-frequency monitoring (every 5 minutes):**
-```yaml
-# probes.d/10-ping-webapp.yaml
-- name: webapp_ping_background
-  type: ping_webapp
-  params:
-    url: "https://backup.example.com"
-    interval: 300
+    instance_name: "critical-app"
 ```
 
 ## Monitoring Tool Integration
@@ -190,19 +173,16 @@ Monitor applications across multiple locations:
   type: ping_webapp
   params:
     url: "https://us-east.example.com"
-    interval: 30
 
 - name: webapp_ping_us_west
   type: ping_webapp
   params:
     url: "https://us-west.example.com"
-    interval: 30
 
 - name: webapp_ping_eu
   type: ping_webapp
   params:
     url: "https://eu.example.com"
-    interval: 30
 ```
 
 ### Network Path Troubleshooting
@@ -222,13 +202,11 @@ Monitor load balancer endpoints:
   type: ping_webapp
   params:
     url: "https://lb1.example.com"
-    interval: 30
 
 - name: webapp_ping_lb2
   type: ping_webapp
   params:
     url: "https://lb2.example.com"
-    interval: 30
 ```
 
 ## Troubleshooting
@@ -238,7 +216,7 @@ Monitor load balancer endpoints:
 **Check probe status:**
 ```bash
 # View agent logs with WebApp probe debugging
-./agent run --verbose --debug-modules probe.webapp
+senhub-agent run --filter probe.webapp
 ```
 
 **Verify probe is enabled:**
@@ -303,10 +281,10 @@ ping -n 4 app.example.com  # Windows
 **Solution:**
 ```bash
 # Option 1: Run agent as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant raw socket capabilities (Linux)
-sudo setcap cap_net_raw=eip ./agent
+sudo setcap cap_net_raw=eip /opt/senhub/bin/senhub-agent
 
 # Option 3: Allow ICMP for agent user
 sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
@@ -386,16 +364,7 @@ ping app.example.com        # Ctrl+C to stop
 - Intermittent network issues
 - ICMP de-prioritization
 
-**Solution:**
-```yaml
-# probes.d/10-ping-webapp.yaml
-# Increase collection frequency for better sampling
-- name: webapp_ping_frequent
-  type: ping_webapp
-  params:
-    url: "https://app.example.com"
-    interval: 10  # More frequent sampling
-```
+**Solution:** the cadence is fixed at 30 seconds, so sampling cannot be made denser. Compare with a manual `ping -c 100` and a traceroute to find where the variance comes from, and use direct IP addresses in the URL when DNS round-robin is the cause.
 
 ### Platform-Specific Issues
 
@@ -436,16 +405,9 @@ Each collection sends:
 - **Average packet size**: 32-64 bytes (platform dependent)
 - **Total bandwidth**: ~320-640 bytes per collection
 
-### Recommended Intervals
+### Collection cadence
 
-| Use Case | Interval | Reason |
-|----------|----------|--------|
-| Critical services | 10-30s | Quick detection of outages |
-| Standard monitoring | 30-60s | Balance accuracy and overhead |
-| Background monitoring | 60-300s | Low-priority services |
-| Bandwidth-sensitive | 120-300s | Minimize network traffic |
-
-**Note:** Very frequent pinging (< 10s) may be blocked by ICMP rate limiting on some networks.
+The probe runs every 30 seconds. That cadence is fixed in the code; there is no `interval` parameter, and one written under `params:` is ignored. Ten pings every 30 seconds per instance is the load each target sees; some networks rate-limit ICMP, which shows up as packet loss.
 
 ### Memory Usage
 
@@ -460,14 +422,14 @@ When monitoring many URLs, consider resource usage:
 
 ```yaml
 # probes.d/10-ping-webapp.yaml
-# Example: 10 URLs with 30s interval = 10 pings every 30s
+# Example: 10 URLs = 10 pings every 30 seconds
 - name: webapp_ping_app1
   type: ping_webapp
-  params: {url: "https://app1.example.com", interval: 30}
+  params: {url: "https://app1.example.com"}
 
 - name: webapp_ping_app2
   type: ping_webapp
-  params: {url: "https://app2.example.com", interval: 30}
+  params: {url: "https://app2.example.com"}
 
 # ... up to 10-20 URLs recommended per agent
 ```
@@ -475,7 +437,7 @@ When monitoring many URLs, consider resource usage:
 **Guidelines:**
 - **1-10 URLs**: No performance concerns
 - **10-50 URLs**: Monitor agent CPU and memory
-- **50+ URLs**: Consider multiple agents or increased intervals
+- **50+ URLs**: Consider multiple agents
 
 ## Advanced Configuration
 
@@ -490,7 +452,6 @@ When monitoring load-balanced applications, the probe will ping the resolved IP:
   type: ping_webapp
   params:
     url: "https://lb.example.com"
-    interval: 30
 ```
 
 **Note:** The probe pings the first resolved IP address. For comprehensive monitoring of all backend servers, configure separate probes for each backend IP.
@@ -505,7 +466,6 @@ Monitor CDN edge locations:
   type: ping_webapp
   params:
     url: "https://cdn.example.com"
-    interval: 60
 ```
 
 **Note:** CDN DNS may return different IPs based on agent location (GeoDNS). This allows you to monitor the CDN edge closest to your agent.
@@ -521,15 +481,12 @@ Combine with Load WebApp probe for comprehensive monitoring:
   type: ping_webapp
   params:
     url: "https://app.example.com"
-    interval: 30
 
 # Application layer monitoring (HTTP/HTTPS)
 - name: webapp_load
   type: load_webapp
   params:
     url: "https://app.example.com"
-    interval: 60
-    method: "GET"
 ```
 
 **Benefits:**
@@ -542,7 +499,7 @@ Combine with Load WebApp probe for comprehensive monitoring:
 ### ICMP Security
 
 - **Firewall Rules**: Many firewalls block ICMP by default
-- **ICMP Flooding**: Configure reasonable intervals to avoid being flagged
+- **ICMP Flooding**: Ten pings every 30 seconds per instance; many instances against one target add up
 - **ICMP Rate Limiting**: Some networks limit ICMP packet rates
 - **Security Groups**: Cloud environments often block ICMP by default
 

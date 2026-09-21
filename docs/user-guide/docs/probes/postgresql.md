@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/postgresql" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/postgresql.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 # PostgreSQL
 
@@ -31,28 +31,53 @@ when the extension is installed.
     database: postgres
     interval: 60
     timeout: 10
-    sslmode: require
-    max_replication_lag_seconds: 60
-    bloat_top_n: 10
+    sslmode: verify-full
+    sslrootcert: /etc/ssl/db-ca.pem
 ```
 
 ### Parameters
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `host` | Yes | - | Database hostname or IP |
-| `port` | No | `5432` | TCP port |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `host` | Yes | - | Server hostname or address |
+| `port` | In practice | `5432` | Server port |
 | `username` | Yes | - | Monitoring role |
-| `password` | Yes | - | Role's password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `database` | No | `postgres` | Maintenance database to connect to |
-| `interval` | No | `60` | Collection interval in seconds |
-| `timeout` | No | `10` | Per-query timeout in seconds |
-| `sslmode` | No | `prefer` | libpq sslmode (`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`) |
-| `sslrootcert` | No | `""` | CA certificate path (for `verify-ca` / `verify-full`) |
-| `max_replication_lag_seconds` | No | `60` | Threshold for the composite `senhub.db.replication.health` channel |
-| `bloat_top_n` | No | `10` | Top-N tables by heap size to track for bloat (hard cap 50) |
-| `expose_per_database` | No | `false` | Emit per-database metrics |
-| `expose_top_tables` | No | `0` | Emit per-table metrics; cardinality scales with N |
+| `password` | Yes | - | Role's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `database` | No | `postgres` | Database the connection opens on. Also accepted: `databases` |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10s` | Query timeout, seconds or a duration |
+| `max_replication_lag_seconds` | No | `300s` | Replay lag past which a replica counts as unhealthy; 0 turns the lag term off |
+| `sslmode` | No | - | libpq SSL mode; prefer by default. One of `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full` |
+| `sslrootcert` | No | - | CA certificate path, libpq's name for tls.ca_file |
+| `tls` | No | - | TLS settings; the block alone selects verify-full |
+| `tls.skip_verify` | No | `false` | Accept the server certificate without verifying it (selects require). Also accepted: `insecure_skip_verify` |
+| `tls.ca_file` | No | - | CA certificate the server is verified against. Also accepted: `ca_cert` |
+| `instance_name` | No | - | Stable identity override for this cluster |
+
+<!-- schema:params:end -->
+
+- The probe reads cluster-wide views, so `database` only selects the connection. The list form `databases` uses its first entry.
+- `sslmode` is passed to the driver as written and wins over the `tls` block. An unknown value stops the probe instead of reaching the server.
+- Without `sslmode`, the connection negotiates TLS opportunistically (`prefer`). Setting a `tls` block selects `verify-full`; setting `tls.skip_verify` selects `require`, which is for a lab, not for production.
+- `sslrootcert`, `tls.ca_file` and `tls.ca_cert` are the same setting.
+- Set `instance_name` when the same server is reachable under several names, so the entity does not split.
+
+#### Parameters this probe does not read
+
+The paid probe this one replaced produced per-database and per-table
+breakdowns. This one reports **cluster-wide totals** — `pg_stat_database`
+is already summed — so three of its parameters have nothing to map onto
+and are reported as errors by `agent config check` rather than accepted
+and ignored:
+
+| Parameter | Why |
+|---|---|
+| `expose_per_database` | there is no per-database breakdown to turn on |
+| `expose_top_tables` | no per-table metrics are emitted |
+| `bloat_top_n` | table bloat is not measured |
 
 ## GRANTs
 
@@ -170,7 +195,7 @@ Emitted only when role is primary or replica.
 
 ## Output formats
 
-- **PRTG / Sensor Builder** — pick chips per family.
+- **PRTG / Sensor URLs tab** — pick chips per family.
 - **Nagios** — filter by family: `?tags=metric_type:replication`.
 - **Prometheus** — `/api/{key}/prometheus/metrics`; metric names
   start with `senhub_db_*` and `postgresql_*`.

@@ -25,6 +25,15 @@ observability tool you already operate (PRTG, Nagios, Prometheus, OTLP).
 
     [:octicons-arrow-right-24: Installation](installation.md)
 
+-   :material-docker: __Container__
+
+    ---
+
+    One required variable and one mount. The image writes its configuration
+    from the environment and checks it before the agent starts.
+
+    [:octicons-arrow-right-24: Running in a container](container.md)
+
 -   :material-cog: __Configuration__
 
     ---
@@ -53,7 +62,7 @@ observability tool you already operate (PRTG, Nagios, Prometheus, OTLP).
 
     ---
 
-    Dashboard, API Explorer and Sensor Builder for your monitoring tool.
+    Overview, probe and output editors, and the sensor URLs for your poller.
 
     [:octicons-arrow-right-24: Web interface](web-interface.md)
 

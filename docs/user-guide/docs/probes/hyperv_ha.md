@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/microsoft" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/hyperv_ha.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -54,10 +54,15 @@ Replica and cluster state change slowly; a longer interval keeps WMI load low:
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `interval` | integer | No | `60` | Collection interval in seconds |
-| `timeout` | integer | No | `30` | WMI query timeout in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `30` | WMI query timeout in seconds |
+
+<!-- schema:params:end -->
 
 # Metrics Collected
 
@@ -86,9 +91,9 @@ distinct in OTLP/Prometheus.
 | `senhub.hyperv_ha.cluster.node.state` | `1` | `cluster.node` | Cluster node state (1 = Up, 0 = Down/Paused/Joining) |
 | `senhub.hyperv_ha.cluster.group.state` | `1` | `cluster.group` | Cluster resource-group state (1 = Online, 0 = Offline/Failed/Partial) |
 
-## Filtering (Web UI Sensor Builder)
+## Filtering (Sensor URLs tab of the console)
 
-The PRTG/Web UI Sensor Builder exposes filters for this probe:
+The Sensor URLs tab of the console exposes filters for this probe:
 
 - **Replicated VM** — pick a specific replicated virtual machine
 - **Cluster Node** — pick a specific Failover Cluster node

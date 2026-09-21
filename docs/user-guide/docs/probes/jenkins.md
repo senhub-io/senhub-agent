@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/jenkins" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/jenkins.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -23,11 +23,19 @@ executor counts, and build queue depth.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | required | Base URL of the Jenkins controller (e.g. `https://jenkins.example.com`) |
-| `username` | — | Jenkins username for API authentication |
-| `api_token` | — | Jenkins API token for the user (preferred over a password) — reference a stored secret via `${secret:<name>.api_token}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | Yes | - | Base URL of the controller. Example: `https://jenkins.example.com` |
+| `username` | In practice | - | User the API calls authenticate as; empty queries anonymously |
+| `api_token` | In practice | - | API token of that user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `15` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this controller instead of the one it reports |
+
+<!-- schema:params:end -->
 
 ## Metrics
 
