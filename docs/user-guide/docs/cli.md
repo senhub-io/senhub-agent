@@ -265,6 +265,77 @@ senhub-agent update 0.5.4
 
 Downloads and installs the specified version. Restart the service to apply.
 
+## Zabbix
+
+### zabbix setup
+
+Prepares a Zabbix server for the agent in one call: it imports the
+generated templates, creates the host group, and creates the
+autoregistration action that turns an agent's first contact into a host
+carrying them. After it, a machine needs the agent and two lines naming
+the server, with nothing typed in the Zabbix interface.
+
+It is an administrator command, run once. A deployed agent never holds
+an API token and still registers by itself. Every step is idempotent, so
+re-running it is safe and is also how a template is refreshed after an
+upgrade.
+
+```bash
+senhub-agent zabbix setup --url https://zabbix.example.com --token-file ~/.zbx-token
+senhub-agent zabbix setup --url https://zabbix.example.com --token-file ~/.zbx-token \
+  --probe cpu --probe memory --probe veeam --group "SenHub agents"
+senhub-agent zabbix setup --url https://zabbix.example.com --dry-run
+```
+
+| Flag | Description |
+|------|-------------|
+| `--url URL` | Zabbix frontend, required. The agent pushes to the trapper port, not this one |
+| `--token-file PATH` | File holding the API token. Preferred: a token on the command line is visible to every process on the machine |
+| `--token VALUE` | API token. Read after `--token-file` and before `SENHUB_ZABBIX_TOKEN` |
+| `--probe TYPE` | Probe whose template is linked to every host that registers. Repeatable. Without it, the probes every machine runs: cpu, memory, network, logicaldisk, process |
+| `--group NAME` | Host group the registering hosts join |
+| `--metadata STRING` | Host metadata the autoregistration action matches on; must equal the agent's `host_metadata` |
+| `--action-name NAME` | Name of the autoregistration action it writes |
+| `--discovery-delay INTERVAL` | Update interval of the discovery rules, which Zabbix sets to one hour by default |
+| `--no-discovery-delay` | Leave the discovery rules as the template declares them |
+| `--prefix PREFIX` | First segment of the item keys; must match the output's `key_prefix` |
+| `--version 6.0\|7.0` | Export format of the templates written |
+| `--dry-run` | Describe what it would do and change nothing. Works without a token |
+
+The token is read from `--token-file`, then `--token`, then the
+environment variable `SENHUB_ZABBIX_TOKEN`.
+
+Every template is imported, including the probes not named with
+`--probe`; only the linking is narrowed. A template linked to a host
+whose agent does not run that probe adds discovery rules that never
+answer, which is why the default is the universal set.
+
+### zabbix template
+
+Writes the Zabbix templates generated from the probe definitions, one
+file per probe type, without touching a server. Use it to read what will
+be imported, to keep the templates under version control, or to import
+them by a route of your own.
+
+```bash
+senhub-agent zabbix template --out ./templates
+senhub-agent zabbix template --probe memory --platform linux
+senhub-agent zabbix template --probe veeam --version 6.0
+```
+
+| Flag | Description |
+|------|-------------|
+| `--probe TYPE` | Probe type to generate. Repeatable. Without it, every definition |
+| `--platform linux\|windows` | Keep only the metrics that platform can produce. Without it, the definition whole |
+| `--version 6.0\|7.0` | Export format, `7.0` by default |
+| `--prefix PREFIX` | First segment of the item keys; must match the output's `key_prefix` |
+| `--delay INTERVAL` | Update interval of the item prototypes |
+| `--out DIR` | Directory to write into. Without it, and with a single `--probe`, the template goes to standard output |
+
+With `--out`, a small **SenHub Agent** template is written beside the
+others, carrying the agent's own items. Link it on every host: it is
+what turns the host's availability green.
+
 ## License
 
 ### Show license status

@@ -20,13 +20,12 @@ func init() {
 
 const zabbixUsage = `Usage: senhub-agent zabbix template [--probe <type> ...] [--version 6.0|7.0]
                                     [--prefix <key prefix>] [--delay <interval>]
-                                    [--out <directory>]
-
-                                    [--platform linux|windows]
+                                    [--out <directory>] [--platform linux|windows]
 
        senhub-agent zabbix setup --url <frontend> [--token-file <path>]
                                  [--group <name>] [--metadata <string>]
-                                 [--discovery-delay <interval>] [--probe <type> ...]
+                                 [--action-name <name>] [--probe <type> ...]
+                                 [--discovery-delay <interval> | --no-discovery-delay]
                                  [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
 
 template writes the Zabbix templates generated from the probe
@@ -37,6 +36,9 @@ Without --probe, every definition is written. With one --probe and no
 setup does the whole server side in one call: it imports those same
 templates, creates the host group, and creates the autoregistration
 action that turns an agent's first contact into a host carrying them.
+Without --probe it links the probes every machine runs; naming others
+adds them, and a template whose probe an agent does not run only
+contributes discovery rules that never answer.
 After it, a machine needs nothing but the agent and two lines naming the
 server. Run it once, as an administrator; a deployed agent never holds
 an API token. Re-running it is safe: every step is idempotent, which is
