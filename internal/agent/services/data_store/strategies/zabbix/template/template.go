@@ -148,12 +148,56 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	var order []string
 	valueMaps := map[string]ValueMap{}
 	seenKeys := map[string]bool{}
+	_, familyOf := variantFamilies(def)
+
+	ensureRule := func(ruleKey, ruleTitle string) *DiscoveryRule {
+		rule, ok := rules[ruleKey]
+		if !ok {
+			rule = &DiscoveryRule{
+				UUID:        uid("rule", name, ruleKey),
+				Name:        ruleTitle,
+				Type:        "ZABBIX_ACTIVE",
+				Key:         ruleKey,
+				Delay:       opts.DiscoveryDelay,
+				Description: "Served by the SenHub Agent zabbix output.",
+			}
+			rules[ruleKey] = rule
+			order = append(order, ruleKey)
+		}
+		return rule
+	}
 
 	for _, m := range def.Metrics {
 		if m.Otel != nil && m.Otel.Skip {
 			continue
 		}
 		labels := dimensions(def, m)
+
+		// A member of a variant family is declared once for the whole
+		// family, under the rule that discovers which of its values the
+		// host actually feeds.
+		if f := familyOf[m.Name]; f != nil {
+			key := variantPrototypeKey(opts.Prefix, f)
+			if seenKeys[key] {
+				continue
+			}
+			seenKeys[key] = true
+			ruleKey := variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
+			rule := ensureRule(ruleKey, variantRuleName(def.ProbeName, f))
+			proto := ItemPrototype{
+				Name:        variantPrototypeName(f),
+				Type:        "ZABBIX_ACTIVE",
+				Key:         key,
+				Delay:       opts.ItemDelay,
+				ValueType:   "FLOAT",
+				Units:       units(m),
+				Description: m.Description,
+			}
+			proto.UUID = uid("item", name, proto.Key)
+			rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+			continue
+		}
+
 		// Two internal metrics can resolve to one key (same OTel name,
 		// same attributes, same dimensions); the agent sends that key
 		// once, so the template declares it once.
@@ -163,19 +207,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		}
 		seenKeys[key] = true
 		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
-		rule, ok := rules[ruleKey]
-		if !ok {
-			rule = &DiscoveryRule{
-				UUID:        uid("rule", name, ruleKey),
-				Name:        ruleName(def.ProbeName, labels),
-				Type:        "ZABBIX_ACTIVE",
-				Key:         ruleKey,
-				Delay:       opts.DiscoveryDelay,
-				Description: "Served by the SenHub Agent zabbix output.",
-			}
-			rules[ruleKey] = rule
-			order = append(order, ruleKey)
-		}
+		rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
 		proto := ItemPrototype{
 			Name:        prototypeName(m, labels),
 			Type:        "ZABBIX_ACTIVE",

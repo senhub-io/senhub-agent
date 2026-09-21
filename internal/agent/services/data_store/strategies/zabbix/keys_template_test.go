@@ -44,12 +44,27 @@ func TestGeneratedPrototypesNameTheKeysTheAgentSends(t *testing.T) {
 			cm := otelmapper.CacheMetric{ProbeName: "inst", ProbeType: def.ProbeName, MetricName: m.Name, Value: 1, Tags: tags}
 			sent := itemFor("senhub", &def, cm).Key
 
+			// A metric of a variant family is named by a prototype whose
+			// key carries the attribute as a macro, because the agent
+			// discovers which values it feeds instead of the generator
+			// declaring them all.
+			var famMacros, famValues []string
+			if fam := familiesOf(&def)[m.Name]; fam != nil {
+				famMacros = attrMacros(fam.labels, fam.attrKeys)
+				famValues = staticAttributeValues(&m)
+			}
+
 			// Substitute the macros of every prototype and look for the sent key.
 			found := false
 			for p := range protos {
 				candidate := strings.ReplaceAll(p, probeMacro, "inst")
 				for _, l := range labels {
 					candidate = strings.ReplaceAll(candidate, macroFor(l), tags[l])
+				}
+				for i, mac := range famMacros {
+					if i < len(famValues) {
+						candidate = strings.ReplaceAll(candidate, mac, famValues[i])
+					}
 				}
 				if candidate == sent {
 					found = true
@@ -59,8 +74,12 @@ func TestGeneratedPrototypesNameTheKeysTheAgentSends(t *testing.T) {
 			if !found {
 				t.Errorf("%s/%s: the agent sends %s but no generated prototype names it", def.ProbeName, m.Name, sent)
 			}
-			if !rules[discoveryKey("senhub", def.ProbeName, labels)] {
-				t.Errorf("%s/%s: the agent serves discovery %s but the template has no such rule", def.ProbeName, m.Name, discoveryKey("senhub", def.ProbeName, labels))
+			wantRule := discoveryKey("senhub", def.ProbeName, labels)
+			if fam := familiesOf(&def)[m.Name]; fam != nil {
+				wantRule = variantRuleKey("senhub", def.ProbeName, fam.otelName, labels)
+			}
+			if !rules[wantRule] {
+				t.Errorf("%s/%s: the agent serves discovery %s but the template has no such rule", def.ProbeName, m.Name, wantRule)
 			}
 			checked++
 		}
