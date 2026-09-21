@@ -35,7 +35,7 @@ zabbix:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `server` | required | Zabbix server or proxy, `host:port`; `10051` when the port is omitted. |
+| `server` | required | Zabbix server or proxy, `host:port`; `10051` when the port is omitted. Several addresses separated by commas name a proxy group (see below). |
 | `hostname` | machine host name | Name this host registers under. |
 | `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. Limited to 2034 bytes by Zabbix. |
 | `interval` | `60s` | Push cadence of the collected values. |
@@ -139,6 +139,37 @@ zabbix:
     port: 10050
     allow: ["10.20.0.0/24"]
 ```
+
+## Through a proxy
+
+Point `server` at the proxy instead of the server and nothing else
+changes: the agent registers through it, the server attaches the host to
+the proxy that relayed the registration, and the values travel the same
+way.
+
+```yaml
+zabbix:
+  server: "zabbix-proxy-paris.example.com:10051"
+```
+
+A **proxy group** needs every member listed, separated by commas, the way
+a classic agent takes several `ServerActive` entries:
+
+```yaml
+zabbix:
+  server: "proxy-a.example.com,proxy-b.example.com,proxy-c.example.com"
+```
+
+The agent talks to the first member that answers. When the host is held
+by another member, that member replies with a redirection and the agent
+moves to it for every request, the check list, the values and the
+heartbeat alike. If the member holding the host goes down, the agent
+forgets the redirection and asks the configured addresses again, which is
+how it learns where the group moved the host.
+
+With `passive.enabled` and no explicit `passive.allow`, every configured
+address is allowed to poll the agent, because the member polling today is
+not necessarily the one that polled yesterday.
 
 ## Autoregistration
 

@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -28,7 +29,13 @@ type client struct {
 	tlsConf *tls.Config
 	session string
 	nextID  atomic.Uint64
-	dial    func(ctx context.Context) (net.Conn, error)
+	addrs   []string
+	dial    func(ctx context.Context, addr string) (net.Conn, error)
+
+	mu       sync.Mutex
+	idx      int
+	redirect string
+	rev      int64
 }
 
 // activeItem is one item the server wants for this host.
@@ -52,6 +59,16 @@ type response struct {
 	Response string       `json:"response"`
 	Info     string       `json:"info"`
 	Data     []activeItem `json:"data"`
+	Redirect *redirection `json:"redirect"`
+}
+
+// redirection is how a proxy group answers every request type when the
+// member being asked is not the one holding this host. The reply carries
+// no data and says "failed", so a client that only reads the response
+// field concludes the server refused it and never collects anything.
+type redirection struct {
+	Address  string `json:"address"`
+	Revision int64  `json:"revision"`
 }
 
 // pushResult is what the server said it did with a batch.
@@ -68,6 +85,10 @@ func newClient(cfg Config) (*client, error) {
 		}
 		c.tlsConf = tc
 	}
+	c.addrs = cfg.addresses()
+	if len(c.addrs) == 0 {
+		return nil, fmt.Errorf("zabbix: no server address configured")
+	}
 	c.dial = c.dialServer
 	return c, nil
 }
@@ -82,11 +103,11 @@ func newSession() string {
 
 func buildTLS(t TLSConfig, server string) (*tls.Config, error) {
 	conf := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: t.InsecureSkipVerify} // #nosec G402 - operator opt-in
-	if t.ServerName != "" {
-		conf.ServerName = t.ServerName
-	} else if host, _, err := net.SplitHostPort(server); err == nil {
-		conf.ServerName = host
-	}
+	// The name is left empty when the operator pinned none, so each
+	// connection can present the name of the address it is dialling: a
+	// proxy group sends us to members the configuration never listed.
+	conf.ServerName = t.ServerName
+	_ = server
 	if t.CAFile != "" {
 		pem, err := os.ReadFile(t.CAFile) // #nosec G304 - operator-supplied path
 		if err != nil {
@@ -108,16 +129,23 @@ func buildTLS(t TLSConfig, server string) (*tls.Config, error) {
 	return conf, nil
 }
 
-func (c *client) dialServer(ctx context.Context) (net.Conn, error) {
+func (c *client) dialServer(ctx context.Context, addr string) (net.Conn, error) {
 	d := net.Dialer{Timeout: c.cfg.Timeout}
-	conn, err := d.DialContext(ctx, "tcp", c.cfg.Server)
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 	if c.tlsConf == nil {
 		return conn, nil
 	}
-	tc := tls.Client(conn, c.tlsConf)
+	conf := c.tlsConf
+	if conf.ServerName == "" {
+		if host, _, splitErr := net.SplitHostPort(addr); splitErr == nil {
+			conf = c.tlsConf.Clone()
+			conf.ServerName = host
+		}
+	}
+	tc := tls.Client(conn, conf)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		conn.Close()
 		return nil, err
@@ -125,8 +153,71 @@ func (c *client) dialServer(ctx context.Context) (net.Conn, error) {
 	return tc, nil
 }
 
-// exchange sends one request and reads the reply.
+// target is the address to talk to: the one a proxy group sent us to, or
+// the configured address we are currently on.
+func (c *client) target() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.redirect != "" {
+		return c.redirect
+	}
+	return c.addrs[c.idx]
+}
+
+// follow records where a proxy group wants us and reports whether that
+// changed anything. The revision it sends with the address orders the
+// group's decisions, so a reply that overtook a newer one is dropped.
+func (c *client) follow(r redirection) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if r.Address == "" || r.Revision < c.rev {
+		return false
+	}
+	if c.redirect == r.Address {
+		c.rev = r.Revision
+		return false
+	}
+	c.redirect = r.Address
+	c.rev = r.Revision
+	return true
+}
+
+// stepAside is called when the address we are on stops answering. A
+// redirection is forgotten entirely, because the member that held this
+// host is the one that went down and the group's other members are what
+// can say where it went; otherwise we move on to the next configured
+// address.
+func (c *client) stepAside() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.redirect != "" {
+		c.redirect = ""
+		c.rev = 0
+		return
+	}
+	c.idx = (c.idx + 1) % len(c.addrs)
+}
+
+// exchange sends one request, reads the reply, and follows a proxy
+// group's redirection once. Every request type is redirected the same
+// way, so handling it here is what keeps the check list, the values and
+// the heartbeat on the same member.
 func (c *client) exchange(ctx context.Context, req interface{}) (response, error) {
+	resp, err := c.roundTrip(ctx, req)
+	if err != nil || resp.Redirect == nil || !c.follow(*resp.Redirect) {
+		return resp, err
+	}
+	resp, err = c.roundTrip(ctx, req)
+	if err == nil && resp.Redirect != nil {
+		// Moved again while we were moving. Remember it and let the next
+		// request go straight there rather than chasing it in a loop.
+		c.follow(*resp.Redirect)
+	}
+	return resp, err
+}
+
+// roundTrip sends one request to the current target and reads the reply.
+func (c *client) roundTrip(ctx context.Context, req interface{}) (response, error) {
 	var resp response
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -135,9 +226,11 @@ func (c *client) exchange(ctx context.Context, req interface{}) (response, error
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 
-	conn, err := c.dial(ctx)
+	addr := c.target()
+	conn, err := c.dial(ctx, addr)
 	if err != nil {
-		return resp, fmt.Errorf("connecting to %s: %w", c.cfg.Server, err)
+		c.stepAside()
+		return resp, fmt.Errorf("connecting to %s: %w", addr, err)
 	}
 	defer conn.Close()
 	if deadline, ok := ctx.Deadline(); ok {
