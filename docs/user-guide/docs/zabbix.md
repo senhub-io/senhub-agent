@@ -47,6 +47,7 @@ zabbix:
 | `passive.bind_address` | `0.0.0.0` | Address the passive listener binds to. |
 | `passive.port` | `10050` | Port the passive listener binds to; sent to the server so autoregistration creates the agent interface on it. |
 | `passive.allow` | server addresses | Addresses or CIDR ranges allowed to poll the passive port. |
+| `passive.advertise` | source address | Address or name the server should poll, sent with the registration. |
 | `passive.tls.enabled` | `false` | Encrypt what the server polls. Needs `cert_file` and `key_file`. |
 | `passive.tls.cert_file`, `passive.tls.key_file` | | Certificate the agent presents to whoever polls it, and its key. |
 | `passive.tls.ca_file` | | Authority that signed the server's certificate. When set, a poller must present one it signed. |
@@ -136,6 +137,19 @@ Only the addresses in `passive.allow` may poll; when the list is empty,
 the addresses the configured `server` resolves to. The port is sent with
 the registration request so the autoregistration action creates the
 agent interface on it.
+
+Zabbix records the address the packets came from, which behind NAT is
+the translation and not somewhere it can poll. `passive.advertise` names
+the address instead: a name creates a DNS interface, an address creates
+an IP one.
+
+```yaml
+zabbix:
+  passive:
+    enabled: true
+    port: 10050
+    advertise: "web-01.example.com"
+```
 
 ### Encrypting the polled port
 
