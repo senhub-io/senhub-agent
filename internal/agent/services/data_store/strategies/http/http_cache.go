@@ -135,9 +135,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"error_bucket", // per directory-sync export-error bucket
 	},
 	"exchange_online": {"service_display_name"}, // per Exchange service-health entry
-	// azure_container_apps reports the state of one application per instance;
-	// its lines ride the log rail, so nothing splits its metrics.
-	"azure_container_apps": {"metric_type"},
+	// azure_container_apps used to report one application per instance.
+	// Since subscription discovery it follows every application a
+	// credential can read, so its state metrics are split by application
+	// and its scan failures by cause; without these the cache keeps one
+	// application's state and one failure reason, whichever arrived last.
+	"azure_container_apps": {
+		"metric_type", // per collection-state series
+		"azure_app",   // per followed application
+		"reason",      // per scan-failure cause
+	},
 
 	// High-availability probes
 	"hyperv_ha": {
