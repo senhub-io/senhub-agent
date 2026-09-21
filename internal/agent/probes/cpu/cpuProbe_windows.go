@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/process"
 	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
@@ -70,6 +71,17 @@ var counterPaths = map[string]MetricDefinition{
 	"processor_queue_length": {
 		path:     "\\System\\Processor Queue Length",
 		instance: "",
+	},
+	// Context switches and idle time were reported on Linux and not
+	// here, so a Windows host carried two items that could never
+	// receive a value while the native agent showed both.
+	"context_switches": {
+		path:     "\\System\\Context Switches/sec",
+		instance: "",
+	},
+	"idle_time": {
+		path:     "\\Processor\\% Idle Time",
+		instance: "*",
 	},
 }
 
@@ -332,7 +344,8 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		// Adding core tag for ALL CPU metrics for consistent filtering
 		// System metrics: only keep _Total instance to avoid duplicates
 		isSystemMetric := normalizedName == "cpu_dpc_rate" || normalizedName == "cpu_dpc_queued" ||
-			normalizedName == "cpu_interrupts" || normalizedName == "cpu_queue_length"
+			normalizedName == "cpu_interrupts" || normalizedName == "cpu_queue_length" ||
+			normalizedName == "cpu_context_switches"
 
 		// Skip per-core instances of system metrics (keep only _Total)
 		if isSystemMetric && pathInfo.instance != "" && pathInfo.instance != "_Total" {
@@ -383,6 +396,19 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	// Windows wraps EnumProcesses. Cheap single syscall (~10s of
 	// microseconds for a few hundred processes). Mapped via cpu.yaml
 	// to OTel system.processes.count.
+	// The processor count, which the native agent reports as
+	// system.cpu.num and which the Unix collector already sent.
+	if n, cerr := cpu.Counts(true); cerr == nil && n > 0 {
+		countTags := append([]tags.Tag{}, baseTags...)
+		countTags = append(countTags, tags.Tag{Key: "core", Value: "total"})
+		dataPoints = append(dataPoints, data_store.DataPoint{
+			Name:      "cpu_count",
+			Timestamp: timestamp,
+			Value:     float64(n),
+			Tags:      countTags,
+		})
+	}
+
 	if pids, perr := process.Pids(); perr == nil {
 		coreTotalTags := append([]tags.Tag{}, baseTags...)
 		coreTotalTags = append(coreTotalTags, tags.Tag{Key: "core", Value: "total"})
@@ -455,6 +481,14 @@ func (w *windowsCollector) normalizeMetric(metricName, instance string, value fl
 		return "cpu_interrupts", normalizedValue
 	case "processor_queue_length":
 		return "cpu_queue_length", normalizedValue
+	case "context_switches":
+		return "cpu_context_switches", normalizedValue
+	case "idle_time":
+		if instance == "_Total" {
+			return "cpu_idle", normalizedValue
+		}
+		// Per-core idle has no definition; only the total is reported.
+		return "", 0
 	default:
 		// Return empty string to skip unknown metrics
 		return "", 0
