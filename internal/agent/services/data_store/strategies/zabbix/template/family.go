@@ -329,3 +329,21 @@ func splitTrailingParenthetical(s string) (string, string) {
 	}
 	return strings.TrimSpace(s[:i]), s[i+1 : len(s)-1]
 }
+
+// forPlatform drops the metrics the named platform cannot produce. It
+// runs before the families are formed, so a family whose other members
+// are Windows-only dissolves on Linux and its survivor keeps its own
+// key, which is what the agent sends there.
+func forPlatform(def transformers.ProbeDefinition, goos string) transformers.ProbeDefinition {
+	if goos == "" {
+		return def
+	}
+	kept := make([]transformers.MetricDefinition, 0, len(def.Metrics))
+	for _, m := range def.Metrics {
+		if m.RunsOn(goos) {
+			kept = append(kept, m)
+		}
+	}
+	def.Metrics = kept
+	return def
+}

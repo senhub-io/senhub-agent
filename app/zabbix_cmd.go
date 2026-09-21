@@ -22,6 +22,8 @@ const zabbixUsage = `Usage: senhub-agent zabbix template [--probe <type> ...] [-
                                     [--prefix <key prefix>] [--delay <interval>]
                                     [--out <directory>]
 
+                                    [--platform linux|windows]
+
        senhub-agent zabbix setup --url <frontend> [--token-file <path>]
                                  [--group <name>] [--metadata <string>]
                                  [--discovery-delay <interval>] [--probe <type> ...]
@@ -87,6 +89,8 @@ func runZabbixCommand() {
 			opts.ItemDelay = value()
 		case "--out":
 			out = value()
+		case "--platform":
+			opts.Platform = value()
 		case "--help", "-h":
 			fmt.Println(zabbixUsage)
 			return
@@ -94,6 +98,10 @@ func runZabbixCommand() {
 			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", flag, zabbixUsage)
 			os.Exit(2)
 		}
+	}
+	if opts.Platform != "" && opts.Platform != "linux" && opts.Platform != "windows" {
+		fmt.Fprintln(os.Stderr, "Error: --platform must be linux or windows")
+		os.Exit(2)
 	}
 	if opts.Version != "" && opts.Version != "6.0" && opts.Version != "7.0" {
 		fmt.Fprintln(os.Stderr, "Error: --version must be 6.0 or 7.0")
@@ -159,7 +167,7 @@ func runZabbixCommand() {
 			os.Stdout.Write(body)
 			continue
 		}
-		path := filepath.Join(out, fmt.Sprintf("senhub-%s-%s.yaml", p, exp.ZabbixExport.Version))
+		path := filepath.Join(out, fmt.Sprintf("senhub-%s%s-%s.yaml", p, platformSuffix(opts.Platform), exp.ZabbixExport.Version))
 		if err := os.WriteFile(path, body, 0o644); err != nil { // #nosec G306 - a template to import, not a secret
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -249,4 +257,11 @@ func firstNonEmptyVersion(v string) string {
 		return "7.0"
 	}
 	return v
+}
+
+func platformSuffix(platform string) string {
+	if platform == "" {
+		return ""
+	}
+	return "-" + platform
 }

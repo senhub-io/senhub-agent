@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,7 +257,7 @@ func (c *client) activeChecks(ctx context.Context) ([]activeItem, error) {
 	req := map[string]interface{}{
 		"request":       "active checks",
 		"host":          c.cfg.Hostname,
-		"host_metadata": c.cfg.HostMetadata,
+		"host_metadata": metadataWithPlatform(c.cfg.HostMetadata),
 	}
 	if c.cfg.Passive.Enabled {
 		// The port the autoregistration action writes on the host's
@@ -355,4 +356,18 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// metadataWithPlatform appends the agent's operating system to the host
+// metadata. The autoregistration action matches on it to link the
+// template set that platform can actually feed: a Windows performance
+// counter declared on a Linux host can never receive a value, and an
+// operator reads that empty line as a defect. Appending rather than
+// replacing keeps whatever the operator wrote matchable as before.
+func metadataWithPlatform(metadata string) string {
+	metadata = strings.TrimSpace(metadata)
+	if metadata == "" {
+		return runtime.GOOS
+	}
+	return metadata + " " + runtime.GOOS
 }

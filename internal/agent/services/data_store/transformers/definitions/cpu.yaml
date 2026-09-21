@@ -239,6 +239,7 @@ metrics:
     display_name: "CPU DPC Rate"
     unit: "#"
     category: "system_counters"
+    platforms: ["windows"]
     description: "Deferred Procedure Calls per second"
     otel:
       name: senhub.system.cpu.dpcs
@@ -250,6 +251,7 @@ metrics:
     display_name: "CPU DPC Queued"
     unit: "/s"
     category: "system_counters"
+    platforms: ["windows"]
     description: "DPCs queued per second"
     otel:
       name: senhub.system.cpu.dpcs_queued
@@ -333,6 +335,7 @@ metrics:
     display_name: "CPU Queue Length"
     unit: "#"
     category: "system_counters"
+    platforms: ["windows"]
     description: "Number of threads waiting in the processor queue"
     otel:
       name: senhub.system.cpu.queue_length
