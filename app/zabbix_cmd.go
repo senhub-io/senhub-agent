@@ -22,15 +22,44 @@ const zabbixUsage = `Usage: senhub-agent zabbix template [--probe <type> ...] [-
                                     [--prefix <key prefix>] [--delay <interval>]
                                     [--out <directory>]
 
-Writes the Zabbix templates generated from the probe definitions, one
-file per probe type, named senhub-<type>-<version>.yaml. Without --probe,
-every definition is written. With one --probe and no --out, the template
-goes to standard output.`
+       senhub-agent zabbix setup --url <frontend> [--token-file <path>]
+                                 [--group <name>] [--metadata <string>]
+                                 [--discovery-delay <interval>] [--probe <type> ...]
+                                 [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
+
+template writes the Zabbix templates generated from the probe
+definitions, one file per probe type, named senhub-<type>-<version>.yaml.
+Without --probe, every definition is written. With one --probe and no
+--out, the template goes to standard output.
+
+setup does the whole server side in one call: it imports those same
+templates, creates the host group, and creates the autoregistration
+action that turns an agent's first contact into a host carrying them.
+After it, a machine needs nothing but the agent and two lines naming the
+server. Run it once, as an administrator; a deployed agent never holds
+an API token. Re-running it is safe: every step is idempotent, which is
+also how a template is refreshed after an upgrade.
+
+The token is read from --token-file, then --token, then the environment
+variable SENHUB_ZABBIX_TOKEN. Prefer a file: a token on the command line
+is visible to every process on the machine.`
 
 func runZabbixCommand() {
 	args := os.Args[2:]
-	if len(args) == 0 || args[0] != "template" {
+	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, zabbixUsage)
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "template":
+	case "setup":
+		runZabbixSetup(args[1:])
+		return
+	case "--help", "-h", "help":
+		fmt.Println(zabbixUsage)
+		return
+	default:
+		fmt.Fprintf(os.Stderr, "Error: unknown subcommand %q\n%s\n", args[0], zabbixUsage)
 		os.Exit(2)
 	}
 	opts := template.Options{}
@@ -139,4 +168,47 @@ func (a lookupAdapter) Lookup(id string) (map[int]string, bool) {
 		out[code] = v.Text
 	}
 	return out, true
+}
+
+// renderTemplates generates the templates of the named probe types, or
+// of every definition when none is named, and returns them keyed by
+// probe type along with the template names Zabbix will know them by.
+// Both subcommands go through it, so what setup imports is byte for byte
+// what template writes.
+func renderTemplates(probes []string, opts template.Options) (map[string][]byte, []string, error) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(probes) == 0 {
+		for name := range defs {
+			probes = append(probes, name)
+		}
+		sort.Strings(probes)
+	}
+	nop := zerolog.Nop()
+	if lookups, lerr := http.NewLookupRegistry(&nop); lerr == nil {
+		opts.Lookups = lookupAdapter{lookups}
+	}
+	out := make(map[string][]byte, len(probes))
+	var names []string
+	for _, p := range probes {
+		def, ok := defs[p]
+		if !ok {
+			return nil, nil, fmt.Errorf("no definition for probe type %q", p)
+		}
+		exp, err := template.Generate(def, opts)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", p, err)
+		}
+		body, err := template.Encode(exp)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", p, err)
+		}
+		out[p] = body
+		for _, t := range exp.ZabbixExport.Templates {
+			names = append(names, t.Template)
+		}
+	}
+	return out, names, nil
 }
