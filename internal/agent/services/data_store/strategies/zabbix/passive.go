@@ -233,17 +233,28 @@ func (p *passiveListener) handleJSON(conn net.Conn, r *bufio.Reader) {
 	_ = writeFrame(conn, body)
 }
 
+// agentItems are the agent's own three items, the ones a native agent
+// answers whatever else it collects. They are built here and served by
+// both rails: the passive listener answers them directly, and the active
+// push sends them when the server asks, so a host monitored actively
+// gets the availability line it would get from a native agent.
+func agentItems(hostname string) []item {
+	version := cliArgs.Version
+	if version == "" {
+		version = "0.0.0-dev"
+	}
+	return []item{
+		{Key: "agent.ping", Value: "1"},
+		{Key: "agent.version", Value: version},
+		{Key: "agent.hostname", Value: hostname},
+	}
+}
+
 func (p *passiveListener) resolve(key string) (string, bool) {
-	switch key {
-	case "agent.ping":
-		return "1", true
-	case "agent.version":
-		if cliArgs.Version == "" {
-			return "0.0.0-dev", true
+	for _, it := range agentItems(p.hostname) {
+		if it.Key == key {
+			return it.Value, true
 		}
-		return cliArgs.Version, true
-	case "agent.hostname":
-		return p.hostname, true
 	}
 	if p.lookup == nil {
 		return "", false
