@@ -305,6 +305,14 @@ senhub-agent zabbix setup --url https://zabbix.example.com --dry-run
 The token is read from `--token-file`, then `--token`, then the
 environment variable `SENHUB_ZABBIX_TOKEN`.
 
+`setup` also names any other enabled autoregistration action a
+registering agent would match. Zabbix runs every matching action, and
+two that both link templates do not merge: the second link fails,
+because Zabbix refuses two linked templates declaring one key, and it
+fails silently. The host then comes up with whichever set won and items
+that never fill. `setup` reports it rather than disabling it, since an
+action you wrote may do things it knows nothing about.
+
 Every template is imported, including the probes not named with
 `--probe`; only the linking is narrowed. A template linked to a host
 whose agent does not run that probe adds discovery rules that never
