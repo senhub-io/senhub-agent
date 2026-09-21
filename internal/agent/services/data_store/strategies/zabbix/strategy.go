@@ -194,7 +194,7 @@ func (s *Strategy) run(ctx context.Context) {
 // the server and a template gives it items, the list is empty and
 // nothing is pushed; the values are ready the moment the list arrives.
 func (s *Strategy) refresh(ctx context.Context) {
-	items, err := s.client.activeChecks(ctx)
+	items, changed, err := s.client.activeChecks(ctx)
 	if errors.Is(err, errHostUnknown) {
 		// The reply a server gives on first contact: the request itself
 		// fired the autoregistration event, and the host exists on the
@@ -207,6 +207,13 @@ func (s *Strategy) refresh(ctx context.Context) {
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("Check list request failed")
 		agentstate.RecordExportFailure("zabbix", err.Error())
+		return
+	}
+	if !changed {
+		// The server says its list is the one we already hold. Replacing
+		// it with the empty reply would silence every item until the
+		// next configuration change.
+		s.logger.Debug().Msg("Check list unchanged; the server sent no data")
 		return
 	}
 	requested := make(map[string]struct{}, len(items))
