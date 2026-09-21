@@ -226,7 +226,13 @@ Nothing has to be chosen per host. The agent appends its operating
 system to the host metadata it registers with, and `zabbix setup`
 creates one autoregistration action per platform matching on it, so a
 Linux host is linked to the Linux templates and a Windows host to the
-Windows ones by itself. A setup run on a server prepared by an earlier
+Windows ones by itself.
+
+Only the published platforms have an action. An agent built for macOS,
+which is a development target and not a release, registers as
+`... darwin`, matches nothing and waits for an autoregistration that
+never comes; the server logs `host [...] not found` and the agent says
+it is waiting. Add a condition for it by hand if you monitor one. A setup run on a server prepared by an earlier
 version disables the single action that version created, because Zabbix
 runs every matching action and leaving it would link both sets.
 
