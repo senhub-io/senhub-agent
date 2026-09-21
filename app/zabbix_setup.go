@@ -236,6 +236,11 @@ func (s *zabbixSetup) ensureAction(name, metadata, groupID string, templateIDs [
 			{"operationtype": 2}, // add host
 			{"operationtype": 4, "opgroup": []map[string]string{{"groupid": groupID}}}, // add to group
 			{"operationtype": 6, "optemplate": optemplate},                             // link templates
+			// Automatic inventory, without which the items that carry the
+			// machine's operating system, hardware and serial number
+			// arrive and fill nothing: a field is only populated on a host
+			// whose inventory mode says so.
+			{"operationtype": 10, "opinventory": map[string]int{"inventory_mode": 1}},
 		},
 	}
 	if s.dryRun {

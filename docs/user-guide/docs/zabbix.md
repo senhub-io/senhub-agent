@@ -178,6 +178,36 @@ zabbix:
     allow: ["10.20.0.0/24"]
 ```
 
+## The host's inventory fills itself
+
+Beside the measurements, the agent knows what the machine *is*: its
+operating system, its hardware, its serial number. Zabbix keeps those
+facts in host inventory, and the **SenHub Agent** template carries them
+as text items linked to the matching inventory fields.
+
+| Inventory field | What the agent reports |
+|---|---|
+| Name | The name the machine reports for itself |
+| OS, OS (Full), OS (Short) | Operating system, its full description, and its family |
+| Type | What the machine is: a server, a virtual machine, a laptop |
+| Hardware | Processor model |
+| Vendor, Model | What the firmware names |
+| Serial number A | Serial number from the firmware, which ties the host to an asset record |
+
+`zabbix setup` sets the autoregistration action to put new hosts in
+**automatic** inventory mode, without which the values arrive and fill
+nothing. On a host created by hand, set the mode yourself under
+**Inventory**.
+
+A fact the agent did not find is not sent at all, so its field keeps
+whatever it held rather than being blanked. On one Linux host, eight of
+the nine fill by themselves at the first collection.
+
+The relationships the agent also discovers, which machine a container
+runs on and which card is the same machine seen twice, have no home
+here: Zabbix has hosts, groups and tags, not a graph. They stay on the
+topology rail rather than being flattened into a text field.
+
 ## One template set per platform
 
 A definition declares every metric its probe can produce, and a probe
