@@ -37,6 +37,7 @@ metrics:
     display_name: "Network {interface} Operational State"
     unit: "#"
     category: "status"
+    platforms: ["linux", "darwin"]
     description: "1 when the interface is operationally up, else 0"
     otel:
       name: senhub.system.network.interface.up
