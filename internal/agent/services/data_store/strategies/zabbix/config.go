@@ -131,6 +131,12 @@ type PassiveConfig struct {
 	// Allow lists the addresses (IP or CIDR) allowed to poll. Empty
 	// means the addresses the configured server resolves to.
 	Allow []string
+	// Advertise is the address the server should poll, sent with the
+	// registration request so autoregistration writes it on the agent
+	// interface. Empty leaves Zabbix to use the address the packets came
+	// from, which is wrong behind NAT: what the server sees is the
+	// translation, not where the agent can be reached.
+	Advertise string
 	// TLS encrypts what the server polls. The outbound connection and
 	// this one are configured apart because they are opposite roles:
 	// there the agent checks a server, here it presents itself to one.
@@ -304,6 +310,13 @@ func parsePassive(block map[string]interface{}, cfg PassiveConfig) (PassiveConfi
 			}
 			cfg.Allow = append(cfg.Allow, s)
 		}
+	}
+	if v, ok := block["advertise"]; ok {
+		str, isStr := v.(string)
+		if !isStr || strings.TrimSpace(str) == "" {
+			return cfg, fmt.Errorf("zabbix: 'passive.advertise' must be an address or a name the server can reach")
+		}
+		cfg.Advertise = strings.TrimSpace(str)
 	}
 	if v, ok := block["tls"]; ok {
 		sub, isMap := v.(map[string]interface{})
