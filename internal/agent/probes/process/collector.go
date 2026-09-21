@@ -65,28 +65,54 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 
 	points := make([]data_store.DataPoint, 0, len(snaps)*7)
 
-	for _, snap := range snaps {
-		processTags := buildProcessTags(baseTags, snap, hostname)
-		points = appendProcessPoints(points, ts, snap, processTags)
+	if cfg.detailed() {
+		for _, snap := range snaps {
+			processTags := buildProcessTags(baseTags, snap, hostname)
+			points = appendProcessPoints(points, ts, snap, processTags)
+		}
 	}
 
-	// Aggregated process.count per name.
+	// The roll-up over the processes sharing a name. It is what an
+	// unfiltered view reports instead of the per-process detail, and it
+	// is what the native Zabbix agent reports in every case: a name is
+	// stable where a process id is not.
 	if cfg.aggregate {
-		counts := map[string]int{}
-		for _, snap := range snaps {
-			counts[snap.name]++
+		type rollUp struct {
+			count  int
+			cpu    float64
+			memory uint64
 		}
-		for name, cnt := range counts {
+		byName := map[string]*rollUp{}
+		for _, snap := range snaps {
+			r, ok := byName[snap.name]
+			if !ok {
+				r = &rollUp{}
+				byName[snap.name] = r
+			}
+			r.count++
+			r.cpu += snap.cpuPct
+			r.memory += snap.rss
+		}
+		for name, r := range byName {
 			aggTags := append([]tags.Tag{}, baseTags...)
 			aggTags = append(aggTags,
 				tags.Tag{Key: "process.name", Value: name},
 			)
-			points = append(points, data_store.DataPoint{
-				Name:      "process.count",
-				Timestamp: ts,
-				Value:     float64(cnt),
-				Tags:      aggTags,
-			})
+			for _, m := range []struct {
+				name  string
+				value float64
+			}{
+				{"process.count", float64(r.count)},
+				{"process.group.cpu.utilization", r.cpu},
+				{"process.group.memory.usage", float64(r.memory)},
+			} {
+				points = append(points, data_store.DataPoint{
+					Name:      m.name,
+					Timestamp: ts,
+					Value:     m.value,
+					Tags:      aggTags,
+				})
+			}
 		}
 	}
 
