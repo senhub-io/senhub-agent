@@ -97,13 +97,21 @@ type Template struct {
 // Item is a plain item, not discovered: the agent's own three, which
 // exist on every host whatever it collects.
 type Item struct {
-	UUID        string `yaml:"uuid"`
-	Name        string `yaml:"name"`
-	Type        string `yaml:"type"`
-	Key         string `yaml:"key"`
-	Delay       string `yaml:"delay"`
-	ValueType   string `yaml:"value_type"`
+	UUID      string `yaml:"uuid"`
+	Name      string `yaml:"name"`
+	Type      string `yaml:"type"`
+	Key       string `yaml:"key"`
+	Delay     string `yaml:"delay"`
+	ValueType string `yaml:"value_type"`
+	// Trends is set to "0" on a text item, which keeps no trends and
+	// which Zabbix refuses to store them for.
+	Trends      string `yaml:"trends,omitempty"`
 	Description string `yaml:"description,omitempty"`
+	// InventoryLink names the host inventory field this item fills. It
+	// is what turns a collected fact into the host's inventory without
+	// anyone typing it, and it only takes effect on a host whose
+	// inventory mode is automatic.
+	InventoryLink string `yaml:"inventory_link,omitempty"`
 }
 
 type GroupRef struct {
@@ -502,6 +510,21 @@ func Base(opts Options) Export {
 				Description: "Name the agent registers under.",
 			},
 		},
+	}
+	// The nameplate, which Zabbix files in host inventory rather than in
+	// a graph. The values change when the machine does, so once an hour
+	// is generous, and a text item keeps no trends.
+	for _, f := range NameplateFields {
+		tpl.Items = append(tpl.Items, Item{
+			Name:          "SenHub " + f.Name,
+			Type:          "ZABBIX_ACTIVE",
+			Key:           buildKey(opts.Prefix, f.Key, nil),
+			Delay:         "1h",
+			ValueType:     "CHAR",
+			Trends:        "0",
+			Description:   f.Description,
+			InventoryLink: f.Inventory,
+		})
 	}
 	for i := range tpl.Items {
 		tpl.Items[i].UUID = uid("item", BaseName, tpl.Items[i].Key)
