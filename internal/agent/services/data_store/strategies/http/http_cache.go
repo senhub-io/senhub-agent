@@ -111,6 +111,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// drive and per replication session.
 	"powerstore": {
 		"metric_type", "severity",
+		"cluster",   // per-cluster: every metric carries it, and one agent can poll several
 		"volume",    // per-volume state/capacity
 		"appliance", // per-appliance perf/capacity/state
 		"node",      // per-node performance
@@ -262,7 +263,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"solr": {"core"}, // per-core metrics (solr.document.count, solr.index.size)
 	// memcached: network by direction (transmit/receive), operations by result
 	// (hit/miss), commands by command (get/set/flush), cpu.usage by state (user/system).
-	"memcached": {"result", "command", "state", "direction", "metric_type"},
+	// memcached: one series per polled server beside the per-command and
+	// per-state breakdowns; instance is what tells two servers apart.
+	"memcached": {"instance", "result", "command", "state", "direction", "metric_type"},
 	// nvidia: one series per GPU card; gpu.index + gpu.name uniquely
 	// identify a card within the host, gpu.uuid is added for stable joins.
 	"nvidia": {"gpu.index", "gpu.name", "gpu.uuid", "metric_type"},
@@ -398,6 +401,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	},
 
 	"swarm": {
+		"swarm.cluster.name", // per-cluster, declared on every series of the probe
 		"swarm.node.name",
 		"swarm.node.id", // per-node task placement, which carries no hostname
 		"swarm.node.role",

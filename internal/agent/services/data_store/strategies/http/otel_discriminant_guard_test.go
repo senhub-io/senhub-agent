@@ -86,12 +86,9 @@ func TestEveryDeclaredDimensionIsRegistered(t *testing.T) {
 	// after this point has to be judged when it is added.
 	const notYetExamined = "declared before this guard; not analysed, tracked in #915"
 	unexamined := map[string]string{
-		"ibmi":       notYetExamined,
-		"memcached":  notYetExamined,
-		"powerstore": notYetExamined,
-		"redfish":    notYetExamined,
-		"swarm":      notYetExamined,
-		"syslog":     notYetExamined,
+		"ibmi":    notYetExamined,
+		"redfish": notYetExamined,
+		"syslog":  notYetExamined,
 	}
 
 	used := map[string]bool{}
