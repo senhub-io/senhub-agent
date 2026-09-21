@@ -184,6 +184,27 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			})
 		}
 
+		// What the link itself says: the speed it negotiated and whether
+		// it is operationally up. Gauges, so they are emitted on every
+		// tick rather than waiting for a second sample like the rates.
+		link := interfaceLink(counter.Name)
+		if link.HaveSpeed {
+			dataPoints = append(dataPoints, data_store.DataPoint{
+				Name:      "interface_speed",
+				Timestamp: timestamp,
+				Value:     link.SpeedBits,
+				Tags:      interfaceTags,
+			})
+		}
+		if link.HaveUp {
+			dataPoints = append(dataPoints, data_store.DataPoint{
+				Name:      "interface_up",
+				Timestamp: timestamp,
+				Value:     link.Up,
+				Tags:      interfaceTags,
+			})
+		}
+
 		// Calculate rates per second if we have previous data
 		if lastCounter, exists := u.lastCounters[counter.Name]; exists {
 			timeDiff := timestamp.Sub(lastCounter.Timestamp).Seconds()
