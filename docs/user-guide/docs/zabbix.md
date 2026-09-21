@@ -47,6 +47,9 @@ zabbix:
 | `passive.bind_address` | `0.0.0.0` | Address the passive listener binds to. |
 | `passive.port` | `10050` | Port the passive listener binds to; sent to the server so autoregistration creates the agent interface on it. |
 | `passive.allow` | server addresses | Addresses or CIDR ranges allowed to poll the passive port. |
+| `passive.tls.enabled` | `false` | Encrypt what the server polls. Needs `cert_file` and `key_file`. |
+| `passive.tls.cert_file`, `passive.tls.key_file` | | Certificate the agent presents to whoever polls it, and its key. |
+| `passive.tls.ca_file` | | Authority that signed the server's certificate. When set, a poller must present one it signed. |
 | `tls.enabled` | `false` | Encrypt the connection with TLS (certificate). |
 | `tls.ca_file` | | CA certificate that signed the server's certificate. |
 | `tls.cert_file`, `tls.key_file` | | Client certificate and key, both or none. |
@@ -132,7 +135,39 @@ later.
 Only the addresses in `passive.allow` may poll; when the list is empty,
 the addresses the configured `server` resolves to. The port is sent with
 the registration request so the autoregistration action creates the
-agent interface on it. The passive port is not encrypted.
+agent interface on it.
+
+### Encrypting the polled port
+
+The listener takes its own `tls` block, apart from the one on the
+outbound connection, because the two are opposite roles: there the agent
+checks a server, here it presents itself to one.
+
+```yaml
+zabbix:
+  server: "zabbix.example.com:10051"
+  passive:
+    enabled: true
+    port: 10050
+    tls:
+      enabled: true
+      cert_file: /etc/senhub/agent.crt
+      key_file: /etc/senhub/agent.key
+      ca_file: /etc/senhub/zabbix-ca.crt
+```
+
+With `cert_file` and `key_file` alone, the agent encrypts what it serves
+and anyone the allow list admits may read it. Add `ca_file` and the
+agent also demands a certificate from whoever polls, signed by that
+authority: the allow list says which addresses may connect, a
+certificate says who they are.
+
+On the Zabbix side, set the host's "Connections to host" to
+*Certificate*. A certificate that cannot be read stops the agent at
+start rather than leaving a listener that serves in clear.
+
+Pre-shared keys are not available here either, for the reason given
+above.
 
 ```yaml
 zabbix:

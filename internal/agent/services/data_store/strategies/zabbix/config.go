@@ -131,6 +131,25 @@ type PassiveConfig struct {
 	// Allow lists the addresses (IP or CIDR) allowed to poll. Empty
 	// means the addresses the configured server resolves to.
 	Allow []string
+	// TLS encrypts what the server polls. The outbound connection and
+	// this one are configured apart because they are opposite roles:
+	// there the agent checks a server, here it presents itself to one.
+	TLS PassiveTLSConfig
+}
+
+// PassiveTLSConfig is certificate encryption on the polled port. The
+// agent presents CertFile and, when CAFile names an authority, requires
+// the poller to present a certificate that authority signed, which is
+// what stops anyone who can reach the port from reading the host's
+// measurements.
+//
+// Zabbix also offers pre-shared keys here, which Go's crypto/tls cannot
+// do; see the note on the outbound TLSConfig.
+type PassiveTLSConfig struct {
+	Enabled  bool
+	CertFile string
+	KeyFile  string
+	CAFile   string
 }
 
 const (
@@ -285,6 +304,53 @@ func parsePassive(block map[string]interface{}, cfg PassiveConfig) (PassiveConfi
 			}
 			cfg.Allow = append(cfg.Allow, s)
 		}
+	}
+	if v, ok := block["tls"]; ok {
+		sub, isMap := v.(map[string]interface{})
+		if !isMap {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls' must be a block")
+		}
+		tlsCfg, err := parsePassiveTLS(sub)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.TLS = tlsCfg
+	}
+	return cfg, nil
+}
+
+func parsePassiveTLS(block map[string]interface{}) (PassiveTLSConfig, error) {
+	var cfg PassiveTLSConfig
+	if v, ok := block["enabled"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls.enabled' must be true or false")
+		}
+		cfg.Enabled = b
+	}
+	for key, dest := range map[string]*string{
+		"cert_file": &cfg.CertFile,
+		"key_file":  &cfg.KeyFile,
+		"ca_file":   &cfg.CAFile,
+	} {
+		v, ok := block[key]
+		if !ok {
+			continue
+		}
+		s, isStr := v.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls.%s' must be a path", key)
+		}
+		*dest = strings.TrimSpace(s)
+	}
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+	// Refuse at load rather than at the first poll: a listener that
+	// starts without the certificate it was told to present would serve
+	// in clear, which is the opposite of what was asked for.
+	if cfg.CertFile == "" || cfg.KeyFile == "" {
+		return cfg, fmt.Errorf("zabbix: 'passive.tls' needs both 'cert_file' and 'key_file' to encrypt the polled port")
 	}
 	return cfg, nil
 }
