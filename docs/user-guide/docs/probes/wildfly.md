@@ -1,4 +1,4 @@
-<img src="https://design.jboss.org/wildfly/logo/final/wildfly_icon.svg" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/wildfly.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,11 +24,19 @@ metrics.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:9990` | WildFly HTTP Management API base URL |
-| `username` | `admin` | Management user username |
-| `password` | — | Management user password — reference a stored secret via `${secret:wildfly.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost:9990` | Base URL of the management interface. Example: `http://wildfly.example.com:9990` |
+| `username` | In practice | `admin` | Management user |
+| `password` | In practice | - | Management user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this server instead of the one derived from the endpoint |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

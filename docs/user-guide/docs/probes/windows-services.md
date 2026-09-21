@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/windows" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/windows-services.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,9 +24,19 @@ restrict to a subset.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `services` | all | List of service names to monitor (empty = all services). Case-insensitive, matches the service's short name (`sc query` output) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `services` | No | - | Service short names to monitor; empty means every service. Example: `wuauserv, Spooler` |
+| `interval` | No | `30s` | Collection interval |
+
+<!-- schema:params:end -->
+
+`interval` accepts a number of seconds or a duration such as `1m`. A listed
+service that cannot be opened or queried is skipped for that cycle rather
+than failing the whole collection.
 
 ## Metrics
 

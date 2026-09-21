@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/apachesolr" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/solr.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -23,9 +23,22 @@ size.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8983` | Solr base URL (without trailing slash) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost:8983` | Base URL of the node, without the /solr path. Example: `http://solr01:8983` |
+| `jolokia_url` | No | - | Alternative spelling of endpoint kept for consistency with the JVM probes; its scheme, host and port replace endpoint, the path is dropped |
+| `timeout` | No | `10` | HTTP request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this node |
+
+<!-- schema:params:end -->
+
+`jolokia_url` does not switch the probe to Jolokia: the native metrics API
+is always what it reads. It is accepted so a configuration written for the
+JVM probes keeps working, and only its scheme, host and port are used.
 
 ## Metrics
 

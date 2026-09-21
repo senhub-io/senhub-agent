@@ -1,6 +1,6 @@
 # CLI Reference
 
-All commands are run from the agent binary. Release artifacts are ZIP archives named `senhub-agent-<os>-<arch>.zip` (e.g. `senhub-agent-linux-amd64.zip`, `senhub-agent-windows-amd64.zip`). Each ZIP contains a binary already named `senhub-agent` (Linux/macOS) or `senhub-agent.exe` (Windows) — no renaming needed after extraction. See the [Installation guide](installation.md) for details.
+All commands are run from the agent binary. Release artifacts are ZIP archives named `senhub-agent-<os>-<arch>.zip` (e.g. `senhub-agent-linux-amd64.zip`, `senhub-agent-windows-amd64.zip`). Each ZIP contains a binary already named `senhub-agent` (Linux) or `senhub-agent.exe` (Windows) — no renaming needed after extraction. See the [Installation guide](installation.md) for details.
 
 ## Output conventions
 
@@ -66,7 +66,42 @@ senhub-agent run --filter strategy.http,sensor   # HTTP API + probe management
 
 Use `debug-modules-list` to see all available filters.
 
+## Web console
+
+### console
+
+Opens the built-in web console in the default browser, or prints its address with `--print`. The address carries the agent key, which is sealed on a modern install: the command needs the rights of the service account or an administrator. On Windows, a non-elevated call asks for elevation once, then opens the browser with the user's own rights. The command waits up to fifteen seconds for the agent to answer on its port before opening the page.
+
+```bash
+senhub-agent console
+senhub-agent console --print
+senhub-agent console --config-path /etc/senhub/agent.yaml
+```
+
+| Flag | Description |
+|------|-------------|
+| `--print` | Print the address, do not open a browser |
+| `--config-path PATH` | Configuration file to read (default: OS canonical path) |
+
+The Windows MSI creates a "SenHub Agent Console" desktop shortcut that runs this command.
+
 ## Configuration
+
+### config set
+
+Changes one setting in the multi-file layout without editing YAML by hand. It writes the matching fragment under `strategies.d/`, preserving the file's comments and key order, and the running agent reloads the change on its own — no restart. An invalid value is refused and the file is left untouched.
+
+```bash
+senhub-agent config set http.port 9080
+senhub-agent config set http.bind_address 0.0.0.0
+```
+
+| Key | Value |
+|-----|-------|
+| `http.port` | Port of the local HTTP endpoints (1-65535) |
+| `http.bind_address` | Address the HTTP server binds to |
+
+Changing `http.port` moves the web console and the PRTG / Nagios endpoints to the new port; reconnect on the new address.
 
 ### config init
 
@@ -77,11 +112,15 @@ senhub-agent config init
 senhub-agent config init --license <jwt> --tags env=prod,site=paris
 senhub-agent config init --otlp-endpoint otlp.example.com:4317
 senhub-agent config init --otlp-endpoint vm.example.com:4318 --otlp-protocol http
+senhub-agent config init --http-port 9080
 ```
+
+Before writing anything, `config init` binds the HTTP port it is about to configure and releases it. A port already in use is refused with the reason and the command exits non-zero, so an unattended install fails visibly instead of leaving a service that runs and answers nothing.
 
 | Flag | Description |
 |------|-------------|
 | `--config-path PATH` | Target configuration file (default: OS canonical path) |
+| `--http-port PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
 | `--license JWT` | License token to seed (unlocks paid probe tiers) |
 | `--tags k=v,k2=v2` | Host-level global tags applied to the generated config |
 | `--otlp-endpoint HOST:PORT` | Provision an OTLP push endpoint as a strategy fragment (metrics + logs) |
@@ -221,7 +260,7 @@ Lists all stable versions. If `auto_update.include_beta: true` is set in the con
 ### Install a specific version
 
 ```bash
-senhub-agent update 0.1.87
+senhub-agent update 0.5.6
 ```
 
 Downloads and installs the specified version. Restart the service to apply.

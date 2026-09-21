@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/memory.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/memory.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** - No license required. Available in all tiers.
@@ -79,9 +79,14 @@ Platform-specific metrics are automatically detected and collected based on the 
 
 ## Configuration Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `interval` | integer | `30` | Collection interval in seconds |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `interval` | No | `30` | Collection interval in seconds |
+
+<!-- schema:params:end -->
 
 ### Example Configurations
 
@@ -196,7 +201,7 @@ Monitor memory health:
 **Check probe status:**
 ```bash
 # View agent logs with memory probe debugging
-./agent run --verbose --debug-modules probe.memory
+senhub-agent run --filter probe.memory
 ```
 
 **Verify probe is enabled:**
@@ -230,10 +235,10 @@ grep -rA5 "name: memory" /etc/senhub-agent/probes.d/
 Run the agent with appropriate permissions:
 ```bash
 # Option 1: Run as root
-sudo ./agent run
+sudo senhub-agent run
 
 # Option 2: Grant capabilities (Linux)
-sudo setcap cap_sys_admin=eip ./agent
+sudo setcap cap_sys_admin=eip /opt/senhub/bin/senhub-agent
 ```
 
 ### High Memory Usage from Agent

@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/php" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/php-fpm.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,9 +21,19 @@ request and connection statistics.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost/fpm-status` | URL to the PHP-FPM status page (must return JSON: add `?json` or configure `pm.status_path` with the right format) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost/fpm-status` | URL of the pool status page, answering in JSON |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this pool; set it when two phpfpm probes run on one host |
+
+<!-- schema:params:end -->
+
+The status page must answer in JSON: add `?json` to the endpoint or configure the web server to pass it.
 
 ## Metrics
 

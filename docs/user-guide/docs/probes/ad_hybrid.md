@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/microsoftazure" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/ad_hybrid.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -17,7 +17,7 @@ The probe authenticates as a service principal (app registration) with the clien
 - Directory-sync export error counts, bucketed by error type
 - Per-agent liveness — seconds since each sync agent last reported to Azure AD Connect Health
 
-All metrics are emitted under the `senhub.ad_hybrid.*` namespace. Sync-service and per-agent series carry attributes (`service.name`, `agent.server`, `error.bucket`) that keep instances distinct in OTLP/Prometheus and act as filters in the Web UI Sensor Builder.
+All metrics are emitted under the `senhub.ad_hybrid.*` namespace. Sync-service and per-agent series carry attributes (`service.name`, `agent.server`, `error.bucket`) that keep instances distinct in OTLP/Prometheus and act as filters in the Sensor URLs tab of the console.
 
 # Quick Start
 
@@ -61,13 +61,18 @@ Monitor several tenants with separate probe instances:
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `tenant_id` | string | Yes | - | Entra ID (Azure AD) tenant ID (directory GUID) |
-| `client_id` | string | Yes | - | Application (client) ID of the app registration used to authenticate |
-| `client_secret` | string | Yes | - | App registration client secret — reference a stored secret via `${secret:<name>.client_secret}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `interval` | integer | No | `300` | Collection interval in seconds |
-| `timeout` | integer | No | `30` | Per-request HTTP timeout in seconds for calls to the Azure management API |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `tenant_id` | Yes | - | Entra ID tenant (directory) ID |
+| `client_id` | Yes | - | Application (client) ID of the app registration |
+| `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `300` | Seconds between collections |
+| `timeout` | No | `30` | Per-request timeout in seconds for calls to the Azure management API |
+
+<!-- schema:params:end -->
 
 # Metrics Collected
 

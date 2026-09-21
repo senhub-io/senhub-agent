@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/dell" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/powerstore.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -20,7 +20,7 @@ The PowerStore probe monitors Dell PowerStore storage arrays through the PowerSt
 All metrics are emitted under the `senhub.powerstore.*` namespace. Cluster-level
 aggregates are complemented by **per-resource series** (per volume, appliance,
 node, drive and replication session), each carrying a resource attribute that
-also acts as a filter in the Web UI Sensor Builder.
+also acts as a filter in the Sensor URLs tab of the console.
 
 # Quick Start
 
@@ -66,16 +66,22 @@ Monitor several arrays with separate probe instances:
 
 # Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `endpoint` | string | Yes | - | PowerStore management API address (`https://` assumed if no scheme) |
-| `username` | string | Yes | - | PowerStore user with read access to the REST API |
-| `password` | string | Yes | - | User password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `interval` | integer | No | `300` | Collection interval in seconds |
-| `verify_ssl` | boolean | No | `true` | Validate the array's TLS certificate (set `false` for self-signed management certificates) |
-| `volume_perf.enabled` | boolean | No | `false` | Opt in to per-volume IOPS/bandwidth/latency (one `POST /metrics/generate` per volume) |
-| `volume_perf.top_n` | integer | No | `20` | Cap the number of volumes queried per run, ranked by logical usage (busiest first) |
-| `volume_perf.interval` | integer | No | `300` | Seconds between per-volume perf runs, independent of the main `interval` |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | Yes | - | Management API address; https:// is assumed when no scheme is given. Example: `https://powerstore.example.com` |
+| `username` | Yes | - | PowerStore user with read access to the REST API |
+| `password` | Yes | - | Password of the PowerStore user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_ssl` | No | `true` | Validate the array's TLS certificate; false for a self-signed management certificate |
+| `interval` | No | `300` | Seconds between collections |
+| `volume_perf` | No | - | Per-volume IOPS, bandwidth and latency, off by default |
+| `volume_perf.enabled` | No | `false` | Collect per-volume performance, one API call per volume |
+| `volume_perf.top_n` | No | `20` | How many volumes are queried per run, busiest by logical usage first |
+| `volume_perf.interval` | No | `300` | Seconds between per-volume runs, independent of the main interval |
+
+<!-- schema:params:end -->
 
 ### Per-volume performance (opt-in)
 
@@ -204,9 +210,9 @@ OTLP/Prometheus and become filterable in the Web UI.
     with many volumes. Appliance- and node-level performance cover the array
     without that per-volume cost.
 
-## Filtering (Web UI Sensor Builder)
+## Filtering (Sensor URLs tab of the console)
 
-The PRTG/Web UI Sensor Builder exposes filters for this probe:
+The Sensor URLs tab of the console exposes filters for this probe:
 
 - **Metric Type** (category) — cluster, hardware, volumes, alerts, capacity, performance, replication
 - **Alert Severity** — Critical / Major / Minor / Info

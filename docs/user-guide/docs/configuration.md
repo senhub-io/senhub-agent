@@ -83,6 +83,7 @@ The `agent` section defines the agent identity.
 |-----------|----------|-------------|
 | `key` | Yes | Authentication key (UUID format), provided by SenHub support |
 | `license` | No | License token for premium probes (see License section) |
+| `global_tags` | No | Key-value tags applied to every datapoint of every probe. A probe's own `custom_tags` win on a key present in both. Keep the set small — every key multiplies the series a backend stores |
 
 ## Probes Section
 
@@ -96,6 +97,7 @@ Each probe entry defines a monitoring target. The agent collects metrics at regu
 | `type` | Yes | Probe type (see Available Probe Types below) |
 | `params` | Yes | Probe-specific parameters |
 | `custom_tags` | No | Additional key-value tags attached to all metrics from this probe |
+| `governance` | No | Who owns what this probe observes, how critical it is, where it is, and which application chain it belongs to. Stamped on this probe's entities, metrics and logs. See [Governance per probe](#governance-per-probe). |
 | `enabled` | No | Set to `false` to stop the probe without deleting its configuration. Absent means enabled, so existing files are unaffected. A disabled probe collects nothing and reports no topology. |
 
 ### Turning a probe off
@@ -148,9 +150,76 @@ probes:
 
 Tags appear in PRTG, Nagios, and other monitoring tool outputs, allowing you to filter and organize your metrics.
 
+### Governance per probe
+
+The agent-level `governance` block (see [OpenTelemetry output](otlp.md))
+describes the host the agent runs on. It says nothing about what a probe
+observes: the database on that host may belong to one application and the
+one next to it to another, and a probe that reads a remote system observes
+something with an owner of its own. A `governance` block on the probe entry
+states that, with the same vocabulary:
+
+```yaml
+probes:
+  - name: erp-db
+    type: mysql
+    params:
+      host: 127.0.0.1
+      username: monitor
+      password: "${secret:erp-db.password}"
+    governance:
+      criticality: high
+      owner:
+        team: dba
+        contact: dba@example.com
+      lifecycle: active
+      labels:
+        application: erp
+
+  - name: crm-db
+    type: mysql
+    params:
+      host: 127.0.0.1
+      port: 3307
+      username: monitor
+      password: "${secret:crm-db.password}"
+    governance:
+      criticality: medium
+      labels:
+        application: crm
+```
+
+The block is stamped on the entities the probe reports, and on every metric
+and log record it produces, as the same attributes a topology consumer
+already reads: `entity.owner.team`, `entity.owner.contact`,
+`service.criticality`, `entity.location.*`, `entity.lifecycle.status` and
+`entity.label.<key>`. The host entity is never touched by a probe's
+governance. From the agent-level block, only the location (`site`,
+`datacenter`, `rack`, `room`) descends, and only to the entities the agent
+places on its own host: a database reached on the loopback address is where
+the host is, a database reached across the network is not. Owner,
+criticality, lifecycle and labels never descend; a database on a machine is
+often another team's, and a host runs more than one application.
+
+An application is not an entity. It is the label `application`, put on
+every instance that takes part in an application chain: with it, every
+entity, metric and log of that chain can be found by one filter, across
+hosts and probe types. Two instances on the same host can belong to two
+different chains.
+
+Precedence, key by key, is the most specific statement: a governance rule
+matched by `snmp_poll` discovery, then the probe's `governance` block, then
+the host's location for what runs on it. On a key present in both, a probe's
+`custom_tags` win over its `governance`.
+
+`criticality` takes `critical` / `high` / `medium` / `low`; `lifecycle`
+takes `active` / `maintenance` / `decommissioning` / `retired`. An unknown
+key or a value outside those sets is an error in `agent config check` and
+is refused by the web console.
+
 ## Storage Section
 
-The `storage` section defines how the agent exposes collected metrics. The main storage type is `http`, which provides the REST API and web dashboard.
+The `storage` section defines how the agent exposes collected metrics. The main storage type is `http`, which provides the REST API and the [web console](web-interface.md).
 
 ```yaml
 storage:
@@ -167,15 +236,17 @@ storage:
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
-| `endpoints` | `["prtg", "web"]` | Enabled endpoint types |
+| `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios"]` |
+| `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
 
 ### Available Endpoint Types
 
 | Endpoint | Description |
 |----------|-------------|
 | `prtg` | PRTG-formatted JSON API for PRTG Network Monitor integration |
-| `web` | Built-in web dashboard (Dashboard, Sensor Builder, Documentation) |
+| `web` | Built-in web console (Overview, Probes, Outputs, Settings) |
 | `nagios` | Nagios-compatible check output |
+| `prometheus` | Prometheus text exposition on `/metrics` (see [Prometheus](prometheus/index.md)) |
 
 ### HTTPS Configuration
 
@@ -202,6 +273,35 @@ If you installed with `--enable-https`, the agent generated self-signed certific
 | `min_tls_version` | `1.2` | Minimum TLS version (1.2 or 1.3) |
 | `cert_file` | - | Path to TLS certificate file (.pem or .crt) |
 | `key_file` | - | Path to TLS private key file (.pem or .key) |
+
+### Push storages
+
+Two storages push rather than being polled, and both take their own
+parameters. Neither is required: an agent polled over HTTP needs no
+storage but `http`.
+
+```yaml
+storage:
+  - name: prtg
+    params:
+      server_url: "https://prtg.example.com"
+      interval: 60s
+      data_retention_period: 2m
+
+  - name: event
+    params:
+      server_url: "https://eu-west-1.intake.senhub.io"
+      queue_size: 1000
+      sync_interval: 30s
+```
+
+| Parameter | Storage | Default | Description |
+|-----------|---------|---------|-------------|
+| `server_url` | both | — | Required. The destination the agent pushes to |
+| `interval` | `prtg` | `60s` | How often the cached values are pushed |
+| `data_retention_period` | `prtg` | `2m` | How long a pushed value stays valid. A value older than this is dropped rather than sent, so a stalled probe reports no data instead of a stale reading |
+| `queue_size` | `event` | `1000` | Events held in memory awaiting a push. Past it the oldest are dropped and counted |
+| `sync_interval` | `event` | `30s` | How often the queue is flushed. A large batch is flushed earlier on its own |
 
 ## Cache Section
 
@@ -419,7 +519,7 @@ Without a license the agent runs every Free-tier probe: the whole universal coll
 
 Contact SenHub support (support@senhub.io) to request a license token. Specify the probe types you need:
 
-- **Pro license**: adds the deep vendor, HA, cloud and active-check integrations — `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`
+- **Pro license**: adds the deep vendor, HA, cloud and active-check integrations — `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `azure_container_apps`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`
 - **Enterprise license**: all current and future probe types
 
 ### Where the license is stored
@@ -502,7 +602,7 @@ Free tier — the whole universal collection tier, abbreviated above; see the
 | Tier | Available Probes |
 |------|-----------------|
 | **Free** | The universal collection tier — OS/host, logs, network checks, application, database and broker probes. See the [probe catalog](probes/index.md) for the tier badge on each probe. |
-| **Pro** | All free + citrix, netscaler, veeam, redfish, ibmi, powerstore, mssql_ha, oracle_enterprise, hyperv_ha, vsphere_ha, ad_hybrid, exchange_online, event, ping_gateway, ping_webapp, load_webapp |
+| **Pro** | All free + citrix, netscaler, veeam, redfish, ibmi, powerstore, mssql_ha, oracle_enterprise, hyperv_ha, vsphere_ha, ad_hybrid, exchange_online, azure_container_apps, event, ping_gateway, ping_webapp, load_webapp |
 | **Enterprise** | All probes (including future additions) |
 
 ### Grace Period
@@ -532,7 +632,8 @@ auto_update:
 |-----------|---------|-------------|
 | `enabled` | `false` | Automatically install new versions when available |
 | `include_beta` | `false` | Include beta versions in update checks |
-| `url` | SenHub releases | Update server URL |
+| `url` | SenHub releases | Update server URL. The **base** the agent appends to — a value carrying `/releases` or `/download` makes every derived URL double it |
+| `version` | `latest` | Target the periodic updater tracks. `latest` resolves the newest stable; an explicit version pins to it |
 
 Even with `enabled: false`, the agent checks for new versions at startup and logs a message if an update is available. Use `senhub-agent update --list` to see available versions and `senhub-agent update <version>` to install manually.
 
@@ -682,15 +783,15 @@ A missing required reference (file not found, no default) **aborts agent boot** 
 The `agent config show` command prints the final, merged configuration as YAML with map keys sorted alphabetically:
 
 ```bash
-senhub-agent config show              # default: --resolved
-senhub-agent config show --resolved   # references substituted
-senhub-agent config show --raw        # references preserved
+senhub-agent config show              # default: --redact
 senhub-agent config show --redact     # secrets masked with ***
+senhub-agent config show --resolved   # references substituted, secrets in cleartext
+senhub-agent config show --raw        # references preserved
 ```
 
-- `--resolved` (default): the same configuration the agent boots with — `${env:..}` / `${file:..}` resolved against the current environment and filesystem.
+- `--redact` (default): resolved configuration, but with values that came from `${file:..}` and any value whose YAML key matches `(?i)(key|token|password|secret)` masked with `***`. Safe to copy into a support ticket or commit to source control.
+- `--resolved`: the same configuration the agent boots with — `${env:..}` / `${file:..}` / `${secret:..}` resolved against the current environment, filesystem and secret store, secrets in cleartext. Ask for it explicitly.
 - `--raw`: the merged configuration BEFORE substitution. Useful for auditing the layout (which files contributed which entries) before comparing against the resolved output.
-- `--redact`: resolved configuration but with values that came from `${file:..}` AND any value whose YAML key matches `(?i)(key|token|password|secret)` masked with `***`. Safe to copy into a support ticket or commit to source control.
 
 Output is deterministic — two runs of the same input produce byte-identical output, suitable for `diff` and CI checks.
 

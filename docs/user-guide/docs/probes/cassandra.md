@@ -1,4 +1,4 @@
-<img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Cassandra_logo.svg" alt="" class="probe-page-logo probe-page-logo-wm">
+<img src="../../assets/probe-logos/cassandra.svg" alt="" class="probe-page-logo probe-page-logo-wm">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,10 +21,17 @@ pending tasks, storage load, JVM heap and garbage collection.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `jolokia_url` | `http://localhost:8778/jolokia` | URL to the Jolokia agent endpoint on the Cassandra node |
-| `instance_name` | — | Override for the entity instance id (useful in multi-agent setups monitoring the same cluster) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `jolokia_url` | In practice | `http://localhost:8778/jolokia` | URL of the Jolokia agent attached to the Cassandra JVM. Example: `http://cassandra01:8778/jolokia` |
+| `timeout` | No | `10` | HTTP request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `instance_name` | No | - | Stable identity override for this node |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

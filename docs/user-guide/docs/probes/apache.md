@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/apache" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/apache.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,11 +21,19 @@ Requires `mod_status` enabled with the `?auto` format.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost/server-status?auto` | URL to the mod_status endpoint (must include `?auto`) |
-| `username` | — | Basic-auth username (if the status page is protected) |
-| `password` | — | Basic-auth password — reference via `${secret:apache.password}`, `${env:VAR}` or `${file:/path}`; inline plaintext is auto-sealed into the OS secret store on install |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost/server-status?auto` | URL of the mod_status page, with ?auto |
+| `username` | No | - | Basic-auth user when the status page is protected; empty for none |
+| `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this server; set it when two apache probes run on one host |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

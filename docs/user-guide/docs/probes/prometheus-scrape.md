@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/prometheus" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/prometheus-scrape.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -27,14 +27,22 @@ push (OTLP) and pull (Prometheus) sources.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `targets` | required | List of exposition URLs |
-| `interval` | `60` | Seconds between scrape cycles |
-| `timeout` | `10` | Per-target budget in seconds |
-| `metric_match` | none | Regexp filter on metric family names; non-matching families are skipped |
-| `bearer_token` | none | Sent as `Authorization: Bearer ...`; reference a stored secret via `${secret:<name>.bearer_token}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `insecure_skip_verify` | `false` | Accept self-signed exporter certificates |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `targets` | Yes | - | Exposition URLs. Example: `http://localhost:9100/metrics` |
+| `interval` | No | `60` | Seconds between scrapes |
+| `timeout` | No | `10` | Whole-request budget in seconds |
+| `metric_match` | No | - | Regular expression on metric family names |
+| `bearer_token` | No | - | Sent as Authorization: Bearer. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `insecure_skip_verify` | No | `false` | Accept self-signed exporter certificates |
+
+<!-- schema:params:end -->
+
+The timeout applies to each target's request. Metric families that do not
+match `metric_match` are skipped.
 
 Targets are scraped in parallel (bounded). An unreachable exporter is
 a measurement (`senhub.promscrape.up = 0`), never a probe failure.

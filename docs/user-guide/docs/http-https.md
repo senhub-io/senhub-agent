@@ -17,9 +17,11 @@ storage:
   - name: http
     params:
       port: 8080
-      bind_address: "0.0.0.0"
+      bind_address: "127.0.0.1"
       endpoints: ["prtg", "web", "nagios"]
 ```
+
+Loopback is what the installer writes. A remote poller needs an explicit `bind_address: "0.0.0.0"` or an interface IP.
 
 ### Storage Parameters
 
@@ -27,7 +29,7 @@ storage:
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
-| `endpoints` | `["prtg", "web"]` | Enabled endpoint types (prtg, web, nagios) |
+| `endpoints` | none | Enabled endpoint types (`prtg`, `nagios`, `prometheus`, `web`). There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios"]` |
 
 To change the port or other parameters, edit the `storage` section in `agent-config.yaml`. The change is applied automatically without restarting the service.
 
@@ -101,8 +103,38 @@ storage:
 |-----------|---------|-------------|
 | `tls.enabled` | `false` | Enable HTTPS |
 | `tls.min_tls_version` | `1.2` | Minimum TLS version (1.2 or 1.3) |
-| `tls.cert_file` | - | Absolute path to the certificate file (.pem or .crt) |
-| `tls.key_file` | - | Absolute path to the private key file (.pem or .key) |
+| `tls.cert_file` | generated | Absolute path to the certificate file (.pem or .crt) |
+| `tls.key_file` | generated | Absolute path to the private key file (.pem or .key) |
+
+### If you set neither
+
+Enabling `tls` without naming a certificate is a valid configuration. On
+first start the agent generates a self-signed pair next to its
+configuration, at `<config directory>/certs/agent-cert.pem` and
+`agent-key.pem`, readable only by the service user, and says so in the
+log:
+
+```
+INF HTTPS server listening ... self_signed=true
+INF Using a self-signed certificate the agent manages; replace these
+    files with your own to be trusted by a browser
+```
+
+The pair is generated once. Replacing those two files with your own
+keeps them: the agent regenerates nothing that is already there, so an
+upgrade or a restart will not undo your certificate.
+
+Naming a `cert_file` that does not exist is a different case, and the
+agent does not generate anything for it. It refuses to start the HTTPS
+listener and names the file and the directory it looked in, because a
+path you wrote and that is not there is more likely a typo than an
+invitation:
+
+```
+ERR TLS is enabled but the certificate file is missing; the HTTPS
+    listener is not started. Set tls.cert_file and tls.key_file to
+    absolute paths, or disable tls.
+```
 
 ### Using a CA-Signed Certificate
 
@@ -129,7 +161,7 @@ The `-k` flag is required for self-signed certificates. For CA-signed certificat
 
 Expected response:
 ```json
-{"status":"ok","version":"0.1.80","uptime":"2h30m","probes_active":4,"metrics_cached":156}
+{"status":"ok","version":"0.5.6","uptime":"2h30m","probes_active":4,"metrics_cached":156}
 ```
 
 ## API Endpoints Reference
@@ -179,10 +211,13 @@ All API endpoints require the authentication key in the URL path, except `/healt
 
 | Endpoint | Description |
 |----------|-------------|
-| `/web/{key}/` | Main dashboard |
-| `/web/{key}/dashboard` | Dashboard (same as above) |
-| `/web/{key}/explorer` | Sensor Builder (interactive API testing) |
-| `/web/{key}/docs` | Embedded documentation |
+| `/web/{key}/` | Overview |
+| `/web/{key}/overview` | Overview (same as above; `/dashboard` still works) |
+| `/web/{key}/probes` | Probes list and editor |
+| `/web/{key}/outputs` | Outputs list; `/outputs/{name}` edits one, `/outputs/http` holds the Sensor URLs tab |
+| `/web/{key}/settings` | Port, bind address, licence |
+| `/web/{key}/docs` | Embedded API reference |
+| `/web/{key}/explorer` | Former Sensor Builder; redirects to `/outputs/http#urls` |
 
 ### PRTG Lookups
 
@@ -203,7 +238,7 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "ok",
-  "version": "0.1.80",
+  "version": "0.5.6",
   "commit": "a1b2c3d",
   "uptime": "2h30m15s",
   "probes_active": 4,
@@ -239,7 +274,7 @@ curl http://localhost:8080/api/{key}/info/system
 ```json
 {
   "status": "running",
-  "version": "0.1.80",
+  "version": "0.5.6",
   "os": "linux",
   "arch": "amd64",
   "port": 8080,

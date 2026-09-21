@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/proxmox" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/proxmox.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,11 +24,21 @@ usage.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | required | Proxmox VE HTTPS base URL (e.g. `https://pve.example.com:8006`) |
-| `token_id` | required | PVE API token ID in `user@realm!tokenname` format |
-| `token_secret` | required | PVE API token secret UUID — reference a stored secret via `${secret:<name>.token_secret}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | Yes | - | HTTPS base URL of the cluster API. Example: `https://pve.example.com:8006` |
+| `token_id` | Yes | - | API token identifier as user@realm!tokenname. Example: `monitor@pve!agent` |
+| `token_secret` | Yes | - | API token secret. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_tls` | No | `true` | Verify the API certificate; false accepts a self-signed one |
+| `node` | No | - | Only this node is collected; empty means every node of the cluster |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `15` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity override for this cluster |
+
+<!-- schema:params:end -->
 
 ## Metrics
 
@@ -52,5 +62,5 @@ usage.
 ## Operational notes
 
 - Create an API token in Proxmox at **Datacenter → Permissions → API Tokens**. Grant it `PVEAuditor` role on `/` for read-only cluster-wide monitoring.
-- The `endpoint` must use `https://`. Proxmox self-signed certificates are accepted by default; configure a proper certificate for production.
+- The `endpoint` must use `https://`. The API certificate is verified by default; a self-signed Proxmox certificate needs `verify_tls: false`, or better, a proper certificate for production.
 - Both QEMU VMs and LXC containers are monitored; they are distinguished by the `proxmox.vmid` tag.
