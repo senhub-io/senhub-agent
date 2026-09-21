@@ -66,6 +66,7 @@ metrics:
     display_name: "CPU Nice"
     unit: "%"
     category: "usage_breakdown"
+    platforms: ["linux", "darwin"]
     description: "Percentage of CPU time spent running low-priority user-space processes"
     otel:
       name: system.cpu.utilization
@@ -79,6 +80,7 @@ metrics:
     display_name: "CPU IO Wait"
     unit: "%"
     category: "usage_breakdown"
+    platforms: ["linux", "darwin"]
     description: "Percentage of CPU time spent waiting for I/O operations to complete"
     otel:
       name: system.cpu.utilization
@@ -118,6 +120,7 @@ metrics:
     display_name: "CPU Steal"
     unit: "%"
     category: "usage_breakdown"
+    platforms: ["linux", "darwin"]
     description: "Percentage of CPU time stolen by the hypervisor for other virtual machines"
     otel:
       name: system.cpu.utilization
@@ -263,6 +266,7 @@ metrics:
     display_name: "CPU Guest"
     unit: "%"
     category: "usage_breakdown"
+    platforms: ["linux"]
     description: "Percentage of CPU time spent running a guest operating system; the kernel counts it inside user time, so it is subtracted there"
     otel:
       name: system.cpu.utilization
@@ -276,6 +280,7 @@ metrics:
     display_name: "CPU Guest Nice"
     unit: "%"
     category: "usage_breakdown"
+    platforms: ["linux"]
     description: "Percentage of CPU time spent running a niced guest operating system; the kernel counts it inside nice time, so it is subtracted there"
     otel:
       name: system.cpu.utilization
@@ -311,6 +316,7 @@ metrics:
     display_name: "Processes Running"
     unit: "#"
     category: "processes"
+    platforms: ["linux"]
     description: "Processes currently runnable, the kernel's run queue length"
     otel:
       name: system.processes.count
@@ -356,6 +362,7 @@ metrics:
     display_name: "CPU Load Average 1min"
     unit: "#"
     category: "load_average"
+    platforms: ["linux", "darwin"]
     description: "Average number of processes in the run queue over the last 1 minute"
     otel:
       name: system.cpu.load_1m
@@ -367,6 +374,7 @@ metrics:
     display_name: "CPU Load Average 5min"
     unit: "#"
     category: "load_average"
+    platforms: ["linux", "darwin"]
     description: "Average number of processes in the run queue over the last 5 minutes"
     otel:
       name: system.cpu.load_5m
@@ -378,6 +386,7 @@ metrics:
     display_name: "CPU Load Average 15min"
     unit: "#"
     category: "load_average"
+    platforms: ["linux", "darwin"]
     description: "Average number of processes in the run queue over the last 15 minutes"
     otel:
       name: system.cpu.load_15m
