@@ -23,6 +23,7 @@ metrics:
     unit: "MB"
     multi_instance_labels: ["drive"]
     category: "capacity"
+    platforms: ["windows"]
     description: "Free disk space in megabytes on the logical drive"
     otel:
       name: system.filesystem.usage
@@ -43,6 +44,7 @@ metrics:
     unit: "%"
     multi_instance_labels: ["drive"]
     category: "capacity"
+    platforms: ["windows"]
     description: "Percentage of total disk space that is free on the logical drive"
     otel:
       name: system.filesystem.utilization
@@ -66,6 +68,7 @@ metrics:
     unit: "%"
     multi_instance_labels: ["drive"]
     category: "capacity"
+    platforms: ["windows"]
     description: "Percentage of total disk space currently in use on the logical drive"
     otel:
       name: system.filesystem.utilization
@@ -85,6 +88,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["drive"]
     category: "performance"
+    platforms: ["windows"]
     description: "Number of read operations per second on the logical drive"
     otel:
       name: senhub.system.disk.operations
@@ -103,6 +107,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["drive"]
     category: "performance"
+    platforms: ["windows"]
     description: "Number of write operations per second on the logical drive"
     otel:
       name: senhub.system.disk.operations
@@ -121,6 +126,7 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["drive"]
     category: "performance"
+    platforms: ["windows"]
     description: "Rate of data read from the logical drive in bytes per second"
     otel:
       name: senhub.system.disk.io
@@ -139,6 +145,7 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["drive"]
     category: "performance"
+    platforms: ["windows"]
     description: "Rate of data written to the logical drive in bytes per second"
     otel:
       name: senhub.system.disk.io
@@ -157,6 +164,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["drive"]
     category: "performance"
+    platforms: ["windows"]
     description: "Number of outstanding I/O requests waiting in the disk queue"
     otel:
       name: senhub.system.disk.queue_length
@@ -177,6 +185,7 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
+    platforms: ["linux", "darwin"]
     description: "Total capacity of the filesystem in bytes"
     otel:
       name: system.filesystem.limit
@@ -193,6 +202,7 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
+    platforms: ["linux", "darwin"]
     description: "Free space available on the filesystem in bytes"
     otel:
       name: system.filesystem.usage
@@ -211,6 +221,7 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
+    platforms: ["linux", "darwin"]
     description: "Space currently consumed on the filesystem in bytes"
     otel:
       name: system.filesystem.usage
@@ -229,6 +240,7 @@ metrics:
     unit: "bytes"
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
+    platforms: ["linux", "darwin"]
     description: "Space available to non-root users on the filesystem in bytes"
     otel:
       name: system.filesystem.usage
@@ -247,6 +259,7 @@ metrics:
     unit: "%"
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
+    platforms: ["linux", "darwin"]
     description: "Percentage of filesystem capacity currently in use"
     otel:
       name: system.filesystem.utilization
@@ -269,6 +282,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
+    platforms: ["linux", "darwin"]
     description: "Total number of inodes available on the filesystem"
     otel:
       name: senhub.system.filesystem.inode.limit
@@ -285,6 +299,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
+    platforms: ["linux", "darwin"]
     description: "Number of unused inodes available on the filesystem"
     otel:
       name: senhub.system.filesystem.inode.usage
@@ -303,6 +318,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
+    platforms: ["linux", "darwin"]
     description: "Number of inodes currently allocated on the filesystem"
     otel:
       name: senhub.system.filesystem.inode.usage
@@ -321,6 +337,7 @@ metrics:
     unit: "%"
     multi_instance_labels: ["device", "mount_point"]
     category: "inodes"
+    platforms: ["linux", "darwin"]
     description: "Percentage of total inodes currently in use on the filesystem"
     otel:
       name: senhub.system.filesystem.inode.utilization

@@ -87,25 +87,32 @@ func findMetric(def *transformers.ProbeDefinition, name string) *transformers.Me
 	return nil
 }
 
-// dimensions merges the definition-level labels with the metric's own,
-// keeping the first occurrence of each.
+// dimensions are the labels that tell one instance of a metric from
+// another. A metric that names its own replaces the definition's rather
+// than adding to them: its list is an override, not an extension.
+//
+// Merging them was wrong in a way that showed on both ends. The process
+// probe declares a per-process-id file and one aggregate count whose own
+// list is the process name alone; merged, the aggregate was discovered
+// per process id and every restart of the watched program orphaned its
+// items. On the other side, the Windows drive metrics of logicaldisk
+// name the drive letter alone, and merging gave them the device and the
+// mount point they do not have, which left empty parameters in the key.
 func dimensions(def *transformers.ProbeDefinition, m *transformers.MetricDefinition) []string {
-	var out []string
+	var source []string
+	if m != nil && len(m.MultiInstanceLabels) > 0 {
+		source = m.MultiInstanceLabels
+	} else if def != nil {
+		source = def.MultiInstanceLabels
+	}
+	out := make([]string, 0, len(source))
 	seen := map[string]bool{}
-	add := func(labels []string) {
-		for _, l := range labels {
-			if l == "" || seen[l] {
-				continue
-			}
-			seen[l] = true
-			out = append(out, l)
+	for _, l := range source {
+		if l == "" || seen[l] {
+			continue
 		}
-	}
-	if def != nil {
-		add(def.MultiInstanceLabels)
-	}
-	if m != nil {
-		add(m.MultiInstanceLabels)
+		seen[l] = true
+		out = append(out, l)
 	}
 	return out
 }
