@@ -62,3 +62,80 @@ func TestEveryMultiInstanceProbeHasDiscriminantTags(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryDeclaredDimensionIsRegistered closes the hole the guard above
+// leaves: it proves a probe is registered, not that what splits its
+// series is. azure_container_apps was registered on metric_type alone,
+// and when subscription discovery made it follow several applications
+// the new azure_app dimension went unregistered. The probe still had an
+// entry, so the guard above stayed green while the cache kept one
+// application's state and dropped the other five on every pull sink.
+//
+// A label that describes an instance without splitting it does not need
+// registering, and telling the two apart is a judgement, so the ones
+// left out are named with why rather than inferred. An entry that stops
+// matching fails this test, the way the documented-key guard works.
+func TestEveryDeclaredDimensionIsRegistered(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatalf("load transformer definitions: %v", err)
+	}
+
+	// Labels declared before this guard existed and never examined. They
+	// are debt, not a decision: #915 carries the review. Anything added
+	// after this point has to be judged when it is added.
+	const notYetExamined = "declared before this guard; not analysed, tracked in #915"
+	unexamined := map[string]string{
+		"ibmi":       notYetExamined,
+		"memcached":  notYetExamined,
+		"powerstore": notYetExamined,
+		"redfish":    notYetExamined,
+		"swarm":      notYetExamined,
+		"syslog":     notYetExamined,
+	}
+
+	used := map[string]bool{}
+	for _, def := range defs {
+		entry, registered := DiscriminantTagsRegistry[def.ProbeName]
+		if !registered || fullTagKeyProbes[def.ProbeName] {
+			// The guard above already rules on an absent entry, and a
+			// full-tag-keyed probe never collapses.
+			continue
+		}
+		known := make(map[string]bool, len(entry))
+		for _, tag := range entry {
+			known[tag] = true
+		}
+		declared := append([]string{}, def.MultiInstanceLabels...)
+		for _, m := range def.Metrics {
+			declared = append(declared, m.MultiInstanceLabels...)
+		}
+		var missing []string
+		seen := map[string]bool{}
+		for _, label := range declared {
+			if label == "" || known[label] || seen[label] {
+				continue
+			}
+			seen[label] = true
+			missing = append(missing, label)
+		}
+		if len(missing) == 0 {
+			continue
+		}
+		if _, ok := unexamined[def.ProbeName]; ok {
+			used[def.ProbeName] = true
+			continue
+		}
+		t.Errorf("probe %q splits its series on %v, which DiscriminantTagsRegistry does not list: "+
+			"the cache keys on the registered tags alone, so every value of those labels lands on "+
+			"one slot and all but the last is lost on the PRTG, Nagios and Web UI pull sinks. "+
+			"Register them in http_cache.go, or say here why they describe an instance without "+
+			"splitting it.", def.ProbeName, missing)
+	}
+	for probe := range unexamined {
+		if !used[probe] {
+			t.Errorf("probe %q is listed as not yet examined but declares no unregistered "+
+				"dimension any more; remove the entry", probe)
+		}
+	}
+}
