@@ -146,7 +146,7 @@ func TestActiveChecksCarryThePassivePortForAutoregistration(t *testing.T) {
 	cfg := testConfig(srv.addr())
 	cfg.Passive = PassiveConfig{Enabled: true, Port: 10250}
 	c, _ := newClient(cfg)
-	if _, err := c.activeChecks(context.Background()); err != nil {
+	if _, _, err := c.activeChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	req := srv.requestsOf("active checks")[0]
