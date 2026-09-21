@@ -256,6 +256,67 @@ metrics:
       unit: "1/s"
       type: gauge
 
+  - name: "cpu_guest"
+    channel: "cpu_guest_time"
+    display_name: "CPU Guest"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent running a guest operating system; the kernel counts it inside user time, so it is subtracted there"
+    otel:
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        cpu.mode: guest
+
+  - name: "cpu_guest_nice"
+    channel: "cpu_guest_nice_time"
+    display_name: "CPU Guest Nice"
+    unit: "%"
+    category: "usage_breakdown"
+    description: "Percentage of CPU time spent running a niced guest operating system; the kernel counts it inside nice time, so it is subtracted there"
+    otel:
+      name: system.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        cpu.mode: guest_nice
+
+  - name: "cpu_context_switches"
+    channel: "cpu_context_switches"
+    display_name: "CPU Context Switches"
+    unit: "/s"
+    category: "system_counters"
+    description: "Context switches per second across all processors"
+    otel:
+      name: senhub.system.cpu.context_switches
+      unit: 1/s
+      type: gauge
+
+  - name: "cpu_count"
+    channel: "cpu_count"
+    display_name: "Processors"
+    unit: "#"
+    category: "system_counters"
+    description: "Number of logical processors the operating system reports"
+    otel:
+      name: system.cpu.logical.count
+      unit: "{cpu}"
+      type: gauge
+
+  - name: "cpu_processes_running"
+    channel: "processes_running"
+    display_name: "Processes Running"
+    unit: "#"
+    category: "processes"
+    description: "Processes currently runnable, the kernel's run queue length"
+    otel:
+      name: system.processes.count
+      unit: "{process}"
+      type: gauge
+      attributes:
+        system.processes.status: running
+
   - name: "cpu_interrupts"
     channel: "cpu_interrupts"
     display_name: "CPU Interrupts"
