@@ -406,6 +406,16 @@ func runZabbixSetup(args []string) {
 		os.Exit(2)
 	}
 
+	// Without --probe the command used to link every template it could
+	// generate, so a Linux host autoregistered carrying Hyper-V, Veeam,
+	// NetScaler and the rest: fifty discovery rules the agent will never
+	// answer, which is the same empty line an operator reads as a defect.
+	// The default is what every machine runs; anything else is named.
+	linkedByDefault := len(probes) == 0
+	if linkedByDefault {
+		probes = append([]string{}, defaultSetupProbes...)
+	}
+
 	s := &zabbixSetup{
 		api: newZabbixAPI(rawURL, token), group: group, metadata: metadata,
 		discoveryWait: discoveryDelay, dryRun: dryRun,
@@ -471,6 +481,14 @@ func runZabbixSetup(args []string) {
 		os.Exit(1)
 	}
 
+	if linkedByDefault {
+		fmt.Println()
+		fmt.Printf("Linked the probes every machine runs: %s.\n", strings.Join(defaultSetupProbes, ", "))
+		fmt.Println("Name others with --probe to have them linked as well; a template")
+		fmt.Println("linked to a host whose agent does not run that probe only adds")
+		fmt.Println("discovery rules that stay empty.")
+	}
+
 	fmt.Println()
 	fmt.Println("The server is ready. On every machine to monitor, install the agent")
 	fmt.Println("and give it two lines:")
@@ -533,3 +551,10 @@ func (s *zabbixSetup) retireUnsplitAction(name string) error {
 	s.say("earlier single action %q disabled; the per-platform ones replace it", name)
 	return nil
 }
+
+// defaultSetupProbes are the probes every machine runs, and therefore
+// the templates it is safe to link to every host that registers. A
+// commercial or vendor probe is linked only when the administrator names
+// it, because a template whose probe is absent contributes nothing but
+// discovery rules that never answer.
+var defaultSetupProbes = []string{"cpu", "memory", "network", "logicaldisk", "process"}
