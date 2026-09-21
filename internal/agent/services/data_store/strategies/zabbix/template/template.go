@@ -325,10 +325,16 @@ func macroFor(label string) string {
 	return "{#" + b.String() + "}"
 }
 
+// dimensions mirrors the output's keys.go: a metric that names its own
+// labels replaces the definition's rather than adding to them.
 func dimensions(def transformers.ProbeDefinition, m transformers.MetricDefinition) []string {
-	var out []string
+	source := m.MultiInstanceLabels
+	if len(source) == 0 {
+		source = def.MultiInstanceLabels
+	}
+	out := make([]string, 0, len(source))
 	seen := map[string]bool{}
-	for _, l := range append(append([]string{}, def.MultiInstanceLabels...), m.MultiInstanceLabels...) {
+	for _, l := range source {
 		if l == "" || seen[l] {
 			continue
 		}

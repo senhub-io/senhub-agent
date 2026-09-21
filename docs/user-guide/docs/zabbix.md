@@ -69,16 +69,19 @@ Every series is sent under a key built from the probe's definition:
 The metric is the OTel name of the series (`system.cpu.utilization`,
 `senhub.veeam.job.status`), so it is called the same thing here, on the
 Prometheus endpoint and on the OTLP output. The dimensions are the
-metric's `multi_instance_labels`, in the order the definition lists them.
+metric's `multi_instance_labels`, in the order the definition lists them;
+a metric that names its own replaces the probe's rather than adding to
+them, so a Windows drive metric carries the drive letter alone and not
+the device and mount point it does not have.
+
 The static attributes are the values of the metric's `otel.attributes`,
 in attribute-key order: they tell apart the internal metrics that share
 one OTel name, so on a probe named `memory` the used memory is
 `senhub.system.memory.usage[memory,used]` and the free memory
 `senhub.system.memory.usage[memory,free]`, while a filesystem series
 carries its device and mount point first:
-`senhub.system.filesystem.usage[logicaldisk,/dev/sda1,/,,used]` (an
-empty dimension stays empty). A metric whose OTel name already starts
-with the prefix is not prefixed twice. Values follow the OTel unit (a
+`senhub.system.filesystem.usage[logicaldisk,/dev/sda1,/,used]`. A metric
+whose OTel name already starts with the prefix is not prefixed twice. Values follow the OTel unit (a
 percentage is a ratio, a duration is in seconds); an enum metric is sent
 as its raw code under one key.
 
