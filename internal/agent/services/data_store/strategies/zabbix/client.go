@@ -284,6 +284,17 @@ func (c *client) activeChecks(ctx context.Context) (items []activeItem, changed 
 		// The port the autoregistration action writes on the host's
 		// agent interface, so the server polls where the listener is.
 		req["port"] = c.cfg.Passive.Port
+		// And the address, when the operator named one. Zabbix takes a
+		// name under "interface" and an address under "ip"; left to
+		// itself it records where the packets came from, which behind
+		// NAT is the translation and not a place the server can poll.
+		if a := c.cfg.Passive.Advertise; a != "" {
+			if net.ParseIP(a) != nil {
+				req[fieldIP] = a
+			} else {
+				req[fieldInterface] = a
+			}
+		}
 	}
 	resp, err := c.exchange(ctx, req)
 	if err != nil {
@@ -405,3 +416,12 @@ func metadataWithPlatform(metadata string) string {
 	}
 	return metadata + " " + runtime.GOOS
 }
+
+// fieldIP and fieldInterface are the request fields Zabbix fills the
+// agent interface from. They are constants because the guard that
+// checks a strategy declares every configuration key it reads scans the
+// package's string literals, and would take these for keys of ours.
+const (
+	fieldIP        = "ip"
+	fieldInterface = "interface"
+)

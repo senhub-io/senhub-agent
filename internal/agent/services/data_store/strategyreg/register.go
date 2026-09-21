@@ -104,7 +104,7 @@ func init() {
 	}, nil)
 
 	data_store.RegisterKnownParams("zabbix", []string{
-		"allow", "bind_address", "ca_file", "cert_file", "enabled",
+		"advertise", "allow", "bind_address", "ca_file", "cert_file", "enabled",
 		"heartbeat_interval", "host_metadata", "hostname",
 		"insecure_skip_verify", "interval", "key_file", "key_prefix", "passive",
 		"port", "refresh_interval", "server", "server_name", "timeout", "tls",
