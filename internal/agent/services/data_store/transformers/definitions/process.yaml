@@ -136,6 +136,30 @@ metrics:
   # Aggregate count per distinct process name
   # OTel: process.count (gauge, {process}) — emitted when aggregate.enabled=true
   # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.group.cpu.utilization"
+    channel: "process_group_cpu_{process.name}"
+    display_name: "Processes {process.name} CPU"
+    unit: "%"
+    category: "cpu"
+    multi_instance_labels: ["process.name"]
+    description: "CPU utilization summed over the processes sharing this name; reported whatever the filter, and the only CPU series when no filter narrows the process table"
+    otel:
+      name: senhub.process.group.cpu.utilization
+      unit: "1"
+      type: gauge
+
+  - name: "process.group.memory.usage"
+    channel: "process_group_memory_{process.name}"
+    display_name: "Processes {process.name} Memory"
+    unit: "B"
+    category: "memory"
+    multi_instance_labels: ["process.name"]
+    description: "Resident memory summed over the processes sharing this name; reported whatever the filter, and the only memory series when no filter narrows the process table"
+    otel:
+      name: senhub.process.group.memory.usage
+      unit: By
+      type: gauge
+
   - name: "process.count"
     channel: "process_count_{process.name}"
     display_name: "Process {process.name} Count"
