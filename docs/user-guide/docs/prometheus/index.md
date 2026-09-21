@@ -279,9 +279,12 @@ parameter) carries the **exact** agent key from the agent's config
 
 ### Endpoint returns 404 on `/metrics` but `/api/{key}/prometheus/metrics` works
 
-The `prometheus` endpoint is enabled, but only the SenHub-style route
-was activated. The standard `/metrics` route is served alongside —
-verify the agent version is **0.1.88-beta or newer**.
+Both routes are registered together: enabling the `prometheus`
+endpoint serves the SenHub-style one and the standard `/metrics`, and
+no setting activates one without the other. A 404 on one while the
+other answers comes from what sits in front — a reverse proxy that
+rewrites or strips the path, or a scrape aimed at another listener —
+not from the agent's configuration.
 
 ### A probe is configured but its metrics are missing
 
