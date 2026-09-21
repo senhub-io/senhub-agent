@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/bell-ring-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/event.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -22,18 +22,22 @@ Use cases:
   params:
     address: 127.0.0.1   # Bind address (default: 127.0.0.1)
     port: 5656           # Listening port (default: 5656)
-    protocol: tcp        # tcp or udp (default: tcp)
 ```
 
 Once started, the probe listens on `http://<address>:<port>/event` and accepts `POST` requests with a JSON body.
 
 ## Configuration Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `address` | string | No | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
-| `port` | integer | No | `5656` | HTTP listening port (1–65535) |
-| `protocol` | string | No | `tcp` | Transport protocol (`tcp` or `udp`) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `address` | In practice | `127.0.0.1` | Interface address to listen on; loopback when empty, so remote senders need 0.0.0.0 or an interface address. Example: `0.0.0.0` |
+| `port` | In practice | `5656` | HTTP port to listen on |
+| `protocol` | No | `tcp` | Transport of the listener. The listener serves HTTP, so tcp is the only transport it can take. One of `tcp` |
+
+<!-- schema:params:end -->
 
 ## Event Format
 
@@ -194,5 +198,5 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 Or start the agent with:
 
 ```bash
-./senhub-agent run --verbose --debug-modules probe.event
+senhub-agent run --filter probe.event
 ```

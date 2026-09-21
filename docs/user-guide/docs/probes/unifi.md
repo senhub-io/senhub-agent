@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/ubiquiti" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/unifi.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -24,13 +24,20 @@ throughput and connected-client totals.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `https://localhost:8443` | UniFi Controller base URL |
-| `username` | required | Controller local user username |
-| `password` | required | Controller local user password — reference a stored secret via `${secret:unifi.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `site` | `default` | Controller site name to monitor |
-| `verify_tls` | `true` | Set to `false` to accept self-signed certificates (lab use only) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `https://localhost:8443` | Base URL of the controller |
+| `username` | Yes | - | Controller local user |
+| `password` | Yes | - | Controller local user's password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `site` | No | `default` | Controller site to watch |
+| `verify_tls` | No | `true` | Verify the controller certificate; false accepts a self-signed one |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `15` | Request timeout in seconds |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

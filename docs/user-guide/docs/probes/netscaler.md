@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/scale-balance.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/netscaler.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
@@ -75,40 +75,49 @@ Basic configuration for single NetScaler:
 
 ## Recommended Production Configuration
 
-Full configuration with SSL validation and custom tags:
+Full configuration for an HA pair, with SSL validation and custom tags:
 
 ```yaml
 # probes.d/20-netscaler.yaml
 - name: "netscaler-prod"
   type: netscaler
   params:
-    base_url: "https://netscaler.company.com"
+    base_url: "https://netscaler-1.company.com"      # primary node NSIP
+    secondary_url: "https://netscaler-2.company.com" # other HA node, the probe follows the primary role
     username: "monitoring-user"
     password: ${secret:netscaler-prod.password}   # OS secret store; inline plaintext is auto-sealed on install
     insecure_skip_verify: false  # Validate SSL certificates
     timeout: 30                   # API request timeout (seconds)
     interval: 60                  # Collection interval (seconds)
-  custom_tags:
-    - key: "environment"
-      value: "production"
-    - key: "datacenter"
-      value: "dc-paris-01"
+    custom_tags:                  # key: value pairs, attached to every metric
+      environment: "production"
+      datacenter: "dc-paris-01"
 ```
+
+`custom_tags` is a map under `params`, not a list of `key` / `value`
+entries: a list is ignored without a warning, and so is a map placed
+outside `params`. Values must be strings.
 
 # Configuration Parameters
 
 ## Complete Parameter Reference
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `base_url` | string | Yes | - | NetScaler management URL (primary node IP recommended) |
-| `secondary_url` | string | No | - | Secondary NetScaler URL for HA automatic failover |
-| `username` | string | Yes | - | NITRO API username |
-| `password` | string | Yes | - | NITRO API password — reference a stored secret via `${secret:<name>.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `insecure_skip_verify` | boolean | No | `false` | Skip SSL certificate verification (set `true` when using IPs) |
-| `timeout` | integer | No | `30` | API request timeout in seconds |
-| `interval` | integer | No | `60` | Metric collection interval in seconds |
-| `custom_tags` | array | No | `[]` | Additional tags to attach to all metrics |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `base_url` | Yes | - | Management (NSIP) URL of the appliance, or of the primary node of an HA pair. Example: `https://netscaler.example.com` |
+| `secondary_url` | No | - | Management URL of the other HA node; the probe follows the primary role, empty disables failover. Example: `https://netscaler-2.example.com` |
+| `username` | Yes | - | NITRO API user |
+| `password` | In practice | - | NITRO API password; this or api_key is required. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `api_key` | No | - | NITRO API key used instead of the password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `insecure_skip_verify` | No | `false` | Accept the management certificate without verifying it |
+| `timeout` | No | `30` | API request timeout in seconds |
+| `interval` | No | `60` | Seconds between collections |
+| `custom_tags` | No | - | Extra tags attached to every metric, as key: value pairs |
+
+<!-- schema:params:end -->
 
 # Metrics Overview
 
@@ -287,9 +296,9 @@ The NetScaler probe includes **PRTG Value Lookups** for human-readable status va
 ## Installing Lookups
 
 1. **Download lookups:**
-   - Open SenHub Agent dashboard: `http://localhost:8080/web/{agentkey}/`
-   - Navigate to **Sensor Builder**
-   - Click **"Download PRTG Lookups"** button
+   - Open the SenHub Agent console: `http://localhost:8080/web/{agentkey}/`
+   - Open **Outputs**, then the HTTP output, tab **Sensor URLs**
+   - Click **Download PRTG lookups**
    - Save `senhub-prtg-lookups.zip`
 
 2. **Install on PRTG Server:**
@@ -466,7 +475,7 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
 
 **Or start agent with verbose logging:**
 ```bash
-./senhub-agent run --verbose --debug-modules probe.netscaler
+senhub-agent run --filter probe.netscaler
 ```
 
 ## License Requirements
@@ -484,4 +493,4 @@ Contact support@senhub.io for license information.
 ## Support
 
 - **Email**: support@senhub.io
-- **Documentation**: [docs.senhub.io](https://docs.senhub.io)
+- **Documentation**: [agent.senhub.io/docs](https://agent.senhub.io/docs)

@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/lan-connect.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/snmp-trap.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -30,13 +30,30 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `bind_address` | `127.0.0.1:162` | UDP listen address. Loopback by default — receiving traps from network devices requires an explicit address (e.g. `"0.0.0.0:162"`). Port 162 is privileged: run as root or grant `CAP_NET_BIND_SERVICE`, or move to a port above 1024 |
-| `version` | `v2c` | `v2c` or `v3` |
-| `community` | empty | v2c community check. Empty accepts any community — always set it on production receivers. Reference a stored secret via `${secret:<name>.community}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `mib_paths` | `[]` | Local directories or files of MIB modules for OID-to-name resolution |
-| `v3` | none | SNMPv3 USM users (see below) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `bind_address` | No | `127.0.0.1:162` | UDP listen address; port 162 needs root or CAP_NET_BIND_SERVICE |
+| `version` | No | `v2c` | A string. One of `v2c`, `v3` |
+| `community` | No | - | v2c community check; empty accepts any. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `mib_paths` | No | - | Local MIB files or folders for OID names |
+| `v3` | No | - | SNMPv3 users |
+| `v3.users` | Yes | - | A list of blocks |
+| `v3.users[].username` | Yes | - | USM user name |
+| `v3.users[].auth_protocol` | No | - | A string. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
+| `v3.users[].auth_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.users[].priv_protocol` | No | - | A string. One of `DES`, `AES`, `AES192`, `AES256` |
+| `v3.users[].priv_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+
+<!-- schema:params:end -->
+
+The listener is on loopback by default; traps from network devices need
+an explicit address such as `"0.0.0.0:162"`. When the agent cannot bind a
+privileged port, move to a port above 1024 and point the devices at it.
+An empty `community` accepts every datagram, so set it on a production
+receiver.
 
 ### SNMPv3 users
 
@@ -52,13 +69,8 @@ params:
         priv_password: "${env:TRAP_PRIV_PWD}"
 ```
 
-| Field | Description |
-|---|---|
-| `username` | required |
-| `auth_protocol` | `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, or empty for no authentication |
-| `auth_password` | Authentication passphrase |
-| `priv_protocol` | `DES`, `AES`, `AES192`, `AES256`, or empty for no privacy |
-| `priv_password` | Privacy passphrase |
+Leave `auth_protocol` empty for no authentication and `priv_protocol`
+empty for no privacy.
 
 ## Output
 

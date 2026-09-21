@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/docker" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/docker.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -17,13 +17,36 @@ running state. No external client library is required.
   type: docker
 ```
 
-The probe connects to the local Docker socket at `/var/run/docker.sock` by
-default. No parameters are required for a local setup.
+The probe connects to the local Docker Engine on whichever transport the
+platform offers, with no parameter needed for a local setup:
+
+| Platform | Default address | Transport |
+|---|---|---|
+| Linux, macOS | `/var/run/docker.sock` | Unix socket |
+| Windows | `npipe://./pipe/docker_engine` | named pipe |
+
+Docker Engine and Docker Desktop on Windows expose the API over a named pipe
+rather than a socket, which is why the default differs. Set `socket_path`
+to override it; a Windows pipe may be written `npipe://./pipe/<name>` or
+`\\.\pipe\<name>`.
 
 ## Parameters
 
-This probe takes no configuration parameters — it connects to the local Docker
-Engine socket automatically.
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `socket_path` | No | - | Engine socket; /var/run/docker.sock on Unix, npipe://./pipe/docker_engine on Windows by default |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Engine request timeout in seconds |
+| `include` | No | - | Container name patterns to keep; empty means all. Example: `web-*` |
+| `exclude` | No | - | Container name patterns to drop; wins over include |
+
+<!-- schema:params:end -->
+
+`include` and `exclude` are shell-style globs (`web-*`, `db?`) matched against
+the container's primary name.
 
 ## Metrics
 
@@ -41,6 +64,21 @@ Engine socket automatically.
 
 Each metric is tagged with `container_name` and `container_id`; CPU metrics are
 additionally tagged with `core`.
+
+## What a Windows container reports
+
+The engine answers a different shape on Windows, so a few channels come
+from different fields there and a few are absent:
+
+| Channel | Linux | Windows |
+|---|---|---|
+| Memory usage | cgroup usage, minus the page cache for the working set | private working set, plus the commit charge and its peak |
+| Memory limit | the cgroup limit | not reported by the engine, so zero |
+| CPU percentage | container time against host time | container time against the wall time between two samples, times the processors the container may use |
+| Block I/O | `blkio` counters per device | the storage counters the engine reports for the container |
+| Per-core CPU, throttling, page-cache breakdown | reported | not reported by the engine |
+
+A value the engine does not send is left at zero rather than guessed.
 
 ## Running without access to the Docker socket
 

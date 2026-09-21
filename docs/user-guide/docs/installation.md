@@ -8,6 +8,9 @@ SenHub Agent is a monitoring collector that runs on your infrastructure and coll
 |----------|----------|--------------|
 | **Windows** | Server 2016+, Windows 10+ | x64 |
 | **Linux** | RHEL 7+, Ubuntu 18.04+, Debian 10+ | x64, ARM64 |
+| **Container** | any host running a container runtime | x64, ARM64 |
+
+A container is a supported deployment and has its own page: see [Running the agent in a container](container.md). The rest of this page installs the agent as a system service.
 
 **Resource requirements**: 1 CPU core, 512 MB RAM, 500 MB disk space.
 
@@ -21,6 +24,65 @@ Contact SenHub support (support@senhub.io) or download from the [GitHub releases
 - On Linux, the agent ZIP for your architecture (see naming convention below)
 - A license token (required for premium probes: Citrix, NetScaler, Redfish, etc.)
 
+### Direct download URLs
+
+For a Dockerfile, an air-gapped copy or a configuration-management
+recipe, you need the URL rather than a browser. Two sources serve the
+same artifacts:
+
+```bash
+# GitHub — public, and the one to prefer for a container build
+https://github.com/senhub-io/senhub-agent/releases/download/0.5.6/senhub-agent-linux-amd64.zip
+
+# SenHub release server
+https://eu-west-1.intake.senhub.io/download/0.5.6/senhub-agent-linux-amd64.zip
+```
+
+!!! warning "Release tags carry no `v` prefix"
+
+    The tag is `0.5.6`, not `v0.5.6`. A URL built with the `v` returns
+    404, which reads like a missing file rather than a wrong name — this
+    is the single most common reason a direct download fails.
+
+Substitute the version you want. To discover what is published:
+
+```bash
+curl -s https://eu-west-1.intake.senhub.io/releases/releases.json
+```
+
+That endpoint lists every stable version, newest first; `latest` is an
+alias for the newest. Beta versions are at
+`/releases/beta/releases.json`.
+
+!!! note "`/releases` lists, `/download` serves"
+
+    The two are different paths on purpose: `/releases/...` is the
+    index, `/download/<version>/...` is where the files are. Do not put
+    either of them into `auto_update.url` — that setting is the **base**
+    the agent appends to, so a value carrying one of these paths makes
+    every derived URL double it. `agent config check` reports this and
+    tells you what to write instead.
+
+### Verifying a download
+
+Every artifact is published with a [minisign](https://jedisct1.github.io/minisign/)
+signature next to it. Verify before you run it, especially in an
+automated build:
+
+```bash
+VERSION=0.5.6
+BASE=https://github.com/senhub-io/senhub-agent/releases/download/$VERSION
+curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip"
+curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip.minisig"
+
+minisign -Vm senhub-agent-linux-amd64.zip \
+  -P RWRlfkyeLpjI0MjTSfuvT/bDNHHaVJhRirQN8Z8LTAM+n4LKVbpjrlRh
+```
+
+That public key is the one the agent itself embeds to verify its own
+auto-updates. There is no `SHA256SUMS` file — minisign is the
+verification path.
+
 ### Release Artifact Naming
 
 Release artifacts are ZIP archives named with dashes between OS and architecture:
@@ -30,10 +92,10 @@ Release artifacts are ZIP archives named with dashes between OS and architecture
 | Windows x86_64 | `senhub-agent-windows-amd64.zip` | `senhub-agent.exe` |
 | Linux x86_64 | `senhub-agent-linux-amd64.zip` | `senhub-agent` |
 | Linux ARM64 | `senhub-agent-linux-arm64.zip` | `senhub-agent` |
-| macOS Intel | `senhub-agent-darwin-amd64.zip` | `senhub-agent` |
-| macOS Apple Silicon | `senhub-agent-darwin-arm64.zip` | `senhub-agent` |
 
 Each ZIP contains a binary already named `senhub-agent` (or `senhub-agent.exe` on Windows). No renaming is needed after extraction.
+
+These three are the platforms the release publishes. The agent also builds and runs on macOS, but no macOS archive is published: it is a development target, and a build from source is the way to get one.
 
 On Windows, the release also ships a Windows Installer package, `senhub-agent-<version>-amd64.msi` (amd64 only), which is the recommended way to install on servers and managed fleets.
 
@@ -48,14 +110,14 @@ Two paths are supported on Windows:
 
 The MSI (built with WiX 5.0.2) installs `senhub-agent.exe` into `%ProgramFiles%\SenHub Agent\`, registers and starts the `senhub-agent` Windows service (display name **SenHub Agent**, running as `LocalSystem`, with restart-on-failure recovery), and provisions the configuration on first install.
 
-On first install the MSI runs `senhub-agent config init`, which writes the default multi-file configuration under `%ProgramData%\SenHub\` (`agent.yaml` + `probes.d\` + `strategies.d\`) with no interactive step, and applies any license key, tags or OTLP endpoint you provide. Provisioning is idempotent: an upgrade or reinstall never overwrites an existing configuration, and operator config under `%ProgramData%\SenHub\` is preserved on uninstall.
+On first install the MSI runs `senhub-agent config init`, which writes the default multi-file configuration under `%ProgramData%\SenHub\` (`agent.yaml` + `probes.d\` + `strategies.d\`) with no interactive step, and applies any license key, tags or OTLP endpoint you provide. Provisioning is idempotent: an upgrade never overwrites an existing configuration. A genuine uninstall removes `%ProgramData%\SenHub\` in full (see [Uninstallation](#uninstallation)), so a fresh install starts from the installer's inputs.
 
 !!! note "Signed installer"
     The MSI, the bundled `senhub-agent.exe` and the installer's PowerShell payload are code-signed with an HSM-backed **Certum** code-signing certificate. Windows shows the `SENSOR FACTORY SAS` publisher, and SmartScreen does not raise an unknown-publisher warning. You can confirm the signature with `Get-AuthenticodeSignature .\senhub-agent-<version>-amd64.msi | Format-List` — status `Valid` with the `SENSOR FACTORY SAS` publisher.
 
 #### Interactive install
 
-Double-click `senhub-agent-<version>-amd64.msi` and follow the guided wizard (Welcome → license → install directory → ready → progress → finish). With nothing provided, the agent installs in the Free-tier default (local scrape endpoints only, no push).
+Double-click `senhub-agent-<version>-amd64.msi` and follow the guided wizard (Welcome → licence agreement → install directory → agent options → ready → progress → finish). With nothing provided, the agent installs in the Free-tier default (local scrape endpoints only, no push).
 
 #### Silent / unattended install
 
@@ -63,13 +125,18 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 
 | Property | Purpose |
 |---|---|
-| `LICENSE_KEY` | JWT license token — unlocks Pro/Enterprise probes (Free needs none) |
+| `LICENSE_FILE` | Path to the licence file (`.jwt`), what the wizard's Browse button fills in (local or UNC path) |
+| `LICENSE_KEY` | The licence token itself, for scripted installs |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
+| `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`). A port already in use fails the install. |
+| `DESKTOP_SHORTCUT` | `1` (default) creates a "SenHub Agent Console" desktop shortcut; `0` skips it |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `ADOPT` | `ADOPT=1` takes over an agent installed outside the MSI (see below) |
 
 Properties are consumed only on first install; they do not overwrite an existing `agent.yaml`.
+
+The guided install (double-click) asks for the licence file, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^
@@ -155,7 +222,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.1.87","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.5.6","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
 ![Windows service running](images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
@@ -255,6 +322,7 @@ The `install` command accepts the following options:
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--http-port PORT` | `8080` | HTTP listening port (PRTG / Web UI / Nagios endpoints) |
 | `--enable-https` | disabled | Enable HTTPS on the agent API |
 | `--https-port PORT` | `8443` | HTTPS listening port |
 | `--https-hosts HOSTS` | `localhost,127.0.0.1` | Hostnames for the auto-generated certificate (comma-separated) |
@@ -350,7 +418,7 @@ senhub-agent update --list
 Install a specific version:
 
 ```bash
-senhub-agent update 0.1.87
+senhub-agent update 0.5.6
 ```
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
@@ -361,7 +429,7 @@ After installing and starting the agent, verify the following:
 
 1. The service is running: `senhub-agent status`
 2. The health endpoint responds: `curl http://localhost:8080/health`
-3. The web dashboard is accessible: open `http://localhost:8080/web/{key}/` in a browser
+3. The web console is accessible: open `http://localhost:8080/web/{key}/` in a browser
 4. Probes are collecting metrics: check the probes endpoint `curl http://localhost:8080/api/{key}/info/probes`
 5. The log file exists and is being written to
 
@@ -372,7 +440,7 @@ After installation:
 1. Configure your monitoring probes (see [Configuration](configuration.md))
 2. Activate your license if you have premium probes (see License section in [Configuration](configuration.md))
 3. Set up HTTPS if required (see [HTTP/HTTPS Configuration](http-https.md))
-4. Configure your monitoring system (PRTG, Nagios) to collect metrics (see [Web Interface](web-interface.md))
+4. Configure your monitoring system (PRTG, Nagios) to collect metrics (see [Web console](web-interface.md))
 
 ## Uninstallation
 
@@ -383,13 +451,11 @@ msiexec /x senhub-agent-<version>-amd64.msi /qn
 
 Or use **Apps & features** / **Programs and Features** interactively.
 
-By default, uninstalling keeps the operator state under `%ProgramData%\SenHub\` — configuration, sealed secret store, and license — while removing the transient `logs\` and `update\` folders (regenerated on the next run). A later reinstall or upgrade picks the existing setup back up. To delete that data tree as well when decommissioning a host, opt in with `PURGE_DATA=1`:
+Uninstalling removes the whole `%ProgramData%\SenHub\` tree — configuration, sealed secret store, license, and the transient `logs\` and `update\` folders — so removing the product leaves the machine clean, whether you uninstall from **Apps & features** or with `msiexec /x`. A later fresh install then starts from the installer's inputs (licence, port) rather than a stale kept configuration.
 
-```bat
-msiexec /x senhub-agent-<version>-amd64.msi /qn PURGE_DATA=1
-```
+This is not recoverable. To move a host to a newer version while keeping its licence and configuration, **upgrade in place** (install the newer MSI over the older one) instead of uninstalling: an in-place major upgrade preserves everything under `%ProgramData%\SenHub\`.
 
-The purge is not recoverable and never applies during an upgrade. An interactive uninstall always keeps the data; use the command line to purge.
+`PURGE_DATA` is accepted for backward compatibility but no longer changes anything, since a genuine uninstall already removes the full tree.
 
 **Windows (ZIP install):**
 ```powershell

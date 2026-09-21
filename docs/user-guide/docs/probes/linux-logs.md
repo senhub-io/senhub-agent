@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/linux" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/linux-logs.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — included in the free tier alongside CPU, memory,
@@ -38,14 +38,22 @@ identical to records produced by the `syslog` and `event` probes
 
 ## Parameters
 
-All parameters are optional.
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
 
-| Parameter | Default | Description |
-|---|---|---|
-| `units` | `[]` | Filter to specific systemd units. Each entry becomes a `--unit=<u>` flag. Empty = no unit filter. |
-| `identifiers` | `[]` | Filter by `SYSLOG_IDENTIFIER` (the program name in the journal, e.g. `sshd`, `kernel`). Each entry becomes a `--identifier=<id>` flag. |
-| `priority` | `7` | Maximum syslog priority to include (0..7). 7 = debug+everything above; 4 = warning+errors+critical; 0 = emergency only. |
-| `include_boot` | `false` | When `true`, replay entries from the start of the current boot. Default: stream only new entries after probe start (`--since=now`). |
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `units` | No | - | systemd units to follow; empty means every unit. Example: `nginx.service` |
+| `identifiers` | No | - | Program names (SYSLOG_IDENTIFIER) to follow. Example: `sshd` |
+| `priority` | No | `7` | Highest syslog priority to include, 0 (emergency) to 7 (debug) |
+| `include_boot` | No | `false` | Replay entries since the current boot instead of streaming only new ones |
+
+<!-- schema:params:end -->
+
+Each `units` entry becomes a `--unit=` filter and each `identifiers` entry a
+`--identifier=` filter on the journalctl command line, so several entries
+widen the selection. Without `include_boot`, the stream starts at the
+moment the probe starts (`--since=now`).
 
 Examples:
 
@@ -76,9 +84,9 @@ attributes (mapped per the OTel semantic conventions):
 
 | Attribute | Source |
 |---|---|
-| Severity (number + text) | `PRIORITY` field, mapped via RFC 5424 → OTel table |
+| Severity (number + text) | `PRIORITY` field, mapped with the RFC 5424 to OTel table |
 | Body | `MESSAGE` field |
-| `host.name` | `_HOSTNAME` |
+| `systemd.hostname` | `_HOSTNAME` |
 | `systemd.unit` | `_SYSTEMD_UNIT` |
 | `syslog.appname` | `SYSLOG_IDENTIFIER` |
 | `process.pid` | `_PID` |
@@ -87,6 +95,12 @@ attributes (mapped per the OTel semantic conventions):
 | `systemd.transport` | `_TRANSPORT` |
 | `senhub.probe.name` | The probe instance name (from `probes[].name`) |
 | `senhub.probe.type` | `"linux_logs"` |
+
+The host a record came from is the one on the resource, resolved as an
+FQDN, the same value the metrics carry. `_HOSTNAME` is the short kernel
+name of that same machine, so it is emitted as `systemd.hostname` and
+never as a record-level `host.name` — two spellings of one key would
+split the host in two on the consumer side.
 
 Severity mapping (RFC 5424 → OTel):
 
@@ -111,10 +125,10 @@ Severity mapping (RFC 5424 → OTel):
   process doesn't exit within the shutdown deadline.
 - **Resilience.** Each malformed JSON line is logged at DEBUG and
   skipped — a single garbled entry never breaks the stream.
-- **Cardinality.** Setting `priority: 7` on a busy host can produce
-  thousands of records per minute. The default `6` filters out
-  debug; consider `4` (warnings and errors only) on chatty hosts
-  where storage in VictoriaLogs is a concern.
+- **Cardinality.** The default `priority: 7` keeps debug entries and can
+  produce thousands of records per minute on a busy host. Set `6` to drop
+  debug, or `4` (warnings and errors only) on chatty hosts where log
+  storage is a concern.
 
 ## Cross-platform notes
 

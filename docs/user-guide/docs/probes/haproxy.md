@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/haproxy" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/haproxy.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -21,11 +21,19 @@ and server component.
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | `http://localhost:8080/stats;csv` | HAProxy stats CSV endpoint URL |
-| `username` | — | Basic-auth username (if the stats page is protected) |
-| `password` | — | Basic-auth password |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | In practice | `http://localhost:8080/stats;csv` | URL of the stats page in CSV form |
+| `username` | No | - | Basic-auth user when the stats page is protected; empty for none |
+| `password` | No | - | Basic-auth password. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `interval` | No | `60` | Seconds between collections |
+| `timeout` | No | `10` | Request timeout in seconds |
+| `instance_name` | No | - | Stable identity of this load balancer; set it when two haproxy probes run on one host |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

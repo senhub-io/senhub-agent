@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/clock-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/chrony.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -29,10 +29,19 @@ No parameters are required — the probe reads the local chrony daemon.
 
 ## Parameters
 
-| Parameter | Type | Default | Description |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `chronyc_path` | string | `chronyc` | Path to the `chronyc` binary. Set this when it is not on the agent's `PATH` — a hardened service unit does not inherit an interactive shell's `PATH`, so an absolute path such as `/usr/bin/chronyc` is the usual fix. |
-| `interval` | int (seconds) | `30` | Collection interval. |
+| `chronyc_path` | No | `chronyc` | Path of the chronyc binary when it is not on the service's PATH. Example: `/usr/bin/chronyc` |
+| `interval` | No | `30` | Seconds between collections |
+
+<!-- schema:params:end -->
+
+A hardened service unit does not inherit an interactive shell's `PATH`, so when
+the probe reports `not_installed` on a host that has chrony, an absolute
+`chronyc_path` such as `/usr/bin/chronyc` is the usual fix.
 
 ## Metrics
 

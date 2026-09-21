@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/sitemap.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/zookeeper.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -23,10 +23,18 @@ state (leader/follower/observer).
 
 ## Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `host` | `localhost` | ZooKeeper node hostname or IP |
-| `port` | `2181` | ZooKeeper client port |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `host` | In practice | `localhost` | Node hostname or address |
+| `port` | In practice | `2181` | Client port the four-letter commands are sent to |
+| `timeout` | No | `10` | Connection and command timeout in seconds |
+| `interval` | No | `30` | Seconds between collections |
+| `instance_name` | No | - | Stable identity of this node instead of host:port |
+
+<!-- schema:params:end -->
 
 ## Metrics
 

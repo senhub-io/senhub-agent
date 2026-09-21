@@ -1,4 +1,4 @@
-<img src="https://cdn.simpleicons.org/veeam" alt="" class="probe-page-logo probe-page-logo-si">
+<img src="../../assets/probe-logos/veeam.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 # Veeam Backup & Replication
 
@@ -30,15 +30,22 @@ Monitors Veeam Backup & Replication v13 via the REST API. Collects job status, r
 
 ### Parameters
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `endpoint` | Yes | - | Veeam server hostname or IP (without port) |
-| `port` | No | `9419` | REST API port |
-| `username` | Yes | - | Veeam account with Backup Administrator role |
-| `password` | Yes | - | Account password — reference a stored secret via `${secret:veeam-prod.password}`, `${env:VAR}` or `${file:/path}`. Inline plaintext is auto-sealed into the OS secret store on install. |
-| `interval` | No | `300` | Collection interval in seconds |
-| `verify_ssl` | No | `true` | Verify TLS certificate |
-| `hours_to_check` | No | `24` | Time window for job history (hours) |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `endpoint` | Yes | - | Backup server hostname or URL; port is appended when the address carries none. Example: `https://veeam.example.com` |
+| `port` | No | `9419` | REST API port, used when endpoint carries none |
+| `username` | Yes | - | Veeam account with the Backup Administrator role |
+| `password` | Yes | - | Password of the Veeam account. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `verify_ssl` | No | `true` | Validate the server's TLS certificate; false for a self-signed certificate |
+| `interval` | No | `300` | Seconds between collections |
+| `hours_to_check` | No | `24` | Job history window in hours; a job with no run inside it counts as stale |
+
+<!-- schema:params:end -->
+
+The three integer parameters must be written as plain numbers (`300`, not `"300"` or `300s`); any other form is ignored and the default applies.
 
 ## Collected Metrics
 
@@ -135,7 +142,7 @@ Managed server availability:
 
 ## PRTG Integration
 
-The probe includes PRTG lookups for status fields. When creating PRTG sensors, use the **REST Custom** sensor type pointing to:
+The probe includes PRTG lookups for status fields. When creating PRTG sensors, use the **HTTP Data Advanced** sensor type pointing to:
 
 ```
 http://<agent-ip>:<port>/api/<agent-key>/prtg/metrics/<probe-name>?tags=metric_type:<category>
@@ -148,7 +155,7 @@ Example for job details:
 http://192.168.1.100:8056/api/550e8400-.../prtg/metrics/veeam-prod?tags=metric_type:jobs
 ```
 
-Download the PRTG lookup files from the web interface (button "PRTG Lookups" in the Sensor Builder).
+Download the PRTG lookup files from the console (link "Download PRTG lookups" in the Sensor URLs tab of the HTTP output).
 
 ## Troubleshooting
 
@@ -166,6 +173,23 @@ Plugin-managed backups (Veeam Backup for **Nutanix AHV** and other external
 modules) are reported by Veeam's `/jobs/states` endpoint without a standard job
 type. The agent labels these as `CustomPlatform` (Veeam's own term) so they are
 grouped and filterable, rather than left as "Unknown".
+
+These jobs also carry less information than a native one, which surprises
+operators filtering by tag:
+
+- **The status is not in `jobs_detail`.** The job status channel is tagged
+  `metric_type:jobs_status`; a query filtering on `metric_type:jobs_detail`
+  deliberately excludes it and returns only Time Since Last Run, Running
+  Duration and Objects Count. Query `metric_type:jobs_status` for the status.
+- **`Time Since Last Run` is `-1`, and that is not a failure.** Veeam reports
+  no session timestamp for plugin-managed jobs, so the channel carries the
+  "no measurement" sentinel rather than a duration. Do not alert on it for
+  this job type.
+- **No transferred bytes and no bottleneck channels.** For the same reason
+  (no session progress from VBR), those channels are not emitted at all.
+- **The status itself is meaningful.** When Veeam reports no last run, the
+  probe falls back to the job's last result, so these jobs show their real
+  Success / Warning / Failed instead of "Never Run".
 
 ### No job metrics
 

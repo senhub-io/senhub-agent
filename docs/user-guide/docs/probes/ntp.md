@@ -1,4 +1,4 @@
-<img src="https://api.iconify.design/mdi/clock-check-outline.svg?color=%23666" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/ntp.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
 !!! info
     **License: Free** — part of the universal collection tier.
@@ -36,12 +36,17 @@ There is no default server, on purpose. See [Choosing servers](#choosing-servers
 
 ## Parameters
 
-| Parameter | Type | Default | Description |
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `servers` | list of strings | **required** | Reference servers to measure against. Each entry is a hostname or IP, optionally with a port (`ntp.example.org:1123`); port 123 is used otherwise. |
-| `samples` | int | `4` | Exchanges per server per cycle. The least delayed one is kept. Maximum 16. |
-| `timeout` | int (seconds) | `5` | Per-exchange timeout. |
-| `interval` | int (seconds) | `300` | Collection interval. Longer than most probes on purpose: clock error moves slowly and every query is traffic sent to somebody else's server. |
+| `servers` | Yes | - | Reference servers as host or host:port; port 123 otherwise. Example: `ntp.example.org, 10.0.0.1:123` |
+| `samples` | No | `4` | Exchanges per server per cycle, the least delayed is kept; at most 16 |
+| `timeout` | No | `5` | Per-exchange timeout in seconds |
+| `interval` | No | `300` | Seconds between cycles; every query is traffic to somebody else's server |
+
+<!-- schema:params:end -->
 
 ## Metrics
 
