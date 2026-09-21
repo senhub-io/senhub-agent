@@ -3,9 +3,12 @@ package zabbix
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +45,7 @@ type passiveListener struct {
 	lookup   itemLookup
 	logger   *logger.ModuleLogger
 	allowed  []*net.IPNet
+	tlsConf  *tls.Config
 
 	ln net.Listener
 	wg sync.WaitGroup
@@ -52,7 +56,42 @@ func newPassiveListener(cfg Config, lookup itemLookup, log *logger.ModuleLogger)
 	if err != nil {
 		return nil, err
 	}
-	return &passiveListener{cfg: cfg.Passive, hostname: cfg.Hostname, lookup: lookup, logger: log, allowed: allowed}, nil
+	// Built here so a certificate that cannot be read stops the agent
+	// instead of leaving a listener that serves in clear.
+	tlsConf, err := buildPassiveTLS(cfg.Passive.TLS)
+	if err != nil {
+		return nil, err
+	}
+	return &passiveListener{cfg: cfg.Passive, hostname: cfg.Hostname, lookup: lookup, logger: log, allowed: allowed, tlsConf: tlsConf}, nil
+}
+
+// buildPassiveTLS turns the configuration into what the listener wraps
+// itself in. The agent presents its certificate, and when an authority
+// is named it also demands one from whoever polls: the allow list says
+// which addresses may connect, a certificate says who they are.
+func buildPassiveTLS(t PassiveTLSConfig) (*tls.Config, error) {
+	if !t.Enabled {
+		return nil, nil
+	}
+	cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("zabbix: passive: loading tls.cert_file/key_file: %w", err)
+	}
+	conf := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
+	if t.CAFile == "" {
+		return conf, nil
+	}
+	pem, err := os.ReadFile(t.CAFile) // #nosec G304 - operator-supplied path
+	if err != nil {
+		return nil, fmt.Errorf("zabbix: passive: reading tls.ca_file: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("zabbix: passive: tls.ca_file %s holds no certificate", t.CAFile)
+	}
+	conf.ClientCAs = pool
+	conf.ClientAuth = tls.RequireAndVerifyClientCert
+	return conf, nil
 }
 
 // allowedNets turns the allow list into networks; an empty list means
@@ -118,6 +157,9 @@ func (p *passiveListener) start(ctx context.Context) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("zabbix: passive: listening on %s: %w", addr, err)
+	}
+	if p.tlsConf != nil {
+		ln = tls.NewListener(ln, p.tlsConf)
 	}
 	p.ln = ln
 	p.wg.Add(1)
