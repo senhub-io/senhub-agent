@@ -36,6 +36,11 @@ type Options struct {
 	Version string
 	// ItemDelay is the update interval of the prototypes; DiscoveryDelay that of the rules.
 	ItemDelay, DiscoveryDelay string
+	// Platform, when set, keeps only the metrics that platform can
+	// produce. Without it the template declares every metric of the
+	// definition, including the ones that can never receive a value on
+	// the host it is linked to.
+	Platform string
 	// Group is the template group the template is filed under.
 	Group string
 	// Lookups provides the value maps; nil means none.
@@ -148,11 +153,20 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	if def.ProbeName == "" {
 		return Export{}, fmt.Errorf("definition without a probe_name")
 	}
+	def = forPlatform(def, opts.Platform)
 	name := "SenHub " + firstNonEmpty(def.FriendlyName, def.ProbeName)
+	visible := name
+	if opts.Platform != "" {
+		// Zabbix refuses parentheses in a template's technical name, so
+		// the platform is appended plainly there and parenthesised in
+		// the name an operator reads.
+		name += " " + opts.Platform
+		visible += " (" + opts.Platform + ")"
+	}
 	tpl := Template{
 		UUID:        uid("template", name),
 		Template:    name,
-		Name:        name,
+		Name:        visible,
 		Description: fmt.Sprintf("Generated from the SenHub Agent definition of the %s probe; the agent's zabbix output sends these keys.", def.ProbeName),
 		Groups:      []GroupRef{{Name: opts.Group}},
 	}

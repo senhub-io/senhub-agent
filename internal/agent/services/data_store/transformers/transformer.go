@@ -51,6 +51,13 @@ type MetricDefinition struct {
 	AlertThresholdWarning  int               `yaml:"alert_threshold_warning"`
 	AlertThresholdCritical int               `yaml:"alert_threshold_critical"`
 	Lookup                 string            `yaml:"lookup"`
+	// Platforms restricts the metric to the operating systems that can
+	// produce it. Empty means every platform, which is the case for all
+	// but a handful. It exists because a template generated from the
+	// definitions would otherwise declare a Windows performance counter
+	// on a Linux host, where it can never receive a value and reads as a
+	// defect. Values are GOOS names: linux, windows, darwin.
+	Platforms []string `yaml:"platforms,omitempty"`
 
 	// OTel-first mapping (v3+). See docs/developer-guide/otel/senhub-semantic-conventions.md
 	Otel           *OtelMapping      `yaml:"otel,omitempty"`
@@ -682,3 +689,17 @@ func (tr *TransformerRegistry) loadCorrectionsConfigFromEmbed(probeName string) 
 }
 
 // TransformMetricName implements MetricTransformer interface for definition-based transformer
+
+// RunsOn reports whether the metric can be produced on the named
+// platform. A metric that names none runs everywhere.
+func (m MetricDefinition) RunsOn(goos string) bool {
+	if len(m.Platforms) == 0 {
+		return true
+	}
+	for _, p := range m.Platforms {
+		if p == goos {
+			return true
+		}
+	}
+	return false
+}

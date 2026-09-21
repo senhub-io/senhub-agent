@@ -31,8 +31,14 @@ func TestActiveChecksSendsTheHostAndItsMetadata(t *testing.T) {
 		t.Fatalf("items = %+v", items)
 	}
 	reqs := srv.requestsOf("active checks")
-	if len(reqs) != 1 || reqs[0]["host"] != "web-01" || reqs[0]["host_metadata"] != "senhub-agent" {
+	// The metadata carries the platform beside what the operator wrote,
+	// so the autoregistration action links the template set this host
+	// can actually feed. What was written must stay matchable.
+	if len(reqs) != 1 || reqs[0]["host"] != "web-01" || reqs[0]["host_metadata"] != metadataWithPlatform("senhub-agent") {
 		t.Fatalf("request = %+v", reqs)
+	}
+	if md, _ := reqs[0]["host_metadata"].(string); !strings.HasPrefix(md, "senhub-agent") {
+		t.Fatalf("host_metadata = %q, want what the operator wrote first", md)
 	}
 }
 
