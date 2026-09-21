@@ -2,7 +2,7 @@ probe_name: "process"
 friendly_name: "Process Monitor"
 version: "3.0.0"
 host_level: true
-multi_instance_labels: ["process.pid", "process.name"]
+multi_instance_labels: ["process.name"]
 
 # Format v3 — OTel-first source of truth.
 # Metric names follow OTel semantic conventions for process metrics
