@@ -125,6 +125,20 @@ func runZabbixCommand() {
 			os.Exit(1)
 		}
 	}
+	if out != "" {
+		body, err := template.Encode(template.Base(opts))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		path := filepath.Join(out, fmt.Sprintf("senhub-agent-%s.yaml", firstNonEmptyVersion(opts.Version)))
+		if err := os.WriteFile(path, body, 0o644); err != nil { // #nosec G306 - a template to import, not a secret
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(path)
+	}
+
 	for _, p := range probes {
 		def, ok := defs[p]
 		if !ok {
@@ -190,8 +204,20 @@ func renderTemplates(probes []string, opts template.Options) (map[string][]byte,
 	if lookups, lerr := http.NewLookupRegistry(&nop); lerr == nil {
 		opts.Lookups = lookupAdapter{lookups}
 	}
-	out := make(map[string][]byte, len(probes))
+	out := make(map[string][]byte, len(probes)+1)
 	var names []string
+
+	// The agent's own items travel in a template of their own: Zabbix
+	// refuses two linked templates declaring one key, so they cannot be
+	// repeated in each probe template.
+	base := template.Base(opts)
+	baseBody, err := template.Encode(base)
+	if err != nil {
+		return nil, nil, fmt.Errorf("base template: %w", err)
+	}
+	out[baseTemplateKey] = baseBody
+	names = append(names, template.BaseName)
+
 	for _, p := range probes {
 		def, ok := defs[p]
 		if !ok {
@@ -211,4 +237,16 @@ func renderTemplates(probes []string, opts template.Options) (map[string][]byte,
 		}
 	}
 	return out, names, nil
+}
+
+// baseTemplateKey names the base template in the map renderTemplates
+// returns. A probe type is a bare lowercase identifier, so a phrase with
+// spaces cannot collide with one, and it reads properly in the output.
+const baseTemplateKey = "the agent itself"
+
+func firstNonEmptyVersion(v string) string {
+	if v == "" {
+		return "7.0"
+	}
+	return v
 }

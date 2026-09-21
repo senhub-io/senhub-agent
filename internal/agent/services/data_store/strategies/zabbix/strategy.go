@@ -282,7 +282,8 @@ func (s *Strategy) items(now time.Time) []item {
 	for _, cm := range metrics {
 		out = append(out, itemFor(s.cfg.KeyPrefix, s.lookup(cm.ProbeType), cm))
 	}
-	return append(out, discoveryItems(s.cfg.KeyPrefix, s.defs, metrics)...)
+	out = append(out, discoveryItems(s.cfg.KeyPrefix, s.defs, metrics)...)
+	return append(out, agentItems(s.cfg.Hostname)...)
 }
 
 func (s *Strategy) lookup(probeType string) *transformers.ProbeDefinition {
