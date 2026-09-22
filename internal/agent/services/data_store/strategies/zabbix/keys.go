@@ -87,6 +87,36 @@ func findMetric(def *transformers.ProbeDefinition, name string) *transformers.Me
 	return nil
 }
 
+// relayIdentity is the tag that tells two emitters apart on a probe no
+// definition describes.
+//
+// The OTLP receiver relays what applications send it, under the names
+// they chose. Nothing in the agent describes those names, so the key
+// built for them carries the receiving probe and nothing else: two
+// services reporting http.server.request.duration through one receiver
+// build the same key, and the second value overwrites the first on an
+// item that goes on looking healthy. That is the failure the pull
+// outputs had before their discriminants were registered, on the rail
+// where an item is created once and read for years.
+//
+// service.name is what OpenTelemetry requires an emitter to declare,
+// and it is preferred over host.name on purpose: a replaced container
+// keeps its service name and changes its host name, and a key built on
+// the latter would mint a new item on every deployment.
+const relayIdentity = "service.name"
+
+// relayDimensions are a metric's dimensions, plus the emitter's
+// identity when the metric comes from a probe no definition describes
+// and the emitter named itself. A probe that has a definition is
+// untouched, including prometheus_scrape, whose target already stands
+// in the key for the same reason.
+func relayDimensions(def *transformers.ProbeDefinition, m *transformers.MetricDefinition, tags map[string]string) []string {
+	if def == nil && m == nil && tags[relayIdentity] != "" {
+		return []string{relayIdentity}
+	}
+	return dimensions(def, m)
+}
+
 // dimensions are the labels that tell one instance of a metric from
 // another. A metric that names its own replaces the definition's rather
 // than adding to them: its list is an override, not an extension.
@@ -167,7 +197,7 @@ func itemFor(prefix string, def *transformers.ProbeDefinition, cm otelmapper.Cac
 	}
 
 	params := []string{cm.ProbeName}
-	for _, dim := range dimensions(def, m) {
+	for _, dim := range relayDimensions(def, m, cm.Tags) {
 		params = append(params, cm.Tags[dim])
 	}
 	params = append(params, staticAttributeValues(m)...)
