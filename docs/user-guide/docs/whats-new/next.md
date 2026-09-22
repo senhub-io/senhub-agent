@@ -139,7 +139,14 @@ collection gaps that comparison exposed.
   application, but the HTTP cache still keyed on the probe alone, so
   PRTG, Nagios and the Web UI published one application's state and
   dropped the rest, silently. The OTLP and Prometheus outputs key on the
-  full tag set and were never affected. (#915)
+  full tag set and were never affected.
+
+    The same review found six more probes in that shape, predating it,
+    and all six are now registered. Three carried a real loss: an IBM i
+    host published one user profile class and dropped the others, a
+    syslog collector published one sending machine's event count and
+    dropped every other machine's, and a Redfish collector polling
+    several service processors mixed their drives together. (#915)
 
 - **A third of a freshly registered Zabbix host's items no longer stay
   empty.** Several metrics collapse onto one OTel name and differ by the
@@ -176,7 +183,5 @@ collection gaps that comparison exposed.
 - A server that already carries an autoregistration action matching the
   same host metadata ends up with two, and the newer one loses silently.
   (#907)
-- Six probes declare dimensions the discriminant registry does not list.
-  (#915)
 - The collection gap with the native agent is closed on the families we
   cover and measured; what remains is recorded there. (#909)
