@@ -95,7 +95,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Infrastructure probes
 	"redfish": {
 		// Storage components
-		"controller", "controller_id",
+		"controller", "controller_id", "controller_name", "controller_slot",
 		"drive_id", "drive_name",
 		"volume_id", "volume_name",
 		"pool_name", "pool_id",
@@ -104,6 +104,26 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"processor_id",
 		"memory_module_id",
 		"fan_name", "sensor_name",
+		// The machine a series came from. One agent polls several
+		// service processors, and every one of them numbers its drives
+		// from the same small set of slots.
+		"host", "system_name",
+		// Where a component sits on the chassis. A slot identifies a
+		// drive and an enclosure identifies the shelf holding it, on a
+		// machine that carries many of both.
+		"enclosure_id", "slot", "psu_location",
+		// A redundancy set is something a controller belongs to rather
+		// than owns, and a machine carries several.
+		"redundancy_set", "redundancy_group", "redundancy_mode",
+		// Properties of a component that its identifier already picks
+		// out: a drive's type and interface, a volume's RAID level, the
+		// machine's model and serial number. They create no series,
+		// since their value is fixed for the instance the identifier
+		// names, and leaving one out costs a whole family if that
+		// reading is ever wrong. The key is internal and never shown,
+		// so registering them is free.
+		"drive_type", "drive_interface", "raid_type",
+		"model", "serial_number",
 	},
 
 	// Storage-array probes — powerstore emits cluster aggregates plus per-resource
@@ -183,7 +203,14 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
-	"syslog":    {"event_id", "source"}, // Syslog events
+	// syslog: the event counter is reported per sender, per facility and
+	// per tag, so all three split it. Without them one machine's events
+	// overwrote every other machine's on the pull sinks.
+	"syslog": {
+		"event_id", "source",
+		"hostname", "tag",
+		"facility", "facility_name",
+	},
 	// systemd: one series per supervised unit; systemd.unit is the sole
 	// discriminant declared in multi_instance_labels.
 	"systemd": {"systemd.unit"},
@@ -439,8 +466,12 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// Work queues & spool backlog (job_queue, output_queue,
 		// message_queue multi-instance, spooled_file).
 		"queue_name", "queue_library",
-		// Storage pools & ASPs (asp, memory_pool, disk_status).
-		"asp_number", "pool_name", "pool_id",
+		// Storage pools & ASPs (asp, memory_pool, disk_status). The asp
+		// collector names the pool asp_number and the user_storage one
+		// names it asp: one user holds storage in several pools, so the
+		// second identifies as much as the first. asp_type describes
+		// the pool the number already names.
+		"asp_number", "asp", "asp_type", "pool_name", "pool_id",
 		"unit_number", "device_name",
 		// DB & journaling (sys_table_stats, index_advisor, journal_*).
 		"table_schema", "table_name", "key_columns",
@@ -449,6 +480,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// Identity, security, config (user_profile, user_storage,
 		// system_value, library_list, license).
 		"user", "user_name", "schema",
+		// The class a profile belongs to, which is the whole of what
+		// user_profile.count_by_class reports: without it the classes
+		// landed on one slot and every one but the last was dropped.
+		"user_class",
 		"sysval",
 		"library",
 		"product_id", "feature_id",
@@ -456,10 +491,15 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// netstat_connection, http_server, jvm).
 		"address", "local_port", "port_name", "protocol",
 		"tcp_state", "interface",
+		// The line an interface binds to. The address identifies it;
+		// the line describes which physical line carries it.
+		"line_description",
 		"server_name",
 		// Compliance & hardware (ptf_group, watch_info,
 		// hardware_resource, authority_collection).
-		"group", "session_id", "category",
+		// program describes the object a watch session watches, which
+		// session_id identifies.
+		"group", "session_id", "program", "category",
 		// Dimensions on count_by_* aggregates.
 		"status", "state", "job_type", "type",
 		// Event discriminants (history_log, message_queue,
