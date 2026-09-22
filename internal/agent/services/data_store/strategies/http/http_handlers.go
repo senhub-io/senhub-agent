@@ -51,30 +51,34 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/info/otlp", h.HandleInfoOTLP).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/events", h.HandleInfoEvents).Methods("GET")
 
-	// Debug endpoints (with agentkey authentication)
+	// The metric cache and its statistics are what a poller already
+	// reads through its own format, so the key it holds opens them.
 	router.HandleFunc("/api/{agentkey}/debug/cache", h.HandleDebugCache).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/debug/logs", h.HandleDebugLogs).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/debug/logs", h.HandleSetLogLevels).Methods("POST")
-	router.HandleFunc("/api/{agentkey}/debug/inject-test-metrics", h.HandleTestInjectMetrics).Methods("POST") // TEMPORARY TEST ENDPOINT
-	router.HandleFunc("/api/{agentkey}/debug/inject-real-metrics", h.HandleInjectRealMetrics).Methods("POST") // PRODUCTION DATA INJECTION
-
-	// Runtime profiling — Go's net/http/pprof handlers mounted under
-	// /api/{agentkey}/debug/pprof/. Same agentkey auth as the other
-	// debug endpoints; needed for goroutine-dump-based investigation
-	// of stalls (the Windows "agent silent after JT400 respawn" incident is
-	// the motivating case).
-	registerPprofRoutes(router, h)
-
-	// Admin endpoints (with agentkey authentication)
 	router.HandleFunc("/api/{agentkey}/stats/cache", h.HandleStatsCache).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/config/probes", h.HandleConfigProbes).Methods("GET")
-	router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.HandleAdminCacheClear).Methods("POST")
 	router.HandleFunc("/api/{agentkey}/license/status", h.HandleLicenseStatus).Methods("GET")
 
-	// Universal Configuration endpoints (with agentkey authentication)
-	router.HandleFunc("/api/{agentkey}/config/validate", h.HandleUniversalConfigValidation).Methods("POST")
-	router.HandleFunc("/api/{agentkey}/config/preview", h.HandleUniversalConfigPreview).Methods("POST")
-	router.HandleFunc("/api/{agentkey}/config/test", h.HandleUniversalConfigTest).Methods("POST")
+	// Everything below changes this agent or reveals its internals. It
+	// is registered only when an administration key exists, and it
+	// answers that key alone — the key a monitoring tool is given must
+	// not clear the cache, inject values into it, change log levels or
+	// read the agent's own logs. See adminOnly.
+	if h.strategy.authManager.AdminEnabled() {
+		router.HandleFunc("/api/{agentkey}/debug/logs", h.adminOnly(h.HandleDebugLogs)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/debug/logs", h.adminOnly(h.HandleSetLogLevels)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/debug/inject-test-metrics", h.adminOnly(h.HandleTestInjectMetrics)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/debug/inject-real-metrics", h.adminOnly(h.HandleInjectRealMetrics)).Methods("POST")
+
+		// Runtime profiling — Go's net/http/pprof handlers. A goroutine
+		// dump is how a stall is investigated and also a map of the
+		// running process, so it sits on this side.
+		registerPprofRoutes(router, h)
+
+		router.HandleFunc("/api/{agentkey}/config/probes", h.adminOnly(h.HandleConfigProbes)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.adminOnly(h.HandleAdminCacheClear)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/validate", h.adminOnly(h.HandleUniversalConfigValidation)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/preview", h.adminOnly(h.HandleUniversalConfigPreview)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/test", h.adminOnly(h.HandleUniversalConfigTest)).Methods("POST")
+	}
 
 	// Lookups endpoints (with agentkey authentication)
 	if h.strategy.lookupsManager != nil {
@@ -106,33 +110,38 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/metrics", h.HandlePrometheusStandardMetricsGET).Methods("GET")
 	}
 
-	if h.strategy.configManager.IsEndpointEnabled("web") {
+	// The console is an administration surface: it edits probes and
+	// outputs, tests them with live credentials, and changes the
+	// agent's own settings. It needs the endpoint enabled AND the
+	// administration key, and every one of its routes answers that key
+	// alone.
+	if h.strategy.configManager.IsEndpointEnabled("web") && h.strategy.authManager.AdminEnabled() {
 		// Web UI endpoints
-		router.HandleFunc("/web/{agentkey}/", h.HandleWebDashboard).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/dashboard", h.HandleWebDashboard).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/overview", h.HandleWebDashboard).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/", h.adminOnly(h.HandleWebDashboard)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/dashboard", h.adminOnly(h.HandleWebDashboard)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/overview", h.adminOnly(h.HandleWebDashboard)).Methods("GET")
 		// The Sensor Builder became the Sensor URLs tab of the http
 		// output; the old address keeps working for bookmarks.
-		router.HandleFunc("/web/{agentkey}/explorer", h.HandleWebExplorer).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/docs", h.HandleWebDocs).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/settings", h.HandleWebSettings).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/probes", h.HandleWebProbes).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/outputs", h.HandleWebOutputs).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/outputs/http", h.HandleWebOutputHTTP).Methods("GET")
-		router.HandleFunc("/web/{agentkey}/outputs/{name}", h.HandleWebOutputEditor).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsGet).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/settings", h.HandleConfigSettingsSet).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/catalog/probes", h.HandleCatalogProbes).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/probes", h.HandleProbeCreate).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.HandleProbeUpdate).Methods("PUT")
-		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.HandleProbeDelete).Methods("DELETE")
-		router.HandleFunc("/api/{agentkey}/catalog/outputs", h.HandleCatalogOutputs).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/outputs", h.HandleConfigOutputs).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/outputs", h.HandleOutputCreate).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/config/outputs/validate", h.HandleOutputValidate).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/config/outputs/test", h.HandleOutputTest).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.HandleOutputUpdate).Methods("PUT")
-		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.HandleOutputDelete).Methods("DELETE")
+		router.HandleFunc("/web/{agentkey}/explorer", h.adminOnly(h.HandleWebExplorer)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/docs", h.adminOnly(h.HandleWebDocs)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/settings", h.adminOnly(h.HandleWebSettings)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/probes", h.adminOnly(h.HandleWebProbes)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/outputs", h.adminOnly(h.HandleWebOutputs)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/outputs/http", h.adminOnly(h.HandleWebOutputHTTP)).Methods("GET")
+		router.HandleFunc("/web/{agentkey}/outputs/{name}", h.adminOnly(h.HandleWebOutputEditor)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/settings", h.adminOnly(h.HandleConfigSettingsGet)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/settings", h.adminOnly(h.HandleConfigSettingsSet)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/catalog/probes", h.adminOnly(h.HandleCatalogProbes)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/probes", h.adminOnly(h.HandleProbeCreate)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.adminOnly(h.HandleProbeUpdate)).Methods("PUT")
+		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.adminOnly(h.HandleProbeDelete)).Methods("DELETE")
+		router.HandleFunc("/api/{agentkey}/catalog/outputs", h.adminOnly(h.HandleCatalogOutputs)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/outputs", h.adminOnly(h.HandleConfigOutputs)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/outputs", h.adminOnly(h.HandleOutputCreate)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs/validate", h.adminOnly(h.HandleOutputValidate)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs/test", h.adminOnly(h.HandleOutputTest)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.HandleOutputUpdate)).Methods("PUT")
+		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.HandleOutputDelete)).Methods("DELETE")
 
 		// Static assets
 		router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.HandleWebAssets).Methods("GET")
@@ -368,4 +377,19 @@ func (h *HTTPHandlers) HandleUniversalConfigPreview(w http.ResponseWriter, r *ht
 
 func (h *HTTPHandlers) HandleUniversalConfigTest(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleUniversalConfigTest(w, r)
+}
+
+// adminOnly gates a route on the administration key.
+//
+// The handlers behind it each authenticate on their own, and would
+// accept the key a poller holds; this is what tells the two surfaces
+// apart, in one place, at the point the route is declared rather than
+// scattered across the managers that serve it.
+func (h *HTTPHandlers) adminOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := h.strategy.authManager.AuthenticateAdmin(w, r); !ok {
+			return
+		}
+		next(w, r)
+	}
 }
