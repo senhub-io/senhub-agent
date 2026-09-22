@@ -114,9 +114,53 @@ the second, which would create an item on every deployment. A sender
 that names itself neither keeps the shorter key.
 
 The matching discovery rule is `senhub.discovery[otlp_receiver,service.name]`,
-whose instances carry `{#PROBE}` and `{#SERVICE_NAME}`. No template
-declares these keys yet, so a server does not ask for them: an operator
-who wants a relayed metric creates its item once.
+whose instances carry `{#PROBE}` and `{#SERVICE_NAME}`.
+
+#### The standard conventions arrive with a template
+
+Zabbix asks for nothing it was not told about, so a relayed metric had
+to be declared by hand. The usual application metrics no longer do: the
+agent ships a template for the OpenTelemetry semantic conventions —
+HTTP server, JVM and database client — generated from the same
+definitions as every other template.
+
+```bash
+senhub-agent zabbix setup --url https://zabbix.example.com --probe otlp_receiver
+```
+
+A host carrying it discovers the applications that relay through it, and
+their series become items keyed on the sender and on the attributes the
+convention defines:
+
+```
+senhub.http.server.request.duration.count[relay,checkout,GET,/cart,200]
+senhub.jvm.memory.used[relay,checkout,heap,G1 Eden Space]
+senhub.db.client.operation.duration.sum[relay,catalog,postgresql,SELECT]
+```
+
+Nothing is rewritten on the way. A relayed metric reaches every output
+through a pass-through that is consulted before any definition, so the
+name, the unit and the value stay the application's. The template only
+tells the server what to ask for.
+
+**A duration arrives as a distribution**, not as a number: a count, a
+sum and a bucket ladder. A sink that holds one value per item cannot
+hold that, so the agent sends the two facts it can, under keys that say
+which is which — `.count` and `.sum`. Sending the bare name would put a
+number of requests under a key that reads as a latency. The average over
+a period is the change in the sum divided by the change in the count,
+which is a calculated item in Zabbix.
+
+**A metric outside those conventions is not lost.** It keeps the shorter
+key its own name gives it, and an operator who wants it declares its
+item once. Adding a convention to the shipped set is a definition file,
+not code.
+
+One limit is worth knowing: items are created per dimension set, so an
+application exporting part of a set — one of the three JVM metrics keyed
+on the sender alone, say — gets items for the rest of it, which stay
+empty. A language SDK usually exports its standard set together, so the
+case is a runtime that exports part of a family. (#922)
 
 ## Templates and discovery
 
