@@ -307,3 +307,65 @@ func TestExitCode(t *testing.T) {
 		t.Errorf("exitCode(wrapped) = %d, want 100", got)
 	}
 }
+
+// The count is what the pending count is measured against, so it must
+// come from the same backend and never be invented. The commands print
+// one dot per package rather than its name, which is what keeps the
+// output small on a machine carrying thousands.
+func TestLinuxCollector_CountsInstalledPackages(t *testing.T) {
+	env := &fakeEnv{
+		commands: map[string]bool{"apt-get": true, "dpkg-query": true},
+		files:    map[string]bool{aptCheckPath: true},
+		outputs: map[string]string{
+			aptCheckPath:           "3;1",
+			"dpkg-query -f .\n -W": ".\n.\n.\n.\n.\n",
+		},
+	}
+	status, err := env.collector().collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if !status.installedKnown || status.installed != 5 {
+		t.Errorf("installed = %d (known %v), want 5", status.installed, status.installedKnown)
+	}
+}
+
+// A machine with no packages does not exist: reporting zero when the
+// backend could not answer would read as every package having been
+// removed, which is worse than reporting nothing.
+func TestLinuxCollector_AnAbsentBackendLeavesTheCountUnknown(t *testing.T) {
+	env := &fakeEnv{
+		commands: map[string]bool{"apt-get": true}, // no dpkg-query
+		files:    map[string]bool{aptCheckPath: true},
+		outputs:  map[string]string{aptCheckPath: "3;1"},
+	}
+	status, err := env.collector().collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if status.installedKnown {
+		t.Errorf("installed reported as %d although no backend answered", status.installed)
+	}
+}
+
+func TestLinuxCollector_AFailingCountDoesNotFailTheCollection(t *testing.T) {
+	env := &fakeEnv{
+		commands: map[string]bool{"dnf": true, "rpm": true},
+		outputs: map[string]string{
+			"dnf -q updateinfo list":            "",
+			"dnf -q updateinfo list --security": "",
+			"rpm -qa --qf .\n":                  "",
+		},
+		errs: map[string]error{"rpm -qa --qf .\n": errors.New("rpmdb corrupted")},
+	}
+	status, err := env.collector().collect(context.Background())
+	if err != nil {
+		t.Fatalf("a failing package count must not fail the probe: %v", err)
+	}
+	if status.installedKnown {
+		t.Error("a failed count was reported as a value")
+	}
+	if status.packageManager != "dnf" {
+		t.Errorf("packageManager = %q", status.packageManager)
+	}
+}
