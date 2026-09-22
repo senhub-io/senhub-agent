@@ -100,26 +100,40 @@ Design constraints, in the order they bind:
   value to fit a sink's field, the neutral document keeps what the
   machine actually reported. The sink chooses; the document remembers.
 
-### The rail this one stands on is not free-standing
+### Reading an identity and detecting a foundation are two things
 
-`entity.NewDetector` is instantiated in exactly one place:
-`strategies/otlp/strategy.go`. The foundation observation — the host,
-the agent's service instance, the `runs_on` between them, and every
-nameplate attribute `DetectFoundation` sets — therefore exists only when
-an OTLP output is configured.
+They are easy to conflate because the host nameplate reaches a sink
+through either, and the distinction decides how much of this rail stands
+on its own.
 
-An agent deployed to feed a CMDB and nothing else has no entity rail,
-and so nothing for the inventory document to be built from. This is a
-prerequisite, not a detail, and it has two possible answers: lift the
+**Reading an identity** is a direct call to
+`common.GetHostIdentity()`. It needs nothing else running. The Zabbix
+output already does exactly this in `readNameplate()`, which is why a
+bench with only the HTTP and Zabbix outputs fills its inventory fields.
+
+**Detecting a foundation** is `entity.DetectFoundation` driven by
+`entity.NewDetector` — the host *as an entity*, the agent's service
+instance, the `runs_on` between them, and every source registered
+around them. That detector is instantiated in exactly one place:
+`strategies/otlp/strategy.go`. Outside its two declarations, there is no
+other caller.
+
+The consequence for this rail is precise rather than sweeping. The
+sections built from nameplate facts — `hardware`, `bios`,
+`operatingsystem`, `cpus` — need only the identity read, so they work in
+an agent that feeds a CMDB and nothing else. The sections built from
+entities — `networks`, from `network.interface` and `network.address`,
+and `virtualmachines`, from `compute.vm`, `container` and `pod` — do
+not, and neither would any later use of relations.
+
+So an agent configured for GLPI alone would today produce a record with
+its identity and none of its topology. Two possible answers: lift the
 detector out of the OTLP strategy into the data store where every sink
 can see it, or give the inventory rail its own foundation detection.
-The first is the right shape and the larger change; it needs deciding
-before A.1 starts, not during.
-
-The same wiring explains why a nameplate field can be empty on a bench
-without the table being wrong. An attribute missing from a record is a
-collection or wiring question, never a mapping question — worth saying
-because the two look identical from the sink's side.
+The first is the right shape and the larger change. It needs deciding
+before A.1 starts, not during — and the decision should keep the two
+notions apart rather than merge them, since one of them is already
+usable without the other.
 
 ### Where the code goes, and what moves
 
@@ -203,6 +217,18 @@ The remaining BIOS and baseboard fields come in A.2.
 | `corecount` | `host.cpu.physical.count` |
 | `thread` | `host.cpu.logical.count` |
 | `speed` | `host.cpu.frequency.nominal` |
+
+`name` and `model` are empty on Linux **aarch64**, and no amount of
+mapping will fill them: the ARM kernel publishes no `model name` line in
+`/proc/cpuinfo` — only `CPU implementer`, `CPU part` and `CPU
+revision`, which are numbers, not a commercial name. Verified on the
+bench: zero matching lines. An x86_64 host fills the field normally, and
+macOS fills it from sysctl.
+
+This is an architecture difference, not a gap to close. A mixed fleet
+will show a processor on its Intel and AMD machines and nothing on its
+ARM ones, and no CMDB can invent the value. It matters here because it
+is the kind of absence an operator reads as a broken integration.
 
 ### `networks`
 
