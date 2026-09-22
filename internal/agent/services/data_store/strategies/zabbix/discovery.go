@@ -63,7 +63,7 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 			def = defs.GetProbeDefinition(cm.ProbeType)
 		}
 		md := findMetric(def, cm.MetricName)
-		labels := dimensions(def, md)
+		labels := relayDimensions(def, md, cm.Tags)
 
 		// A metric that belongs to a variant family is discovered under
 		// the family's own rule, carrying the attribute value this
