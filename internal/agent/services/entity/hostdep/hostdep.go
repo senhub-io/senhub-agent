@@ -271,14 +271,26 @@ func (s *Source) Observe() (entity.Observation, bool) {
 const earnWindow = 15
 
 // forgetAfter is how many consecutive misses a peer may collect before
-// its progress is dropped. An edge already asserted keeps the tolerance
-// it earned, so absence retires it as fast as it appeared (#808); one
-// still earning gets the wider window, because being missing is what a
-// short-lived flow does.
-func (s *Source) forgetAfter(st streakState) int {
-	if st.hits >= s.threshold {
-		return s.threshold
-	}
+// its progress is dropped. It is the same window whether the edge is
+// still earning or already asserted, because the thing being counted is
+// the same: how long a flow that shows up in a minority of samples may
+// be out of sight without being gone.
+//
+// An asserted edge used to be dropped after as many misses as it took
+// hits to assert it — two by default, ten minutes at a five-minute
+// cadence — on the grounds that absence should retire it as fast as it
+// appeared (#808). The two halves then disagreed about what an absence
+// means: acquisition treats it as the normal regime of a brief flow,
+// retraction treated two of them as proof. The same reverse proxy that
+// needed the wide window to assert its upstream lost it again ten
+// minutes later, over and over, while the dependency never stopped
+// existing.
+//
+// The cost is the other way round and is the honest one: a dependency
+// that really ends stays in the graph for the width of the window. A
+// sampler cannot tell "gone" from "not sampled" faster than the
+// phenomenon's own rhythm.
+func (s *Source) forgetAfter(streakState) int {
 	if s.threshold > earnWindow {
 		return s.threshold
 	}
