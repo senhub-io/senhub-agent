@@ -112,6 +112,25 @@ collection gaps that comparison exposed.
   are installed, which is what its pending count is measured against.
   (#909)
 
+- **An application's own metrics reach Zabbix without anyone declaring
+  them.** Zabbix speaks no OpenTelemetry, so an agent that speaks both
+  is the only bridge between an instrumented application and a Zabbix
+  server — and the bridge was half built: the values arrived, the server
+  asked for none of them. A template now ships for the OpenTelemetry
+  semantic conventions, HTTP server, JVM and database client, generated
+  from the same definitions as every other template. A host carrying it
+  discovers the applications relaying through the agent and creates
+  their items, keyed on the sender and on the attributes the convention
+  defines. Nothing is rewritten on the way: the name, the unit and the
+  value stay the application's.
+
+    A duration arrives as a distribution, and a sink holding one value
+    per item cannot hold one, so it is sent as its count and its sum
+    under keys that say which is which. A metric outside the shipped
+    conventions keeps the shorter key its own name gives it. An
+    application exporting part of a dimension set gets items for the
+    rest of it, which stay empty. (#922)
+
 - **The Azure Container Apps probe reports the collection's own state**
   in detail, and **follows every application of a subscription** when a
   discovery block is set, instead of one named application. The role
@@ -186,6 +205,14 @@ collection gaps that comparison exposed.
 
 - **The two libraries a registry scanner reports are raised**, and the
   image's base moves to a supported Alpine. (#900)
+
+- **Naming a probe in `zabbix setup` no longer unlinks the others.**
+  `--probe` replaced the templates every machine runs instead of adding
+  to them, although the command's own message says they are linked as
+  well: an operator adding one commercial template silently unlinked the
+  processor, the memory, the network and the disks from the
+  autoregistration action, and every host registering afterwards came up
+  with none of them.
 
 - **The documentation deploy refuses to run from a branch that
   publishes no line.** It chose the version line by asking whether the
