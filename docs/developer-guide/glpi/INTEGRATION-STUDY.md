@@ -100,6 +100,27 @@ Design constraints, in the order they bind:
   value to fit a sink's field, the neutral document keeps what the
   machine actually reported. The sink chooses; the document remembers.
 
+### The rail this one stands on is not free-standing
+
+`entity.NewDetector` is instantiated in exactly one place:
+`strategies/otlp/strategy.go`. The foundation observation — the host,
+the agent's service instance, the `runs_on` between them, and every
+nameplate attribute `DetectFoundation` sets — therefore exists only when
+an OTLP output is configured.
+
+An agent deployed to feed a CMDB and nothing else has no entity rail,
+and so nothing for the inventory document to be built from. This is a
+prerequisite, not a detail, and it has two possible answers: lift the
+detector out of the OTLP strategy into the data store where every sink
+can see it, or give the inventory rail its own foundation detection.
+The first is the right shape and the larger change; it needs deciding
+before A.1 starts, not during.
+
+The same wiring explains why a nameplate field can be empty on a bench
+without the table being wrong. An attribute missing from a record is a
+collection or wiring question, never a mapping question — worth saying
+because the two look identical from the sink's side.
+
 ### Where the code goes, and what moves
 
 The nameplate table that today lives in
@@ -111,8 +132,26 @@ template generator reads it from there. One table, two sinks, one place
 to add a third.
 
 That move is lot A's first commit and is behaviour-preserving: the
-Zabbix output must emit byte-identical items before and after, guarded
-by the existing template test.
+Zabbix output must emit byte-identical items before and after. Three
+things bind it, and none is optional.
+
+**The table has three consumers, not one.** The template generator
+(`template/template.go`), the output itself (`strategy.go`,
+`nameplateItems`) and a guard test (`agent_items_test.go`). That test is
+the only thing proving that every fact has an item, that the item
+carries the right inventory field and that it is of type CHAR. It moves
+with the table or keeps asserting across the new boundary — otherwise
+the move quietly removes the guarantee that makes it safe.
+
+**The sink column is a format constraint, not a label.** Zabbix
+inventory fields are written *by name* — `OS`, `NAME`, `SERIALNO_A` — as
+the export format spells them, never by number. A neutral package that
+generalised them into "an inventory field" would lose that, and the loss
+would only surface when a customer imports a template.
+
+**Sequencing.** The Zabbix work that created the nameplate is in flight
+and unpushed. This move waits until it has been regrouped, so that a
+stable file is moved once rather than a moving one rebased twice.
 
 ## Lot A — filling the record
 
