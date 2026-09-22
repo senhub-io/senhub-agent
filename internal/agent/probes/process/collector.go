@@ -137,6 +137,20 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		log.Debug().Err(kerr).Msg("Kernel limits not available on this OS")
 	}
 
+	// Open login sessions. Not available everywhere, and a machine
+	// where nobody is logged in reports zero, which is a fact — so the
+	// value is sent whenever it could be read.
+	if sessions, serr := loggedInSessions(); serr == nil {
+		points = append(points, data_store.DataPoint{
+			Name:      "users_logged_in",
+			Timestamp: ts,
+			Value:     sessions,
+			Tags:      baseTags,
+		})
+	} else {
+		log.Debug().Err(serr).Msg("Open login sessions not available")
+	}
+
 	return points, snaps, nil
 }
 

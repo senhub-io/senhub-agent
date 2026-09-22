@@ -99,7 +99,10 @@ collection gaps that comparison exposed.
   processes, which is what the counted ones are measured against. On
   Windows: context switches, idle time, the processor count, the
   negotiated link speed and the page file size. On both: the speed and
-  the operational state of a network interface.
+  the operational state of a network interface, and the number of open
+  login sessions. The `os_updates` probe also reports how many packages
+  are installed, which is what its pending count is measured against.
+  (#909)
 
 - **The Azure Container Apps probe reports the collection's own state**
   in detail, and **follows every application of a subscription** when a
