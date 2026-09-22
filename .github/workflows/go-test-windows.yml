@@ -5,7 +5,7 @@ on:
     # are free — the 2x-billing master-only restriction (#251) no longer
     # applies. Windows-specific code is additionally runtime-validated on a
     # real host (bbcloud) before releases.
-    branches: [dev, master]
+    branches: [master, 'integ/**']
     paths-ignore:
       - 'docs/**'
       - '*.md'
