@@ -99,8 +99,13 @@ func findMetric(def *transformers.ProbeDefinition, name string) *transformers.Me
 // name the drive letter alone, and merging gave them the device and the
 // mount point they do not have, which left empty parameters in the key.
 func dimensions(def *transformers.ProbeDefinition, m *transformers.MetricDefinition) []string {
+	// A metric that declares no list at all inherits the probe's. One
+	// that declares an empty list says it has no dimensions, which is
+	// how a machine-wide value lives on a probe whose other metrics are
+	// per instance: the kernel's limits belong to the machine, not to
+	// each process the probe watches.
 	var source []string
-	if m != nil && len(m.MultiInstanceLabels) > 0 {
+	if m != nil && m.MultiInstanceLabels != nil {
 		source = m.MultiInstanceLabels
 	} else if def != nil {
 		source = def.MultiInstanceLabels

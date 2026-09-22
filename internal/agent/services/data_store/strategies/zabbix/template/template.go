@@ -336,8 +336,11 @@ func macroFor(label string) string {
 // dimensions mirrors the output's keys.go: a metric that names its own
 // labels replaces the definition's rather than adding to them.
 func dimensions(def transformers.ProbeDefinition, m transformers.MetricDefinition) []string {
+	// nil means "not declared, inherit the probe's"; an empty list means
+	// "this metric has no dimensions", which is how a machine-wide value
+	// lives on a probe whose other metrics are per instance.
 	source := m.MultiInstanceLabels
-	if len(source) == 0 {
+	if source == nil {
 		source = def.MultiInstanceLabels
 	}
 	out := make([]string, 0, len(source))
