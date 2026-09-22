@@ -107,6 +107,16 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		return fmt.Errorf("failed to generate agent key: %w", err)
 	}
 
+	// The administration key is generated here too, and is deliberately
+	// NOT the agent key. The agent key is what a monitoring tool is
+	// given to read this agent and travels in the URL path; this one
+	// opens the console, the configuration API, the log levels and the
+	// cache. Both are sealed into the OS store by the same pass.
+	adminKey, err := lc.generateAgentKey()
+	if err != nil {
+		return fmt.Errorf("failed to generate administration key: %w", err)
+	}
+
 	configDir := filepath.Dir(lc.configPath)
 	probesDir := filepath.Join(configDir, "probes.d")
 	strategiesDir := filepath.Join(configDir, "strategies.d")
@@ -134,7 +144,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 
 	// 3. strategies.d/00-http.yaml — default HTTP strategy.
 	httpPath := filepath.Join(strategiesDir, "00-http.yaml")
-	httpYAML := lc.generateHTTPStrategyFragment()
+	httpYAML := lc.generateHTTPStrategyFragment(adminKey)
 	if err := os.WriteFile(httpPath, []byte(httpYAML), 0600); err != nil {
 		return fmt.Errorf("failed to write %s: %w", httpPath, err)
 	}
@@ -200,7 +210,7 @@ func (lc *LocalConfiguration) generateAgentYAML(agentKey string) ([]byte, error)
 // the strategy gets a TLS block + flips to the HTTPS port and binds
 // to 0.0.0.0; otherwise it stays on 127.0.0.1:8080 with PRTG / Web /
 // Nagios endpoints.
-func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
+func (lc *LocalConfiguration) generateHTTPStrategyFragment(adminKey string) string {
 	port := lc.defaultHTTPPort()
 	bindAddress := "127.0.0.1"
 	tlsSection := ""
@@ -227,7 +237,7 @@ func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
 	}
 
 	endpointsCSV := `"prtg", "web", "nagios"`
-	return fmt.Sprintf(HTTPStrategyFragmentTemplate, port, bindAddress, endpointsCSV, tlsSection)
+	return fmt.Sprintf(HTTPStrategyFragmentTemplate, port, bindAddress, endpointsCSV, adminKey, tlsSection)
 }
 
 // generateAgentKey creates a unique agent key

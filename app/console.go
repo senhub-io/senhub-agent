@@ -49,13 +49,22 @@ func parseConsoleArgs(argv []string) (consoleArgs, error) {
 // sealed on a modern install, so this needs the rights of the service
 // account or an administrator.
 func consoleURL(configPath string) (string, error) {
-	key, err := extractAgentKeyFromConfig(configPath)
+	// The console answers the ADMINISTRATION key, not the agent key: the
+	// second is what a monitoring tool is given to read this agent, and
+	// it opens the metrics and nothing else. An installation from before
+	// the two were told apart is given a key on its first start
+	// (EnsureAdminKey), so this is empty only when the agent has not
+	// started since the upgrade, or when an operator removed it.
+	key, err := extractAdminKeyFromConfig(configPath)
 	if err != nil {
-		return "", fmt.Errorf("reading the agent key from %s: %w", configPath, err)
+		return "", fmt.Errorf("reading the administration key from %s: %w", configPath, err)
+	}
+	if key == "" {
+		return "", fmt.Errorf("no administration key in %s: the console is not served until the agent has started once to generate one, or until admin_key is set on the http output", configPath)
 	}
 	url := buildDashboardURL(configPath, key)
 	if url == "" {
-		return "", fmt.Errorf("no agent key in %s", configPath)
+		return "", fmt.Errorf("no administration key in %s", configPath)
 	}
 	return url, nil
 }
