@@ -4,33 +4,85 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// AuthenticationManager handles all authentication logic for HTTP endpoints
+// AuthenticationManager handles all authentication logic for HTTP endpoints.
+//
+// Two surfaces, two privileges. The agent key is what a monitoring tool
+// is given to read this agent: PRTG, Nagios, a Prometheus scrape. The
+// administration key is what changes the agent: its configuration, its
+// log levels, its cache, the values it holds. Until they were told
+// apart, the key handed to a poller also cleared the cache and injected
+// metrics into it — a read-only consumer holding the means to falsify
+// what it reads, and the key travels in the URL path, so it lands in
+// every access log between the two.
+//
+// The administration key carries the read privilege too: the web
+// console reads as much as it writes, and asking an operator to juggle
+// two keys in one page would only invite them to share the stronger one.
 type AuthenticationManager struct {
 	logger      *logger.ModuleLogger
 	agentKey    string
+	adminKey    string
 	agentConfig configuration.AgentConfiguration
 }
 
-// NewAuthenticationManager creates a new authentication manager
-func NewAuthenticationManager(agentKey string, agentConfig configuration.AgentConfiguration, logger *logger.ModuleLogger) *AuthenticationManager {
+// NewAuthenticationManager creates a new authentication manager. An
+// empty adminKey leaves the administration surface unauthenticatable,
+// which is why the routes are not registered at all in that case.
+func NewAuthenticationManager(agentKey, adminKey string, agentConfig configuration.AgentConfiguration, logger *logger.ModuleLogger) *AuthenticationManager {
 	return &AuthenticationManager{
 		logger:      logger,
 		agentKey:    agentKey,
+		adminKey:    adminKey,
 		agentConfig: agentConfig,
 	}
 }
 
-// ValidateAgentKey validates the provided agent key against the configured
-// key(s). The comparison is constant-time (validateKeyConstantTime) so the
-// path-key routes get the same timing-safe check as the /metrics scrape route.
+// ValidateAgentKey validates the provided key for the READ surface: the
+// agent key, or the administration key, which carries the read
+// privilege too. The comparison is constant-time
+// (validateKeyConstantTime) so the path-key routes get the same
+// timing-safe check as the /metrics scrape route.
 func (a *AuthenticationManager) ValidateAgentKey(providedKey string) bool {
-	return a.validateKeyConstantTime(providedKey)
+	return a.validateKeyConstantTime(providedKey) || a.ValidateAdminKey(providedKey)
+}
+
+// ValidateAdminKey validates the provided key for the ADMINISTRATION
+// surface. Only the administration key opens it; the key a poller holds
+// does not. An unset administration key matches nothing — an empty
+// configured key must never turn an empty request into a valid one.
+func (a *AuthenticationManager) ValidateAdminKey(providedKey string) bool {
+	if a.adminKey == "" {
+		return false
+	}
+	return constantTimeEqual(providedKey, a.adminKey)
+}
+
+// AdminEnabled reports whether an administration key is configured. The
+// caller does not register the administration routes without one: a
+// surface nobody can authenticate to is better absent than answering
+// Unauthorized, and its absence is what a PRTG-only installation wants.
+func (a *AuthenticationManager) AdminEnabled() bool { return a.adminKey != "" }
+
+// AuthenticateAdmin is AuthenticateAndExtract for the administration
+// surface: it answers 401 unless the administration key was given.
+func (a *AuthenticationManager) AuthenticateAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
+	key := mux.Vars(r)["agentkey"]
+	if key == "" || !a.ValidateAdminKey(key) {
+		a.logger.Warn().
+			Str("provided_key_prefix", keyPrefixForLog(key)).
+			Str("path", r.URL.Path).
+			Msg("Administration request without the administration key")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+	return key, true
 }
 
 // AuthenticateRequest extracts the agent key from the request and validates it
@@ -176,4 +228,23 @@ func keyPrefixForLog(key string) string {
 		return fmt.Sprintf("(short:%dB)", len(key))
 	}
 	return key[:n] + "..."
+}
+
+// adminKeyFrom reads the administration key from the output's
+// parameters. Absent or empty leaves the administration surface off,
+// which is the default an installation feeding PRTG or Nagios wants: it
+// never needed that surface, and until now it carried it anyway.
+func adminKeyFrom(params map[string]interface{}) string {
+	if params == nil {
+		return ""
+	}
+	v, ok := params["admin_key"]
+	if !ok {
+		return ""
+	}
+	key, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(key)
 }

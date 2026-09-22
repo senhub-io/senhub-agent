@@ -53,12 +53,59 @@ http:
 | `port` | integer | 8080 | Listening port |
 | `bind_address` | string | `127.0.0.1` | Interface to bind; `0.0.0.0` to accept remote pollers |
 | `endpoints` | string list | none | Which endpoint families are served: `prtg`, `nagios`, `prometheus`, `web`. An unknown value is refused at startup |
+| `admin_key` | string | none | Key opening the administration surface. Without it, none of that surface is served — see [Two keys, two surfaces](#two-keys-two-surfaces) |
 | `max_cache_size` | integer | 50000 | Cap on cached series; `0` = unbounded |
 | `tls.enabled` | boolean | `false` | Serve HTTPS — see [HTTPS Configuration](./HTTPS-CONFIGURATION.md) |
 | `tls.min_tls_version` | string | `1.2` | `1.2` or `1.3` |
 | `tls.cert_file` / `tls.key_file` | string | generated pair | Server certificate and key (PEM) |
 | `prometheus.include_probe_tags` | boolean | `true` | Emit probe tags as Prometheus labels |
 | `prometheus.expose_host_metrics` | boolean | `true` | Include the host probes in `/metrics` |
+
+## Two keys, two surfaces
+
+The agent key is what a monitoring tool is given to read this agent:
+PRTG, Nagios, a Prometheus scrape. It travels in the URL path, so it
+lands in the access log of every machine between the poller and the
+agent.
+
+That key used to open everything the output serves, including the parts
+that **change** the agent — clearing the metric cache, injecting values
+into it, changing log levels, reading the agent's own logs, editing
+probes and outputs through the console. A read-only consumer therefore
+held the means to falsify what it read.
+
+The two are now separate.
+
+```yaml
+http:
+  port: 8080
+  endpoints: ["prtg", "web"]
+  admin_key: "${secret:agent.admin_key}"
+```
+
+| Surface | Opened by | What it serves |
+|---|---|---|
+| Read | the agent key, or the administration key | `/metrics`, the PRTG, Nagios and Prometheus endpoints, `info/*`, the metric cache and its statistics |
+| Administration | the administration key **only** | the web console, the configuration API, log levels, cache clearing, metric injection, the profiler |
+
+The administration key carries the read privilege: the console reads as
+much as it writes, and making an operator juggle two keys in one page
+would only invite them to share the stronger one.
+
+**Without `admin_key`, the administration surface is not served at all.**
+Its routes are not registered, so they answer 404 rather than asking for
+a key nobody has. An installation that exists to feed PRTG or Nagios
+never needed that surface, and no longer carries it.
+
+### What this changes for an existing installation
+
+If you use the web console or the configuration API, set `admin_key` and
+open the console with it — `/web/<admin_key>/dashboard`. Until you do,
+the console answers 404 and your pollers keep working untouched.
+
+Give the administration key to nobody who only needs to read. It is the
+one to store in a secret backend and rotate; the key in your PRTG sensor
+is not.
 
 No endpoint is served unless it is listed in `endpoints`.
 

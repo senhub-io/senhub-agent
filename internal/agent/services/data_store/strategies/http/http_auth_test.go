@@ -14,7 +14,7 @@ const testAgentKey = "test-agent-key-1234567890abcdef"
 
 func newAuthMgrForTest() *AuthenticationManager {
 	args := &cliArgs.ParsedArgs{Env: "test", Verbose: false}
-	return NewAuthenticationManager(testAgentKey, nil, logger.NewModuleLogger(logger.NewLogger(args), "test.auth"))
+	return NewAuthenticationManager(testAgentKey, "", nil, logger.NewModuleLogger(logger.NewLogger(args), "test.auth"))
 }
 
 // TestConstantTimeEqual_BasicAndEdgeCases pins the constant-time comparison
