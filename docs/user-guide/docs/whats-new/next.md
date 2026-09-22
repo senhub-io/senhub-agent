@@ -172,6 +172,18 @@ collection gaps that comparison exposed.
   series carrying none of its labels it dropped every filesystem from a
   Linux host.
 
+- **Two applications relaying the same metric name through one agent no
+  longer share a Zabbix item.** The OTLP receiver relays what
+  applications send under the names they chose, and the agent describes
+  none of those names, so the key carried the receiving probe alone.
+  Two services reporting `http.server.request.duration` built the same
+  key, and the second value overwrote the first on an item that went on
+  looking healthy. The key now carries the sender's `service.name`, and
+  a discovery rule offers the senders seen. Nothing was lost in
+  practice, because no template declares those keys and a Zabbix server
+  asks for nothing else — but an operator creating the item by hand
+  walked straight into it.
+
 - **The two libraries a registry scanner reports are raised**, and the
   image's base moves to a supported Alpine. (#900)
 

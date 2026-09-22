@@ -2,8 +2,9 @@
 
 !!! warning "Preview"
     The Zabbix output is being built during the 0.6.0 cycle and is not
-    supported yet. This page documents the parameters the agent reads;
-    the templates and the discovery rules are still to come.
+    supported yet. It is proven against Zabbix 7.0 and 8.0 on a Linux
+    and a Windows host, templates and discovery included, but it has not
+    run long enough anywhere to be called supported.
 
 The `zabbix` output makes the agent a native **Zabbix active agent**: it
 connects out to a Zabbix server or proxy on port 10051, registers the host
@@ -92,6 +93,30 @@ as its raw code under one key.
 The server only receives the keys it asked for. Until the host exists on
 the server and a template gives it items, the log says so at start and
 nothing is pushed.
+
+### Metrics relayed from another sender
+
+An agent running the `otlp_receiver` probe relays what applications send
+it, under the names they chose. The agent describes none of those names,
+so their key is built from the metric name alone, and the emitter is
+carried beside the probe:
+
+```
+senhub.http.server.request.duration[relay,checkout]
+```
+
+where `checkout` is the sender's `service.name`. Without it two
+applications reporting the same metric name through one receiver would
+build the same key, and the second value would overwrite the first on an
+item that goes on looking healthy. `service.name` is used rather than
+the host name because a replaced container keeps the first and changes
+the second, which would create an item on every deployment. A sender
+that names itself neither keeps the shorter key.
+
+The matching discovery rule is `senhub.discovery[otlp_receiver,service.name]`,
+whose instances carry `{#PROBE}` and `{#SERVICE_NAME}`. No template
+declares these keys yet, so a server does not ask for them: an operator
+who wants a relayed metric creates its item once.
 
 ## Templates and discovery
 
