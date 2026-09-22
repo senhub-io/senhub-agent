@@ -65,29 +65,90 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 
 	points := make([]data_store.DataPoint, 0, len(snaps)*7)
 
-	for _, snap := range snaps {
-		processTags := buildProcessTags(baseTags, snap, hostname)
-		points = appendProcessPoints(points, ts, snap, processTags)
+	if cfg.detailed() {
+		for _, snap := range snaps {
+			processTags := buildProcessTags(baseTags, snap, hostname)
+			points = appendProcessPoints(points, ts, snap, processTags)
+		}
 	}
 
-	// Aggregated process.count per name.
+	// The roll-up over the processes sharing a name. It is what an
+	// unfiltered view reports instead of the per-process detail, and it
+	// is what the native Zabbix agent reports in every case: a name is
+	// stable where a process id is not.
 	if cfg.aggregate {
-		counts := map[string]int{}
-		for _, snap := range snaps {
-			counts[snap.name]++
+		type rollUp struct {
+			count  int
+			cpu    float64
+			memory uint64
 		}
-		for name, cnt := range counts {
+		byName := map[string]*rollUp{}
+		for _, snap := range snaps {
+			r, ok := byName[snap.name]
+			if !ok {
+				r = &rollUp{}
+				byName[snap.name] = r
+			}
+			r.count++
+			r.cpu += snap.cpuPct
+			r.memory += snap.rss
+		}
+		for name, r := range byName {
 			aggTags := append([]tags.Tag{}, baseTags...)
 			aggTags = append(aggTags,
 				tags.Tag{Key: "process.name", Value: name},
 			)
+			for _, m := range []struct {
+				name  string
+				value float64
+			}{
+				{"process.count", float64(r.count)},
+				{"process.group.cpu.utilization", r.cpu},
+				{"process.group.memory.usage", float64(r.memory)},
+			} {
+				points = append(points, data_store.DataPoint{
+					Name:      m.name,
+					Timestamp: ts,
+					Value:     m.value,
+					Tags:      aggTags,
+				})
+			}
+		}
+	}
+
+	// The kernel's ceilings on what was just counted. Absent outside
+	// Linux, and a failure here does not fail the collection.
+	if maxFiles, maxProcs, kerr := kernelLimits(); kerr == nil {
+		for _, m := range []struct {
+			name  string
+			value float64
+		}{
+			{"kernel_max_files", maxFiles},
+			{"kernel_max_processes", maxProcs},
+		} {
 			points = append(points, data_store.DataPoint{
-				Name:      "process.count",
+				Name:      m.name,
 				Timestamp: ts,
-				Value:     float64(cnt),
-				Tags:      aggTags,
+				Value:     m.value,
+				Tags:      baseTags,
 			})
 		}
+	} else {
+		log.Debug().Err(kerr).Msg("Kernel limits not available on this OS")
+	}
+
+	// Open login sessions. Not available everywhere, and a machine
+	// where nobody is logged in reports zero, which is a fact — so the
+	// value is sent whenever it could be read.
+	if sessions, serr := loggedInSessions(); serr == nil {
+		points = append(points, data_store.DataPoint{
+			Name:      "users_logged_in",
+			Timestamp: ts,
+			Value:     sessions,
+			Tags:      baseTags,
+		})
+	} else {
+		log.Debug().Err(serr).Msg("Open login sessions not available")
 	}
 
 	return points, snaps, nil

@@ -45,6 +45,7 @@ An interval of 30 to 60 minutes is a sensible range.
 | `senhub.os.updates.pending` | update | Number of updates available and not yet installed |
 | `senhub.os.updates.pending.security` | update | Number of pending updates classified as security fixes |
 | `senhub.os.updates.reboot_required` | 1 | 1 when the OS reports a pending reboot, 0 otherwise |
+| `senhub.os.packages.installed` | package | Number of packages installed on the machine, which is what the pending count is measured against. Linux only: read from dpkg or rpm, where the Windows Update Agent enumerates updates and not installed software |
 
 Every metric carries the backend that answered as an attribute
 (`os.package_manager`: `apt`, `dnf`, `yum` or `wua`).

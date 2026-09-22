@@ -65,6 +65,11 @@ type updatesStatus struct {
 	pendingSecurity int
 	rebootRequired  bool
 	packageManager  string // apt | dnf | yum | wua
+	// installed is the number of packages the backend has on the
+	// machine. installedKnown separates "none" from "not asked or not
+	// answered": a backend that cannot enumerate must not report zero.
+	installed      int
+	installedKnown bool
 }
 
 // updatesCollector is the per-platform backend seam. The platform
@@ -148,6 +153,11 @@ func (p *OSUpdatesProbe) Collect() ([]data_store.DataPoint, error) {
 		{Name: "senhub.os.updates.pending", Value: float64(status.pending), Timestamp: now, Tags: pointTags},
 		{Name: "senhub.os.updates.pending.security", Value: float64(status.pendingSecurity), Timestamp: now, Tags: pointTags},
 		{Name: "senhub.os.updates.reboot_required", Value: rebootValue, Timestamp: now, Tags: pointTags},
+	}
+	if status.installedKnown {
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.os.packages.installed", Value: float64(status.installed), Timestamp: now, Tags: pointTags,
+		})
 	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

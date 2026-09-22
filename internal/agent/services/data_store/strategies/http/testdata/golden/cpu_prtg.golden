@@ -1,5 +1,12 @@
 [
   {
+    "channel": "CPU Context Switches",
+    "value": 88,
+    "float": 1,
+    "unit": "Custom",
+    "customunit": "/s"
+  },
+  {
     "channel": "CPU Core tcore IRQ",
     "value": 99.5,
     "float": 1,
@@ -44,6 +51,18 @@
     "customunit": "/s"
   },
   {
+    "channel": "CPU Guest",
+    "value": 65,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
+    "channel": "CPU Guest Nice",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Percent"
+  },
+  {
     "channel": "CPU IO Wait",
     "value": 88,
     "float": 1,
@@ -57,7 +76,7 @@
   },
   {
     "channel": "CPU Interrupts",
-    "value": 65,
+    "value": 42,
     "float": 1,
     "unit": "Custom",
     "customunit": "/s"
@@ -70,19 +89,19 @@
   },
   {
     "channel": "CPU Load Average 15min",
-    "value": 111,
-    "float": 1,
-    "unit": "Count"
-  },
-  {
-    "channel": "CPU Load Average 1min",
     "value": 88,
     "float": 1,
     "unit": "Count"
   },
   {
+    "channel": "CPU Load Average 1min",
+    "value": 65,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
     "channel": "CPU Load Average 5min",
-    "value": 99.5,
+    "value": 76.5,
     "float": 1,
     "unit": "Count"
   },
@@ -94,7 +113,7 @@
   },
   {
     "channel": "CPU Queue Length",
-    "value": 76.5,
+    "value": 53.5,
     "float": 1,
     "unit": "Count"
   },
@@ -129,8 +148,20 @@
     "unit": "Percent"
   },
   {
+    "channel": "Processes Running",
+    "value": 111,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
     "channel": "Processes Total",
-    "value": 42,
+    "value": 99.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "Processors",
+    "value": 99.5,
     "float": 1,
     "unit": "Count"
   }

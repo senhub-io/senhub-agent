@@ -83,7 +83,7 @@ func TestStrategyPushesOnlyTheItemsTheServerAsked(t *testing.T) {
 	if v["key"] != "senhub.system.cpu.utilization[host-cpu,0,user]" || v["value"] != "0.5" {
 		t.Errorf("value = %+v", v)
 	}
-	if reg := srv.requestsOf("active checks"); len(reg) == 0 || reg[0]["host_metadata"] != "senhub-agent" {
+	if reg := srv.requestsOf("active checks"); len(reg) == 0 || reg[0]["host_metadata"] != metadataWithPlatform("senhub-agent") {
 		t.Errorf("the first request must register the host with its metadata: %+v", reg)
 	}
 }

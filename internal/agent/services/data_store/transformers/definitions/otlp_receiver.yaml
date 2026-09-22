@@ -1,0 +1,187 @@
+probe_name: "otlp_receiver"
+friendly_name: "OTLP Receiver"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["service.name"]
+
+# What an application relays through this probe, under the names
+# OpenTelemetry publishes for it.
+#
+# This file describes nothing the agent collects. It describes what other
+# programs send, so that a sink which has to declare an item before it
+# will accept one — Zabbix — can declare the usual application metrics
+# without an operator typing them. Every other output already carries a
+# relayed metric without this file: the mapper passes an ingested
+# datapoint through on its metric_type marker, before any definition is
+# consulted, and that short-circuit is what makes this file safe. It
+# cannot rename, rescale or retype what an application sent. It only adds
+# what a sink needs to know: how the series are split apart, what to call
+# them on a screen, and which unit to print.
+#
+# Two rules hold for every entry, and a guard test enforces them:
+#
+#   - the OTel name is the internal name, letter for letter. A different
+#     name here would build a key for a series that arrives under another
+#     one, and the item would stay empty for ever.
+#   - no value_scale, ever. The value is the application's, in the unit
+#     the application chose.
+#
+# Only the conventions that are stable upstream are listed. A metric
+# absent from this file is not lost: it keeps the shorter key its own
+# name gives it, and an operator who wants it declares its item once.
+#
+# Source: OpenTelemetry semantic conventions, HTTP, JVM and database
+# client. Histogram metrics are carried as their count and their sum,
+# which is what a sink holding one value per item can hold of a
+# distribution.
+
+metrics:
+  # ---- HTTP server ----------------------------------------------------
+  - name: "http.server.request.duration"
+    channel: "http_server_request_duration"
+    display_name: "HTTP {service.name} Request Duration"
+    unit: "s"
+    category: "latency"
+    multi_instance_labels: ["service.name", "http.request.method", "http.route", "http.response.status_code"]
+    description: "Duration of the HTTP server requests an application reports, per route, method and status. Relayed as sent: the count is the number of requests, the sum their total duration"
+    otel:
+      name: http.server.request.duration
+      unit: "s"
+      type: counter
+      distribution: true
+
+  - name: "http.server.active_requests"
+    channel: "http_server_active_requests"
+    display_name: "HTTP {service.name} Active Requests"
+    unit: "#"
+    category: "throughput"
+    multi_instance_labels: ["service.name", "http.request.method"]
+    description: "Requests an application is handling right now"
+    otel:
+      name: http.server.active_requests
+      unit: "{request}"
+      type: updowncounter
+
+  # ---- JVM ------------------------------------------------------------
+  - name: "jvm.memory.used"
+    channel: "jvm_memory_used"
+    display_name: "JVM {service.name} Memory Used"
+    unit: "B"
+    category: "memory"
+    multi_instance_labels: ["service.name", "jvm.memory.type", "jvm.memory.pool.name"]
+    description: "Memory a Java application holds, per pool"
+    otel:
+      name: jvm.memory.used
+      unit: "By"
+      type: updowncounter
+
+  - name: "jvm.memory.committed"
+    channel: "jvm_memory_committed"
+    display_name: "JVM {service.name} Memory Committed"
+    unit: "B"
+    category: "memory"
+    multi_instance_labels: ["service.name", "jvm.memory.type", "jvm.memory.pool.name"]
+    description: "Memory committed to a Java application by the operating system, per pool"
+    otel:
+      name: jvm.memory.committed
+      unit: "By"
+      type: updowncounter
+
+  - name: "jvm.memory.limit"
+    channel: "jvm_memory_limit"
+    display_name: "JVM {service.name} Memory Limit"
+    unit: "B"
+    category: "memory"
+    multi_instance_labels: ["service.name", "jvm.memory.type", "jvm.memory.pool.name"]
+    description: "Ceiling on a Java memory pool, which the used value above is measured against"
+    otel:
+      name: jvm.memory.limit
+      unit: "By"
+      type: updowncounter
+
+  - name: "jvm.thread.count"
+    channel: "jvm_thread_count"
+    display_name: "JVM {service.name} Threads"
+    unit: "#"
+    category: "runtime"
+    multi_instance_labels: ["service.name"]
+    description: "Live threads in a Java application"
+    otel:
+      name: jvm.thread.count
+      unit: "{thread}"
+      type: updowncounter
+
+  - name: "jvm.class.count"
+    channel: "jvm_class_count"
+    display_name: "JVM {service.name} Loaded Classes"
+    unit: "#"
+    category: "runtime"
+    multi_instance_labels: ["service.name"]
+    description: "Classes currently loaded by a Java application"
+    otel:
+      name: jvm.class.count
+      unit: "{class}"
+      type: updowncounter
+
+  - name: "jvm.cpu.recent_utilization"
+    channel: "jvm_cpu_recent_utilization"
+    display_name: "JVM {service.name} CPU Utilization"
+    unit: "1"
+    category: "cpu"
+    multi_instance_labels: ["service.name"]
+    description: "Share of a processor a Java application has used recently, as a ratio"
+    otel:
+      name: jvm.cpu.recent_utilization
+      unit: "1"
+      type: gauge
+
+  - name: "jvm.gc.duration"
+    channel: "jvm_gc_duration"
+    display_name: "JVM {service.name} GC Duration"
+    unit: "s"
+    category: "runtime"
+    multi_instance_labels: ["service.name", "jvm.gc.name", "jvm.gc.action"]
+    description: "Time a Java application spent collecting garbage, per collector. The count is the number of collections, the sum the time they took"
+    otel:
+      name: jvm.gc.duration
+      unit: "s"
+      type: counter
+      distribution: true
+
+  # ---- Database client ------------------------------------------------
+  - name: "db.client.operation.duration"
+    channel: "db_client_operation_duration"
+    display_name: "DB {service.name} Operation Duration"
+    unit: "s"
+    category: "latency"
+    multi_instance_labels: ["service.name", "db.system.name", "db.operation.name"]
+    description: "Duration of the database calls an application makes, per system and operation. The count is the number of calls, the sum their total duration"
+    otel:
+      name: db.client.operation.duration
+      unit: "s"
+      type: counter
+      distribution: true
+
+  - name: "db.client.connection.count"
+    channel: "db_client_connection_count"
+    display_name: "DB {service.name} Connections"
+    unit: "#"
+    category: "availability"
+    multi_instance_labels: ["service.name", "db.client.connection.pool.name", "db.client.connection.state"]
+    description: "Connections in an application's database pool, idle and used"
+    otel:
+      name: db.client.connection.count
+      unit: "{connection}"
+      type: updowncounter
+
+  - name: "db.client.connection.pending_requests"
+    channel: "db_client_connection_pending_requests"
+    display_name: "DB {service.name} Pending Connection Requests"
+    unit: "#"
+    category: "availability"
+    multi_instance_labels: ["service.name", "db.client.connection.pool.name"]
+    description: "Requests waiting for a connection from the pool, which is what a saturated pool looks like"
+    otel:
+      name: db.client.connection.pending_requests
+      unit: "{request}"
+      type: updowncounter

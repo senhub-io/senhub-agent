@@ -53,22 +53,28 @@ func TestGenerateWritesOneRulePerDimensionSetWithPrototypesUnderIt(t *testing.T)
 		t.Errorf("template = %s", tpl.Template)
 	}
 	if len(tpl.DiscoveryRules) != 2 {
-		t.Fatalf("rules = %d, want the plain rule and the drive rule", len(tpl.DiscoveryRules))
+		t.Fatalf("rules = %d, want the plain rule and the filesystem usage family", len(tpl.DiscoveryRules))
 	}
 	byKey := map[string]DiscoveryRule{}
 	for _, r := range tpl.DiscoveryRules {
 		byKey[r.Key] = r
 	}
-	drive := byKey["senhub.discovery[logicaldisk,drive]"]
-	if len(drive.ItemPrototypes) != 2 {
-		t.Fatalf("drive prototypes = %+v", drive.ItemPrototypes)
+	// The free and the used bytes of a filesystem share an OTel name and
+	// differ only by one attribute, so they are one prototype keyed on
+	// the macro of that attribute, under the rule that discovers which
+	// of the two this host actually feeds. Declaring both, as the
+	// generator used to, left one of them empty forever on every host
+	// that reports only the other.
+	usage := byKey["senhub.discovery.variants[logicaldisk,system.filesystem.usage,drive]"]
+	if len(usage.ItemPrototypes) != 1 {
+		t.Fatalf("the family must give exactly one prototype; got %+v", usage.ItemPrototypes)
 	}
-	free := drive.ItemPrototypes[0]
-	if free.Key != "senhub.system.filesystem.usage[{#PROBE},{#DRIVE},free]" {
-		t.Errorf("key = %s", free.Key)
+	proto := usage.ItemPrototypes[0]
+	if proto.Key != "senhub.system.filesystem.usage[{#PROBE},{#DRIVE},{#STATE}]" {
+		t.Errorf("key = %s", proto.Key)
 	}
-	if free.Name != "{#PROBE}: Disk Free ({#DRIVE})" || free.Units != "B" || free.Type != "ZABBIX_ACTIVE" || free.ValueType != "FLOAT" || free.Description != "Free space" {
-		t.Errorf("prototype = %+v", free)
+	if proto.Name != "{#PROBE}: Disk ({#DRIVE}, {#STATE})" || proto.Units != "B" || proto.Type != "ZABBIX_ACTIVE" || proto.ValueType != "FLOAT" || proto.Description != "Free space" {
+		t.Errorf("prototype = %+v", proto)
 	}
 
 	plain := byKey["senhub.discovery[logicaldisk]"]
@@ -107,8 +113,9 @@ func TestEncodeProducesTheImportLayout(t *testing.T) {
 	text := string(out)
 	for _, want := range []string{
 		"zabbix_export:", "version: \"6.0\"", "template_groups:", "name: Templates/SenHub",
-		"discovery_rules:", "key: acme.discovery[logicaldisk,drive]", "delay: 10m", "item_prototypes:",
-		"key: acme.system.filesystem.usage[{#PROBE},{#DRIVE},free]", "delay: 30s", "value_type: FLOAT",
+		"discovery_rules:", "key: acme.discovery.variants[logicaldisk,system.filesystem.usage,drive]",
+		"delay: 10m", "item_prototypes:",
+		"key: acme.system.filesystem.usage[{#PROBE},{#DRIVE},{#STATE}]", "delay: 30s", "value_type: FLOAT",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("export lacks %q\n%s", want, text)
@@ -144,5 +151,28 @@ func TestGenerateDeclaresAKeyOnceWhenTwoMetricsResolveToIt(t *testing.T) {
 func TestGenerateRefusesANamelessDefinition(t *testing.T) {
 	if _, err := Generate(transformers.ProbeDefinition{}, Options{}); err == nil {
 		t.Fatal("want an error")
+	}
+}
+
+// A metric discovered per instance must name its instance. Without it,
+// every prototype under one rule yields identically named items and an
+// operator opening the host sees a column of the same line repeated.
+// Seen on a bench: six filesystems, six items called the same thing.
+func TestPrototypeNameCarriesTheDiscoveredInstance(t *testing.T) {
+	m := transformers.MetricDefinition{Name: "x", DisplayName: "Control Plane Reachable"}
+
+	if got := prototypeName(m, nil); got != "{#PROBE}: Control Plane Reachable" {
+		t.Errorf("without a dimension the name is unchanged, got %q", got)
+	}
+	got := prototypeName(m, []string{"azure_app"})
+	if got != "{#PROBE}: Control Plane Reachable ({#AZURE_APP})" {
+		t.Errorf("name = %q, want the discovered instance appended", got)
+	}
+	// A display name that already carries a placeholder keeps its own
+	// wording rather than being appended to twice.
+	withPlaceholder := transformers.MetricDefinition{Name: "y", DisplayName: "Interface {interface} traffic"}
+	got = prototypeName(withPlaceholder, []string{"interface"})
+	if strings.Count(got, "{#INTERFACE}") != 1 {
+		t.Errorf("name = %q, want the macro once", got)
 	}
 }

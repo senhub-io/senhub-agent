@@ -51,6 +51,13 @@ type MetricDefinition struct {
 	AlertThresholdWarning  int               `yaml:"alert_threshold_warning"`
 	AlertThresholdCritical int               `yaml:"alert_threshold_critical"`
 	Lookup                 string            `yaml:"lookup"`
+	// Platforms restricts the metric to the operating systems that can
+	// produce it. Empty means every platform, which is the case for all
+	// but a handful. It exists because a template generated from the
+	// definitions would otherwise declare a Windows performance counter
+	// on a Linux host, where it can never receive a value and reads as a
+	// defect. Values are GOOS names: linux, windows, darwin.
+	Platforms []string `yaml:"platforms,omitempty"`
 
 	// OTel-first mapping (v3+). See docs/developer-guide/otel/senhub-semantic-conventions.md
 	Otel           *OtelMapping      `yaml:"otel,omitempty"`
@@ -81,6 +88,14 @@ type OtelMapping struct {
 	// automatically by the mapper from Unit comparison; ValueScale is for
 	// probe-specific conversions not derivable from units alone.
 	ValueScale float64 `yaml:"value_scale,omitempty"`
+
+	// Distribution marks a metric that arrives as a histogram rather
+	// than a scalar: a count, a sum and a bucket ladder. A sink holding
+	// one value per series carries the count and the sum, under keys
+	// that say which is which, so the generated items and the sent ones
+	// agree. Type then describes those two parts, which are cumulative
+	// counters, rather than the instrument they come from.
+	Distribution bool `yaml:"distribution,omitempty"`
 }
 
 // ExpandDirective declares how a numeric-enum metric (via lookup) is emitted
@@ -682,3 +697,17 @@ func (tr *TransformerRegistry) loadCorrectionsConfigFromEmbed(probeName string) 
 }
 
 // TransformMetricName implements MetricTransformer interface for definition-based transformer
+
+// RunsOn reports whether the metric can be produced on the named
+// platform. A metric that names none runs everywhere.
+func (m MetricDefinition) RunsOn(goos string) bool {
+	if len(m.Platforms) == 0 {
+		return true
+	}
+	for _, p := range m.Platforms {
+		if p == goos {
+			return true
+		}
+	}
+	return false
+}

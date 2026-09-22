@@ -21,6 +21,29 @@ metrics:
   # PRTG/Nagios consumers expect. Exposing this as a gauge in By/s is the
   # honest description of what the agent measures.
   # ─────────────────────────────────────────────────────────────────────────
+  - name: "interface_speed"
+    channel: "interface_speed"
+    display_name: "Network {interface} Speed"
+    unit: "bps"
+    category: "capacity"
+    description: "Speed the link negotiated; absent on a virtual interface, which is not the same as zero"
+    otel:
+      name: senhub.system.network.interface.speed
+      unit: bit/s
+      type: gauge
+
+  - name: "interface_up"
+    channel: "interface_up"
+    display_name: "Network {interface} Operational State"
+    unit: "#"
+    category: "status"
+    platforms: ["linux", "darwin"]
+    description: "1 when the interface is operationally up, else 0"
+    otel:
+      name: senhub.system.network.interface.up
+      unit: "{status}"
+      type: gauge
+
   - name: "bytes_sent"
     channel: "network_bytes_sent"
     display_name: "Network {interface} Bytes Sent"

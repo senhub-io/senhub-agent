@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/template"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -37,6 +40,9 @@ type Strategy struct {
 	cancel    context.CancelFunc
 	done      chan struct{}
 	requested map[string]struct{}
+	// nameplate is the machine's identity as the entity rail last
+	// published it, keyed by attribute name.
+	nameplate map[string]string
 	// heartbeatOff is set once the server refused the heartbeat request
 	// (servers before 6.2), so the loop stops sending it.
 	heartbeatOff bool
@@ -113,9 +119,10 @@ func (s *Strategy) Start(ctx context.Context) error {
 	s.cancel = cancel
 	s.done = make(chan struct{})
 	s.started = true
+	s.nameplate = s.readNameplate()
 	go s.run(runCtx)
 	s.logger.Info().
-		Str("server", s.cfg.Server).
+		Str("server", strings.Join(s.cfg.addresses(), ",")).
 		Str("hostname", s.cfg.Hostname).
 		Dur("interval", s.cfg.Interval).
 		Msg("Zabbix active agent started")
@@ -187,7 +194,7 @@ func (s *Strategy) run(ctx context.Context) {
 // the server and a template gives it items, the list is empty and
 // nothing is pushed; the values are ready the moment the list arrives.
 func (s *Strategy) refresh(ctx context.Context) {
-	items, err := s.client.activeChecks(ctx)
+	items, changed, err := s.client.activeChecks(ctx)
 	if errors.Is(err, errHostUnknown) {
 		// The reply a server gives on first contact: the request itself
 		// fired the autoregistration event, and the host exists on the
@@ -200,6 +207,13 @@ func (s *Strategy) refresh(ctx context.Context) {
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("Check list request failed")
 		agentstate.RecordExportFailure("zabbix", err.Error())
+		return
+	}
+	if !changed {
+		// The server says its list is the one we already hold. Replacing
+		// it with the empty reply would silence every item until the
+		// next configuration change.
+		s.logger.Debug().Msg("Check list unchanged; the server sent no data")
 		return
 	}
 	requested := make(map[string]struct{}, len(items))
@@ -279,9 +293,11 @@ func (s *Strategy) items(now time.Time) []item {
 	metrics := s.store.snapshot(now, 3*s.cfg.Interval)
 	out := make([]item, 0, len(metrics))
 	for _, cm := range metrics {
-		out = append(out, itemFor(s.cfg.KeyPrefix, s.lookup(cm.ProbeType), cm))
+		out = append(out, itemsFor(s.cfg.KeyPrefix, s.lookup(cm.ProbeType), cm)...)
 	}
-	return append(out, discoveryItems(s.cfg.KeyPrefix, s.defs, metrics)...)
+	out = append(out, discoveryItems(s.cfg.KeyPrefix, s.defs, metrics)...)
+	out = append(out, agentItems(s.cfg.Hostname)...)
+	return append(out, s.nameplateItems()...)
 }
 
 func (s *Strategy) lookup(probeType string) *transformers.ProbeDefinition {
@@ -304,4 +320,88 @@ func (s *Strategy) beat(ctx context.Context) {
 		s.heartbeatOff = true
 		s.mu.Unlock()
 	}
+}
+
+// readNameplate reads the machine's identity once, at start.
+//
+// The agent already discovers the operating system, the hardware and
+// the serial number for the topology graph, and Zabbix files the same
+// facts in host inventory. The obvious route was to subscribe to the
+// entity rail, which is wrong twice: that rail is driven by a detector
+// only the OTLP output starts, so nothing publishes on a host that has
+// no OTLP output; and a nameplate is a fact to read, not a stream to
+// follow. Both rails read the same source instead, and differ only in
+// where they carry it.
+//
+// The values are fixed for the life of the process: a serial number
+// does not change, and an operating system upgrade restarts the agent.
+// A failure is not fatal — the inventory stays as it was, which is
+// better than blanking it.
+//
+// It is called while Start holds the strategy lock, so it returns the
+// map rather than storing it: setNameplate takes that same lock, and a
+// Go mutex is not reentrant.
+func (s *Strategy) readNameplate() map[string]string {
+	hi, err := common.GetHostIdentity()
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("Host identity unavailable; the Zabbix host inventory will not be filled")
+		return nil
+	}
+	return nameplateOf(map[string]any{
+		"host.name":           hi.Name,
+		"os.name":             hi.OSName,
+		"os.description":      hi.OSDescription,
+		"os.type":             hi.OSType,
+		"host.chassis.type":   hi.ChassisType,
+		"host.cpu.model.name": hi.CPUModel,
+		"hw.vendor":           hi.HWVendor,
+		"hw.model":            hi.HWModel,
+		"hw.serial_number":    hi.HWSerial,
+	})
+}
+
+// nameplateOf keeps the facts that have both a value and an inventory
+// field, trimmed. A fact the agent did not find is left out entirely,
+// so its field keeps whatever it held rather than being blanked.
+func nameplateOf(attrs map[string]any) map[string]string {
+	out := make(map[string]string, len(template.NameplateFields))
+	for _, f := range template.NameplateFields {
+		v, ok := attrs[f.Attribute]
+		if !ok {
+			continue
+		}
+		if text, isText := v.(string); isText && strings.TrimSpace(text) != "" {
+			out[f.Attribute] = strings.TrimSpace(text)
+		}
+	}
+	return out
+}
+
+func (s *Strategy) setNameplate(attrs map[string]any) {
+	next := nameplateOf(attrs)
+	s.mu.Lock()
+	s.nameplate = next
+	s.mu.Unlock()
+}
+
+// nameplateItems turns what was last published into the items the
+// server asks for. A fact the agent did not find is not sent at all,
+// so its inventory field keeps whatever it held rather than being
+// blanked by an empty string.
+func (s *Strategy) nameplateItems() []item {
+	s.mu.Lock()
+	plate := s.nameplate
+	s.mu.Unlock()
+	if len(plate) == 0 {
+		return nil
+	}
+	out := make([]item, 0, len(plate))
+	for _, f := range template.NameplateFields {
+		v, ok := plate[f.Attribute]
+		if !ok {
+			continue
+		}
+		out = append(out, item{Key: buildKey(s.cfg.KeyPrefix, f.Key, nil), Value: v})
+	}
+	return out
 }

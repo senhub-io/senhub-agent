@@ -9,7 +9,7 @@ The Azure Container Apps probe reads the console log stream of an application ho
 
 Lines ride the agent's log rail exactly like lines read by `filetail`: the same parsers (raw, regex, json, logfmt), the same multiline folding for stack traces, and the same outputs (OTLP logs first). Each record carries the application, revision, replica and container it came from, so one stream never blends into another.
 
-One probe instance follows one application; to follow several, declare one instance per application, each with its own `name` and its own `bookmark_path`. Two instances sharing a bookmark would overwrite each other's position and replay or skip lines after a restart. In the container image the `SENHUB_AZURE_APP` variable takes a comma-separated list and writes those instances for you, see [Container image](../container.md#reading-azure-container-apps).
+One probe instance follows one application, or every application of a subscription when a `discovery` block is set (see [Following a whole subscription](#following-a-whole-subscription)). To follow a chosen few, declare one instance per application, each with its own `name` and its own `bookmark_path`. Two instances sharing a bookmark would overwrite each other's position and replay or skip lines after a restart. In the container image the `SENHUB_AZURE_APP` variable takes a comma-separated list and writes those instances for you, see [Container image](../container.md#reading-azure-container-apps).
 
 Replicas that appear with a scale-out or a new revision are attached on the next scan; replicas that disappear are released.
 
@@ -46,6 +46,45 @@ Replicas that appear with a scale-out or a new revision are attached on the next
 ```
 
 The `governance` block is the agent's per-probe governance (see [Configuration](../configuration.md#governance-per-probe)); its label `application` is stamped on every log record and on the application entity, which is how a consumer finds everything of one application chain.
+
+# Following a whole subscription
+
+Naming applications one by one stops working at the scale of a tenant: the list has to be maintained, and an application created last week is collected only once somebody remembers it. A `discovery` block replaces the list with a question asked of Azure.
+
+```yaml
+- name: aca-recette
+  type: azure_container_apps
+  params:
+    tenant_id: "${env:AZ_TENANT}"
+    client_id: "${env:AZ_CLIENT}"
+    client_secret: "${secret:aca.client_secret}"
+    subscription_id: "00000000-0000-0000-0000-000000000000"
+    discovery:
+      interval: 300                  # how often the subscription is asked
+      max_apps: 60                   # hard cap on what one instance follows
+      resource_groups: []            # empty = the whole subscription
+      exclude: ["*-preview"]
+```
+
+`discovery` and `app` are exclusive. A list you wrote and a list Azure answers would fight over the same bookmarks, so the configuration refuses the pair and says which to remove.
+
+| Key | Default | What it does |
+|---|---|---|
+| `interval` | `300` | Seconds between two enumerations of the subscription. The replica scan keeps its own, faster, cadence. |
+| `max_apps` | `100` | Hard cap. Applications beyond it are left out and the log says how many, rather than the list being silently truncated. |
+| `resource_groups` | every group | Bounds the search. |
+| `include` / `exclude` | every name | Filter on the application name; `*` is the only wildcard and `exclude` wins. |
+
+Three things are worth knowing before turning it on.
+
+- **The role does not have to be granted on the whole subscription.** Azure returns, from a subscription-wide listing, only the resources the credential is allowed to read. Grant the role on one resource group and discovery finds exactly the applications of that group; grant it on the subscription and it finds them all. Measured on a real tenant: a role assigned on a single resource group returned its six applications from the subscription-wide call, and nothing else. So a security team that will not widen a read grant can still use discovery, bounded by the assignment rather than by a list.
+- **What bounds an instance is the credential, not the probe.** Every application of one discovery shares the credentials and the subscription, because each of those is a single value. An application in another subscription belongs to another instance.
+- **`resource_groups` narrows, it does not authorise.** The filter bounds the search inside what the credential can already read; it is a convenience, not a permission. What a credential may not read never appears, filter or no filter.
+- **The cap protects the streams, not the calls.** Discovery costs one call per cycle whatever the subscription holds, and it saves one per application by carrying each stream endpoint in the same answer. What grows with the number of applications is the number of open streams, which is what `max_apps` is there to hold.
+
+An application that appears is picked up at the next discovery; one that disappears has its streams released and its bookmark pruned, exactly as a replica does. Nothing has to be edited when a deployment adds or removes an application.
+
+When several applications are followed, what describes an application is published per application, carrying its name and its resource group, while the collector's own counters stay whole: an operator watching the collector should not have to sum, and a series about an application must be readable back to it.
 
 # Configuration Parameters
 
@@ -106,12 +145,30 @@ Fields lifted by the `json`, `regex` and `logfmt` parsers are added as attribute
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.azure_container_apps.up` | `{status}` | `1` when Azure Resource Manager answered the last replica scan, else `0` |
+| `senhub.azure_container_apps.scan.failures` | `{scan}` | Cumulative scans Azure refused, one series per `reason` |
 | `senhub.azure_container_apps.replicas` | `{replica}` | Replicas of the active revisions seen at the last scan |
+| `senhub.azure_container_apps.revisions.active` | `{revision}` | Revisions marked active at the last scan |
 | `senhub.azure_container_apps.streams.open` | `{stream}` | Streams currently attached, one per replica and container |
+| `senhub.azure_container_apps.streams.wanted` | `{stream}` | Streams the last scan decided to hold |
+| `senhub.azure_container_apps.stream.reconnects` | `{reconnect}` | Cumulative streams re-attached after a drop |
+| `senhub.azure_container_apps.stream.attach_throttled` | `{attach}` | Cumulative attaches refused for rate by the stream endpoint |
+| `senhub.azure_container_apps.stream.token.ttl` | `s` | Seconds left on the console stream token |
 | `senhub.azure_container_apps.records_emitted` | `{record}` | Cumulative records published to the log rail |
 | `senhub.azure_container_apps.records_dropped` | `{record}` | Cumulative lines dropped at the source by `exclude` or `min_severity` |
-| `senhub.azure_container_apps.stream.reconnects` | `{reconnect}` | Cumulative streams re-attached after a drop |
+| `senhub.azure_container_apps.records_unparsed` | `{record}` | Cumulative lines the declared parser could not read |
+| `senhub.azure_container_apps.records.last_age` | `s` | Seconds since a line last left this probe |
 | `senhub.azure_container_apps.arm.reads_remaining` | `{request}` | Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it |
+
+These describe the collection, not the application. What the containers themselves consume is Azure Monitor's to answer, through a different interface.
+
+Four of them answer a question the others cannot:
+
+- **`streams.wanted` against `streams.open`.** A gap means a replica the scan knows about whose stream is not attached, which the replica count alone cannot show once a replica holds more than one container or a container filter is set.
+- **`scan.failures` by `reason`.** Reachability reads the same for a refused secret, an application that was deleted and a control plane pushing back; the reasons are `denied`, `not_found`, `throttled`, `refused`, `timeout` and `unreachable`. A refused scan costs no line, but a replica that appears while scans are refused is not picked up, so this is where that gap becomes visible.
+- **`records_unparsed`.** A line the declared parser cannot read is dropped. Declare `json` on an application that also writes a plain startup banner and those lines leave no trace anywhere else.
+- **`records.last_age`.** Silence, not failure: an application with nothing to say is legitimately silent. Read against `streams.open`, it separates a pipe that is alive from one that is merely attached.
+
+`stream.reconnects` is expected to climb on its own. Azure closes every console stream about every ten minutes and the probe re-attaches; `stream.attach_throttled` is the one that says the pace is too fast for the environment.
 
 # Requirements
 
