@@ -1043,3 +1043,32 @@ func unsetEnvNames(refs []configuration.EnvReference) string {
 	}
 	return strings.Join(names, ", ")
 }
+
+// extractAdminKeyFromConfig resolves the administration key of the HTTP
+// output — the one the console answers to. It is read through the real
+// loader, because an install seals it and the file then holds a
+// ${secret:} reference rather than the value.
+//
+// An empty answer means the installation has no administration key: the
+// console is not served, and the caller says so rather than opening an
+// address that would answer 404.
+func extractAdminKeyFromConfig(configPath string) (string, error) {
+	if err := validateConfigPath(configPath); err != nil {
+		return "", fmt.Errorf("invalid config path: %w", err)
+	}
+	cfg, err := configuration.LoadForShow(configPath, configuration.ShowResolved, nil)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", configPath, err)
+	}
+	for _, out := range cfg.Storage {
+		if out.Name != "http" {
+			continue
+		}
+		key, _ := out.Params["admin_key"].(string)
+		key = strings.TrimSpace(key)
+		if key != "" && !strings.Contains(key, "${") {
+			return key, nil
+		}
+	}
+	return "", nil
+}

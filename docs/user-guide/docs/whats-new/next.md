@@ -36,8 +36,19 @@ collection gaps that comparison exposed.
     never needed that surface and no longer carries it; its pollers are
     untouched.
 
-    **To keep using the console**, set the key and open the console with
-    it: `/web/<admin_key>/dashboard`.
+    **You do not have to do anything.** An agent that starts without an
+    administration key generates one and writes it into its `http`
+    output, where the next sealing pass moves it into the operating
+    system's store like every other secret. `senhub-agent console`
+    resolves it, so the Windows desktop and Start Menu shortcuts keep
+    opening the console exactly as before — they name the binary, never
+    the key.
+
+    What does change: an address you **bookmarked** carries the old key
+    and now answers 404. Open the console from the shortcut, or run
+    `senhub-agent console --print`, and bookmark that instead. Likewise
+    for anything scripted against the configuration API with the agent
+    key.
 
 - **The `process` probe no longer reports every process by default.**
   Without a `filter`, it emitted six series per process, and the identity

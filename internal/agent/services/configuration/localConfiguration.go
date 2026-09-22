@@ -297,6 +297,15 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	// made a clean install report two warnings naming a missing file, which
 	// is the first thing an operator sees on a machine that is in fact fine.
 	if _, statErr := os.Stat(lc.configPath); statErr == nil {
+		// Give an installation made before the read and administration
+		// surfaces were told apart the key the second one now needs —
+		// before the seal below, so the fresh plaintext key is moved
+		// into the OS store in the same start rather than sitting in
+		// the file until the next one.
+		if err := EnsureAdminKey(lc.configPath, lc.logger); err != nil {
+			lc.logger.Warn().Err(err).Msg("Adding the administration key failed; the console and the configuration API will not answer until one is set")
+		}
+
 		// Seal any inline plaintext secrets into the OS-native store (default
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
 		// on any error, and we continue with the existing config rather than
