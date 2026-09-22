@@ -177,6 +177,23 @@ collection gaps that comparison exposed.
   does not have to be granted across the subscription: Azure returns
   only what the credential may read.
 
+- **The Windows shortcuts no longer go through a script.** They ran
+  `wscript.exe` on a VBScript launcher whose only job was to open the
+  console without showing a terminal — the agent being a console
+  program, a shortcut aimed at it leaves a command window in front of
+  the browser for as long as it waits for the service, up to fifteen
+  seconds on a fresh install.
+
+    VBScript is a feature-on-demand since Windows 11 24H2 and Microsoft
+    has announced its removal; a scripting host launching a signed
+    binary is a pattern endpoint protection flags; and the script was
+    the one piece of executable content in the package our signing chain
+    did not cover. It is replaced by `senhub-console.exe`, a small
+    launcher built for the Windows graphical subsystem, so no terminal
+    is ever created — and signed with everything else.
+
+    Nothing to do: the shortcuts are rewritten by the installer.
+
 - **The image publication scans before it pushes**, and the dependency
   scan runs in the development chain, with the scanner a customer
   registry runs. A published release is also checked for completeness
