@@ -88,6 +88,14 @@ type OtelMapping struct {
 	// automatically by the mapper from Unit comparison; ValueScale is for
 	// probe-specific conversions not derivable from units alone.
 	ValueScale float64 `yaml:"value_scale,omitempty"`
+
+	// Distribution marks a metric that arrives as a histogram rather
+	// than a scalar: a count, a sum and a bucket ladder. A sink holding
+	// one value per series carries the count and the sum, under keys
+	// that say which is which, so the generated items and the sent ones
+	// agree. Type then describes those two parts, which are cumulative
+	// counters, rather than the instrument they come from.
+	Distribution bool `yaml:"distribution,omitempty"`
 }
 
 // ExpandDirective declares how a numeric-enum metric (via lookup) is emitted
