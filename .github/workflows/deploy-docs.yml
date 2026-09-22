@@ -2,13 +2,13 @@ name: Deploy Documentation
 
 on:
   push:
-    branches: [dev, master]
+    branches: [master, 'integ/**']
     paths:
       - 'docs/user-guide/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
-# Serialize doc deploys: the dev and master runs both `mike deploy --push` to
+# Serialize doc deploys: the development and master runs both `mike deploy --push` to
 # the same agent.senhub.io `main` branch, so two near-simultaneous merges raced
 # and the second push was rejected ('fetch first', #581). One shared group with
 # cancel-in-progress:false queues runs instead of racing — both publish, in turn.
@@ -54,23 +54,29 @@ jobs:
           git config user.name "senhub-io"
           git config user.email "senhub-io@users.noreply.github.com"
 
-      # A branch that is neither dev nor master has no version line of its
-      # own, and treating it as dev is how an integration branch came to
-      # overwrite the published dev documentation: two manual runs from
-      # integ/release-055 replaced the dev line with that branch's state
-      # on 2026-09-14. A manual run from a release or feature branch is
-      # therefore refused rather than published somewhere it does not
-      # belong.
+      # Two lines exist: `latest`, what is released, and `dev`, what is
+      # coming. The second was published from a branch named dev, which
+      # stopped holding anything; the integration branch of the release
+      # being assembled is what carries unreleased documentation now, so
+      # it publishes that line.
+      #
+      # Any other branch is still refused. Treating an arbitrary branch
+      # as the development line is how the published line came to be
+      # overwritten: two manual runs from integ/release-055 replaced it
+      # with that branch's state on 2026-09-14. The difference here is
+      # that an integration branch IS the development line rather than
+      # being mistaken for it.
       - name: Pick version line from branch
         id: ver
         run: |
           case "${GITHUB_REF_NAME}" in
-            master) echo "version=latest" >> "$GITHUB_OUTPUT" ;;
-            dev)    echo "version=dev"    >> "$GITHUB_OUTPUT" ;;
+            master)  echo "version=latest" >> "$GITHUB_OUTPUT" ;;
+            integ/*) echo "version=dev"    >> "$GITHUB_OUTPUT" ;;
             *)
               echo "::error::${GITHUB_REF_NAME} publishes no documentation line." \
-                   "Run this workflow from dev or from master; a run from any" \
-                   "other branch would overwrite the dev line with that branch."
+                   "Run this workflow from master or from the integration branch;" \
+                   "a run from any other branch would overwrite the development" \
+                   "line with that branch."
               exit 1
               ;;
           esac
