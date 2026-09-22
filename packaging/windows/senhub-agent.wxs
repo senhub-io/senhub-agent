@@ -502,12 +502,20 @@
         `console` verb, which reads the sealed key (asking for elevation
         once) and opens the browser. Removed with the product.
       -->
-      <!-- Hidden launcher for the console shortcuts: without it a
-           shortcut aimed at the console program flashes a terminal. -->
-      <Component Id="OpenConsoleLauncher" Directory="INSTALLFOLDER" Guid="*">
-        <File Id="OpenConsoleVbs"
-              Name="open-console.vbs"
-              Source="packaging/windows/open-console.vbs"
+      <!-- The console shortcuts point here, not at the agent.
+           The agent is a console program: Windows gives it a terminal
+           before its own code runs, and `senhub-agent console` then
+           waits up to fifteen seconds for the service to answer, so a
+           shortcut aimed straight at it left a command window in front
+           of the browser. This launcher is built for the GUI subsystem,
+           so no console is ever allocated; it starts the verb and
+           exits. It replaces a VBScript launcher, which did the same
+           job through a scripting host that endpoint protection flags
+           and that the Authenticode chain did not cover. -->
+      <Component Id="ConsoleLauncher" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="SenHubConsoleExe"
+              Name="senhub-console.exe"
+              Source="$(BinDir)\senhub-console.exe"
               KeyPath="yes" />
       </Component>
 
@@ -524,8 +532,7 @@
         <Shortcut Id="ConsoleMenuShortcutLnk"
                   Name="SenHub Agent Console"
                   Description="Open the SenHub Agent web console"
-                  Target="[System64Folder]wscript.exe"
-                  Arguments="&quot;[#OpenConsoleVbs]&quot;"
+                  Target="[#SenHubConsoleExe]"
                   WorkingDirectory="INSTALLFOLDER"
                   Icon="senhub.ico"
                   Show="normal" />
@@ -542,8 +549,7 @@
         <Shortcut Id="ConsoleDesktopShortcut"
                   Name="SenHub Agent Console"
                   Description="Open the SenHub Agent web console"
-                  Target="[System64Folder]wscript.exe"
-                  Arguments="&quot;[#OpenConsoleVbs]&quot;"
+                  Target="[#SenHubConsoleExe]"
                   WorkingDirectory="INSTALLFOLDER"
                   Icon="senhub.ico"
                   Show="normal" />

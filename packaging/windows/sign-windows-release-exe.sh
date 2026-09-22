@@ -58,20 +58,30 @@ for EDITION in senhub-agent senhub-agent-oss; do
   echo ">> [$EDITION] extracting"
   unzip -q "$DIR/$ZIP" -d "$DIR/x"
   [ -f "$DIR/x/senhub-agent.exe" ] || { echo "ERROR: senhub-agent.exe not found in $ZIP" >&2; exit 1; }
+  [ -f "$DIR/x/senhub-console.exe" ] || { echo "ERROR: senhub-console.exe not found in $ZIP — the MSI shortcuts point at it" >&2; exit 1; }
 
-  echo ">> [$EDITION] signing senhub-agent.exe"
-  "$SIGNER" "$DIR/x/senhub-agent.exe" --in-place
+  # Every executable in the package is signed, not just the agent. The
+  # console launcher is what the desktop shortcut runs, so an unsigned
+  # one is the first thing an endpoint-protection product sees.
+  for EXE in "$DIR/x"/*.exe; do
+    echo ">> [$EDITION] signing $(basename "$EXE")"
+    "$SIGNER" "$EXE" --in-place
+  done
 
+  # Re-zip the WHOLE directory rather than naming files: naming them is
+  # how a second executable gets silently dropped from a signed package,
+  # after which the MSI is rebuilt without it and the shortcuts point at
+  # something that is not there.
   echo ">> [$EDITION] re-zipping"
   rm -f "$DIR/$ZIP"
-  ( cd "$DIR/x" && zip -q "$DIR/$ZIP" senhub-agent.exe )
+  ( cd "$DIR/x" && zip -q -r "$DIR/$ZIP" . )
 
   echo ">> [$EDITION] uploading (replacing release asset)"
   gh release upload "$TAG" "$DIR/$ZIP" --repo "$REPO" --clobber
 done
 
 echo
-echo "OK   both Windows ZIPs now carry an Authenticode-signed exe."
+echo "OK   both Windows ZIPs now carry Authenticode-signed executables."
 echo
 echo "NEXT: dispatch the second half so the ZIPs are re-minisigned and both"
 echo "MSIs (full + oss) are rebuilt from their matching signed exe:"
