@@ -13,6 +13,10 @@ DARWIN_ARM64_DIR=$(DIST_DIR)/darwin-arm64
 LINUX_AMD64=$(LINUX_AMD64_DIR)/$(EXECUTABLE)
 LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
 WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
+# The console launcher ships beside the agent on Windows only. It is
+# built for the GUI subsystem so a shortcut opens the console without
+# allocating a terminal; see cmd/console-launcher.
+CONSOLE_LAUNCHER=$(WINDOWS_AMD64_DIR)/senhub-console.exe
 DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
 DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
 # Version embedded in binaries.
@@ -125,6 +129,7 @@ build: build-windows build-linux build-darwin ## Build binaries
 build-windows: create-dist ## Build for Windows
 		@mkdir -p $(WINDOWS_AMD64_DIR)
 		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(CONSOLE_LAUNCHER) -ldflags="$(LDFLAGS) -H windowsgui" ./cmd/console-launcher/
 
 build-linux: create-dist ## Build for Linux
 		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
@@ -158,7 +163,7 @@ verify-static: ## Fail if a linux binary carries an ELF interpreter (would not r
 # always the same name.
 package: build ## Create ZIP packages for all platforms
 	@echo "$(GREEN)📦 Creating ZIP packages...$(NC)"
-	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
+	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe senhub-console.exe
 	@cd $(LINUX_AMD64_DIR)   && zip -9 ../$(EXECUTABLE)-linux-amd64.zip   $(EXECUTABLE)
 	@cd $(LINUX_ARM64_DIR)   && zip -9 ../$(EXECUTABLE)-linux-arm64.zip   $(EXECUTABLE)
 	@cd $(DARWIN_AMD64_DIR)  && zip -9 ../$(EXECUTABLE)-darwin-amd64.zip  $(EXECUTABLE)
@@ -168,7 +173,7 @@ package: build ## Create ZIP packages for all platforms
 
 package-windows: build-windows ## Create ZIP package for Windows
 	@echo "$(GREEN)📦 Creating Windows ZIP package...$(NC)"
-	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
+	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe senhub-console.exe
 	@echo "$(GREEN)✅ Windows ZIP package created: $(DIST_DIR)/$(EXECUTABLE)-windows-amd64.zip$(NC)"
 
 # Build a Windows MSI from the staged Windows binary using WiX v4.

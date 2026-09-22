@@ -117,6 +117,11 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
             go build -trimpath -ldflags="$LDFLAGS" \
             -o dist/windows-amd64/senhub-agent.exe ./cmd/agent
+          # The console launcher ships beside it: the shortcuts point at
+          # this one, and the MSI refuses to build without it.
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -ldflags="$LDFLAGS -H windowsgui" \
+            -o dist/windows-amd64/senhub-console.exe ./cmd/console-launcher
 
       - name: Configure signing
         id: sign
@@ -170,6 +175,19 @@ jobs:
             --tsaurl "$CODESIGN_TSA" --tsmode rfc3161 \
             --name "SenHub Agent" --url "https://senhub.io" \
             dist/windows-amd64/senhub-agent.exe
+          # Everything shipped is signed, the launcher included: it is
+          # what the desktop shortcut runs, and a package that carries
+          # one unsigned executable is a package an endpoint-protection
+          # product is right to distrust.
+          jsign \
+            --storetype "$CODESIGN_STORETYPE" \
+            ${CODESIGN_KEYSTORE:+--keystore "$CODESIGN_KEYSTORE"} \
+            ${CODESIGN_STOREPASS:+--storepass "$CODESIGN_STOREPASS"} \
+            ${CODESIGN_ALIAS:+--alias "$CODESIGN_ALIAS"} \
+            ${CODESIGN_KEYPASS:+--keypass "$CODESIGN_KEYPASS"} \
+            --tsaurl "$CODESIGN_TSA" --tsmode rfc3161 \
+            --name "SenHub Agent Console" --url "https://senhub.io" \
+            dist/windows-amd64/senhub-console.exe
 
       - name: Install WiX Toolset (dotnet tool)
         env:
