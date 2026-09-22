@@ -1,7 +1,12 @@
 # GLPI Inventory Integration Study — scope and decision
 
-Status: **decided 2026-09-22** (maintainer arbitrage). Lot A approved,
-lot B deferred with a named trigger.
+Status: **study, 2026-09-22.** The direction is the maintainer's:
+inventory built as a projection of what the agent already knows, the
+record filled as completely as the existing readers allow, software
+inventory deferred. The lots, the sequencing and the estimates below are
+this document's proposal. **Nothing here is scheduled or approved for
+build** — the study exists so that the decision can be taken with the
+constraints known, not to stand in for it.
 
 GLPI is the reference open-source asset and ticketing platform in
 France. Its server accepts an inventory document over HTTP, in a
@@ -251,7 +256,13 @@ rail pays for itself.
 ### `drives`
 
 One entry per filesystem from the `logicaldisk` probe: `filesystem`,
-`total`, `free`, `label`, `letter`, `type`.
+`total`, `free`, `letter`, `type`.
+
+Not `label`: the probe emits `device`, `mount_point` and `fs_type` on
+Unix and `device` and `drive` on Windows, and a volume label is in none
+of them. Filling it would mean reading `blkid` or `e2label`, which is a
+new reader and therefore not A.1. It is small enough to fold into A.3 if
+anyone asks for it, and nobody has.
 
 ### `virtualmachines`
 
@@ -353,6 +364,14 @@ What the study established, so it is not re-derived later:
 inventory. Not a market intuition. Lot A is a prerequisite either way,
 so nothing is lost by waiting.
 
+**A partial answer already exists.** The `os_updates` probe gained
+`senhub.os.packages.installed` in the 0.6.0 work — the count of
+installed packages, read from `dpkg-query` or `rpm`, Linux only, absent
+rather than zero when the backend does not answer. It is not an
+inventory, but it is the number a GLPI record shows at the head of its
+software tab, and it costs nothing more to send. Worth carrying in the
+document as a single fact while the list itself waits for its trigger.
+
 ## Transport
 
 Submission is an HTTP POST of the JSON document to the GLPI server's
@@ -390,16 +409,32 @@ not a record a server actually creates.
 
 - **Rail** — neutral inventory package, nameplate table moved out of the
   Zabbix strategy, Zabbix output unchanged and proven so. ~2 d.
-- **A.1** — document builder over the entity rail, the eight projected
-  sections, schema validation, GLPI writer and transport, identity and
-  reconciliation, proven against a real instance. ~7 d.
+- **Detector** — lifting `entity.NewDetector` out of the OTLP strategy
+  into the data store, so every sink sees the foundation. ~3 d, and the
+  least certain number here because it touches a component three
+  outputs already depend on. **Not optional for a full record**: without
+  it, A.1 delivers `hardware`, `bios`, `operatingsystem` and `cpus` and
+  neither `networks` nor `virtualmachines` — that is, the identity of
+  the machine and none of its topology.
+- **A.1** — document builder, the projected sections, schema
+  validation, GLPI writer and transport, identity and reconciliation,
+  proven against a real instance. ~7 d.
 - **A.2** — the discarded fields: SMBIOS tables 0, 1, 2 and 17, the
   `smartctl` identity fields, the operating-system extras. ~4 d.
 - **A.3** — local accounts, antivirus, firewall state. ~4 d.
 
-Rough, and the Windows half of A.2 carries the most uncertainty. Lot B
-is not estimated here: it is a product decision before it is an
-engineering one.
+Twenty days for the full record, seventeen for a record without its
+topology. Rough, with the Windows half of A.2 and the detector move
+carrying the uncertainty. Lot B is not estimated here: it is a product
+decision before it is an engineering one.
+
+These numbers are the reason the status line above says what it says.
+The study concludes that software inventory is what customers pay for
+and then defers it; spending three weeks on what they do not pay for is
+defensible — lot A is a prerequisite either way, and a GLPI record
+filled by the monitoring agent is a real argument in this market — but
+it is a choice, not a consequence of the ordering, and it belongs to
+whoever schedules the work.
 
 ## References
 
