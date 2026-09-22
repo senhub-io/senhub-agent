@@ -7,6 +7,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/template"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // The whole point of generating templates from the definitions is that
@@ -42,37 +43,46 @@ func TestGeneratedPrototypesNameTheKeysTheAgentSends(t *testing.T) {
 				tags[l] = "v" + string(rune('0'+i))
 			}
 			cm := otelmapper.CacheMetric{ProbeName: "inst", ProbeType: def.ProbeName, MetricName: m.Name, Value: 1, Tags: tags}
-			sent := itemFor("senhub", &def, cm).Key
-
-			// A metric of a variant family is named by a prototype whose
-			// key carries the attribute as a macro, because the agent
-			// discovers which values it feeds instead of the generator
-			// declaring them all.
-			var famMacros, famValues []string
-			if fam := familiesOf(&def)[m.Name]; fam != nil {
-				famMacros = attrMacros(fam.labels, fam.attrKeys)
-				famValues = staticAttributeValues(&m)
+			// A metric declared as a distribution arrives as one, and
+			// the agent then sends the two parts rather than the
+			// metric's own name. The guard has to send what it would
+			// really send, or it proves nothing about those keys.
+			if m.Otel != nil && m.Otel.Distribution {
+				sum := 1.0
+				cm.Histogram = &datapoint.HistogramValue{Count: 1, Sum: &sum}
 			}
+			for _, sent := range sentKeys("senhub", &def, m, cm) {
 
-			// Substitute the macros of every prototype and look for the sent key.
-			found := false
-			for p := range protos {
-				candidate := strings.ReplaceAll(p, probeMacro, "inst")
-				for _, l := range labels {
-					candidate = strings.ReplaceAll(candidate, macroFor(l), tags[l])
+				// A metric of a variant family is named by a prototype whose
+				// key carries the attribute as a macro, because the agent
+				// discovers which values it feeds instead of the generator
+				// declaring them all.
+				var famMacros, famValues []string
+				if fam := familiesOf(&def)[m.Name]; fam != nil {
+					famMacros = attrMacros(fam.labels, fam.attrKeys)
+					famValues = staticAttributeValues(&m)
 				}
-				for i, mac := range famMacros {
-					if i < len(famValues) {
-						candidate = strings.ReplaceAll(candidate, mac, famValues[i])
+
+				// Substitute the macros of every prototype and look for the sent key.
+				found := false
+				for p := range protos {
+					candidate := strings.ReplaceAll(p, probeMacro, "inst")
+					for _, l := range labels {
+						candidate = strings.ReplaceAll(candidate, macroFor(l), tags[l])
+					}
+					for i, mac := range famMacros {
+						if i < len(famValues) {
+							candidate = strings.ReplaceAll(candidate, mac, famValues[i])
+						}
+					}
+					if candidate == sent {
+						found = true
+						break
 					}
 				}
-				if candidate == sent {
-					found = true
-					break
+				if !found {
+					t.Errorf("%s/%s: the agent sends %s but no generated prototype names it", def.ProbeName, m.Name, sent)
 				}
-			}
-			if !found {
-				t.Errorf("%s/%s: the agent sends %s but no generated prototype names it", def.ProbeName, m.Name, sent)
 			}
 			wantRule := discoveryKey("senhub", def.ProbeName, labels)
 			if fam := familiesOf(&def)[m.Name]; fam != nil {
@@ -87,4 +97,15 @@ func TestGeneratedPrototypesNameTheKeysTheAgentSends(t *testing.T) {
 	if checked < 100 {
 		t.Fatalf("only %d metrics checked; the embedded definitions should give far more", checked)
 	}
+}
+
+// sentKeys is every key the agent sends for one metric: its own, or the
+// parts of a distribution.
+func sentKeys(prefix string, def *transformers.ProbeDefinition, m transformers.MetricDefinition, cm otelmapper.CacheMetric) []string {
+	items := itemsFor(prefix, def, cm)
+	keys := make([]string, 0, len(items))
+	for _, it := range items {
+		keys = append(keys, it.Key)
+	}
+	return keys
 }

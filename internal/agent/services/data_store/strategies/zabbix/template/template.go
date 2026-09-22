@@ -236,6 +236,32 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		// Two internal metrics can resolve to one key (same OTel name,
 		// same attributes, same dimensions); the agent sends that key
 		// once, so the template declares it once.
+		// A histogram is declared as the two facts a scalar sink can
+		// hold, each under its own key.
+		if isHistogram(m) {
+			ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
+			rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
+			for _, part := range HistogramParts {
+				key := prototypeKeyPart(opts.Prefix, m, labels, part)
+				if seenKeys[key] {
+					continue
+				}
+				seenKeys[key] = true
+				proto := ItemPrototype{
+					Name:        prototypeName(m, labels) + " (" + part + ")",
+					Type:        "ZABBIX_ACTIVE",
+					Key:         key,
+					Delay:       opts.ItemDelay,
+					ValueType:   "FLOAT",
+					Units:       histogramUnits(m, part),
+					Description: m.Description,
+				}
+				proto.UUID = uid("item", name, proto.Key)
+				rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+			}
+			continue
+		}
+
 		key := prototypeKey(opts.Prefix, m, labels)
 		if seenKeys[key] {
 			continue
@@ -355,10 +381,33 @@ func dimensions(def transformers.ProbeDefinition, m transformers.MetricDefinitio
 	return out
 }
 
+// HistogramParts are the suffixes a histogram is declared under. It
+// mirrors the list the output sends, in the same order; the two are
+// guarded by the test that checks the generated prototypes name the keys
+// the agent sends.
+var HistogramParts = []string{"count", "sum"}
+
+// isHistogram says whether a metric arrives as a distribution rather
+// than a scalar. What a scalar sink can hold of one is a count and a
+// sum, under keys that say so — the metric's own name would put a
+// number of observations under a key that reads as a duration.
+func isHistogram(m transformers.MetricDefinition) bool {
+	return m.Otel != nil && m.Otel.Distribution
+}
+
 func prototypeKey(prefix string, m transformers.MetricDefinition, labels []string) string {
+	return prototypeKeyPart(prefix, m, labels, "")
+}
+
+// prototypeKeyPart builds the key of one part of a metric: the metric
+// itself when part is empty, one of its histogram parts otherwise.
+func prototypeKeyPart(prefix string, m transformers.MetricDefinition, labels []string, part string) string {
 	name := m.Name
 	if m.Otel != nil && m.Otel.Name != "" {
 		name = m.Otel.Name
+	}
+	if part != "" {
+		name += "." + part
 	}
 	params := []string{"{#PROBE}"}
 	for _, l := range labels {
@@ -537,4 +586,14 @@ func Base(opts Options) Export {
 		TemplateGroups: []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}},
 		Templates:      []Template{tpl},
 	}}
+}
+
+// histogramUnits gives each part of a histogram the unit it carries: a
+// count is a number of observations whatever the metric measures, and
+// only the sum is in the metric's own unit.
+func histogramUnits(m transformers.MetricDefinition, part string) string {
+	if part == HistogramParts[0] {
+		return ""
+	}
+	return units(m)
 }

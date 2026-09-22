@@ -293,7 +293,7 @@ func (s *Strategy) items(now time.Time) []item {
 	metrics := s.store.snapshot(now, 3*s.cfg.Interval)
 	out := make([]item, 0, len(metrics))
 	for _, cm := range metrics {
-		out = append(out, itemFor(s.cfg.KeyPrefix, s.lookup(cm.ProbeType), cm))
+		out = append(out, itemsFor(s.cfg.KeyPrefix, s.lookup(cm.ProbeType), cm)...)
 	}
 	out = append(out, discoveryItems(s.cfg.KeyPrefix, s.defs, metrics)...)
 	out = append(out, agentItems(s.cfg.Hostname)...)

@@ -7,6 +7,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // An item key names one series on the Zabbix side:
@@ -180,10 +181,31 @@ func staticAttributeValues(m *transformers.MetricDefinition) []string {
 // single key instead of one series per state: a Zabbix value map, not a
 // fan-out, is how that side reads an enum. A metric without a definition
 // keeps its internal name and raw value.
+// itemsFor renders one series as the item or items it is sent under: a
+// scalar gives one, a histogram gives the two facts a scalar sink can
+// hold.
+func itemsFor(prefix string, def *transformers.ProbeDefinition, cm otelmapper.CacheMetric) []item {
+	if cm.Histogram == nil {
+		return []item{itemFor(prefix, def, cm)}
+	}
+	name, unit, _, params := itemParts(prefix, def, cm)
+	return histogramItems(prefix, name, unit, params, cm.Histogram)
+}
+
 func itemFor(prefix string, def *transformers.ProbeDefinition, cm otelmapper.CacheMetric) item {
+	name, unit, value, params := itemParts(prefix, def, cm)
+	return item{
+		Key:   buildKey(prefix, name, params),
+		Value: strconv.FormatFloat(value, 'f', -1, 64),
+		Unit:  unit,
+	}
+}
+
+// itemParts resolves what a series is called, what it is worth and what
+// stands between the brackets of its key.
+func itemParts(prefix string, def *transformers.ProbeDefinition, cm otelmapper.CacheMetric) (name, unit string, value float64, params []string) {
 	m := findMetric(def, cm.MetricName)
-	name := cm.MetricName
-	value, unit := cm.Value, cm.Unit
+	name, value, unit = cm.MetricName, cm.Value, cm.Unit
 
 	if m != nil && m.Otel != nil && !m.Otel.Skip && m.Otel.Name != "" {
 		name = m.Otel.Name
@@ -196,14 +218,37 @@ func itemFor(prefix string, def *transformers.ProbeDefinition, cm otelmapper.Cac
 		}
 	}
 
-	params := []string{cm.ProbeName}
+	params = []string{cm.ProbeName}
 	for _, dim := range relayDimensions(def, m, cm.Tags) {
 		params = append(params, cm.Tags[dim])
 	}
 	params = append(params, staticAttributeValues(m)...)
-	return item{
-		Key:   buildKey(prefix, name, params),
-		Value: strconv.FormatFloat(value, 'f', -1, 64),
-		Unit:  unit,
+	return name, unit, value, params
+}
+
+// HistogramParts are the suffixes a histogram is sent under, in the
+// order the template declares them. The generator mirrors this list.
+//
+// A histogram has no single current value. What arrives is a count, a
+// sum and a bucket ladder, and the scalar carried beside them is the
+// count — so sending it under the metric's own name would put a number
+// of observations under a key that says duration, which an operator
+// reads as a latency and alerts on as one.
+var HistogramParts = []string{"count", "sum"}
+
+func histogramItems(prefix, name, unit string, params []string, h *datapoint.HistogramValue) []item {
+	// The count is a number of observations whatever the metric
+	// measures; only the sum carries the metric's own unit.
+	out := []item{{
+		Key:   buildKey(prefix, name+"."+HistogramParts[0], params),
+		Value: strconv.FormatUint(h.Count, 10),
+	}}
+	if h.Sum != nil {
+		out = append(out, item{
+			Key:   buildKey(prefix, name+"."+HistogramParts[1], params),
+			Value: strconv.FormatFloat(*h.Sum, 'f', -1, 64),
+			Unit:  unit,
+		})
 	}
+	return out
 }
