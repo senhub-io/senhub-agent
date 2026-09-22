@@ -177,16 +177,6 @@ collection gaps that comparison exposed.
   does not have to be granted across the subscription: Azure returns
   only what the credential may read.
 
-- **The Windows shortcuts no longer go through a script.** They ran
-  `wscript.exe` on a VBScript launcher, whose only job was to start the
-  console without flashing a terminal. VBScript is on its way out of
-  Windows, a scripting host launching a signed binary is what an
-  endpoint-protection product flags, and it was the one piece of
-  executable content in the package that our signing chain did not
-  cover. The shortcuts now name the agent directly and run it
-  minimized; the verb they call lives about 150 milliseconds, measured
-  on Windows Server 2025.
-
 - **The image publication scans before it pushes**, and the dependency
   scan runs in the development chain, with the scanner a customer
   registry runs. A published release is also checked for completeness
