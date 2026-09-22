@@ -10,6 +10,35 @@ collection gaps that comparison exposed.
 
 ## Breaking Changes
 
+- **The web console and the configuration API need their own key.** The
+  agent key is what a monitoring tool is given to read this agent, and
+  it travels in the URL path, so it lands in the access log of every
+  machine between the poller and the agent. It also opened everything
+  that *changes* the agent: clearing the metric cache, injecting values
+  into it, changing log levels, reading the agent's own logs, editing
+  probes and outputs. A read-only consumer held the means to falsify
+  what it read.
+
+    The two surfaces are now told apart. `admin_key` on the `http`
+    output opens the administration one, and it alone; the agent key
+    reads and stops there. The administration key carries the read
+    privilege too, so one key is enough to use the console.
+
+    ```yaml
+    http:
+      endpoints: ["prtg", "web"]
+      admin_key: "${secret:agent.admin_key}"
+    ```
+
+    **Without it the administration surface is not served at all** — its
+    routes are not registered and answer 404, rather than asking for a
+    key nobody has. An installation that exists to feed PRTG or Nagios
+    never needed that surface and no longer carries it; its pollers are
+    untouched.
+
+    **To keep using the console**, set the key and open the console with
+    it: `/web/<admin_key>/dashboard`.
+
 - **The `process` probe no longer reports every process by default.**
   Without a `filter`, it emitted six series per process, and the identity
   of those series carried the process id: a machine with 837 processes
