@@ -12,8 +12,10 @@ http://agent-server:8080/web/{agent-key}/
 
 Replace `agent-server` with the address of the machine running the agent and `{agent-key}` with the agent's key. The key is printed by `senhub-agent key show` and by `senhub-agent console --print`; on Windows the installer creates a Start Menu shortcut that opens the console directly. With HTTPS enabled, use `https://` and the HTTPS port (8443 by default).
 
-The console requires the `web` endpoint of the `http` output **and an
-administration key**:
+The console requires the `web` endpoint of the `http` output and an
+administration key. **The agent generates that key by itself** on the
+first start that finds none, so an upgraded installation keeps working
+without anyone touching its configuration:
 
 ```yaml
 http:
@@ -37,6 +39,12 @@ that key: `http://agent-server:8080/web/{admin-key}/dashboard`.
 The administration key also reads, so one key is enough to use the
 console. The reverse is not true: the key in your PRTG sensor opens the
 metrics and stops there.
+
+The Windows desktop and Start Menu shortcuts keep working across the
+change: they name the agent, not the key, and `senhub-agent console`
+resolves the right one. An address you bookmarked by hand does not — it
+carries the old key. Take a fresh one from the shortcut or from
+`senhub-agent console --print`.
 
 **Without `admin_key`, the console is not served** — its addresses answer
 404 rather than asking for a key nobody has. An agent installed to feed
