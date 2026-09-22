@@ -149,7 +149,7 @@ func NewHTTPSyncStrategy(
 	strategy.formatConverter = NewFormatConverter(strategy.transformerRegistry, moduleLogger, strategy.cache)
 
 	// Initialize authentication manager
-	strategy.authManager = NewAuthenticationManager(strategy.agentKey, agentConfig, moduleLogger)
+	strategy.authManager = NewAuthenticationManager(strategy.agentKey, adminKeyFrom(params), agentConfig, moduleLogger)
 
 	// Initialize web interface handler
 	strategy.webInterface = NewWebInterface(strategy, moduleLogger)

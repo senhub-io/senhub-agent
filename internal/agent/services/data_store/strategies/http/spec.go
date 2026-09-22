@@ -20,6 +20,7 @@ func init() {
 				{Key: "cert_file", Kind: spec.KindString, Description: "Server certificate (PEM)"},
 				{Key: "key_file", Kind: spec.KindString, Description: "Server key (PEM)"},
 			}},
+			{Key: "admin_key", Kind: spec.KindString, Secret: true, Group: "listen", Description: "Key opening the administration surface: the console, the configuration API, the log levels, the cache and the profiler. Without it none of them is served. It is NOT the key given to PRTG, Nagios or a Prometheus scrape — that one reads and nothing else", Example: "${secret:agent.admin_key}"},
 			{Key: "max_cache_size", Kind: spec.KindInt, Group: "cache", Description: "Cap on cached metrics; the oldest are dropped past it"},
 			{Key: "prometheus", Kind: spec.KindBlock, Group: "prometheus", Fields: []spec.ParamSpec{
 				{Key: "include_probe_tags", Kind: spec.KindBool, Default: true, Description: "Emit probe tags as labels"},

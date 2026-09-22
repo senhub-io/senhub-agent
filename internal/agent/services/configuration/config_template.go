@@ -91,6 +91,10 @@ http:
   port: %d
   bind_address: "%s"
   endpoints: [%s]
+  # Opens the console, the configuration API, the log levels and the
+  # cache. The agent key is what a monitoring tool reads with; this one
+  # is what changes the agent. Give it to nobody who only needs to read.
+  admin_key: "%s"
 %s`
 
 // ProbeExamplesTemplate contains commented configuration examples for all available probes.

@@ -37,7 +37,7 @@ func createTestAPIManager(agentConfig configuration.AgentConfiguration) *APIMana
 	}
 
 	// Create authentication manager
-	strategy.authManager = NewAuthenticationManager(strategy.agentKey, agentConfig, moduleLogger)
+	strategy.authManager = NewAuthenticationManager(strategy.agentKey, "", agentConfig, moduleLogger)
 
 	// Create API manager
 	return NewAPIManager(strategy, moduleLogger)

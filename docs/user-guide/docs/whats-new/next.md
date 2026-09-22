@@ -10,6 +10,46 @@ collection gaps that comparison exposed.
 
 ## Breaking Changes
 
+- **The web console and the configuration API need their own key.** The
+  agent key is what a monitoring tool is given to read this agent, and
+  it travels in the URL path, so it lands in the access log of every
+  machine between the poller and the agent. It also opened everything
+  that *changes* the agent: clearing the metric cache, injecting values
+  into it, changing log levels, reading the agent's own logs, editing
+  probes and outputs. A read-only consumer held the means to falsify
+  what it read.
+
+    The two surfaces are now told apart. `admin_key` on the `http`
+    output opens the administration one, and it alone; the agent key
+    reads and stops there. The administration key carries the read
+    privilege too, so one key is enough to use the console.
+
+    ```yaml
+    http:
+      endpoints: ["prtg", "web"]
+      admin_key: "${secret:agent.admin_key}"
+    ```
+
+    **Without it the administration surface is not served at all** — its
+    routes are not registered and answer 404, rather than asking for a
+    key nobody has. An installation that exists to feed PRTG or Nagios
+    never needed that surface and no longer carries it; its pollers are
+    untouched.
+
+    **You do not have to do anything.** An agent that starts without an
+    administration key generates one and writes it into its `http`
+    output, where the next sealing pass moves it into the operating
+    system's store like every other secret. `senhub-agent console`
+    resolves it, so the Windows desktop and Start Menu shortcuts keep
+    opening the console exactly as before — they name the binary, never
+    the key.
+
+    What does change: an address you **bookmarked** carries the old key
+    and now answers 404. Open the console from the shortcut, or run
+    `senhub-agent console --print`, and bookmark that instead. Likewise
+    for anything scripted against the configuration API with the agent
+    key.
+
 - **The `process` probe no longer reports every process by default.**
   Without a `filter`, it emitted six series per process, and the identity
   of those series carried the process id: a machine with 837 processes
@@ -136,6 +176,23 @@ collection gaps that comparison exposed.
   discovery block is set, instead of one named application. The role
   does not have to be granted across the subscription: Azure returns
   only what the credential may read.
+
+- **The Windows shortcuts no longer go through a script.** They ran
+  `wscript.exe` on a VBScript launcher whose only job was to open the
+  console without showing a terminal — the agent being a console
+  program, a shortcut aimed at it leaves a command window in front of
+  the browser for as long as it waits for the service, up to fifteen
+  seconds on a fresh install.
+
+    VBScript is a feature-on-demand since Windows 11 24H2 and Microsoft
+    has announced its removal; a scripting host launching a signed
+    binary is a pattern endpoint protection flags; and the script was
+    the one piece of executable content in the package our signing chain
+    did not cover. It is replaced by `senhub-console.exe`, a small
+    launcher built for the Windows graphical subsystem, so no terminal
+    is ever created — and signed with everything else.
+
+    Nothing to do: the shortcuts are rewritten by the installer.
 
 - **The image publication scans before it pushes**, and the dependency
   scan runs in the development chain, with the scanner a customer

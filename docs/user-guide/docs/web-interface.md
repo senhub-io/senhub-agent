@@ -12,14 +12,44 @@ http://agent-server:8080/web/{agent-key}/
 
 Replace `agent-server` with the address of the machine running the agent and `{agent-key}` with the agent's key. The key is printed by `senhub-agent key show` and by `senhub-agent console --print`; on Windows the installer creates a Start Menu shortcut that opens the console directly. With HTTPS enabled, use `https://` and the HTTPS port (8443 by default).
 
-The console requires the `web` endpoint of the `http` output, which the installer enables:
+The console requires the `web` endpoint of the `http` output and an
+administration key. **The agent generates that key by itself** on the
+first start that finds none, so an upgraded installation keeps working
+without anyone touching its configuration:
 
 ```yaml
 http:
   port: 8080
   bind_address: "127.0.0.1"
   endpoints: ["prtg", "web", "nagios"]
+  admin_key: "${secret:agent.admin_key}"
 ```
+
+## The key that reads and the key that changes
+
+The agent key is what you give a monitoring tool to read this agent —
+PRTG, Nagios, a Prometheus scrape. It travels in the URL, so it ends up
+in the access log of every machine between the poller and the agent.
+
+The console does not read: it edits probes and outputs, tests them with
+live credentials, changes log levels and clears the cache. So it answers
+`admin_key` and nothing else, and the address you open it with carries
+that key: `http://agent-server:8080/web/{admin-key}/dashboard`.
+
+The administration key also reads, so one key is enough to use the
+console. The reverse is not true: the key in your PRTG sensor opens the
+metrics and stops there.
+
+The Windows desktop and Start Menu shortcuts keep working across the
+change: they name the agent, not the key, and `senhub-agent console`
+resolves the right one. An address you bookmarked by hand does not — it
+carries the old key. Take a fresh one from the shortcut or from
+`senhub-agent console --print`.
+
+**Without `admin_key`, the console is not served** — its addresses answer
+404 rather than asking for a key nobody has. An agent installed to feed
+PRTG or Nagios therefore exposes nothing that can change it. Your
+pollers are unaffected either way.
 
 The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{agent-key}/docs`.
 
