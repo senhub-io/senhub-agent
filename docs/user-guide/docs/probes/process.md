@@ -60,10 +60,21 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 | `process.open_file_descriptors` | {fd} | Open file descriptors (Linux only) |
 | `process.uptime` | s | Seconds since the process started |
 | `process.count` | {process} | Aggregate process count per name (when `aggregate.enabled: true`) |
+| `senhub.system.kernel.max_files` | {file} | Ceiling the kernel puts on open file descriptors for the whole machine, which the per-process counts are measured against (Linux only) |
+| `senhub.system.kernel.max_processes` | {process} | Highest process id the kernel will assign, which is the ceiling on how many processes can exist at once (Linux only) |
+| `senhub.system.users.count` | {session} | Open login sessions, one per login rather than per account: four terminals on the same account count four |
 
 ## Operational notes
 
 - On Linux, the probe reads from `/proc`. Root privilege is required only if monitoring processes owned by other users.
 - `process.open_file_descriptors` is Linux-only; not emitted on Windows.
+- The three machine-wide values above belong to the machine, not to a
+  process, so they carry no `process.name` and are reported once
+  whatever the filter selects.
+- `senhub.system.users.count` reads the login accounting file on Linux
+  and the terminal services sessions on Windows, where a session whose
+  client is detached still counts. A machine whose libc is musl keeps no
+  such file, so the value is absent rather than zero — which is the case
+  inside a container built on Alpine.
 - `filter.top_n` is applied after all other filters. It is useful for "monitor the 5 most CPU-hungry processes" scenarios, and it turns on the per-process detail because it bounds how many processes can carry it.
 - The processes you name with `by_name` or `by_user` also become entities on the topology graph, with an edge to their host. A `top_n` or unfiltered view does not, because its membership changes every cycle.

@@ -1853,6 +1853,31 @@ degradation in which the series does not disappear. It replaces the historical
 workaround of an `exec` probe plus a hand-deployed apt-check script, and finally
 covers Windows.
 
+### 4.44 Probe `process` — the machine-wide values it also reports
+
+The probe's own metrics are per process or per process name. Three
+values it reports belong to the machine instead, because they are what
+the counted ones are measured against, and they carry none of the
+probe's dimensions: an empty `multi_instance_labels` on the metric says
+so, where an absent one would inherit the probe's.
+
+| Metric | Unit | Type | Platform | Source |
+|---|---|---|---|---|
+| `senhub.system.kernel.max_files` | `{file}` | Gauge | Linux | `/proc/sys/fs/file-max` |
+| `senhub.system.kernel.max_processes` | `{process}` | Gauge | Linux | `/proc/sys/kernel/pid_max` |
+| `senhub.system.users.count` | `{session}` | Gauge | Linux, Windows | The login accounting file (`/var/run/utmp`), `WTSEnumerateSessionsW` on Windows |
+
+`senhub.system.users.count` counts sessions and not accounts: four
+terminals opened on one account count four, which is what `who` lists
+and what the native Zabbix agent reports as `system.users.num`. On
+Windows a session whose client is detached still counts, since the user
+is logged on and their processes are running.
+
+OTel has no convention for any of the three, hence the `senhub.system.*`
+namespace. `senhub.system.kernel.*` is the machine's own ceiling and has
+no OTel counterpart; `system.process.count` exists upstream but counts
+processes, which is the probe's `process.count`, not a kernel limit.
+
 ## 6. Process for adding a convention
 
 1. Read the §1 sources for the domain in question

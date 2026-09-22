@@ -186,6 +186,19 @@ metrics:
       unit: "{process}"
       type: gauge
 
+  - name: "users_logged_in"
+    channel: "users_logged_in"
+    display_name: "Logged-in Users"
+    unit: "#"
+    category: "limits"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux", "windows"]
+    description: "Open login sessions on the machine, one per login rather than per account: four terminals opened on the same account count four. Read from the login accounting file on Linux and from the terminal services sessions on Windows, where a session whose client is detached still counts"
+    otel:
+      name: senhub.system.users.count
+      unit: "{session}"
+      type: gauge
+
   - name: "process.count"
     channel: "process_count_{process.name}"
     display_name: "Process {process.name} Count"
