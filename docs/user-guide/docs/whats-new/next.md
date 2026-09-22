@@ -41,6 +41,14 @@ collection gaps that comparison exposed.
     The processes named this way also become entities on the topology
     graph, which an unfiltered view never did, for the same reason.
 
+    A named view reports both: the per-process detail and the roll-up
+    over the processes sharing a name. The detail is identified by the
+    process id, so a named program that restarts leaves the items of its
+    former workers behind on a sink that creates what it is sent. That
+    is what watching a process one by one means, and the filter is what
+    bounds it — which is why an unfiltered view reports the roll-up
+    alone. (#910)
+
 ## Features
 
 - **The Zabbix output**, as a native active agent. It connects out to
