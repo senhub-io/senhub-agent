@@ -415,11 +415,15 @@ func runZabbixSetup(args []string) {
 	// generate, so a Linux host autoregistered carrying Hyper-V, Veeam,
 	// NetScaler and the rest: fifty discovery rules the agent will never
 	// answer, which is the same empty line an operator reads as a defect.
-	// The default is what every machine runs; anything else is named.
+	// The default is what every machine runs.
+	//
+	// A named probe is added to that default rather than replacing it.
+	// Replacing looked tidier and was a trap: an operator adding one
+	// commercial template with --probe silently unlinked the processor,
+	// the memory, the network and the disks from the action, and every
+	// host registering afterwards came up with none of them.
 	linkedByDefault := len(probes) == 0
-	if linkedByDefault {
-		probes = append([]string{}, defaultSetupProbes...)
-	}
+	probes = withDefaultProbes(probes)
 
 	s := &zabbixSetup{
 		api: newZabbixAPI(rawURL, token), group: group, metadata: metadata,
@@ -490,12 +494,14 @@ func runZabbixSetup(args []string) {
 		os.Exit(1)
 	}
 
+	fmt.Println()
 	if linkedByDefault {
-		fmt.Println()
 		fmt.Printf("Linked the probes every machine runs: %s.\n", strings.Join(defaultSetupProbes, ", "))
 		fmt.Println("Name others with --probe to have them linked as well; a template")
 		fmt.Println("linked to a host whose agent does not run that probe only adds")
 		fmt.Println("discovery rules that stay empty.")
+	} else {
+		fmt.Printf("Linked the probes every machine runs, plus what you named: %s.\n", strings.Join(probes, ", "))
 	}
 
 	fmt.Println()
@@ -629,4 +635,22 @@ func (s *zabbixSetup) reportCollidingActions(ownName, metadata string) error {
 		}
 	}
 	return nil
+}
+
+// withDefaultProbes returns the probes to link: the ones every machine
+// runs, plus whatever was named, each once and in a stable order.
+func withDefaultProbes(named []string) []string {
+	out := append([]string{}, defaultSetupProbes...)
+	seen := map[string]bool{}
+	for _, p := range out {
+		seen[p] = true
+	}
+	for _, p := range named {
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
 }
