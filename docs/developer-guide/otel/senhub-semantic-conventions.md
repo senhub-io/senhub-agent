@@ -1846,6 +1846,7 @@ privilege.
 | `senhub.os.updates.pending` | `{update}` | gauge | apt-check / `apt-get -s upgrade` (`Inst` lines) / `dnf -q updateinfo list` / WUA `Search("IsInstalled=0 and IsHidden=0 and Type='Software'")` |
 | `senhub.os.updates.pending.security` | `{update}` | gauge | The security subset of the same backend: field 2 of apt-check, `*-security` origins, `updateinfo list --security`, MsrcSeverity, or the "Security Updates" category (WUA) |
 | `senhub.os.updates.reboot_required` | `1` | gauge | `/var/run/reboot-required` (apt), `needs-restarting -r` exit 1 (dnf/yum), `Microsoft.Update.SystemInfo.RebootRequired` (WUA) |
+| `senhub.os.packages.installed` | `{package}` | gauge | `dpkg-query -f '.\n' -W` (apt) / `rpm -qa --qf '.\n'` (dnf/yum), counted. Linux only: WUA enumerates updates, not installed software. Absent rather than zero when the backend did not answer |
 
 On a backend failure only `senhub.os.updates.up=0` is emitted — a soft
 degradation in which the series does not disappear. It replaces the historical
