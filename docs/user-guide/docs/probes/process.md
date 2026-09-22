@@ -76,5 +76,15 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
   client is detached still counts. A machine whose libc is musl keeps no
   such file, so the value is absent rather than zero — which is the case
   inside a container built on Alpine.
+- **Naming processes gives the per-process detail, and keeps it.** A
+  filter reports one series per process, identified by its process id,
+  beside the roll-up over the processes sharing a name — you get both.
+  A process id is not stable: when a named program restarts, its
+  workers come back under new ones. On a sink that creates what it is
+  sent, Zabbix among them, the items of the processes that are gone
+  stay on the host and stop being fed. That is what per-process
+  monitoring is, and the filter is what bounds it: only the programs
+  you named can produce those series. An unfiltered view reports the
+  roll-up alone for that reason.
 - `filter.top_n` is applied after all other filters. It is useful for "monitor the 5 most CPU-hungry processes" scenarios, and it turns on the per-process detail because it bounds how many processes can carry it.
 - The processes you name with `by_name` or `by_user` also become entities on the topology graph, with an edge to their host. A `top_n` or unfiltered view does not, because its membership changes every cycle.
