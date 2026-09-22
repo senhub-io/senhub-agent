@@ -160,6 +160,32 @@ metrics:
       unit: By
       type: gauge
 
+  - name: "kernel_max_files"
+    channel: "kernel_max_files"
+    display_name: "Kernel Max Open Files"
+    unit: "#"
+    category: "limits"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux"]
+    description: "Ceiling the kernel puts on open file descriptors for the whole machine; the per-process counts above are measured against it"
+    otel:
+      name: senhub.system.kernel.max_files
+      unit: "{file}"
+      type: gauge
+
+  - name: "kernel_max_processes"
+    channel: "kernel_max_processes"
+    display_name: "Kernel Max Processes"
+    unit: "#"
+    category: "limits"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux"]
+    description: "Highest process id the kernel will assign, which is the ceiling on how many processes can exist at once"
+    otel:
+      name: senhub.system.kernel.max_processes
+      unit: "{process}"
+      type: gauge
+
   - name: "process.count"
     channel: "process_count_{process.name}"
     display_name: "Process {process.name} Count"

@@ -116,6 +116,27 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		}
 	}
 
+	// The kernel's ceilings on what was just counted. Absent outside
+	// Linux, and a failure here does not fail the collection.
+	if maxFiles, maxProcs, kerr := kernelLimits(); kerr == nil {
+		for _, m := range []struct {
+			name  string
+			value float64
+		}{
+			{"kernel_max_files", maxFiles},
+			{"kernel_max_processes", maxProcs},
+		} {
+			points = append(points, data_store.DataPoint{
+				Name:      m.name,
+				Timestamp: ts,
+				Value:     m.value,
+				Tags:      baseTags,
+			})
+		}
+	} else {
+		log.Debug().Err(kerr).Msg("Kernel limits not available on this OS")
+	}
+
 	return points, snaps, nil
 }
 
