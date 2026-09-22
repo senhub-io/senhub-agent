@@ -171,6 +171,8 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 - **[All Probes](user-guide/PROBE-CONFIGURATION.md)** - Complete probe configuration guide
 
 ### Integration & APIs
+- **[GLPI inventory study](developer-guide/glpi/INTEGRATION-STUDY.md)** - Inventory as a second rail, what a record is filled with, what is deferred
+- **[Zabbix integration study](developer-guide/zabbix/INTEGRATION-STUDY.md)** - Protocol options and the native-active-agent decision
 - **[Universal Configuration](admin-guide/UNIVERSAL-CONFIGURATION.md)** - Probe configuration validation API
 - **[HTTP Strategy](admin-guide/HTTP-STRATEGY.md)** - HTTP strategy configuration
 - **[HTTP Bind Address](admin-guide/HTTP-BIND-ADDRESS.md)** - Network binding configuration
