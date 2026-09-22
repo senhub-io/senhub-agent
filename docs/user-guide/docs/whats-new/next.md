@@ -94,10 +94,12 @@ collection gaps that comparison exposed.
 
 - **The counters a native Zabbix agent reports and we did not.** On
   Linux: interrupts and context switches per second, the processor
-  count, the runnable process count, the guest and guest nice modes, and
-  page faults. On Windows: context switches, idle time, the processor
-  count, the negotiated link speed and the page file size. On both: the
-  speed and the operational state of a network interface.
+  count, the runnable process count, the guest and guest nice modes,
+  page faults, and the kernel's ceilings on open file descriptors and on
+  processes, which is what the counted ones are measured against. On
+  Windows: context switches, idle time, the processor count, the
+  negotiated link speed and the page file size. On both: the speed and
+  the operational state of a network interface.
 
 - **The Azure Container Apps probe reports the collection's own state**
   in detail, and **follows every application of a subscription** when a
