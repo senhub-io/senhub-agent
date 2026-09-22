@@ -246,17 +246,20 @@ func TestVanishedConnectionSurvivesTheMissTolerance(t *testing.T) {
 		s.Observe()
 	}
 	// Missed scrapes inside the tolerance: the edge stays on the wire.
+	// The tolerance is the window that earns an edge, not the handful of
+	// hits that assert it — the two used to differ, and the retraction
+	// half then read two absences as proof a brief flow had ended.
 	s.connections = fakeConns(nil)
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= earnWindow; i++ {
 		obs, ok := s.Observe()
 		if !ok {
 			t.Fatalf("miss %d: observation must stay trustworthy", i)
 		}
 		if relCount(obs, relDependsOn) != 1 {
-			t.Fatalf("miss %d of 3: edge must survive the tolerance, got %+v", i, obs.Relations)
+			t.Fatalf("miss %d of %d: edge must survive the tolerance, got %+v", i, earnWindow, obs.Relations)
 		}
 	}
-	// Gone for as long as it took to appear: given up.
+	// Gone for the whole window: given up.
 	obs, _ := s.Observe()
 	if len(obs.Relations) != 0 {
 		t.Fatalf("edge must drop once the miss tolerance is exhausted: %+v", obs)
@@ -426,14 +429,18 @@ func TestNameLRU_RecycledPidIsReResolved(t *testing.T) {
 	if !hasService(obs, "new-proc@h-1") {
 		t.Errorf("recycled pid must be re-resolved, not served the stale name: %+v", obs.Entities)
 	}
-	// The old dependent is not re-derived from the cache — it is inside its miss
-	// tolerance, the same grace every dependency now gets (#808). What must not
-	// happen is the stale name being SERVED for the live socket, and it is not:
-	// the socket resolves to new-proc. One more missed scrape retires the old
-	// one, since the tolerance here is the threshold, 1.
-	obs, _ = s.Observe()
+	// What must not happen is the stale name being SERVED for the live
+	// socket, and it is not: the socket resolves to new-proc. The old
+	// dependent is not re-derived; it sits out its miss tolerance, the
+	// same grace every dependency gets, and leaves at the end of it.
+	if !hasService(obs, "new-proc@h-1") {
+		t.Errorf("the live dependent must remain: %+v", obs.Entities)
+	}
+	for i := 0; i < earnWindow+1; i++ {
+		obs, _ = s.Observe()
+	}
 	if hasService(obs, "old-proc@h-1") {
-		t.Errorf("the recycled pid's old dependent must not outlive its miss tolerance: %+v", obs.Entities)
+		t.Errorf("the recycled pid's old dependent outlived its miss tolerance: %+v", obs.Entities)
 	}
 	if !hasService(obs, "new-proc@h-1") {
 		t.Errorf("the live dependent must remain: %+v", obs.Entities)
@@ -601,15 +608,43 @@ func TestShortLivedFlowStillEarnsItsEdge(t *testing.T) {
 	}
 }
 
-// An edge already asserted keeps the tolerance it earned: absence retires
-// it as fast as it appeared (#808), and the wider window is only for one
-// still earning.
-func TestAnAssertedEdgeIsStillRetiredQuickly(t *testing.T) {
+// An asserted edge is forgotten on the same window that earned it. The
+// two used to differ — as many misses to retire as it took hits to
+// assert — and the halves then disagreed about what an absence means:
+// acquisition treats it as the normal regime of a brief flow,
+// retraction treated two of them as proof the flow had ended. The same
+// upstream that needed the wide window to be asserted was dropped ten
+// minutes later, over and over.
+func TestAnAssertedEdgeIsForgottenOnTheWindowThatEarnedIt(t *testing.T) {
 	s := New(func() string { return "h-1" }, 1, nil)
-	if got := s.forgetAfter(streakState{hits: 1}); got != 1 {
-		t.Errorf("an asserted edge keeps the threshold tolerance, got %d", got)
+	if got := s.forgetAfter(streakState{hits: 1}); got != earnWindow {
+		t.Errorf("an asserted edge tolerates the earning window, got %d", got)
 	}
 	if got := s.forgetAfter(streakState{hits: 0}); got != earnWindow {
-		t.Errorf("one still earning gets the window, got %d", got)
+		t.Errorf("one still earning gets the same window, got %d", got)
+	}
+}
+
+// A dependency that really ends still leaves. The window buys tolerance,
+// not immortality.
+func TestAnEndedDependencyLeavesWithinTheWindow(t *testing.T) {
+	present := []gnet.ConnectionStat{
+		conn(statusEstablished, "10.0.0.5", 51000, "203.0.113.9", 443, 100),
+	}
+	rows := present
+	s := New(func() string { return "h-1" }, 1, nil)
+	s.connections = func(string) ([]gnet.ConnectionStat, error) { return rows, nil }
+	s.procName = func(int32) string { return "proxy" }
+	s.procCreated = func(int32) (int64, bool) { return 1000, true }
+
+	if obs, _ := s.Observe(); !hasEndpoint(obs, "203.0.113.9", "443") {
+		t.Fatal("the edge must be asserted while the flow is there")
+	}
+	rows = nil
+	for i := 0; i < earnWindow+1; i++ {
+		s.Observe()
+	}
+	if obs, _ := s.Observe(); hasEndpoint(obs, "203.0.113.9", "443") {
+		t.Errorf("the edge outlived the window: %+v", obs.Entities)
 	}
 }
