@@ -17,6 +17,12 @@ import (
 
 type unixMemoryCollector struct {
 	logger *logger.Logger
+	// lastFaults holds the previous cumulative page-fault count. The
+	// definition declares the metric in 1/s, the way the Windows
+	// collector already reports it, so the rate is derived here.
+	lastFaults   float64
+	lastFaultsAt time.Time
+	haveFaults   bool
 }
 
 func newMemoryCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
@@ -41,7 +47,43 @@ func (u *unixMemoryCollector) Collect(timestamp time.Time) ([]data_store.DataPoi
 		return nil, err
 	}
 
+	// Page faults, which a native Zabbix agent has no key for but every
+	// memory-pressure reading wants. Absent on some kernels, so a
+	// failure here does not fail the collection.
+	if err := u.collectPageFaults(&dataPoints, timestamp, baseTags); err != nil {
+		u.logger.Debug().Err(err).Msg("Page faults not available on this OS")
+	}
+
 	return dataPoints, nil
+}
+
+// collectPageFaults turns the kernel's cumulative fault count into the
+// per-second rate the definition declares. The first reading has
+// nothing to subtract from and emits nothing.
+func (u *unixMemoryCollector) collectPageFaults(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
+	swap, err := mem.SwapMemory()
+	if err != nil {
+		return fmt.Errorf("error getting page fault counters: %w", err)
+	}
+	curr := float64(swap.PgFault)
+	prev, prevAt, had := u.lastFaults, u.lastFaultsAt, u.haveFaults
+	u.lastFaults, u.lastFaultsAt, u.haveFaults = curr, timestamp, true
+	if !had {
+		return nil
+	}
+	elapsed := timestamp.Sub(prevAt).Seconds()
+	if elapsed <= 0 || curr < prev {
+		// No elapsed time, or a counter reset by a reboot; skip the
+		// round rather than emit a negative rate.
+		return nil
+	}
+	*dataPoints = append(*dataPoints, data_store.DataPoint{
+		Name:      "memory_page_faults",
+		Timestamp: timestamp,
+		Value:     (curr - prev) / elapsed,
+		Tags:      baseTags,
+	})
+	return nil
 }
 
 func (u *unixMemoryCollector) getBaseTags() ([]tags.Tag, error) {

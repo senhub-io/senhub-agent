@@ -1,0 +1,67 @@
+name: Security scan
+
+# Runs the scanner a customer's registry runs, on our own dependencies,
+# before anything is built or published.
+#
+# It is deliberately NOT govulncheck, which the test workflow already
+# runs: govulncheck reports only what our code actually reaches, which
+# is the right question for us and the wrong one for a customer. A
+# registry scanner compares versions and asks nothing about
+# reachability, so it sees findings we consider unreachable. Both
+# readings are correct; this one is the one that lands in a customer's
+# meeting, so we look at it first.
+#
+# Only a finding with a published fix fails the run: a vulnerability
+# nobody can fix yet must not block a merge, and it stays visible in the
+# summary so the decision is ours rather than implicit.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  # A CVE published upstream after a merge would otherwise stay unseen
+  # until the next pull request touches the repository.
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Refuse a fixable high or critical finding
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: List every finding, fixable or not
+        if: always()
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          exit-code: '0'
+          format: table
+          output: trivy-full.txt
+
+      - name: Put the full report in the summary
+        if: always()
+        run: |
+          {
+            echo "### Dependency scan"
+            echo '```'
+            cat trivy-full.txt 2>/dev/null || echo "no report produced"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

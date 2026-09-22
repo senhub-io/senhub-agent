@@ -54,14 +54,26 @@ jobs:
           git config user.name "senhub-io"
           git config user.email "senhub-io@users.noreply.github.com"
 
+      # A branch that is neither dev nor master has no version line of its
+      # own, and treating it as dev is how an integration branch came to
+      # overwrite the published dev documentation: two manual runs from
+      # integ/release-055 replaced the dev line with that branch's state
+      # on 2026-09-14. A manual run from a release or feature branch is
+      # therefore refused rather than published somewhere it does not
+      # belong.
       - name: Pick version line from branch
         id: ver
         run: |
-          if [ "${GITHUB_REF_NAME}" = "master" ]; then
-            echo "version=latest" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=dev" >> "$GITHUB_OUTPUT"
-          fi
+          case "${GITHUB_REF_NAME}" in
+            master) echo "version=latest" >> "$GITHUB_OUTPUT" ;;
+            dev)    echo "version=dev"    >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::${GITHUB_REF_NAME} publishes no documentation line." \
+                   "Run this workflow from dev or from master; a run from any" \
+                   "other branch would overwrite the dev line with that branch."
+              exit 1
+              ;;
+          esac
 
       # Builds from the source repo's mkdocs.yml and publishes the version into
       # the landing repo's main branch under /docs. mike manages

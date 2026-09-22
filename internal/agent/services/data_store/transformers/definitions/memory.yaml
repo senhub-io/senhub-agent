@@ -246,6 +246,7 @@ metrics:
     display_name: "Pagefile Usage Peak"
     unit: "%"
     category: "paging"
+    platforms: ["windows"]
     description: "Peak percentage of the system pagefile used since last reboot"
     otel:
       name: senhub.system.paging.utilization_peak

@@ -13,8 +13,10 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -28,7 +30,17 @@ type client struct {
 	tlsConf *tls.Config
 	session string
 	nextID  atomic.Uint64
-	dial    func(ctx context.Context) (net.Conn, error)
+	addrs   []string
+	dial    func(ctx context.Context, addr string) (net.Conn, error)
+
+	mu       sync.Mutex
+	idx      int
+	redirect string
+	rev      int64
+	// configRev is the item list's revision as the server last stated
+	// it. It has nothing to do with rev above, which orders a proxy
+	// group's redirections.
+	configRev int64
 }
 
 // activeItem is one item the server wants for this host.
@@ -52,6 +64,21 @@ type response struct {
 	Response string       `json:"response"`
 	Info     string       `json:"info"`
 	Data     []activeItem `json:"data"`
+	Redirect *redirection `json:"redirect"`
+	// ConfigRevision orders the server's view of this host's item list.
+	// Echoing it back is what lets the server answer "nothing changed"
+	// with no data at all, instead of resending the whole list on every
+	// refresh.
+	ConfigRevision int64 `json:"config_revision"`
+}
+
+// redirection is how a proxy group answers every request type when the
+// member being asked is not the one holding this host. The reply carries
+// no data and says "failed", so a client that only reads the response
+// field concludes the server refused it and never collects anything.
+type redirection struct {
+	Address  string `json:"address"`
+	Revision int64  `json:"revision"`
 }
 
 // pushResult is what the server said it did with a batch.
@@ -68,6 +95,10 @@ func newClient(cfg Config) (*client, error) {
 		}
 		c.tlsConf = tc
 	}
+	c.addrs = cfg.addresses()
+	if len(c.addrs) == 0 {
+		return nil, fmt.Errorf("zabbix: no server address configured")
+	}
 	c.dial = c.dialServer
 	return c, nil
 }
@@ -82,11 +113,11 @@ func newSession() string {
 
 func buildTLS(t TLSConfig, server string) (*tls.Config, error) {
 	conf := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: t.InsecureSkipVerify} // #nosec G402 - operator opt-in
-	if t.ServerName != "" {
-		conf.ServerName = t.ServerName
-	} else if host, _, err := net.SplitHostPort(server); err == nil {
-		conf.ServerName = host
-	}
+	// The name is left empty when the operator pinned none, so each
+	// connection can present the name of the address it is dialling: a
+	// proxy group sends us to members the configuration never listed.
+	conf.ServerName = t.ServerName
+	_ = server
 	if t.CAFile != "" {
 		pem, err := os.ReadFile(t.CAFile) // #nosec G304 - operator-supplied path
 		if err != nil {
@@ -108,16 +139,23 @@ func buildTLS(t TLSConfig, server string) (*tls.Config, error) {
 	return conf, nil
 }
 
-func (c *client) dialServer(ctx context.Context) (net.Conn, error) {
+func (c *client) dialServer(ctx context.Context, addr string) (net.Conn, error) {
 	d := net.Dialer{Timeout: c.cfg.Timeout}
-	conn, err := d.DialContext(ctx, "tcp", c.cfg.Server)
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 	if c.tlsConf == nil {
 		return conn, nil
 	}
-	tc := tls.Client(conn, c.tlsConf)
+	conf := c.tlsConf
+	if conf.ServerName == "" {
+		if host, _, splitErr := net.SplitHostPort(addr); splitErr == nil {
+			conf = c.tlsConf.Clone()
+			conf.ServerName = host
+		}
+	}
+	tc := tls.Client(conn, conf)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		conn.Close()
 		return nil, err
@@ -125,8 +163,71 @@ func (c *client) dialServer(ctx context.Context) (net.Conn, error) {
 	return tc, nil
 }
 
-// exchange sends one request and reads the reply.
+// target is the address to talk to: the one a proxy group sent us to, or
+// the configured address we are currently on.
+func (c *client) target() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.redirect != "" {
+		return c.redirect
+	}
+	return c.addrs[c.idx]
+}
+
+// follow records where a proxy group wants us and reports whether that
+// changed anything. The revision it sends with the address orders the
+// group's decisions, so a reply that overtook a newer one is dropped.
+func (c *client) follow(r redirection) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if r.Address == "" || r.Revision < c.rev {
+		return false
+	}
+	if c.redirect == r.Address {
+		c.rev = r.Revision
+		return false
+	}
+	c.redirect = r.Address
+	c.rev = r.Revision
+	return true
+}
+
+// stepAside is called when the address we are on stops answering. A
+// redirection is forgotten entirely, because the member that held this
+// host is the one that went down and the group's other members are what
+// can say where it went; otherwise we move on to the next configured
+// address.
+func (c *client) stepAside() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.redirect != "" {
+		c.redirect = ""
+		c.rev = 0
+		return
+	}
+	c.idx = (c.idx + 1) % len(c.addrs)
+}
+
+// exchange sends one request, reads the reply, and follows a proxy
+// group's redirection once. Every request type is redirected the same
+// way, so handling it here is what keeps the check list, the values and
+// the heartbeat on the same member.
 func (c *client) exchange(ctx context.Context, req interface{}) (response, error) {
+	resp, err := c.roundTrip(ctx, req)
+	if err != nil || resp.Redirect == nil || !c.follow(*resp.Redirect) {
+		return resp, err
+	}
+	resp, err = c.roundTrip(ctx, req)
+	if err == nil && resp.Redirect != nil {
+		// Moved again while we were moving. Remember it and let the next
+		// request go straight there rather than chasing it in a loop.
+		c.follow(*resp.Redirect)
+	}
+	return resp, err
+}
+
+// roundTrip sends one request to the current target and reads the reply.
+func (c *client) roundTrip(ctx context.Context, req interface{}) (response, error) {
 	var resp response
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -135,9 +236,11 @@ func (c *client) exchange(ctx context.Context, req interface{}) (response, error
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 
-	conn, err := c.dial(ctx)
+	addr := c.target()
+	conn, err := c.dial(ctx, addr)
 	if err != nil {
-		return resp, fmt.Errorf("connecting to %s: %w", c.cfg.Server, err)
+		c.stepAside()
+		return resp, fmt.Errorf("connecting to %s: %w", addr, err)
 	}
 	defer conn.Close()
 	if deadline, ok := ctx.Deadline(); ok {
@@ -159,28 +262,64 @@ func (c *client) exchange(ctx context.Context, req interface{}) (response, error
 // activeChecks asks which items the server wants for this host. The
 // request is also what registers the host: an unknown host with matching
 // metadata is created by the server's autoregistration action.
-func (c *client) activeChecks(ctx context.Context) ([]activeItem, error) {
+func (c *client) activeChecks(ctx context.Context) (items []activeItem, changed bool, err error) {
+	c.mu.Lock()
+	sent := c.configRev
+	c.mu.Unlock()
 	req := map[string]interface{}{
 		"request":       "active checks",
 		"host":          c.cfg.Hostname,
-		"host_metadata": c.cfg.HostMetadata,
+		"host_metadata": metadataWithPlatform(c.cfg.HostMetadata),
+		// What a current agent says about itself. Without it the server
+		// treats us as an agent of unknown vintage, shows nothing in the
+		// host's agent columns, and resends the whole item list every
+		// time because incremental sync needs a session and a revision
+		// to hang on.
+		"version":         advertisedAgent,
+		"variant":         advertisedVariant,
+		"session":         c.session,
+		"config_revision": sent,
 	}
 	if c.cfg.Passive.Enabled {
 		// The port the autoregistration action writes on the host's
 		// agent interface, so the server polls where the listener is.
 		req["port"] = c.cfg.Passive.Port
+		// And the address, when the operator named one. Zabbix takes a
+		// name under "interface" and an address under "ip"; left to
+		// itself it records where the packets came from, which behind
+		// NAT is the translation and not a place the server can poll.
+		if a := c.cfg.Passive.Advertise; a != "" {
+			if net.ParseIP(a) != nil {
+				req[fieldIP] = a
+			} else {
+				req[fieldInterface] = a
+			}
+		}
 	}
 	resp, err := c.exchange(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if resp.Response != "success" {
 		if strings.Contains(resp.Info, "not found") {
-			return nil, fmt.Errorf("%w: %s", errHostUnknown, resp.Info)
+			return nil, false, fmt.Errorf("%w: %s", errHostUnknown, resp.Info)
 		}
-		return nil, fmt.Errorf("server refused the check list: %s", firstNonEmpty(resp.Info, resp.Response))
+		return nil, false, fmt.Errorf("server refused the check list: %s", firstNonEmpty(resp.Info, resp.Response))
 	}
-	return resp.Data, nil
+	// Measured against a real 7.0.30: when the list has not changed the
+	// reply carries neither data nor a revision — not the revision we
+	// sent, which is what the shape of the protocol first suggests.
+	// Reading that as an empty list would silence every item on the host
+	// until the next configuration change.
+	if sent != 0 && resp.Data == nil && resp.ConfigRevision == 0 {
+		return nil, false, nil
+	}
+	if resp.ConfigRevision != 0 {
+		c.mu.Lock()
+		c.configRev = resp.ConfigRevision
+		c.mu.Unlock()
+	}
+	return resp.Data, true, nil
 }
 
 // errHostUnknown is the server's answer while the host does not exist
@@ -263,3 +402,26 @@ func firstNonEmpty(a, b string) string {
 	}
 	return b
 }
+
+// metadataWithPlatform appends the agent's operating system to the host
+// metadata. The autoregistration action matches on it to link the
+// template set that platform can actually feed: a Windows performance
+// counter declared on a Linux host can never receive a value, and an
+// operator reads that empty line as a defect. Appending rather than
+// replacing keeps whatever the operator wrote matchable as before.
+func metadataWithPlatform(metadata string) string {
+	metadata = strings.TrimSpace(metadata)
+	if metadata == "" {
+		return runtime.GOOS
+	}
+	return metadata + " " + runtime.GOOS
+}
+
+// fieldIP and fieldInterface are the request fields Zabbix fills the
+// agent interface from. They are constants because the guard that
+// checks a strategy declares every configuration key it reads scans the
+// package's string literals, and would take these for keys of ours.
+const (
+	fieldIP        = "ip"
+	fieldInterface = "interface"
+)

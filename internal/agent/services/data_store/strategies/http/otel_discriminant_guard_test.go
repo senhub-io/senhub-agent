@@ -62,3 +62,61 @@ func TestEveryMultiInstanceProbeHasDiscriminantTags(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryDeclaredDimensionIsRegistered closes the hole the guard above
+// leaves: it proves a probe is registered, not that what splits its
+// series is. azure_container_apps was registered on metric_type alone,
+// and when subscription discovery made it follow several applications
+// the new azure_app dimension went unregistered. The probe still had an
+// entry, so the guard above stayed green while the cache kept one
+// application's state and dropped the other five on every pull sink.
+//
+// A label that describes an instance without splitting it does not need
+// registering, but the two errors do not cost the same. A label left
+// out because it looked descriptive and was not costs a whole family of
+// series, silently, on every pull sink; one registered although its
+// value is fixed for the instance its identifier names creates no
+// series at all, and the key is internal — the channel an operator
+// reads is built from the metric's own tags. So where the reading is
+// not certain, the label is registered and the reason written beside
+// it in http_cache.go. An entry that stops matching fails this test,
+// the way the documented-key guard works.
+func TestEveryDeclaredDimensionIsRegistered(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatalf("load transformer definitions: %v", err)
+	}
+
+	for _, def := range defs {
+		entry, registered := DiscriminantTagsRegistry[def.ProbeName]
+		if !registered || fullTagKeyProbes[def.ProbeName] {
+			// The guard above already rules on an absent entry, and a
+			// full-tag-keyed probe never collapses.
+			continue
+		}
+		known := make(map[string]bool, len(entry))
+		for _, tag := range entry {
+			known[tag] = true
+		}
+		declared := append([]string{}, def.MultiInstanceLabels...)
+		for _, m := range def.Metrics {
+			declared = append(declared, m.MultiInstanceLabels...)
+		}
+		var missing []string
+		seen := map[string]bool{}
+		for _, label := range declared {
+			if label == "" || known[label] || seen[label] {
+				continue
+			}
+			seen[label] = true
+			missing = append(missing, label)
+		}
+		if len(missing) == 0 {
+			continue
+		}
+		t.Errorf("probe %q splits its series on %v, which DiscriminantTagsRegistry does not list: "+
+			"the cache keys on the registered tags alone, so every value of those labels lands on "+
+			"one slot and all but the last is lost on the PRTG, Nagios and Web UI pull sinks. "+
+			"Register them in http_cache.go, with the reason beside them.", def.ProbeName, missing)
+	}
+}

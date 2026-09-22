@@ -83,3 +83,54 @@ func TestDiscoveryItemsWithoutADefinitionDiscoverTheProbeOnly(t *testing.T) {
 		t.Errorf("items = %+v", items)
 	}
 }
+
+// A probe that publishes both an aggregate and one series per instance
+// must not have its aggregate discovered as an instance: the item it
+// creates is named with empty parentheses, which reads as a defect.
+// Seen on the bench, where the Azure probe publishes its own totals
+// beside one set per application.
+func TestDiscoverySkipsTheAggregateSeries(t *testing.T) {
+	defs := acaDefs{}
+	metrics := []otelmapper.CacheMetric{
+		{ProbeName: "aca", ProbeType: "azure_container_apps", MetricName: "azure_container_apps_up",
+			Tags: map[string]string{"azure_app": "oltp"}},
+		{ProbeName: "aca", ProbeType: "azure_container_apps", MetricName: "azure_container_apps_up",
+			Tags: map[string]string{"azure_app": "billing"}},
+		// L'agregat du collecteur : aucune application.
+		{ProbeName: "aca", ProbeType: "azure_container_apps", MetricName: "azure_container_apps_up",
+			Tags: map[string]string{}},
+	}
+	items := discoveryItems("senhub", defs, metrics)
+	if len(items) != 1 {
+		t.Fatalf("items = %d, want one discovery rule", len(items))
+	}
+	var rows []map[string]string
+	if err := json.Unmarshal([]byte(items[0].Value), &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("instances = %v, want only the two applications", rows)
+	}
+	for _, r := range rows {
+		if r["{#AZURE_APP}"] == "" {
+			t.Errorf("an instance with no application was discovered: %v", r)
+		}
+	}
+}
+
+// acaDefs is a probe that publishes one series per application beside
+// its own aggregate.
+type acaDefs struct{}
+
+func (acaDefs) GetProbeDefinition(probeType string) *transformers.ProbeDefinition {
+	if probeType != "azure_container_apps" {
+		return nil
+	}
+	return &transformers.ProbeDefinition{
+		ProbeName: "azure_container_apps",
+		Metrics: []transformers.MetricDefinition{{
+			Name: "azure_container_apps_up", MultiInstanceLabels: []string{"azure_app"},
+			Otel: &transformers.OtelMapping{Name: "senhub.azure_container_apps.up", Type: "gauge"},
+		}},
+	}
+}

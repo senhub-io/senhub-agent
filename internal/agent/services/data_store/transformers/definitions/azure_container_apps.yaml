@@ -15,6 +15,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "1 when Azure Resource Manager answered the last replica scan, else 0"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.up
       unit: "{status}"
@@ -26,9 +28,24 @@ metrics:
     unit: "#"
     category: "status"
     description: "Replicas of the active revisions seen at the last scan"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.replicas
       unit: "{replica}"
+      type: gauge
+
+  - name: "azure_container_apps_active_revisions"
+    channel: "active_revisions"
+    display_name: "Active Revisions"
+    unit: "#"
+    category: "status"
+    description: "Revisions marked active at the last scan; more than one means a rollout in flight or a traffic split left in place"
+    multi_instance_labels:
+      - "azure_app"
+    otel:
+      name: senhub.azure_container_apps.revisions.active
+      unit: "{revision}"
       type: gauge
 
   - name: "azure_container_apps_streams_open"
@@ -37,9 +54,46 @@ metrics:
     unit: "#"
     category: "status"
     description: "Console log streams currently attached (one per replica and container)"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.streams.open
       unit: "{stream}"
+      type: gauge
+
+  - name: "azure_container_apps_streams_wanted"
+    channel: "streams_wanted"
+    display_name: "Streams Wanted"
+    unit: "#"
+    category: "status"
+    description: "Streams the last scan decided to hold; the gap with the open ones is a replica known and not being read"
+    multi_instance_labels:
+      - "azure_app"
+    otel:
+      name: senhub.azure_container_apps.streams.wanted
+      unit: "{stream}"
+      type: gauge
+
+  - name: "azure_container_apps_stream_token_ttl"
+    channel: "stream_token_ttl"
+    display_name: "Stream Token TTL"
+    unit: "TimeSeconds"
+    category: "status"
+    description: "Seconds left on the console stream token; a renewal that stopped working is invisible until every stream dies at once"
+    otel:
+      name: senhub.azure_container_apps.stream.token.ttl
+      unit: "s"
+      type: gauge
+
+  - name: "azure_container_apps_records_last_age"
+    channel: "records_last_age"
+    display_name: "Seconds Since Last Record"
+    unit: "TimeSeconds"
+    category: "status"
+    description: "Seconds since a line last left this probe; an application that says nothing is silent, not necessarily broken, so read it against the open streams"
+    otel:
+      name: senhub.azure_container_apps.records.last_age
+      unit: "s"
       type: gauge
 
   - name: "azure_container_apps_arm_reads_remaining"
@@ -75,6 +129,17 @@ metrics:
       unit: "{record}"
       type: counter
 
+  - name: "azure_container_apps_records_unparsed"
+    channel: "records_unparsed"
+    display_name: "Records Unparsed"
+    unit: "#"
+    category: "status"
+    description: "Cumulative lines the declared parser could not read; a parser declared wrong loses every line and nothing else says so"
+    otel:
+      name: senhub.azure_container_apps.records_unparsed
+      unit: "{record}"
+      type: counter
+
   - name: "azure_container_apps_stream_reconnects"
     channel: "stream_reconnects"
     display_name: "Stream Reconnects"
@@ -85,3 +150,29 @@ metrics:
       name: senhub.azure_container_apps.stream.reconnects
       unit: "{reconnect}"
       type: counter
+
+  - name: "azure_container_apps_attach_throttled"
+    channel: "attach_throttled"
+    display_name: "Attaches Throttled"
+    unit: "#"
+    category: "status"
+    description: "Cumulative attaches the stream endpoint refused for rate; counted apart from the reconnects, which climb on their own since Azure cuts every stream about every ten minutes"
+    otel:
+      name: senhub.azure_container_apps.stream.attach_throttled
+      unit: "{attach}"
+      type: counter
+
+  - name: "azure_container_apps_scan_failures"
+    channel: "scan_failures_{reason}"
+    display_name: "Scan Failures {reason}"
+    unit: "#"
+    category: "status"
+    description: "Cumulative replica scans Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable. Reachability alone reads the same for a wrong secret, a deleted application and a control plane pushing back"
+    multi_instance_labels:
+      - "reason"
+    otel:
+      name: senhub.azure_container_apps.scan.failures
+      unit: "{scan}"
+      type: counter
+    tag_to_attribute:
+      reason: reason

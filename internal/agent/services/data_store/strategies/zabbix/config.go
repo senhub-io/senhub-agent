@@ -45,11 +45,59 @@ type TLSConfig struct {
 	InsecureSkipVerify bool
 }
 
+// parseServers reads the 'server' parameter, which holds one address or
+// several separated by commas. Several is how a proxy group is named:
+// any member answers, and the one that does redirects the agent to
+// whichever member currently holds this host.
+func parseServers(raw string) ([]string, error) {
+	var out []string
+	seen := make(map[string]bool)
+	for _, part := range strings.Split(raw, ",") {
+		addr := strings.TrimSpace(part)
+		if addr == "" {
+			continue
+		}
+		if _, _, splitErr := net.SplitHostPort(addr); splitErr != nil {
+			if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
+				return nil, fmt.Errorf("zabbix: 'server' %q is not host:port", addr)
+			}
+			addr = net.JoinHostPort(strings.Trim(addr, "[]"), defaultPort)
+		}
+		if seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		out = append(out, addr)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("zabbix: 'server' is required (host:port of the Zabbix server or proxy; several separated by commas name a proxy group)")
+	}
+	return out, nil
+}
+
+// addresses lists the server addresses, tolerating a Config assembled by
+// hand with only Server set.
+func (c Config) addresses() []string {
+	if len(c.Servers) > 0 {
+		return c.Servers
+	}
+	if c.Server != "" {
+		return []string{c.Server}
+	}
+	return nil
+}
+
 // Config is the parsed strategy configuration.
 type Config struct {
-	// Server is the Zabbix server or proxy, host:port; 10051 when the
-	// port is omitted.
+	// Server is the first address of Servers, kept for the messages and
+	// for the TLS name when the operator pinned neither.
 	Server string
+	// Servers is every address the agent may talk to, in order. A proxy
+	// group is written as several addresses separated by commas, the way
+	// Zabbix's own agent takes several ServerActive entries: the agent
+	// talks to the first that answers, and the group redirects it to
+	// whichever member currently holds this host.
+	Servers []string
 	// Hostname is the name this host registers under. Defaults to the
 	// machine's host name.
 	Hostname string
@@ -83,6 +131,31 @@ type PassiveConfig struct {
 	// Allow lists the addresses (IP or CIDR) allowed to poll. Empty
 	// means the addresses the configured server resolves to.
 	Allow []string
+	// Advertise is the address the server should poll, sent with the
+	// registration request so autoregistration writes it on the agent
+	// interface. Empty leaves Zabbix to use the address the packets came
+	// from, which is wrong behind NAT: what the server sees is the
+	// translation, not where the agent can be reached.
+	Advertise string
+	// TLS encrypts what the server polls. The outbound connection and
+	// this one are configured apart because they are opposite roles:
+	// there the agent checks a server, here it presents itself to one.
+	TLS PassiveTLSConfig
+}
+
+// PassiveTLSConfig is certificate encryption on the polled port. The
+// agent presents CertFile and, when CAFile names an authority, requires
+// the poller to present a certificate that authority signed, which is
+// what stops anyone who can reach the port from reading the host's
+// measurements.
+//
+// Zabbix also offers pre-shared keys here, which Go's crypto/tls cannot
+// do; see the note on the outbound TLSConfig.
+type PassiveTLSConfig struct {
+	Enabled  bool
+	CertFile string
+	KeyFile  string
+	CAFile   string
 }
 
 const (
@@ -108,18 +181,13 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 		KeyPrefix:         defaultKeyPrefix,
 	}
 
-	server, _ := params["server"].(string)
-	server = strings.TrimSpace(server)
-	if server == "" {
-		return cfg, fmt.Errorf("zabbix: 'server' is required (host:port of the Zabbix server or proxy)")
+	raw, _ := params["server"].(string)
+	servers, serverErr := parseServers(raw)
+	if serverErr != nil {
+		return cfg, serverErr
 	}
-	if _, _, splitErr := net.SplitHostPort(server); splitErr != nil {
-		if strings.Contains(server, ":") && !strings.HasPrefix(server, "[") {
-			return cfg, fmt.Errorf("zabbix: 'server' %q is not host:port", server)
-		}
-		server = net.JoinHostPort(strings.Trim(server, "[]"), defaultPort)
-	}
-	cfg.Server = server
+	cfg.Servers = servers
+	cfg.Server = servers[0]
 
 	if v, ok := params["hostname"]; ok {
 		s, isStr := v.(string)
@@ -242,6 +310,60 @@ func parsePassive(block map[string]interface{}, cfg PassiveConfig) (PassiveConfi
 			}
 			cfg.Allow = append(cfg.Allow, s)
 		}
+	}
+	if v, ok := block["advertise"]; ok {
+		str, isStr := v.(string)
+		if !isStr || strings.TrimSpace(str) == "" {
+			return cfg, fmt.Errorf("zabbix: 'passive.advertise' must be an address or a name the server can reach")
+		}
+		cfg.Advertise = strings.TrimSpace(str)
+	}
+	if v, ok := block["tls"]; ok {
+		sub, isMap := v.(map[string]interface{})
+		if !isMap {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls' must be a block")
+		}
+		tlsCfg, err := parsePassiveTLS(sub)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.TLS = tlsCfg
+	}
+	return cfg, nil
+}
+
+func parsePassiveTLS(block map[string]interface{}) (PassiveTLSConfig, error) {
+	var cfg PassiveTLSConfig
+	if v, ok := block["enabled"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls.enabled' must be true or false")
+		}
+		cfg.Enabled = b
+	}
+	for key, dest := range map[string]*string{
+		"cert_file": &cfg.CertFile,
+		"key_file":  &cfg.KeyFile,
+		"ca_file":   &cfg.CAFile,
+	} {
+		v, ok := block[key]
+		if !ok {
+			continue
+		}
+		s, isStr := v.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls.%s' must be a path", key)
+		}
+		*dest = strings.TrimSpace(s)
+	}
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+	// Refuse at load rather than at the first poll: a listener that
+	// starts without the certificate it was told to present would serve
+	// in clear, which is the opposite of what was asked for.
+	if cfg.CertFile == "" || cfg.KeyFile == "" {
+		return cfg, fmt.Errorf("zabbix: 'passive.tls' needs both 'cert_file' and 'key_file' to encrypt the polled port")
 	}
 	return cfg, nil
 }

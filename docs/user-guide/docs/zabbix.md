@@ -2,8 +2,9 @@
 
 !!! warning "Preview"
     The Zabbix output is being built during the 0.6.0 cycle and is not
-    supported yet. This page documents the parameters the agent reads;
-    the templates and the discovery rules are still to come.
+    supported yet. It is proven against Zabbix 7.0 and 8.0 on a Linux
+    and a Windows host, templates and discovery included, but it has not
+    run long enough anywhere to be called supported.
 
 The `zabbix` output makes the agent a native **Zabbix active agent**: it
 connects out to a Zabbix server or proxy on port 10051, registers the host
@@ -35,9 +36,9 @@ zabbix:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `server` | required | Zabbix server or proxy, `host:port`; `10051` when the port is omitted. |
+| `server` | required | Zabbix server or proxy, `host:port`; `10051` when the port is omitted. Several addresses separated by commas name a proxy group (see below). |
 | `hostname` | machine host name | Name this host registers under. |
-| `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. Limited to 2034 bytes by Zabbix. |
+| `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. The agent appends its operating system, so `senhub-agent linux`, which is how the per-platform actions tell hosts apart. Limited to 2034 bytes by Zabbix. |
 | `interval` | `60s` | Push cadence of the collected values. |
 | `refresh_interval` | `120s` | How often the item list is asked again. |
 | `heartbeat_interval` | `60s` | Heartbeat cadence; the server declares the host unavailable after twice that. |
@@ -47,6 +48,10 @@ zabbix:
 | `passive.bind_address` | `0.0.0.0` | Address the passive listener binds to. |
 | `passive.port` | `10050` | Port the passive listener binds to; sent to the server so autoregistration creates the agent interface on it. |
 | `passive.allow` | server addresses | Addresses or CIDR ranges allowed to poll the passive port. |
+| `passive.advertise` | source address | Address or name the server should poll, sent with the registration. |
+| `passive.tls.enabled` | `false` | Encrypt what the server polls. Needs `cert_file` and `key_file`. |
+| `passive.tls.cert_file`, `passive.tls.key_file` | | Certificate the agent presents to whoever polls it, and its key. |
+| `passive.tls.ca_file` | | Authority that signed the server's certificate. When set, a poller must present one it signed. |
 | `tls.enabled` | `false` | Encrypt the connection with TLS (certificate). |
 | `tls.ca_file` | | CA certificate that signed the server's certificate. |
 | `tls.cert_file`, `tls.key_file` | | Client certificate and key, both or none. |
@@ -69,22 +74,93 @@ Every series is sent under a key built from the probe's definition:
 The metric is the OTel name of the series (`system.cpu.utilization`,
 `senhub.veeam.job.status`), so it is called the same thing here, on the
 Prometheus endpoint and on the OTLP output. The dimensions are the
-metric's `multi_instance_labels`, in the order the definition lists them.
+metric's `multi_instance_labels`, in the order the definition lists them;
+a metric that names its own replaces the probe's rather than adding to
+them, so a Windows drive metric carries the drive letter alone and not
+the device and mount point it does not have.
+
 The static attributes are the values of the metric's `otel.attributes`,
 in attribute-key order: they tell apart the internal metrics that share
 one OTel name, so on a probe named `memory` the used memory is
 `senhub.system.memory.usage[memory,used]` and the free memory
 `senhub.system.memory.usage[memory,free]`, while a filesystem series
 carries its device and mount point first:
-`senhub.system.filesystem.usage[logicaldisk,/dev/sda1,/,,used]` (an
-empty dimension stays empty). A metric whose OTel name already starts
-with the prefix is not prefixed twice. Values follow the OTel unit (a
+`senhub.system.filesystem.usage[logicaldisk,/dev/sda1,/,used]`. A metric
+whose OTel name already starts with the prefix is not prefixed twice. Values follow the OTel unit (a
 percentage is a ratio, a duration is in seconds); an enum metric is sent
 as its raw code under one key.
 
 The server only receives the keys it asked for. Until the host exists on
 the server and a template gives it items, the log says so at start and
 nothing is pushed.
+
+### Metrics relayed from another sender
+
+An agent running the `otlp_receiver` probe relays what applications send
+it, under the names they chose. The agent describes none of those names,
+so their key is built from the metric name alone, and the emitter is
+carried beside the probe:
+
+```
+senhub.http.server.request.duration[relay,checkout]
+```
+
+where `checkout` is the sender's `service.name`. Without it two
+applications reporting the same metric name through one receiver would
+build the same key, and the second value would overwrite the first on an
+item that goes on looking healthy. `service.name` is used rather than
+the host name because a replaced container keeps the first and changes
+the second, which would create an item on every deployment. A sender
+that names itself neither keeps the shorter key.
+
+The matching discovery rule is `senhub.discovery[otlp_receiver,service.name]`,
+whose instances carry `{#PROBE}` and `{#SERVICE_NAME}`.
+
+#### The standard conventions arrive with a template
+
+Zabbix asks for nothing it was not told about, so a relayed metric had
+to be declared by hand. The usual application metrics no longer do: the
+agent ships a template for the OpenTelemetry semantic conventions —
+HTTP server, JVM and database client — generated from the same
+definitions as every other template.
+
+```bash
+senhub-agent zabbix setup --url https://zabbix.example.com --probe otlp_receiver
+```
+
+A host carrying it discovers the applications that relay through it, and
+their series become items keyed on the sender and on the attributes the
+convention defines:
+
+```
+senhub.http.server.request.duration.count[relay,checkout,GET,/cart,200]
+senhub.jvm.memory.used[relay,checkout,heap,G1 Eden Space]
+senhub.db.client.operation.duration.sum[relay,catalog,postgresql,SELECT]
+```
+
+Nothing is rewritten on the way. A relayed metric reaches every output
+through a pass-through that is consulted before any definition, so the
+name, the unit and the value stay the application's. The template only
+tells the server what to ask for.
+
+**A duration arrives as a distribution**, not as a number: a count, a
+sum and a bucket ladder. A sink that holds one value per item cannot
+hold that, so the agent sends the two facts it can, under keys that say
+which is which — `.count` and `.sum`. Sending the bare name would put a
+number of requests under a key that reads as a latency. The average over
+a period is the change in the sum divided by the change in the count,
+which is a calculated item in Zabbix.
+
+**A metric outside those conventions is not lost.** It keeps the shorter
+key its own name gives it, and an operator who wants it declares its
+item once. Adding a convention to the shipped set is a definition file,
+not code.
+
+One limit is worth knowing: items are created per dimension set, so an
+application exporting part of a set — one of the three JVM metrics keyed
+on the sender alone, say — gets items for the rest of it, which stay
+empty. A language SDK usually exports its standard set together, so the
+case is a runtime that exports part of a family. (#922)
 
 ## Templates and discovery
 
@@ -129,7 +205,52 @@ later.
 Only the addresses in `passive.allow` may poll; when the list is empty,
 the addresses the configured `server` resolves to. The port is sent with
 the registration request so the autoregistration action creates the
-agent interface on it. The passive port is not encrypted.
+agent interface on it.
+
+Zabbix records the address the packets came from, which behind NAT is
+the translation and not somewhere it can poll. `passive.advertise` names
+the address instead: a name creates a DNS interface, an address creates
+an IP one.
+
+```yaml
+zabbix:
+  passive:
+    enabled: true
+    port: 10050
+    advertise: "web-01.example.com"
+```
+
+### Encrypting the polled port
+
+The listener takes its own `tls` block, apart from the one on the
+outbound connection, because the two are opposite roles: there the agent
+checks a server, here it presents itself to one.
+
+```yaml
+zabbix:
+  server: "zabbix.example.com:10051"
+  passive:
+    enabled: true
+    port: 10050
+    tls:
+      enabled: true
+      cert_file: /etc/senhub/agent.crt
+      key_file: /etc/senhub/agent.key
+      ca_file: /etc/senhub/zabbix-ca.crt
+```
+
+With `cert_file` and `key_file` alone, the agent encrypts what it serves
+and anyone the allow list admits may read it. Add `ca_file` and the
+agent also demands a certificate from whoever polls, signed by that
+authority: the allow list says which addresses may connect, a
+certificate says who they are.
+
+On the Zabbix side, set the host's "Connections to host" to
+*Certificate*. A certificate that cannot be read stops the agent at
+start rather than leaving a listener that serves in clear.
+
+Pre-shared keys are not available here either, for the reason given
+above.
 
 ```yaml
 zabbix:
@@ -139,6 +260,109 @@ zabbix:
     port: 10050
     allow: ["10.20.0.0/24"]
 ```
+
+## The host's inventory fills itself
+
+Beside the measurements, the agent knows what the machine *is*: its
+operating system, its hardware, its serial number. Zabbix keeps those
+facts in host inventory, and the **SenHub Agent** template carries them
+as text items linked to the matching inventory fields.
+
+| Inventory field | What the agent reports |
+|---|---|
+| Name | The name the machine reports for itself |
+| OS, OS (Full), OS (Short) | Operating system, its full description, and its family |
+| Type | What the machine is: a server, a virtual machine, a laptop |
+| Hardware | Processor model |
+| Vendor, Model | What the firmware names |
+| Serial number A | Serial number from the firmware, which ties the host to an asset record |
+
+`zabbix setup` sets the autoregistration action to put new hosts in
+**automatic** inventory mode, without which the values arrive and fill
+nothing. On a host created by hand, set the mode yourself under
+**Inventory**.
+
+A fact the agent did not find is not sent at all, so its field keeps
+whatever it held rather than being blanked. On one Linux host, eight of
+the nine fill by themselves at the first collection.
+
+The relationships the agent also discovers, which machine a container
+runs on and which card is the same machine seen twice, have no home
+here: Zabbix has hosts, groups and tags, not a graph. They stay on the
+topology rail rather than being flattened into a text field.
+
+## One template set per platform
+
+A definition declares every metric its probe can produce, and a probe
+does not produce the same ones everywhere: a processor's deferred
+procedure calls exist on Windows and nowhere else. Declaring them all on
+every host leaves items that can never receive a value, which an
+operator reads as a defect rather than as an absence.
+
+So `zabbix template` writes one set per platform and names the files for
+it, `senhub-cpu-linux-7.0.yaml` beside `senhub-cpu-windows-7.0.yaml`.
+Use `--platform linux` or `--platform windows`; without it the template
+carries every metric of the definition, which is what you want when you
+generate for reading rather than for import.
+
+Nothing has to be chosen per host. The agent appends its operating
+system to the host metadata it registers with, and `zabbix setup`
+creates one autoregistration action per platform matching on it, so a
+Linux host is linked to the Linux templates and a Windows host to the
+Windows ones by itself.
+
+Only the published platforms have an action. An agent built for macOS,
+which is a development target and not a release, registers as
+`... darwin`, matches nothing and waits for an autoregistration that
+never comes; the server logs `host [...] not found` and the agent says
+it is waiting. Add a condition for it by hand if you monitor one. A setup run on a server prepared by an earlier
+version disables the single action that version created, because Zabbix
+runs every matching action and leaving it would link both sets.
+
+## The agent's own items
+
+Beside the probe templates, `zabbix template` writes a small **SenHub
+Agent** template carrying `agent.ping`, `agent.version` and
+`agent.hostname`. Link it on every host: `agent.ping` is what turns the
+host's availability green, and the other two say which agent is running
+there. `zabbix setup` imports it and adds it to the autoregistration
+action by itself.
+
+It is a template of its own because Zabbix refuses two linked templates
+that declare the same key, and every probe template is linked beside the
+others. The three items are served on both rails, so they arrive whether
+the host is monitored actively or polled on the passive port.
+
+## Through a proxy
+
+Point `server` at the proxy instead of the server and nothing else
+changes: the agent registers through it, the server attaches the host to
+the proxy that relayed the registration, and the values travel the same
+way.
+
+```yaml
+zabbix:
+  server: "zabbix-proxy-paris.example.com:10051"
+```
+
+A **proxy group** needs every member listed, separated by commas, the way
+a classic agent takes several `ServerActive` entries:
+
+```yaml
+zabbix:
+  server: "proxy-a.example.com,proxy-b.example.com,proxy-c.example.com"
+```
+
+The agent talks to the first member that answers. When the host is held
+by another member, that member replies with a redirection and the agent
+moves to it for every request, the check list, the values and the
+heartbeat alike. If the member holding the host goes down, the agent
+forgets the redirection and asks the configured addresses again, which is
+how it learns where the group moved the host.
+
+With `passive.enabled` and no explicit `passive.allow`, every configured
+address is allowed to poll the agent, because the member polling today is
+not necessarily the one that polled yesterday.
 
 ## Autoregistration
 
