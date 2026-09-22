@@ -18,7 +18,8 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 - **[OTel semantic conventions](./otel/senhub-semantic-conventions.md)** - Cross-sink metric naming, attribute mapping, ratio/unit conversions
 - **[OTLP implementation plan](./otlp/IMPLEMENTATION-PLAN.md)** - Phase 0-5 design history for the OTLP/gRPC push strategy
 - **[Prometheus implementation plan](./prometheus/IMPLEMENTATION-PLAN.md)** - Phase history for the `/metrics` exposition endpoint
-- **[Zabbix integration audit](./zabbix/AUDIT-Phase0.md)** - Phase 0 spec-vs-code audit (implementation paused)
+- **[Zabbix integration study](./zabbix/INTEGRATION-STUDY.md)** - Protocol options and the native-active-agent decision
+- **[GLPI inventory study](./glpi/INTEGRATION-STUDY.md)** - Inventory as a second rail, what a projection fills, what is deferred
 - **Grafana catalog research** — kept in the private companion repo `senhub-io/senhub-internal-docs` (`grafana-research/`)
 
 ### Code Quality
