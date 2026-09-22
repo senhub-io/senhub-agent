@@ -109,6 +109,7 @@ func (c *linuxCollector) collectApt(ctx context.Context) (updatesStatus, error) 
 	}
 
 	status.rebootRequired = c.fileExists(rebootRequiredFile)
+	c.countInstalled(ctx, &status, "dpkg-query", "-f", ".\n", "-W")
 	return status, nil
 }
 
@@ -169,7 +170,37 @@ func (c *linuxCollector) collectDnf(ctx context.Context, tool string) (updatesSt
 	}
 
 	status.rebootRequired = c.dnfRebootRequired(ctx)
+	c.countInstalled(ctx, &status, "rpm", "-qa", "--qf", ".\n")
 	return status, nil
+}
+
+// countInstalled asks the backend how many packages it has. Both
+// commands are told to print one dot per package rather than its name,
+// which keeps the output a few kilobytes on a machine carrying thousands
+// of them. A backend that is absent or fails leaves the count unknown
+// rather than reporting zero: a machine with no packages does not exist,
+// and an alert on a sudden drop to zero would be the consequence.
+func (c *linuxCollector) countInstalled(ctx context.Context, status *updatesStatus, name string, args ...string) {
+	if !c.hasCommand(name) {
+		return
+	}
+	out, err := c.run(ctx, name, args...)
+	if err != nil {
+		c.logger.Warn().Err(err).Str("command", name).Msg("installed package count unavailable")
+		return
+	}
+	status.installed, status.installedKnown = countLines(string(out)), true
+}
+
+// countLines counts the non-empty lines of an output.
+func countLines(out string) int {
+	n := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // countAdvisoryLines counts advisory lines in `dnf -q updateinfo list`

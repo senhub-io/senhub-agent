@@ -56,17 +56,54 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 		instances map[string]map[string]string
 	}
 	rules := map[string]*rule{}
+	families := map[string]map[string]*variantFamily{}
 	for _, cm := range metrics {
 		var def *transformers.ProbeDefinition
 		if defs != nil {
 			def = defs.GetProbeDefinition(cm.ProbeType)
 		}
-		labels := dimensions(def, findMetric(def, cm.MetricName))
+		md := findMetric(def, cm.MetricName)
+		labels := relayDimensions(def, md, cm.Tags)
+
+		// A metric that belongs to a variant family is discovered under
+		// the family's own rule, carrying the attribute value this
+		// metric stands for. Only the members the host actually feeds
+		// reach here, which is the whole point: the generator declares
+		// one prototype keyed on the macro, and only the values sent
+		// become items.
+		var fam *variantFamily
+		if md != nil {
+			byMetric, ok := families[cm.ProbeType]
+			if !ok {
+				byMetric = familiesOf(def)
+				families[cm.ProbeType] = byMetric
+			}
+			fam = byMetric[md.Name]
+		}
+
 		key := discoveryKey(prefix, cm.ProbeType, labels)
+		if fam != nil {
+			key = variantRuleKey(prefix, cm.ProbeType, fam.otelName, labels)
+		}
 		r, ok := rules[key]
 		if !ok {
 			r = &rule{probeType: cm.ProbeType, labels: labels, instances: map[string]map[string]string{}}
 			rules[key] = r
+		}
+		// A series that carries none of the rule's labels is not an
+		// instance: it is the probe's own aggregate, published beside
+		// the per-instance ones. Discovering it creates an item whose
+		// name ends in empty parentheses, which an operator reads as a
+		// defect rather than as a total.
+		blank := false
+		for _, l := range labels {
+			if cm.Tags[l] == "" {
+				blank = true
+				break
+			}
+		}
+		if blank && len(labels) > 0 {
+			continue
 		}
 		entry := map[string]string{probeMacro: cm.ProbeName}
 		id := cm.ProbeName
@@ -74,6 +111,16 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 			v := cm.Tags[l]
 			entry[macroFor(l)] = v
 			id += "\x00" + v
+		}
+		if fam != nil {
+			macros := attrMacros(fam.labels, fam.attrKeys)
+			for i, v := range staticAttributeValues(md) {
+				if i >= len(macros) {
+					break
+				}
+				entry[macros[i]] = v
+				id += "\x00" + v
+			}
 		}
 		r.instances[id] = entry
 	}

@@ -25,6 +25,12 @@ type unixCollector struct {
 	// elapsed wall time as a 0-100 % value per mode.
 	lastTimes     *cpu.TimesStat
 	lastTimestamp time.Time
+	// lastKernel holds the previous reading of the kernel's cumulative
+	// counters, which are rates once divided by the elapsed time. The
+	// definitions declare them in 1/s, the way the Windows collector
+	// already reports them.
+	lastKernel   *kernelCounters
+	lastKernelAt time.Time
 }
 
 func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
@@ -65,6 +71,18 @@ func (u *unixCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, er
 	// dashboards' "running processes" panel à la node_exporter)
 	if err := u.collectProcessesCount(&dataPoints, timestamp, baseTags); err != nil {
 		u.logger.Warn().Err(err).Msg("Could not collect process count")
+	}
+
+	// The processor count, which a native Zabbix agent reports as
+	// system.cpu.num and every capacity chart divides by.
+	if err := u.collectCPUCount(&dataPoints, timestamp, baseTags); err != nil {
+		u.logger.Warn().Err(err).Msg("Could not collect the processor count")
+	}
+
+	// Interrupts, context switches and runnable processes, which the
+	// kernel exposes as cumulative counters. Absent outside Linux.
+	if err := u.collectKernelCounters(&dataPoints, timestamp, baseTags); err != nil {
+		u.logger.Debug().Err(err).Msg("Kernel counters not available on this OS")
 	}
 
 	// If we couldn't collect any metrics at all, return an error
@@ -112,14 +130,33 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 	// so the math matches what `top` / `mpstat` report and stays
 	// consistent across single-CPU containers, virtualized environments
 	// and physical multi-core hosts.
-	totalDelta := (curr.User - prev.User) +
+	// The kernel counts guest time inside user time, and guest nice
+	// inside nice, so reporting both without subtracting would count
+	// those ticks twice and push every other mode down. mpstat and
+	// node_exporter do the same subtraction. A source that has already
+	// subtracted them would drive the result negative, so the delta is
+	// only taken when it stays positive.
+	guestDelta := curr.Guest - prev.Guest
+	guestNiceDelta := curr.GuestNice - prev.GuestNice
+	userDelta := curr.User - prev.User
+	niceDelta := curr.Nice - prev.Nice
+	if userDelta-guestDelta >= 0 {
+		userDelta -= guestDelta
+	}
+	if niceDelta-guestNiceDelta >= 0 {
+		niceDelta -= guestNiceDelta
+	}
+
+	totalDelta := userDelta +
 		(curr.System - prev.System) +
 		(curr.Idle - prev.Idle) +
-		(curr.Nice - prev.Nice) +
+		niceDelta +
 		(curr.Iowait - prev.Iowait) +
 		(curr.Irq - prev.Irq) +
 		(curr.Softirq - prev.Softirq) +
-		(curr.Steal - prev.Steal)
+		(curr.Steal - prev.Steal) +
+		guestDelta +
+		guestNiceDelta
 
 	u.lastTimes = &curr
 	u.lastTimestamp = timestamp
@@ -146,14 +183,16 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 		name  string
 		value float64
 	}{
-		{"cpu_user", pct(curr.User - prev.User)},
+		{"cpu_user", pct(userDelta)},
 		{"cpu_system", pct(curr.System - prev.System)},
 		{"cpu_idle", pct(curr.Idle - prev.Idle)},
-		{"cpu_nice", pct(curr.Nice - prev.Nice)},
+		{"cpu_nice", pct(niceDelta)},
 		{"cpu_iowait", pct(curr.Iowait - prev.Iowait)},
 		{"cpu_irq", pct(curr.Irq - prev.Irq)},
 		{"cpu_softirq", pct(curr.Softirq - prev.Softirq)},
 		{"cpu_steal", pct(curr.Steal - prev.Steal)},
+		{"cpu_guest", pct(guestDelta)},
+		{"cpu_guest_nice", pct(guestNiceDelta)},
 	}
 
 	for _, metric := range metrics {
@@ -260,5 +299,84 @@ func (u *unixCollector) collectProcessesCount(dataPoints *[]data_store.DataPoint
 }
 
 func (u *unixCollector) Close() error {
+	return nil
+}
+
+// collectCPUCount emits the number of logical processors. Mapped to the
+// OTel system.cpu.logical.count gauge.
+func (u *unixCollector) collectCPUCount(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
+	n, err := cpu.Counts(true)
+	if err != nil {
+		return fmt.Errorf("error getting the processor count: %w", err)
+	}
+	if n <= 0 {
+		return fmt.Errorf("the processor count came back as %d", n)
+	}
+	*dataPoints = append(*dataPoints, data_store.DataPoint{
+		Name:      "cpu_count",
+		Timestamp: timestamp,
+		Value:     float64(n),
+		Tags:      baseTags,
+	})
+	return nil
+}
+
+// kernelCounters is one reading of the kernel's cumulative counters.
+type kernelCounters struct {
+	Interrupts      float64
+	ContextSwitches float64
+	ProcsRunning    float64
+}
+
+// collectKernelCounters turns the cumulative counters into the rates the
+// definitions declare, and emits the runnable process count as it is.
+// The first reading has nothing to subtract from and emits only the
+// gauge, the way the per-mode percentages warm up.
+func (u *unixCollector) collectKernelCounters(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
+	curr, err := readKernelCounters()
+	if err != nil {
+		return err
+	}
+	*dataPoints = append(*dataPoints, data_store.DataPoint{
+		Name:      "cpu_processes_running",
+		Timestamp: timestamp,
+		Value:     curr.ProcsRunning,
+		Tags:      baseTags,
+	})
+
+	prev, prevAt := u.lastKernel, u.lastKernelAt
+	u.lastKernel, u.lastKernelAt = curr, timestamp
+	if prev == nil {
+		return nil
+	}
+	elapsed := timestamp.Sub(prevAt).Seconds()
+	if elapsed <= 0 {
+		return nil
+	}
+	rate := func(now, before float64) (float64, bool) {
+		// A counter that went backwards was reset, by a reboot or by the
+		// container being replaced; skip the round rather than emit a
+		// negative rate.
+		if now < before {
+			return 0, false
+		}
+		return (now - before) / elapsed, true
+	}
+	for _, m := range []struct {
+		name        string
+		now, before float64
+	}{
+		{"cpu_interrupts", curr.Interrupts, prev.Interrupts},
+		{"cpu_context_switches", curr.ContextSwitches, prev.ContextSwitches},
+	} {
+		if v, ok := rate(m.now, m.before); ok {
+			*dataPoints = append(*dataPoints, data_store.DataPoint{
+				Name:      m.name,
+				Timestamp: timestamp,
+				Value:     v,
+				Tags:      baseTags,
+			})
+		}
+	}
 	return nil
 }

@@ -24,7 +24,49 @@ type fakeServer struct {
 	refuseInfo map[string]string
 	// compressReplies makes the server send zlib-compressed frames.
 	compressReplies bool
+	// redirectTo makes the server answer every request the way a member
+	// of a proxy group does: "failed", no data, and the address of the
+	// member that currently holds this host.
+	redirectTo  string
+	redirectRev int64
+	// configRevision is what the server states about the item list, and
+	// unchanged makes it answer the way a real one does when nothing
+	// moved: no data and no revision at all.
+	configRevision int64
+	unchanged      bool
 }
+
+func (s *fakeServer) setConfigRevision(rev int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.configRevision = rev
+}
+
+func (s *fakeServer) setUnchanged() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unchanged = true
+}
+
+func (s *fakeServer) setRedirect(addr string, rev int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.redirectTo, s.redirectRev = addr, rev
+}
+
+func (s *fakeServer) clearRedirect() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.redirectTo, s.redirectRev = "", 0
+}
+
+func (s *fakeServer) requestCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.requests)
+}
+
+func (s *fakeServer) close() { s.ln.Close() }
 
 func newFakeServer(t *testing.T) *fakeServer {
 	t.Helper()
@@ -91,14 +133,26 @@ func (s *fakeServer) handle(conn net.Conn) {
 	}
 	items := s.items
 	compress := s.compressReplies
+	redirectTo, redirectRev := s.redirectTo, s.redirectRev
+	configRevision, unchanged := s.configRevision, s.unchanged
 	s.mu.Unlock()
 
 	var reply map[string]interface{}
 	switch {
+	case redirectTo != "":
+		reply = map[string]interface{}{
+			"response": "failed",
+			"redirect": map[string]interface{}{"address": redirectTo, "revision": redirectRev},
+		}
 	case refused:
 		reply = map[string]interface{}{"response": "failed", "info": info}
+	case kind == "active checks" && unchanged:
+		reply = map[string]interface{}{"response": "success"}
 	case kind == "active checks":
 		reply = map[string]interface{}{"response": "success", "data": items}
+		if configRevision != 0 {
+			reply["config_revision"] = configRevision
+		}
 	case kind == "agent data":
 		data, _ := req["data"].([]interface{})
 		reply = map[string]interface{}{"response": "success", "info": summary(len(data))}

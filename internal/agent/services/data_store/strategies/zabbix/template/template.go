@@ -36,6 +36,11 @@ type Options struct {
 	Version string
 	// ItemDelay is the update interval of the prototypes; DiscoveryDelay that of the rules.
 	ItemDelay, DiscoveryDelay string
+	// Platform, when set, keeps only the metrics that platform can
+	// produce. Without it the template declares every metric of the
+	// definition, including the ones that can never receive a value on
+	// the host it is linked to.
+	Platform string
 	// Group is the template group the template is filed under.
 	Group string
 	// Lookups provides the value maps; nil means none.
@@ -84,8 +89,29 @@ type Template struct {
 	Name           string          `yaml:"name"`
 	Description    string          `yaml:"description,omitempty"`
 	Groups         []GroupRef      `yaml:"groups"`
+	Items          []Item          `yaml:"items,omitempty"`
 	DiscoveryRules []DiscoveryRule `yaml:"discovery_rules,omitempty"`
 	ValueMaps      []ValueMap      `yaml:"valuemaps,omitempty"`
+}
+
+// Item is a plain item, not discovered: the agent's own three, which
+// exist on every host whatever it collects.
+type Item struct {
+	UUID      string `yaml:"uuid"`
+	Name      string `yaml:"name"`
+	Type      string `yaml:"type"`
+	Key       string `yaml:"key"`
+	Delay     string `yaml:"delay"`
+	ValueType string `yaml:"value_type"`
+	// Trends is set to "0" on a text item, which keeps no trends and
+	// which Zabbix refuses to store them for.
+	Trends      string `yaml:"trends,omitempty"`
+	Description string `yaml:"description,omitempty"`
+	// InventoryLink names the host inventory field this item fills. It
+	// is what turns a collected fact into the host's inventory without
+	// anyone typing it, and it only takes effect on a host whose
+	// inventory mode is automatic.
+	InventoryLink string `yaml:"inventory_link,omitempty"`
 }
 
 type GroupRef struct {
@@ -135,11 +161,20 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	if def.ProbeName == "" {
 		return Export{}, fmt.Errorf("definition without a probe_name")
 	}
+	def = forPlatform(def, opts.Platform)
 	name := "SenHub " + firstNonEmpty(def.FriendlyName, def.ProbeName)
+	visible := name
+	if opts.Platform != "" {
+		// Zabbix refuses parentheses in a template's technical name, so
+		// the platform is appended plainly there and parenthesised in
+		// the name an operator reads.
+		name += " " + opts.Platform
+		visible += " (" + opts.Platform + ")"
+	}
 	tpl := Template{
 		UUID:        uid("template", name),
 		Template:    name,
-		Name:        name,
+		Name:        visible,
 		Description: fmt.Sprintf("Generated from the SenHub Agent definition of the %s probe; the agent's zabbix output sends these keys.", def.ProbeName),
 		Groups:      []GroupRef{{Name: opts.Group}},
 	}
@@ -148,26 +183,14 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	var order []string
 	valueMaps := map[string]ValueMap{}
 	seenKeys := map[string]bool{}
+	_, familyOf := variantFamilies(def)
 
-	for _, m := range def.Metrics {
-		if m.Otel != nil && m.Otel.Skip {
-			continue
-		}
-		labels := dimensions(def, m)
-		// Two internal metrics can resolve to one key (same OTel name,
-		// same attributes, same dimensions); the agent sends that key
-		// once, so the template declares it once.
-		key := prototypeKey(opts.Prefix, m, labels)
-		if seenKeys[key] {
-			continue
-		}
-		seenKeys[key] = true
-		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
+	ensureRule := func(ruleKey, ruleTitle string) *DiscoveryRule {
 		rule, ok := rules[ruleKey]
 		if !ok {
 			rule = &DiscoveryRule{
 				UUID:        uid("rule", name, ruleKey),
-				Name:        ruleName(def.ProbeName, labels),
+				Name:        ruleTitle,
 				Type:        "ZABBIX_ACTIVE",
 				Key:         ruleKey,
 				Delay:       opts.DiscoveryDelay,
@@ -176,6 +199,76 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 			rules[ruleKey] = rule
 			order = append(order, ruleKey)
 		}
+		return rule
+	}
+
+	for _, m := range def.Metrics {
+		if m.Otel != nil && m.Otel.Skip {
+			continue
+		}
+		labels := dimensions(def, m)
+
+		// A member of a variant family is declared once for the whole
+		// family, under the rule that discovers which of its values the
+		// host actually feeds.
+		if f := familyOf[m.Name]; f != nil {
+			key := variantPrototypeKey(opts.Prefix, f)
+			if seenKeys[key] {
+				continue
+			}
+			seenKeys[key] = true
+			ruleKey := variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
+			rule := ensureRule(ruleKey, variantRuleName(def.ProbeName, f))
+			proto := ItemPrototype{
+				Name:        variantPrototypeName(f),
+				Type:        "ZABBIX_ACTIVE",
+				Key:         key,
+				Delay:       opts.ItemDelay,
+				ValueType:   "FLOAT",
+				Units:       units(m),
+				Description: m.Description,
+			}
+			proto.UUID = uid("item", name, proto.Key)
+			rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+			continue
+		}
+
+		// Two internal metrics can resolve to one key (same OTel name,
+		// same attributes, same dimensions); the agent sends that key
+		// once, so the template declares it once.
+		// A histogram is declared as the two facts a scalar sink can
+		// hold, each under its own key.
+		if isHistogram(m) {
+			ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
+			rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
+			for _, part := range HistogramParts {
+				key := prototypeKeyPart(opts.Prefix, m, labels, part)
+				if seenKeys[key] {
+					continue
+				}
+				seenKeys[key] = true
+				proto := ItemPrototype{
+					Name:        prototypeName(m, labels) + " (" + part + ")",
+					Type:        "ZABBIX_ACTIVE",
+					Key:         key,
+					Delay:       opts.ItemDelay,
+					ValueType:   "FLOAT",
+					Units:       histogramUnits(m, part),
+					Description: m.Description,
+				}
+				proto.UUID = uid("item", name, proto.Key)
+				rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+			}
+			continue
+		}
+
+		key := prototypeKey(opts.Prefix, m, labels)
+		if seenKeys[key] {
+			continue
+		}
+		seenKeys[key] = true
+		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
+		rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
 		proto := ItemPrototype{
 			Name:        prototypeName(m, labels),
 			Type:        "ZABBIX_ACTIVE",
@@ -266,10 +359,19 @@ func macroFor(label string) string {
 	return "{#" + b.String() + "}"
 }
 
+// dimensions mirrors the output's keys.go: a metric that names its own
+// labels replaces the definition's rather than adding to them.
 func dimensions(def transformers.ProbeDefinition, m transformers.MetricDefinition) []string {
-	var out []string
+	// nil means "not declared, inherit the probe's"; an empty list means
+	// "this metric has no dimensions", which is how a machine-wide value
+	// lives on a probe whose other metrics are per instance.
+	source := m.MultiInstanceLabels
+	if source == nil {
+		source = def.MultiInstanceLabels
+	}
+	out := make([]string, 0, len(source))
 	seen := map[string]bool{}
-	for _, l := range append(append([]string{}, def.MultiInstanceLabels...), m.MultiInstanceLabels...) {
+	for _, l := range source {
 		if l == "" || seen[l] {
 			continue
 		}
@@ -279,10 +381,33 @@ func dimensions(def transformers.ProbeDefinition, m transformers.MetricDefinitio
 	return out
 }
 
+// HistogramParts are the suffixes a histogram is declared under. It
+// mirrors the list the output sends, in the same order; the two are
+// guarded by the test that checks the generated prototypes name the keys
+// the agent sends.
+var HistogramParts = []string{"count", "sum"}
+
+// isHistogram says whether a metric arrives as a distribution rather
+// than a scalar. What a scalar sink can hold of one is a count and a
+// sum, under keys that say so — the metric's own name would put a
+// number of observations under a key that reads as a duration.
+func isHistogram(m transformers.MetricDefinition) bool {
+	return m.Otel != nil && m.Otel.Distribution
+}
+
 func prototypeKey(prefix string, m transformers.MetricDefinition, labels []string) string {
+	return prototypeKeyPart(prefix, m, labels, "")
+}
+
+// prototypeKeyPart builds the key of one part of a metric: the metric
+// itself when part is empty, one of its histogram parts otherwise.
+func prototypeKeyPart(prefix string, m transformers.MetricDefinition, labels []string, part string) string {
 	name := m.Name
 	if m.Otel != nil && m.Otel.Name != "" {
 		name = m.Otel.Name
+	}
+	if part != "" {
+		name += "." + part
 	}
 	params := []string{"{#PROBE}"}
 	for _, l := range labels {
@@ -327,6 +452,18 @@ func prototypeName(m transformers.MetricDefinition, labels []string) string {
 		if !strings.Contains(strings.ToLower(display), strings.ToLower(parts[0])) {
 			display += " (" + strings.Join(parts, ", ") + ")"
 		}
+	}
+	// A metric discovered per instance must say which instance, or every
+	// prototype under the rule produces items with the same name and an
+	// operator opening the host sees identical lines they cannot tell
+	// apart. The display name only carries it when the definition wrote a
+	// placeholder, which most do not.
+	if len(labels) > 0 && !strings.Contains(display, "{#") {
+		macros := make([]string, 0, len(labels))
+		for _, l := range labels {
+			macros = append(macros, macroFor(l))
+		}
+		display += " (" + strings.Join(macros, ", ") + ")"
 	}
 	return "{#PROBE}: " + display
 }
@@ -390,4 +527,73 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// BaseName is the template carrying the agent's own items. It is a
+// template of its own rather than a copy in each probe template,
+// because Zabbix refuses two linked templates declaring one key.
+const BaseName = "SenHub Agent"
+
+// Base builds that template. Without it a host monitored actively has
+// no availability line, which a native agent gives for free and is the
+// first thing an operator looks at.
+func Base(opts Options) Export {
+	opts = opts.withDefaults()
+	tpl := Template{
+		UUID:        uid("template", BaseName),
+		Template:    BaseName,
+		Name:        BaseName,
+		Description: "The SenHub Agent's own items. Link it beside the probe templates; it is what turns the host's availability green.",
+		Groups:      []GroupRef{{Name: opts.Group}},
+		Items: []Item{
+			{
+				Name: "SenHub Agent ping", Type: "ZABBIX_ACTIVE", Key: "agent.ping",
+				Delay: opts.ItemDelay, ValueType: "UNSIGNED",
+				Description: "1 while the agent is pushing; the host is unavailable when it stops.",
+			},
+			{
+				Name: "SenHub Agent version", Type: "ZABBIX_ACTIVE", Key: "agent.version",
+				Delay: "1h", ValueType: "CHAR",
+				Description: "Version of the agent running on this host.",
+			},
+			{
+				Name: "SenHub Agent host name", Type: "ZABBIX_ACTIVE", Key: "agent.hostname",
+				Delay: "1h", ValueType: "CHAR",
+				Description: "Name the agent registers under.",
+			},
+		},
+	}
+	// The nameplate, which Zabbix files in host inventory rather than in
+	// a graph. The values change when the machine does, so once an hour
+	// is generous, and a text item keeps no trends.
+	for _, f := range NameplateFields {
+		tpl.Items = append(tpl.Items, Item{
+			Name:          "SenHub " + f.Name,
+			Type:          "ZABBIX_ACTIVE",
+			Key:           buildKey(opts.Prefix, f.Key, nil),
+			Delay:         "1h",
+			ValueType:     "CHAR",
+			Trends:        "0",
+			Description:   f.Description,
+			InventoryLink: f.Inventory,
+		})
+	}
+	for i := range tpl.Items {
+		tpl.Items[i].UUID = uid("item", BaseName, tpl.Items[i].Key)
+	}
+	return Export{ZabbixExport: ExportBody{
+		Version:        opts.Version,
+		TemplateGroups: []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}},
+		Templates:      []Template{tpl},
+	}}
+}
+
+// histogramUnits gives each part of a histogram the unit it carries: a
+// count is a number of observations whatever the metric measures, and
+// only the sum is in the metric's own unit.
+func histogramUnits(m transformers.MetricDefinition, part string) string {
+	if part == HistogramParts[0] {
+		return ""
+	}
+	return units(m)
 }

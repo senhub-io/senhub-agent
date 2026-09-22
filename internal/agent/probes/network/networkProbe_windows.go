@@ -33,6 +33,13 @@ type pathInfo struct {
 }
 
 var networkCounterPaths = map[string]MetricDefinition{
+	// The negotiated speed of the link, which the Unix collector reads
+	// from sysfs. Windows publishes it as a counter, in bits per second
+	// already, so no conversion is needed.
+	"interface_speed": {
+		path:     "\\Network Interface\\Current Bandwidth",
+		instance: "*",
+	},
 	"bytes_sent": {
 		path:     "\\Network Interface\\Bytes Sent/sec",
 		instance: "*",
