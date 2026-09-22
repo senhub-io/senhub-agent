@@ -20,6 +20,7 @@ package hostsvc
 import (
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -31,13 +32,16 @@ import (
 
 const (
 	entityTypeServiceListener  = "service.listener"
+	entityTypeServiceInstance  = "service.instance"
 	entityTypeHost             = "host"
 	entityTypeNetworkInterface = "network.interface"
 	idKeyServiceEndpoint       = "service.endpoint"
+	idKeyServiceInstanceID     = "service.instance.id"
 	idKeyHost                  = "host.id"
 	idKeyInterfaceName         = "interface.name"
 	attrProcessName            = "process.executable.name"
 	attrProcessPID             = "process.pid"
+	attrServiceName            = "service.name"
 	attrTransport              = "network.transport"
 	attrListenAddress          = "listen.address"
 	attrPort                   = "port"
@@ -65,6 +69,7 @@ type Source struct {
 	enumerate   func() ([]listener, error)
 	connections func(string) ([]gnet.ConnectionStat, error) // nil → gnet.Connections
 	interfaces  func() (gnet.InterfaceStatList, error)      // nil → gnet.Interfaces; resolves bind IP → interface
+	selfPID     func() int32                                // the agent's own pid; its instance is the foundation's, not ours to mint
 	refresh     time.Duration
 
 	mu    sync.Mutex
@@ -76,7 +81,11 @@ type Source struct {
 // (gopsutil HostID) — the same id the host entity uses, so the listeners hang
 // off the same node.
 func New(hostID func() string) *Source {
-	s := &Source{hostID: hostID, refresh: defaultRefresh}
+	s := &Source{
+		hostID:  hostID,
+		refresh: defaultRefresh,
+		selfPID: func() int32 { return int32(os.Getpid()) },
+	}
 	s.enumerate = s.enumerateListeners
 	return s
 }
@@ -101,7 +110,11 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	obs := buildObservation(s.hostID(), ls, s.ipToIface()).WithScope(entity.ScopeHostSvc)
+	self := int32(0)
+	if s.selfPID != nil {
+		self = s.selfPID()
+	}
+	obs := buildObservation(s.hostID(), ls, s.ipToIface(), self).WithScope(entity.ScopeHostSvc)
 
 	s.mu.Lock()
 	s.cache = obs
@@ -114,14 +127,51 @@ func (s *Source) Observe() (entity.Observation, bool) {
 // attached either to the host interface it binds (listens_on, non-wildcard) or
 // to the host (runs_on, wildcard/interim). ipToIface resolves a bind IP to its
 // interface name.
-func buildObservation(hostID string, ls []listener, ipToIface map[string]string) entity.Observation {
+func buildObservation(hostID string, ls []listener, ipToIface map[string]string, selfPID int32) entity.Observation {
 	if hostID == "" || len(ls) == 0 {
 		return entity.Observation{}
 	}
 	hostKey := map[string]any{idKeyHost: hostID}
 
 	obs := entity.Observation{}
+	instances := map[string]bool{}
 	for _, l := range ls {
+		// What listens exists. The service.instance was minted by the
+		// dependency source alone, as the source of an outbound edge it
+		// had observed — so a server that listens without end but
+		// connects out in bursts had its instance withdrawn whenever two
+		// consecutive samples caught no established socket, and created
+		// again when traffic returned. A reverse proxy blinked nine
+		// times in sixty-three hours while it never stopped running.
+		//
+		// The listener inventory is exhaustive where that sampling is
+		// not: it reads the whole table of listening sockets, so an
+		// absence in it is a real absence. Existence therefore comes
+		// from here, and the dependency source keeps adding its edges
+		// onto the same node — both resolve the process name through
+		// the same call, so the identity is the same and the merge is
+		// idempotent.
+		//
+		// The agent's own listeners are skipped: the foundation detector
+		// owns the agent's service.instance, and minting <exe>@<host>
+		// beside it would duplicate the node (#494).
+		if l.Proc != "" && l.Pid != selfPID {
+			id := l.Proc + "@" + hostID
+			if !instances[id] {
+				instances[id] = true
+				instanceKey := map[string]any{idKeyServiceInstanceID: id}
+				obs.Entities = append(obs.Entities, entity.Entity{
+					Type: entityTypeServiceInstance, ID: instanceKey,
+					Attributes: map[string]any{attrServiceName: l.Proc},
+				})
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relRunsOn,
+					FromType: entityTypeServiceInstance, FromID: instanceKey,
+					ToType: entityTypeHost, ToID: hostKey,
+				})
+			}
+		}
+
 		endpoint := fmt.Sprintf("%s:%d/%s", hostID, l.Port, l.Transport)
 		listenerID := map[string]any{idKeyServiceEndpoint: endpoint}
 
