@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -138,7 +139,29 @@ func TestLocalConfiguration_CustomCertificates(t *testing.T) {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
 
-	// Verify configuration was loaded successfully
+	// Asserting the config is non-empty is what let #867 through: the
+	// flags were parsed, ignored, and the agent served the self-signed
+	// pair while the operator had supplied a CA-signed one. What matters
+	// is which paths the written fragment names.
+	fragment, err := os.ReadFile(filepath.Join(tempDir, "strategies.d", "00-http.yaml"))
+	if err != nil {
+		t.Fatalf("reading the generated http fragment: %v", err)
+	}
+	for _, want := range []string{certFile, keyFile} {
+		if !strings.Contains(string(fragment), want) {
+			t.Errorf("the generated fragment does not name %q:\n%s", want, fragment)
+		}
+	}
+	if strings.Contains(string(fragment), "agent-cert.pem") {
+		t.Error("the fragment still points at the self-signed certificate although a pair was supplied")
+	}
+
+	// And nothing self-signed is written beside it: files nothing reads
+	// suggest the agent serves them.
+	if _, statErr := os.Stat(filepath.Join(tempDir, "certs", "agent-cert.pem")); statErr == nil {
+		t.Error("a self-signed certificate was generated although the operator supplied one")
+	}
+
 	config := localConfig.GetConfiguration()
 	if len(config.StorageConfig) == 0 {
 		t.Error("Storage configuration should not be empty")
