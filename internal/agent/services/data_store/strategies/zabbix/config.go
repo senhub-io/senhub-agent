@@ -32,10 +32,16 @@ const (
 )
 
 // TLSConfig is certificate-based encryption for the outbound connection.
-// Zabbix also offers pre-shared keys, which Go's crypto/tls cannot do
-// (golang/go#6379): a host that must be encrypted uses a certificate, and
-// its autoregistration, which Zabbix only encrypts with PSK, stays in
-// clear or goes through a local proxy.
+//
+// Zabbix also offers pre-shared keys, which Go's standard TLS implements
+// only for session resumption, not as the external keys Zabbix uses
+// (golang/go#6379, and #903 for the scope of doing it by hand). So a host
+// that must be encrypted uses a certificate.
+//
+// Autoregistration is the one step with no certificate answer: measured
+// on 8.0.0, its setting takes "none", "PSK" or both and refuses anything
+// else. A site that requires PSK there has to create its hosts another
+// way; collection then runs encrypted with a certificate as usual.
 type TLSConfig struct {
 	Enabled            bool
 	CAFile             string
