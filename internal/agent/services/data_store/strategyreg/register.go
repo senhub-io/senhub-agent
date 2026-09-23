@@ -107,8 +107,15 @@ func init() {
 		"advertise", "allow", "bind_address", "ca_file", "cert_file", "enabled",
 		"heartbeat_interval", "host_metadata", "hostname",
 		"insecure_skip_verify", "interval", "key_file", "key_prefix", "passive",
-		"port", "refresh_interval", "server", "server_name", "timeout", "tls",
-	}, nil)
+		"port", "psk_file", "psk_identity", "refresh_interval", "server",
+		"server_name", "timeout", "tls",
+	}, map[string]string{
+		// The spellings a Zabbix agent configuration uses, so an
+		// operator transcribing zabbix_agentd.conf is told where the
+		// setting moved instead of having it ignored.
+		"tlspskidentity": "tls: { psk_identity: ... }",
+		"tlspskfile":     "tls: { psk_file: ... }",
+	})
 
 	// How to check a configuration without building anything, so
 	// `agent config check` refuses what the agent would refuse rather
