@@ -132,13 +132,23 @@ and `virtualmachines`, from `compute.vm`, `container` and `pod` — do
 not, and neither would any later use of relations.
 
 So an agent configured for GLPI alone would today produce a record with
-its identity and none of its topology. Two possible answers: lift the
-detector out of the OTLP strategy into the data store where every sink
-can see it, or give the inventory rail its own foundation detection.
-The first is the right shape and the larger change. It needs deciding
-before A.1 starts, not during — and the decision should keep the two
-notions apart rather than merge them, since one of them is already
-usable without the other.
+its identity and none of its topology. Tracked as **#932**.
+
+The change is smaller than that reads, because everything around the
+detector is already neutral. `entity.SubscribeEvents` keeps a
+copy-on-write slice of subscriber channels, so a second consumer costs
+nothing to add, and `model.go` states in its own header that the model
+carries no OTel SDK dependency — the OTLP strategy is a consumer of the
+entity events, not their owner. What is OTLP-bound is one constructor
+call, not the rail.
+
+Two possible answers: lift the detector out of the OTLP strategy into
+the data store where every sink can see it, or give the inventory rail
+its own foundation detection. The first is the right shape, and given
+the neutrality above it is the smaller change of the two rather than the
+larger. It needs deciding before A.1 starts, not during — and the
+decision should keep identity reading and foundation detection apart
+rather than merge them, since one is already usable without the other.
 
 ### Where the code goes, and what moves
 
@@ -410,7 +420,7 @@ not a record a server actually creates.
 - **Rail** — neutral inventory package, nameplate table moved out of the
   Zabbix strategy, Zabbix output unchanged and proven so. ~2 d.
 - **Detector** — lifting `entity.NewDetector` out of the OTLP strategy
-  into the data store, so every sink sees the foundation. ~3 d, and the
+  into the data store, so every sink sees the foundation (#932). ~3 d, and the
   least certain number here because it touches a component three
   outputs already depend on. **Not optional for a full record**: without
   it, A.1 delivers `hardware`, `bios`, `operatingsystem` and `cpus` and
