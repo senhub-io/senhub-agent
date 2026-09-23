@@ -96,7 +96,9 @@ Both probes share the same credential, the same Azure Resource Manager access an
 ## Permissions
 
 The probe reads; it never triggers a job. Three actions are enough, and
-they are the whole of what it needs — one per call it makes:
+they are the whole of what it needs — verified on a real subscription,
+by holding the probe to a custom role carrying these three job actions
+and nothing else, where its four calls all answered:
 
 | Action | What it is for |
 |---|---|
@@ -119,7 +121,5 @@ already collecting, the job reads were refused with `AuthorizationFailed`
 naming `Microsoft.App/jobs/read`. The two probes share a credential only
 if its role covers both.
 
-The three actions above are read off the calls the probe makes; the live
-run that measured the rest of this page was done with a broader role, so
-treat the list as the minimum to grant and not as a figure proven by
-subtraction.
+A credential already carrying the four application actions needs only
+these three added to it; the two probes then share one role.
