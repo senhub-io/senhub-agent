@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
+	"fmt"
 	"hash"
 )
 
@@ -61,14 +62,23 @@ func prf(newHash func() hash.Hash, secret []byte, label string, seed []byte, n i
 // preMasterSecret is RFC 4279 section 2: for a pure PSK suite the
 // "other secret" is a run of zeroes as long as the key, and each half
 // carries its own 16-bit length.
-func preMasterSecret(key []byte) []byte {
-	n := len(key)
-	out := make([]byte, 0, 4+2*n)
-	out = binary.BigEndian.AppendUint16(out, uint16(n))
-	out = append(out, make([]byte, n)...)
-	out = binary.BigEndian.AppendUint16(out, uint16(n))
+//
+// The length is checked here rather than trusted from Config.validate.
+// A key past 16 bits would wrap silently into a length that describes
+// something else, and the session keys would then be derived from a
+// structure neither side agrees on — a failure that looks like a
+// mismatched key rather than a bug.
+func preMasterSecret(key []byte) ([]byte, error) {
+	if len(key) > maxKeyLen {
+		return nil, fmt.Errorf("psk: key is %d bytes, more than the %d this profile carries", len(key), maxKeyLen)
+	}
+	n := uint16(len(key)) // #nosec G115 - bounded by maxKeyLen just above
+	out := make([]byte, 0, 4+2*len(key))
+	out = binary.BigEndian.AppendUint16(out, n)
+	out = append(out, make([]byte, len(key))...)
+	out = binary.BigEndian.AppendUint16(out, n)
 	out = append(out, key...)
-	return out
+	return out, nil
 }
 
 // keys holds what the record layer needs, per direction.
@@ -80,11 +90,15 @@ type keys struct {
 
 // deriveKeys runs the master secret and the key block. AEAD suites carry
 // no MAC key, so the block is two keys and two 4-byte implicit nonces.
-func deriveKeys(s suite, key, clientRandom, serverRandom []byte) keys {
+func deriveKeys(s suite, key, clientRandom, serverRandom []byte) (keys, error) {
+	pms, err := preMasterSecret(key)
+	if err != nil {
+		return keys{}, err
+	}
 	seed := make([]byte, 0, 64)
 	seed = append(seed, clientRandom...)
 	seed = append(seed, serverRandom...)
-	master := prf(s.newPRF, preMasterSecret(key), "master secret", seed, 48)
+	master := prf(s.newPRF, pms, "master secret", seed, 48)
 
 	seed = seed[:0]
 	seed = append(seed, serverRandom...)
@@ -98,7 +112,7 @@ func deriveKeys(s suite, key, clientRandom, serverRandom []byte) keys {
 		clientIV:  block[2*k : 2*k+fixedIVLen],
 		serverIV:  block[2*k+fixedIVLen : 2*k+2*fixedIVLen],
 		master:    master,
-	}
+	}, nil
 }
 
 // finishedVerify is the 12 bytes each side proves the transcript with.

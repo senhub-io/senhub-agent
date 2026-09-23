@@ -23,10 +23,17 @@ const (
 )
 
 func writeFrame(w io.Writer, payload []byte) error {
+	// The reader refuses a frame past maxFrameBytes, so writing one
+	// larger would put a packet on the wire that our own side would
+	// reject. Checking here also makes the 32-bit length conversion
+	// below provably in range.
+	if len(payload) > maxFrameBytes {
+		return fmt.Errorf("zabbix: frame of %d bytes exceeds the %d limit", len(payload), maxFrameBytes)
+	}
 	buf := make([]byte, 0, headerFixedBytes+8+len(payload))
 	buf = append(buf, frameMagic...)
 	buf = append(buf, flagProtocol)
-	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(payload)))
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(payload))) // #nosec G115 - bounded by maxFrameBytes just above
 	buf = binary.LittleEndian.AppendUint32(buf, 0)
 	buf = append(buf, payload...)
 	_, err := w.Write(buf)
