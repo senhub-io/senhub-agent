@@ -669,3 +669,24 @@ senhub.powerstore.replication.state:
       severity: "ok"
       description: "Replication operating normally"
   desired_value: 2
+
+azure_job_execution_status:
+  description: "Azure Container Apps job execution verdict"
+  type: status
+  source: "Microsoft.App jobs executions - properties.status"
+  mappings:
+    0:
+      text: "Unknown"
+      severity: "unknown"
+      description: "No execution in the history Azure reports, or a state the probe does not know"
+    1:
+      text: "Running"
+      severity: "ok"
+      description: "The run is in flight; its output is read once it ends"
+    2:
+      text: "Succeeded"
+      severity: "ok"
+    3:
+      text: "Failed"
+      severity: "error"
+  desired_value: 2
