@@ -258,14 +258,23 @@ func (hs *handshakeState) runClient() error {
 		hs.transcript.Write(m)
 	}
 
+	// Re-checked at the point of conversion, not trusted from validate:
+	// an identity past 16 bits would wrap into a length describing a
+	// different string, and the server would look up the wrong key.
+	if len(hs.cfg.Identity) > maxIdentityLen {
+		return fmt.Errorf("psk: identity is %d bytes, the protocol allows %d", len(hs.cfg.Identity), maxIdentityLen)
+	}
 	identity := make([]byte, 0, 2+len(hs.cfg.Identity))
-	identity = binary.BigEndian.AppendUint16(identity, uint16(len(hs.cfg.Identity)))
+	identity = binary.BigEndian.AppendUint16(identity, uint16(len(hs.cfg.Identity))) // #nosec G115 - bounded by maxIdentityLen just above
 	identity = append(identity, hs.cfg.Identity...)
 	if err := hs.writeHandshake(msgClientKeyExchange, identity); err != nil {
 		return fmt.Errorf("psk: sending client key exchange: %w", err)
 	}
 
-	k := deriveKeys(hs.suite, hs.cfg.Key, hs.clientRand, hs.serverRand)
+	k, err := deriveKeys(hs.suite, hs.cfg.Key, hs.clientRand, hs.serverRand)
+	if err != nil {
+		return err
+	}
 	if err := hs.activateWrite(k.clientKey, k.clientIV); err != nil {
 		return err
 	}
@@ -392,7 +401,10 @@ func (hs *handshakeState) runServer() error {
 		return errors.New("psk: the client presented an identity this listener has no key for")
 	}
 
-	k := deriveKeys(hs.suite, hs.cfg.Key, hs.clientRand, hs.serverRand)
+	k, err := deriveKeys(hs.suite, hs.cfg.Key, hs.clientRand, hs.serverRand)
+	if err != nil {
+		return err
+	}
 	expected := finishedVerify(hs.suite, k.master, labelClientFinished, hs.transcript.Sum(nil))
 	if err := hs.readPeerFinished(k.clientKey, k.clientIV, expected); err != nil {
 		return err
