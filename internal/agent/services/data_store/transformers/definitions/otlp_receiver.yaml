@@ -3,6 +3,10 @@ friendly_name: "OTLP Receiver"
 version: "1.0.0"
 host_level: false
 multi_instance_labels: ["service.name"]
+# Each metric is discovered on its own: an application that relays one of
+# them says nothing about the others, so a shared rule would create items
+# it never feeds (#922).
+discover_per_metric: true
 
 # What an application relays through this probe, under the names
 # OpenTelemetry publishes for it.

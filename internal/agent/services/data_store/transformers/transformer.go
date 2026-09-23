@@ -153,6 +153,21 @@ type ProbeDefinition struct {
 	// definition-level list used to be silently ignored, leaving the
 	// literal placeholder in rendered channels (#317).
 	MultiInstanceLabels []string `yaml:"multi_instance_labels,omitempty"`
+	// DiscoverPerMetric gives each metric its own discovery rule instead
+	// of grouping them by the dimensions they happen to share.
+	//
+	// It is for a definition whose metrics are independent of each other:
+	// the relay definition describes what OTHER programs send, so an
+	// application exporting jvm.thread.count says nothing about whether
+	// it exports jvm.class.count. Grouped by dimension set, one rule
+	// declares a prototype per metric and an application relaying one of
+	// them gets items for all, the rest staying empty for ever (#922).
+	//
+	// A definition of what the agent itself collects wants the opposite:
+	// a filesystem that reports used bytes reports free bytes, so one
+	// rule per mount point is right and one rule per metric would
+	// multiply the rules for nothing.
+	DiscoverPerMetric bool `yaml:"discover_per_metric,omitempty"`
 
 	// HostLevel marks probes that observe the local host (CPU, memory,
 	// network interfaces, filesystem of the agent's machine). When the
