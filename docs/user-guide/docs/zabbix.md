@@ -6,6 +6,10 @@
     and a Windows host, templates and discovery included, but it has not
     run long enough anywhere to be called supported.
 
+    Encryption: the outbound connection and the polled port take
+    certificates. **Pre-shared keys are not implemented** — see
+    "Encryption" below before deploying on a site that mandates PSK.
+
 The `zabbix` output makes the agent a native **Zabbix active agent**: it
 connects out to a Zabbix server or proxy on port 10051, registers the host
 through Zabbix autoregistration, asks which items the server wants for it,
@@ -192,6 +196,66 @@ Import the files through **Data collection > Templates > Import**, or
 `configuration.import` on the API. Re-importing a regenerated template
 updates the same objects: the identifiers are derived from the keys.
 
+## Encryption
+
+The agent encrypts with **certificates**, in both directions, and does
+not implement **pre-shared keys**. That sentence decides whether it fits
+your site, so here is what each half means.
+
+### What is encrypted
+
+The outbound connection takes a `tls` block: the agent verifies the
+server against a certificate authority and, when the server asks, proves
+its own identity.
+
+```yaml
+zabbix:
+  server: "zabbix.example.com:10051"
+  tls:
+    enabled: true
+    ca_file: /etc/senhub-agent/zabbix-ca.crt
+    cert_file: /etc/senhub-agent/agent.crt
+    key_file: /etc/senhub-agent/agent.key
+```
+
+The polled port takes its own block, because the roles are opposite
+there — see [Encrypting the polled port](#encrypting-the-polled-port).
+
+On the Zabbix side this is `tls_connect=cert` / `tls_accept=cert` on the
+host, with the issuer and subject you expect.
+
+### What pre-shared keys would add, and the one thing they block
+
+PSK is the encryption most Zabbix sites reach for first, because it
+needs no certificate authority. The agent cannot speak it: Go's standard
+TLS implements pre-shared keys only for session resumption, not the
+external keys Zabbix uses, and the alternatives — cgo bindings to
+OpenSSL, a vendored copy of `crypto/tls` — each cost something the
+single static binary is built to avoid. The scope of implementing it is
+measured in [#903](https://github.com/senhub-io/senhub-agent/issues/903).
+
+Two consequences, and they are not the same size.
+
+**Collection has a certificate answer.** A host that must be encrypted
+is configured for `cert` and everything works: check list, values,
+heartbeat, and the polled port.
+
+**Autoregistration does not.** Zabbix encrypts the autoregistration step
+with PSK or not at all — its setting takes "no encryption", "PSK", or
+both, and a certificate is not one of the choices. Measured on 8.0.0:
+the API refuses any other value with `value must be one of 1-3`.
+
+So on a site whose autoregistration is set to PSK only, the agent cannot
+register itself. The hosts have to be created another way — by hand, or
+through the Zabbix API from your provisioning — after which collection
+runs encrypted with a certificate as usual. Where autoregistration
+accepts unencrypted connections, the agent registers itself and only
+that first exchange, which carries the host name and its metadata,
+travels in clear.
+
+If your site mandates PSK for collection itself, the agent is not usable
+there today. Say so early rather than discovering it during a pilot.
+
 ## Passive polling
 
 With `passive.enabled: true` the agent also listens on `passive.port`
@@ -363,6 +427,47 @@ how it learns where the group moved the host.
 With `passive.enabled` and no explicit `passive.allow`, every configured
 address is allowed to poll the agent, because the member polling today is
 not necessarily the one that polled yesterday.
+
+## Versions
+
+Measured on a server of each line, not inferred from a changelog.
+
+| | Zabbix 7.0.30 | Zabbix 8.0.0 |
+|---|---|---|
+| `zabbix setup` (templates, host group, autoregistration action) | yes | yes, unchanged |
+| autoregistration | yes | yes |
+| items by low-level discovery | yes | yes |
+| host inventory filled from what the agent knows | yes | yes |
+| polled port read by `zabbix_get` | yes | yes |
+| proxy group redirection | yes | yes |
+
+Two things are worth knowing about the 8.0 line specifically.
+
+**The API no longer accepts the session token in the request body.**
+Where 7.0 took `"auth": "<token>"` inside the JSON-RPC envelope, 8.0
+answers `unexpected parameter "auth"` and wants an
+`Authorization: Bearer` header. `senhub-agent zabbix setup` has always
+sent the header, so it works on both lines without a flag; a script of
+your own that drives the API may need changing.
+
+**The proxy group redirection is unchanged.** A host assigned to a group
+makes the server answer the check-list request with:
+
+```json
+{"response": "failed", "redirect": {"revision": 1, "address": "proxy:10051"}}
+```
+
+which is the same shape 7.0 emits, and the agent follows it to the
+member holding the host. Two conditions have to be met for a group to
+redirect at all, and missing either one looks like the feature not
+working: the group needs a member that is **online**, and the host has
+to be assigned with `monitored_by` set to the proxy group rather than
+left on the server. While the assignment propagates, the server answers
+once with `host ... is monitored by a proxy` and no redirect; the agent
+logs it and the next request is redirected normally.
+
+The templates are exported in the 7.0 format and import into 8.0 as they
+are; `--version 8.0` is not needed and does not exist.
 
 ## Autoregistration
 
