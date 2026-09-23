@@ -104,6 +104,24 @@ Design constraints, in the order they bind:
 - **Keep the raw value.** Where a projection normalises or truncates a
   value to fit a sink's field, the neutral document keeps what the
   machine actually reported. The sink chooses; the document remembers.
+- **An absent section is not an empty one.** A section that could not be
+  collected must be left out of the document, never sent empty. The two
+  are indistinguishable to the sink and they mean opposite things: GLPI
+  reads an empty array as "this host has none of these" and clears what
+  it held, so one failed collection blanks a record that was right. The
+  Zabbix nameplate already applies this at field level — a fact the
+  agent did not find is not sent, and its inventory field keeps its
+  previous value. The same rule has to hold for a whole section.
+
+  This is not hypothetical, and it is worse when the source is a third
+  party. An Azure API asked by a role that lacks one read permission
+  answers **HTTP 200 with an empty list**, not 403 — measured on our own
+  tenant while building the Container Apps jobs probe. A source that is
+  silenced reads as "nothing to declare" rather than "I am not allowed",
+  and an inventory that trusts it will report a machine as having no
+  disks, no interfaces or no software. Every collector feeding this
+  document must therefore distinguish *collected and empty* from *not
+  collected*, and only the first may be sent.
 
 ### Reading an identity and detecting a foundation are two things
 
