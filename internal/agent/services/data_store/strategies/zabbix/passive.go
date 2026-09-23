@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/psk"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -71,6 +72,12 @@ func newPassiveListener(cfg Config, lookup itemLookup, log *logger.ModuleLogger)
 // which addresses may connect, a certificate says who they are.
 func buildPassiveTLS(t PassiveTLSConfig) (*tls.Config, error) {
 	if !t.Enabled {
+		return nil, nil
+	}
+	// A pre-shared key is not a tls.Config: it is negotiated per
+	// connection by the psk package, so the listener stays unwrapped and
+	// each accepted connection runs that handshake first.
+	if len(t.PSK) > 0 {
 		return nil, nil
 	}
 	cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
@@ -201,6 +208,26 @@ func (p *passiveListener) serve(ctx context.Context) {
 		go func() {
 			defer p.wg.Done()
 			defer conn.Close()
+			// A pre-shared key is negotiated per connection rather than
+			// by wrapping the listener: the profile lives in the psk
+			// package, which Go's tls.NewListener knows nothing about.
+			if len(p.cfg.TLS.PSK) > 0 {
+				secured, err := psk.Server(conn, psk.Config{
+					Identity: p.cfg.TLS.PSKIdentity,
+					Key:      p.cfg.TLS.PSK,
+					Deadline: passiveDeadline,
+				})
+				if err != nil {
+					p.logger.Debug().
+						Err(err).
+						Str("from", conn.RemoteAddr().String()).
+						Msg("Passive poll refused: pre-shared key handshake failed")
+					return
+				}
+				defer secured.Close()
+				p.handle(secured)
+				return
+			}
 			p.handle(conn)
 		}()
 	}

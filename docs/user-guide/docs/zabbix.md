@@ -6,9 +6,8 @@
     and a Windows host, templates and discovery included, but it has not
     run long enough anywhere to be called supported.
 
-    Encryption: the outbound connection and the polled port take
-    certificates. **Pre-shared keys are not implemented** — see
-    "Encryption" below before deploying on a site that mandates PSK.
+    Encryption is in place both ways, with a certificate or a
+    pre-shared key.
 
 The `zabbix` output makes the agent a native **Zabbix active agent**: it
 connects out to a Zabbix server or proxy on port 10051, registers the host
@@ -198,19 +197,45 @@ updates the same objects: the identifiers are derived from the keys.
 
 ## Encryption
 
-The agent encrypts with **certificates**, in both directions, and does
-not implement **pre-shared keys**. That sentence decides whether it fits
-your site, so here is what each half means.
+The agent encrypts with **certificates** or with a **pre-shared key**,
+in both directions, which is the same choice a native Zabbix agent
+offers.
 
-### What is encrypted
-
-The outbound connection takes a `tls` block: the agent verifies the
-server against a certificate authority and, when the server asks, proves
-its own identity.
+### With a pre-shared key
 
 ```yaml
 zabbix:
   server: "zabbix.example.com:10051"
+  tls:
+    enabled: true
+    psk_identity: "senhub-paris"
+    psk_file: /etc/senhub-agent/zabbix.psk
+```
+
+`psk_file` holds the key hex-encoded, exactly as Zabbix writes it, and
+is the only place it appears: nothing carries it in the configuration,
+so `config show` has nothing to redact and the file's permissions are
+the protection. Generate one the way Zabbix documents:
+
+```bash
+openssl rand -hex 32 > /etc/senhub-agent/zabbix.psk
+chmod 600 /etc/senhub-agent/zabbix.psk
+```
+
+On the Zabbix side, set the same identity and key on the host, or in
+**Administration > General > Autoregistration** for agents that register
+themselves.
+
+The polled port takes the same two settings under `passive.tls`, and the
+two are configured apart because the roles are opposite. A block takes a
+certificate **or** a pre-shared key, never both: Zabbix picks one
+encryption per connection, and configuring both would leave the agent
+choosing silently which secret proves it.
+
+### With a certificate
+
+```yaml
+zabbix:
   tls:
     enabled: true
     ca_file: /etc/senhub-agent/zabbix-ca.crt
@@ -218,43 +243,36 @@ zabbix:
     key_file: /etc/senhub-agent/agent.key
 ```
 
-The polled port takes its own block, because the roles are opposite
-there — see [Encrypting the polled port](#encrypting-the-polled-port).
+See [Encrypting the polled port](#encrypting-the-polled-port) for the
+listener's own block.
 
-On the Zabbix side this is `tls_connect=cert` / `tls_accept=cert` on the
-host, with the issuer and subject you expect.
+### Which to choose
 
-### What pre-shared keys would add, and the one thing they block
+A pre-shared key needs no certificate authority, which is why most
+Zabbix sites use it, and it is the **only** encryption Zabbix offers for
+autoregistration — that setting takes "none", "PSK" or both, and refuses
+a certificate. So an agent that registers itself on a site which
+encrypts that step needs PSK. A certificate carries an identity a
+authority vouches for, and is the better answer where a PKI already
+exists.
 
-PSK is the encryption most Zabbix sites reach for first, because it
-needs no certificate authority. The agent cannot speak it: Go's standard
-TLS implements pre-shared keys only for session resumption, not the
-external keys Zabbix uses, and the alternatives — cgo bindings to
-OpenSSL, a vendored copy of `crypto/tls` — each cost something the
-single static binary is built to avoid. The scope of implementing it is
-measured in [#903](https://github.com/senhub-io/senhub-agent/issues/903).
+### What is implemented
 
-Two consequences, and they are not the same size.
+TLS 1.2 with `TLS_PSK_WITH_AES_128_GCM_SHA256` or
+`TLS_PSK_WITH_AES_256_GCM_SHA384`, which is what Zabbix's own default
+PSK cipher list offers. Go's standard TLS has no external pre-shared
+keys, so this profile is implemented in the agent: one suite family, no
+certificate, no resumption, no renegotiation, no 0-RTT.
 
-**Collection has a certificate answer.** A host that must be encrypted
-is configured for `cert` and everything works: check list, values,
-heartbeat, and the polled port.
+Verified against real servers on both lines — the outbound connection,
+autoregistration (the host is created with PSK set on both directions by
+Zabbix itself), collection, and the polled port answering `zabbix_get
+--tls-connect psk`. A wrong key, a wrong identity and an unencrypted
+poll are all refused.
 
-**Autoregistration does not.** Zabbix encrypts the autoregistration step
-with PSK or not at all — its setting takes "no encryption", "PSK", or
-both, and a certificate is not one of the choices. Measured on 8.0.0:
-the API refuses any other value with `value must be one of 1-3`.
-
-So on a site whose autoregistration is set to PSK only, the agent cannot
-register itself. The hosts have to be created another way — by hand, or
-through the Zabbix API from your provisioning — after which collection
-runs encrypted with a certificate as usual. Where autoregistration
-accepts unencrypted connections, the agent registers itself and only
-that first exchange, which carries the host name and its metadata,
-travels in clear.
-
-If your site mandates PSK for collection itself, the agent is not usable
-there today. Say so early rather than discovering it during a pilot.
+Not implemented: the TLS 1.3 external-PSK profile. Both Zabbix lines
+accept the 1.2 one, so this is not a limitation in practice; a server
+configured to refuse TLS 1.2 outright would not be served.
 
 ## Passive polling
 
