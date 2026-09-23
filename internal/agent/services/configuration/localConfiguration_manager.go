@@ -157,7 +157,10 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		Str("strategies_d", strategiesDir).
 		Msg("Default multi-file configuration created")
 
-	if lc.args.EnableHttps {
+	// A supplied pair is used as it is: generating a self-signed one
+	// beside it would write files nothing reads and suggest the agent
+	// serves them.
+	if lc.args.EnableHttps && (lc.args.CertFile == "" || lc.args.KeyFile == "") {
 		if err := lc.generateTLSCertificates(); err != nil {
 			lc.logger.Warn().Err(err).Msg("Failed to generate TLS certificates")
 		}
@@ -209,12 +212,18 @@ func (lc *LocalConfiguration) generateHTTPStrategyFragment() string {
 		port = lc.args.HttpsPort
 		bindAddress = "0.0.0.0"
 
-		// HTTPS certificates are written next to the configuration by
-		// generateTLSCertificates; reference them as absolute paths so
-		// the strategy keeps working whatever the daemon's cwd is.
+		// A certificate the operator supplied wins over the self-signed
+		// pair. It used to be parsed and then read by nobody, so
+		// `install --enable-https --cert-file ... --key-file ...` served
+		// the generated certificate instead: a browser warning on a host
+		// where a CA-signed pair had been provided, and nothing in the
+		// logs saying why (#867).
 		certsDir := filepath.Join(filepath.Dir(lc.configPath), "certs")
 		certPath := filepath.Join(certsDir, "agent-cert.pem")
 		keyPath := filepath.Join(certsDir, "agent-key.pem")
+		if lc.args.CertFile != "" && lc.args.KeyFile != "" {
+			certPath, keyPath = lc.args.CertFile, lc.args.KeyFile
+		}
 		// Escape backslashes for Windows paths.
 		certPathYAML := strings.ReplaceAll(certPath, "\\", "\\\\")
 		keyPathYAML := strings.ReplaceAll(keyPath, "\\", "\\\\")
