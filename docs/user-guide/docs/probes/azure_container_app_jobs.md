@@ -70,4 +70,25 @@ Both probes share the same credential, the same Azure Resource Manager access an
 
 ## Permissions
 
-The same app registration as the applications probe: read access on the job, plus the action behind `getAuthToken`, which the Reader role does not carry. A credential with Reader alone reports the verdicts and no output.
+The probe reads; it never triggers a job. Three actions are enough, and
+they are the whole of what it needs:
+
+| Action | What it is for |
+|---|---|
+| `Microsoft.App/jobs/read` | the job itself: its trigger type and its stream endpoint |
+| `Microsoft.App/jobs/executions/read` | the executions and their replicas |
+| `Microsoft.App/jobs/getAuthtoken/action` | the short-lived token the log stream accepts |
+
+`Microsoft.App/jobs/start/action` is deliberately **not** in that list:
+the probe observes runs, it does not cause them.
+
+A credential holding only the first two reports every verdict and every
+duration, and no output — the token action is what opens the stream, and
+the Reader role does not carry it.
+
+**An existing Container Apps credential is usually not enough.** A role
+assignment written for the applications probe is commonly scoped to
+`Microsoft.App/containerApps/...`, which does not cover jobs: the job
+reads are refused with `AuthorizationFailed` naming
+`Microsoft.App/jobs/read`. The two probes share a credential only if its
+role covers both.
