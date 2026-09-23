@@ -97,8 +97,14 @@ When several applications are followed, what describes an application is publish
 | `client_id` | Yes | - | Application (client) ID of the app registration |
 | `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `subscription_id` | Yes | - | Subscription that holds the Container App |
-| `resource_group` | Yes | - | Resource group of the Container App |
-| `app` | Yes | - | Name of the Container App |
+| `resource_group` | No | - | Resource group of the Container App; required unless 'discovery' is set, which finds it |
+| `app` | No | - | Name of the Container App; required unless 'discovery' is set, which finds them |
+| `discovery` | No | - | Follow every application the subscription holds instead of naming one; exclusive with 'app' and 'resource_group' |
+| `discovery.interval` | No | `300` | Seconds between two enumerations of the subscription; the replica scan keeps its own cadence |
+| `discovery.max_apps` | No | `100` | Hard cap on how many applications one instance follows; what is left out is named in the log |
+| `discovery.resource_groups` | No | - | Bound the search to these resource groups; empty means every group the credential can read |
+| `discovery.include` | No | - | Follow only the names matching one of these; '*' is the only wildcard |
+| `discovery.exclude` | No | - | Never follow a name matching one of these; wins over include |
 | `containers` | No | - | Container names to read; empty reads every container |
 | `tail_lines` | No | `100` | Lines re-read when a stream is (re)attached, 0 to 300; already published lines are dropped |
 | `interval` | No | `60` | Seconds between replica scans |

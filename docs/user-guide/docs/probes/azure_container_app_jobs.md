@@ -38,6 +38,30 @@ Both probes share the same credential, the same Azure Resource Manager access an
 ## Parameters
 
 <!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+
+| Parameter | Must set | Default | Description |
+|---|---|---|---|
+| `tenant_id` | Yes | - | Entra ID tenant (directory) ID |
+| `client_id` | Yes | - | Application (client) ID of the app registration |
+| `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `subscription_id` | Yes | - | Subscription that holds the job |
+| `resource_group` | Yes | - | Resource group of the job |
+| `app` | Yes | - | Name of the Container Apps job |
+| `containers` | No | - | Container names to read; empty reads every container of the execution |
+| `tail_lines` | No | `100` | Lines read from a finished execution, 0 to 300. An execution's log is read once, so this is the whole of what is published for it |
+| `interval` | No | `60` | Seconds between two reads of the execution list. A job that runs less often than this is still seen, its verdict being read from history. Its OUTPUT is not: Azure keeps an execution replica about 150 seconds after the run ends, so an interval above that loses the logs |
+| `bookmark_path` | No | - | File remembering the executions already published, so a restart does not publish a run's output twice. Without it, a restart republishes the window Azure still holds |
+| `parser` | No | - | How each line is read |
+| `parser.type` | No | `raw` | Shape of a line; raw keeps it whole. One of `raw`, `regex`, `json`, `logfmt` |
+| `parser.pattern` | No | - | Regular expression with named groups (type regex) |
+| `parser.timestamp_field` | No | - | Parsed field that carries the record timestamp |
+| `parser.timestamp_format` | No | - | Go layout of the timestamp field |
+| `max_bytes_per_line` | No | `1048576` | Cap on one line read from an execution |
+| `exclude` | No | - | Regular expressions; a line matching one is dropped |
+| `authority_host` | No | `login.microsoftonline.com` | Entra ID authority, for sovereign clouds |
+| `management_host` | No | `management.azure.com` | Azure Resource Manager endpoint, for sovereign clouds |
+
 <!-- schema:params:end -->
 
 ## Metrics
