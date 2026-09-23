@@ -167,6 +167,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"reason",      // per scan-failure cause
 	},
 
+	// azure_container_app_jobs watches one job per instance, and an
+	// agent may watch several. The job name is what tells their series
+	// apart; the resource group is what tells two jobs of the same name
+	// in two groups apart.
+	"azure_container_app_jobs": {
+		"metric_type",
+		"azure_job",
+		"azure_resource_group",
+	},
+
 	// High-availability probes
 	"hyperv_ha": {
 		"vm_name", // per-VM replica health/state/lag
