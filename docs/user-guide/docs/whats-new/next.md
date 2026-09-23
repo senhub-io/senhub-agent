@@ -131,6 +131,19 @@ collection gaps that comparison exposed.
     application exporting part of a dimension set gets items for the
     rest of it, which stay empty. (#922)
 
+- **A new probe watches Azure Container Apps jobs.** The existing probe
+  follows applications, which run continuously; a job is discrete — an
+  execution starts, ends and leaves a verdict. `azure_container_app_jobs`
+  reports whether the last run worked, how long it took, how long it has
+  been since one succeeded, and publishes the console output of each
+  execution once it has finished. It shares the credential, the Azure
+  Resource Manager access and the read-budget pacing of the applications
+  probe.
+
+    The metric to alert on is the age of the last success, not the last
+    status: a job that stopped being triggered reports a perfectly good
+    last status for ever.
+
 - **The Azure Container Apps probe reports the collection's own state**
   in detail, and **follows every application of a subscription** when a
   discovery block is set, instead of one named application. The role

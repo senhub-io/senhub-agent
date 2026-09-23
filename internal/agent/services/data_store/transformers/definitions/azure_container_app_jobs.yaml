@@ -1,0 +1,145 @@
+probe_name: "azure_container_app_jobs"
+friendly_name: "Azure Container App Jobs"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["azure_job"]
+
+# azure_container_app_jobs watches one Azure Container Apps job. The
+# console output of each execution rides the OTLP log rail, like the
+# application probe's lines; what is defined here is the state an
+# operator alerts on.
+#
+# A job is not an application. An application is continuous and the
+# question is whether it is up; a job is discrete and the questions are
+# whether it ran, whether it worked, and how long it took. Hence
+# senhub.azure.container_app_jobs.* rather than a mode of the other
+# probe's metrics.
+
+metrics:
+  - name: "azure_container_app_jobs_up"
+    channel: "up"
+    display_name: "Control Plane Reachable"
+    unit: "#"
+    category: "status"
+    description: "1 when Azure Resource Manager answered the last read of the job, 0 when it did not"
+    otel:
+      name: senhub.azure_container_app_jobs.up
+      unit: "{status}"
+      type: gauge
+
+  - name: "azure_container_app_jobs_last_execution_status"
+    channel: "last_status"
+    display_name: "Last Execution"
+    unit: "#"
+    category: "status"
+    lookup: "azure_job_execution_status"
+    description: "Verdict of the most recent execution: 0 unknown, 1 running, 2 succeeded, 3 failed"
+    otel:
+      name: senhub.azure_container_app_jobs.last_execution.status
+      unit: "{status}"
+      type: gauge
+
+  - name: "azure_container_app_jobs_since_last_success"
+    channel: "since_success"
+    display_name: "Since Last Success"
+    unit: "s"
+    category: "status"
+    description: "Seconds since the last execution that succeeded. On a scheduled job this is the number to alert on: a job well past its period without a success has a problem, whatever its last execution says. Absent until one has succeeded"
+    otel:
+      name: senhub.azure_container_app_jobs.since_last_success
+      unit: "s"
+      type: gauge
+
+  - name: "azure_container_app_jobs_last_execution_duration"
+    channel: "last_duration"
+    display_name: "Last Execution Duration"
+    unit: "s"
+    category: "latency"
+    description: "How long the most recent finished execution took; 0 while one is still running"
+    otel:
+      name: senhub.azure_container_app_jobs.last_execution.duration
+      unit: "s"
+      type: gauge
+
+  - name: "azure_container_app_jobs_executions_running"
+    channel: "running"
+    display_name: "Executions Running"
+    unit: "#"
+    category: "status"
+    description: "Executions in flight in the history Azure reports"
+    otel:
+      name: senhub.azure_container_app_jobs.executions
+      unit: "{execution}"
+      type: gauge
+    attributes:
+      job.execution.state: running
+
+  - name: "azure_container_app_jobs_executions_succeeded"
+    channel: "succeeded"
+    display_name: "Executions Succeeded"
+    unit: "#"
+    category: "status"
+    description: "Executions that succeeded in the history Azure reports. Azure keeps a window, so this counts what is visible rather than everything that ever ran"
+    otel:
+      name: senhub.azure_container_app_jobs.executions
+      unit: "{execution}"
+      type: gauge
+    attributes:
+      job.execution.state: succeeded
+
+  - name: "azure_container_app_jobs_executions_failed"
+    channel: "failed"
+    display_name: "Executions Failed"
+    unit: "#"
+    category: "status"
+    description: "Executions that failed in the history Azure reports"
+    otel:
+      name: senhub.azure_container_app_jobs.executions
+      unit: "{execution}"
+      type: gauge
+    attributes:
+      job.execution.state: failed
+
+  - name: "azure_container_app_jobs_executions_drained"
+    channel: "drained"
+    display_name: "Executions Read"
+    unit: "#"
+    category: "collection"
+    description: "Executions whose console output has been published. An execution is read once, after it finishes"
+    otel:
+      name: senhub.azure_container_app_jobs.executions.read
+      unit: "{execution}"
+      type: counter
+
+  - name: "azure_container_app_jobs_executions_without_logs"
+    channel: "no_logs"
+    display_name: "Executions Without Logs"
+    unit: "#"
+    category: "collection"
+    description: "Executions whose verdict was read but whose output was gone: Azure had already cleaned up the replica. The run is still counted; only its lines are lost"
+    otel:
+      name: senhub.azure_container_app_jobs.executions.without_logs
+      unit: "{execution}"
+      type: counter
+
+  - name: "azure_container_app_jobs_records_emitted"
+    channel: "records_emitted"
+    display_name: "Records Emitted"
+    unit: "#"
+    category: "collection"
+    description: "Log records published from execution output"
+    otel:
+      name: senhub.azure_container_app_jobs.records.emitted
+      unit: "{record}"
+      type: counter
+
+  - name: "azure_container_app_jobs_arm_reads_remaining"
+    channel: "arm_reads"
+    display_name: "ARM Reads Remaining"
+    unit: "#"
+    category: "collection"
+    description: "Reads left in the subscription's Azure Resource Manager budget, as ARM reports it; a fleet of instances shows here how close it is to being throttled"
+    otel:
+      name: senhub.azure_container_app_jobs.arm.reads_remaining
+      unit: "{read}"
+      type: gauge

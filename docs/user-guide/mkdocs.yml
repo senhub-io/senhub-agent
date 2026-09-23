@@ -144,6 +144,7 @@ nav:
       - Azure AD Connect Health: probes/ad_hybrid.md
       - Exchange Online: probes/exchange_online.md
       - Azure Container Apps: probes/azure_container_apps.md
+      - Azure Container App Jobs: probes/azure_container_app_jobs.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md
