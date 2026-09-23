@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/lifecycle"
+	"senhub-agent.go/internal/agent/services/entitydetect"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
@@ -45,6 +46,7 @@ type agent struct {
 	localConfiguration *configuration.LocalConfiguration
 	store              data_store.DataStore
 	sensors            sensor.Sensor
+	entityDetector     *entitydetect.Service
 	updater            auto_update.AutoUpdate
 	// exitFn is called by handleStartError with exit code 1. It defaults to
 	// os.Exit; tests inject a no-op to capture the call without aborting.
@@ -98,6 +100,19 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		logger,
 	)
 
+	// Entity detection is a producer, not an output: it feeds a fan-out
+	// channel any output may subscribe to. Starting it here rather than
+	// inside the OTLP strategy is what lets an agent configured for
+	// another output produce entities at all (#932).
+	entityDetector := entitydetect.New(
+		entitydetect.Resolve(
+			localConfiguration.GetEntitiesConfig(),
+			localConfiguration.GetConfiguration().StorageConfig,
+			localConfiguration.GetAuthenticationKey(),
+		),
+		logger,
+	)
+
 	var updater auto_update.AutoUpdate
 	autoUpdateConfig := localConfiguration.GetAutoUpdateConfig()
 	if autoUpdateConfig.Enabled {
@@ -125,6 +140,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 
 	return agent{
 		supervisor:         lifecycle.NewSupervisor(logger),
+		entityDetector:     entityDetector,
 		logger:             logger,
 		agentConfiguration: agentConfiguration,
 		localConfiguration: localConfiguration,
@@ -144,6 +160,9 @@ func (a agent) services() []Service {
 		a.localConfiguration,
 		a.store,
 		a.sensors,
+	}
+	if a.entityDetector != nil {
+		servicesToStart = append(servicesToStart, a.entityDetector)
 	}
 	if a.updater != nil {
 		a.logger.Info().Msg("Adding auto-updater to services")
