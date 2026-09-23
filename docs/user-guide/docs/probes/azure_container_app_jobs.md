@@ -64,14 +64,15 @@ Both probes share the same credential, the same Azure Resource Manager access an
 
 - **An execution's output is read once, after it finishes.** A run still going is counted but not read: reading it would publish half of it and never the rest. Its lines arrive on the next cycle after it ends.
 - **`bookmark_path` is what keeps a restart from republishing.** Without it, the agent republishes the executions Azure still holds each time it starts, and an operator sees yesterday's failures arrive again this morning. The file holds execution names, not a position in a stream.
-- **Azure cleans up execution replicas.** Once it has, the verdict and the duration are still readable but the output is gone — counted as `executions.without_logs` rather than reported as an error. Reading a job more often than Azure cleans up is what keeps that number at zero.
+- **Azure cleans up execution replicas in about two and a half minutes.** Measured on a real job: the replica of a finished execution still answered 150 seconds after the run ended and was gone at 180. Past that the verdict and the duration are still readable — they come from the execution history — but the output is gone, counted as `executions.without_logs` rather than reported as an error.
+- **So `interval` is not only a freshness setting here.** An execution is read on the first cycle after it finishes, which is up to `interval` seconds later; an interval above the cleanup window loses the output of every run while the metrics keep looking healthy. The default of 60 seconds leaves roughly a minute and a half of margin. The probe warns at start when the configured interval is at or above 150 seconds.
 - **The history is a window.** The execution counts are what Azure reports now, not everything that ever ran.
-- **The log stream of an execution is served by a preview Azure API**, where the application probe's is stable. The verdict, the duration and the counts come from the stable API; only the output depends on the preview one, and Microsoft may change it without a compatibility promise.
+- **Two of the four job calls are served by a preview Azure API.** Reading the job and listing its executions answer on the same stable version the application probe uses; an execution's replicas and the job's `getAuthToken` answer only on `2023-11-02-preview`. So the verdict, the duration and the counts rest on a stable contract, and only reading the output rests on a preview one that Microsoft may change without a compatibility promise.
 
 ## Permissions
 
 The probe reads; it never triggers a job. Three actions are enough, and
-they are the whole of what it needs:
+they are the whole of what it needs — one per call it makes:
 
 | Action | What it is for |
 |---|---|
@@ -88,7 +89,13 @@ the Reader role does not carry it.
 
 **An existing Container Apps credential is usually not enough.** A role
 assignment written for the applications probe is commonly scoped to
-`Microsoft.App/containerApps/...`, which does not cover jobs: the job
-reads are refused with `AuthorizationFailed` naming
-`Microsoft.App/jobs/read`. The two probes share a credential only if its
-role covers both.
+`Microsoft.App/containerApps/...`, which does not cover jobs. That one is
+not a deduction: on a subscription where the applications probe was
+already collecting, the job reads were refused with `AuthorizationFailed`
+naming `Microsoft.App/jobs/read`. The two probes share a credential only
+if its role covers both.
+
+The three actions above are read off the calls the probe makes; the live
+run that measured the rest of this page was done with a broader role, so
+treat the list as the minimum to grant and not as a figure proven by
+subtraction.
