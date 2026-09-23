@@ -85,6 +85,44 @@ The `agent` section defines the agent identity.
 | `license` | No | License token for premium probes (see License section) |
 | `global_tags` | No | Key-value tags applied to every datapoint of every probe. A probe's own `custom_tags` win on a key present in both. Keep the set small — every key multiplies the series a backend stores |
 
+## Entities Section
+
+The `entities` section turns on **entity detection**: the agent
+describes what this host is, what runs on it and what it talks to, and
+publishes that as a stream any output may consume.
+
+```yaml
+entities:
+  enabled: true
+  interval: 5m
+  depends_on:
+    enabled: false
+    debounce: 3
+    exclude_cidrs: ["10.50.0.0/16"]
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `enabled` | see below | Runs the detector. Off means nothing is produced and nothing is polled |
+| `interval` | `5m` | Heartbeat: everything is re-described each interval, and the interval travels with each event as the consumer's staleness hint |
+| `depends_on.enabled` | `false` | Also map this host's outbound dependencies. Off by default because which peers a host talks to can be sensitive |
+| `depends_on.debounce` | `3` | How many consecutive scrapes a peer must persist before it counts as a dependency rather than a passing connection. The delay before one appears is `debounce × interval` |
+| `depends_on.exclude_cidrs` | none | Peer ranges to leave out entirely |
+
+**Why this is not under an output.** What a host *is* does not depend on
+where the description is shipped. The detector feeds a channel that
+several outputs can read at once, so the decision to describe the host
+is made once, here, rather than inherited from one output's settings.
+
+**The default of `enabled`.** Absent this section, the agent falls back
+to whatever an OTLP output declares under `signals.entities`, which is
+where this setting used to live — so an existing install keeps behaving
+exactly as it did. An agent with neither produces nothing.
+
+**It has a cost**, which is why it is not on for everyone: every source
+is polled each interval, and the dependency scanner reads the host's
+sockets. An agent that does not want it pays none of it.
+
 ## Probes Section
 
 Each probe entry defines a monitoring target. The agent collects metrics at regular intervals from the configured probes.
