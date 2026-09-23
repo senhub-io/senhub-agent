@@ -174,15 +174,22 @@ func GetVersionInfo() map[string]string {
 
 // PrintVersion prints version information to stdout without timestamps
 func PrintVersion() {
-	if Version != "" {
-		if CommitHash != "" {
-			fmt.Printf("Version: %s (commit: %s)\n", Version, CommitHash)
-		} else {
-			fmt.Printf("Version: %s\n", Version)
-		}
-	} else if CommitHash != "" {
+	// The build time is printed beside the commit because the commit does
+	// not always distinguish two builds. A tag that is cut, found
+	// defective and re-cut keeps the same commit — the identifier comes
+	// from a merge that did not change — so two binaries of "the same
+	// version" answered identically and the only way to tell them apart
+	// on a host under acceptance was to hash the file (#862).
+	switch {
+	case Version != "" && CommitHash != "" && BuildTime != "":
+		fmt.Printf("Version: %s (commit: %s, built: %s)\n", Version, CommitHash, BuildTime)
+	case Version != "" && CommitHash != "":
+		fmt.Printf("Version: %s (commit: %s)\n", Version, CommitHash)
+	case Version != "":
+		fmt.Printf("Version: %s\n", Version)
+	case CommitHash != "":
 		fmt.Printf("Development version (commit: %s)\n", CommitHash)
-	} else {
+	default:
 		fmt.Println("Version information not available")
 	}
 
