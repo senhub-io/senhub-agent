@@ -71,8 +71,8 @@ metrics:
       name: senhub.azure_container_app_jobs.executions
       unit: "{execution}"
       type: gauge
-    attributes:
-      job.execution.state: running
+      attributes:
+        job.execution.state: running
 
   - name: "azure_container_app_jobs_executions_succeeded"
     channel: "succeeded"
@@ -84,8 +84,8 @@ metrics:
       name: senhub.azure_container_app_jobs.executions
       unit: "{execution}"
       type: gauge
-    attributes:
-      job.execution.state: succeeded
+      attributes:
+        job.execution.state: succeeded
 
   - name: "azure_container_app_jobs_executions_failed"
     channel: "failed"
@@ -97,8 +97,8 @@ metrics:
       name: senhub.azure_container_app_jobs.executions
       unit: "{execution}"
       type: gauge
-    attributes:
-      job.execution.state: failed
+      attributes:
+        job.execution.state: failed
 
   - name: "azure_container_app_jobs_executions_drained"
     channel: "drained"
