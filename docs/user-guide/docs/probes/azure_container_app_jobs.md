@@ -95,31 +95,47 @@ Both probes share the same credential, the same Azure Resource Manager access an
 
 ## Permissions
 
-The probe reads; it never triggers a job. Three actions are enough, and
-they are the whole of what it needs — verified on a real subscription,
-by holding the probe to a custom role carrying these three job actions
-and nothing else, where its four calls all answered:
+The probe reads; it never triggers a job. Three entries are enough, and
+one of them has to be a wildcard:
 
-| Action | What it is for |
+| Entry | What it is for |
 |---|---|
 | `Microsoft.App/jobs/read` | the job itself: its trigger type and its stream endpoint |
-| `Microsoft.App/jobs/executions/read` | the executions and their replicas |
+| `Microsoft.App/jobs/*/read` | its executions, **and the replicas of an execution** |
 | `Microsoft.App/jobs/getAuthtoken/action` | the short-lived token the log stream accepts |
 
 `Microsoft.App/jobs/start/action` is deliberately **not** in that list:
 the probe observes runs, it does not cause them.
 
-A credential holding only the first two reports every verdict and every
-duration, and no output — the token action is what opens the stream, and
-the Reader role does not carry it.
+### Why the wildcard, and what happens without it
+
+`Microsoft.App/jobs/executions/read` is the obvious spelling for the
+second line, and it is not enough. Listing the **replicas** of an
+execution is the call that leads to its output, and Azure's provider
+catalogue declares no action for it: there is no
+`Microsoft.App/jobs/executions/replicas/read` to grant. The wildcard is
+what covers it.
+
+What makes this worth a paragraph is the failure mode. A credential
+without it is not refused. The replicas call answers **HTTP 200 with an
+empty list**, exactly as it does for an execution Azure has already
+cleaned up. So the probe reports every verdict, every duration and every
+count correctly, and never publishes a single line of output, while
+`executions.without_logs` climbs and nothing anywhere says "permission".
+
+Measured, not deduced: on one execution, while it was still running, a
+credential holding the narrow action listed zero replicas at the same
+moment an administrator listed one. Adding the wildcard, the next run's
+output arrived.
+
+If a job's verdicts look right and its logs never come, check this
+before anything else.
 
 **An existing Container Apps credential is usually not enough.** A role
 assignment written for the applications probe is commonly scoped to
 `Microsoft.App/containerApps/...`, which does not cover jobs. That one is
-not a deduction: on a subscription where the applications probe was
-already collecting, the job reads were refused with `AuthorizationFailed`
-naming `Microsoft.App/jobs/read`. The two probes share a credential only
-if its role covers both.
-
-A credential already carrying the four application actions needs only
-these three added to it; the two probes then share one role.
+not a deduction either: on a subscription where the applications probe
+was already collecting, the job reads were refused with
+`AuthorizationFailed` naming `Microsoft.App/jobs/read`. The two probes
+share a credential only if its role covers both; a credential already
+carrying the four application actions needs these three added to it.
