@@ -27,6 +27,36 @@ type LocalConfigurationData struct {
 	Probes        []ProbeConfig     `yaml:"probes"`
 	AutoUpdate    *AutoUpdateConfig `yaml:"auto_update,omitempty"`
 	Cache         *CacheConfig      `yaml:"cache,omitempty"`
+	// Entities configures the entity rail's PRODUCER. It sits here
+	// rather than under an output because what this host is does not
+	// depend on where the description is shipped: the detector feeds a
+	// fan-out channel every output may subscribe to. Absent, the agent
+	// falls back to whatever an OTLP output declares, which is where
+	// this used to live (#932).
+	Entities *EntitiesConfig `yaml:"entities,omitempty"`
+}
+
+// EntitiesConfig is the operator's control over entity detection.
+//
+// Detection has a cost — every source is polled on a cycle, and the
+// dependency scanner reads sockets — so an agent that does not want it
+// pays nothing, and one that does says so here rather than inheriting
+// the decision from an output's settings.
+type EntitiesConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Interval string `yaml:"interval,omitempty"`
+	// DependsOn maps this host's outbound dependencies. Off by default:
+	// reading which peers a host talks to can be privacy-sensitive.
+	DependsOn *EntitiesDependsOnConfig `yaml:"depends_on,omitempty"`
+}
+
+type EntitiesDependsOnConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Debounce is how many consecutive scrapes a peer must persist
+	// before its dependency is reported — the line between a durable
+	// dependency and a passing connection.
+	Debounce     int      `yaml:"debounce,omitempty"`
+	ExcludeCIDRs []string `yaml:"exclude_cidrs,omitempty"`
 }
 
 // LocalAgentConfig represents agent-specific configuration
@@ -236,6 +266,16 @@ func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 			Msg("Cache configuration loaded from YAML")
 	}
 	return cfg
+}
+
+// GetEntitiesConfig returns the global entity-detection block, or nil
+// when the configuration does not carry one.
+func (lc *LocalConfiguration) GetEntitiesConfig() *EntitiesConfig {
+	d := lc.snapshot()
+	if d == nil {
+		return nil
+	}
+	return d.Entities
 }
 
 // GetConfiguration returns the configuration data in ConfigurationData format

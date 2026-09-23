@@ -57,16 +57,28 @@ func otlpEntityStorageConfig(endpoint string) configuration.StorageConfig {
 	}
 }
 
-// TestOnConfigRefreshed_OTLPEntityEmissionSurvivesReload reproduces #495: a
-// config-reload that changes the OTLP endpoint recreates the strategy. The
-// OTLP strategy owns process-global entity state (the source registry and the
-// single entity detector). Before the fix, the replacement started while the
-// old instance was still registered, so the global registry briefly held two
-// instances' sources and two detectors ran. The fix tears the old instance
-// down before the new one starts: after the reload there is exactly one
-// strategy's worth of sources and entity events keep flowing on the new
-// endpoint.
-func TestOnConfigRefreshed_OTLPEntityEmissionSurvivesReload(t *testing.T) {
+// TestOnConfigRefreshed_OTLPEntityPumpSurvivesReload is what remains of
+// the #495 regression test, and it checks a different contract because
+// the bug's cause no longer exists.
+//
+// #495 was: a reload that changes the OTLP endpoint recreates the
+// strategy, and the strategy owned process-global entity state — the
+// source registry and the single detector. The replacement started
+// while the old one was still registered, so two detectors briefly ran.
+//
+// The producer now lives in the entitydetect service, at the agent's
+// lifecycle rather than a strategy's, so a strategy recreate cannot
+// duplicate it: the overlap this test used to sample for is structurally
+// impossible (#932). What is left to verify is the CONSUMER half, which
+// is still the strategy's: the pump subscribes to the neutral channel,
+// and after a reload it must relay events to the new endpoint without a
+// manual restart.
+//
+// Events are published straight onto the channel rather than produced by
+// a detector: the pump's contract is "what arrives on the channel goes
+// out", and testing it against a real producer would measure the
+// producer too.
+func TestOnConfigRefreshed_OTLPEntityPumpSurvivesReload(t *testing.T) {
 	entity.ResetForTest()
 	t.Cleanup(entity.ResetForTest)
 
@@ -101,60 +113,52 @@ func TestOnConfigRefreshed_OTLPEntityEmissionSurvivesReload(t *testing.T) {
 		_ = ds.Shutdown(ctx)
 	})
 
-	// Initial bring-up: one OTLP strategy, entity emission on endpoint A.
 	ds.OnConfigRefreshed("initial")
 
-	if got := entity.RegisteredSourceCount(); got == 0 {
-		t.Fatalf("initial start registered no entity sources")
+	// The strategy must no longer own any entity source: that ownership
+	// is exactly what made a recreate dangerous.
+	if got := entity.RegisteredSourceCount(); got != 0 {
+		t.Fatalf("the OTLP strategy registered %d entity source(s); producing entities is the entitydetect service's job now (#932)", got)
 	}
-	initialSources := entity.RegisteredSourceCount()
 
-	waitFor(t, &logHitsA, "endpoint A never received entity records")
+	publish := func() {
+		entity.PublishEvent(entity.Event{
+			Kind: entity.EntityState,
+			Entity: &entity.Entity{
+				Type:  "host",
+				ID:    map[string]any{"host.id": "host-under-test"},
+				Scope: entity.ScopeHostSvc,
+			},
+			Time:     time.Now(),
+			Interval: time.Minute,
+		})
+	}
 
-	// Config reload: endpoint changes -> OTLP strategy recreated. Sample the
-	// global source count at high frequency during the reload: the fix tears
-	// the old instance down before the replacement registers, so the count
-	// must never exceed one instance's worth. Without the fix the new
-	// instance starts while the old is still registered, so the count
-	// momentarily doubles and two detectors publish overlapping heartbeats.
+	publishUntil(t, publish, &logHitsA, "endpoint A never received the entity records the pump was given")
+
 	provider.set(configuration.ConfigurationData{
 		StorageConfig: []configuration.StorageConfig{otlpEntityStorageConfig(epB)},
 	})
-
-	var maxDuringReload atomic.Int64
-	stopSampler := make(chan struct{})
-	samplerDone := make(chan struct{})
-	go func() {
-		defer close(samplerDone)
-		for {
-			select {
-			case <-stopSampler:
-				return
-			default:
-				if n := int64(entity.RegisteredSourceCount()); n > maxDuringReload.Load() {
-					maxDuringReload.Store(n)
-				}
-			}
-		}
-	}()
-
 	ds.OnConfigRefreshed("endpoint-change")
-	close(stopSampler)
-	<-samplerDone
 
-	if got := maxDuringReload.Load(); got > int64(initialSources) {
-		t.Fatalf("during reload the registry held %d entity sources, want <= %d — the old OTLP instance overlapped the new one (#495)", got, initialSources)
-	}
-
-	// Exactly one strategy's worth of sources after the reload: no overlap
-	// (old left behind) and no leak.
-	if got := entity.RegisteredSourceCount(); got != initialSources {
-		t.Fatalf("after reload registered %d entity sources, want %d (one OTLP instance, no overlap/leak)", got, initialSources)
-	}
-
-	// Entity events must resume on the NEW endpoint without a manual restart.
 	logHitsB.Store(0)
-	waitFor(t, &logHitsB, "BUG #495: no entity records on the new endpoint after a config reload")
+	publishUntil(t, publish, &logHitsB, "no entity records on the new endpoint after a config reload")
+}
+
+// publishUntil keeps feeding the channel until the counter moves: the
+// pump subscribes as the strategy starts, and an event published before
+// that subscription is simply not seen by anyone.
+func publishUntil(t *testing.T, publish func(), counter *atomic.Int64, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		publish()
+		if counter.Load() > 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal(msg)
 }
 
 func waitFor(t *testing.T, counter *atomic.Int64, msg string) {
