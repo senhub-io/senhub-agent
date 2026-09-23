@@ -222,10 +222,22 @@ func TestBothCipherSuitesCompleteAHandshake(t *testing.T) {
 // still interoperate with ourselves while failing against every real
 // server, so it is pinned to the shape RFC 4279 states.
 func TestPreMasterSecretFollowsRFC4279(t *testing.T) {
-	got := preMasterSecret([]byte{0xAA, 0xBB, 0xCC})
+	got, err := preMasterSecret([]byte{0xAA, 0xBB, 0xCC})
+	if err != nil {
+		t.Fatalf("pre-master secret: %v", err)
+	}
 	want := []byte{0, 3, 0, 0, 0, 0, 3, 0xAA, 0xBB, 0xCC}
 	if !bytes.Equal(got, want) {
 		t.Errorf("pre-master secret = % x; want % x", got, want)
+	}
+}
+
+// The length guard sits at the conversion rather than relying on the
+// caller having validated: a key past what a 16-bit length carries must
+// be refused, not wrapped into a structure the peer cannot agree with.
+func TestPreMasterSecretRefusesAnOversizedKey(t *testing.T) {
+	if _, err := preMasterSecret(make([]byte, maxKeyLen+1)); err == nil {
+		t.Fatal("an oversized key was encoded instead of refused")
 	}
 }
 
