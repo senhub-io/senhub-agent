@@ -161,7 +161,7 @@ The `-k` flag is required for self-signed certificates. For CA-signed certificat
 
 Expected response:
 ```json
-{"status":"ok","version":"0.5.5","uptime":"2h30m","probes_active":4,"metrics_cached":156}
+{"status":"ok","version":"0.5.6","uptime":"2h30m","probes_active":4,"metrics_cached":156}
 ```
 
 ## API Endpoints Reference
@@ -238,7 +238,7 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "ok",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "commit": "a1b2c3d",
   "uptime": "2h30m15s",
   "probes_active": 4,
@@ -274,7 +274,7 @@ curl http://localhost:8080/api/{key}/info/system
 ```json
 {
   "status": "running",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "os": "linux",
   "arch": "amd64",
   "port": 8080,
