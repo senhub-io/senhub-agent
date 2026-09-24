@@ -78,6 +78,7 @@ metrics:
     display_name: "Main Storage"
     unit: "KB"
     category: "memory"
+    description: "Main storage configured on the partition (MAIN_STORAGE_SIZE)"
     otel:
       name: senhub.ibmi.memory.main_storage
       unit: "By"
@@ -88,6 +89,7 @@ metrics:
     display_name: "System ASP Used"
     unit: "%"
     category: "storage"
+    description: "Percentage of the system ASP in use; the number that fills before the partition stops writing"
     otel:
       name: senhub.ibmi.asp.system.utilization
       unit: "1"
@@ -99,6 +101,7 @@ metrics:
     unit: "%"
     category: "storage"
     multi_instance_labels: ["asp_number", "asp_type"]
+    description: "Percentage of this ASP in use"
     otel:
       name: senhub.ibmi.asp.utilization
       unit: "1"
@@ -113,6 +116,7 @@ metrics:
     unit: "MB"
     category: "storage"
     multi_instance_labels: ["asp_number"]
+    description: "Total capacity of this ASP"
     otel:
       name: senhub.ibmi.asp.capacity
       unit: "By"
@@ -126,6 +130,7 @@ metrics:
     unit: "%"
     category: "storage"
     multi_instance_labels: ["asp_number"]
+    description: "Threshold at which this ASP raises a storage warning, as configured — not a measurement"
     otel:
       name: senhub.ibmi.asp.threshold
       unit: "1"
@@ -141,6 +146,7 @@ metrics:
     display_name: "Jobs Total"
     unit: "#"
     category: "jobs"
+    description: "Jobs in the system, active and inactive (TOTAL_JOBS_IN_SYSTEM)"
     otel:
       name: senhub.ibmi.jobs.total
       unit: "{job}"
@@ -151,6 +157,7 @@ metrics:
     display_name: "Jobs Active Total"
     unit: "#"
     category: "jobs"
+    description: "Active jobs returned by the scan; capped by the row limit, see ibmi.jobs.topn_cap_hit"
     otel:
       name: senhub.ibmi.jobs.active
       unit: "{job}"
@@ -162,6 +169,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_type", "status"]
+    description: "Active jobs of this type in this status; the enum values come from IBM, so cardinality is bounded"
     otel:
       name: senhub.ibmi.jobs.by_status
       unit: "{job}"
@@ -176,6 +184,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["subsystem"]
+    description: "Active jobs running in this subsystem"
     otel:
       name: senhub.ibmi.jobs.by_subsystem
       unit: "{job}"
@@ -203,6 +212,7 @@ metrics:
     unit: "%"
     category: "jobs"
     multi_instance_labels: ["job_name", "job_user", "subsystem"]
+    description: "Share of CPU attributed to this job since the statistics baseline — set on the first query of the connection, not per collection (senhub-agent-enterprise#90)"
     otel:
       name: senhub.ibmi.job.cpu.utilization
       unit: "1"
@@ -218,6 +228,7 @@ metrics:
     unit: "ms"
     category: "jobs"
     multi_instance_labels: ["job_name", "job_user", "subsystem"]
+    description: "CPU time this job used since the statistics baseline; same window as elapsed_cpu_percent"
     otel:
       name: senhub.ibmi.job.cpu.elapsed_time
       unit: "s"
@@ -233,6 +244,7 @@ metrics:
     unit: "ms"
     category: "jobs"
     multi_instance_labels: ["job_name", "job_user", "subsystem"]
+    description: "CPU time this job has used since it started — cumulative, not an interval"
     otel:
       name: senhub.ibmi.job.cpu.cumulative_time
       unit: "s"
@@ -248,6 +260,7 @@ metrics:
     unit: "ms"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "CPU time consumed between two collections, derived from cpu_time_ms"
     otel:
       name: senhub.ibmi.job.cpu.delta_time
       unit: "s"
@@ -276,6 +289,7 @@ metrics:
     unit: "MB"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "Temporary storage currently allocated to this job; a job that grows here without end is the usual sign of a leak"
     otel:
       name: senhub.ibmi.job.temp_storage
       unit: "By"
@@ -289,6 +303,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "Disk I/O operations this job has performed since it started"
     otel:
       name: senhub.ibmi.job.disk.io
       unit: "{operation}"
@@ -302,6 +317,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "Disk I/O since the statistics baseline; same window as the other elapsed values"
     otel:
       name: senhub.ibmi.job.disk.elapsed_io
       unit: "{operation}"
@@ -315,6 +331,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "Page faults since the statistics baseline; sustained faults point at an undersized memory pool"
     otel:
       name: senhub.ibmi.job.page_faults
       unit: "{fault}"
@@ -328,6 +345,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "Threads this job is running"
     otel:
       name: senhub.ibmi.job.threads
       unit: "{thread}"
@@ -341,6 +359,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "Priority at which this job competes for the processor, 1 highest to 99 lowest — lower is more urgent"
     otel:
       name: senhub.ibmi.job.priority
       unit: "{priority}"
@@ -357,6 +376,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["queue_library", "queue_name"]
+    description: "Jobs of this queue currently running"
     otel:
       name: senhub.ibmi.job_queue.active
       unit: "{job}"
@@ -371,6 +391,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["queue_library", "queue_name"]
+    description: "Jobs held in this queue; held work does not run until released"
     otel:
       name: senhub.ibmi.job_queue.held
       unit: "{job}"
@@ -385,6 +406,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["queue_library", "queue_name"]
+    description: "Jobs released and waiting to be dispatched from this queue"
     otel:
       name: senhub.ibmi.job_queue.released
       unit: "{job}"
@@ -399,6 +421,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["queue_library", "queue_name"]
+    description: "Jobs in this queue waiting for their scheduled time"
     otel:
       name: senhub.ibmi.job_queue.scheduled
       unit: "{job}"
@@ -413,6 +436,7 @@ metrics:
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["queue_library", "queue_name"]
+    description: "Jobs of every state in this queue — its depth"
     otel:
       name: senhub.ibmi.job_queue.depth
       unit: "{job}"
@@ -426,6 +450,7 @@ metrics:
     display_name: "Non-empty Job Queues"
     unit: "#"
     category: "jobs"
+    description: "Job queues holding at least one job"
     otel:
       name: senhub.ibmi.job_queue.nonempty
       unit: "{queue}"
@@ -439,6 +464,7 @@ metrics:
     display_name: "Scheduled Jobs"
     unit: "#"
     category: "jobs"
+    description: "Entries in the job scheduler"
     otel:
       name: senhub.ibmi.scheduled_job.count
       unit: "{job}"
@@ -450,6 +476,7 @@ metrics:
     unit: "s"
     category: "jobs"
     multi_instance_labels: ["job_name"]
+    description: "Time since this scheduled job last ran; the metric to alert on, an entry that stops firing keeps a healthy last status"
     otel:
       name: senhub.ibmi.scheduled_job.last_run_age
       unit: "s"
@@ -480,6 +507,7 @@ metrics:
     unit: "#"
     category: "workload"
     multi_instance_labels: ["subsystem"]
+    description: "Active jobs in this subsystem"
     otel:
       name: senhub.ibmi.subsystem.active_jobs
       unit: "{job}"
@@ -496,6 +524,7 @@ metrics:
     unit: "MB"
     category: "memory"
     multi_instance_labels: ["pool_id", "pool_name"]
+    description: "Size configured for this memory pool"
     otel:
       name: senhub.ibmi.memory_pool.size
       unit: "By"
@@ -510,6 +539,7 @@ metrics:
     unit: "#"
     category: "memory"
     multi_instance_labels: ["pool_id", "pool_name"]
+    description: "Threads currently eligible to run in this pool"
     otel:
       name: senhub.ibmi.memory_pool.threads
       unit: "{thread}"
@@ -524,6 +554,7 @@ metrics:
     unit: "#"
     category: "memory"
     multi_instance_labels: ["pool_id", "pool_name"]
+    description: "Threads waiting for an activation slot in this pool; a rising count means the pool's activity level is too low for the work"
     otel:
       name: senhub.ibmi.memory_pool.ineligible_threads
       unit: "{thread}"
@@ -541,6 +572,7 @@ metrics:
     unit: "%"
     category: "storage"
     multi_instance_labels: ["unit_number", "device_name"]
+    description: "Share of time this disk unit was busy since the statistics baseline"
     otel:
       name: senhub.ibmi.disk.utilization
       unit: "1"
@@ -555,6 +587,7 @@ metrics:
     unit: "B"
     category: "storage"
     multi_instance_labels: ["unit_number"]
+    description: "Bytes read from this disk unit since the statistics baseline"
     otel:
       name: senhub.ibmi.disk.read
       unit: "By"
@@ -568,6 +601,7 @@ metrics:
     unit: "B"
     category: "storage"
     multi_instance_labels: ["unit_number"]
+    description: "Bytes written to this disk unit since the statistics baseline"
     otel:
       name: senhub.ibmi.disk.write
       unit: "By"
@@ -581,6 +615,7 @@ metrics:
     unit: "#"
     category: "storage"
     multi_instance_labels: ["unit_number"]
+    description: "Read requests served by this disk unit since the statistics baseline"
     otel:
       name: senhub.ibmi.disk.operations
       unit: "{operation}"
@@ -596,6 +631,7 @@ metrics:
     unit: "#"
     category: "storage"
     multi_instance_labels: ["unit_number"]
+    description: "Write requests served by this disk unit since the statistics baseline"
     otel:
       name: senhub.ibmi.disk.operations
       unit: "{operation}"
@@ -611,6 +647,7 @@ metrics:
     unit: "B"
     category: "storage"
     multi_instance_labels: ["unit_number"]
+    description: "Total capacity of this disk unit"
     otel:
       name: senhub.ibmi.disk.capacity
       unit: "By"
@@ -624,6 +661,7 @@ metrics:
     unit: "GB"
     category: "storage"
     multi_instance_labels: ["unit_number"]
+    description: "Space still available on this disk unit"
     otel:
       name: senhub.ibmi.disk.available
       unit: "By"
@@ -637,6 +675,7 @@ metrics:
     unit: "%"
     category: "storage"
     multi_instance_labels: ["unit_number"]
+    description: "Share of this disk unit in use"
     otel:
       name: senhub.ibmi.disk.space.utilization
       unit: "1"
@@ -649,6 +688,7 @@ metrics:
     display_name: "Disk Units"
     unit: "#"
     category: "storage"
+    description: "Disk units the partition reports"
     otel:
       name: senhub.ibmi.disk.units
       unit: "{unit}"
@@ -663,6 +703,7 @@ metrics:
     unit: "#"
     category: "spool"
     multi_instance_labels: ["queue_library", "queue_name"]
+    description: "Spooled files waiting in this output queue"
     otel:
       name: senhub.ibmi.output_queue.files
       unit: "{file}"
@@ -676,6 +717,7 @@ metrics:
     display_name: "Spooled Files Total"
     unit: "#"
     category: "spool"
+    description: "Spooled files across every output queue"
     otel:
       name: senhub.ibmi.output_queue.spooled_files
       unit: "{file}"
@@ -686,6 +728,7 @@ metrics:
     display_name: "Spooled Files"
     unit: "#"
     category: "spool"
+    description: "Spooled files the scan returned"
     otel:
       name: senhub.ibmi.spooled_file.count
       unit: "{file}"
@@ -696,6 +739,7 @@ metrics:
     display_name: "Oldest Spool Age"
     unit: "s"
     category: "spool"
+    description: "Age of the oldest spooled file; output nobody collects accumulates here and consumes ASP"
     otel:
       name: senhub.ibmi.spooled_file.oldest_age
       unit: "s"
@@ -710,6 +754,7 @@ metrics:
     unit: "KB"
     category: "storage"
     multi_instance_labels: ["user", "asp"]
+    description: "Storage owned by this user profile"
     otel:
       name: senhub.ibmi.user_storage.used
       unit: "By"
@@ -724,6 +769,7 @@ metrics:
     unit: "KB"
     category: "storage"
     multi_instance_labels: ["user", "asp"]
+    description: "Storage limit set on this user profile; 0 means no limit"
     otel:
       name: senhub.ibmi.user_storage.quota
       unit: "By"
@@ -738,6 +784,7 @@ metrics:
     unit: "%"
     category: "storage"
     multi_instance_labels: ["user", "asp"]
+    description: "Share of this user's quota in use; absent when no quota is set"
     otel:
       name: senhub.ibmi.user_storage.utilization
       unit: "1"
@@ -751,6 +798,7 @@ metrics:
     display_name: "Users Over 80% Quota"
     unit: "#"
     category: "storage"
+    description: "User profiles past 80% of their storage quota"
     otel:
       name: senhub.ibmi.user_storage.over_threshold
       unit: "{user}"
@@ -765,6 +813,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["table_schema", "table_name"]
+    description: "Rows in this table"
     otel:
       name: senhub.ibmi.table.rows
       unit: "{row}"
@@ -779,6 +828,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["table_schema", "table_name"]
+    description: "Logical reads against this table since the statistics were last reset"
     otel:
       name: senhub.ibmi.table.logical_reads
       unit: "{read}"
@@ -793,6 +843,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["table_schema", "table_name"]
+    description: "Update operations against this table since the statistics were last reset"
     otel:
       name: senhub.ibmi.table.updates
       unit: "{update}"
@@ -807,6 +858,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["table_schema", "table_name"]
+    description: "Rows deleted but not yet reorganised; space a REORG would reclaim"
     otel:
       name: senhub.ibmi.table.deleted_rows
       unit: "{row}"
@@ -837,6 +889,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+    description: "Times the system built a temporary index for this table instead of using a permanent one"
     otel:
       name: senhub.ibmi.index_advisor.mti_used
       unit: "{use}"
@@ -852,6 +905,7 @@ metrics:
     unit: "s"
     category: "database"
     multi_instance_labels: ["table_schema", "table_name", "key_columns"]
+    description: "Estimated query time the advisor expects to save by creating the advised index"
     otel:
       name: senhub.ibmi.index_advisor.avg_query_estimate
       unit: "s"
@@ -866,6 +920,7 @@ metrics:
     display_name: "Advised Indexes"
     unit: "#"
     category: "database"
+    description: "Index recommendations open across the partition"
     otel:
       name: senhub.ibmi.index_advisor.advised_indexes
       unit: "{index}"
@@ -876,6 +931,7 @@ metrics:
     display_name: "Index Advisories (1h)"
     unit: "#"
     category: "database"
+    description: "Index recommendations raised in the last hour; a burst points at a query pattern that changed"
     otel:
       name: senhub.ibmi.index_advisor.recent_advisories
       unit: "{advisory}"
@@ -890,6 +946,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["journal", "journal_library"]
+    description: "1 when this journal is active"
     otel:
       name: senhub.ibmi.journal.active
       unit: "{status}"
@@ -904,6 +961,7 @@ metrics:
     unit: "KB"
     category: "database"
     multi_instance_labels: ["journal", "journal_library"]
+    description: "Size of every receiver attached to this journal; receivers that are never detached grow without bound"
     otel:
       name: senhub.ibmi.journal.receivers_size
       unit: "By"
@@ -918,6 +976,7 @@ metrics:
     unit: "s"
     category: "database"
     multi_instance_labels: ["journal", "journal_library"]
+    description: "Estimated delay of the remote journal behind the local one — an estimate, not a value the system reports"
     otel:
       name: senhub.ibmi.journal.remote_lag
       unit: "s"
@@ -932,6 +991,7 @@ metrics:
     unit: "KB"
     category: "database"
     multi_instance_labels: ["receiver", "receiver_library"]
+    description: "Size of this journal receiver"
     otel:
       name: senhub.ibmi.journal_receiver.size
       unit: "By"
@@ -945,6 +1005,7 @@ metrics:
     display_name: "Attached Receivers"
     unit: "#"
     category: "database"
+    description: "Journal receivers currently attached"
     otel:
       name: senhub.ibmi.journal_receiver.attached
       unit: "{receiver}"
@@ -958,6 +1019,7 @@ metrics:
     display_name: "TCP Connections Established"
     unit: "#"
     category: "network"
+    description: "TCP connections currently established"
     otel:
       name: senhub.ibmi.tcp.connections.established
       unit: "{connection}"
@@ -968,6 +1030,7 @@ metrics:
     display_name: "TCP Connections Total"
     unit: "#"
     category: "network"
+    description: "TCP connections in every state"
     otel:
       name: senhub.ibmi.netstat.connections
       unit: "{connection}"
@@ -979,6 +1042,7 @@ metrics:
     unit: "#"
     category: "network"
     multi_instance_labels: ["tcp_state"]
+    description: "TCP connections in this state; a growing TIME-WAIT or CLOSE-WAIT count is the usual first symptom"
     otel:
       name: senhub.ibmi.netstat.connections_by_state
       unit: "{connection}"
@@ -992,6 +1056,7 @@ metrics:
     unit: "#"
     category: "network"
     multi_instance_labels: ["local_port", "port_name", "protocol"]
+    description: "1 when something is listening on this port"
     otel:
       name: senhub.ibmi.netstat.listener.up
       unit: "{status}"
@@ -1007,6 +1072,7 @@ metrics:
     unit: "#"
     category: "network"
     multi_instance_labels: ["local_port", "port_name"]
+    description: "Jobs listening on this port"
     otel:
       name: senhub.ibmi.netstat.listener.jobs
       unit: "{job}"
@@ -1020,6 +1086,7 @@ metrics:
     display_name: "Listeners Total"
     unit: "#"
     category: "network"
+    description: "Ports with a listener"
     otel:
       name: senhub.ibmi.netstat.listeners
       unit: "{listener}"
@@ -1031,6 +1098,7 @@ metrics:
     unit: "#"
     category: "network"
     multi_instance_labels: ["address", "line_description"]
+    description: "1 when this interface is active"
     otel:
       name: senhub.ibmi.netstat.interface.up
       unit: "{status}"
@@ -1045,6 +1113,7 @@ metrics:
     unit: "B"
     category: "network"
     multi_instance_labels: ["address"]
+    description: "MTU configured on this interface"
     otel:
       name: senhub.ibmi.netstat.interface.mtu
       unit: "By"
@@ -1061,6 +1130,7 @@ metrics:
     unit: "#"
     category: "network"
     multi_instance_labels: ["server_name"]
+    description: "Threads serving requests on this HTTP server"
     otel:
       name: senhub.ibmi.http_server.threads.active
       unit: "{thread}"
@@ -1074,6 +1144,7 @@ metrics:
     unit: "#"
     category: "network"
     multi_instance_labels: ["server_name"]
+    description: "Threads idle on this HTTP server; no idle thread left means requests are queuing"
     otel:
       name: senhub.ibmi.http_server.threads.idle
       unit: "{thread}"
@@ -1087,6 +1158,7 @@ metrics:
     unit: "#"
     category: "network"
     multi_instance_labels: ["server_name"]
+    description: "Responses this HTTP server has sent since it started"
     otel:
       name: senhub.ibmi.http_server.responses
       unit: "{response}"
@@ -1103,6 +1175,7 @@ metrics:
     unit: "#"
     category: "hardware"
     multi_instance_labels: ["category", "status"]
+    description: "Hardware resources of this category in this status"
     otel:
       name: senhub.ibmi.hardware.count
       unit: "{resource}"
@@ -1116,6 +1189,7 @@ metrics:
     display_name: "Hardware Resources Total"
     unit: "#"
     category: "hardware"
+    description: "Hardware resources the partition reports"
     otel:
       name: senhub.ibmi.hardware.total
       unit: "{resource}"
@@ -1140,6 +1214,7 @@ metrics:
     display_name: "User Profiles Total"
     unit: "#"
     category: "security"
+    description: "User profiles on the partition"
     otel:
       name: senhub.ibmi.user_profile.count
       unit: "{user}"
@@ -1151,6 +1226,7 @@ metrics:
     unit: "#"
     category: "security"
     multi_instance_labels: ["status"]
+    description: "User profiles in this status"
     otel:
       name: senhub.ibmi.user_profile.by_status
       unit: "{user}"
@@ -1164,6 +1240,7 @@ metrics:
     unit: "#"
     category: "security"
     multi_instance_labels: ["user_class"]
+    description: "User profiles of this class; the count of *SECOFR is the one worth watching"
     otel:
       name: senhub.ibmi.user_profile.by_class
       unit: "{user}"
@@ -1176,6 +1253,7 @@ metrics:
     display_name: "Users with Failed Signons"
     unit: "#"
     category: "security"
+    description: "User profiles carrying at least one failed sign-on attempt"
     otel:
       name: senhub.ibmi.user_profile.failed_signons
       unit: "{user}"
@@ -1189,6 +1267,7 @@ metrics:
     display_name: "QSECURITY"
     unit: "#"
     category: "security"
+    description: "QSECURITY system value: 20 no resource security, 30 resource security, 40 and 50 add integrity protection"
     otel:
       name: senhub.ibmi.sysval.security_level
       unit: "{level}"
@@ -1199,6 +1278,7 @@ metrics:
     display_name: "QAUDLVL"
     unit: "#"
     category: "security"
+    description: "QAUDLVL as a numeric code; 0 means auditing is off"
     otel:
       name: senhub.ibmi.sysval.audit_level
       unit: "{level}"
@@ -1213,6 +1293,7 @@ metrics:
     unit: "#"
     category: "config"
     multi_instance_labels: ["library", "type"]
+    description: "Position of this library in the list, in order of search"
     otel:
       name: senhub.ibmi.library_list.position
       unit: "{position}"
@@ -1230,6 +1311,7 @@ metrics:
     unit: "#"
     category: "config"
     multi_instance_labels: ["product_id", "feature_id"]
+    description: "Users currently licensed for this product"
     otel:
       name: senhub.ibmi.license.licensed_users
       unit: "{user}"
@@ -1244,6 +1326,7 @@ metrics:
     unit: "#"
     category: "config"
     multi_instance_labels: ["product_id", "feature_id"]
+    description: "Users this product's licence allows"
     otel:
       name: senhub.ibmi.license.usage_limit
       unit: "{limit}"
@@ -1261,6 +1344,7 @@ metrics:
     unit: "#"
     category: "compliance"
     multi_instance_labels: ["group"]
+    description: "1 when this PTF group is installed at the level the system expects"
     otel:
       name: senhub.ibmi.ptf_group.installed
       unit: "{status}"
@@ -1274,6 +1358,7 @@ metrics:
     unit: "#"
     category: "compliance"
     multi_instance_labels: ["group"]
+    description: "Level of this PTF group as installed; compare against the level IBM publishes"
     otel:
       name: senhub.ibmi.ptf_group.level
       unit: "{level}"
@@ -1290,6 +1375,7 @@ metrics:
     unit: "#"
     category: "compliance"
     multi_instance_labels: ["session_id", "program"]
+    description: "1 when this watch session is running"
     otel:
       name: senhub.ibmi.watch.session_active
       unit: "{status}"
@@ -1306,6 +1392,7 @@ metrics:
     display_name: "QSYSOPR Message"
     unit: "#"
     category: "events"
+    description: "A message reached QSYSOPR; carries the message identifier and text as attributes"
     otel:
       skip: true
       reason: "Event conduit — relayed QSYSOPR message. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
@@ -1315,6 +1402,7 @@ metrics:
     display_name: "QHST Event"
     unit: "#"
     category: "events"
+    description: "An entry was written to the history log QHST"
     otel:
       skip: true
       reason: "Event conduit — relayed QHST history event. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
@@ -1324,6 +1412,7 @@ metrics:
     display_name: "Audit Event"
     unit: "#"
     category: "events"
+    description: "An entry was written to the audit journal"
     otel:
       skip: true
       reason: "Event conduit — relayed QAUDJRN entry. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
@@ -1337,6 +1426,7 @@ metrics:
     unit: "#"
     category: "health"
     multi_instance_labels: ["collector"]
+    description: "Successful runs of this collector since the agent started"
     otel:
       name: senhub.ibmi.collector.success
       unit: "{collection}"
@@ -1350,6 +1440,7 @@ metrics:
     unit: "#"
     category: "health"
     multi_instance_labels: ["collector"]
+    description: "Failed runs of this collector; a collector failing alone leaves its metrics absent while the rest keep reporting"
     otel:
       name: senhub.ibmi.collector.failure
       unit: "{collection}"
@@ -1363,6 +1454,7 @@ metrics:
     unit: "ms"
     category: "health"
     multi_instance_labels: ["collector"]
+    description: "How long this collector's last run took"
     otel:
       name: senhub.ibmi.collector.last_duration
       unit: "s"
@@ -1376,6 +1468,7 @@ metrics:
     unit: "s"
     category: "health"
     multi_instance_labels: ["collector"]
+    description: "Unix time of this collector's last successful run"
     otel:
       name: senhub.ibmi.collector.last_success_timestamp
       unit: "s"
