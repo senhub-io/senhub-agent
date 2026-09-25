@@ -184,6 +184,8 @@ metrics:
     channel: "memory_usage"
     display_name: "Memory Usage"
     unit: "%"
+    alert_threshold_warning: 85
+    alert_threshold_critical: 95
     category: "usage"
     description: "Percentage of total physical memory currently in use"
     otel:

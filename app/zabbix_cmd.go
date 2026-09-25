@@ -198,6 +198,20 @@ func (a lookupAdapter) Lookup(id string) (map[int]string, bool) {
 	return out, true
 }
 
+// Severities gives each code the severity the lookup classes it under,
+// which the generator turns into triggers.
+func (a lookupAdapter) Severities(id string) (map[int]string, bool) {
+	def, ok := a.reg.GetLookup(strings.TrimSpace(id))
+	if !ok {
+		return nil, false
+	}
+	out := make(map[int]string, len(def.Mappings))
+	for code, v := range def.Mappings {
+		out[code] = v.Severity
+	}
+	return out, true
+}
+
 // renderTemplates generates the templates of the named probe types, or
 // of every definition when none is named, and returns them keyed by
 // probe type along with the template names Zabbix will know them by.

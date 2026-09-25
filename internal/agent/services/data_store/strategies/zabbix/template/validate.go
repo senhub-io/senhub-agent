@@ -19,6 +19,23 @@ const (
 	maxValueMapName = 64
 )
 
+// The constants an import accepts in the fields the generator writes. An
+// override operation took "EQUALS" once and every server refused the
+// template with `unexpected constant "EQUALS"`: the spelling is EQUAL.
+var (
+	overrideOperators  = set("EQUAL", "NOT_EQUAL", "LIKE", "NOT_LIKE", "REGEXP", "NOT_REGEXP")
+	conditionOperators = set("MATCHES_REGEX", "NOT_MATCHES_REGEX", "EXISTS", "NOT_EXISTS")
+	triggerPriorities  = set("NOT_CLASSIFIED", "INFO", "WARNING", "AVERAGE", "HIGH", "DISASTER")
+)
+
+func set(values ...string) map[string]bool {
+	out := make(map[string]bool, len(values))
+	for _, v := range values {
+		out[v] = true
+	}
+	return out
+}
+
 // Validate reports every way an export would be refused by the server the
 // version targets. An empty result means the file imports; the generator's
 // tests hold every embedded definition to that.
@@ -57,6 +74,26 @@ func Validate(exp Export) []string {
 			for _, p := range r.ItemPrototypes {
 				if n := len([]rune(p.Name)); n > maxItemName {
 					out = append(out, fmt.Sprintf("template %q: prototype %q has a %d-character name, over %d", t.Template, p.Key, n, maxItemName))
+				}
+				for _, tr := range p.TriggerPrototypes {
+					if n := len([]rune(tr.Name)); n > maxItemName {
+						out = append(out, fmt.Sprintf("template %q: trigger on %q has a %d-character name, over %d", t.Template, p.Key, n, maxItemName))
+					}
+					if !triggerPriorities[tr.Priority] {
+						out = append(out, fmt.Sprintf("template %q: trigger on %q has priority %q, which no server accepts", t.Template, p.Key, tr.Priority))
+					}
+				}
+			}
+			for _, o := range r.Overrides {
+				for _, c := range o.Filter.Conditions {
+					if !conditionOperators[c.Operator] {
+						out = append(out, fmt.Sprintf("template %q: override %q has condition operator %q, which no server accepts", t.Template, o.Name, c.Operator))
+					}
+				}
+				for _, op := range o.Operations {
+					if !overrideOperators[op.Operator] {
+						out = append(out, fmt.Sprintf("template %q: override %q has operation operator %q, which no server accepts", t.Template, o.Name, op.Operator))
+					}
 				}
 			}
 		}
