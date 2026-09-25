@@ -7,7 +7,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -213,7 +215,7 @@ func (m *MetricsProcessor) ProcessNagiosMetric(metricDef NagiosMetric, metrics [
 	}
 
 	// Check if this is a health/status metric requiring special handling
-	if m.isHealthStatusMetricNagios(metricDef.Channel, matchingMetrics) {
+	if m.declaresStates(matchingMetrics[0]) {
 		return m.processNagiosHealthMetric(metricDef, matchingMetrics, overrides)
 	}
 
@@ -753,34 +755,46 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 
 // Health Metrics Processing for Nagios
 
-// isHealthStatusMetricNagios determines if a metric should use health-specific Nagios processing
-func (m *MetricsProcessor) isHealthStatusMetricNagios(metricName string, metrics []CachedMetric) bool {
-	// Check metric name patterns
-	healthKeywords := []string{"health", "status", "state", "power_state", "availability"}
-
-	metricLower := strings.ToLower(metricName)
-	for _, keyword := range healthKeywords {
-		if strings.Contains(metricLower, keyword) {
-			return true
-		}
+// definitionLookups maps probe → metric name → lookup id for every
+// shipped definition. Parsed once: the definitions are embedded.
+var definitionLookups = sync.OnceValues(func() (map[string]map[string]string, error) {
+	defs, err := transformers.DefinitionMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("reading probe definitions: %w", err)
 	}
-
-	// Check metric tags if available
-	if len(metrics) > 0 {
-		metric := metrics[0] // Use first metric to check patterns
-
-		// Check if metric unit suggests health values
-		if metric.Unit == "#" || metric.Unit == "" {
-			// Numeric health values (0=OK, 1=Warning, 2=Critical, 3=Unknown)
-			if val, ok := metric.Value.(float64); ok {
-				if val >= 0 && val <= 3 && val == float64(int(val)) {
-					return true
-				}
+	out := make(map[string]map[string]string, len(defs))
+	for probe, metrics := range defs {
+		for _, d := range metrics {
+			if d.Lookup == "" {
+				continue
 			}
+			if out[probe] == nil {
+				out[probe] = make(map[string]string)
+			}
+			out[probe][d.Name] = d.Lookup
 		}
 	}
+	return out, nil
+})
 
-	return false
+// declaresStates reports whether the metric's definition names its
+// values through a lookup, which makes each value a state with its own
+// severity rather than a quantity to hold against thresholds. It used
+// to be guessed from the name (health, status, state) and from the
+// first cached value (an integer 0 to 3 with no unit): a count of
+// failed jobs at 1 then read WARNING whatever the thresholds said, at 5
+// read UNKNOWN, and the mode could change from one poll to the next.
+func (m *MetricsProcessor) declaresStates(metric CachedMetric) bool {
+	lookups, err := definitionLookups()
+	if err != nil {
+		m.logger.Warn().Err(err).Str("metric", metric.MetricName).Msg("Nagios state mode unavailable, evaluating against thresholds")
+		return false
+	}
+	probe := metric.Tags["probe_type"]
+	if probe == "" {
+		probe = metric.ProbeName
+	}
+	return lookups[probe][metric.MetricName] != ""
 }
 
 // processNagiosHealthMetric processes health/status metrics with special Nagios mapping
