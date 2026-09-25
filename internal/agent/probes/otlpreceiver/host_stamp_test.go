@@ -97,7 +97,9 @@ func TestASpanSentOverTheUnixSocketCarriesThisHost(t *testing.T) {
 		"signals": []interface{}{"traces"},
 	}, &captureCallback{})
 
-	conn, err := grpc.NewClient("unix://"+sock, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// "unix:" + path, not "unix://": a Windows path starts with a drive
+	// letter, which the authority form reads as host:port.
+	conn, err := grpc.NewClient("unix:"+sock, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatal(err)
 	}
