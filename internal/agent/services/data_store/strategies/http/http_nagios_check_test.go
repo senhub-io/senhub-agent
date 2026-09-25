@@ -12,23 +12,36 @@ import (
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
-func newNagiosCheckTestServer(t *testing.T, cpuUsage float64) (http.Handler, string) {
+func newNagiosTestStrategy(t *testing.T, points []datapoint.DataPoint) (*HTTPSyncStrategy, string) {
 	t.Helper()
 	const key = "nagios-check-key"
 	base := createIntegrationTestConfig()
 	agentConfig := configuration.NewAgentConfiguration(key, "http://test-server.com", base.Logger)
 	params := map[string]interface{}{"endpoints": []interface{}{"nagios"}}
 	strategy := NewHTTPSyncStrategy(agentConfig, params, base.Logger).(*HTTPSyncStrategy)
-
-	now := time.Now()
-	cpu := []tags.Tag{{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}}
-	if err := strategy.AddDataPoints([]datapoint.DataPoint{
-		{Name: "cpu_usage_total", Value: cpuUsage, Timestamp: now, Tags: cpu},
-		{Name: "cpu_system", Value: float64(5), Timestamp: now, Tags: cpu},
-		{Name: "cpu_user", Value: float64(10), Timestamp: now, Tags: cpu},
-	}); err != nil {
+	if err := strategy.AddDataPoints(points); err != nil {
 		t.Fatal(err)
 	}
+	return strategy, key
+}
+
+func probePoints(probe string, values map[string]float64) []datapoint.DataPoint {
+	now := time.Now()
+	probeTags := []tags.Tag{{Key: "probe_name", Value: probe}, {Key: "probe_type", Value: probe}}
+	points := make([]datapoint.DataPoint, 0, len(values))
+	for name, value := range values {
+		points = append(points, datapoint.DataPoint{Name: name, Value: value, Timestamp: now, Tags: probeTags})
+	}
+	return points
+}
+
+func newNagiosCheckTestServer(t *testing.T, cpuUsage float64) (http.Handler, string) {
+	t.Helper()
+	strategy, key := newNagiosTestStrategy(t, probePoints("cpu", map[string]float64{
+		"cpu_usage_total": cpuUsage,
+		"cpu_system":      5,
+		"cpu_user":        10,
+	}))
 	return strategy.setupRoutes(), key
 }
 
@@ -61,5 +74,28 @@ func TestNagiosCheckRoute(t *testing.T) {
 				t.Errorf("perfdata missing the check's metric: %q", body)
 			}
 		})
+	}
+}
+
+// A metric is read as a state only when its definition names its values
+// through a lookup. A count is held against its thresholds whatever its
+// name or its value, and a state takes the severity its lookup gives.
+func TestNagiosStateModeFollowsTheDefinition(t *testing.T) {
+	strategy, _ := newNagiosTestStrategy(t, probePoints("veeam", map[string]float64{
+		"veeam_jobs_failed": 2,
+		"veeam_job_status":  1,
+	}))
+	metrics := strategy.cache.GetProbeMetrics("veeam")
+
+	count := strategy.metricsProcessor.ProcessNagiosMetric(
+		NagiosMetric{Channel: "veeam_jobs_failed", Warning: "5", Critical: "10"}, metrics, NagiosOverrides{})
+	if count.Status != 0 {
+		t.Errorf("2 failed jobs against warning 5: got status %d (%s), want OK", count.Status, count.Message)
+	}
+
+	state := strategy.metricsProcessor.ProcessNagiosMetric(
+		NagiosMetric{Channel: "veeam_job_status", Warning: "2", Critical: "3"}, metrics, NagiosOverrides{})
+	if state.Status != 0 || !strings.Contains(strings.ToLower(state.Message), "success") {
+		t.Errorf("job status 1 is Success in its lookup: got status %d (%s)", state.Status, state.Message)
 	}
 }
