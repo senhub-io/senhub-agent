@@ -455,3 +455,8 @@ collection gaps that comparison exposed.
   executable for writing, which the service holds, although an
   MSI-managed install updates through a new MSI and never writes its
   binary.
+
+- **`config check` validates `nagios.yaml`.** A file the agent would
+  refuse at start is an error, and a check naming a metric this
+  platform does not emit is a warning, instead of both being found in
+  the log after a restart. (#939)

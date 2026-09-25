@@ -369,3 +369,50 @@ func (cm *ConfigurationManager) ReloadNagiosConfig() error {
 	cm.logger.Info().Msg("Nagios configuration cache cleared, will reload on next access")
 	return nil
 }
+
+// NagiosFileReport is what config check says about the operator's
+// nagios.yaml: where it was found, why it would be refused, and which of
+// its checks can only ever answer UNKNOWN here.
+type NagiosFileReport struct {
+	Path     string
+	Err      error
+	Warnings []string
+}
+
+// CheckNagiosFile runs the loader the agent runs at start against the
+// nagios.yaml that sits next to agentConfigPath (or at the historical
+// config/nagios.yaml), so an operator learns a file is refused before
+// restarting rather than from the log after. found is false when there is
+// no such file, which is not a problem: the shipped checks are served.
+func CheckNagiosFile(agentConfigPath string) (report NagiosFileReport, found bool) {
+	cm := &ConfigurationManager{}
+	candidates := []string{filepath.Join(filepath.Dir(agentConfigPath), "nagios.yaml"), filepath.Join("config", "nagios.yaml")}
+	for _, path := range candidates {
+		config, err := cm.loadNagiosConfigFromFile(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		report.Path = path
+		if err != nil {
+			report.Err = err
+			return report, true
+		}
+		undeclared, err := undeclaredNagiosChannels(config, runtime.GOOS)
+		if err != nil {
+			report.Warnings = append(report.Warnings, "channels not checked against the probe definitions: "+err.Error())
+			return report, true
+		}
+		for _, u := range undeclared {
+			switch {
+			case len(u.Platforms) > 0:
+				report.Warnings = append(report.Warnings, fmt.Sprintf("check %q: %s is emitted on %s only, the check reports UNKNOWN on %s", u.Check, u.Channel, strings.Join(u.Platforms, ", "), runtime.GOOS))
+			case u.Hint != "":
+				report.Warnings = append(report.Warnings, fmt.Sprintf("check %q: %s is a display label; a check matches the metric name, use %s", u.Check, u.Channel, u.Hint))
+			default:
+				report.Warnings = append(report.Warnings, fmt.Sprintf("check %q: no probe definition emits %s; the check reports UNKNOWN unless a probe with dynamic metric names produces it", u.Check, u.Channel))
+			}
+		}
+		return report, true
+	}
+	return report, false
+}
