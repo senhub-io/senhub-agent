@@ -7,6 +7,7 @@ package configuration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -341,7 +343,11 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
 		// on any error, and we continue with the existing config rather than
 		// refusing to start — a sealing fault must never brick the agent.
-		if err := SealInlineSecrets(lc.configPath, lc.logger); err != nil {
+		if err := SealInlineSecrets(lc.configPath, lc.logger); errors.Is(err, secret.ErrSealNeedsRoot) {
+			lc.logger.Info().
+				Str("seal_with", "sudo senhub-agent secret migrate --wire-unit").
+				Msg("Inline secrets left in place: the secret store seals only as root")
+		} else if err != nil {
 			lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
 		}
 

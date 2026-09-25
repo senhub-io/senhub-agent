@@ -1,6 +1,8 @@
 package configuration
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -399,5 +401,37 @@ func TestSetRootConfigVersion_NeverDowngrades(t *testing.T) {
 	}
 	if v, _ := readRootConfigVersion(cfg); v != 7 {
 		t.Errorf("version = %d, want 7 (raise allowed)", v)
+	}
+}
+
+// rootOnlyProvider reads but refuses to seal, as systemd-creds does under a
+// non-root unit.
+type rootOnlyProvider struct{ *secret.MemoryProvider }
+
+func (rootOnlyProvider) Set(name string, _ secret.Secret) error {
+	return fmt.Errorf("storing %q: %w", name, secret.ErrSealNeedsRoot)
+}
+
+// TestSealInlineSecrets_RootOnlyBackendSaysSo pins that a store which seals
+// only as root surfaces as ErrSealNeedsRoot, so the service can say so once
+// instead of reporting a seal failure on every start, and that the plaintext
+// stays readable.
+func TestSealInlineSecrets_RootOnlyBackendSaysSo(t *testing.T) {
+	secret.SetProvider(rootOnlyProvider{secret.NewMemoryProvider()})
+	t.Cleanup(func() { secret.SetProvider(nil) })
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	writeSealFile(t, cfg, "config_version: 2\n")
+	probe := filepath.Join(dir, "probes.d", "10-db.yaml")
+	writeSealFile(t, probe, "- type: mysql\n  params:\n    password: real-secret\n")
+
+	err := SealInlineSecrets(cfg, nil)
+	if !errors.Is(err, secret.ErrSealNeedsRoot) {
+		t.Fatalf("err = %v, want ErrSealNeedsRoot", err)
+	}
+	raw, _ := os.ReadFile(probe)
+	if !strings.Contains(string(raw), "real-secret") {
+		t.Errorf("plaintext must stay in place:\n%s", raw)
 	}
 }
