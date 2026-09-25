@@ -3,6 +3,7 @@ package sensor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -411,6 +412,11 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 	if probeType == "" {
 		// Fallback to name if type is not set (for backward compatibility)
 		probeType = probeConfig.Name
+	}
+
+	// A type this binary does not carry is not a licensing question.
+	if _, registered := probes.LookupProbeConstructor(probeType); !registered {
+		return errors.New(license.NotInThisBuild(probeType))
 	}
 
 	// If licenseValidator is nil (safe mode), only allow free tier probes
