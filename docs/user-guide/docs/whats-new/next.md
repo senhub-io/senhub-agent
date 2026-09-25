@@ -371,3 +371,13 @@ collection gaps that comparison exposed.
   thirty minutes, answered an empty PRTG sensor most of the time, and
   the Web UI listed it with no metric. The value is now served until its
   probe's next run is due.
+
+- **Redfish hardware health reads as a state on every output.** The
+  tables that name the health codes (OK, Warning, Critical), the power
+  states and the drive failure prediction lived in files the agent
+  embedded and never read. A server's health reached PRTG, Nagios and
+  Zabbix as a bare 0 to 3: no PRTG lookup to download, no Nagios state,
+  no Zabbix value map and no trigger. They are now in the lookup
+  registry, a drive predicting its own failure has a table of its own
+  that calls it an error, and a test fails on any definition naming a
+  lookup that does not exist. (#931)
