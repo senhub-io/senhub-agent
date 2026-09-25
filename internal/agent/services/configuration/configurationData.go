@@ -120,13 +120,8 @@ type AgentConfig struct {
 }
 
 // ConfigurationData is the full configuration shape consumed by
-// the agent's data store and sensor pool. The "Remote" prefix is
-// historical; in 0.2.0+ the only producer is LocalConfiguration.
-//
-// TODO(#138): rename ConfigurationData / RemoteConfiguration*
-// away from the misleading "Remote" prefix once every consumer
-// (data_store, sensor, auto_update, http strategy) is migrated.
-// Deferred from the v0.2.0 PR to keep that diff scoped.
+// the agent's data store and sensor pool. Its only producer is
+// LocalConfiguration.
 type ConfigurationData struct {
 	StorageConfig []StorageConfig `json:"storage"`
 	Probes        []ProbeConfig   `json:"probes"`

@@ -104,6 +104,7 @@ outside `params`. Values must be strings.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:d3f9eff436bf3710bb0b6aa9acecae40e74c8c5439f6ee0e110bddf595e6632f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -494,3 +495,119 @@ Contact support@senhub.io for license information.
 
 - **Email**: support@senhub.io
 - **Documentation**: [agent.senhub.io/docs](https://agent.senhub.io/docs)
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.netscaler.system.cpu.utilization` | `netscaler.system.cpu.usage.percent` | System CPU Usage | % | Percentage of CPU resources consumed by the NetScaler appliance |
+| `senhub.netscaler.system.cpu.utilization` | `netscaler.system.cpu.mgmt.usage.percent` | System Management CPU Usage | % | CPU usage of the management plane (NSPPE excluded) |
+| `senhub.netscaler.system.memory.utilization` | `netscaler.system.memory.usage.percent` | System Memory Usage | % | Percentage of memory used by the NetScaler appliance |
+| `senhub.netscaler.system.network.throughput` | `netscaler.system.network.rx.mbits_per_sec` | System Network Receive Rate | Mbits/s | Aggregate network receive throughput across all interfaces |
+| `senhub.netscaler.system.network.throughput` | `netscaler.system.network.tx.mbits_per_sec` | System Network Transmit Rate | Mbits/s | Aggregate network transmit throughput across all interfaces |
+| `senhub.netscaler.system.http.messages.rate` | `netscaler.system.http.requests.rate` | System HTTP Requests Rate | req/s | Rate of HTTP requests received by the appliance |
+| `senhub.netscaler.system.http.messages.rate` | `netscaler.system.http.responses.rate` | System HTTP Responses Rate | resp/s | Rate of HTTP responses sent by the appliance |
+| `senhub.netscaler.system.tcp.connections.active` | `netscaler.system.tcp.client.connections.current` | System TCP Client Connections | # | Current number of client-side TCP connections |
+| `senhub.netscaler.system.tcp.connections.active` | `netscaler.system.tcp.server.connections.current` | System TCP Server Connections | # | Current number of server-side TCP connections |
+| `senhub.netscaler.ns.throughput` | `netscaler.ns.throughput.total.mbits_per_sec` | NS Total Throughput | Mbits/s | Total network throughput (RX + TX) of the NetScaler |
+| `senhub.netscaler.ns.throughput` | `netscaler.ns.http.throughput.mbits_per_sec` | NS HTTP Throughput | Mbits/s | HTTP-only throughput of the NetScaler |
+| `senhub.netscaler.ssl.transactions.rate` | `netscaler.ssl.transactions.rate` | SSL Transactions Rate | tx/s | Rate of SSL/TLS transactions processed |
+| `senhub.netscaler.ssl.sessions.active` | `netscaler.ssl.sessions.total` | SSL Sessions Total | # | Total number of active SSL sessions |
+| `senhub.netscaler.lbvserver.status` | `netscaler.lbvserver.state` | VServer State ({vserver}) | # | Operational state of the LB virtual server |
+| `senhub.netscaler.lbvserver.requests.rate` | `netscaler.lbvserver.requests.rate` | VServer Requests Rate ({vserver}) | req/s | Rate of requests hitting the virtual server |
+| `senhub.netscaler.lbvserver.connections.active` | `netscaler.lbvserver.connections.current` | VServer Current Connections ({vserver}) | # | Number of active connections on the virtual server |
+| `senhub.netscaler.lbvserver.throughput` | `netscaler.lbvserver.throughput.rx.bytes_per_sec` | VServer Received Throughput ({vserver}) | bytes/s | Inbound throughput to the virtual server |
+| `senhub.netscaler.lbvserver.throughput` | `netscaler.lbvserver.throughput.tx.bytes_per_sec` | VServer Transmitted Throughput ({vserver}) | bytes/s | Outbound throughput from the virtual server |
+| `senhub.netscaler.lbvserver.spillovers` | `netscaler.lbvserver.spillovers.total` | VServer Spillovers Total ({vserver}) | # | Total spillovers to backup vServer (saturation indicator) |
+| `senhub.netscaler.lbvserver.connections.established` | `netscaler.lbvserver.connections.established` | VServer Established Connections ({vserver}) | # | Established connections for capacity planning |
+| `senhub.netscaler.lbvserver.hits` | `netscaler.lbvserver.hits.total` | VServer Total Hits ({vserver}) | # | Total hits for request distribution analysis |
+| `senhub.netscaler.service.status` | `netscaler.service.state` | Service State ({service}) | # | Operational state of the service |
+| `senhub.netscaler.service.throughput` | `netscaler.service.throughput.bytes_per_sec` | Service Throughput ({service}) | bytes/s | Data throughput of the service |
+| `senhub.netscaler.service.transactions.active` | `netscaler.service.transactions.active` | Service Active Transactions ({service}) | # | Number of active transactions on the service |
+| `senhub.netscaler.service.surge_queue_length` | `netscaler.service.surge_queue_length` | Service Surge Queue Length ({service}) | # | Surge queue length (backend saturation indicator) |
+| `senhub.netscaler.servicegroup.status` | `netscaler.servicegroup.state` | Service Group State ({servicegroup}) | # | Operational state of the service group |
+| `senhub.netscaler.servicegroup.http.messages.rate` | `netscaler.servicegroup.requests.rate` | Service Group Requests Rate ({servicegroup}) | req/s | Rate of requests handled by the service group |
+| `senhub.netscaler.servicegroup.http.messages.rate` | `netscaler.servicegroup.responses.rate` | Service Group Responses Rate ({servicegroup}) | resp/s | Rate of responses returned by the service group |
+| `senhub.netscaler.servicegroup.throughput` | `netscaler.servicegroup.throughput.bytes_per_sec` | Service Group Throughput ({servicegroup}) | Bytes/s | Data throughput of the service group |
+| `senhub.netscaler.servicegroup.connections.active` | `netscaler.servicegroup.connections.current` | Service Group Current Connections ({servicegroup}) | # | Number of active connections on the service group |
+| `senhub.netscaler.servicegroup.members` | `netscaler.servicegroup.members.active` | Service Group Active Members ({servicegroup}) | # | Number of healthy members serving traffic |
+| `senhub.netscaler.servicegroup.members` | `netscaler.servicegroup.members.inactive` | Service Group Inactive Members ({servicegroup}) | # | Number of inactive members in service group |
+| `senhub.netscaler.servicegroup.surge_queue_length` | `netscaler.servicegroup.surge_queue_length` | Service Group Surge Queue Length ({servicegroup}) | # | Surge queue length (backend saturation indicator) |
+| `senhub.netscaler.ssl.certificate.days_to_expiration` | `netscaler.ssl.certificate.days_to_expiration` | SSL Certificate Days to Expiration ({certname}) | days | Days until SSL certificate expires (negative if expired) |
+| `senhub.netscaler.ssl.certificate.status` | `netscaler.ssl.certificate.status` | SSL Certificate Status ({certname}) | # | Certificate status: 1=valid, 0=expired |
+| `senhub.netscaler.ha.role` | `netscaler.ha.state` | HA State ({ha_node_ip}) | # | HA role: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN (per node) |
+| `senhub.netscaler.ha.node.status` | `netscaler.ha.node.state` | HA Node Operational State ({ha_node_ip}) | # | Node operational state: 1=UP, 0=DOWN (per node) |
+| `senhub.netscaler.ha.sync.status` | `netscaler.ha.sync_status` | HA Sync Status ({ha_node_ip}) | # | HA sync status: 1=success, 0=failed (per node) |
+| `senhub.netscaler.ha.sync.failures` | `netscaler.ha.sync_failures` | HA Sync Failures ({ha_node_ip}) | # | Number of HA synchronization failures (per node) |
+| `senhub.netscaler.ha.propagation.timeouts` | `netscaler.ha.propagation_timeouts` | HA Propagation Timeouts | # | Number of times configuration propagation timed out |
+| `senhub.netscaler.ha.heartbeat.packets` | `netscaler.ha.heartbeat.rx.packets` | HA Heartbeat RX Packets | # | Total heartbeat packets received from peer node |
+| `senhub.netscaler.ha.heartbeat.rate` | `netscaler.ha.heartbeat.rx.rate` | HA Heartbeat RX Rate | # | Heartbeat packets receive rate (packets/sec) |
+| `senhub.netscaler.ha.heartbeat.packets` | `netscaler.ha.heartbeat.tx.packets` | HA Heartbeat TX Packets | # | Total heartbeat packets transmitted to peer node |
+| `senhub.netscaler.ha.heartbeat.rate` | `netscaler.ha.heartbeat.tx.rate` | HA Heartbeat TX Rate | # | Heartbeat packets transmit rate (packets/sec) |
+| `system.filesystem.utilization` | `netscaler.disk.percent_used` | Disk Usage ({partition}) | % | Disk partition usage percentage |
+| `system.filesystem.usage` | `netscaler.disk.used_kb` | Disk Used ({partition}) | KB | Disk space used in kilobytes |
+| `system.filesystem.usage` | `netscaler.disk.available_kb` | Disk Available ({partition}) | KB | Disk space available in kilobytes |
+| `senhub.netscaler.system.network.packets.rate` | `netscaler.system.network.rx.packets_per_sec` | System RX Packets Per Second | pps | Receive packets per second |
+| `senhub.netscaler.system.network.packets.rate` | `netscaler.system.network.tx.packets_per_sec` | System TX Packets Per Second | pps | Transmit packets per second |
+| `senhub.netscaler.system.network.packets` | `netscaler.system.network.rx.packets.total` | System RX Packets Total | # | Total packets received (counter) |
+| `senhub.netscaler.system.network.packets` | `netscaler.system.network.tx.packets.total` | System TX Packets Total | # | Total packets sent (counter) |
+| `senhub.netscaler.interface.status` | `netscaler.interface.state` | Interface State ({interface}) | # | Interface state: 1=UP/enabled, 0=DOWN/disabled |
+| `senhub.netscaler.interface.io` | `netscaler.interface.rx.bytes.total` | Interface RX Bytes Total ({interface}) | bytes | Total bytes received on the interface |
+| `senhub.netscaler.interface.io` | `netscaler.interface.tx.bytes.total` | Interface TX Bytes Total ({interface}) | bytes | Total bytes transmitted on the interface |
+| `senhub.netscaler.interface.throughput` | `netscaler.interface.rx.mbits_per_sec` | Interface RX Rate ({interface}) | Mbits/s | Receive throughput rate of the interface |
+| `senhub.netscaler.interface.throughput` | `netscaler.interface.tx.mbits_per_sec` | Interface TX Rate ({interface}) | Mbits/s | Transmit throughput rate of the interface |
+| `senhub.netscaler.interface.errors` | `netscaler.interface.rx.errors.total` | Interface RX Errors ({interface}) | # | Total receive errors on the interface |
+| `senhub.netscaler.interface.errors` | `netscaler.interface.tx.errors.total` | Interface TX Errors ({interface}) | # | Total transmit errors on the interface |
+| `senhub.netscaler.interface.packets.dropped` | `netscaler.interface.rx.drops.total` | Interface RX Drops ({interface}) | # | Total inbound packets dropped on the interface |
+| `senhub.netscaler.interface.packets.dropped` | `netscaler.interface.tx.drops.total` | Interface TX Drops ({interface}) | # | Total outbound packets dropped on the interface |
+| `senhub.netscaler.interface.link_speed` | `netscaler.interface.link_speed_mbps` | Interface Link Speed ({interface}) | Mbps | Negotiated link speed of the interface |
+| `senhub.netscaler.csvserver.status` | `netscaler.cs.vserver.state` | CS VServer State ({csvserver}) | # | Content Switching vServer state: UP=7, DOWN=1, etc. |
+| `senhub.netscaler.csvserver.hits` | `netscaler.cs.vserver.hits.total` | CS VServer Hits Total ({csvserver}) | # | Total hits on the content switching virtual server |
+| `senhub.netscaler.csvserver.requests.rate` | `netscaler.cs.vserver.requests.rate` | CS VServer Requests Rate ({csvserver}) | req/s | Rate of requests handled by the CS virtual server |
+| `senhub.netscaler.csvserver.connections.active` | `netscaler.cs.vserver.connections.current` | CS VServer Current Connections ({csvserver}) | # | Number of active connections on the CS virtual server |
+| `senhub.netscaler.cspolicy.evaluations` | `netscaler.cs.policy.hits.total` | CS Policy Hits Total ({cspolicy}) | # | Total times the content switching policy was matched |
+| `senhub.netscaler.cspolicy.evaluations` | `netscaler.cs.policy.undefine_hits.total` | CS Policy Undefine Hits ({cspolicy}) | # | Rules not matched |
+| `senhub.netscaler.gslb.vserver.status` | `netscaler.gslb.vserver.state` | GSLB VServer State ({gslbvserver}) | # | GSLB vServer state: UP=7, DOWN=1, etc. |
+| `senhub.netscaler.gslb.vserver.hits` | `netscaler.gslb.vserver.hits.total` | GSLB VServer Hits Total ({gslbvserver}) | # | Total DNS requests resolved by the GSLB virtual server |
+| `senhub.netscaler.gslb.vserver.requests.rate` | `netscaler.gslb.vserver.requests.rate` | GSLB VServer Requests Rate ({gslbvserver}) | req/s | Rate of DNS requests handled by the GSLB virtual server |
+| `senhub.netscaler.gslb.vserver.persistence_records` | `netscaler.gslb.vserver.persistence.records` | GSLB VServer Persistence Records ({gslbvserver}) | # | Number of active persistence records for site affinity |
+| `senhub.netscaler.gslb.site.status` | `netscaler.gslb.site.state` | GSLB Site State ({gslbsite}) | # | GSLB site state: 1=UP/ACTIVE, 0=DOWN |
+| `senhub.netscaler.gslb.site.network_rtt` | `netscaler.gslb.site.network_rtt_microseconds` | GSLB Site Network RTT ({gslbsite}) | μs | Network round-trip time in microseconds |
+| `senhub.netscaler.gslb.site.connections.active` | `netscaler.gslb.site.connections.current` | GSLB Site Current Connections ({gslbsite}) | # | Number of active connections at the GSLB site |
+| `senhub.netscaler.gslb.service.status` | `netscaler.gslb.service.state` | GSLB Service State ({gslbservice}) | # | GSLB service state: 1=UP, 0=DOWN |
+| `senhub.netscaler.gslb.service.hits` | `netscaler.gslb.service.hits.total` | GSLB Service Hits Total ({gslbservice}) | # | Total requests directed to the GSLB service |
+| `senhub.netscaler.gslb.service.connections.active` | `netscaler.gslb.service.connections.current` | GSLB Service Current Connections ({gslbservice}) | # | Number of active connections on the GSLB service |
+| `senhub.netscaler.cache.hit_ratio` | `netscaler.cache.hit_ratio_percent` | Cache Hit Ratio | % | Cache hit ratio percentage |
+| `senhub.netscaler.cache.objects` | `netscaler.cache.objects.count` | Cache Objects Count | # | Number of objects in cache |
+| `senhub.netscaler.cache.memory.used` | `netscaler.cache.memory.used_kb` | Cache Memory Used | KB | Cache memory used in kilobytes |
+| `senhub.netscaler.cache.lookups` | `netscaler.cache.hits.total` | Cache Hits Total | # | Total number of cache hits |
+| `senhub.netscaler.cache.lookups` | `netscaler.cache.misses.total` | Cache Misses Total | # | Total number of cache misses |
+| `senhub.netscaler.compression.ratio` | `netscaler.compression.ratio` | Compression Ratio | # | Compression ratio |
+| `senhub.netscaler.compression.bytes` | `netscaler.compression.bytes.compressed.total` | Compressed Bytes Total | bytes | Total bytes after compression |
+| `senhub.netscaler.compression.bytes` | `netscaler.compression.bytes.original.total` | Original Bytes Total | bytes | Original bytes before compression |
+| `senhub.netscaler.compression.bandwidth_savings` | `netscaler.compression.bandwidth_savings.bytes` | Compression Bandwidth Savings | bytes | Bandwidth saved by compression |
+| `senhub.netscaler.aaa.sessions.active` | `netscaler.aaa.sessions.active.total` | AAA Active Sessions Total | # | Total active AAA sessions |
+| `senhub.netscaler.aaa.vserver.status` | `netscaler.aaa.vserver.state` | AAA VServer State ({authvserver}) | # | Authentication vServer state: 1=UP, 0=DOWN |
+| `senhub.netscaler.aaa.vserver.auth_attempts` | `netscaler.aaa.vserver.auth.successes.total` | AAA VServer Auth Successes ({authvserver}) | # | Total successful authentication attempts |
+| `senhub.netscaler.aaa.vserver.auth_attempts` | `netscaler.aaa.vserver.auth.failures.total` | AAA VServer Auth Failures ({authvserver}) | # | Total failed authentication attempts |
+| `senhub.netscaler.vpn.vserver.status` | `netscaler.vpn.vserver.state` | VPN VServer State ({vpnvserver}) | # | VPN vServer state: 1=UP, 0=DOWN |
+| `senhub.netscaler.vpn.vserver.hits` | `netscaler.vpn.vserver.hits.total` | VPN VServer Hits Total ({vpnvserver}) | # | Total hits on the VPN virtual server |
+| `senhub.netscaler.vpn.vserver.ica_sessions.active` | `netscaler.vpn.vserver.ica.sessions.active` | VPN VServer ICA Sessions Active ({vpnvserver}) | # | Active ICA sessions (Citrix Virtual Apps) |
+| `senhub.netscaler.vpn.vserver.connections.established` | `netscaler.vpn.vserver.connections.established` | VPN VServer Connections Established ({vpnvserver}) | # | Number of established VPN connections |
+| `senhub.netscaler.appfw.violations.total` | `netscaler.appfw.violations.total` | AppFW Violations Total | # | Total application firewall violations |
+| `senhub.netscaler.appfw.blocked` | `netscaler.appfw.requests.blocked.total` | AppFW Requests Blocked | # | Total requests blocked by WAF |
+| `senhub.netscaler.appfw.blocked` | `netscaler.appfw.responses.blocked.total` | AppFW Responses Blocked | # | Total responses blocked by WAF |
+| `senhub.netscaler.appfw.violations.by_type` | `netscaler.appfw.violations.sqli.total` | AppFW SQL Injection Violations | # | SQL injection violations detected |
+| `senhub.netscaler.appfw.violations.by_type` | `netscaler.appfw.violations.xss.total` | AppFW XSS Violations | # | Cross-site scripting violations detected |
+| `senhub.netscaler.appfw.violations.by_type` | `netscaler.appfw.violations.buffer_overflow.total` | AppFW Buffer Overflow Violations | # | Buffer overflow violations detected |
+
+<!-- schema:metrics:end -->

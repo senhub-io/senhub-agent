@@ -9,7 +9,7 @@ hide:
 The **OpenTelemetry-native infrastructure agent** — a single agent you deploy on
 a server you control that turns the state of your infrastructure into clean,
 queryable telemetry, and exposes it through whichever monitoring or
-observability tool you already operate (PRTG, Nagios, Prometheus, OTLP).
+observability tool you already operate (PRTG, Nagios, Zabbix, Prometheus, OTLP).
 
 [Get started](installation.md){ .md-button .amber }
 [What's new](whats-new/index.md){ .md-button }
@@ -54,7 +54,7 @@ observability tool you already operate (PRTG, Nagios, Prometheus, OTLP).
 
     ---
 
-    PRTG, Nagios, Prometheus and OTLP — one neutral pipeline, every output.
+    PRTG, Nagios, Zabbix, Prometheus and OTLP — one neutral pipeline, every output.
 
     [:octicons-arrow-right-24: OpenTelemetry](otlp.md)
 

@@ -127,11 +127,13 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 	if l.config.ExecuteOnStart {
 		l.logger.Info().Msg("Initial call")
 		// Do onStart call
-		if err := l.doCall(); err != nil && l.config.FailOnStartError {
+		if err := l.doCall(); err != nil {
 			if l.config.FailOnStartError {
 				return fmt.Errorf("Initial call failed: %w", err)
 			}
-
+			// The first collect failing is the moment an operator most
+			// needs to hear about; the log line was unreachable behind a
+			// condition that had already returned.
 			l.logger.Error().Err(err).Msg("Initial call failed")
 		}
 	}

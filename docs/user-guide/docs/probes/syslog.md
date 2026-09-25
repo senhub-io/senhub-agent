@@ -70,6 +70,7 @@ The Syslog probe is platform-independent. It listens on the loopback interface b
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:54ce1c720fc663806d6432688a679d4f207229fc6f569d8847c3c4910c54cb27 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -639,3 +640,20 @@ The Syslog probe requires no authentication for incoming syslog messages. Access
 ### Syslog Sources
 - RFC 3164 (BSD Syslog) or RFC 5424 (IETF Syslog) format
 - UDP or TCP transport support
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| - | `syslog_event` | Syslog {facility_name} Severity | # | Syslog message severity level (RFC 3164) |
+
+<!-- schema:metrics:end -->

@@ -32,20 +32,21 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:ccd8deacea92f44457966195a4a7ea6dbdb374e8b421afaee82f4bbe189f5912 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `bind_address` | No | `127.0.0.1:162` | UDP listen address; port 162 needs root or CAP_NET_BIND_SERVICE |
-| `version` | No | `v2c` | A string. One of `v2c`, `v3` |
+| `version` | No | `v2c` | SNMP version of the traps accepted; v3 needs v3.users. One of `v2c`, `v3` |
 | `community` | No | - | v2c community check; empty accepts any. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `mib_paths` | No | - | Local MIB files or folders for OID names |
 | `v3` | No | - | SNMPv3 users |
 | `v3.users` | Yes | - | A list of blocks |
 | `v3.users[].username` | Yes | - | USM user name |
-| `v3.users[].auth_protocol` | No | - | A string. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
-| `v3.users[].auth_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `v3.users[].priv_protocol` | No | - | A string. One of `DES`, `AES`, `AES192`, `AES256` |
-| `v3.users[].priv_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.users[].auth_protocol` | No | - | Authentication protocol of this user; empty means no authentication. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
+| `v3.users[].auth_password` | No | - | Authentication passphrase of this user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.users[].priv_protocol` | No | - | Privacy (encryption) protocol of this user; needs auth_protocol. One of `DES`, `AES`, `AES192`, `AES256` |
+| `v3.users[].priv_password` | No | - | Privacy passphrase of this user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 
 <!-- schema:params:end -->
 
@@ -101,3 +102,21 @@ The probe also emits two self-metrics:
 - **Set the community.** An empty `community` accepts every
   datagram. The `rejected_community` counter tells you if devices
   are sending with the wrong string.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.snmp_trap.rejected_community` | `senhub.snmp_trap.rejected_community` | Rejected Community | # | Datagrams rejected because their v1/v2c community did not match the configured one |
+| `senhub.snmp_trap.decode_panics` | `senhub.snmp_trap.decode_panics` | Decode Panics | # | Decoder/handler panics recovered while processing received datagrams |
+
+<!-- schema:metrics:end -->

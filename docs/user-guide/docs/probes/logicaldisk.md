@@ -76,6 +76,7 @@ Platform-specific metrics are automatically detected and collected based on the 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:198837a23e7d6cd31759bcf772e2e80a2a10db796bd6022edbb2ccee3d91bf7f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -588,3 +589,36 @@ The LogicalDisk probe requires no authentication as it collects local system met
 ### Network
 - No network access required (local metrics only)
 - HTTP strategy required for remote access to metrics
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `system.filesystem.usage` | `disk_free_mb` | Disk Free Mb ({drive}) | MB | Free disk space in megabytes on the logical drive |
+| `system.filesystem.utilization` | `disk_free_percent` | Disk Free Percent ({drive}) | % | Percentage of total disk space that is free on the logical drive |
+| `system.filesystem.utilization` | `disk_used_percent` | Disk Used Percent ({drive}) | % | Percentage of total disk space currently in use on the logical drive |
+| `senhub.system.disk.operations` | `disk_reads_sec` | Disk Reads Sec ({drive}) | # | Number of read operations per second on the logical drive |
+| `senhub.system.disk.operations` | `disk_writes_sec` | Disk Writes Sec ({drive}) | # | Number of write operations per second on the logical drive |
+| `senhub.system.disk.io` | `disk_read_bytes_sec` | Disk Read Bytes Sec ({drive}) | bytes | Rate of data read from the logical drive in bytes per second |
+| `senhub.system.disk.io` | `disk_write_bytes_sec` | Disk Write Bytes Sec ({drive}) | bytes | Rate of data written to the logical drive in bytes per second |
+| `senhub.system.disk.queue_length` | `disk_queue_length` | Disk Queue Length ({drive}) | # | Number of outstanding I/O requests waiting in the disk queue |
+| `system.filesystem.limit` | `fs_total_bytes` | Total Bytes ({mount_point}) | bytes | Total capacity of the filesystem in bytes |
+| `system.filesystem.usage` | `fs_free_bytes` | Free Bytes ({mount_point}) | bytes | Free space available on the filesystem in bytes |
+| `system.filesystem.usage` | `fs_used_bytes` | Used Bytes ({mount_point}) | bytes | Space currently consumed on the filesystem in bytes |
+| `system.filesystem.usage` | `fs_available_bytes` | Available Bytes ({mount_point}) | bytes | Space available to non-root users on the filesystem in bytes |
+| `system.filesystem.utilization` | `fs_used_percent` | Used Percent ({mount_point}) | % | Percentage of filesystem capacity currently in use |
+| `senhub.system.filesystem.inode.limit` | `fs_inodes_total` | Inodes Total ({mount_point}) | # | Total number of inodes available on the filesystem |
+| `senhub.system.filesystem.inode.usage` | `fs_inodes_free` | Inodes Free ({mount_point}) | # | Number of unused inodes available on the filesystem |
+| `senhub.system.filesystem.inode.usage` | `fs_inodes_used` | Inodes Used ({mount_point}) | # | Number of inodes currently allocated on the filesystem |
+| `senhub.system.filesystem.inode.utilization` | `fs_inodes_used_percent` | Inodes Used Percent ({mount_point}) | % | Percentage of total inodes currently in use on the filesystem |
+
+<!-- schema:metrics:end -->

@@ -31,6 +31,7 @@ metric with a name and unit you define. Supports `uint16`, `int16`, `uint32`,
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:0050978e140373cc8d9a09864fe0a4915b91121f1de65e186f5ce982805e407f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -63,3 +64,21 @@ A register's `name` is also the PRTG channel name of its value.
 - `host` is required; the probe will fail to start without it.
 - Address numbering follows the Modicon 1-based convention (40001 = holding register 0). Subtract 40001 to get the 0-based Modbus Protocol Data Unit address if needed.
 - For `float32_abcd` vs `float32_cdab`, check your device manual for the byte-word order it uses.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `modbus.register.value` | `modbus.register.value` | Register {register.name} | 1 | Decoded value of the Modbus Holding Register |
+| `modbus.up` | `modbus.up` | Modbus Device Up | # | 1 when the Modbus TCP device answered all register reads in the last cycle |
+
+<!-- schema:metrics:end -->

@@ -66,6 +66,8 @@ metrics:
     channel: "disk_used_percent"
     display_name: "Disk Used Percent ({drive})"
     unit: "%"
+    alert_threshold_warning: 80
+    alert_threshold_critical: 90
     multi_instance_labels: ["drive"]
     category: "capacity"
     platforms: ["windows"]
@@ -257,6 +259,8 @@ metrics:
     channel: "fs_used_percent"
     display_name: "Used Percent ({mount_point})"
     unit: "%"
+    alert_threshold_warning: 80
+    alert_threshold_critical: 90
     multi_instance_labels: ["device", "mount_point"]
     category: "capacity"
     platforms: ["linux", "darwin"]

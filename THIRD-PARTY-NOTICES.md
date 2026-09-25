@@ -14,15 +14,15 @@ Regenerate with `make third-party-notices`.
 
 | Licence | Components |
 |---|---|
-| Apache-2.0 | 56 |
-| MIT | 38 |
+| Apache-2.0 | 58 |
+| MIT | 39 |
 | BSD-3-Clause | 28 |
 | BSD-2-Clause | 7 |
 | MPL-2.0 | 3 |
 | ISC | 1 |
 | Zlib | 1 |
 
-Total: 134 components.
+Total: 137 components.
 
 ## Detail
 
@@ -106,7 +106,7 @@ Total: 134 components.
 | `github.com/spf13/pflag` | v1.0.9 | BSD-3-Clause |
 | `github.com/tklauser/go-sysconf` | v0.3.12 | BSD-3-Clause |
 | `github.com/tklauser/numcpus` | v0.6.1 | Apache-2.0 |
-| `github.com/toise-dev/toise/pkg/emit` | v0.9.0 | Apache-2.0 |
+| `github.com/toise-dev/toise/pkg/emit` | v0.10.0 | Apache-2.0 |
 | `github.com/x448/float16` | v0.8.4 | MIT |
 | `github.com/xdg-go/pbkdf2` | v1.0.0 | Apache-2.0 |
 | `github.com/xdg-go/scram` | v1.1.2 | Apache-2.0 |
@@ -116,6 +116,8 @@ Total: 134 components.
 | `github.com/yusufpapurcu/wmi` | v1.2.4 | MIT |
 | `go.mongodb.org/mongo-driver` | v1.17.9 | Apache-2.0 |
 | `go.opentelemetry.io/auto/sdk` | v1.2.1 | Apache-2.0 |
+| `go.opentelemetry.io/collector/featuregate` | v1.59.0 | Apache-2.0 |
+| `go.opentelemetry.io/collector/pdata` | v1.59.0 | Apache-2.0 |
 | `go.opentelemetry.io/otel` | v1.45.0 | Apache-2.0 |
 | `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc` | v0.21.0 | Apache-2.0 |
 | `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` | v0.21.0 | Apache-2.0 |
@@ -131,6 +133,7 @@ Total: 134 components.
 | `go.opentelemetry.io/otel/sdk/metric` | v1.45.0 | Apache-2.0 |
 | `go.opentelemetry.io/otel/trace` | v1.45.0 | Apache-2.0 |
 | `go.opentelemetry.io/proto/otlp` | v1.11.0 | Apache-2.0 |
+| `go.uber.org/multierr` | v1.11.0 | MIT |
 | `go.yaml.in/yaml/v2` | v2.4.3 | Apache-2.0 |
 | `go.yaml.in/yaml/v3` | v3.0.4 | MIT |
 | `golang.org/x/crypto` | v0.56.0 | BSD-3-Clause |

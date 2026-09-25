@@ -195,7 +195,7 @@ jobs:
           export PATH="$HOME/.dotnet/tools:$PATH"
           mkdir -p dist
           wix build packaging/windows/senhub-agent.wxs \
-            -d Version="$VERSION" \
+            -d Version="${VERSION%%-*}" \
             -d BinDir="dist/windows-amd64" \
             -arch x64 \
             -ext WixToolset.Util.wixext \
