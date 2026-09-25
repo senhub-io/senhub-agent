@@ -629,6 +629,11 @@ Notes:
   file (`${file:/etc/senhub-agent/bearer.token}`); never inline it.
 - `host.id`, `host.name` and `os.*` resource attributes are auto-detected
   and attached to every signal — don't set them manually.
+- `host.id` is the machine's own identifier: on Linux the SMBIOS
+  product UUID when it is readable, otherwise `/etc/machine-id`; on
+  Windows the `MachineGuid` registry value. The Windows value is not the
+  SMBIOS UUID a hypervisor or a BMC reports for the same machine, so
+  join a Windows host to its hardware on `host.name`, not on `host.id`.
 - The `resource: service.name` override groups **telemetry** only. The
   agent's own `service.instance` entity always carries
   `service.name: senhub-agent`, whatever the override says, so a fleet
