@@ -272,6 +272,10 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **`config check` reports a probe name used twice.** The agent runs
+  the first probe of that name and ignores the others, and only its log
+  said so; the check listed every one of them as OK.
+
 - **`refresh-unit` keeps the binary the service runs.** On a host
   still in the pre-0.5.4 layout that also held an older copy under
   `/usr/local/bin`, the refreshed unit pointed at that older copy,
