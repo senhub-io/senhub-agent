@@ -54,3 +54,25 @@ executor counts, and build queue depth.
 - Generate an API token at `https://<jenkins>/user/<username>/configure`. API tokens are preferred over passwords and can be revoked without changing the account password.
 - The `endpoint` parameter is required; the probe will fail to start without it.
 - No external SDK is used — the probe speaks the Jenkins JSON REST API directly with the stdlib HTTP client.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.jenkins.up` | `jenkins_up` | # | 1 when the last cycle reached the Jenkins controller, 0 otherwise |
+| `senhub.jenkins.job.count` | `jenkins_job_count_{status}` | # | Number of jobs whose last build ended in this status (success/failure/unstable/aborted) |
+| `senhub.jenkins.job.duration` | `jenkins_job_duration_{job}` | ms | Duration of the job's last build |
+| `senhub.jenkins.job.last_build_number` | `jenkins_job_last_build_{job}` | # | Build number of the job's last build |
+| `senhub.jenkins.node.count` | `jenkins_node_count_{status}` | # | Number of build nodes/agents by status (online/offline) |
+| `senhub.jenkins.node.executor.count` | `jenkins_executor_count_{state}` | # | Number of executors across online nodes by state (busy/free) |
+| `senhub.jenkins.queue.size` | `jenkins_queue_size` | # | Number of items in the build queue |
+| `senhub.jenkins.queue.blocked` | `jenkins_queue_blocked` | # | Number of blocked items in the build queue |
+
+<!-- schema:metrics:end -->

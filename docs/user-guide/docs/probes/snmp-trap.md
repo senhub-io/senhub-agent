@@ -101,3 +101,19 @@ The probe also emits two self-metrics:
 - **Set the community.** An empty `community` accepts every
   datagram. The `rejected_community` counter tells you if devices
   are sending with the wrong string.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.snmp_trap.rejected_community` | `snmp_trap_rejected_community` | # | Datagrams rejected because their v1/v2c community did not match the configured one |
+| `senhub.snmp_trap.decode_panics` | `snmp_trap_decode_panics` | # | Decoder/handler panics recovered while processing received datagrams |
+
+<!-- schema:metrics:end -->

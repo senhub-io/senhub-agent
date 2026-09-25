@@ -114,3 +114,23 @@ Azure AD Connect Health metrics are available through every configured output â€
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ad-hybrid-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ad-hybrid-prod"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.ad_hybrid.up` | `up` | # | 1 when the Azure AD Connect Health API answered this cycle, else 0 |
+| `senhub.ad_hybrid.sync.health` | `sync_health` | # | Sync service health (Healthy=2, Warning=1, Error/other=0) |
+| `senhub.ad_hybrid.sync.agents.healthy` | `sync_agents_healthy` | # | Number of sync agents reporting a healthy state |
+| `senhub.ad_hybrid.sync.agents.total` | `sync_agents_total` | # | Total number of registered sync agents |
+| `senhub.ad_hybrid.sync.export_errors` | `sync_export_errors` | # | Directory-sync export error count, per error bucket |
+| `senhub.ad_hybrid.agent.last_seen` | `agent_last_seen` | s | Seconds since the sync agent last reported to Azure AD Connect Health |
+
+<!-- schema:metrics:end -->

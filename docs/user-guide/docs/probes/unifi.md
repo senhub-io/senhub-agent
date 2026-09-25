@@ -58,3 +58,28 @@ throughput and connected-client totals.
 - Create a read-only local user in the UniFi Controller under **Settings → Admins**. The "Read Only" role is sufficient.
 - For UniFi OS (UDM/UDR), use `https://<controller>/proxy/network` as the endpoint, not the legacy `:8443` port.
 - `verify_tls: false` should only be used for home lab controllers with self-signed certificates. In production, install a valid certificate.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.unifi.up` | `unifi_up` | # | 1 when the controller answered login and the stat endpoints this cycle, 0 otherwise |
+| `unifi.devices.total` | `unifi_devices_total_{device_type}` | # | Number of devices of this type known to the controller |
+| `unifi.devices.adopted` | `unifi_devices_adopted_{device_type}` | # | Number of adopted devices of this type |
+| `unifi.devices.disconnected` | `unifi_devices_disconnected_{device_type}` | # | Number of devices of this type not in the connected state |
+| `unifi.clients.total` | `unifi_clients_total` | # | Total connected clients (wired + wireless) |
+| `unifi.clients.wifi` | `unifi_clients_wifi` | # | Connected wireless clients |
+| `unifi.network.io` | `unifi_network_io_{direction}` | bytes | WAN byte rate reported by the controller, discriminated by direction (transmit/receive) |
+| `unifi.device.cpu` | `unifi_device_cpu_{device_name}` | % | Per-device CPU utilization percentage |
+| `unifi.device.memory` | `unifi_device_memory_{device_name}` | % | Per-device memory utilization percentage |
+| `unifi.ap.clients` | `unifi_ap_clients_{device_name}` | # | Clients associated to this access point |
+| `unifi.ap.satisfaction` | `unifi_ap_satisfaction_{device_name}` | # | Access point experience score as a 0..1 ratio |
+
+<!-- schema:metrics:end -->

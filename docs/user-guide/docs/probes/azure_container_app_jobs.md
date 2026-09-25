@@ -139,3 +139,28 @@ was already collecting, the job reads were refused with
 `AuthorizationFailed` naming `Microsoft.App/jobs/read`. The two probes
 share a credential only if its role covers both; a credential already
 carrying the four application actions needs these three added to it.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.azure_container_app_jobs.up` | `up` | # | 1 when Azure Resource Manager answered the last read of the job, 0 when it did not |
+| `senhub.azure_container_app_jobs.last_execution.status` | `last_status` | # | Verdict of the most recent execution: 0 unknown, 1 running, 2 succeeded, 3 failed |
+| `senhub.azure_container_app_jobs.since_last_success` | `since_success` | s | Seconds since the last execution that succeeded. On a scheduled job this is the number to alert on: a job well past its period without a success has a problem, whatever its last execution says. Absent until one has succeeded |
+| `senhub.azure_container_app_jobs.last_execution.duration` | `last_duration` | s | How long the most recent finished execution took; 0 while one is still running |
+| `senhub.azure_container_app_jobs.executions` | `running` | # | Executions in flight in the history Azure reports |
+| `senhub.azure_container_app_jobs.executions` | `succeeded` | # | Executions that succeeded in the history Azure reports. Azure keeps a window, so this counts what is visible rather than everything that ever ran |
+| `senhub.azure_container_app_jobs.executions` | `failed` | # | Executions that failed in the history Azure reports |
+| `senhub.azure_container_app_jobs.executions.read` | `drained` | # | Executions whose console output has been published. An execution is read once, after it finishes |
+| `senhub.azure_container_app_jobs.executions.without_logs` | `no_logs` | # | Executions whose verdict was read but whose output was gone: Azure had already cleaned up the replica. The run is still counted; only its lines are lost |
+| `senhub.azure_container_app_jobs.records.emitted` | `records_emitted` | # | Log records published from execution output |
+| `senhub.azure_container_app_jobs.arm.reads_remaining` | `arm_reads` | # | Reads left in the subscription's Azure Resource Manager budget, as ARM reports it; a fleet of instances shows here how close it is to being throttled |
+
+<!-- schema:metrics:end -->

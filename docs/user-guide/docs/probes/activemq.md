@@ -62,3 +62,29 @@ with hundreds of short-lived queues otherwise emits a series per queue.
 
 - Jolokia must be installed and enabled on the broker. The classic ActiveMQ distribution ships Jolokia at `/api/jolokia` by default; broker-only installs without the web console may require separate Jolokia configuration.
 - Per-destination metrics tag on `destination` + `destination_type` (queue or topic). A broker with many destinations generates a large number of PRTG channels; restrict them with `queue_filter`. In a network-of-brokers setup, `broker_name` selects which broker the queries are scoped to.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.activemq.up` | `activemq_up` | # | 1 when the Jolokia endpoint responded successfully, 0 otherwise |
+| `activemq.producer.count` | `activemq_producer_count` | # | Total number of message producers connected to the broker |
+| `activemq.consumer.count` | `activemq_consumer_count` | # | Total number of message consumers connected to the broker |
+| `activemq.message.current` | `activemq_message_current` | # | Total number of messages currently held in all destinations |
+| `activemq.memory.usage` | `activemq_memory_usage` | % | Broker JVM memory usage as a percentage of the configured memory limit (0–100) |
+| `activemq.store.usage` | `activemq_store_usage` | % | Persistent message store usage as a percentage of the configured store limit (0–100) |
+| `activemq.temp.usage` | `activemq_temp_usage` | % | Temporary storage usage as a percentage of the configured temp limit (0–100) |
+| `activemq.message.enqueued` | `activemq_{destination_type}_{destination}_enqueued` | # | Cumulative number of messages enqueued since broker start |
+| `activemq.message.dequeued` | `activemq_{destination_type}_{destination}_dequeued` | # | Cumulative number of messages dequeued (consumed) since broker start |
+| `activemq.message.queue_size` | `activemq_{destination_type}_{destination}_queue_size` | # | Number of messages currently waiting in the destination |
+| `activemq.consumer.count` | `activemq_{destination_type}_{destination}_consumers` | # | Number of consumers currently subscribed to the destination |
+| `activemq.producer.count` | `activemq_{destination_type}_{destination}_producers` | # | Number of producers currently attached to the destination |
+
+<!-- schema:metrics:end -->

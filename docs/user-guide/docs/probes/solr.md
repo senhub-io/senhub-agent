@@ -60,3 +60,27 @@ JVM probes keeps working, and only its scheme, host and port are used.
 
 - No authentication is required by default. If Solr is configured with Basic Auth, the probe does not yet support credentials — use the unauthenticated path or a local loopback address.
 - For SolrCloud, point the probe at one node; cluster-wide aggregates are not covered in this release.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.solr.up` | `solr_up` | # | 1 when the Solr admin metrics endpoint responded successfully, 0 otherwise |
+| `jvm.memory.heap.used` | `jvm_heap_used` | B | JVM heap memory currently used by the Solr process |
+| `jvm.threads.count` | `jvm_thread_count` | # | Number of live threads in the Solr JVM |
+| `solr.requests.count` | `solr_requests_count` | # | Cumulative number of requests handled by QUERY handlers |
+| `solr.requests.time` | `solr_requests_time` | ms | Cumulative time spent handling QUERY requests (meanMs * count, ms) |
+| `solr.errors.count` | `solr_errors_count` | # | Cumulative number of errors across all QUERY handlers |
+| `solr.cache.hits` | `solr_cache_hits` | # | Cumulative query result cache hits |
+| `solr.cache.inserts` | `solr_cache_inserts` | # | Cumulative query result cache inserts |
+| `solr.document.count` | `solr_doc_count_{core}` | # | Number of indexed documents in the core |
+| `solr.index.size` | `solr_index_size_{core}` | B | On-disk index size in bytes for the core |
+
+<!-- schema:metrics:end -->

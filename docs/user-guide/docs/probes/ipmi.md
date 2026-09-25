@@ -78,3 +78,23 @@ and give the BMC under the `remote` block. Sensor filters live under the
 - The agent must run as `root` on Linux for `ipmitool` to access the `/dev/ipmi0` device.
 - Load the OpenIPMI driver before starting the agent: `modprobe ipmi_si && modprobe ipmi_devintf`.
 - Sensor names (the `hardware.component` tag) come directly from `ipmitool sdr` output and vary by hardware vendor.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `hw.temperature` | `hardware_temperature_{hardware.component}` | Degrees Celsius | Temperature reported by the BMC sensor (degrees Celsius) |
+| `hw.fan.speed` | `hardware_fan_speed_{hardware.component}` | RPM | Fan speed in rotations per minute as reported by the BMC |
+| `hw.voltage` | `hardware_voltage_{hardware.component}` | Volts | Voltage reported by the BMC sensor (volts) |
+| `hw.status` | `hardware_psu_status_{hardware.component}` | # | Power supply status: 1 = ok, 0 = fault or not available |
+| `hw.status` | `hardware_sensor_status_{hardware.component}` | # | Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
+| `senhub.ipmi.up` | `ipmi_up` | # | 1 when ipmitool ran successfully and the BMC responded, 0 otherwise |
+
+<!-- schema:metrics:end -->

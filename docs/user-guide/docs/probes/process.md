@@ -88,3 +88,29 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
   roll-up alone for that reason.
 - `filter.top_n` is applied after all other filters. It is useful for "monitor the 5 most CPU-hungry processes" scenarios, and it turns on the per-process detail because it bounds how many processes can carry it.
 - The processes you name with `by_name` or `by_user` also become entities on the topology graph, with an edge to their host. A `top_n` or unfiltered view does not, because its membership changes every cycle.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `process.cpu.utilization` | `process_cpu_{process.name}_{process.pid}` | % | CPU utilization percentage (0-100) for the process averaged over the last collection interval |
+| `process.memory.usage` | `process_mem_rss_{process.name}_{process.pid}` | bytes | Resident set size (RSS) of the process in bytes |
+| `process.memory.virtual_memory_usage` | `process_mem_vms_{process.name}_{process.pid}` | bytes | Virtual memory size (VMS) of the process in bytes |
+| `process.threads` | `process_threads_{process.name}_{process.pid}` | # | Number of threads used by the process |
+| `process.open_file_descriptors` | `process_fds_{process.name}_{process.pid}` | # | Number of open file descriptors (Linux only) |
+| `process.uptime` | `process_uptime_{process.name}_{process.pid}` | s | Seconds elapsed since the process was created |
+| `senhub.process.group.cpu.utilization` | `process_group_cpu_{process.name}` | % | CPU utilization summed over the processes sharing this name; reported whatever the filter, and the only CPU series when no filter narrows the process table |
+| `senhub.process.group.memory.usage` | `process_group_memory_{process.name}` | B | Resident memory summed over the processes sharing this name; reported whatever the filter, and the only memory series when no filter narrows the process table |
+| `senhub.system.kernel.max_files` | `kernel_max_files` | # | Ceiling the kernel puts on open file descriptors for the whole machine; the per-process counts above are measured against it |
+| `senhub.system.kernel.max_processes` | `kernel_max_processes` | # | Highest process id the kernel will assign, which is the ceiling on how many processes can exist at once |
+| `senhub.system.users.count` | `users_logged_in` | # | Open login sessions on the machine, one per login rather than per account: four terminals opened on the same account count four. Read from the login accounting file on Linux and from the terminal services sessions on Windows, where a session whose client is detached still counts |
+| `process.count` | `process_count_{process.name}` | # | Number of running instances of this process name |
+
+<!-- schema:metrics:end -->

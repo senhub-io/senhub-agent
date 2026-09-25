@@ -104,3 +104,18 @@ or a JSON/logfmt key.
   `from_beginning: true` for files whose full history matters on
   first ingestion (combine with `bookmark_path` so it only happens
   once).
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.filetail.records_emitted` | `filetail_records_emitted` | # | Cumulative count of log records this file-tail probe has published to the log rail |
+
+<!-- schema:metrics:end -->

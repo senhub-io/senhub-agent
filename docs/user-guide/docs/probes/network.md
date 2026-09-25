@@ -505,3 +505,27 @@ The Network probe requires no authentication as it collects local system metrics
 - Link-local IPv6 addresses are excluded
 - Virtual interfaces (bridges, tun/tap) are excluded if not UP/RUNNING
 - First collection provides no rate data (requires 2 samples)
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.system.network.interface.speed` | `interface_speed` | bps | Speed the link negotiated; absent on a virtual interface, which is not the same as zero |
+| `senhub.system.network.interface.up` | `interface_up` | # | 1 when the interface is operationally up, else 0 |
+| `system.network.io` | `network_bytes_sent` | bytes | Bytes per second transmitted on the network interface |
+| `system.network.io` | `network_bytes_received` | bytes | Bytes per second received on the network interface |
+| `system.network.packet.count` | `network_packets_sent` | # | Packets per second transmitted on the network interface |
+| `system.network.packet.count` | `network_packets_received` | # | Packets per second received on the network interface |
+| `system.network.errors` | `network_errors_sent` | # | Outbound packets per second that could not be transmitted due to errors |
+| `system.network.errors` | `network_errors_received` | # | Inbound packets per second that contained errors and were discarded |
+| `system.network.packet.dropped` | `network_discards_sent` | # | Outbound packets per second discarded even though no errors were detected |
+| `system.network.packet.dropped` | `network_discards_received` | # | Inbound packets per second discarded even though no errors were detected |
+
+<!-- schema:metrics:end -->

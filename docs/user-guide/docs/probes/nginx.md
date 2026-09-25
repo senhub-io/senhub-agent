@@ -58,3 +58,25 @@ state breakdown (reading, writing, waiting).
   ```
 - The module is included in most Nginx packages by default; verify with `nginx -V 2>&1 | grep stub_status`.
 - `nginx.connections.accepted`, `nginx.connections.handled` and `nginx.requests` are monotonically increasing counters since the last Nginx reload.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.nginx.up` | `nginx_up` | # | 1 when the stub_status page is reachable and parseable, 0 otherwise |
+| `nginx.connections.current` | `nginx_connections_current` | # | Number of client connections currently being handled (accepted + in-flight) |
+| `nginx.connections.accepted` | `nginx_connections_accepted` | # | Total connections accepted since nginx start (monotonically increasing counter) |
+| `nginx.connections.handled` | `nginx_connections_handled` | # | Total connections handled since nginx start; equals accepted when no resource limit is hit |
+| `nginx.requests` | `nginx_requests` | # | Total HTTP requests processed since nginx start |
+| `nginx.connections.reading` | `nginx_connections_reading` | # | Connections where nginx is reading the request header |
+| `nginx.connections.writing` | `nginx_connections_writing` | # | Connections where nginx is writing the response to the client |
+| `nginx.connections.waiting` | `nginx_connections_waiting` | # | Idle keep-alive connections waiting for a request |
+
+<!-- schema:metrics:end -->

@@ -551,3 +551,19 @@ For application-layer monitoring with authentication, use the Load WebApp probe 
 - **DNS resolvable**: Hostname must resolve to IP address
 - **ICMP enabled**: Target must respond to ICMP Echo Request
 - **Network accessible**: No firewall blocking between agent and target
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.probe.icmp.duration_seconds` | `ping_average_latency` | ms | Average round-trip time to the web application endpoint |
+| `senhub.probe.icmp.packet_loss_ratio` | `ping_packet_loss` | % | Percentage of ICMP packets lost to the web application endpoint |
+
+<!-- schema:metrics:end -->

@@ -51,3 +51,25 @@ health-check state distribution and leader status.
 
 - Without an ACL token, only metrics accessible to the anonymous token are visible. For full cluster observability, provide a token with at minimum `agent:read` and `catalog:read` policies.
 - The probe queries `/v1/agent/metrics?format=prometheus` (Consul 1.1+), `/v1/agent/self` for leader state, and `/v1/health/state/*` for check counts.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.consul.up` | `consul_up` | # | 1 when the Consul agent HTTP API is reachable and responding |
+| `consul.catalog.services` | `consul_catalog_services` | # | Number of services registered in the Consul catalog |
+| `consul.serf.members` | `consul_serf_members` | # | Number of LAN Serf cluster members |
+| `consul.raft.commit.time` | `consul_raft_commit_time` | ms | Mean Raft commit time over the last interval (milliseconds) |
+| `consul.rpc.requests` | `consul_rpc_requests` | # | Total RPC requests handled by this Consul agent |
+| `consul.dns.queries` | `consul_dns_queries` | # | Total DNS domain queries handled by this Consul agent |
+| `consul.health.checks` | `consul_health_checks_{state}` | # | Number of Consul health checks in this state (critical, warning, passing) |
+| `consul.leader` | `consul_leader` | # | 1 when this Consul agent is the current Raft leader |
+
+<!-- schema:metrics:end -->

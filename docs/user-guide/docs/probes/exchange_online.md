@@ -125,3 +125,27 @@ Exchange Online metrics are available through every configured output — OTLP, 
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/exchange-online"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/exchange-online"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.exchange_online.up` | `up` | # | 1 when the Microsoft 365 reporting API answered this cycle, else 0 |
+| `senhub.exchange_online.service.health` | `service_health` | # | Exchange service-health status (Healthy=2, Degraded=1, Error/other=0) |
+| `senhub.exchange_online.mail.sent` | `mail_sent` | # | Messages sent over the reporting window |
+| `senhub.exchange_online.mail.received` | `mail_received` | # | Messages received over the reporting window |
+| `senhub.exchange_online.mail.delivered` | `mail_delivered` | # | Messages delivered over the reporting window |
+| `senhub.exchange_online.mail.failed` | `mail_failed` | # | Messages that failed delivery over the reporting window |
+| `senhub.exchange_online.mailboxes` | `mailboxes` | # | Total number of mailboxes |
+| `senhub.exchange_online.mailboxes.active` | `mailboxes_active` | # | Number of active mailboxes |
+| `senhub.exchange_online.mailbox.storage.used` | `mailbox_storage_used` | Bytes | Total storage consumed across all mailboxes |
+| `senhub.exchange_online.mailbox.quota_exceeded` | `mailbox_quota_exceeded` | # | Number of mailboxes that have exceeded their warning quota |
+
+<!-- schema:metrics:end -->

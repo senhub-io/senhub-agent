@@ -52,3 +52,21 @@ series per cycle.
 - The probe reads from the local system D-Bus socket. No special privileges are needed beyond D-Bus access, which is granted to root by default.
 - Transient units (runtime-generated, without a unit file) are excluded.
 - The `systemd.unit.type` tag carries the unit type suffix (service, socket, mount, timer, …).
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `systemd.unit.active_state` | `systemd_{systemd.unit}_active` | # | 1 when the unit active state is 'active', 0 otherwise |
+| `systemd.unit.sub_state` | `systemd_{systemd.unit}_sub` | # | 1 when the unit sub state is 'running' or 'listening', 0 otherwise. The sub_state tag carries the raw sub state value. |
+| `systemd.unit.load_state` | `systemd_{systemd.unit}_load` | # | 1 when the unit load state is 'loaded', 0 otherwise (not-found, error, masked) |
+| `systemd.unit.restarts` | `systemd_{systemd.unit}_restarts` | # | Cumulative restart count for service units (NRestarts D-Bus property). Only emitted for units of type 'service'. |
+
+<!-- schema:metrics:end -->

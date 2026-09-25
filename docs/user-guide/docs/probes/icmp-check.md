@@ -65,3 +65,25 @@ probe failure: the probe stays healthy and keeps reporting.
 - **Windows**: raw sockets only — the probe defaults to
   `privileged: true` and the agent service runs elevated.
 - **macOS**: unprivileged mode works out of the box.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.icmp.up` | `icmp_up` | # | 1 when the target answered at least one echo request in the last cycle, 0 otherwise |
+| `senhub.icmp.packet_loss` | `icmp_packet_loss` | % | Percentage of echo requests without a reply in the last cycle |
+| `senhub.icmp.packets.sent` | `icmp_packets_sent` | # | Echo requests sent in the last cycle |
+| `senhub.icmp.packets.received` | `icmp_packets_received` | # | Echo replies received in the last cycle |
+| `senhub.icmp.rtt.min` | `icmp_rtt_min` | ms | Minimum round-trip time over the last cycle |
+| `senhub.icmp.rtt.avg` | `icmp_rtt_avg` | ms | Average round-trip time over the last cycle |
+| `senhub.icmp.rtt.max` | `icmp_rtt_max` | ms | Maximum round-trip time over the last cycle |
+| `senhub.icmp.rtt.stddev` | `icmp_rtt_stddev` | ms | Round-trip time standard deviation (jitter proxy) over the last cycle |
+
+<!-- schema:metrics:end -->

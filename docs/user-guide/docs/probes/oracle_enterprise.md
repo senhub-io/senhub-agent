@@ -139,3 +139,33 @@ Oracle Enterprise metrics are available through every configured output — OTLP
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/oracle-enterprise-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/oracle-enterprise-prod"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.oracle_enterprise.up` | `up` | # | 1 when the Oracle instance answered this cycle, else 0 |
+| `senhub.oracle_enterprise.awr.db_time` | `awr_db_time` | s | Database time consumed per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.db_cpu` | `awr_db_cpu` | s | Database CPU time consumed per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.parse.hard` | `awr_parse_hard` | # | Hard parse count per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.parse.soft` | `awr_parse_soft` | # | Soft parse count per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.logical_reads` | `awr_logical_reads` | # | Logical reads per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.physical_reads` | `awr_physical_reads` | # | Physical reads per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.physical_writes` | `awr_physical_writes` | # | Physical writes per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.executions` | `awr_executions` | # | SQL executions per second (v$sysmetric) |
+| `senhub.oracle_enterprise.ash.active_sessions` | `ash_active_sessions` | # | Active sessions over the last 5 minutes, per wait class (ASH) |
+| `senhub.oracle_enterprise.ash.cpu_sessions` | `ash_cpu_sessions` | # | Active sessions on CPU over the last 5 minutes (ASH) |
+| `senhub.oracle_enterprise.rac.instances` | `rac_instance_count` | # | Number of open cluster instances visible via gv$instance |
+| `senhub.oracle_enterprise.rac.network.io` | `rac_network_bytes` | Bytes | Cumulative SQL*Net bytes exchanged with clients, per RAC instance |
+| `senhub.oracle_enterprise.rac.gc.blocks_received` | `rac_gc_blocks_received` | # | Cumulative global-cache CR blocks received, per RAC instance |
+| `senhub.oracle_enterprise.dataguard.apply_lag` | `dataguard_apply_lag` | s | Redo apply lag on the standby, in seconds (v$dataguard_stats) |
+| `senhub.oracle_enterprise.dataguard.transport_lag` | `dataguard_transport_lag` | s | Redo transport lag to the standby, in seconds (v$dataguard_stats) |
+
+<!-- schema:metrics:end -->

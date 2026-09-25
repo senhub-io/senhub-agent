@@ -236,3 +236,69 @@ PowerStore metrics are available through every configured output — OTLP, Prome
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/powerstore-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/powerstore-prod"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.powerstore.up` | `up` | # | 1 when the PowerStore management API answered this cycle, else 0 |
+| `senhub.powerstore.cluster.state` | `cluster_state` | # | Cluster configuration state (Configured=2, Unconfigured=1, other=0) |
+| `senhub.powerstore.hardware.components` | `hardware_healthy` | # | Number of hardware components in the Healthy lifecycle state |
+| `senhub.powerstore.hardware.components` | `hardware_faulted` | # | Number of hardware components in a fault lifecycle state (not Healthy/Empty/Initializing) |
+| `senhub.powerstore.drive.state` | `drive_state` | # | Drive lifecycle state (Healthy=1, otherwise 0) |
+| `senhub.powerstore.appliance.state` | `appliance_state` | # | Appliance health (1 = no faulted component, 0 = a faulted component) |
+| `senhub.powerstore.capacity.physical` | `capacity_physical_used` | Bytes | Physical space used on the array |
+| `senhub.powerstore.capacity.physical` | `capacity_physical_total` | Bytes | Total physical capacity of the array |
+| `senhub.powerstore.capacity.used_ratio` | `capacity_used_ratio` | % | Percentage of physical capacity used (0-100; exported as a 0..1 ratio) |
+| `senhub.powerstore.capacity.logical` | `capacity_logical_used` | Bytes | Logical (thin-provisioned) space used before data reduction |
+| `senhub.powerstore.data_reduction_ratio` | `data_reduction_ratio` | # | Data reduction ratio (logical:physical), e.g. 1.49 = 1.49:1 |
+| `senhub.powerstore.efficiency_ratio` | `efficiency_ratio` | # | Overall storage efficiency ratio (thin + dedup + compression + snapshots) |
+| `senhub.powerstore.capacity.logical` | `capacity_logical_provisioned` | Bytes | Logical capacity provisioned to hosts (thin) |
+| `senhub.powerstore.appliance.capacity.physical` | `appliance_physical_used` | Bytes | Physical space used on the appliance |
+| `senhub.powerstore.appliance.capacity.physical` | `appliance_physical_total` | Bytes | Total physical capacity of the appliance |
+| `senhub.powerstore.appliance.capacity.logical` | `appliance_logical_used` | Bytes | Logical (thin) space used on the appliance before data reduction |
+| `senhub.powerstore.iops` | `iops_read` | # | Average read IOPS over the interval |
+| `senhub.powerstore.iops` | `iops_write` | # | Average write IOPS over the interval |
+| `senhub.powerstore.iops` | `iops_total` | # | Average total IOPS over the interval |
+| `senhub.powerstore.bandwidth` | `bandwidth_read` | Bytes/s | Average read bandwidth over the interval |
+| `senhub.powerstore.bandwidth` | `bandwidth_write` | Bytes/s | Average write bandwidth over the interval |
+| `senhub.powerstore.bandwidth` | `bandwidth_total` | Bytes/s | Average total bandwidth over the interval |
+| `senhub.powerstore.latency` | `latency_read` | ms | Average read latency over the interval (milliseconds) |
+| `senhub.powerstore.latency` | `latency_write` | ms | Average write latency over the interval (milliseconds) |
+| `senhub.powerstore.latency` | `latency_total` | ms | Average overall latency over the interval (milliseconds) |
+| `senhub.powerstore.io_size` | `io_size` | Bytes | Average IO size over the interval |
+| `senhub.powerstore.cpu.utilization` | `cpu_utilization` | % | Array IO-workload CPU utilization, appliance-level (percent; exported as a 0..1 ratio) |
+| `senhub.powerstore.appliance.iops` | `appliance_iops_read` | # | Average read IOPS on the appliance over the interval |
+| `senhub.powerstore.appliance.iops` | `appliance_iops_write` | # | Average write IOPS on the appliance over the interval |
+| `senhub.powerstore.appliance.iops` | `appliance_iops_total` | # | Average total IOPS on the appliance over the interval |
+| `senhub.powerstore.appliance.bandwidth` | `appliance_bandwidth_total` | Bytes/s | Average total bandwidth on the appliance over the interval |
+| `senhub.powerstore.appliance.latency` | `appliance_latency_total` | ms | Average overall latency on the appliance over the interval (milliseconds) |
+| `senhub.powerstore.appliance.cpu.utilization` | `appliance_cpu_utilization` | % | Appliance IO-workload CPU utilization (percent; exported as a 0..1 ratio) |
+| `senhub.powerstore.node.cpu.utilization` | `node_cpu_utilization` | % | Node IO-workload CPU utilization (percent; exported as a 0..1 ratio) |
+| `senhub.powerstore.node.iops` | `node_iops_total` | # | Average total IOPS on the node over the interval |
+| `senhub.powerstore.replication.sessions` | `replication_sessions` | # | Number of replication sessions (0 when replication is not configured) |
+| `senhub.powerstore.replication.state` | `replication_state` | # | Replication session state (OK=2, transitional=1, error=0) |
+| `senhub.powerstore.volumes` | `volumes_total` | # | Total number of provisioned volumes |
+| `senhub.powerstore.volumes.not_ready` | `volumes_not_ready` | # | Number of volumes not in the Ready state |
+| `senhub.powerstore.volume.state` | `volume_state` | # | Volume operational state (Ready=1, otherwise 0) |
+| `senhub.powerstore.volume.logical_used` | `volume_logical_used` | Bytes | Logical data written to the volume before data reduction |
+| `senhub.powerstore.volume.size` | `volume_size` | Bytes | Provisioned (thin) size of the volume |
+| `senhub.powerstore.volume.iops` | `volume_iops_read` | # | Average read IOPS for the volume over the interval |
+| `senhub.powerstore.volume.iops` | `volume_iops_write` | # | Average write IOPS for the volume over the interval |
+| `senhub.powerstore.volume.iops` | `volume_iops_total` | # | Average total IOPS for the volume over the interval |
+| `senhub.powerstore.volume.bandwidth` | `volume_bandwidth_read` | Bytes/s | Average read bandwidth for the volume over the interval |
+| `senhub.powerstore.volume.bandwidth` | `volume_bandwidth_write` | Bytes/s | Average write bandwidth for the volume over the interval |
+| `senhub.powerstore.volume.bandwidth` | `volume_bandwidth_total` | Bytes/s | Average total bandwidth for the volume over the interval |
+| `senhub.powerstore.volume.latency` | `volume_latency_read` | ms | Average read latency for the volume over the interval (milliseconds) |
+| `senhub.powerstore.volume.latency` | `volume_latency_write` | ms | Average write latency for the volume over the interval (milliseconds) |
+| `senhub.powerstore.volume.latency` | `volume_latency_total` | ms | Average overall latency for the volume over the interval (milliseconds) |
+| `senhub.powerstore.alerts.active` | `alerts_active` | # | Number of active (uncleared) alerts by severity |
+
+<!-- schema:metrics:end -->

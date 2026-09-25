@@ -117,3 +117,23 @@ Hyper-V HA metrics are available through every configured output — OTLP, Prome
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/hyperv-ha-local"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/hyperv-ha-local"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.hyperv_ha.up` | `up` | # | 1 when the Hyper-V replica WMI namespace answered this cycle, else 0 |
+| `senhub.hyperv_ha.replica.health` | `replica_health` | # | Replication health (1 = Normal, 0 = Warning/Critical) |
+| `senhub.hyperv_ha.replica.state` | `replica_state` | # | Raw Msvm_ReplicationRelationship ReplicationState numeric value |
+| `senhub.hyperv_ha.replica.lag` | `replica_lag` | s | Seconds since the last successful replication for this VM |
+| `senhub.hyperv_ha.cluster.node.state` | `cluster_node_state` | # | Failover Cluster node state (1 = Up, 0 = Down/Paused/Joining) |
+| `senhub.hyperv_ha.cluster.group.state` | `cluster_group_state` | # | Failover Cluster resource-group state (1 = Online, 0 = Offline/Failed/Partial) |
+
+<!-- schema:metrics:end -->

@@ -54,3 +54,27 @@ The status page must answer in JSON: add `?json` to the endpoint or configure th
 
 - Enable the status page in `php-fpm.conf`: `pm.status_path = /fpm-status`. The probe expects JSON output — configure Nginx or Apache to pass `?json` automatically, or set the endpoint to include `?json`.
 - For multi-pool setups, create one probe instance per pool, each pointing to its own pool's status URL.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.phpfpm.up` | `phpfpm_up` | # | 1 when the PHP-FPM status endpoint is reachable, 0 otherwise |
+| `phpfpm.uptime` | `phpfpm_uptime` | s | Number of seconds since the PHP-FPM pool started |
+| `phpfpm.accepted_connections` | `phpfpm_accepted_connections` | # | Total number of accepted connections since pool start |
+| `phpfpm.slow_requests` | `phpfpm_slow_requests` | # | Total number of requests exceeding the slow request threshold |
+| `phpfpm.listen_queue.current` | `phpfpm_listen_queue_current` | # | Current number of requests waiting in the listen queue |
+| `phpfpm.listen_queue.max` | `phpfpm_listen_queue_max` | # | Maximum number of requests observed in the listen queue since pool start |
+| `phpfpm.processes.active` | `phpfpm_processes_active` | # | Number of active (currently serving requests) processes |
+| `phpfpm.processes.idle` | `phpfpm_processes_idle` | # | Number of idle processes waiting for requests |
+| `phpfpm.processes.total` | `phpfpm_processes_total` | # | Total number of processes (active + idle) |
+| `phpfpm.max_children_reached` | `phpfpm_max_children_reached` | # | Total number of times the max_children limit was reached since pool start |
+
+<!-- schema:metrics:end -->

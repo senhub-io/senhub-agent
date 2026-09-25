@@ -363,3 +363,38 @@ The Memory probe requires no authentication as it collects local system metrics 
 ### Network
 - No network access required (local metrics only)
 - HTTP strategy required for remote access to metrics
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `system.memory.limit` | `memory_total` | bytes | Total physical memory installed on the system |
+| `system.memory.usage` | `memory_available` | bytes | Amount of physical memory immediately available for allocation |
+| `system.memory.usage` | `memory_committed` | bytes | Amount of virtual memory that has been committed by the memory manager |
+| `system.memory.usage` | `memory_modified_page_list` | bytes | Amount of memory whose contents have been modified but not yet written to disk |
+| `system.memory.usage` | `memory_nonpaged_pool` | bytes | Amount of kernel memory that cannot be paged out to disk |
+| `system.memory.usage` | `memory_paged_pool` | bytes | Amount of kernel memory that can be paged out to disk |
+| `system.memory.usage` | `memory_cache` | bytes | Amount of physical memory used by the system file cache |
+| `system.memory.usage` | `memory_used` | bytes | Amount of physical memory currently in use by the system and applications |
+| `system.memory.usage` | `memory_free` | bytes | Amount of physical memory not being used at all |
+| `system.memory.usage` | `memory_cached` | bytes | Amount of physical memory used for caching file data and metadata |
+| `system.memory.usage` | `memory_buffers` | bytes | Amount of physical memory used for kernel buffer cache |
+| `system.memory.utilization` | `memory_usage` | % | Percentage of total physical memory currently in use |
+| `senhub.system.paging.faults` | `memory_page_faults` | # | Rate of page faults per second including both hard and soft faults |
+| `senhub.system.paging.operations` | `memory_pages_input` | # | Rate of pages read from disk per second to resolve hard page faults |
+| `senhub.system.paging.operations` | `memory_pages_output` | # | Rate of pages written to disk per second to free physical memory |
+| `system.paging.utilization` | `pagefile_usage` | % | Percentage of the system pagefile currently in use |
+| `senhub.system.paging.utilization_peak` | `pagefile_usage_peak` | % | Peak percentage of the system pagefile used since last reboot |
+| `senhub.system.paging.limit` | `swap_total` | bytes | Total swap space configured on the system |
+| `system.paging.usage` | `swap_used` | bytes | Amount of swap space currently in use |
+| `system.paging.usage` | `swap_free` | bytes | Amount of swap space not in use |
+| `system.paging.utilization` | `swap_usage` | % | Percentage of total swap space currently in use |
+
+<!-- schema:metrics:end -->

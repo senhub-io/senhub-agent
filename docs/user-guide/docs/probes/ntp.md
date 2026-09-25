@@ -190,3 +190,25 @@ Read `senhub.ntp.state` first; it names the cause directly.
   measurement belongs to the host in the topology.
 - The offset is signed. Positive means the local clock is ahead of the
   reference.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.ntp.up` | `ntp_up_{server}` | # | 1 when the server answered with a usable measurement, 0 otherwise |
+| `senhub.ntp.state` | `ntp_state_{server}_{reason}` | # | one-hot over ok / unreachable / refused / unsynchronised / invalid_response — says WHY up has its value, so a filtered UDP 123 is distinguishable from a server that refuses us or one whose own clock is adrift |
+| `ntp.time.offset` | `ntp_offset_{server}` | ms | Measured error of the system clock against this reference (positive = the local clock is ahead, negative = behind) |
+| `ntp.round_trip.delay` | `ntp_round_trip_delay_{server}` | ms | Time the measurement exchange spent in flight. It is the confidence attached to the offset beside it: the offset assumes both directions took equally long, so a large or unstable round trip means a coarse offset |
+| `ntp.stratum` | `ntp_stratum_{server}` | # | Stratum of the reference server (1 = directly attached to a reference clock) |
+| `ntp.root.delay` | `ntp_root_delay_{server}` | ms | Round-trip delay from the reference server up to its own stratum-1 source |
+| `ntp.root.dispersion` | `ntp_root_dispersion_{server}` | ms | Maximum clock error the reference server itself accumulates relative to its stratum-1 source |
+| `ntp.leap_status` | `ntp_leap_status_{server}` | # | Leap indicator the reference server announces: 0=normal, 1=last minute has 61 seconds, 2=last minute has 59 seconds |
+
+<!-- schema:metrics:end -->
