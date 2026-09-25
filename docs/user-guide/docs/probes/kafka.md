@@ -52,7 +52,7 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 | `kafka.partition.current_offset` | {offset} | Current (high-water mark) offset, tagged with `topic`/`partition` |
 | `kafka.partition.oldest_offset` | {offset} | Oldest available offset per partition |
 | `kafka.partition.replicas` | {replica} | Total replicas per partition |
-| `kafka.partition.replicas.in_sync` | {replica} | In-sync replicas per partition |
+| `kafka.partition.replicas_in_sync` | {replica} | In-sync replicas per partition |
 | `kafka.consumer_group.lag` | {message} | Lag per group/topic/partition, tagged with `group`/`topic`/`partition` |
 | `kafka.consumer_group.lag_sum` | {message} | Total lag summed across partitions per group/topic |
 

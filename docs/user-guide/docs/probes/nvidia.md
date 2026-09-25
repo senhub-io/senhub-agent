@@ -44,7 +44,7 @@ No parameters are required. The probe auto-detects all GPUs visible to
 | `gpu.memory.used` | By | GPU memory currently in use |
 | `gpu.memory.total` | By | Total GPU memory |
 | `gpu.temperature` | Cel | GPU die temperature |
-| `gpu.power.draw` | W | Power draw in watts |
+| `gpu.power.usage` | W | Power draw in watts |
 | `gpu.encoder.utilization` | 1 | Video encoder utilization ratio (0–1) |
 | `gpu.decoder.utilization` | 1 | Video decoder utilization ratio (0–1) |
 | `gpu.fan.speed` | 1 | Fan speed ratio (0–1), when supported by the GPU |

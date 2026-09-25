@@ -49,9 +49,9 @@ usage, connection counts and exchange statistics.
 | `rabbitmq.messages.ready` | {message} | Messages ready to be delivered |
 | `rabbitmq.queue.messages.ready` | {message} | Messages ready per queue, tagged with `queue` / `vhost` |
 | `rabbitmq.queue.consumers` | {consumer} | Active consumers per queue |
-| `rabbitmq.consumers.count` | {consumer} | Total consumers connected to the broker |
-| `rabbitmq.connections.count` | {connection} | Total client connections |
-| `rabbitmq.node.mem.used` | By | Memory used by the broker process, tagged with `node` |
+| `rabbitmq.consumers.total` | {consumer} | Total consumers connected to the broker |
+| `rabbitmq.connections.total` | {connection} | Total client connections |
+| `rabbitmq.node.memory.used` | By | Memory used by the broker process, tagged with `node` |
 | `rabbitmq.node.disk.free` | By | Free disk space on the node |
 | `rabbitmq.node.fd.used` | {fd} | Open file descriptors on the node |
 

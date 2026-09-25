@@ -39,12 +39,12 @@ reporting broker health, throughput, storage and backlog at the broker level.
 |---|---|---|
 | `senhub.pulsar.up` | 1 | 1 when the broker answered `/admin/v2/brokers/ready` with HTTP 200 |
 | `pulsar.topics.count` | {topic} | Number of topics on the broker |
-| `pulsar.messages.in_rate` | {message}/s | Incoming message rate (broker-level aggregate) |
-| `pulsar.messages.out_rate` | {message}/s | Outgoing message rate |
-| `pulsar.bytes.in_rate` | By/s | Incoming byte throughput |
-| `pulsar.bytes.out_rate` | By/s | Outgoing byte throughput |
+| `pulsar.rate.messages.in` | {message}/s | Incoming message rate (broker-level aggregate) |
+| `pulsar.rate.messages.out` | {message}/s | Outgoing message rate |
+| `pulsar.throughput.in` | By/s | Incoming byte throughput |
+| `pulsar.throughput.out` | By/s | Outgoing byte throughput |
 | `pulsar.storage.size` | By | Broker-level storage used for ledger data |
-| `pulsar.backlog.size` | {message} | Total message backlog across all topics |
+| `pulsar.message.backlog` | {message} | Total message backlog across all topics |
 | `pulsar.producers.count` | {producer} | Connected producers |
 | `pulsar.consumers.count` | {consumer} | Connected consumers |
 

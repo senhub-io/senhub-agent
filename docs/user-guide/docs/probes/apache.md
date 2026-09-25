@@ -43,9 +43,9 @@ Requires `mod_status` enabled with the `?auto` format.
 | `apache.uptime` | s | Seconds since the server started |
 | `apache.current_connections` | {connection} | Total open connections (Active, Waiting) |
 | `apache.workers` | {worker} | Worker count by state (busy / idle) — tagged with `state` |
-| `apache.requests.total` | {request} | Total requests handled since start |
-| `apache.scoreboard` | {slot} | Scoreboard slot counts by state |
-| `apache.traffic.total` | By | Total bytes transferred since start |
+| `apache.requests` | {request} | Total requests handled since start |
+| `apache.workers` | {worker} | Workers by state: busy (serving a request) or idle |
+| `apache.traffic` | By | Total bytes transferred since start |
 
 ## Operational notes
 

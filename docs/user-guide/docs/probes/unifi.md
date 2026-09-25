@@ -46,13 +46,12 @@ throughput and connected-client totals.
 | `senhub.unifi.up` | 1 | 1 when the controller answered login and stat endpoints |
 | `unifi.devices.total` | {device} | Known devices by type (uap/usw/ugw), tagged with `device_type` |
 | `unifi.devices.adopted` | {device} | Adopted devices by type |
-| `unifi.clients.connected` | {client} | Currently connected wireless and wired clients |
-| `unifi.device.cpu.utilization` | 1 | CPU utilization ratio per device, tagged with `device_name` / `device_type` |
-| `unifi.device.memory.utilization` | 1 | Memory utilization ratio per device |
+| `unifi.clients.total` | # | Connected clients, wired and wireless |
+| `unifi.device.cpu` | 1 | CPU utilization ratio per device, tagged with `device_name` / `device_type` |
+| `unifi.device.memory` | 1 | Memory utilization ratio per device |
 | `unifi.ap.satisfaction` | 1 | AP user experience satisfaction score (0–100 normalized to 0–1), per AP |
-| `unifi.ap.clients.connected` | {client} | Clients associated per AP |
-| `unifi.wan.bytes.received` | By | WAN bytes received (gateway devices, monotonic) |
-| `unifi.wan.bytes.sent` | By | WAN bytes sent |
+| `unifi.ap.clients` | # | Clients associated to this access point, tagged with `device_name` |
+| `unifi.network.io` | bytes | WAN byte rate reported by the controller, tagged with `direction` |
 
 ## Operational notes
 

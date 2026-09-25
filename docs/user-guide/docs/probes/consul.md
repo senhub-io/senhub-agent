@@ -41,10 +41,10 @@ health-check state distribution and leader status.
 | `senhub.consul.up` | 1 | 1 when the Consul HTTP API is reachable |
 | `consul.catalog.services` | {service} | Number of services registered in the catalog |
 | `consul.serf.members` | {member} | LAN Serf cluster members |
-| `consul.raft.commit_time` | s | Median Raft commit latency |
-| `consul.dns.latency` | s | Median DNS query latency |
+| `consul.raft.commit.time` | ms | Mean Raft commit time over the last interval |
+| `consul.dns.queries` | # | DNS domain queries handled by this agent (cumulative) |
 | `consul.health.checks` | {check} | Health checks by state (passing/warning/critical), tagged with `state` |
-| `consul.rpc.query.count` | {query} | RPC queries processed since last collection |
+| `consul.rpc.requests` | # | RPC requests handled by this agent (cumulative) |
 | `consul.leader` | 1 | 1 when this agent is the current Raft leader |
 
 ## Operational notes

@@ -53,14 +53,14 @@ Set `instance_name` to keep the entity identity stable when the address changes.
 | `redis.connections.received` | {connection} | Total connections accepted since start |
 | `redis.memory.used` | By | Memory currently allocated by Redis |
 | `redis.memory.peak` | By | Peak memory allocation |
-| `redis.memory.fragmentation_ratio` | 1 | Memory fragmentation ratio |
+| `redis.memory.fragmentation.ratio` | 1 | Memory fragmentation ratio |
 | `redis.commands.processed` | {command} | Total commands processed since start |
 | `redis.keyspace.hits` | {hit} | Successful key lookups |
 | `redis.keyspace.misses` | {miss} | Failed key lookups |
-| `redis.keys.expired` | {key} | Keys expired since start |
-| `redis.keys.evicted` | {key} | Keys evicted due to `maxmemory` policy |
+| `redis.expired_keys` | {key} | Keys expired since start |
+| `redis.evicted_keys` | {key} | Keys evicted due to `maxmemory` policy |
 | `redis.replication.lag` | s | Replica lag in seconds (replica instances only) |
-| `redis.rdb.last_save.duration` | s | Duration of the last successful RDB save |
+| `redis.rdb.last_bgsave.duration` | s | Duration of the last RDB background save |
 
 ## Operational notes
 

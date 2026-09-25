@@ -53,10 +53,10 @@ with hundreds of short-lived queues otherwise emits a series per queue.
 | `activemq.message.current` | {message} | Messages currently enqueued across all destinations |
 | `activemq.memory.usage` | % | Broker memory utilization (percentage of configured limit) |
 | `activemq.store.usage` | % | Persistent store utilization (percentage of configured limit) |
-| `activemq.destination.producer.count` | {producer} | Producers per destination (queue/topic) |
-| `activemq.destination.consumer.count` | {consumer} | Consumers per destination |
-| `activemq.destination.messages.enqueued` | {message} | Messages enqueued per destination (cumulative) |
-| `activemq.destination.messages.dequeued` | {message} | Messages dequeued per destination (cumulative) |
+| `activemq.producer.count` | {producer} | Producers per destination (queue/topic) |
+| `activemq.consumer.count` | {consumer} | Consumers per destination |
+| `activemq.message.enqueued` | {message} | Messages enqueued per destination (cumulative) |
+| `activemq.message.dequeued` | {message} | Messages dequeued per destination (cumulative) |
 
 ## Operational notes
 

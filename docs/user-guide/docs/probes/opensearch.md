@@ -47,8 +47,8 @@ Elasticsearch; metric names use the `opensearch.*` namespace.
 | `opensearch.cluster.shards.active` | {shard} | Active shards |
 | `opensearch.cluster.shards.unassigned` | {shard} | Unassigned shards |
 | `opensearch.jvm.memory.heap.used` | By | JVM heap in use on the local node |
-| `opensearch.indexing.request.operations.count` | {operation} | Indexing operations by type, tagged with `operation` |
-| `opensearch.search.query.count` | {query} | Completed search queries |
+| `opensearch.indexing.operations.completed` | # | Indexing operations completed, tagged with `operation` |
+| `opensearch.search.operations.completed` | # | Search operations completed, tagged with `operation` (query, fetch) |
 | `opensearch.thread_pool.tasks.queued` | {task} | Queued tasks per thread pool, tagged with `thread_pool` |
 
 ## Operational notes

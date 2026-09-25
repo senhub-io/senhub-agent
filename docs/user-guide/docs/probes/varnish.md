@@ -41,12 +41,10 @@ shared memory file.
 | `senhub.varnish.up` | 1 | 1 when `varnishstat` completed successfully |
 | `varnish.cache.operations` | {operation} | Cache lookups by result (hit/miss/hitpass), tagged with `result` |
 | `varnish.client.requests.received` | {request} | Client requests received |
-| `varnish.backend.connections.failed` | {connection} | Failed backend connection attempts |
-| `varnish.threads.created` | {thread} | Threads created since start |
-| `varnish.threads.failed` | {thread} | Failed thread creation attempts |
-| `varnish.threads.destroyed` | {thread} | Threads destroyed |
-| `varnish.sessions.accepted` | {session} | Client sessions accepted |
-| `varnish.sessions.dropped` | {session} | Sessions dropped due to overflow |
+| `varnish.backend.connections.fail` | {connection} | Failed backend connection attempts |
+| `varnish.thread.operations` | # | Thread lifecycle events, tagged with `operation` (created, destroyed, failed) |
+| `varnish.session.connections` | # | Client sessions accepted |
+| `varnish.session.dropped` | {session} | Sessions dropped due to overflow |
 | `varnish.objects.stored` | {object} | Objects currently stored in cache |
 | `varnish.memory.allocated` | By | Memory allocated for cache storage |
 

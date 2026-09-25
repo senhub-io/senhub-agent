@@ -41,15 +41,14 @@ cache hit/miss ratios, command throughput and eviction counters.
 |---|---|---|
 | `senhub.memcached.up` | 1 | 1 when the server responds to `stats`, 0 otherwise |
 | `memcached.uptime` | s | Seconds since the Memcached server started |
-| `memcached.current_connections` | {connection} | Active client connections |
-| `memcached.total_connections` | {connection} | Total connections accepted since start |
-| `memcached.current_items` | {item} | Items currently stored |
-| `memcached.total_items` | {item} | Items stored since start |
+| `memcached.current.connections` | {connection} | Active client connections |
+| `memcached.connections.total` | {connection} | Total connections accepted since start |
+| `memcached.current.items` | {item} | Items currently stored |
+| `memcached.items.total` | {item} | Items stored since start |
 | `memcached.bytes` | By | Current memory used for item storage |
 | `memcached.limit_maxbytes` | By | Configured memory limit |
 | `memcached.operations` | {operation} | Get/set/delete/etc. operations, tagged with `command` |
-| `memcached.hits` | {operation} | Cache hits by command, tagged with `command` |
-| `memcached.misses` | {operation} | Cache misses by command |
+| `memcached.operations` | # | Cache get operations by result, tagged with `result` (hit, miss) |
 | `memcached.evictions` | {eviction} | Items evicted to free memory |
 
 ## Operational notes

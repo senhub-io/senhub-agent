@@ -41,7 +41,7 @@ state breakdown (reading, writing, waiting).
 | `nginx.connections.current` | {connection} | Active connections currently being handled |
 | `nginx.connections.accepted` | {connection} | Total connections accepted since nginx started (monotonic) |
 | `nginx.connections.handled` | {connection} | Total connections handled since start |
-| `nginx.requests.total` | {request} | Total HTTP requests handled since start |
+| `nginx.requests` | {request} | Total HTTP requests handled since start |
 | `nginx.connections.reading` | {connection} | Connections reading the request header |
 | `nginx.connections.writing` | {connection} | Connections writing the response |
 | `nginx.connections.waiting` | {connection} | Idle keep-alive connections waiting for a request |
@@ -57,4 +57,4 @@ state breakdown (reading, writing, waiting).
   }
   ```
 - The module is included in most Nginx packages by default; verify with `nginx -V 2>&1 | grep stub_status`.
-- `nginx.connections.accepted`, `nginx.connections.handled` and `nginx.requests.total` are monotonically increasing counters since the last Nginx reload.
+- `nginx.connections.accepted`, `nginx.connections.handled` and `nginx.requests` are monotonically increasing counters since the last Nginx reload.

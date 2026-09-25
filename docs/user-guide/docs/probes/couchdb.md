@@ -47,7 +47,6 @@ database read/write throughput and I/O byte counters.
 | `couchdb.httpd.status.responses` | {response} | Responses by HTTP status class (2xx/3xx/4xx/5xx), tagged with `status` |
 | `couchdb.database.reads` | {read} | Database read operations |
 | `couchdb.database.writes` | {write} | Database write operations |
-| `couchdb.httpd.bulk_requests` | {request} | Bulk document requests |
 
 ## Operational notes
 

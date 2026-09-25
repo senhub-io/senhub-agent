@@ -71,7 +71,7 @@ and give the BMC under the `remote` block. Sensor filters live under the
 | `hardware.temperature` | Cel | Temperature per BMC sensor, tagged with `hardware.component` |
 | `hardware.fan.speed` | RPM | Fan speed per sensor |
 | `hardware.voltage` | V | Voltage per sensor |
-| `hardware.status` | 1 | Sensor status: 1 = ok, 0 = critical/non-recoverable |
+| `hw.status` | # | Sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
 
 ## Operational notes
 

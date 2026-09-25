@@ -43,13 +43,10 @@ usage, replication state and database storage.
 | `mongodb.connections.current` | {connection} | Current client connections |
 | `mongodb.connections.available` | {connection} | Available connection slots |
 | `mongodb.operations.count` | {operation} | Operations by type (insert/query/update/delete/getmore/command), tagged with `operation` |
-| `mongodb.memory.resident` | By | Resident (physical) memory used by the server |
-| `mongodb.memory.virtual` | By | Virtual memory used by the server |
-| `mongodb.locks.deadlock.count` | {deadlock} | Global lock deadlocks |
-| `mongodb.index.accesses` | {access} | Index accesses by database, tagged with `database` |
-| `mongodb.database.storage.size` | By | Storage allocated per database |
-| `mongodb.database.document.count` | {document} | Document count per database |
-| `mongodb.replica_set.state` | 1 | Replica set member state (1 = PRIMARY, 2 = SECONDARY, …) |
+| `mongodb.memory.usage` | By | Memory in use, tagged with `type` (resident, virtual) |
+| `mongodb.index.count` | {access} | Index accesses by database, tagged with `database` |
+| `mongodb.storage.size` | By | Storage allocated per database |
+| `mongodb.document.operation.count` | {document} | Document count per database |
 
 ## Operational notes
 
