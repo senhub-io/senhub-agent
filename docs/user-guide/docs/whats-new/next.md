@@ -272,6 +272,12 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **A systemd-creds install no longer reports a seal failure on every
+  start.** The service runs as a non-root account and only root can
+  encrypt with the host key, so the start-time seal always failed and
+  restored its backups. It now says once that the inline secrets stay in
+  place, and names the command that seals them.
+
 - **A value from a probe that runs less often than the push is exported
   as current between two runs.** A gauge from a probe running every 30
   minutes gave one sample per run, so an alert with a short lookback

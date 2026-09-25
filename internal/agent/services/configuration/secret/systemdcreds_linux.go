@@ -100,7 +100,13 @@ func (p *systemdCredsProvider) Get(name string) (string, error) {
 // plaintext is piped on STDIN so it never appears on argv or in a temp file.
 // The embedded --name binds the ciphertext to the credential id the unit must
 // load it under, so a mismatched LoadCredentialEncrypted= is rejected by systemd.
+// geteuid is swapped by tests.
+var geteuid = os.Geteuid
+
 func (p *systemdCredsProvider) Set(name string, value Secret) error {
+	if geteuid() != 0 {
+		return fmt.Errorf("storing %q with systemd-creds: %w", name, ErrSealNeedsRoot)
+	}
 	bin, err := exec.LookPath("systemd-creds")
 	if err != nil {
 		return fmt.Errorf("systemd-creds not available (install systemd >= 250 or use the age key-file backend): %w", err)
