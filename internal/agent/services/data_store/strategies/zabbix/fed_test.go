@@ -107,7 +107,7 @@ func TestAnInstanceGetsItemsForExactlyTheMetricsItFeeds(t *testing.T) {
 	without := fedRows(&network, speed.Name)
 	id := template.FedID(*speed)
 	for rule, fed := range without {
-		if regexp.MustCompile(","+regexp.QuoteMeta(id)+",").MatchString(fed) {
+		if regexp.MustCompile("," + regexp.QuoteMeta(id) + ",").MatchString(fed) {
 			t.Errorf("rule %s still lists %s for an interface that does not send it", rule, id)
 		}
 	}
