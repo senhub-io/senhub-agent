@@ -43,13 +43,13 @@ state (leader/follower/observer).
 | `senhub.zookeeper.up` | 1 | 1 when the node answered the `mntr` command |
 | `zookeeper.latency.avg` | ms | Average request processing latency (`zk_avg_latency`) |
 | `zookeeper.latency.max` | ms | Maximum request processing latency |
-| `zookeeper.connections.count` | {connection} | Current client connections |
+| `zookeeper.connections` | {connection} | Current client connections |
 | `zookeeper.packets.received` | {packet} | Packets received since start |
 | `zookeeper.packets.sent` | {packet} | Packets sent since start |
-| `zookeeper.znodes.count` | {znode} | Number of znodes in the data tree |
-| `zookeeper.watches.count` | {watch} | Number of active watches |
+| `zookeeper.znodes` | {znode} | Number of znodes in the data tree |
+| `zookeeper.watches` | {watch} | Number of active watches |
 | `zookeeper.file_descriptors.open` | {fd} | Open file descriptors |
-| `zookeeper.leader_elections` | {election} | Leader elections triggered (leader nodes only) |
+| `zookeeper.synced_followers` | # | Followers in sync with the leader (leader only) |
 | `zookeeper.pending_syncs` | {sync} | Pending sync operations (leader only) |
 
 ## Operational notes

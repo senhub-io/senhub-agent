@@ -48,11 +48,9 @@ I/O statistics.
 | `ceph.osd.total` | {osd} | Total number of OSDs in the cluster |
 | `ceph.osd.up` | {osd} | OSDs currently in the `up` state |
 | `ceph.osd.in` | {osd} | OSDs currently in the `in` state (participating in data placement) |
-| `ceph.monitor.quorum` | {monitor} | Number of monitors participating in the quorum |
-| `ceph.pool.reads` | {read} | Read operations per pool (tagged with `pool`) |
-| `ceph.pool.writes` | {write} | Write operations per pool |
-| `ceph.pool.bytes_read` | By | Bytes read per pool |
-| `ceph.pool.bytes_written` | By | Bytes written per pool |
+| `ceph.monitor.quorum_count` | {monitor} | Number of monitors participating in the quorum |
+| `ceph.pool.rd_ops` | {read} | Read operations per pool (tagged with `pool`) |
+| `ceph.pool.wr_ops` | {write} | Write operations per pool |
 
 ## Operational notes
 

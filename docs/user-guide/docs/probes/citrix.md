@@ -241,63 +241,100 @@ The probe automatically appends required API paths (`/Odata/v4/Data`, `/Controll
 
 # Metrics Collected
 
-## Session Metrics
+Each metric is listed under the name the OTLP and Prometheus outputs use,
+followed by the PRTG/Nagios channel that carries the same value. Several
+channels collapse into one OTel metric distinguished by an attribute; the
+attribute value is given where that happens.
 
-Track active and disconnected user sessions:
+## Sessions
 
-| Metric Name | Description | Type | Unit |
-|------------|-------------|------|------|
-| `citrix.sessions.connected` | Active user sessions | Gauge | `#` |
-| `citrix.sessions.disconnected` | Disconnected sessions (still consuming resources) | Gauge | `#` |
-| `citrix.sessions.zombie` | Sessions disconnected >24 hours | Gauge | `#` |
-| `citrix.sessions.simultaneous_users` | Users with multiple active sessions | Gauge | `#` |
-
-**Tags:** `site`, `delivery_group`
-
-## Logon Performance Metrics
-
-Detailed breakdown of logon duration by phase:
-
-| Metric Name | Description | Type | Unit |
-|------------|-------------|------|------|
-| `citrix.logon.duration_total` | Average total logon time (2-minute window) | Gauge | `s` |
-| `citrix.logon.brokering` | Brokering phase duration | Gauge | `s` |
-| `citrix.logon.vmstart` | VM start duration | Gauge | `s` |
-| `citrix.logon.hdx` | HDX connection establishment | Gauge | `s` |
-| `citrix.logon.authentication` | Authentication duration | Gauge | `s` |
-| `citrix.logon.gpo` | Group Policy processing time | Gauge | `s` |
-| `citrix.logon.scripts` | Logon scripts execution time | Gauge | `s` |
-| `citrix.logon.profile` | User profile load time | Gauge | `s` |
-| `citrix.logon.interactive` | Interactive session start time | Gauge | `s` |
-| `citrix.logon.sessions_opened` | New sessions in 2-minute window | Gauge | `#` |
+| Metric | Attribute | Channel | Unit |
+|---|---|---|---|
+| `senhub.citrix.sessions.count` | `session.state=connected` | `sessions_connected` | `#` |
+| `senhub.citrix.sessions.count` | `session.state=disconnected` | `sessions_disconnected` | `#` |
 
 **Tags:** `site`, `delivery_group`
 
-**Calculation window:** All logon metrics use a complete 2-minute window aligned on minute boundaries, matching Citrix Director calculations.
+## Logon performance
 
-## Infrastructure Metrics
+Logon duration is broken down by phase. Every phase shares one metric,
+distinguished by `senhub.citrix.logon.phase`.
 
-VDA machine health and capacity:
+| Metric | Attribute | Channel | Unit |
+|---|---|---|---|
+| `senhub.citrix.logon.duration_1h_average` | - | `logon_duration_avg_1h` | `s` |
+| `senhub.citrix.logon.last_session_duration` | - | `logon_duration_total` | `s` |
+| `senhub.citrix.logon.sessions_opened` | - | `logon_sessions_opened` | `#` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=brokering` | `logon_brokering` | `s` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=vm_start` | `logon_vmstart` | `s` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=hdx` | `logon_hdx` | `s` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=authentication` | `logon_authentication` | `s` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=gpo` | `logon_gpo` | `s` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=scripts` | `logon_scripts` | `s` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=profile` | `logon_profile` | `s` |
+| `senhub.citrix.logon.phase_duration` | `logon.phase=interactive` | `logon_interactive` | `s` |
 
-| Metric Name | Description | Type | Unit |
-|------------|-------------|------|------|
-| `citrix.machines.registered` | VDA machines successfully registered | Gauge | `#` |
-| `citrix.machines.unregistered` | VDA machines failed to register | Gauge | `#` |
-| `citrix.machines.faulty` | Machines in fault state | Gauge | `#` |
-| `citrix.machines.maintenance` | Machines in maintenance mode | Gauge | `#` |
+**Tags:** `site`, `delivery_group`
+
+**Calculation window:** every logon metric uses a complete 2-minute window aligned on minute boundaries, matching Citrix Director's own calculation.
+
+## Machines
+
+| Metric | Attribute | Channel | Unit |
+|---|---|---|---|
+| `senhub.citrix.machines.total` | - | `machines_total` | `#` |
+| `senhub.citrix.machines.by_registration_state` | `machine.registration_state=registered` | `machines_registered` | `#` |
+| `senhub.citrix.machines.by_registration_state` | `machine.registration_state=unregistered` | `machines_unregistered` | `#` |
+| `senhub.citrix.machines.by_registration_state` | `machine.registration_state=faulty` | `machines_faulty` | `#` |
+| `senhub.citrix.machines.by_registration_state` | `machine.registration_state=maintenance` | `machines_maintenance` | `#` |
+| `senhub.citrix.machines.overloaded` | - | `load_overloaded_machines` | `#` |
+| `senhub.citrix.machines.multi_session_fault_total` | - | `machines_faulty_total` | `#` |
+| `senhub.citrix.machines.by_fault_state` | `machine.fault_state=boot_failure` | `boot_failure` | `#` |
+| `senhub.citrix.machines.by_fault_state` | `machine.fault_state=stuck_at_boot` | `stuck_at_boot` | `#` |
+| `senhub.citrix.machines.by_fault_state` | `machine.fault_state=unregistered` | `unregistered` | `#` |
+| `senhub.citrix.machines.by_fault_state` | `machine.fault_state=max_capacity` | `max_capacity` | `#` |
+| `senhub.citrix.machines.by_fault_state` | `machine.fault_state=vm_not_found` | `vm_not_found` | `#` |
+| `senhub.citrix.machines.by_fault_state` | `machine.fault_state=unknown` | `unknown` | `#` |
 
 **Tags:** `site`, `delivery_group`, `machine_catalog`
 
-## Connection Failure Metrics
+## Load index
 
-Track connection failures by category:
+| Metric | Attribute | Channel | Unit |
+|---|---|---|---|
+| `senhub.citrix.load_index.ratio` | `load_index.dimension=effective` | `load_index_effective` | `%` |
+| `senhub.citrix.load_index.ratio` | `load_index.dimension=cpu` | `load_index_cpu` | `%` |
+| `senhub.citrix.load_index.ratio` | `load_index.dimension=memory` | `load_index_memory` | `%` |
+| `senhub.citrix.load_index.ratio` | `load_index.dimension=disk` | `load_index_disk` | `%` |
+| `senhub.citrix.load_index.ratio` | `load_index.dimension=network` | `load_index_network` | `%` |
+| `senhub.citrix.load_index.ratio` | `load_index.dimension=sessions` | `load_index_sessions` | `%` |
 
-| Metric Name | Description | Type | Unit |
-|------------|-------------|------|------|
-| `citrix.failures.total` | Total connection failures | Counter | `#` |
-| `citrix.failures.by_category` | Failures per failure category | Counter | `#` |
+## Connection failures
 
-**Tags:** `site`, `failure_category` (e.g., `NoCapacityAvailable`, `MachineNotPoweredOn`, `LicenseUnavailable`)
+| Metric | Attribute | Channel | Unit |
+|---|---|---|---|
+| `senhub.citrix.connection_failures.total` | - | `failures_total` | `#` |
+| `senhub.citrix.connection_failures.by_category` | `connection_failure.category=client_connection` | `client_connection_failures` | `#` |
+| `senhub.citrix.connection_failures.by_category` | `connection_failure.category=configuration` | `configuration_errors` | `#` |
+| `senhub.citrix.connection_failures.by_category` | `connection_failure.category=machine` | `machine_failures` | `#` |
+| `senhub.citrix.connection_failures.by_category` | `connection_failure.category=capacity_unavailable` | `capacity_unavailable` | `#` |
+| `senhub.citrix.connection_failures.by_category` | `connection_failure.category=licenses_unavailable` | `licenses_unavailable` | `#` |
+| `senhub.citrix.connection_failures.by_category` | `connection_failure.category=other` | `other_failures` | `#` |
+
+**Tags:** `site`
+
+## Licensing
+
+Collected only when `license_server` is configured.
+
+| Metric | Channel | Unit |
+|---|---|---|
+| `senhub.citrix.license.sessions_active` | `license_sessions_active` | `#` |
+| `senhub.citrix.license.peak_concurrent_users` | `license_peak_concurrent` | `#` |
+| `senhub.citrix.license.unique_users` | `license_unique_users` | `#` |
+| `senhub.citrix.license.grace.sessions_remaining` | `license_grace_sessions_left` | `#` |
+| `senhub.citrix.license.grace.active` | `license_grace_period_active` | `#` |
+| `senhub.citrix.license.grace.time_remaining` | `license_grace_hours_left` | `h` |
 
 # Integration with Monitoring Systems
 
@@ -315,7 +352,7 @@ Track connection failures by category:
 | URL | `https://agent:8443/api/{key}/prtg/metrics/citrix` |
 | Scanning Interval | 120 seconds |
 
-Key Channels: `citrix.sessions.connected`, `citrix.sessions.disconnected`, `citrix.sessions.zombie`, `citrix.sessions.simultaneous_users`
+Key Channels: `sessions_connected`, `sessions_disconnected`, `machines_registered`, `machines_unregistered`
 
 **Sensor 2: Logon Performance**
 
@@ -327,7 +364,7 @@ Key Channels: `citrix.sessions.connected`, `citrix.sessions.disconnected`, `citr
 | URL | `https://agent:8443/api/{key}/prtg/metrics/citrix` |
 | Scanning Interval | 120 seconds |
 
-Key Channels: `citrix.logon.duration_total`, `citrix.logon.gpo`, `citrix.logon.profile`, `citrix.logon.sessions_opened`
+Key Channels: `logon_duration_total`, `logon_gpo`, `logon_profile`, `logon_sessions_opened`
 
 **Sensor 3: Infrastructure Health**
 

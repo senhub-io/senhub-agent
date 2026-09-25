@@ -46,13 +46,13 @@ metrics.
 | `jvm.memory.heap.used` | By | JVM heap memory currently used |
 | `jvm.memory.heap.max` | By | JVM maximum heap size |
 | `jvm.gc.collections.count` | {collection} | GC collections by collector, tagged with `collector` |
-| `tomcat.request.count` | {request} | HTTP requests processed by Undertow |
-| `tomcat.request.error.count` | {error} | HTTP request errors |
-| `tomcat.threads.current` | {thread} | Current Undertow thread pool size |
-| `wildfly.transactions.committed` | {transaction} | JTA transactions committed |
-| `wildfly.transactions.rolled_back` | {transaction} | JTA transactions rolled back |
-| `wildfly.datasource.active` | {connection} | Active JDBC pool connections per datasource, tagged with `datasource` |
-| `wildfly.datasource.available` | {connection} | Available connections in the JDBC pool |
+| `wildfly.request.count` | {request} | HTTP requests processed by Undertow |
+| `wildfly.error.count` | {error} | HTTP request errors |
+| `wildfly.datasource.connections.active` | # | In-use connections in the datasource pool |
+| `wildfly.transaction.committed` | {transaction} | JTA transactions committed |
+| `wildfly.transaction.rolledback` | {transaction} | JTA transactions rolled back |
+| `wildfly.datasource.connections.active` | {connection} | Active JDBC pool connections per datasource, tagged with `datasource` |
+| `wildfly.datasource.connections.available` | {connection} | Available connections in the JDBC pool |
 
 ## Operational notes
 

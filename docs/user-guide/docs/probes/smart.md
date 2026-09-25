@@ -54,11 +54,11 @@ sudoers rule for `smartctl`.
 | `smart.disk.reallocated_sectors` | {sector} | Reallocated sector count (SATA/SAS) — non-zero indicates drive degradation |
 | `smart.disk.power_on_hours` | h | Cumulative power-on hours |
 | `smart.disk.temperature` | Cel | Drive temperature |
-| `smart.disk.nvme.critical_warning` | 1 | NVMe critical warning bits (0 = healthy) |
-| `smart.disk.nvme.available_spare` | % | NVMe available spare capacity percentage |
-| `smart.disk.nvme.percentage_used` | % | NVMe lifetime wear indicator |
-| `smart.disk.nvme.data_units_read` | By | Total data read from the NVMe drive |
-| `smart.disk.nvme.data_units_written` | By | Total data written to the NVMe drive |
+| `smart.nvme.media_errors` | # | Cumulative media and data integrity errors |
+| `smart.nvme.available_spare` | % | NVMe available spare capacity percentage |
+| `smart.nvme.percentage_used` | % | NVMe lifetime wear indicator |
+| `smart.nvme.data_units_read` | By | Total data read from the NVMe drive |
+| `smart.nvme.data_units_written` | By | Total data written to the NVMe drive |
 
 ## Operational notes
 

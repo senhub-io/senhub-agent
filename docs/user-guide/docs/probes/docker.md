@@ -56,11 +56,11 @@ the container's primary name.
 | `container.restarts` | {restart} | Number of times the container has been restarted |
 | `container.cpu.usage.total` | s | Total CPU time consumed by the container (monotonic) |
 | `container.memory.usage` | By | Current memory usage (RSS) |
-| `container.memory.limit` | By | Memory limit configured for the container |
-| `container.network.io.received` | By | Bytes received on all network interfaces (monotonic) |
-| `container.network.io.sent` | By | Bytes sent on all network interfaces (monotonic) |
-| `container.blockio.read` | By | Bytes read from block devices (monotonic) |
-| `container.blockio.write` | By | Bytes written to block devices (monotonic) |
+| `senhub.docker.memory.limit` | By | Memory limit configured for the container |
+| `container.network.io.usage.rx_bytes` | By | Bytes received on all network interfaces (monotonic) |
+| `container.network.io.usage.tx_bytes` | By | Bytes sent on all network interfaces (monotonic) |
+| `container.blockio.io_service_bytes_recursive.read` | By | Bytes read from block devices (monotonic) |
+| `container.blockio.io_service_bytes_recursive.write` | By | Bytes written to block devices (monotonic) |
 
 Each metric is tagged with `container_name` and `container_id`; CPU metrics are
 additionally tagged with `core`.

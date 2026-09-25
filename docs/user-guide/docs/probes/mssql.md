@@ -48,15 +48,13 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 |---|---|---|
 | `senhub.db.up` | 1 | 1 when the agent's most recent ping reached the server |
 | `sqlserver.batch_request.rate` | {request}/s | Batch requests per second |
-| `sqlserver.transaction.rate` | {transaction}/s | Transactions per second |
-| `sqlserver.connections.open` | {connection} | Open connections |
-| `sqlserver.buffer_cache_hit_ratio` | % | Buffer cache hit ratio (data pages found in memory) |
-| `sqlserver.page.life_expectancy` | s | Estimated page life expectancy in the buffer pool |
-| `sqlserver.lock.wait_time.avg` | ms | Average lock wait time |
-| `sqlserver.deadlock.rate` | {deadlock}/s | Deadlocks per second |
-| `sqlserver.database.state` | 1 | Database state per database (1 = ONLINE), tagged with `database` |
-| `sqlserver.database.io.read` | By | I/O bytes read per database |
-| `sqlserver.database.io.write` | By | I/O bytes written per database |
+| `sqlserver.transaction_rate` | {transaction}/s | Transactions per second |
+| `sqlserver.user.connection.count` | {connection} | Open connections |
+| `sqlserver.page_buffer_cache.hit_ratio` | % | Buffer cache hit ratio (data pages found in memory) |
+| `sqlserver.page_life_expectancy` | s | Estimated page life expectancy in the buffer pool |
+| `sqlserver.lock_wait_rate` | # | Lock requests per second that had to wait |
+| `sqlserver.database.status` | 1 | Database state per database (1 = ONLINE), tagged with `database` |
+| `sqlserver.database.io` | B | Bytes read and written per database, tagged with `direction` |
 
 ## Operational notes
 

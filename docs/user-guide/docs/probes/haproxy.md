@@ -46,7 +46,6 @@ and server component.
 | `haproxy.bytes.output` | By | Bytes sent per proxy/component |
 | `haproxy.requests.errors` | {error} | HTTP request errors per proxy/component |
 | `haproxy.connections.errors` | {error} | Connection errors per proxy/component |
-| `haproxy.server.state` | 1 | Server operational state per backend server (1 = UP, 0 = DOWN) |
 
 Metrics are tagged with `proxy` (proxy name) and `component` (FRONTEND / BACKEND / server name).
 

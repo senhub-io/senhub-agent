@@ -48,13 +48,13 @@ JVM probes keeps working, and only its scheme, host and port are used.
 | `jvm.memory.heap.used` | By | JVM heap memory used by the Solr process |
 | `jvm.memory.heap.max` | By | JVM maximum heap size |
 | `jvm.threads.count` | {thread} | Current live JVM thread count |
-| `solr.request.count` | {request} | Requests processed by the node |
-| `solr.request.errors` | {error} | Request errors on the node |
-| `solr.request.latency.avg` | ms | Average request latency |
-| `solr.cache.lookups` | {lookup} | Cache lookups (filter / query / document cache) |
+| `solr.requests.count` | {request} | Requests processed by the node |
+| `solr.errors.count` | {error} | Request errors on the node |
+| `solr.requests.time` | ms | Time spent handling QUERY requests (cumulative) |
+| `solr.cache.inserts` | # | Query result cache inserts (cumulative) |
 | `solr.cache.hits` | {hit} | Cache hits |
-| `solr.core.document.count` | {document} | Number of indexed documents per core, tagged with `core` |
-| `solr.core.index.size` | By | Index size on disk per core |
+| `solr.document.count` | {document} | Number of indexed documents per core, tagged with `core` |
+| `solr.index.size` | By | Index size on disk per core |
 
 ## Operational notes
 

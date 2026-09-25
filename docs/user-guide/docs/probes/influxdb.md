@@ -44,9 +44,9 @@ for the buckets endpoint.
 | `influxdb.storage.reads` | {read} | Cumulative storage read operations |
 | `influxdb.storage.writes` | {write} | Cumulative storage write operations |
 | `influxdb.query.requests` | {request} | Query API requests received |
-| `influxdb.write.requests` | {request} | Write API requests received |
-| `influxdb.go.goroutines` | {goroutine} | Active Go goroutines in the InfluxDB process |
-| `influxdb.bucket.count` | {bucket} | Number of buckets visible to the configured token |
+| `influxdb.storage.writes` | # | Storage write operations (cumulative) |
+| `go.goroutines` | # | Goroutines running in the InfluxDB process |
+| `influxdb.buckets` | # | Buckets in the organisation the token can read |
 
 ## Operational notes
 

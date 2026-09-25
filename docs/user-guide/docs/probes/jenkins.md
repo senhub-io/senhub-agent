@@ -43,11 +43,11 @@ executor counts, and build queue depth.
 |---|---|---|
 | `senhub.jenkins.up` | 1 | 1 when the last cycle reached the Jenkins controller |
 | `senhub.jenkins.job.count` | {job} | Jobs by last-build status (success/failure/unstable/aborted), tagged with `status` |
-| `senhub.jenkins.job.last_build.duration` | s | Duration of the last build per job, tagged with `job` |
-| `senhub.jenkins.job.last_build.number` | {build} | Last build number per job |
+| `senhub.jenkins.job.duration` | s | Duration of the last build per job, tagged with `job` |
+| `senhub.jenkins.job.last_build_number` | {build} | Last build number per job |
 | `senhub.jenkins.node.count` | {node} | Build nodes by state (online/offline), tagged with `state` |
-| `senhub.jenkins.executor.count` | {executor} | Total and busy executors |
-| `senhub.jenkins.queue.depth` | {item} | Items waiting in the build queue |
+| `senhub.jenkins.node.executor.count` | # | Executors across online nodes, by state (busy, idle) |
+| `senhub.jenkins.queue.size` | # | Items in the build queue |
 
 ## Operational notes
 
