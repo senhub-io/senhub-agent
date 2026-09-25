@@ -3,6 +3,7 @@ package http
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -134,5 +135,71 @@ func TestUndeclaredNagiosChannels(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("entry %d: got %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// What would otherwise surface as a permanent UNKNOWN, or be dropped
+// without a word, is refused at load with the check it belongs to.
+func TestValidateNagiosConfigRefusesWhatWouldSilentlyMisbehave(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		want string
+	}{
+		"misspelt key": {`version: "1"
+checks:
+  - name: c
+    metrics:
+      - channel: cpu_user
+        warning: "80"
+        critcal: "90"
+`, "critcal"},
+		"threshold not a number": {`version: "1"
+checks:
+  - name: c
+    metrics:
+      - channel: cpu_user
+        warning: "80%"
+`, `warning threshold "80%" is not a number`},
+		"unknown aggregation": {`version: "1"
+checks:
+  - name: c
+    metrics:
+      - channel: cpu_user
+        warning: "80"
+        aggregation: median
+`, `unknown aggregation "median"`},
+		"unknown operator": {`version: "1"
+checks:
+  - name: c
+    tag_filters:
+      - key: core
+        operator: contains
+        values: ["0"]
+    metrics:
+      - channel: cpu_user
+        warning: "80"
+`, `unknown operator "contains"`},
+		"per-series thresholds on an aggregate": {`version: "1"
+checks:
+  - name: c
+    metrics:
+      - channel: cpu_core_usage
+        warning: "80"
+        aggregation: max
+        tag_specific_thresholds:
+          - tags: {core: "0"}
+            warning: "50"
+`, "need aggregation none"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeNagiosFile(t, dir, tc.body)
+			cm := NewConfigurationManager(nil, map[string]interface{}{}, newTestLogger())
+			_, err := cm.loadNagiosConfigFromFile(filepath.Join(dir, "nagios.yaml"))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want an error containing %q", err, tc.want)
+			}
+		})
 	}
 }
