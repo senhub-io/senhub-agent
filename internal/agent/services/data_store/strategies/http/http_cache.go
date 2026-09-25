@@ -146,6 +146,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"repo_name",                  // Repositories
 		"proxy_name",                 // Proxies
 		"object_name", "object_type", // Protected objects
+		"platform",                   // Objects grouped by platform when they get no status channel
 		"server_name", "server_type", // Managed servers
 	},
 

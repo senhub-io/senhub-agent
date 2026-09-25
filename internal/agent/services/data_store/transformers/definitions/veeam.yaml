@@ -531,6 +531,17 @@ metrics:
   # ═════════════════════════════════════════════════════════════════════════
   # INFRASTRUCTURE (managed servers)
   # ═════════════════════════════════════════════════════════════════════════
+  - name: "veeam_objects_without_job_status"
+    channel: "objects_without_job_status"
+    display_name: "Protected Objects Without Status ({platform})"
+    unit: "#"
+    category: "backup"
+    description: "Protected objects of this platform that get no job-status channel, because the platform is not one the agent surfaces as an agent backup. Above zero means backups exist that the consolidated job sensor cannot show — the platform name says which"
+    multi_instance_labels: ["platform"]
+    otel:
+      name: senhub.veeam.objects.without_job_status
+      unit: "{object}"
+      type: gauge
   - name: "veeam_server_status"
     channel: "veeam_server_status"
     display_name: "Server Status ({server_name})"
