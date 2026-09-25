@@ -84,7 +84,15 @@ func Validate(exp Export) []string {
 					}
 				}
 			}
+			overrideNames := map[string]bool{}
 			for _, o := range r.Overrides {
+				if overrideNames[o.Name] {
+					out = append(out, fmt.Sprintf("template %q: rule %q declares the override %q twice", t.Template, r.Key, o.Name))
+				}
+				overrideNames[o.Name] = true
+				if n := len([]rune(o.Name)); n > maxItemName {
+					out = append(out, fmt.Sprintf("template %q: override %q is %d characters, over %d", t.Template, o.Name, n, maxItemName))
+				}
 				for _, c := range o.Filter.Conditions {
 					if !conditionOperators[c.Operator] {
 						out = append(out, fmt.Sprintf("template %q: override %q has condition operator %q, which no server accepts", t.Template, o.Name, c.Operator))

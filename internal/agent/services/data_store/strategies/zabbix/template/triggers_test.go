@@ -1,6 +1,7 @@
 package template
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -168,5 +169,36 @@ func TestItemsAndTriggersCarryTheNativeTags(t *testing.T) {
 		if len(it.Tags) != 1 || it.Tags[0].Tag != "component" {
 			t.Errorf("agent item %s has tags %v", it.Key, it.Tags)
 		}
+	}
+}
+
+// A rule holding several prototypes gets one override per prototype,
+// acting only when the agent sent the list and the list lacks the metric.
+func TestEachPrototypeIsHeldToTheFedList(t *testing.T) {
+	def := transformers.ProbeDefinition{ProbeName: "network", Metrics: []transformers.MetricDefinition{
+		{Name: "interface_speed", DisplayName: "{interface} Speed", MultiInstanceLabels: []string{"interface"},
+			Otel: &transformers.OtelMapping{Name: "senhub.system.network.interface.speed", Unit: "bit/s", Type: "gauge"}},
+		{Name: "interface_up", DisplayName: "{interface} Up", MultiInstanceLabels: []string{"interface"},
+			Otel: &transformers.OtelMapping{Name: "senhub.system.network.interface.up", Unit: "1", Type: "gauge"}},
+	}}
+	exp, err := Generate(def, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := exp.ZabbixExport.Templates[0].DiscoveryRules[0]
+	if len(rule.Overrides) != 2 {
+		t.Fatalf("overrides = %d, want one per prototype", len(rule.Overrides))
+	}
+	o := rule.Overrides[0]
+	if o.Filter.EvalType != "AND" || o.Filter.Conditions[0].Operator != "EXISTS" ||
+		o.Filter.Conditions[1].Value != `,senhub\.system\.network\.interface\.speed,` {
+		t.Errorf("override = %+v", o.Filter)
+	}
+	if op := o.Operations[0]; op.OperationObject != "ITEM_PROTOTYPE" || op.Operator != "REGEXP" ||
+		!regexp.MustCompile(op.Value).MatchString("network: eth0 Speed") || regexp.MustCompile(op.Value).MatchString("network: eth0 Up") {
+		t.Errorf("operation = %+v", op)
+	}
+	if problems := Validate(exp); len(problems) > 0 {
+		t.Errorf("the export would be refused: %v", problems)
 	}
 }

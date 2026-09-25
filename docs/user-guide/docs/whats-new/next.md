@@ -382,3 +382,10 @@ collection gaps that comparison exposed.
   registry, a drive predicting its own failure has a table of its own
   that calls it an error, and a test fails on any definition naming a
   lookup that does not exist. (#931)
+
+- **A Zabbix instance no longer gets items for metrics it never
+  sends.** A discovery rule created every item of its dimension set for
+  every instance, so a virtual network card whose kernel reports no
+  speed carried a speed item that stayed empty for ever. The agent now
+  lists, per instance, the metrics it feeds, and the templates only
+  create those. (#940)
