@@ -250,6 +250,10 @@ test-entrypoint: ## Check the container entrypoint's identity resolution (no dae
 third-party-notices: ## Regenerate THIRD-PARTY-NOTICES.md from the build's dependency graph
 	@python3 scripts/third-party-notices.py
 
+test-zabbix-import: ## Import every generated Zabbix template into the server named by ZABBIX_URL (+ ZABBIX_API_TOKEN, or ZABBIX_USER/ZABBIX_PASSWORD)
+	@test -n "$(ZABBIX_URL)" || (echo "ZABBIX_URL is not set"; exit 2)
+	@go test ./app/ -run TestEveryTemplateImportsIntoALiveZabbix -count=1 -v 2>&1 | grep -E "imported|refused|Zabbix|^(ok|FAIL|---)"
+
 docs-metrics: ## Regenerate the metric reference of the probe pages from their definitions
 	@echo "Regenerating the probe metric references..."
 	@UPDATE_DOCS=1 go test ./internal/docsmetrics/ -run TestProbePagesCarryTheirMetricReference -count=1
@@ -396,4 +400,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help
