@@ -145,6 +145,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"job_name", "job_type", // Backup jobs
 		"repo_name",                  // Repositories
 		"proxy_name",                 // Proxies
+		"object_id",                  // What makes a protected object unique: several share a name
 		"object_name", "object_type", // Protected objects
 		"platform",                   // Objects grouped by platform when they get no status channel
 		"server_name", "server_type", // Managed servers
