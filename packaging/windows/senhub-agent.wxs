@@ -80,7 +80,17 @@
       owned by the MSI (see comment on the config component), so it
       survives the upgrade automatically.
     -->
+    <!--
+      Version must be numeric (X.Y.Z): Windows Installer reads anything
+      else wrongly. A beta built as Version="0.5.5-beta" registered as
+      newer than 0.5.6, so its host refused every later MSI with "a newer
+      version is already installed". The callers strip the pre-release
+      suffix, so a beta and its final share X.Y.Z, and
+      AllowSameVersionUpgrades lets the final replace the beta. A lower
+      version is still refused.
+    -->
     <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
         DowngradeErrorMessage="A newer version of [ProductName] is already installed."
         Schedule="afterInstallInitialize" />
 
