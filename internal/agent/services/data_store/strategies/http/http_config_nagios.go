@@ -2,7 +2,9 @@
 package http
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,12 +34,21 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 		return cm.nagiosConfig
 	}
 
-	// Operator-provided file takes precedence
-	configPath := "config/nagios.yaml"
-	if config, err := cm.loadNagiosConfigFromFile(configPath); err == nil {
-		cm.logger.Info().Str("path", configPath).Msg("Loaded Nagios configuration from file")
-		cm.nagiosConfig = config
-		return config
+	// Operator-provided file takes precedence. A file that exists but
+	// cannot be used is reported, not silently replaced by the default:
+	// the operator would otherwise see the curated checks and never
+	// learn why theirs are missing.
+	for _, configPath := range cm.nagiosConfigCandidates() {
+		config, err := cm.loadNagiosConfigFromFile(configPath)
+		if err == nil {
+			cm.logger.Info().Str("path", configPath).Msg("Loaded Nagios configuration from file")
+			cm.warnUndeclaredNagiosChannels(configPath, config)
+			cm.nagiosConfig = config
+			return config
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			cm.logger.Error().Err(err).Str("path", configPath).Msg("Nagios configuration file ignored, serving the default checks")
+		}
 	}
 
 	// Default: the curated configuration shipped with the agent
@@ -54,6 +65,83 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 
 	cm.nagiosConfig = cm.createFallbackNagiosConfig()
 	return cm.nagiosConfig
+}
+
+// nagiosConfigCandidates lists where an operator's nagios.yaml is read
+// from, first match wins: next to the agent configuration, then the
+// historical config/nagios.yaml under the working directory. The
+// working directory is /usr/local/bin for a Linux service and the
+// install folder on Windows, so the historical path alone could not be
+// documented as a place an operator should write to.
+func (cm *ConfigurationManager) nagiosConfigCandidates() []string {
+	var candidates []string
+	if cm.agentConfig != nil {
+		if path := cm.agentConfig.GetConfigPath(); path != "" {
+			candidates = append(candidates, filepath.Join(filepath.Dir(path), "nagios.yaml"))
+		}
+	}
+	return append(candidates, filepath.Join("config", "nagios.yaml"))
+}
+
+// undeclaredNagiosChannel is a check metric whose channel no shipped
+// probe definition names. Hint carries the metric name when the channel
+// is the display channel of a definition, the usual mistake: a Nagios
+// check matches the metric name, not the PRTG channel label.
+type undeclaredNagiosChannel struct {
+	Check   string
+	Channel string
+	Hint    string
+}
+
+// undeclaredNagiosChannels lists the check metrics that can only ever
+// report UNKNOWN unless a probe with dynamic names (exec,
+// prometheus_scrape, snmp_poll, otlp_receiver) happens to emit them.
+func undeclaredNagiosChannels(config *NagiosConfig) ([]undeclaredNagiosChannel, error) {
+	defs, err := transformers.DefinitionMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("reading probe definitions: %w", err)
+	}
+	names := make(map[string]bool)
+	byDisplayChannel := make(map[string]string)
+	for _, metrics := range defs {
+		for _, m := range metrics {
+			names[m.Name] = true
+			if m.Channel != "" && m.Channel != m.Name {
+				byDisplayChannel[m.Channel] = m.Name
+			}
+		}
+	}
+
+	var out []undeclaredNagiosChannel
+	for _, check := range config.Checks {
+		for _, metric := range check.Metrics {
+			if names[metric.Channel] {
+				continue
+			}
+			out = append(out, undeclaredNagiosChannel{
+				Check:   check.Name,
+				Channel: metric.Channel,
+				Hint:    byDisplayChannel[metric.Channel],
+			})
+		}
+	}
+	return out, nil
+}
+
+func (cm *ConfigurationManager) warnUndeclaredNagiosChannels(path string, config *NagiosConfig) {
+	undeclared, err := undeclaredNagiosChannels(config)
+	if err != nil {
+		cm.logger.Warn().Err(err).Str("path", path).Msg("Nagios channels not checked against the probe definitions")
+		return
+	}
+	for _, u := range undeclared {
+		event := cm.logger.Warn().Str("path", path).Str("check", u.Check).Str("channel", u.Channel)
+		if u.Hint != "" {
+			event.Str("metric_name", u.Hint).Msg("Nagios channel is a display label; a check matches the metric name, use metric_name")
+			continue
+		}
+		event.Msg("No probe definition emits this Nagios channel; the check reports UNKNOWN unless a probe with dynamic metric names produces it")
+	}
 }
 
 // loadEmbeddedNagiosConfig parses and validates the curated Nagios
@@ -78,7 +166,7 @@ func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error
 
 // loadNagiosConfigFromFile loads Nagios configuration from a YAML file
 func (cm *ConfigurationManager) loadNagiosConfigFromFile(configPath string) (*NagiosConfig, error) {
-	data, err := os.ReadFile(filepath.Clean(configPath)) // #nosec G304 - configPath is hardcoded to "config/nagios.yaml"
+	data, err := os.ReadFile(filepath.Clean(configPath)) // #nosec G304 - configPath comes from nagiosConfigCandidates, never from a request
 	if err != nil {
 		return nil, err
 	}
