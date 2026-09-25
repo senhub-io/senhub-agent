@@ -549,9 +549,9 @@ series' tags.
 | `senhub.netscaler.ha.sync.failures` | `netscaler.ha.sync_failures` | HA Sync Failures ({ha_node_ip}) | # | Number of HA synchronization failures (per node) |
 | `senhub.netscaler.ha.propagation.timeouts` | `netscaler.ha.propagation_timeouts` | HA Propagation Timeouts | # | Number of times configuration propagation timed out |
 | `senhub.netscaler.ha.heartbeat.packets` | `netscaler.ha.heartbeat.rx.packets` | HA Heartbeat RX Packets | # | Total heartbeat packets received from peer node |
-| `senhub.netscaler.ha.heartbeat.rate` | `netscaler.ha.heartbeat.rx.rate` | HA Heartbeat RX Rate | Custom | Heartbeat packets receive rate (packets/sec) |
+| `senhub.netscaler.ha.heartbeat.rate` | `netscaler.ha.heartbeat.rx.rate` | HA Heartbeat RX Rate | # | Heartbeat packets receive rate (packets/sec) |
 | `senhub.netscaler.ha.heartbeat.packets` | `netscaler.ha.heartbeat.tx.packets` | HA Heartbeat TX Packets | # | Total heartbeat packets transmitted to peer node |
-| `senhub.netscaler.ha.heartbeat.rate` | `netscaler.ha.heartbeat.tx.rate` | HA Heartbeat TX Rate | Custom | Heartbeat packets transmit rate (packets/sec) |
+| `senhub.netscaler.ha.heartbeat.rate` | `netscaler.ha.heartbeat.tx.rate` | HA Heartbeat TX Rate | # | Heartbeat packets transmit rate (packets/sec) |
 | `system.filesystem.utilization` | `netscaler.disk.percent_used` | Disk Usage ({partition}) | % | Disk partition usage percentage |
 | `system.filesystem.usage` | `netscaler.disk.used_kb` | Disk Used ({partition}) | KB | Disk space used in kilobytes |
 | `system.filesystem.usage` | `netscaler.disk.available_kb` | Disk Available ({partition}) | KB | Disk space available in kilobytes |

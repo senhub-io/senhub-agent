@@ -72,19 +72,19 @@ series' tags.
 | `mongodb.connections` | `mongodb.connections.active` | Connections Active | # | Number of active (in-use) client connections (connections.active) |
 | `mongodb.connections` | `mongodb.connections.available` | Connections Available | # | Number of connections available for new clients (connections.available) |
 | `mongodb.connections` | `mongodb.connections.current` | Connections Current | # | Total number of current open connections (connections.current) |
-| `mongodb.network.io` | `mongodb.network.bytes.in` | Network Bytes In | BytesFile | Total bytes received over the network (network.bytesIn) |
-| `mongodb.network.io` | `mongodb.network.bytes.out` | Network Bytes Out | BytesFile | Total bytes sent over the network (network.bytesOut) |
+| `mongodb.network.io` | `mongodb.network.bytes.in` | Network Bytes In | Bytes | Total bytes received over the network (network.bytesIn) |
+| `mongodb.network.io` | `mongodb.network.bytes.out` | Network Bytes Out | Bytes | Total bytes sent over the network (network.bytesOut) |
 | `mongodb.network.request.count` | `mongodb.network.requests` | Network Requests | # | Total distinct client requests received (network.numRequests) |
 | `mongodb.operation.count` | `mongodb.operations.count` | Operations {operation} | # | Total operations executed by type (opcounters.*) — insert/query/update/delete/getmore/command |
-| `mongodb.memory.usage` | `mongodb.memory.usage` | Memory {type} | BytesMemory | Memory usage in bytes (mem.resident / mem.virtual — converted from MB) |
+| `mongodb.memory.usage` | `mongodb.memory.usage` | Memory {type} | Bytes | Memory usage in bytes (mem.resident / mem.virtual — converted from MB) |
 | `mongodb.document.operation.count` | `mongodb.document.operations` | Documents {operation} | # | Document operations since startup (metrics.document.*) — deleted/inserted/returned/updated |
 | `mongodb.cache.operations` | `mongodb.cache.operations` | Cache {type} | # | WiredTiger cache page operations — read: pages read into cache; write: pages written from cache |
 | `mongodb.lock.acquire.wait_count` | `mongodb.active.reads` | Active Reads Queued | # | Clients queued waiting for a read lock (globalLock.currentQueue.readers) |
 | `mongodb.lock.acquire.wait_count` | `mongodb.active.writes` | Active Writes Queued | # | Clients queued waiting for a write lock (globalLock.currentQueue.writers) |
 | `mongodb.collection.count` | `mongodb.collection.count` | Collections {database} | # | Number of collections in the database (dbStats.collections) |
-| `mongodb.data.size` | `mongodb.data.size` | Data Size {database} | BytesFile | Uncompressed in-memory size of all documents (dbStats.dataSize) |
+| `mongodb.data.size` | `mongodb.data.size` | Data Size {database} | Bytes | Uncompressed in-memory size of all documents (dbStats.dataSize) |
 | `mongodb.index.count` | `mongodb.index.count` | Indexes {database} | # | Number of indexes across all collections (dbStats.indexes) |
-| `mongodb.index.size` | `mongodb.index.size` | Index Size {database} | BytesFile | Total size of all indexes on disk (dbStats.indexSize) |
-| `mongodb.storage.size` | `mongodb.storage.size` | Storage Size {database} | BytesFile | Total amount of disk space allocated to all collections (dbStats.storageSize) |
+| `mongodb.index.size` | `mongodb.index.size` | Index Size {database} | Bytes | Total size of all indexes on disk (dbStats.indexSize) |
+| `mongodb.storage.size` | `mongodb.storage.size` | Storage Size {database} | Bytes | Total amount of disk space allocated to all collections (dbStats.storageSize) |
 
 <!-- schema:metrics:end -->

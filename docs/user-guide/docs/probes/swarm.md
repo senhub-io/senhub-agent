@@ -167,7 +167,7 @@ series' tags.
 | `swarm.node.state` | `swarm.node.state` | Node State | # | one-hot over ready / down / unknown / disconnected |
 | `swarm.node.availability` | `swarm.node.availability` | Node Availability | # | one-hot over active / pause / drain — the operator's intent, as opposed to the node's actual state |
 | `swarm.node.cpu.allocatable` | `swarm.node.cpu.allocatable` | Node Cpu Allocatable | # | CPU cores the node advertises to the scheduler |
-| `swarm.node.memory.allocatable` | `swarm.node.memory.allocatable` | Node Memory Allocatable | # | memory the node advertises to the scheduler |
+| `swarm.node.memory.allocatable` | `swarm.node.memory.allocatable` | Node Memory Allocatable | Bytes | memory the node advertises to the scheduler |
 | `swarm.node.manager.leader` | `swarm.node.manager.leader` | Node Manager Leader | # | 1 on the Raft leader |
 | `swarm.node.manager.reachable` | `swarm.node.manager.reachable` | Node Manager Reachable | # | 1 when this manager is reachable by the leader |
 | `swarm.node.manager.reachability` | `swarm.node.manager.reachability` | Node Manager Reachability | # | one-hot over reachable / unreachable / unknown |

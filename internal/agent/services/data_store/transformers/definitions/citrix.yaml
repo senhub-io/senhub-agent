@@ -493,8 +493,7 @@ metrics:
   - name: "license_grace_hours_left"
     channel: "license_grace_hours_left"
     display_name: "License Grace Hours Left"
-    unit: "custom"
-    customunit: "h"
+    unit: "h"
     category: "licensing"
     description: "Hours remaining before the supplemental grace period expires"
     otel:
