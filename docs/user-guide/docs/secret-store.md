@@ -108,6 +108,13 @@ senhub-agent key show
     configuration before distributing it). See
     [Configuration → Config versions](configuration.md#config-versions).
 
+    With the `systemd-creds` backend the service cannot do this step: it
+    runs as a non-root account, and only root can encrypt with the host
+    key. It then leaves the inline values in place and logs once, at
+    start, `Inline secrets left in place: the secret store seals only as
+    root`. Seal them with `sudo senhub-agent secret migrate --wire-unit`
+    and restart the service.
+
 `agent secret migrate` scans the configuration for fields whose NAME denotes a secret (`password`, `passphrase`, `secret`, `token`, `api_key`, `community`, `credential`, `dsn`, `uri`, `private_key`) and whose value is still an inline plaintext (not already a `${...}` reference). It moves each value into the store and rewrites the field to a `${secret:}` reference. Identifier-style fields such as `user`, `login` and `email` are deliberately left alone.
 
 Before:
