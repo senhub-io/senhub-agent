@@ -156,6 +156,12 @@ collection gaps that comparison exposed.
   actions and says what will happen, without disabling one an operator
   wrote. (#907)
 
+- **A utilization reads as a percentage in Zabbix.** The templates
+  multiply the OTel fraction by 100 on the server side and show it in
+  `%`, as the native agent does, where an operator read `0.9531` for a
+  processor at 95 %. The agent still sends the fraction, under the same
+  key.
+
 - **The agent answers for itself.** `agent.ping`, `agent.version` and
   `agent.hostname` are served on both rails and declared in a template
   of their own, so a host monitored actively has the availability line

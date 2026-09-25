@@ -142,6 +142,14 @@ type ItemPrototype struct {
 	Units       string    `yaml:"units,omitempty"`
 	Description string    `yaml:"description,omitempty"`
 	ValueMap    *ValueRef `yaml:"valuemap,omitempty"`
+	// Preprocessing is applied by the server to what the agent sends;
+	// it changes how a value is stored and read, never the key.
+	Preprocessing []Preprocessing `yaml:"preprocessing,omitempty"`
+}
+
+type Preprocessing struct {
+	Type       string   `yaml:"type"`
+	Parameters []string `yaml:"parameters"`
 }
 
 type ValueRef struct {
@@ -285,6 +293,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				Units:       units(m),
 				Description: m.Description,
 			}
+			asPercent(&proto, m)
 			proto.UUID = uid("item", name, proto.Key)
 			rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 			continue
@@ -335,6 +344,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 			Units:       units(m),
 			Description: m.Description,
 		}
+		asPercent(&proto, m)
 		proto.UUID = uid("item", name, proto.Key)
 		if m.Lookup != "" && opts.Lookups != nil {
 			if mapping, ok := opts.Lookups.Lookup(m.Lookup); ok && len(mapping) > 0 {
@@ -531,6 +541,24 @@ func ruleName(probeType string, labels []string) string {
 		return "SenHub " + probeType + " instances"
 	}
 	return "SenHub " + probeType + " by " + strings.Join(labels, ", ")
+}
+
+// isRatioOfWhole reports a utilization: OTel's `*.utilization` in unit
+// "1" is a fraction of a whole, 0.95 for ninety-five percent.
+func isRatioOfWhole(m transformers.MetricDefinition) bool {
+	return m.Otel != nil && m.Otel.Unit == "1" && strings.HasSuffix(m.Otel.Name, ".utilization")
+}
+
+// asPercent makes the server store and show a utilization as a
+// percentage. The agent sends the OTel fraction under the same key as on
+// every other output; a Zabbix operator reads "95.31 %", as the native
+// agent shows it, instead of "0.9531", and writes thresholds the same way.
+func asPercent(p *ItemPrototype, m transformers.MetricDefinition) {
+	if !isRatioOfWhole(m) {
+		return
+	}
+	p.Units = "%"
+	p.Preprocessing = []Preprocessing{{Type: "MULTIPLIER", Parameters: []string{"100"}}}
 }
 
 // units maps the OTel unit to what Zabbix displays; Zabbix applies its

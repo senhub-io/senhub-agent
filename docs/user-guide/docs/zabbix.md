@@ -87,7 +87,10 @@ carries its device and mount point first:
 `senhub.system.filesystem.usage[logicaldisk,/dev/sda1,/,used]`. A metric
 whose OTel name already starts with the prefix is not prefixed twice. Values follow the OTel unit (a
 percentage is a ratio, a duration is in seconds); an enum metric is sent
-as its raw code under one key.
+as its raw code under one key. The generated templates multiply a
+utilization by 100 on the server side, so it is stored and shown as a
+percentage (`95.31 %`) as the native agent shows it; write a trigger or
+a calculated item against the percentage.
 
 The server only receives the keys it asked for. Until the host exists on
 the server and a template gives it items, the log says so at start and
