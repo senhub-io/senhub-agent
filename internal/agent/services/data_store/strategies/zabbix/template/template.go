@@ -124,6 +124,7 @@ type Item struct {
 	// anyone typing it, and it only takes effect on a host whose
 	// inventory mode is automatic.
 	InventoryLink string `yaml:"inventory_link,omitempty"`
+	Tags          []Tag  `yaml:"tags,omitempty"`
 }
 
 type GroupRef struct {
@@ -154,7 +155,16 @@ type ItemPrototype struct {
 	// Preprocessing is applied by the server to what the agent sends;
 	// it changes how a value is stored and read, never the key.
 	Preprocessing     []Preprocessing    `yaml:"preprocessing,omitempty"`
+	Tags              []Tag              `yaml:"tags,omitempty"`
 	TriggerPrototypes []TriggerPrototype `yaml:"trigger_prototypes,omitempty"`
+}
+
+// Tag is what Zabbix filters problems, views and actions on. The names
+// follow the native templates: an item carries the component it belongs
+// to, a trigger the scope of what it watches.
+type Tag struct {
+	Tag   string `yaml:"tag"`
+	Value string `yaml:"value"`
 }
 
 type Preprocessing struct {
@@ -379,7 +389,11 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	tpl.Macros = macros
 
 	for _, k := range order {
-		tpl.DiscoveryRules = append(tpl.DiscoveryRules, *rules[k])
+		rule := rules[k]
+		for i := range rule.ItemPrototypes {
+			rule.ItemPrototypes[i].Tags = []Tag{{Tag: "component", Value: def.ProbeName}}
+		}
+		tpl.DiscoveryRules = append(tpl.DiscoveryRules, *rule)
 	}
 	vmNames := make([]string, 0, len(valueMaps))
 	for n := range valueMaps {
@@ -686,6 +700,11 @@ func Base(opts Options) Export {
 		})
 	}
 	for i := range tpl.Items {
+		component := "agent"
+		if tpl.Items[i].InventoryLink != "" {
+			component = "inventory"
+		}
+		tpl.Items[i].Tags = []Tag{{Tag: "component", Value: component}}
 		tpl.Items[i].UUID = uid("item", BaseName, tpl.Items[i].Key)
 	}
 	return Export{ZabbixExport: ExportBody{

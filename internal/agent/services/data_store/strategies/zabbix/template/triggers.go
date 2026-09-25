@@ -18,6 +18,7 @@ type TriggerPrototype struct {
 	Priority     string       `yaml:"priority"`
 	Description  string       `yaml:"description,omitempty"`
 	Dependencies []TriggerRef `yaml:"dependencies,omitempty"`
+	Tags         []Tag        `yaml:"tags,omitempty"`
 }
 
 // TriggerRef names another trigger the way an export does: by its name
@@ -96,6 +97,7 @@ func stateTriggers(template string, proto ItemPrototype, bySeverity map[int]stri
 			Name:        proto.Name + " is in " + level.word + ": {ITEM.LASTVALUE1}",
 			Priority:    level.priority,
 			Description: "Raised while the value is one the metric's lookup classes as " + level.severity + ".",
+			Tags:        []Tag{{Tag: "scope", Value: "availability"}},
 		}
 		t.UUID = uid("trigger", template, t.Expression)
 		out = append(out, t)
@@ -188,6 +190,7 @@ func thresholdTriggers(template string, def transformers.ProbeDefinition, opts O
 				Expression: fmt.Sprintf("min(/%s/%s,%s)>%s", template, proto.Key, sustained, macro),
 				Name:       fmt.Sprintf("%s is above %s%s", subject, macro, m.Unit),
 				Priority:   level.priority,
+				Tags:       []Tag{{Tag: "scope", Value: thresholdScope(m)}},
 				Description: fmt.Sprintf("Raised when every value over the last %s is above %s. "+
 					"Override the macro on a host or a host group to change it.", sustained, macro),
 			}
@@ -224,6 +227,16 @@ func thresholdTriggers(template string, def transformers.ProbeDefinition, opts O
 		}
 	}
 	return macros, nil
+}
+
+// thresholdScope classes a threshold the way the native templates do: a
+// processor running hot is a performance problem, a memory or a disk
+// filling up is a capacity one.
+func thresholdScope(m transformers.MetricDefinition) string {
+	if strings.HasPrefix(otelNameOf(m), "system.cpu.") {
+		return "performance"
+	}
+	return "capacity"
 }
 
 func regexpQuote(s string) string {
