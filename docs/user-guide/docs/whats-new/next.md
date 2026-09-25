@@ -389,3 +389,13 @@ collection gaps that comparison exposed.
   speed carried a speed item that stayed empty for ever. The agent now
   lists, per instance, the metrics it feeds, and the templates only
   create those. (#940)
+
+- **A probe that cannot start is no longer absent in silence.** It was
+  logged once at start and then vanished: left out of the probe total,
+  so the agent reported nine healthy probes out of nine while a tenth,
+  whose password had expired, collected nothing for eight days. It now
+  counts in the total and never as healthy, the Web UI shows it failing
+  with the reason, and the agent tries it again every two minutes, so a
+  credential fixed afterwards is picked up without a restart. The error
+  of a probe's first collection, which the scheduler swallowed, is
+  logged too. (#935)
