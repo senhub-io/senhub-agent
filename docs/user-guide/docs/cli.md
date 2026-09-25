@@ -198,7 +198,7 @@ A secret value is never passed on the command line — it would leak through the
 | `secret list` | List secret names (never values) |
 | `secret rm <name>` | Delete a secret (prompts to confirm; `--yes` to skip) |
 | `secret status` | Show the active backend and store location |
-| `secret migrate` | Move inline plaintext secrets from the config into the store |
+| `secret migrate` | Move inline plaintext secrets from the config into the store (`--wire-unit` also wires the systemd-creds drop-in) |
 | `secret wire-unit` | Regenerate the systemd unit credential drop-in (Linux/systemd-creds only) |
 
 ```bash
