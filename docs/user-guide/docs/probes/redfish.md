@@ -490,7 +490,7 @@ Nagios outputs carry.
 | `hw.status` | `power_health` | # | Power supply unit health status |
 | `hw.physical_disk.size` | `drive_capacity_total` | Bytes | Total drive capacity in bytes |
 | `hw.status` | `drive_health` | # | Drive health status |
-| `hw.status` | `drive_failure_predicted` | # | Drive failure prediction status |
+| `senhub.hardware.physical_disk.failure_predicted` | `drive_failure_predicted` | # | Drive failure prediction status |
 | `senhub.hardware.physical_disk.has_active_operations` | `drive_has_operations` | # | Indicates if drive has active operations |
 | `senhub.hardware.physical_disk.operation.progress_ratio` | `drive_operation_progress` | % | Drive operation progress percentage |
 | `senhub.hardware.physical_disk.link_speed` | `drive_speed_gbs` | Gbps | Drive negotiated speed in Gbps |

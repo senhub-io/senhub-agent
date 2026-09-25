@@ -374,6 +374,7 @@ Extensions created for concepts the official OTel hardware namespace does not co
 | Senhub metric | Type | Reason |
 |---|---|---|
 | `senhub.hardware.physical_disk.has_active_operations` | Gauge bool | No OTel equivalent |
+| `senhub.hardware.physical_disk.failure_predicted` | Gauge bool | No OTel equivalent; not a `hw.state` of `hw.status`, because a predicted failure is a fact about a disk that is still ok |
 | `senhub.hardware.physical_disk.operation.progress_ratio` | Gauge `1` | No OTel equivalent |
 | `senhub.hardware.physical_disk.link_speed` | Gauge `bit/s` | No OTel equivalent (Redfish exposes NegotiatedSpeed in Gbps; mapper ×1e9) |
 | `senhub.hardware.physical_disk.location_indicator_active` | Gauge bool | No OTel equivalent |
