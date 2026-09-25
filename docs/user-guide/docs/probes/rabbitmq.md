@@ -63,33 +63,35 @@ usage, connection counts and exchange statistics.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.rabbitmq.up` | `rabbitmq_up` | # | 1 when the Management API answered successfully, 0 otherwise |
-| `rabbitmq.messages.published` | `rabbitmq_messages_published` | # | Total messages published to the broker (message_stats.publish) |
-| `rabbitmq.messages.delivered` | `rabbitmq_messages_delivered` | # | Total messages delivered to consumers (message_stats.deliver_get) |
-| `rabbitmq.messages.acknowledged` | `rabbitmq_messages_acknowledged` | # | Total messages acknowledged by consumers (message_stats.ack) |
-| `rabbitmq.messages.unacknowledged` | `rabbitmq_messages_unacknowledged` | # | Current number of messages delivered but not yet acknowledged (queue_totals.messages_unacknowledged) |
-| `rabbitmq.messages.ready` | `rabbitmq_messages_ready` | # | Current number of messages ready for delivery (queue_totals.messages_ready) |
-| `rabbitmq.consumers.total` | `rabbitmq_consumers_total` | # | Total number of consumers across all queues (object_totals.consumers) |
-| `rabbitmq.queues.total` | `rabbitmq_queues_total` | # | Total number of queues (object_totals.queues) |
-| `rabbitmq.connections.total` | `rabbitmq_connections_total` | # | Total number of open connections (object_totals.connections) |
-| `rabbitmq.channels.total` | `rabbitmq_channels_total` | # | Total number of open channels (object_totals.channels) |
-| `rabbitmq.node.memory.used` | `rabbitmq_node_memory_used` | bytes | Bytes of RAM used by the Erlang VM on this node (mem_used) |
-| `rabbitmq.node.disk.free` | `rabbitmq_node_disk_free` | bytes | Bytes of free disk space on the node's data partition (disk_free) |
-| `rabbitmq.node.fd.used` | `rabbitmq_node_fd_used` | # | Number of file descriptors in use by the node (fd_used) |
-| `rabbitmq.node.sockets.used` | `rabbitmq_node_sockets_used` | # | Number of sockets in use by the node (sockets_used) |
-| `rabbitmq.node.running` | `rabbitmq_node_running` | # | 1 when the node reports running=true, 0 otherwise |
-| `rabbitmq.node.uptime` | `rabbitmq_node_uptime` | ms | Time in milliseconds since the Erlang VM on this node started (uptime) |
-| `rabbitmq.queue.messages.ready` | `rabbitmq_queue_messages_ready` | # | Messages ready for delivery in this queue (messages_ready) |
-| `rabbitmq.queue.messages.unacknowledged` | `rabbitmq_queue_messages_unacknowledged` | # | Messages delivered to consumers but not yet acknowledged in this queue (messages_unacknowledged) |
-| `rabbitmq.queue.consumers` | `rabbitmq_queue_consumers` | # | Number of consumers subscribed to this queue (consumers) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.rabbitmq.up` | `senhub.rabbitmq.up` | RabbitMQ Up | # | 1 when the Management API answered successfully, 0 otherwise |
+| `rabbitmq.messages.published` | `rabbitmq.messages.published` | RabbitMQ Messages Published | # | Total messages published to the broker (message_stats.publish) |
+| `rabbitmq.messages.delivered` | `rabbitmq.messages.delivered` | RabbitMQ Messages Delivered | # | Total messages delivered to consumers (message_stats.deliver_get) |
+| `rabbitmq.messages.acknowledged` | `rabbitmq.messages.acknowledged` | RabbitMQ Messages Acknowledged | # | Total messages acknowledged by consumers (message_stats.ack) |
+| `rabbitmq.messages.unacknowledged` | `rabbitmq.messages.unacknowledged` | RabbitMQ Messages Unacknowledged | # | Current number of messages delivered but not yet acknowledged (queue_totals.messages_unacknowledged) |
+| `rabbitmq.messages.ready` | `rabbitmq.messages.ready` | RabbitMQ Messages Ready | # | Current number of messages ready for delivery (queue_totals.messages_ready) |
+| `rabbitmq.consumers.total` | `rabbitmq.consumers.total` | RabbitMQ Consumers | # | Total number of consumers across all queues (object_totals.consumers) |
+| `rabbitmq.queues.total` | `rabbitmq.queues.total` | RabbitMQ Queues | # | Total number of queues (object_totals.queues) |
+| `rabbitmq.connections.total` | `rabbitmq.connections.total` | RabbitMQ Connections | # | Total number of open connections (object_totals.connections) |
+| `rabbitmq.channels.total` | `rabbitmq.channels.total` | RabbitMQ Channels | # | Total number of open channels (object_totals.channels) |
+| `rabbitmq.node.memory.used` | `rabbitmq.node.memory.used` | RabbitMQ {node} Memory Used | bytes | Bytes of RAM used by the Erlang VM on this node (mem_used) |
+| `rabbitmq.node.disk.free` | `rabbitmq.node.disk.free` | RabbitMQ {node} Disk Free | bytes | Bytes of free disk space on the node's data partition (disk_free) |
+| `rabbitmq.node.fd.used` | `rabbitmq.node.fd.used` | RabbitMQ {node} File Descriptors Used | # | Number of file descriptors in use by the node (fd_used) |
+| `rabbitmq.node.sockets.used` | `rabbitmq.node.sockets.used` | RabbitMQ {node} Sockets Used | # | Number of sockets in use by the node (sockets_used) |
+| `rabbitmq.node.running` | `rabbitmq.node.running` | RabbitMQ {node} Running | # | 1 when the node reports running=true, 0 otherwise |
+| `rabbitmq.node.uptime` | `rabbitmq.node.uptime` | RabbitMQ {node} Uptime | ms | Time in milliseconds since the Erlang VM on this node started (uptime) |
+| `rabbitmq.queue.messages.ready` | `rabbitmq.queue.messages.ready` | RabbitMQ {vhost}/{queue} Messages Ready | # | Messages ready for delivery in this queue (messages_ready) |
+| `rabbitmq.queue.messages.unacknowledged` | `rabbitmq.queue.messages.unacknowledged` | RabbitMQ {vhost}/{queue} Messages Unacknowledged | # | Messages delivered to consumers but not yet acknowledged in this queue (messages_unacknowledged) |
+| `rabbitmq.queue.consumers` | `rabbitmq.queue.consumers` | RabbitMQ {vhost}/{queue} Consumers | # | Number of consumers subscribed to this queue (consumers) |
 
 <!-- schema:metrics:end -->

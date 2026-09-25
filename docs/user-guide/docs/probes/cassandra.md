@@ -56,27 +56,29 @@ pending tasks, storage load, JVM heap and garbage collection.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.cassandra.up` | `cassandra_up` | # | 1 when the Cassandra Jolokia endpoint is reachable, 0 otherwise |
-| `cassandra.client.connections` | `cassandra_connections` | # | Number of clients connected to the native CQL transport |
-| `cassandra.client.requests.count` | `cassandra_requests_{operation}` | # | Total number of client requests (Read or Write) |
-| `cassandra.client.requests.latency` | `cassandra_latency_mean_{operation}` | ms | Mean client request latency in milliseconds (Read or Write) |
-| `cassandra.client.requests.latency.p99` | `cassandra_latency_p99_{operation}` | ms | 99th percentile client request latency in milliseconds (Read or Write) |
-| `cassandra.client.requests.errors` | `cassandra_errors_{operation}` | # | Total number of client request errors (Read or Write) |
-| `cassandra.compaction.tasks.completed` | `cassandra_compaction_completed` | # | Total number of completed compaction tasks |
-| `cassandra.compaction.tasks.pending` | `cassandra_compaction_pending` | # | Number of pending compaction tasks |
-| `cassandra.storage.load` | `cassandra_storage_load` | B | Total size of all SSTables on disk in bytes |
-| `cassandra.storage.total_hints` | `cassandra_storage_hints` | # | Total number of hints stored since last restart |
-| `jvm.memory.heap.used` | `cassandra_jvm_heap_used` | B | JVM heap memory currently in use by the Cassandra process |
-| `jvm.gc.collections.count` | `cassandra_gc_count_{collector}` | # | Total number of garbage collections performed by the named GC collector |
-| `jvm.gc.collections.elapsed` | `cassandra_gc_time_{collector}` | ms | Total elapsed time in milliseconds spent in garbage collection by the named GC collector |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.cassandra.up` | `senhub.cassandra.up` | Cassandra Up | # | 1 when the Cassandra Jolokia endpoint is reachable, 0 otherwise |
+| `cassandra.client.connections` | `cassandra.client.connections` | Cassandra Native Client Connections | # | Number of clients connected to the native CQL transport |
+| `cassandra.client.requests.count` | `cassandra.client.requests.count` | Cassandra {operation} Requests | # | Total number of client requests (Read or Write) |
+| `cassandra.client.requests.latency` | `cassandra.client.requests.latency` | Cassandra {operation} Latency Mean | ms | Mean client request latency in milliseconds (Read or Write) |
+| `cassandra.client.requests.latency.p99` | `cassandra.client.requests.latency.p99` | Cassandra {operation} Latency p99 | ms | 99th percentile client request latency in milliseconds (Read or Write) |
+| `cassandra.client.requests.errors` | `cassandra.client.requests.errors` | Cassandra {operation} Errors | # | Total number of client request errors (Read or Write) |
+| `cassandra.compaction.tasks.completed` | `cassandra.compaction.tasks.completed` | Cassandra Compaction Tasks Completed | # | Total number of completed compaction tasks |
+| `cassandra.compaction.tasks.pending` | `cassandra.compaction.tasks.pending` | Cassandra Compaction Tasks Pending | # | Number of pending compaction tasks |
+| `cassandra.storage.load` | `cassandra.storage.load` | Cassandra Storage Load | B | Total size of all SSTables on disk in bytes |
+| `cassandra.storage.total_hints` | `cassandra.storage.total_hints` | Cassandra Total Hints | # | Total number of hints stored since last restart |
+| `jvm.memory.heap.used` | `jvm.memory.heap.used` | Cassandra JVM Heap Used | B | JVM heap memory currently in use by the Cassandra process |
+| `jvm.gc.collections.count` | `jvm.gc.collections.count` | Cassandra GC {collector} Collections | # | Total number of garbage collections performed by the named GC collector |
+| `jvm.gc.collections.elapsed` | `jvm.gc.collections.elapsed` | Cassandra GC {collector} Elapsed | ms | Total elapsed time in milliseconds spent in garbage collection by the named GC collector |
 
 <!-- schema:metrics:end -->

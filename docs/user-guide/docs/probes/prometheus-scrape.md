@@ -84,18 +84,20 @@ One series per target (`target` tag).
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.promscrape.up` | `promscrape_up` | # | 1 when the target answered with a parseable exposition |
-| `senhub.promscrape.scrape.duration` | `promscrape_duration` | ms | Wall-clock time of the scrape including parsing |
-| `senhub.promscrape.samples` | `promscrape_samples` | # | Scalar series ingested from the last scrape |
-| `senhub.promscrape.dropped` | `promscrape_dropped` | # | Series in unsupported families (histogram/summary) dropped by the last scrape |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.promscrape.up` | `senhub.promscrape.up` | Scrape {target} Up | # | 1 when the target answered with a parseable exposition |
+| `senhub.promscrape.scrape.duration` | `senhub.promscrape.scrape.duration` | Scrape {target} Duration | ms | Wall-clock time of the scrape including parsing |
+| `senhub.promscrape.samples` | `senhub.promscrape.samples` | Scrape {target} Samples | # | Scalar series ingested from the last scrape |
+| `senhub.promscrape.dropped` | `senhub.promscrape.dropped` | Scrape {target} Dropped Series | # | Series in unsupported families (histogram/summary) dropped by the last scrape |
 
 <!-- schema:metrics:end -->

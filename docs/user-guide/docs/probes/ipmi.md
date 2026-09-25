@@ -81,20 +81,22 @@ and give the BMC under the `remote` block. Sensor filters live under the
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `hw.temperature` | `hardware_temperature_{hardware.component}` | Degrees Celsius | Temperature reported by the BMC sensor (degrees Celsius) |
-| `hw.fan.speed` | `hardware_fan_speed_{hardware.component}` | RPM | Fan speed in rotations per minute as reported by the BMC |
-| `hw.voltage` | `hardware_voltage_{hardware.component}` | Volts | Voltage reported by the BMC sensor (volts) |
-| `hw.status` | `hardware_psu_status_{hardware.component}` | # | Power supply status: 1 = ok, 0 = fault or not available |
-| `hw.status` | `hardware_sensor_status_{hardware.component}` | # | Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
-| `senhub.ipmi.up` | `ipmi_up` | # | 1 when ipmitool ran successfully and the BMC responded, 0 otherwise |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `hw.temperature` | `hardware.temperature` | Temp {hardware.component} | Degrees Celsius | Temperature reported by the BMC sensor (degrees Celsius) |
+| `hw.fan.speed` | `hardware.fan.speed` | Fan Speed {hardware.component} | RPM | Fan speed in rotations per minute as reported by the BMC |
+| `hw.voltage` | `hardware.voltage` | Voltage {hardware.component} | Volts | Voltage reported by the BMC sensor (volts) |
+| `hw.status` | `hardware.power_supply.status` | PSU Status {hardware.component} | # | Power supply status: 1 = ok, 0 = fault or not available |
+| `hw.status` | `hardware.sensor.status` | Sensor {hardware.component} | # | Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
+| `senhub.ipmi.up` | `senhub.ipmi.up` | IPMI Reachable | # | 1 when ipmitool ran successfully and the BMC responded, 0 otherwise |
 
 <!-- schema:metrics:end -->

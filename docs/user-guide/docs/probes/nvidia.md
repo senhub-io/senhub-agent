@@ -57,25 +57,27 @@ No parameters are required. The probe auto-detects all GPUs visible to
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.nvidia.up` | `nvidia_up_{gpu.index}` | # | 1 when nvidia-smi returned data for this GPU, 0 when nvidia-smi is absent or failed |
-| `gpu.utilization` | `gpu_utilization_{gpu.index}` | % | GPU core utilization in percent (0–100); share of time the GPU was busy over the last sample period |
-| `gpu.memory.used` | `gpu_memory_used_{gpu.index}` | B | GPU framebuffer memory currently in use, in bytes |
-| `gpu.memory.total` | `gpu_memory_total_{gpu.index}` | B | Total GPU framebuffer memory capacity, in bytes |
-| `gpu.memory.utilization` | `gpu_memory_utilization_{gpu.index}` | % | GPU framebuffer memory utilization in percent (0–100); share of total framebuffer in use |
-| `gpu.temperature` | `gpu_temperature_{gpu.index}` | °C | GPU die temperature in degrees Celsius |
-| `gpu.power.usage` | `gpu_power_usage_{gpu.index}` | W | Current GPU power draw in watts (not emitted when nvidia-smi reports N/A) |
-| `gpu.power.limit` | `gpu_power_limit_{gpu.index}` | W | GPU enforced power limit in watts (not emitted when nvidia-smi reports N/A) |
-| `gpu.encoder.utilization` | `gpu_encoder_utilization_{gpu.index}` | % | GPU hardware video encoder utilization in percent (0–100) |
-| `gpu.decoder.utilization` | `gpu_decoder_utilization_{gpu.index}` | % | GPU hardware video decoder utilization in percent (0–100) |
-| `gpu.fan.speed` | `gpu_fan_speed_{gpu.index}` | % | GPU fan speed in percent (0–100); 0 when fan speed is not available |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.nvidia.up` | `senhub.nvidia.up` | GPU {gpu.index} ({gpu.name}) Availability | # | 1 when nvidia-smi returned data for this GPU, 0 when nvidia-smi is absent or failed |
+| `gpu.utilization` | `gpu.utilization` | GPU {gpu.index} ({gpu.name}) Utilization | % | GPU core utilization in percent (0–100); share of time the GPU was busy over the last sample period |
+| `gpu.memory.used` | `gpu.memory.used` | GPU {gpu.index} ({gpu.name}) Memory Used | B | GPU framebuffer memory currently in use, in bytes |
+| `gpu.memory.total` | `gpu.memory.total` | GPU {gpu.index} ({gpu.name}) Memory Total | B | Total GPU framebuffer memory capacity, in bytes |
+| `gpu.memory.utilization` | `gpu.memory.utilization` | GPU {gpu.index} ({gpu.name}) Memory Utilization | % | GPU framebuffer memory utilization in percent (0–100); share of total framebuffer in use |
+| `gpu.temperature` | `gpu.temperature` | GPU {gpu.index} ({gpu.name}) Temperature | °C | GPU die temperature in degrees Celsius |
+| `gpu.power.usage` | `gpu.power.usage` | GPU {gpu.index} ({gpu.name}) Power Draw | W | Current GPU power draw in watts (not emitted when nvidia-smi reports N/A) |
+| `gpu.power.limit` | `gpu.power.limit` | GPU {gpu.index} ({gpu.name}) Power Limit | W | GPU enforced power limit in watts (not emitted when nvidia-smi reports N/A) |
+| `gpu.encoder.utilization` | `gpu.encoder.utilization` | GPU {gpu.index} ({gpu.name}) Encoder Utilization | % | GPU hardware video encoder utilization in percent (0–100) |
+| `gpu.decoder.utilization` | `gpu.decoder.utilization` | GPU {gpu.index} ({gpu.name}) Decoder Utilization | % | GPU hardware video decoder utilization in percent (0–100) |
+| `gpu.fan.speed` | `gpu.fan.speed` | GPU {gpu.index} ({gpu.name}) Fan Speed | % | GPU fan speed in percent (0–100); 0 when fan speed is not available |
 
 <!-- schema:metrics:end -->

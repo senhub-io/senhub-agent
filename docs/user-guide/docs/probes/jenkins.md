@@ -57,22 +57,24 @@ executor counts, and build queue depth.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.jenkins.up` | `jenkins_up` | # | 1 when the last cycle reached the Jenkins controller, 0 otherwise |
-| `senhub.jenkins.job.count` | `jenkins_job_count_{status}` | # | Number of jobs whose last build ended in this status (success/failure/unstable/aborted) |
-| `senhub.jenkins.job.duration` | `jenkins_job_duration_{job}` | ms | Duration of the job's last build |
-| `senhub.jenkins.job.last_build_number` | `jenkins_job_last_build_{job}` | # | Build number of the job's last build |
-| `senhub.jenkins.node.count` | `jenkins_node_count_{status}` | # | Number of build nodes/agents by status (online/offline) |
-| `senhub.jenkins.node.executor.count` | `jenkins_executor_count_{state}` | # | Number of executors across online nodes by state (busy/free) |
-| `senhub.jenkins.queue.size` | `jenkins_queue_size` | # | Number of items in the build queue |
-| `senhub.jenkins.queue.blocked` | `jenkins_queue_blocked` | # | Number of blocked items in the build queue |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.jenkins.up` | `senhub.jenkins.up` | Jenkins Up | # | 1 when the last cycle reached the Jenkins controller, 0 otherwise |
+| `senhub.jenkins.job.count` | `senhub.jenkins.job.count` | Jenkins Jobs {status} | # | Number of jobs whose last build ended in this status (success/failure/unstable/aborted) |
+| `senhub.jenkins.job.duration` | `senhub.jenkins.job.duration` | Jenkins {job} Last Build Duration | ms | Duration of the job's last build |
+| `senhub.jenkins.job.last_build_number` | `senhub.jenkins.job.last_build_number` | Jenkins {job} Last Build Number | # | Build number of the job's last build |
+| `senhub.jenkins.node.count` | `senhub.jenkins.node.count` | Jenkins Nodes {status} | # | Number of build nodes/agents by status (online/offline) |
+| `senhub.jenkins.node.executor.count` | `senhub.jenkins.node.executor.count` | Jenkins Executors {state} | # | Number of executors across online nodes by state (busy/free) |
+| `senhub.jenkins.queue.size` | `senhub.jenkins.queue.size` | Jenkins Queue Size | # | Number of items in the build queue |
+| `senhub.jenkins.queue.blocked` | `senhub.jenkins.queue.blocked` | Jenkins Queue Blocked | # | Number of blocked items in the build queue |
 
 <!-- schema:metrics:end -->

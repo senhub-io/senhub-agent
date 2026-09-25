@@ -54,22 +54,24 @@ health-check state distribution and leader status.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.consul.up` | `consul_up` | # | 1 when the Consul agent HTTP API is reachable and responding |
-| `consul.catalog.services` | `consul_catalog_services` | # | Number of services registered in the Consul catalog |
-| `consul.serf.members` | `consul_serf_members` | # | Number of LAN Serf cluster members |
-| `consul.raft.commit.time` | `consul_raft_commit_time` | ms | Mean Raft commit time over the last interval (milliseconds) |
-| `consul.rpc.requests` | `consul_rpc_requests` | # | Total RPC requests handled by this Consul agent |
-| `consul.dns.queries` | `consul_dns_queries` | # | Total DNS domain queries handled by this Consul agent |
-| `consul.health.checks` | `consul_health_checks_{state}` | # | Number of Consul health checks in this state (critical, warning, passing) |
-| `consul.leader` | `consul_leader` | # | 1 when this Consul agent is the current Raft leader |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.consul.up` | `senhub.consul.up` | Consul Up | # | 1 when the Consul agent HTTP API is reachable and responding |
+| `consul.catalog.services` | `consul.catalog.services` | Consul Registered Services | # | Number of services registered in the Consul catalog |
+| `consul.serf.members` | `consul.serf.members` | Consul LAN Members | # | Number of LAN Serf cluster members |
+| `consul.raft.commit.time` | `consul.raft.commit.time` | Consul Raft Commit Time | ms | Mean Raft commit time over the last interval (milliseconds) |
+| `consul.rpc.requests` | `consul.rpc.requests` | Consul RPC Requests | # | Total RPC requests handled by this Consul agent |
+| `consul.dns.queries` | `consul.dns.queries` | Consul DNS Queries | # | Total DNS domain queries handled by this Consul agent |
+| `consul.health.checks` | `consul.health.checks` | Consul Health Checks ({state}) | # | Number of Consul health checks in this state (critical, warning, passing) |
+| `consul.leader` | `consul.leader` | Consul Leader | # | 1 when this Consul agent is the current Raft leader |
 
 <!-- schema:metrics:end -->

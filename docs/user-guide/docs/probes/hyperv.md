@@ -51,19 +51,21 @@ collection interval can be tuned.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.hyperv.up` | `hyperv_up` | # | 1 when the Hyper-V WMI namespace is reachable, 0 otherwise |
-| `hyperv.vm.cpu.usage` | `hyperv_vm_cpu_{hyperv.vm.name}` | % | CPU utilisation of the virtual machine in percent (0–100) |
-| `hyperv.vm.memory.usage` | `hyperv_vm_mem_{hyperv.vm.name}` | Bytes Memory | Memory consumed by the virtual machine in bytes |
-| `hyperv.vm.state` | `hyperv_vm_state_{hyperv.vm.name}` | # | 1 when the VM is in running state, 0 otherwise |
-| `hyperv.vm.count` | `hyperv_vm_count_{state}` | # | Number of virtual machines in the given state (running / stopped / paused) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.hyperv.up` | `senhub.hyperv.up` | Hyper-V Reachability | # | 1 when the Hyper-V WMI namespace is reachable, 0 otherwise |
+| `hyperv.vm.cpu.usage` | `hyperv.vm.cpu.usage` | VM {hyperv.vm.name} CPU Usage | % | CPU utilisation of the virtual machine in percent (0–100) |
+| `hyperv.vm.memory.usage` | `hyperv.vm.memory.usage` | VM {hyperv.vm.name} Memory Usage | Bytes Memory | Memory consumed by the virtual machine in bytes |
+| `hyperv.vm.state` | `hyperv.vm.state` | VM {hyperv.vm.name} State | # | 1 when the VM is in running state, 0 otherwise |
+| `hyperv.vm.count` | `hyperv.vm.count` | VM Count ({state}) | # | Number of virtual machines in the given state (running / stopped / paused) |
 
 <!-- schema:metrics:end -->

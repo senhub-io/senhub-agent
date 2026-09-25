@@ -104,16 +104,18 @@ The probe also emits two self-metrics:
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.snmp_trap.rejected_community` | `snmp_trap_rejected_community` | # | Datagrams rejected because their v1/v2c community did not match the configured one |
-| `senhub.snmp_trap.decode_panics` | `snmp_trap_decode_panics` | # | Decoder/handler panics recovered while processing received datagrams |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.snmp_trap.rejected_community` | `senhub.snmp_trap.rejected_community` | Rejected Community | # | Datagrams rejected because their v1/v2c community did not match the configured one |
+| `senhub.snmp_trap.decode_panics` | `senhub.snmp_trap.decode_panics` | Decode Panics | # | Decoder/handler panics recovered while processing received datagrams |
 
 <!-- schema:metrics:end -->

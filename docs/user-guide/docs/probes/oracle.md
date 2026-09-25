@@ -62,26 +62,28 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.db.up` | `db_up` | # | 1 if the agent's most recent ping reached the instance, 0 otherwise |
-| `oracle.sessions.count` | `oracle_sessions_{status}` | # | Open sessions by status (v$session GROUP BY status) |
-| `oracle.sessions.limit` | `oracle_sessions_limit` | # | Configured maximum sessions (v$resource_limit, resource_name='sessions') |
-| `oracle.physical.reads` | `oracle_physical_reads` | # | Cumulative physical reads (v$sysstat 'physical reads') |
-| `oracle.physical.writes` | `oracle_physical_writes` | # | Cumulative physical writes (v$sysstat 'physical writes') |
-| `oracle.buffer.cache.hit_ratio` | `oracle_buffer_cache_hit_ratio` | % | 1 - physical reads / (consistent gets + db block gets), derived from v$sysstat |
-| `oracle.sga.total` | `oracle_sga_total` | B | Total SGA allocated in bytes (SUM(bytes) over v$sgastat) |
-| `oracle.pga.total` | `oracle_pga_total` | B | Total PGA allocated in bytes (v$pgastat 'total PGA allocated') |
-| `oracle.tablespace.used` | `oracle_tablespace_used_{tablespace}` | B | Used space per tablespace in bytes (dba_tablespace_usage_metrics) |
-| `oracle.tablespace.total` | `oracle_tablespace_total_{tablespace}` | B | Maximum size per tablespace in bytes (dba_tablespace_usage_metrics) |
-| `oracle.wait_class.total` | `oracle_wait_class_{wait_class}` | # | Cumulative time waited per wait class in centiseconds (v$system_wait_class) |
-| `oracle.enqueue_deadlocks` | `oracle_enqueue_deadlocks` | # | Cumulative enqueue deadlocks detected (v$sysstat 'enqueue deadlocks') |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.db.up` | `senhub.db.up` | Database Up | # | 1 if the agent's most recent ping reached the instance, 0 otherwise |
+| `oracle.sessions.count` | `oracle.sessions.count` | Sessions {status} | # | Open sessions by status (v$session GROUP BY status) |
+| `oracle.sessions.limit` | `oracle.sessions.limit` | Sessions Limit | # | Configured maximum sessions (v$resource_limit, resource_name='sessions') |
+| `oracle.physical.reads` | `oracle.physical.reads` | Physical Reads | # | Cumulative physical reads (v$sysstat 'physical reads') |
+| `oracle.physical.writes` | `oracle.physical.writes` | Physical Writes | # | Cumulative physical writes (v$sysstat 'physical writes') |
+| `oracle.buffer.cache.hit_ratio` | `oracle.buffer.cache.hit_ratio` | Buffer Cache Hit Ratio | % | 1 - physical reads / (consistent gets + db block gets), derived from v$sysstat |
+| `oracle.sga.total` | `oracle.sga.total` | SGA Total | B | Total SGA allocated in bytes (SUM(bytes) over v$sgastat) |
+| `oracle.pga.total` | `oracle.pga.total` | PGA Total | B | Total PGA allocated in bytes (v$pgastat 'total PGA allocated') |
+| `oracle.tablespace.used` | `oracle.tablespace.used` | Tablespace {tablespace} Used | B | Used space per tablespace in bytes (dba_tablespace_usage_metrics) |
+| `oracle.tablespace.total` | `oracle.tablespace.total` | Tablespace {tablespace} Total | B | Maximum size per tablespace in bytes (dba_tablespace_usage_metrics) |
+| `oracle.wait_class.total` | `oracle.wait_class.total` | Wait Class {wait_class} | # | Cumulative time waited per wait class in centiseconds (v$system_wait_class) |
+| `oracle.enqueue_deadlocks` | `oracle.enqueue_deadlocks` | Enqueue Deadlocks | # | Cumulative enqueue deadlocks detected (v$sysstat 'enqueue deadlocks') |
 
 <!-- schema:metrics:end -->

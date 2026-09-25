@@ -102,19 +102,21 @@ On unsupported platforms (macOS) the probe emits `senhub.os.updates.up=0`.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.os.updates.up` | `os_updates_up` | # | 1 when the package backend (apt, dnf/yum, Windows Update Agent) answered the update query, 0 when it failed or the platform is unsupported |
-| `senhub.os.updates.pending` | `os_updates_pending` | # | Number of packages or updates with a newer version available and not yet installed |
-| `senhub.os.updates.pending.security` | `os_updates_pending_security` | # | Number of pending updates classified as security fixes by the package backend |
-| `senhub.os.packages.installed` | `os_packages_installed` | # | Number of packages the backend has installed on the machine, which is what the pending count above is measured against. Read from dpkg or rpm; the Windows Update Agent enumerates updates, not installed software, so the count is Linux only |
-| `senhub.os.updates.reboot_required` | `os_updates_reboot_required` | # | 1 when the OS reports a pending reboot (package-triggered on Linux, Windows Update pending reboot on Windows), 0 otherwise |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.os.updates.up` | `senhub.os.updates.up` | OS Updates Backend Up | # | 1 when the package backend (apt, dnf/yum, Windows Update Agent) answered the update query, 0 when it failed or the platform is unsupported |
+| `senhub.os.updates.pending` | `senhub.os.updates.pending` | Pending Updates | # | Number of packages or updates with a newer version available and not yet installed |
+| `senhub.os.updates.pending.security` | `senhub.os.updates.pending.security` | Pending Security Updates | # | Number of pending updates classified as security fixes by the package backend |
+| `senhub.os.packages.installed` | `senhub.os.packages.installed` | Installed Packages | # | Number of packages the backend has installed on the machine, which is what the pending count above is measured against. Read from dpkg or rpm; the Windows Update Agent enumerates updates, not installed software, so the count is Linux only |
+| `senhub.os.updates.reboot_required` | `senhub.os.updates.reboot_required` | Reboot Required | # | 1 when the OS reports a pending reboot (package-triggered on Linux, Windows Update pending reboot on Windows), 0 otherwise |
 
 <!-- schema:metrics:end -->

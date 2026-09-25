@@ -63,24 +63,26 @@ JVM probes keeps working, and only its scheme, host and port are used.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.solr.up` | `solr_up` | # | 1 when the Solr admin metrics endpoint responded successfully, 0 otherwise |
-| `jvm.memory.heap.used` | `jvm_heap_used` | B | JVM heap memory currently used by the Solr process |
-| `jvm.threads.count` | `jvm_thread_count` | # | Number of live threads in the Solr JVM |
-| `solr.requests.count` | `solr_requests_count` | # | Cumulative number of requests handled by QUERY handlers |
-| `solr.requests.time` | `solr_requests_time` | ms | Cumulative time spent handling QUERY requests (meanMs * count, ms) |
-| `solr.errors.count` | `solr_errors_count` | # | Cumulative number of errors across all QUERY handlers |
-| `solr.cache.hits` | `solr_cache_hits` | # | Cumulative query result cache hits |
-| `solr.cache.inserts` | `solr_cache_inserts` | # | Cumulative query result cache inserts |
-| `solr.document.count` | `solr_doc_count_{core}` | # | Number of indexed documents in the core |
-| `solr.index.size` | `solr_index_size_{core}` | B | On-disk index size in bytes for the core |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.solr.up` | `senhub.solr.up` | Solr Up | # | 1 when the Solr admin metrics endpoint responded successfully, 0 otherwise |
+| `jvm.memory.heap.used` | `jvm.memory.heap.used` | JVM Heap Used | B | JVM heap memory currently used by the Solr process |
+| `jvm.threads.count` | `jvm.threads.count` | JVM Thread Count | # | Number of live threads in the Solr JVM |
+| `solr.requests.count` | `solr.requests.count` | Solr Requests | # | Cumulative number of requests handled by QUERY handlers |
+| `solr.requests.time` | `solr.requests.time` | Solr Request Time | ms | Cumulative time spent handling QUERY requests (meanMs * count, ms) |
+| `solr.errors.count` | `solr.errors.count` | Solr Errors | # | Cumulative number of errors across all QUERY handlers |
+| `solr.cache.hits` | `solr.cache.hits` | Solr Cache Hits | # | Cumulative query result cache hits |
+| `solr.cache.inserts` | `solr.cache.inserts` | Solr Cache Inserts | # | Cumulative query result cache inserts |
+| `solr.document.count` | `solr.document.count` | Solr {core} Document Count | # | Number of indexed documents in the core |
+| `solr.index.size` | `solr.index.size` | Solr {core} Index Size | B | On-disk index size in bytes for the core |
 
 <!-- schema:metrics:end -->
