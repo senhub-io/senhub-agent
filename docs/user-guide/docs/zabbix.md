@@ -60,11 +60,12 @@ zabbix:
 | `tls.cert_file`, `tls.key_file` | | Client certificate and key, both or none. |
 | `tls.server_name` | server host | Name expected in the server's certificate. |
 | `tls.insecure_skip_verify` | `false` | Skip the server certificate check. |
+| `tls.psk_identity` | | Identity sent with the pre-shared key; must match what the server or the autoregistration setting holds. |
+| `tls.psk_file` | | File holding the pre-shared key, hex-encoded as Zabbix writes it. Excludes `cert_file`. |
+| `passive.tls.psk_identity`, `passive.tls.psk_file` | | The same pair for the polled port, configured apart because the roles are opposite. |
 
-Zabbix pre-shared keys (PSK) are not supported: Go's TLS library has no
-PSK cipher suites. Encrypted autoregistration, which Zabbix only offers
-with PSK, is therefore not available; register in clear or through a
-local proxy, then encrypt the data connection with a certificate.
+A block takes a certificate **or** a pre-shared key, never both. See
+[Encryption](#encryption) for both forms and for what each one buys.
 
 ## Item keys
 
@@ -194,6 +195,21 @@ discovery on a lab). An enum metric with a lookup gets a value map.
 Import the files through **Data collection > Templates > Import**, or
 `configuration.import` on the API. Re-importing a regenerated template
 updates the same objects: the identifiers are derived from the keys.
+
+Every generated template is imported into a live Zabbix 7.0 and 8.0
+before a release, in both export formats and for both platforms. Two
+probes get no file at all: `syslog` and `event` relay records rather
+than measuring anything, so they declare no item, and the command says
+so on standard error rather than writing a template that could only
+ever stay empty.
+
+Two constraints of Zabbix's own are worth knowing if you write a
+definition. A template's technical name is validated as a host name, so
+the generator strips what that forbids — a friendly name like
+"IBM i / Power Systems" becomes `SenHub IBM i Power Systems`, while the
+name an operator reads keeps the slash. And the 6.0 export spells the
+root template-group tag `groups` where 7.0 renamed it to
+`template_groups`; `--version` picks the right one.
 
 ## Encryption
 
