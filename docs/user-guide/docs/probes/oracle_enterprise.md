@@ -61,6 +61,7 @@ Disable the `gv$` cluster queries on a non-clustered instance to avoid needless 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:faaa188e0b6610f60d5e7f18c559b2930e326f05002a1cb3b55ce707546f16dd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

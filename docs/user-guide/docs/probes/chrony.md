@@ -31,6 +31,7 @@ No parameters are required — the probe reads the local chrony daemon.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:1a4de44575a4fb04122a8044198f9fae3d0f3e9d390397732561cb868cdcd964 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

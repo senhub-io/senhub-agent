@@ -60,6 +60,7 @@ When `nsx_endpoint` or `nsx_username` is omitted, the probe collects vSAN metric
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:74426231d4102e9d5c0d9fa3cc4a7c34ec8365f8b5c8e0ec5b1d9d0e40bf9003 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

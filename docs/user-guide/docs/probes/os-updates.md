@@ -27,6 +27,7 @@ All queries are read-only and run without privilege escalation.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:985f793a51746a2045fc449eb9a7512b3c2a415f4a466f92c46bb39c1c90e3e2 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

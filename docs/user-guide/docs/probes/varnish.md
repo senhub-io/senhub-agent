@@ -25,6 +25,7 @@ shared memory file.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:6ffdf9f7e4fa0940f895e9248375cf3b370e58d87b5c1b46276570dc83de94b5 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

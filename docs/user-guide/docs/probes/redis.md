@@ -24,6 +24,7 @@ keyspace size, replication state and persistence (RDB/AOF) health.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:d0e143f77b6a55e1fef65a7e634bc711ede3cf868677975ea93564a488a26976 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

@@ -62,6 +62,7 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:a553847c3d2684ee5a688c46d19aa8e953b5ca7d32184a6e2b258d9a178b2719 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

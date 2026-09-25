@@ -26,6 +26,7 @@ collection interval can be tuned.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:ee7bf255dd43cad3f39aa6d60e35ef18c57f0dc5fbeb0479a18c61aa1be6ac50 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

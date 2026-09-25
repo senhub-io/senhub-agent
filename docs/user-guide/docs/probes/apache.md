@@ -23,6 +23,7 @@ Requires `mod_status` enabled with the `?auto` format.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:55260c3017a6f508aac2f4febee9f210116b8617f88c4672ae31e9a988c426fd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

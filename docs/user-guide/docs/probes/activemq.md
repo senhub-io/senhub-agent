@@ -25,6 +25,7 @@ reporting broker-level resource usage (memory, store, temp) and per-destination
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:fa117b5a8996eb302eca32143debbd84dbc6ec6c4a15966412fc246f28b66d91 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

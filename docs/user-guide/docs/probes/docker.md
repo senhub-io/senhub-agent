@@ -34,6 +34,7 @@ to override it; a Windows pipe may be written `npipe://./pipe/<name>` or
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:3f2ecfe2a1c76cef3aaae9f2058cc55777841e20bab4d05ac9918c57d34392c9 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

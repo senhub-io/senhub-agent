@@ -26,6 +26,7 @@ metrics.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:2b2e534993ce9b4dde368404c191f605049ac7d76e22a5275ef21cdc4ae3392d -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

@@ -27,6 +27,7 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:61c76d96be2746dc149f5ee9ece5c031157b801bd1dafeeb978e3ee9a03eb732 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

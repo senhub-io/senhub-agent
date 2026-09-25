@@ -26,6 +26,7 @@ usage.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:ab29f8261ab0433230e24ee32a418dca0590d9edcc788f1231254cb1c561d9ca -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

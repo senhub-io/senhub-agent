@@ -71,6 +71,7 @@ Monitor several SQL Server instances with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:1f820b6c119604e7eeaab773dcbeae203224d103f632703f9f132d90e608d2f3 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

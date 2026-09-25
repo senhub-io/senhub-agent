@@ -22,6 +22,7 @@ dependable than an HTTP round trip.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:dea337311944aa3f5b7d916fc1366d454d2237c770e16485438cc69ceb628cee -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

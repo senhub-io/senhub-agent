@@ -87,6 +87,7 @@ This ensures the probe stays functional even when platform limitations exist, pr
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:7596f11130e51ee1a6c261d0023d3d6a3a7ea0406866540cd3941f76189a5abd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

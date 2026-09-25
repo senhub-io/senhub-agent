@@ -25,6 +25,7 @@ usage, connection counts and exchange statistics.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:f3e664a195a4e048ed7dcc8c052ad4554de9a1cfa398c2b6ff02d5801f90d5b1 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

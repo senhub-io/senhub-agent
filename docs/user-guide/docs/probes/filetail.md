@@ -31,6 +31,7 @@ mode so the producing application is never blocked.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:d874161f4070f3751bfe0bed7380330677b173bcb843e68572f888646936ccaa -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

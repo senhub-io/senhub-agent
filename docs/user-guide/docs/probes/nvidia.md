@@ -24,6 +24,7 @@ No parameters are required. The probe auto-detects all GPUs visible to
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:b5bfab08476a695a617c536ca46f96aa8580ebeec8f9c6623c7ed5a7a5a8fefb -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

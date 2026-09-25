@@ -31,6 +31,7 @@ metric with a name and unit you define. Supports `uint16`, `int16`, `uint32`,
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:0050978e140373cc8d9a09864fe0a4915b91121f1de65e186f5ce982805e407f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

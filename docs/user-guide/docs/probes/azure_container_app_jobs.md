@@ -39,6 +39,7 @@ Both probes share the same credential, the same Azure Resource Manager access an
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:d1a6aba39d901183a8fc6d679f75d132fb14ffe408766e80b2e15805e7081464 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

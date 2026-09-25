@@ -23,6 +23,7 @@ health-check state distribution and leader status.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:b18d4b5097649fe985ac5f628e36fce119d5e49470d189198a743370d42b6062 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

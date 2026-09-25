@@ -153,6 +153,7 @@ Monitor multiple hardware targets with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:cd14851f2179f7e50edb5c0c83fe127d1815ecc5ff01a653b1ec7ba422706b47 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
