@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -97,5 +98,33 @@ func TestNagiosStateModeFollowsTheDefinition(t *testing.T) {
 		NagiosMetric{Channel: "veeam_job_status", Warning: "2", Critical: "3"}, metrics, NagiosOverrides{})
 	if state.Status != 0 || !strings.Contains(strings.ToLower(state.Message), "success") {
 		t.Errorf("job status 1 is Success in its lookup: got status %d (%s)", state.Status, state.Message)
+	}
+}
+
+// A threshold is the last acceptable value, as a Nagios plugin reads
+// it: the shipped Veeam checks set warning "0" on failure counts, which
+// only makes sense if zero failures is OK.
+func TestNagiosThresholdIsLastAcceptableValue(t *testing.T) {
+	p := NewMetricsProcessor(nil, nil, nil, newTestLogger())
+	cases := []struct {
+		value, warning, critical string
+		invert                   bool
+		want                     int
+	}{
+		{"0", "0", "0", false, 0},
+		{"1", "0", "0", false, 2},
+		{"1", "0", "", false, 1},
+		{"80", "80", "90", false, 0},
+		{"80.5", "80", "90", false, 1},
+		{"90.5", "80", "90", false, 2},
+		{"20", "20", "10", true, 0},
+		{"19", "20", "10", true, 1},
+		{"9", "20", "10", true, 2},
+	}
+	for _, tc := range cases {
+		value, _ := strconv.ParseFloat(tc.value, 64)
+		if got := p.evaluateThreshold(value, tc.warning, tc.critical, tc.invert); got != tc.want {
+			t.Errorf("value %s warning %q critical %q invert %v: got %d, want %d", tc.value, tc.warning, tc.critical, tc.invert, got, tc.want)
+		}
 	}
 }
