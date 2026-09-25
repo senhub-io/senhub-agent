@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -147,10 +149,20 @@ func TestLocalConfiguration_CustomCertificates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the generated http fragment: %v", err)
 	}
-	for _, want := range []string{certFile, keyFile} {
-		if !strings.Contains(string(fragment), want) {
-			t.Errorf("the generated fragment does not name %q:\n%s", want, fragment)
-		}
+	var written struct {
+		HTTP struct {
+			TLS struct {
+				CertFile string `yaml:"cert_file"`
+				KeyFile  string `yaml:"key_file"`
+			} `yaml:"tls"`
+		} `yaml:"http"`
+	}
+	if err := yaml.Unmarshal(fragment, &written); err != nil {
+		t.Fatalf("parsing the generated http fragment: %v", err)
+	}
+	if written.HTTP.TLS.CertFile != certFile || written.HTTP.TLS.KeyFile != keyFile {
+		t.Errorf("the generated fragment names %q / %q, want %q / %q:\n%s",
+			written.HTTP.TLS.CertFile, written.HTTP.TLS.KeyFile, certFile, keyFile, fragment)
 	}
 	if strings.Contains(string(fragment), "agent-cert.pem") {
 		t.Error("the fragment still points at the self-signed certificate although a pair was supplied")
