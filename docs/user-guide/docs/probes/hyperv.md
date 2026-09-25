@@ -64,7 +64,7 @@ series' tags.
 |---|---|---|---|---|
 | `senhub.hyperv.up` | `senhub.hyperv.up` | Hyper-V Reachability | # | 1 when the Hyper-V WMI namespace is reachable, 0 otherwise |
 | `hyperv.vm.cpu.usage` | `hyperv.vm.cpu.usage` | VM {hyperv.vm.name} CPU Usage | % | CPU utilisation of the virtual machine in percent (0–100) |
-| `hyperv.vm.memory.usage` | `hyperv.vm.memory.usage` | VM {hyperv.vm.name} Memory Usage | Bytes Memory | Memory consumed by the virtual machine in bytes |
+| `hyperv.vm.memory.usage` | `hyperv.vm.memory.usage` | VM {hyperv.vm.name} Memory Usage | Bytes | Memory consumed by the virtual machine in bytes |
 | `hyperv.vm.state` | `hyperv.vm.state` | VM {hyperv.vm.name} State | # | 1 when the VM is in running state, 0 otherwise |
 | `hyperv.vm.count` | `hyperv.vm.count` | VM Count ({state}) | # | Number of virtual machines in the given state (running / stopped / paused) |
 

@@ -568,7 +568,7 @@ series' tags.
 | `senhub.citrix.license.unique_users` | `license_unique_users` | License Unique Users | # | Number of unique users who have consumed a license in the current period |
 | `senhub.citrix.license.grace.sessions_remaining` | `license_grace_sessions_left` | License Grace Sessions Left | # | Remaining supplemental grace sessions available when license limit is exceeded |
 | `senhub.citrix.license.grace.active` | `license_grace_period_active` | License Grace Period Active | # | Indicates whether the supplemental grace period is currently active (1) or not (0) |
-| `senhub.citrix.license.grace.time_remaining` | `license_grace_hours_left` | License Grace Hours Left | custom | Hours remaining before the supplemental grace period expires |
+| `senhub.citrix.license.grace.time_remaining` | `license_grace_hours_left` | License Grace Hours Left | h | Hours remaining before the supplemental grace period expires |
 | `senhub.citrix.machines.multi_session_fault_total` | `machines_faulty_total` | Machines Faulty Total (Multi-Session) | # | Total number of multi-session VDA machines in a fault state |
 | `senhub.citrix.machines.by_fault_state` | `boot_failure` | Boot Failure | # | Number of machines that failed to boot within the expected timeframe |
 | `senhub.citrix.machines.by_fault_state` | `stuck_at_boot` | Stuck At Boot | # | Number of machines stuck in the boot process and not progressing to registration |

@@ -222,7 +222,7 @@ metrics:
     multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role"]
     channel: "swarm_node_{swarm.node.name}_memory"
     display_name: "Node Memory Allocatable"
-    unit: "#"
+    unit: "Bytes"
     category: "node"
     description: "memory the node advertises to the scheduler"
     otel:

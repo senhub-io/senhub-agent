@@ -421,3 +421,13 @@ collection gaps that comparison exposed.
   reports one; and a host whose identity came from `SENHUB_HOST_ID`
   carries `senhub.host.id.source=configuration`, so a collision can be
   traced to the copy.
+
+- **The Citrix licence grace period is exported in seconds.** The probe
+  reports hours and the definition gave a unit the mapper cannot
+  convert, so 48 hours left read as 48 seconds on OTLP and Prometheus.
+  Probe definitions are now decoded strictly, a key the schema does not
+  define fails the build, and a metric published in seconds or bytes
+  must come from a unit the mapper converts. The same pass fixed the
+  PRTG unit of ten metrics that showed a raw label (`BytesFile`,
+  `TimeSeconds`, a byte count as `Count`), and the NetScaler heartbeat
+  rates now read `pkt/s`. (#930)
