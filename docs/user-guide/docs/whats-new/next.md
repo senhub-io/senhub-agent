@@ -449,3 +449,9 @@ collection gaps that comparison exposed.
   `config check` said "unknown type". A licence cannot add code the
   binary does not contain; both now say the probe ships in the full
   edition.
+
+- **`config check` no longer warns on every Windows MSI install** that
+  "self-update will fail every cycle". It tried to open the running
+  executable for writing, which the service holds, although an
+  MSI-managed install updates through a new MSI and never writes its
+  binary.
