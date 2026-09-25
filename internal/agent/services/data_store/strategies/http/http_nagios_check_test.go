@@ -163,3 +163,20 @@ func TestNagiosPerSeriesThresholdsAndTagFilters(t *testing.T) {
 		t.Errorf("POST overrides should keep core 1 only, WARNING under critical 99: %s", rec.Body.String())
 	}
 }
+
+// probe_filter names a probe type. A Veeam probe is always named by its
+// operator, and the shipped Veeam checks must still find it.
+func TestNagiosProbeFilterMatchesTheProbeType(t *testing.T) {
+	now := time.Now()
+	named := []tags.Tag{{Key: "probe_name", Value: "Backup SIEP"}, {Key: "probe_type", Value: "veeam"}}
+	strategy, key := newNagiosTestStrategy(t, []datapoint.DataPoint{
+		{Name: "veeam_jobs_failed", Value: float64(0), Timestamp: now, Tags: named},
+		{Name: "veeam_jobs_warning", Value: float64(0), Timestamp: now, Tags: named},
+	})
+
+	rec := httptest.NewRecorder()
+	strategy.setupRoutes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/veeam_jobs", nil))
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Body.String(), "OK - ") {
+		t.Fatalf("veeam_jobs on a probe named %q: got %d %q", "Backup SIEP", rec.Code, rec.Body.String())
+	}
+}

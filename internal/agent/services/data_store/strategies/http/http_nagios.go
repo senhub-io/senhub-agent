@@ -225,15 +225,9 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 		Interface("overrides", overrides).
 		Msg("Executing Nagios check")
 
-	// Get all metrics from cache
-	allMetrics := n.strategy.cache.GetAllMetrics()
-
-	// Apply probe filter if specified
-	var metrics []CachedMetric
+	metrics := n.strategy.cache.GetAllMetrics()
 	if check.ProbeFilter != "" {
-		metrics = n.strategy.cache.GetProbeMetrics(check.ProbeFilter)
-	} else {
-		metrics = allMetrics
+		metrics = matchProbe(metrics, check.ProbeFilter)
 	}
 
 	if len(metrics) == 0 {
@@ -299,6 +293,20 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 		Message:    message,
 		PerfData:   strings.Join(perfDataItems, " "),
 	}
+}
+
+// matchProbe keeps the metrics of the probes whose type or configured
+// name is filter. The shipped checks filter on a type (veeam, cpu); a
+// name-only match made them UNKNOWN on every probe an operator named
+// otherwise, which is every Veeam probe in practice.
+func matchProbe(metrics []CachedMetric, filter string) []CachedMetric {
+	kept := make([]CachedMetric, 0, len(metrics))
+	for _, metric := range metrics {
+		if strings.EqualFold(metric.Tags["probe_type"], filter) || strings.EqualFold(metric.ProbeName, filter) {
+			kept = append(kept, metric)
+		}
+	}
+	return kept
 }
 
 // mergeNagiosOverrides lays the query string over the POST body: a
