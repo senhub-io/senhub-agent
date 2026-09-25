@@ -132,7 +132,7 @@ func (n *NagiosManager) HandleNagiosMetrics(w http.ResponseWriter, r *http.Reque
 
 	// Parse query parameters
 	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
-	overrides := n.strategy.configManager.ParseNagiosOverrides(r)
+	overrides := mergeNagiosOverrides(n.strategy.configManager.ParseNagiosOverrides(r), nagiosRequest.Overrides)
 
 	// Load configuration
 	config := n.strategy.configManager.LoadNagiosConfig()
@@ -250,6 +250,7 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 
 	// Apply additional filters from query parameters
 	metrics = n.strategy.metricsProcessor.ApplyMetricFilter(metrics, filter)
+	metrics = keepMatchingTags(metrics, overrides.TagFilters)
 
 	if len(metrics) == 0 {
 		return NagiosResponse{
@@ -298,6 +299,48 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 		Message:    message,
 		PerfData:   strings.Join(perfDataItems, " "),
 	}
+}
+
+// mergeNagiosOverrides lays the query string over the POST body: a
+// value given in the URL wins, the body fills what the URL leaves out.
+func mergeNagiosOverrides(query, body NagiosOverrides) NagiosOverrides {
+	merged := body
+	if query.Warning != "" {
+		merged.Warning = query.Warning
+	}
+	if query.Critical != "" {
+		merged.Critical = query.Critical
+	}
+	merged.TagFilters = make(map[string]string, len(body.TagFilters)+len(query.TagFilters))
+	for k, v := range body.TagFilters {
+		merged.TagFilters[k] = v
+	}
+	for k, v := range query.TagFilters {
+		merged.TagFilters[k] = v
+	}
+	return merged
+}
+
+// keepMatchingTags keeps the series whose tags equal every requested
+// value (tag_<name>=<value> in the query, tag_filters in a POST body).
+func keepMatchingTags(metrics []CachedMetric, tagFilters map[string]string) []CachedMetric {
+	if len(tagFilters) == 0 {
+		return metrics
+	}
+	kept := make([]CachedMetric, 0, len(metrics))
+	for _, metric := range metrics {
+		matches := true
+		for key, value := range tagFilters {
+			if metric.Tags[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			kept = append(kept, metric)
+		}
+	}
+	return kept
 }
 
 // applyNagiosTagFilters applies tag filters from Nagios check configuration
