@@ -40,10 +40,10 @@ connections and requests, and per-cluster upstream metrics.
 | `senhub.envoy.up` | 1 | 1 when the admin `/stats` endpoint responded successfully |
 | `envoy.server.uptime` | s | Time since the Envoy process started |
 | `envoy.server.memory.allocated` | By | Memory currently allocated by the Envoy process |
-| `envoy.server.connections.active` | {connection} | Active downstream connections across all listeners |
+| `envoy.listener.downstream.connections.active` | # | Downstream connections currently active across all listeners |
 | `envoy.listener.downstream.connections.active` | {connection} | Active downstream connections per listener |
-| `envoy.cluster.upstream.requests.active` | {request} | Active upstream requests per cluster, tagged with `cluster` |
-| `envoy.cluster.upstream.connections.active` | {connection} | Active upstream connections per cluster |
+| `envoy.cluster.upstream.requests.total` | # | Upstream requests dispatched to cluster members (cumulative) |
+| `envoy.cluster.upstream.connections.total` | # | Upstream connections opened to cluster members (cumulative) |
 
 ## Operational notes
 

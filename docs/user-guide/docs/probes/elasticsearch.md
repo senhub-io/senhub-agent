@@ -46,10 +46,8 @@ and thread pool queue depths.
 | `elasticsearch.cluster.shards.active` | {shard} | Active primary and replica shards |
 | `elasticsearch.cluster.shards.unassigned` | {shard} | Unassigned shards |
 | `elasticsearch.jvm.memory.heap.used` | By | JVM heap in use on the local node |
-| `elasticsearch.indexing.document.merges.count` | {merge} | Segment merges by type, tagged with `collector` |
-| `elasticsearch.indexing.request.operations.count` | {operation} | Indexing operations (index/delete/…), tagged with `operation` |
-| `elasticsearch.search.query.count` | {query} | Completed search queries |
-| `elasticsearch.search.fetch.count` | {fetch} | Completed fetch phases |
+| `elasticsearch.indexing.operations.completed` | # | Indexing operations completed, tagged with `operation` (index, delete) |
+| `elasticsearch.search.operations.completed` | # | Search operations completed, tagged with `operation` (query, fetch) |
 | `elasticsearch.thread_pool.tasks.queued` | {task} | Tasks queued per thread pool, tagged with `thread_pool` |
 
 ## Operational notes

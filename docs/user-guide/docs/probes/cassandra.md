@@ -40,9 +40,9 @@ pending tasks, storage load, JVM heap and garbage collection.
 | `senhub.cassandra.up` | 1 | 1 when the Jolokia endpoint is reachable, 0 otherwise |
 | `cassandra.client.connections` | {connection} | Native CQL client connections |
 | `cassandra.client.requests.count` | {request} | Request count by operation (read/write), tagged with `operation` |
-| `cassandra.client.requests.failed` | {request} | Failed requests by operation |
-| `cassandra.client.request.latency.50p` | ms | Median request latency by operation |
-| `cassandra.client.request.latency.99p` | ms | 99th-percentile request latency by operation |
+| `cassandra.client.requests.errors` | {request} | Failed requests by operation |
+| `cassandra.client.requests.latency` | ms | Mean client request latency, read or write |
+| `cassandra.client.requests.latency.p99` | ms | 99th-percentile client request latency, read or write |
 | `cassandra.compaction.tasks.pending` | {task} | Compaction tasks waiting to run |
 | `cassandra.storage.load` | By | Disk space used by the local node |
 | `jvm.memory.heap.used` | By | JVM heap in use |

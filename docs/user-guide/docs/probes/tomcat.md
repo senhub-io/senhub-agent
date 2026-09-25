@@ -41,9 +41,9 @@ and the Tomcat thread pool state.
 |---|---|---|
 | `senhub.tomcat.up` | 1 | 1 when Jolokia is reachable |
 | `tomcat.sessions.active` | {session} | Active HTTP sessions per web application context, tagged with `context` |
-| `tomcat.request.count` | {request} | Requests processed per connector, tagged with `connector` |
-| `tomcat.request.error.count` | {error} | Request errors per connector |
-| `tomcat.request.elapsed_time` | s | Total time spent on requests per connector |
+| `tomcat.requests.total` | {request} | Requests processed per connector, tagged with `connector` |
+| `tomcat.errors.total` | {error} | Request errors per connector |
+| `tomcat.processing_time` | ms | Cumulative request processing time per connector |
 | `tomcat.threads.current` | {thread} | Current thread pool size |
 | `tomcat.threads.busy` | {thread} | Threads currently handling a request |
 | `tomcat.threads.max` | {thread} | Maximum thread pool size |

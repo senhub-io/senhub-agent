@@ -41,13 +41,13 @@ The status page must answer in JSON: add `?json` to the endpoint or configure th
 |---|---|---|
 | `senhub.phpfpm.up` | 1 | 1 when the status endpoint is reachable |
 | `phpfpm.uptime` | s | Seconds since the PHP-FPM pool started, tagged with `pool` |
-| `phpfpm.connections.accepted` | {connection} | Total accepted connections since start |
-| `phpfpm.connections.queued` | {connection} | Connections currently waiting in the listen queue |
-| `phpfpm.connections.queue_max` | {connection} | Maximum observed listen queue length |
+| `phpfpm.accepted_connections` | {connection} | Total accepted connections since start |
+| `phpfpm.listen_queue.current` | {connection} | Connections currently waiting in the listen queue |
+| `phpfpm.listen_queue.max` | {connection} | Maximum observed listen queue length |
 | `phpfpm.processes.active` | {process} | PHP-FPM worker processes currently serving a request |
 | `phpfpm.processes.idle` | {process} | Idle worker processes |
 | `phpfpm.processes.total` | {process} | Total worker processes in the pool |
-| `phpfpm.request.max_duration` | s | Duration of the longest-running request |
+| `phpfpm.slow_requests` | # | Requests exceeding the slow request threshold (cumulative) |
 | `phpfpm.slow_requests` | {request} | Requests that exceeded `request_slowlog_timeout` |
 
 ## Operational notes

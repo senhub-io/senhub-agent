@@ -46,13 +46,13 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 | `senhub.db.up` | 1 | 1 when the agent reached the instance this cycle |
 | `oracle.sessions.count` | {session} | Sessions by status (Active/Inactive), tagged with `status` |
 | `oracle.sessions.limit` | {session} | Maximum allowed sessions |
-| `oracle.sga.size` | By | System Global Area total size |
-| `oracle.pga.allocated` | By | PGA memory currently allocated |
-| `oracle.buffer_cache.hit_ratio` | % | Buffer cache hit ratio (data blocks found in memory) |
-| `oracle.tablespace.usage` | By | Tablespace space used per tablespace, tagged with `tablespace` |
-| `oracle.tablespace.capacity` | By | Tablespace total capacity |
-| `oracle.wait_class.time` | s | DB time spent in each wait class, tagged with `wait_class` |
-| `oracle.enqueue.deadlocks` | {deadlock} | Enqueue (row/table lock) deadlocks since instance start |
+| `oracle.sga.total` | By | System Global Area total size |
+| `oracle.pga.total` | By | PGA memory currently allocated |
+| `oracle.buffer.cache.hit_ratio` | % | Buffer cache hit ratio (data blocks found in memory) |
+| `oracle.tablespace.used` | By | Tablespace space used per tablespace, tagged with `tablespace` |
+| `oracle.tablespace.total` | By | Tablespace total capacity |
+| `oracle.wait_class.total` | # | Time waited per wait class in centiseconds, tagged with `wait_class` |
+| `oracle.enqueue_deadlocks` | {deadlock} | Enqueue (row/table lock) deadlocks since instance start |
 
 ## Operational notes
 

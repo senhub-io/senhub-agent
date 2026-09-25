@@ -42,14 +42,13 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 |---|---|---|
 | `senhub.clickhouse.up` | 1 | 1 when the `/metrics` endpoint answered successfully |
 | `clickhouse.queries.active` | {query} | Queries currently executing (`ClickHouseMetrics_Query`) |
-| `clickhouse.connections.tcp` | {connection} | Open TCP connections from clients |
-| `clickhouse.connections.http` | {connection} | Open HTTP connections from clients |
+| `clickhouse.connections` | {connection} | Open client connections |
 | `clickhouse.merges.active` | {merge} | Background merge operations currently running |
-| `clickhouse.parts.total` | {part} | Total data parts across all tables |
+| `clickhouse.parts.active` | {part} | Total data parts across all tables |
 | `clickhouse.memory.used` | By | Process memory allocated by the ClickHouse server |
-| `clickhouse.queries.inserted_rows` | {row} | Rows inserted since server start (profile counter) |
-| `clickhouse.queries.select_count` | {query} | SELECT queries since server start |
-| `clickhouse.queries.insert_count` | {query} | INSERT queries since server start |
+| `clickhouse.inserted.rows` | {row} | Rows inserted since server start (profile counter) |
+| `clickhouse.queries.select` | {query} | SELECT queries since server start |
+| `clickhouse.queries.insert` | {query} | INSERT queries since server start |
 
 ## Operational notes
 

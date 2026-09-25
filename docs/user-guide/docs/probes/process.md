@@ -54,8 +54,8 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 | Metric | Unit | Description |
 |---|---|---|
 | `process.cpu.utilization` | 1 | CPU utilization ratio (0–1) per process, tagged with `process.name` / `process.pid` |
-| `process.memory.physical_usage` | By | Resident set size (physical memory) per process |
-| `process.memory.virtual_usage` | By | Virtual memory size per process |
+| `process.memory.usage` | By | Resident set size (physical memory) per process |
+| `process.memory.virtual_memory_usage` | By | Virtual memory size per process |
 | `process.threads` | {thread} | Thread count per process |
 | `process.open_file_descriptors` | {fd} | Open file descriptors (Linux only) |
 | `process.uptime` | s | Seconds since the process started |

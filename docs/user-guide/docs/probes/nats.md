@@ -41,16 +41,16 @@ dependencies — uses the stdlib HTTP client.
 | `nats.connections.count` | {connection} | Current active client connections |
 | `nats.connections.total` | {connection} | Total connections since server start |
 | `nats.subscriptions.count` | {subscription} | Active subscriptions |
-| `nats.messages.received` | {message} | Messages received since start |
-| `nats.messages.sent` | {message} | Messages sent to subscribers since start |
-| `nats.bytes.received` | By | Bytes received since start |
-| `nats.bytes.sent` | By | Bytes sent since start |
+| `nats.messages.in` | {message} | Messages received since start |
+| `nats.messages.out` | {message} | Messages sent to subscribers since start |
+| `nats.bytes.in` | By | Bytes received since start |
+| `nats.bytes.out` | By | Bytes sent since start |
 | `nats.slow_consumers` | {consumer} | Connections flagged as slow consumers |
-| `nats.route.connections` | {connection} | Active cluster route connections |
+| `nats.routes.count` | {connection} | Active cluster route connections |
 | `nats.jetstream.streams` | {stream} | JetStream stream count |
 | `nats.jetstream.consumers` | {consumer} | JetStream consumer count |
 | `nats.jetstream.messages` | {message} | Messages stored in JetStream |
-| `nats.jetstream.bytes` | By | Bytes stored in JetStream |
+| `nats.jetstream.storage` | By | Bytes stored in JetStream |
 
 ## Operational notes
 
