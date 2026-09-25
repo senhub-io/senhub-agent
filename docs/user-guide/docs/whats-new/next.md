@@ -162,7 +162,8 @@ collection gaps that comparison exposed.
   memory and disk usage raise a Warning and a High problem past
   thresholds held in macros a site overrides per host or per group. A
   template linked to a host used to collect everything and alert on
-  nothing.
+  nothing. Items and triggers carry the `component` and `scope` tags the
+  native templates use.
 
 - **A utilization reads as a percentage in Zabbix.** The templates
   multiply the OTel fraction by 100 on the server side and show it in

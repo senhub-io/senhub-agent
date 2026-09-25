@@ -142,3 +142,31 @@ func TestAThresholdInAnotherUnitThanShownIsRefused(t *testing.T) {
 		t.Fatal("a threshold in MB on an item shown in B was accepted")
 	}
 }
+
+// Items and triggers carry the tags the native templates use, which is
+// what problem views, dashboards and actions filter on.
+func TestItemsAndTriggersCarryTheNativeTags(t *testing.T) {
+	def := transformers.ProbeDefinition{ProbeName: "cpu", Metrics: []transformers.MetricDefinition{
+		{Name: "cpu_usage_total", DisplayName: "CPU Total Usage", Unit: "%",
+			AlertThresholdWarning: 80, AlertThresholdCritical: 90,
+			Otel: &transformers.OtelMapping{Name: "system.cpu.utilization", Unit: "1", Type: "gauge"}},
+	}}
+	exp, err := Generate(def, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := prototypesByKey(t, exp)["senhub.system.cpu.utilization[{#PROBE}]"]
+	if len(p.Tags) != 1 || p.Tags[0] != (Tag{Tag: "component", Value: "cpu"}) {
+		t.Errorf("item tags = %v, want component: cpu", p.Tags)
+	}
+	for _, tr := range p.TriggerPrototypes {
+		if len(tr.Tags) != 1 || tr.Tags[0] != (Tag{Tag: "scope", Value: "performance"}) {
+			t.Errorf("trigger %q tags = %v, want scope: performance", tr.Name, tr.Tags)
+		}
+	}
+	for _, it := range Base(Options{}).ZabbixExport.Templates[0].Items {
+		if len(it.Tags) != 1 || it.Tags[0].Tag != "component" {
+			t.Errorf("agent item %s has tags %v", it.Key, it.Tags)
+		}
+	}
+}
