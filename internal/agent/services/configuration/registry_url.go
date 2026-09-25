@@ -84,6 +84,14 @@ func NormalizeRegistryURL(raw string) (normalized string, changed bool) {
 	return trimmed, trimmed != raw
 }
 
+// RegistryURLHadPath reports whether normalising raw into fixed removed a
+// path, as opposed to a trailing slash alone. Only the former is worth an
+// operator's attention: url.JoinPath absorbs the slash, so a value that
+// differs by it alone always worked.
+func RegistryURLHadPath(raw, fixed string) bool {
+	return strings.TrimRight(strings.TrimSpace(raw), "/") != fixed
+}
+
 // isSchemeOnly reports whether stripping left nothing but "https:" or
 // "https://host"-less remnants.
 func isSchemeOnly(s string) bool {
@@ -125,7 +133,7 @@ func CheckRegistryURL(raw string) *RegistryURLProblem {
 		}
 	}
 
-	if fixed, changed := NormalizeRegistryURL(trimmed); changed {
+	if fixed, changed := NormalizeRegistryURL(trimmed); changed && RegistryURLHadPath(trimmed, fixed) {
 		return &RegistryURLProblem{
 			Reason:     "carries a path the agent appends itself, so every derived URL doubles it (the agent appends /releases/... for the version list and /download/... for artifacts)",
 			Suggestion: fixed,

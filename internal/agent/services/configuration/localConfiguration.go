@@ -236,7 +236,7 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 		// block and runs once per datapoint batch — so the previous
 		// unconditional warning meant one identical line per batch, for
 		// the life of the process (#840).
-		if ShouldWarnRegistryURL(cfg.URL) {
+		if RegistryURLHadPath(cfg.URL, fixed) && ShouldWarnRegistryURL(cfg.URL) {
 			lc.logger.Warn().
 				Str("configured", cfg.URL).
 				Str("using", fixed).
