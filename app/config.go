@@ -602,6 +602,8 @@ func checkConfig(configPath string) {
 		reportEntityEmission(config.Entities, config.Storage)
 	}
 
+	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
+
 	// Binary writability. What is correct differs per platform: on Linux the
 	// daemon must NOT be able to write its own executable (#794), everywhere
 	// else the in-process updater needs to (#377). checkAutoUpdateWritability
