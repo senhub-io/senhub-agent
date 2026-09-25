@@ -352,7 +352,7 @@ cache:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `retention_minutes` | `5` | Number of minutes to keep metrics in cache |
+| `retention_minutes` | `5` | Number of minutes a value stays served by the pull outputs (PRTG, Nagios, Prometheus, Web UI) after its probe last produced it. A probe that runs less often keeps its last value until its next run is due, whatever this setting. |
 
 Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the retention period longer than the longest polling interval of your monitoring system.
 
