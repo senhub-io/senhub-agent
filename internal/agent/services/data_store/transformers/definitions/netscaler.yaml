@@ -19,6 +19,7 @@ metrics:
   # SYSTEM — CPU / Memory / Network / HTTP / TCP
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.system.cpu.usage.percent"
+    multi_instance_labels: []
     channel: "system.cpu.usage"
     display_name: "System CPU Usage"
     unit: "%"
@@ -33,6 +34,7 @@ metrics:
       # Mapper ÷100 (% → ratio)
 
   - name: "netscaler.system.cpu.mgmt.usage.percent"
+    multi_instance_labels: []
     channel: "system.cpu.mgmt.usage"
     display_name: "System Management CPU Usage"
     unit: "%"
@@ -46,6 +48,7 @@ metrics:
         senhub.netscaler.cpu.plane: management
 
   - name: "netscaler.system.memory.usage.percent"
+    multi_instance_labels: []
     channel: "system.memory.usage"
     display_name: "System Memory Usage"
     unit: "%"
@@ -57,6 +60,7 @@ metrics:
       type: gauge
 
   - name: "netscaler.system.network.rx.mbits_per_sec"
+    multi_instance_labels: []
     channel: "system.network.rx"
     display_name: "System Network Receive Rate"
     unit: "Mbits/s"
@@ -71,6 +75,7 @@ metrics:
       # Mapper ×1e6 (Mbits/s → bit/s)
 
   - name: "netscaler.system.network.tx.mbits_per_sec"
+    multi_instance_labels: []
     channel: "system.network.tx"
     display_name: "System Network Transmit Rate"
     unit: "Mbits/s"
@@ -84,6 +89,7 @@ metrics:
         network.io.direction: transmit
 
   - name: "netscaler.system.http.requests.rate"
+    multi_instance_labels: []
     channel: "system.http.requests"
     display_name: "System HTTP Requests Rate"
     unit: "req/s"
@@ -97,6 +103,7 @@ metrics:
         senhub.netscaler.http.message_type: request
 
   - name: "netscaler.system.http.responses.rate"
+    multi_instance_labels: []
     channel: "system.http.responses"
     display_name: "System HTTP Responses Rate"
     unit: "resp/s"
@@ -110,6 +117,7 @@ metrics:
         senhub.netscaler.http.message_type: response
 
   - name: "netscaler.system.tcp.client.connections.current"
+    multi_instance_labels: []
     channel: "system.tcp.client.connections"
     display_name: "System TCP Client Connections"
     unit: "#"
@@ -123,6 +131,7 @@ metrics:
         senhub.netscaler.tcp.side: client
 
   - name: "netscaler.system.tcp.server.connections.current"
+    multi_instance_labels: []
     channel: "system.tcp.server.connections"
     display_name: "System TCP Server Connections"
     unit: "#"
@@ -139,6 +148,7 @@ metrics:
   # NS GLOBAL — appliance-wide throughput
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.ns.throughput.total.mbits_per_sec"
+    multi_instance_labels: []
     channel: "ns.throughput.total"
     display_name: "NS Total Throughput"
     unit: "Mbits/s"
@@ -152,6 +162,7 @@ metrics:
         senhub.netscaler.traffic_type: total
 
   - name: "netscaler.ns.http.throughput.mbits_per_sec"
+    multi_instance_labels: []
     channel: "ns.http.throughput"
     display_name: "NS HTTP Throughput"
     unit: "Mbits/s"
@@ -168,6 +179,7 @@ metrics:
   # SSL GLOBAL
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.ssl.transactions.rate"
+    multi_instance_labels: []
     channel: "ssl.transactions.rate"
     display_name: "SSL Transactions Rate"
     unit: "tx/s"
@@ -179,6 +191,7 @@ metrics:
       type: gauge
 
   - name: "netscaler.ssl.sessions.total"
+    multi_instance_labels: []
     channel: "ssl.sessions.total"
     display_name: "SSL Sessions Total"
     unit: "#"
@@ -643,6 +656,7 @@ metrics:
       ha_node_ip: senhub.netscaler.ha.node.ip
 
   - name: "netscaler.ha.propagation_timeouts"
+    multi_instance_labels: []
     channel: "ha.propagation_timeouts"
     display_name: "HA Propagation Timeouts"
     unit: "#"
@@ -654,6 +668,7 @@ metrics:
       type: counter
 
   - name: "netscaler.ha.heartbeat.rx.packets"
+    multi_instance_labels: []
     channel: "ha.heartbeat.rx.packets"
     display_name: "HA Heartbeat RX Packets"
     unit: "#"
@@ -667,6 +682,7 @@ metrics:
         network.io.direction: receive
 
   - name: "netscaler.ha.heartbeat.rx.rate"
+    multi_instance_labels: []
     channel: "ha.heartbeat.rx.rate"
     display_name: "HA Heartbeat RX Rate"
     unit: "Custom"
@@ -681,6 +697,7 @@ metrics:
         network.io.direction: receive
 
   - name: "netscaler.ha.heartbeat.tx.packets"
+    multi_instance_labels: []
     channel: "ha.heartbeat.tx.packets"
     display_name: "HA Heartbeat TX Packets"
     unit: "#"
@@ -694,6 +711,7 @@ metrics:
         network.io.direction: transmit
 
   - name: "netscaler.ha.heartbeat.tx.rate"
+    multi_instance_labels: []
     channel: "ha.heartbeat.tx.rate"
     display_name: "HA Heartbeat TX Rate"
     unit: "Custom"
@@ -763,6 +781,7 @@ metrics:
   # SYSTEM NETWORK PPS (packets per second rates + cumulative totals)
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.system.network.rx.packets_per_sec"
+    multi_instance_labels: []
     channel: "system.network.rx.packets_per_sec"
     display_name: "System RX Packets Per Second"
     unit: "pps"
@@ -776,6 +795,7 @@ metrics:
         network.io.direction: receive
 
   - name: "netscaler.system.network.tx.packets_per_sec"
+    multi_instance_labels: []
     channel: "system.network.tx.packets_per_sec"
     display_name: "System TX Packets Per Second"
     unit: "pps"
@@ -789,6 +809,7 @@ metrics:
         network.io.direction: transmit
 
   - name: "netscaler.system.network.rx.packets.total"
+    multi_instance_labels: []
     channel: "system.network.rx.packets.total"
     display_name: "System RX Packets Total"
     unit: "#"
@@ -802,6 +823,7 @@ metrics:
         network.io.direction: receive
 
   - name: "netscaler.system.network.tx.packets.total"
+    multi_instance_labels: []
     channel: "system.network.tx.packets.total"
     display_name: "System TX Packets Total"
     unit: "#"
@@ -1252,6 +1274,7 @@ metrics:
   # CACHE
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.cache.hit_ratio_percent"
+    multi_instance_labels: []
     channel: "cache.hit_ratio_percent"
     display_name: "Cache Hit Ratio"
     unit: "%"
@@ -1264,6 +1287,7 @@ metrics:
       # Mapper ÷100
 
   - name: "netscaler.cache.objects.count"
+    multi_instance_labels: []
     channel: "cache.objects.count"
     display_name: "Cache Objects Count"
     unit: "#"
@@ -1275,6 +1299,7 @@ metrics:
       type: updowncounter
 
   - name: "netscaler.cache.memory.used_kb"
+    multi_instance_labels: []
     channel: "cache.memory.used_kb"
     display_name: "Cache Memory Used"
     unit: "KB"
@@ -1287,6 +1312,7 @@ metrics:
       # Mapper ×1024 (KB → By)
 
   - name: "netscaler.cache.hits.total"
+    multi_instance_labels: []
     channel: "cache.hits.total"
     display_name: "Cache Hits Total"
     unit: "#"
@@ -1300,6 +1326,7 @@ metrics:
         senhub.netscaler.cache.lookup_result: hit
 
   - name: "netscaler.cache.misses.total"
+    multi_instance_labels: []
     channel: "cache.misses.total"
     display_name: "Cache Misses Total"
     unit: "#"
@@ -1316,6 +1343,7 @@ metrics:
   # COMPRESSION
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.compression.ratio"
+    multi_instance_labels: []
     channel: "compression.ratio"
     display_name: "Compression Ratio"
     unit: "#"
@@ -1327,6 +1355,7 @@ metrics:
       type: gauge
 
   - name: "netscaler.compression.bytes.compressed.total"
+    multi_instance_labels: []
     channel: "compression.bytes.compressed.total"
     display_name: "Compressed Bytes Total"
     unit: "bytes"
@@ -1340,6 +1369,7 @@ metrics:
         senhub.netscaler.compression.bytes_type: compressed
 
   - name: "netscaler.compression.bytes.original.total"
+    multi_instance_labels: []
     channel: "compression.bytes.original.total"
     display_name: "Original Bytes Total"
     unit: "bytes"
@@ -1353,6 +1383,7 @@ metrics:
         senhub.netscaler.compression.bytes_type: original
 
   - name: "netscaler.compression.bandwidth_savings.bytes"
+    multi_instance_labels: []
     channel: "compression.bandwidth_savings.bytes"
     display_name: "Compression Bandwidth Savings"
     unit: "bytes"
@@ -1367,6 +1398,7 @@ metrics:
   # AAA / Authentication
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.aaa.sessions.active.total"
+    multi_instance_labels: []
     channel: "aaa.sessions.active.total"
     display_name: "AAA Active Sessions Total"
     unit: "#"
@@ -1496,6 +1528,7 @@ metrics:
   # APPLICATION FIREWALL (WAF)
   # ═════════════════════════════════════════════════════════════════════════
   - name: "netscaler.appfw.violations.total"
+    multi_instance_labels: []
     channel: "appfw.violations.total"
     display_name: "AppFW Violations Total"
     unit: "#"
@@ -1507,6 +1540,7 @@ metrics:
       type: counter
 
   - name: "netscaler.appfw.requests.blocked.total"
+    multi_instance_labels: []
     channel: "appfw.requests.blocked.total"
     display_name: "AppFW Requests Blocked"
     unit: "#"
@@ -1520,6 +1554,7 @@ metrics:
         senhub.netscaler.http.message_type: request
 
   - name: "netscaler.appfw.responses.blocked.total"
+    multi_instance_labels: []
     channel: "appfw.responses.blocked.total"
     display_name: "AppFW Responses Blocked"
     unit: "#"
@@ -1533,6 +1568,7 @@ metrics:
         senhub.netscaler.http.message_type: response
 
   - name: "netscaler.appfw.violations.sqli.total"
+    multi_instance_labels: []
     channel: "appfw.violations.sqli.total"
     display_name: "AppFW SQL Injection Violations"
     unit: "#"
@@ -1546,6 +1582,7 @@ metrics:
         senhub.netscaler.appfw.violation_type: sqli
 
   - name: "netscaler.appfw.violations.xss.total"
+    multi_instance_labels: []
     channel: "appfw.violations.xss.total"
     display_name: "AppFW XSS Violations"
     unit: "#"
@@ -1559,6 +1596,7 @@ metrics:
         senhub.netscaler.appfw.violation_type: xss
 
   - name: "netscaler.appfw.violations.buffer_overflow.total"
+    multi_instance_labels: []
     channel: "appfw.violations.buffer_overflow.total"
     display_name: "AppFW Buffer Overflow Violations"
     unit: "#"
