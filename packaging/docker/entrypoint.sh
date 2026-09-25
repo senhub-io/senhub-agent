@@ -142,6 +142,29 @@ init_config() {
 keep_agent_key() {
   kept="$STATE_DIR/agent.key"
 
+  # SENHUB_AGENT_KEY is to the agent identity what SENHUB_HOST_ID is to
+  # the host: with both, a deployment without a volume keeps one host and
+  # one agent across containers. It wins over a kept key.
+  if [ -n "${SENHUB_AGENT_KEY:-}" ]; then
+    key=$(printf '%s' "$SENHUB_AGENT_KEY" | tr 'ABCDEF' 'abcdef')
+    if ! printf '%s' "$key" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+      log "SENHUB_AGENT_KEY is not an agent key: a UUID such as e313cd19-45d9-4711-8b09-3f58ac6e7595"
+      exit 1
+    fi
+    if degenerate_machine_id "$(printf '%s' "$key" | tr -d '-')"; then
+      log "SENHUB_AGENT_KEY looks like an example or a blank value ($SENHUB_AGENT_KEY): every agent given it would be one agent downstream. Give each instance its own"
+      exit 1
+    fi
+    tmp="$CONFIG.new"
+    if sed "s|^  key: \".*\"$|  key: \"$key\"|" "$CONFIG" > "$tmp" 2>/dev/null && mv "$tmp" "$CONFIG"; then
+      log "agent key taken from SENHUB_AGENT_KEY"
+      return 0
+    fi
+    rm -f "$tmp"
+    log "could not write SENHUB_AGENT_KEY into $CONFIG"
+    exit 1
+  fi
+
   if [ ! -r "$kept" ]; then
     key=$(sed -n 's/^  key: "\(.*\)"$/\1/p' "$CONFIG" | head -1)
     if [ -z "$key" ]; then

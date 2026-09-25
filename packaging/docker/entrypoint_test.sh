@@ -89,6 +89,27 @@ printf 'config_version: 3\n\nagent:\n  key: "e313cd19-45d9-4711-8b09-3f58ac6e759
 keep_agent_key 2>/dev/null
 check "a fresh agent key is kept for the next container" "$(cat "$STATE_DIR/agent.key")" "e313cd19-45d9-4711-8b09-3f58ac6e7595"
 
+# 5b. SENHUB_AGENT_KEY names the agent without a volume: two containers
+#     with no shared state, each with a freshly generated agent.yaml,
+#     come up as the same agent. It wins over a kept key.
+for run in 1 2; do
+  rm -rf "$STATE_DIR"; mkdir -p "$STATE_DIR"
+  printf 'config_version: 3\n\nagent:\n  key: "%s"\n' "$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo 9f1c2e3d-4b5a-4c6d-8e7f-a1b2c3d4e5f$run)" > "$CONFIG"
+  SENHUB_AGENT_KEY="7E1D2C3B-4A59-4687-9A0B-1C2D3E4F5A6B"
+  export SENHUB_AGENT_KEY
+  keep_agent_key 2>/dev/null
+  check "SENHUB_AGENT_KEY names the agent, container $run" "$(sed -n 's/^  key: "\(.*\)"$/\1/p' "$CONFIG")" "7e1d2c3b-4a59-4687-9a0b-1c2d3e4f5a6b"
+done
+for bad in not-a-key 01234567-89ab-cdef-0123-456789abcdef; do
+  SENHUB_AGENT_KEY=$bad
+  if (keep_agent_key 2>/dev/null); then
+    check "SENHUB_AGENT_KEY=$bad is refused" "accepted" "refused"
+  else
+    check "SENHUB_AGENT_KEY=$bad is refused" "refused" "refused"
+  fi
+done
+unset SENHUB_AGENT_KEY
+
 # 6. The Container Apps shorthand writes one entry per name of the list,
 #    each with its own bookmark, so a collector follows several
 #    applications without hand-written YAML.
