@@ -486,21 +486,22 @@ func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical st
 		}
 	}
 
-	// Evaluate status
+	// A threshold is the last acceptable value, as in the Nagios plugin
+	// convention ("10" alerts above 10, "10:" below 10): warning "0" on
+	// a failure count alerts on the first failure, and a value equal to
+	// the threshold stays OK.
 	status := 0 // OK
 
 	if !invert {
-		// Normal evaluation: higher values are worse
-		if hasCritical && value >= critThreshold {
+		if hasCritical && value > critThreshold {
 			status = 2 // CRITICAL
-		} else if value >= warnThreshold {
+		} else if value > warnThreshold {
 			status = 1 // WARNING
 		}
 	} else {
-		// Inverted evaluation: lower values are worse
-		if hasCritical && value <= critThreshold {
+		if hasCritical && value < critThreshold {
 			status = 2 // CRITICAL
-		} else if value <= warnThreshold {
+		} else if value < warnThreshold {
 			status = 1 // WARNING
 		}
 	}
