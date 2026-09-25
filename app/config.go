@@ -497,7 +497,7 @@ func checkConfig(configPath string) {
 				continue
 			}
 			if !registeredProbes[p.Type] {
-				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
+				fmt.Printf("  [ERROR] Probe %q: %s\n", p.Name, license.NotInThisBuild(p.Type))
 				errorCount++
 				continue
 			}

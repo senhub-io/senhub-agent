@@ -69,3 +69,28 @@ func TestAProbeThatCannotStartIsCountedShownAndRetried(t *testing.T) {
 		t.Errorf("total = %d after recovery, want 1", total)
 	}
 }
+
+// A probe type this build does not carry is not a licensing question: on
+// the open-source MSI a veeam probe was reported as "requires a valid
+// license" and "upgrade license to enable", sending the operator to buy
+// something that could not help.
+func TestAProbeThisBuildDoesNotCarryNamesTheEdition(t *testing.T) {
+	if _, carried := probes.LookupProbeConstructor("veeam"); carried {
+		t.Skip("this build carries the veeam probe")
+	}
+	cfg := configuration.ProbeConfig{Name: "veeam-test", Type: "veeam", Params: map[string]interface{}{"host": "vbr.example.local"}}
+	provider := &MockConfigProvider{config: configuration.ConfigurationData{Probes: []configuration.ProbeConfig{cfg}}}
+	add := func([]datapoint.DataPoint, data_store.StrategyRouter) error { return nil }
+	s := NewSensor(add, provider, logger.NewLogger(&cliArgs.ParsedArgs{})).(*sensor)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	state := agentstate.GetProbeRunState(probes.GenerateProbeId(cfg))
+	if !strings.Contains(state.LastError, "full edition") || strings.Contains(state.LastError, "licen") {
+		t.Errorf("reason = %q, want the edition named and no licence advice", state.LastError)
+	}
+}

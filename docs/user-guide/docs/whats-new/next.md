@@ -442,3 +442,10 @@ collection gaps that comparison exposed.
   this fix must uninstall it once** (Settings > Apps, or `msiexec /x`);
   the configuration under `C:\ProgramData\SenHub` is removed by the
   uninstall, so copy it aside first.
+
+- **A probe the open-source build does not carry names the edition that
+  does.** On the open-source MSI a `veeam` probe was reported as
+  "requires a valid license, upgrade license to enable", and
+  `config check` said "unknown type". A licence cannot add code the
+  binary does not contain; both now say the probe ships in the full
+  edition.
