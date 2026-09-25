@@ -204,8 +204,8 @@ collection gaps that comparison exposed.
     per item cannot hold one, so it is sent as its count and its sum
     under keys that say which is which. A metric outside the shipped
     conventions keeps the shorter key its own name gives it. An
-    application exporting part of a dimension set gets items for the
-    rest of it, which stay empty. (#922)
+    application exporting part of a dimension set gets items only for
+    what it sends. (#922, #940)
 
 - **A new probe watches Azure Container Apps jobs.** The existing probe
   follows applications, which run continuously; a job is discrete — an
