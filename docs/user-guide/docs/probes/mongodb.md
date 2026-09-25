@@ -56,33 +56,35 @@ usage, replication state and database storage.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.mongodb.up` | `mongodb_up` | # | 1 if the agent reached the MongoDB server this cycle, 0 otherwise |
-| `mongodb.uptime` | `mongodb_uptime` | s | Seconds since the mongod process started (uptimeMillis / 1000) |
-| `mongodb.connections` | `mongodb_connections_active` | # | Number of active (in-use) client connections (connections.active) |
-| `mongodb.connections` | `mongodb_connections_available` | # | Number of connections available for new clients (connections.available) |
-| `mongodb.connections` | `mongodb_connections_current` | # | Total number of current open connections (connections.current) |
-| `mongodb.network.io` | `mongodb_network_bytes_in` | BytesFile | Total bytes received over the network (network.bytesIn) |
-| `mongodb.network.io` | `mongodb_network_bytes_out` | BytesFile | Total bytes sent over the network (network.bytesOut) |
-| `mongodb.network.request.count` | `mongodb_network_requests` | # | Total distinct client requests received (network.numRequests) |
-| `mongodb.operation.count` | `mongodb_operations_{operation}` | # | Total operations executed by type (opcounters.*) — insert/query/update/delete/getmore/command |
-| `mongodb.memory.usage` | `mongodb_memory_{type}` | BytesMemory | Memory usage in bytes (mem.resident / mem.virtual — converted from MB) |
-| `mongodb.document.operation.count` | `mongodb_documents_{operation}` | # | Document operations since startup (metrics.document.*) — deleted/inserted/returned/updated |
-| `mongodb.cache.operations` | `mongodb_cache_{type}` | # | WiredTiger cache page operations — read: pages read into cache; write: pages written from cache |
-| `mongodb.lock.acquire.wait_count` | `mongodb_active_reads` | # | Clients queued waiting for a read lock (globalLock.currentQueue.readers) |
-| `mongodb.lock.acquire.wait_count` | `mongodb_active_writes` | # | Clients queued waiting for a write lock (globalLock.currentQueue.writers) |
-| `mongodb.collection.count` | `mongodb_collections_{database}` | # | Number of collections in the database (dbStats.collections) |
-| `mongodb.data.size` | `mongodb_data_size_{database}` | BytesFile | Uncompressed in-memory size of all documents (dbStats.dataSize) |
-| `mongodb.index.count` | `mongodb_indexes_{database}` | # | Number of indexes across all collections (dbStats.indexes) |
-| `mongodb.index.size` | `mongodb_index_size_{database}` | BytesFile | Total size of all indexes on disk (dbStats.indexSize) |
-| `mongodb.storage.size` | `mongodb_storage_size_{database}` | BytesFile | Total amount of disk space allocated to all collections (dbStats.storageSize) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.mongodb.up` | `senhub.mongodb.up` | MongoDB Up | # | 1 if the agent reached the MongoDB server this cycle, 0 otherwise |
+| `mongodb.uptime` | `mongodb.uptime` | Uptime | s | Seconds since the mongod process started (uptimeMillis / 1000) |
+| `mongodb.connections` | `mongodb.connections.active` | Connections Active | # | Number of active (in-use) client connections (connections.active) |
+| `mongodb.connections` | `mongodb.connections.available` | Connections Available | # | Number of connections available for new clients (connections.available) |
+| `mongodb.connections` | `mongodb.connections.current` | Connections Current | # | Total number of current open connections (connections.current) |
+| `mongodb.network.io` | `mongodb.network.bytes.in` | Network Bytes In | BytesFile | Total bytes received over the network (network.bytesIn) |
+| `mongodb.network.io` | `mongodb.network.bytes.out` | Network Bytes Out | BytesFile | Total bytes sent over the network (network.bytesOut) |
+| `mongodb.network.request.count` | `mongodb.network.requests` | Network Requests | # | Total distinct client requests received (network.numRequests) |
+| `mongodb.operation.count` | `mongodb.operations.count` | Operations {operation} | # | Total operations executed by type (opcounters.*) — insert/query/update/delete/getmore/command |
+| `mongodb.memory.usage` | `mongodb.memory.usage` | Memory {type} | BytesMemory | Memory usage in bytes (mem.resident / mem.virtual — converted from MB) |
+| `mongodb.document.operation.count` | `mongodb.document.operations` | Documents {operation} | # | Document operations since startup (metrics.document.*) — deleted/inserted/returned/updated |
+| `mongodb.cache.operations` | `mongodb.cache.operations` | Cache {type} | # | WiredTiger cache page operations — read: pages read into cache; write: pages written from cache |
+| `mongodb.lock.acquire.wait_count` | `mongodb.active.reads` | Active Reads Queued | # | Clients queued waiting for a read lock (globalLock.currentQueue.readers) |
+| `mongodb.lock.acquire.wait_count` | `mongodb.active.writes` | Active Writes Queued | # | Clients queued waiting for a write lock (globalLock.currentQueue.writers) |
+| `mongodb.collection.count` | `mongodb.collection.count` | Collections {database} | # | Number of collections in the database (dbStats.collections) |
+| `mongodb.data.size` | `mongodb.data.size` | Data Size {database} | BytesFile | Uncompressed in-memory size of all documents (dbStats.dataSize) |
+| `mongodb.index.count` | `mongodb.index.count` | Indexes {database} | # | Number of indexes across all collections (dbStats.indexes) |
+| `mongodb.index.size` | `mongodb.index.size` | Index Size {database} | BytesFile | Total size of all indexes on disk (dbStats.indexSize) |
+| `mongodb.storage.size` | `mongodb.storage.size` | Storage Size {database} | BytesFile | Total amount of disk space allocated to all collections (dbStats.storageSize) |
 
 <!-- schema:metrics:end -->

@@ -520,59 +520,61 @@ Contact support@senhub.io for license information.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.citrix.sessions.count` | `sessions_connected` | # | Number of active user sessions currently connected to virtual desktops |
-| `senhub.citrix.sessions.count` | `sessions_disconnected` | # | Number of user sessions in disconnected state but not yet logged off |
-| `senhub.citrix.machines.total` | `machines_total` | # | Total number of VDA machines in the delivery group |
-| `senhub.citrix.machines.by_registration_state` | `machines_registered` | # | Number of VDA machines successfully registered with the Delivery Controller |
-| `senhub.citrix.machines.by_registration_state` | `machines_unregistered` | # | Number of VDA machines not registered with the Delivery Controller |
-| `senhub.citrix.machines.by_registration_state` | `machines_faulty` | # | Number of VDA machines in a faulty state unable to accept user connections |
-| `senhub.citrix.machines.by_registration_state` | `machines_maintenance` | # | Number of VDA machines placed in maintenance mode by an administrator |
-| `senhub.citrix.logon.duration_1h_average` | `logon_duration_avg_1h` | s | Average end-to-end logon duration over the last hour |
-| `senhub.citrix.logon.last_session_duration` | `logon_duration_total` | s | Total cumulative logon duration for the most recent logon session |
-| `senhub.citrix.logon.sessions_opened` | `logon_sessions_opened` | # | Number of new sessions opened during the measurement period |
-| `senhub.citrix.logon.phase_duration` | `logon_brokering` | s | Time spent by the Delivery Controller brokering the session to a VDA |
-| `senhub.citrix.logon.phase_duration` | `logon_vmstart` | s | Time spent starting or resuming the virtual machine for the session |
-| `senhub.citrix.logon.phase_duration` | `logon_hdx` | s | Time spent establishing the HDX/ICA connection between client and VDA |
-| `senhub.citrix.logon.phase_duration` | `logon_authentication` | s | Time spent authenticating user credentials during logon |
-| `senhub.citrix.logon.phase_duration` | `logon_gpo` | s | Time spent applying Group Policy Objects during session logon |
-| `senhub.citrix.logon.phase_duration` | `logon_scripts` | s | Time spent executing logon scripts during session initialization |
-| `senhub.citrix.logon.phase_duration` | `logon_profile` | s | Time spent loading the user profile during session logon |
-| `senhub.citrix.logon.phase_duration` | `logon_interactive` | s | Time spent on interactive session setup after profile load completes |
-| `senhub.citrix.connection_failures.total` | `failures_total` | # | Total number of failed user connection attempts across all failure categories |
-| `senhub.citrix.connection_failures.by_category` | `client_connection_failures` | # | Connection failures caused by client-side issues such as network or endpoint errors |
-| `senhub.citrix.connection_failures.by_category` | `configuration_errors` | # | Connection failures caused by misconfigured delivery groups or policies |
-| `senhub.citrix.connection_failures.by_category` | `machine_failures` | # | Connection failures caused by VDA machines being unavailable or unresponsive |
-| `senhub.citrix.connection_failures.by_category` | `capacity_unavailable` | # | Connection failures due to no available capacity in the delivery group |
-| `senhub.citrix.connection_failures.by_category` | `licenses_unavailable` | # | Connection failures due to insufficient Citrix licenses available |
-| `senhub.citrix.connection_failures.by_category` | `other_failures` | # | Connection failures not classified in other failure categories |
-| `senhub.citrix.load_index.ratio` | `load_index_effective` | % | Average effective load evaluator index across all registered VDAs |
-| `senhub.citrix.load_index.ratio` | `load_index_cpu` | % | Average CPU load evaluator index across all registered VDAs |
-| `senhub.citrix.load_index.ratio` | `load_index_memory` | % | Average memory load evaluator index across all registered VDAs |
-| `senhub.citrix.load_index.ratio` | `load_index_disk` | % | Average disk load evaluator index across all registered VDAs |
-| `senhub.citrix.load_index.ratio` | `load_index_network` | % | Average network load evaluator index across all registered VDAs |
-| `senhub.citrix.load_index.ratio` | `load_index_sessions` | % | Average session count load evaluator index across all registered VDAs |
-| `senhub.citrix.machines.overloaded` | `load_overloaded_machines` | # | Number of VDA machines reporting a load index at or above the overload threshold |
-| `senhub.citrix.license.sessions_active` | `license_sessions_active` | # | Number of currently active sessions consuming a Citrix license |
-| `senhub.citrix.license.peak_concurrent_users` | `license_peak_concurrent` | # | Highest number of concurrent licensed users recorded in the current period |
-| `senhub.citrix.license.unique_users` | `license_unique_users` | # | Number of unique users who have consumed a license in the current period |
-| `senhub.citrix.license.grace.sessions_remaining` | `license_grace_sessions_left` | # | Remaining supplemental grace sessions available when license limit is exceeded |
-| `senhub.citrix.license.grace.active` | `license_grace_period_active` | # | Indicates whether the supplemental grace period is currently active (1) or not (0) |
-| `senhub.citrix.license.grace.time_remaining` | `license_grace_hours_left` | custom | Hours remaining before the supplemental grace period expires |
-| `senhub.citrix.machines.multi_session_fault_total` | `machines_faulty_total` | # | Total number of multi-session VDA machines in a fault state |
-| `senhub.citrix.machines.by_fault_state` | `boot_failure` | # | Number of machines that failed to boot within the expected timeframe |
-| `senhub.citrix.machines.by_fault_state` | `stuck_at_boot` | # | Number of machines stuck in the boot process and not progressing to registration |
-| `senhub.citrix.machines.by_fault_state` | `unregistered` | # | Number of powered-on machines that have not registered with the Delivery Controller |
-| `senhub.citrix.machines.by_fault_state` | `max_capacity` | # | Number of machines that have reached their maximum session capacity |
-| `senhub.citrix.machines.by_fault_state` | `vm_not_found` | # | Number of machines whose virtual machine could not be found on the hypervisor |
-| `senhub.citrix.machines.by_fault_state` | `unknown` | # | Number of machines in an unrecognized or undetermined fault state |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.citrix.sessions.count` | `sessions_connected` | Sessions Connected | # | Number of active user sessions currently connected to virtual desktops |
+| `senhub.citrix.sessions.count` | `sessions_disconnected` | Sessions Disconnected | # | Number of user sessions in disconnected state but not yet logged off |
+| `senhub.citrix.machines.total` | `machines_total` | Machines Total | # | Total number of VDA machines in the delivery group |
+| `senhub.citrix.machines.by_registration_state` | `machines_registered` | Machines Registered | # | Number of VDA machines successfully registered with the Delivery Controller |
+| `senhub.citrix.machines.by_registration_state` | `machines_unregistered` | Machines Unregistered | # | Number of VDA machines not registered with the Delivery Controller |
+| `senhub.citrix.machines.by_registration_state` | `machines_faulty` | Machines Faulty | # | Number of VDA machines in a faulty state unable to accept user connections |
+| `senhub.citrix.machines.by_registration_state` | `machines_maintenance` | Machines in Maintenance | # | Number of VDA machines placed in maintenance mode by an administrator |
+| `senhub.citrix.logon.duration_1h_average` | `logon_duration_avg_1h` | Logon Duration Average (1h) | s | Average end-to-end logon duration over the last hour |
+| `senhub.citrix.logon.last_session_duration` | `logon_duration_total` | Logon Duration Total | s | Total cumulative logon duration for the most recent logon session |
+| `senhub.citrix.logon.sessions_opened` | `logon_sessions_opened` | Logon Sessions Opened | # | Number of new sessions opened during the measurement period |
+| `senhub.citrix.logon.phase_duration` | `logon_brokering` | Logon Brokering | s | Time spent by the Delivery Controller brokering the session to a VDA |
+| `senhub.citrix.logon.phase_duration` | `logon_vmstart` | Logon VM Start | s | Time spent starting or resuming the virtual machine for the session |
+| `senhub.citrix.logon.phase_duration` | `logon_hdx` | Logon HDX | s | Time spent establishing the HDX/ICA connection between client and VDA |
+| `senhub.citrix.logon.phase_duration` | `logon_authentication` | Logon Authentication | s | Time spent authenticating user credentials during logon |
+| `senhub.citrix.logon.phase_duration` | `logon_gpo` | Logon GPO | s | Time spent applying Group Policy Objects during session logon |
+| `senhub.citrix.logon.phase_duration` | `logon_scripts` | Logon Scripts | s | Time spent executing logon scripts during session initialization |
+| `senhub.citrix.logon.phase_duration` | `logon_profile` | Logon Profile | s | Time spent loading the user profile during session logon |
+| `senhub.citrix.logon.phase_duration` | `logon_interactive` | Logon Interactive | s | Time spent on interactive session setup after profile load completes |
+| `senhub.citrix.connection_failures.total` | `failures_total` | Connection Failures Total | # | Total number of failed user connection attempts across all failure categories |
+| `senhub.citrix.connection_failures.by_category` | `client_connection_failures` | Client Connection Failures | # | Connection failures caused by client-side issues such as network or endpoint errors |
+| `senhub.citrix.connection_failures.by_category` | `configuration_errors` | Configuration Errors | # | Connection failures caused by misconfigured delivery groups or policies |
+| `senhub.citrix.connection_failures.by_category` | `machine_failures` | Machine Failures | # | Connection failures caused by VDA machines being unavailable or unresponsive |
+| `senhub.citrix.connection_failures.by_category` | `capacity_unavailable` | Capacity Unavailable | # | Connection failures due to no available capacity in the delivery group |
+| `senhub.citrix.connection_failures.by_category` | `licenses_unavailable` | Licenses Unavailable | # | Connection failures due to insufficient Citrix licenses available |
+| `senhub.citrix.connection_failures.by_category` | `other_failures` | Other Failures | # | Connection failures not classified in other failure categories |
+| `senhub.citrix.load_index.ratio` | `load_index_effective` | Load Index Effective Avg | % | Average effective load evaluator index across all registered VDAs |
+| `senhub.citrix.load_index.ratio` | `load_index_cpu` | Load Index CPU Avg | % | Average CPU load evaluator index across all registered VDAs |
+| `senhub.citrix.load_index.ratio` | `load_index_memory` | Load Index Memory Avg | % | Average memory load evaluator index across all registered VDAs |
+| `senhub.citrix.load_index.ratio` | `load_index_disk` | Load Index Disk Avg | % | Average disk load evaluator index across all registered VDAs |
+| `senhub.citrix.load_index.ratio` | `load_index_network` | Load Index Network Avg | % | Average network load evaluator index across all registered VDAs |
+| `senhub.citrix.load_index.ratio` | `load_index_sessions` | Load Index Sessions Avg | % | Average session count load evaluator index across all registered VDAs |
+| `senhub.citrix.machines.overloaded` | `load_overloaded_machines` | Overloaded Machines | # | Number of VDA machines reporting a load index at or above the overload threshold |
+| `senhub.citrix.license.sessions_active` | `license_sessions_active` | Licensed Sessions Active | # | Number of currently active sessions consuming a Citrix license |
+| `senhub.citrix.license.peak_concurrent_users` | `license_peak_concurrent` | License Peak Concurrent Users | # | Highest number of concurrent licensed users recorded in the current period |
+| `senhub.citrix.license.unique_users` | `license_unique_users` | License Unique Users | # | Number of unique users who have consumed a license in the current period |
+| `senhub.citrix.license.grace.sessions_remaining` | `license_grace_sessions_left` | License Grace Sessions Left | # | Remaining supplemental grace sessions available when license limit is exceeded |
+| `senhub.citrix.license.grace.active` | `license_grace_period_active` | License Grace Period Active | # | Indicates whether the supplemental grace period is currently active (1) or not (0) |
+| `senhub.citrix.license.grace.time_remaining` | `license_grace_hours_left` | License Grace Hours Left | custom | Hours remaining before the supplemental grace period expires |
+| `senhub.citrix.machines.multi_session_fault_total` | `machines_faulty_total` | Machines Faulty Total (Multi-Session) | # | Total number of multi-session VDA machines in a fault state |
+| `senhub.citrix.machines.by_fault_state` | `boot_failure` | Boot Failure | # | Number of machines that failed to boot within the expected timeframe |
+| `senhub.citrix.machines.by_fault_state` | `stuck_at_boot` | Stuck At Boot | # | Number of machines stuck in the boot process and not progressing to registration |
+| `senhub.citrix.machines.by_fault_state` | `unregistered` | Unregistered | # | Number of powered-on machines that have not registered with the Delivery Controller |
+| `senhub.citrix.machines.by_fault_state` | `max_capacity` | Max Capacity | # | Number of machines that have reached their maximum session capacity |
+| `senhub.citrix.machines.by_fault_state` | `vm_not_found` | VM Not Found | # | Number of machines whose virtual machine could not be found on the hypervisor |
+| `senhub.citrix.machines.by_fault_state` | `unknown` | Unknown | # | Number of machines in an unrecognized or undetermined fault state |
 
 <!-- schema:metrics:end -->

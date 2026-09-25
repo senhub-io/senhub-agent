@@ -84,15 +84,17 @@ record never carries its own `host.name`.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.windows_eventlog.records_emitted` | `windows_eventlog_records_emitted` | # | Cumulative count of event records this probe has published to the log rail |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.windows_eventlog.records_emitted` | `senhub.windows_eventlog.records_emitted` | Windows Event Log Records Emitted | # | Cumulative count of event records this probe has published to the log rail |
 
 <!-- schema:metrics:end -->

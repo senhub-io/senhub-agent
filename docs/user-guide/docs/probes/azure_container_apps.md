@@ -229,28 +229,30 @@ curl "http://localhost:8080/api/{agentkey}/nagios/metrics/squash-logs"
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.azure_container_apps.up` | `up` | # | 1 when Azure Resource Manager answered the last replica scan, else 0 |
-| `senhub.azure_container_apps.replicas` | `replicas` | # | Replicas of the active revisions seen at the last scan |
-| `senhub.azure_container_apps.revisions.active` | `active_revisions` | # | Revisions marked active at the last scan; more than one means a rollout in flight or a traffic split left in place |
-| `senhub.azure_container_apps.streams.open` | `streams_open` | # | Console log streams currently attached (one per replica and container) |
-| `senhub.azure_container_apps.streams.wanted` | `streams_wanted` | # | Streams the last scan decided to hold; the gap with the open ones is a replica known and not being read |
-| `senhub.azure_container_apps.stream.token.ttl` | `stream_token_ttl` | TimeSeconds | Seconds left on the console stream token; a renewal that stopped working is invisible until every stream dies at once |
-| `senhub.azure_container_apps.records.last_age` | `records_last_age` | TimeSeconds | Seconds since a line last left this probe; an application that says nothing is silent, not necessarily broken, so read it against the open streams |
-| `senhub.azure_container_apps.arm.reads_remaining` | `arm_reads_remaining` | # | Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it |
-| `senhub.azure_container_apps.records_emitted` | `records_emitted` | # | Cumulative count of log records this probe has published to the log rail |
-| `senhub.azure_container_apps.records_dropped` | `records_dropped` | # | Cumulative count of lines dropped at the source by exclude patterns or min_severity |
-| `senhub.azure_container_apps.records_unparsed` | `records_unparsed` | # | Cumulative lines the declared parser could not read; a parser declared wrong loses every line and nothing else says so |
-| `senhub.azure_container_apps.stream.reconnects` | `stream_reconnects` | # | Cumulative count of console log streams re-attached after a drop |
-| `senhub.azure_container_apps.stream.attach_throttled` | `attach_throttled` | # | Cumulative attaches the stream endpoint refused for rate; counted apart from the reconnects, which climb on their own since Azure cuts every stream about every ten minutes |
-| `senhub.azure_container_apps.scan.failures` | `scan_failures_{reason}` | # | Cumulative replica scans Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable. Reachability alone reads the same for a wrong secret, a deleted application and a control plane pushing back |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.azure_container_apps.up` | `azure_container_apps_up` | Control Plane Reachable | # | 1 when Azure Resource Manager answered the last replica scan, else 0 |
+| `senhub.azure_container_apps.replicas` | `azure_container_apps_replicas` | Replicas | # | Replicas of the active revisions seen at the last scan |
+| `senhub.azure_container_apps.revisions.active` | `azure_container_apps_active_revisions` | Active Revisions | # | Revisions marked active at the last scan; more than one means a rollout in flight or a traffic split left in place |
+| `senhub.azure_container_apps.streams.open` | `azure_container_apps_streams_open` | Streams Open | # | Console log streams currently attached (one per replica and container) |
+| `senhub.azure_container_apps.streams.wanted` | `azure_container_apps_streams_wanted` | Streams Wanted | # | Streams the last scan decided to hold; the gap with the open ones is a replica known and not being read |
+| `senhub.azure_container_apps.stream.token.ttl` | `azure_container_apps_stream_token_ttl` | Stream Token TTL | TimeSeconds | Seconds left on the console stream token; a renewal that stopped working is invisible until every stream dies at once |
+| `senhub.azure_container_apps.records.last_age` | `azure_container_apps_records_last_age` | Seconds Since Last Record | TimeSeconds | Seconds since a line last left this probe; an application that says nothing is silent, not necessarily broken, so read it against the open streams |
+| `senhub.azure_container_apps.arm.reads_remaining` | `azure_container_apps_arm_reads_remaining` | ARM Reads Remaining | # | Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it |
+| `senhub.azure_container_apps.records_emitted` | `azure_container_apps_records_emitted` | Records Emitted | # | Cumulative count of log records this probe has published to the log rail |
+| `senhub.azure_container_apps.records_dropped` | `azure_container_apps_records_dropped` | Records Dropped | # | Cumulative count of lines dropped at the source by exclude patterns or min_severity |
+| `senhub.azure_container_apps.records_unparsed` | `azure_container_apps_records_unparsed` | Records Unparsed | # | Cumulative lines the declared parser could not read; a parser declared wrong loses every line and nothing else says so |
+| `senhub.azure_container_apps.stream.reconnects` | `azure_container_apps_stream_reconnects` | Stream Reconnects | # | Cumulative count of console log streams re-attached after a drop |
+| `senhub.azure_container_apps.stream.attach_throttled` | `azure_container_apps_attach_throttled` | Attaches Throttled | # | Cumulative attaches the stream endpoint refused for rate; counted apart from the reconnects, which climb on their own since Azure cuts every stream about every ten minutes |
+| `senhub.azure_container_apps.scan.failures` | `azure_container_apps_scan_failures` | Scan Failures {reason} | # | Cumulative replica scans Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable. Reachability alone reads the same for a wrong secret, a deleted application and a control plane pushing back |
 
 <!-- schema:metrics:end -->

@@ -61,22 +61,24 @@ state breakdown (reading, writing, waiting).
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.nginx.up` | `nginx_up` | # | 1 when the stub_status page is reachable and parseable, 0 otherwise |
-| `nginx.connections.current` | `nginx_connections_current` | # | Number of client connections currently being handled (accepted + in-flight) |
-| `nginx.connections.accepted` | `nginx_connections_accepted` | # | Total connections accepted since nginx start (monotonically increasing counter) |
-| `nginx.connections.handled` | `nginx_connections_handled` | # | Total connections handled since nginx start; equals accepted when no resource limit is hit |
-| `nginx.requests` | `nginx_requests` | # | Total HTTP requests processed since nginx start |
-| `nginx.connections.reading` | `nginx_connections_reading` | # | Connections where nginx is reading the request header |
-| `nginx.connections.writing` | `nginx_connections_writing` | # | Connections where nginx is writing the response to the client |
-| `nginx.connections.waiting` | `nginx_connections_waiting` | # | Idle keep-alive connections waiting for a request |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.nginx.up` | `senhub.nginx.up` | Nginx Up | # | 1 when the stub_status page is reachable and parseable, 0 otherwise |
+| `nginx.connections.current` | `nginx.connections.current` | Nginx Active Connections | # | Number of client connections currently being handled (accepted + in-flight) |
+| `nginx.connections.accepted` | `nginx.connections.accepted` | Nginx Accepted Connections | # | Total connections accepted since nginx start (monotonically increasing counter) |
+| `nginx.connections.handled` | `nginx.connections.handled` | Nginx Handled Connections | # | Total connections handled since nginx start; equals accepted when no resource limit is hit |
+| `nginx.requests` | `nginx.requests` | Nginx Total Requests | # | Total HTTP requests processed since nginx start |
+| `nginx.connections.reading` | `nginx.connections.reading` | Nginx Reading Connections | # | Connections where nginx is reading the request header |
+| `nginx.connections.writing` | `nginx.connections.writing` | Nginx Writing Connections | # | Connections where nginx is writing the response to the client |
+| `nginx.connections.waiting` | `nginx.connections.waiting` | Nginx Waiting Connections | # | Idle keep-alive connections waiting for a request |
 
 <!-- schema:metrics:end -->

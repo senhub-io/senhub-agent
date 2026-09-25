@@ -65,26 +65,28 @@ with hundreds of short-lived queues otherwise emits a series per queue.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.activemq.up` | `activemq_up` | # | 1 when the Jolokia endpoint responded successfully, 0 otherwise |
-| `activemq.producer.count` | `activemq_producer_count` | # | Total number of message producers connected to the broker |
-| `activemq.consumer.count` | `activemq_consumer_count` | # | Total number of message consumers connected to the broker |
-| `activemq.message.current` | `activemq_message_current` | # | Total number of messages currently held in all destinations |
-| `activemq.memory.usage` | `activemq_memory_usage` | % | Broker JVM memory usage as a percentage of the configured memory limit (0–100) |
-| `activemq.store.usage` | `activemq_store_usage` | % | Persistent message store usage as a percentage of the configured store limit (0–100) |
-| `activemq.temp.usage` | `activemq_temp_usage` | % | Temporary storage usage as a percentage of the configured temp limit (0–100) |
-| `activemq.message.enqueued` | `activemq_{destination_type}_{destination}_enqueued` | # | Cumulative number of messages enqueued since broker start |
-| `activemq.message.dequeued` | `activemq_{destination_type}_{destination}_dequeued` | # | Cumulative number of messages dequeued (consumed) since broker start |
-| `activemq.message.queue_size` | `activemq_{destination_type}_{destination}_queue_size` | # | Number of messages currently waiting in the destination |
-| `activemq.destination.consumer.count` | `activemq_{destination_type}_{destination}_consumers` | # | Number of consumers currently subscribed to the destination |
-| `activemq.destination.producer.count` | `activemq_{destination_type}_{destination}_producers` | # | Number of producers currently attached to the destination |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.activemq.up` | `senhub.activemq.up` | ActiveMQ Broker Up | # | 1 when the Jolokia endpoint responded successfully, 0 otherwise |
+| `activemq.producer.count` | `activemq.producer.count` | ActiveMQ Producers | # | Total number of message producers connected to the broker |
+| `activemq.consumer.count` | `activemq.consumer.count` | ActiveMQ Consumers | # | Total number of message consumers connected to the broker |
+| `activemq.message.current` | `activemq.message.current` | ActiveMQ Messages In Flight | # | Total number of messages currently held in all destinations |
+| `activemq.memory.usage` | `activemq.memory.usage` | ActiveMQ Memory Usage | % | Broker JVM memory usage as a percentage of the configured memory limit (0–100) |
+| `activemq.store.usage` | `activemq.store.usage` | ActiveMQ Store Usage | % | Persistent message store usage as a percentage of the configured store limit (0–100) |
+| `activemq.temp.usage` | `activemq.temp.usage` | ActiveMQ Temp Usage | % | Temporary storage usage as a percentage of the configured temp limit (0–100) |
+| `activemq.message.enqueued` | `activemq.message.enqueued` | ActiveMQ {destination_type} {destination} Enqueued | # | Cumulative number of messages enqueued since broker start |
+| `activemq.message.dequeued` | `activemq.message.dequeued` | ActiveMQ {destination_type} {destination} Dequeued | # | Cumulative number of messages dequeued (consumed) since broker start |
+| `activemq.message.queue_size` | `activemq.message.queue_size` | ActiveMQ {destination_type} {destination} Queue Size | # | Number of messages currently waiting in the destination |
+| `activemq.destination.consumer.count` | `activemq.destination.consumer.count` | ActiveMQ {destination_type} {destination} Consumers | # | Number of consumers currently subscribed to the destination |
+| `activemq.destination.producer.count` | `activemq.destination.producer.count` | ActiveMQ {destination_type} {destination} Producers | # | Number of producers currently attached to the destination |
 
 <!-- schema:metrics:end -->

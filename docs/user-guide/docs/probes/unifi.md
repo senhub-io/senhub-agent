@@ -61,25 +61,27 @@ throughput and connected-client totals.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.unifi.up` | `unifi_up` | # | 1 when the controller answered login and the stat endpoints this cycle, 0 otherwise |
-| `unifi.devices.total` | `unifi_devices_total_{device_type}` | # | Number of devices of this type known to the controller |
-| `unifi.devices.adopted` | `unifi_devices_adopted_{device_type}` | # | Number of adopted devices of this type |
-| `unifi.devices.disconnected` | `unifi_devices_disconnected_{device_type}` | # | Number of devices of this type not in the connected state |
-| `unifi.clients.total` | `unifi_clients_total` | # | Total connected clients (wired + wireless) |
-| `unifi.clients.wifi` | `unifi_clients_wifi` | # | Connected wireless clients |
-| `unifi.network.io` | `unifi_network_io_{direction}` | bytes | WAN byte rate reported by the controller, discriminated by direction (transmit/receive) |
-| `unifi.device.cpu` | `unifi_device_cpu_{device_name}` | % | Per-device CPU utilization percentage |
-| `unifi.device.memory` | `unifi_device_memory_{device_name}` | % | Per-device memory utilization percentage |
-| `unifi.ap.clients` | `unifi_ap_clients_{device_name}` | # | Clients associated to this access point |
-| `unifi.ap.satisfaction` | `unifi_ap_satisfaction_{device_name}` | # | Access point experience score as a 0..1 ratio |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.unifi.up` | `senhub.unifi.up` | UniFi Controller Up | # | 1 when the controller answered login and the stat endpoints this cycle, 0 otherwise |
+| `unifi.devices.total` | `unifi.devices.total` | UniFi {device_type} Devices | # | Number of devices of this type known to the controller |
+| `unifi.devices.adopted` | `unifi.devices.adopted` | UniFi {device_type} Adopted | # | Number of adopted devices of this type |
+| `unifi.devices.disconnected` | `unifi.devices.disconnected` | UniFi {device_type} Disconnected | # | Number of devices of this type not in the connected state |
+| `unifi.clients.total` | `unifi.clients.total` | UniFi Clients | # | Total connected clients (wired + wireless) |
+| `unifi.clients.wifi` | `unifi.clients.wifi` | UniFi WiFi Clients | # | Connected wireless clients |
+| `unifi.network.io` | `unifi.network.io` | UniFi WAN IO {direction} | bytes | WAN byte rate reported by the controller, discriminated by direction (transmit/receive) |
+| `unifi.device.cpu` | `unifi.device.cpu` | UniFi {device_name} CPU | % | Per-device CPU utilization percentage |
+| `unifi.device.memory` | `unifi.device.memory` | UniFi {device_name} Memory | % | Per-device memory utilization percentage |
+| `unifi.ap.clients` | `unifi.ap.clients` | UniFi AP {device_name} Clients | # | Clients associated to this access point |
+| `unifi.ap.satisfaction` | `unifi.ap.satisfaction` | UniFi AP {device_name} Satisfaction | # | Access point experience score as a 0..1 ratio |
 
 <!-- schema:metrics:end -->

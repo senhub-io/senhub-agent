@@ -59,28 +59,30 @@ dependencies — uses the stdlib HTTP client.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.nats.up` | `nats_up` | # | 1 when the NATS management API (/varz) responds with HTTP 200 |
-| `nats.connections.count` | `nats_connections_count` | # | Number of currently active client connections |
-| `nats.connections.total` | `nats_connections_total` | # | Total number of client connections since server start (monotonic counter) |
-| `nats.subscriptions.count` | `nats_subscriptions_count` | # | Number of active subscriptions across all clients |
-| `nats.messages.in` | `nats_messages_in` | # | Total number of messages received by the server since start |
-| `nats.messages.out` | `nats_messages_out` | # | Total number of messages sent by the server since start |
-| `nats.bytes.in` | `nats_bytes_in` | B | Total bytes received by the server since start |
-| `nats.bytes.out` | `nats_bytes_out` | B | Total bytes sent by the server since start |
-| `nats.slow_consumers` | `nats_slow_consumers` | # | Number of slow consumer events detected since server start |
-| `nats.routes.count` | `nats_routes_count` | # | Number of active cluster routes (server-to-server connections) |
-| `nats.jetstream.streams` | `nats_jetstream_streams` | # | Number of JetStream streams (present only when JetStream is enabled) |
-| `nats.jetstream.consumers` | `nats_jetstream_consumers` | # | Number of JetStream consumers across all streams |
-| `nats.jetstream.messages` | `nats_jetstream_messages` | # | Total number of messages stored in JetStream across all streams |
-| `nats.jetstream.storage` | `nats_jetstream_storage` | B | Total bytes stored in JetStream across all streams |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.nats.up` | `senhub.nats.up` | NATS Server Up | # | 1 when the NATS management API (/varz) responds with HTTP 200 |
+| `nats.connections.count` | `nats.connections.count` | NATS Current Connections | # | Number of currently active client connections |
+| `nats.connections.total` | `nats.connections.total` | NATS Total Connections | # | Total number of client connections since server start (monotonic counter) |
+| `nats.subscriptions.count` | `nats.subscriptions.count` | NATS Active Subscriptions | # | Number of active subscriptions across all clients |
+| `nats.messages.in` | `nats.messages.in` | NATS Messages In | # | Total number of messages received by the server since start |
+| `nats.messages.out` | `nats.messages.out` | NATS Messages Out | # | Total number of messages sent by the server since start |
+| `nats.bytes.in` | `nats.bytes.in` | NATS Bytes In | B | Total bytes received by the server since start |
+| `nats.bytes.out` | `nats.bytes.out` | NATS Bytes Out | B | Total bytes sent by the server since start |
+| `nats.slow_consumers` | `nats.slow_consumers` | NATS Slow Consumers | # | Number of slow consumer events detected since server start |
+| `nats.routes.count` | `nats.routes.count` | NATS Cluster Routes | # | Number of active cluster routes (server-to-server connections) |
+| `nats.jetstream.streams` | `nats.jetstream.streams` | NATS JetStream Streams | # | Number of JetStream streams (present only when JetStream is enabled) |
+| `nats.jetstream.consumers` | `nats.jetstream.consumers` | NATS JetStream Consumers | # | Number of JetStream consumers across all streams |
+| `nats.jetstream.messages` | `nats.jetstream.messages` | NATS JetStream Messages | # | Total number of messages stored in JetStream across all streams |
+| `nats.jetstream.storage` | `nats.jetstream.storage` | NATS JetStream Storage | B | Total bytes stored in JetStream across all streams |
 
 <!-- schema:metrics:end -->

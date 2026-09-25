@@ -707,19 +707,21 @@ The Load WebApp probe:
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.probe.http.duration_seconds` | `load_dns_time` | ms | Time to resolve the web application's domain name via DNS |
-| `senhub.probe.http.duration_seconds` | `load_connect_time` | ms | Time to establish a TCP connection to the web server |
-| `senhub.probe.http.duration_seconds` | `load_tls_time` | ms | Time to complete the TLS/SSL handshake with the web server |
-| `senhub.probe.http.duration_seconds` | `load_time_to_first_byte` | ms | Time from request sent to first byte of response received |
-| `senhub.probe.http.duration_seconds` | `load_total_time` | ms | Total time from request initiation to full response received |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.probe.http.duration_seconds` | `dnstime` | DNS Resolution Time ({url}) | ms | Time to resolve the web application's domain name via DNS |
+| `senhub.probe.http.duration_seconds` | `connecttime` | Connect Time ({url}) | ms | Time to establish a TCP connection to the web server |
+| `senhub.probe.http.duration_seconds` | `tlstime` | TLS Handshake Time ({url}) | ms | Time to complete the TLS/SSL handshake with the web server |
+| `senhub.probe.http.duration_seconds` | `ttfb` | Time to First Byte ({url}) | ms | Time from request sent to first byte of response received |
+| `senhub.probe.http.duration_seconds` | `total_time` | Total Load Time ({url}) | ms | Total time from request initiation to full response received |
 
 <!-- schema:metrics:end -->

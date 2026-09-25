@@ -66,16 +66,18 @@ A register's `name` is also the PRTG channel name of its value.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `modbus.register.value` | `modbus_register_value` | 1 | Decoded value of the Modbus Holding Register |
-| `modbus.up` | `modbus_up` | # | 1 when the Modbus TCP device answered all register reads in the last cycle |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `modbus.register.value` | `modbus.register.value` | Register {register.name} | 1 | Decoded value of the Modbus Holding Register |
+| `modbus.up` | `modbus.up` | Modbus Device Up | # | 1 when the Modbus TCP device answered all register reads in the last cycle |
 
 <!-- schema:metrics:end -->

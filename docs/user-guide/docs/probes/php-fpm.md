@@ -57,24 +57,26 @@ The status page must answer in JSON: add `?json` to the endpoint or configure th
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.phpfpm.up` | `phpfpm_up` | # | 1 when the PHP-FPM status endpoint is reachable, 0 otherwise |
-| `phpfpm.uptime` | `phpfpm_uptime` | s | Number of seconds since the PHP-FPM pool started |
-| `phpfpm.accepted_connections` | `phpfpm_accepted_connections` | # | Total number of accepted connections since pool start |
-| `phpfpm.slow_requests` | `phpfpm_slow_requests` | # | Total number of requests exceeding the slow request threshold |
-| `phpfpm.listen_queue.current` | `phpfpm_listen_queue_current` | # | Current number of requests waiting in the listen queue |
-| `phpfpm.listen_queue.max` | `phpfpm_listen_queue_max` | # | Maximum number of requests observed in the listen queue since pool start |
-| `phpfpm.processes.active` | `phpfpm_processes_active` | # | Number of active (currently serving requests) processes |
-| `phpfpm.processes.idle` | `phpfpm_processes_idle` | # | Number of idle processes waiting for requests |
-| `phpfpm.processes.total` | `phpfpm_processes_total` | # | Total number of processes (active + idle) |
-| `phpfpm.max_children_reached` | `phpfpm_max_children_reached` | # | Total number of times the max_children limit was reached since pool start |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.phpfpm.up` | `senhub.phpfpm.up` | PHP-FPM {pool} Up | # | 1 when the PHP-FPM status endpoint is reachable, 0 otherwise |
+| `phpfpm.uptime` | `phpfpm.uptime` | PHP-FPM {pool} Uptime | s | Number of seconds since the PHP-FPM pool started |
+| `phpfpm.accepted_connections` | `phpfpm.accepted_connections` | PHP-FPM {pool} Accepted Connections | # | Total number of accepted connections since pool start |
+| `phpfpm.slow_requests` | `phpfpm.slow_requests` | PHP-FPM {pool} Slow Requests | # | Total number of requests exceeding the slow request threshold |
+| `phpfpm.listen_queue.current` | `phpfpm.listen_queue.current` | PHP-FPM {pool} Listen Queue | # | Current number of requests waiting in the listen queue |
+| `phpfpm.listen_queue.max` | `phpfpm.listen_queue.max` | PHP-FPM {pool} Listen Queue Max | # | Maximum number of requests observed in the listen queue since pool start |
+| `phpfpm.processes.active` | `phpfpm.processes.active` | PHP-FPM {pool} Active Processes | # | Number of active (currently serving requests) processes |
+| `phpfpm.processes.idle` | `phpfpm.processes.idle` | PHP-FPM {pool} Idle Processes | # | Number of idle processes waiting for requests |
+| `phpfpm.processes.total` | `phpfpm.processes.total` | PHP-FPM {pool} Total Processes | # | Total number of processes (active + idle) |
+| `phpfpm.max_children_reached` | `phpfpm.max_children_reached` | PHP-FPM {pool} Max Children Reached | # | Total number of times the max_children limit was reached since pool start |
 
 <!-- schema:metrics:end -->

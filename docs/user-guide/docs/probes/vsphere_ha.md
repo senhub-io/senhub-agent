@@ -129,25 +129,27 @@ curl "http://localhost:8080/api/{agentkey}/nagios/metrics/vsphere-ha-prod"
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.vsphere_ha.up` | `up` | # | 1 when the vCenter session was live and vSAN answered this cycle, else 0 |
-| `senhub.vsphere_ha.vsan.health` | `vsan_health` | # | vSAN overall cluster health (green=2, yellow=1, red/other=0) |
-| `senhub.vsphere_ha.vsan.disk_groups` | `vsan_disk_groups` | # | Number of host physical-disk health summaries (disk-group proxy) |
-| `senhub.vsphere_ha.vsan.objects` | `vsan_objects_healthy` | # | Number of vSAN objects in a healthy state |
-| `senhub.vsphere_ha.vsan.objects` | `vsan_objects_degraded` | # | Number of vSAN objects not in a healthy state |
-| `senhub.vsphere_ha.vsan.resync` | `vsan_resync_bytes` | Bytes | Total bytes pending vSAN resync on the cluster |
-| `senhub.vsphere_ha.nsx.manager.health` | `nsx_manager_health` | # | NSX manager connectivity (1 = CONNECTED, else 0) |
-| `senhub.vsphere_ha.nsx.transport_nodes.total` | `nsx_transport_nodes_total` | # | Total number of NSX transport nodes |
-| `senhub.vsphere_ha.nsx.transport_nodes.up` | `nsx_transport_nodes_up` | # | Transport nodes deployed (NODE_READY) and not in maintenance |
-| `senhub.vsphere_ha.nsx.logical_switches` | `nsx_logical_switches` | # | Number of NSX logical switches (segments) |
-| `senhub.vsphere_ha.nsx.edge_cluster.health` | `nsx_edge_cluster_health` | # | Edge cluster health (1 = all members UP, else 0) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.vsphere_ha.up` | `vsphere_ha_up` | vCenter Reachable | # | 1 when the vCenter session was live and vSAN answered this cycle, else 0 |
+| `senhub.vsphere_ha.vsan.health` | `vsphere_ha_vsan_health` | vSAN Health ({cluster}) | # | vSAN overall cluster health (green=2, yellow=1, red/other=0) |
+| `senhub.vsphere_ha.vsan.disk_groups` | `vsphere_ha_vsan_disk_groups` | vSAN Disk Groups ({cluster}) | # | Number of host physical-disk health summaries (disk-group proxy) |
+| `senhub.vsphere_ha.vsan.objects` | `vsphere_ha_vsan_objects_healthy` | vSAN Objects Healthy ({cluster}) | # | Number of vSAN objects in a healthy state |
+| `senhub.vsphere_ha.vsan.objects` | `vsphere_ha_vsan_objects_degraded` | vSAN Objects Degraded ({cluster}) | # | Number of vSAN objects not in a healthy state |
+| `senhub.vsphere_ha.vsan.resync` | `vsphere_ha_vsan_resync_bytes` | vSAN Resync Pending ({cluster}) | Bytes | Total bytes pending vSAN resync on the cluster |
+| `senhub.vsphere_ha.nsx.manager.health` | `vsphere_ha_nsx_manager_health` | NSX Manager Health | # | NSX manager connectivity (1 = CONNECTED, else 0) |
+| `senhub.vsphere_ha.nsx.transport_nodes.total` | `vsphere_ha_nsx_transport_nodes_total` | NSX Transport Nodes Total | # | Total number of NSX transport nodes |
+| `senhub.vsphere_ha.nsx.transport_nodes.up` | `vsphere_ha_nsx_transport_nodes_up` | NSX Transport Nodes Up | # | Transport nodes deployed (NODE_READY) and not in maintenance |
+| `senhub.vsphere_ha.nsx.logical_switches` | `vsphere_ha_nsx_logical_switches` | NSX Logical Switches | # | Number of NSX logical switches (segments) |
+| `senhub.vsphere_ha.nsx.edge_cluster.health` | `vsphere_ha_nsx_edge_clusters_health` | NSX Edge Cluster Health ({edge_cluster_id}) | # | Edge cluster health (1 = all members UP, else 0) |
 
 <!-- schema:metrics:end -->

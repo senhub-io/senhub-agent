@@ -101,23 +101,25 @@ distinguishable from a probe that cannot read the chrony it has.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.chrony.up` | `chrony_up` | # | 1 when chronyc returned a valid tracking response, 0 when chronyc failed or is not installed |
-| `senhub.chrony.state` | `chrony_state_{reason}` | # | one-hot over ok / not_installed / exec_failed / parse_failed — says WHY up has its value, so a host without chrony is distinguishable from a probe that cannot read the chrony it has |
-| `ntp.time.offset` | `ntp_time_offset` | ms | Estimated error of the system clock relative to the NTP reference (positive = fast, negative = slow) |
-| `ntp.frequency.offset` | `ntp_frequency_offset` | ppm | Rate at which the system clock gains or loses time relative to the reference (parts per million) |
-| `ntp.skew` | `ntp_skew` | ppm | Estimated error bound on the frequency error (ppm); a high skew means the clock rate is uncertain |
-| `ntp.root.delay` | `ntp_root_delay` | ms | Total round-trip delay to the stratum-1 reference clock |
-| `ntp.root.dispersion` | `ntp_root_dispersion` | ms | Maximum clock error due to dispersion between the host and the stratum-1 source |
-| `ntp.stratum` | `ntp_stratum` | # | Stratum level of the NTP hierarchy (1 = directly connected to reference, 16 = unsynchronised) |
-| `ntp.leap_status` | `ntp_leap_status` | # | Leap-second status reported by chrony: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.chrony.up` | `senhub.chrony.up` | Chrony NTP Up | # | 1 when chronyc returned a valid tracking response, 0 when chronyc failed or is not installed |
+| `senhub.chrony.state` | `senhub.chrony.state` | Chrony State ({reason}) | # | one-hot over ok / not_installed / exec_failed / parse_failed — says WHY up has its value, so a host without chrony is distinguishable from a probe that cannot read the chrony it has |
+| `ntp.time.offset` | `ntp.time.offset` | NTP Time Offset | ms | Estimated error of the system clock relative to the NTP reference (positive = fast, negative = slow) |
+| `ntp.frequency.offset` | `ntp.frequency.offset` | NTP Frequency Offset | ppm | Rate at which the system clock gains or loses time relative to the reference (parts per million) |
+| `ntp.skew` | `ntp.skew` | NTP Skew | ppm | Estimated error bound on the frequency error (ppm); a high skew means the clock rate is uncertain |
+| `ntp.root.delay` | `ntp.root.delay` | NTP Root Delay | ms | Total round-trip delay to the stratum-1 reference clock |
+| `ntp.root.dispersion` | `ntp.root.dispersion` | NTP Root Dispersion | ms | Maximum clock error due to dispersion between the host and the stratum-1 source |
+| `ntp.stratum` | `ntp.stratum` | NTP Stratum | # | Stratum level of the NTP hierarchy (1 = directly connected to reference, 16 = unsynchronised) |
+| `ntp.leap_status` | `ntp.leap_status` | NTP Leap Status | # | Leap-second status reported by chrony: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised |
 
 <!-- schema:metrics:end -->

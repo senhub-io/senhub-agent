@@ -10,6 +10,13 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
 
+// Intro is the paragraph that introduces the generated table on a page.
+const Intro = "Every metric this probe can emit. **Metric** is the OpenTelemetry name the\n" +
+	"OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a\n" +
+	"[Nagios check](../nagios.md) and the API `metrics=` filter match.\n" +
+	"**PRTG channel** is the label PRTG shows, placeholders filled from the\n" +
+	"series' tags."
+
 // Start and End delimit the generated metric reference on a probe page.
 const (
 	Start = "<!-- schema:metrics:start -->"
@@ -17,8 +24,10 @@ const (
 )
 
 // Render builds the complete metric reference of one probe from its
-// definition: the OTel name every pull and push output uses, the channel the
-// PRTG and Nagios outputs carry, the unit and the description.
+// definition: the OTel name the OTLP, Prometheus and Zabbix outputs derive
+// from, the name a Nagios check and the API metrics= filter match, the label
+// PRTG shows (display_name, the definition's channel only standing in when it
+// is absent), the unit and the description.
 //
 // The curated sections above it group metrics and explain them; this table
 // exists so the page is exhaustive, which no hand-written table stayed.
@@ -26,18 +35,18 @@ func Render(def transformers.ProbeDefinition) string {
 	var b strings.Builder
 	b.WriteString(Start + "\n")
 	b.WriteString("<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->\n\n")
-	b.WriteString("| Metric | Channel | Unit | Description |\n|---|---|---|---|\n")
+	b.WriteString("| Metric | Name | PRTG channel | Unit | Description |\n|---|---|---|---|---|\n")
 	for _, m := range def.Metrics {
 		otel := "-"
 		if m.Otel != nil && m.Otel.Name != "" && !m.Otel.Skip {
 			otel = "`" + m.Otel.Name + "`"
 		}
-		channel := m.Channel
-		if channel == "" {
-			channel = m.Name
+		label := m.DisplayName
+		if label == "" {
+			label = m.Channel
 		}
-		fmt.Fprintf(&b, "| %s | `%s` | %s | %s |\n",
-			otel, channel, cell(m.Unit), cell(m.Description))
+		fmt.Fprintf(&b, "| %s | `%s` | %s | %s | %s |\n",
+			otel, m.Name, cell(label), cell(m.Unit), cell(m.Description))
 	}
 	b.WriteString("\n" + End + "\n")
 	return b.String()
@@ -99,7 +108,7 @@ func Sync(docsDir string, update bool) (Result, error) {
 				res.Stale = append(res.Stale, probe+" ("+filepath.Base(page)+"): no generated block")
 				continue
 			}
-			body = strings.TrimRight(body, "\n") + "\n\n## Metric reference\n\nEvery metric this probe can emit. The first column is the name the\nOTLP and Prometheus outputs use, the second the channel the PRTG and\nNagios outputs carry.\n\n" + want
+			body = strings.TrimRight(body, "\n") + "\n\n## Metric reference\n\n" + Intro + "\n\n" + want
 		default:
 			if body[i:j+len(End)+1] == want {
 				continue

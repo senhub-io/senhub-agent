@@ -197,51 +197,53 @@ If `hours_to_check` is too short, jobs that ran outside the time window are excl
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.veeam.jobs.total` | `veeam_jobs_total` | # | Backup jobs of this type. Covers the virtual jobs the backup server runs and the agent-managed backups of physical machines, which carry their own job_type (WindowsAgentBackup, LinuxAgentBackup) — so the estate reads whole or split |
-| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_success` | # | Jobs of this type whose last run succeeded |
-| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_warning` | # | Number of jobs with warnings on last run |
-| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_failed` | # | Jobs of this type whose last run failed. The number to alert on, together with the age of the last success |
-| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_running` | # | Number of jobs currently running |
-| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_stale` | # | Number of jobs whose last run is older than the configured hours_to_check window (backup cadence drift) |
-| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_never_run` | # | Jobs of this type that have never produced a restore point. A job configured and never run is not a healthy job |
-| `senhub.veeam.job.status` | `veeam_job_status` | # | Effective job status: 0=NeverRun, 1=Success, 2=Warning, 3=Failed, 4=Running, 5=Stale (last run older than hours_to_check window) |
-| `senhub.veeam.job.seconds_since_last_run` | `veeam_job_seconds_since` | s | Time elapsed since the last job run |
-| `senhub.veeam.job.running_duration` | `veeam_job_running_seconds` | s | Elapsed running time of a currently-running job (0 when not running). The supervisor sets the 'too long' alert limit; the probe applies no threshold. |
-| `senhub.veeam.job.objects` | `veeam_job_objects_count` | # | Number of objects processed by the job |
-| `senhub.veeam.job.bottleneck.status` | `veeam_job_bottleneck` | # | Bottleneck type: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target |
-| `senhub.veeam.job.last_run.bytes` | `veeam_job_processed_bytes` | Bytes | Total size of all disks processed |
-| `senhub.veeam.job.last_run.bytes` | `veeam_job_read_bytes` | Bytes | Data read from source before compression/dedup |
-| `senhub.veeam.job.last_run.bytes` | `veeam_job_transferred_bytes` | Bytes | Data transferred after compression/dedup |
-| `senhub.veeam.repository.limit` | `veeam_repo_capacity` | Bytes | Total capacity of the backup repository |
-| `senhub.veeam.repository.usage` | `veeam_repo_used` | Bytes | Used space in the backup repository |
-| `senhub.veeam.repository.usage` | `veeam_repo_free` | Bytes | Free space available in the backup repository |
-| `senhub.veeam.repository.utilization` | `veeam_repo_free_pct` | % | Percentage of free space in the backup repository |
-| `senhub.veeam.license.status` | `veeam_license_status` | # | License status: 0=Valid, 1=Expired, 2=Invalid |
-| `senhub.veeam.license.days_remaining` | `veeam_license_days_left` | days | Number of days until the Veeam license expires |
-| `senhub.veeam.license.instances` | `veeam_license_instances_total` | # | Total number of licensed instances |
-| `senhub.veeam.license.instances` | `veeam_license_instances_used` | # | Number of licensed instances currently in use |
-| `senhub.veeam.license.instances` | `veeam_license_instances_remaining` | # | Number of licensed instances still available |
-| `senhub.veeam.proxy.status` | `veeam_proxy_status` | # | Proxy status: 0=Disabled, 1=Offline, 2=Online |
-| `senhub.veeam.proxies` | `veeam_proxies_total` | # | Total number of configured backup proxies |
-| `senhub.veeam.proxies` | `veeam_proxies_enabled` | # | Number of enabled backup proxies |
-| `senhub.veeam.proxies` | `veeam_proxies_disabled` | # | Number of disabled backup proxies |
-| `senhub.veeam.object.restore_points` | `veeam_object_restore_points` | # | Number of restore points for this object |
-| `senhub.veeam.object.last_run_failed` | `veeam_object_last_run_failed` | # | 1 if last backup run failed, 0 otherwise |
-| `senhub.veeam.objects` | `veeam_objects_total` | # | Total number of protected backup objects |
-| `senhub.veeam.objects` | `veeam_objects_failed` | # | Number of objects whose last backup failed |
-| `senhub.veeam.objects.without_job_status` | `objects_without_job_status` | # | Protected objects of this platform that get no job-status channel, because the platform is not one the agent surfaces as an agent backup. Above zero means backups exist that the consolidated job sensor cannot show — the platform name says which |
-| `senhub.veeam.server.status` | `veeam_server_status` | # | Server availability: 0=Unavailable, 1=Available |
-| `senhub.veeam.servers` | `veeam_servers_total` | # | Total number of managed servers |
-| `senhub.veeam.servers` | `veeam_servers_available` | # | Number of available managed servers |
-| `senhub.veeam.servers` | `veeam_servers_unavailable` | # | Number of unavailable managed servers |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.veeam.jobs.total` | `veeam_jobs_total` | Jobs Total ({job_type}) | # | Backup jobs of this type. Covers the virtual jobs the backup server runs and the agent-managed backups of physical machines, which carry their own job_type (WindowsAgentBackup, LinuxAgentBackup) — so the estate reads whole or split |
+| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_success` | Jobs Success ({job_type}) | # | Jobs of this type whose last run succeeded |
+| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_warning` | Jobs Warning ({job_type}) | # | Number of jobs with warnings on last run |
+| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_failed` | Jobs Failed ({job_type}) | # | Jobs of this type whose last run failed. The number to alert on, together with the age of the last success |
+| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_running` | Jobs Running ({job_type}) | # | Number of jobs currently running |
+| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_stale` | Jobs Stale ({job_type}) | # | Number of jobs whose last run is older than the configured hours_to_check window (backup cadence drift) |
+| `senhub.veeam.jobs.by_last_result` | `veeam_jobs_never_run` | Jobs Never Run ({job_type}) | # | Jobs of this type that have never produced a restore point. A job configured and never run is not a healthy job |
+| `senhub.veeam.job.status` | `veeam_job_status` | Job Status ({job_name}) | # | Effective job status: 0=NeverRun, 1=Success, 2=Warning, 3=Failed, 4=Running, 5=Stale (last run older than hours_to_check window) |
+| `senhub.veeam.job.seconds_since_last_run` | `veeam_job_seconds_since` | Time Since Last Run ({job_name}) | s | Time elapsed since the last job run |
+| `senhub.veeam.job.running_duration` | `veeam_job_running_seconds` | Running Duration ({job_name}) | s | Elapsed running time of a currently-running job (0 when not running). The supervisor sets the 'too long' alert limit; the probe applies no threshold. |
+| `senhub.veeam.job.objects` | `veeam_job_objects_count` | Objects Count ({job_name}) | # | Number of objects processed by the job |
+| `senhub.veeam.job.bottleneck.status` | `veeam_job_bottleneck` | Bottleneck ({job_name}) | # | Bottleneck type: 0=None, 1=Source, 2=Proxy, 3=Network, 4=Target |
+| `senhub.veeam.job.last_run.bytes` | `veeam_job_processed_bytes` | Processed ({job_name}) | Bytes | Total size of all disks processed |
+| `senhub.veeam.job.last_run.bytes` | `veeam_job_read_bytes` | Read ({job_name}) | Bytes | Data read from source before compression/dedup |
+| `senhub.veeam.job.last_run.bytes` | `veeam_job_transferred_bytes` | Transferred ({job_name}) | Bytes | Data transferred after compression/dedup |
+| `senhub.veeam.repository.limit` | `veeam_repo_capacity` | Repository Capacity ({repo_name}) | Bytes | Total capacity of the backup repository |
+| `senhub.veeam.repository.usage` | `veeam_repo_used` | Repository Used ({repo_name}) | Bytes | Used space in the backup repository |
+| `senhub.veeam.repository.usage` | `veeam_repo_free` | Repository Free ({repo_name}) | Bytes | Free space available in the backup repository |
+| `senhub.veeam.repository.utilization` | `veeam_repo_free_pct` | Repository Free % ({repo_name}) | % | Percentage of free space in the backup repository |
+| `senhub.veeam.license.status` | `veeam_license_status` | License Status | # | License status: 0=Valid, 1=Expired, 2=Invalid |
+| `senhub.veeam.license.days_remaining` | `veeam_license_days_left` | License Days Left | days | Number of days until the Veeam license expires |
+| `senhub.veeam.license.instances` | `veeam_license_instances_total` | Licensed Instances Total | # | Total number of licensed instances |
+| `senhub.veeam.license.instances` | `veeam_license_instances_used` | Licensed Instances Used | # | Number of licensed instances currently in use |
+| `senhub.veeam.license.instances` | `veeam_license_instances_remaining` | Licensed Instances Remaining | # | Number of licensed instances still available |
+| `senhub.veeam.proxy.status` | `veeam_proxy_status` | Proxy Status ({proxy_name}) | # | Proxy status: 0=Disabled, 1=Offline, 2=Online |
+| `senhub.veeam.proxies` | `veeam_proxies_total` | Proxies Total | # | Total number of configured backup proxies |
+| `senhub.veeam.proxies` | `veeam_proxies_enabled` | Proxies Enabled | # | Number of enabled backup proxies |
+| `senhub.veeam.proxies` | `veeam_proxies_disabled` | Proxies Disabled | # | Number of disabled backup proxies |
+| `senhub.veeam.object.restore_points` | `veeam_object_restore_points` | Restore Points ({object_name} / {object_type}) | # | Number of restore points for this object |
+| `senhub.veeam.object.last_run_failed` | `veeam_object_last_run_failed` | Last Run Failed ({object_name} / {object_type}) | # | 1 if last backup run failed, 0 otherwise |
+| `senhub.veeam.objects` | `veeam_objects_total` | Protected Objects Total | # | Total number of protected backup objects |
+| `senhub.veeam.objects` | `veeam_objects_failed` | Protected Objects Failed | # | Number of objects whose last backup failed |
+| `senhub.veeam.objects.without_job_status` | `veeam_objects_without_job_status` | Protected Objects Without Status ({platform}) | # | Protected objects of this platform that get no job-status channel, because the platform is not one the agent surfaces as an agent backup. Above zero means backups exist that the consolidated job sensor cannot show — the platform name says which |
+| `senhub.veeam.server.status` | `veeam_server_status` | Server Status ({server_name}) | # | Server availability: 0=Unavailable, 1=Available |
+| `senhub.veeam.servers` | `veeam_servers_total` | Managed Servers Total | # | Total number of managed servers |
+| `senhub.veeam.servers` | `veeam_servers_available` | Managed Servers Available | # | Number of available managed servers |
+| `senhub.veeam.servers` | `veeam_servers_unavailable` | Managed Servers Unavailable | # | Number of unavailable managed servers |
 
 <!-- schema:metrics:end -->

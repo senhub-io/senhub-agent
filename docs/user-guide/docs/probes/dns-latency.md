@@ -48,17 +48,19 @@ A failing lookup is a measurement (`up = 0`), never a probe failure.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.dns.up` | `dns_up` | # | 1 when the lookup returned at least one answer within the timeout |
-| `senhub.dns.lookup.duration` | `dns_lookup_duration` | ms | Wall-clock resolution time |
-| `senhub.dns.answers` | `dns_answers` | # | Number of addresses returned |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.dns.up` | `senhub.dns.up` | DNS {name} via {resolver} Up | # | 1 when the lookup returned at least one answer within the timeout |
+| `senhub.dns.lookup.duration` | `senhub.dns.lookup.duration` | DNS {name} via {resolver} Lookup Time | ms | Wall-clock resolution time |
+| `senhub.dns.answers` | `senhub.dns.answers` | DNS {name} via {resolver} Answers | # | Number of addresses returned |
 
 <!-- schema:metrics:end -->

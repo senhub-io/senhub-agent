@@ -136,59 +136,61 @@ is the usual implementation.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.docker.source` | `docker_source_{source}` | # | one-hot over socket / cgroup — which source produced this cycle. The cgroup fallback works without the docker group but reports no per-container network counters, restart counts or container names |
-| `senhub.docker.up` | `docker_{container_name}_up` | # | 1 when the container is running, 0 otherwise |
-| `container.restarts` | `docker_{container_name}_restarts` | # | Number of times the container has been restarted |
-| `container.cpu.usage.total` | `docker_{container_name}_cpu_total` | ns | Cumulative CPU time consumed by the container |
-| `container.cpu.usage.kernelmode` | `docker_{container_name}_cpu_kernelmode` | ns | Cumulative CPU time consumed in kernel mode by the container |
-| `container.cpu.usage.usermode` | `docker_{container_name}_cpu_usermode` | ns | Cumulative CPU time consumed in user mode by the container |
-| `senhub.docker.cpu.system` | `docker_{container_name}_cpu_system` | ns | System CPU time since the container started (used to compute CPU %) |
-| `senhub.docker.cpu.online` | `docker_{container_name}_cpu_online` | # | Number of online CPUs available to the container |
-| `senhub.docker.cpu.percent` | `docker_{container_name}_cpu_percent` | % | CPU utilisation percentage (same formula as docker stats) |
-| `container.cpu.usage.percpu` | `docker_{container_name}_cpu_core{core}` | ns | Cumulative CPU time consumed by the container on a specific core (percpu_usage) |
-| `container.cpu.throttling_data.throttled_periods` | `docker_{container_name}_cpu_throttled_periods` | # | Number of periods where the container was throttled (from throttling_data) |
-| `container.cpu.throttling_data.periods` | `docker_{container_name}_cpu_throttling_periods` | # | Total number of CPU periods (from throttling_data.throttling_periods) |
-| `container.cpu.throttling_data.throttled_time` | `docker_{container_name}_cpu_throttled_time` | ns | Cumulative nanoseconds the container was throttled (from throttling_data) |
-| `container.memory.usage` | `docker_{container_name}_memory` | B | Current memory usage of the container (includes page cache) |
-| `senhub.docker.memory.limit` | `docker_{container_name}_memory_limit` | B | Memory limit configured for the container (0 = unlimited) |
-| `container.memory.rss` | `docker_{container_name}_memory_rss` | B | Anonymous memory (RSS on cgroupsv1, anon on cgroupsv2) |
-| `container.memory.cache` | `docker_{container_name}_memory_cache` | B | Page cache memory (cache on cgroupsv1, file on cgroupsv2) |
-| `container.memory.swap` | `docker_{container_name}_memory_swap` | B | Swap memory usage |
-| `senhub.docker.memory.working_set` | `docker_{container_name}_memory_working_set` | B | Working set memory (usage minus page cache) — what docker stats reports as MEM USAGE |
-| `container.memory.anon` | `docker_{container_name}_memory_anon` | B | Anonymous (non-file-backed) memory; uses rss key on cgroupsv1, anon on cgroupsv2 |
-| `container.memory.mapped_file` | `docker_{container_name}_memory_mapped_file` | B | Memory mapped to files (cgroupsv1 mapped_file; absent on cgroupsv2) |
-| `container.memory.pgfault` | `docker_{container_name}_memory_pgfault` | # | Cumulative minor page faults (pgfault from memory_stats.stats) |
-| `container.memory.pgmajfault` | `docker_{container_name}_memory_pgmajfault` | # | Cumulative major page faults requiring disk I/O (pgmajfault from memory_stats.stats) |
-| `container.memory.unevictable` | `docker_{container_name}_memory_unevictable` | B | Memory that cannot be reclaimed (locked pages, mlocked regions) |
-| `container.memory.writeback` | `docker_{container_name}_memory_writeback` | B | Memory queued for write-back to disk |
-| `container.memory.hierarchical_memory_limit` | `docker_{container_name}_memory_hierarchical_limit` | B | Memory limit of the container's cgroup hierarchy (cgroupsv1 only) |
-| `container.memory.active_anon` | `docker_{container_name}_memory_active_anon` | B | Recently-accessed anonymous memory in the active LRU list |
-| `container.memory.inactive_anon` | `docker_{container_name}_memory_inactive_anon` | B | Less-recently-accessed anonymous memory in the inactive LRU list |
-| `container.memory.active_file` | `docker_{container_name}_memory_active_file` | B | Recently-accessed file-backed memory in the active LRU list |
-| `container.memory.inactive_file` | `docker_{container_name}_memory_inactive_file` | B | Less-recently-accessed file-backed memory in the inactive LRU list (used for working-set on cgroupsv2) |
-| `container.pids.count` | `docker_{container_name}_pids` | # | Number of processes running inside the container |
-| `senhub.docker.pids.limit` | `docker_{container_name}_pids_limit` | # | Maximum number of processes allowed in the container (0 = unlimited) |
-| `container.network.io.usage.tx_bytes` | `docker_{container_name}_net_tx` | B | Cumulative bytes transmitted across all network interfaces |
-| `container.network.io.usage.rx_bytes` | `docker_{container_name}_net_rx` | B | Cumulative bytes received across all network interfaces |
-| `senhub.docker.network.tx_packets` | `docker_{container_name}_net_tx_packets` | # | Cumulative packets transmitted across all network interfaces |
-| `senhub.docker.network.rx_packets` | `docker_{container_name}_net_rx_packets` | # | Cumulative packets received across all network interfaces |
-| `container.network.io.usage.tx_errors` | `docker_{container_name}_net_tx_errors` | # | Cumulative transmit errors across all network interfaces |
-| `container.network.io.usage.rx_errors` | `docker_{container_name}_net_rx_errors` | # | Cumulative receive errors across all network interfaces |
-| `senhub.docker.network.tx_dropped` | `docker_{container_name}_net_tx_dropped` | # | Cumulative transmitted packets dropped across all network interfaces |
-| `senhub.docker.network.rx_dropped` | `docker_{container_name}_net_rx_dropped` | # | Cumulative received packets dropped across all network interfaces |
-| `container.blockio.usage.total` | `docker_{container_name}_blkio` | B | Cumulative block I/O bytes (read + write, or Total entry when present) |
-| `container.blockio.io_service_bytes_recursive.read` | `docker_{container_name}_blkio_read` | B | Cumulative block I/O read bytes |
-| `container.blockio.io_service_bytes_recursive.write` | `docker_{container_name}_blkio_write` | B | Cumulative block I/O write bytes |
-| `senhub.docker.blkio.service_time.total` | `docker_{container_name}_blkio_svc_time` | ns | Cumulative block I/O service time in nanoseconds (io_service_time_recursive Total; cgroupsv1 only) |
-| `senhub.docker.blkio.sectors.total` | `docker_{container_name}_blkio_sectors` | # | Cumulative block I/O sectors transferred (io_sectors_recursive Total; cgroupsv1 only) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.docker.source` | `senhub.docker.source` | Docker Metric Source ({source}) | # | one-hot over socket / cgroup — which source produced this cycle. The cgroup fallback works without the docker group but reports no per-container network counters, restart counts or container names |
+| `senhub.docker.up` | `senhub.docker.up` | Docker {container_name} Up | # | 1 when the container is running, 0 otherwise |
+| `container.restarts` | `container.restarts` | Docker {container_name} Restart Count | # | Number of times the container has been restarted |
+| `container.cpu.usage.total` | `container.cpu.usage.total` | Docker {container_name} CPU Usage | ns | Cumulative CPU time consumed by the container |
+| `container.cpu.usage.kernelmode` | `container.cpu.usage.kernelmode` | Docker {container_name} CPU Kernel Mode | ns | Cumulative CPU time consumed in kernel mode by the container |
+| `container.cpu.usage.usermode` | `container.cpu.usage.usermode` | Docker {container_name} CPU User Mode | ns | Cumulative CPU time consumed in user mode by the container |
+| `senhub.docker.cpu.system` | `senhub.docker.cpu.system` | Docker {container_name} CPU System Time | ns | System CPU time since the container started (used to compute CPU %) |
+| `senhub.docker.cpu.online` | `senhub.docker.cpu.online` | Docker {container_name} CPU Online | # | Number of online CPUs available to the container |
+| `senhub.docker.cpu.percent` | `senhub.docker.cpu.percent` | Docker {container_name} CPU % | % | CPU utilisation percentage (same formula as docker stats) |
+| `container.cpu.usage.percpu` | `container.cpu.usage.percpu` | Docker {container_name} CPU Core {core} | ns | Cumulative CPU time consumed by the container on a specific core (percpu_usage) |
+| `container.cpu.throttling_data.throttled_periods` | `container.cpu.throttling_data.throttled_periods` | Docker {container_name} CPU Throttled Periods | # | Number of periods where the container was throttled (from throttling_data) |
+| `container.cpu.throttling_data.periods` | `container.cpu.throttling_data.periods` | Docker {container_name} CPU Throttling Periods | # | Total number of CPU periods (from throttling_data.throttling_periods) |
+| `container.cpu.throttling_data.throttled_time` | `container.cpu.throttling_data.throttled_time` | Docker {container_name} CPU Throttled Time | ns | Cumulative nanoseconds the container was throttled (from throttling_data) |
+| `container.memory.usage` | `container.memory.usage` | Docker {container_name} Memory Usage | B | Current memory usage of the container (includes page cache) |
+| `senhub.docker.memory.limit` | `senhub.docker.memory.limit` | Docker {container_name} Memory Limit | B | Memory limit configured for the container (0 = unlimited) |
+| `container.memory.rss` | `container.memory.rss` | Docker {container_name} Memory RSS | B | Anonymous memory (RSS on cgroupsv1, anon on cgroupsv2) |
+| `container.memory.cache` | `container.memory.cache` | Docker {container_name} Memory Cache | B | Page cache memory (cache on cgroupsv1, file on cgroupsv2) |
+| `container.memory.swap` | `container.memory.swap` | Docker {container_name} Memory Swap | B | Swap memory usage |
+| `senhub.docker.memory.working_set` | `senhub.docker.memory.working_set` | Docker {container_name} Memory Working Set | B | Working set memory (usage minus page cache) — what docker stats reports as MEM USAGE |
+| `container.memory.anon` | `container.memory.anon` | Docker {container_name} Memory Anonymous | B | Anonymous (non-file-backed) memory; uses rss key on cgroupsv1, anon on cgroupsv2 |
+| `container.memory.mapped_file` | `container.memory.mapped_file` | Docker {container_name} Memory Mapped File | B | Memory mapped to files (cgroupsv1 mapped_file; absent on cgroupsv2) |
+| `container.memory.pgfault` | `container.memory.pgfault` | Docker {container_name} Memory Page Faults | # | Cumulative minor page faults (pgfault from memory_stats.stats) |
+| `container.memory.pgmajfault` | `container.memory.pgmajfault` | Docker {container_name} Memory Major Page Faults | # | Cumulative major page faults requiring disk I/O (pgmajfault from memory_stats.stats) |
+| `container.memory.unevictable` | `container.memory.unevictable` | Docker {container_name} Memory Unevictable | B | Memory that cannot be reclaimed (locked pages, mlocked regions) |
+| `container.memory.writeback` | `container.memory.writeback` | Docker {container_name} Memory Writeback | B | Memory queued for write-back to disk |
+| `container.memory.hierarchical_memory_limit` | `container.memory.hierarchical_memory_limit` | Docker {container_name} Memory Hierarchical Limit | B | Memory limit of the container's cgroup hierarchy (cgroupsv1 only) |
+| `container.memory.active_anon` | `container.memory.active_anon` | Docker {container_name} Memory Active Anon | B | Recently-accessed anonymous memory in the active LRU list |
+| `container.memory.inactive_anon` | `container.memory.inactive_anon` | Docker {container_name} Memory Inactive Anon | B | Less-recently-accessed anonymous memory in the inactive LRU list |
+| `container.memory.active_file` | `container.memory.active_file` | Docker {container_name} Memory Active File | B | Recently-accessed file-backed memory in the active LRU list |
+| `container.memory.inactive_file` | `container.memory.inactive_file` | Docker {container_name} Memory Inactive File | B | Less-recently-accessed file-backed memory in the inactive LRU list (used for working-set on cgroupsv2) |
+| `container.pids.count` | `container.pids.count` | Docker {container_name} PID Count | # | Number of processes running inside the container |
+| `senhub.docker.pids.limit` | `senhub.docker.pids.limit` | Docker {container_name} PID Limit | # | Maximum number of processes allowed in the container (0 = unlimited) |
+| `container.network.io.usage.tx_bytes` | `container.network.io.usage.tx_bytes` | Docker {container_name} Network TX | B | Cumulative bytes transmitted across all network interfaces |
+| `container.network.io.usage.rx_bytes` | `container.network.io.usage.rx_bytes` | Docker {container_name} Network RX | B | Cumulative bytes received across all network interfaces |
+| `senhub.docker.network.tx_packets` | `senhub.docker.network.tx_packets` | Docker {container_name} Network TX Packets | # | Cumulative packets transmitted across all network interfaces |
+| `senhub.docker.network.rx_packets` | `senhub.docker.network.rx_packets` | Docker {container_name} Network RX Packets | # | Cumulative packets received across all network interfaces |
+| `container.network.io.usage.tx_errors` | `container.network.io.usage.tx_errors` | Docker {container_name} Network TX Errors | # | Cumulative transmit errors across all network interfaces |
+| `container.network.io.usage.rx_errors` | `container.network.io.usage.rx_errors` | Docker {container_name} Network RX Errors | # | Cumulative receive errors across all network interfaces |
+| `senhub.docker.network.tx_dropped` | `senhub.docker.network.tx_dropped` | Docker {container_name} Network TX Dropped | # | Cumulative transmitted packets dropped across all network interfaces |
+| `senhub.docker.network.rx_dropped` | `senhub.docker.network.rx_dropped` | Docker {container_name} Network RX Dropped | # | Cumulative received packets dropped across all network interfaces |
+| `container.blockio.usage.total` | `container.blockio.usage.total` | Docker {container_name} Block I/O | B | Cumulative block I/O bytes (read + write, or Total entry when present) |
+| `container.blockio.io_service_bytes_recursive.read` | `container.blockio.io_service_bytes_recursive.read` | Docker {container_name} Block I/O Read | B | Cumulative block I/O read bytes |
+| `container.blockio.io_service_bytes_recursive.write` | `container.blockio.io_service_bytes_recursive.write` | Docker {container_name} Block I/O Write | B | Cumulative block I/O write bytes |
+| `senhub.docker.blkio.service_time.total` | `senhub.docker.blkio.service_time.total` | Docker {container_name} Block I/O Service Time | ns | Cumulative block I/O service time in nanoseconds (io_service_time_recursive Total; cgroupsv1 only) |
+| `senhub.docker.blkio.sectors.total` | `senhub.docker.blkio.sectors.total` | Docker {container_name} Block I/O Sectors | # | Cumulative block I/O sectors transferred (io_sectors_recursive Total; cgroupsv1 only) |
 
 <!-- schema:metrics:end -->
