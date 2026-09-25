@@ -71,6 +71,7 @@ Monitor several SQL Server instances with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:1f820b6c119604e7eeaab773dcbeae203224d103f632703f9f132d90e608d2f3 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -146,3 +147,28 @@ SQL Server AlwaysOn metrics are available through every configured output — OT
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/mssql-ha-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/mssql-ha-prod"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.mssql_ha.up` | `mssql_ha_up` | Server Reachable | # | 1 when the last ping reached the SQL Server this cycle, else 0 |
+| `senhub.mssql_ha.replica.role` | `mssql_ha_replica_role` | Replica Role ({ag_name}/{replica}) | # | Availability-group replica role (Primary=1, Secondary=0) |
+| `senhub.mssql_ha.replica.health` | `mssql_ha_replica_health` | Replica Sync Health ({ag_name}/{replica}) | # | Replica synchronization health (Healthy=1, otherwise 0) |
+| `senhub.mssql_ha.replica.connected` | `mssql_ha_replica_connected` | Replica Connected ({ag_name}/{replica}) | # | Replica connectivity state (Connected=1, Disconnected=0) |
+| `senhub.mssql_ha.database.lag` | `mssql_ha_database_lag` | Secondary Lag ({ag_name}/{database}) | s | Estimated secondary-replica lag behind the primary |
+| `senhub.mssql_ha.log_send_queue` | `mssql_ha_log_send_queue` | Log Send Queue ({ag_name}/{database}) | Bytes | Log records on the primary not yet sent to the secondary |
+| `senhub.mssql_ha.redo_queue` | `mssql_ha_redo_queue` | Redo Queue ({ag_name}/{database}) | Bytes | Log records received by the secondary not yet redone |
+| `senhub.mssql_ha.log_send_rate` | `mssql_ha_log_send_rate` | Log Send Rate ({ag_name}/{database}) | Bytes/s | Rate at which log is sent from the primary to the secondary |
+| `senhub.mssql_ha.redo_rate` | `mssql_ha_redo_rate` | Redo Rate ({ag_name}/{database}) | Bytes/s | Rate at which received log is redone on the secondary |
+
+<!-- schema:metrics:end -->

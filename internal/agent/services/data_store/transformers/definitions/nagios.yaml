@@ -23,7 +23,7 @@ checks:
 
   # CPU Detailed Monitoring - cross-platform CPU channels only.
   # cpu_iowait and cpu_load* are Unix-only; operators add them in their
-  # own config/nagios.yaml on Linux hosts.
+  # own nagios.yaml (next to the agent configuration) on Linux hosts.
   - name: "cpu_detailed"
     description: "Comprehensive CPU monitoring"
     probe_filter: "cpu"
@@ -64,7 +64,7 @@ checks:
   # Unix-only (memory_available is intentionally not emitted on Unix —
   # see internal/agent/probes/memory/memoryProbe_unix.go). Operators who
   # want OS-specific detail add those channels to their own
-  # config/nagios.yaml.
+  # nagios.yaml next to the agent configuration.
   - name: "memory_detailed"
     description: "Detailed memory usage monitoring"
     probe_filter: "memory"
@@ -76,7 +76,7 @@ checks:
 
   # Network Interfaces - matches every interface the probe reports
   # (no interface list is shipped pinned; operators narrow it in their
-  # own config/nagios.yaml if they want a specific subset).
+  # own nagios.yaml if they want a specific subset).
   - name: "network_detailed"
     description: "Per-interface network monitoring (all interfaces)"
     probe_filter: "network"

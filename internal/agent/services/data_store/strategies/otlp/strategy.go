@@ -23,10 +23,6 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/entity"
-	"senhub-agent.go/internal/agent/services/entity/hostdep"
-	"senhub-agent.go/internal/agent/services/entity/hostiface"
-	"senhub-agent.go/internal/agent/services/entity/hostnet"
-	"senhub-agent.go/internal/agent/services/entity/hostsvc"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
 )
@@ -707,137 +703,25 @@ func agentSelfIdentity(cfg Config) entity.AgentIdentity {
 	}
 }
 
-// startEntityEmission wires the entity pump (consumer of the neutral
-// entity-event channel) and the Detector (producer of the Lot 1 foundation
-// events: host + service.instance + runs_on). Called from Start only when
-// Entities.Enabled and the log pipeline exists.
+// startEntityEmission wires the entity pump: the OTLP consumer of the
+// neutral entity-event channel, which encodes each event as a log
+// record.
 //
-// The entity's service.instance.id is the resource's service.instance.id so
-// the entity identity and the OTLP resource agree on who the agent is.
+// It no longer builds the Detector. Producing the events is the job of
+// the entitydetect service, which runs whatever outputs are configured —
+// leaving it here made the whole rail conditional on OTLP being present,
+// so an agent deployed for another output registered entity sources that
+// nothing polled (#932). The channel fans out, so this pump is one
+// subscriber among however many there are.
 func (s *OTLPSyncStrategy) startEntityEmission() {
 	s.entityPump = newEntityPump(s.logs, s.cfg.Entities.BufferSize, s.cfg.Entities.RedactAttributes, s.logger)
 	s.entityPump.start()
-
-	hostFn := func() (entity.HostIdentity, error) {
-		hi, err := common.GetHostIdentity()
-		if err != nil {
-			return entity.HostIdentity{}, err
-		}
-		return entity.HostIdentity{
-			ID:                    hi.ID,
-			Name:                  hi.Name,
-			OSType:                hi.OSType,
-			Arch:                  hi.Arch,
-			OSName:                hi.OSName,
-			OSVersion:             hi.OSVersion,
-			OSBuildID:             hi.OSBuildID,
-			OSDescription:         hi.OSDescription,
-			CPUModel:              hi.CPUModel,
-			CPUVendor:             hi.CPUVendor,
-			HWVendor:              hi.HWVendor,
-			HWModel:               hi.HWModel,
-			HWSerial:              hi.HWSerial,
-			CPULogicalCount:       hi.CPULogicalCount,
-			CPUPhysicalCount:      hi.CPUPhysicalCount,
-			CPUFreqHz:             hi.CPUFreqHz,
-			MemTotal:              hi.MemTotal,
-			DiskTotal:             hi.DiskTotal,
-			Virtualization:        hi.Virtualization,
-			ChassisType:           hi.ChassisType,
-			CloudProvider:         hi.CloudProvider,
-			CloudRegion:           hi.CloudRegion,
-			CloudAvailabilityZone: hi.CloudAvailabilityZone,
-			CloudAccountID:        hi.CloudAccountID,
-			HostType:              hi.HostType,
-			ContainerRuntime:      hi.ContainerRuntime,
-			K8sNodeName:           hi.K8sNodeName,
-			Environment:           s.cfg.Resource.Environment,
-			Governance:            s.cfg.Entities.Governance.Attributes(),
-		}, nil
-	}
-	agentFn := func() entity.AgentIdentity {
-		return agentSelfIdentity(s.cfg)
-	}
-	// Expose the agent's own service.instance.id to probe entity sources so
-	// they can stamp the From endpoint of their `monitors` edge to this same
-	// node. Same value the foundation puts on the agent entity (above), set
-	// before the detector starts polling sources.
-	agentstate.SetAgentInstanceID(s.cfg.Resource.ServiceInstance)
-
-	// Host-side entity sources (only active while entity emission runs):
-	// hostnet emits the host's routes as network.route + the gateway
-	// network.address; hostsvc emits the host's listening services as
-	// service.listener entities; hostiface emits the host's own interfaces and
-	// IP addresses so a connection peer resolves back to this host; hostdep
-	// emits the host's durable outbound dependencies (service.instance
-	// depends_on network.endpoint). All key off the host's stable id so they
-	// hang off the same host node as the foundation host entity.
-	hostIDFn := func() string {
-		hi, err := common.GetHostIdentity()
-		if err != nil {
-			return ""
-		}
-		return hi.ID
-	}
-	s.entitySourceUnregisters = append(s.entitySourceUnregisters,
-		entity.RegisterSource(hostnet.New(hostIDFn)),
-		entity.RegisterSource(hostsvc.New(hostIDFn)),
-		entity.RegisterSource(hostiface.New(hostIDFn)))
-	// hostdep (outbound dependency flows) is opt-in and off by default —
-	// mapping a host's connections can be privacy-sensitive (#213). When
-	// enabled, an operator CIDR deny-list filters out sensitive peers.
-	if s.cfg.Entities.DependsOnEnabled {
-		dep := hostdep.New(hostIDFn, s.cfg.Entities.DependsOnDebounce, s.cfg.Entities.DependsOnExcludeCIDRs)
-		// Mapping a socket to its owning process reads /proc/<pid>/fd, which is
-		// owner-only: a non-root daemon sees every other service's connections
-		// with no owner and can emit nothing for them (#808). Say so once, with
-		// the counts, rather than let the operator read an empty rail as "this
-		// host depends on nothing".
-		dep.OnBlind(func(observed, unattributable int) {
-			s.logger.Warn().
-				Int("outbound_sockets", observed).
-				Int("unattributable", unattributable).
-				Str("running_as", processUsername()).
-				Msg(dependsOnBlindMessage(os.Geteuid()))
-		})
-		s.entitySourceUnregisters = append(s.entitySourceUnregisters, entity.RegisterSource(dep))
-	}
-
-	det := entity.NewDetector(hostFn, agentFn, s.cfg.Entities.Interval)
-	det.OnOrphanRelations(func(orphans []entity.Relation) {
-		for _, r := range orphans {
-			s.logger.Warn().
-				Str("relation", r.Type).
-				Str("from_type", r.FromType).
-				Str("to_type", r.ToType).
-				Msg("entity relation has no source entity this cycle; dropped from the wire")
-		}
-	})
-	det.OnOrphanEntities(func(orphans []entity.Entity) {
-		for _, e := range orphans {
-			s.logger.Warn().
-				Str("entity_type", e.Type).
-				Interface("entity_id", e.ID).
-				Msg("entity has no relation; dropped from the wire (anti-orphan guard)")
-		}
-	})
-	ctx, cancel := context.WithCancel(s.runCtx)
-	s.entityDetectorCancel = cancel
-	s.entityDetectorWG.Add(1)
-	go func() {
-		defer s.entityDetectorWG.Done()
-		det.Run(ctx)
-	}()
 }
 
 // exporterShutdownBudget caps the final drain and the closing of the
 // exporters. Past it, whatever is still queued is lost either way.
 const exporterShutdownBudget = 10 * time.Second
 
-// Shutdown stops the strategy: signals the push goroutine, waits for it
-// to drain, performs a final push (so the last interval's data isn't
-// lost), then closes the gRPC exporters. Idempotent: once shut down,
-// subsequent calls are no-ops. Start cannot bring the strategy back up.
 func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()

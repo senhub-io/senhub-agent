@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/psk"
 )
 
 // client speaks the active-agent side of the Zabbix protocol: one TCP
@@ -144,6 +146,20 @@ func (c *client) dialServer(ctx context.Context, addr string) (net.Conn, error) 
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
+	}
+	// A pre-shared key takes its own handshake: Go's TLS has no external
+	// PSK, so the profile Zabbix speaks lives in the psk package.
+	if len(c.cfg.TLS.PSK) > 0 {
+		pc, pskErr := psk.Client(conn, psk.Config{
+			Identity: c.cfg.TLS.PSKIdentity,
+			Key:      c.cfg.TLS.PSK,
+			Deadline: c.cfg.Timeout,
+		})
+		if pskErr != nil {
+			conn.Close()
+			return nil, pskErr
+		}
+		return pc, nil
 	}
 	if c.tlsConf == nil {
 		return conn, nil

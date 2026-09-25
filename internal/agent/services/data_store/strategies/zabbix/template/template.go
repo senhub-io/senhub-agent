@@ -28,6 +28,13 @@ type LookupSource interface {
 	Lookup(id string) (map[int]string, bool)
 }
 
+// SeveritySource is a LookupSource that also says how serious each code
+// is ("ok", "warning", "error"), which turns a state metric into
+// triggers. Without it a template gets value maps and no trigger.
+type SeveritySource interface {
+	Severities(id string) (map[int]string, bool)
+}
+
 // Options tunes a generation.
 type Options struct {
 	// Prefix is the first segment of every key; must match the output's key_prefix.
@@ -74,8 +81,12 @@ type Export struct {
 
 type ExportBody struct {
 	Version        string          `yaml:"version"`
-	TemplateGroups []TemplateGroup `yaml:"template_groups"`
-	Templates      []Template      `yaml:"templates"`
+	TemplateGroups []TemplateGroup `yaml:"template_groups,omitempty"`
+	// Groups carries the same list under the name Zabbix 6.0 expects. The
+	// tag was renamed in 7.0, and a server refuses the other spelling
+	// outright: "unexpected tag". Exactly one of the two is ever set.
+	Groups    []TemplateGroup `yaml:"groups,omitempty"`
+	Templates []Template      `yaml:"templates"`
 }
 
 type TemplateGroup struct {
@@ -91,6 +102,7 @@ type Template struct {
 	Groups         []GroupRef      `yaml:"groups"`
 	Items          []Item          `yaml:"items,omitempty"`
 	DiscoveryRules []DiscoveryRule `yaml:"discovery_rules,omitempty"`
+	Macros         []Macro         `yaml:"macros,omitempty"`
 	ValueMaps      []ValueMap      `yaml:"valuemaps,omitempty"`
 }
 
@@ -112,6 +124,7 @@ type Item struct {
 	// anyone typing it, and it only takes effect on a host whose
 	// inventory mode is automatic.
 	InventoryLink string `yaml:"inventory_link,omitempty"`
+	Tags          []Tag  `yaml:"tags,omitempty"`
 }
 
 type GroupRef struct {
@@ -126,6 +139,7 @@ type DiscoveryRule struct {
 	Delay          string          `yaml:"delay"`
 	Description    string          `yaml:"description,omitempty"`
 	ItemPrototypes []ItemPrototype `yaml:"item_prototypes"`
+	Overrides      []Override      `yaml:"overrides,omitempty"`
 }
 
 type ItemPrototype struct {
@@ -138,6 +152,24 @@ type ItemPrototype struct {
 	Units       string    `yaml:"units,omitempty"`
 	Description string    `yaml:"description,omitempty"`
 	ValueMap    *ValueRef `yaml:"valuemap,omitempty"`
+	// Preprocessing is applied by the server to what the agent sends;
+	// it changes how a value is stored and read, never the key.
+	Preprocessing     []Preprocessing    `yaml:"preprocessing,omitempty"`
+	Tags              []Tag              `yaml:"tags,omitempty"`
+	TriggerPrototypes []TriggerPrototype `yaml:"trigger_prototypes,omitempty"`
+}
+
+// Tag is what Zabbix filters problems, views and actions on. The names
+// follow the native templates: an item carries the component it belongs
+// to, a trigger the scope of what it watches.
+type Tag struct {
+	Tag   string `yaml:"tag"`
+	Value string `yaml:"value"`
+}
+
+type Preprocessing struct {
+	Type       string   `yaml:"type"`
+	Parameters []string `yaml:"parameters"`
 }
 
 type ValueRef struct {
@@ -155,6 +187,60 @@ type Mapping struct {
 	NewValue string `yaml:"newvalue"`
 }
 
+// groupsFor fills the template-group list under the tag the requested export
+// version uses: "groups" up to Zabbix 6.0, "template_groups" from 7.0. The
+// caller sets both fields; the one that does not apply comes back nil and is
+// omitted.
+func groupsFor(opts Options, legacy bool) []TemplateGroup {
+	if legacy != (opts.Version == "6.0") {
+		return nil
+	}
+	return []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}}
+}
+
+// technicalName strips what Zabbix refuses in a template's technical name,
+// which it validates as a host name: only letters, digits, spaces, dots,
+// dashes and underscores are accepted. Friendly names carry the rest —
+// "IBM i / Power Systems", "Chrony (NTP)", "Veeam Backup & Replication" —
+// and a template holding one is refused at import with nothing but
+// `Invalid parameter "/1/host"` to say why. The readable name keeps them.
+func technicalName(s string) string {
+	var b strings.Builder
+	space := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+			if space && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			space = false
+			b.WriteRune(r)
+		default:
+			// Everything else, separator or not, becomes one space, so
+			// "MySQL / MariaDB" does not collapse into one word.
+			if b.Len() > 0 {
+				space = true
+			}
+		}
+	}
+	return b.String()
+}
+
+// DeclaresNothing reports an export whose templates hold no item and no
+// discovery rule. It happens for a probe whose every metric is marked as not
+// mapped — a log conduit such as syslog or event. Such a file is not a
+// template an operator can use: importing it links a host to a name that will
+// never receive a value, under a description promising the agent sends keys.
+func (e Export) DeclaresNothing() bool {
+	for _, t := range e.ZabbixExport.Templates {
+		if len(t.Items) > 0 || len(t.DiscoveryRules) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // Generate builds the template of one probe type.
 func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	opts = opts.withDefaults()
@@ -162,12 +248,11 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		return Export{}, fmt.Errorf("definition without a probe_name")
 	}
 	def = forPlatform(def, opts.Platform)
-	name := "SenHub " + firstNonEmpty(def.FriendlyName, def.ProbeName)
-	visible := name
+	visible := "SenHub " + firstNonEmpty(def.FriendlyName, def.ProbeName)
+	name := technicalName(visible)
 	if opts.Platform != "" {
-		// Zabbix refuses parentheses in a template's technical name, so
-		// the platform is appended plainly there and parenthesised in
-		// the name an operator reads.
+		// The platform is appended plainly to the technical name and
+		// parenthesised in the name an operator reads.
 		name += " " + opts.Platform
 		visible += " (" + opts.Platform + ")"
 	}
@@ -183,6 +268,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	var order []string
 	valueMaps := map[string]ValueMap{}
 	seenKeys := map[string]bool{}
+	fedOf := map[string]string{} // prototype key -> FedID
 	_, familyOf := variantFamilies(def)
 
 	ensureRule := func(ruleKey, ruleTitle string) *DiscoveryRule {
@@ -228,6 +314,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				Units:       units(m),
 				Description: m.Description,
 			}
+			asPercent(&proto, m)
 			proto.UUID = uid("item", name, proto.Key)
 			rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 			continue
@@ -257,6 +344,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 					Description: m.Description,
 				}
 				proto.UUID = uid("item", name, proto.Key)
+				fedOf[proto.Key] = FedID(m)
 				rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 			}
 			continue
@@ -278,7 +366,9 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 			Units:       units(m),
 			Description: m.Description,
 		}
+		asPercent(&proto, m)
 		proto.UUID = uid("item", name, proto.Key)
+		fedOf[proto.Key] = FedID(m)
 		if m.Lookup != "" && opts.Lookups != nil {
 			if mapping, ok := opts.Lookups.Lookup(m.Lookup); ok && len(mapping) > 0 {
 				if _, seen := valueMaps[m.Lookup]; !seen {
@@ -286,12 +376,28 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				}
 				proto.ValueMap = &ValueRef{Name: m.Lookup}
 			}
+			if sev, ok := opts.Lookups.(SeveritySource); ok {
+				if bySeverity, ok := sev.Severities(m.Lookup); ok {
+					proto.TriggerPrototypes = append(proto.TriggerPrototypes, stateTriggers(name, proto, bySeverity)...)
+				}
+			}
 		}
 		rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 	}
 
+	macros, err := thresholdTriggers(name, def, opts, rules, familyOf)
+	if err != nil {
+		return Export{}, err
+	}
+	tpl.Macros = macros
+
 	for _, k := range order {
-		tpl.DiscoveryRules = append(tpl.DiscoveryRules, *rules[k])
+		rule := rules[k]
+		fedOverrides(rule, fedOf)
+		for i := range rule.ItemPrototypes {
+			rule.ItemPrototypes[i].Tags = []Tag{{Tag: "component", Value: def.ProbeName}}
+		}
+		tpl.DiscoveryRules = append(tpl.DiscoveryRules, *rule)
 	}
 	vmNames := make([]string, 0, len(valueMaps))
 	for n := range valueMaps {
@@ -304,7 +410,8 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 
 	return Export{ZabbixExport: ExportBody{
 		Version:        opts.Version,
-		TemplateGroups: []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}},
+		TemplateGroups: groupsFor(opts, false),
+		Groups:         groupsFor(opts, true),
 		Templates:      []Template{tpl},
 	}}, nil
 }
@@ -475,6 +582,24 @@ func ruleName(probeType string, labels []string) string {
 	return "SenHub " + probeType + " by " + strings.Join(labels, ", ")
 }
 
+// isRatioOfWhole reports a utilization: OTel's `*.utilization` in unit
+// "1" is a fraction of a whole, 0.95 for ninety-five percent.
+func isRatioOfWhole(m transformers.MetricDefinition) bool {
+	return m.Otel != nil && m.Otel.Unit == "1" && strings.HasSuffix(m.Otel.Name, ".utilization")
+}
+
+// asPercent makes the server store and show a utilization as a
+// percentage. The agent sends the OTel fraction under the same key as on
+// every other output; a Zabbix operator reads "95.31 %", as the native
+// agent shows it, instead of "0.9531", and writes thresholds the same way.
+func asPercent(p *ItemPrototype, m transformers.MetricDefinition) {
+	if !isRatioOfWhole(m) {
+		return
+	}
+	p.Units = "%"
+	p.Preprocessing = []Preprocessing{{Type: "MULTIPLIER", Parameters: []string{"100"}}}
+}
+
 // units maps the OTel unit to what Zabbix displays; Zabbix applies its
 // own multipliers to B and bps, and shows the rest verbatim.
 func units(m transformers.MetricDefinition) string {
@@ -579,11 +704,17 @@ func Base(opts Options) Export {
 		})
 	}
 	for i := range tpl.Items {
+		component := "agent"
+		if tpl.Items[i].InventoryLink != "" {
+			component = "inventory"
+		}
+		tpl.Items[i].Tags = []Tag{{Tag: "component", Value: component}}
 		tpl.Items[i].UUID = uid("item", BaseName, tpl.Items[i].Key)
 	}
 	return Export{ZabbixExport: ExportBody{
 		Version:        opts.Version,
-		TemplateGroups: []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}},
+		TemplateGroups: groupsFor(opts, false),
+		Groups:         groupsFor(opts, true),
 		Templates:      []Template{tpl},
 	}}
 }

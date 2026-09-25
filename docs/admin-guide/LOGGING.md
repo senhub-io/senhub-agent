@@ -281,6 +281,31 @@ curl -X POST http://localhost:8080/api/mykey/debug/logs \
   -d '{"module_levels":[{"module":"probe.host","level":"disabled"}]}'
 ```
 
+## When the configuration is not watched
+
+The agent watches its configuration so an edit applies without a
+restart. That watch can fail to start for reasons unrelated to the
+configuration: on Linux inotify has a per-user instance quota, and a
+host running k3s can hold most of it. The agent then keeps collecting
+without the watch rather than exiting (from 0.5.5), and says so in three
+places:
+
+- a WARN at start, `configuration watch disabled (<reason>): <detail>`;
+- a block in `senhub-agent status`;
+- the self-metric `senhub.agent.config.watch.disabled{reason}`
+  (`senhub_agent_config_watch_disabled` on Prometheus), set to 1 while
+  the watch is off. No series means the configuration is watched.
+
+| `reason` | Meaning |
+|---|---|
+| `watcher_unavailable` | The kernel refused a watcher: the inotify instance quota, or a file system that does not support it |
+| `path_not_watched` | The watcher exists but a directory could not be added to it |
+
+The consequence for the operator: **an edit no longer applies until the
+service is restarted**, whether it comes from a file, `config set` or the
+web console. Alert on the metric, and raise
+`fs.inotify.max_user_instances` on hosts that run many watchers.
+
 ## Technical Details
 
 ### Log Filtering

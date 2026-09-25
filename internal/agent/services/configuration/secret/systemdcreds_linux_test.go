@@ -80,3 +80,19 @@ func TestSystemdCredsListReadsPersistentStore(t *testing.T) {
 		t.Errorf("List(no store) = %v, %v; want [], nil", n, err)
 	}
 }
+
+func TestSystemdCredsSetRefusesWithoutRoot(t *testing.T) {
+	orig := geteuid
+	geteuid = func() int { return 1000 }
+	t.Cleanup(func() { geteuid = orig })
+
+	dir := t.TempDir()
+	p := newSystemdCredsProvider(dir)
+	err := p.Set("otlp.token", New("value"))
+	if !errors.Is(err, ErrSealNeedsRoot) {
+		t.Fatalf("err = %v, want ErrSealNeedsRoot", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, credsStoreSubdir)); !os.IsNotExist(statErr) {
+		t.Errorf("a refused seal must not create %s", credsStoreSubdir)
+	}
+}

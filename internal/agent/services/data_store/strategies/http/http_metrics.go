@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -204,6 +207,12 @@ func (m *MetricsProcessor) ProcessNagiosMetric(metricDef NagiosMetric, metrics [
 		}
 	}
 
+	// The cache hands series out in map order; sorting keeps the message
+	// and the perfdata in the same order from one poll to the next.
+	sort.Slice(matchingMetrics, func(i, j int) bool {
+		return seriesOrderKey(matchingMetrics[i]) < seriesOrderKey(matchingMetrics[j])
+	})
+
 	if len(matchingMetrics) == 0 {
 		return NagiosMetricResult{
 			Status:   3, // UNKNOWN
@@ -213,7 +222,7 @@ func (m *MetricsProcessor) ProcessNagiosMetric(metricDef NagiosMetric, metrics [
 	}
 
 	// Check if this is a health/status metric requiring special handling
-	if m.isHealthStatusMetricNagios(metricDef.Channel, matchingMetrics) {
+	if m.declaresStates(matchingMetrics[0]) {
 		return m.processNagiosHealthMetric(metricDef, matchingMetrics, overrides)
 	}
 
@@ -223,6 +232,20 @@ func (m *MetricsProcessor) ProcessNagiosMetric(metricDef NagiosMetric, metrics [
 	} else {
 		return m.processNagiosMetricSeparate(metricDef, matchingMetrics, overrides)
 	}
+}
+
+func seriesOrderKey(metric CachedMetric) string {
+	keys := make([]string, 0, len(metric.Tags))
+	for k := range metric.Tags {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(metric.ProbeName)
+	for _, k := range keys {
+		b.WriteString("\x00" + k + "=" + metric.Tags[k])
+	}
+	return b.String()
 }
 
 // processNagiosMetricAggregated processes metrics with aggregation
@@ -276,6 +299,25 @@ func (m *MetricsProcessor) processNagiosMetricAggregated(metricDef NagiosMetric,
 	}
 }
 
+// tagSpecificThresholds returns the thresholds of the first
+// tag_specific_thresholds entry whose tags all match the series, else
+// the metric's own. Request overrides still win over both.
+func tagSpecificThresholds(metricDef NagiosMetric, metric CachedMetric) (string, string) {
+	for _, entry := range metricDef.TagSpecificThresholds {
+		matches := true
+		for key, value := range entry.Tags {
+			if metric.Tags[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return entry.Warning, entry.Critical
+		}
+	}
+	return metricDef.Warning, metricDef.Critical
+}
+
 // processNagiosMetricSeparate processes metrics separately (no aggregation)
 func (m *MetricsProcessor) processNagiosMetricSeparate(metricDef NagiosMetric, metrics []CachedMetric, overrides NagiosOverrides) NagiosMetricResult {
 	// For simplicity, return the worst case status and combine perf data
@@ -285,9 +327,7 @@ func (m *MetricsProcessor) processNagiosMetricSeparate(metricDef NagiosMetric, m
 
 	for _, metric := range metrics {
 		if val, ok := metric.Value.(float64); ok {
-			// Get thresholds
-			warning := metricDef.Warning
-			critical := metricDef.Critical
+			warning, critical := tagSpecificThresholds(metricDef, metric)
 			if overrides.Warning != "" {
 				warning = overrides.Warning
 			}
@@ -323,8 +363,9 @@ func (m *MetricsProcessor) processNagiosMetricSeparate(metricDef NagiosMetric, m
 	}
 
 	return NagiosMetricResult{
-		Status:   worstStatus,
-		Message:  strings.Join(messages, "; "),
+		Status: worstStatus,
+		// Never ";": Nagios reserves it and prints it as ":".
+		Message:  strings.Join(messages, ", "),
 		PerfData: strings.Join(perfDataItems, " "),
 	}
 }
@@ -484,21 +525,22 @@ func (m *MetricsProcessor) evaluateThreshold(value float64, warning, critical st
 		}
 	}
 
-	// Evaluate status
+	// A threshold is the last acceptable value, as in the Nagios plugin
+	// convention ("10" alerts above 10, "10:" below 10): warning "0" on
+	// a failure count alerts on the first failure, and a value equal to
+	// the threshold stays OK.
 	status := 0 // OK
 
 	if !invert {
-		// Normal evaluation: higher values are worse
-		if hasCritical && value >= critThreshold {
+		if hasCritical && value > critThreshold {
 			status = 2 // CRITICAL
-		} else if value >= warnThreshold {
+		} else if value > warnThreshold {
 			status = 1 // WARNING
 		}
 	} else {
-		// Inverted evaluation: lower values are worse
-		if hasCritical && value <= critThreshold {
+		if hasCritical && value < critThreshold {
 			status = 2 // CRITICAL
-		} else if value <= warnThreshold {
+		} else if value < warnThreshold {
 			status = 1 // WARNING
 		}
 	}
@@ -753,34 +795,46 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 
 // Health Metrics Processing for Nagios
 
-// isHealthStatusMetricNagios determines if a metric should use health-specific Nagios processing
-func (m *MetricsProcessor) isHealthStatusMetricNagios(metricName string, metrics []CachedMetric) bool {
-	// Check metric name patterns
-	healthKeywords := []string{"health", "status", "state", "power_state", "availability"}
-
-	metricLower := strings.ToLower(metricName)
-	for _, keyword := range healthKeywords {
-		if strings.Contains(metricLower, keyword) {
-			return true
-		}
+// definitionLookups maps probe → metric name → lookup id for every
+// shipped definition. Parsed once: the definitions are embedded.
+var definitionLookups = sync.OnceValues(func() (map[string]map[string]string, error) {
+	defs, err := transformers.DefinitionMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("reading probe definitions: %w", err)
 	}
-
-	// Check metric tags if available
-	if len(metrics) > 0 {
-		metric := metrics[0] // Use first metric to check patterns
-
-		// Check if metric unit suggests health values
-		if metric.Unit == "#" || metric.Unit == "" {
-			// Numeric health values (0=OK, 1=Warning, 2=Critical, 3=Unknown)
-			if val, ok := metric.Value.(float64); ok {
-				if val >= 0 && val <= 3 && val == float64(int(val)) {
-					return true
-				}
+	out := make(map[string]map[string]string, len(defs))
+	for probe, metrics := range defs {
+		for _, d := range metrics {
+			if d.Lookup == "" {
+				continue
 			}
+			if out[probe] == nil {
+				out[probe] = make(map[string]string)
+			}
+			out[probe][d.Name] = d.Lookup
 		}
 	}
+	return out, nil
+})
 
-	return false
+// declaresStates reports whether the metric's definition names its
+// values through a lookup, which makes each value a state with its own
+// severity rather than a quantity to hold against thresholds. It used
+// to be guessed from the name (health, status, state) and from the
+// first cached value (an integer 0 to 3 with no unit): a count of
+// failed jobs at 1 then read WARNING whatever the thresholds said, at 5
+// read UNKNOWN, and the mode could change from one poll to the next.
+func (m *MetricsProcessor) declaresStates(metric CachedMetric) bool {
+	lookups, err := definitionLookups()
+	if err != nil {
+		m.logger.Warn().Err(err).Str("metric", metric.MetricName).Msg("Nagios state mode unavailable, evaluating against thresholds")
+		return false
+	}
+	probe := metric.Tags["probe_type"]
+	if probe == "" {
+		probe = metric.ProbeName
+	}
+	return lookups[probe][metric.MetricName] != ""
 }
 
 // processNagiosHealthMetric processes health/status metrics with special Nagios mapping
@@ -868,7 +922,7 @@ func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, met
 				}
 			}
 			if len(failureMessages) > 0 {
-				message += "; " + strings.Join(failureMessages, ", ")
+				message += " - " + strings.Join(failureMessages, ", ")
 			}
 		}
 	}

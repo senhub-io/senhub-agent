@@ -24,7 +24,8 @@ This section contains documentation for system administrators and advanced users
 - **[Backpressure & Resilience](./BACKPRESSURE.md)** - Cardinality caps, memory limiter, persistent checkpoint
 
 ### Build Notes
-- **[IBM i Native Runner](./IBMI-RUNTIME-BUILD.md)** - Building and deploying the `jt400runner` binary
+- **[Backup and restore](./BACKUP-RESTORE.md)** - What to copy to rebuild an agent, the secret store and console traps
+- **[IBM i Native Runner](./IBMI-RUNTIME-BUILD.md)** - Getting and installing the `jt400runner` binary
 
 ## 🎯 Who This Is For
 

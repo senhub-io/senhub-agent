@@ -87,6 +87,7 @@ This ensures the probe stays functional even when platform limitations exist, pr
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:7596f11130e51ee1a6c261d0023d3d6a3a7ea0406866540cd3941f76189a5abd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -360,3 +361,46 @@ The CPU probe requires no authentication as it collects local system metrics onl
 ### Network
 - No network access required (local metrics only)
 - HTTP strategy required for remote access to metrics
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `system.cpu.utilization` | `cpu_user` | CPU User | % | Percentage of CPU time spent running user-space processes |
+| `system.cpu.utilization` | `cpu_system` | CPU System | % | Percentage of CPU time spent running kernel-space operations |
+| `system.cpu.utilization` | `cpu_idle` | CPU Idle | % | Percentage of CPU time spent idle with no pending work |
+| `system.cpu.utilization` | `cpu_nice` | CPU Nice | % | Percentage of CPU time spent running low-priority user-space processes |
+| `system.cpu.utilization` | `cpu_iowait` | CPU IO Wait | % | Percentage of CPU time spent waiting for I/O operations to complete |
+| `system.cpu.utilization` | `cpu_irq` | CPU Irq | % | Percentage of CPU time spent handling hardware interrupts |
+| `system.cpu.utilization` | `cpu_softirq` | CPU Softirq | % | Percentage of CPU time spent handling software interrupts |
+| `system.cpu.utilization` | `cpu_steal` | CPU Steal | % | Percentage of CPU time stolen by the hypervisor for other virtual machines |
+| `system.cpu.utilization` | `cpu_usage_total` | CPU Total Usage | % | Overall CPU utilization across all cores |
+| `system.cpu.utilization` | `cpu_core_usage` | CPU Core {core} Usage | % | CPU usage percentage per core |
+| `system.cpu.utilization` | `cpu_core_user` | CPU Core {core} User | % | CPU user time percentage per core |
+| `system.cpu.utilization` | `cpu_core_system` | CPU Core {core} System | % | CPU system time percentage per core |
+| `system.cpu.utilization` | `cpu_core_irq` | CPU Core {core} IRQ | % | CPU interrupt time percentage per core |
+| `system.cpu.utilization` | `cpu_core_softirq` | CPU Core {core} SoftIRQ | % | CPU soft interrupt time percentage per core |
+| `senhub.system.cpu.dpcs` | `cpu_dpc_rate` | CPU DPC Rate | # | Deferred Procedure Calls per second |
+| `senhub.system.cpu.dpcs_queued` | `cpu_dpc_queued` | CPU DPC Queued | /s | DPCs queued per second |
+| `system.cpu.utilization` | `cpu_guest` | CPU Guest | % | Percentage of CPU time spent running a guest operating system; the kernel counts it inside user time, so it is subtracted there |
+| `system.cpu.utilization` | `cpu_guest_nice` | CPU Guest Nice | % | Percentage of CPU time spent running a niced guest operating system; the kernel counts it inside nice time, so it is subtracted there |
+| `senhub.system.cpu.context_switches` | `cpu_context_switches` | CPU Context Switches | /s | Context switches per second across all processors |
+| `system.cpu.logical.count` | `cpu_count` | Processors | # | Number of logical processors the operating system reports |
+| `system.processes.count` | `cpu_processes_running` | Processes Running | # | Processes currently runnable, the kernel's run queue length |
+| `senhub.system.cpu.interrupts` | `cpu_interrupts` | CPU Interrupts | /s | CPU interrupts per second |
+| `senhub.system.cpu.queue_length` | `cpu_queue_length` | CPU Queue Length | # | Number of threads waiting in the processor queue |
+| `system.cpu.load_1m` | `cpu_load1` | CPU Load Average 1min | # | Average number of processes in the run queue over the last 1 minute |
+| `system.cpu.load_5m` | `cpu_load5` | CPU Load Average 5min | # | Average number of processes in the run queue over the last 5 minutes |
+| `system.cpu.load_15m` | `cpu_load15` | CPU Load Average 15min | # | Average number of processes in the run queue over the last 15 minutes |
+| `system.processes.count` | `cpu_processes_total` | Processes Total | # | Total number of processes on the host. |
+
+<!-- schema:metrics:end -->

@@ -37,11 +37,12 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:3640669e5c3ba5ee3fd21ef9e697fc92a743fc7555522b8cc8f09429a4d910e8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `protocol` | In practice | `grpc` | Listener transport: OTLP/gRPC or OTLP/HTTP protobuf. One of `grpc`, `http` |
-| `address` | In practice | - | Listen address (host:port); 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address. Example: `0.0.0.0:4317` |
+| `address` | In practice | - | Listen address (host:port), or unix:/path for a Unix domain socket whose senders are known to be on this machine; 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address. Example: `0.0.0.0:4317` |
 | `port` | No | - | Replaces only the port part of the address |
 | `http_path` | No | `/v1/metrics` | Route the HTTP receiver serves metrics on; logs and traces keep /v1/logs and /v1/traces; ignored for grpc |
 | `signals` | In practice | `[metrics]` | Signals the listener accepts; empty means metrics only. One of `metrics`, `logs`, `traces` |
@@ -145,6 +146,34 @@ Run two instances to serve both protocols at once:
   `signals.traces.enabled: true`** — the traces signal on the export side
   gates the relay; without it, ingested spans are discarded and the agent
   logs a throttled warning.
+- **The sender's host is stated when it is known.** A log line or a
+  span can only be joined to the machine it came from through
+  `host.id`, and an application rarely sets it — or sets one computed
+  differently from the agent's, which joins to nothing. When the sender
+  is on this machine, the receiver adds this host's `host.id` and
+  `host.name`, the values of the agent's own host entity, so metrics,
+  logs and traces of one machine share one key. It does so only when
+  the sender is local and only when it stated no `host.*` of its own:
+
+    | How the sender reached the agent | `host.*` added |
+    |---|---|
+    | A Unix socket (`address: unix:/run/senhub-agent/otlp.sock`) | Yes: local by construction |
+    | Loopback TCP, with no `telemetry.relay.*` on the resource | Yes |
+    | Loopback TCP from a relay (the resource carries `telemetry.relay.*`) | No: the relay is not the origin |
+    | Any other address | No: the sender's host is not this one |
+
+    `host.*` is one set: a sender that set any `host.*` key keeps its
+    own, and nothing is added beside it, so a record never carries a
+    machine's id next to a pod's name. A remote sender keeps what it
+    sent, with the `telemetry.relay.*` identity added as before.
+
+    For containerised applications, mount the agent's socket into the
+    container and point the SDK at it
+    (`OTEL_EXPORTER_OTLP_ENDPOINT=unix:///run/senhub-agent/otlp.sock`
+    for gRPC). A container on a bridge network reaches the agent through
+    the gateway address, not loopback, so over TCP it is a remote sender
+    and gets no host identity.
+
 - **Limits.** gRPC accepts payloads up to 4 MiB (the OTel SDK
   default); the HTTP server applies a 30-second read timeout.
 
@@ -156,6 +185,18 @@ Run two instances to serve both protocols at once:
   no export strategy, `unmapped` for a metric with an unrecognized data type).
   A rising `dropped{reason="no_sink"}` means a sender is pushing logs/traces the
   agent has nowhere to relay to.
+- **Join coverage.** `senhub_agent_otlp_receiver_received_total` counts
+  the records relayed and
+  `senhub_agent_otlp_receiver_received_without_host_id_total` those that
+  still had no `host.id` afterwards, both by `signal`, `origin` (`uds`,
+  `tcp_loopback`, `remote`) and `service_name`. The share without is
+  expected on `remote` and a defect on `uds`. The sending service is
+  capped at 200 distinct values; past them records count under `other`.
+- **The agent carries the three signals of the machine.** Sending logs
+  and traces through the local agent gives them the host identity, and
+  it also means an agent that stops takes the machine's logs and traces
+  with its metrics. Alert on the agent itself, not only on what it
+  sends.
 - A bind failure (port already taken) surfaces at probe start, not
   silently at runtime.
 - The listener accepts plaintext OTLP. Keep it on localhost or a
@@ -163,3 +204,31 @@ Run two instances to serve both protocols at once:
   terminator or an OTel collector in front.
 - Shutdown is graceful on both protocols: in-flight requests finish
   before the agent exits.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `http.server.request.duration` | `http.server.request.duration` | HTTP {service.name} Request Duration | s | Duration of the HTTP server requests an application reports, per route, method and status. Relayed as sent: the count is the number of requests, the sum their total duration |
+| `http.server.active_requests` | `http.server.active_requests` | HTTP {service.name} Active Requests | # | Requests an application is handling right now |
+| `jvm.memory.used` | `jvm.memory.used` | JVM {service.name} Memory Used | B | Memory a Java application holds, per pool |
+| `jvm.memory.committed` | `jvm.memory.committed` | JVM {service.name} Memory Committed | B | Memory committed to a Java application by the operating system, per pool |
+| `jvm.memory.limit` | `jvm.memory.limit` | JVM {service.name} Memory Limit | B | Ceiling on a Java memory pool, which the used value above is measured against |
+| `jvm.thread.count` | `jvm.thread.count` | JVM {service.name} Threads | # | Live threads in a Java application |
+| `jvm.class.count` | `jvm.class.count` | JVM {service.name} Loaded Classes | # | Classes currently loaded by a Java application |
+| `jvm.cpu.recent_utilization` | `jvm.cpu.recent_utilization` | JVM {service.name} CPU Utilization | 1 | Share of a processor a Java application has used recently, as a ratio |
+| `jvm.gc.duration` | `jvm.gc.duration` | JVM {service.name} GC Duration | s | Time a Java application spent collecting garbage, per collector. The count is the number of collections, the sum the time they took |
+| `db.client.operation.duration` | `db.client.operation.duration` | DB {service.name} Operation Duration | s | Duration of the database calls an application makes, per system and operation. The count is the number of calls, the sum their total duration |
+| `db.client.connection.count` | `db.client.connection.count` | DB {service.name} Connections | # | Connections in an application's database pool, idle and used |
+| `db.client.connection.pending_requests` | `db.client.connection.pending_requests` | DB {service.name} Pending Connection Requests | # | Requests waiting for a connection from the pool, which is what a saturated pool looks like |
+
+<!-- schema:metrics:end -->

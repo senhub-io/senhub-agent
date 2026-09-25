@@ -26,6 +26,7 @@ restrict to a subset.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:bbd70d969aadcd3e95a5789062ca61c7d63aa9cefae3a0eae290ce6a45adfbd1 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -51,3 +52,22 @@ than failing the whole collection.
 - The agent must run with sufficient privileges to query the SCM. Administrator or LocalSystem is required for full enumeration.
 - When `services` is empty, every service the SCM enumerates is reported — this can generate a large number of PRTG channels on busy servers. Restrict with an explicit list for PRTG deployments.
 - Service names are the short internal names used by `sc query` and `Get-Service`, not display names (e.g. `wuauserv` not "Windows Update").
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.winservices.up` | `senhub.winservices.up` | Windows Services SCM Up | # | 1 when the Service Control Manager is reachable and the probe completed its cycle |
+| `windows.service.state` | `windows.service.state` | Service {windows.service.name} Running | # | 1 when the service is in the Running state, 0 otherwise |
+| `windows.service.status` | `windows.service.status` | Service {windows.service.name} Status | # | Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused |
+
+<!-- schema:metrics:end -->

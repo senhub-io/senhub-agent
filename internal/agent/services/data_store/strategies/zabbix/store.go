@@ -16,9 +16,16 @@ import (
 // collected since the last one. A series that stops being collected is
 // forgotten after ttl: Zabbix reports the item unsupported or stale on
 // its own, which says more than a value re-sent forever.
+//
+// A probe that collects less often than the push vouches for its last
+// value until its next run is due, so the allowance grows by one and a
+// half of its cadence. Without it an hourly probe was visible to the
+// server ninety seconds an hour: a new host waited an hour for its first
+// value, and the probe's discovery vanished between two runs.
 type store struct {
-	mu      sync.RWMutex
-	entries map[string]entry
+	mu       sync.RWMutex
+	entries  map[string]entry
+	cadences map[string]time.Duration // probe name -> collection interval
 }
 
 type entry struct {
@@ -35,7 +42,7 @@ const (
 )
 
 func newStore() *store {
-	return &store{entries: map[string]entry{}}
+	return &store{entries: map[string]entry{}, cadences: map[string]time.Duration{}}
 }
 
 func (s *store) upsert(dp datapoint.DataPoint) {
@@ -69,13 +76,24 @@ func (s *store) upsert(dp datapoint.DataPoint) {
 	s.mu.Unlock()
 }
 
-// snapshot returns the live series and drops those older than ttl.
+// noteProbeCadence records how often the named probe collects.
+func (s *store) noteProbeCadence(probeName string, interval time.Duration) {
+	if probeName == "" || interval <= 0 {
+		return
+	}
+	s.mu.Lock()
+	s.cadences[probeName] = interval
+	s.mu.Unlock()
+}
+
+// snapshot returns the live series and drops those older than ttl, or
+// than ttl plus one and a half cadences for a probe whose cadence is known.
 func (s *store) snapshot(now time.Time, ttl time.Duration) []otelmapper.CacheMetric {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]otelmapper.CacheMetric, 0, len(s.entries))
 	for k, e := range s.entries {
-		if ttl > 0 && now.Sub(e.observedAt) > ttl {
+		if ttl > 0 && now.Sub(e.observedAt) > ttl+s.cadences[e.metric.ProbeName]*3/2 {
 			delete(s.entries, k)
 			continue
 		}

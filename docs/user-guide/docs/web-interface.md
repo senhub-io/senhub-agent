@@ -102,6 +102,15 @@ A file under `strategies.d` the agent cannot read, because of a YAML error or be
 
 The OTLP editor follows the probe editor: the endpoint, the transport, TLS and the authorization header in the block at the top; signals, authentication and routing, TLS details, resource attributes, delivery, memory and persistence in collapsed sections; the YAML at the bottom.
 
+![OTLP editor](images/web-interface/output-editor.webp "OTLP editor with two stored headers, their Replace and remove buttons, and the file that will be written")
+
+A header's value never comes back to the page. A stored one shows as
+**Stored** with **Replace**, and the file keeps it when the page is
+saved without touching it; the **×** of its row removes it from the file
+and from the secret store. A header written in clear in the file is
+moved into the secret store at the first save, as the schema says, and
+the **What will be written** panel shows the reference it will get.
+
 **Test connection** opens a fresh connection with the values on the page, saved or not, and reports each step: name resolution, TCP, the TLS handshake with the certificate's subject and expiry, and the export of one test metric the receiver has to accept. A failing step is shown with its error, so a dead collector is diagnosed from the page.
 
 The right column carries the counters of the OTLP pipeline (exports, errors, dropped points, mean export time, log queue, store size) that used to live on the dashboard.

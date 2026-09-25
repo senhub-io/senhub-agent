@@ -103,7 +103,7 @@ func UpdateProbeFragment(configPath string, p ProbeConfig, secretPaths []string)
 	if err != nil {
 		return "", err
 	}
-	p.Params = KeepStoredReferences(existing, p.Params)
+	p.Params = KeepStoredValues(existing, p.Params, secretPaths)
 	DropNilValues(p.Params)
 	if err := sealProbeParams(&p, secretPaths); err != nil {
 		return "", err

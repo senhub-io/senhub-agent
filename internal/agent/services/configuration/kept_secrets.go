@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -19,10 +20,40 @@ import (
 // that is a ${...} reference and that incoming does not set at the same
 // path. A path incoming sets, to anything, wins.
 func KeepStoredReferences(existing, incoming map[string]interface{}) map[string]interface{} {
+	return keepStored(existing, incoming, "", false, nil)
+}
+
+// KeepStoredValues is KeepStoredReferences plus the literal values the
+// console hid: a value under one of secretPaths, inside a block under
+// one, or under a key that looks like a secret. The console shows those
+// as stored and the form sends nothing back for them, so a save that
+// kept only references dropped them. A plain `X-Tenant: acme` header of
+// an OTLP output vanished from the file on a save that changed nothing.
+func KeepStoredValues(existing, incoming map[string]interface{}, secretPaths []string) map[string]interface{} {
+	secret := make(map[string]bool, len(secretPaths))
+	for _, p := range secretPaths {
+		secret[p] = true
+	}
+	return keepStored(existing, incoming, "", false, secret)
+}
+
+// ConsoleHides reports a key whose value the console never shows, wherever
+// it sits: a superset of the keys the boot-time sealer treats as
+// sensitive, so nothing sealed is ever shown resolved.
+func ConsoleHides(key string) bool { return consoleSecretKeyPattern.MatchString(key) }
+
+var consoleSecretKeyPattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|community|dsn|uri|authorization|bearer|license|jwt)`)
+
+// keepStored walks existing. With secret nil it keeps references only;
+// with a set it also keeps the literals the console hides, by the same
+// rule the console hides them with.
+func keepStored(existing, incoming map[string]interface{}, prefix string, inSecret bool, secret map[string]bool) map[string]interface{} {
 	if incoming == nil {
 		incoming = map[string]interface{}{}
 	}
 	for k, v := range existing {
+		path := prefix + k
+		hidden := secret != nil && (inSecret || secret[path] || ConsoleHides(k))
 		switch val := v.(type) {
 		case map[string]interface{}:
 			sub, has := incoming[k].(map[string]interface{})
@@ -30,13 +61,13 @@ func KeepStoredReferences(existing, incoming map[string]interface{}) map[string]
 				if _, set := incoming[k]; set {
 					continue
 				}
-				merged := KeepStoredReferences(val, map[string]interface{}{})
+				merged := keepStored(val, map[string]interface{}{}, path+".", hidden, secret)
 				if len(merged) > 0 {
 					incoming[k] = merged
 				}
 				continue
 			}
-			KeepStoredReferences(val, sub)
+			keepStored(val, sub, path+".", hidden, secret)
 		case []interface{}:
 			// A list of blocks is merged item by item, in order: the form
 			// re-sends every row, a stored value inside one row is kept.
@@ -50,14 +81,14 @@ func KeepStoredReferences(existing, incoming map[string]interface{}) map[string]
 					continue
 				}
 				if im, ok := list[i].(map[string]interface{}); ok {
-					KeepStoredReferences(em, im)
+					keepStored(em, im, path+".", hidden, secret)
 				}
 			}
 		case string:
 			if _, set := incoming[k]; set {
 				continue
 			}
-			if strings.HasPrefix(val, "${") {
+			if strings.HasPrefix(val, "${") || (hidden && val != "") {
 				incoming[k] = val
 			}
 		}

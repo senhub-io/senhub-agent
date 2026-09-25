@@ -64,6 +64,7 @@ Monitor several tenants with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:f60ac9e2103cbfe7c914e25f2b2e303a02b505bf74d5a40ccc078530724ca256 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -125,3 +126,29 @@ Exchange Online metrics are available through every configured output — OTLP, 
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/exchange-online"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/exchange-online"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.exchange_online.up` | `exchange_online_up` | Service Reachable | # | 1 when the Microsoft 365 reporting API answered this cycle, else 0 |
+| `senhub.exchange_online.service.health` | `exchange_online_service_health` | Service Health ({service_display_name}) | # | Exchange service-health status (Healthy=2, Degraded=1, Error/other=0) |
+| `senhub.exchange_online.mail.sent` | `exchange_online_mail_sent` | Mail Sent | # | Messages sent over the reporting window |
+| `senhub.exchange_online.mail.received` | `exchange_online_mail_received` | Mail Received | # | Messages received over the reporting window |
+| `senhub.exchange_online.mail.delivered` | `exchange_online_mail_delivered` | Mail Delivered | # | Messages delivered over the reporting window |
+| `senhub.exchange_online.mail.failed` | `exchange_online_mail_failed` | Mail Failed | # | Messages that failed delivery over the reporting window |
+| `senhub.exchange_online.mailboxes` | `exchange_online_mailboxes` | Mailboxes Total | # | Total number of mailboxes |
+| `senhub.exchange_online.mailboxes.active` | `exchange_online_mailboxes_active` | Mailboxes Active | # | Number of active mailboxes |
+| `senhub.exchange_online.mailbox.storage.used` | `exchange_online_mailbox_storage_used` | Mailbox Storage Used | Bytes | Total storage consumed across all mailboxes |
+| `senhub.exchange_online.mailbox.quota_exceeded` | `exchange_online_mailbox_quota_exceeded` | Mailboxes Over Quota | # | Number of mailboxes that have exceeded their warning quota |
+
+<!-- schema:metrics:end -->

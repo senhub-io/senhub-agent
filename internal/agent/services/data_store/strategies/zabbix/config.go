@@ -10,6 +10,7 @@
 package zabbix
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -31,11 +32,14 @@ const (
 	defaultHostMetadata      = "senhub-agent"
 )
 
-// TLSConfig is certificate-based encryption for the outbound connection.
-// Zabbix also offers pre-shared keys, which Go's crypto/tls cannot do
-// (golang/go#6379): a host that must be encrypted uses a certificate, and
-// its autoregistration, which Zabbix only encrypts with PSK, stays in
-// clear or goes through a local proxy.
+// TLSConfig encrypts the outbound connection, with a certificate or a
+// pre-shared key. Zabbix takes one or the other per connection, so a
+// block that names both is refused rather than silently picking.
+//
+// The pre-shared key matters beyond preference: measured on 8.0.0, the
+// autoregistration setting takes "none", "PSK" or both and refuses a
+// certificate, so PSK is the only way an agent registers itself on a
+// site that encrypts that step.
 type TLSConfig struct {
 	Enabled            bool
 	CAFile             string
@@ -43,6 +47,17 @@ type TLSConfig struct {
 	KeyFile            string
 	ServerName         string
 	InsecureSkipVerify bool
+
+	// PSKIdentity names which pre-shared key is meant. It travels in
+	// clear and is not a secret.
+	PSKIdentity string
+	// PSKFile holds the key, hex-encoded, the way Zabbix stores it. It
+	// is a file rather than a value in the configuration so its
+	// permissions carry the protection, and so `config show` has
+	// nothing to redact.
+	PSKFile string
+	// PSK is what PSKFile decoded to, filled at load time.
+	PSK []byte
 }
 
 // parseServers reads the 'server' parameter, which holds one address or
@@ -149,13 +164,19 @@ type PassiveConfig struct {
 // what stops anyone who can reach the port from reading the host's
 // measurements.
 //
-// Zabbix also offers pre-shared keys here, which Go's crypto/tls cannot
-// do; see the note on the outbound TLSConfig.
+// It also takes a pre-shared key, with psk_identity and psk_file. A
+// listener carries one or the other: Zabbix picks the encryption per
+// connection from what the poller offers, and answering both from one
+// port would mean deciding which of two secrets proves the host.
 type PassiveTLSConfig struct {
 	Enabled  bool
 	CertFile string
 	KeyFile  string
 	CAFile   string
+
+	PSKIdentity string
+	PSKFile     string
+	PSK         []byte
 }
 
 const (
@@ -342,9 +363,11 @@ func parsePassiveTLS(block map[string]interface{}) (PassiveTLSConfig, error) {
 		cfg.Enabled = b
 	}
 	for key, dest := range map[string]*string{
-		"cert_file": &cfg.CertFile,
-		"key_file":  &cfg.KeyFile,
-		"ca_file":   &cfg.CAFile,
+		"cert_file":    &cfg.CertFile,
+		"key_file":     &cfg.KeyFile,
+		"ca_file":      &cfg.CAFile,
+		"psk_identity": &cfg.PSKIdentity,
+		"psk_file":     &cfg.PSKFile,
 	} {
 		v, ok := block[key]
 		if !ok {
@@ -359,11 +382,19 @@ func parsePassiveTLS(block map[string]interface{}) (PassiveTLSConfig, error) {
 	if !cfg.Enabled {
 		return cfg, nil
 	}
+	key, err := loadPSK("passive.tls", cfg.PSKIdentity, cfg.PSKFile, cfg.CertFile != "")
+	if err != nil {
+		return cfg, err
+	}
+	cfg.PSK = key
+	if len(cfg.PSK) > 0 {
+		return cfg, nil
+	}
 	// Refuse at load rather than at the first poll: a listener that
 	// starts without the certificate it was told to present would serve
 	// in clear, which is the opposite of what was asked for.
 	if cfg.CertFile == "" || cfg.KeyFile == "" {
-		return cfg, fmt.Errorf("zabbix: 'passive.tls' needs both 'cert_file' and 'key_file' to encrypt the polled port")
+		return cfg, fmt.Errorf("zabbix: 'passive.tls' needs a certificate (cert_file and key_file) or a pre-shared key (psk_identity and psk_file) to encrypt the polled port")
 	}
 	return cfg, nil
 }
@@ -409,6 +440,8 @@ func parseTLS(block map[string]interface{}) (TLSConfig, error) {
 		{"cert_file", &cfg.CertFile},
 		{"key_file", &cfg.KeyFile},
 		{"server_name", &cfg.ServerName},
+		{"psk_identity", &cfg.PSKIdentity},
+		{"psk_file", &cfg.PSKFile},
 	} {
 		v, ok := block[s.key]
 		if !ok {
@@ -430,7 +463,47 @@ func parseTLS(block map[string]interface{}) (TLSConfig, error) {
 	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
 		return cfg, fmt.Errorf("zabbix: 'tls.cert_file' and 'tls.key_file' go together")
 	}
+	key, err := loadPSK("tls", cfg.PSKIdentity, cfg.PSKFile, cfg.CertFile != "")
+	if err != nil {
+		return cfg, err
+	}
+	cfg.PSK = key
 	return cfg, nil
+}
+
+// loadPSK reads and validates the pre-shared key half of a tls block.
+//
+// It refuses a half-written one rather than falling back to no
+// encryption: an operator who named a key and mistyped the path has
+// asked for encryption, and starting without it is the failure nobody
+// looks at again.
+func loadPSK(block, identity, path string, hasCert bool) ([]byte, error) {
+	if identity == "" && path == "" {
+		return nil, nil
+	}
+	if identity == "" || path == "" {
+		return nil, fmt.Errorf("zabbix: '%s.psk_identity' and '%s.psk_file' go together", block, block)
+	}
+	if hasCert {
+		// Zabbix chooses one encryption per connection. Configuring both
+		// here would leave the agent deciding which secret proves it,
+		// silently, and the server would see whichever it happened to
+		// pick.
+		return nil, fmt.Errorf("zabbix: '%s' takes a certificate or a pre-shared key, not both", block)
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 - operator-supplied path
+	if err != nil {
+		return nil, fmt.Errorf("zabbix: reading '%s.psk_file': %w", block, err)
+	}
+	text := strings.TrimSpace(string(raw))
+	key, err := hex.DecodeString(text)
+	if err != nil {
+		return nil, fmt.Errorf("zabbix: '%s.psk_file' must hold the key as hexadecimal, the way Zabbix writes it: %w", block, err)
+	}
+	if len(key) < 16 {
+		return nil, fmt.Errorf("zabbix: '%s.psk_file' holds %d bytes; Zabbix requires at least 16 (32 hex characters)", block, len(key))
+	}
+	return key, nil
 }
 
 // parseDuration reads "30s", a number of seconds, or an integer.

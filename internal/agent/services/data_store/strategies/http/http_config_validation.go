@@ -759,7 +759,11 @@ func (cm *ConfigurationManager) withStoredSecrets(req *UniversalConfigRequest) e
 				return fmt.Errorf("probe %q is a %s, not a %s", req.Name, existing.Type, req.Probe)
 			}
 			if found {
-				req.Config = configuration.KeepStoredReferences(existing.Params, req.Config)
+				var secretPaths []string
+				if ps, has := spec.For(req.Probe); has {
+					secretPaths = ps.SecretPaths()
+				}
+				req.Config = configuration.KeepStoredValues(existing.Params, req.Config, secretPaths)
 			}
 		}
 	}

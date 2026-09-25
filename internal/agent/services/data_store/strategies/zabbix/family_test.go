@@ -138,3 +138,50 @@ func TestASoleMemberIsNotAFamily(t *testing.T) {
 		t.Fatal("one metric alone has nothing to discover")
 	}
 }
+
+// relayDefinition is the shape of what other programs send: several
+// independent metrics keyed on the same dimension, service.name.
+func relayDefinition() *transformers.ProbeDefinition {
+	return &transformers.ProbeDefinition{
+		ProbeName:           "otlp_receiver",
+		MultiInstanceLabels: []string{"service.name"},
+		DiscoverPerMetric:   true,
+		Metrics: []transformers.MetricDefinition{
+			{Name: "jvm_thread_count", Otel: &transformers.OtelMapping{
+				Name: "jvm.thread.count", Type: "updowncounter",
+				Attributes: map[string]string{"jvm.thread.daemon": "false"}}},
+			{Name: "jvm_class_count", Otel: &transformers.OtelMapping{
+				Name: "jvm.class.count", Type: "updowncounter",
+				Attributes: map[string]string{"jvm.class.state": "loaded"}}},
+		},
+	}
+}
+
+// An application relaying one metric of a dimension set must get an item
+// for that metric and none for the others: they are independent, so a
+// shared rule would declare items it never feeds (#922).
+func TestARelayedMetricIsDiscoveredOnItsOwn(t *testing.T) {
+	fams := familiesOf(relayDefinition())
+
+	for _, name := range []string{"jvm_thread_count", "jvm_class_count"} {
+		if fams[name] == nil {
+			t.Fatalf("%s got no rule of its own", name)
+		}
+	}
+	if fams["jvm_thread_count"].otelName == fams["jvm_class_count"].otelName {
+		t.Error("two independent metrics share a rule; whichever the host does not send becomes an empty item")
+	}
+}
+
+// The opposite case must not change: a probe's own metrics that vary by
+// one attribute stay one rule per instance, or the rules multiply for
+// nothing.
+func TestACollectedFamilyStillSharesOneRule(t *testing.T) {
+	fams := familiesOf(filesystemDefinition())
+	if fams["fs_used_bytes"] == nil || fams["fs_free_bytes"] == nil {
+		t.Fatal("the filesystem family lost its members")
+	}
+	if fams["fs_used_bytes"].otelName != fams["fs_free_bytes"].otelName {
+		t.Error("used and free bytes were split into separate rules")
+	}
+}
