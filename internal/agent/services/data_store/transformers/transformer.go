@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 )
 
-//go:embed definitions/*.yaml definitions/shared/*.yaml lookups/*.lookup corrections/*.yaml
+//go:embed definitions/*.yaml definitions/shared/*.yaml corrections/*.yaml
 var definitionFiles embed.FS
 
 // MetricTransformer defines the interface for transforming metric names
