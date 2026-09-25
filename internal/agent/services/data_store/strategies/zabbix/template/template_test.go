@@ -112,7 +112,10 @@ func TestEncodeProducesTheImportLayout(t *testing.T) {
 	}
 	text := string(out)
 	for _, want := range []string{
-		"zabbix_export:", "version: \"6.0\"", "template_groups:", "name: Templates/SenHub",
+		// 6.0 spells the root group tag "groups"; 7.0 renamed it to
+		// "template_groups". Asserting the 7.0 spelling on a 6.0 export
+		// pinned a file no server would import.
+		"zabbix_export:", "version: \"6.0\"", "groups:", "name: Templates/SenHub",
 		"discovery_rules:", "key: acme.discovery.variants[logicaldisk,system.filesystem.usage,drive]",
 		"delay: 10m", "item_prototypes:",
 		"key: acme.system.filesystem.usage[{#PROBE},{#DRIVE},{#STATE}]", "delay: 30s", "value_type: FLOAT",
@@ -205,5 +208,74 @@ func TestAnExportWithoutItemsSaysSo(t *testing.T) {
 	full, _ := Generate(diskDefinition(), Options{})
 	if full.DeclaresNothing() {
 		t.Error("a definition with mapped metrics must not report an empty export")
+	}
+}
+
+// Zabbix validates a template's technical name as a host name: letters,
+// digits, spaces, dots, dashes and underscores, nothing else. Nine friendly
+// names in the definitions carry a slash, a parenthesis or an ampersand, and
+// a template built straight from them is refused at import with only
+// `Invalid parameter "/1/host": invalid host name.` to go on.
+func TestTheTechnicalNameHoldsOnlyWhatZabbixAcceptsInAHostName(t *testing.T) {
+	for _, c := range []struct{ friendly, want string }{
+		{"IBM i / Power Systems", "SenHub IBM i Power Systems"},
+		{"Chrony (NTP)", "SenHub Chrony NTP"},
+		{"Veeam Backup & Replication", "SenHub Veeam Backup Replication"},
+		{"MySQL / MariaDB", "SenHub MySQL MariaDB"},
+		{"Oracle Database (Enterprise / Diagnostics Pack)", "SenHub Oracle Database Enterprise Diagnostics Pack"},
+	} {
+		def := transformers.ProbeDefinition{
+			ProbeName: "p", FriendlyName: c.friendly,
+			Metrics: []transformers.MetricDefinition{{
+				Name: "m", DisplayName: "M", Unit: "#",
+				Otel: &transformers.OtelMapping{Name: "senhub.m", Type: "gauge"},
+			}},
+		}
+		exp, err := Generate(def, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tpl := exp.ZabbixExport.Templates[0]
+		if tpl.Template != c.want {
+			t.Errorf("technical name of %q = %q, want %q", c.friendly, tpl.Template, c.want)
+		}
+		// The name an operator reads keeps what the definition wrote.
+		if tpl.Name != "SenHub "+c.friendly {
+			t.Errorf("visible name of %q = %q, want it unchanged", c.friendly, tpl.Name)
+		}
+	}
+}
+
+// Zabbix renamed the root template-group tag in 7.0. Stamping "6.0" on the
+// 7.0 spelling produced a file every server refuses with `unexpected tag
+// "template_groups"` — the --version 6.0 option emitted nothing importable.
+func TestTheGroupTagFollowsTheExportVersion(t *testing.T) {
+	for _, c := range []struct{ version, want string }{
+		{"6.0", "groups"},
+		{"7.0", "template_groups"},
+		{"", "template_groups"},
+	} {
+		exp, err := Generate(diskDefinition(), Options{Version: c.version})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := Encode(exp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := string(body)
+		if !strings.Contains(got, "\n    "+c.want+":") {
+			t.Errorf("version %q: no %q tag in the export", c.version, c.want)
+		}
+		other := "template_groups"
+		if c.want == other {
+			other = "groups"
+		}
+		if strings.Contains(got, "\n    "+other+":") {
+			t.Errorf("version %q: the export also carries the %q tag", c.version, other)
+		}
+		if b := Base(Options{Version: c.version}); len(b.ZabbixExport.TemplateGroups)+len(b.ZabbixExport.Groups) != 1 {
+			t.Errorf("version %q: the base export must declare its group exactly once", c.version)
+		}
 	}
 }

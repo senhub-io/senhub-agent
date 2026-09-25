@@ -74,8 +74,12 @@ type Export struct {
 
 type ExportBody struct {
 	Version        string          `yaml:"version"`
-	TemplateGroups []TemplateGroup `yaml:"template_groups"`
-	Templates      []Template      `yaml:"templates"`
+	TemplateGroups []TemplateGroup `yaml:"template_groups,omitempty"`
+	// Groups carries the same list under the name Zabbix 6.0 expects. The
+	// tag was renamed in 7.0, and a server refuses the other spelling
+	// outright: "unexpected tag". Exactly one of the two is ever set.
+	Groups    []TemplateGroup `yaml:"groups,omitempty"`
+	Templates []Template      `yaml:"templates"`
 }
 
 type TemplateGroup struct {
@@ -155,6 +159,46 @@ type Mapping struct {
 	NewValue string `yaml:"newvalue"`
 }
 
+// groupsFor fills the template-group list under the tag the requested export
+// version uses: "groups" up to Zabbix 6.0, "template_groups" from 7.0. The
+// caller sets both fields; the one that does not apply comes back nil and is
+// omitted.
+func groupsFor(opts Options, legacy bool) []TemplateGroup {
+	if legacy != (opts.Version == "6.0") {
+		return nil
+	}
+	return []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}}
+}
+
+// technicalName strips what Zabbix refuses in a template's technical name,
+// which it validates as a host name: only letters, digits, spaces, dots,
+// dashes and underscores are accepted. Friendly names carry the rest —
+// "IBM i / Power Systems", "Chrony (NTP)", "Veeam Backup & Replication" —
+// and a template holding one is refused at import with nothing but
+// `Invalid parameter "/1/host"` to say why. The readable name keeps them.
+func technicalName(s string) string {
+	var b strings.Builder
+	space := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+			if space && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			space = false
+			b.WriteRune(r)
+		default:
+			// Everything else, separator or not, becomes one space, so
+			// "MySQL / MariaDB" does not collapse into one word.
+			if b.Len() > 0 {
+				space = true
+			}
+		}
+	}
+	return b.String()
+}
+
 // DeclaresNothing reports an export whose templates hold no item and no
 // discovery rule. It happens for a probe whose every metric is marked as not
 // mapped — a log conduit such as syslog or event. Such a file is not a
@@ -176,12 +220,11 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		return Export{}, fmt.Errorf("definition without a probe_name")
 	}
 	def = forPlatform(def, opts.Platform)
-	name := "SenHub " + firstNonEmpty(def.FriendlyName, def.ProbeName)
-	visible := name
+	visible := "SenHub " + firstNonEmpty(def.FriendlyName, def.ProbeName)
+	name := technicalName(visible)
 	if opts.Platform != "" {
-		// Zabbix refuses parentheses in a template's technical name, so
-		// the platform is appended plainly there and parenthesised in
-		// the name an operator reads.
+		// The platform is appended plainly to the technical name and
+		// parenthesised in the name an operator reads.
 		name += " " + opts.Platform
 		visible += " (" + opts.Platform + ")"
 	}
@@ -318,7 +361,8 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 
 	return Export{ZabbixExport: ExportBody{
 		Version:        opts.Version,
-		TemplateGroups: []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}},
+		TemplateGroups: groupsFor(opts, false),
+		Groups:         groupsFor(opts, true),
 		Templates:      []Template{tpl},
 	}}, nil
 }
@@ -597,7 +641,8 @@ func Base(opts Options) Export {
 	}
 	return Export{ZabbixExport: ExportBody{
 		Version:        opts.Version,
-		TemplateGroups: []TemplateGroup{{UUID: uid("group", opts.Group), Name: opts.Group}},
+		TemplateGroups: groupsFor(opts, false),
+		Groups:         groupsFor(opts, true),
 		Templates:      []Template{tpl},
 	}}
 }
