@@ -25,6 +25,7 @@ size.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:2a6f64553c396df8dedf4bd230fa2f708adcdc892f21184e817c5d28d103b193 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

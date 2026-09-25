@@ -26,6 +26,7 @@ against the local BMC.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:20c83e2b740a31ae3a756aeaea8ddf2412db4cbaa25a9b6b68faaff486493909 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

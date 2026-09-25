@@ -63,6 +63,7 @@ Monitor several tenants with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:9f139b66c51fdb398769a95c7aba1736188a8ef6ac613714998bf7c090b9145f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

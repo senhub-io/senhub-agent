@@ -27,6 +27,7 @@ No parameters are required — the probe auto-discovers all drives visible to
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:9839c52cff86295a89a7abe662a3d2242ff564cf95efa99ae31276b4538332d8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

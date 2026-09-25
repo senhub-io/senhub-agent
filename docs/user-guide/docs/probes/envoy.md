@@ -23,6 +23,7 @@ connections and requests, and per-cluster upstream metrics.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:cbaa2223c32e503bcf78b854bdcc473d53217b112e375bf527c6038714d5b8d8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

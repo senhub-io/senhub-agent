@@ -26,6 +26,7 @@ throughput and connected-client totals.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:d5c3491ce8301ad201ef6bd26de955b36f5c9213b954d8697f9c3b06c5b047f4 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

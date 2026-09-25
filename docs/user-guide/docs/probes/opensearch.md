@@ -24,6 +24,7 @@ Elasticsearch; metric names use the `opensearch.*` namespace.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:5f81dda84942ad169c38af4e5a08ea0e80618347584b99febdc8aa4c8d5e0b27 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

@@ -36,6 +36,7 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:4f9a7547433c14c9a6d8d729cd2d7cb16915218818a9822ac4575a517b397d12 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

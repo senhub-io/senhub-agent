@@ -39,6 +39,7 @@ Platform-specific ping implementations are automatically selected based on the o
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:dd2a0f2c05073adc38cce52fb2d11a461b2297f0d0652d97e6be8a176cf2decf -->
 
 This probe reads no parameters. It collects every 30 seconds, a cadence fixed in the code.
 

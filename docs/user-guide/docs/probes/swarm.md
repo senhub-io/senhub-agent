@@ -27,6 +27,7 @@ wrong node, another is a machine that was never clustered.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:014ec5cc82cacf703c729990ed4e69dc197d556d8d07e72f67058a8e03bede9b -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

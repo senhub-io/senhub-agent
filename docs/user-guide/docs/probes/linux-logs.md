@@ -40,6 +40,7 @@ identical to records produced by the `syslog` and `event` probes
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:207ad5d72f4e63f324f5ba2ee6129f56dbd746b3e9f3e68e653d205355b32e39 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

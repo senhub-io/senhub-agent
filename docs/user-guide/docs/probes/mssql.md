@@ -26,6 +26,7 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:563a5c3b1fdcea98204a97022933ddb9547d4fc5da80cb54edeee2c1aa49f9b1 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

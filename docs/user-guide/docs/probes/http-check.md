@@ -24,6 +24,7 @@ validity of the TLS certificate as a first-class metric.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:28f612128059ccde67d4aecb3210cbded2ea801bec34f0260e8c6ba923f95b26 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

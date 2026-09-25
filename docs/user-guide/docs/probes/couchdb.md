@@ -25,6 +25,7 @@ database read/write throughput and I/O byte counters.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:fb8e87407983df59e6de6326feb53649bce4bd001c826c90fd2da412c9a6ae64 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

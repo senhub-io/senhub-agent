@@ -56,6 +56,7 @@ Replica and cluster state change slowly; a longer interval keeps WMI load low:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:f13b6f633820e67e9014003cb13d48aadcc37290e47e300af9798e31d1aeeed8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
