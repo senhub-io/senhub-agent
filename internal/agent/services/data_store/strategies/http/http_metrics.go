@@ -278,6 +278,25 @@ func (m *MetricsProcessor) processNagiosMetricAggregated(metricDef NagiosMetric,
 	}
 }
 
+// tagSpecificThresholds returns the thresholds of the first
+// tag_specific_thresholds entry whose tags all match the series, else
+// the metric's own. Request overrides still win over both.
+func tagSpecificThresholds(metricDef NagiosMetric, metric CachedMetric) (string, string) {
+	for _, entry := range metricDef.TagSpecificThresholds {
+		matches := true
+		for key, value := range entry.Tags {
+			if metric.Tags[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return entry.Warning, entry.Critical
+		}
+	}
+	return metricDef.Warning, metricDef.Critical
+}
+
 // processNagiosMetricSeparate processes metrics separately (no aggregation)
 func (m *MetricsProcessor) processNagiosMetricSeparate(metricDef NagiosMetric, metrics []CachedMetric, overrides NagiosOverrides) NagiosMetricResult {
 	// For simplicity, return the worst case status and combine perf data
@@ -287,9 +306,7 @@ func (m *MetricsProcessor) processNagiosMetricSeparate(metricDef NagiosMetric, m
 
 	for _, metric := range metrics {
 		if val, ok := metric.Value.(float64); ok {
-			// Get thresholds
-			warning := metricDef.Warning
-			critical := metricDef.Critical
+			warning, critical := tagSpecificThresholds(metricDef, metric)
 			if overrides.Warning != "" {
 				warning = overrides.Warning
 			}
