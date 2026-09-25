@@ -340,3 +340,11 @@ collection gaps that comparison exposed.
 - **Every generated Zabbix template imports into a real server.** Eleven
   were refused: a display name with a slash or an ampersand, and the
   6.0 export format.
+
+- **A probe that runs less often than the Zabbix push stays visible
+  between two runs.** The output forgot a value after three push
+  intervals, so an hourly probe such as `os_updates` reached the server
+  ninety seconds an hour: a host registered in between waited an hour
+  for its first value, and the probe's discovery vanished until the next
+  run. The value is now kept until its probe's next run is due, as the
+  OTLP output does since #890.

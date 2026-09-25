@@ -37,7 +37,7 @@ zabbix:
 | `server` | required | Zabbix server or proxy, `host:port`; `10051` when the port is omitted. Several addresses separated by commas name a proxy group (see below). |
 | `hostname` | machine host name | Name this host registers under. |
 | `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. The agent appends its operating system, so `senhub-agent linux`, which is how the per-platform actions tell hosts apart. Limited to 2034 bytes by Zabbix. |
-| `interval` | `60s` | Push cadence of the collected values. |
+| `interval` | `60s` | Push cadence of the collected values. Each push sends the latest value of every item, including the value of a probe that runs less often, until that probe's next run is due. |
 | `refresh_interval` | `120s` | How often the item list is asked again. |
 | `heartbeat_interval` | `60s` | Heartbeat cadence; the server declares the host unavailable after twice that. |
 | `timeout` | `10s` | Bound on one connection, request and reply. |
