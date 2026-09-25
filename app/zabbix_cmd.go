@@ -160,6 +160,10 @@ func runZabbixCommand() {
 			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", p, err)
 			os.Exit(1)
 		}
+		if exp.DeclaresNothing() {
+			fmt.Fprintf(os.Stderr, "Note: %s relays records rather than metrics; it declares no Zabbix item, so no template was written for it.\n", p)
+			continue
+		}
 		body, err := template.Encode(exp)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", p, err)
