@@ -431,3 +431,14 @@ collection gaps that comparison exposed.
   PRTG unit of ten metrics that showed a raw label (`BytesFile`,
   `TimeSeconds`, a byte count as `Count`), and the NetScaler heartbeat
   rates now read `pkt/s`. (#930)
+
+- **A Windows host installed from a beta MSI can install the next
+  release.** A beta MSI carried its version as `0.5.5-beta`, which
+  Windows Installer does not read as a version: it registered as newer
+  than any release, and `senhub-agent-0.5.6-amd64.msi` refused to
+  install with "A newer version of SenHub Agent is already installed".
+  The MSI now carries the numeric part only, and a release replaces the
+  beta of the same number. **A host still on a beta MSI built before
+  this fix must uninstall it once** (Settings > Apps, or `msiexec /x`);
+  the configuration under `C:\ProgramData\SenHub` is removed by the
+  uninstall, so copy it aside first.

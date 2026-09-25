@@ -180,7 +180,7 @@ package-windows-msi: build-windows ## Build Windows MSI (requires WiX v4 `wix` t
 	@command -v wix >/dev/null 2>&1 || { echo "$(RED)wix tool not found. Install: dotnet tool install --global wix --version '4.*'$(NC)"; exit 1; }
 	@echo "$(GREEN)📦 Building Windows MSI (version $(VERSION))...$(NC)"
 	@wix build packaging/windows/senhub-agent.wxs \
-		-d Version="$(VERSION)" \
+		-d Version="$(shell echo $(VERSION) | sed -E 's/^v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/')" \
 		-d BinDir="$(WINDOWS_AMD64_DIR)" \
 		-arch x64 \
 		-ext WixToolset.Util.wixext \
