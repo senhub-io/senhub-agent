@@ -49,6 +49,36 @@ collection gaps that comparison exposed.
     bounds it — which is why an unfiltered view reports the roll-up
     alone. (#910)
 
+- **Nagios checks follow the plugin convention.** A threshold is now the
+  last acceptable value: a value equal to it is OK, where the agent
+  alerted on it. A metric is read as a health state only when its
+  definition names its values, where any name containing `status` or a
+  small integer was read that way — a count of two failed Veeam jobs
+  read CRITICAL against a warning threshold of five. Review the
+  thresholds you wrote against the old reading.
+
+    The operator's `nagios.yaml` is now read from the directory that
+    holds the agent configuration (`/etc/senhub-agent/` on Linux,
+    `C:\ProgramData\SenHub\` on Windows), with the former location as a
+    fallback. A file with a misspelt key, a threshold that is not a
+    number or an unknown aggregation is refused and reported, where it
+    was silently replaced by the shipped checks.
+
+- **Three metric names change.** The per-destination ActiveMQ counts are
+  `activemq.destination.consumer.count` and
+  `activemq.destination.producer.count`; they shared the broker totals'
+  names and rendered under the broker-wide channel. A Redfish drive's
+  predicted failure is `senhub.hardware.physical_disk.failure_predicted`,
+  a 0/1 gauge; as a state of `hw.status` it made every healthy drive
+  overwrite its own health with `unknown`. Channels and display names
+  are unchanged.
+
+- **A Veeam protected object is identified by its id.** A machine
+  protected by several jobs comes back once per job, and keyed on its
+  name one entry overwrote the others: on a real server, 66 of 200
+  objects reported a sibling's figures. The series gain the object id,
+  so discovered items are recreated once.
+
 ## Features
 
 - **The Zabbix output**, as a native active agent. It connects out to
@@ -186,6 +216,26 @@ collection gaps that comparison exposed.
   registry runs. A published release is also checked for completeness
   rather than assumed finished.
 
+- **A Nagios command calls one check.** `GET
+  /api/{key}/nagios/check/{name}` runs one configured check and answers
+  in plugin format, `STATUS - message | perfdata`, with 404 for a check
+  that is not configured. Before, configured checks were reachable only
+  as JSON for all of them at once, which needed a wrapper script. The
+  Nagios output has its own page, proven against a real Nagios Core.
+
+- **Every probe page lists every metric.** A generated reference gives
+  each metric its OTel name, its PRTG and Nagios channel, its unit and
+  its description. 303 of the 1314 metrics the probes emit were named
+  nowhere, and the 93 IBM i metrics without a description now have one.
+
+- **The Veeam probe says which protected objects get no job status**,
+  per platform, so a backup missing from the consolidated sensor can be
+  explained from the customer's own console.
+
+- **`config check` says when an OTLP output will send no entity event.**
+  Entities are off unless enabled, and a host missing from the topology
+  had nothing anywhere saying why. (#938)
+
 ## Fixes
 
 - **A value from a probe that runs less often than the push is exported
@@ -262,3 +312,31 @@ collection gaps that comparison exposed.
   publishes no line.** It chose the version line by asking whether the
   branch was master and published everything else as the development
   line, so a manual run from a release branch overwrote it. (#913)
+
+- **The legacy PRTG POST endpoint no longer merges instances into one
+  channel.** `POST /api/{key}/prtg/metrics` stripped the instance from
+  channel names, and PRTG keeps one channel per name: a MySQL server's
+  per-database sizes, a PowerStore's volumes and a Windows host's drives
+  each came out as a single channel, every instance but the last lost.
+
+- **Nagios checks apply what they declare.** `probe_filter` matches the
+  probe type as well as its name, so the shipped Veeam checks work on a
+  probe named otherwise; `tag_specific_thresholds`, `tag_<name>=` filters
+  and POST overrides were parsed and ignored, and are now applied. A
+  check naming a metric its platform never emits is reported at load.
+  Plugin output carries no semicolon, which Nagios reserves, and lists
+  its series in the same order at every poll.
+
+- **The probe pages named 160 metrics the agent never emits**, some a
+  misspelling of a real one, some never collected. A reader building a
+  panel on one got an empty series.
+
+- **Every metric declares the dimensions it carries**, instead of
+  inheriting the probe's union. On swarm, kubernetes, netscaler and
+  memcached a cluster counter claimed a container name, and Zabbix
+  refused the resulting discovery rule. The memory probe declares which of its
+  metrics exist only on Windows or only on Unix.
+
+- **Every generated Zabbix template imports into a real server.** Eleven
+  were refused: a display name with a slash or an ampersand, and the
+  6.0 export format.
