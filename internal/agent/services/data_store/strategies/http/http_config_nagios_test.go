@@ -213,7 +213,8 @@ func TestNagiosPageExampleLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	var example string
-	for _, block := range strings.Split(string(page), "```yaml\n")[1:] {
+	text := strings.ReplaceAll(string(page), "\r\n", "\n") // a Windows checkout is CRLF
+	for _, block := range strings.Split(text, "```yaml\n")[1:] {
 		body := block[:strings.Index(block, "```")]
 		if strings.Contains(body, "checks:") {
 			example = body

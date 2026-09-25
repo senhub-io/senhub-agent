@@ -60,4 +60,7 @@ func TestAHandEditInsideTheBlockBreaksTheSeal(t *testing.T) {
 	if _, ok := VerifyBlock(outside); !ok {
 		t.Error("an edit outside the block broke the seal")
 	}
+	if _, ok := VerifyBlock(strings.ReplaceAll(page, "\n", "\r\n")); !ok {
+		t.Error("a CRLF checkout of an untouched page broke the seal")
+	}
 }
