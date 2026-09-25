@@ -139,7 +139,7 @@
                 for (const k of Object.keys(src || {})) {
                     const v = src[k], path = prefix + k;
                     if (isObj(v)) { if (dst[k] === undefined) dst[k] = {}; if (isObj(dst[k])) { overlay(v, dst[k], path + '.'); if (!Object.keys(dst[k]).length) delete dst[k]; } }
-                    else if (typeof v === 'string' && v.startsWith('${') && dst[k] === undefined && !this._removed[path]) dst[k] = v;
+                    else if (typeof v === 'string' && isStored(v) && dst[k] === undefined && !this._removed[path]) dst[k] = v;
                 }
             };
             overlay(this._values, out, '');
@@ -160,6 +160,11 @@
                 }
             };
             seal(this.params, out, '');
+            // A value the console hid outside a secret parameter stays in
+            // the file as written; the preview says so rather than show
+            // the mask or leave the key out.
+            const kept = (o) => { for (const k of Object.keys(o)) { if (o[k] === '***' || o[k] === '[REDACTED]') o[k] = '(kept as written)'; else if (isObj(o[k])) kept(o[k]); } };
+            kept(out);
             return out;
         }
         _clean(v) {
