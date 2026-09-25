@@ -1,6 +1,8 @@
 package http
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -58,6 +60,79 @@ func TestNagiosDefaultChecks_ChannelsExist(t *testing.T) {
 					t.Errorf("%s: check %q references channel %q which no probe definition emits", source, check.Name, metric.Channel)
 				}
 			}
+		}
+	}
+}
+
+func writeNagiosFile(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "nagios.yaml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An operator's nagios.yaml is read from the directory that holds the
+// agent configuration: the working directory of a service is
+// /usr/local/bin or the install folder, never a place to write to.
+func TestLoadNagiosConfig_ReadsFileNextToAgentConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeNagiosFile(t, dir, `version: "site-1"
+checks:
+  - name: cpu_user_check
+    metrics:
+      - channel: cpu_user
+        warning: "80"
+        critical: "90"
+`)
+	cm := NewConfigurationManager(pathedConfig{path: filepath.Join(dir, "agent.yaml")}, map[string]interface{}{}, newTestLogger())
+
+	config := cm.LoadNagiosConfig()
+	if config.Version != "site-1" || len(config.Checks) != 1 || config.Checks[0].Name != "cpu_user_check" {
+		t.Fatalf("expected the operator file next to agent.yaml, got version %q with %d checks", config.Version, len(config.Checks))
+	}
+}
+
+func TestLoadNagiosConfig_InvalidFileFallsBackToEmbedded(t *testing.T) {
+	dir := t.TempDir()
+	writeNagiosFile(t, dir, "version: \"broken\"\nchecks: []\n")
+	cm := NewConfigurationManager(pathedConfig{path: filepath.Join(dir, "agent.yaml")}, map[string]interface{}{}, newTestLogger())
+
+	config := cm.LoadNagiosConfig()
+	if config.Version == "broken" {
+		t.Fatal("a file with no check was served")
+	}
+	if len(config.Checks) < 2 {
+		t.Fatalf("expected the embedded curated checks, got %d", len(config.Checks))
+	}
+}
+
+// A check matches the metric name. The PRTG channel label of the
+// definition is the usual mistake, and the loader names the metric to
+// use instead.
+func TestUndeclaredNagiosChannels(t *testing.T) {
+	config := &NagiosConfig{Checks: []NagiosCheck{{
+		Name: "cpu",
+		Metrics: []NagiosMetric{
+			{Channel: "cpu_user"},
+			{Channel: "cpu_user_time"},
+			{Channel: "no_such_metric"},
+		},
+	}}}
+
+	got, err := undeclaredNagiosChannels(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []undeclaredNagiosChannel{
+		{Check: "cpu", Channel: "cpu_user_time", Hint: "cpu_user"},
+		{Check: "cpu", Channel: "no_such_metric"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("entry %d: got %+v, want %+v", i, got[i], want[i])
 		}
 	}
 }
