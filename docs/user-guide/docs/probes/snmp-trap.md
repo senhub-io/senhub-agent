@@ -32,21 +32,21 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:c8af0ba792358cd98b7f04667f4576521005bacb315197a2612b78b49a6a6a8a -->
+<!-- sha256:ccd8deacea92f44457966195a4a7ea6dbdb374e8b421afaee82f4bbe189f5912 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `bind_address` | No | `127.0.0.1:162` | UDP listen address; port 162 needs root or CAP_NET_BIND_SERVICE |
-| `version` | No | `v2c` | A string. One of `v2c`, `v3` |
+| `version` | No | `v2c` | SNMP version of the traps accepted; v3 needs v3.users. One of `v2c`, `v3` |
 | `community` | No | - | v2c community check; empty accepts any. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `mib_paths` | No | - | Local MIB files or folders for OID names |
 | `v3` | No | - | SNMPv3 users |
 | `v3.users` | Yes | - | A list of blocks |
 | `v3.users[].username` | Yes | - | USM user name |
-| `v3.users[].auth_protocol` | No | - | A string. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
-| `v3.users[].auth_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `v3.users[].priv_protocol` | No | - | A string. One of `DES`, `AES`, `AES192`, `AES256` |
-| `v3.users[].priv_password` | No | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.users[].auth_protocol` | No | - | Authentication protocol of this user; empty means no authentication. One of `MD5`, `SHA`, `SHA224`, `SHA256`, `SHA384`, `SHA512` |
+| `v3.users[].auth_password` | No | - | Authentication passphrase of this user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `v3.users[].priv_protocol` | No | - | Privacy (encryption) protocol of this user; needs auth_protocol. One of `DES`, `AES`, `AES192`, `AES256` |
+| `v3.users[].priv_password` | No | - | Privacy passphrase of this user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 
 <!-- schema:params:end -->
 
