@@ -460,3 +460,8 @@ collection gaps that comparison exposed.
   refuse at start is an error, and a check naming a metric this
   platform does not emit is a warning, instead of both being found in
   the log after a restart. (#939)
+
+- **`SENHUB_AGENT_KEY` keeps the agent identity of a container without a
+  volume**, as `SENHUB_HOST_ID` keeps the host's. With both, two
+  successive containers with no shared state report the same host and
+  the same agent. (#882)
