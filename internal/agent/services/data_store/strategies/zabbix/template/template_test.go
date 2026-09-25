@@ -176,3 +176,34 @@ func TestPrototypeNameCarriesTheDiscoveredInstance(t *testing.T) {
 		t.Errorf("name = %q, want the macro once", got)
 	}
 }
+
+// A probe whose every metric is unmapped yields a template with nothing in
+// it. The file still parses, still carries a name and a description saying
+// "the agent's zabbix output sends these keys", and an operator who imports
+// it links a host to something that will never receive a value. The two
+// conduit probes, syslog and event, are in exactly that case.
+func TestAnExportWithoutItemsSaysSo(t *testing.T) {
+	conduit := transformers.ProbeDefinition{
+		ProbeName:    "syslog",
+		FriendlyName: "Syslog",
+		Metrics: []transformers.MetricDefinition{{
+			Name: "syslog_event", DisplayName: "Severity", Unit: "#",
+			Otel: &transformers.OtelMapping{Skip: true, Reason: "event conduit"},
+		}},
+	}
+	exp, err := Generate(conduit, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exp.DeclaresNothing() {
+		t.Fatal("a definition whose every metric is unmapped must report an empty export")
+	}
+
+	if _, err := Generate(diskDefinition(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	full, _ := Generate(diskDefinition(), Options{})
+	if full.DeclaresNothing() {
+		t.Error("a definition with mapped metrics must not report an empty export")
+	}
+}
