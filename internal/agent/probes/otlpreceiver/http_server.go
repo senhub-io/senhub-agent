@@ -3,9 +3,7 @@ package otlpreceiver
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"time"
 
@@ -28,9 +26,9 @@ func (h *httpReceiver) shutdown(ctx context.Context) error {
 }
 
 func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
-	lis, err := net.Listen("tcp", p.config.Address)
+	lis, err := p.listen()
 	if err != nil {
-		return fmt.Errorf("listening on %s: %w", p.config.Address, err)
+		return err
 	}
 
 	mux := http.NewServeMux()
@@ -146,6 +144,7 @@ func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	p.stampMetrics(r.RemoteAddr, req.GetResourceMetrics())
 	points, dropped := flattenResourceMetrics(req.GetResourceMetrics())
 	p.publishMetricBatch(req.GetResourceMetrics())
 	if ingestErr := p.ingest(points, dropped); ingestErr != nil {
@@ -187,6 +186,7 @@ func (p *OTLPReceiverProbe) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p.stampLogs(r.RemoteAddr, req.GetResourceLogs())
 	p.ingestLogs(req.GetResourceLogs())
 
 	out, err := proto.Marshal(&collectorlogspb.ExportLogsServiceResponse{})
@@ -215,6 +215,7 @@ func (p *OTLPReceiverProbe) handleTraces(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	p.stampSpans(r.RemoteAddr, req.GetResourceSpans())
 	p.ingestSpans(req.GetResourceSpans())
 
 	out, err := proto.Marshal(&collectortracepb.ExportTraceServiceResponse{})

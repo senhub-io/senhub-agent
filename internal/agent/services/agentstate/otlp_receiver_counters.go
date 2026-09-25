@@ -110,3 +110,75 @@ func ResetOTLPReceiverCountersForTest() {
 	otlpReceiverDropped.m = map[otlpReceiverDropKey]uint64{}
 	otlpReceiverDropped.mu.Unlock()
 }
+
+// OTLPReceiverCoverageKey labels one coverage series: which signal, which
+// path the records came in by (uds, tcp_loopback, remote) and which
+// service sent them.
+type OTLPReceiverCoverageKey struct {
+	Signal  string
+	Origin  string
+	Service string
+}
+
+// OTLPReceiverCoverage is the record count behind one key, and how many
+// of those records still carried no host.id once the receiver was done
+// with them.
+type OTLPReceiverCoverage struct {
+	Received      uint64
+	WithoutHostID uint64
+}
+
+// maxCoverageServices bounds the service.name label. A relay can see many
+// senders, and one misbehaving SDK that sets a random service name must
+// not grow the agent's own telemetry without end; past the cap the
+// records still count, under "other".
+const maxCoverageServices = 200
+
+var otlpReceiverCoverage = struct {
+	mu sync.Mutex
+	m  map[OTLPReceiverCoverageKey]OTLPReceiverCoverage
+}{m: map[OTLPReceiverCoverageKey]OTLPReceiverCoverage{}}
+
+// RecordOTLPReceiverCoverage counts records relayed by the receiver, and
+// those that left without a host.id, so whether logs and traces can be
+// joined to their host is a number rather than a hope.
+func RecordOTLPReceiverCoverage(signal, origin, service string, records int, hasHostID bool) {
+	if records <= 0 {
+		return
+	}
+	if service == "" {
+		service = "unknown"
+	}
+	otlpReceiverCoverage.mu.Lock()
+	defer otlpReceiverCoverage.mu.Unlock()
+	key := OTLPReceiverCoverageKey{Signal: signal, Origin: origin, Service: service}
+	if _, seen := otlpReceiverCoverage.m[key]; !seen && coverageServiceCount() >= maxCoverageServices {
+		key.Service = "other"
+	}
+	c := otlpReceiverCoverage.m[key]
+	c.Received += uint64(records)
+	if !hasHostID {
+		c.WithoutHostID += uint64(records)
+	}
+	otlpReceiverCoverage.m[key] = c
+}
+
+// coverageServiceCount counts the distinct services held. Callers hold mu.
+func coverageServiceCount() int {
+	seen := map[string]bool{}
+	for k := range otlpReceiverCoverage.m {
+		seen[k.Service] = true
+	}
+	return len(seen)
+}
+
+// GetOTLPReceiverCoverage returns a snapshot of the coverage counters.
+func GetOTLPReceiverCoverage() map[OTLPReceiverCoverageKey]OTLPReceiverCoverage {
+	otlpReceiverCoverage.mu.Lock()
+	defer otlpReceiverCoverage.mu.Unlock()
+	out := make(map[OTLPReceiverCoverageKey]OTLPReceiverCoverage, len(otlpReceiverCoverage.m))
+	for k, v := range otlpReceiverCoverage.m {
+		out[k] = v
+	}
+	return out
+}
