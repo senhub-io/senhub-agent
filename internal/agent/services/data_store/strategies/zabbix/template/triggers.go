@@ -221,7 +221,7 @@ func thresholdTriggers(template string, def transformers.ProbeDefinition, opts O
 					Name:       "Only on " + m.Name + ": " + t.Priority,
 					Step:       strconv.Itoa(len(rule.Overrides) + 1),
 					Filter:     OverrideFilter{EvalType: "OR", Conditions: conds},
-					Operations: []OverrideOperation{{OperationObject: "TRIGGER_PROTOTYPE", Operator: "EQUAL", Value: t.Name, Discover: "NO_DISCOVER"}},
+					Operations: []OverrideOperation{{OperationObject: "TRIGGER_PROTOTYPE", Operator: "REGEXP", Value: nameRegexp(t.Name), Discover: "NO_DISCOVER"}},
 				})
 			}
 		}
@@ -238,6 +238,8 @@ func thresholdScope(m transformers.MetricDefinition) string {
 	}
 	return "capacity"
 }
+
+func itoa(n int) string { return strconv.Itoa(n) }
 
 func regexpQuote(s string) string {
 	var b strings.Builder
