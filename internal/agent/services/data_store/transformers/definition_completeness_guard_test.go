@@ -83,3 +83,42 @@ func TestYAMLDefinitions_EveryMetricIsNameable(t *testing.T) {
 	}
 	t.Error(b.String())
 }
+
+// TestYAMLDefinitions_NoMetricIsDeclaredTwice pins that a metric name
+// appears once per definition. activemq declared consumer.count and
+// producer.count twice — once for the broker total, once per destination —
+// and only one declaration can be found by name, so every destination
+// rendered under the broker-wide channel and the second block was dead
+// text that read as if it applied.
+func TestYAMLDefinitions_NoMetricIsDeclaredTwice(t *testing.T) {
+	entries, err := definitionFiles.ReadDir("definitions")
+	if err != nil {
+		t.Fatalf("reading the embedded definitions: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		raw, err := definitionFiles.ReadFile("definitions/" + e.Name())
+		if err != nil {
+			t.Fatalf("reading %s: %v", e.Name(), err)
+		}
+		var def struct {
+			Metrics []struct {
+				Name string `yaml:"name"`
+			} `yaml:"metrics"`
+		}
+		if err := yaml.Unmarshal(raw, &def); err != nil {
+			t.Fatalf("parsing %s: %v", e.Name(), err)
+		}
+		seen := map[string]int{}
+		for _, m := range def.Metrics {
+			seen[m.Name]++
+		}
+		for name, n := range seen {
+			if n > 1 {
+				t.Errorf("%s declares %q %d times; only one declaration can ever be found by name", e.Name(), name, n)
+			}
+		}
+	}
+}

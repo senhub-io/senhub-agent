@@ -53,8 +53,8 @@ with hundreds of short-lived queues otherwise emits a series per queue.
 | `activemq.message.current` | {message} | Messages currently enqueued across all destinations |
 | `activemq.memory.usage` | % | Broker memory utilization (percentage of configured limit) |
 | `activemq.store.usage` | % | Persistent store utilization (percentage of configured limit) |
-| `activemq.producer.count` | {producer} | Producers per destination (queue/topic) |
-| `activemq.consumer.count` | {consumer} | Consumers per destination |
+| `activemq.destination.producer.count` | {producer} | Producers per destination (queue/topic) |
+| `activemq.destination.consumer.count` | {consumer} | Consumers per destination |
 | `activemq.message.enqueued` | {message} | Messages enqueued per destination (cumulative) |
 | `activemq.message.dequeued` | {message} | Messages dequeued per destination (cumulative) |
 
@@ -84,7 +84,7 @@ Nagios outputs carry.
 | `activemq.message.enqueued` | `activemq_{destination_type}_{destination}_enqueued` | # | Cumulative number of messages enqueued since broker start |
 | `activemq.message.dequeued` | `activemq_{destination_type}_{destination}_dequeued` | # | Cumulative number of messages dequeued (consumed) since broker start |
 | `activemq.message.queue_size` | `activemq_{destination_type}_{destination}_queue_size` | # | Number of messages currently waiting in the destination |
-| `activemq.consumer.count` | `activemq_{destination_type}_{destination}_consumers` | # | Number of consumers currently subscribed to the destination |
-| `activemq.producer.count` | `activemq_{destination_type}_{destination}_producers` | # | Number of producers currently attached to the destination |
+| `activemq.destination.consumer.count` | `activemq_{destination_type}_{destination}_consumers` | # | Number of consumers currently subscribed to the destination |
+| `activemq.destination.producer.count` | `activemq_{destination_type}_{destination}_producers` | # | Number of producers currently attached to the destination |
 
 <!-- schema:metrics:end -->
