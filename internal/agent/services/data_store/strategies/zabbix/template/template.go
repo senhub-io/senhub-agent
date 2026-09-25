@@ -268,6 +268,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	var order []string
 	valueMaps := map[string]ValueMap{}
 	seenKeys := map[string]bool{}
+	fedOf := map[string]string{} // prototype key -> FedID
 	_, familyOf := variantFamilies(def)
 
 	ensureRule := func(ruleKey, ruleTitle string) *DiscoveryRule {
@@ -343,6 +344,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 					Description: m.Description,
 				}
 				proto.UUID = uid("item", name, proto.Key)
+				fedOf[proto.Key] = FedID(m)
 				rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 			}
 			continue
@@ -366,6 +368,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		}
 		asPercent(&proto, m)
 		proto.UUID = uid("item", name, proto.Key)
+		fedOf[proto.Key] = FedID(m)
 		if m.Lookup != "" && opts.Lookups != nil {
 			if mapping, ok := opts.Lookups.Lookup(m.Lookup); ok && len(mapping) > 0 {
 				if _, seen := valueMaps[m.Lookup]; !seen {
@@ -390,6 +393,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 
 	for _, k := range order {
 		rule := rules[k]
+		fedOverrides(rule, fedOf)
 		for i := range rule.ItemPrototypes {
 			rule.ItemPrototypes[i].Tags = []Tag{{Tag: "component", Value: def.ProbeName}}
 		}
