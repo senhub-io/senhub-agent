@@ -102,15 +102,15 @@ metrics:
     category: "drives"
     lookup: "sfs.generic.boolean"
     otel:
-      name: hw.status
+      # Its own gauge, not a state of hw.status. A prediction is a fact
+      # about a disk that is still ok; expanding it over hw.state made
+      # every healthy disk emit hw.state=unknown=1, which overwrote the
+      # health metric's own unknown series on every push output.
+      name: senhub.hardware.physical_disk.failure_predicted
       unit: "1"
-      type: updowncounter
+      type: gauge
       attributes:
         hw.type: physical_disk
-      expand:
-        attribute: hw.state
-        mapping:
-          predicted_failure: 1   # emits only when boolean=true; false → predicted_failure=0
     tag_to_attribute:
       drive_id: hw.id
       drive_name: hw.name
