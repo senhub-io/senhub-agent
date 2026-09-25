@@ -93,8 +93,13 @@ func (f *FormatConverter) convertToSenHubFormat(metric CachedMetric) SenHubMetri
 // PRTG Format Conversion
 
 // GetMetricsForProbe retrieves and transforms metrics for a specific probe (legacy - no filters)
+// GetMetricsForProbe renders the probe's channels with the same defaults
+// the GET endpoint applies: tags shown. The zero filter used to be passed
+// here, and its false ShowTags stripped every discriminant value from the
+// channel names, so a MySQL server's databases and a PowerStore's volumes
+// each collapsed into one channel on the POST endpoint.
 func (f *FormatConverter) GetMetricsForProbe(probeName string) []PRTGChannel {
-	return f.GetMetricsForProbeWithFilter(probeName, MetricFilter{})
+	return f.GetMetricsForProbeWithFilter(probeName, MetricFilter{ShowTags: true})
 }
 
 // GetMetricsForProbeWithFilter retrieves and transforms metrics for a specific probe with filtering
