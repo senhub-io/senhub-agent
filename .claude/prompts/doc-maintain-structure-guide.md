@@ -93,7 +93,7 @@ senhub-agent/
 
 | Document Type | Location | Example |
 |---------------|----------|---------|
-| Release notes | `/docs/releases/` | `0.1.66-beta.md` |
+| Release notes | `/docs/user-guide/docs/whats-new/` | `0.6.0.md`, `next.md` |
 | Developer guides | `/docs/developer-guide/` | `architecture.md` |
 | User guides | `/docs/user-guide/` | `installation.md` |
 | Admin guides | `/docs/admin-guide/` | `https-config.md` |
@@ -105,7 +105,7 @@ senhub-agent/
 ### What Should NOT Be at Root
 
 ❌ **Do NOT place at root:**
-- Release notes (goes to `/docs/releases/`)
+- Release notes (goes to `/docs/user-guide/docs/whats-new/`)
 - Detailed development guides (goes to `/docs/developer-guide/`)
 - Presentations (goes to `/docs/presentations/`)
 - Internal configurations (goes to the private repo `senhub-io/senhub-internal-docs`)
@@ -200,7 +200,7 @@ senhub-agent/
 
 ### Release Notes Template
 
-Location: `/docs/releases/vX.Y.Z-beta.md`
+Location: `/docs/user-guide/docs/whats-new/X.Y.Z.md` (entries accumulate in `next.md` until the release)
 
 ```markdown
 # Release Notes - SenHub Agent vX.Y.Z-beta
@@ -338,7 +338,7 @@ When maintaining documentation:
    ```
 
 2. **Follow Placement Rules**:
-   - Release notes → `/docs/releases/`
+   - Release notes → `/docs/user-guide/docs/whats-new/`
    - Development docs → `/docs/developer-guide/`
    - Never place docs at root (except README.md, CLAUDE.md)
 
@@ -392,18 +392,16 @@ echo "- [New Probe](./newprobe/README.md)" >> docs/probes/monitoring/README.md
 ### Example: Adding a Release Note
 
 ```bash
-# 1. Create release note
-vim docs/releases/0.1.67-beta.md
+# 1. At release time, turn the accumulated entries into the version's note
+git mv docs/user-guide/docs/whats-new/next.md docs/user-guide/docs/whats-new/0.6.0.md
+# and start a new, empty next.md
 
-# 2. Update releases index
-# Add link to docs/releases/README.md
+# 2. List it in docs/user-guide/mkdocs.yml (nav: What's new) and in
+#    docs/user-guide/docs/whats-new/index.md
 
-# 3. Update CHANGELOG.md
-# Add entry to docs/releases/CHANGELOG.md
-
-# 4. Commit
-git add docs/releases/
-git commit -m "docs: add release notes for v0.1.67-beta"
+# 3. Commit
+git add docs/user-guide/
+git commit -m "docs(release): the 0.6.0 note"
 ```
 
 ### Example: Moving a Document

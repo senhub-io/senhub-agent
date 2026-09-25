@@ -9,7 +9,7 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 - **User documentation** → `docs/user-guide/`
 - **Admin / operations** → `docs/admin-guide/`
 - **OTel semantic conventions (canonical)** → `docs/developer-guide/otel/senhub-semantic-conventions.md`
-- **Release notes** → `docs/releases/`
+- **Release notes** → `docs/user-guide/docs/whats-new/` (`next.md` collects the unreleased entries; `docs/releases/` is the archive up to 0.3.2)
 
 ## ⚠️ Temporary dependency fork (enterprise only)
 

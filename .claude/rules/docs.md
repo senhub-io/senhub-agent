@@ -81,7 +81,8 @@ it drifts.
 
 ## Release notes
 
-- One file per release: `docs/releases/X.Y.Z-beta.md`.
+- They live in `docs/user-guide/docs/whats-new/`, one file per release (`X.Y.Z.md`) listed in the MkDocs nav. A change that lands appends its entry to `whats-new/next.md` in the same commit; the release renames `next.md` to the version and starts a new one.
+- `docs/releases/` is the archive of the notes up to 0.3.2. Nothing new goes there.
 - Structure: Overview, Breaking Changes (with migration), Features, Fixes, Internal/Refactor, Known Follow-ups.
 - For metric-name changes, ALWAYS include a before/after table.
 
