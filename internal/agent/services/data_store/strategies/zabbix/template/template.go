@@ -155,6 +155,20 @@ type Mapping struct {
 	NewValue string `yaml:"newvalue"`
 }
 
+// DeclaresNothing reports an export whose templates hold no item and no
+// discovery rule. It happens for a probe whose every metric is marked as not
+// mapped — a log conduit such as syslog or event. Such a file is not a
+// template an operator can use: importing it links a host to a name that will
+// never receive a value, under a description promising the agent sends keys.
+func (e Export) DeclaresNothing() bool {
+	for _, t := range e.ZabbixExport.Templates {
+		if len(t.Items) > 0 || len(t.DiscoveryRules) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // Generate builds the template of one probe type.
 func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	opts = opts.withDefaults()
