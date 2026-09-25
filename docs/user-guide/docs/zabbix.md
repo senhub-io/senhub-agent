@@ -158,11 +158,9 @@ key its own name gives it, and an operator who wants it declares its
 item once. Adding a convention to the shipped set is a definition file,
 not code.
 
-One limit is worth knowing: items are created per dimension set, so an
-application exporting part of a set — one of the three JVM metrics keyed
-on the sender alone, say — gets items for the rest of it, which stay
-empty. A language SDK usually exports its standard set together, so the
-case is a runtime that exports part of a family. (#922)
+An application that exports only part of a set, one of the three JVM
+memory metrics of a pool for instance, gets items for what it sends and
+none for the rest: discovery lists, per sender, the metrics it feeds.
 
 ## Templates and discovery
 
