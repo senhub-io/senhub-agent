@@ -16,7 +16,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Total number of backup jobs by type"
+    description: "Backup jobs of this type. Covers the virtual jobs the backup server runs and the agent-managed backups of physical machines, which carry their own job_type (WindowsAgentBackup, LinuxAgentBackup) — so the estate reads whole or split"
     otel:
       name: senhub.veeam.jobs.total
       unit: "{job}"
@@ -30,7 +30,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Number of jobs with successful last run"
+    description: "Jobs of this type whose last run succeeded"
     otel:
       name: senhub.veeam.jobs.by_last_result
       unit: "{job}"
@@ -62,7 +62,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Number of jobs that failed on last run"
+    description: "Jobs of this type whose last run failed. The number to alert on, together with the age of the last success"
     otel:
       name: senhub.veeam.jobs.by_last_result
       unit: "{job}"
@@ -110,7 +110,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Number of enabled jobs that have never executed (configured but never triggered)"
+    description: "Jobs of this type that have never produced a restore point. A job configured and never run is not a healthy job"
     otel:
       name: senhub.veeam.jobs.by_last_result
       unit: "{job}"
