@@ -69,8 +69,10 @@ func sealLine(body string) string {
 
 // VerifyBlock reports whether the generated block of a page still matches
 // the digest it was written with. has is false when the page carries no
-// block. A block without a seal is reported as not matching.
+// block. A block without a seal is reported as not matching. Line endings
+// do not count: a Windows checkout turns the page to CRLF.
 func VerifyBlock(page string) (has bool, ok bool) {
+	page = strings.ReplaceAll(page, "\r\n", "\n")
 	start := strings.Index(page, Start)
 	end := strings.Index(page, End)
 	if start < 0 || end < start {
