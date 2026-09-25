@@ -32,6 +32,7 @@ traps (coldStart, linkDown, linkUp, ...) resolve out of the box.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:c8af0ba792358cd98b7f04667f4576521005bacb315197a2612b78b49a6a6a8a -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

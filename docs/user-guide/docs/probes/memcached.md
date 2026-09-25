@@ -24,6 +24,7 @@ cache hit/miss ratios, command throughput and eviction counters.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:fe7afd69a1c0dd220ec6b8f8430f8d45133893b9f3f0bbb0dd0688acb1cc1aa9 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

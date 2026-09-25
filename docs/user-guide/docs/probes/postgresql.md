@@ -39,6 +39,7 @@ when the extension is installed.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:3d1f282d261dd88916ede8b7de1a122a810bea754666b79ae6a5a89efe6d0f42 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

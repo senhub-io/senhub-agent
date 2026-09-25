@@ -23,6 +23,7 @@ reporting broker health, throughput, storage and backlog at the broker level.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:451fa4adfe10c1ad67cf93341b14f8f36f42cc73840edb829969df3cb45e38a0 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

@@ -70,6 +70,7 @@ The Syslog probe is platform-independent. It listens on the loopback interface b
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:54ce1c720fc663806d6432688a679d4f207229fc6f569d8847c3c4910c54cb27 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

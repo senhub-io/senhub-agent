@@ -25,6 +25,7 @@ state (leader/follower/observer).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:4f5217d716b4932f1e63d770710bf6229fd8b141067a818a7d38dd66589f18c9 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

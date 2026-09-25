@@ -46,6 +46,7 @@ quality on the same line as the signal level, which is its normal layout.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:7ec571b4aa05a7b063940a878c6cfb2184c8ebef38bdd8ba13a54014baefff5f -->
 
 This probe reads no parameters. It collects every 60 seconds, a cadence fixed in the code.
 

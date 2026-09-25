@@ -37,6 +37,7 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:3640669e5c3ba5ee3fd21ef9e697fc92a743fc7555522b8cc8f09429a4d910e8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

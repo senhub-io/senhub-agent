@@ -32,6 +32,7 @@ Monitors Veeam Backup & Replication v13 via the REST API. Collects job status, r
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:86cf5e40ca4eea4c354154e4ef6a70fd6f33305549019b390b965ebcdaa85cc9 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

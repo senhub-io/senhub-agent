@@ -23,6 +23,7 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:6a078ca86c2c4b5b7a0ae445a6a7a5925f174f41f42f556e714f894a90edc5f4 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

@@ -30,6 +30,7 @@ Once started, the probe listens on `http://<address>:<port>/event` and accepts `
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:61d6931e8650193829a7f2ff595b3734819b816bbd70cf0e71c9be7100758f8c -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

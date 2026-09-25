@@ -25,6 +25,7 @@ All non-transient units are monitored by default; every parameter is optional.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:35a81450ce5ec571e785b556be8331759d0f090940e238a3a730b5e5fe4da2cf -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

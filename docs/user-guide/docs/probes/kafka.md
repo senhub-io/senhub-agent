@@ -25,6 +25,7 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:55b9d7710f088a95ab59e7338ca323344d39a9a7e62519ad7583508bcf339de2 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

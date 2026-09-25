@@ -26,6 +26,7 @@ restrict to a subset.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:bbd70d969aadcd3e95a5789062ca61c7d63aa9cefae3a0eae290ce6a45adfbd1 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

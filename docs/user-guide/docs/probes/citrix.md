@@ -128,6 +128,7 @@ For multi-site deployments requiring site-specific metrics:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:4f54266295de07170a45dae144b265d1b8dea8ae911b9cc3f9673d885bd9314a -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

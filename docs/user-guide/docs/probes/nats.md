@@ -24,6 +24,7 @@ dependencies — uses the stdlib HTTP client.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:87b1dbed30025ca755292778b9de29a56e2861d0907c3f55517dbb3228ea725b -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

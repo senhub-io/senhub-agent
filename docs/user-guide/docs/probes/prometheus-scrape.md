@@ -29,6 +29,7 @@ push (OTLP) and pull (Prometheus) sources.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:fa5b9326cfb47aa6fb2ca59950f394d482fbc754d27573875f350f3228af780c -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

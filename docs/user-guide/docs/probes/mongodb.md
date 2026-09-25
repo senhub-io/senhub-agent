@@ -23,6 +23,7 @@ usage, replication state and database storage.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:b5c17fd9934b4d16cc3425b1d1502c353f7cbe8660f717fafe60e7b9abe51ce3 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

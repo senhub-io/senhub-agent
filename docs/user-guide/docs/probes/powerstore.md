@@ -68,6 +68,7 @@ Monitor several arrays with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:b4ae6b22150deef6507aae1a70fe83972427bc3cba0d5f95bae6904c5524fda0 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|

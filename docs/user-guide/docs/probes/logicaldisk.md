@@ -76,6 +76,7 @@ Platform-specific metrics are automatically detected and collected based on the 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:198837a23e7d6cd31759bcf772e2e80a2a10db796bd6022edbb2ccee3d91bf7f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
