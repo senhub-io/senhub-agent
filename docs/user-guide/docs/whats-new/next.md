@@ -95,6 +95,37 @@ collection gaps that comparison exposed.
   A certificate that cannot be read stops the agent rather than leaving
   a listener that serves in clear. (#904)
 
+- **Pre-shared keys, both directions.** Most Zabbix sites encrypt with
+  a pre-shared key, and it is the only encryption Zabbix offers for
+  autoregistration. The agent speaks the TLS 1.2 PSK profile both Zabbix
+  lines accept, outbound and on the polled port, and reads the key from
+  a file hex-encoded the way Zabbix writes it, never from the
+  configuration. An encrypted autoregistration creates the host with PSK
+  set on both directions by itself. (#903)
+
+- **Zabbix 7.0 and 8.0.** Every generated template imports into both
+  lines, and autoregistration, discovery, inventory, the polled port and
+  the proxy group redirection are measured on a server of each. On 8.0
+  the API wants its token in a header; `zabbix setup` has always sent
+  it there.
+
+- **The agent says what it is to the server**: its version, its session
+  and the revision of the item list it holds. The server shows it in the
+  host's agent columns and resends the list only when it changed, where
+  it resent all of it at every refresh. (#905)
+
+- **Behind NAT, the agent names the address to poll.**
+  `passive.advertise` takes a name or an address and autoregistration
+  creates the interface on it, instead of on the translated source
+  address the server cannot reach. (#906)
+
+- **`zabbix setup` names the other actions a new host would match.**
+  Zabbix runs every autoregistration action whose condition matches, and
+  two that link templates collide in silence: the host comes up with
+  whichever set won and items that never fill. `setup` now lists those
+  actions and says what will happen, without disabling one an operator
+  wrote. (#907)
+
 - **The agent answers for itself.** `agent.ping`, `agent.version` and
   `agent.hostname` are served on both rails and declared in a template
   of their own, so a host monitored actively has the availability line
@@ -231,17 +262,3 @@ collection gaps that comparison exposed.
   publishes no line.** It chose the version line by asking whether the
   branch was master and published everything else as the development
   line, so a manual run from a release branch overwrote it. (#913)
-
-## Known follow-ups
-
-- Pre-shared keys are not supported. The scope is measured and the
-  decision is open. (#903)
-- The agent declares no version and ignores the configuration revision,
-  so the server resends the whole item list at every refresh. (#905)
-- The interface autoregistration creates takes the source address, which
-  is wrong behind NAT. (#906)
-- A server that already carries an autoregistration action matching the
-  same host metadata ends up with two, and the newer one loses silently.
-  (#907)
-- The collection gap with the native agent is closed on the families we
-  cover and measured; what remains is recorded there. (#909)

@@ -2,7 +2,7 @@ site_name: SenHub Agent
 site_url: https://agent.senhub.io/docs/
 site_description: >-
   The OpenTelemetry-native infrastructure agent — documentation: installation,
-  configuration, probes, outputs (PRTG, Nagios, Prometheus, OTLP) and release notes.
+  configuration, probes, outputs (PRTG, Nagios, Zabbix, Prometheus, OTLP) and release notes.
 copyright: © 2026 SenHub Agent contributors · Apache 2.0 · Built by Sensor Factory
 repo_url: https://github.com/senhub-io/senhub-agent
 repo_name: senhub-io/senhub-agent
@@ -94,6 +94,7 @@ nav:
   - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md
   - Nagios: nagios.md
+  - Zabbix: zabbix.md
   - Web console: web-interface.md
   - License:
       - Overview: license/index.md

@@ -1,19 +1,14 @@
-# Zabbix output (preview)
-
-!!! warning "Preview"
-    The Zabbix output is being built during the 0.6.0 cycle and is not
-    supported yet. It is proven against Zabbix 7.0 and 8.0 on a Linux
-    and a Windows host, templates and discovery included, but it has not
-    run long enough anywhere to be called supported.
-
-    Encryption is in place both ways, with a certificate or a
-    pre-shared key.
+# Zabbix output
 
 The `zabbix` output makes the agent a native **Zabbix active agent**: it
 connects out to a Zabbix server or proxy on port 10051, registers the host
 through Zabbix autoregistration, asks which items the server wants for it,
 and pushes their latest values in batches. Nothing listens on the agent
 side; PRTG, Nagios and Prometheus keep working next to it.
+
+It is proven against Zabbix 7.0 and 8.0 on a Linux and a Windows host:
+every generated template imports into both lines, and encryption works
+both ways with a certificate or a pre-shared key.
 
 ## Configuration
 
