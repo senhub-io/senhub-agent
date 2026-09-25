@@ -690,3 +690,117 @@ azure_job_execution_status:
       text: "Failed"
       severity: "error"
   desired_value: 2
+
+# ==============================================================================
+# REDFISH LOOKUPS
+# ==============================================================================
+# Source: DMTF Redfish schema, Resource.Health and Resource.PowerState
+# https://redfish.dmtf.org/schemas/v1/Resource.json
+# Codes are the ones the redfish probe emits (mapHealthState, mapPowerState).
+
+sfs.redfish.health:
+  description: "Redfish resource health"
+  type: status
+  source: "DMTF Redfish Resource.Health"
+  mappings:
+    0:
+      text: "OK"
+      severity: "ok"
+      description: "Normal"
+    1:
+      text: "Warning"
+      severity: "warning"
+      description: "A condition requires attention"
+    2:
+      text: "Critical"
+      severity: "error"
+      description: "A critical condition requires immediate attention"
+    3:
+      text: "Unknown"
+      severity: "unknown"
+      description: "The service reported no health, or one the probe does not know"
+  desired_value: 0
+
+sfs.redfish.power_state:
+  description: "Redfish system power state"
+  type: enum
+  source: "DMTF Redfish Resource.PowerState"
+  mappings:
+    0:
+      text: "Off"
+      severity: "ok"
+    1:
+      text: "On"
+      severity: "ok"
+    2:
+      text: "Powering On"
+      severity: "ok"
+    3:
+      text: "Powering Off"
+      severity: "ok"
+    4:
+      text: "Unknown"
+      severity: "unknown"
+  desired_value: 1
+
+sfs.redfish.failure_predicted:
+  description: "Redfish drive failure prediction"
+  type: status
+  source: "DMTF Redfish Drive.FailurePredicted"
+  mappings:
+    0:
+      text: "No"
+      severity: "ok"
+      description: "The drive predicts no failure"
+    1:
+      text: "Yes"
+      severity: "error"
+      description: "The drive predicts a failure in the near future"
+  desired_value: 0
+
+sfs.generic.boolean:
+  description: "Yes or no, with no health meaning"
+  type: enum
+  source: "Generic boolean"
+  mappings:
+    0:
+      text: "No"
+      severity: "ok"
+    1:
+      text: "Yes"
+      severity: "ok"
+
+# ==============================================================================
+# SYSLOG LOOKUPS
+# ==============================================================================
+# Source: RFC 5424, section 6.2.1, numerical severity codes
+
+sfs.syslog.severity:
+  description: "Syslog message severity"
+  type: enum
+  source: "RFC 5424 6.2.1"
+  mappings:
+    0:
+      text: "Emergency"
+      severity: "error"
+    1:
+      text: "Alert"
+      severity: "error"
+    2:
+      text: "Critical"
+      severity: "error"
+    3:
+      text: "Error"
+      severity: "error"
+    4:
+      text: "Warning"
+      severity: "warning"
+    5:
+      text: "Notice"
+      severity: "ok"
+    6:
+      text: "Informational"
+      severity: "ok"
+    7:
+      text: "Debug"
+      severity: "ok"
