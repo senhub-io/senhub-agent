@@ -42,6 +42,14 @@ On Linux, the `age-keyfile` backend is the default because it works unprivileged
 - `SENHUB_SECRET_BACKEND=systemd-creds` is set (explicit admin opt-in, e.g. for the seal step outside the unit);
 - a populated `creds.d/` store already exists.
 
+With `systemd-creds`, the service reads its secrets through the credentials systemd hands it at start, which the drop-in `/etc/systemd/system/senhub-agent.service.d/10-senhub-credentials.conf` declares, one `LoadCredentialEncrypted=` line per sealed secret. The agent keeps that drop-in in line with `creds.d/` by itself:
+
+- `agent install` and `agent refresh-unit` write it when `creds.d/` holds secrets and remove it when it holds none, then reload systemd;
+- `agent secret migrate --wire-unit` wires the secrets it has just sealed;
+- `agent uninstall` removes it with the configuration.
+
+After a `secret set` or `secret rm`, run `agent secret wire-unit` (or `agent refresh-unit`) so the next start sees the change. None of these restart the service: run `agent restart` to load the new credentials.
+
 The store files are owned by the account the agent runs as and readable only by it (age key file `0600`, DPAPI files restricted to SYSTEM + Administrators). Because the store is root-/service-owned, resolving a sealed secret requires the same privilege as the agent itself — see the privilege note under [`agent key show`](#agent-key-show).
 
 ## The `agent secret` command
@@ -54,9 +62,9 @@ The store files are owned by the account the agent runs as and readable only by 
 | `secret get <name>` | Print a secret value to stdout — a deliberate reveal. Warns when the output is not a terminal. |
 | `secret list` | List secret NAMES only (never values). |
 | `secret rm <name>` | Delete a secret. |
-| `secret migrate` | Move inline plaintext secrets out of the config into the store and rewrite them as `${secret:}` references (see [Sealing inline secrets](#sealing-inline-secrets-into-the-store)). |
+| `secret migrate` | Move inline plaintext secrets out of the config into the store and rewrite them as `${secret:}` references (see [Sealing inline secrets](#sealing-inline-secrets-into-the-store)). With `--wire-unit`, then wire the systemd-creds drop-in. |
 | `secret status` | Show the active backend and store location and the number of stored secrets. |
-| `secret wire-unit` | (Linux/systemd-creds) Regenerate the unit credential drop-in. |
+| `secret wire-unit` | (Linux/systemd-creds) Regenerate the unit credential drop-in from `creds.d/`, or remove it when the store is empty. |
 
 All subcommands honour `--config-path <path>` to locate a non-default configuration directory.
 

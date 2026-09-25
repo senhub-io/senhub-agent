@@ -59,8 +59,12 @@ func runRefreshUnit() {
 		}
 	}
 
+	execLine, _ := installedExecStart(refreshed)
+	configPath := unitConfigPath(execLine)
+
 	if string(installed) == refreshed {
 		fmt.Println("Unit is up to date — no changes.")
+		followCredentialStore(configPath)
 		return
 	}
 
@@ -106,6 +110,7 @@ func runRefreshUnit() {
 		os.Exit(1)
 	}
 
+	followCredentialStore(configPath)
 	fmt.Println("Unit updated. Run 'senhub-agent restart' to apply the new unit to the running service.")
 }
 

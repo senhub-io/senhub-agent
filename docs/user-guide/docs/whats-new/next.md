@@ -263,6 +263,13 @@ collection gaps that comparison exposed.
   Entities are off unless enabled, and a host missing from the topology
   had nothing anywhere saying why. (#938)
 
+- **The systemd-creds secret store wires itself into the unit.**
+  `install` and `refresh-unit` write the credentials drop-in from
+  `creds.d/`, or remove it when the store is empty; `secret migrate
+  --wire-unit` wires what it has just sealed; `uninstall` removes it.
+  `secret wire-unit` was a step an operator had to know about. Proven
+  under systemd 252, 255 and 257. (#605)
+
 ## Fixes
 
 - **A value from a probe that runs less often than the push is exported
