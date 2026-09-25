@@ -3,6 +3,7 @@ package http
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -107,34 +108,33 @@ func TestLoadNagiosConfig_InvalidFileFallsBackToEmbedded(t *testing.T) {
 	}
 }
 
-// A check matches the metric name. The PRTG channel label of the
-// definition is the usual mistake, and the loader names the metric to
-// use instead.
+// A check matches the metric name. A PRTG label is the usual mistake,
+// and the loader names the metric to use instead; a metric of another
+// operating system is reported as such.
 func TestUndeclaredNagiosChannels(t *testing.T) {
 	config := &NagiosConfig{Checks: []NagiosCheck{{
 		Name: "cpu",
 		Metrics: []NagiosMetric{
 			{Channel: "cpu_user"},
+			{Channel: "CPU User"},
 			{Channel: "cpu_user_time"},
+			{Channel: "disk_free_percent"},
 			{Channel: "no_such_metric"},
 		},
 	}}}
 
-	got, err := undeclaredNagiosChannels(config)
+	got, err := undeclaredNagiosChannels(config, "linux")
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []undeclaredNagiosChannel{
+		{Check: "cpu", Channel: "CPU User", Hint: "cpu_user"},
 		{Check: "cpu", Channel: "cpu_user_time", Hint: "cpu_user"},
+		{Check: "cpu", Channel: "disk_free_percent", Platforms: []string{"windows"}},
 		{Check: "cpu", Channel: "no_such_metric"},
 	}
-	if len(got) != len(want) {
-		t.Fatalf("got %+v, want %+v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("entry %d: got %+v, want %+v", i, got[i], want[i])
-		}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
 
@@ -205,8 +205,8 @@ checks:
 }
 
 // The example on the user-guide Nagios page loads as written and names
-// only metrics a probe emits, so a reader who copies it gets checks that
-// answer.
+// only metrics a Linux agent emits, the platform the example is written
+// for, so a reader who copies it gets checks that answer.
 func TestNagiosPageExampleLoads(t *testing.T) {
 	page, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "..", "docs", "user-guide", "docs", "nagios.md"))
 	if err != nil {
@@ -231,7 +231,7 @@ func TestNagiosPageExampleLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the page's example does not load: %v", err)
 	}
-	undeclared, err := undeclaredNagiosChannels(config)
+	undeclared, err := undeclaredNagiosChannels(config, "linux")
 	if err != nil {
 		t.Fatal(err)
 	}

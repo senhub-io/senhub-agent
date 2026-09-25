@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -84,31 +85,40 @@ func (cm *ConfigurationManager) nagiosConfigCandidates() []string {
 	return append(candidates, filepath.Join("config", "nagios.yaml"))
 }
 
-// undeclaredNagiosChannel is a check metric whose channel no shipped
-// probe definition names. Hint carries the metric name when the channel
-// is the display channel of a definition, the usual mistake: a Nagios
-// check matches the metric name, not the PRTG channel label.
+// undeclaredNagiosChannel is a check metric that cannot answer on this
+// agent. Hint carries the metric name when the channel given is a
+// display label of a definition, the usual mistake: a Nagios check
+// matches the metric name, not the PRTG channel. Platforms is set when
+// a definition declares the name for other operating systems only.
 type undeclaredNagiosChannel struct {
-	Check   string
-	Channel string
-	Hint    string
+	Check     string
+	Channel   string
+	Hint      string
+	Platforms []string
 }
 
 // undeclaredNagiosChannels lists the check metrics that can only ever
-// report UNKNOWN unless a probe with dynamic names (exec,
+// report UNKNOWN on goos, unless a probe with dynamic names (exec,
 // prometheus_scrape, snmp_poll, otlp_receiver) happens to emit them.
-func undeclaredNagiosChannels(config *NagiosConfig) ([]undeclaredNagiosChannel, error) {
+func undeclaredNagiosChannels(config *NagiosConfig, goos string) ([]undeclaredNagiosChannel, error) {
 	defs, err := transformers.DefinitionMetrics()
 	if err != nil {
 		return nil, fmt.Errorf("reading probe definitions: %w", err)
 	}
-	names := make(map[string]bool)
-	byDisplayChannel := make(map[string]string)
+	runsHere := make(map[string]bool)
+	elsewhere := make(map[string][]string)
+	byLabel := make(map[string]string)
 	for _, metrics := range defs {
 		for _, m := range metrics {
-			names[m.Name] = true
-			if m.Channel != "" && m.Channel != m.Name {
-				byDisplayChannel[m.Channel] = m.Name
+			if m.RunsOn(goos) {
+				runsHere[m.Name] = true
+			} else {
+				elsewhere[m.Name] = m.Platforms
+			}
+			for _, label := range []string{m.Channel, m.DisplayName} {
+				if label != "" && label != m.Name {
+					byLabel[label] = m.Name
+				}
 			}
 		}
 	}
@@ -116,13 +126,14 @@ func undeclaredNagiosChannels(config *NagiosConfig) ([]undeclaredNagiosChannel, 
 	var out []undeclaredNagiosChannel
 	for _, check := range config.Checks {
 		for _, metric := range check.Metrics {
-			if names[metric.Channel] {
+			if runsHere[metric.Channel] {
 				continue
 			}
 			out = append(out, undeclaredNagiosChannel{
-				Check:   check.Name,
-				Channel: metric.Channel,
-				Hint:    byDisplayChannel[metric.Channel],
+				Check:     check.Name,
+				Channel:   metric.Channel,
+				Hint:      byLabel[metric.Channel],
+				Platforms: elsewhere[metric.Channel],
 			})
 		}
 	}
@@ -130,18 +141,21 @@ func undeclaredNagiosChannels(config *NagiosConfig) ([]undeclaredNagiosChannel, 
 }
 
 func (cm *ConfigurationManager) warnUndeclaredNagiosChannels(path string, config *NagiosConfig) {
-	undeclared, err := undeclaredNagiosChannels(config)
+	undeclared, err := undeclaredNagiosChannels(config, runtime.GOOS)
 	if err != nil {
 		cm.logger.Warn().Err(err).Str("path", path).Msg("Nagios channels not checked against the probe definitions")
 		return
 	}
 	for _, u := range undeclared {
 		event := cm.logger.Warn().Str("path", path).Str("check", u.Check).Str("channel", u.Channel)
-		if u.Hint != "" {
+		switch {
+		case len(u.Platforms) > 0:
+			event.Strs("emitted_on", u.Platforms).Str("platform", runtime.GOOS).Msg("Nagios channel is not emitted on this platform; the check reports UNKNOWN here")
+		case u.Hint != "":
 			event.Str("metric_name", u.Hint).Msg("Nagios channel is a display label; a check matches the metric name, use metric_name")
-			continue
+		default:
+			event.Msg("No probe definition emits this Nagios channel; the check reports UNKNOWN unless a probe with dynamic metric names produces it")
 		}
-		event.Msg("No probe definition emits this Nagios channel; the check reports UNKNOWN unless a probe with dynamic metric names produces it")
 	}
 }
 
