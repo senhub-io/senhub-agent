@@ -83,7 +83,7 @@ func init() {
 	}, nil)
 
 	data_store.RegisterKnownParams("http", []string{
-		"active_probe_count", "agentkey", "bind_address", "cert_file",
+		"active_probe_count", "agentkey", "bind_address", "cert_file", "check",
 		"component", "connectivity", "css", "dashboard", "docs", "enabled",
 		"endpoint", "endpoints", "exclude_tags", "expose_host_metrics",
 		"guide", "html", "include_probe_tags", "instance", "interval", "js",
