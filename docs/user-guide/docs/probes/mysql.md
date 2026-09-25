@@ -251,49 +251,51 @@ behind the control plane).
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.db.up` | `db_up` | # | 1 if the agent's most recent ping reached the server, 0 otherwise |
-| `mysql.uptime` | `db_uptime` | s | Seconds since the engine started (SHOW GLOBAL STATUS LIKE 'Uptime') |
-| `senhub.db.version.info` | `db_version` | # | Engine version banner — value=1, version string carried in attribute db.system.version |
-| `mysql.threads` | `mysql_threads_connected` | # | Currently open client sessions (Threads_connected) |
-| `mysql.threads` | `mysql_threads_running` | # | Threads not sleeping — includes InnoDB background threads on MariaDB (Threads_running) |
-| `senhub.db.connection.idle` | `db_connection_idle` | # | Idle client sessions — clamped max(0, Threads_connected − Threads_running) |
-| `senhub.db.mysql.connection.max` | `mysql_connection_max` | # | max_connections variable (instantaneous cap) |
-| `senhub.db.connection.utilization` | `db_connection_utilization` | % | Threads_connected / max_connections, percent (0-100) |
-| `mysql.connection.errors` | `mysql_connection_errors_aborted_clients` | # | Connections aborted because the client died without closing properly (Aborted_clients) |
-| `mysql.connection.errors` | `mysql_connection_errors_aborted_connects` | # | Failed connection attempts — auth or protocol errors (Aborted_connects) |
-| `mysql.connection.errors` | `mysql_connection_errors_max_connections` | # | Connections rejected due to max_connections cap (Connection_errors_max_connections) |
-| `mysql.query.count` | `mysql_query_count` | # | Statements executed (Questions counter) |
-| `mysql.query.slow.count` | `mysql_query_slow_count` | # | Queries exceeding long_query_time (Slow_queries counter) |
-| `mysql.commands` | `mysql_commands_{command}` | # | Statements executed per verb (Com_select, Com_insert, Com_update, Com_delete, Com_replace) |
-| `senhub.db.mysql.transaction.count` | `mysql_transaction_committed` | # | Commits cumulatif (Com_commit). MySQL contrib n'expose pas les transactions — extension SenHub homogène avec mysql.commands. |
-| `senhub.db.mysql.transaction.count` | `mysql_transaction_rolled_back` | # | Rollbacks cumulatif (Com_rollback). |
-| `senhub.db.mysql.tmp_tables.disk_ratio` | `mysql_tmp_tables_disk_ratio` | % | Created_tmp_disk_tables / Created_tmp_tables — `Created_tmp_tables` already includes the disk-spilled subset on MySQL 8.0 and MariaDB; > 25% suggests increasing tmp_table_size. |
-| `senhub.db.mysql.buffer_pool.hit_ratio` | `mysql_buffer_pool_hit_ratio` | % | 1 − (Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests). Derived ratio — contrib expose les compteurs bruts. |
-| `senhub.db.mysql.buffer_pool.utilization` | `mysql_buffer_pool_utilization` | % | Innodb_buffer_pool_pages_data / Innodb_buffer_pool_pages_total |
-| `mysql.buffer_pool.data_pages` | `mysql_buffer_pool_data_pages_dirty` | # | InnoDB pages waiting to be flushed to disk (Innodb_buffer_pool_pages_dirty) |
-| `senhub.db.mysql.lock.deadlocks` | `mysql_lock_deadlocks` | # | Cumulative deadlocks detected (Innodb_deadlocks) — silently absent on MariaDB (variable not exposed) |
-| `senhub.db.mysql.lock.waiting` | `mysql_lock_waiting` | # | Instantaneous count of transactions waiting on a row lock (Innodb_row_lock_current_waits) |
-| `senhub.db.mysql.row_lock.time.avg` | `mysql_row_lock_time_avg` | ms | Average row lock wait time. Source Innodb_row_lock_time_avg in ms — converted to seconds for OTel (mapper ÷ 1000). |
-| `senhub.db.mysql.io` | `mysql_io_read` | B | Bytes read by InnoDB (Innodb_data_read) |
-| `senhub.db.mysql.io` | `mysql_io_write` | B | Bytes written by InnoDB (Innodb_data_written) |
-| `senhub.db.database.size.total` | `db_database_size` | B | Total size of all user databases (information_schema.tables sum) |
-| `senhub.db.mysql.table.count` | `mysql_table_count` | # | Number of user tables across all databases (excludes information_schema, performance_schema, mysql, sys) |
-| `senhub.db.replication.role` | `db_replication_role` | # | Detected replication role of this instance |
-| `senhub.db.replication.health` | `db_replication_health` | # | Composite gauge: 1 if replication looks healthy (or instance is standalone), 0 if degraded |
-| `senhub.db.replication.replicas.connected` | `db_replication_replicas_connected` | # | On primary: number of replicas currently connected (SHOW REPLICAS / pg_stat_replication count) |
-| `mysql.replica.time_behind_source` | `mysql_replica_time_behind_source` | s | On replica: seconds behind source (Seconds_Behind_Master / Seconds_Behind_Source) |
-| `senhub.db.mysql.replica.io_thread.running` | `mysql_replica_io_thread_running` | # | On replica: 1 if Slave_IO_Running='Yes', 0 otherwise |
-| `senhub.db.mysql.replica.sql_thread.running` | `mysql_replica_sql_thread_running` | # | On replica: 1 if Slave_SQL_Running='Yes', 0 otherwise |
-| `senhub.db.database.size` | `db_database_size_per_database_{database}` | B | Size of an individual database (opt-in via per_database flag) |
-| `senhub.db.mysql.table.size` | `mysql_table_size_{database}_{table}` | B | Size of an individual table (opt-in via per_table flag) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.db.up` | `senhub.db.up` | Database Up | # | 1 if the agent's most recent ping reached the server, 0 otherwise |
+| `mysql.uptime` | `mysql.uptime` | Uptime | s | Seconds since the engine started (SHOW GLOBAL STATUS LIKE 'Uptime') |
+| `senhub.db.version.info` | `senhub.db.version.info` | Version | # | Engine version banner — value=1, version string carried in attribute db.system.version |
+| `mysql.threads` | `mysql.threads.connected` | Threads Connected | # | Currently open client sessions (Threads_connected) |
+| `mysql.threads` | `mysql.threads.running` | Threads Running | # | Threads not sleeping — includes InnoDB background threads on MariaDB (Threads_running) |
+| `senhub.db.connection.idle` | `senhub.db.connection.idle` | Connections Idle | # | Idle client sessions — clamped max(0, Threads_connected − Threads_running) |
+| `senhub.db.mysql.connection.max` | `senhub.db.mysql.connection.max` | Connections Max | # | max_connections variable (instantaneous cap) |
+| `senhub.db.connection.utilization` | `senhub.db.connection.utilization` | Connections Used % | % | Threads_connected / max_connections, percent (0-100) |
+| `mysql.connection.errors` | `mysql.connection.errors.aborted_clients` | Aborted Clients | # | Connections aborted because the client died without closing properly (Aborted_clients) |
+| `mysql.connection.errors` | `mysql.connection.errors.aborted_connects` | Aborted Connects | # | Failed connection attempts — auth or protocol errors (Aborted_connects) |
+| `mysql.connection.errors` | `mysql.connection.errors.max_connections` | Connections Refused (Cap) | # | Connections rejected due to max_connections cap (Connection_errors_max_connections) |
+| `mysql.query.count` | `mysql.query.count` | Queries | # | Statements executed (Questions counter) |
+| `mysql.query.slow.count` | `mysql.query.slow.count` | Slow Queries | # | Queries exceeding long_query_time (Slow_queries counter) |
+| `mysql.commands` | `mysql.commands` | Commands ({command}) | # | Statements executed per verb (Com_select, Com_insert, Com_update, Com_delete, Com_replace) |
+| `senhub.db.mysql.transaction.count` | `senhub.db.mysql.transaction.count.committed` | Transactions Committed | # | Commits cumulatif (Com_commit). MySQL contrib n'expose pas les transactions — extension SenHub homogène avec mysql.commands. |
+| `senhub.db.mysql.transaction.count` | `senhub.db.mysql.transaction.count.rolled_back` | Transactions Rolled Back | # | Rollbacks cumulatif (Com_rollback). |
+| `senhub.db.mysql.tmp_tables.disk_ratio` | `senhub.db.mysql.tmp_tables.disk_ratio` | Tmp Tables to Disk % | % | Created_tmp_disk_tables / Created_tmp_tables — `Created_tmp_tables` already includes the disk-spilled subset on MySQL 8.0 and MariaDB; > 25% suggests increasing tmp_table_size. |
+| `senhub.db.mysql.buffer_pool.hit_ratio` | `senhub.db.mysql.buffer_pool.hit_ratio` | Buffer Hit Ratio | % | 1 − (Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests). Derived ratio — contrib expose les compteurs bruts. |
+| `senhub.db.mysql.buffer_pool.utilization` | `senhub.db.mysql.buffer_pool.utilization` | Buffer Utilization | % | Innodb_buffer_pool_pages_data / Innodb_buffer_pool_pages_total |
+| `mysql.buffer_pool.data_pages` | `mysql.buffer_pool.data_pages.dirty` | Buffer Dirty Pages | # | InnoDB pages waiting to be flushed to disk (Innodb_buffer_pool_pages_dirty) |
+| `senhub.db.mysql.lock.deadlocks` | `senhub.db.mysql.lock.deadlocks` | Deadlocks | # | Cumulative deadlocks detected (Innodb_deadlocks) — silently absent on MariaDB (variable not exposed) |
+| `senhub.db.mysql.lock.waiting` | `senhub.db.mysql.lock.waiting` | Locks Waiting | # | Instantaneous count of transactions waiting on a row lock (Innodb_row_lock_current_waits) |
+| `senhub.db.mysql.row_lock.time.avg` | `senhub.db.mysql.row_lock.time.avg` | Row Lock Time Avg | ms | Average row lock wait time. Source Innodb_row_lock_time_avg in ms — converted to seconds for OTel (mapper ÷ 1000). |
+| `senhub.db.mysql.io` | `senhub.db.mysql.io.read` | IO Read | B | Bytes read by InnoDB (Innodb_data_read) |
+| `senhub.db.mysql.io` | `senhub.db.mysql.io.write` | IO Write | B | Bytes written by InnoDB (Innodb_data_written) |
+| `senhub.db.database.size.total` | `senhub.db.database.size` | Database Size | B | Total size of all user databases (information_schema.tables sum) |
+| `senhub.db.mysql.table.count` | `senhub.db.mysql.table.count` | Tables Count | # | Number of user tables across all databases (excludes information_schema, performance_schema, mysql, sys) |
+| `senhub.db.replication.role` | `senhub.db.replication.role` | Replication Role | # | Detected replication role of this instance |
+| `senhub.db.replication.health` | `senhub.db.replication.health` | Replication Health | # | Composite gauge: 1 if replication looks healthy (or instance is standalone), 0 if degraded |
+| `senhub.db.replication.replicas.connected` | `senhub.db.replication.replicas.connected` | Replicas Connected | # | On primary: number of replicas currently connected (SHOW REPLICAS / pg_stat_replication count) |
+| `mysql.replica.time_behind_source` | `mysql.replica.time_behind_source` | Replication Lag | s | On replica: seconds behind source (Seconds_Behind_Master / Seconds_Behind_Source) |
+| `senhub.db.mysql.replica.io_thread.running` | `senhub.db.mysql.replica.io_thread.running` | Replica IO Thread Running | # | On replica: 1 if Slave_IO_Running='Yes', 0 otherwise |
+| `senhub.db.mysql.replica.sql_thread.running` | `senhub.db.mysql.replica.sql_thread.running` | Replica SQL Thread Running | # | On replica: 1 if Slave_SQL_Running='Yes', 0 otherwise |
+| `senhub.db.database.size` | `senhub.db.database.size.per_database` | Database Size ({database}) | B | Size of an individual database (opt-in via per_database flag) |
+| `senhub.db.mysql.table.size` | `senhub.db.mysql.table.size` | Table Size ({database}.{table}) | B | Size of an individual table (opt-in via per_table flag) |
 
 <!-- schema:metrics:end -->

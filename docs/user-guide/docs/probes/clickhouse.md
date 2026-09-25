@@ -57,28 +57,30 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.clickhouse.up` | `clickhouse_up` | # | 1 when the ClickHouse /metrics endpoint answered successfully, 0 otherwise |
-| `clickhouse.queries.active` | `clickhouse_queries_active` | # | Number of queries currently being processed (ClickHouseMetrics_Query) |
-| `clickhouse.connections` | `clickhouse_connections` | # | Number of open client connections (ClickHouseMetrics_Connection) |
-| `clickhouse.memory.used` | `clickhouse_memory_used` | B | Memory tracked by the query tracker (ClickHouseMetrics_MemoryTracking) |
-| `clickhouse.parts.active` | `clickhouse_parts_active` | # | Active data parts in MergeTree tables (ClickHouseMetrics_Parts) |
-| `clickhouse.merges.active` | `clickhouse_merges_active` | # | MergeTree background merges currently running (ClickHouseMetrics_Merge) |
-| `clickhouse.uptime` | `clickhouse_uptime` | s | Server uptime in seconds (ClickHouseAsyncMetrics_Uptime) |
-| `clickhouse.queries.total` | `clickhouse_queries_total` | # | Cumulative number of queries executed (ClickHouseProfileEvents_Query) |
-| `clickhouse.queries.select` | `clickhouse_queries_select` | # | Cumulative SELECT queries executed (ClickHouseProfileEvents_SelectQuery) |
-| `clickhouse.queries.insert` | `clickhouse_queries_insert` | # | Cumulative INSERT queries executed (ClickHouseProfileEvents_InsertQuery) |
-| `clickhouse.inserted.rows` | `clickhouse_inserted_rows` | # | Cumulative rows inserted (ClickHouseProfileEvents_InsertedRows) |
-| `clickhouse.inserted.data` | `clickhouse_inserted_data` | B | Cumulative bytes inserted (ClickHouseProfileEvents_InsertedBytes) |
-| `clickhouse.read.data` | `clickhouse_read_data` | B | Cumulative compressed bytes read from storage (ClickHouseProfileEvents_ReadCompressedBytes) |
-| `clickhouse.written.data` | `clickhouse_written_data` | B | Cumulative compressed bytes written to storage (ClickHouseProfileEvents_WriteCompressedBytes) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.clickhouse.up` | `senhub.clickhouse.up` | ClickHouse {instance} Up | # | 1 when the ClickHouse /metrics endpoint answered successfully, 0 otherwise |
+| `clickhouse.queries.active` | `clickhouse.queries.active` | ClickHouse {instance} Active Queries | # | Number of queries currently being processed (ClickHouseMetrics_Query) |
+| `clickhouse.connections` | `clickhouse.connections` | ClickHouse {instance} Connections | # | Number of open client connections (ClickHouseMetrics_Connection) |
+| `clickhouse.memory.used` | `clickhouse.memory.used` | ClickHouse {instance} Memory Used | B | Memory tracked by the query tracker (ClickHouseMetrics_MemoryTracking) |
+| `clickhouse.parts.active` | `clickhouse.parts.active` | ClickHouse {instance} Active Parts | # | Active data parts in MergeTree tables (ClickHouseMetrics_Parts) |
+| `clickhouse.merges.active` | `clickhouse.merges.active` | ClickHouse {instance} Active Merges | # | MergeTree background merges currently running (ClickHouseMetrics_Merge) |
+| `clickhouse.uptime` | `clickhouse.uptime` | ClickHouse {instance} Uptime | s | Server uptime in seconds (ClickHouseAsyncMetrics_Uptime) |
+| `clickhouse.queries.total` | `clickhouse.queries.total` | ClickHouse {instance} Total Queries | # | Cumulative number of queries executed (ClickHouseProfileEvents_Query) |
+| `clickhouse.queries.select` | `clickhouse.queries.select` | ClickHouse {instance} SELECT Queries | # | Cumulative SELECT queries executed (ClickHouseProfileEvents_SelectQuery) |
+| `clickhouse.queries.insert` | `clickhouse.queries.insert` | ClickHouse {instance} INSERT Queries | # | Cumulative INSERT queries executed (ClickHouseProfileEvents_InsertQuery) |
+| `clickhouse.inserted.rows` | `clickhouse.inserted.rows` | ClickHouse {instance} Inserted Rows | # | Cumulative rows inserted (ClickHouseProfileEvents_InsertedRows) |
+| `clickhouse.inserted.data` | `clickhouse.inserted.data` | ClickHouse {instance} Inserted Bytes | B | Cumulative bytes inserted (ClickHouseProfileEvents_InsertedBytes) |
+| `clickhouse.read.data` | `clickhouse.read.data` | ClickHouse {instance} Read Compressed Bytes | B | Cumulative compressed bytes read from storage (ClickHouseProfileEvents_ReadCompressedBytes) |
+| `clickhouse.written.data` | `clickhouse.written.data` | ClickHouse {instance} Written Compressed Bytes | B | Cumulative compressed bytes written to storage (ClickHouseProfileEvents_WriteCompressedBytes) |
 
 <!-- schema:metrics:end -->

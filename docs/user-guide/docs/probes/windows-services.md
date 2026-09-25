@@ -54,17 +54,19 @@ than failing the whole collection.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.winservices.up` | `winservices_up` | # | 1 when the Service Control Manager is reachable and the probe completed its cycle |
-| `windows.service.state` | `windows_service_{windows.service.name}_state` | # | 1 when the service is in the Running state, 0 otherwise |
-| `windows.service.status` | `windows_service_{windows.service.name}_status` | # | Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.winservices.up` | `senhub.winservices.up` | Windows Services SCM Up | # | 1 when the Service Control Manager is reachable and the probe completed its cycle |
+| `windows.service.state` | `windows.service.state` | Service {windows.service.name} Running | # | 1 when the service is in the Running state, 0 otherwise |
+| `windows.service.status` | `windows.service.status` | Service {windows.service.name} Status | # | Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused |
 
 <!-- schema:metrics:end -->

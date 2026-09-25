@@ -55,20 +55,22 @@ Requires `mod_status` enabled with the `?auto` format.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.apache.up` | `apache_up` | # | 1 when mod_status responded successfully, 0 otherwise |
-| `apache.uptime` | `apache_uptime` | s | Time in seconds since the Apache server was started |
-| `apache.current_connections` | `apache_current_connections` | # | Total number of connections currently served by Apache (ConnsTotal) |
-| `apache.workers` | `apache_workers_{state}` | # | Number of Apache workers in each state: busy (serving requests) or idle (waiting) |
-| `apache.requests` | `apache_requests` | # | Cumulative number of HTTP requests served since Apache started (Total Accesses) |
-| `apache.traffic` | `apache_traffic` | B | Cumulative bytes transferred since Apache started (Total kBytes * 1024) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.apache.up` | `senhub.apache.up` | Apache Up | # | 1 when mod_status responded successfully, 0 otherwise |
+| `apache.uptime` | `apache.uptime` | Apache Uptime | s | Time in seconds since the Apache server was started |
+| `apache.current_connections` | `apache.current_connections` | Apache Current Connections | # | Total number of connections currently served by Apache (ConnsTotal) |
+| `apache.workers` | `apache.workers` | Apache Workers {state} | # | Number of Apache workers in each state: busy (serving requests) or idle (waiting) |
+| `apache.requests` | `apache.requests` | Apache Requests | # | Cumulative number of HTTP requests served since Apache started (Total Accesses) |
+| `apache.traffic` | `apache.traffic` | Apache Traffic | B | Cumulative bytes transferred since Apache started (Total kBytes * 1024) |
 
 <!-- schema:metrics:end -->

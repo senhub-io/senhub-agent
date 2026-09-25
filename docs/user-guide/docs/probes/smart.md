@@ -68,31 +68,33 @@ sudoers rule for `smartctl`.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.smart.up` | `smart_up` | # | 1 when at least one disk could be read, 0 when none could |
-| `senhub.smart.state` | `smart_state_{reason}` | # | one-hot over ok / no_devices / devices_unreadable / partially_readable — says WHY up has its value, so a host with no disks is distinguishable from one whose disks the agent cannot open |
-| `senhub.smart.devices.found` | `smart_devices_found` | # | Devices the scan reported, whether or not they could be read |
-| `senhub.smart.devices.readable` | `smart_devices_readable` | # | Devices the agent could actually query; below devices.found means a permission or hardware problem |
-| `smart.disk.health` | `health_{smart.device}` | # | 1 when the S.M.A.R.T. overall assessment PASSED, 0 when FAILED |
-| `smart.disk.reallocated_sectors` | `reallocated_sectors_{smart.device}` | # | Count of sectors remapped to spare area (attribute 5); >0 signals media degradation |
-| `smart.disk.pending_sectors` | `pending_sectors_{smart.device}` | # | Sectors waiting to be remapped (attribute 197); >0 indicates unstable sectors |
-| `smart.disk.uncorrectable_errors` | `uncorrectable_errors_{smart.device}` | # | Offline uncorrectable sectors (attribute 198); persistent read failures |
-| `smart.disk.power_on_hours` | `power_on_hours_{smart.device}` | h | Total drive power-on time (attribute 9) |
-| `smart.disk.temperature` | `temperature_{smart.device}` | °C | Drive temperature in degrees Celsius (attribute 194 or NVMe temperature log) |
-| `smart.disk.read_error_rate` | `read_error_rate_{smart.device}` | # | Raw read error rate (attribute 1); high values indicate head or platter issues |
-| `smart.nvme.available_spare` | `nvme_available_spare_{smart.device}` | % | Percentage of spare capacity remaining (0-100; <threshold triggers warning) |
-| `smart.nvme.percentage_used` | `nvme_percentage_used_{smart.device}` | % | Wear indicator: percentage of rated lifetime consumed (0-100) |
-| `smart.nvme.data_units_read` | `nvme_data_units_read_{smart.device}` | # | Total number of 512-byte data units read (one unit = 1000 × 512 B on most controllers) |
-| `smart.nvme.data_units_written` | `nvme_data_units_written_{smart.device}` | # | Total number of 512-byte data units written |
-| `smart.nvme.media_errors` | `nvme_media_errors_{smart.device}` | # | Cumulative media and data integrity errors |
-| `smart.nvme.temperature` | `nvme_temperature_{smart.device}` | °C | NVMe controller/composite temperature in degrees Celsius |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.smart.up` | `senhub.smart.up` | S.M.A.R.T. Up | # | 1 when at least one disk could be read, 0 when none could |
+| `senhub.smart.state` | `senhub.smart.state` | S.M.A.R.T. State ({reason}) | # | one-hot over ok / no_devices / devices_unreadable / partially_readable — says WHY up has its value, so a host with no disks is distinguishable from one whose disks the agent cannot open |
+| `senhub.smart.devices.found` | `senhub.smart.devices.found` | S.M.A.R.T. Devices Found | # | Devices the scan reported, whether or not they could be read |
+| `senhub.smart.devices.readable` | `senhub.smart.devices.readable` | S.M.A.R.T. Devices Readable | # | Devices the agent could actually query; below devices.found means a permission or hardware problem |
+| `smart.disk.health` | `smart.disk.health` | S.M.A.R.T. Health {smart.device} | # | 1 when the S.M.A.R.T. overall assessment PASSED, 0 when FAILED |
+| `smart.disk.reallocated_sectors` | `smart.disk.reallocated_sectors` | Reallocated Sectors {smart.device} | # | Count of sectors remapped to spare area (attribute 5); >0 signals media degradation |
+| `smart.disk.pending_sectors` | `smart.disk.pending_sectors` | Pending Sectors {smart.device} | # | Sectors waiting to be remapped (attribute 197); >0 indicates unstable sectors |
+| `smart.disk.uncorrectable_errors` | `smart.disk.uncorrectable_errors` | Uncorrectable Errors {smart.device} | # | Offline uncorrectable sectors (attribute 198); persistent read failures |
+| `smart.disk.power_on_hours` | `smart.disk.power_on_hours` | Power-On Hours {smart.device} | h | Total drive power-on time (attribute 9) |
+| `smart.disk.temperature` | `smart.disk.temperature` | Temperature {smart.device} | °C | Drive temperature in degrees Celsius (attribute 194 or NVMe temperature log) |
+| `smart.disk.read_error_rate` | `smart.disk.read_error_rate` | Read Error Rate {smart.device} | # | Raw read error rate (attribute 1); high values indicate head or platter issues |
+| `smart.nvme.available_spare` | `smart.nvme.available_spare` | NVMe Available Spare {smart.device} | % | Percentage of spare capacity remaining (0-100; <threshold triggers warning) |
+| `smart.nvme.percentage_used` | `smart.nvme.percentage_used` | NVMe Wear Level {smart.device} | % | Wear indicator: percentage of rated lifetime consumed (0-100) |
+| `smart.nvme.data_units_read` | `smart.nvme.data_units_read` | NVMe Data Units Read {smart.device} | # | Total number of 512-byte data units read (one unit = 1000 × 512 B on most controllers) |
+| `smart.nvme.data_units_written` | `smart.nvme.data_units_written` | NVMe Data Units Written {smart.device} | # | Total number of 512-byte data units written |
+| `smart.nvme.media_errors` | `smart.nvme.media_errors` | NVMe Media Errors {smart.device} | # | Cumulative media and data integrity errors |
+| `smart.nvme.temperature` | `smart.nvme.temperature` | NVMe Temperature {smart.device} | °C | NVMe controller/composite temperature in degrees Celsius |
 
 <!-- schema:metrics:end -->

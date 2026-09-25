@@ -60,27 +60,29 @@ I/O statistics.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.ceph.up` | `ceph_up` | # | 1 when the Ceph REST API is reachable and authentication succeeds |
-| `ceph.health.status` | `ceph_health_status` | # | Cluster health: 2=HEALTH_OK, 1=HEALTH_WARN, 0=HEALTH_ERR |
-| `ceph.cluster.capacity` | `ceph_cluster_capacity` | B | Total raw cluster capacity in bytes |
-| `ceph.cluster.used` | `ceph_cluster_used` | B | Total bytes currently used across the cluster |
-| `ceph.osd.total` | `ceph_osd_total` | # | Total number of OSDs configured in the cluster |
-| `ceph.osd.in` | `ceph_osd_in` | # | Number of OSDs that are in (participating in the cluster) |
-| `ceph.osd.up` | `ceph_osd_up` | # | Number of OSDs that are up (running) |
-| `ceph.monitor.count` | `ceph_monitor_count` | # | Total number of monitor daemons |
-| `ceph.monitor.quorum_count` | `ceph_monitor_quorum_count` | # | Number of monitors currently in quorum |
-| `ceph.pool.objects` | `ceph_pool_{pool}_objects` | # | Number of objects stored in the pool |
-| `ceph.pool.used` | `ceph_pool_{pool}_used` | B | Bytes stored in the pool |
-| `ceph.pool.rd_ops` | `ceph_pool_{pool}_rd_ops` | # | Cumulative read operations on the pool |
-| `ceph.pool.wr_ops` | `ceph_pool_{pool}_wr_ops` | # | Cumulative write operations on the pool |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.ceph.up` | `senhub.ceph.up` | Ceph {instance} Reachability | # | 1 when the Ceph REST API is reachable and authentication succeeds |
+| `ceph.health.status` | `ceph.health.status` | Ceph {instance} Health Status | # | Cluster health: 2=HEALTH_OK, 1=HEALTH_WARN, 0=HEALTH_ERR |
+| `ceph.cluster.capacity` | `ceph.cluster.capacity` | Ceph {instance} Raw Capacity | B | Total raw cluster capacity in bytes |
+| `ceph.cluster.used` | `ceph.cluster.used` | Ceph {instance} Used Capacity | B | Total bytes currently used across the cluster |
+| `ceph.osd.total` | `ceph.osd.total` | Ceph {instance} OSD Total | # | Total number of OSDs configured in the cluster |
+| `ceph.osd.in` | `ceph.osd.in` | Ceph {instance} OSD In | # | Number of OSDs that are in (participating in the cluster) |
+| `ceph.osd.up` | `ceph.osd.up` | Ceph {instance} OSD Up | # | Number of OSDs that are up (running) |
+| `ceph.monitor.count` | `ceph.monitor.count` | Ceph {instance} Monitor Count | # | Total number of monitor daemons |
+| `ceph.monitor.quorum_count` | `ceph.monitor.quorum_count` | Ceph {instance} Monitor Quorum | # | Number of monitors currently in quorum |
+| `ceph.pool.objects` | `ceph.pool.objects` | Ceph {instance} Pool {pool} Objects | # | Number of objects stored in the pool |
+| `ceph.pool.used` | `ceph.pool.used` | Ceph {instance} Pool {pool} Used | B | Bytes stored in the pool |
+| `ceph.pool.rd_ops` | `ceph.pool.rd_ops` | Ceph {instance} Pool {pool} Read Ops | # | Cumulative read operations on the pool |
+| `ceph.pool.wr_ops` | `ceph.pool.wr_ops` | Ceph {instance} Pool {pool} Write Ops | # | Cumulative write operations on the pool |
 
 <!-- schema:metrics:end -->

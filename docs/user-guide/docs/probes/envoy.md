@@ -53,24 +53,26 @@ connections and requests, and per-cluster upstream metrics.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.envoy.up` | `envoy_up` | # | 1 when the Envoy admin interface answered /stats?format=prometheus successfully |
-| `envoy.server.uptime` | `envoy_server_uptime` | s | Time since the Envoy process started (seconds) |
-| `envoy.server.memory.allocated` | `envoy_server_memory_allocated` | B | Current memory allocated by the Envoy process |
-| `envoy.server.memory.heap_size` | `envoy_server_memory_heap_size` | B | Current heap size reported by the Envoy process |
-| `envoy.listener.downstream.connections.total` | `envoy_listener_downstream_cx_total` | # | Total downstream connections accepted across all listeners (cumulative) |
-| `envoy.listener.downstream.connections.active` | `envoy_listener_downstream_cx_active` | # | Currently active downstream connections across all listeners |
-| `envoy.http.downstream.requests.total` | `envoy_http_downstream_rq_total` | # | Total HTTP downstream requests received across all HTTP connection managers (cumulative) |
-| `envoy.cluster.upstream.connections.total` | `envoy_cluster_{cluster}_upstream_cx_total` | # | Total upstream connections opened to cluster members (cumulative) |
-| `envoy.cluster.upstream.requests.total` | `envoy_cluster_{cluster}_upstream_rq_total` | # | Total upstream requests dispatched to cluster members (cumulative) |
-| `envoy.cluster.upstream.requests.time` | `envoy_cluster_{cluster}_upstream_rq_time_sum` | ms | Cumulative upstream request latency across all requests to cluster members |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.envoy.up` | `senhub.envoy.up` | Envoy Up | # | 1 when the Envoy admin interface answered /stats?format=prometheus successfully |
+| `envoy.server.uptime` | `envoy.server.uptime` | Envoy Server Uptime | s | Time since the Envoy process started (seconds) |
+| `envoy.server.memory.allocated` | `envoy.server.memory.allocated` | Envoy Memory Allocated | B | Current memory allocated by the Envoy process |
+| `envoy.server.memory.heap_size` | `envoy.server.memory.heap_size` | Envoy Memory Heap Size | B | Current heap size reported by the Envoy process |
+| `envoy.listener.downstream.connections.total` | `envoy.listener.downstream.connections.total` | Envoy Downstream Connections Total | # | Total downstream connections accepted across all listeners (cumulative) |
+| `envoy.listener.downstream.connections.active` | `envoy.listener.downstream.connections.active` | Envoy Downstream Connections Active | # | Currently active downstream connections across all listeners |
+| `envoy.http.downstream.requests.total` | `envoy.http.downstream.requests.total` | Envoy HTTP Requests Total | # | Total HTTP downstream requests received across all HTTP connection managers (cumulative) |
+| `envoy.cluster.upstream.connections.total` | `envoy.cluster.upstream.connections.total` | Envoy Cluster {cluster} Upstream Connections Total | # | Total upstream connections opened to cluster members (cumulative) |
+| `envoy.cluster.upstream.requests.total` | `envoy.cluster.upstream.requests.total` | Envoy Cluster {cluster} Upstream Requests Total | # | Total upstream requests dispatched to cluster members (cumulative) |
+| `envoy.cluster.upstream.requests.time` | `envoy.cluster.upstream.requests.time` | Envoy Cluster {cluster} Upstream Request Time | ms | Cumulative upstream request latency across all requests to cluster members |
 
 <!-- schema:metrics:end -->

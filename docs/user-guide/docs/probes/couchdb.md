@@ -55,24 +55,26 @@ database read/write throughput and I/O byte counters.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.couchdb.up` | `couchdb_up` | # | 1 when the CouchDB node answered the stats endpoint, 0 otherwise |
-| `couchdb.httpd.requests` | `couchdb_httpd_requests` | # | Total number of HTTP requests processed by CouchDB |
-| `couchdb.httpd.method.requests` | `couchdb_httpd_method_{method}` | # | HTTP requests broken down by method (GET, POST, PUT, DELETE) |
-| `couchdb.httpd.status.responses` | `couchdb_httpd_status_{status}` | # | HTTP responses broken down by status code (200, 201, 400, 401, 404, 500) |
-| `couchdb.open.databases` | `couchdb_open_databases` | # | Number of databases currently open |
-| `couchdb.open.files` | `couchdb_open_files` | # | Number of file descriptors currently open by CouchDB |
-| `couchdb.database.reads` | `couchdb_database_reads` | # | Total number of database read operations |
-| `couchdb.database.writes` | `couchdb_database_writes` | # | Total number of database write operations |
-| `couchdb.io.bytes.read` | `couchdb_io_bytes_read` | B | Total bytes read from disk by CouchDB (io_input) |
-| `couchdb.io.bytes.written` | `couchdb_io_bytes_written` | B | Total bytes written to disk by CouchDB (io_output) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.couchdb.up` | `senhub.couchdb.up` | CouchDB Up | # | 1 when the CouchDB node answered the stats endpoint, 0 otherwise |
+| `couchdb.httpd.requests` | `couchdb.httpd.requests` | CouchDB HTTP Requests | # | Total number of HTTP requests processed by CouchDB |
+| `couchdb.httpd.method.requests` | `couchdb.httpd.method.requests` | CouchDB HTTP {method} Requests | # | HTTP requests broken down by method (GET, POST, PUT, DELETE) |
+| `couchdb.httpd.status.responses` | `couchdb.httpd.status.responses` | CouchDB HTTP {status} Responses | # | HTTP responses broken down by status code (200, 201, 400, 401, 404, 500) |
+| `couchdb.open.databases` | `couchdb.open.databases` | CouchDB Open Databases | # | Number of databases currently open |
+| `couchdb.open.files` | `couchdb.open.files` | CouchDB Open OS Files | # | Number of file descriptors currently open by CouchDB |
+| `couchdb.database.reads` | `couchdb.database.reads` | CouchDB Database Reads | # | Total number of database read operations |
+| `couchdb.database.writes` | `couchdb.database.writes` | CouchDB Database Writes | # | Total number of database write operations |
+| `couchdb.io.bytes.read` | `couchdb.io.bytes.read` | CouchDB IO Bytes Read | B | Total bytes read from disk by CouchDB (io_input) |
+| `couchdb.io.bytes.written` | `couchdb.io.bytes.written` | CouchDB IO Bytes Written | B | Total bytes written to disk by CouchDB (io_output) |
 
 <!-- schema:metrics:end -->

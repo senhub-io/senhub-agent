@@ -63,25 +63,27 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.kafka.up` | `kafka_up` | # | 1 when the last collection cycle reached the Kafka cluster, 0 otherwise |
-| `kafka.brokers` | `kafka_brokers` | {broker} | Number of brokers in the Kafka cluster |
-| `kafka.topic.partitions` | `kafka_topic_partitions_{topic}` | {partition} | Number of partitions of a Kafka topic |
-| `kafka.partition.current_offset` | `kafka_partition_current_offset_{topic}_{partition}` | {item} | Current offset of a partition of a Kafka topic |
-| `kafka.partition.oldest_offset` | `kafka_partition_oldest_offset_{topic}_{partition}` | {item} | Oldest offset (log start) of a partition of a Kafka topic |
-| `kafka.partition.replicas` | `kafka_partition_replicas_{topic}_{partition}` | {replica} | Number of replicas for a partition of a Kafka topic |
-| `kafka.partition.replicas_in_sync` | `kafka_partition_replicas_in_sync_{topic}_{partition}` | {replica} | Number of in-sync replicas (ISR) for a partition of a Kafka topic |
-| `kafka.consumer_group.members` | `kafka_consumer_group_members_{group}` | {member} | Count of members in the consumer group |
-| `kafka.consumer_group.offset` | `kafka_consumer_group_offset_{group}_{topic}_{partition}` | {item} | Current offset of the consumer group at partition of a Kafka topic |
-| `kafka.consumer_group.lag` | `kafka_consumer_group_lag_{group}_{topic}_{partition}` | {item} | Current approximate lag of consumer group at partition of a Kafka topic |
-| `kafka.consumer_group.lag_sum` | `kafka_consumer_group_lag_sum_{group}_{topic}` | {item} | Current approximate sum of consumer group lag across all partitions of a Kafka topic |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.kafka.up` | `senhub.kafka.up` | Kafka Reachability | # | 1 when the last collection cycle reached the Kafka cluster, 0 otherwise |
+| `kafka.brokers` | `kafka.brokers` | Kafka Brokers | {broker} | Number of brokers in the Kafka cluster |
+| `kafka.topic.partitions` | `kafka.topic.partitions` | Kafka {topic} Partitions | {partition} | Number of partitions of a Kafka topic |
+| `kafka.partition.current_offset` | `kafka.partition.current_offset` | Kafka {topic}/{partition} Current Offset | {item} | Current offset of a partition of a Kafka topic |
+| `kafka.partition.oldest_offset` | `kafka.partition.oldest_offset` | Kafka {topic}/{partition} Oldest Offset | {item} | Oldest offset (log start) of a partition of a Kafka topic |
+| `kafka.partition.replicas` | `kafka.partition.replicas` | Kafka {topic}/{partition} Replicas | {replica} | Number of replicas for a partition of a Kafka topic |
+| `kafka.partition.replicas_in_sync` | `kafka.partition.replicas_in_sync` | Kafka {topic}/{partition} ISR | {replica} | Number of in-sync replicas (ISR) for a partition of a Kafka topic |
+| `kafka.consumer_group.members` | `kafka.consumer_group.members` | Kafka {group} Members | {member} | Count of members in the consumer group |
+| `kafka.consumer_group.offset` | `kafka.consumer_group.offset` | Kafka {group}/{topic}/{partition} Offset | {item} | Current offset of the consumer group at partition of a Kafka topic |
+| `kafka.consumer_group.lag` | `kafka.consumer_group.lag` | Kafka {group}/{topic}/{partition} Lag | {item} | Current approximate lag of consumer group at partition of a Kafka topic |
+| `kafka.consumer_group.lag_sum` | `kafka.consumer_group.lag_sum` | Kafka {group}/{topic} Lag Sum | {item} | Current approximate sum of consumer group lag across all partitions of a Kafka topic |
 
 <!-- schema:metrics:end -->

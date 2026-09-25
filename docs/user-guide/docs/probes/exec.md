@@ -134,18 +134,20 @@ What remains your responsibility:
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.exec.status` | `exec_status` | # | Nagios plugin status: 0 ok, 1 warning, 2 critical, 3 unknown |
-| `senhub.exec.duration` | `exec_duration` | ms | Wall-clock run time of the check |
-| `senhub.exec.timeout` | `exec_timeout` | # | 1 when the run was killed on the hard timeout |
-| `senhub.exec.skipped` | `exec_skipped` | # | 1 when a cycle was skipped because the previous run was still going |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.exec.status` | `senhub.exec.status` | Check Status | # | Nagios plugin status: 0 ok, 1 warning, 2 critical, 3 unknown |
+| `senhub.exec.duration` | `senhub.exec.duration` | Check Duration | ms | Wall-clock run time of the check |
+| `senhub.exec.timeout` | `senhub.exec.timeout` | Check Timed Out | # | 1 when the run was killed on the hard timeout |
+| `senhub.exec.skipped` | `senhub.exec.skipped` | Cycle Skipped | # | 1 when a cycle was skipped because the previous run was still going |
 
 <!-- schema:metrics:end -->

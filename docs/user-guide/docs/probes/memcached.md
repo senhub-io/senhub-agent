@@ -58,27 +58,29 @@ cache hit/miss ratios, command throughput and eviction counters.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.memcached.up` | `memcached_up` | # | 1 when the Memcached server is reachable and responding to stats, 0 otherwise |
-| `memcached.uptime` | `memcached_uptime` | s | Time since the Memcached server started |
-| `memcached.current.connections` | `memcached_current_connections` | # | Number of currently open connections to the Memcached server |
-| `memcached.connections.total` | `memcached_connections_total` | # | Total connections opened since server start |
-| `memcached.current.items` | `memcached_current_items` | # | Number of items currently stored in the cache |
-| `memcached.items.total` | `memcached_items_total` | # | Total items stored since server start |
-| `memcached.bytes` | `memcached_bytes` | B | Current number of bytes used to store items |
-| `memcached.limit_maxbytes` | `memcached_limit_maxbytes` | B | Maximum number of bytes the server is allowed to use for storage |
-| `memcached.network` | `memcached_network_{direction}` | B | Total bytes transferred since server start, by direction (transmit=sent to clients, receive=received from clients) |
-| `memcached.operations` | `memcached_operations_{result}` | # | Number of cache get operations by result (hit or miss) |
-| `memcached.commands` | `memcached_commands_{command}` | # | Number of commands executed, by command type (get/set/flush) |
-| `memcached.evictions` | `memcached_evictions` | # | Number of items evicted from the cache due to memory pressure |
-| `memcached.cpu.usage` | `memcached_cpu_{state}` | s | CPU time consumed by the Memcached process, by state (user or system) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.memcached.up` | `senhub.memcached.up` | Memcached Reachability | # | 1 when the Memcached server is reachable and responding to stats, 0 otherwise |
+| `memcached.uptime` | `memcached.uptime` | Memcached Uptime | s | Time since the Memcached server started |
+| `memcached.current.connections` | `memcached.current.connections` | Memcached Current Connections | # | Number of currently open connections to the Memcached server |
+| `memcached.connections.total` | `memcached.connections.total` | Memcached Total Connections | # | Total connections opened since server start |
+| `memcached.current.items` | `memcached.current.items` | Memcached Current Items | # | Number of items currently stored in the cache |
+| `memcached.items.total` | `memcached.items.total` | Memcached Total Items | # | Total items stored since server start |
+| `memcached.bytes` | `memcached.bytes` | Memcached Memory Used | B | Current number of bytes used to store items |
+| `memcached.limit_maxbytes` | `memcached.limit_maxbytes` | Memcached Memory Limit | B | Maximum number of bytes the server is allowed to use for storage |
+| `memcached.network` | `memcached.network` | Memcached Network {direction} | B | Total bytes transferred since server start, by direction (transmit=sent to clients, receive=received from clients) |
+| `memcached.operations` | `memcached.operations` | Memcached Operations {result} | # | Number of cache get operations by result (hit or miss) |
+| `memcached.commands` | `memcached.commands` | Memcached Commands {command} | # | Number of commands executed, by command type (get/set/flush) |
+| `memcached.evictions` | `memcached.evictions` | Memcached Evictions | # | Number of items evicted from the cache due to memory pressure |
+| `memcached.cpu.usage` | `memcached.cpu.usage` | Memcached CPU {state} | s | CPU time consumed by the Memcached process, by state (user or system) |
 
 <!-- schema:metrics:end -->

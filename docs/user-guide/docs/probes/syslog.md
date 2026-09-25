@@ -642,15 +642,17 @@ The Syslog probe requires no authentication for incoming syslog messages. Access
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| - | `syslog_severity` | # | Syslog message severity level (RFC 3164) |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| - | `syslog_event` | Syslog {facility_name} Severity | # | Syslog message severity level (RFC 3164) |
 
 <!-- schema:metrics:end -->

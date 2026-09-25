@@ -57,23 +57,25 @@ Metrics are tagged with `proxy` (proxy name) and `component` (FRONTEND / BACKEND
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.haproxy.up` | `haproxy_up` | # | 1 when the HAProxy stats endpoint is reachable and returns valid CSV |
-| `haproxy.sessions.count` | `haproxy_sessions_{proxy}_{component}` | # | Current number of active sessions (scur) |
-| `haproxy.sessions.total` | `haproxy_sessions_total_{proxy}_{component}` | # | Total number of sessions since last reset (stot) |
-| `haproxy.bytes.input` | `haproxy_bytes_in_{proxy}_{component}` | B | Total bytes received (bin) |
-| `haproxy.bytes.output` | `haproxy_bytes_out_{proxy}_{component}` | B | Total bytes sent (bout) |
-| `haproxy.connections.errors` | `haproxy_econ_{proxy}_{component}` | # | Total connection errors (econ) |
-| `haproxy.requests.errors` | `haproxy_ereq_{proxy}_{component}` | # | Total request errors (ereq) — frontends only |
-| `haproxy.responses.errors` | `haproxy_eresp_{proxy}_{component}` | # | Total response errors (eresp) |
-| `haproxy.requests.rate` | `haproxy_req_rate_{proxy}_{component}` | #/s | Current request rate in requests per second (req_rate) — frontends only |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.haproxy.up` | `senhub.haproxy.up` | HAProxy Up | # | 1 when the HAProxy stats endpoint is reachable and returns valid CSV |
+| `haproxy.sessions.count` | `haproxy.sessions.count` | HAProxy {proxy} {component} Current Sessions | # | Current number of active sessions (scur) |
+| `haproxy.sessions.total` | `haproxy.sessions.total` | HAProxy {proxy} {component} Total Sessions | # | Total number of sessions since last reset (stot) |
+| `haproxy.bytes.input` | `haproxy.bytes.input` | HAProxy {proxy} {component} Bytes In | B | Total bytes received (bin) |
+| `haproxy.bytes.output` | `haproxy.bytes.output` | HAProxy {proxy} {component} Bytes Out | B | Total bytes sent (bout) |
+| `haproxy.connections.errors` | `haproxy.connections.errors` | HAProxy {proxy} {component} Connection Errors | # | Total connection errors (econ) |
+| `haproxy.requests.errors` | `haproxy.requests.errors` | HAProxy {proxy} {component} Request Errors | # | Total request errors (ereq) — frontends only |
+| `haproxy.responses.errors` | `haproxy.responses.errors` | HAProxy {proxy} {component} Response Errors | # | Total response errors (eresp) |
+| `haproxy.requests.rate` | `haproxy.requests.rate` | HAProxy {proxy} {component} Request Rate | #/s | Current request rate in requests per second (req_rate) — frontends only |
 
 <!-- schema:metrics:end -->

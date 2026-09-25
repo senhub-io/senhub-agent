@@ -59,25 +59,27 @@ probe failure.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.httpcheck.up` | `httpcheck_up` | # | 1 when the target answered with the expected status (and content, if configured) |
-| `senhub.httpcheck.status.code` | `httpcheck_status_code` | # | HTTP status code of the last response |
-| `httpcheck.duration` | `httpcheck_duration` | ms | Wall-clock time of the whole request |
-| `senhub.httpcheck.duration.dns` | `httpcheck_dns_time` | ms | DNS resolution phase |
-| `senhub.httpcheck.duration.connect` | `httpcheck_connect_time` | ms | TCP connect phase |
-| `senhub.httpcheck.duration.tls` | `httpcheck_tls_time` | ms | TLS handshake phase (HTTPS targets only) |
-| `senhub.httpcheck.duration.ttfb` | `httpcheck_ttfb` | ms | Time from request start to the first response byte |
-| `senhub.httpcheck.response.size` | `httpcheck_response_size` | B | Response body size (capped at 1 MiB read) |
-| `senhub.httpcheck.tls.expiry` | `httpcheck_tls_expiry` | # | Days until the leaf certificate expires (negative once expired) |
-| `senhub.httpcheck.tls.valid` | `httpcheck_tls_valid` | # | 1 when the leaf TLS certificate is currently valid (not expired), 0 otherwise |
-| `senhub.httpcheck.content.match` | `httpcheck_content_match` | # | 1 when the configured content_match regexp matched the response body |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.httpcheck.up` | `senhub.httpcheck.up` | HTTP {target} Up | # | 1 when the target answered with the expected status (and content, if configured) |
+| `senhub.httpcheck.status.code` | `senhub.httpcheck.status.code` | HTTP {target} Status Code | # | HTTP status code of the last response |
+| `httpcheck.duration` | `httpcheck.duration` | HTTP {target} Total Time | ms | Wall-clock time of the whole request |
+| `senhub.httpcheck.duration.dns` | `senhub.httpcheck.duration.dns` | HTTP {target} DNS Time | ms | DNS resolution phase |
+| `senhub.httpcheck.duration.connect` | `senhub.httpcheck.duration.connect` | HTTP {target} Connect Time | ms | TCP connect phase |
+| `senhub.httpcheck.duration.tls` | `senhub.httpcheck.duration.tls` | HTTP {target} TLS Handshake Time | ms | TLS handshake phase (HTTPS targets only) |
+| `senhub.httpcheck.duration.ttfb` | `senhub.httpcheck.duration.ttfb` | HTTP {target} Time To First Byte | ms | Time from request start to the first response byte |
+| `senhub.httpcheck.response.size` | `senhub.httpcheck.response.size` | HTTP {target} Response Size | B | Response body size (capped at 1 MiB read) |
+| `senhub.httpcheck.tls.expiry` | `senhub.httpcheck.tls.expiry` | HTTP {target} Certificate Days Left | # | Days until the leaf certificate expires (negative once expired) |
+| `senhub.httpcheck.tls.valid` | `senhub.httpcheck.tls.valid` | HTTP {target} Certificate Valid | # | 1 when the leaf TLS certificate is currently valid (not expired), 0 otherwise |
+| `senhub.httpcheck.content.match` | `senhub.httpcheck.content.match` | HTTP {target} Content Match | # | 1 when the configured content_match regexp matched the response body |
 
 <!-- schema:metrics:end -->

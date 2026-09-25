@@ -117,20 +117,22 @@ curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ad-hybrid-prod"
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.ad_hybrid.up` | `up` | # | 1 when the Azure AD Connect Health API answered this cycle, else 0 |
-| `senhub.ad_hybrid.sync.health` | `sync_health` | # | Sync service health (Healthy=2, Warning=1, Error/other=0) |
-| `senhub.ad_hybrid.sync.agents.healthy` | `sync_agents_healthy` | # | Number of sync agents reporting a healthy state |
-| `senhub.ad_hybrid.sync.agents.total` | `sync_agents_total` | # | Total number of registered sync agents |
-| `senhub.ad_hybrid.sync.export_errors` | `sync_export_errors` | # | Directory-sync export error count, per error bucket |
-| `senhub.ad_hybrid.agent.last_seen` | `agent_last_seen` | s | Seconds since the sync agent last reported to Azure AD Connect Health |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.ad_hybrid.up` | `ad_hybrid_up` | Service Reachable | # | 1 when the Azure AD Connect Health API answered this cycle, else 0 |
+| `senhub.ad_hybrid.sync.health` | `ad_hybrid_sync_health` | Sync Health ({service_name}) | # | Sync service health (Healthy=2, Warning=1, Error/other=0) |
+| `senhub.ad_hybrid.sync.agents.healthy` | `ad_hybrid_sync_agents_healthy` | Healthy Sync Agents ({service_name}) | # | Number of sync agents reporting a healthy state |
+| `senhub.ad_hybrid.sync.agents.total` | `ad_hybrid_sync_agents_total` | Total Sync Agents ({service_name}) | # | Total number of registered sync agents |
+| `senhub.ad_hybrid.sync.export_errors` | `ad_hybrid_sync_export_errors` | Export Errors ({error_bucket}) | # | Directory-sync export error count, per error bucket |
+| `senhub.ad_hybrid.agent.last_seen` | `ad_hybrid_agent_last_seen` | Agent Last Seen ({agent_server}) | s | Seconds since the sync agent last reported to Azure AD Connect Health |
 
 <!-- schema:metrics:end -->

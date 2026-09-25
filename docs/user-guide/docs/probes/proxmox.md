@@ -67,29 +67,31 @@ usage.
 
 ## Metric reference
 
-Every metric this probe can emit. The first column is the name the
-OTLP and Prometheus outputs use, the second the channel the PRTG and
-Nagios outputs carry.
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
 
 <!-- schema:metrics:start -->
 <!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
 
-| Metric | Channel | Unit | Description |
-|---|---|---|---|
-| `senhub.proxmox.up` | `proxmox_up` | # | 1 when the Proxmox REST API answered successfully, 0 on any connection or authentication failure |
-| `proxmox.node.cpu.utilization` | `node_{proxmox.node}_cpu` | % | CPU utilization of the Proxmox node in percent (0–100) |
-| `proxmox.node.memory.used` | `node_{proxmox.node}_mem_used` | B | Bytes of memory currently used on the Proxmox node |
-| `proxmox.node.memory.total` | `node_{proxmox.node}_mem_total` | B | Total installed memory on the Proxmox node |
-| `proxmox.node.status` | `node_{proxmox.node}_status` | # | 1 when the node is online, 0 otherwise |
-| `proxmox.vm.cpu.utilization` | `vm_{proxmox.vmid}_cpu` | % | CPU utilization of the VM or LXC container in percent (0–100) |
-| `proxmox.vm.memory.used` | `vm_{proxmox.vmid}_mem_used` | B | Bytes of memory currently used by the VM or container |
-| `proxmox.vm.memory.total` | `vm_{proxmox.vmid}_mem_total` | B | Total memory allocated to the VM or container |
-| `proxmox.vm.disk.read` | `vm_{proxmox.vmid}_disk_read` | B | Cumulative bytes read from disk by the VM or container since last boot |
-| `proxmox.vm.disk.write` | `vm_{proxmox.vmid}_disk_write` | B | Cumulative bytes written to disk by the VM or container since last boot |
-| `proxmox.vm.network.in` | `vm_{proxmox.vmid}_net_in` | B | Cumulative bytes received on all virtual NICs of the VM or container since last boot |
-| `proxmox.vm.network.out` | `vm_{proxmox.vmid}_net_out` | B | Cumulative bytes transmitted on all virtual NICs of the VM or container since last boot |
-| `proxmox.vm.status` | `vm_{proxmox.vmid}_status` | # | 1 when the VM or container is running, 0 otherwise |
-| `proxmox.storage.used` | `storage_{proxmox.storage}_used` | B | Bytes used on the Proxmox storage pool |
-| `proxmox.storage.total` | `storage_{proxmox.storage}_total` | B | Total capacity of the Proxmox storage pool |
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.proxmox.up` | `senhub.proxmox.up` | Proxmox API Up | # | 1 when the Proxmox REST API answered successfully, 0 on any connection or authentication failure |
+| `proxmox.node.cpu.utilization` | `proxmox.node.cpu.utilization` | Proxmox Node {proxmox.node} CPU | % | CPU utilization of the Proxmox node in percent (0–100) |
+| `proxmox.node.memory.used` | `proxmox.node.memory.used` | Proxmox Node {proxmox.node} Memory Used | B | Bytes of memory currently used on the Proxmox node |
+| `proxmox.node.memory.total` | `proxmox.node.memory.total` | Proxmox Node {proxmox.node} Memory Total | B | Total installed memory on the Proxmox node |
+| `proxmox.node.status` | `proxmox.node.status` | Proxmox Node {proxmox.node} Status | # | 1 when the node is online, 0 otherwise |
+| `proxmox.vm.cpu.utilization` | `proxmox.vm.cpu.utilization` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) CPU | % | CPU utilization of the VM or LXC container in percent (0–100) |
+| `proxmox.vm.memory.used` | `proxmox.vm.memory.used` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Memory Used | B | Bytes of memory currently used by the VM or container |
+| `proxmox.vm.memory.total` | `proxmox.vm.memory.total` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Memory Total | B | Total memory allocated to the VM or container |
+| `proxmox.vm.disk.read` | `proxmox.vm.disk.read` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Disk Read | B | Cumulative bytes read from disk by the VM or container since last boot |
+| `proxmox.vm.disk.write` | `proxmox.vm.disk.write` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Disk Write | B | Cumulative bytes written to disk by the VM or container since last boot |
+| `proxmox.vm.network.in` | `proxmox.vm.network.in` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Network In | B | Cumulative bytes received on all virtual NICs of the VM or container since last boot |
+| `proxmox.vm.network.out` | `proxmox.vm.network.out` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Network Out | B | Cumulative bytes transmitted on all virtual NICs of the VM or container since last boot |
+| `proxmox.vm.status` | `proxmox.vm.status` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Status | # | 1 when the VM or container is running, 0 otherwise |
+| `proxmox.storage.used` | `proxmox.storage.used` | Proxmox Storage {proxmox.storage} Used | B | Bytes used on the Proxmox storage pool |
+| `proxmox.storage.total` | `proxmox.storage.total` | Proxmox Storage {proxmox.storage} Total | B | Total capacity of the Proxmox storage pool |
 
 <!-- schema:metrics:end -->
