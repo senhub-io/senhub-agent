@@ -168,7 +168,10 @@ system does not produce.
 The file **replaces** the shipped checks; copy the ones you want to keep
 from the output of `/api/{key}/nagios/checks`. The agent reads the file
 once, at start. A file it cannot use is reported in the agent log and
-the shipped checks are served instead, so read the log after a restart.
+the shipped checks are served instead. `senhub-agent config check`
+runs the same loader: it reports a file that would be refused as an
+error, and a check naming a metric this platform does not emit as a
+warning, before any restart.
 
 ```yaml
 version: "1"
