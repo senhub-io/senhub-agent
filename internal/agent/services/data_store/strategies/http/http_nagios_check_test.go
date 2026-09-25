@@ -128,3 +128,38 @@ func TestNagiosThresholdIsLastAcceptableValue(t *testing.T) {
 		}
 	}
 }
+
+// tag_specific_thresholds give one series its own thresholds; tag_<name>
+// in the query and tag_filters in a POST body narrow the series a check
+// looks at. All three were parsed and then never applied.
+func TestNagiosPerSeriesThresholdsAndTagFilters(t *testing.T) {
+	now := time.Now()
+	core := func(id string, value float64) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: "cpu_core_usage", Value: value, Timestamp: now, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}, {Key: "core", Value: id},
+		}}
+	}
+	strategy, key := newNagiosTestStrategy(t, []datapoint.DataPoint{core("0", 60), core("1", 95)})
+	metrics := strategy.cache.GetProbeMetrics("cpu")
+
+	def := NagiosMetric{Channel: "cpu_core_usage", Warning: "80", Critical: "90", TagContext: "core",
+		TagSpecificThresholds: []NagiosTagThreshold{{Tags: map[string]string{"core": "0"}, Warning: "50", Critical: "70"}}}
+	result := strategy.metricsProcessor.ProcessNagiosMetric(def, metrics, NagiosOverrides{})
+	if !strings.Contains(result.Message, "cpu_core_usage[0]: WARNING") || !strings.Contains(result.Message, "cpu_core_usage[1]: CRITICAL") {
+		t.Errorf("core 0 should use its own thresholds (WARNING at 60 over 50), core 1 the metric's: %s", result.Message)
+	}
+
+	router := strategy.setupRoutes()
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/cpu_cores?tag_core=0", nil))
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "cpu_core_usage[1]") {
+		t.Errorf("tag_core=0 should leave only core 0 (OK at 60): got %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	body := `{"check_name":"cpu_cores","overrides":{"tag_filters":{"core":"1"},"critical":"99"}}`
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/"+key+"/nagios/metrics", strings.NewReader(body)))
+	if !strings.Contains(rec.Body.String(), `"status":1`) || strings.Contains(rec.Body.String(), "cpu_core_usage[0]") {
+		t.Errorf("POST overrides should keep core 1 only, WARNING under critical 99: %s", rec.Body.String())
+	}
+}
