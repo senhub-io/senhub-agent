@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -153,7 +154,7 @@ func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error
 	}
 
 	var config NagiosConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yaml.UnmarshalStrict(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse embedded Nagios YAML: %w", err)
 	}
 
@@ -172,7 +173,7 @@ func (cm *ConfigurationManager) loadNagiosConfigFromFile(configPath string) (*Na
 	}
 
 	var config NagiosConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yaml.UnmarshalStrict(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse Nagios YAML: %w", err)
 	}
 
@@ -207,15 +208,65 @@ func (cm *ConfigurationManager) validateNagiosConfig(config *NagiosConfig) error
 			if metric.Channel == "" {
 				return fmt.Errorf("check %s, metric %d: channel is required", check.Name, j)
 			}
-			if metric.Warning == "" {
-				return fmt.Errorf("check %s, metric %s: warning threshold is required", check.Name, metric.Channel)
+			if err := validateNagiosThresholds(metric.Warning, metric.Critical); err != nil {
+				return fmt.Errorf("check %s, metric %s: %w", check.Name, metric.Channel, err)
 			}
-			// Critical is optional: an empty value declares a
-			// warn-only check (evaluateThreshold never escalates
-			// past WARNING without a critical threshold).
+			if !nagiosAggregations[metric.Aggregation] {
+				return fmt.Errorf("check %s, metric %s: unknown aggregation %q (none, average, max, min, sum, count)", check.Name, metric.Channel, metric.Aggregation)
+			}
+			if len(metric.TagSpecificThresholds) > 0 && metric.Aggregation != "" && metric.Aggregation != "none" {
+				return fmt.Errorf("check %s, metric %s: tag_specific_thresholds apply per series and need aggregation none", check.Name, metric.Channel)
+			}
+			for k, entry := range metric.TagSpecificThresholds {
+				if len(entry.Tags) == 0 {
+					return fmt.Errorf("check %s, metric %s, tag_specific_thresholds %d: tags are required", check.Name, metric.Channel, k)
+				}
+				if err := validateNagiosThresholds(entry.Warning, entry.Critical); err != nil {
+					return fmt.Errorf("check %s, metric %s, tag_specific_thresholds %d: %w", check.Name, metric.Channel, k, err)
+				}
+			}
+		}
+
+		for _, filter := range check.TagFilters {
+			if filter.Key == "" {
+				return fmt.Errorf("check %s: a tag filter has no key", check.Name)
+			}
+			if !nagiosTagOperators[filter.Operator] {
+				return fmt.Errorf("check %s, tag filter %s: unknown operator %q (in, not_in, equals, not_equals, exists)", check.Name, filter.Key, filter.Operator)
+			}
+			if filter.Operator != "exists" && len(filter.Values) == 0 {
+				return fmt.Errorf("check %s, tag filter %s: operator %s needs values", check.Name, filter.Key, filter.Operator)
+			}
 		}
 	}
 
+	return nil
+}
+
+var nagiosAggregations = map[string]bool{
+	"": true, "none": true, "average": true, "avg": true, "max": true, "min": true, "sum": true, "count": true,
+}
+
+var nagiosTagOperators = map[string]bool{
+	"in": true, "not_in": true, "equals": true, "not_equals": true, "exists": true,
+}
+
+// validateNagiosThresholds rejects at load what evaluateThreshold would
+// otherwise turn into a permanent UNKNOWN. Critical is optional: an
+// empty value declares a warn-only check.
+func validateNagiosThresholds(warning, critical string) error {
+	if warning == "" {
+		return fmt.Errorf("warning threshold is required")
+	}
+	if _, err := strconv.ParseFloat(warning, 64); err != nil {
+		return fmt.Errorf("warning threshold %q is not a number", warning)
+	}
+	if strings.TrimSpace(critical) == "" {
+		return nil
+	}
+	if _, err := strconv.ParseFloat(critical, 64); err != nil {
+		return fmt.Errorf("critical threshold %q is not a number", critical)
+	}
 	return nil
 }
 
