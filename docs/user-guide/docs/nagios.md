@@ -117,6 +117,10 @@ CRITICAL - cpu_usage_total: CRITICAL 97.00%, cpu_system: OK 5.00%, cpu_user: OK 
 The worst metric sets the status of the check. The HTTP status is 500
 from CRITICAL upward, 404 when no check has that name, 200 otherwise.
 
+Right after the agent starts, a check can answer UNKNOWN for one
+collection interval: rates and CPU time shares need two readings before
+they have a value.
+
 A request can narrow or override a check:
 
 | Parameter | Effect |
@@ -155,6 +159,12 @@ configuration, then restart the agent:
 | Linux | `/etc/senhub-agent/nagios.yaml` |
 | Windows | `C:\ProgramData\SenHub\nagios.yaml` |
 
+The example is written for a Linux host. A metric can be specific to
+one operating system: on Windows the same check reads `disk_used_percent`
+with the tag `drive`. The metric reference of each probe page lists the
+names; the agent log says at start when a check names a metric this
+system does not produce.
+
 The file **replaces** the shipped checks; copy the ones you want to keep
 from the output of `/api/{key}/nagios/checks`. The agent reads the file
 once, at start. A file it cannot use is reported in the agent log and
@@ -165,24 +175,23 @@ version: "1"
 description: "Checks for web-01"
 checks:
   - name: disk_space
-    description: "Free space on every file system"
+    description: "Space used on every file system"
     probe_filter: logicaldisk
     tag_filters:
-      - key: mount_point            # drive on Windows
+      - key: mount_point
         operator: not_in
         values: ["/boot"]
     metrics:
-      - channel: disk_free_percent
+      - channel: fs_used_percent
         aggregation: none
         tag_context: mount_point
-        warning: "20"
-        critical: "10"
-        invert: true
+        warning: "80"
+        critical: "90"
         unit: "%"
         tag_specific_thresholds:
           - tags: { mount_point: "/var" }
-            warning: "30"
-            critical: "15"
+            warning: "70"
+            critical: "85"
 ```
 
 ### `channel` is the metric name
@@ -192,8 +201,9 @@ the metric reference at the bottom of every probe page. It is not the
 PRTG label, and not the OpenTelemetry name. On the CPU page, that is
 `cpu_user`, not `CPU User` and not `system.cpu.utilization`.
 
-When a check names a metric no probe emits, the agent logs it at start,
-and names the metric to use when what was given is a PRTG label. Probes
+When a check names a metric no probe emits on this system, the agent
+logs it at start, names the metric to use when what was given is a PRTG
+label, and says which systems emit it when it belongs to another one. Probes
 whose metric names are set by their configuration (`exec`,
 `prometheus_scrape`, `snmp_poll`, `otlp_receiver`) are not in the
 reference, so the log mentions them without proving them wrong.
