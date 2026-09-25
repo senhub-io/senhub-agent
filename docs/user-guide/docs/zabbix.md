@@ -506,3 +506,16 @@ whatever you set in `host_metadata`) and three operations: add host, add
 to a host group, link the generated templates. Every agent whose
 metadata matches then appears by itself at its first check-list request,
 with its items created by discovery within the discovery interval.
+
+`zabbix setup` creates these actions for you, one per platform.
+
+### A host already registered keeps the templates it was given
+
+Zabbix runs an autoregistration action when a host registers, not
+afterwards. Re-running `zabbix setup` after an upgrade refreshes the
+content of every template, and hosts already linked to them receive the
+change. A template the action links for the first time, because you
+named a new probe with `--probe`, reaches only the hosts that register
+from then on. For the hosts already there, link it yourself: select them
+under **Data collection > Hosts**, then **Mass update > Templates >
+Link**.
