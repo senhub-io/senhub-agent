@@ -93,7 +93,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		// Nagios endpoints
 		router.HandleFunc("/api/{agentkey}/nagios/metrics/{probe}", h.HandleNagiosMetricsGET).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/nagios/metrics", h.HandleNagiosMetrics).Methods("GET", "POST")
-		// Removed: /nagios/check/{probe} endpoint not needed
+		router.HandleFunc("/api/{agentkey}/nagios/check/{check}", h.HandleNagiosCheckGET).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/nagios/checks", h.HandleNagiosChecks).Methods("GET", "POST")
 	}
 
@@ -304,7 +304,9 @@ func (h *HTTPHandlers) HandleNagiosMetrics(w http.ResponseWriter, r *http.Reques
 	h.strategy.handleNagiosMetrics(w, r)
 }
 
-// Removed: HandleNagiosCheck - endpoint not needed
+func (h *HTTPHandlers) HandleNagiosCheckGET(w http.ResponseWriter, r *http.Request) {
+	h.strategy.nagiosManager.HandleNagiosCheckGET(w, r)
+}
 
 func (h *HTTPHandlers) HandleNagiosChecks(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleNagiosChecks(w, r)

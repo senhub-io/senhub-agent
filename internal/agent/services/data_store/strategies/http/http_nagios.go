@@ -75,7 +75,40 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	}
 }
 
-// Removed: HandleNagiosCheck - /nagios/check/{check_name} endpoint not needed
+// HandleNagiosCheckGET runs one configured check and answers in plugin
+// format, so a Nagios command can call it directly the way it calls the
+// per-probe endpoint. The HTTP status follows that endpoint: 500 from
+// CRITICAL upward, 404 for a check that is not configured.
+func (n *NagiosManager) HandleNagiosCheckGET(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := n.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	checkName := mux.Vars(r)["check"]
+	config := n.strategy.configManager.LoadNagiosConfig()
+	check := n.strategy.configManager.FindNagiosCheck(config, checkName)
+
+	w.Header().Set("Content-Type", "text/plain")
+	if check == nil {
+		w.WriteHeader(http.StatusNotFound)
+		if _, err := w.Write([]byte("UNKNOWN - No Nagios check named " + checkName)); err != nil {
+			n.logger.Error().Err(err).Msg("Failed to write Nagios check response")
+		}
+		return
+	}
+
+	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
+	overrides := n.strategy.configManager.ParseNagiosOverrides(r)
+	response := n.executeNagiosCheck(check, filter, overrides)
+
+	if response.Status >= 2 {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	if _, err := w.Write([]byte(fmt.Sprintf("%s - %s | %s", response.StatusText, response.Message, response.PerfData))); err != nil {
+		n.logger.Error().Err(err).Msg("Failed to write Nagios check response")
+	}
+}
 
 // HandleNagiosMetrics handles GET/POST requests for all Nagios metrics
 func (n *NagiosManager) HandleNagiosMetrics(w http.ResponseWriter, r *http.Request) {
