@@ -588,3 +588,34 @@ The LogicalDisk probe requires no authentication as it collects local system met
 ### Network
 - No network access required (local metrics only)
 - HTTP strategy required for remote access to metrics
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `system.filesystem.usage` | `disk_free_mb` | MB | Free disk space in megabytes on the logical drive |
+| `system.filesystem.utilization` | `disk_free_percent` | % | Percentage of total disk space that is free on the logical drive |
+| `system.filesystem.utilization` | `disk_used_percent` | % | Percentage of total disk space currently in use on the logical drive |
+| `senhub.system.disk.operations` | `disk_reads_sec` | # | Number of read operations per second on the logical drive |
+| `senhub.system.disk.operations` | `disk_writes_sec` | # | Number of write operations per second on the logical drive |
+| `senhub.system.disk.io` | `disk_read_bytes_sec` | bytes | Rate of data read from the logical drive in bytes per second |
+| `senhub.system.disk.io` | `disk_write_bytes_sec` | bytes | Rate of data written to the logical drive in bytes per second |
+| `senhub.system.disk.queue_length` | `disk_queue_length` | # | Number of outstanding I/O requests waiting in the disk queue |
+| `system.filesystem.limit` | `fs_total_bytes` | bytes | Total capacity of the filesystem in bytes |
+| `system.filesystem.usage` | `fs_free_bytes` | bytes | Free space available on the filesystem in bytes |
+| `system.filesystem.usage` | `fs_used_bytes` | bytes | Space currently consumed on the filesystem in bytes |
+| `system.filesystem.usage` | `fs_available_bytes` | bytes | Space available to non-root users on the filesystem in bytes |
+| `system.filesystem.utilization` | `fs_used_percent` | % | Percentage of filesystem capacity currently in use |
+| `senhub.system.filesystem.inode.limit` | `fs_inodes_total` | # | Total number of inodes available on the filesystem |
+| `senhub.system.filesystem.inode.usage` | `fs_inodes_free` | # | Number of unused inodes available on the filesystem |
+| `senhub.system.filesystem.inode.usage` | `fs_inodes_used` | # | Number of inodes currently allocated on the filesystem |
+| `senhub.system.filesystem.inode.utilization` | `fs_inodes_used_percent` | % | Percentage of total inodes currently in use on the filesystem |
+
+<!-- schema:metrics:end -->

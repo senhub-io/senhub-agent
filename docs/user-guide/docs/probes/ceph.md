@@ -57,3 +57,30 @@ I/O statistics.
 - The Ceph Manager Dashboard must be enabled: `ceph mgr module enable dashboard`.
 - The dashboard ships with a self-signed TLS certificate, which the probe rejects by default. Set `verify_tls: false` to accept it in a lab; for production, configure a proper certificate.
 - The API requires Ceph Nautilus (14+) or newer for the `/api/` v1 interface.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.ceph.up` | `ceph_up` | # | 1 when the Ceph REST API is reachable and authentication succeeds |
+| `ceph.health.status` | `ceph_health_status` | # | Cluster health: 2=HEALTH_OK, 1=HEALTH_WARN, 0=HEALTH_ERR |
+| `ceph.cluster.capacity` | `ceph_cluster_capacity` | B | Total raw cluster capacity in bytes |
+| `ceph.cluster.used` | `ceph_cluster_used` | B | Total bytes currently used across the cluster |
+| `ceph.osd.total` | `ceph_osd_total` | # | Total number of OSDs configured in the cluster |
+| `ceph.osd.in` | `ceph_osd_in` | # | Number of OSDs that are in (participating in the cluster) |
+| `ceph.osd.up` | `ceph_osd_up` | # | Number of OSDs that are up (running) |
+| `ceph.monitor.count` | `ceph_monitor_count` | # | Total number of monitor daemons |
+| `ceph.monitor.quorum_count` | `ceph_monitor_quorum_count` | # | Number of monitors currently in quorum |
+| `ceph.pool.objects` | `ceph_pool_{pool}_objects` | # | Number of objects stored in the pool |
+| `ceph.pool.used` | `ceph_pool_{pool}_used` | B | Bytes stored in the pool |
+| `ceph.pool.rd_ops` | `ceph_pool_{pool}_rd_ops` | # | Cumulative read operations on the pool |
+| `ceph.pool.wr_ops` | `ceph_pool_{pool}_wr_ops` | # | Cumulative write operations on the pool |
+
+<!-- schema:metrics:end -->

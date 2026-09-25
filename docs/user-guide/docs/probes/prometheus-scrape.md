@@ -81,3 +81,21 @@ One series per target (`target` tag).
 - **PRTG / Nagios outputs.** These sinks key series per target;
   finer per-label splits are carried on the Prometheus and OTLP
   outputs.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.promscrape.up` | `promscrape_up` | # | 1 when the target answered with a parseable exposition |
+| `senhub.promscrape.scrape.duration` | `promscrape_duration` | ms | Wall-clock time of the scrape including parsing |
+| `senhub.promscrape.samples` | `promscrape_samples` | # | Scalar series ingested from the last scrape |
+| `senhub.promscrape.dropped` | `promscrape_dropped` | # | Series in unsupported families (histogram/summary) dropped by the last scrape |
+
+<!-- schema:metrics:end -->

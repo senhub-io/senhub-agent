@@ -140,3 +140,18 @@ Severity mapping (RFC 5424 → OTel):
   only this probe is inert.
 - **No CGO.** Uses subprocess + JSON parsing, not `libsystemd` —
   preserves the agent's pure-Go build profile.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.linux_logs.records_emitted` | `linux_logs_records_emitted` | # | Cumulative count of journal records this probe has published to the log rail |
+
+<!-- schema:metrics:end -->

@@ -56,3 +56,28 @@ One series per metric per target (`target` tag).
 
 A failing or unreachable target is a measurement (`up = 0`), never a
 probe failure.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.httpcheck.up` | `httpcheck_up` | # | 1 when the target answered with the expected status (and content, if configured) |
+| `senhub.httpcheck.status.code` | `httpcheck_status_code` | # | HTTP status code of the last response |
+| `httpcheck.duration` | `httpcheck_duration` | ms | Wall-clock time of the whole request |
+| `senhub.httpcheck.duration.dns` | `httpcheck_dns_time` | ms | DNS resolution phase |
+| `senhub.httpcheck.duration.connect` | `httpcheck_connect_time` | ms | TCP connect phase |
+| `senhub.httpcheck.duration.tls` | `httpcheck_tls_time` | ms | TLS handshake phase (HTTPS targets only) |
+| `senhub.httpcheck.duration.ttfb` | `httpcheck_ttfb` | ms | Time from request start to the first response byte |
+| `senhub.httpcheck.response.size` | `httpcheck_response_size` | B | Response body size (capped at 1 MiB read) |
+| `senhub.httpcheck.tls.expiry` | `httpcheck_tls_expiry` | # | Days until the leaf certificate expires (negative once expired) |
+| `senhub.httpcheck.tls.valid` | `httpcheck_tls_valid` | # | 1 when the leaf TLS certificate is currently valid (not expired), 0 otherwise |
+| `senhub.httpcheck.content.match` | `httpcheck_content_match` | # | 1 when the configured content_match regexp matched the response body |
+
+<!-- schema:metrics:end -->

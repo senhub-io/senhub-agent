@@ -54,3 +54,26 @@ Metrics are tagged with `proxy` (proxy name) and `component` (FRONTEND / BACKEND
 - Enable the stats page in haproxy.cfg: `stats enable` + `stats uri /stats` inside a `listen stats` or `frontend` block.
 - Adding `stats auth user:password` sets the credentials to pass in `username`/`password`.
 - Metric names align with the OpenTelemetry Collector contrib `haproxyreceiver` where equivalents exist.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.haproxy.up` | `haproxy_up` | # | 1 when the HAProxy stats endpoint is reachable and returns valid CSV |
+| `haproxy.sessions.count` | `haproxy_sessions_{proxy}_{component}` | # | Current number of active sessions (scur) |
+| `haproxy.sessions.total` | `haproxy_sessions_total_{proxy}_{component}` | # | Total number of sessions since last reset (stot) |
+| `haproxy.bytes.input` | `haproxy_bytes_in_{proxy}_{component}` | B | Total bytes received (bin) |
+| `haproxy.bytes.output` | `haproxy_bytes_out_{proxy}_{component}` | B | Total bytes sent (bout) |
+| `haproxy.connections.errors` | `haproxy_econ_{proxy}_{component}` | # | Total connection errors (econ) |
+| `haproxy.requests.errors` | `haproxy_ereq_{proxy}_{component}` | # | Total request errors (ereq) — frontends only |
+| `haproxy.responses.errors` | `haproxy_eresp_{proxy}_{component}` | # | Total response errors (eresp) |
+| `haproxy.requests.rate` | `haproxy_req_rate_{proxy}_{component}` | #/s | Current request rate in requests per second (req_rate) — frontends only |
+
+<!-- schema:metrics:end -->

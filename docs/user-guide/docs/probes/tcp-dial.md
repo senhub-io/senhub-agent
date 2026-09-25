@@ -40,3 +40,19 @@ dependable than an HTTP round trip.
 
 A refused or timed out target is a measurement (`up = 0`), never a
 probe failure.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.tcpdial.up` | `tcpdial_up` | # | 1 when the TCP connect completed within the timeout |
+| `senhub.tcpdial.duration` | `tcpdial_duration` | ms | Time for the TCP three-way handshake to complete |
+
+<!-- schema:metrics:end -->

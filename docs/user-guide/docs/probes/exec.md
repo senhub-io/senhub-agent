@@ -131,3 +131,21 @@ What remains your responsibility:
 - **One probe instance per check.** Each check gets its own probe
   block with its own interval and timeout, and shows up under its own
   probe name.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.exec.status` | `exec_status` | # | Nagios plugin status: 0 ok, 1 warning, 2 critical, 3 unknown |
+| `senhub.exec.duration` | `exec_duration` | ms | Wall-clock run time of the check |
+| `senhub.exec.timeout` | `exec_timeout` | # | 1 when the run was killed on the hard timeout |
+| `senhub.exec.skipped` | `exec_skipped` | # | 1 when a cycle was skipped because the previous run was still going |
+
+<!-- schema:metrics:end -->

@@ -200,3 +200,18 @@ Or start the agent with:
 ```bash
 senhub-agent run --filter probe.event
 ```
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| - | `event_event` | # | Custom event received via HTTP POST (RFC 5424-style severity, host, message + arbitrary fields) |
+
+<!-- schema:metrics:end -->

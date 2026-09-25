@@ -63,3 +63,19 @@ A register's `name` is also the PRTG channel name of its value.
 - `host` is required; the probe will fail to start without it.
 - Address numbering follows the Modicon 1-based convention (40001 = holding register 0). Subtract 40001 to get the 0-based Modbus Protocol Data Unit address if needed.
 - For `float32_abcd` vs `float32_cdab`, check your device manual for the byte-word order it uses.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `modbus.register.value` | `modbus_register_value` | 1 | Decoded value of the Modbus Holding Register |
+| `modbus.up` | `modbus_up` | # | 1 when the Modbus TCP device answered all register reads in the last cycle |
+
+<!-- schema:metrics:end -->

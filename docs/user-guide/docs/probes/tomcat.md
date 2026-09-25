@@ -55,3 +55,33 @@ and the Tomcat thread pool state.
 
 - Jolokia must be deployed in Tomcat as a WAR or Java agent. The Jolokia WAR can be deployed at `/jolokia`; the Java agent is added to `CATALINA_OPTS`.
 - Multiple Tomcat instances on the same host can be monitored with multiple probe entries pointing to different Jolokia URLs.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.tomcat.up` | `tomcat_up` | # | 1 when Jolokia is reachable, 0 otherwise |
+| `tomcat.sessions.active` | `tomcat_sessions_{context}` | # | Number of active HTTP sessions for the web application context |
+| `tomcat.requests.total` | `tomcat_requests_{connector}` | # | Total number of HTTP requests processed by the connector |
+| `tomcat.bytes.received` | `tomcat_bytes_received_{connector}` | B | Total bytes received by the connector |
+| `tomcat.bytes.sent` | `tomcat_bytes_sent_{connector}` | B | Total bytes sent by the connector |
+| `tomcat.processing_time` | `tomcat_processing_time_{connector}` | ms | Cumulative request processing time in milliseconds |
+| `tomcat.errors.total` | `tomcat_errors_{connector}` | # | Total number of HTTP errors produced by the connector |
+| `tomcat.threads.current` | `tomcat_threads_current_{connector}` | # | Current number of threads in the connector thread pool |
+| `tomcat.threads.busy` | `tomcat_threads_busy_{connector}` | # | Number of threads currently processing requests |
+| `tomcat.threads.max` | `tomcat_threads_max_{connector}` | # | Maximum number of threads allowed in the connector thread pool |
+| `jvm.memory.heap.used` | `jvm_heap_used` | B | Amount of heap memory currently used by the JVM |
+| `jvm.memory.heap.committed` | `jvm_heap_committed` | B | Amount of heap memory committed (guaranteed available) to the JVM |
+| `jvm.memory.heap.max` | `jvm_heap_max` | B | Maximum heap memory that can be used by the JVM |
+| `jvm.gc.collections.count` | `jvm_gc_count_{collector}` | # | Number of garbage collection cycles performed by the collector |
+| `jvm.gc.collections.elapsed` | `jvm_gc_elapsed_{collector}` | ms | Total time spent in garbage collection by the collector |
+| `jvm.threads.count` | `jvm_threads_count` | # | Current number of live threads in the JVM |
+
+<!-- schema:metrics:end -->

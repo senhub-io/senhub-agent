@@ -48,3 +48,22 @@ collection interval can be tuned.
 - The agent must run with administrator privileges — the Hyper-V WMI namespace is access-controlled.
 - One set of metrics per discovered VM; the `hyperv.vm.name` tag carries the VM's display name and the `vmid` tag its immutable identifier.
 - Per-VM CPU and memory are read from the summary information Hyper-V keeps for each VM; a VM without it only reports its state.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.hyperv.up` | `hyperv_up` | # | 1 when the Hyper-V WMI namespace is reachable, 0 otherwise |
+| `hyperv.vm.cpu.usage` | `hyperv_vm_cpu_{hyperv.vm.name}` | % | CPU utilisation of the virtual machine in percent (0–100) |
+| `hyperv.vm.memory.usage` | `hyperv_vm_mem_{hyperv.vm.name}` | Bytes Memory | Memory consumed by the virtual machine in bytes |
+| `hyperv.vm.state` | `hyperv_vm_state_{hyperv.vm.name}` | # | 1 when the VM is in running state, 0 otherwise |
+| `hyperv.vm.count` | `hyperv_vm_count_{state}` | # | Number of virtual machines in the given state (running / stopped / paused) |
+
+<!-- schema:metrics:end -->

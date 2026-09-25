@@ -475,3 +475,64 @@ The Redfish probe requires a **Pro** or **Enterprise** license.
 | Free | Not available |
 | Pro | Included |
 | Enterprise | Included |
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `hw.status` | `power_health` | # | Power supply unit health status |
+| `hw.physical_disk.size` | `drive_capacity_total` | Bytes | Total drive capacity in bytes |
+| `hw.status` | `drive_health` | # | Drive health status |
+| `hw.status` | `drive_failure_predicted` | # | Drive failure prediction status |
+| `senhub.hardware.physical_disk.has_active_operations` | `drive_has_operations` | # | Indicates if drive has active operations |
+| `senhub.hardware.physical_disk.operation.progress_ratio` | `drive_operation_progress` | % | Drive operation progress percentage |
+| `senhub.hardware.physical_disk.link_speed` | `drive_speed_gbs` | Gbps | Drive negotiated speed in Gbps |
+| `senhub.hardware.physical_disk.location_indicator_active` | `drive_location_indicator_active` | # | Drive location indicator active status |
+| `senhub.hardware.physical_disk.block_size` | `drive_block_size_bytes` | Bytes | Drive block size in bytes |
+| `hw.logical_disk.limit` | `volume_capacity_total` | Bytes | Total volume capacity in bytes |
+| `hw.logical_disk.usage` | `volume_capacity_allocated` | Bytes | Allocated volume capacity in bytes |
+| `hw.logical_disk.usage` | `volume_capacity_free` | Bytes | Free volume capacity in bytes |
+| `hw.logical_disk.usage` | `volume_capacity_used` | Bytes | Used (consumed) volume capacity in bytes |
+| `hw.logical_disk.utilization` | `volume_capacity_allocated_percent` | % | Allocated volume capacity percentage |
+| `hw.logical_disk.utilization` | `volume_capacity_free_percent` | % | Free volume capacity percentage |
+| `hw.logical_disk.utilization` | `volume_capacity_used_percent` | % | Used (consumed) volume capacity percentage |
+| `hw.status` | `volume_health` | # | Volume health status |
+| `senhub.hardware.logical_disk.encrypted` | `volume_encrypted` | # | Volume encryption status (0=no, 1=yes) |
+| `senhub.hardware.logical_disk.io.operations` | `volume_io_reads` | # | Number of read operations on volume |
+| `senhub.hardware.logical_disk.io.operations` | `volume_io_writes` | # | Number of write operations on volume |
+| - | `volume_io_total_ops` | # | Total number of I/O operations on volume |
+| `senhub.hardware.logical_disk.io` | `volume_io_read_bytes` | Bytes | Total bytes read from volume |
+| `senhub.hardware.logical_disk.io` | `volume_io_write_bytes` | Bytes | Total bytes written to volume |
+| - | `volume_io_total_bytes` | Bytes | Total bytes transferred (read + write) on volume |
+| `senhub.hardware.storage.pool.usage` | `pool_capacity_allocated` | Bytes | Allocated pool capacity in bytes |
+| `senhub.hardware.storage.pool.usage` | `pool_capacity_total` | Bytes | Total pool capacity in bytes |
+| `senhub.hardware.storage.pool.usage` | `pool_capacity_used` | Bytes | Used pool capacity in bytes |
+| `senhub.hardware.storage.pool.utilization` | `pool_capacity_free_percent` | % | Free pool capacity percentage |
+| `senhub.hardware.storage.pool.utilization` | `pool_capacity_allocated_percent` | % | Allocated pool capacity percentage |
+| `senhub.hardware.storage.pool.utilization` | `pool_capacity_used_percent` | % | Used pool capacity percentage |
+| `senhub.hardware.storage.pool.status` | `pool_health` | # | Pool health status |
+| `senhub.hardware.storage.pool.io.operations` | `pool_io_reads` | # | Number of read operations on pool |
+| `senhub.hardware.storage.pool.io.operations` | `pool_io_writes` | # | Number of write operations on pool |
+| `senhub.hardware.storage.pool.io` | `pool_io_read_bytes` | Bytes | Total bytes read from pool |
+| `senhub.hardware.storage.pool.io` | `pool_io_write_bytes` | Bytes | Total bytes written to pool |
+| `hw.status` | `system_health` | # | Overall system health status |
+| `senhub.hardware.system.power_state` | `system_power_state` | # | System power state |
+| `hw.status` | `controller_health` | # | Storage controller health status |
+| `senhub.hardware.eventservice.status` | `eventservice_health` | # | System event service health status |
+| `senhub.hardware.redundancy.status` | `redundancy_health` | # | Redundancy system health status |
+| `senhub.hardware.redundancy.controllers.count` | `redundancy_controllers_active` | # | Number of active redundant controllers |
+| `senhub.hardware.redundancy.controllers.count` | `redundancy_controllers_min` | # | Minimum number of controllers for redundancy |
+| `senhub.hardware.redundancy.controllers.count` | `redundancy_controllers_max` | # | Maximum number of controllers supported |
+| `senhub.hardware.redundancy.status` | `storage_redundancy_health` | # | Storage redundancy health status |
+| `senhub.hardware.redundancy.controllers.count` | `storage_redundancy_controllers_active` | # | Number of active redundant storage controllers |
+| `senhub.hardware.redundancy.controllers.count` | `storage_redundancy_controllers_min` | # | Minimum number of storage controllers for redundancy |
+| `senhub.hardware.redundancy.controllers.count` | `storage_redundancy_controllers_max` | # | Maximum number of storage controllers supported |
+
+<!-- schema:metrics:end -->

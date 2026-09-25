@@ -163,3 +163,29 @@ Run two instances to serve both protocols at once:
   terminator or an OTel collector in front.
 - Shutdown is graceful on both protocols: in-flight requests finish
   before the agent exits.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `http.server.request.duration` | `http_server_request_duration` | s | Duration of the HTTP server requests an application reports, per route, method and status. Relayed as sent: the count is the number of requests, the sum their total duration |
+| `http.server.active_requests` | `http_server_active_requests` | # | Requests an application is handling right now |
+| `jvm.memory.used` | `jvm_memory_used` | B | Memory a Java application holds, per pool |
+| `jvm.memory.committed` | `jvm_memory_committed` | B | Memory committed to a Java application by the operating system, per pool |
+| `jvm.memory.limit` | `jvm_memory_limit` | B | Ceiling on a Java memory pool, which the used value above is measured against |
+| `jvm.thread.count` | `jvm_thread_count` | # | Live threads in a Java application |
+| `jvm.class.count` | `jvm_class_count` | # | Classes currently loaded by a Java application |
+| `jvm.cpu.recent_utilization` | `jvm_cpu_recent_utilization` | 1 | Share of a processor a Java application has used recently, as a ratio |
+| `jvm.gc.duration` | `jvm_gc_duration` | s | Time a Java application spent collecting garbage, per collector. The count is the number of collections, the sum the time they took |
+| `db.client.operation.duration` | `db_client_operation_duration` | s | Duration of the database calls an application makes, per system and operation. The count is the number of calls, the sum their total duration |
+| `db.client.connection.count` | `db_client_connection_count` | # | Connections in an application's database pool, idle and used |
+| `db.client.connection.pending_requests` | `db_client_connection_pending_requests` | # | Requests waiting for a connection from the pool, which is what a saturated pool looks like |
+
+<!-- schema:metrics:end -->
