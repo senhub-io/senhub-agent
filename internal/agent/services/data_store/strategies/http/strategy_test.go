@@ -139,6 +139,9 @@ func TestHTTPSyncStrategy_Interface(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Test interface methods
 	if strategy.GetStrategyName() != "http" {
@@ -217,6 +220,9 @@ func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Create test datapoints
 	datapoints := []datapoint.DataPoint{
@@ -373,6 +379,9 @@ func TestHTTPSyncStrategy_HealthEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -398,6 +407,9 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Add test data to cache using public interface
 	now := time.Now()
@@ -457,6 +469,9 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	tests := []struct {
 		name           string
@@ -569,6 +584,9 @@ func TestHTTPSyncStrategy_Shutdown(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Start the strategy
 	err := strategy.Start(context.Background())
@@ -593,6 +611,9 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Start the strategy to initialize the server
 	err := strategy.Start(context.Background())
@@ -655,6 +676,9 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Create a metric with probe_name in the key
 	key := "cpu_usage_total.probe_name=cpu"
@@ -796,6 +820,9 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
 	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Start the strategy to initialize the server
 	err := strategy.Start(context.Background())
