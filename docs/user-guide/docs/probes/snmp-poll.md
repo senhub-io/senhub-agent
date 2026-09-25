@@ -37,7 +37,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:4c5d9d9acff099fad8f2df7a386e49a0b58b05c275528938add4ed931cc4c4b6 -->
+<!-- sha256:349ba218b9a06eb7fbae5d46cfeaa6997fba0cb192d28e82d585e7881ee594fb -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -60,13 +60,13 @@ one series per interface (`if_index` tag).
 | `custom_mappings` | No | - | OID to metric mappings |
 | `custom_mappings[].oid` | Yes | - | OID, leading dot optional |
 | `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
-| `custom_mappings[].type` | No | `gauge` | A string. One of `gauge`, `counter` |
+| `custom_mappings[].type` | No | `gauge` | How the value is reported: a gauge as read, a counter as a monotonic total. One of `gauge`, `counter` |
 | `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
 | `discovery` | No | - | Topology crawl from seed devices |
 | `discovery.seeds` | Yes | - | Entry-point device addresses |
 | `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
-| `discovery.profile.version` | No | `v2c` | A string. One of `v2c`, `2c`, `2` |
-| `discovery.profile.community` | Yes | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `discovery.profile.version` | No | `v2c` | SNMP version used to probe the discovered devices. One of `v2c`, `2c`, `2` |
+| `discovery.profile.community` | Yes | - | Community string used to probe the discovered devices. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `discovery.allowed_cidrs` | Yes | - | The crawl never leaves these ranges |
 | `discovery.max_devices` | No | `200` | Hard cap on the number of discovered devices |
 | `discovery.max_hops` | No | `4` | Crawl depth from the seeds |
