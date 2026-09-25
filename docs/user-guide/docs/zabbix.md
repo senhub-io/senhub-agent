@@ -190,6 +190,13 @@ a host gets its items within one discovery interval (1 hour by default,
 `--delay` does not change it; edit the rule in Zabbix if you want faster
 discovery on a lab). An enum metric with a lookup gets a value map.
 
+An instance only gets the items of the metrics it sends. Each discovery
+row carries `{#SENHUB.FED}`, the list of metrics that instance feeds,
+and the rule holds every prototype to it: a virtual network card whose
+kernel reports no speed gets no speed item, while a bridge on the same
+host that reports one does. An agent too old to send the list keeps
+every item, as before.
+
 Import the files through **Data collection > Templates > Import**, or
 `configuration.import` on the API. Re-importing a regenerated template
 updates the same objects: the identifiers are derived from the keys.
