@@ -47,6 +47,26 @@ resolve_machine_id 2>/dev/null
 check "SENHUB_HOST_ID wins and is normalised" "$(cat "$MACHINE_ID_PATH")" "aabbccddeeff00112233445566778899"
 unset SENHUB_HOST_ID
 
+# 2b. An example or blank SENHUB_HOST_ID is refused rather than written:
+#     every container given it would be one host on the graph.
+for bad in 01234567-89ab-cdef-0123-456789abcdef 00000000000000000000000000000000; do
+  SENHUB_HOST_ID=$bad
+  export SENHUB_HOST_ID
+  if (resolve_machine_id 2>/dev/null); then
+    check "SENHUB_HOST_ID=$bad is refused" "accepted" "refused"
+  else
+    check "SENHUB_HOST_ID=$bad is refused" "refused" "refused"
+  fi
+done
+unset SENHUB_HOST_ID
+for good in 6a6d1121-4a85-4e64-a222-746f7bc9c04c aabbccddeeff00112233445566778899; do
+  if degenerate_machine_id "$(printf '%s' "$good" | tr -d '-')"; then
+    check "$good is accepted" "refused" "accepted"
+  else
+    check "$good is accepted" "accepted" "accepted"
+  fi
+done
+
 # 3. A corrupt kept machine-id is ignored rather than written through: the
 #    file ends up with a fresh identity (Linux, where /proc provides one) or
 #    empty (macOS, where it does not), never with the corrupt value.

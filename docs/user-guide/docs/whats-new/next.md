@@ -411,3 +411,13 @@ collection gaps that comparison exposed.
   credential fixed afterwards is picked up without a restart. The error
   of a probe's first collection, which the scheduler swallowed, is
   logged too. (#935)
+
+- **A copied example host identity is refused.** A bench container ran
+  with `SENHUB_HOST_ID=01234567-89ab-cdef-0123-456789abcdef`, the shape
+  of a documentation example; every host given it merges into one on
+  the topology graph, silently. The container now refuses such a value
+  at start, judged on its shape (all zeros, a long ascending run) rather
+  than against a list; the agent logs an error when the machine itself
+  reports one; and a host whose identity came from `SENHUB_HOST_ID`
+  carries `senhub.host.id.source=configuration`, so a collision can be
+  traced to the copy.
