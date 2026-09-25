@@ -474,10 +474,10 @@ metrics:
   # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_object_restore_points"
     channel: "veeam_object_restore_points"
-    display_name: "Restore Points ({object_name})"
+    display_name: "Restore Points ({object_name} / {object_type})"
     unit: "#"
     category: "protected_objects"
-    multi_instance_labels: ["object_name", "object_type"]
+    multi_instance_labels: ["object_id", "object_name", "object_type"]
     description: "Number of restore points for this object"
     otel:
       name: senhub.veeam.object.restore_points
@@ -489,10 +489,10 @@ metrics:
 
   - name: "veeam_object_last_run_failed"
     channel: "veeam_object_last_run_failed"
-    display_name: "Last Run Failed ({object_name})"
+    display_name: "Last Run Failed ({object_name} / {object_type})"
     unit: "#"
     category: "protected_objects"
-    multi_instance_labels: ["object_name", "object_type"]
+    multi_instance_labels: ["object_id", "object_name", "object_type"]
     description: "1 if last backup run failed, 0 otherwise"
     otel:
       name: senhub.veeam.object.last_run_failed
