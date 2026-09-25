@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -206,6 +207,12 @@ func (m *MetricsProcessor) ProcessNagiosMetric(metricDef NagiosMetric, metrics [
 		}
 	}
 
+	// The cache hands series out in map order; sorting keeps the message
+	// and the perfdata in the same order from one poll to the next.
+	sort.Slice(matchingMetrics, func(i, j int) bool {
+		return seriesOrderKey(matchingMetrics[i]) < seriesOrderKey(matchingMetrics[j])
+	})
+
 	if len(matchingMetrics) == 0 {
 		return NagiosMetricResult{
 			Status:   3, // UNKNOWN
@@ -225,6 +232,20 @@ func (m *MetricsProcessor) ProcessNagiosMetric(metricDef NagiosMetric, metrics [
 	} else {
 		return m.processNagiosMetricSeparate(metricDef, matchingMetrics, overrides)
 	}
+}
+
+func seriesOrderKey(metric CachedMetric) string {
+	keys := make([]string, 0, len(metric.Tags))
+	for k := range metric.Tags {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(metric.ProbeName)
+	for _, k := range keys {
+		b.WriteString("\x00" + k + "=" + metric.Tags[k])
+	}
+	return b.String()
 }
 
 // processNagiosMetricAggregated processes metrics with aggregation

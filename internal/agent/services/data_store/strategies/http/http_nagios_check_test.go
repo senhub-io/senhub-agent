@@ -198,3 +198,32 @@ func TestNagiosMessageCarriesNoSemicolon(t *testing.T) {
 		t.Errorf("plugin message carries a semicolon: %q", message)
 	}
 }
+
+// Series come out of the cache in map order; the plugin message and the
+// perfdata must not reorder from one poll to the next.
+func TestNagiosSeriesOrderIsStable(t *testing.T) {
+	now := time.Now()
+	var points []datapoint.DataPoint
+	for _, id := range []string{"3", "0", "2", "1"} {
+		points = append(points, datapoint.DataPoint{Name: "cpu_core_usage", Value: float64(10), Timestamp: now, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}, {Key: "core", Value: id},
+		}})
+	}
+	strategy, key := newNagiosTestStrategy(t, points)
+	router := strategy.setupRoutes()
+	first := ""
+	for i := 0; i < 20; i++ {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/cpu_cores", nil))
+		if i == 0 {
+			first = rec.Body.String()
+			if !strings.Contains(first, "cpu_core_usage[0]: OK 10.00%, cpu_core_usage[1]") {
+				t.Fatalf("series not in tag order: %q", first)
+			}
+			continue
+		}
+		if rec.Body.String() != first {
+			t.Fatalf("answer changed between polls:\n%q\n%q", first, rec.Body.String())
+		}
+	}
+}
