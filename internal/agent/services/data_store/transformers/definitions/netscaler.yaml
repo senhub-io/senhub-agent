@@ -685,13 +685,12 @@ metrics:
     multi_instance_labels: []
     channel: "ha.heartbeat.rx.rate"
     display_name: "HA Heartbeat RX Rate"
-    unit: "Custom"
-    custom_unit: "pkts/s"
+    unit: "#"
     category: "high_availability"
     description: "Heartbeat packets receive rate (packets/sec)"
     otel:
       name: senhub.netscaler.ha.heartbeat.rate
-      unit: "1/s"
+      unit: "{packet}/s"
       type: gauge
       attributes:
         network.io.direction: receive
@@ -714,13 +713,12 @@ metrics:
     multi_instance_labels: []
     channel: "ha.heartbeat.tx.rate"
     display_name: "HA Heartbeat TX Rate"
-    unit: "Custom"
-    custom_unit: "pkts/s"
+    unit: "#"
     category: "high_availability"
     description: "Heartbeat packets transmit rate (packets/sec)"
     otel:
       name: senhub.netscaler.ha.heartbeat.rate
-      unit: "1/s"
+      unit: "{packet}/s"
       type: gauge
       attributes:
         network.io.direction: transmit
