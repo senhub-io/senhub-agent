@@ -60,7 +60,7 @@ feature they configure is wanted.
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key and the bookmarks live |
-| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance |
+| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |
 | `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. Not merged with `SENHUB_AZURE_APP`, see [Reading Azure Container Apps](#reading-azure-container-apps) |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
 
