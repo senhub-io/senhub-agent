@@ -342,8 +342,9 @@ func (m *MetricsProcessor) processNagiosMetricSeparate(metricDef NagiosMetric, m
 	}
 
 	return NagiosMetricResult{
-		Status:   worstStatus,
-		Message:  strings.Join(messages, "; "),
+		Status: worstStatus,
+		// Never ";": Nagios reserves it and prints it as ":".
+		Message:  strings.Join(messages, ", "),
 		PerfData: strings.Join(perfDataItems, " "),
 	}
 }
@@ -900,7 +901,7 @@ func (m *MetricsProcessor) processNagiosHealthMetric(metricDef NagiosMetric, met
 				}
 			}
 			if len(failureMessages) > 0 {
-				message += "; " + strings.Join(failureMessages, ", ")
+				message += " - " + strings.Join(failureMessages, ", ")
 			}
 		}
 	}

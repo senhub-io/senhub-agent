@@ -180,3 +180,21 @@ func TestNagiosProbeFilterMatchesTheProbeType(t *testing.T) {
 		t.Fatalf("veeam_jobs on a probe named %q: got %d %q", "backup-siep", rec.Code, rec.Body.String())
 	}
 }
+
+// Nagios reserves ";" in plugin output and prints it as ":", which
+// turned a list of series into "OK 64.68%: fs_used_percent[...]".
+func TestNagiosMessageCarriesNoSemicolon(t *testing.T) {
+	now := time.Now()
+	core := func(id string, value float64) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: "cpu_core_usage", Value: value, Timestamp: now, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}, {Key: "core", Value: id},
+		}}
+	}
+	strategy, key := newNagiosTestStrategy(t, []datapoint.DataPoint{core("0", 10), core("1", 20)})
+	rec := httptest.NewRecorder()
+	strategy.setupRoutes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/cpu_cores", nil))
+	message, _, _ := strings.Cut(rec.Body.String(), " | ")
+	if strings.Contains(message, ";") {
+		t.Errorf("plugin message carries a semicolon: %q", message)
+	}
+}
