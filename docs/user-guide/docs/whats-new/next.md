@@ -465,3 +465,10 @@ collection gaps that comparison exposed.
   volume**, as `SENHUB_HOST_ID` keeps the host's. With both, two
   successive containers with no shared state report the same host and
   the same agent. (#882)
+
+- **Saving an output from the Web UI no longer drops a header it did not
+  show.** The console hides every value of the OTLP `headers` map, and
+  the server only put back the ones that were `${secret:}` references:
+  a plain `X-Tenant: acme` disappeared from the file on a save that
+  changed nothing. What the console hides is now kept, by the same rule
+  that hides it, and the preview of the file shows it. (#856)
