@@ -25,7 +25,7 @@ Every probe pushes datapoints through the same `DataStore.AddDataPoints(...)` en
 
 - The Prometheus exposition (`strategies/http/prometheus/`).
 - The OTLP push (`strategies/otlp/`).
-- Future native exporters (Zabbix is the next target — same neutral path).
+- Native exporters (Zabbix, shipped in 0.6.0 — same neutral path).
 
 Rules for the mapper:
 

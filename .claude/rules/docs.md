@@ -32,7 +32,7 @@ When you change a contract documented in one of these files, update the doc in t
 | PRTG | **Advertise as primary** in user-guide. Stable, daily-driven by customers. |
 | Nagios | **Advertise as primary** in user-guide. Stable. |
 | Prometheus | **Advertise** as supported (added 2026-04-18). Note "OTel-first mapping; semantics per `senhub-semantic-conventions.md`". |
-| Zabbix | **Work starting 2026-05-17.** Mention in developer-guide / release notes but **do NOT advertise** in user-guide yet. Wait for stable. |
+| Zabbix | **Advertise** as supported from 0.6.0 (decided 2026-09-25): native active agent, templates, autoregistration, TLS and PSK, proven on Zabbix 7.0 and 8.0. |
 | OTLP push | **Advertise** as supported. Operators using OpenTelemetry collectors. |
 | Grafana | **Don't advertise** as a channel — Grafana is a viz tool consuming Prometheus / VictoriaMetrics, not an integration the agent speaks directly. Dashboards we ship are a sample, not a product. |
 | Icinga | **Don't advertise**. Compatible via Nagios output but not officially tested. |

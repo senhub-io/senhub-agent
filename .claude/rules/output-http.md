@@ -1,5 +1,5 @@
 ---
-title: HTTP output — Prometheus / Nagios / PRTG / Zabbix (pull formats)
+title: HTTP output — Prometheus / Nagios / PRTG (pull formats)
 paths:
   - internal/agent/services/data_store/strategies/http/**
   - internal/agent/services/data_store/strategies/prtg/**
@@ -14,7 +14,6 @@ The `http` strategy is the **unified HTTP server** that exposes the agent's cach
 | PRTG | `/api/{agentkey}/prtg/metrics/{probe}` | Primary supported |
 | Nagios | `/api/{agentkey}/nagios/metrics/{probe}`, `/nagios/metrics`, `/nagios/checks` | Primary supported |
 | Prometheus | `/api/{agentkey}/prometheus/metrics`, `/metrics` | In progress (cf. memory `feedback_prtg_only.md`) — feature-flagged but stable; expose to users with care |
-| Zabbix | `/api/{agentkey}/zabbix/metrics/{probe}` | **Work starting 2026-05-17** — endpoint exists, full integration in progress |
 | Web UI | `/web/{agentkey}/...` | Dashboard, Sensor Builder, Docs |
 | Lookups | `/api/{agentkey}/lookups/prtg`, `/lookups/prtg/{id}` | PRTG `.ovl` files |
 | Discovery | `/api/{agentkey}/endpoints`, `/info/probes`, `/info/tags/{probe}` | Self-introspection |
@@ -34,7 +33,7 @@ All sub-formats consume from the **shared otelmapper**. Each one serializes the 
 - **Prometheus**: dotted→underscore, type-suffixed (`_total` on counters, `_ratio` on `unit:"1"` gauges, `_seconds`/`_bytes` per OTel→Prom unit table). Labels = OtelRecord attributes.
 - **Nagios**: text line with `OK|WARN|CRIT|UNKNOWN - message | perfdata` — perfdata keys are sanitized OtelRecord attribute joins.
 - **PRTG**: JSON `{"prtg":{"result":[{"channel":..., "value":..., "float":1, "unit":"..."}, ...]}}` — channel name from YAML `display_name` (with `{tag}` template substitution).
-- **Zabbix**: format TBD (work starting). Will follow Zabbix's HTTP agent JSON conventions.
+- **Zabbix**: not an HTTP sub-format — the separate `zabbix` strategy (`strategies/zabbix/`) speaks the native agent protocol (active push to 10051, optional passive listener on 10050). See `docs/user-guide/docs/zabbix.md`.
 
 **Don't reinvent shapes per sub-format** when the OtelRecord already carries the semantics. Add unit conversion or label massaging to the mapper, not to the sink.
 
