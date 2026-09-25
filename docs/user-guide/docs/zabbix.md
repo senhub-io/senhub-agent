@@ -209,6 +209,32 @@ name an operator reads keeps the slash. And the 6.0 export spells the
 root template-group tag `groups` where 7.0 renamed it to
 `template_groups`; `--version` picks the right one.
 
+### Triggers
+
+The templates carry triggers, so a host linked to them raises problems
+without anyone writing an expression.
+
+- **States.** A metric that reports a state (a virtual server that is
+  down, a backup job that failed, a cluster in red) raises a problem
+  from the same classification PRTG and Nagios read: the codes its
+  lookup calls an error raise a *High* problem, the ones it calls a
+  warning raise a *Warning*. The problem names the state, through the
+  item's value map.
+- **Thresholds.** Processor, memory and disk usage raise a *Warning*
+  and a *High* problem when every value over the last five minutes is
+  above a threshold: 80 and 90 % for the processor and the disks, 85
+  and 95 % for the memory, the values the shipped Nagios checks use.
+  The warning depends on the high one, so a value past both raises one
+  problem. Each threshold is a template macro, overridden on a host or
+  a host group without editing the template:
+
+| Macro | Default |
+|---|---|
+| `{$SENHUB.CPU_USAGE_TOTAL.WARN}` / `.CRIT}` | 80 / 90 |
+| `{$SENHUB.MEMORY_USED_PERCENT.WARN}` / `.CRIT}` | 85 / 95 |
+| `{$SENHUB.FS_USED_PERCENT.WARN}` / `.CRIT}` (Linux) | 80 / 90 |
+| `{$SENHUB.DISK_USED_PERCENT.WARN}` / `.CRIT}` (Windows) | 80 / 90 |
+
 ## Encryption
 
 The agent encrypts with **certificates** or with a **pre-shared key**,

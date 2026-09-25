@@ -28,6 +28,13 @@ type LookupSource interface {
 	Lookup(id string) (map[int]string, bool)
 }
 
+// SeveritySource is a LookupSource that also says how serious each code
+// is ("ok", "warning", "error"), which turns a state metric into
+// triggers. Without it a template gets value maps and no trigger.
+type SeveritySource interface {
+	Severities(id string) (map[int]string, bool)
+}
+
 // Options tunes a generation.
 type Options struct {
 	// Prefix is the first segment of every key; must match the output's key_prefix.
@@ -95,6 +102,7 @@ type Template struct {
 	Groups         []GroupRef      `yaml:"groups"`
 	Items          []Item          `yaml:"items,omitempty"`
 	DiscoveryRules []DiscoveryRule `yaml:"discovery_rules,omitempty"`
+	Macros         []Macro         `yaml:"macros,omitempty"`
 	ValueMaps      []ValueMap      `yaml:"valuemaps,omitempty"`
 }
 
@@ -130,6 +138,7 @@ type DiscoveryRule struct {
 	Delay          string          `yaml:"delay"`
 	Description    string          `yaml:"description,omitempty"`
 	ItemPrototypes []ItemPrototype `yaml:"item_prototypes"`
+	Overrides      []Override      `yaml:"overrides,omitempty"`
 }
 
 type ItemPrototype struct {
@@ -144,7 +153,8 @@ type ItemPrototype struct {
 	ValueMap    *ValueRef `yaml:"valuemap,omitempty"`
 	// Preprocessing is applied by the server to what the agent sends;
 	// it changes how a value is stored and read, never the key.
-	Preprocessing []Preprocessing `yaml:"preprocessing,omitempty"`
+	Preprocessing     []Preprocessing    `yaml:"preprocessing,omitempty"`
+	TriggerPrototypes []TriggerPrototype `yaml:"trigger_prototypes,omitempty"`
 }
 
 type Preprocessing struct {
@@ -353,9 +363,20 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				}
 				proto.ValueMap = &ValueRef{Name: m.Lookup}
 			}
+			if sev, ok := opts.Lookups.(SeveritySource); ok {
+				if bySeverity, ok := sev.Severities(m.Lookup); ok {
+					proto.TriggerPrototypes = append(proto.TriggerPrototypes, stateTriggers(name, proto, bySeverity)...)
+				}
+			}
 		}
 		rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 	}
+
+	macros, err := thresholdTriggers(name, def, opts, rules, familyOf)
+	if err != nil {
+		return Export{}, err
+	}
+	tpl.Macros = macros
 
 	for _, k := range order {
 		tpl.DiscoveryRules = append(tpl.DiscoveryRules, *rules[k])

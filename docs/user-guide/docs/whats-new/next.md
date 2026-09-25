@@ -156,6 +156,14 @@ collection gaps that comparison exposed.
   actions and says what will happen, without disabling one an operator
   wrote. (#907)
 
+- **The templates raise problems.** A state metric raises a High or a
+  Warning problem from the codes its lookup classes as an error or a
+  warning, the classification PRTG and Nagios already read; processor,
+  memory and disk usage raise a Warning and a High problem past
+  thresholds held in macros a site overrides per host or per group. A
+  template linked to a host used to collect everything and alert on
+  nothing.
+
 - **A utilization reads as a percentage in Zabbix.** The templates
   multiply the OTel fraction by 100 on the server side and show it in
   `%`, as the native agent does, where an operator read `0.9531` for a
@@ -175,9 +183,9 @@ collection gaps that comparison exposed.
   Windows: context switches, idle time, the processor count, the
   negotiated link speed and the page file size. On both: the speed and
   the operational state of a network interface, and the number of open
-  login sessions. The `os_updates` probe also reports how many packages
-  are installed, which is what its pending count is measured against.
-  (#909)
+  login sessions. On Linux, the `os_updates` probe also reports how many
+  packages are installed, which is what its pending count is measured
+  against. (#909)
 
 - **An application's own metrics reach Zabbix without anyone declaring
   them.** Zabbix speaks no OpenTelemetry, so an agent that speaks both
