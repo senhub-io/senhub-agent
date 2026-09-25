@@ -1879,6 +1879,50 @@ namespace. `senhub.system.kernel.*` is the machine's own ceiling and has
 no OTel counterpart; `system.process.count` exists upstream but counts
 processes, which is the probe's `process.count`, not a kernel limit.
 
+### 4.45 Probe `process` — the per-process and per-name families
+
+The probe reports two families that answer different questions, and the
+difference is in what keys them.
+
+**Per process**, keyed by `process.name` and `process.pid`. The names
+follow the `process` scraper of the OpenTelemetry Collector's
+hostmetrics receiver, so a dashboard built on that receiver reads them
+unchanged.
+
+| Metric | Unit | Type | Keyed by |
+|---|---|---|---|
+| `process.cpu.utilization` | `1` | Gauge | `process.name`, `process.pid` |
+| `process.memory.usage` | `By` | Gauge | `process.name`, `process.pid` |
+| `process.memory.virtual_memory_usage` | `By` | Gauge | `process.name`, `process.pid` |
+| `process.threads` | `{thread}` | Gauge | `process.name`, `process.pid` |
+| `process.open_file_descriptors` | `{file}` | Gauge | `process.name`, `process.pid` |
+| `process.uptime` | `s` | Gauge | `process.name`, `process.pid` |
+
+One name departs from the receiver: the virtual memory is
+`process.memory.virtual` there and `process.memory.virtual_memory_usage`
+here. Renaming it is a breaking change for every dashboard on the
+current name, so it is tracked apart (#941).
+
+**Per name**, keyed by `process.name` alone: the roll-up over every
+process sharing a name.
+
+| Metric | Unit | Type | Keyed by |
+|---|---|---|---|
+| `process.count` | `{process}` | Gauge | `process.name` |
+| `senhub.process.group.cpu.utilization` | `1` | Gauge | `process.name` |
+| `senhub.process.group.memory.usage` | `By` | Gauge | `process.name` |
+
+The per-name family exists because the per-process identity carries the
+pid. A machine running 837 processes produced 4596 series that way, and
+every program start minted a new set that was never fed again. Without a
+`filter`, the probe therefore reports the roll-up alone; a filter
+(`by_name`, `by_user`, `top_n`) bounds the sample and brings the
+per-process detail back beside it (#910). OTel has no convention for a
+per-name aggregate, hence `senhub.process.group.*`; `process.count`
+keeps the name the probe has always used for the count.
+
+The machine-wide values the probe also reports are in 4.44.
+
 ## 6. Process for adding a convention
 
 1. Read the §1 sources for the domain in question
