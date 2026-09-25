@@ -185,8 +185,10 @@ All API endpoints require the authentication key in the URL path, except `/healt
 |----------|--------|------|-------------|
 | `/api/{key}/prtg/metrics/{probe}` | GET | Yes | Metrics in PRTG JSON format |
 | `/api/{key}/prtg/probes` | GET | Yes | List of available PRTG probe names |
-| `/api/{key}/nagios/metrics/{probe}` | GET | Yes | Metrics in Nagios plugin output format |
-| `/api/{key}/nagios/checks` | GET | Yes | List of available Nagios checks |
+| `/api/{key}/nagios/metrics/{probe}` | GET | Yes | Probe summary in Nagios plugin output format |
+| `/api/{key}/nagios/check/{check}` | GET | Yes | One configured check in Nagios plugin output format |
+| `/api/{key}/nagios/metrics` | GET, POST | Yes | Every configured check, or one (POST), as JSON |
+| `/api/{key}/nagios/checks` | GET | Yes | List of configured Nagios checks |
 
 ### Configuration and Administration
 
@@ -355,14 +357,16 @@ This returns metrics only for the specified virtual servers.
 ### Nagios Response
 
 ```bash
-curl http://localhost:8080/api/{key}/nagios/metrics/CPU
+curl http://localhost:8080/api/{key}/nagios/check/cpu_detailed
 ```
 
 ```
-OK - CPU has 4 metrics | cpu_usage=45.2% cpu_queue=2
+OK - cpu_usage_total: OK 12.00%, cpu_system: OK 5.00%, cpu_user: OK 10.00% | cpu_usage_total=12.00%;80;90;0;100 cpu_system=5.00%;30;50;0;100 cpu_user=10.00%;70;85;0;100
 ```
 
-The response follows the standard Nagios plugin output format: `STATUS - message | performance_data`.
+The response follows the Nagios plugin output format: `STATUS - message | performance_data`.
+The [Nagios page](nagios.md) covers the probe summary, the shipped checks,
+writing your own and the command to declare in Nagios.
 
 ## Firewall Configuration
 

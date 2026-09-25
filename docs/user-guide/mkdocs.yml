@@ -93,6 +93,7 @@ nav:
   - Configuration: configuration.md
   - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md
+  - Nagios: nagios.md
   - Web console: web-interface.md
   - License:
       - Overview: license/index.md

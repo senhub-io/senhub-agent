@@ -203,3 +203,39 @@ checks:
 		})
 	}
 }
+
+// The example on the user-guide Nagios page loads as written and names
+// only metrics a probe emits, so a reader who copies it gets checks that
+// answer.
+func TestNagiosPageExampleLoads(t *testing.T) {
+	page, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "..", "docs", "user-guide", "docs", "nagios.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var example string
+	for _, block := range strings.Split(string(page), "```yaml\n")[1:] {
+		body := block[:strings.Index(block, "```")]
+		if strings.Contains(body, "checks:") {
+			example = body
+			break
+		}
+	}
+	if example == "" {
+		t.Fatal("no nagios.yaml example on the page")
+	}
+
+	dir := t.TempDir()
+	writeNagiosFile(t, dir, example)
+	cm := NewConfigurationManager(nil, map[string]interface{}{}, newTestLogger())
+	config, err := cm.loadNagiosConfigFromFile(filepath.Join(dir, "nagios.yaml"))
+	if err != nil {
+		t.Fatalf("the page's example does not load: %v", err)
+	}
+	undeclared, err := undeclaredNagiosChannels(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(undeclared) > 0 {
+		t.Errorf("the page's example names metrics no probe emits: %+v", undeclared)
+	}
+}
