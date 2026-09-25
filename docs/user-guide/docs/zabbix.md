@@ -235,6 +235,12 @@ without anyone writing an expression.
 | `{$SENHUB.FS_USED_PERCENT.WARN}` / `.CRIT}` (Linux) | 80 / 90 |
 | `{$SENHUB.DISK_USED_PERCENT.WARN}` / `.CRIT}` (Windows) | 80 / 90 |
 
+Items and triggers are tagged the way the native templates are: every
+item carries `component` (the probe type, or `agent` and `inventory` on
+the agent's own items), and every trigger carries `scope`:
+`availability` for a state, `performance` for the processor, `capacity`
+for memory and disks. Filter problem views and actions on them.
+
 ## Encryption
 
 The agent encrypts with **certificates** or with a **pre-shared key**,
