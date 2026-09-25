@@ -17,6 +17,7 @@ package entitydetect
 import (
 	"context"
 	"net"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -88,13 +89,26 @@ func (s *Service) Start(ctx context.Context) error {
 		return nil
 	}
 
+	var warnDegenerate sync.Once
 	hostFn := func() (entity.HostIdentity, error) {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
 			return entity.HostIdentity{}, err
 		}
+		if common.DegenerateHostID(hi.ID) {
+			warnDegenerate.Do(func() {
+				s.logger.Error().
+					Str("host_id", hi.ID).
+					Msg("This host's identity looks like an example or a blank value; every host carrying it merges into one on the topology graph. Set a real SENHUB_HOST_ID or fix the machine's DMI/machine-id")
+			})
+		}
+		idSource := ""
+		if common.HostIDFromConfiguration(hi.ID) {
+			idSource = "configuration"
+		}
 		return entity.HostIdentity{
 			ID:                    hi.ID,
+			IDSource:              idSource,
 			Name:                  hi.Name,
 			OSType:                hi.OSType,
 			Arch:                  hi.Arch,

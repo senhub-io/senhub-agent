@@ -31,6 +31,26 @@ valid_machine_id() {
   [ ${#1} -eq 32 ]
 }
 
+# degenerate_machine_id succeeds for an identity no machine derives by
+# chance: fewer than four distinct hexadecimal digits, or a run of at
+# least sixteen ascending steps, which is the shape of an example value
+# such as 01234567-89ab-cdef-0123-456789abcdef. Every host carrying one
+# merges with every other host carrying it, silently, so it is refused
+# rather than written. Judged on its shape, since the next copied example
+# will not be on any list. Mirrors common.DegenerateHostID in the agent.
+degenerate_machine_id() {
+  printf '%s' "$1" | awk '{
+    hex = "0123456789abcdef"; distinct = 0; asc = 0
+    for (i = 1; i <= length($0); i++) {
+      c = substr($0, i, 1)
+      if (!(c in seen)) { seen[c] = 1; distinct++ }
+      if (i > 1 && (index(hex, prev) % 16) == index(hex, c) - 1) asc++
+      prev = c
+    }
+    exit !(distinct < 4 || asc >= 16)
+  }'
+}
+
 # host.id is not the agent's own key: it is the operating system's
 # machine-id, read by gopsutil from /etc/machine-id. An image carries no
 # machine-id, so without one gopsutil falls back to the kernel boot id,
@@ -50,6 +70,10 @@ resolve_machine_id() {
     wanted=$(printf '%s' "$SENHUB_HOST_ID" | tr -d '-' | tr 'ABCDEF' 'abcdef')
     if ! valid_machine_id "$wanted"; then
       log "SENHUB_HOST_ID is not a machine id: 32 hexadecimal characters, dashes optional"
+      exit 1
+    fi
+    if degenerate_machine_id "$wanted"; then
+      log "SENHUB_HOST_ID looks like an example or a blank value ($SENHUB_HOST_ID): every host carrying it would merge into one. Give each instance its own"
       exit 1
     fi
     log "host identity taken from SENHUB_HOST_ID"
