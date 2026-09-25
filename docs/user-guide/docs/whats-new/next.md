@@ -165,6 +165,18 @@ collection gaps that comparison exposed.
   nothing. Items and triggers carry the `component` and `scope` tags the
   native templates use.
 
+- **Logs and traces from this machine carry its host identity.** An
+  application sending its OTLP to the local agent gets the agent's
+  `host.id` and `host.name` on what it sends, when it stated no
+  `host.*` of its own, so the three signals of one machine join on one
+  key. Only a sender known to be local is stamped: a new Unix socket
+  listener (`address: unix:/run/senhub-agent/otlp.sock`) is local by
+  construction, and a loopback TCP sender counts only when it is not
+  itself a relay. Two counters,
+  `senhub.agent.otlp_receiver.received` and
+  `.received.without_host_id`, by signal, origin and service, make the
+  join's coverage measurable. Agreed with the topology consumer.
+
 - **A utilization reads as a percentage in Zabbix.** The templates
   multiply the OTel fraction by 100 on the server side and show it in
   `%`, as the native agent does, where an operator read `0.9531` for a
