@@ -272,6 +272,10 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **No false warning about the update registry URL.** `update` and
+  `config check` reported that a URL ending in `/` "carries a path";
+  the built-in default itself triggered it on every update.
+
 - **A systemd-creds install no longer reports a seal failure on every
   start.** The service runs as a non-root account and only root can
   encrypt with the host key, so the start-time seal always failed and
