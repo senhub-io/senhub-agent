@@ -741,6 +741,7 @@ Override any of these by passing `--config-path` to the agent — the directorie
 - Files matching `.*` (dotfiles) or `*.disabled` are **skipped**. Disable a fragment by renaming it: `mv 20-citrix.yaml 20-citrix.yaml.disabled`.
 - An **empty** `probes.d/` or `strategies.d/` directory is valid (zero entries, no error).
 - Each file in `strategies.d/` has **exactly one** top-level key, which is the strategy name. Duplicate strategy across files: later file wins, a WARN log surfaces the override.
+- Only files ending in `.yaml` or `.yml` are read. A copy taken before an edit (`otlp.yaml.bak`, `otlp.yaml.20260908`) is not loaded, and the agent names the files it left out at start, so a copy is never mistaken for a live fragment. Rename a file to `*.disabled` to set it aside on purpose.
 
 ### `agent.yaml` example (global only)
 
