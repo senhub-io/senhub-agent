@@ -112,3 +112,27 @@ func TestAnInstanceGetsItemsForExactlyTheMetricsItFeeds(t *testing.T) {
 		}
 	}
 }
+
+// The case #922 left open: an application relaying part of a dimension
+// set. A JVM exporting only its used memory lists only that, so the
+// committed and limit items the template offers for the same pool are
+// not created for it.
+func TestARelayedPartialSetListsOnlyWhatTheApplicationSends(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := defs["otlp_receiver"]
+	cm := otelmapper.CacheMetric{ProbeName: "relay", ProbeType: "otlp_receiver", MetricName: "jvm.memory.used", Value: 1,
+		Tags: map[string]string{"service.name": "checkout", "jvm.memory.type": "heap", "jvm.memory.pool.name": "G1 Eden Space"}}
+	var fed string
+	for _, it := range discoveryItems("senhub", oneDefinition{&def}, []otelmapper.CacheMetric{cm}) {
+		var rows []map[string]string
+		if json.Unmarshal([]byte(it.Value), &rows) == nil && len(rows) == 1 && rows[0]["{#JVM_MEMORY_POOL_NAME}"] != "" {
+			fed = rows[0][template.FedMacro]
+		}
+	}
+	if fed != ",jvm.memory.used," {
+		t.Fatalf("the pool's row lists %q, want only jvm.memory.used", fed)
+	}
+}
