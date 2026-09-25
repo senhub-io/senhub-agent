@@ -272,6 +272,11 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **`refresh-unit` keeps the binary the service runs.** On a host
+  still in the pre-0.5.4 layout that also held an older copy under
+  `/usr/local/bin`, the refreshed unit pointed at that older copy,
+  silently downgrading the agent.
+
 - **No false warning about the update registry URL.** `update` and
   `config check` reported that a URL ending in `/` "carries a path";
   the built-in default itself triggered it on every update.
