@@ -120,8 +120,7 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 	now := time.Now()
 
 	for _, metric := range filteredMetrics {
-		// Skip expired metrics
-		if now.Sub(metric.Timestamp) > 5*time.Minute { // TTL check
+		if !f.cache.IsLive(metric, now) {
 			continue
 		}
 

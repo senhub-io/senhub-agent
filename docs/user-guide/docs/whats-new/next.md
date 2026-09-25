@@ -348,3 +348,12 @@ collection gaps that comparison exposed.
   for its first value, and the probe's discovery vanished until the next
   run. The value is now kept until its probe's next run is due, as the
   OTLP output does since #890.
+
+- **A probe that runs less often than every five minutes stays visible
+  on PRTG, Nagios and Prometheus between two runs.** The pull outputs
+  dropped a value five minutes after it was produced, and the PRTG path
+  held that limit in its own code whatever `cache.retention_minutes`
+  said. An hourly probe such as `os_updates`, or an `exec` check every
+  thirty minutes, answered an empty PRTG sensor most of the time, and
+  the Web UI listed it with no metric. The value is now served until its
+  probe's next run is due.
