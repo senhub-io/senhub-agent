@@ -308,3 +308,19 @@ For complete connectivity monitoring, combine with:
 2. **Signal Timeline** - Trend over time
 3. **SSID Table** - Connected networks
 4. **Quality vs Strength** - Correlation chart (Linux)
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.system.network.wifi.signal_strength.dbm` | `wifi_signal_strength` | dBm | WiFi signal strength in dBm (higher = stronger, typical range -30 to -90) |
+| `senhub.system.network.wifi.quality_ratio` | `wifi_quality` | % | WiFi signal quality as a percentage (0-100) |
+
+<!-- schema:metrics:end -->

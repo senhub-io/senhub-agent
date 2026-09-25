@@ -51,3 +51,20 @@ than failing the whole collection.
 - The agent must run with sufficient privileges to query the SCM. Administrator or LocalSystem is required for full enumeration.
 - When `services` is empty, every service the SCM enumerates is reported — this can generate a large number of PRTG channels on busy servers. Restrict with an explicit list for PRTG deployments.
 - Service names are the short internal names used by `sc query` and `Get-Service`, not display names (e.g. `wuauserv` not "Windows Update").
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.winservices.up` | `winservices_up` | # | 1 when the Service Control Manager is reachable and the probe completed its cycle |
+| `windows.service.state` | `windows_service_{windows.service.name}_state` | # | 1 when the service is in the Running state, 0 otherwise |
+| `windows.service.status` | `windows_service_{windows.service.name}_status` | # | Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused |
+
+<!-- schema:metrics:end -->

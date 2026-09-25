@@ -297,3 +297,118 @@ IBM i metrics are available through every configured output — OTLP, Prometheus
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ibmi-prod"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.ibmi.cpu.utilization` | `ibmi_cpu_used_percent` | % | Percentage of CPU used over the elapsed interval |
+| `senhub.ibmi.cpu.configured` | `ibmi_cpu_configured_count` | # | Number of configured virtual CPUs |
+| `senhub.ibmi.cpu.capacity` | `ibmi_cpu_current_capacity` | # | Current processing capacity |
+| `senhub.ibmi.memory.main_storage` | `ibmi_memory_main_storage_kb` | KB | Main storage configured on the partition (MAIN_STORAGE_SIZE) |
+| `senhub.ibmi.asp.system.utilization` | `ibmi_asp_system_used_percent` | % | Percentage of the system ASP in use; the number that fills before the partition stops writing |
+| `senhub.ibmi.asp.utilization` | `ibmi_asp_used_percent` | % | Percentage of this ASP in use |
+| `senhub.ibmi.asp.capacity` | `ibmi_asp_total_capacity_mb` | MB | Total capacity of this ASP |
+| `senhub.ibmi.asp.threshold` | `ibmi_asp_threshold_percent` | % | Threshold at which this ASP raises a storage warning, as configured — not a measurement |
+| `senhub.ibmi.jobs.total` | `ibmi_jobs_total_count` | # | Jobs in the system, active and inactive (TOTAL_JOBS_IN_SYSTEM) |
+| `senhub.ibmi.jobs.active` | `ibmi_jobs_active_total` | # | Active jobs returned by the scan; capped by the row limit, see ibmi.jobs.topn_cap_hit |
+| `senhub.ibmi.jobs.by_status` | `ibmi_jobs_count_by_status` | # | Active jobs of this type in this status; the enum values come from IBM, so cardinality is bounded |
+| `senhub.ibmi.jobs.by_subsystem` | `ibmi_jobs_count_by_subsystem` | # | Active jobs running in this subsystem |
+| `senhub.ibmi.jobs.topn_cap_hit` | `ibmi_jobs_topn_cap_hit` | # | 1 = active_job SQL hit the row cap, counts may be undercounts |
+| `senhub.ibmi.job.cpu.utilization` | `ibmi_job_elapsed_cpu_percent` | % | Share of CPU attributed to this job since the statistics baseline — set on the first query of the connection, not per collection (senhub-agent-enterprise#90) |
+| `senhub.ibmi.job.cpu.elapsed_time` | `ibmi_job_elapsed_cpu_ms` | ms | CPU time this job used since the statistics baseline; same window as elapsed_cpu_percent |
+| `senhub.ibmi.job.cpu.cumulative_time` | `ibmi_job_cpu_time_ms` | ms | CPU time this job has used since it started — cumulative, not an interval |
+| `senhub.ibmi.job.cpu.delta_time` | `ibmi_job_cpu_time_ms_delta` | ms | CPU time consumed between two collections, derived from cpu_time_ms |
+| `senhub.ibmi.job.cpu.rate` | `ibmi_job_cpu_time_ms_rate` | ms/s | CPU milliseconds consumed per wallclock second — dimensionless ratio when divided by 1000 |
+| `senhub.ibmi.job.temp_storage` | `ibmi_job_temp_storage_mb` | MB | Temporary storage currently allocated to this job; a job that grows here without end is the usual sign of a leak |
+| `senhub.ibmi.job.disk.io` | `ibmi_job_total_disk_io` | # | Disk I/O operations this job has performed since it started |
+| `senhub.ibmi.job.disk.elapsed_io` | `ibmi_job_elapsed_disk_io` | # | Disk I/O since the statistics baseline; same window as the other elapsed values |
+| `senhub.ibmi.job.page_faults` | `ibmi_job_elapsed_page_faults` | # | Page faults since the statistics baseline; sustained faults point at an undersized memory pool |
+| `senhub.ibmi.job.threads` | `ibmi_job_thread_count` | # | Threads this job is running |
+| `senhub.ibmi.job.priority` | `ibmi_job_run_priority` | # | Priority at which this job competes for the processor, 1 highest to 99 lowest — lower is more urgent |
+| `senhub.ibmi.job_queue.active` | `ibmi_jobq_active` | # | Jobs of this queue currently running |
+| `senhub.ibmi.job_queue.held` | `ibmi_jobq_held` | # | Jobs held in this queue; held work does not run until released |
+| `senhub.ibmi.job_queue.released` | `ibmi_jobq_released` | # | Jobs released and waiting to be dispatched from this queue |
+| `senhub.ibmi.job_queue.scheduled` | `ibmi_jobq_scheduled` | # | Jobs in this queue waiting for their scheduled time |
+| `senhub.ibmi.job_queue.depth` | `ibmi_jobq_jobs_total` | # | Jobs of every state in this queue — its depth |
+| `senhub.ibmi.job_queue.nonempty` | `ibmi_jobq_nonempty_total` | # | Job queues holding at least one job |
+| `senhub.ibmi.scheduled_job.count` | `ibmi_scheduled_total` | # | Entries in the job scheduler |
+| `senhub.ibmi.scheduled_job.last_run_age` | `ibmi_scheduled_last_run_age` | s | Time since this scheduled job last ran; the metric to alert on, an entry that stops firing keeps a healthy last status |
+| - | `ibmi_msgw_event` | s | Job in message wait; value = seconds stuck |
+| `senhub.ibmi.subsystem.active_jobs` | `ibmi_subsystem_active_jobs` | # | Active jobs in this subsystem |
+| `senhub.ibmi.memory_pool.size` | `ibmi_pool_defined_size_mb` | MB | Size configured for this memory pool |
+| `senhub.ibmi.memory_pool.threads` | `ibmi_pool_current_threads` | # | Threads currently eligible to run in this pool |
+| `senhub.ibmi.memory_pool.ineligible_threads` | `ibmi_pool_ineligible_threads` | # | Threads waiting for an activation slot in this pool; a rising count means the pool's activity level is too low for the work |
+| `senhub.ibmi.disk.utilization` | `ibmi_disk_percent_busy` | % | Share of time this disk unit was busy since the statistics baseline |
+| `senhub.ibmi.disk.read` | `ibmi_disk_read_bytes` | B | Bytes read from this disk unit since the statistics baseline |
+| `senhub.ibmi.disk.write` | `ibmi_disk_write_bytes` | B | Bytes written to this disk unit since the statistics baseline |
+| `senhub.ibmi.disk.operations` | `ibmi_disk_read_requests` | # | Read requests served by this disk unit since the statistics baseline |
+| `senhub.ibmi.disk.operations` | `ibmi_disk_write_requests` | # | Write requests served by this disk unit since the statistics baseline |
+| `senhub.ibmi.disk.capacity` | `ibmi_disk_capacity` | B | Total capacity of this disk unit |
+| `senhub.ibmi.disk.available` | `ibmi_disk_available` | GB | Space still available on this disk unit |
+| `senhub.ibmi.disk.space.utilization` | `ibmi_disk_percent_used` | % | Share of this disk unit in use |
+| `senhub.ibmi.disk.units` | `ibmi_disk_units` | # | Disk units the partition reports |
+| `senhub.ibmi.output_queue.files` | `ibmi_outq_files` | # | Spooled files waiting in this output queue |
+| `senhub.ibmi.output_queue.spooled_files` | `ibmi_outq_spooled_total` | # | Spooled files across every output queue |
+| `senhub.ibmi.spooled_file.count` | `ibmi_spool_total` | # | Spooled files the scan returned |
+| `senhub.ibmi.spooled_file.oldest_age` | `ibmi_spool_oldest_age` | s | Age of the oldest spooled file; output nobody collects accumulates here and consumes ASP |
+| `senhub.ibmi.user_storage.used` | `ibmi_user_storage_used` | KB | Storage owned by this user profile |
+| `senhub.ibmi.user_storage.quota` | `ibmi_user_storage_quota` | KB | Storage limit set on this user profile; 0 means no limit |
+| `senhub.ibmi.user_storage.utilization` | `ibmi_user_storage_ratio` | % | Share of this user's quota in use; absent when no quota is set |
+| `senhub.ibmi.user_storage.over_threshold` | `ibmi_user_storage_over_80pct` | # | User profiles past 80% of their storage quota |
+| `senhub.ibmi.table.rows` | `ibmi_table_rows` | # | Rows in this table |
+| `senhub.ibmi.table.logical_reads` | `ibmi_table_logical_reads` | # | Logical reads against this table since the statistics were last reset |
+| `senhub.ibmi.table.updates` | `ibmi_table_updates` | # | Update operations against this table since the statistics were last reset |
+| `senhub.ibmi.table.deleted_rows` | `ibmi_table_deleted_rows` | # | Rows deleted but not yet reorganised; space a REORG would reclaim |
+| `senhub.ibmi.index_advisor.times_advised` | `ibmi_idx_times_advised` | # | Missing-index recommendation hit count |
+| `senhub.ibmi.index_advisor.mti_used` | `ibmi_idx_mti_used` | # | Times the system built a temporary index for this table instead of using a permanent one |
+| `senhub.ibmi.index_advisor.avg_query_estimate` | `ibmi_idx_avg_query_est` | s | Estimated query time the advisor expects to save by creating the advised index |
+| `senhub.ibmi.index_advisor.advised_indexes` | `ibmi_idx_total` | # | Index recommendations open across the partition |
+| `senhub.ibmi.index_advisor.recent_advisories` | `ibmi_idx_recent_1h` | # | Index recommendations raised in the last hour; a burst points at a query pattern that changed |
+| `senhub.ibmi.journal.active` | `ibmi_journal_active` | # | 1 when this journal is active |
+| `senhub.ibmi.journal.receivers_size` | `ibmi_journal_receivers_size` | KB | Size of every receiver attached to this journal; receivers that are never detached grow without bound |
+| `senhub.ibmi.journal.remote_lag` | `ibmi_journal_remote_lag_est` | s | Estimated delay of the remote journal behind the local one — an estimate, not a value the system reports |
+| `senhub.ibmi.journal_receiver.size` | `ibmi_jrnrcv_size` | KB | Size of this journal receiver |
+| `senhub.ibmi.journal_receiver.attached` | `ibmi_jrnrcv_attached` | # | Journal receivers currently attached |
+| `senhub.ibmi.tcp.connections.established` | `ibmi_tcp_established` | # | TCP connections currently established |
+| `senhub.ibmi.netstat.connections` | `ibmi_netstat_conn_total` | # | TCP connections in every state |
+| `senhub.ibmi.netstat.connections_by_state` | `ibmi_netstat_conn_by_state` | # | TCP connections in this state; a growing TIME-WAIT or CLOSE-WAIT count is the usual first symptom |
+| `senhub.ibmi.netstat.listener.up` | `ibmi_netstat_listener_up` | # | 1 when something is listening on this port |
+| `senhub.ibmi.netstat.listener.jobs` | `ibmi_netstat_listener_jobs` | # | Jobs listening on this port |
+| `senhub.ibmi.netstat.listeners` | `ibmi_netstat_listener_total` | # | Ports with a listener |
+| `senhub.ibmi.netstat.interface.up` | `ibmi_netstat_interface_up` | # | 1 when this interface is active |
+| `senhub.ibmi.netstat.interface.mtu` | `ibmi_netstat_interface_mtu` | B | MTU configured on this interface |
+| `senhub.ibmi.http_server.threads.active` | `ibmi_http_active_threads` | # | Threads serving requests on this HTTP server |
+| `senhub.ibmi.http_server.threads.idle` | `ibmi_http_idle_threads` | # | Threads idle on this HTTP server; no idle thread left means requests are queuing |
+| `senhub.ibmi.http_server.responses` | `ibmi_http_total_responses` | # | Responses this HTTP server has sent since it started |
+| `senhub.ibmi.hardware.count` | `ibmi_hw_count` | # | Hardware resources of this category in this status |
+| `senhub.ibmi.hardware.total` | `ibmi_hw_total` | # | Hardware resources the partition reports |
+| `senhub.ibmi.hardware.non_operational` | `ibmi_hw_non_operational` | # | Resources in any non-OPERATIONAL status |
+| `senhub.ibmi.user_profile.count` | `ibmi_users_total` | # | User profiles on the partition |
+| `senhub.ibmi.user_profile.by_status` | `ibmi_users_count_by_status` | # | User profiles in this status |
+| `senhub.ibmi.user_profile.by_class` | `ibmi_users_count_by_class` | # | User profiles of this class; the count of *SECOFR is the one worth watching |
+| `senhub.ibmi.user_profile.failed_signons` | `ibmi_users_failed_signon` | # | User profiles carrying at least one failed sign-on attempt |
+| `senhub.ibmi.sysval.security_level` | `ibmi_sysval_security_level` | # | QSECURITY system value: 20 no resource security, 30 resource security, 40 and 50 add integrity protection |
+| `senhub.ibmi.sysval.audit_level` | `ibmi_sysval_audit_level` | # | QAUDLVL as a numeric code; 0 means auditing is off |
+| `senhub.ibmi.library_list.position` | `ibmi_liblist_position` | # | Position of this library in the list, in order of search |
+| `senhub.ibmi.license.licensed_users` | `ibmi_license_user_count` | # | Users currently licensed for this product |
+| `senhub.ibmi.license.usage_limit` | `ibmi_license_usage_limit` | # | Users this product's licence allows |
+| `senhub.ibmi.ptf_group.installed` | `ibmi_ptf_group_installed` | # | 1 when this PTF group is installed at the level the system expects |
+| `senhub.ibmi.ptf_group.level` | `ibmi_ptf_group_level` | # | Level of this PTF group as installed; compare against the level IBM publishes |
+| `senhub.ibmi.watch.session_active` | `ibmi_watch_session` | # | 1 when this watch session is running |
+| - | `ibmi_msgq_event` | # | A message reached QSYSOPR; carries the message identifier and text as attributes |
+| - | `ibmi_history_event` | # | An entry was written to the history log QHST |
+| - | `ibmi_audit_event` | # | An entry was written to the audit journal |
+| `senhub.ibmi.collector.success` | `ibmi_collector_success` | # | Successful runs of this collector since the agent started |
+| `senhub.ibmi.collector.failure` | `ibmi_collector_failure` | # | Failed runs of this collector; a collector failing alone leaves its metrics absent while the rest keep reporting |
+| `senhub.ibmi.collector.last_duration` | `ibmi_collector_duration` | ms | How long this collector's last run took |
+| `senhub.ibmi.collector.last_success_timestamp` | `ibmi_collector_last_success` | s | Unix time of this collector's last successful run |
+
+<!-- schema:metrics:end -->

@@ -56,3 +56,38 @@ Elasticsearch; metric names use the `opensearch.*` namespace.
 - The probe queries `/_cluster/health` and `/_nodes/_local/stats`.
 - For TLS-secured clusters (including OpenSearch Serverless), prefix the endpoint with `https://` and provide credentials.
 - The OpenSearch security plugin is disabled in the Docker `opensearchproject/opensearch` image by default; for production clusters, security is typically enabled.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.opensearch.up` | `opensearch_up` | # | 1 when the cluster health endpoint is reachable, 0 otherwise |
+| `opensearch.cluster.health` | `opensearch_cluster_health` | # | Cluster health status encoded as integer: green=2, yellow=1, red=0 |
+| `opensearch.cluster.nodes` | `opensearch_cluster_nodes` | # | Total number of nodes in the cluster |
+| `opensearch.cluster.data_nodes` | `opensearch_cluster_data_nodes` | # | Number of data nodes in the cluster |
+| `opensearch.cluster.shards.active` | `opensearch_shards_active` | # | Number of active primary and replica shards |
+| `opensearch.cluster.shards.unassigned` | `opensearch_shards_unassigned` | # | Number of shards not assigned to any node |
+| `opensearch.cluster.shards.relocating` | `opensearch_shards_relocating` | # | Number of shards being relocated between nodes |
+| `opensearch.cluster.pending_tasks` | `opensearch_pending_tasks` | # | Number of cluster-level changes not yet executed |
+| `opensearch.jvm.memory.heap.used` | `opensearch_jvm_heap_used` | B | JVM heap memory currently used by the node |
+| `opensearch.jvm.memory.heap.max` | `opensearch_jvm_heap_max` | B | Maximum JVM heap memory available to the node |
+| `opensearch.jvm.gc.collections.count` | `opensearch_gc_{collector}_count` | # | Number of GC collections for the given collector (young\|old) |
+| `opensearch.jvm.gc.collections.elapsed` | `opensearch_gc_{collector}_time` | ms | Cumulative wall-clock time spent in GC for the given collector |
+| `opensearch.indexing.operations.completed` | `opensearch_indexing_{operation}_completed` | # | Cumulative number of indexing operations completed (operation=index) |
+| `opensearch.indexing.operations.time` | `opensearch_indexing_{operation}_time` | ms | Cumulative time spent in indexing operations |
+| `opensearch.search.operations.completed` | `opensearch_search_{operation}_completed` | # | Cumulative search operations (operation=query\|fetch) |
+| `opensearch.search.operations.time` | `opensearch_search_{operation}_time` | ms | Cumulative time spent in search operations |
+| `opensearch.process.cpu.usage` | `opensearch_process_cpu` | % | CPU utilisation of the OpenSearch process as a percentage (0-100) |
+| `opensearch.os.memory.used` | `opensearch_os_memory_used` | B | Physical memory used by the OS on the node |
+| `opensearch.thread_pool.tasks.queued` | `opensearch_tp_{thread_pool}_queued` | # | Number of tasks currently queued in the thread pool |
+| `opensearch.thread_pool.tasks.completed` | `opensearch_tp_{thread_pool}_completed` | # | Cumulative tasks completed by the thread pool |
+| `opensearch.thread_pool.tasks.rejected` | `opensearch_tp_{thread_pool}_rejected` | # | Cumulative tasks rejected by the thread pool (queue full) |
+
+<!-- schema:metrics:end -->

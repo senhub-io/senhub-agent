@@ -639,3 +639,18 @@ The Syslog probe requires no authentication for incoming syslog messages. Access
 ### Syslog Sources
 - RFC 3164 (BSD Syslog) or RFC 5424 (IETF Syslog) format
 - UDP or TCP transport support
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| - | `syslog_severity` | # | Syslog message severity level (RFC 3164) |
+
+<!-- schema:metrics:end -->

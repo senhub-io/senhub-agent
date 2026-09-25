@@ -52,3 +52,23 @@ Requires `mod_status` enabled with the `?auto` format.
 - The `endpoint` must end with `?auto` (machine-readable text format). The HTML format is not supported.
 - To protect the status page, add `Require ip 127.0.0.1` in the `<Location /server-status>` block and provide credentials here if an additional password layer is used.
 - Metrics align with the OpenTelemetry Collector contrib `apachereceiver` naming convention.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.apache.up` | `apache_up` | # | 1 when mod_status responded successfully, 0 otherwise |
+| `apache.uptime` | `apache_uptime` | s | Time in seconds since the Apache server was started |
+| `apache.current_connections` | `apache_current_connections` | # | Total number of connections currently served by Apache (ConnsTotal) |
+| `apache.workers` | `apache_workers_{state}` | # | Number of Apache workers in each state: busy (serving requests) or idle (waiting) |
+| `apache.requests` | `apache_requests` | # | Cumulative number of HTTP requests served since Apache started (Total Accesses) |
+| `apache.traffic` | `apache_traffic` | B | Cumulative bytes transferred since Apache started (Total kBytes * 1024) |
+
+<!-- schema:metrics:end -->

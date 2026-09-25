@@ -258,3 +258,29 @@ a probe failure — the agent keeps polling.
 - **Counters are raw.** `in_octets` and friends are emitted as
   counters; compute rates in the backend
   (`rate(snmp_interface_in_octets[5m])` in VictoriaMetrics).
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.snmp.up` | `snmp_up` | # | 1 when the last poll reached the SNMP target, 0 otherwise |
+| `senhub.snmp.poll.duration` | `snmp_poll_duration` | s | Wall-clock time taken by the last poll cycle |
+| `snmp.sys.uptime` | `snmp_sys_uptime` | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
+| `snmp.interface.in_octets` | `snmp_if_in_octets` | bytes | ifInOctets — total octets received on the interface |
+| `snmp.interface.out_octets` | `snmp_if_out_octets` | bytes | ifOutOctets — total octets transmitted on the interface |
+| `snmp.interface.in_errors` | `snmp_if_in_errors` | # | ifInErrors — inbound packets containing errors |
+| `snmp.interface.out_errors` | `snmp_if_out_errors` | # | ifOutErrors — outbound packets that could not be transmitted due to errors |
+| `snmp.interface.in_discards` | `snmp_if_in_discards` | # | ifInDiscards — inbound packets discarded though no error was detected |
+| `snmp.interface.out_discards` | `snmp_if_out_discards` | # | ifOutDiscards — outbound packets discarded though no error was detected |
+| `snmp.interface.speed` | `snmp_if_speed` | bits/s | ifSpeed — nominal bandwidth of the interface in bits per second |
+| `snmp.interface.admin_status` | `snmp_if_admin_status` | # | ifAdminStatus — desired interface state (1=up, 2=down, 3=testing) |
+| `snmp.interface.oper_status` | `snmp_if_oper_status` | # | ifOperStatus — current operational interface state (1=up, 2=down, 3=testing, ...) |
+
+<!-- schema:metrics:end -->

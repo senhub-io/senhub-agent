@@ -99,3 +99,22 @@ On unsupported platforms (macOS) the probe emits `senhub.os.updates.up=0`.
   cycle instead of dropping the series.
 - Alerting suggestion: warn on `senhub.os.updates.pending.security > 0`
   sustained for more than a day, and on `senhub.os.updates.reboot_required = 1`.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.os.updates.up` | `os_updates_up` | # | 1 when the package backend (apt, dnf/yum, Windows Update Agent) answered the update query, 0 when it failed or the platform is unsupported |
+| `senhub.os.updates.pending` | `os_updates_pending` | # | Number of packages or updates with a newer version available and not yet installed |
+| `senhub.os.updates.pending.security` | `os_updates_pending_security` | # | Number of pending updates classified as security fixes by the package backend |
+| `senhub.os.packages.installed` | `os_packages_installed` | # | Number of packages the backend has installed on the machine, which is what the pending count above is measured against. Read from dpkg or rpm; the Windows Update Agent enumerates updates, not installed software, so the count is Linux only |
+| `senhub.os.updates.reboot_required` | `os_updates_reboot_required` | # | 1 when the OS reports a pending reboot (package-triggered on Linux, Windows Update pending reboot on Windows), 0 otherwise |
+
+<!-- schema:metrics:end -->

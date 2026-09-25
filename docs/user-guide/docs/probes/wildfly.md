@@ -59,3 +59,29 @@ metrics.
 - Create a dedicated management user with the `Monitor` role: `bin/add-user.sh -u monitor -p password -g Monitor`.
 - For WildFly domain mode, point the endpoint at the domain controller (port 9990).
 - The probe uses the WildFly HTTP Management API (JSON over HTTP), not Jolokia — Jolokia is not required.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.wildfly.up` | `wildfly_up` | # | 1 when the WildFly Management API responded successfully; 0 otherwise |
+| `jvm.memory.heap.used` | `wildfly_jvm_heap_used` | B | JVM heap memory currently used |
+| `jvm.memory.heap.committed` | `wildfly_jvm_heap_committed` | B | JVM heap memory committed to the JVM process |
+| `jvm.memory.heap.max` | `wildfly_jvm_heap_max` | B | Maximum JVM heap memory available |
+| `wildfly.request.count` | `wildfly_request_count` | # | Total number of requests processed by Undertow |
+| `wildfly.error.count` | `wildfly_error_count` | # | Total number of error responses from Undertow |
+| `wildfly.bytes.sent` | `wildfly_bytes_sent` | B | Total bytes sent by Undertow |
+| `wildfly.bytes.received` | `wildfly_bytes_received` | B | Total bytes received by Undertow |
+| `wildfly.transaction.committed` | `wildfly_transaction_committed` | # | Total number of committed JTA transactions |
+| `wildfly.transaction.rolledback` | `wildfly_transaction_rolledback` | # | Total number of aborted (rolled back) JTA transactions |
+| `wildfly.datasource.connections.active` | `wildfly_ds_{datasource}_active` | # | Number of active (in-use) connections in the JDBC datasource pool |
+| `wildfly.datasource.connections.available` | `wildfly_ds_{datasource}_available` | # | Number of available (idle) connections in the JDBC datasource pool |
+
+<!-- schema:metrics:end -->

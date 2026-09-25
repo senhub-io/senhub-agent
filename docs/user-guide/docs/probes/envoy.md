@@ -50,3 +50,27 @@ connections and requests, and per-cluster upstream metrics.
 - The Envoy admin interface is typically bound to `127.0.0.1:9901`. If the agent runs on the same host, the default endpoint works without changes.
 - The admin interface should **not** be exposed to untrusted networks — it provides access to configuration and health state without authentication.
 - Cluster-level metrics are tagged with `cluster` (derived from the `envoy_cluster_name` Prometheus label).
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.envoy.up` | `envoy_up` | # | 1 when the Envoy admin interface answered /stats?format=prometheus successfully |
+| `envoy.server.uptime` | `envoy_server_uptime` | s | Time since the Envoy process started (seconds) |
+| `envoy.server.memory.allocated` | `envoy_server_memory_allocated` | B | Current memory allocated by the Envoy process |
+| `envoy.server.memory.heap_size` | `envoy_server_memory_heap_size` | B | Current heap size reported by the Envoy process |
+| `envoy.listener.downstream.connections.total` | `envoy_listener_downstream_cx_total` | # | Total downstream connections accepted across all listeners (cumulative) |
+| `envoy.listener.downstream.connections.active` | `envoy_listener_downstream_cx_active` | # | Currently active downstream connections across all listeners |
+| `envoy.http.downstream.requests.total` | `envoy_http_downstream_rq_total` | # | Total HTTP downstream requests received across all HTTP connection managers (cumulative) |
+| `envoy.cluster.upstream.connections.total` | `envoy_cluster_{cluster}_upstream_cx_total` | # | Total upstream connections opened to cluster members (cumulative) |
+| `envoy.cluster.upstream.requests.total` | `envoy_cluster_{cluster}_upstream_rq_total` | # | Total upstream requests dispatched to cluster members (cumulative) |
+| `envoy.cluster.upstream.requests.time` | `envoy_cluster_{cluster}_upstream_rq_time_sum` | ms | Cumulative upstream request latency across all requests to cluster members |
+
+<!-- schema:metrics:end -->

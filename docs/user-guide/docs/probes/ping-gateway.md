@@ -448,3 +448,19 @@ This combination provides:
 - Local network access to default gateway
 - ICMP echo request/reply allowed (firewall/router)
 - HTTP strategy required for remote access to metrics
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.probe.icmp.duration_seconds` | `gateway_average_latency` | ms | Average round-trip time to the default network gateway |
+| `senhub.probe.icmp.packet_loss_ratio` | `gateway_packet_loss` | % | Percentage of ICMP packets lost to the default gateway |
+
+<!-- schema:metrics:end -->

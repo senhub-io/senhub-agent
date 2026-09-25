@@ -229,3 +229,38 @@ on managed instances; the WAL position and archiver age suffice.
 | `senhub.db.postgres.archiver.*` missing | WAL archiving not configured | Expected — only emit when `archive_mode=on` and an archiver is running |
 | All metrics missing | Role lacks `pg_monitor` | Re-run the `db-monitoring init` helper |
 | `senhub.db.postgres.bloat.*` missing | Role cannot read `pg_stat_user_tables` | Same — needs `pg_monitor` |
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.db.up` | `db_up` | # | 1 if the agent's most recent ping reached the server, 0 otherwise |
+| `senhub.db.postgresql.uptime` | `pg_uptime` | s | Seconds since postmaster start (now() - pg_postmaster_start_time()). Contrib postgresqlreceiver n'expose pas l'uptime — extension. |
+| `senhub.db.version.info` | `db_version` | # | Engine version banner — value=1, version string carried in attribute db.system.version |
+| `postgresql.backends` | `pg_backends_{state}` | # | Client backends grouped by connection state (active / idle / idle_in_transaction). One datapoint per state value; discriminated by the 'state' tag. |
+| `postgresql.connection.max` | `pg_connection_max` | # | max_connections GUC (instantaneous cap) |
+| `senhub.db.connection.utilization` | `db_connection_utilization` | % | (active + idle + idle_in_transaction) / max_connections, percent (0-100) |
+| `postgresql.commits` | `pg_commits` | # | Cumulative commits across all databases (pg_stat_database.xact_commit sum) |
+| `postgresql.rollbacks` | `pg_rollbacks` | # | Cumulative rollbacks across all databases (pg_stat_database.xact_rollback sum) |
+| `senhub.db.postgresql.buffer.hit_ratio` | `pg_buffer_hit_ratio` | % | blks_hit / (blks_hit + blks_read) over pg_stat_database. Dashboards 'santé' veulent le ratio dérivé — contrib n'expose que les compteurs bruts. |
+| `postgresql.deadlocks` | `pg_deadlocks` | # | Cumulative deadlocks detected (pg_stat_database.deadlocks) |
+| `senhub.db.postgresql.lock.waiting` | `pg_lock_waiting` | # | Instantaneous count of granted=false rows in pg_locks |
+| `senhub.db.postgresql.long_running_xact` | `pg_long_running_xact` | s | Age in seconds of the oldest active transaction (max(now() - xact_start) over pg_stat_activity where state IN ('active','idle in transaction')) |
+| `postgresql.db_size` | `pg_db_size` | B | Sum of pg_database_size() over all non-template databases |
+| `postgresql.table.count` | `pg_table_count` | # | Count of relations across user schemas (pg_class where relkind='r') |
+| `senhub.db.postgresql.archiver.failed` | `pg_archiver_failed` | # | Cumulative WAL archiver failures (pg_stat_archiver.failed_count) |
+| `senhub.db.postgresql.archiver.last_archived.age` | `pg_archiver_last_archived_age` | s | Seconds since last_archived_time. Only emitted when archive_mode is enabled. |
+| `senhub.db.replication.role` | `db_replication_role` | # | Detected replication role of this instance |
+| `senhub.db.replication.health` | `db_replication_health` | # | Composite gauge: 1 if replication looks healthy (or instance is standalone), 0 if degraded |
+| `senhub.db.replication.replicas.connected` | `db_replication_replicas_connected` | # | On primary: number of streaming replicas connected (pg_stat_replication count) |
+| `postgresql.wal.lag` | `pg_wal_lag` | s | On replica: replay lag in seconds (now() - pg_last_xact_replay_timestamp()). Attribute operation=replay (contrib canon). |
+| `senhub.db.postgresql.replica.io.running` | `pg_replica_io_running` | # | On replica: 1 if WAL receiver is connected (pg_stat_wal_receiver.status='streaming'), 0 otherwise |
+
+<!-- schema:metrics:end -->

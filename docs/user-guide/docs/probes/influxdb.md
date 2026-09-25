@@ -52,3 +52,27 @@ for the buckets endpoint.
 
 - Without a `token`, the probe cannot query `/api/v2/buckets` and `influxdb.bucket.count` will not be emitted. All `/metrics` data remains available without authentication.
 - Supports InfluxDB 2.x only. InfluxDB 1.x uses a different metrics format and is not covered by this probe.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.influxdb.up` | `influxdb_up` | # | 1 when GET /health returns status=pass, 0 otherwise |
+| `influxdb.storage.reads` | `influxdb_storage_reads` | # | Cumulative storage read operations (storage_reads_total or boltdb_reads_total) |
+| `influxdb.storage.writes` | `influxdb_storage_writes` | # | Cumulative storage write operations (storage_writes_total or boltdb_writes_total) |
+| `influxdb.query.requests` | `influxdb_query_requests` | # | Cumulative HTTP query requests (http_query_request_bytes_total or query_requests_total) |
+| `influxdb.tasks.runs.active` | `influxdb_tasks_runs_active` | # | Number of task scheduler runs currently executing (task_scheduler_currently_running_tasks) |
+| `influxdb.tasks.runs.complete` | `influxdb_tasks_runs_complete` | # | Cumulative completed task scheduler runs (task_scheduler_total_runs_complete) |
+| `influxdb.tasks.runs.failed` | `influxdb_tasks_runs_failed` | # | Cumulative failed task scheduler runs (task_scheduler_total_runs_failed) |
+| `go.goroutines` | `influxdb_goroutines` | # | Number of goroutines currently running in the InfluxDB process (go_goroutines) |
+| `go.memory.heap.used` | `influxdb_heap_inuse` | B | Bytes of heap memory in use by the InfluxDB process (go_memstats_heap_inuse_bytes) |
+| `influxdb.buckets` | `influxdb_buckets` | # | Total number of buckets in the InfluxDB organisation (requires token) |
+
+<!-- schema:metrics:end -->

@@ -53,3 +53,28 @@ shared memory file.
 - The `varnishstat` command reads from the Varnish shared memory log; the user running the agent must be in the `varnish` group or run as root.
 - `instance_name` maps to `varnishstat -n <name>` and is needed when you run multiple Varnish instances (different working directories via `varnishd -n`).
 - Metric names align with the OpenTelemetry Collector contrib `varnishreceiver` where equivalents exist.
+
+## Metric reference
+
+Every metric this probe can emit. The first column is the name the
+OTLP and Prometheus outputs use, the second the channel the PRTG and
+Nagios outputs carry.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Channel | Unit | Description |
+|---|---|---|---|
+| `senhub.varnish.up` | `varnish_up` | # | 1 when varnishstat completed successfully, 0 otherwise |
+| `varnish.cache.operations` | `varnish_cache_{result}` | # | Number of cache lookup results by type (hit, miss, hitpass) |
+| `varnish.client.requests.received` | `varnish_client_requests` | # | Total client requests received |
+| `varnish.backend.connections.success` | `varnish_backend_conn_success` | # | Backend connections successfully established |
+| `varnish.backend.connections.fail` | `varnish_backend_conn_fail` | # | Backend connection attempts that failed |
+| `varnish.backend.connections.reused` | `varnish_backend_conn_reused` | # | Backend connections reused from keep-alive pool |
+| `varnish.thread.operations` | `varnish_thread_{operation}` | # | Thread lifecycle events by operation (created, destroyed, failed) |
+| `varnish.session.connections` | `varnish_sess_conn` | # | Accepted client sessions |
+| `varnish.session.dropped` | `varnish_sess_dropped` | # | Client sessions dropped because the session queue was full |
+| `varnish.objects.stored` | `varnish_objects_stored` | # | Number of HTTP objects currently stored in the cache |
+| `varnish.memory.allocated` | `varnish_memory_allocated` | bytes | Total bytes currently allocated across all storage allocators (SMA/SMF) |
+
+<!-- schema:metrics:end -->
