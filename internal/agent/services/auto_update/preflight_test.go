@@ -3,6 +3,7 @@ package auto_update
 import (
 	"errors"
 	"io/fs"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -111,6 +112,22 @@ func TestOwnershipExposure(t *testing.T) {
 	for _, tc := range cases {
 		if got := (ownership{uid: tc.uid, mode: tc.mode}).exposedToNonRoot(); got != tc.exposed {
 			t.Errorf("uid=%d mode=%04o exposed = %v, want %v", tc.uid, tc.mode.Perm(), got, tc.exposed)
+		}
+	}
+}
+
+// An MSI-managed install updates through msiexec and never writes its
+// binary, so an executable the running service holds shut is not a
+// problem there. Found on a fresh open-source MSI install, where config
+// check warned that self-update would fail every cycle.
+func TestAnMSIManagedInstallIsNotAskedToWriteItsBinary(t *testing.T) {
+	neverWritable := func(string) bool { return false }
+	if msg := binaryReplaceable(`C:\Program Files\SenHub Agent\senhub-agent.exe`, true, neverWritable); msg != "" {
+		t.Errorf("an MSI-managed install got %q", msg)
+	}
+	if runtime.GOOS != "linux" {
+		if msg := binaryReplaceable(`C:\agent\senhub-agent.exe`, false, neverWritable); msg == "" {
+			t.Error("a self-replacing install with an unwritable binary was not reported")
 		}
 	}
 }
