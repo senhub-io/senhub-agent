@@ -543,7 +543,7 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 
 		// Nagios Format
 		{"/api/{agentkey}/nagios/metrics/{probe}", []string{"GET"}, "Get metrics in Nagios format for specific probe", "nagios"},
-		// Removed: /nagios/check/{check_name} endpoint not needed
+		{"/api/{agentkey}/nagios/check/{check}", []string{"GET"}, "Run one configured Nagios check, plugin output format", "nagios"},
 		{"/api/{agentkey}/nagios/metrics", []string{"GET", "POST"}, "Get aggregated metrics in Nagios format", "nagios"},
 		{"/api/{agentkey}/nagios/checks", []string{"GET"}, "List available Nagios checks", "nagios"},
 

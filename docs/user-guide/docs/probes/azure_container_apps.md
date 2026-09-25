@@ -90,6 +90,7 @@ When several applications are followed, what describes an application is publish
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:0793f58f58ca103fa6feb5e2f021313c1c72186d7a49728bc40385184778d6e5 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -97,8 +98,14 @@ When several applications are followed, what describes an application is publish
 | `client_id` | Yes | - | Application (client) ID of the app registration |
 | `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `subscription_id` | Yes | - | Subscription that holds the Container App |
-| `resource_group` | Yes | - | Resource group of the Container App |
-| `app` | Yes | - | Name of the Container App |
+| `resource_group` | No | - | Resource group of the Container App; required unless 'discovery' is set, which finds it |
+| `app` | No | - | Name of the Container App; required unless 'discovery' is set, which finds them |
+| `discovery` | No | - | Follow every application the subscription holds instead of naming one; exclusive with 'app' and 'resource_group' |
+| `discovery.interval` | No | `300` | Seconds between two enumerations of the subscription; the replica scan keeps its own cadence |
+| `discovery.max_apps` | No | `100` | Hard cap on how many applications one instance follows; what is left out is named in the log |
+| `discovery.resource_groups` | No | - | Bound the search to these resource groups; empty means every group the credential can read |
+| `discovery.include` | No | - | Follow only the names matching one of these; '*' is the only wildcard |
+| `discovery.exclude` | No | - | Never follow a name matching one of these; wins over include |
 | `containers` | No | - | Container names to read; empty reads every container |
 | `tail_lines` | No | `100` | Lines re-read when a stream is (re)attached, 0 to 300; already published lines are dropped |
 | `interval` | No | `60` | Seconds between replica scans |
@@ -220,3 +227,33 @@ Log records are delivered to the outputs that consume logs, OTLP first; restrict
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/squash-logs"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/squash-logs"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.azure_container_apps.up` | `azure_container_apps_up` | Control Plane Reachable | # | 1 when Azure Resource Manager answered the last replica scan, else 0 |
+| `senhub.azure_container_apps.replicas` | `azure_container_apps_replicas` | Replicas | # | Replicas of the active revisions seen at the last scan |
+| `senhub.azure_container_apps.revisions.active` | `azure_container_apps_active_revisions` | Active Revisions | # | Revisions marked active at the last scan; more than one means a rollout in flight or a traffic split left in place |
+| `senhub.azure_container_apps.streams.open` | `azure_container_apps_streams_open` | Streams Open | # | Console log streams currently attached (one per replica and container) |
+| `senhub.azure_container_apps.streams.wanted` | `azure_container_apps_streams_wanted` | Streams Wanted | # | Streams the last scan decided to hold; the gap with the open ones is a replica known and not being read |
+| `senhub.azure_container_apps.stream.token.ttl` | `azure_container_apps_stream_token_ttl` | Stream Token TTL | s | Seconds left on the console stream token; a renewal that stopped working is invisible until every stream dies at once |
+| `senhub.azure_container_apps.records.last_age` | `azure_container_apps_records_last_age` | Seconds Since Last Record | s | Seconds since a line last left this probe; an application that says nothing is silent, not necessarily broken, so read it against the open streams |
+| `senhub.azure_container_apps.arm.reads_remaining` | `azure_container_apps_arm_reads_remaining` | ARM Reads Remaining | # | Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it |
+| `senhub.azure_container_apps.records_emitted` | `azure_container_apps_records_emitted` | Records Emitted | # | Cumulative count of log records this probe has published to the log rail |
+| `senhub.azure_container_apps.records_dropped` | `azure_container_apps_records_dropped` | Records Dropped | # | Cumulative count of lines dropped at the source by exclude patterns or min_severity |
+| `senhub.azure_container_apps.records_unparsed` | `azure_container_apps_records_unparsed` | Records Unparsed | # | Cumulative lines the declared parser could not read; a parser declared wrong loses every line and nothing else says so |
+| `senhub.azure_container_apps.stream.reconnects` | `azure_container_apps_stream_reconnects` | Stream Reconnects | # | Cumulative count of console log streams re-attached after a drop |
+| `senhub.azure_container_apps.stream.attach_throttled` | `azure_container_apps_attach_throttled` | Attaches Throttled | # | Cumulative attaches the stream endpoint refused for rate; counted apart from the reconnects, which climb on their own since Azure cuts every stream about every ten minutes |
+| `senhub.azure_container_apps.scan.failures` | `azure_container_apps_scan_failures` | Scan Failures {reason} | # | Cumulative replica scans Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable. Reachability alone reads the same for a wrong secret, a deleted application and a control plane pushing back |
+
+<!-- schema:metrics:end -->

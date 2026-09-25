@@ -25,6 +25,7 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:55b9d7710f088a95ab59e7338ca323344d39a9a7e62519ad7583508bcf339de2 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -52,7 +53,7 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 | `kafka.partition.current_offset` | {offset} | Current (high-water mark) offset, tagged with `topic`/`partition` |
 | `kafka.partition.oldest_offset` | {offset} | Oldest available offset per partition |
 | `kafka.partition.replicas` | {replica} | Total replicas per partition |
-| `kafka.partition.replicas.in_sync` | {replica} | In-sync replicas per partition |
+| `kafka.partition.replicas_in_sync` | {replica} | In-sync replicas per partition |
 | `kafka.consumer_group.lag` | {message} | Lag per group/topic/partition, tagged with `group`/`topic`/`partition` |
 | `kafka.consumer_group.lag_sum` | {message} | Total lag summed across partitions per group/topic |
 
@@ -60,3 +61,30 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 
 - Internal topics (prefixed `__`) are excluded by default and cannot be included via `topic_filter`.
 - For SASL/SCRAM authentication, use `sasl_mechanism: SCRAM-SHA-256` or `SCRAM-SHA-512` along with `sasl_username` and `sasl_password`.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.kafka.up` | `senhub.kafka.up` | Kafka Reachability | # | 1 when the last collection cycle reached the Kafka cluster, 0 otherwise |
+| `kafka.brokers` | `kafka.brokers` | Kafka Brokers | {broker} | Number of brokers in the Kafka cluster |
+| `kafka.topic.partitions` | `kafka.topic.partitions` | Kafka {topic} Partitions | {partition} | Number of partitions of a Kafka topic |
+| `kafka.partition.current_offset` | `kafka.partition.current_offset` | Kafka {topic}/{partition} Current Offset | {item} | Current offset of a partition of a Kafka topic |
+| `kafka.partition.oldest_offset` | `kafka.partition.oldest_offset` | Kafka {topic}/{partition} Oldest Offset | {item} | Oldest offset (log start) of a partition of a Kafka topic |
+| `kafka.partition.replicas` | `kafka.partition.replicas` | Kafka {topic}/{partition} Replicas | {replica} | Number of replicas for a partition of a Kafka topic |
+| `kafka.partition.replicas_in_sync` | `kafka.partition.replicas_in_sync` | Kafka {topic}/{partition} ISR | {replica} | Number of in-sync replicas (ISR) for a partition of a Kafka topic |
+| `kafka.consumer_group.members` | `kafka.consumer_group.members` | Kafka {group} Members | {member} | Count of members in the consumer group |
+| `kafka.consumer_group.offset` | `kafka.consumer_group.offset` | Kafka {group}/{topic}/{partition} Offset | {item} | Current offset of the consumer group at partition of a Kafka topic |
+| `kafka.consumer_group.lag` | `kafka.consumer_group.lag` | Kafka {group}/{topic}/{partition} Lag | {item} | Current approximate lag of consumer group at partition of a Kafka topic |
+| `kafka.consumer_group.lag_sum` | `kafka.consumer_group.lag_sum` | Kafka {group}/{topic} Lag Sum | {item} | Current approximate sum of consumer group lag across all partitions of a Kafka topic |
+
+<!-- schema:metrics:end -->

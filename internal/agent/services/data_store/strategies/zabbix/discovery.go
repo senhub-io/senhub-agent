@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/template"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
 
@@ -54,6 +55,7 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 		probeType string
 		labels    []string
 		instances map[string]map[string]string
+		fed       map[string]map[string]bool // instance id -> FedIDs it sends
 	}
 	rules := map[string]*rule{}
 	families := map[string]map[string]*variantFamily{}
@@ -87,7 +89,7 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 		}
 		r, ok := rules[key]
 		if !ok {
-			r = &rule{probeType: cm.ProbeType, labels: labels, instances: map[string]map[string]string{}}
+			r = &rule{probeType: cm.ProbeType, labels: labels, instances: map[string]map[string]string{}, fed: map[string]map[string]bool{}}
 			rules[key] = r
 		}
 		// A series that carries none of the rule's labels is not an
@@ -122,7 +124,18 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 				id += "\x00" + v
 			}
 		}
+		if existing, ok := r.instances[id]; ok {
+			entry = existing
+		}
 		r.instances[id] = entry
+		// A family's rows already list only the values fed; the other
+		// rules say, per instance, which of their metrics it sends.
+		if fam == nil && md != nil {
+			if r.fed[id] == nil {
+				r.fed[id] = map[string]bool{}
+			}
+			r.fed[id][template.FedID(*md)] = true
+		}
 	}
 
 	keys := make([]string, 0, len(rules))
@@ -140,7 +153,16 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 		sort.Strings(ids)
 		rows := make([]map[string]string, 0, len(ids))
 		for _, id := range ids {
-			rows = append(rows, r.instances[id])
+			row := r.instances[id]
+			if fed := r.fed[id]; len(fed) > 0 {
+				list := make([]string, 0, len(fed))
+				for f := range fed {
+					list = append(list, f)
+				}
+				sort.Strings(list)
+				row[template.FedMacro] = template.FedList(list)
+			}
+			rows = append(rows, row)
 		}
 		body, err := json.Marshal(rows)
 		if err != nil {

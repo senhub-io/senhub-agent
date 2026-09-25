@@ -32,6 +32,7 @@ func secretUsage() {
   list              list secret names (never values)
   rm <name>         delete a secret (prompts to confirm; --yes to skip)
   migrate           move inline plaintext secrets from the config into the store
+                    (--wire-unit: then wire the Linux systemd-creds drop-in)
   wire-unit         (Linux/systemd-creds) regenerate the unit credential drop-in
   status            show the active backend and store location
 
@@ -148,6 +149,12 @@ func runSecretCommand() {
 			os.Exit(1)
 		}
 		fmt.Println("sealed inline secrets into the store and rewrote them to ${secret:} references")
+		if hasArg("--wire-unit") {
+			if err := wireSystemdUnit(configDir); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		}
 
 	case "wire-unit":
 		if err := wireSystemdUnit(configDir); err != nil {

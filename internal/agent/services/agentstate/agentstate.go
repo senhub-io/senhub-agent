@@ -96,6 +96,27 @@ var probeHealth = map[string]probeHealthState{}
 // so the listing can say why a probe is failing, not only that it is.
 var probeLastError = map[string]string{}
 
+// probeStartFailed holds the configured probes that could not be started,
+// with the reason. They are not running, so they are not in
+// activeProbeIDs, and without this set a probe whose constructor failed
+// simply vanished: absent from the total, the healthy count equal to it,
+// the console green. A probe that cannot start is absent, and absence is
+// the one state a monitoring agent must not report as silence.
+var probeStartFailed = map[string]string{}
+
+// SetStartFailedProbes replaces the set of configured probes that failed
+// to start, keyed by probe ID, valued by the reason. Called by the Sensor
+// after every sync and every retry.
+func SetStartFailedProbes(failed map[string]string) {
+	probeStateMu.Lock()
+	defer probeStateMu.Unlock()
+	next := make(map[string]string, len(failed))
+	for id, reason := range failed {
+		next[id] = reason
+	}
+	probeStartFailed = next
+}
+
 // SetActiveProbes replaces the set of currently-running probes by their IDs.
 // Called by the Sensor service after every successful configuration sync.
 // Health entries for probes no longer present are pruned to keep the map
@@ -179,6 +200,9 @@ func GetProbeRunState(probeID string) ProbeRunState {
 	probeStateMu.RLock()
 	defer probeStateMu.RUnlock()
 	if _, running := activeProbeIDs[probeID]; !running {
+		if reason, failed := probeStartFailed[probeID]; failed {
+			return ProbeRunState{Health: "failed", LastError: "could not start: " + reason}
+		}
 		return ProbeRunState{}
 	}
 	switch probeHealth[probeID] {
@@ -191,13 +215,20 @@ func GetProbeRunState(probeID string) ProbeRunState {
 	}
 }
 
-// GetProbeCounts returns (total, healthy) for the currently-active probes.
-// Probes that have not yet run a collect cycle (state=unknown) are NOT
-// counted as healthy — until they prove they can collect, they're suspect.
+// GetProbeCounts returns (total, healthy) for the configured probes:
+// the running ones plus those that failed to start, which count in the
+// total and never as healthy. Probes that have not yet run a collect
+// cycle (state=unknown) are NOT counted as healthy either — until they
+// prove they can collect, they're suspect.
 func GetProbeCounts() (total, healthy int) {
 	probeStateMu.RLock()
 	defer probeStateMu.RUnlock()
 	total = len(activeProbeIDs)
+	for id := range probeStartFailed {
+		if _, running := activeProbeIDs[id]; !running {
+			total++
+		}
+	}
 	for id := range activeProbeIDs {
 		if probeHealth[id] == probeHealthOK {
 			healthy++

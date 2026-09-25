@@ -9,3 +9,9 @@ import "fmt"
 func wireSystemdUnit(_ string) error {
 	return fmt.Errorf("wire-unit applies only to the Linux systemd-creds backend")
 }
+
+// followCredentialStore has nothing to follow outside systemd.
+func followCredentialStore(_ string) {}
+
+// removeCredentialsDropIn has nothing to remove outside systemd.
+func removeCredentialsDropIn() error { return nil }

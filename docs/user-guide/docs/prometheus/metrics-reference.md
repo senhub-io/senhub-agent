@@ -28,6 +28,8 @@ configured probes.
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, per probe type and failure reason | `probe`, `reason` |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) | – |
 | `senhub_agent_otlp_receiver_ingested_total` | counter | Items accepted by the OTLP receiver, per signal (metrics: emitted internal datapoints after family expansion — a summary counts as its count/sum/quantile points; logs: records; traces: spans) | `signal` |
+| `senhub_agent_otlp_receiver_received_total` | counter | Records relayed by the OTLP receiver, by signal, origin and sending service | `signal`, `origin`, `service_name` |
+| `senhub_agent_otlp_receiver_received_without_host_id_total` | counter | Relayed records that still had no `host.id` afterwards; expected on `origin=remote`, a defect on `uds` | `signal`, `origin`, `service_name` |
 | `senhub_agent_otlp_receiver_dropped_total` | counter | Items the OTLP receiver discarded, by signal and reason (`no_sink`, `unmapped`) | `signal`, `reason` |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served per route template | `endpoint` |
 | `senhub_agent_build_info` | gauge (=1) | Agent build metadata | `version`, `commit` |

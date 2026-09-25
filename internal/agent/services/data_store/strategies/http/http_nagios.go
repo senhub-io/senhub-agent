@@ -75,7 +75,40 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	}
 }
 
-// Removed: HandleNagiosCheck - /nagios/check/{check_name} endpoint not needed
+// HandleNagiosCheckGET runs one configured check and answers in plugin
+// format, so a Nagios command can call it directly the way it calls the
+// per-probe endpoint. The HTTP status follows that endpoint: 500 from
+// CRITICAL upward, 404 for a check that is not configured.
+func (n *NagiosManager) HandleNagiosCheckGET(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := n.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	checkName := mux.Vars(r)["check"]
+	config := n.strategy.configManager.LoadNagiosConfig()
+	check := n.strategy.configManager.FindNagiosCheck(config, checkName)
+
+	w.Header().Set("Content-Type", "text/plain")
+	if check == nil {
+		w.WriteHeader(http.StatusNotFound)
+		if _, err := w.Write([]byte("UNKNOWN - No Nagios check named " + checkName)); err != nil {
+			n.logger.Error().Err(err).Msg("Failed to write Nagios check response")
+		}
+		return
+	}
+
+	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
+	overrides := n.strategy.configManager.ParseNagiosOverrides(r)
+	response := n.executeNagiosCheck(check, filter, overrides)
+
+	if response.Status >= 2 {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	if _, err := w.Write([]byte(fmt.Sprintf("%s - %s | %s", response.StatusText, response.Message, response.PerfData))); err != nil {
+		n.logger.Error().Err(err).Msg("Failed to write Nagios check response")
+	}
+}
 
 // HandleNagiosMetrics handles GET/POST requests for all Nagios metrics
 func (n *NagiosManager) HandleNagiosMetrics(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +132,7 @@ func (n *NagiosManager) HandleNagiosMetrics(w http.ResponseWriter, r *http.Reque
 
 	// Parse query parameters
 	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
-	overrides := n.strategy.configManager.ParseNagiosOverrides(r)
+	overrides := mergeNagiosOverrides(n.strategy.configManager.ParseNagiosOverrides(r), nagiosRequest.Overrides)
 
 	// Load configuration
 	config := n.strategy.configManager.LoadNagiosConfig()
@@ -192,15 +225,9 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 		Interface("overrides", overrides).
 		Msg("Executing Nagios check")
 
-	// Get all metrics from cache
-	allMetrics := n.strategy.cache.GetAllMetrics()
-
-	// Apply probe filter if specified
-	var metrics []CachedMetric
+	metrics := n.strategy.cache.GetAllMetrics()
 	if check.ProbeFilter != "" {
-		metrics = n.strategy.cache.GetProbeMetrics(check.ProbeFilter)
-	} else {
-		metrics = allMetrics
+		metrics = matchProbe(metrics, check.ProbeFilter)
 	}
 
 	if len(metrics) == 0 {
@@ -217,6 +244,7 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 
 	// Apply additional filters from query parameters
 	metrics = n.strategy.metricsProcessor.ApplyMetricFilter(metrics, filter)
+	metrics = keepMatchingTags(metrics, overrides.TagFilters)
 
 	if len(metrics) == 0 {
 		return NagiosResponse{
@@ -265,6 +293,62 @@ func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilt
 		Message:    message,
 		PerfData:   strings.Join(perfDataItems, " "),
 	}
+}
+
+// matchProbe keeps the metrics of the probes whose type or configured
+// name is filter. The shipped checks filter on a type (veeam, cpu); a
+// name-only match made them UNKNOWN on every probe an operator named
+// otherwise, which is every Veeam probe in practice.
+func matchProbe(metrics []CachedMetric, filter string) []CachedMetric {
+	kept := make([]CachedMetric, 0, len(metrics))
+	for _, metric := range metrics {
+		if strings.EqualFold(metric.Tags["probe_type"], filter) || strings.EqualFold(metric.ProbeName, filter) {
+			kept = append(kept, metric)
+		}
+	}
+	return kept
+}
+
+// mergeNagiosOverrides lays the query string over the POST body: a
+// value given in the URL wins, the body fills what the URL leaves out.
+func mergeNagiosOverrides(query, body NagiosOverrides) NagiosOverrides {
+	merged := body
+	if query.Warning != "" {
+		merged.Warning = query.Warning
+	}
+	if query.Critical != "" {
+		merged.Critical = query.Critical
+	}
+	merged.TagFilters = make(map[string]string, len(body.TagFilters)+len(query.TagFilters))
+	for k, v := range body.TagFilters {
+		merged.TagFilters[k] = v
+	}
+	for k, v := range query.TagFilters {
+		merged.TagFilters[k] = v
+	}
+	return merged
+}
+
+// keepMatchingTags keeps the series whose tags equal every requested
+// value (tag_<name>=<value> in the query, tag_filters in a POST body).
+func keepMatchingTags(metrics []CachedMetric, tagFilters map[string]string) []CachedMetric {
+	if len(tagFilters) == 0 {
+		return metrics
+	}
+	kept := make([]CachedMetric, 0, len(metrics))
+	for _, metric := range metrics {
+		matches := true
+		for key, value := range tagFilters {
+			if metric.Tags[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			kept = append(kept, metric)
+		}
+	}
+	return kept
 }
 
 // applyNagiosTagFilters applies tag filters from Nagios check configuration

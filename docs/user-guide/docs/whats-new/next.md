@@ -49,6 +49,36 @@ collection gaps that comparison exposed.
     bounds it — which is why an unfiltered view reports the roll-up
     alone. (#910)
 
+- **Nagios checks follow the plugin convention.** A threshold is now the
+  last acceptable value: a value equal to it is OK, where the agent
+  alerted on it. A metric is read as a health state only when its
+  definition names its values, where any name containing `status` or a
+  small integer was read that way — a count of two failed Veeam jobs
+  read CRITICAL against a warning threshold of five. Review the
+  thresholds you wrote against the old reading.
+
+    The operator's `nagios.yaml` is now read from the directory that
+    holds the agent configuration (`/etc/senhub-agent/` on Linux,
+    `C:\ProgramData\SenHub\` on Windows), with the former location as a
+    fallback. A file with a misspelt key, a threshold that is not a
+    number or an unknown aggregation is refused and reported, where it
+    was silently replaced by the shipped checks.
+
+- **Three metric names change.** The per-destination ActiveMQ counts are
+  `activemq.destination.consumer.count` and
+  `activemq.destination.producer.count`; they shared the broker totals'
+  names and rendered under the broker-wide channel. A Redfish drive's
+  predicted failure is `senhub.hardware.physical_disk.failure_predicted`,
+  a 0/1 gauge; as a state of `hw.status` it made every healthy drive
+  overwrite its own health with `unknown`. Channels and display names
+  are unchanged.
+
+- **A Veeam protected object is identified by its id.** A machine
+  protected by several jobs comes back once per job, and keyed on its
+  name one entry overwrote the others: on a real server, 66 of 200
+  objects reported a sibling's figures. The series gain the object id,
+  so discovered items are recreated once.
+
 ## Features
 
 - **The Zabbix output**, as a native active agent. It connects out to
@@ -95,6 +125,64 @@ collection gaps that comparison exposed.
   A certificate that cannot be read stops the agent rather than leaving
   a listener that serves in clear. (#904)
 
+- **Pre-shared keys, both directions.** Most Zabbix sites encrypt with
+  a pre-shared key, and it is the only encryption Zabbix offers for
+  autoregistration. The agent speaks the TLS 1.2 PSK profile both Zabbix
+  lines accept, outbound and on the polled port, and reads the key from
+  a file hex-encoded the way Zabbix writes it, never from the
+  configuration. An encrypted autoregistration creates the host with PSK
+  set on both directions by itself. (#903)
+
+- **Zabbix 7.0 and 8.0.** Every generated template imports into both
+  lines, and autoregistration, discovery, inventory, the polled port and
+  the proxy group redirection are measured on a server of each. On 8.0
+  the API wants its token in a header; `zabbix setup` has always sent
+  it there.
+
+- **The agent says what it is to the server**: its version, its session
+  and the revision of the item list it holds. The server shows it in the
+  host's agent columns and resends the list only when it changed, where
+  it resent all of it at every refresh. (#905)
+
+- **Behind NAT, the agent names the address to poll.**
+  `passive.advertise` takes a name or an address and autoregistration
+  creates the interface on it, instead of on the translated source
+  address the server cannot reach. (#906)
+
+- **`zabbix setup` names the other actions a new host would match.**
+  Zabbix runs every autoregistration action whose condition matches, and
+  two that link templates collide in silence: the host comes up with
+  whichever set won and items that never fill. `setup` now lists those
+  actions and says what will happen, without disabling one an operator
+  wrote. (#907)
+
+- **The templates raise problems.** A state metric raises a High or a
+  Warning problem from the codes its lookup classes as an error or a
+  warning, the classification PRTG and Nagios already read; processor,
+  memory and disk usage raise a Warning and a High problem past
+  thresholds held in macros a site overrides per host or per group. A
+  template linked to a host used to collect everything and alert on
+  nothing. Items and triggers carry the `component` and `scope` tags the
+  native templates use.
+
+- **Logs and traces from this machine carry its host identity.** An
+  application sending its OTLP to the local agent gets the agent's
+  `host.id` and `host.name` on what it sends, when it stated no
+  `host.*` of its own, so the three signals of one machine join on one
+  key. Only a sender known to be local is stamped: a new Unix socket
+  listener (`address: unix:/run/senhub-agent/otlp.sock`) is local by
+  construction, and a loopback TCP sender counts only when it is not
+  itself a relay. Two counters,
+  `senhub.agent.otlp_receiver.received` and
+  `.received.without_host_id`, by signal, origin and service, make the
+  join's coverage measurable. Agreed with the topology consumer.
+
+- **A utilization reads as a percentage in Zabbix.** The templates
+  multiply the OTel fraction by 100 on the server side and show it in
+  `%`, as the native agent does, where an operator read `0.9531` for a
+  processor at 95 %. The agent still sends the fraction, under the same
+  key.
+
 - **The agent answers for itself.** `agent.ping`, `agent.version` and
   `agent.hostname` are served on both rails and declared in a template
   of their own, so a host monitored actively has the availability line
@@ -108,9 +196,9 @@ collection gaps that comparison exposed.
   Windows: context switches, idle time, the processor count, the
   negotiated link speed and the page file size. On both: the speed and
   the operational state of a network interface, and the number of open
-  login sessions. The `os_updates` probe also reports how many packages
-  are installed, which is what its pending count is measured against.
-  (#909)
+  login sessions. On Linux, the `os_updates` probe also reports how many
+  packages are installed, which is what its pending count is measured
+  against. (#909)
 
 - **An application's own metrics reach Zabbix without anyone declaring
   them.** Zabbix speaks no OpenTelemetry, so an agent that speaks both
@@ -128,8 +216,21 @@ collection gaps that comparison exposed.
     per item cannot hold one, so it is sent as its count and its sum
     under keys that say which is which. A metric outside the shipped
     conventions keeps the shorter key its own name gives it. An
-    application exporting part of a dimension set gets items for the
-    rest of it, which stay empty. (#922)
+    application exporting part of a dimension set gets items only for
+    what it sends. (#922, #940)
+
+- **A new probe watches Azure Container Apps jobs.** The existing probe
+  follows applications, which run continuously; a job is discrete — an
+  execution starts, ends and leaves a verdict. `azure_container_app_jobs`
+  reports whether the last run worked, how long it took, how long it has
+  been since one succeeded, and publishes the console output of each
+  execution once it has finished. It shares the credential, the Azure
+  Resource Manager access and the read-budget pacing of the applications
+  probe.
+
+    The metric to alert on is the age of the last success, not the last
+    status: a job that stopped being triggered reports a perfectly good
+    last status for ever.
 
 - **The Azure Container Apps probe reports the collection's own state**
   in detail, and **follows every application of a subscription** when a
@@ -142,7 +243,40 @@ collection gaps that comparison exposed.
   registry runs. A published release is also checked for completeness
   rather than assumed finished.
 
+- **A Nagios command calls one check.** `GET
+  /api/{key}/nagios/check/{name}` runs one configured check and answers
+  in plugin format, `STATUS - message | perfdata`, with 404 for a check
+  that is not configured. Before, configured checks were reachable only
+  as JSON for all of them at once, which needed a wrapper script. The
+  Nagios output has its own page, proven against a real Nagios Core.
+
+- **Every probe page lists every metric.** A generated reference gives
+  each metric its OTel name, its PRTG and Nagios channel, its unit and
+  its description. 303 of the 1314 metrics the probes emit were named
+  nowhere, and the 93 IBM i metrics without a description now have one.
+
+- **The Veeam probe says which protected objects get no job status**,
+  per platform, so a backup missing from the consolidated sensor can be
+  explained from the customer's own console.
+
+- **`config check` says when an OTLP output will send no entity event.**
+  Entities are off unless enabled, and a host missing from the topology
+  had nothing anywhere saying why. (#938)
+
+- **The systemd-creds secret store wires itself into the unit.**
+  `install` and `refresh-unit` write the credentials drop-in from
+  `creds.d/`, or remove it when the store is empty; `secret migrate
+  --wire-unit` wires what it has just sealed; `uninstall` removes it.
+  `secret wire-unit` was a step an operator had to know about. Proven
+  under systemd 252, 255 and 257. (#605)
+
 ## Fixes
+
+- **A systemd-creds install no longer reports a seal failure on every
+  start.** The service runs as a non-root account and only root can
+  encrypt with the host key, so the start-time seal always failed and
+  restored its backups. It now says once that the inline secrets stay in
+  place, and names the command that seals them.
 
 - **A value from a probe that runs less often than the push is exported
   as current between two runs.** A gauge from a probe running every 30
@@ -219,16 +353,135 @@ collection gaps that comparison exposed.
   branch was master and published everything else as the development
   line, so a manual run from a release branch overwrote it. (#913)
 
-## Known follow-ups
+- **The legacy PRTG POST endpoint no longer merges instances into one
+  channel.** `POST /api/{key}/prtg/metrics` stripped the instance from
+  channel names, and PRTG keeps one channel per name: a MySQL server's
+  per-database sizes, a PowerStore's volumes and a Windows host's drives
+  each came out as a single channel, every instance but the last lost.
 
-- Pre-shared keys are not supported. The scope is measured and the
-  decision is open. (#903)
-- The agent declares no version and ignores the configuration revision,
-  so the server resends the whole item list at every refresh. (#905)
-- The interface autoregistration creates takes the source address, which
-  is wrong behind NAT. (#906)
-- A server that already carries an autoregistration action matching the
-  same host metadata ends up with two, and the newer one loses silently.
-  (#907)
-- The collection gap with the native agent is closed on the families we
-  cover and measured; what remains is recorded there. (#909)
+- **Nagios checks apply what they declare.** `probe_filter` matches the
+  probe type as well as its name, so the shipped Veeam checks work on a
+  probe named otherwise; `tag_specific_thresholds`, `tag_<name>=` filters
+  and POST overrides were parsed and ignored, and are now applied. A
+  check naming a metric its platform never emits is reported at load.
+  Plugin output carries no semicolon, which Nagios reserves, and lists
+  its series in the same order at every poll.
+
+- **The probe pages named 160 metrics the agent never emits**, some a
+  misspelling of a real one, some never collected. A reader building a
+  panel on one got an empty series.
+
+- **Every metric declares the dimensions it carries**, instead of
+  inheriting the probe's union. On swarm, kubernetes, netscaler and
+  memcached a cluster counter claimed a container name, and Zabbix
+  refused the resulting discovery rule. The memory probe declares which of its
+  metrics exist only on Windows or only on Unix.
+
+- **Every generated Zabbix template imports into a real server.** Eleven
+  were refused: a display name with a slash or an ampersand, and the
+  6.0 export format.
+
+- **A probe that runs less often than the Zabbix push stays visible
+  between two runs.** The output forgot a value after three push
+  intervals, so an hourly probe such as `os_updates` reached the server
+  ninety seconds an hour: a host registered in between waited an hour
+  for its first value, and the probe's discovery vanished until the next
+  run. The value is now kept until its probe's next run is due, as the
+  OTLP output does since #890.
+
+- **A probe that runs less often than every five minutes stays visible
+  on PRTG, Nagios and Prometheus between two runs.** The pull outputs
+  dropped a value five minutes after it was produced, and the PRTG path
+  held that limit in its own code whatever `cache.retention_minutes`
+  said. An hourly probe such as `os_updates`, or an `exec` check every
+  thirty minutes, answered an empty PRTG sensor most of the time, and
+  the Web UI listed it with no metric. The value is now served until its
+  probe's next run is due.
+
+- **Redfish hardware health reads as a state on every output.** The
+  tables that name the health codes (OK, Warning, Critical), the power
+  states and the drive failure prediction lived in files the agent
+  embedded and never read. A server's health reached PRTG, Nagios and
+  Zabbix as a bare 0 to 3: no PRTG lookup to download, no Nagios state,
+  no Zabbix value map and no trigger. They are now in the lookup
+  registry, a drive predicting its own failure has a table of its own
+  that calls it an error, and a test fails on any definition naming a
+  lookup that does not exist. (#931)
+
+- **A Zabbix instance no longer gets items for metrics it never
+  sends.** A discovery rule created every item of its dimension set for
+  every instance, so a virtual network card whose kernel reports no
+  speed carried a speed item that stayed empty for ever. The agent now
+  lists, per instance, the metrics it feeds, and the templates only
+  create those. (#940)
+
+- **A probe that cannot start is no longer absent in silence.** It was
+  logged once at start and then vanished: left out of the probe total,
+  so the agent reported nine healthy probes out of nine while a tenth,
+  whose password had expired, collected nothing for eight days. It now
+  counts in the total and never as healthy, the Web UI shows it failing
+  with the reason, and the agent tries it again every two minutes, so a
+  credential fixed afterwards is picked up without a restart. The error
+  of a probe's first collection, which the scheduler swallowed, is
+  logged too. (#935)
+
+- **A copied example host identity is refused.** A bench container ran
+  with `SENHUB_HOST_ID=01234567-89ab-cdef-0123-456789abcdef`, the shape
+  of a documentation example; every host given it merges into one on
+  the topology graph, silently. The container now refuses such a value
+  at start, judged on its shape (all zeros, a long ascending run) rather
+  than against a list; the agent logs an error when the machine itself
+  reports one; and a host whose identity came from `SENHUB_HOST_ID`
+  carries `senhub.host.id.source=configuration`, so a collision can be
+  traced to the copy.
+
+- **The Citrix licence grace period is exported in seconds.** The probe
+  reports hours and the definition gave a unit the mapper cannot
+  convert, so 48 hours left read as 48 seconds on OTLP and Prometheus.
+  Probe definitions are now decoded strictly, a key the schema does not
+  define fails the build, and a metric published in seconds or bytes
+  must come from a unit the mapper converts. The same pass fixed the
+  PRTG unit of ten metrics that showed a raw label (`BytesFile`,
+  `TimeSeconds`, a byte count as `Count`), and the NetScaler heartbeat
+  rates now read `pkt/s`. (#930)
+
+- **A Windows host installed from a beta MSI can install the next
+  release.** A beta MSI carried its version as `0.5.5-beta`, which
+  Windows Installer does not read as a version: it registered as newer
+  than any release, and `senhub-agent-0.5.6-amd64.msi` refused to
+  install with "A newer version of SenHub Agent is already installed".
+  The MSI now carries the numeric part only, and a release replaces the
+  beta of the same number. **A host still on a beta MSI built before
+  this fix must uninstall it once** (Settings > Apps, or `msiexec /x`);
+  the configuration under `C:\ProgramData\SenHub` is removed by the
+  uninstall, so copy it aside first.
+
+- **A probe the open-source build does not carry names the edition that
+  does.** On the open-source MSI a `veeam` probe was reported as
+  "requires a valid license, upgrade license to enable", and
+  `config check` said "unknown type". A licence cannot add code the
+  binary does not contain; both now say the probe ships in the full
+  edition.
+
+- **`config check` no longer warns on every Windows MSI install** that
+  "self-update will fail every cycle". It tried to open the running
+  executable for writing, which the service holds, although an
+  MSI-managed install updates through a new MSI and never writes its
+  binary.
+
+- **`config check` validates `nagios.yaml`.** A file the agent would
+  refuse at start is an error, and a check naming a metric this
+  platform does not emit is a warning, instead of both being found in
+  the log after a restart. (#939)
+
+- **`SENHUB_AGENT_KEY` keeps the agent identity of a container without a
+  volume**, as `SENHUB_HOST_ID` keeps the host's. With both, two
+  successive containers with no shared state report the same host and
+  the same agent. (#882)
+
+- **Saving an output from the Web UI no longer drops a header it did not
+  show.** The console hides every value of the OTLP `headers` map, and
+  the server only put back the ones that were `${secret:}` references:
+  a plain `X-Tenant: acme` disappeared from the file on a save that
+  changed nothing. What the console hides is now kept, by the same rule
+  that hides it, and the preview of the file shows it. (#856)

@@ -9,7 +9,7 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 - **User documentation** → `docs/user-guide/`
 - **Admin / operations** → `docs/admin-guide/`
 - **OTel semantic conventions (canonical)** → `docs/developer-guide/otel/senhub-semantic-conventions.md`
-- **Release notes** → `docs/releases/`
+- **Release notes** → `docs/user-guide/docs/whats-new/` (`next.md` collects the unreleased entries; `docs/releases/` is the archive up to 0.3.2)
 
 ## ⚠️ Temporary dependency fork (enterprise only)
 
@@ -40,7 +40,8 @@ DataStore (internal/agent/services/data_store/)
 Strategies (internal/agent/services/data_store/strategies/)
    ├── senhub/     → cloud push (intake.senhub.io)
    ├── otlp/       → OTLP gRPC push
-   ├── http/       → pull formats (Prometheus, Nagios, PRTG, Zabbix, Web UI)
+   ├── http/       → pull formats (Prometheus, Nagios, PRTG, Web UI)
+   ├── zabbix/     → native Zabbix active agent (push 10051, passive 10050)
    ├── prtg/       → PRTG cache format converter
    └── event/      → syslog / winevents flows
 ```
@@ -63,7 +64,7 @@ Value substitution: `${env:VAR}`, `${env:VAR:-default}`, `${file:/path}`, `${fil
 Active areas:
 
 - Sprint A — Multi-file config + env/file substitution (branch `feat/conf-multifile-envsubst`).
-- Zabbix output integration — starting 2026-05-17 (HTTP sub-format).
+- Zabbix output — native active agent, shipping and advertised in 0.6.0.
 - Prometheus integration — Phase 2 in progress on `feat/prometheus-otel-mapping`.
 
 See `docs/developer-guide/current-development.md` for the live roadmap.

@@ -137,6 +137,8 @@ metrics:
     channel: "cpu_usage_total"
     display_name: "CPU Total Usage"
     unit: "%"
+    alert_threshold_warning: 80
+    alert_threshold_critical: 90
     category: "usage"
     description: "Overall CPU utilization across all cores"
     otel:

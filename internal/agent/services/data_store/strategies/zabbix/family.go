@@ -58,10 +58,20 @@ func familiesOf(def *transformers.ProbeDefinition) map[string]*variantFamily {
 		g.members = append(g.members, m)
 	}
 
+	// A definition that asks for it gets one rule per metric: its metrics
+	// are independent, so grouping them by the dimensions they share
+	// would declare a prototype per metric under one rule, and whatever
+	// the host does not feed would stay an empty item for ever (#922).
+	perMetricRules := def.DiscoverPerMetric
+
 	out := map[string]*variantFamily{}
 	for _, id := range order {
 		g := grouped[id]
-		if len(g.members) < 2 {
+		if len(g.members) < 2 && !perMetricRules {
+			continue
+		}
+		if perMetricRules && len(g.members) < 2 {
+			out[g.members[0].Name] = g.fam
 			continue
 		}
 		keys := attributeKeysOf(&g.members[0])

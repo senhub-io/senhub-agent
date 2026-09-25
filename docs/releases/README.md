@@ -1,8 +1,11 @@
-# Release Notes
+# Release Notes (archive, up to 0.3.2)
 
-This directory contains release notes for all versions of SenHub Agent.
+The release notes since 0.4.0 are published with the user guide, in
+[`docs/user-guide/docs/whats-new/`](../user-guide/docs/whats-new/index.md),
+where `next.md` collects the changes not yet released. This directory is
+kept as the archive of the earlier notes and receives nothing new.
 
-## Latest Releases
+## Archived releases
 
 ### Stable
 - **[0.3.2](./0.3.2.md)** - Latest stable: first 0.3.x stable — ~47 free-tier probes, Toise entity model, float64 value bus, connection topology (host interfaces + outbound `depends_on` edges)

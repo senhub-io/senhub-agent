@@ -20,6 +20,7 @@ metrics:
   # --- availability ---
 
   - name: "senhub.swarm.up"
+    multi_instance_labels: []
     channel: "swarm_cluster_up"
     display_name: "Senhub Up"
     unit: "#"
@@ -33,6 +34,7 @@ metrics:
       swarm.cluster.name: swarm.cluster.name
 
   - name: "senhub.swarm.node_role_state"
+    multi_instance_labels: ["state"]
     channel: "swarm_cluster_state_{state}"
     display_name: "Senhub Node_Role_State"
     unit: "#"
@@ -50,6 +52,7 @@ metrics:
   # --- cluster ---
 
   - name: "swarm.cluster.nodes"
+    multi_instance_labels: ["swarm.cluster.name"]
     channel: "swarm_cluster_nodes"
     display_name: "Cluster Nodes"
     unit: "#"
@@ -63,6 +66,7 @@ metrics:
       swarm.cluster.name: swarm.cluster.name
 
   - name: "swarm.cluster.managers"
+    multi_instance_labels: ["swarm.cluster.name"]
     channel: "swarm_cluster_managers"
     display_name: "Cluster Managers"
     unit: "#"
@@ -76,6 +80,7 @@ metrics:
       swarm.cluster.name: swarm.cluster.name
 
   - name: "swarm.cluster.managers.reachable"
+    multi_instance_labels: ["swarm.cluster.name"]
     channel: "swarm_cluster_managers_reachable"
     display_name: "Cluster Managers Reachable"
     unit: "#"
@@ -89,6 +94,7 @@ metrics:
       swarm.cluster.name: swarm.cluster.name
 
   - name: "swarm.cluster.workers"
+    multi_instance_labels: ["swarm.cluster.name"]
     channel: "swarm_cluster_workers"
     display_name: "Cluster Workers"
     unit: "#"
@@ -102,6 +108,7 @@ metrics:
       swarm.cluster.name: swarm.cluster.name
 
   - name: "swarm.cluster.quorum"
+    multi_instance_labels: ["swarm.cluster.name"]
     channel: "swarm_cluster_quorum"
     display_name: "Cluster Quorum"
     unit: "#"
@@ -115,6 +122,7 @@ metrics:
       swarm.cluster.name: swarm.cluster.name
 
   - name: "swarm.cluster.tasks.orphaned"
+    multi_instance_labels: ["swarm.cluster.name"]
     channel: "swarm_cluster_tasks_orphaned"
     display_name: "Cluster Tasks Orphaned"
     unit: "#"
@@ -128,6 +136,7 @@ metrics:
       swarm.cluster.name: swarm.cluster.name
 
   - name: "swarm.cluster.networks"
+    multi_instance_labels: ["swarm.cluster.name"]
     channel: "swarm_cluster_networks"
     display_name: "Cluster Networks"
     unit: "#"
@@ -144,6 +153,7 @@ metrics:
   # --- node ---
 
   - name: "swarm.node.ready"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role"]
     channel: "swarm_node_{swarm.node.name}_ready"
     display_name: "Node Ready"
     unit: "#"
@@ -159,6 +169,7 @@ metrics:
       swarm.node.role: swarm.node.role
 
   - name: "swarm.node.state"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role", "state"]
     channel: "swarm_node_{swarm.node.name}_state_{state}"
     display_name: "Node State"
     unit: "#"
@@ -175,6 +186,7 @@ metrics:
       state: state
 
   - name: "swarm.node.availability"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role", "availability"]
     channel: "swarm_node_{swarm.node.name}_availability_{availability}"
     display_name: "Node Availability"
     unit: "#"
@@ -191,6 +203,7 @@ metrics:
       availability: availability
 
   - name: "swarm.node.cpu.allocatable"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role"]
     channel: "swarm_node_{swarm.node.name}_cpu"
     display_name: "Node Cpu Allocatable"
     unit: "#"
@@ -206,9 +219,10 @@ metrics:
       swarm.node.role: swarm.node.role
 
   - name: "swarm.node.memory.allocatable"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role"]
     channel: "swarm_node_{swarm.node.name}_memory"
     display_name: "Node Memory Allocatable"
-    unit: "#"
+    unit: "Bytes"
     category: "node"
     description: "memory the node advertises to the scheduler"
     otel:
@@ -221,6 +235,7 @@ metrics:
       swarm.node.role: swarm.node.role
 
   - name: "swarm.node.manager.leader"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role"]
     channel: "swarm_node_{swarm.node.name}_leader"
     display_name: "Node Manager Leader"
     unit: "#"
@@ -236,6 +251,7 @@ metrics:
       swarm.node.role: swarm.node.role
 
   - name: "swarm.node.manager.reachable"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role"]
     channel: "swarm_node_{swarm.node.name}_manager_reachable"
     display_name: "Node Manager Reachable"
     unit: "#"
@@ -251,6 +267,7 @@ metrics:
       swarm.node.role: swarm.node.role
 
   - name: "swarm.node.manager.reachability"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.name", "swarm.node.id", "swarm.node.role", "reachability"]
     channel: "swarm_node_{swarm.node.name}_reachability_{reachability}"
     display_name: "Node Manager Reachability"
     unit: "#"
@@ -267,6 +284,7 @@ metrics:
       reachability: reachability
 
   - name: "swarm.node.tasks.running"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.node.id"]
     channel: "swarm_node_{swarm.node.id}_tasks_running"
     display_name: "Node Tasks Running"
     unit: "#"
@@ -284,6 +302,7 @@ metrics:
   # --- service ---
 
   - name: "swarm.service.replicas.desired"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name", "swarm.service.mode"]
     channel: "swarm_service_{swarm.service.name}_desired"
     display_name: "Service Replicas Desired"
     unit: "#"
@@ -299,6 +318,7 @@ metrics:
       swarm.service.mode: swarm.service.mode
 
   - name: "swarm.service.replicas.running"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name", "swarm.service.mode"]
     channel: "swarm_service_{swarm.service.name}_running"
     display_name: "Service Replicas Running"
     unit: "#"
@@ -314,6 +334,7 @@ metrics:
       swarm.service.mode: swarm.service.mode
 
   - name: "swarm.service.converged"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name", "swarm.service.mode"]
     channel: "swarm_service_{swarm.service.name}_converged"
     display_name: "Service Converged"
     unit: "#"
@@ -329,6 +350,7 @@ metrics:
       swarm.service.mode: swarm.service.mode
 
   - name: "swarm.service.update.state"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name", "swarm.service.mode", "state"]
     channel: "swarm_service_{swarm.service.name}_update_{state}"
     display_name: "Service Update State"
     unit: "#"
@@ -345,6 +367,7 @@ metrics:
       state: state
 
   - name: "swarm.service.tasks.failed"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name"]
     channel: "swarm_service_{swarm.service.name}_tasks_failed"
     display_name: "Service Tasks Failed"
     unit: "#"
@@ -359,6 +382,7 @@ metrics:
       swarm.service.name: swarm.service.name
 
   - name: "swarm.service.port.published"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name", "swarm.service.mode", "swarm.port.published", "swarm.port.target", "swarm.port.mode", "network.transport"]
     channel: "swarm_service_{swarm.service.name}_port_{swarm.port.published}"
     display_name: "Service Port Published"
     unit: "#"
@@ -380,6 +404,7 @@ metrics:
   # --- task ---
 
   - name: "swarm.task.state"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name", "state"]
     channel: "swarm_service_{swarm.service.name}_task_{state}"
     display_name: "Task State"
     unit: "#"
@@ -398,6 +423,7 @@ metrics:
   # --- network ---
 
   - name: "swarm.service.network.attached"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.service.name", "swarm.network.name"]
     channel: "swarm_service_{swarm.service.name}_net_{swarm.network.name}"
     display_name: "Service Network Attached"
     unit: "#"
@@ -414,6 +440,7 @@ metrics:
       swarm.service.vip: swarm.service.vip
 
   - name: "swarm.network.services"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.network.name", "swarm.network.subnet"]
     channel: "swarm_net_{swarm.network.name}_services"
     display_name: "Network Services"
     unit: "#"
@@ -429,6 +456,7 @@ metrics:
       swarm.network.subnet: swarm.network.subnet
 
   - name: "swarm.network.tasks"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.network.name", "swarm.network.subnet"]
     channel: "swarm_net_{swarm.network.name}_tasks"
     display_name: "Network Tasks"
     unit: "#"
@@ -444,6 +472,7 @@ metrics:
       swarm.network.subnet: swarm.network.subnet
 
   - name: "swarm.network.ingress"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.network.name", "swarm.network.subnet"]
     channel: "swarm_net_{swarm.network.name}_ingress"
     display_name: "Network Ingress"
     unit: "#"
@@ -459,6 +488,7 @@ metrics:
       swarm.network.subnet: swarm.network.subnet
 
   - name: "swarm.network.attachable"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.network.name", "swarm.network.subnet"]
     channel: "swarm_net_{swarm.network.name}_attachable"
     display_name: "Network Attachable"
     unit: "#"
@@ -474,6 +504,7 @@ metrics:
       swarm.network.subnet: swarm.network.subnet
 
   - name: "swarm.network.internal"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.network.name", "swarm.network.subnet"]
     channel: "swarm_net_{swarm.network.name}_internal"
     display_name: "Network Internal"
     unit: "#"
@@ -489,6 +520,7 @@ metrics:
       swarm.network.subnet: swarm.network.subnet
 
   - name: "swarm.network.address.capacity"
+    multi_instance_labels: ["swarm.cluster.name", "swarm.network.name", "swarm.network.subnet"]
     channel: "swarm_net_{swarm.network.name}_capacity"
     display_name: "Network Address Capacity"
     unit: "#"

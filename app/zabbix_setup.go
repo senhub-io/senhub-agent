@@ -98,6 +98,7 @@ type zabbixSetup struct {
 	dryRun        bool
 	templates     map[string][]byte // probe type -> exported YAML
 	linked        []string
+	out           io.Writer // nil means standard output
 }
 
 // blind reports that the run can describe but not look: a dry run given
@@ -110,7 +111,11 @@ func (s *zabbixSetup) say(format string, args ...interface{}) {
 	if s.dryRun {
 		prefix = "  [dry run] "
 	}
-	fmt.Printf(prefix+format+"\n", args...)
+	out := s.out
+	if out == nil {
+		out = os.Stdout
+	}
+	fmt.Fprintf(out, prefix+format+"\n", args...)
 }
 
 // version checks the server answers and is recent enough for the export
@@ -244,8 +249,10 @@ func (s *zabbixSetup) ensureAction(name, metadata, groupID string, templateIDs [
 		},
 	}
 	if s.dryRun {
+		// The templates are not imported on a dry run, so they have no id
+		// to count yet: what would be linked is what would be imported.
 		s.say("would %s the action %q, matching host metadata containing %q, linking %d template(s)",
-			map[bool]string{true: "replace", false: "create"}[len(found) > 0], name, metadata, len(templateIDs))
+			map[bool]string{true: "replace", false: "create"}[len(found) > 0], name, metadata, len(s.templates))
 		return nil
 	}
 	if len(found) > 0 {

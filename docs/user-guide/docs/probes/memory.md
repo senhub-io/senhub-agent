@@ -81,6 +81,7 @@ Platform-specific metrics are automatically detected and collected based on the 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:7596f11130e51ee1a6c261d0023d3d6a3a7ea0406866540cd3941f76189a5abd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -363,3 +364,40 @@ The Memory probe requires no authentication as it collects local system metrics 
 ### Network
 - No network access required (local metrics only)
 - HTTP strategy required for remote access to metrics
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `system.memory.limit` | `memory_total` | Memory Total | bytes | Total physical memory installed on the system |
+| `system.memory.usage` | `memory_available` | Memory Available | bytes | Amount of physical memory immediately available for allocation |
+| `system.memory.usage` | `memory_committed` | Memory Committed | bytes | Amount of virtual memory that has been committed by the memory manager |
+| `system.memory.usage` | `memory_modified_page_list` | Memory Modified Page List | bytes | Amount of memory whose contents have been modified but not yet written to disk |
+| `system.memory.usage` | `memory_nonpaged_pool` | Memory Nonpaged Pool | bytes | Amount of kernel memory that cannot be paged out to disk |
+| `system.memory.usage` | `memory_paged_pool` | Memory Paged Pool | bytes | Amount of kernel memory that can be paged out to disk |
+| `system.memory.usage` | `memory_cache` | Memory Cache | bytes | Amount of physical memory used by the system file cache |
+| `system.memory.usage` | `memory_used` | Memory Used | bytes | Amount of physical memory currently in use by the system and applications |
+| `system.memory.usage` | `memory_free` | Memory Free | bytes | Amount of physical memory not being used at all |
+| `system.memory.usage` | `memory_cached` | Memory Cached | bytes | Amount of physical memory used for caching file data and metadata |
+| `system.memory.usage` | `memory_buffers` | Memory Buffers | bytes | Amount of physical memory used for kernel buffer cache |
+| `system.memory.utilization` | `memory_used_percent` | Memory Usage | % | Percentage of total physical memory currently in use |
+| `senhub.system.paging.faults` | `memory_page_faults` | Memory Page Faults | # | Rate of page faults per second including both hard and soft faults |
+| `senhub.system.paging.operations` | `memory_pages_input` | Memory Pages Input | # | Rate of pages read from disk per second to resolve hard page faults |
+| `senhub.system.paging.operations` | `memory_pages_output` | Memory Pages Output | # | Rate of pages written to disk per second to free physical memory |
+| `system.paging.utilization` | `pagefile_usage` | Pagefile Usage | % | Percentage of the system pagefile currently in use |
+| `senhub.system.paging.utilization_peak` | `pagefile_usage_peak` | Pagefile Usage Peak | % | Peak percentage of the system pagefile used since last reboot |
+| `senhub.system.paging.limit` | `swap_total` | Swap Total | bytes | Total swap space configured on the system |
+| `system.paging.usage` | `swap_used` | Swap Used | bytes | Amount of swap space currently in use |
+| `system.paging.usage` | `swap_free` | Swap Free | bytes | Amount of swap space not in use |
+| `system.paging.utilization` | `swap_used_percent` | Swap Usage | % | Percentage of total swap space currently in use |
+
+<!-- schema:metrics:end -->

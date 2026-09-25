@@ -23,6 +23,7 @@ health-check state distribution and leader status.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:b18d4b5097649fe985ac5f628e36fce119d5e49470d189198a743370d42b6062 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -41,13 +42,37 @@ health-check state distribution and leader status.
 | `senhub.consul.up` | 1 | 1 when the Consul HTTP API is reachable |
 | `consul.catalog.services` | {service} | Number of services registered in the catalog |
 | `consul.serf.members` | {member} | LAN Serf cluster members |
-| `consul.raft.commit_time` | s | Median Raft commit latency |
-| `consul.dns.latency` | s | Median DNS query latency |
+| `consul.raft.commit.time` | ms | Mean Raft commit time over the last interval |
+| `consul.dns.queries` | # | DNS domain queries handled by this agent (cumulative) |
 | `consul.health.checks` | {check} | Health checks by state (passing/warning/critical), tagged with `state` |
-| `consul.rpc.query.count` | {query} | RPC queries processed since last collection |
+| `consul.rpc.requests` | # | RPC requests handled by this agent (cumulative) |
 | `consul.leader` | 1 | 1 when this agent is the current Raft leader |
 
 ## Operational notes
 
 - Without an ACL token, only metrics accessible to the anonymous token are visible. For full cluster observability, provide a token with at minimum `agent:read` and `catalog:read` policies.
 - The probe queries `/v1/agent/metrics?format=prometheus` (Consul 1.1+), `/v1/agent/self` for leader state, and `/v1/health/state/*` for check counts.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.consul.up` | `senhub.consul.up` | Consul Up | # | 1 when the Consul agent HTTP API is reachable and responding |
+| `consul.catalog.services` | `consul.catalog.services` | Consul Registered Services | # | Number of services registered in the Consul catalog |
+| `consul.serf.members` | `consul.serf.members` | Consul LAN Members | # | Number of LAN Serf cluster members |
+| `consul.raft.commit.time` | `consul.raft.commit.time` | Consul Raft Commit Time | ms | Mean Raft commit time over the last interval (milliseconds) |
+| `consul.rpc.requests` | `consul.rpc.requests` | Consul RPC Requests | # | Total RPC requests handled by this Consul agent |
+| `consul.dns.queries` | `consul.dns.queries` | Consul DNS Queries | # | Total DNS domain queries handled by this Consul agent |
+| `consul.health.checks` | `consul.health.checks` | Consul Health Checks ({state}) | # | Number of Consul health checks in this state (critical, warning, passing) |
+| `consul.leader` | `consul.leader` | Consul Leader | # | 1 when this Consul agent is the current Raft leader |
+
+<!-- schema:metrics:end -->

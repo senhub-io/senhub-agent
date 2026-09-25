@@ -180,7 +180,7 @@ func UpdateStrategyFragment(configPath, name string, params StorageConfigParams,
 	if err != nil {
 		return "", err
 	}
-	params = KeepStoredReferences(existing, params)
+	params = KeepStoredValues(existing, params, secretPaths)
 	DropNilValues(params)
 	if err := sealParams("strategies."+name, params, secretPaths); err != nil {
 		return "", err

@@ -22,6 +22,7 @@ single probe instance.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:c99ecb5ec258a86d21a51dbd78a1c9daa6a6ad8a8b93cb9cbd0b424ce56284a5 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -65,3 +66,27 @@ probe failure: the probe stays healthy and keeps reporting.
 - **Windows**: raw sockets only — the probe defaults to
   `privileged: true` and the agent service runs elevated.
 - **macOS**: unprivileged mode works out of the box.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.icmp.up` | `senhub.icmp.up` | Ping {target} Reachability | # | 1 when the target answered at least one echo request in the last cycle, 0 otherwise |
+| `senhub.icmp.packet_loss` | `senhub.icmp.packet_loss` | Ping {target} Packet Loss | % | Percentage of echo requests without a reply in the last cycle |
+| `senhub.icmp.packets.sent` | `senhub.icmp.packets.sent` | Ping {target} Packets Sent | # | Echo requests sent in the last cycle |
+| `senhub.icmp.packets.received` | `senhub.icmp.packets.received` | Ping {target} Packets Received | # | Echo replies received in the last cycle |
+| `senhub.icmp.rtt.min` | `senhub.icmp.rtt.min` | Ping {target} RTT Min | ms | Minimum round-trip time over the last cycle |
+| `senhub.icmp.rtt.avg` | `senhub.icmp.rtt.avg` | Ping {target} RTT Avg | ms | Average round-trip time over the last cycle |
+| `senhub.icmp.rtt.max` | `senhub.icmp.rtt.max` | Ping {target} RTT Max | ms | Maximum round-trip time over the last cycle |
+| `senhub.icmp.rtt.stddev` | `senhub.icmp.rtt.stddev` | Ping {target} RTT StdDev | ms | Round-trip time standard deviation (jitter proxy) over the last cycle |
+
+<!-- schema:metrics:end -->

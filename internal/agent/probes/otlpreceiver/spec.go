@@ -12,7 +12,7 @@ func init() {
 		MultiInstance: true,
 		Params: []probes.ParamSpec{
 			{Key: "protocol", Kind: probes.KindString, Default: "grpc", Enum: []string{"grpc", "http"}, Essential: true, Group: "connection", Description: "Listener transport: OTLP/gRPC or OTLP/HTTP protobuf"},
-			{Key: "address", Kind: probes.KindString, Essential: true, Group: "connection", Description: "Listen address (host:port); 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address", Example: "0.0.0.0:4317"},
+			{Key: "address", Kind: probes.KindString, Essential: true, Group: "connection", Description: "Listen address (host:port), or unix:/path for a Unix domain socket whose senders are known to be on this machine; 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address", Example: "0.0.0.0:4317"},
 			{Key: "port", Kind: probes.KindInt, Group: "connection", Description: "Replaces only the port part of the address"},
 			{Key: "http_path", Kind: probes.KindString, Default: "/v1/metrics", Group: "connection", Description: "Route the HTTP receiver serves metrics on; logs and traces keep /v1/logs and /v1/traces; ignored for grpc"},
 			{Key: "signals", Kind: probes.KindStringList, Default: []string{"metrics"}, Enum: []string{"metrics", "logs", "traces"}, Essential: true, Group: "collection", Description: "Signals the listener accepts; empty means metrics only"},

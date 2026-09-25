@@ -60,6 +60,7 @@ All metrics include the `interface` tag to identify the specific network interfa
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:7596f11130e51ee1a6c261d0023d3d6a3a7ea0406866540cd3941f76189a5abd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -505,3 +506,29 @@ The Network probe requires no authentication as it collects local system metrics
 - Link-local IPv6 addresses are excluded
 - Virtual interfaces (bridges, tun/tap) are excluded if not UP/RUNNING
 - First collection provides no rate data (requires 2 samples)
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.system.network.interface.speed` | `interface_speed` | Network {interface} Speed | bps | Speed the link negotiated; absent on a virtual interface, which is not the same as zero |
+| `senhub.system.network.interface.up` | `interface_up` | Network {interface} Operational State | # | 1 when the interface is operationally up, else 0 |
+| `system.network.io` | `bytes_sent` | Network {interface} Bytes Sent | bytes | Bytes per second transmitted on the network interface |
+| `system.network.io` | `bytes_received` | Network {interface} Bytes Received | bytes | Bytes per second received on the network interface |
+| `system.network.packet.count` | `packets_sent` | Network {interface} Packets Sent | # | Packets per second transmitted on the network interface |
+| `system.network.packet.count` | `packets_received` | Network {interface} Packets Received | # | Packets per second received on the network interface |
+| `system.network.errors` | `errors_sent` | Network {interface} Send Errors | # | Outbound packets per second that could not be transmitted due to errors |
+| `system.network.errors` | `errors_received` | Network {interface} Receive Errors | # | Inbound packets per second that contained errors and were discarded |
+| `system.network.packet.dropped` | `discards_sent` | Network {interface} Send Discards | # | Outbound packets per second discarded even though no errors were detected |
+| `system.network.packet.dropped` | `discards_received` | Network {interface} Receive Discards | # | Inbound packets per second discarded even though no errors were detected |
+
+<!-- schema:metrics:end -->

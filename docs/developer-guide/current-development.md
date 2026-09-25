@@ -35,9 +35,10 @@ recette), icmp_check privileged fallback (#357).
 Golden files (#296) FIRST, then the float32 bus and transformer-map
 synchronization work.
 
-### Zabbix native export (#169) — paused after Phase 0 audit
-Spec + audit done (`zabbix/AUDIT-Phase0.md`); ~5 days to implement. Resumes
-subject to priorities. Not advertised in the user guide.
+### Zabbix native export (#169) — shipped in 0.6.0
+Native active agent (`strategies/zabbix/`): autoregistration, low-level
+discovery, generated templates, `zabbix setup`, passive listener, TLS and
+PSK. Proven on Zabbix 7.0 and 8.0; advertised in the user guide.
 
 ## Tiering model (open-core + platform)
 Free = host self-observability + **active checks** + universal collection

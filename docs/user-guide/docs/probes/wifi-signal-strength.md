@@ -46,6 +46,7 @@ quality on the same line as the signal level, which is its normal layout.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:7ec571b4aa05a7b063940a878c6cfb2184c8ebef38bdd8ba13a54014baefff5f -->
 
 This probe reads no parameters. It collects every 60 seconds, a cadence fixed in the code.
 
@@ -308,3 +309,21 @@ For complete connectivity monitoring, combine with:
 2. **Signal Timeline** - Trend over time
 3. **SSID Table** - Connected networks
 4. **Quality vs Strength** - Correlation chart (Linux)
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.system.network.wifi.signal_strength.dbm` | `wifi_signal_strength` | WiFi Signal Strength | dBm | WiFi signal strength in dBm (higher = stronger, typical range -30 to -90) |
+| `senhub.system.network.wifi.quality_ratio` | `wifi_quality` | WiFi Signal Quality | % | WiFi signal quality as a percentage (0-100) |
+
+<!-- schema:metrics:end -->

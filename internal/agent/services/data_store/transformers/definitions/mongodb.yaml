@@ -89,7 +89,7 @@ metrics:
   - name: "mongodb.network.bytes.in"
     channel: "mongodb_network_bytes_in"
     display_name: "Network Bytes In"
-    unit: "BytesFile"
+    unit: "Bytes"
     category: "network"
     description: "Total bytes received over the network (network.bytesIn)"
     otel:
@@ -102,7 +102,7 @@ metrics:
   - name: "mongodb.network.bytes.out"
     channel: "mongodb_network_bytes_out"
     display_name: "Network Bytes Out"
-    unit: "BytesFile"
+    unit: "Bytes"
     category: "network"
     description: "Total bytes sent over the network (network.bytesOut)"
     otel:
@@ -147,7 +147,7 @@ metrics:
   - name: "mongodb.memory.usage"
     channel: "mongodb_memory_{type}"
     display_name: "Memory {type}"
-    unit: "BytesMemory"
+    unit: "Bytes"
     category: "memory"
     description: "Memory usage in bytes (mem.resident / mem.virtual — converted from MB)"
     multi_instance_labels:
@@ -247,7 +247,7 @@ metrics:
   - name: "mongodb.data.size"
     channel: "mongodb_data_size_{database}"
     display_name: "Data Size {database}"
-    unit: "BytesFile"
+    unit: "Bytes"
     category: "database"
     description: "Uncompressed in-memory size of all documents (dbStats.dataSize)"
     multi_instance_labels:
@@ -277,7 +277,7 @@ metrics:
   - name: "mongodb.index.size"
     channel: "mongodb_index_size_{database}"
     display_name: "Index Size {database}"
-    unit: "BytesFile"
+    unit: "Bytes"
     category: "database"
     description: "Total size of all indexes on disk (dbStats.indexSize)"
     multi_instance_labels:
@@ -292,7 +292,7 @@ metrics:
   - name: "mongodb.storage.size"
     channel: "mongodb_storage_size_{database}"
     display_name: "Storage Size {database}"
-    unit: "BytesFile"
+    unit: "Bytes"
     category: "database"
     description: "Total amount of disk space allocated to all collections (dbStats.storageSize)"
     multi_instance_labels:

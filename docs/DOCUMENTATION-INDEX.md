@@ -31,10 +31,13 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 |----------|-------------|----------|
 | **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** | Probe configuration guide | Custom monitoring |
 | **[HTTP-STRATEGY.md](admin-guide/HTTP-STRATEGY.md)** | HTTP strategy configuration | API integration |
+| **[nagios.md](user-guide/docs/nagios.md)** | Nagios output: probe summary, shipped checks, custom `nagios.yaml`, Nagios command | Nagios integration |
 | **[HTTP-BIND-ADDRESS.md](admin-guide/HTTP-BIND-ADDRESS.md)** | Network binding configuration | Network setup |
 | **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** | Configuration validation API | Config testing |
 | **[OTLP-OBSERVABILITY.md](admin-guide/OTLP-OBSERVABILITY.md)** | OTLP self-metrics field reference + alert recipes | Operational monitoring |
 | **[BACKPRESSURE.md](admin-guide/BACKPRESSURE.md)** | OTLP cardinality caps, memory limiter, persistent checkpoint — config & tuning | Operational resilience |
+| **[BACKUP-RESTORE.md](admin-guide/BACKUP-RESTORE.md)** | What to copy to rebuild an agent; secret store and console traps | Operations |
+| **[LOGGING.md](admin-guide/LOGGING.md#when-the-configuration-is-not-watched)** | When the configuration is not watched: metric, reasons, consequence | Operations |
 | **[LEAST-PRIVILEGE.md](admin-guide/LEAST-PRIVILEGE.md)** | Run the daemon as a non-root user with per-probe capabilities | Hardening / compliance |
 | **[windows-msi.md](deployment/windows-msi.md)** | Windows MSI mass deployment (GPO / SCCM / Intune) | Endpoint / VDI rollout |
 
