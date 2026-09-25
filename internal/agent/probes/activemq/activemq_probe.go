@@ -474,8 +474,11 @@ func (p *activemqProbe) collectOneDestination(
 		{"activemq.message.enqueued", "EnqueueCount"},
 		{"activemq.message.dequeued", "DequeueCount"},
 		{"activemq.message.queue_size", "QueueSize"},
-		{"activemq.consumer.count", "ConsumerCount"},
-		{"activemq.producer.count", "ProducerCount"},
+		// Named apart from the broker totals: the same name carrying two
+		// tag shapes left one of the two definitions unreachable, and
+		// every destination rendered under the broker-wide channel.
+		{"activemq.destination.consumer.count", "ConsumerCount"},
+		{"activemq.destination.producer.count", "ProducerCount"},
 	}
 
 	var points []data_store.DataPoint
