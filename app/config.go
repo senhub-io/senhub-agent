@@ -21,6 +21,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
@@ -598,6 +599,7 @@ func checkConfig(configPath string) {
 			}
 			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
 		}
+		reportEntityEmission(config.Entities, config.Storage)
 	}
 
 	// Binary writability. What is correct differs per platform: on Linux the
@@ -1042,4 +1044,32 @@ func unsetEnvNames(refs []configuration.EnvReference) string {
 		}
 	}
 	return strings.Join(names, ", ")
+}
+
+// reportEntityEmission says, next to an OTLP output that just read as
+// valid, that no entity event will leave this agent when nothing turns
+// emission on. It reports whether the note was printed.
+//
+// Emission is off unless an `entities:` block or the output's
+// `signals.entities.enabled` says otherwise. That default is deliberate,
+// so this is a note rather than a warning: an install that never wanted
+// entities is correct. What was not correct was the silence — a
+// hand-written strategies.d exports metrics and logs normally, `[OK]
+// Storage: otlp` prints, and the host is absent from every topology
+// built on the rail, with nothing anywhere saying why (#938).
+func reportEntityEmission(entities *configuration.EntitiesConfig, storage []configuration.StorageConfig) bool {
+	hasOTLP := false
+	for _, s := range storage {
+		if s.Name == "otlp" {
+			hasOTLP = true
+		}
+	}
+	if !hasOTLP || entitydetect.Resolve(entities, storage, "").Enabled {
+		return false
+	}
+	fmt.Println("  [NOTE] No entity event is emitted: neither an `entities:` block nor")
+	fmt.Println("         `signals.entities.enabled` on the otlp output is set. Metrics and")
+	fmt.Println("         logs export normally; a consumer of the topology sees this host")
+	fmt.Println("         as absent. Add `entities: {enabled: true}` to turn it on.")
+	return true
 }
