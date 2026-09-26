@@ -272,6 +272,13 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **`config check` reads the service's environment.** A token set in the
+  unit's `Environment=` or `EnvironmentFile=` was missing from the shell
+  running the check, so every such host ended on an error for a working
+  file. When the checked configuration is the one the installed service
+  runs, the check now uses the unit's variables (a variable already
+  exported in the shell wins). Linux only; values are never printed.
+
 - **`config check` reports a probe name used twice.** The agent runs
   the first probe of that name and ignores the others, and only its log
   said so; the check listed every one of them as OK.
