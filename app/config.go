@@ -342,6 +342,27 @@ func checkConfig(configPath string) {
 
 	fmt.Printf("Checking configuration: %s\n\n", absPath)
 
+	// The service reads ${env:} values from its unit, which the shell
+	// running this check does not have: a bearer token set there made
+	// every check end on an error for a working file (#892). Check with
+	// the service's environment when it runs this configuration; a
+	// variable already exported in the shell wins.
+	unitEnv, unitEnvErr := serviceEnvironment(absPath)
+	if unitEnvErr != nil {
+		fmt.Printf("  [WARN] Could not read the service environment: %v\n", unitEnvErr)
+	}
+	applied := 0
+	for k, v := range unitEnv {
+		if _, set := os.LookupEnv(k); !set {
+			if err := os.Setenv(k, v); err == nil {
+				applied++
+			}
+		}
+	}
+	if applied > 0 {
+		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent unit's environment\n", applied)
+	}
+
 	// Read raw bytes once so YAML-syntax errors can still print a
 	// useful "near this line" context (LoadFromDisk only returns a
 	// wrapped error).
