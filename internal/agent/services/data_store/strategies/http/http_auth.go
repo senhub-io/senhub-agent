@@ -77,7 +77,7 @@ func (a *AuthenticationManager) AuthenticateAdmin(w http.ResponseWriter, r *http
 	if key == "" || !a.ValidateAdminKey(key) {
 		a.logger.Warn().
 			Str("provided_key_prefix", keyPrefixForLog(key)).
-			Str("path", r.URL.Path).
+			Str("path", pathForLog(r.URL.Path, key)).
 			Msg("Administration request without the administration key")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return "", false
@@ -218,6 +218,16 @@ func (a *AuthenticationManager) UpdateAgentKey(newKey string) {
 
 // keyPrefixForLog returns at most the first 8 bytes of a key, with a
 // trailing "..." marker. Safe for keys of any length, including empty.
+// pathForLog is the request path with the key it carries shortened to
+// its log prefix. The routes put the key in the path, so logging the path
+// as is wrote the whole key next to the prefix meant to withhold it.
+func pathForLog(path, key string) string {
+	if key == "" {
+		return path
+	}
+	return strings.ReplaceAll(path, key, keyPrefixForLog(key))
+}
+
 func keyPrefixForLog(key string) string {
 	const n = 8
 	if len(key) == 0 {
