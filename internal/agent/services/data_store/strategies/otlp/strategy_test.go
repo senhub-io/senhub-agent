@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -187,11 +188,16 @@ func TestStrategy_AddDataPointsStoresInLWWStore(t *testing.T) {
 }
 
 func TestStrategy_DefaultsServiceInstance(t *testing.T) {
-	// service.instance.id should default to the FULL agent key when not
-	// overridden, so agents sharing a key prefix don't collide.
+	// service.instance.id defaults to a UUID derived from the whole agent
+	// key, so agents sharing a key prefix don't collide, and it is a UUID
+	// rather than the key's own text.
 	s := newTestStrategy(t, nil)
-	if got := s.cfg.Resource.ServiceInstance; got != "test-key-12345678-abcdef" {
-		t.Errorf("ServiceInstance=%q, want %q", got, "test-key-12345678-abcdef")
+	got := s.cfg.Resource.ServiceInstance
+	if want := configuration.AgentInstanceID("test-key-12345678-abcdef"); got != want {
+		t.Errorf("ServiceInstance=%q, want %q", got, want)
+	}
+	if strings.Contains(got, "test-key") {
+		t.Errorf("ServiceInstance %q is the key text, not a derived UUID", got)
 	}
 }
 
