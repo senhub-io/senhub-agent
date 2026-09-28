@@ -412,6 +412,11 @@ collection gaps that comparison exposed.
   that cycle and waited for the next re-emission, up to ten minutes by
   default, before learning of the host. A new subscriber now triggers a
   cycle that sends it the whole current state.
+- **The container reaches a collector that listens in plain text.** Its
+  variables had no way to turn TLS off, so a collector without TLS, such
+  as a sidecar on `localhost:4317`, could only be reached by mounting a
+  whole configuration; the export failed on "first record does not look
+  like a TLS handshake". `SENHUB_OTLP_TLS=false` now does it.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice

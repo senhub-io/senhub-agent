@@ -68,6 +68,7 @@ feature they configure is wanted.
 | `OTLP_BEARER_TOKEN` | Yes | - | Authenticates the export to SenHub. Without it the agent collects and exports nothing |
 | `SENHUB_OTLP_ENDPOINT` | No | `eu-west-1.intake.senhub.io:443` | Another collector: your own OpenTelemetry collector, VictoriaMetrics, Grafana Alloy |
 | `SENHUB_OTLP_PROTOCOL` | No | `grpc` | `grpc` or `http`, the latter for a backend that ingests OTLP over HTTP |
+| `SENHUB_OTLP_TLS` | No | `true` | `false` for a collector that listens in plain text, such as a sidecar on `localhost:4317`. The token then crosses the network unencrypted: keep it to the same host or a trusted network |
 | `SENHUB_LICENSE` | No | - | Licence token, for the probes that need one |
 | `SENHUB_TAGS` | No | - | Tags on every metric, as `key=value,key2=value2` |
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
