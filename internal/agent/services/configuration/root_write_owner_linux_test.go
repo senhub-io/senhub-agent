@@ -41,7 +41,11 @@ func TestRootWritesKeepTheServiceOwner(t *testing.T) {
 		t.Fatalf("Set: %v", err)
 	}
 
-	for _, f := range []string{"strategies.d/00-http.yaml", "agent-secret.key", "secrets.age"} {
+	if err := WriteLicenseSidecar(cfg, "eyJ.recette.sig"); err != nil {
+		t.Fatalf("WriteLicenseSidecar: %v", err)
+	}
+
+	for _, f := range []string{"strategies.d/00-http.yaml", "agent-secret.key", "secrets.age", "license.jwt"} {
 		fi, err := os.Stat(filepath.Join(dir, f))
 		if err != nil {
 			t.Fatalf("%s: %v", f, err)
