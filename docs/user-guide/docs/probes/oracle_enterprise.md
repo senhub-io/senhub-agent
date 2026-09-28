@@ -61,6 +61,7 @@ Disable the `gv$` cluster queries on a non-clustered instance to avoid needless 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:faaa188e0b6610f60d5e7f18c559b2930e326f05002a1cb3b55ce707546f16dd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -139,3 +140,35 @@ Oracle Enterprise metrics are available through every configured output — OTLP
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/oracle-enterprise-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/oracle-enterprise-prod"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.oracle_enterprise.up` | `oracle_enterprise_up` | Instance Reachable | # | 1 when the Oracle instance answered this cycle, else 0 |
+| `senhub.oracle_enterprise.awr.db_time` | `oracle_enterprise_awr_db_time` | DB Time / s | s | Database time consumed per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.db_cpu` | `oracle_enterprise_awr_db_cpu` | DB CPU / s | s | Database CPU time consumed per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.parse.hard` | `oracle_enterprise_awr_parse_hard` | Hard Parses / s | # | Hard parse count per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.parse.soft` | `oracle_enterprise_awr_parse_soft` | Soft Parses / s | # | Soft parse count per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.logical_reads` | `oracle_enterprise_awr_logical_reads` | Logical Reads / s | # | Logical reads per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.physical_reads` | `oracle_enterprise_awr_physical_reads` | Physical Reads / s | # | Physical reads per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.physical_writes` | `oracle_enterprise_awr_physical_writes` | Physical Writes / s | # | Physical writes per second (v$sysmetric) |
+| `senhub.oracle_enterprise.awr.executions` | `oracle_enterprise_awr_executions` | Executions / s | # | SQL executions per second (v$sysmetric) |
+| `senhub.oracle_enterprise.ash.active_sessions` | `oracle_enterprise_ash_active_sessions` | Active Sessions ({wait_class}) | # | Active sessions over the last 5 minutes, per wait class (ASH) |
+| `senhub.oracle_enterprise.ash.cpu_sessions` | `oracle_enterprise_ash_cpu_sessions` | Active Sessions On CPU | # | Active sessions on CPU over the last 5 minutes (ASH) |
+| `senhub.oracle_enterprise.rac.instances` | `oracle_enterprise_rac_instance_count` | RAC Instances | # | Number of open cluster instances visible via gv$instance |
+| `senhub.oracle_enterprise.rac.network.io` | `oracle_enterprise_rac_network_bytes` | SQL*Net Bytes (inst {inst_id}) | Bytes | Cumulative SQL*Net bytes exchanged with clients, per RAC instance |
+| `senhub.oracle_enterprise.rac.gc.blocks_received` | `oracle_enterprise_rac_gc_blocks_received` | GC CR Blocks Received (inst {inst_id}) | # | Cumulative global-cache CR blocks received, per RAC instance |
+| `senhub.oracle_enterprise.dataguard.apply_lag` | `oracle_enterprise_dataguard_apply_lag` | Data Guard Apply Lag | s | Redo apply lag on the standby, in seconds (v$dataguard_stats) |
+| `senhub.oracle_enterprise.dataguard.transport_lag` | `oracle_enterprise_dataguard_transport_lag` | Data Guard Transport Lag | s | Redo transport lag to the standby, in seconds (v$dataguard_stats) |
+
+<!-- schema:metrics:end -->

@@ -1,0 +1,229 @@
+package http
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/tags"
+	"senhub-agent.go/internal/agent/types/datapoint"
+)
+
+func newNagiosTestStrategy(t *testing.T, points []datapoint.DataPoint) (*HTTPSyncStrategy, string) {
+	t.Helper()
+	const key = "nagios-check-key"
+	base := createIntegrationTestConfig()
+	agentConfig := configuration.NewAgentConfiguration(key, "http://test-server.com", base.Logger)
+	params := map[string]interface{}{"endpoints": []interface{}{"nagios"}}
+	strategy := NewHTTPSyncStrategy(agentConfig, params, base.Logger).(*HTTPSyncStrategy)
+	if err := strategy.AddDataPoints(points); err != nil {
+		t.Fatal(err)
+	}
+	return strategy, key
+}
+
+func probePoints(probe string, values map[string]float64) []datapoint.DataPoint {
+	now := time.Now()
+	probeTags := []tags.Tag{{Key: "probe_name", Value: probe}, {Key: "probe_type", Value: probe}}
+	points := make([]datapoint.DataPoint, 0, len(values))
+	for name, value := range values {
+		points = append(points, datapoint.DataPoint{Name: name, Value: value, Timestamp: now, Tags: probeTags})
+	}
+	return points
+}
+
+func newNagiosCheckTestServer(t *testing.T, cpuUsage float64) (http.Handler, string) {
+	t.Helper()
+	strategy, key := newNagiosTestStrategy(t, probePoints("cpu", map[string]float64{
+		"cpu_usage_total": cpuUsage,
+		"cpu_system":      5,
+		"cpu_user":        10,
+	}))
+	return strategy.setupRoutes(), key
+}
+
+// A configured check is served in plugin format on its own route, so a
+// Nagios command calls it directly; the HTTP status mirrors the
+// per-probe endpoint.
+func TestNagiosCheckRoute(t *testing.T) {
+	cases := []struct {
+		name       string
+		cpuUsage   float64
+		check      string
+		wantStatus int
+		wantPrefix string
+	}{
+		{"ok", 12, "cpu_detailed", http.StatusOK, "OK - "},
+		{"critical", 97, "cpu_detailed", http.StatusInternalServerError, "CRITICAL - "},
+		{"unknown check", 12, "no_such_check", http.StatusNotFound, "UNKNOWN - No Nagios check named no_such_check"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router, key := newNagiosCheckTestServer(t, tc.cpuUsage)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/"+tc.check, nil))
+
+			body := rec.Body.String()
+			if rec.Code != tc.wantStatus || !strings.HasPrefix(body, tc.wantPrefix) {
+				t.Fatalf("got %d %q, want %d with prefix %q", rec.Code, body, tc.wantStatus, tc.wantPrefix)
+			}
+			if tc.wantStatus != http.StatusNotFound && !strings.Contains(body, "| cpu_usage_total=") {
+				t.Errorf("perfdata missing the check's metric: %q", body)
+			}
+		})
+	}
+}
+
+// A metric is read as a state only when its definition names its values
+// through a lookup. A count is held against its thresholds whatever its
+// name or its value, and a state takes the severity its lookup gives.
+func TestNagiosStateModeFollowsTheDefinition(t *testing.T) {
+	strategy, _ := newNagiosTestStrategy(t, probePoints("veeam", map[string]float64{
+		"veeam_jobs_failed": 2,
+		"veeam_job_status":  1,
+	}))
+	metrics := strategy.cache.GetProbeMetrics("veeam")
+
+	count := strategy.metricsProcessor.ProcessNagiosMetric(
+		NagiosMetric{Channel: "veeam_jobs_failed", Warning: "5", Critical: "10"}, metrics, NagiosOverrides{})
+	if count.Status != 0 {
+		t.Errorf("2 failed jobs against warning 5: got status %d (%s), want OK", count.Status, count.Message)
+	}
+
+	state := strategy.metricsProcessor.ProcessNagiosMetric(
+		NagiosMetric{Channel: "veeam_job_status", Warning: "2", Critical: "3"}, metrics, NagiosOverrides{})
+	if state.Status != 0 || !strings.Contains(strings.ToLower(state.Message), "success") {
+		t.Errorf("job status 1 is Success in its lookup: got status %d (%s)", state.Status, state.Message)
+	}
+}
+
+// A threshold is the last acceptable value, as a Nagios plugin reads
+// it: the shipped Veeam checks set warning "0" on failure counts, which
+// only makes sense if zero failures is OK.
+func TestNagiosThresholdIsLastAcceptableValue(t *testing.T) {
+	p := NewMetricsProcessor(nil, nil, nil, newTestLogger())
+	cases := []struct {
+		value, warning, critical string
+		invert                   bool
+		want                     int
+	}{
+		{"0", "0", "0", false, 0},
+		{"1", "0", "0", false, 2},
+		{"1", "0", "", false, 1},
+		{"80", "80", "90", false, 0},
+		{"80.5", "80", "90", false, 1},
+		{"90.5", "80", "90", false, 2},
+		{"20", "20", "10", true, 0},
+		{"19", "20", "10", true, 1},
+		{"9", "20", "10", true, 2},
+	}
+	for _, tc := range cases {
+		value, _ := strconv.ParseFloat(tc.value, 64)
+		if got := p.evaluateThreshold(value, tc.warning, tc.critical, tc.invert); got != tc.want {
+			t.Errorf("value %s warning %q critical %q invert %v: got %d, want %d", tc.value, tc.warning, tc.critical, tc.invert, got, tc.want)
+		}
+	}
+}
+
+// tag_specific_thresholds give one series its own thresholds; tag_<name>
+// in the query and tag_filters in a POST body narrow the series a check
+// looks at. All three were parsed and then never applied.
+func TestNagiosPerSeriesThresholdsAndTagFilters(t *testing.T) {
+	now := time.Now()
+	core := func(id string, value float64) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: "cpu_core_usage", Value: value, Timestamp: now, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}, {Key: "core", Value: id},
+		}}
+	}
+	strategy, key := newNagiosTestStrategy(t, []datapoint.DataPoint{core("0", 60), core("1", 95)})
+	metrics := strategy.cache.GetProbeMetrics("cpu")
+
+	def := NagiosMetric{Channel: "cpu_core_usage", Warning: "80", Critical: "90", TagContext: "core",
+		TagSpecificThresholds: []NagiosTagThreshold{{Tags: map[string]string{"core": "0"}, Warning: "50", Critical: "70"}}}
+	result := strategy.metricsProcessor.ProcessNagiosMetric(def, metrics, NagiosOverrides{})
+	if !strings.Contains(result.Message, "cpu_core_usage[0]: WARNING") || !strings.Contains(result.Message, "cpu_core_usage[1]: CRITICAL") {
+		t.Errorf("core 0 should use its own thresholds (WARNING at 60 over 50), core 1 the metric's: %s", result.Message)
+	}
+
+	router := strategy.setupRoutes()
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/cpu_cores?tag_core=0", nil))
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "cpu_core_usage[1]") {
+		t.Errorf("tag_core=0 should leave only core 0 (OK at 60): got %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	body := `{"check_name":"cpu_cores","overrides":{"tag_filters":{"core":"1"},"critical":"99"}}`
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/"+key+"/nagios/metrics", strings.NewReader(body)))
+	if !strings.Contains(rec.Body.String(), `"status":1`) || strings.Contains(rec.Body.String(), "cpu_core_usage[0]") {
+		t.Errorf("POST overrides should keep core 1 only, WARNING under critical 99: %s", rec.Body.String())
+	}
+}
+
+// probe_filter names a probe type. A Veeam probe is always named by its
+// operator, and the shipped Veeam checks must still find it.
+func TestNagiosProbeFilterMatchesTheProbeType(t *testing.T) {
+	now := time.Now()
+	named := []tags.Tag{{Key: "probe_name", Value: "backup-siep"}, {Key: "probe_type", Value: "veeam"}}
+	strategy, key := newNagiosTestStrategy(t, []datapoint.DataPoint{
+		{Name: "veeam_jobs_failed", Value: float64(0), Timestamp: now, Tags: named},
+		{Name: "veeam_jobs_warning", Value: float64(0), Timestamp: now, Tags: named},
+	})
+
+	rec := httptest.NewRecorder()
+	strategy.setupRoutes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/veeam_jobs", nil))
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Body.String(), "OK - ") {
+		t.Fatalf("veeam_jobs on a probe named %q: got %d %q", "backup-siep", rec.Code, rec.Body.String())
+	}
+}
+
+// Nagios reserves ";" in plugin output and prints it as ":", which
+// turned a list of series into "OK 64.68%: fs_used_percent[...]".
+func TestNagiosMessageCarriesNoSemicolon(t *testing.T) {
+	now := time.Now()
+	core := func(id string, value float64) datapoint.DataPoint {
+		return datapoint.DataPoint{Name: "cpu_core_usage", Value: value, Timestamp: now, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}, {Key: "core", Value: id},
+		}}
+	}
+	strategy, key := newNagiosTestStrategy(t, []datapoint.DataPoint{core("0", 10), core("1", 20)})
+	rec := httptest.NewRecorder()
+	strategy.setupRoutes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/cpu_cores", nil))
+	message, _, _ := strings.Cut(rec.Body.String(), " | ")
+	if strings.Contains(message, ";") {
+		t.Errorf("plugin message carries a semicolon: %q", message)
+	}
+}
+
+// Series come out of the cache in map order; the plugin message and the
+// perfdata must not reorder from one poll to the next.
+func TestNagiosSeriesOrderIsStable(t *testing.T) {
+	now := time.Now()
+	var points []datapoint.DataPoint
+	for _, id := range []string{"3", "0", "2", "1"} {
+		points = append(points, datapoint.DataPoint{Name: "cpu_core_usage", Value: float64(10), Timestamp: now, Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}, {Key: "core", Value: id},
+		}})
+	}
+	strategy, key := newNagiosTestStrategy(t, points)
+	router := strategy.setupRoutes()
+	first := ""
+	for i := 0; i < 20; i++ {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/"+key+"/nagios/check/cpu_cores", nil))
+		if i == 0 {
+			first = rec.Body.String()
+			if !strings.Contains(first, "cpu_core_usage[0]: OK 10.00%, cpu_core_usage[1]") {
+				t.Fatalf("series not in tag order: %q", first)
+			}
+			continue
+		}
+		if rec.Body.String() != first {
+			t.Fatalf("answer changed between polls:\n%q\n%q", first, rec.Body.String())
+		}
+	}
+}

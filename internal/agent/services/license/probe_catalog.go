@@ -1,5 +1,7 @@
 package license
 
+import "fmt"
+
 // Catalog of probes known to the licence system. Free-tier probes live
 // in `freeTierProbes` (see license.go) and need no licence at all.
 // Every other probe MUST appear in `paidProbes` for the validator to
@@ -39,12 +41,31 @@ var paidProbes = map[string]bool{
 	"exchange_online":   true,
 	// Azure Container Apps console log stream, read through ARM.
 	"azure_container_apps": true,
+	// The same subscription's jobs: the verdict, the duration and the
+	// output of each execution, read once it has finished.
+	"azure_container_app_jobs": true,
 	// Bespoke commercial collector: third-party apps push events over HTTP.
 	"event": true,
 	// Active / synthetic checks.
 	"ping_gateway": true,
 	"ping_webapp":  true,
 	"load_webapp":  true,
+}
+
+// IsKnownPaidProbe reports a probe type the paid catalogue names, whether
+// or not this build carries it.
+func IsKnownPaidProbe(name string) bool { return paidProbes[name] }
+
+// NotInThisBuild is the message for a configured probe type the binary
+// does not contain. For a type of the paid catalogue it names the
+// edition that ships it: a licence cannot help an open-source build that
+// does not carry the probe's code, and saying "requires a valid licence"
+// sent an operator to buy the wrong thing.
+func NotInThisBuild(probeType string) string {
+	if paidProbes[probeType] {
+		return fmt.Sprintf("probe type %q is not part of this build: it ships in the SenHub Agent full edition", probeType)
+	}
+	return fmt.Sprintf("unknown probe type %q", probeType)
 }
 
 // KnownPaidProbes returns the names of every probe registered as

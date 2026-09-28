@@ -40,6 +40,7 @@ import (
 
 	gnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
+	"github.com/toise-dev/toise/pkg/emit"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
@@ -444,23 +445,26 @@ func buildObservation(streak map[peerKey]streakState, threshold int, hostID stri
 				})
 			}
 		}
+		// The endpoint identity comes from the consumer's own SDK, so the
+		// agent cannot drift from the contract: a host-scoped address
+		// (loopback, link-local unicast) gets host.id as a fourth key,
+		// otherwise host A's 127.0.0.1 or the shared 169.254.169.254
+		// metadata endpoint would collapse onto host B's (ADR 0032); every
+		// other address stays 3-key. The SDK canonicalises the literal on
+		// the way (RFC 5952, lowercased zone, IPv4-mapped unmapped).
 		epID := map[string]any{
 			idKeyServerAddress:    d.addr,
 			idKeyServerPort:       d.port,
 			idKeyNetworkTransport: transportTCP,
 		}
-		epDedup := fmt.Sprintf("%s:%s/%s", d.addr, d.port, transportTCP)
-		if canon, hostScoped, ok := entity.CanonicalHostScopedAddr(d.addr); ok && hostScoped {
-			// Host-scoped address (loopback / link-local unicast): only meaningful
-			// relative to THIS host, so host.id joins the identity — otherwise host
-			// A's 127.0.0.1 (or the shared 169.254.169.254 metadata endpoint) would
-			// collapse onto host B's, wiring unrelated hosts together. The address
-			// is stored RFC 5952-canonical; routable peers keep their raw form (no
-			// churn). Toise host-scopes exactly this set on its side (ADR 0032).
-			epID[idKeyServerAddress] = canon
-			epID[idKeyHost] = hostID
-			epDedup = hostID + "|" + canon + ":" + d.port + "/" + transportTCP
+		if port, err := strconv.Atoi(d.port); err == nil {
+			rel := emit.DependsOnLocalEndpoint(d.addr, port, transportTCP, hostID)
+			epID = make(map[string]any, len(rel.TargetID))
+			for k, v := range rel.TargetID {
+				epID[k] = v
+			}
 		}
+		epDedup := fmt.Sprintf("%v|%v:%s/%s", epID[idKeyHost], epID[idKeyServerAddress], d.port, transportTCP)
 		if !epDone[epDedup] {
 			epDone[epDedup] = true
 			obs.Entities = append(obs.Entities, entity.Entity{

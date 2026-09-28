@@ -1,7 +1,6 @@
 package http
 
 import (
-	"regexp"
 	"strings"
 
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -12,10 +11,6 @@ import (
 // safe to show (it is how the form knows a secret is stored), and an
 // identifier such as a user name is something the operator has to be
 // able to read and edit. Only the values themselves are hidden.
-
-// A superset of the keys the boot-time sealer treats as sensitive
-// (secret.IsSensitiveKey), so nothing sealed is ever shown resolved.
-var consoleSecretKeyPattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|community|dsn|uri|authorization|bearer|license|jwt)`)
 
 const redactedForConsole = "***"
 
@@ -36,7 +31,7 @@ func sanitizeForConsole(params map[string]interface{}, secretPaths []string) map
 		out := make(map[string]interface{}, len(m))
 		for k, v := range m {
 			path := prefix + k
-			hide := inSecret || secret[path] || consoleSecretKeyPattern.MatchString(k)
+			hide := inSecret || secret[path] || configuration.ConsoleHides(k)
 			switch val := v.(type) {
 			case map[string]interface{}:
 				out[k] = walk(path+".", val, hide)
@@ -104,8 +99,8 @@ func dropRedactedValues(params map[string]interface{}) {
 // form left out are taken back from the file: the checks must run on
 // that, not on what the form re-sent, or a stored required secret would
 // read as missing on every edit.
-func paramsAsWritten(stored, incoming map[string]interface{}) map[string]interface{} {
-	out := configuration.KeepStoredReferences(stored, copyParams(incoming))
+func paramsAsWritten(stored, incoming map[string]interface{}, secretPaths []string) map[string]interface{} {
+	out := configuration.KeepStoredValues(stored, copyParams(incoming), secretPaths)
 	configuration.DropNilValues(out)
 	return out
 }

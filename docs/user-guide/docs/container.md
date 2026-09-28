@@ -17,9 +17,12 @@ That is the whole of it for a first run: one variable, one mount.
 
 `/var/lib/senhub-agent` holds everything that makes this agent *this*
 agent: its host identity, its own key, and the bookmarks its log probes
-keep. **Mount it, or every container arrives as a new host** and
-re-reads the tail of every log it follows. The entrypoint says so on
-startup when the directory is not a mounted volume.
+keep. **Mount it, or every container arrives as a new host** and its
+log probes lose their place: a Container Apps stream re-sends its last
+`tail_lines`, a file probe skips what was written in between. The
+entrypoint says so on startup when the directory is not a mounted
+volume, naming only what `SENHUB_HOST_ID` and `SENHUB_AGENT_KEY` do not
+already carry.
 
 Two identities live there, and they answer different questions.
 
@@ -37,9 +40,19 @@ carrying the same key are one agent to everything downstream. Keeping it
 in the volume means one agent per volume, not one per container.
 
 If your platform already knows what this host is, `SENHUB_HOST_ID`
-settles the first without a volume. Give each instance its own value:
-an identity shared between several running agents is worse than one
-that changes, because nothing signals it.
+settles the first without a volume, and `SENHUB_AGENT_KEY` the second.
+With both set, a container without a volume comes back as the same host
+and the same agent. Give each instance its own values: an identity
+shared between several running agents is worse than one that changes,
+because nothing signals it, and an example or blank value is refused at
+start.
+
+What survives a new container without a volume: the host identity and
+the agent identity when those two variables are set, the configuration
+the variables describe. What does not: the log bookmarks, so a
+Container Apps stream re-sends its recent lines and a file probe skips
+what was written in between, and anything written to the configuration
+from the console.
 
 Nothing else needs a mount. The configuration lives inside the container
 unless you choose otherwise, and the log file is written to
@@ -60,13 +73,14 @@ feature they configure is wanted.
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key and the bookmarks live |
-| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance |
+| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |
+| `SENHUB_AGENT_KEY` | No | kept in the state directory | Agent identity, a UUID. One value per instance; with `SENHUB_HOST_ID` it lets a container without a volume keep one identity |
 | `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. Not merged with `SENHUB_AZURE_APP`, see [Reading Azure Container Apps](#reading-azure-container-apps) |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
 
-The agent key is **not** a variable: the agent generates its own on
-first start, and the entrypoint keeps it in the state directory so the
-next container reuses it. That is why the mount matters.
+Without `SENHUB_AGENT_KEY` the agent generates its own key on first
+start, and the entrypoint keeps it in the state directory so the next
+container reuses it. That is why the mount matters.
 
 Never bake either identity into an image. An image is deployed in
 several copies by construction, so an identity that belongs to the image

@@ -155,7 +155,7 @@ storage:
       # are derived from agent identity if omitted.
       resource:
         service.name: senhub-agent             # default
-        service.instance.id: <agent-key prefix> # default: first 8 chars of agent.key
+        service.instance.id: <uuid>             # default: an RFC 4122 UUID derived from agent.key
         deployment.environment: prod
         # Any additional keys are passed through as resource attributes.
         k8s.cluster.name: edge-01
@@ -453,9 +453,9 @@ Resource attributes are attached **once per batch** by the SDK
 group series and logs into entities. Defaults:
 
 - `service.name` = `"senhub-agent"`
-- `service.instance.id` = first 8 chars of the agent authentication
-  key (avoids leaking the full secret to backends while keeping
-  per-agent disambiguation)
+- `service.instance.id` = an RFC 4122 UUID (version 5) derived from the
+  agent key: one per agent, stable for as long as the key is, as the
+  OpenTelemetry semantic conventions recommend
 - `service.version` = the agent build version (when known)
 
 Any additional key/value pair under `resource:` is passed through
@@ -629,6 +629,11 @@ Notes:
   file (`${file:/etc/senhub-agent/bearer.token}`); never inline it.
 - `host.id`, `host.name` and `os.*` resource attributes are auto-detected
   and attached to every signal — don't set them manually.
+- `host.id` is the machine's own identifier: on Linux the SMBIOS
+  product UUID when it is readable, otherwise `/etc/machine-id`; on
+  Windows the `MachineGuid` registry value. The Windows value is not the
+  SMBIOS UUID a hypervisor or a BMC reports for the same machine, so
+  join a Windows host to its hardware on `host.name`, not on `host.id`.
 - The `resource: service.name` override groups **telemetry** only. The
   agent's own `service.instance` entity always carries
   `service.name: senhub-agent`, whatever the override says, so a fleet

@@ -9,6 +9,8 @@
 package docsparams
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,28 +28,68 @@ const (
 // Render returns the block a page carries between the markers, markers
 // included, terminated by a newline.
 func Render(p spec.Probe) string {
-	var b strings.Builder
-	b.WriteString(Start + "\n")
-	b.WriteString("<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->\n\n")
+	var body strings.Builder
 	if len(p.Params) == 0 {
 		// The cadence is the one thing a reader still wants when there is
 		// nothing to set, and it is fixed in the code for these probes.
 		if p.DefaultInterval > 0 {
-			fmt.Fprintf(&b, "This probe reads no parameters. It collects every %d seconds, a cadence fixed in the code.\n\n", p.DefaultInterval)
+			fmt.Fprintf(&body, "This probe reads no parameters. It collects every %d seconds, a cadence fixed in the code.\n\n", p.DefaultInterval)
 		} else {
-			b.WriteString("This probe reads no parameters.\n\n")
+			body.WriteString("This probe reads no parameters.\n\n")
 		}
-		b.WriteString(End + "\n")
-		return b.String()
+	} else {
+		body.WriteString("| Parameter | Must set | Default | Description |\n")
+		body.WriteString("|---|---|---|---|\n")
+		for _, row := range rows(p.Params, "") {
+			body.WriteString(row)
+		}
+		body.WriteString("\n")
 	}
-	b.WriteString("| Parameter | Must set | Default | Description |\n")
-	b.WriteString("|---|---|---|---|\n")
-	for _, row := range rows(p.Params, "") {
-		b.WriteString(row)
-	}
-	b.WriteString("\n")
+	var b strings.Builder
+	b.WriteString(Start + "\n")
+	b.WriteString("<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->\n")
+	b.WriteString(sealLine(body.String()) + "\n\n")
+	b.WriteString(body.String())
 	b.WriteString(End + "\n")
 	return b.String()
+}
+
+// sealPrefix opens the line that carries the digest of a block's body.
+const sealPrefix = "<!-- sha256:"
+
+// sealLine is the digest of a generated body. The commercial probe pages
+// are generated from the enterprise repository, whose guard never runs
+// here, so a hand edit inside one of their blocks merged green; the seal
+// lets this repository tell a generated block from an edited one without
+// the schema that produced it.
+func sealLine(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return sealPrefix + hex.EncodeToString(sum[:]) + " -->"
+}
+
+// VerifyBlock reports whether the generated block of a page still matches
+// the digest it was written with. has is false when the page carries no
+// block. A block without a seal is reported as not matching. Line endings
+// do not count: a Windows checkout turns the page to CRLF.
+func VerifyBlock(page string) (has bool, ok bool) {
+	page = strings.ReplaceAll(page, "\r\n", "\n")
+	start := strings.Index(page, Start)
+	end := strings.Index(page, End)
+	if start < 0 || end < start {
+		return false, false
+	}
+	block := page[start+len(Start) : end]
+	i := strings.Index(block, sealPrefix)
+	if i < 0 {
+		return true, false
+	}
+	lineEnd := strings.Index(block[i:], "\n")
+	if lineEnd < 0 {
+		return true, false
+	}
+	seal := block[i : i+lineEnd]
+	body := strings.TrimPrefix(block[i+lineEnd+1:], "\n")
+	return true, seal == sealLine(body)
 }
 
 // rows renders one level, then the fields of every block below it, so a

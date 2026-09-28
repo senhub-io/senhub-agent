@@ -160,6 +160,10 @@ func runZabbixCommand() {
 			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", p, err)
 			os.Exit(1)
 		}
+		if exp.DeclaresNothing() {
+			fmt.Fprintf(os.Stderr, "Note: %s relays records rather than metrics; it declares no Zabbix item, so no template was written for it.\n", p)
+			continue
+		}
 		body, err := template.Encode(exp)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", p, err)
@@ -190,6 +194,20 @@ func (a lookupAdapter) Lookup(id string) (map[int]string, bool) {
 	out := make(map[int]string, len(def.Mappings))
 	for code, v := range def.Mappings {
 		out[code] = v.Text
+	}
+	return out, true
+}
+
+// Severities gives each code the severity the lookup classes it under,
+// which the generator turns into triggers.
+func (a lookupAdapter) Severities(id string) (map[int]string, bool) {
+	def, ok := a.reg.GetLookup(strings.TrimSpace(id))
+	if !ok {
+		return nil, false
+	}
+	out := make(map[int]string, len(def.Mappings))
+	for code, v := range def.Mappings {
+		out[code] = v.Severity
 	}
 	return out, true
 }

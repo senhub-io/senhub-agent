@@ -29,7 +29,7 @@ import (
 )
 
 var (
-	DEFAULT_REGISTRY_URL            = "https://eu-west-1.intake.senhub.io/"
+	DEFAULT_REGISTRY_URL            = "https://eu-west-1.intake.senhub.io"
 	VERSION_METADATA_LIST_PATH      = "/releases/releases.json"
 	VERSION_METADATA_LIST_BETA_PATH = "/releases/beta/releases.json"
 	VERSION_METADATA_PATH           = "/download/%s/metadata.json"
@@ -608,7 +608,7 @@ func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 		return DEFAULT_REGISTRY_URL
 	}
 	if fixed, changed := configuration.NormalizeRegistryURL(registryUrl); changed {
-		if configuration.ShouldWarnRegistryURL(registryUrl) && a.logger != nil {
+		if configuration.RegistryURLHadPath(registryUrl, fixed) && configuration.ShouldWarnRegistryURL(registryUrl) && a.logger != nil {
 			a.logger.Warn().
 				Str("configured", registryUrl).
 				Str("using", fixed).

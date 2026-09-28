@@ -101,6 +101,9 @@ func TestCheckRegistryURL(t *testing.T) {
 	if p := CheckRegistryURL(""); p != nil {
 		t.Errorf("an absent value means the built-in default and must not be a problem: %+v", p)
 	}
+	if p := CheckRegistryURL(base + "/"); p != nil {
+		t.Errorf("a trailing slash alone is not a path and must not be reported: %+v", p)
+	}
 
 	p := CheckRegistryURL(base + "/releases")
 	if p == nil {
@@ -143,5 +146,22 @@ func TestRegistryURLWarningIsOncePerValue(t *testing.T) {
 	// A different bad value still deserves its own warning.
 	if !ShouldWarnRegistryURL("https://other.example/download") {
 		t.Error("a different value should warn on its first occurrence")
+	}
+}
+
+func TestRegistryURLHadPath(t *testing.T) {
+	const base = "https://eu-west-1.intake.senhub.io"
+	cases := map[string]bool{
+		base:                             false,
+		base + "/":                       false,
+		base + "/releases":               true,
+		base + "/download/":              true,
+		base + "/releases/releases.json": true,
+	}
+	for raw, want := range cases {
+		fixed, _ := NormalizeRegistryURL(raw)
+		if got := RegistryURLHadPath(raw, fixed); got != want {
+			t.Errorf("RegistryURLHadPath(%q, %q) = %v, want %v", raw, fixed, got, want)
+		}
 	}
 }

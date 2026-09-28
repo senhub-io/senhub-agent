@@ -45,6 +45,12 @@ func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Wr
 
 	cleanupFiles(args)
 
+	// The store the drop-in points into is gone with the configuration;
+	// left behind, it would make the next unit of that name fail to start.
+	if dropErr := removeCredentialsDropIn(); dropErr != nil {
+		fmt.Fprintf(errOut, "Warning: %v\n", dropErr)
+	}
+
 	return err
 }
 
@@ -237,6 +243,10 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				fmt.Fprintf(os.Stderr, "Warning: failed to hand install files to user %q: %v\n", serviceUser, chownErr)
 				fmt.Printf("Fix manually with: chown %s:%s %s (and the log/certs directories the install created)\n", serviceUser, serviceUser, configPath)
 			}
+
+			// A reinstall over a sealed systemd-creds store must come
+			// back able to read it.
+			followCredentialStore(configPath)
 
 			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])
 		}

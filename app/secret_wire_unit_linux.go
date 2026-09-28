@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 )
 
@@ -28,37 +30,83 @@ func wireSystemdUnit(configDir string) error {
 		return fmt.Errorf("wire-unit writes %s and runs daemon-reload — run as root (sudo)", credentialsDropInPath)
 	}
 
-	body, err := secret.SystemdCredentialDropIn(configDir)
+	n, _, err := syncCredentialsDropIn(configDir)
 	if err != nil {
-		return fmt.Errorf("generating credentials drop-in: %w", err)
-	}
-
-	if strings.TrimSpace(body) == "" {
-		// No sealed secrets: remove a stale drop-in so the unit stops trying to
-		// load credentials that no longer exist.
-		if rmErr := os.Remove(credentialsDropInPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			return fmt.Errorf("removing stale drop-in: %w", rmErr)
-		}
-		if err := daemonReload(); err != nil {
-			return err
-		}
-		fmt.Printf("No sealed secrets in %s/creds.d — removed any credentials drop-in.\n", configDir)
-		return nil
-	}
-
-	if err := os.MkdirAll(credentialsDropInDir, 0o755); err != nil {
-		return fmt.Errorf("creating drop-in dir: %w", err)
-	}
-	if err := os.WriteFile(credentialsDropInPath, []byte(body), 0o644); err != nil {
-		return fmt.Errorf("writing drop-in: %w", err)
+		return err
 	}
 	if err := daemonReload(); err != nil {
 		return err
 	}
-
-	n := strings.Count(body, "LoadCredentialEncrypted=")
+	if n == 0 {
+		fmt.Printf("No sealed secrets in %s/creds.d — removed any credentials drop-in.\n", configDir)
+		return nil
+	}
 	fmt.Printf("Wired %d sealed secret(s) into %s\n", n, credentialsDropInPath)
 	fmt.Println("Run 'senhub-agent restart' to load the credentials into the running service.")
+	return nil
+}
+
+// syncCredentialsDropIn brings the drop-in in line with <configDir>/creds.d/:
+// written when the store holds credentials, removed when it holds none. It
+// returns how many credentials the drop-in wires and whether the file changed,
+// so a caller that only follows the store reloads systemd when it must.
+func syncCredentialsDropIn(configDir string) (int, bool, error) {
+	body, err := secret.SystemdCredentialDropIn(configDir)
+	if err != nil {
+		return 0, false, fmt.Errorf("generating credentials drop-in: %w", err)
+	}
+	changed, err := syncDropIn(credentialsDropInPath, body)
+	if err != nil {
+		return 0, false, err
+	}
+	return strings.Count(body, "LoadCredentialEncrypted="), changed, nil
+}
+
+// followCredentialStore is what install and refresh-unit run after writing
+// the unit: the drop-in follows creds.d/ without a separate wire-unit step.
+// A failure is reported, not fatal: the unit itself is already in place and
+// wire-unit remains the manual repair.
+func followCredentialStore(configPath string) {
+	if configPath == "" {
+		resolved, err := cliArgs.GetAbsoluteConfigPath("")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: credentials drop-in not checked: resolving config path: %v\n", err)
+			return
+		}
+		configPath = resolved
+	}
+	configDir := filepath.Dir(configPath)
+
+	n, changed, err := syncCredentialsDropIn(configDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: credentials drop-in not updated: %v; run 'senhub-agent secret wire-unit'\n", err)
+		return
+	}
+	if !changed {
+		return
+	}
+	if err := daemonReload(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+		return
+	}
+	if n == 0 {
+		fmt.Printf("Removed the credentials drop-in: %s/creds.d holds no sealed secret.\n", configDir)
+		return
+	}
+	fmt.Printf("Wired %d sealed secret(s) from %s/creds.d into %s\n", n, configDir, credentialsDropInPath)
+}
+
+// removeCredentialsDropIn deletes the drop-in, and its directory when
+// nothing else lives there: an operator's own drop-ins stay.
+func removeCredentialsDropIn() error {
+	if err := os.Remove(credentialsDropInPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing credentials drop-in %s: %w", credentialsDropInPath, err)
+	}
+	if entries, err := os.ReadDir(credentialsDropInDir); err == nil && len(entries) == 0 {
+		if err := os.Remove(credentialsDropInDir); err != nil {
+			return fmt.Errorf("removing empty drop-in dir %s: %w", credentialsDropInDir, err)
+		}
+	}
 	return nil
 }
 

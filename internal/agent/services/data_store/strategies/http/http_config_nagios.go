@@ -2,10 +2,14 @@
 package http
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -32,12 +36,21 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 		return cm.nagiosConfig
 	}
 
-	// Operator-provided file takes precedence
-	configPath := "config/nagios.yaml"
-	if config, err := cm.loadNagiosConfigFromFile(configPath); err == nil {
-		cm.logger.Info().Str("path", configPath).Msg("Loaded Nagios configuration from file")
-		cm.nagiosConfig = config
-		return config
+	// Operator-provided file takes precedence. A file that exists but
+	// cannot be used is reported, not silently replaced by the default:
+	// the operator would otherwise see the curated checks and never
+	// learn why theirs are missing.
+	for _, configPath := range cm.nagiosConfigCandidates() {
+		config, err := cm.loadNagiosConfigFromFile(configPath)
+		if err == nil {
+			cm.logger.Info().Str("path", configPath).Msg("Loaded Nagios configuration from file")
+			cm.warnUndeclaredNagiosChannels(configPath, config)
+			cm.nagiosConfig = config
+			return config
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			cm.logger.Error().Err(err).Str("path", configPath).Msg("Nagios configuration file ignored, serving the default checks")
+		}
 	}
 
 	// Default: the curated configuration shipped with the agent
@@ -56,6 +69,96 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 	return cm.nagiosConfig
 }
 
+// nagiosConfigCandidates lists where an operator's nagios.yaml is read
+// from, first match wins: next to the agent configuration, then the
+// historical config/nagios.yaml under the working directory. The
+// working directory is /usr/local/bin for a Linux service and the
+// install folder on Windows, so the historical path alone could not be
+// documented as a place an operator should write to.
+func (cm *ConfigurationManager) nagiosConfigCandidates() []string {
+	var candidates []string
+	if cm.agentConfig != nil {
+		if path := cm.agentConfig.GetConfigPath(); path != "" {
+			candidates = append(candidates, filepath.Join(filepath.Dir(path), "nagios.yaml"))
+		}
+	}
+	return append(candidates, filepath.Join("config", "nagios.yaml"))
+}
+
+// undeclaredNagiosChannel is a check metric that cannot answer on this
+// agent. Hint carries the metric name when the channel given is a
+// display label of a definition, the usual mistake: a Nagios check
+// matches the metric name, not the PRTG channel. Platforms is set when
+// a definition declares the name for other operating systems only.
+type undeclaredNagiosChannel struct {
+	Check     string
+	Channel   string
+	Hint      string
+	Platforms []string
+}
+
+// undeclaredNagiosChannels lists the check metrics that can only ever
+// report UNKNOWN on goos, unless a probe with dynamic names (exec,
+// prometheus_scrape, snmp_poll, otlp_receiver) happens to emit them.
+func undeclaredNagiosChannels(config *NagiosConfig, goos string) ([]undeclaredNagiosChannel, error) {
+	defs, err := transformers.DefinitionMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("reading probe definitions: %w", err)
+	}
+	runsHere := make(map[string]bool)
+	elsewhere := make(map[string][]string)
+	byLabel := make(map[string]string)
+	for _, metrics := range defs {
+		for _, m := range metrics {
+			if m.RunsOn(goos) {
+				runsHere[m.Name] = true
+			} else {
+				elsewhere[m.Name] = m.Platforms
+			}
+			for _, label := range []string{m.Channel, m.DisplayName} {
+				if label != "" && label != m.Name {
+					byLabel[label] = m.Name
+				}
+			}
+		}
+	}
+
+	var out []undeclaredNagiosChannel
+	for _, check := range config.Checks {
+		for _, metric := range check.Metrics {
+			if runsHere[metric.Channel] {
+				continue
+			}
+			out = append(out, undeclaredNagiosChannel{
+				Check:     check.Name,
+				Channel:   metric.Channel,
+				Hint:      byLabel[metric.Channel],
+				Platforms: elsewhere[metric.Channel],
+			})
+		}
+	}
+	return out, nil
+}
+
+func (cm *ConfigurationManager) warnUndeclaredNagiosChannels(path string, config *NagiosConfig) {
+	undeclared, err := undeclaredNagiosChannels(config, runtime.GOOS)
+	if err != nil {
+		cm.logger.Warn().Err(err).Str("path", path).Msg("Nagios channels not checked against the probe definitions")
+		return
+	}
+	for _, u := range undeclared {
+		event := cm.logger.Warn().Str("path", path).Str("check", u.Check).Str("channel", u.Channel)
+		switch {
+		case len(u.Platforms) > 0:
+			event.Strs("emitted_on", u.Platforms).Str("platform", runtime.GOOS).Msg("Nagios channel is not emitted on this platform; the check reports UNKNOWN here")
+		case u.Hint != "":
+			event.Str("metric_name", u.Hint).Msg("Nagios channel is a display label; a check matches the metric name, use metric_name")
+		default:
+			event.Msg("No probe definition emits this Nagios channel; the check reports UNKNOWN unless a probe with dynamic metric names produces it")
+		}
+	}
+}
+
 // loadEmbeddedNagiosConfig parses and validates the curated Nagios
 // configuration embedded in the transformers package.
 func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error) {
@@ -65,7 +168,7 @@ func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error
 	}
 
 	var config NagiosConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yaml.UnmarshalStrict(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse embedded Nagios YAML: %w", err)
 	}
 
@@ -78,13 +181,13 @@ func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error
 
 // loadNagiosConfigFromFile loads Nagios configuration from a YAML file
 func (cm *ConfigurationManager) loadNagiosConfigFromFile(configPath string) (*NagiosConfig, error) {
-	data, err := os.ReadFile(filepath.Clean(configPath)) // #nosec G304 - configPath is hardcoded to "config/nagios.yaml"
+	data, err := os.ReadFile(filepath.Clean(configPath)) // #nosec G304 - configPath comes from nagiosConfigCandidates, never from a request
 	if err != nil {
 		return nil, err
 	}
 
 	var config NagiosConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yaml.UnmarshalStrict(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse Nagios YAML: %w", err)
 	}
 
@@ -119,15 +222,65 @@ func (cm *ConfigurationManager) validateNagiosConfig(config *NagiosConfig) error
 			if metric.Channel == "" {
 				return fmt.Errorf("check %s, metric %d: channel is required", check.Name, j)
 			}
-			if metric.Warning == "" {
-				return fmt.Errorf("check %s, metric %s: warning threshold is required", check.Name, metric.Channel)
+			if err := validateNagiosThresholds(metric.Warning, metric.Critical); err != nil {
+				return fmt.Errorf("check %s, metric %s: %w", check.Name, metric.Channel, err)
 			}
-			// Critical is optional: an empty value declares a
-			// warn-only check (evaluateThreshold never escalates
-			// past WARNING without a critical threshold).
+			if !nagiosAggregations[metric.Aggregation] {
+				return fmt.Errorf("check %s, metric %s: unknown aggregation %q (none, average, max, min, sum, count)", check.Name, metric.Channel, metric.Aggregation)
+			}
+			if len(metric.TagSpecificThresholds) > 0 && metric.Aggregation != "" && metric.Aggregation != "none" {
+				return fmt.Errorf("check %s, metric %s: tag_specific_thresholds apply per series and need aggregation none", check.Name, metric.Channel)
+			}
+			for k, entry := range metric.TagSpecificThresholds {
+				if len(entry.Tags) == 0 {
+					return fmt.Errorf("check %s, metric %s, tag_specific_thresholds %d: tags are required", check.Name, metric.Channel, k)
+				}
+				if err := validateNagiosThresholds(entry.Warning, entry.Critical); err != nil {
+					return fmt.Errorf("check %s, metric %s, tag_specific_thresholds %d: %w", check.Name, metric.Channel, k, err)
+				}
+			}
+		}
+
+		for _, filter := range check.TagFilters {
+			if filter.Key == "" {
+				return fmt.Errorf("check %s: a tag filter has no key", check.Name)
+			}
+			if !nagiosTagOperators[filter.Operator] {
+				return fmt.Errorf("check %s, tag filter %s: unknown operator %q (in, not_in, equals, not_equals, exists)", check.Name, filter.Key, filter.Operator)
+			}
+			if filter.Operator != "exists" && len(filter.Values) == 0 {
+				return fmt.Errorf("check %s, tag filter %s: operator %s needs values", check.Name, filter.Key, filter.Operator)
+			}
 		}
 	}
 
+	return nil
+}
+
+var nagiosAggregations = map[string]bool{
+	"": true, "none": true, "average": true, "avg": true, "max": true, "min": true, "sum": true, "count": true,
+}
+
+var nagiosTagOperators = map[string]bool{
+	"in": true, "not_in": true, "equals": true, "not_equals": true, "exists": true,
+}
+
+// validateNagiosThresholds rejects at load what evaluateThreshold would
+// otherwise turn into a permanent UNKNOWN. Critical is optional: an
+// empty value declares a warn-only check.
+func validateNagiosThresholds(warning, critical string) error {
+	if warning == "" {
+		return fmt.Errorf("warning threshold is required")
+	}
+	if _, err := strconv.ParseFloat(warning, 64); err != nil {
+		return fmt.Errorf("warning threshold %q is not a number", warning)
+	}
+	if strings.TrimSpace(critical) == "" {
+		return nil
+	}
+	if _, err := strconv.ParseFloat(critical, 64); err != nil {
+		return fmt.Errorf("critical threshold %q is not a number", critical)
+	}
 	return nil
 }
 
@@ -215,4 +368,51 @@ func (cm *ConfigurationManager) ReloadNagiosConfig() error {
 
 	cm.logger.Info().Msg("Nagios configuration cache cleared, will reload on next access")
 	return nil
+}
+
+// NagiosFileReport is what config check says about the operator's
+// nagios.yaml: where it was found, why it would be refused, and which of
+// its checks can only ever answer UNKNOWN here.
+type NagiosFileReport struct {
+	Path     string
+	Err      error
+	Warnings []string
+}
+
+// CheckNagiosFile runs the loader the agent runs at start against the
+// nagios.yaml that sits next to agentConfigPath (or at the historical
+// config/nagios.yaml), so an operator learns a file is refused before
+// restarting rather than from the log after. found is false when there is
+// no such file, which is not a problem: the shipped checks are served.
+func CheckNagiosFile(agentConfigPath string) (report NagiosFileReport, found bool) {
+	cm := &ConfigurationManager{}
+	candidates := []string{filepath.Join(filepath.Dir(agentConfigPath), "nagios.yaml"), filepath.Join("config", "nagios.yaml")}
+	for _, path := range candidates {
+		config, err := cm.loadNagiosConfigFromFile(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		report.Path = path
+		if err != nil {
+			report.Err = err
+			return report, true
+		}
+		undeclared, err := undeclaredNagiosChannels(config, runtime.GOOS)
+		if err != nil {
+			report.Warnings = append(report.Warnings, "channels not checked against the probe definitions: "+err.Error())
+			return report, true
+		}
+		for _, u := range undeclared {
+			switch {
+			case len(u.Platforms) > 0:
+				report.Warnings = append(report.Warnings, fmt.Sprintf("check %q: %s is emitted on %s only, the check reports UNKNOWN on %s", u.Check, u.Channel, strings.Join(u.Platforms, ", "), runtime.GOOS))
+			case u.Hint != "":
+				report.Warnings = append(report.Warnings, fmt.Sprintf("check %q: %s is a display label; a check matches the metric name, use %s", u.Check, u.Channel, u.Hint))
+			default:
+				report.Warnings = append(report.Warnings, fmt.Sprintf("check %q: no probe definition emits %s; the check reports UNKNOWN unless a probe with dynamic metric names produces it", u.Check, u.Channel))
+			}
+		}
+		return report, true
+	}
+	return report, false
 }

@@ -21,6 +21,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
@@ -341,6 +342,27 @@ func checkConfig(configPath string) {
 
 	fmt.Printf("Checking configuration: %s\n\n", absPath)
 
+	// The service reads ${env:} values from its unit, which the shell
+	// running this check does not have: a bearer token set there made
+	// every check end on an error for a working file (#892). Check with
+	// the service's environment when it runs this configuration; a
+	// variable already exported in the shell wins.
+	unitEnv, unitEnvErr := serviceEnvironment(absPath)
+	if unitEnvErr != nil {
+		fmt.Printf("  [WARN] Could not read the service environment: %v\n", unitEnvErr)
+	}
+	applied := 0
+	for k, v := range unitEnv {
+		if _, set := os.LookupEnv(k); !set {
+			if err := os.Setenv(k, v); err == nil {
+				applied++
+			}
+		}
+	}
+	if applied > 0 {
+		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent unit's environment\n", applied)
+	}
+
 	// Read raw bytes once so YAML-syntax errors can still print a
 	// useful "near this line" context (LoadFromDisk only returns a
 	// wrapped error).
@@ -484,9 +506,15 @@ func checkConfig(configPath string) {
 			fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
 		}
 		registeredProbes := probes.GetRegisteredProbeTypes()
-		for _, p := range config.Probes {
+		duplicate := duplicateProbeIndexes(config.Probes)
+		for i, p := range config.Probes {
 			if p.Name == "" {
 				fmt.Println("  [ERROR] Probe with empty name")
+				errorCount++
+				continue
+			}
+			if duplicate[i] {
+				fmt.Printf("  [ERROR] Probe %q (type: %s): the name is already used by an earlier probe; the agent runs the first and ignores this one\n", p.Name, p.Type)
 				errorCount++
 				continue
 			}
@@ -496,7 +524,7 @@ func checkConfig(configPath string) {
 				continue
 			}
 			if !registeredProbes[p.Type] {
-				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
+				fmt.Printf("  [ERROR] Probe %q: %s\n", p.Name, license.NotInThisBuild(p.Type))
 				errorCount++
 				continue
 			}
@@ -598,7 +626,10 @@ func checkConfig(configPath string) {
 			}
 			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
 		}
+		reportEntityEmission(config.Entities, config.Storage)
 	}
+
+	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
 
 	// Binary writability. What is correct differs per platform: on Linux the
 	// daemon must NOT be able to write its own executable (#794), everywhere
@@ -777,6 +808,24 @@ func showYAMLErrorContext(content string, yamlErr error) {
 }
 
 // validateProbeParams checks required parameters for each probe type
+// duplicateProbeIndexes marks every probe whose name an earlier probe
+// already uses: the sensor starts the first and skips the rest, so each
+// of them is configuration that never collects.
+func duplicateProbeIndexes(list []configuration.ProbeConfig) map[int]bool {
+	seen := map[string]bool{}
+	dup := map[int]bool{}
+	for i, p := range list {
+		if p.Name == "" {
+			continue
+		}
+		if seen[p.Name] {
+			dup[i] = true
+		}
+		seen[p.Name] = true
+	}
+	return dup
+}
+
 func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
 	// Checked for every probe type, before anything else: a parameter the
 	// probe does not read is invisible at runtime, and this verb is where
@@ -1071,4 +1120,32 @@ func extractAdminKeyFromConfig(configPath string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// reportEntityEmission says, next to an OTLP output that just read as
+// valid, that no entity event will leave this agent when nothing turns
+// emission on. It reports whether the note was printed.
+//
+// Emission is off unless an `entities:` block or the output's
+// `signals.entities.enabled` says otherwise. That default is deliberate,
+// so this is a note rather than a warning: an install that never wanted
+// entities is correct. What was not correct was the silence — a
+// hand-written strategies.d exports metrics and logs normally, `[OK]
+// Storage: otlp` prints, and the host is absent from every topology
+// built on the rail, with nothing anywhere saying why (#938).
+func reportEntityEmission(entities *configuration.EntitiesConfig, storage []configuration.StorageConfig) bool {
+	hasOTLP := false
+	for _, s := range storage {
+		if s.Name == "otlp" {
+			hasOTLP = true
+		}
+	}
+	if !hasOTLP || entitydetect.Resolve(entities, storage, "").Enabled {
+		return false
+	}
+	fmt.Println("  [NOTE] No entity event is emitted: neither an `entities:` block nor")
+	fmt.Println("         `signals.entities.enabled` on the otlp output is set. Metrics and")
+	fmt.Println("         logs export normally; a consumer of the topology sees this host")
+	fmt.Println("         as absent. Add `entities: {enabled: true}` to turn it on.")
+	return true
 }
