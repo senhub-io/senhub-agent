@@ -219,6 +219,12 @@ senhub-agent key show
 
 Prints the configured agent key — the bearer token needed to reach the web interface and to configure PRTG / Nagios scrapers. It resolves the key whether it is still inline in the config or has been sealed into the store as `${secret:agent.key}`. Because it reveals a sealed value, the command runs behind the same privilege gate as the service commands.
 
+```bash
+senhub-agent key instance-id
+```
+
+Prints the agent's instance id: the `service.instance.id` its telemetry and its topology entity carry, an RFC 4122 UUID derived from the agent key. Use it to find this agent in a metrics store or in a topology graph. It is not a credential; `senhub-agent status` and the **Agent** card of the web console show it too.
+
 ## Database Helpers
 
 ### db-monitoring init

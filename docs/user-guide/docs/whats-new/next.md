@@ -129,6 +129,11 @@ collection gaps that comparison exposed.
 
 ## Features
 
+- **The agent shows its instance id.** `senhub-agent key instance-id`,
+  `senhub-agent status` and the **Agent** card of the web console show
+  the `service.instance.id` the agent's telemetry and entity carry, so
+  it can be found in a metrics store or a topology graph.
+
 - **The Zabbix output**, as a native active agent. It connects out to
   port 10051, registers the host through autoregistration, asks which
   items the server wants and pushes their values. Low-level discovery
