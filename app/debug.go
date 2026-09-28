@@ -4,6 +4,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -128,7 +129,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 		if err == nil {
 			// Enrich with dashboard URL from config
 			if configPath != "" {
-				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
+				systemStatus.Connection.DashboardURL = consoleHint()
 			}
 			// Successfully got status from running agent
 			fmt.Print(formatter.FormatSystemStatus(*systemStatus))
@@ -244,15 +245,20 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 			systemStatus.Connection.Source = "Configuration file"
 			systemStatus.Connection.Status = "Available"
 
-			// Build dashboard URL from config
-			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
-			if err == nil {
-				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
-			}
+			systemStatus.Connection.DashboardURL = consoleHint()
 		}
 	}
 
 	return systemStatus, nil
+}
+
+// consoleHint is what status and help show for the console. The console
+// answers the administration key only, so an address built on the agent
+// key answered 401; and the administration key does not belong in output
+// that is routinely pasted into a ticket. The command prints the address
+// to whoever has the rights to read it.
+func consoleHint() string {
+	return "run '" + filepath.Base(os.Args[0]) + " console' (or 'console --print' for the address)"
 }
 
 // buildDashboardURL constructs the dashboard URL from the agent
