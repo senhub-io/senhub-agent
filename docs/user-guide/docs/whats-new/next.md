@@ -272,6 +272,13 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **The console's list fields show their example one value per line.**
+  A list field split on lines but displayed the probe's example
+  comma-separated (`wuauserv, Spooler`), so a list typed like the
+  example was saved as one value; for Windows Services that value matched
+  no service and nothing was collected. Ten probe types had such an
+  example.
+
 - **The container's volume warning names only what is lost.** A
   container started with `SENHUB_HOST_ID` and `SENHUB_AGENT_KEY` but no
   volume was told it would arrive as a new host; those two variables
