@@ -140,6 +140,21 @@ otlp_fragment_extras() {
     printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
     log "OTLP export authenticates with OTLP_BEARER_TOKEN"
   fi
+  # Entities (the host, the agent, what its probes watch) are what a
+  # topology backend builds its map from; without them a container agent
+  # sends measurements nobody can place. On by default in the image.
+  case "${SENHUB_ENTITIES:-true}" in
+    true | TRUE | True | 1 | yes)
+      if ! grep -q '^  signals:' "$fragment"; then
+        printf '  signals:\n    entities:\n      enabled: true\n' >> "$fragment"
+      fi
+      ;;
+    false | FALSE | False | 0 | no) ;;
+    *)
+      log "SENHUB_ENTITIES must be true or false, not '$SENHUB_ENTITIES'"
+      exit 1
+      ;;
+  esac
   case "${SENHUB_OTLP_TLS:-true}" in
     true | TRUE | True | 1 | yes) ;;
     false | FALSE | False | 0 | no)
