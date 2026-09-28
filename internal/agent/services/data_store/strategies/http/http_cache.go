@@ -615,6 +615,34 @@ func (c *MetricCache) liveWindowLocked(probeName string) time.Duration {
 	return c.ttl + c.cadences[strings.ToLower(probeName)]*3/2
 }
 
+// retireSupersededLocked drops, for each probe (case-folded name) that
+// just delivered a batch, the series its previous runs reported and this
+// one did not: a series stored more than half a cadence before the batch.
+// A probe whose target went down reports only that; its other values were
+// served as current until the live window closed, on PRTG, Nagios and
+// Prometheus alike (#951). Batches of one run arrive seconds apart and
+// are kept together; a probe with no known cadence is left alone. The
+// caller holds c.mu.
+func (c *MetricCache) retireSupersededLocked(probes map[string]bool, arrival time.Time) {
+	for idxKey := range probes {
+		interval := c.cadences[idxKey]
+		if interval <= 0 {
+			continue
+		}
+		for tsKey := range c.probeIndex[idxKey] {
+			m, ok := c.timeSeries[tsKey]
+			if !ok || arrival.Sub(m.Timestamp) <= interval/2 {
+				continue
+			}
+			delete(c.timeSeries, tsKey)
+			delete(c.probeIndex[idxKey], tsKey)
+		}
+		if len(c.probeIndex[idxKey]) == 0 {
+			delete(c.probeIndex, idxKey)
+		}
+	}
+}
+
 // IsLive reports whether a cached value is still current at now.
 func (c *MetricCache) IsLive(metric CachedMetric, now time.Time) bool {
 	c.mu.RLock()
@@ -763,6 +791,8 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 		Msg("Cache - Adding data points")
 
 	now := time.Now()
+	batchProbes := map[string]bool{}
+	defer c.retireSupersededLocked(batchProbes, now)
 
 	for _, dp := range dataPoints {
 		// Convert tags from []tags.Tag to map[string]string
@@ -879,6 +909,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			c.probeIndex[idxKey] = make(map[string]bool)
 		}
 		c.probeIndex[idxKey][tsKey] = true
+		batchProbes[idxKey] = true
 
 		c.logger.Debug().
 			Str("ts_key", tsKey).
