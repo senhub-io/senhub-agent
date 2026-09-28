@@ -357,6 +357,10 @@ collection gaps that comparison exposed.
   flagged node_exporter and almost any exporter, the probe's ordinary
   use. Only the agent's legacy path, or `/metrics` on this host's
   default agent port, is warned about now.
+- **A Cassandra node without traffic is no longer reported down.** On a
+  node that has served no read or no write, the latency mean has no value
+  yet and Jolokia returns it empty; the probe failed its whole collection
+  on it and published `up = 0`. It now leaves that one measurement out.
 
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and

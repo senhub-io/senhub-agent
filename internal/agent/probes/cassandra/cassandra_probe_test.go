@@ -369,3 +369,38 @@ func TestLatencyConversionToMs(t *testing.T) {
 		}
 	}
 }
+
+// A node that served no read has no read latency yet: JMX's NaN arrives as
+// null through Jolokia. The probe reported the whole node down for it (a
+// fresh node on the beta 3 retest); it now skips that point only.
+func TestCollect_NoReadYetKeepsTheNodeUp(t *testing.T) {
+	fix := defaultFixture()
+	fix.responses["org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency/Mean"] = nil
+	fix.responses["org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency/99thPercentile"] = nil
+	srv := httptest.NewServer(fix.handler())
+	defer srv.Close()
+
+	points, err := newTestProbe(t, srv.URL+"/jolokia").Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	up, readLatency := -1.0, 0
+	for _, dp := range points {
+		if dp.Name == "senhub.cassandra.up" {
+			up = dp.Value
+		}
+		if dp.Name == "cassandra.client.requests.latency" {
+			for _, tg := range dp.Tags {
+				if tg.Key == "operation" && tg.Value == "read" {
+					readLatency++
+				}
+			}
+		}
+	}
+	if up != 1 {
+		t.Errorf("up = %v, want 1: an empty latency is not a down node", up)
+	}
+	if readLatency != 0 {
+		t.Errorf("a read latency point was published from a null value")
+	}
+}
