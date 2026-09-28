@@ -399,6 +399,12 @@ collection gaps that comparison exposed.
   served them, for up to about two and a half minutes. A run of a probe
   now retires the series it no longer reports. Zabbix keeps them in
   discovery, so its items are not disabled for the length of an outage.
+- **Nagios checks read the same way throughout.** A metric the check
+  aggregates, such as the processor in `system_health`, answered
+  `OK - OK: cpu_usage_total 2.50% (aggregated from 1 metrics)` beside
+  metrics written `cpu_user: OK 0.10%`. It now reads
+  `cpu_usage_total: OK 2.50%`, and names the aggregation only when it
+  combined several series: `(max of 4 series)`.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
