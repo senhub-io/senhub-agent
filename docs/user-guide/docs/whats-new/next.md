@@ -129,6 +129,11 @@ collection gaps that comparison exposed.
 
 ## Features
 
+- **`license activate` reads the token from standard input.**
+  `senhub-agent license activate - < license.jwt` keeps the token out of
+  the process list and the shell history, as `secret set` already does
+  for secrets. The argument still works.
+
 - **The agent shows its instance id.** `senhub-agent key instance-id`,
   `senhub-agent status` and the **Agent** card of the web console show
   the `service.instance.id` the agent's telemetry and entity carry, so
