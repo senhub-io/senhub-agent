@@ -235,8 +235,11 @@ func TestParseConfig_Errors(t *testing.T) {
 func TestLooksLikeOwnEndpoint(t *testing.T) {
 	cases := map[string]bool{
 		"http://127.0.0.1:9100/api/AGENTKEY/prometheus/metrics": true,
-		"http://127.0.0.1:9100/metrics":                         true,
-		"http://node-exporter:9100/metrics/":                    true,
+		"http://127.0.0.1:8080/metrics":                         true,
+		"http://localhost/metrics":                              true,
+		"http://127.0.0.1:9100/metrics":                         false,
+		"http://node-exporter:9100/metrics/":                    false,
+		"http://10.10.0.12:9100/metrics":                        false,
 		"http://snmp-target:9116/snmp":                          false,
 		"http://app:8080/internal/metrics/cpu":                  false,
 	}
