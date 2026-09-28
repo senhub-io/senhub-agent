@@ -417,6 +417,11 @@ collection gaps that comparison exposed.
   as a sidecar on `localhost:4317`, could only be reached by mounting a
   whole configuration; the export failed on "first record does not look
   like a TLS handshake". `SENHUB_OTLP_TLS=false` now does it.
+- **The free tier is described as it is.** Without a licence the agent
+  logged "using free tier (cpu, memory, logicaldisk, network)", four
+  probes, while the free tier runs every probe type except the paid
+  ones. The message now says so.
+
 - **No colour codes in container logs.** Run in the foreground, as a
   container runs it, the agent wrote its log lines with terminal colour
   codes, which reached `docker logs` and log collectors as `[90m` and
