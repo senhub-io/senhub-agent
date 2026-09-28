@@ -60,6 +60,10 @@ type storedMetric struct {
 	tags       map[string]string
 	histogram  *datapoint.HistogramValue
 	observedAt time.Time
+	// receivedAt is when the store took the point, on the agent's clock.
+	// observedAt may come from the source (a backup job's end time) and
+	// cannot tell one probe run from the next; the arrival time can.
+	receivedAt time.Time
 	// restored marks an entry read back from the checkpoint and not
 	// observed since: its producer may be gone, so its value is never
 	// presented as current until a datapoint replaces it.
@@ -144,6 +148,10 @@ func (s *metricStore) withMemoryLimiter(ml *memoryLimiter) *metricStore {
 // series over admitting unbounded new cardinality, which is the
 // expected operator preference when a probe goes rogue on a label.
 func (s *metricStore) upsert(dp datapoint.DataPoint) {
+	s.upsertAt(dp, time.Now())
+}
+
+func (s *metricStore) upsertAt(dp datapoint.DataPoint, receivedAt time.Time) {
 	tagMap := flattenTags(dp.Tags)
 	probeName := tagMap["probe_name"]
 	probeType := tagMap["probe_type"]
@@ -220,8 +228,39 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		tags:       tagsCopy,
 		histogram:  dp.Histogram,
 		observedAt: when,
+		receivedAt: receivedAt,
 	}
 	s.mu.Unlock()
+}
+
+// retireSuperseded drops, for each probe that just delivered a batch,
+// the series its previous runs reported and this one did not. A probe
+// whose target went down keeps running and reports only that the target
+// is down; its other series were still inside the vouching window and
+// went on being exported as current for minutes (#951). A run
+// supersedes the one before it: a series received more than half a
+// cadence before the batch belongs to an earlier run. Batches of one
+// run arrive seconds apart and are never mistaken for two runs. A probe
+// with no known cadence is left alone.
+func (s *metricStore) retireSuperseded(probes map[string]bool, arrival time.Time) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	retired := 0
+	for k, e := range s.entries {
+		if !probes[e.probeName] {
+			continue
+		}
+		interval := s.cadence[e.probeName]
+		if interval <= 0 || arrival.Sub(e.receivedAt) <= interval/2 {
+			continue
+		}
+		delete(s.entries, k)
+		if s.probeCounts[e.probeName] > 0 {
+			s.probeCounts[e.probeName]--
+		}
+		retired++
+	}
+	return retired
 }
 
 // probeSeriesCount returns the current number of distinct series held

@@ -650,6 +650,13 @@ func (s *OTLPSyncStrategy) warnMissingMappingOnce(m otelmapper.CacheMetric, err 
 // every Metrics.Interval. Datapoints without probe identity are
 // silently dropped (they cannot be routed through otelmapper).
 func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
+	arrival := time.Now()
+	probes := map[string]bool{}
+	defer func() {
+		if len(probes) > 0 {
+			s.store.retireSuperseded(probes, arrival)
+		}
+	}()
 	for _, dp := range data {
 		// Points ingested from a third-party application take the verbatim
 		// relay instead (metrics_relay.go), which ships them under the
@@ -661,7 +668,10 @@ func (s *OTLPSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 		if s.metricsRelay != nil && dataPointTag(dp, tagProbeType) == relayedProbeType {
 			continue
 		}
-		s.store.upsert(dp)
+		s.store.upsertAt(dp, arrival)
+		if name := dataPointTag(dp, "probe_name"); name != "" {
+			probes[name] = true
+		}
 	}
 	return nil
 }
