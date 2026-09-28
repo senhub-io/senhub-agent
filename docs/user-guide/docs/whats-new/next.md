@@ -452,6 +452,12 @@ collection gaps that comparison exposed.
   `CAP_NET_BIND_SERVICE` capability in a unit drop-in, or a port above
   1023. The syslog guide no longer suggests `setcap`, which the service
   unit ignores.
+- **A listener keeps listening when its configuration changes.** Editing
+  a syslog, trap or OTLP receiver probe started the new instance while
+  the old one still held the port: the new one failed with "address
+  already in use", the old one was then stopped, and nothing listened
+  until the retry two minutes later. The old instance is now stopped
+  first.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
