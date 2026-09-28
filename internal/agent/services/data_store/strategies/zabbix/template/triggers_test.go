@@ -49,7 +49,7 @@ func TestAStateMetricRaisesTheProblemsItsLookupNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := prototypesByKey(t, exp)["senhub.netscaler.lbvserver.state[{#PROBE}]"]
+	p := prototypesByKey(t, exp)["senhub.netscaler.lbvserver.state[{#PROBE_NETSCALER}]"]
 	if len(p.TriggerPrototypes) != 2 {
 		t.Fatalf("triggers = %d, want one for the error codes and one for the warnings", len(p.TriggerPrototypes))
 	}
@@ -85,12 +85,12 @@ func TestAThresholdBecomesTunableTriggers(t *testing.T) {
 	if macros["{$SENHUB.MEMORY_USED_PERCENT.WARN}"] != "85" || macros["{$SENHUB.MEMORY_USED_PERCENT.CRIT}"] != "95" {
 		t.Errorf("macros = %v", macros)
 	}
-	p := prototypesByKey(t, exp)["senhub.system.memory.utilization[{#PROBE}]"]
+	p := prototypesByKey(t, exp)["senhub.system.memory.utilization[{#PROBE_MEMORY}]"]
 	if len(p.TriggerPrototypes) != 2 {
 		t.Fatalf("triggers = %d, want critical and warning", len(p.TriggerPrototypes))
 	}
 	crit, warn := p.TriggerPrototypes[0], p.TriggerPrototypes[1]
-	if crit.Expression != "min(/SenHub memory/senhub.system.memory.utilization[{#PROBE}],5m)>{$SENHUB.MEMORY_USED_PERCENT.CRIT}" {
+	if crit.Expression != "min(/SenHub memory/senhub.system.memory.utilization[{#PROBE_MEMORY}],5m)>{$SENHUB.MEMORY_USED_PERCENT.CRIT}" {
 		t.Errorf("critical expression = %q", crit.Expression)
 	}
 	if len(warn.Dependencies) != 1 || warn.Dependencies[0].Expression != crit.Expression {
@@ -156,7 +156,7 @@ func TestItemsAndTriggersCarryTheNativeTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := prototypesByKey(t, exp)["senhub.system.cpu.utilization[{#PROBE}]"]
+	p := prototypesByKey(t, exp)["senhub.system.cpu.utilization[{#PROBE_CPU}]"]
 	if len(p.Tags) != 1 || p.Tags[0] != (Tag{Tag: "component", Value: "cpu"}) {
 		t.Errorf("item tags = %v, want component: cpu", p.Tags)
 	}

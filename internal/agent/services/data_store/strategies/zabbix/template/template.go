@@ -298,7 +298,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		// family, under the rule that discovers which of its values the
 		// host actually feeds.
 		if f := familyOf[m.Name]; f != nil {
-			key := variantPrototypeKey(opts.Prefix, f)
+			key := variantPrototypeKey(opts.Prefix, def.ProbeName, f)
 			if seenKeys[key] {
 				continue
 			}
@@ -329,7 +329,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 			ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
 			rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
 			for _, part := range HistogramParts {
-				key := prototypeKeyPart(opts.Prefix, m, labels, part)
+				key := prototypeKeyPart(opts.Prefix, def.ProbeName, m, labels, part)
 				if seenKeys[key] {
 					continue
 				}
@@ -350,7 +350,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 			continue
 		}
 
-		key := prototypeKey(opts.Prefix, m, labels)
+		key := prototypeKey(opts.Prefix, def.ProbeName, m, labels)
 		if seenKeys[key] {
 			continue
 		}
@@ -360,7 +360,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		proto := ItemPrototype{
 			Name:        prototypeName(m, labels),
 			Type:        "ZABBIX_ACTIVE",
-			Key:         prototypeKey(opts.Prefix, m, labels),
+			Key:         prototypeKey(opts.Prefix, def.ProbeName, m, labels),
 			Delay:       opts.ItemDelay,
 			ValueType:   "FLOAT",
 			Units:       units(m),
@@ -502,13 +502,13 @@ func isHistogram(m transformers.MetricDefinition) bool {
 	return m.Otel != nil && m.Otel.Distribution
 }
 
-func prototypeKey(prefix string, m transformers.MetricDefinition, labels []string) string {
-	return prototypeKeyPart(prefix, m, labels, "")
+func prototypeKey(prefix, probeType string, m transformers.MetricDefinition, labels []string) string {
+	return prototypeKeyPart(prefix, probeType, m, labels, "")
 }
 
 // prototypeKeyPart builds the key of one part of a metric: the metric
 // itself when part is empty, one of its histogram parts otherwise.
-func prototypeKeyPart(prefix string, m transformers.MetricDefinition, labels []string, part string) string {
+func prototypeKeyPart(prefix, probeType string, m transformers.MetricDefinition, labels []string, part string) string {
 	name := m.Name
 	if m.Otel != nil && m.Otel.Name != "" {
 		name = m.Otel.Name
@@ -516,7 +516,7 @@ func prototypeKeyPart(prefix string, m transformers.MetricDefinition, labels []s
 	if part != "" {
 		name += "." + part
 	}
-	params := []string{"{#PROBE}"}
+	params := []string{ProbeKeyMacro(probeType)}
 	for _, l := range labels {
 		params = append(params, macroFor(l))
 	}

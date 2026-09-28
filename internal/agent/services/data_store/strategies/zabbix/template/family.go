@@ -11,6 +11,17 @@ import (
 // other dimension so one template serves every instance of a type.
 const probeMacroName = "{#PROBE}"
 
+// ProbeKeyMacro is the macro a prototype key carries the probe instance
+// name under. It names the probe type because Zabbix wants every
+// prototype key unique across the templates linked to one host: with a
+// shared {#PROBE}, the PostgreSQL and MySQL templates both declared
+// senhub.db.up[{#PROBE}], and a host given both was refused every
+// template. The discovery rows carry it beside {#PROBE}, with the same
+// value, so the concrete key the agent sends is unchanged.
+func ProbeKeyMacro(probeType string) string {
+	return macroFor("probe." + probeType)
+}
+
 // A variant family is the set of metrics of one probe that share an OTel
 // name and a dimension set and differ only by the values of the same
 // attributes: the used and the free bytes of a filesystem, the bytes
@@ -178,8 +189,8 @@ func variantRuleKey(prefix, probeType, otelName string, labels []string) string 
 
 // variantPrototypeKey is the family's single key, with the attribute
 // values replaced by the macros the rule discovers.
-func variantPrototypeKey(prefix string, f *family) string {
-	params := []string{probeMacroName}
+func variantPrototypeKey(prefix, probeType string, f *family) string {
+	params := []string{ProbeKeyMacro(probeType)}
 	for _, l := range f.labels {
 		params = append(params, macroFor(l))
 	}

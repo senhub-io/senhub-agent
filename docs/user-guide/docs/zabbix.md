@@ -180,10 +180,18 @@ goes to standard output).
 
 Every item of a template is a prototype under a low-level discovery rule,
 because the probe instance name is discovered too: the rule
-`senhub.discovery[memory]` returns `[{"{#PROBE}":"memory"}]`, and a
-metric with dimensions hangs under the rule of its dimension set,
+`senhub.discovery[memory]` returns
+`[{"{#PROBE}":"memory","{#PROBE_MEMORY}":"memory"}]`, and a metric with
+dimensions hangs under the rule of its dimension set,
 `senhub.discovery[logicaldisk,device,mount_point]`, with one macro per
-dimension. The agent serves these discovery keys like any other item, so
+dimension.
+
+Both macros carry the same instance name. The item keys use the one
+named after the probe type, `senhub.db.up[{#PROBE_POSTGRESQL}]`, because
+Zabbix refuses to link two templates that declare the same key, and a
+plain `{#PROBE}` made the PostgreSQL and MySQL templates both declare
+`senhub.db.up[{#PROBE}]`. The key the agent sends is the same either
+way, `senhub.db.up[production-postgres]`; item names keep `{#PROBE}`. The agent serves these discovery keys like any other item, so
 a host gets its items within one discovery interval (1 hour by default,
 `--delay` does not change it; edit the rule in Zabbix if you want faster
 discovery on a lab). An enum metric with a lookup gets a value map.

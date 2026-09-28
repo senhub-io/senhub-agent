@@ -70,7 +70,7 @@ func TestGenerateWritesOneRulePerDimensionSetWithPrototypesUnderIt(t *testing.T)
 		t.Fatalf("the family must give exactly one prototype; got %+v", usage.ItemPrototypes)
 	}
 	proto := usage.ItemPrototypes[0]
-	if proto.Key != "senhub.system.filesystem.usage[{#PROBE},{#DRIVE},{#STATE}]" {
+	if proto.Key != "senhub.system.filesystem.usage[{#PROBE_LOGICALDISK},{#DRIVE},{#STATE}]" {
 		t.Errorf("key = %s", proto.Key)
 	}
 	if proto.Name != "{#PROBE}: Disk ({#DRIVE}, {#STATE})" || proto.Units != "B" || proto.Type != "ZABBIX_ACTIVE" || proto.ValueType != "FLOAT" || proto.Description != "Free space" {
@@ -82,7 +82,7 @@ func TestGenerateWritesOneRulePerDimensionSetWithPrototypesUnderIt(t *testing.T)
 		t.Fatalf("the skipped metric must not appear; plain prototypes = %+v", plain.ItemPrototypes)
 	}
 	health := plain.ItemPrototypes[0]
-	if health.Key != "senhub.disk.health[{#PROBE}]" || health.ValueMap == nil || health.ValueMap.Name != "sfs.generic.boolean" || health.Units != "" {
+	if health.Key != "senhub.disk.health[{#PROBE_LOGICALDISK}]" || health.ValueMap == nil || health.ValueMap.Name != "sfs.generic.boolean" || health.Units != "" {
 		t.Errorf("enum prototype = %+v", health)
 	}
 	if len(tpl.ValueMaps) != 1 || tpl.ValueMaps[0].Mappings[0].Value != "0" || tpl.ValueMaps[0].Mappings[0].NewValue != "No" {
@@ -118,7 +118,7 @@ func TestEncodeProducesTheImportLayout(t *testing.T) {
 		"zabbix_export:", "version: \"6.0\"", "groups:", "name: Templates/SenHub",
 		"discovery_rules:", "key: acme.discovery.variants[logicaldisk,system.filesystem.usage,drive]",
 		"delay: 10m", "item_prototypes:",
-		"key: acme.system.filesystem.usage[{#PROBE},{#DRIVE},{#STATE}]", "delay: 30s", "value_type: FLOAT",
+		"key: acme.system.filesystem.usage[{#PROBE_LOGICALDISK},{#DRIVE},{#STATE}]", "delay: 30s", "value_type: FLOAT",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("export lacks %q\n%s", want, text)

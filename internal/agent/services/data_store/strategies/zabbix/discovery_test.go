@@ -79,7 +79,7 @@ func TestDiscoveryItemsWithoutADefinitionDiscoverTheProbeOnly(t *testing.T) {
 	items := discoveryItems("senhub", nil, []otelmapper.CacheMetric{
 		{ProbeName: "p", ProbeType: "unknown", MetricName: "x", Tags: map[string]string{"a": "b"}},
 	})
-	if len(items) != 1 || items[0].Key != "senhub.discovery[unknown]" || items[0].Value != `[{"{#PROBE}":"p"}]` {
+	if len(items) != 1 || items[0].Key != "senhub.discovery[unknown]" || items[0].Value != `[{"{#PROBE_UNKNOWN}":"p","{#PROBE}":"p"}]` {
 		t.Errorf("items = %+v", items)
 	}
 }

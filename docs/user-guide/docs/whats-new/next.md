@@ -363,6 +363,15 @@ collection gaps that comparison exposed.
   set, the query went to the named resolver, but the error still named
   the system one (`lookup x on 127.0.0.53:53`), which sent operators to
   the wrong server. It now names the resolver that was queried.
+- **Zabbix links every template to a host that runs several database
+  probes.** The PostgreSQL, MySQL, SQL Server and Oracle templates
+  declared the same prototype keys (`senhub.db.up[{#PROBE}]` and five
+  more), and Zabbix refuses a set of templates that share a key: a host
+  monitoring PostgreSQL and MySQL registered with no template at all,
+  processor and memory included. Prototype keys now carry a macro named
+  after the probe type; the keys the agent sends are unchanged. Re-run
+  `zabbix setup` to import the corrected templates, then link them to
+  the hosts that registered without them (Mass update > Templates).
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
