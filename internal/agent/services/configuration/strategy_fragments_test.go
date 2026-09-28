@@ -147,3 +147,25 @@ func TestCreateRefusesToLandOnAnUnreadableDisabledFile(t *testing.T) {
 		t.Errorf("the operator's file must be untouched, got:\n%s", raw)
 	}
 }
+
+// A header written with a reference inside it is kept as written. Sealed,
+// "Bearer ${secret:x}" became a secret whose value was a reference: the
+// substitution resolves one level, so the agent sent the reference itself
+// as its token, and the next save refused the output as unresolved.
+func TestCreateKeepsAValueThatCarriesAReference(t *testing.T) {
+	main := multiFileForFragments(t)
+	if err := os.MkdirAll(filepath.Join(filepath.Dir(main), "strategies.d"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	path, err := CreateStrategyFragment(main, "otlp", map[string]interface{}{
+		"endpoint": "collector:4317",
+		"headers":  map[string]interface{}{"Authorization": "Bearer ${secret:otlp.token}"},
+	}, true, []string{"headers"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	raw, _ := os.ReadFile(path)
+	if !strings.Contains(string(raw), "Bearer ${secret:otlp.token}") || strings.Contains(string(raw), "strategies.otlp.headers") {
+		t.Errorf("the reference must be written as typed, not sealed:\n%s", raw)
+	}
+}

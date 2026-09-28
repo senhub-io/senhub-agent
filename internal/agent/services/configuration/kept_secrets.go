@@ -88,7 +88,7 @@ func keepStored(existing, incoming map[string]interface{}, prefix string, inSecr
 			if _, set := incoming[k]; set {
 				continue
 			}
-			if strings.HasPrefix(val, "${") || (hidden && val != "") {
+			if strings.Contains(val, "${") || (hidden && val != "") {
 				incoming[k] = val
 			}
 		}

@@ -196,7 +196,9 @@ func NewOTLPSyncStrategy(
 	// "recette-030-vps") map to distinct service.instance.id / instance
 	// labels instead of colliding on a truncated prefix.
 	if cfg.Resource.ServiceInstance == "" {
-		cfg.Resource.ServiceInstance = agentConfig.GetAuthenticationKey()
+		// An RFC 4122 UUID, as the semantic conventions ask, derived from
+		// the key so it stays stable for the life of the key.
+		cfg.Resource.ServiceInstance = configuration.AgentInstanceID(agentConfig.GetAuthenticationKey())
 	}
 
 	// Build optional memory limiter from config. Pass it to the store

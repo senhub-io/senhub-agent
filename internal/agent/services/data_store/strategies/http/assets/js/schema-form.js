@@ -380,6 +380,7 @@
             const sep = t ? (/[.!?]$/.test(t) ? ' ' : '. ') : '';
             if (p.secret && !stored) t += sep + 'Kept in the secret store, never in the file.';
             if (!p.secret && stored) t += sep + 'The agent hides this value; Replace to set a new one.';
+            if (p.kind === 'string_list' && !p.enum) t += (t ? (/[.!?]$/.test(t) ? ' ' : '. ') : '') + 'One value per line.';
             if (t.trim()) { hint.textContent = t; wrap.appendChild(hint); }
             const ferr = el('span', 'ferr');
             ferr.hidden = true;
@@ -457,7 +458,10 @@
             if (p.kind === 'string_list') {
                 const ta = el('textarea', 'ta');
                 ta.style.minHeight = '60px';
-                ta.placeholder = p.example ? p.example : 'One per line';
+                // The schema examples are written for the docs, comma-separated;
+                // this field splits on lines, so show them one per line. A
+                // value typed as the example read left one bogus entry.
+                ta.placeholder = p.example ? String(p.example).split(/\s*,\s*/).join('\n') : 'One per line';
                 ta.value = Array.isArray(v) ? v.join('\n') : (v == null ? '' : String(v));
                 ta.oninput = (e) => { self.set(path, e.target.value.split('\n').map(s => s.trim()).filter(Boolean)); self._changed(false, path); };
                 wrap.appendChild(ta);

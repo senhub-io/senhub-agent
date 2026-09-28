@@ -48,6 +48,9 @@ func newStore() *store {
 func (s *store) upsert(dp datapoint.DataPoint) {
 	tagMap := make(map[string]string, len(dp.Tags))
 	for _, t := range dp.Tags {
+		if t.Private {
+			continue
+		}
 		tagMap[t.Key] = t.Value
 	}
 	probeName, probeType := tagMap[tagProbeName], tagMap[tagProbeType]

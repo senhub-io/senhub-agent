@@ -1985,7 +1985,7 @@ directly). The standard mapping:
 | OTel attribute             | Source on the agent side                     |
 |----------------------------|----------------------------------------------|
 | `service.name`             | `storage[otlp].params.resource.service.name` (default `senhub-agent`) |
-| `service.instance.id`      | the first 8 characters of `agent.key` by default; can be overridden |
+| `service.instance.id`      | a UUID v5 derived from `agent.key` by default (`configuration.AgentInstanceID`); can be overridden. One-way only because the key is a random UUID |
 | `service.version`          | build version (ldflags)                      |
 | `deployment.environment`   | operator override                            |
 | Extras                     | any other key-value pair under `resource:`   |

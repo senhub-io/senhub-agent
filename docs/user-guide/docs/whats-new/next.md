@@ -10,6 +10,14 @@ collection gaps that comparison exposed.
 
 ## Breaking Changes
 
+- **`service.instance.id` is now an RFC 4122 UUID.** The OpenTelemetry
+  semantic conventions ask for a UUID; the agent now derives one (version
+  5) from its key. Each agent's `service.instance.id` therefore changes
+  once at upgrade: series keyed on it start new, and the agent's
+  `service.instance` entity in a topology backend is replaced by a new one
+  (the old one expires). Setting `resource.service.instance.id` on the
+  OTLP output still overrides it.
+
 - **The `process` probe no longer reports every process by default.**
   Without a `filter`, it emitted six series per process, and the identity
   of those series carried the process id: a machine with 837 processes
@@ -271,6 +279,73 @@ collection gaps that comparison exposed.
   under systemd 252, 255 and 257. (#605)
 
 ## Fixes
+
+- **Enabling entities takes effect on save.** The console applies an
+  output change without a restart, but entity detection kept the choice
+  it made when the agent started: entities enabled from the console were
+  only sent after the next restart. Detection now follows the
+  configuration.
+
+- **A console value that holds a reference is written as typed.** A
+  header entered as `Bearer ${secret:name}` was sealed into a new secret
+  whose value was that reference. The output resolved it when exporting,
+  but the console's save check resolves one level, so every later edit
+  of that output was refused as "unresolved". A value carrying `${...}`
+  anywhere is now kept verbatim, as the start-time seal already did.
+
+- **Chrony is offered on Linux and macOS only.** It declared no platform,
+  so a Windows console offered it and it started there with no chronyc,
+  reporting down for ever.
+
+- **Windows Services names a selected service it cannot find.** A
+  misspelt or unreadable service simply had no series; the probe now
+  logs each such name once.
+
+- **The console's list fields show their example one value per line.**
+  A list field split on lines but displayed the probe's example
+  comma-separated (`wuauserv, Spooler`), so a list typed like the
+  example was saved as one value; for Windows Services that value matched
+  no service and nothing was collected. Ten probe types had such an
+  example.
+
+- **The container's volume warning names only what is lost.** A
+  container started with `SENHUB_HOST_ID` and `SENHUB_AGENT_KEY` but no
+  volume was told it would arrive as a new host; those two variables
+  already carry the identity and the key. The warning now lists only the
+  log bookmarks in that case, and says what losing them costs per probe.
+
+- **The Pro web application checks no longer flood the log.** Their
+  probe types had no discriminant declaration, and the pull cache warned
+  once per datapoint: dozens of lines a minute per probe. They are
+  declared, like five other probe types that lacked one, the warning is
+  logged once per type, and a test now requires the declaration for
+  every probe that has a definition.
+
+- **No internal routing label on the exported series.** The Pro web
+  application and gateway checks carried `prtg_metric_id`, a tag meant
+  for the legacy PRTG push, and it reached Prometheus, OTLP and Zabbix
+  with its unexpanded `[name]` template. Private tags now stay inside
+  the agent.
+
+- **`config check` reads the service's environment.** A token set in the
+  unit's `Environment=` or `EnvironmentFile=` was missing from the shell
+  running the check, so every such host ended on an error for a working
+  file. When the checked configuration is the one the installed service
+  runs, the check now uses the unit's variables (a variable already
+  exported in the shell wins). Linux only; values are never printed.
+
+- **`config check` reports a probe name used twice.** The agent runs
+  the first probe of that name and ignores the others, and only its log
+  said so; the check listed every one of them as OK.
+
+- **`refresh-unit` keeps the binary the service runs.** On a host
+  still in the pre-0.5.4 layout that also held an older copy under
+  `/usr/local/bin`, the refreshed unit pointed at that older copy,
+  silently downgrading the agent.
+
+- **No false warning about the update registry URL.** `update` and
+  `config check` reported that a URL ending in `/` "carries a path";
+  the built-in default itself triggered it on every update.
 
 - **A systemd-creds install no longer reports a seal failure on every
   start.** The service runs as a non-root account and only root can
