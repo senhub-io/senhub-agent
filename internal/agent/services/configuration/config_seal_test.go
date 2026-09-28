@@ -435,3 +435,26 @@ func TestSealInlineSecrets_RootOnlyBackendSaysSo(t *testing.T) {
 		t.Errorf("plaintext must stay in place:\n%s", raw)
 	}
 }
+
+// The administration key opens the console and the configuration API.
+// It is generated in plaintext into the HTTP fragment and must leave it
+// for the store on the next seal pass, like any other credential.
+func TestSealInlineSecrets_SealsTheAdministrationKey(t *testing.T) {
+	mp := secret.NewMemoryProvider()
+	secret.SetProvider(mp)
+	t.Cleanup(func() { secret.SetProvider(nil) })
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "agent.yaml")
+	writeSealFile(t, cfg, "config_version: 2\n")
+	httpFrag := filepath.Join(dir, "strategies.d", "00-http.yaml")
+	writeSealFile(t, httpFrag, "http:\n  port: 8080\n  admin_key: \"plain-admin-key-value\"\n")
+
+	if err := SealInlineSecrets(cfg, nil); err != nil {
+		t.Fatalf("SealInlineSecrets: %v", err)
+	}
+	raw, _ := os.ReadFile(httpFrag)
+	if strings.Contains(string(raw), "plain-admin-key-value") || !strings.Contains(string(raw), "${secret:") {
+		t.Errorf("the administration key was left in the file:\n%s", raw)
+	}
+}
