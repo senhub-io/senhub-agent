@@ -348,6 +348,12 @@ collection gaps that comparison exposed.
   `senhub` and could no longer read it: the reload was refused, and the
   next restart failed to start. A file written by root in the
   configuration directory now takes the owner of that directory.
+- **The install tells you which binary to call.** The closing line of a
+  Linux install repeated the path you ran the installer from, often a
+  download directory. It now names the installed
+  `/usr/local/bin/senhub-agent`, by its full path: on the RHEL family
+  `sudo` does not search `/usr/local/bin`, and `sudo senhub-agent` is
+  "command not found" there.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
