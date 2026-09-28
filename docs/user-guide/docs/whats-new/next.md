@@ -462,6 +462,13 @@ collection gaps that comparison exposed.
   `listen_address` parameter the probe has never read, and reported an
   error on a configuration that ran; the probe's own schema, which
   `config check` also applies, is what describes it.
+- **Storing a first secret with systemd-creds no longer locks out the
+  others.** On a host whose secrets live in the age store, one
+  `secret set` with the systemd-creds backend switched the whole host to
+  it: every age secret, the agent key among them, answered "secret not
+  found", and the next start failed. While both stores exist the agent
+  now reads both, which also makes moving from one to the other possible
+  one secret at a time.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
