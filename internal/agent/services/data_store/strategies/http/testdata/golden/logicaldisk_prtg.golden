@@ -1,31 +1,31 @@
 [
   {
-    "channel": "Available Bytes",
+    "channel": "Available Bytes (tmount_point)",
     "value": 88,
     "float": 1,
     "unit": "BytesDisk"
   },
   {
-    "channel": "Disk Free Mb",
+    "channel": "Disk Free Mb (tdrive)",
     "value": 42,
     "float": 1,
     "unit": "Custom",
     "customunit": "MBytes"
   },
   {
-    "channel": "Disk Free Percent",
+    "channel": "Disk Free Percent (tdrive)",
     "value": 53.5,
     "float": 1,
     "unit": "Percent"
   },
   {
-    "channel": "Disk Queue Length",
+    "channel": "Disk Queue Length (tdrive)",
     "value": 42,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "Disk Read Bytes Sec",
+    "channel": "Disk Read Bytes Sec (tdrive)",
     "value": 99.5,
     "float": 1,
     "unit": "SpeedDisk",
@@ -33,20 +33,20 @@
     "speedtime": "Second"
   },
   {
-    "channel": "Disk Reads Sec",
+    "channel": "Disk Reads Sec (tdrive)",
     "value": 76.5,
     "float": 1,
     "unit": "Custom",
     "customunit": "/s"
   },
   {
-    "channel": "Disk Used Percent",
+    "channel": "Disk Used Percent (tdrive)",
     "value": 65,
     "float": 1,
     "unit": "Percent"
   },
   {
-    "channel": "Disk Write Bytes Sec",
+    "channel": "Disk Write Bytes Sec (tdrive)",
     "value": 111,
     "float": 1,
     "unit": "SpeedDisk",
@@ -54,56 +54,56 @@
     "speedtime": "Second"
   },
   {
-    "channel": "Disk Writes Sec",
+    "channel": "Disk Writes Sec (tdrive)",
     "value": 88,
     "float": 1,
     "unit": "Custom",
     "customunit": "/s"
   },
   {
-    "channel": "Free Bytes",
+    "channel": "Free Bytes (tmount_point)",
     "value": 65,
     "float": 1,
     "unit": "BytesDisk"
   },
   {
-    "channel": "Inodes Free",
+    "channel": "Inodes Free (tmount_point)",
     "value": 42,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "Inodes Total",
+    "channel": "Inodes Total (tmount_point)",
     "value": 111,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "Inodes Used",
+    "channel": "Inodes Used (tmount_point)",
     "value": 53.5,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "Inodes Used Percent",
+    "channel": "Inodes Used Percent (tmount_point)",
     "value": 65,
     "float": 1,
     "unit": "Percent"
   },
   {
-    "channel": "Total Bytes",
+    "channel": "Total Bytes (tmount_point)",
     "value": 53.5,
     "float": 1,
     "unit": "BytesDisk"
   },
   {
-    "channel": "Used Bytes",
+    "channel": "Used Bytes (tmount_point)",
     "value": 76.5,
     "float": 1,
     "unit": "BytesDisk"
   },
   {
-    "channel": "Used Percent",
+    "channel": "Used Percent (tmount_point)",
     "value": 99.5,
     "float": 1,
     "unit": "Percent"

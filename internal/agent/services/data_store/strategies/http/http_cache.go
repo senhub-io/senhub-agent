@@ -145,7 +145,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"job_name", "job_type", // Backup jobs
 		"repo_name",                  // Repositories
 		"proxy_name",                 // Proxies
+		"object_id",                  // What makes a protected object unique: several share a name
 		"object_name", "object_type", // Protected objects
+		"platform",                   // Objects grouped by platform when they get no status channel
 		"server_name", "server_type", // Managed servers
 	},
 
@@ -165,6 +167,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"metric_type", // per collection-state series
 		"azure_app",   // per followed application
 		"reason",      // per scan-failure cause
+	},
+
+	// azure_container_app_jobs watches one job per instance, and an
+	// agent may watch several. The job name is what tells their series
+	// apart; the resource group is what tells two jobs of the same name
+	// in two groups apart.
+	"azure_container_app_jobs": {
+		"metric_type",
+		"azure_job",
+		"azure_resource_group",
 	},
 
 	// High-availability probes
@@ -200,6 +212,20 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"linux_logs":       {},
 	"windows_eventlog": {},
 	"snmp_trap":        {},
+
+	// Active checks (Pro): one URL per instance, split by url like their
+	// definitions' multi_instance_labels; the gateway probe has none.
+	"load_webapp":  {"url"},
+	"ping_webapp":  {"url"},
+	"ping_gateway": {},
+
+	// One series per metric: their definitions declare no
+	// multi_instance_labels, so an empty set is the declaration.
+	"event":     {},
+	"influxdb":  {},
+	"nats":      {},
+	"nginx":     {},
+	"zookeeper": {},
 
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
@@ -522,6 +548,10 @@ type MetricCache struct {
 	// Example: "cpu:usage_percent:core=0" or "redfish:storage.drive.temperature:drive_id=disk.bay.0"
 	// Only discriminant tags are in the key - contextual tags are in CachedMetric.Tags
 	timeSeries map[string]CachedMetric
+	// unregisteredTypes remembers the probe types already reported as
+	// missing from DiscriminantTagsRegistry: the warning is for the
+	// developer, once, not one line per datapoint for the process lifetime.
+	unregisteredTypes sync.Map
 	// Index by probe for fast probe-specific queries
 	probeIndex map[string]map[string]bool // probe_name -> set of ts_keys
 	ttl        time.Duration
@@ -532,8 +562,14 @@ type MetricCache struct {
 	// eviction frees slots, so a dropped-then-expired series can be
 	// re-admitted later. 0 = unbounded.
 	maxSeries int
-	stopChan  chan struct{}
-	logger    *logger.ModuleLogger
+	// cadences holds how often each probe collects, keyed by the
+	// case-folded probe name. A probe slower than the TTL vouches for its
+	// last value until its next run is due; without it an hourly probe
+	// was served for five minutes an hour and absent the other
+	// fifty-five, on PRTG, Nagios and Prometheus alike.
+	cadences map[string]time.Duration
+	stopChan chan struct{}
+	logger   *logger.ModuleLogger
 }
 
 // CachedMetric represents a stored metric with metadata
@@ -557,8 +593,33 @@ func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache
 		probeIndex: make(map[string]map[string]bool),
 		ttl:        ttl,
 		maxSeries:  DefaultMaxCacheSeries,
+		cadences:   make(map[string]time.Duration),
 		logger:     logger,
 	}
+}
+
+// NoteProbeCadence records how often the named probe collects.
+func (c *MetricCache) NoteProbeCadence(probeName string, interval time.Duration) {
+	if probeName == "" || interval <= 0 {
+		return
+	}
+	c.mu.Lock()
+	c.cadences[strings.ToLower(probeName)] = interval
+	c.mu.Unlock()
+}
+
+// liveWindowLocked is how long a value of the probe stays current: the
+// TTL, plus one and a half cadences for a probe whose cadence is known.
+// The caller holds c.mu.
+func (c *MetricCache) liveWindowLocked(probeName string) time.Duration {
+	return c.ttl + c.cadences[strings.ToLower(probeName)]*3/2
+}
+
+// IsLive reports whether a cached value is still current at now.
+func (c *MetricCache) IsLive(metric CachedMetric, now time.Time) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return now.Sub(metric.Timestamp) <= c.liveWindowLocked(metric.ProbeName)
 }
 
 // SetMaxSeries overrides the cardinality cap. 0 disables it. Existing
@@ -615,11 +676,13 @@ func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName str
 	if !exists {
 		// Unknown probe type - log warning and use no discriminant tags
 		// This is safe: creates single time series per metric (like system-level probes)
-		c.logger.Warn().
-			Str("probe_name", probeName).
-			Str("probe_type", probeType).
-			Str("metric_name", metricName).
-			Msg("Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+		if _, warned := c.unregisteredTypes.LoadOrStore(probeType, true); !warned {
+			c.logger.Warn().
+				Str("probe_name", probeName).
+				Str("probe_type", probeType).
+				Str("metric_name", metricName).
+				Msg("Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+		}
 		discriminantTagNames = []string{}
 	}
 
@@ -705,6 +768,9 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 		// Convert tags from []tags.Tag to map[string]string
 		tags := make(map[string]string)
 		for _, tag := range dp.Tags {
+			if tag.Private {
+				continue
+			}
 			tags[tag.Key] = tag.Value
 		}
 
@@ -834,7 +900,7 @@ func (c *MetricCache) cleanup() {
 
 	// Find expired metrics
 	for key, metric := range c.timeSeries {
-		if now.Sub(metric.Timestamp) > c.ttl {
+		if now.Sub(metric.Timestamp) > c.liveWindowLocked(metric.ProbeName) {
 			expiredKeys = append(expiredKeys, key)
 		}
 	}
@@ -943,6 +1009,9 @@ type ProbeStatistics struct {
 	Name         string    `json:"name"`
 	MetricsCount int       `json:"metrics_count"`
 	LastUpdate   time.Time `json:"last_update"`
+	// LiveWindow is how long after LastUpdate the probe's values stay
+	// current, which grows with the probe's own cadence.
+	LiveWindow time.Duration `json:"-"`
 	// TargetUp carries the probe's own verdict on whether what it watches
 	// answered, read from the `senhub.<area>.up` series that 49 probe
 	// types emit. Nil when the probe emits none, which is the case for
@@ -1035,6 +1104,7 @@ func (c *MetricCache) GetProbeStatistics() map[string]ProbeStatistics {
 			Name:         probeName,
 			MetricsCount: metricCount,
 			LastUpdate:   lastUpdate,
+			LiveWindow:   c.liveWindowLocked(probeName),
 			TargetUp:     targetUp,
 			TargetMetric: targetMetric,
 		}
@@ -1203,6 +1273,7 @@ func (c *MetricCache) GetStatistics() CacheStatistics {
 			Name:         probeName,
 			MetricsCount: count,
 			LastUpdate:   lastUpdated[probeName],
+			LiveWindow:   c.liveWindowLocked(probeName),
 		})
 	}
 

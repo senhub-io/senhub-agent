@@ -368,7 +368,11 @@ func (h *HTTPSyncStrategy) handleOutputValidate(w http.ResponseWriter, r *http.R
 			stored = p
 		}
 	}
-	if err := checkOutputParams(req.Type, paramsAsWritten(stored, req.Params)); err != nil {
+	var secretPaths []string
+	if ospec, has := outputspec.For(req.Type); has {
+		secretPaths = ospec.SecretPaths()
+	}
+	if err := checkOutputParams(req.Type, paramsAsWritten(stored, req.Params, secretPaths)); err != nil {
 		writeJSON(w, http.StatusOK, outputValidateResponse{Valid: false, Errors: []string{err.Error()}, Field: guessOutputField(req.Type, err.Error())})
 		return
 	}
@@ -402,7 +406,11 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 	// the strategy resolves them.
 	if configPath := h.agentConfig.GetConfigPath(); configPath != "" {
 		if existing, err := configuration.StrategyFragmentParams(configPath, req.Type); err == nil && existing != nil {
-			req.Params = configuration.KeepStoredReferences(existing, req.Params)
+			var secretPaths []string
+			if ospec, has := outputspec.For(req.Type); has {
+				secretPaths = ospec.SecretPaths()
+			}
+			req.Params = configuration.KeepStoredValues(existing, req.Params, secretPaths)
 		}
 	}
 	configuration.DropNilValues(req.Params)
@@ -511,7 +519,7 @@ func (h *HTTPSyncStrategy) checkOutputWrite(w http.ResponseWriter, req outputWri
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("output type %q is not in the catalogue of this agent", req.Type))
 		return spec, false
 	}
-	if err := checkOutputParams(req.Type, paramsAsWritten(stored, req.Params)); err != nil {
+	if err := checkOutputParams(req.Type, paramsAsWritten(stored, req.Params, spec.SecretPaths())); err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return spec, false
 	}

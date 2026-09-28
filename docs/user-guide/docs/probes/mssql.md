@@ -26,6 +26,7 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:563a5c3b1fdcea98204a97022933ddb9547d4fc5da80cb54edeee2c1aa49f9b1 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -48,18 +49,42 @@ the OpenTelemetry Collector contrib `sqlserverreceiver`.
 |---|---|---|
 | `senhub.db.up` | 1 | 1 when the agent's most recent ping reached the server |
 | `sqlserver.batch_request.rate` | {request}/s | Batch requests per second |
-| `sqlserver.transaction.rate` | {transaction}/s | Transactions per second |
-| `sqlserver.connections.open` | {connection} | Open connections |
-| `sqlserver.buffer_cache_hit_ratio` | % | Buffer cache hit ratio (data pages found in memory) |
-| `sqlserver.page.life_expectancy` | s | Estimated page life expectancy in the buffer pool |
-| `sqlserver.lock.wait_time.avg` | ms | Average lock wait time |
-| `sqlserver.deadlock.rate` | {deadlock}/s | Deadlocks per second |
-| `sqlserver.database.state` | 1 | Database state per database (1 = ONLINE), tagged with `database` |
-| `sqlserver.database.io.read` | By | I/O bytes read per database |
-| `sqlserver.database.io.write` | By | I/O bytes written per database |
+| `sqlserver.transaction_rate` | {transaction}/s | Transactions per second |
+| `sqlserver.user.connection.count` | {connection} | Open connections |
+| `sqlserver.page_buffer_cache.hit_ratio` | % | Buffer cache hit ratio (data pages found in memory) |
+| `sqlserver.page_life_expectancy` | s | Estimated page life expectancy in the buffer pool |
+| `sqlserver.lock_wait_rate` | # | Lock requests per second that had to wait |
+| `sqlserver.database.status` | 1 | Database state per database (1 = ONLINE), tagged with `database` |
+| `sqlserver.database.io` | B | Bytes read and written per database, tagged with `direction` |
 
 ## Operational notes
 
 - The monitoring account needs `VIEW SERVER STATE` and `VIEW DATABASE STATE` permissions. A minimal-privilege account is recommended over `sa`.
 - Windows Integrated Authentication (omit `username`/`password`) works when the agent runs under a domain account with the required SQL Server permissions.
 - For SQL Server on a named instance, use `host: server\InstanceName`.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.db.up` | `senhub.db.up` | Database Up | # | 1 if the agent's most recent ping reached the server, 0 otherwise |
+| `sqlserver.batch_request.rate` | `sqlserver.batch_request.rate` | Batch Requests/sec | # | T-SQL batch requests received per second (Batch Requests/sec) |
+| `sqlserver.transaction_rate` | `sqlserver.transaction_rate` | Transactions/sec | # | Transactions started per second across all databases (Transactions/sec) |
+| `sqlserver.page_buffer_cache.hit_ratio` | `sqlserver.page_buffer_cache.hit_ratio` | Buffer Cache Hit Ratio | % | Percentage of page requests served from the buffer pool without a physical read |
+| `sqlserver.page_life_expectancy` | `sqlserver.page_life_expectancy` | Page Life Expectancy | s | Seconds a page is expected to stay in the buffer pool (Page life expectancy) |
+| `sqlserver.lock_wait_rate` | `sqlserver.lock_wait_rate` | Lock Waits/sec | # | Lock requests per second that required the caller to wait (Lock Waits/sec) |
+| `sqlserver.processes.blocked` | `sqlserver.processes.blocked` | Processes Blocked | # | Number of currently blocked processes (Processes blocked) |
+| `sqlserver.user.connection.count` | `sqlserver.user.connection.count` | User Connections | # | Number of user connections to the instance (User Connections) |
+| `sqlserver.database.io` | `sqlserver.database.io` | DB {database} I/O {direction} | B | Total bytes read/written per database since startup (sys.dm_io_virtual_file_stats) |
+| `sqlserver.database.status` | `sqlserver.database.status` | DB {database} Status | # | Database state code (sys.databases.state — 0=ONLINE, 6=OFFLINE, …) |
+
+<!-- schema:metrics:end -->

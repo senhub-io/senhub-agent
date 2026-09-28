@@ -273,3 +273,27 @@ func TestEntitySource_AnnouncesTheRetiredIdentity(t *testing.T) {
 		t.Errorf("confidence = %v; without it the consumer treats the alias as inert", alias.Attributes["confidence"])
 	}
 }
+
+// A selected service the SCM does not report is named once: a list typed
+// as "Spooler, W32Time" on one line reached the probe as one service of
+// that name, and nothing said it matched nothing.
+func TestCollect_ReportsASelectedServiceItCannotFind(t *testing.T) {
+	p := newTestProbe(t, map[string]interface{}{"services": []interface{}{"spooler", "Spooler, W32Time"}})
+	p.collect = func(_ []string) ([]serviceState, error) {
+		return []serviceState{{name: "Spooler", state: stateRunning}}, nil
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := p.Collect(); err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+	}
+	if !p.reportedMissing["Spooler, W32Time"] {
+		t.Error("the unmatched selection was not reported")
+	}
+	if p.reportedMissing["spooler"] {
+		t.Error("a service found under another case was reported missing")
+	}
+	if len(p.reportedMissing) != 1 {
+		t.Errorf("reportedMissing = %v, want one entry", p.reportedMissing)
+	}
+}

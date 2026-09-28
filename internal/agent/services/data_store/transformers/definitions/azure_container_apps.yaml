@@ -77,7 +77,7 @@ metrics:
   - name: "azure_container_apps_stream_token_ttl"
     channel: "stream_token_ttl"
     display_name: "Stream Token TTL"
-    unit: "TimeSeconds"
+    unit: "s"
     category: "status"
     description: "Seconds left on the console stream token; a renewal that stopped working is invisible until every stream dies at once"
     otel:
@@ -88,7 +88,7 @@ metrics:
   - name: "azure_container_apps_records_last_age"
     channel: "records_last_age"
     display_name: "Seconds Since Last Record"
-    unit: "TimeSeconds"
+    unit: "s"
     category: "status"
     description: "Seconds since a line last left this probe; an application that says nothing is silent, not necessarily broken, so read it against the open streams"
     otel:
