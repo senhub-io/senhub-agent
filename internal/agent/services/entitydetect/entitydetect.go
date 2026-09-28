@@ -17,6 +17,7 @@ package entitydetect
 import (
 	"context"
 	"net"
+	"reflect"
 	"sync"
 	"time"
 
@@ -70,6 +71,13 @@ type Service struct {
 	cfg    Config
 	logger *logger.ModuleLogger
 
+	// mu serialises Start, Shutdown and Reconfigure: a configuration
+	// change arrives on the watcher's goroutine.
+	mu sync.Mutex
+	// runCtx is the context Start was given, kept so Reconfigure can
+	// restart the detector under the agent's lifetime.
+	runCtx context.Context
+
 	cancel      context.CancelFunc
 	unregisters []func()
 }
@@ -85,6 +93,33 @@ func (s *Service) GetName() string { return "EntityDetector" }
 // is cancelled. With Enabled false it returns having done nothing, so an
 // agent that does not want the cost pays none of it.
 func (s *Service) Start(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.runCtx = ctx
+	return s.startLocked(ctx)
+}
+
+// Reconfigure applies a new configuration to a running service. The
+// choice to produce entities used to be made once at agent start, so
+// enabling entities on an output from the console, which applies on save,
+// did nothing until the next restart. A changed configuration now stops
+// the detector and starts it again; an unchanged one is left alone.
+func (s *Service) Reconfigure(cfg Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if reflect.DeepEqual(cfg, s.cfg) {
+		return nil
+	}
+	s.shutdownLocked()
+	s.cfg = cfg
+	if s.runCtx == nil {
+		return nil // not started yet: Start will use the new configuration
+	}
+	s.logger.Info().Bool("enabled", cfg.Enabled).Msg("entity detection reconfigured")
+	return s.startLocked(s.runCtx)
+}
+
+func (s *Service) startLocked(ctx context.Context) error {
 	if !s.cfg.Enabled {
 		return nil
 	}
@@ -212,6 +247,13 @@ func (s *Service) Start(ctx context.Context) error {
 // Shutdown stops the detector and releases the host sources, so a
 // restart does not register them twice.
 func (s *Service) Shutdown(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.shutdownLocked()
+	return nil
+}
+
+func (s *Service) shutdownLocked() {
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil
@@ -220,5 +262,4 @@ func (s *Service) Shutdown(context.Context) error {
 		unregister()
 	}
 	s.unregisters = nil
-	return nil
 }
