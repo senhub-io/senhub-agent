@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+
+	"senhub-agent.go/internal/agent/services/fsown"
 )
 
 // Cipher binds a secret value to the host. Implementations: an age identity held
@@ -96,6 +98,9 @@ func (s *FileStore) save(m map[string]string) error {
 		return fmt.Errorf("renaming secret store: %w", err)
 	}
 	removeTmp = false
+	if err := fsown.AlignToDir(s.path); err != nil {
+		return err
+	}
 	if dir != "" {
 		if d, derr := os.Open(dir); derr == nil {
 			_ = d.Sync()
