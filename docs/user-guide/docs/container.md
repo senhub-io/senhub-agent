@@ -54,6 +54,12 @@ Container Apps stream re-sends its recent lines and a file probe skips
 what was written in between, and anything written to the configuration
 from the console.
 
+The host's *name* is another matter: it is the container's host name,
+which Docker sets to the container id unless told otherwise, so a new
+container shows up under a new name while keeping the same identity.
+Give it one that means something with `--hostname` (`hostname:` in a
+Compose file).
+
 Nothing else needs a mount. The configuration lives inside the container
 unless you choose otherwise, and the log file is written to
 `/var/log/senhub-agent` inside it.
