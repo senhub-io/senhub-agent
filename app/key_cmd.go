@@ -20,8 +20,8 @@ func init() {
 
 func runKeyCommand() {
 	args := os.Args[2:]
-	if len(args) == 0 || args[0] != "show" {
-		fmt.Fprintln(os.Stderr, "Usage: agent key show [--config-path <path>]")
+	if len(args) == 0 || (args[0] != "show" && args[0] != "instance-id") {
+		fmt.Fprintln(os.Stderr, "Usage: agent key show|instance-id [--config-path <path>]")
 		os.Exit(2)
 	}
 	cfgPath, err := secretConfigFile(args)
@@ -38,6 +38,14 @@ func runKeyCommand() {
 		fmt.Fprintln(os.Stderr, "Error: no agent key configured")
 		os.Exit(1)
 	}
+	// The instance id is what the agent's telemetry and its entity carry
+	// as service.instance.id. It is derived one way from the key and is
+	// not a credential, so it prints without the non-terminal warning.
+	if args[0] == "instance-id" {
+		fmt.Println(configuration.AgentInstanceID(cfg.Agent.Key))
+		return
+	}
+
 	// The agent key is a bearer token (sealable as ${secret:agent.key});
 	// warn when it is being written somewhere other than a terminal, the
 	// same safeguard `secret get` applies to a revealed secret value.
