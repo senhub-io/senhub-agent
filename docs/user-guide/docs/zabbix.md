@@ -279,6 +279,7 @@ the protection. Generate one the way Zabbix documents:
 ```bash
 openssl rand -hex 32 > /etc/senhub-agent/zabbix.psk
 chmod 600 /etc/senhub-agent/zabbix.psk
+chown senhub:senhub /etc/senhub-agent/zabbix.psk   # the service account reads it
 ```
 
 On the Zabbix side, set the same identity and key on the host, or in
