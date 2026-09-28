@@ -155,3 +155,13 @@ func TestBearerWinsOverQuery_InvalidBearerDoesNotFallback(t *testing.T) {
 		t.Errorf("invalid bearer + valid query: got %d, want 401 (no fallback)", code)
 	}
 }
+
+// The routes carry the key in the path: a refused request logged the path
+// as is, whole key included, beside the prefix meant to withhold it.
+func TestPathForLogWithholdsTheKey(t *testing.T) {
+	key := "777d8ce4-30d4-4d36-bc97-c18f7ad3e92f"
+	got := pathForLog("/web/"+key+"/dashboard", key)
+	if strings.Contains(got, key) || got != "/web/777d8ce4.../dashboard" {
+		t.Errorf("pathForLog = %q", got)
+	}
+}
