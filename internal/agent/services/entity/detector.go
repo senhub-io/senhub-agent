@@ -116,6 +116,8 @@ func (d *Detector) Run(ctx context.Context) {
 	// effective re-emission cadence the liveness window is sized against
 	// (see livenessSlackOverReEmit).
 	tracker := NewTracker(publish, reEmitTicks*d.interval)
+	joined, stop := NotifyOnSubscribe()
+	defer stop()
 	d.reconcile(tracker, now())
 
 	ticker := time.NewTicker(d.interval)
@@ -125,6 +127,12 @@ func (d *Detector) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			d.reconcile(tracker, now())
+		case <-joined:
+			// A consumer that starts after the first cycle (the OTLP
+			// output starting beside detection, or restarted by a
+			// configuration change) has seen nothing: send it everything.
+			tracker.Forget()
 			d.reconcile(tracker, now())
 		}
 	}

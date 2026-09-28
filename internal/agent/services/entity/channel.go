@@ -13,6 +13,9 @@ type eventChannelState struct {
 	mu      sync.RWMutex
 	subs    []chan Event
 	dropped atomic.Uint64
+	// joined are signalled, without blocking, each time a subscriber
+	// arrives, so a running detector can send it the current state.
+	joined []chan struct{}
 }
 
 var eventCh = &eventChannelState{}
@@ -34,8 +37,37 @@ func SubscribeEvents(buf int) <-chan Event {
 	next := make([]chan Event, len(eventCh.subs), len(eventCh.subs)+1)
 	copy(next, eventCh.subs)
 	eventCh.subs = append(next, ch)
+	joined := eventCh.joined
 	eventCh.mu.Unlock()
+	for _, j := range joined {
+		select {
+		case j <- struct{}{}:
+		default:
+		}
+	}
 	return ch
+}
+
+// NotifyOnSubscribe returns a channel signalled each time a subscriber
+// arrives, and a function that stops the notifications. A subscriber that
+// arrives after the detector's first cycle would otherwise wait for the
+// next re-emission, up to two cycles, before it saw an unchanged entity.
+func NotifyOnSubscribe() (<-chan struct{}, func()) {
+	j := make(chan struct{}, 1)
+	eventCh.mu.Lock()
+	eventCh.joined = append(append([]chan struct{}{}, eventCh.joined...), j)
+	eventCh.mu.Unlock()
+	return j, func() {
+		eventCh.mu.Lock()
+		defer eventCh.mu.Unlock()
+		next := make([]chan struct{}, 0, len(eventCh.joined))
+		for _, x := range eventCh.joined {
+			if x != j {
+				next = append(next, x)
+			}
+		}
+		eventCh.joined = next
+	}
 }
 
 // UnsubscribeEvents disconnects a previously-subscribed channel. The
@@ -99,6 +131,7 @@ func GetDroppedEntityEventsTotal() uint64 {
 func resetEventChannelForTest() {
 	eventCh.mu.Lock()
 	eventCh.subs = nil
+	eventCh.joined = nil
 	eventCh.dropped.Store(0)
 	eventCh.mu.Unlock()
 }
