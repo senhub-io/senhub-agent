@@ -184,7 +184,7 @@ func TestStoreForgetsASeriesNoLongerCollected(t *testing.T) {
 	old.Timestamp = time.Now().Add(-time.Hour)
 	st.upsert(old)
 	st.upsert(cpuPoint("1", 2))
-	if got := st.snapshot(time.Now(), 10*time.Minute); len(got) != 1 || got[0].Tags["cpu"] != "1" {
+	if got, _ := st.snapshot(time.Now(), 10*time.Minute); len(got) != 1 || got[0].Tags["cpu"] != "1" {
 		t.Errorf("snapshot = %+v", got)
 	}
 	if st.size() != 1 {

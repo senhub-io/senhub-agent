@@ -51,7 +51,7 @@ func (h *HTTPSyncStrategy) handleWebSettings(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	assetHandler := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg"))
+	assetHandler := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg")).WithReadKey(h.authManager.GetAgentKey())
 	content, err := assetHandler.RenderTemplate("settings")
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to render settings template")
@@ -71,7 +71,7 @@ func (h *HTTPSyncStrategy) handleWebPage(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
-	content, err := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg")).RenderTemplate(template)
+	content, err := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg")).WithReadKey(h.authManager.GetAgentKey()).RenderTemplate(template)
 	if err != nil {
 		h.logger.Error().Err(err).Str("template", template).Msg("Failed to render console page")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -86,10 +86,13 @@ func (h *HTTPSyncStrategy) handleWebPage(w http.ResponseWriter, r *http.Request,
 
 // handleConfigSettingsGet returns the current, editable settings as JSON.
 func (h *HTTPSyncStrategy) handleConfigSettingsGet(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
-	if !ok {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
 		return
 	}
+	// The key in the URL is the administration key the console was opened
+	// with. The agent's own key, the one a licence is bound to, is the
+	// configured one.
+	agentKey := h.authManager.GetAgentKey()
 	resp := settingsResponse{
 		AgentKey:    agentKey,
 		Port:        h.configManager.GetPort(),
@@ -161,10 +164,12 @@ func samePort(current map[string]interface{}, port int) bool {
 }
 
 func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
-	if !ok {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
 		return
 	}
+	// A licence bound to one agent is bound to its agent key, not to the
+	// administration key in the URL.
+	agentKey := h.authManager.GetAgentKey()
 	configPath := h.agentConfig.GetConfigPath()
 	if configPath == "" {
 		writeJSONError(w, http.StatusInternalServerError, "the agent config path is not known to this strategy")

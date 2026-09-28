@@ -248,7 +248,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			// back able to read it.
 			followCredentialStore(configPath)
 
-			fmt.Printf("\nYou can now start the service with:\n    %s start\n", os.Args[0])
+			fmt.Print(installedHint(svcConfig.Executable))
 		}
 	case "uninstall":
 		// Confirm the destructive cleanup BEFORE touching the running

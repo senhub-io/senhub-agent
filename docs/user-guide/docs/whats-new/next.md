@@ -129,6 +129,16 @@ collection gaps that comparison exposed.
 
 ## Features
 
+- **`license activate` reads the token from standard input.**
+  `senhub-agent license activate - < license.jwt` keeps the token out of
+  the process list and the shell history, as `secret set` already does
+  for secrets. The argument still works.
+- **The container sends entities by default.** An agent started from the
+  image exported measurements and logs but no entities, so a topology
+  backend such as Toise never saw the host, the agent or what it
+  watches. The output the image writes now enables them;
+  `SENHUB_ENTITIES=false` turns them off.
+
 - **The agent shows its instance id.** `senhub-agent key instance-id`,
   `senhub-agent status` and the **Agent** card of the web console show
   the `service.instance.id` the agent's telemetry and entity carry, so
@@ -341,6 +351,151 @@ collection gaps that comparison exposed.
   under systemd 252, 255 and 257. (#605)
 
 ## Fixes
+
+- **A change made with `sudo` no longer stops a non-root service.**
+  `sudo senhub-agent config set ...`, `secret set ...` and
+  `license activate` rewrote the file as root with mode 0600. The Linux service runs as
+  `senhub` and could no longer read it: the reload was refused, and the
+  next restart failed to start. A file written by root in the
+  configuration directory now takes the owner of that directory.
+- **The install tells you which binary to call.** The closing line of a
+  Linux install repeated the path you ran the installer from, often a
+  download directory. It now names the installed
+  `/usr/local/bin/senhub-agent`, by its full path: on the RHEL family
+  `sudo` does not search `/usr/local/bin`, and `sudo senhub-agent` is
+  "command not found" there.
+- **`zabbix setup` works on Zabbix 6.0.** It sent the API token only as
+  an `Authorization: Bearer` header, which Zabbix reads from 6.4 on, so
+  a 6.0 LTS server refused every call with "Not authorized". The token
+  now travels where the server reads it, and a 6.0 server gets the 6.0
+  export format and import rules without `--version`.
+- **A failed DNS lookup names the resolver it asked.** With `resolvers`
+  set, the query went to the named resolver, but the error still named
+  the system one (`lookup x on 127.0.0.53:53`), which sent operators to
+  the wrong server. It now names the resolver that was queried.
+- **Zabbix links every template to a host that runs several database
+  probes.** The PostgreSQL, MySQL, SQL Server and Oracle templates
+  declared the same prototype keys (`senhub.db.up[{#PROBE}]` and five
+  more), and Zabbix refuses a set of templates that share a key: a host
+  monitoring PostgreSQL and MySQL registered with no template at all,
+  processor and memory included. Prototype keys now carry a macro named
+  after the probe type; the keys the agent sends are unchanged. Re-run
+  `zabbix setup` to import the corrected templates, then link them to
+  the hosts that registered without them (Mass update > Templates).
+- **A monitored database is not dropped at the first entity cycle.** A
+  probe records the agent's `monitors` link when it collects, and the
+  agent's instance id was published only when entity detection started,
+  after the first collections. The first cycle, and the first one after
+  enabling entities from the console, dropped every remote database and
+  service as having no relation. The id is now known before any probe
+  runs.
+- **The Docker and Swarm probes speak the API version the engine
+  serves.** They called the Engine API at a fixed version 1.43. Docker
+  Engine 29 refuses anything below 1.44, so the Docker probe fell back
+  to reading cgroups, without container names, network or restart
+  counts, and reported the socket as unreachable; Engine 20.10, which
+  serves up to 1.41, refused it too. The probes now read the range the
+  engine serves and pick a version inside it.
+- **The console describes a Zabbix output.** The Outputs page had no
+  summary for it and listed its parameter names instead, so the card
+  read "server" where it should name the server; its badge was cut to
+  "ZABBI". It now shows the server, the encryption, the push cadence and
+  the polled port.
+- **A target that goes down stops showing its last values.** A probe
+  whose target is down keeps running and reports only that it is down.
+  Its other values were still inside the window during which the agent
+  presents a value as current, so OTLP exported them with fresh
+  timestamps, Zabbix received them, and PRTG, Nagios and Prometheus
+  served them, for up to about two and a half minutes. A run of a probe
+  now retires the series it no longer reports. Zabbix keeps them in
+  discovery, so its items are not disabled for the length of an outage.
+- **Nagios checks read the same way throughout.** A metric the check
+  aggregates, such as the processor in `system_health`, answered
+  `OK - OK: cpu_usage_total 2.50% (aggregated from 1 metrics)` beside
+  metrics written `cpu_user: OK 0.10%`. It now reads
+  `cpu_usage_total: OK 2.50%`, and names the aggregation only when it
+  combined several series: `(max of 4 series)`.
+- **An output that starts after entity detection receives the entities
+  at once.** The OTLP output subscribes to entity events when it starts,
+  which can be just after detection's first cycle: at agent start, or
+  when the output is enabled or changed from the console. It then missed
+  that cycle and waited for the next re-emission, up to ten minutes by
+  default, before learning of the host. A new subscriber now triggers a
+  cycle that sends it the whole current state.
+- **The container reaches a collector that listens in plain text.** Its
+  variables had no way to turn TLS off, so a collector without TLS, such
+  as a sidecar on `localhost:4317`, could only be reached by mounting a
+  whole configuration; the export failed on "first record does not look
+  like a TLS handshake". `SENHUB_OTLP_TLS=false` now does it.
+- **The free tier is described as it is.** Without a licence the agent
+  logged "using free tier (cpu, memory, logicaldisk, network)", four
+  probes, while the free tier runs every probe type except the paid
+  ones. The message now says so.
+
+- **No colour codes in container logs.** Run in the foreground, as a
+  container runs it, the agent wrote its log lines with terminal colour
+  codes, which reached `docker logs` and log collectors as `[90m` and
+  `[32mINF[0m`. Colour is now used only when standard error is a
+  terminal.
+- **`status` and `--help` no longer print a console link that answers
+  401.** Both built the console address on the agent key, which since
+  the administration key was introduced only reads metrics. They now
+  name `senhub-agent console`, which opens the console, rather than an
+  address carrying the administration key into output that is often
+  pasted into a ticket.
+
+- **`status` answers inside a container.** It asked the service manager
+  first and stopped when there was none, so in a container it printed
+  `"rc-service" failed` and nothing else. It now says there is no
+  service manager and asks the running agent, as it does on a host.
+- **A configuration the agent cannot use no longer stops the output it
+  replaces.** An edited output was stopped first and then rebuilt; when
+  the new configuration was refused (a key file the service cannot read,
+  a value out of range) the agent was left without that output until a
+  restart. The new configuration is now checked first: refused, it is
+  reported in the log and on the console while the output keeps running
+  as before, and it is applied at the next change once fixed.
+- **A listener refused its port says what to do.** Syslog on 514 or
+  traps on 162, their standard ports, fail under the non-root Linux
+  service with a bare "bind: permission denied". The error now adds that
+  the port is below 1024 and names the two ways out: the
+  `CAP_NET_BIND_SERVICE` capability in a unit drop-in, or a port above
+  1023. The syslog guide no longer suggests `setcap`, which the service
+  unit ignores.
+- **A listener keeps listening when its configuration changes.** Editing
+  a syslog, trap or OTLP receiver probe started the new instance while
+  the old one still held the port: the new one failed with "address
+  already in use", the old one was then stopped, and nothing listened
+  until the retry two minutes later. The old instance is now stopped
+  first.
+- **`config check` accepts a working syslog probe.** It demanded a
+  `listen_address` parameter the probe has never read, and reported an
+  error on a configuration that ran; the probe's own schema, which
+  `config check` also applies, is what describes it.
+- **Storing a first secret with systemd-creds no longer locks out the
+  others.** On a host whose secrets live in the age store, one
+  `secret set` with the systemd-creds backend switched the whole host to
+  it: every age secret, the agent key among them, answered "secret not
+  found", and the next start failed. While both stores exist the agent
+  now reads both, which also makes moving from one to the other possible
+  one secret at a time.
+- **`config check` judges required parameters by the probe's schema.**
+  A hand-written table beside the schemas had gone stale: it demanded a
+  `listen_address` syslog has never read, a `destination` for
+  `ping_gateway`, which takes no parameter, and a `password` from a
+  NetScaler probe configured with an API key, and reported working
+  configurations in error.
+- **A syslog or OTLP receiver probe is no longer CRITICAL in Nagios.**
+  These probes relay records and hold no metric, and the probe summary
+  answered "No metrics available", CRITICAL, for as long as they ran.
+  It now reports the probe's own state: OK while it runs and receives,
+  CRITICAL with the cause when it fails.
+- **The console shows the agent key, not the administration key.** Its
+  licence card and the Settings page labelled "Agent key" the key the
+  console was opened with, which is the administration key, and checked
+  licence binding against it: a licence bound to this agent was reported
+  as issued for another one, and copying "the agent key" handed out the
+  key that changes the configuration. Both now use the agent key.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice

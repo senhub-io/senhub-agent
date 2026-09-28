@@ -3,10 +3,13 @@ package app
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/alexflint/go-arg"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -91,6 +94,12 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	if err != nil {
 		fatalf("failed to initialize license validator: %v", err)
 	}
+
+	code, err := licenseCodeFrom(args.LicenseCode, os.Stdin)
+	if err != nil {
+		fatalf("%v", err)
+	}
+	args.LicenseCode = code
 
 	validatedLicense, err := validator.ValidateLicense(args.LicenseCode)
 	if err != nil {
@@ -262,4 +271,27 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 	fmt.Printf("License removed from: %s\n", configPath)
 	fmt.Println("   Agent will run in free tier mode.")
 	fmt.Println("   Restart the agent for changes to take effect.")
+}
+
+// licenseCodeFrom returns the licence given on the command line, or reads
+// it from stdin when the argument is "-" or absent and stdin is not a
+// terminal. On the command line the token is visible to every process on
+// the machine and stays in the shell history; the secret command already
+// refuses values there for that reason.
+func licenseCodeFrom(arg string, stdin *os.File) (string, error) {
+	if arg != "" && arg != "-" {
+		return arg, nil
+	}
+	if arg == "" && term.IsTerminal(int(stdin.Fd())) {
+		return "", errors.New("no license code: pass it on standard input (senhub-agent license activate - < license.jwt) or as the argument")
+	}
+	data, err := io.ReadAll(io.LimitReader(stdin, 64<<10))
+	if err != nil {
+		return "", fmt.Errorf("reading the license code from standard input: %w", err)
+	}
+	code := strings.TrimSpace(string(data))
+	if code == "" {
+		return "", errors.New("no license code on standard input")
+	}
+	return code, nil
 }

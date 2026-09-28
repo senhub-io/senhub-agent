@@ -48,7 +48,14 @@ Then declare the command once, and one service per check:
 ```
 define command {
     command_name  check_senhub
-    command_line  $USER1$/check_senhub "http://$HOSTADDRESS$:8080/api/$USER3$/nagios/$ARG1$"
+    command_line  $USER1$/check_senhub "http://$HOSTADDRESS$:8080/api/$_HOSTSENHUB_KEY$/nagios/$ARG1$"
+}
+
+define host {
+    use          linux-server
+    host_name    web-01
+    address      192.0.2.10
+    _SENHUB_KEY  0f6c...   ; senhub-agent key show, on web-01
 }
 
 define service {
@@ -66,8 +73,11 @@ define service {
 }
 ```
 
-`$USER3$` holds the agent key; set it in `resource.cfg` so the key stays
-out of the object files.
+Every agent generates its own key, so the key belongs to the host:
+`_SENHUB_KEY` is a custom variable of the host, which the command reads
+as `$_HOSTSENHUB_KEY$`. A single `$USER3$` in `resource.cfg` works only
+while Nagios polls one agent. The key only reads; still, give the file
+holding the host definitions the permissions of `resource.cfg`.
 
 ## The probe summary
 
@@ -82,6 +92,10 @@ OK - Probe cpu healthy - 3 metrics collected | CPU_Total_Usage=12.00 CPU_System=
 The status is **OK** while the probe holds values, and **CRITICAL** when
 it holds none or when every availability metric it reports (a metric
 whose name ends in `.up`) is 0, meaning its target cannot be reached.
+A probe that relays records and measures nothing, such as `syslog` or
+`otlp_receiver`, holds no values by design: its summary follows the
+probe's own state instead, **OK** while it runs and its listener
+receives, **CRITICAL** with the cause when it fails.
 The summary never returns WARNING: thresholds belong to checks.
 
 Performance data labels are the PRTG channel labels of the probe's

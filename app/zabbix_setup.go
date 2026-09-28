@@ -21,6 +21,9 @@ type zabbixAPI struct {
 	url   string
 	token string
 	http  *http.Client
+	// bodyAuth carries the token inside the JSON-RPC envelope. Servers
+	// before 6.4 know no other way; 8.0 refuses it and wants the header.
+	bodyAuth bool
 }
 
 func newZabbixAPI(rawURL, token string) *zabbixAPI {
@@ -45,9 +48,15 @@ func (e *zabbixError) Error() string {
 }
 
 func (a *zabbixAPI) call(method string, params interface{}, out interface{}) error {
-	body, err := json.Marshal(map[string]interface{}{
+	// apiinfo.version is the one method Zabbix refuses when authenticated.
+	authenticated := a.token != "" && method != "apiinfo.version"
+	envelope := map[string]interface{}{
 		"jsonrpc": "2.0", "method": method, "params": params, "id": 1,
-	})
+	}
+	if authenticated && a.bodyAuth {
+		envelope["auth"] = a.token
+	}
+	body, err := json.Marshal(envelope)
 	if err != nil {
 		return err
 	}
@@ -56,8 +65,7 @@ func (a *zabbixAPI) call(method string, params interface{}, out interface{}) err
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// apiinfo.version is the one method Zabbix refuses when authenticated.
-	if a.token != "" && method != "apiinfo.version" {
+	if authenticated && !a.bodyAuth {
 		req.Header.Set("Authorization", "Bearer "+a.token)
 	}
 	resp, err := a.http.Do(req)
@@ -97,8 +105,11 @@ type zabbixSetup struct {
 	discoveryWait string
 	dryRun        bool
 	templates     map[string][]byte // probe type -> exported YAML
-	linked        []string
-	out           io.Writer // nil means standard output
+	// hostGroupsOnly is a server before 6.2, which has no template
+	// groups: its import rule for them is named groups.
+	hostGroupsOnly bool
+	linked         []string
+	out            io.Writer // nil means standard output
 }
 
 // blind reports that the run can describe but not look: a dry run given
@@ -130,11 +141,15 @@ func (s *zabbixSetup) version() (string, error) {
 
 func (s *zabbixSetup) importTemplates() error {
 	rules := map[string]interface{}{
-		"templates":       map[string]bool{"createMissing": true, "updateExisting": true},
-		"template_groups": map[string]bool{"createMissing": true},
-		"items":           map[string]bool{"createMissing": true, "updateExisting": true},
-		"discoveryRules":  map[string]bool{"createMissing": true, "updateExisting": true},
-		"valueMaps":       map[string]bool{"createMissing": true, "updateExisting": true},
+		"templates":      map[string]bool{"createMissing": true, "updateExisting": true},
+		"items":          map[string]bool{"createMissing": true, "updateExisting": true},
+		"discoveryRules": map[string]bool{"createMissing": true, "updateExisting": true},
+		"valueMaps":      map[string]bool{"createMissing": true, "updateExisting": true},
+	}
+	if s.hostGroupsOnly {
+		rules["groups"] = map[string]bool{"createMissing": true}
+	} else {
+		rules["template_groups"] = map[string]bool{"createMissing": true}
 	}
 	for _, probe := range sortedKeys(s.templates) {
 		if s.dryRun {
@@ -444,6 +459,20 @@ func runZabbixSetup(args []string) {
 		os.Exit(1)
 	}
 	s.say("Zabbix %s answered", version)
+	if zabbixBefore(version, 6, 4) {
+		s.api.bodyAuth = true
+	}
+	if zabbixBefore(version, 6, 2) {
+		s.hostGroupsOnly = true
+		switch opts.Version {
+		case "":
+			opts.Version = "6.0"
+			s.say("exporting the templates in the 6.0 format this server reads")
+		case "7.0":
+			fmt.Fprintf(os.Stderr, "Error: Zabbix %s cannot import the 7.0 export format; drop --version or pass --version 6.0\n", version)
+			os.Exit(2)
+		}
+	}
 
 	groupID, err := s.ensureGroup()
 	if err != nil {
@@ -660,4 +689,15 @@ func withDefaultProbes(named []string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+// zabbixBefore reports whether a version string from apiinfo.version is
+// older than major.minor. An answer it cannot read counts as recent, the
+// line every current default is written for.
+func zabbixBefore(version string, major, minor int) bool {
+	var ma, mi int
+	if _, err := fmt.Sscanf(version, "%d.%d", &ma, &mi); err != nil {
+		return false
+	}
+	return ma < major || (ma == major && mi < minor)
 }

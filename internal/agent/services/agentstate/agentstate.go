@@ -10,6 +10,7 @@
 package agentstate
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -121,6 +122,35 @@ func SetStartFailedProbes(failed map[string]string) {
 // Called by the Sensor service after every successful configuration sync.
 // Health entries for probes no longer present are pruned to keep the map
 // from growing unbounded across reconfig cycles.
+// activeProbeByName maps a running probe's case-folded name to its ID, so
+// an endpoint addressed by name (the Nagios probe summary) can read the
+// probe's own state rather than infer it from the metrics it holds.
+var activeProbeByName = map[string]string{}
+
+// SetActiveProbeNames publishes the name of each running probe.
+func SetActiveProbeNames(byName map[string]string) {
+	probeStateMu.Lock()
+	defer probeStateMu.Unlock()
+	next := make(map[string]string, len(byName))
+	for name, id := range byName {
+		next[strings.ToLower(name)] = id
+	}
+	activeProbeByName = next
+}
+
+// ProbeRunStateByName reports the live state of a running probe by its
+// configured name, whatever its case. ok is false for a name no running
+// probe carries.
+func ProbeRunStateByName(name string) (ProbeRunState, bool) {
+	probeStateMu.RLock()
+	id, ok := activeProbeByName[strings.ToLower(name)]
+	probeStateMu.RUnlock()
+	if !ok {
+		return ProbeRunState{}, false
+	}
+	return GetProbeRunState(id), true
+}
+
 func SetActiveProbes(probeIDs []string) {
 	probeStateMu.Lock()
 	defer probeStateMu.Unlock()

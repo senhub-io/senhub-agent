@@ -180,10 +180,18 @@ goes to standard output).
 
 Every item of a template is a prototype under a low-level discovery rule,
 because the probe instance name is discovered too: the rule
-`senhub.discovery[memory]` returns `[{"{#PROBE}":"memory"}]`, and a
-metric with dimensions hangs under the rule of its dimension set,
+`senhub.discovery[memory]` returns
+`[{"{#PROBE}":"memory","{#PROBE_MEMORY}":"memory"}]`, and a metric with
+dimensions hangs under the rule of its dimension set,
 `senhub.discovery[logicaldisk,device,mount_point]`, with one macro per
-dimension. The agent serves these discovery keys like any other item, so
+dimension.
+
+Both macros carry the same instance name. The item keys use the one
+named after the probe type, `senhub.db.up[{#PROBE_POSTGRESQL}]`, because
+Zabbix refuses to link two templates that declare the same key, and a
+plain `{#PROBE}` made the PostgreSQL and MySQL templates both declare
+`senhub.db.up[{#PROBE}]`. The key the agent sends is the same either
+way, `senhub.db.up[production-postgres]`; item names keep `{#PROBE}`. The agent serves these discovery keys like any other item, so
 a host gets its items within one discovery interval (1 hour by default,
 `--delay` does not change it; edit the rule in Zabbix if you want faster
 discovery on a lab). An enum metric with a lookup gets a value map.
@@ -271,6 +279,7 @@ the protection. Generate one the way Zabbix documents:
 ```bash
 openssl rand -hex 32 > /etc/senhub-agent/zabbix.psk
 chmod 600 /etc/senhub-agent/zabbix.psk
+chown senhub:senhub /etc/senhub-agent/zabbix.psk   # the service account reads it
 ```
 
 On the Zabbix side, set the same identity and key on the host, or in
@@ -509,6 +518,12 @@ Measured on a server of each line, not inferred from a changelog.
 | host inventory filled from what the agent knows | yes | yes |
 | polled port read by `zabbix_get` | yes | yes |
 | proxy group redirection | yes | yes |
+
+`zabbix setup` also prepares a 6.0 LTS server (measured on 6.0.48). A
+server before 6.4 reads the API token only inside the request, and one
+before 6.2 has no template groups and cannot read the 7.0 export format;
+the command reads the server's version and adapts to both, so
+`--version 6.0` is chosen for you there.
 
 Two things are worth knowing about the 8.0 line specifically.
 

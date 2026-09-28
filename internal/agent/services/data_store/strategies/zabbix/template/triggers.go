@@ -148,11 +148,11 @@ func thresholdTriggers(template string, def transformers.ProbeDefinition, opts O
 
 		labels := dimensions(def, m)
 		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
-		key := prototypeKey(opts.Prefix, m, labels)
+		key := prototypeKey(opts.Prefix, def.ProbeName, m, labels)
 		f := familyOf[m.Name]
 		if f != nil {
 			ruleKey = variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
-			key = variantPrototypeKey(opts.Prefix, f)
+			key = variantPrototypeKey(opts.Prefix, def.ProbeName, f)
 		}
 		rule := rules[ruleKey]
 		if rule == nil {
