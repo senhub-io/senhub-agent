@@ -386,6 +386,11 @@ collection gaps that comparison exposed.
   counts, and reported the socket as unreachable; Engine 20.10, which
   serves up to 1.41, refused it too. The probes now read the range the
   engine serves and pick a version inside it.
+- **The console describes a Zabbix output.** The Outputs page had no
+  summary for it and listed its parameter names instead, so the card
+  read "server" where it should name the server; its badge was cut to
+  "ZABBI". It now shows the server, the encryption, the push cadence and
+  the polled port.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
