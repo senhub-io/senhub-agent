@@ -289,8 +289,13 @@ func (m *MetricsProcessor) processNagiosMetricAggregated(metricDef NagiosMetric,
 
 	// Build message
 	statusText := m.getStatusText(status)
-	message := fmt.Sprintf("%s: %s %.2f%s (aggregated from %d metrics)",
-		statusText, metricDef.Channel, aggregatedValue, metricDef.Unit, len(values))
+	// Same shape as a separate metric, "channel: STATUS value", so a check
+	// mixing both reads as one list; the aggregation is named only when
+	// it actually combined several series.
+	message := fmt.Sprintf("%s: %s %.2f%s", metricDef.Channel, statusText, aggregatedValue, metricDef.Unit)
+	if len(values) > 1 {
+		message += fmt.Sprintf(" (%s of %d series)", metricDef.Aggregation, len(values))
+	}
 
 	return NagiosMetricResult{
 		Status:   status,
