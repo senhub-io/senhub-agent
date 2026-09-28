@@ -63,6 +63,7 @@ Monitor several tenants with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:9f139b66c51fdb398769a95c7aba1736188a8ef6ac613714998bf7c090b9145f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -114,3 +115,25 @@ Azure AD Connect Health metrics are available through every configured output â€
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ad-hybrid-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ad-hybrid-prod"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.ad_hybrid.up` | `ad_hybrid_up` | Service Reachable | # | 1 when the Azure AD Connect Health API answered this cycle, else 0 |
+| `senhub.ad_hybrid.sync.health` | `ad_hybrid_sync_health` | Sync Health ({service_name}) | # | Sync service health (Healthy=2, Warning=1, Error/other=0) |
+| `senhub.ad_hybrid.sync.agents.healthy` | `ad_hybrid_sync_agents_healthy` | Healthy Sync Agents ({service_name}) | # | Number of sync agents reporting a healthy state |
+| `senhub.ad_hybrid.sync.agents.total` | `ad_hybrid_sync_agents_total` | Total Sync Agents ({service_name}) | # | Total number of registered sync agents |
+| `senhub.ad_hybrid.sync.export_errors` | `ad_hybrid_sync_export_errors` | Export Errors ({error_bucket}) | # | Directory-sync export error count, per error bucket |
+| `senhub.ad_hybrid.agent.last_seen` | `ad_hybrid_agent_last_seen` | Agent Last Seen ({agent_server}) | s | Seconds since the sync agent last reported to Azure AD Connect Health |
+
+<!-- schema:metrics:end -->

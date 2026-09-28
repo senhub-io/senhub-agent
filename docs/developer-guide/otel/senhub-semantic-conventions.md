@@ -374,6 +374,7 @@ Extensions created for concepts the official OTel hardware namespace does not co
 | Senhub metric | Type | Reason |
 |---|---|---|
 | `senhub.hardware.physical_disk.has_active_operations` | Gauge bool | No OTel equivalent |
+| `senhub.hardware.physical_disk.failure_predicted` | Gauge bool | No OTel equivalent; not a `hw.state` of `hw.status`, because a predicted failure is a fact about a disk that is still ok |
 | `senhub.hardware.physical_disk.operation.progress_ratio` | Gauge `1` | No OTel equivalent |
 | `senhub.hardware.physical_disk.link_speed` | Gauge `bit/s` | No OTel equivalent (Redfish exposes NegotiatedSpeed in Gbps; mapper ×1e9) |
 | `senhub.hardware.physical_disk.location_indicator_active` | Gauge bool | No OTel equivalent |
@@ -1878,6 +1879,50 @@ namespace. `senhub.system.kernel.*` is the machine's own ceiling and has
 no OTel counterpart; `system.process.count` exists upstream but counts
 processes, which is the probe's `process.count`, not a kernel limit.
 
+### 4.45 Probe `process` — the per-process and per-name families
+
+The probe reports two families that answer different questions, and the
+difference is in what keys them.
+
+**Per process**, keyed by `process.name` and `process.pid`. The names
+follow the `process` scraper of the OpenTelemetry Collector's
+hostmetrics receiver, so a dashboard built on that receiver reads them
+unchanged.
+
+| Metric | Unit | Type | Keyed by |
+|---|---|---|---|
+| `process.cpu.utilization` | `1` | Gauge | `process.name`, `process.pid` |
+| `process.memory.usage` | `By` | Gauge | `process.name`, `process.pid` |
+| `process.memory.virtual_memory_usage` | `By` | Gauge | `process.name`, `process.pid` |
+| `process.threads` | `{thread}` | Gauge | `process.name`, `process.pid` |
+| `process.open_file_descriptors` | `{file}` | Gauge | `process.name`, `process.pid` |
+| `process.uptime` | `s` | Gauge | `process.name`, `process.pid` |
+
+One name departs from the receiver: the virtual memory is
+`process.memory.virtual` there and `process.memory.virtual_memory_usage`
+here. Renaming it is a breaking change for every dashboard on the
+current name, so it is tracked apart (#941).
+
+**Per name**, keyed by `process.name` alone: the roll-up over every
+process sharing a name.
+
+| Metric | Unit | Type | Keyed by |
+|---|---|---|---|
+| `process.count` | `{process}` | Gauge | `process.name` |
+| `senhub.process.group.cpu.utilization` | `1` | Gauge | `process.name` |
+| `senhub.process.group.memory.usage` | `By` | Gauge | `process.name` |
+
+The per-name family exists because the per-process identity carries the
+pid. A machine running 837 processes produced 4596 series that way, and
+every program start minted a new set that was never fed again. Without a
+`filter`, the probe therefore reports the roll-up alone; a filter
+(`by_name`, `by_user`, `top_n`) bounds the sample and brings the
+per-process detail back beside it (#910). OTel has no convention for a
+per-name aggregate, hence `senhub.process.group.*`; `process.count`
+keeps the name the probe has always used for the count.
+
+The machine-wide values the probe also reports are in 4.44.
+
 ## 6. Process for adding a convention
 
 1. Read the §1 sources for the domain in question
@@ -1940,7 +1985,7 @@ directly). The standard mapping:
 | OTel attribute             | Source on the agent side                     |
 |----------------------------|----------------------------------------------|
 | `service.name`             | `storage[otlp].params.resource.service.name` (default `senhub-agent`) |
-| `service.instance.id`      | the first 8 characters of `agent.key` by default; can be overridden |
+| `service.instance.id`      | a UUID v5 derived from `agent.key` by default (`configuration.AgentInstanceID`); can be overridden. One-way only because the key is a random UUID |
 | `service.version`          | build version (ldflags)                      |
 | `deployment.environment`   | operator override                            |
 | Extras                     | any other key-value pair under `resource:`   |

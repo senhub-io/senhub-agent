@@ -36,6 +36,7 @@ output contracts are supported:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:7e313c2152d3b4a7c1922bb630b0689ffa1394c42d515bb187906767dad87a06 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -131,3 +132,23 @@ What remains your responsibility:
 - **One probe instance per check.** Each check gets its own probe
   block with its own interval and timeout, and shows up under its own
   probe name.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.exec.status` | `senhub.exec.status` | Check Status | # | Nagios plugin status: 0 ok, 1 warning, 2 critical, 3 unknown |
+| `senhub.exec.duration` | `senhub.exec.duration` | Check Duration | ms | Wall-clock run time of the check |
+| `senhub.exec.timeout` | `senhub.exec.timeout` | Check Timed Out | # | 1 when the run was killed on the hard timeout |
+| `senhub.exec.skipped` | `senhub.exec.skipped` | Cycle Skipped | # | 1 when a cycle was skipped because the previous run was still going |
+
+<!-- schema:metrics:end -->

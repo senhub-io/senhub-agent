@@ -139,7 +139,7 @@
                 for (const k of Object.keys(src || {})) {
                     const v = src[k], path = prefix + k;
                     if (isObj(v)) { if (dst[k] === undefined) dst[k] = {}; if (isObj(dst[k])) { overlay(v, dst[k], path + '.'); if (!Object.keys(dst[k]).length) delete dst[k]; } }
-                    else if (typeof v === 'string' && v.startsWith('${') && dst[k] === undefined && !this._removed[path]) dst[k] = v;
+                    else if (typeof v === 'string' && isStored(v) && dst[k] === undefined && !this._removed[path]) dst[k] = v;
                 }
             };
             overlay(this._values, out, '');
@@ -160,6 +160,11 @@
                 }
             };
             seal(this.params, out, '');
+            // A value the console hid outside a secret parameter stays in
+            // the file as written; the preview says so rather than show
+            // the mask or leave the key out.
+            const kept = (o) => { for (const k of Object.keys(o)) { if (o[k] === '***' || o[k] === '[REDACTED]') o[k] = '(kept as written)'; else if (isObj(o[k])) kept(o[k]); } };
+            kept(out);
             return out;
         }
         _clean(v) {
@@ -375,6 +380,7 @@
             const sep = t ? (/[.!?]$/.test(t) ? ' ' : '. ') : '';
             if (p.secret && !stored) t += sep + 'Kept in the secret store, never in the file.';
             if (!p.secret && stored) t += sep + 'The agent hides this value; Replace to set a new one.';
+            if (p.kind === 'string_list' && !p.enum) t += (t ? (/[.!?]$/.test(t) ? ' ' : '. ') : '') + 'One value per line.';
             if (t.trim()) { hint.textContent = t; wrap.appendChild(hint); }
             const ferr = el('span', 'ferr');
             ferr.hidden = true;
@@ -452,7 +458,10 @@
             if (p.kind === 'string_list') {
                 const ta = el('textarea', 'ta');
                 ta.style.minHeight = '60px';
-                ta.placeholder = p.example ? p.example : 'One per line';
+                // The schema examples are written for the docs, comma-separated;
+                // this field splits on lines, so show them one per line. A
+                // value typed as the example read left one bogus entry.
+                ta.placeholder = p.example ? String(p.example).split(/\s*,\s*/).join('\n') : 'One per line';
                 ta.value = Array.isArray(v) ? v.join('\n') : (v == null ? '' : String(v));
                 ta.oninput = (e) => { self.set(path, e.target.value.split('\n').map(s => s.trim()).filter(Boolean)); self._changed(false, path); };
                 wrap.appendChild(ta);

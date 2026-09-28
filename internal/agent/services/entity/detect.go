@@ -4,7 +4,12 @@ package entity
 // runs on. ID is the stable machine identifier (machine-id / UUID), not the
 // hostname — the hostname is descriptive and may change.
 type HostIdentity struct {
-	ID            string // host.id — stable across rename/reboot
+	ID string // host.id — stable across rename/reboot
+	// IDSource is "configuration" when the deployment set host.id through
+	// SENHUB_HOST_ID instead of the agent deriving it. Stamped as a
+	// descriptive attribute so a collision between hosts sharing a copied
+	// value can be traced to its cause; empty for a derived id.
+	IDSource      string
 	Name          string // host.name — descriptive
 	OSType        string // os.type — descriptive
 	Arch          string // host.arch — descriptive
@@ -102,6 +107,9 @@ func DetectFoundation(h HostIdentity, a AgentIdentity) Observation {
 	}
 	if h.HWSerial != "" {
 		host.Attributes["hw.serial_number"] = h.HWSerial
+	}
+	if h.IDSource != "" {
+		host.Attributes["senhub.host.id.source"] = h.IDSource
 	}
 	if h.CPULogicalCount > 0 {
 		host.Attributes["host.cpu.logical.count"] = h.CPULogicalCount

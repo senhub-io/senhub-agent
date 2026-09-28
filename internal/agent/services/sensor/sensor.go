@@ -3,6 +3,7 @@ package sensor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -36,6 +37,10 @@ type sensor struct {
 	// license concurrently.
 	mu            sync.Mutex
 	startedProbes []*probes.ProbePoller
+	// failedProbes holds the configured probes that could not be started,
+	// by ID, retried on a timer so a credential fixed after the fact is
+	// picked up without restarting the agent.
+	failedProbes map[string]failedProbe
 	// runCtx is the lifecycle context the sensor was started with. It is
 	// the cancellation root every probe started here inherits — including
 	// the ones a config reload starts long after Start returned, which
@@ -50,6 +55,18 @@ type sensor struct {
 }
 
 // NewSensor creates a new Sensor instance
+// failedProbe is a configured probe whose start failed, and why.
+type failedProbe struct {
+	config configuration.ProbeConfig
+	reason string
+}
+
+// probeStartRetryInterval is how often a probe that failed to start is
+// tried again. A password expires, a certificate lapses, a target is
+// down at boot: each is fixed outside the agent, and the probe must come
+// back by itself rather than wait for a restart nobody knows is needed.
+var probeStartRetryInterval = 2 * time.Minute
+
 func NewSensor(
 	addDataPoint data_store.AddCallback,
 	configProvider configuration.ConfigurationProvider,
@@ -125,6 +142,7 @@ func NewSensor(
 
 	return &sensor{
 		startedProbes:    []*probes.ProbePoller{},
+		failedProbes:     map[string]failedProbe{},
 		addDataPoint:     addDataPoint,
 		configProvider:   configProvider,
 		moduleLogger:     moduleLogger,
@@ -258,8 +276,14 @@ func (s *sensor) SyncConfiguration() error {
 
 			err := s.startProbe(probeConfig)
 			if err != nil {
-				probeLogger.Error().Err(err).Msgf("Error starting probe")
+				probeLogger.Error().Err(err).
+					Str("probe_name", probeConfig.Name).
+					Str("probe_type", probeConfig.Type).
+					Dur("retry_in", probeStartRetryInterval).
+					Msg("Error starting probe")
+				s.failedProbes[probeId] = failedProbe{config: probeConfig, reason: err.Error()}
 			} else {
+				delete(s.failedProbes, probeId)
 				s.moduleLogger.Info().
 					Str("probe_id", probeId).
 					Str("probe_name", probeConfig.Name).
@@ -315,9 +339,21 @@ func (s *sensor) SyncConfiguration() error {
 	// Update the slice to contain only active probes
 	s.startedProbes = activeProbes
 
+	// A probe removed from the configuration is no longer owed a retry.
+	valid := make(map[string]bool, len(validProbeIds))
+	for _, id := range validProbeIds {
+		valid[id] = true
+	}
+	for id := range s.failedProbes {
+		if !valid[id] {
+			delete(s.failedProbes, id)
+		}
+	}
+
 	// Publish the live probe set for the Prometheus bridge to read
 	// (senhub_agent_probes_total / senhub_agent_probes_active).
 	publishActiveProbes(s.startedProbes)
+	s.publishFailedProbes()
 
 	s.moduleLogger.Info().
 		Int("probes_started", len(validProbeIds)-len(activeProbes)+stoppedCount).
@@ -345,6 +381,7 @@ func (s *sensor) Start(ctx context.Context) error {
 	}
 
 	s.moduleLogger.Info().Msg("Starting sensor service")
+	go s.retryFailedProbes(ctx)
 	s.configProvider.OnConfigChanged(func(string) {
 		if err := s.SyncConfiguration(); err != nil {
 			s.moduleLogger.Error().Err(err).Msg("Failed to sync configuration on config change")
@@ -375,6 +412,11 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 	if probeType == "" {
 		// Fallback to name if type is not set (for backward compatibility)
 		probeType = probeConfig.Name
+	}
+
+	// A type this binary does not carry is not a licensing question.
+	if _, registered := probes.LookupProbeConstructor(probeType); !registered {
+		return errors.New(license.NotInThisBuild(probeType))
 	}
 
 	// If licenseValidator is nil (safe mode), only allow free tier probes
@@ -428,8 +470,76 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 		runCtx = context.Background()
 	}
 
+	if err := probePoller.Start(runCtx); err != nil {
+		// Not kept as started: a poller left in startedProbes after a
+		// failed start reads as running to every later sync, which then
+		// never tries it again.
+		if stopErr := probePoller.Shutdown(context.Background()); stopErr != nil {
+			s.moduleLogger.Warn().Err(stopErr).Str("probe_name", probeConfig.Name).Msg("Stopping a probe that failed to start")
+		}
+		return err
+	}
 	s.startedProbes = append(s.startedProbes, probePoller)
-	return probePoller.Start(runCtx)
+	return nil
+}
+
+// publishFailedProbes hands the probes that failed to start to agentstate,
+// where they count in the total, never as healthy, and carry their reason
+// to the console. Callers hold s.mu.
+func (s *sensor) publishFailedProbes() {
+	out := make(map[string]string, len(s.failedProbes))
+	for id, f := range s.failedProbes {
+		out[id] = f.reason
+	}
+	agentstate.SetStartFailedProbes(out)
+}
+
+// retryFailedProbes tries the probes that failed to start again, until
+// ctx ends.
+func (s *sensor) retryFailedProbes(ctx context.Context) {
+	ticker := time.NewTicker(probeStartRetryInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.retryFailedProbesOnce()
+		}
+	}
+}
+
+// retryFailedProbesOnce is one retry round. A retry failing the same way
+// is logged at debug, a new reason is a warning, a recovery is announced.
+func (s *sensor) retryFailedProbesOnce() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.failedProbes) == 0 {
+		return
+	}
+	for id, f := range s.failedProbes {
+		err := s.startProbe(f.config)
+		switch {
+		case err == nil:
+			delete(s.failedProbes, id)
+			s.moduleLogger.Info().
+				Str("probe_name", f.config.Name).
+				Str("probe_type", f.config.Type).
+				Msg("Probe started after a failed start")
+		case err.Error() != f.reason:
+			s.failedProbes[id] = failedProbe{config: f.config, reason: err.Error()}
+			s.moduleLogger.Warn().Err(err).
+				Str("probe_name", f.config.Name).
+				Str("probe_type", f.config.Type).
+				Msg("Probe still cannot start, for a different reason")
+		default:
+			s.moduleLogger.Debug().Err(err).
+				Str("probe_name", f.config.Name).
+				Msg("Probe still cannot start")
+		}
+	}
+	publishActiveProbes(s.startedProbes)
+	s.publishFailedProbes()
 }
 
 func (s *sensor) Shutdown(ctx context.Context) error {

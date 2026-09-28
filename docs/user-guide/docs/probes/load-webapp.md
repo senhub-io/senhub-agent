@@ -62,6 +62,7 @@ The Load WebApp probe monitors HTTP/HTTPS web application performance by measuri
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:a553847c3d2684ee5a688c46d19aa8e953b5ca7d32184a6e2b258d9a178b2719 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -704,3 +705,24 @@ The Load WebApp probe:
 | Critical | > 3000ms | Poor user experience |
 
 **Note:** Thresholds should be adjusted based on application requirements and user expectations.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.probe.http.duration_seconds` | `dnstime` | DNS Resolution Time ({url}) | ms | Time to resolve the web application's domain name via DNS |
+| `senhub.probe.http.duration_seconds` | `connecttime` | Connect Time ({url}) | ms | Time to establish a TCP connection to the web server |
+| `senhub.probe.http.duration_seconds` | `tlstime` | TLS Handshake Time ({url}) | ms | Time to complete the TLS/SSL handshake with the web server |
+| `senhub.probe.http.duration_seconds` | `ttfb` | Time to First Byte ({url}) | ms | Time from request sent to first byte of response received |
+| `senhub.probe.http.duration_seconds` | `total_time` | Total Load Time ({url}) | ms | Total time from request initiation to full response received |
+
+<!-- schema:metrics:end -->

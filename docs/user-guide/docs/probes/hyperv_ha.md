@@ -56,6 +56,7 @@ Replica and cluster state change slowly; a longer interval keeps WMI load low:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:f13b6f633820e67e9014003cb13d48aadcc37290e47e300af9798e31d1aeeed8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -117,3 +118,25 @@ Hyper-V HA metrics are available through every configured output — OTLP, Prome
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/hyperv-ha-local"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/hyperv-ha-local"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.hyperv_ha.up` | `hyperv_ha_up` | Service Reachable | # | 1 when the Hyper-V replica WMI namespace answered this cycle, else 0 |
+| `senhub.hyperv_ha.replica.health` | `hyperv_ha_replica_health` | Replica Health ({vm_name}) | # | Replication health (1 = Normal, 0 = Warning/Critical) |
+| `senhub.hyperv_ha.replica.state` | `hyperv_ha_replica_state` | Replica State ({vm_name}) | # | Raw Msvm_ReplicationRelationship ReplicationState numeric value |
+| `senhub.hyperv_ha.replica.lag` | `hyperv_ha_replica_lag` | Replica Lag ({vm_name}) | s | Seconds since the last successful replication for this VM |
+| `senhub.hyperv_ha.cluster.node.state` | `hyperv_ha_cluster_node_state` | Cluster Node State ({node}) | # | Failover Cluster node state (1 = Up, 0 = Down/Paused/Joining) |
+| `senhub.hyperv_ha.cluster.group.state` | `hyperv_ha_cluster_group_state` | Cluster Group State ({group}) | # | Failover Cluster resource-group state (1 = Online, 0 = Offline/Failed/Partial) |
+
+<!-- schema:metrics:end -->

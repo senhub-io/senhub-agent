@@ -23,6 +23,7 @@ to compare them. Slow DNS is a frequent cause of perceived slowness
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:b0fc70762f4b7674fe5de96b4157bb0e4ce2e00b9d191140a6977338b75239e7 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -45,3 +46,22 @@ explicit servers are configured.
 | `senhub.dns.answers` | count | Addresses returned |
 
 A failing lookup is a measurement (`up = 0`), never a probe failure.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.dns.up` | `senhub.dns.up` | DNS {name} via {resolver} Up | # | 1 when the lookup returned at least one answer within the timeout |
+| `senhub.dns.lookup.duration` | `senhub.dns.lookup.duration` | DNS {name} via {resolver} Lookup Time | ms | Wall-clock resolution time |
+| `senhub.dns.answers` | `senhub.dns.answers` | DNS {name} via {resolver} Answers | # | Number of addresses returned |
+
+<!-- schema:metrics:end -->

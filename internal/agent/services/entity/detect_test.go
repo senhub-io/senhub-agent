@@ -228,3 +228,17 @@ func TestDetectFoundation_FoldEmbedsRunsOn(t *testing.T) {
 		t.Errorf("embedded relationship = %+v, want runs_on → host h-001", r)
 	}
 }
+
+// A host.id the deployment set is marked as such on the host entity, so
+// two hosts merged by a copied value can be traced to the copy; a derived
+// id carries no mark.
+func TestAConfiguredHostIDIsMarkedOnTheHostEntity(t *testing.T) {
+	obs := DetectFoundation(HostIdentity{ID: "h1", IDSource: "configuration"}, AgentIdentity{InstanceID: "a1"})
+	if got := obs.Entities[0].Attributes["senhub.host.id.source"]; got != "configuration" {
+		t.Errorf("senhub.host.id.source = %v, want configuration", got)
+	}
+	obs = DetectFoundation(HostIdentity{ID: "h1"}, AgentIdentity{InstanceID: "a1"})
+	if _, set := obs.Entities[0].Attributes["senhub.host.id.source"]; set {
+		t.Error("a derived host.id was marked")
+	}
+}

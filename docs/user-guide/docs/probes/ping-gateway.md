@@ -39,6 +39,7 @@ Platform-specific ping implementations are automatically selected based on the o
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:dd2a0f2c05073adc38cce52fb2d11a461b2297f0d0652d97e6be8a176cf2decf -->
 
 This probe reads no parameters. It collects every 30 seconds, a cadence fixed in the code.
 
@@ -448,3 +449,21 @@ This combination provides:
 - Local network access to default gateway
 - ICMP echo request/reply allowed (firewall/router)
 - HTTP strategy required for remote access to metrics
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.probe.icmp.duration_seconds` | `averageLatency` | Gateway Average Latency | ms | Average round-trip time to the default network gateway |
+| `senhub.probe.icmp.packet_loss_ratio` | `packetLoss` | Gateway Packet Loss | % | Percentage of ICMP packets lost to the default gateway |
+
+<!-- schema:metrics:end -->

@@ -212,6 +212,12 @@ func NewHTTPSyncStrategy(
 }
 
 // GetStrategyName returns the strategy identifier
+// NoteProbeCadence records how often a probe collects, so the pull
+// outputs keep serving its last value until its next run is due.
+func (h *HTTPSyncStrategy) NoteProbeCadence(probeName string, interval time.Duration) {
+	h.cache.NoteProbeCadence(probeName, interval)
+}
+
 func (h *HTTPSyncStrategy) GetStrategyName() string {
 	return "http"
 }

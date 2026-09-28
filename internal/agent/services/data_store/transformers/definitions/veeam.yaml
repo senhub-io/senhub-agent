@@ -16,7 +16,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Total number of backup jobs by type"
+    description: "Backup jobs of this type. Covers the virtual jobs the backup server runs and the agent-managed backups of physical machines, which carry their own job_type (WindowsAgentBackup, LinuxAgentBackup) — so the estate reads whole or split"
     otel:
       name: senhub.veeam.jobs.total
       unit: "{job}"
@@ -30,7 +30,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Number of jobs with successful last run"
+    description: "Jobs of this type whose last run succeeded"
     otel:
       name: senhub.veeam.jobs.by_last_result
       unit: "{job}"
@@ -62,7 +62,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Number of jobs that failed on last run"
+    description: "Jobs of this type whose last run failed. The number to alert on, together with the age of the last success"
     otel:
       name: senhub.veeam.jobs.by_last_result
       unit: "{job}"
@@ -110,7 +110,7 @@ metrics:
     unit: "#"
     category: "overview"
     multi_instance_labels: ["job_type"]
-    description: "Number of enabled jobs that have never executed (configured but never triggered)"
+    description: "Jobs of this type that have never produced a restore point. A job configured and never run is not a healthy job"
     otel:
       name: senhub.veeam.jobs.by_last_result
       unit: "{job}"
@@ -474,10 +474,10 @@ metrics:
   # ═════════════════════════════════════════════════════════════════════════
   - name: "veeam_object_restore_points"
     channel: "veeam_object_restore_points"
-    display_name: "Restore Points ({object_name})"
+    display_name: "Restore Points ({object_name} / {object_type})"
     unit: "#"
     category: "protected_objects"
-    multi_instance_labels: ["object_name", "object_type"]
+    multi_instance_labels: ["object_id", "object_name", "object_type"]
     description: "Number of restore points for this object"
     otel:
       name: senhub.veeam.object.restore_points
@@ -489,10 +489,10 @@ metrics:
 
   - name: "veeam_object_last_run_failed"
     channel: "veeam_object_last_run_failed"
-    display_name: "Last Run Failed ({object_name})"
+    display_name: "Last Run Failed ({object_name} / {object_type})"
     unit: "#"
     category: "protected_objects"
-    multi_instance_labels: ["object_name", "object_type"]
+    multi_instance_labels: ["object_id", "object_name", "object_type"]
     description: "1 if last backup run failed, 0 otherwise"
     otel:
       name: senhub.veeam.object.last_run_failed
@@ -531,6 +531,17 @@ metrics:
   # ═════════════════════════════════════════════════════════════════════════
   # INFRASTRUCTURE (managed servers)
   # ═════════════════════════════════════════════════════════════════════════
+  - name: "veeam_objects_without_job_status"
+    channel: "objects_without_job_status"
+    display_name: "Protected Objects Without Status ({platform})"
+    unit: "#"
+    category: "backup"
+    description: "Protected objects of this platform that get no job-status channel, because the platform is not one the agent surfaces as an agent backup. Above zero means backups exist that the consolidated job sensor cannot show — the platform name says which"
+    multi_instance_labels: ["platform"]
+    otel:
+      name: senhub.veeam.objects.without_job_status
+      unit: "{object}"
+      type: gauge
   - name: "veeam_server_status"
     channel: "veeam_server_status"
     display_name: "Server Status ({server_name})"

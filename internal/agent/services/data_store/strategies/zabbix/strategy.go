@@ -69,6 +69,12 @@ func (s *Strategy) ConsumesOtelMetrics() bool { return true }
 
 func (s *Strategy) GetStrategyParams() map[string]interface{} { return s.rawParams }
 
+// NoteProbeCadence records how often a probe collects, so its last value
+// is kept for the server until the probe's next run is due.
+func (s *Strategy) NoteProbeCadence(probeName string, interval time.Duration) {
+	s.store.noteProbeCadence(probeName, interval)
+}
+
 func (s *Strategy) ValidateConfigParams(params configuration.StorageConfigParams) error {
 	cfg, err := ParseConfig(params)
 	if err != nil {

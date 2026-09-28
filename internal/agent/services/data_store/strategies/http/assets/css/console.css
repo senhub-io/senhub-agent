@@ -322,8 +322,9 @@ pre.yaml .k { color: #0b6b7a; } pre.yaml .c { color: var(--muted-2); } pre.yaml 
 .blk .fgrid { gap: 10px 14px; }
 .blk .blk { background: var(--surface); }
 .rows { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.rows th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 2px 6px 4px; }
-.rows td { padding: 3px 4px; }
+.rows th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 2px 6px 4px; text-transform: uppercase; letter-spacing: .03em; }
+.rows td { padding: 3px 4px; vertical-align: middle; }
+.sw .sw-t { font-weight: 500; }
 .rows .in, .rows .sel { height: 30px; font-size: var(--fs-sm); }
 .rows .secret-state { height: 30px; }
 details.more { grid-column: 1 / -1; margin-top: 4px; }

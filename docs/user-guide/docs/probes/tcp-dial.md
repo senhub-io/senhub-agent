@@ -22,6 +22,7 @@ dependable than an HTTP round trip.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:dea337311944aa3f5b7d916fc1366d454d2237c770e16485438cc69ceb628cee -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -40,3 +41,21 @@ dependable than an HTTP round trip.
 
 A refused or timed out target is a measurement (`up = 0`), never a
 probe failure.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.tcpdial.up` | `senhub.tcpdial.up` | TCP {target} Up | # | 1 when the TCP connect completed within the timeout |
+| `senhub.tcpdial.duration` | `senhub.tcpdial.duration` | TCP {target} Connect Time | ms | Time for the TCP three-way handshake to complete |
+
+<!-- schema:metrics:end -->
