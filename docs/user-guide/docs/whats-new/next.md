@@ -352,6 +352,12 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **`prometheus_scrape` no longer warns on every exporter.** A target
+  ending in `/metrics` was taken for the agent's own endpoint, which
+  flagged node_exporter and almost any exporter, the probe's ordinary
+  use. Only the agent's legacy path, or `/metrics` on this host's
+  default agent port, is warned about now.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux service runs as
