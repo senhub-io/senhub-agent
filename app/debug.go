@@ -64,19 +64,21 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// Get basic service status
 	serviceStatus, err := statusHelper.GetServiceStatus(svc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error checking service status: %v\n", err)
-		return
-	}
+		// No service manager to ask: a container, where the agent is the
+		// container's own process. The running agent can still answer for
+		// itself over HTTP, which is what an operator ran status for.
+		fmt.Printf("Service status: no service manager here (%v); asking the running agent\n\n", err)
+	} else {
+		// Capitalize first letter for display
+		displayStatus := strings.ToUpper(serviceStatus[:1]) + serviceStatus[1:]
+		fmt.Printf("Service status: %s\n\n", displayStatus)
 
-	// Capitalize first letter for display
-	displayStatus := strings.ToUpper(serviceStatus[:1]) + serviceStatus[1:]
-	fmt.Printf("Service status: %s\n\n", displayStatus)
-
-	// If service is not running, show basic info only
-	if serviceStatus != "running" {
-		fmt.Println("Agent service is not running.")
-		fmt.Println("Start the service with: " + os.Args[0] + " start")
-		return
+		// If service is not running, show basic info only
+		if serviceStatus != "running" {
+			fmt.Println("Agent service is not running.")
+			fmt.Println("Start the service with: " + os.Args[0] + " start")
+			return
+		}
 	}
 
 	// Try to get detailed status from running agent first (via HTTP).
