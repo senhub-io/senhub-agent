@@ -101,6 +101,9 @@ func NewcassandraProbe(config map[string]interface{}, baseLogger *logger.Logger)
 
 // parseJolokiaHostPort extracts the host and port from a Jolokia URL.
 // Returns ("localhost", "8778") as defaults when parsing fails.
+// mbeanErrorsFmt names a ClientRequest error counter: scope, then kind.
+const mbeanErrorsFmt = "org.apache.cassandra.metrics:type=ClientRequest,scope=%s,name=%s"
+
 func parseJolokiaHostPort(rawURL string) (host, port string) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -217,7 +220,6 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	for _, op := range []string{"Read", "Write"} {
 		opLower := toLower(op)
 		mbeanLatency := fmt.Sprintf("org.apache.cassandra.metrics:type=ClientRequest,scope=%s,name=Latency", op)
-		mbeanErrors := fmt.Sprintf("org.apache.cassandra.metrics:type=ClientRequest,scope=%s,name=Errors", op)
 
 		opTags := []tags.Tag{
 			{Key: "metric_type", Value: "requests"},
@@ -268,10 +270,16 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 			})
 		}
 
-		// errors count (Errors.Count)
-		errCount, err := p.client.readInt64(ctx, mbeanErrors, "Count")
-		if err != nil {
-			return nil, "", "", fmt.Errorf("Errors.Count(%s): %w", op, err)
+		// Errors: Cassandra has no ClientRequest "Errors" MBean; a request
+		// that did not succeed is counted as a failure, a timeout or an
+		// unavailable, and the three are summed here.
+		var errCount int64
+		for _, kind := range []string{"Failures", "Timeouts", "Unavailables"} {
+			n, err := p.client.readInt64(ctx, fmt.Sprintf(mbeanErrorsFmt, op, kind), "Count")
+			if err != nil {
+				return nil, "", "", fmt.Errorf("%s.Count(%s): %w", kind, op, err)
+			}
+			errCount += n
 		}
 		points = append(points, data_store.DataPoint{
 			Name:      "cassandra.client.requests.errors",

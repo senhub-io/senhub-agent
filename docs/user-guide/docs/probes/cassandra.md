@@ -73,7 +73,7 @@ series' tags.
 | `cassandra.client.requests.count` | `cassandra.client.requests.count` | Cassandra {operation} Requests | # | Total number of client requests (Read or Write) |
 | `cassandra.client.requests.latency` | `cassandra.client.requests.latency` | Cassandra {operation} Latency Mean | ms | Mean client request latency in milliseconds (Read or Write) |
 | `cassandra.client.requests.latency.p99` | `cassandra.client.requests.latency.p99` | Cassandra {operation} Latency p99 | ms | 99th percentile client request latency in milliseconds (Read or Write) |
-| `cassandra.client.requests.errors` | `cassandra.client.requests.errors` | Cassandra {operation} Errors | # | Total number of client request errors (Read or Write) |
+| `cassandra.client.requests.errors` | `cassandra.client.requests.errors` | Cassandra {operation} Errors | # | Client requests that did not succeed (Read or Write): failures, timeouts and unavailables |
 | `cassandra.compaction.tasks.completed` | `cassandra.compaction.tasks.completed` | Cassandra Compaction Tasks Completed | # | Total number of completed compaction tasks |
 | `cassandra.compaction.tasks.pending` | `cassandra.compaction.tasks.pending` | Cassandra Compaction Tasks Pending | # | Number of pending compaction tasks |
 | `cassandra.storage.load` | `cassandra.storage.load` | Cassandra Storage Load | B | Total size of all SSTables on disk in bytes |
