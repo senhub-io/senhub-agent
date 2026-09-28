@@ -438,6 +438,13 @@ collection gaps that comparison exposed.
   first and stopped when there was none, so in a container it printed
   `"rc-service" failed` and nothing else. It now says there is no
   service manager and asks the running agent, as it does on a host.
+- **A configuration the agent cannot use no longer stops the output it
+  replaces.** An edited output was stopped first and then rebuilt; when
+  the new configuration was refused (a key file the service cannot read,
+  a value out of range) the agent was left without that output until a
+  restart. The new configuration is now checked first: refused, it is
+  reported in the log and on the console while the output keeps running
+  as before, and it is applied at the next change once fixed.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
