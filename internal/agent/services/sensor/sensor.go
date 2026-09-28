@@ -137,7 +137,9 @@ func NewSensor(
 			}
 		}
 	} else {
-		moduleLogger.Info().Msg("No license configured - using free tier (cpu, memory, logicaldisk, network)")
+		moduleLogger.Info().
+			Int("paid_probe_types", len(license.KnownPaidProbes())).
+			Msg("No license configured - free tier: every probe type runs except the paid ones")
 	}
 
 	return &sensor{
