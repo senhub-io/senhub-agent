@@ -393,7 +393,7 @@ func relayProbeSummary(name string) (int, string) {
 	case state.Health == "failed":
 		return 2, "CRITICAL - Probe " + name + " is failing: " + state.LastError
 	case state.Health == "ok":
-		return 0, "OK - Probe " + name + " is running; it relays records and holds no metric"
+		return 0, "OK - Probe " + name + " is running, it relays records and holds no metric"
 	default:
 		return 3, "UNKNOWN - Probe " + name + " has not completed a cycle yet"
 	}
