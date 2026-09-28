@@ -155,7 +155,7 @@ storage:
       # are derived from agent identity if omitted.
       resource:
         service.name: senhub-agent             # default
-        service.instance.id: <agent-key prefix> # default: first 8 chars of agent.key
+        service.instance.id: <uuid>             # default: an RFC 4122 UUID derived from agent.key
         deployment.environment: prod
         # Any additional keys are passed through as resource attributes.
         k8s.cluster.name: edge-01
@@ -453,9 +453,9 @@ Resource attributes are attached **once per batch** by the SDK
 group series and logs into entities. Defaults:
 
 - `service.name` = `"senhub-agent"`
-- `service.instance.id` = first 8 chars of the agent authentication
-  key (avoids leaking the full secret to backends while keeping
-  per-agent disambiguation)
+- `service.instance.id` = an RFC 4122 UUID (version 5) derived from the
+  agent key: one per agent, stable for as long as the key is, as the
+  OpenTelemetry semantic conventions recommend
 - `service.version` = the agent build version (when known)
 
 Any additional key/value pair under `resource:` is passed through

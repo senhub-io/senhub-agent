@@ -23,10 +23,7 @@ func TestEveryMultiInstanceProbeHasDiscriminantTags(t *testing.T) {
 	// Documented baseline: enterprise/synthetic legacy probes with
 	// multi_instance_labels but no registry entry. The guard enforces the rule
 	// for everything NOT listed here.
-	knownDiscriminantGaps := map[string]bool{
-		"load_webapp": true,
-		"ping_webapp": true,
-	}
+	knownDiscriminantGaps := map[string]bool{}
 
 	for name, def := range defs {
 		if knownDiscriminantGaps[def.ProbeName] {
@@ -118,5 +115,25 @@ func TestEveryDeclaredDimensionIsRegistered(t *testing.T) {
 			"the cache keys on the registered tags alone, so every value of those labels lands on "+
 			"one slot and all but the last is lost on the PRTG, Nagios and Web UI pull sinks. "+
 			"Register them in http_cache.go, with the reason beside them.", def.ProbeName, missing)
+	}
+}
+
+// Every probe that has a definition declares how its series are keyed on
+// the pull sinks, even when the answer is "by probe name alone". An
+// undeclared type fell back to no discriminant with a warning; for the
+// webapp probes that warning fired once per datapoint, dozens of lines a
+// minute, and the choice was never made by anyone.
+func TestEveryDefinedProbeDeclaresItsDiscriminants(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatalf("load transformer definitions: %v", err)
+	}
+	for _, def := range defs {
+		if fullTagKeyProbes[def.ProbeName] {
+			continue
+		}
+		if _, ok := DiscriminantTagsRegistry[def.ProbeName]; !ok {
+			t.Errorf("probe %q has a definition but no DiscriminantTagsRegistry entry; declare its discriminant tags ({} when one series per metric)", def.ProbeName)
+		}
 	}
 }

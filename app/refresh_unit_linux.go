@@ -140,9 +140,17 @@ func migrateLegacyBinary(installedUnit string) error {
 		return nil
 	}
 
+	// The legacy copy is the one the service runs, and the one `update`
+	// replaced: it wins over whatever the system path holds. Keeping an
+	// existing system binary repointed a host updated to 0.6.0-beta at a
+	// stale 0.5.5 build left there by an earlier install.
 	target := systemBinaryUnitPath()
-	if _, err := os.Stat(target); err != nil {
-		fmt.Printf("Installing the agent binary at %s (it was only present under %s)\n", target, legacyManagedBinaryDir)
+	same, err := sameContents(legacy, target)
+	if err != nil {
+		return fmt.Errorf("comparing %s with %s: %w", legacy, target, err)
+	}
+	if !same {
+		fmt.Printf("Installing the binary the service runs (%s) at %s\n", legacy, target)
 		if _, err := installSystemBinary(legacy); err != nil {
 			return err
 		}

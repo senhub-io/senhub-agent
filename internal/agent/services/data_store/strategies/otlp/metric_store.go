@@ -327,10 +327,15 @@ func (s *metricStore) size() int {
 
 // flattenTags converts the datapoint's tag list into a map. Later tags
 // with the same key overwrite earlier ones — same precedence as the
-// existing http strategy's MetricCache.
+// existing http strategy's MetricCache. A private tag is routing for the
+// legacy PRTG push (prtg_metric_id and its [name] template) and never
+// becomes an attribute.
 func flattenTags(tagList []tags.Tag) map[string]string {
 	out := make(map[string]string, len(tagList))
 	for _, t := range tagList {
+		if t.Private {
+			continue
+		}
 		out[t.Key] = t.Value
 	}
 	return out

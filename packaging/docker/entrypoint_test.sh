@@ -155,4 +155,22 @@ else
 fi
 unset SENHUB_AZURE_APP
 
+# 10. Without a volume, the warning names only what is actually lost: with
+#     SENHUB_HOST_ID and SENHUB_AGENT_KEY set, the identity and the key
+#     survive a new container, and only the log bookmarks do not.
+unset SENHUB_HOST_ID SENHUB_AGENT_KEY
+bare=$(unmounted_state_warning 2>&1)
+check "a bare container is told it loses identity, key and bookmarks" \
+  "$(printf '%s' "$bare" | grep -c 'host identity, agent key, log bookmarks')" "1"
+check "a bare container is told it arrives as a new host" "$(printf '%s' "$bare" | grep -c 'new host')" "1"
+SENHUB_HOST_ID=aabbccddeeff00112233445566778899 SENHUB_AGENT_KEY=e313cd19-45d9-4711-8b09-3f58ac6e7595
+export SENHUB_HOST_ID SENHUB_AGENT_KEY
+named=$(unmounted_state_warning 2>&1)
+check "a named container is told it loses only its bookmarks" \
+  "$(printf '%s' "$named" | grep -c 'volume: log bookmarks live')" "1"
+check "a named container is not told it arrives as a new host" "$(printf '%s' "$named" | grep -c 'new host')" "0"
+check "a named container is told what losing its place costs" \
+  "$(printf '%s' "$named" | grep -c 're-sends its recent lines, a file probe skips')" "1"
+unset SENHUB_HOST_ID SENHUB_AGENT_KEY
+
 exit "$fail"
