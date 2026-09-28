@@ -110,3 +110,38 @@ func TestNeitherSourceMeansNoDetection(t *testing.T) {
 		t.Error("detection turned itself on with nothing asking for it")
 	}
 }
+
+// Enabling entities on a running agent takes effect without a restart:
+// the console applies an output change on save, and the detector used to
+// keep the choice it made at start.
+func TestReconfigureStartsDetectionOnARunningAgent(t *testing.T) {
+	events := entity.SubscribeEvents(16)
+	svc := New(Config{Enabled: false}, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := svc.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer func() { _ = svc.Shutdown(context.Background()) }()
+
+	if err := svc.Reconfigure(Config{
+		Enabled:         true,
+		Interval:        50 * time.Millisecond,
+		AgentInstanceID: "agent-under-test",
+		AgentService:    "senhub-agent",
+	}); err != nil {
+		t.Fatalf("reconfigure: %v", err)
+	}
+	select {
+	case <-events:
+	case <-time.After(5 * time.Second):
+		t.Fatal("enabling entities on a running detector produced no event")
+	}
+
+	if err := svc.Reconfigure(Config{Enabled: false}); err != nil {
+		t.Fatalf("reconfigure off: %v", err)
+	}
+	if svc.cancel != nil || len(svc.unregisters) != 0 {
+		t.Error("disabling entities left the detector running")
+	}
+}
