@@ -866,7 +866,6 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 		"ping_webapp":  {"url"},
 		"load_webapp":  {"url"},
 		"ping_gateway": {"destination"},
-		"syslog":       {"listen_address"},
 	}
 
 	required, hasRequired := requiredParams[probeType]
