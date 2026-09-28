@@ -474,6 +474,12 @@ collection gaps that comparison exposed.
   found", and the next start failed. While both stores exist the agent
   now reads both, which also makes moving from one to the other possible
   one secret at a time.
+- **`config check` judges required parameters by the probe's schema.**
+  A hand-written table beside the schemas had gone stale: it demanded a
+  `listen_address` syslog has never read, a `destination` for
+  `ping_gateway`, which takes no parameter, and a `password` from a
+  NetScaler probe configured with an API key, and reported working
+  configurations in error.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice

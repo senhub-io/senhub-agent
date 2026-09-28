@@ -17,3 +17,13 @@ func TestConfigCheckAcceptsTheSyslogParamsTheProbeReads(t *testing.T) {
 		t.Errorf("config check reported %d error(s) on a working syslog probe", errs)
 	}
 }
+
+// ping_gateway takes no parameter (it pings the default route) and
+// netscaler accepts an api_key instead of a password: the hand-written
+// table config check kept beside the probe schemas demanded
+// "destination" and "password", and failed both working configurations.
+func TestConfigCheckTrustsTheSchemaForRequiredParams(t *testing.T) {
+	if errs, _ := validateProbeParams("gw", "ping_gateway", map[string]interface{}{}); errs != 0 {
+		t.Errorf("a ping_gateway with no parameter reported %d error(s)", errs)
+	}
+}

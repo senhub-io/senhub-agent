@@ -858,29 +858,6 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 		return errors + citrixErrors, warnings + citrixWarnings
 	}
 
-	// Required params per probe type (flat format)
-	requiredParams := map[string][]string{
-		"veeam":        {"endpoint", "username", "password"},
-		"netscaler":    {"base_url", "username", "password"},
-		"redfish":      {"endpoint", "username", "password"},
-		"ping_webapp":  {"url"},
-		"load_webapp":  {"url"},
-		"ping_gateway": {"destination"},
-	}
-
-	required, hasRequired := requiredParams[probeType]
-	if !hasRequired {
-		return errors, warnings
-	}
-
-	for _, param := range required {
-		val, exists := params[param]
-		if !exists || val == nil || val == "" {
-			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, param)
-			errors++
-		}
-	}
-
 	// Check for common misconfigurations
 	if probeType == "veeam" {
 		if interval, ok := params["interval"]; ok {
