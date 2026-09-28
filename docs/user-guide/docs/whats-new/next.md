@@ -272,6 +272,12 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **Enabling entities takes effect on save.** The console applies an
+  output change without a restart, but entity detection kept the choice
+  it made when the agent started: entities enabled from the console were
+  only sent after the next restart. Detection now follows the
+  configuration.
+
 - **A console value that holds a reference is written as typed.** A
   header entered as `Bearer ${secret:name}` was sealed into a new secret
   whose value was that reference. Substitution resolves one level, so
