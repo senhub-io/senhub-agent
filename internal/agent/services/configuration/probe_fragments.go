@@ -190,7 +190,11 @@ func sealParams(instance string, params map[string]interface{}, secretPaths []st
 					}
 				}
 			case string:
-				if !(inSecret || want[dotted] || secret.IsSensitiveKey(k)) || val == "" || strings.HasPrefix(val, "${") {
+				// A value that already carries a reference ("Bearer
+				// ${secret:x}") is not a plaintext credential: sealed, it
+				// became a secret whose value is a reference, which the
+				// single-pass substitution never resolves.
+				if !(inSecret || want[dotted] || secret.IsSensitiveKey(k)) || val == "" || strings.Contains(val, "${") {
 					continue
 				}
 				if prov == nil {
