@@ -59,7 +59,7 @@ func applyLicenseSidecar(cfg *LocalConfigurationData, configPath string) error {
 // the single source of truth. It backs `license activate`.
 func WriteLicenseSidecar(configPath, jwt string) error {
 	path := LicenseSidecarPath(configPath)
-	if err := os.WriteFile(path, []byte(jwt+"\n"), 0o600); err != nil {
+	if err := atomicWriteFile(path, []byte(jwt+"\n"), 0o600); err != nil {
 		return fmt.Errorf("writing license sidecar %s: %w", path, err)
 	}
 	if err := SetLicenseField(configPath, ""); err != nil {
