@@ -39,7 +39,7 @@ func (w *WebInterface) HandleWebDashboard(req *http.Request, writer http.Respons
 
 	// Create asset handler with PRTG status
 	prtgEnabled := w.strategy.configManager.IsEndpointEnabled("prtg")
-	assetHandler := NewAssetHandlerWithPRTG(agentKey, prtgEnabled)
+	assetHandler := NewAssetHandlerWithPRTG(agentKey, prtgEnabled).WithReadKey(w.strategy.authManager.GetAgentKey())
 
 	// Render the new dashboard template
 	templateName := GetTemplateName(req.URL.Path)
