@@ -361,6 +361,9 @@ collection gaps that comparison exposed.
   node that has served no read or no write, the latency mean has no value
   yet and Jolokia returns it empty; the probe failed its whole collection
   on it and published `up = 0`. It now leaves that one measurement out.
+  It also read an `Errors` counter that Cassandra does not have, which
+  failed every collection on a real node: the errors metric is now the
+  sum of failures, timeouts and unavailables.
 
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
