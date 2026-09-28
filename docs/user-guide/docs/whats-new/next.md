@@ -272,6 +272,10 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **Chrony is offered on Linux and macOS only.** It declared no platform,
+  so a Windows console offered it and it started there with no chronyc,
+  reporting down for ever.
+
 - **Windows Services names a selected service it cannot find.** A
   misspelt or unreadable service simply had no series; the probe now
   logs each such name once.
