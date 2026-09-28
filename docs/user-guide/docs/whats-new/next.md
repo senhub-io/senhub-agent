@@ -280,10 +280,10 @@ collection gaps that comparison exposed.
 
 - **A console value that holds a reference is written as typed.** A
   header entered as `Bearer ${secret:name}` was sealed into a new secret
-  whose value was that reference. Substitution resolves one level, so
-  the output sent the reference itself as its token, and the next save
-  refused the output as unresolved. A value carrying `${...}` anywhere is
-  now kept verbatim, as the start-time seal already did.
+  whose value was that reference. The output resolved it when exporting,
+  but the console's save check resolves one level, so every later edit
+  of that output was refused as "unresolved". A value carrying `${...}`
+  anywhere is now kept verbatim, as the start-time seal already did.
 
 - **Chrony is offered on Linux and macOS only.** It declared no platform,
   so a Windows console offered it and it started there with no chronyc,
