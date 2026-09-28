@@ -119,18 +119,40 @@ init_config() {
 
   senhub-agent config init "$@"
 
-  if [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
-    fragment="$CONFIG_DIR/strategies.d/10-otlp.yaml"
-    if [ -f "$fragment" ] && ! grep -q 'Authorization' "$fragment"; then
-      # The token stays out of the file: the fragment carries the
-      # reference and the agent resolves it at every start.
-      # shellcheck disable=SC2016 # ${env:...} must reach the file literally
-      printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
-      log "OTLP export authenticates with OTLP_BEARER_TOKEN"
-    fi
-  else
+  if [ -z "${OTLP_BEARER_TOKEN:-}" ]; then
     log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"
   fi
+  otlp_fragment_extras "$CONFIG_DIR/strategies.d/10-otlp.yaml"
+}
+
+# otlp_fragment_extras adds to the OTLP output what `config init` does not
+# write: the bearer reference, and TLS turned off for a collector that
+# listens in plain text, such as a sidecar on localhost:4317. Without the
+# second, such a collector could only be reached by mounting a whole
+# configuration.
+otlp_fragment_extras() {
+  fragment=$1
+  [ -f "$fragment" ] || return 0
+  if [ -n "${OTLP_BEARER_TOKEN:-}" ] && ! grep -q 'Authorization' "$fragment"; then
+    # The token stays out of the file: the fragment carries the
+    # reference and the agent resolves it at every start.
+    # shellcheck disable=SC2016 # ${env:...} must reach the file literally
+    printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
+    log "OTLP export authenticates with OTLP_BEARER_TOKEN"
+  fi
+  case "${SENHUB_OTLP_TLS:-true}" in
+    true | TRUE | True | 1 | yes) ;;
+    false | FALSE | False | 0 | no)
+      if ! grep -q '^  tls:' "$fragment"; then
+        printf '  tls:\n    enabled: false\n' >> "$fragment"
+        log "OTLP export in plain text (SENHUB_OTLP_TLS=false): the token crosses the network unencrypted, keep it to a collector on the same host or a trusted network"
+      fi
+      ;;
+    *)
+      log "SENHUB_OTLP_TLS must be true or false, not '$SENHUB_OTLP_TLS'"
+      exit 1
+      ;;
+  esac
 }
 
 # The agent key is the agent's own identity, distinct from host.id: it is

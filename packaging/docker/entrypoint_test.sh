@@ -173,4 +173,28 @@ check "a named container is told what losing its place costs" \
   "$(printf '%s' "$named" | grep -c 're-sends its recent lines, a file probe skips')" "1"
 unset SENHUB_HOST_ID SENHUB_AGENT_KEY
 
+# 11. A collector in plain text is reachable from the variables alone:
+#     SENHUB_OTLP_TLS=false turns TLS off in the written output, once, and
+#     the default leaves it on. A value that is neither is refused.
+frag="$work/10-otlp.yaml"
+printf 'otlp:\n  endpoint: localhost:4317\n  protocol: grpc\n' > "$frag"
+OTLP_BEARER_TOKEN=t SENHUB_OTLP_TLS=false
+export OTLP_BEARER_TOKEN SENHUB_OTLP_TLS
+otlp_fragment_extras "$frag" 2>/dev/null
+otlp_fragment_extras "$frag" 2>/dev/null
+check "SENHUB_OTLP_TLS=false turns TLS off" "$(grep -c 'enabled: false' "$frag")" "1"
+check "the bearer reference is written once" "$(grep -c 'Authorization' "$frag")" "1"
+printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+unset SENHUB_OTLP_TLS
+otlp_fragment_extras "$frag" 2>/dev/null
+check "TLS stays on by default" "$(grep -c 'tls:' "$frag")" "0"
+SENHUB_OTLP_TLS=maybe
+export SENHUB_OTLP_TLS
+if (otlp_fragment_extras "$frag" >/dev/null 2>&1); then
+  check "SENHUB_OTLP_TLS=maybe is refused" "accepted" "refused"
+else
+  check "SENHUB_OTLP_TLS=maybe is refused" "refused" "refused"
+fi
+unset SENHUB_OTLP_TLS OTLP_BEARER_TOKEN
+
 exit "$fail"
