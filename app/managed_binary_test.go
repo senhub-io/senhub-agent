@@ -41,3 +41,36 @@ func TestChownToUser_UnknownUserErrors(t *testing.T) {
 		t.Error("expected an error for an unknown service user")
 	}
 }
+
+func TestSameContents(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	running := write("running", "0.6.0-beta")
+	stale := write("stale", "0.5.5-dev!")
+	copyOf := write("copy", "0.6.0-beta")
+
+	cases := []struct {
+		name string
+		b    string
+		want bool
+	}{
+		{"a stale binary of the same size is different", stale, false},
+		{"an identical copy is the same", copyOf, true},
+		{"a missing target is different", filepath.Join(dir, "absent"), false},
+	}
+	for _, c := range cases {
+		got, err := sameContents(running, c.b)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got != c.want {
+			t.Errorf("%s: sameContents = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

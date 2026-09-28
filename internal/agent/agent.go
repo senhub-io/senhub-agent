@@ -108,10 +108,22 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		entitydetect.Resolve(
 			localConfiguration.GetEntitiesConfig(),
 			localConfiguration.GetConfiguration().StorageConfig,
-			localConfiguration.GetAuthenticationKey(),
+			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
 		),
 		logger,
 	)
+
+	// The console applies an output change on save, entities included:
+	// follow the configuration rather than the state it had at start.
+	localConfiguration.OnConfigChanged(func(string) {
+		if err := entityDetector.Reconfigure(entitydetect.Resolve(
+			localConfiguration.GetEntitiesConfig(),
+			localConfiguration.GetConfiguration().StorageConfig,
+			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
+		)); err != nil {
+			logger.Warn().Err(err).Msg("Entity detection could not follow the configuration change")
+		}
+	})
 
 	var updater auto_update.AutoUpdate
 	autoUpdateConfig := localConfiguration.GetAutoUpdateConfig()
