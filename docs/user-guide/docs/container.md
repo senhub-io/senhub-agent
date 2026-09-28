@@ -8,7 +8,7 @@ else is a parameter.
 docker run -d --name senhub-agent \
   -e OTLP_BEARER_TOKEN=<your token> \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.5.5-beta
+  ghcr.io/senhub-io/senhub-agent:0.6.0
 ```
 
 That is the whole of it for a first run: one variable, one mount.
@@ -54,6 +54,12 @@ Container Apps stream re-sends its recent lines and a file probe skips
 what was written in between, and anything written to the configuration
 from the console.
 
+The host's *name* is another matter: it is the container's host name,
+which Docker sets to the container id unless told otherwise, so a new
+container shows up under a new name while keeping the same identity.
+Give it one that means something with `--hostname` (`hostname:` in a
+Compose file).
+
 Nothing else needs a mount. The configuration lives inside the container
 unless you choose otherwise, and the log file is written to
 `/var/log/senhub-agent` inside it.
@@ -68,6 +74,8 @@ feature they configure is wanted.
 | `OTLP_BEARER_TOKEN` | Yes | - | Authenticates the export to SenHub. Without it the agent collects and exports nothing |
 | `SENHUB_OTLP_ENDPOINT` | No | `eu-west-1.intake.senhub.io:443` | Another collector: your own OpenTelemetry collector, VictoriaMetrics, Grafana Alloy |
 | `SENHUB_OTLP_PROTOCOL` | No | `grpc` | `grpc` or `http`, the latter for a backend that ingests OTLP over HTTP |
+| `SENHUB_ENTITIES` | No | `true` | Sends the entities (this host, the agent, what its probes watch) a topology backend builds its map from. `false` exports measurements and logs only |
+| `SENHUB_OTLP_TLS` | No | `true` | `false` for a collector that listens in plain text, such as a sidecar on `localhost:4317`. The token then crosses the network unencrypted: keep it to the same host or a trusted network |
 | `SENHUB_LICENSE` | No | - | Licence token, for the probes that need one |
 | `SENHUB_TAGS` | No | - | Tags on every metric, as `key=value,key2=value2` |
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
@@ -196,7 +204,7 @@ ignores your variables tells you why.
 docker run -d --name senhub-agent \
   -v /srv/senhub/conf:/etc/senhub-agent \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.5.5-beta
+  ghcr.io/senhub-io/senhub-agent:0.6.0
 ```
 
 Your configuration wins completely, and that includes the agent key

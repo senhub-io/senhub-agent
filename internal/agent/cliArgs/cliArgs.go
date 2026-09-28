@@ -57,7 +57,7 @@ type LicenseSubcommandArgs struct {
 }
 
 type LicenseActivateArgs struct {
-	LicenseCode string `arg:"positional,required" help:"License code from Sensor Factory"`
+	LicenseCode string `arg:"positional" help:"License code from Sensor Factory; '-' or none reads it from standard input, which keeps it out of the process list and the shell history"`
 	ConfigPath  string `arg:"--config-path" help:"Path to configuration file"`
 	Verbose     bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 }

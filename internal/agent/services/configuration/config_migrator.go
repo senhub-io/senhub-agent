@@ -200,7 +200,7 @@ func (cm *ConfigMigrator) migrateFrom1To2(config map[string]interface{}) error {
 	}
 
 	// Write migrated configuration
-	if err := os.WriteFile(cm.configPath, migratedData, 0600); err != nil {
+	if err := atomicWriteFile(cm.configPath, migratedData, 0600); err != nil {
 		return fmt.Errorf("failed to write migrated config: %w", err)
 	}
 

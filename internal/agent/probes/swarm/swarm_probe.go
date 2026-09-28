@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dockerapi"
 	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -39,7 +40,6 @@ const ProbeType = "swarm"
 const (
 	defaultInterval = 60 * time.Second
 	defaultTimeout  = 10 * time.Second
-	apiVersion      = "v1.43"
 )
 
 type probeConfig struct {
@@ -61,6 +61,8 @@ type swarmProbe struct {
 
 	entitySrc *entitySource
 	newClient func() *http.Client
+	// api is the Engine API version negotiated with the daemon.
+	api dockerapi.Version
 }
 
 // NewSwarmProbe builds the probe from its YAML config block.
@@ -305,12 +307,14 @@ func (p *swarmProbe) explainOnce(state clusterState, err error) {
 // The status is returned rather than folded into an error because several
 // callers treat 503 as information, not failure.
 func (p *swarmProbe) get(path string) ([]byte, int, error) {
-	url := fmt.Sprintf("http://localhost/%s%s", apiVersion, path)
-	resp, err := p.client.Get(url)
+	resp, err := p.client.Get(p.api.URL(p.client, path))
 	if err != nil {
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusBadRequest {
+		p.api.Forget()
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("reading %s body: %w", path, err)

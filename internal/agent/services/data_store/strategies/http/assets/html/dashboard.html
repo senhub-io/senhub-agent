@@ -103,7 +103,7 @@
         <p class="xs muted right mt3">Auto-refresh every 30 seconds<span id="refresh-note"></span></p>
     </div>
 
-    <script>window.AGENT_KEY = '{{.AgentKey}}';</script>
+    <script>window.AGENT_KEY = '{{.AgentKey}}'; window.AGENT_READ_KEY = '{{.ReadKey}}';</script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
     <script src="/web/{{.AgentKey}}/assets/js/dashboard.js"></script>
 </body>

@@ -163,7 +163,7 @@ func (p *SNMPTrapProbe) OnStart(quitChannel chan struct{}) error {
 	}
 	conn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
-		return fmt.Errorf("snmp_trap: listen on %s: %w", p.config.BindAddress, err)
+		return fmt.Errorf("snmp_trap: listen on %s: %w", p.config.BindAddress, types.ExplainBindError(err, udpAddr.Port))
 	}
 
 	p.mu.Lock()

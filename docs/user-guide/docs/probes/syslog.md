@@ -286,22 +286,29 @@ grep -rA5 "type: syslog" /etc/senhub-agent/probes.d/
 **Symptom:** Error binding to port 514 on Unix/Linux systems
 
 **Solution:**
-Ports below 1024 require elevated privileges on Unix/Linux:
+The Linux service runs as the unprivileged `senhub` account with every
+capability dropped, so it cannot bind a port below 1024. The error says
+so: `bind: permission denied: port 514 is below 1024`. Two ways out:
 
 ```bash
-# Option 1: Run agent as root (not recommended)
-sudo senhub-agent run
+# Option 1: grant the one capability in a unit drop-in
+sudo systemctl edit senhub-agent.service
+#   [Service]
+#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
+sudo systemctl daemon-reload && sudo systemctl restart senhub-agent
 
-# Option 2: Grant port binding capability (Linux)
-sudo setcap cap_net_bind_service=+ep /opt/senhub/bin/senhub-agent
-
-# Option 3: Use alternate port (>1024) and configure syslog sources
+# Option 2: listen on a port above 1023 and point the senders at it
 # /etc/senhub-agent/probes.d/10-syslog.yaml:
 - name: syslog
   type: syslog
   params:
     port: 1514  # Non-privileged port
 ```
+
+`setcap` on the binary does not help: the unit's empty capability bounding
+set removes file capabilities, and an update replaces the file. See
+[Running the agent least-privilege](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/LEAST-PRIVILEGE.md).
 
 **Configure syslog sources to use alternate port:**
 ```bash

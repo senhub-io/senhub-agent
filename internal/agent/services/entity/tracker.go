@@ -97,6 +97,14 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 	}
 }
 
+// Forget drops the record of what was published, so the next Reconcile
+// publishes every state in full. Used when a new consumer subscribes: it
+// has seen none of the states the suppression window would otherwise hold
+// back for up to two cycles, the host entity included.
+func (t *Tracker) Forget() {
+	t.pub = map[string]published{}
+}
+
 // stateHash renders the mutable content of a state event (attributes +
 // relationships + liveness interval) into a stable string, so unchanged
 // heartbeats are recognizable. Identity is excluded — it is the map key.

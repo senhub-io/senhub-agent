@@ -28,11 +28,11 @@ func TestUtilizationIsShownAsAPercentage(t *testing.T) {
 			got[p.Key] = p
 		}
 	}
-	u := got["senhub.system.memory.utilization[{#PROBE}]"]
+	u := got["senhub.system.memory.utilization[{#PROBE_MEMORY}]"]
 	if u.Units != "%" || len(u.Preprocessing) != 1 || u.Preprocessing[0].Type != "MULTIPLIER" || u.Preprocessing[0].Parameters[0] != "100" {
 		t.Errorf("utilization prototype = units %q, preprocessing %v; want %% and a multiplier of 100", u.Units, u.Preprocessing)
 	}
-	c := got["senhub.system.processes.count[{#PROBE}]"]
+	c := got["senhub.system.processes.count[{#PROBE_MEMORY}]"]
 	if c.Units != "" || len(c.Preprocessing) != 0 {
 		t.Errorf("a dimensionless count must stay as sent; got units %q, preprocessing %v", c.Units, c.Preprocessing)
 	}

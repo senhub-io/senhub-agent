@@ -361,10 +361,13 @@ senhub-agent license show
 ### Activate a license
 
 ```bash
+senhub-agent license activate - < license.jwt
 senhub-agent license activate <license-jwt>
 ```
 
-Validates the license and writes it to the `license.jwt` file next to
+With `-`, or with no argument and a file or pipe on standard input, the
+token is read from standard input and never appears in the process list
+or the shell history. Validates the license and writes it to the `license.jwt` file next to
 `agent.yaml`. Restart the agent for the change to take effect. You can also
 simply place the `license.jwt` file next to the config yourself and restart —
 no CLI needed.

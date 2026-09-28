@@ -20,7 +20,7 @@ func TestStoreDropsPrivateTags(t *testing.T) {
 			{Key: "prtg_metric_id", Value: "https_example.com_[name]", Private: true},
 		},
 	})
-	got := st.snapshot(time.Now(), time.Minute)
+	got, _ := st.snapshot(time.Now(), time.Minute)
 	if len(got) != 1 {
 		t.Fatalf("snapshot holds %d series, want 1", len(got))
 	}

@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"filippo.io/age"
+
+	"senhub-agent.go/internal/agent/services/fsown"
 )
 
 // ageCipher binds a secret value to the host using a single age X25519 identity
@@ -105,8 +107,18 @@ func writeAgeKeyFile(keyPath string, identity *age.X25519Identity) error {
 		}
 	}
 	content := "# SenHub agent secret key — keep private, never share.\n" + identity.String() + "\n"
-	if err := os.WriteFile(keyPath, []byte(content), 0o600); err != nil {
+	if err := writeKeyFile(keyPath, content); err != nil {
 		return fmt.Errorf("writing age key file %s: %w", keyPath, err)
 	}
 	return nil
+}
+
+// writeKeyFile writes the age identity and hands it to the owner of its
+// directory, so a key created by `sudo agent secret set` stays readable by
+// the service account.
+func writeKeyFile(keyPath, content string) error {
+	if err := os.WriteFile(keyPath, []byte(content), 0o600); err != nil {
+		return err
+	}
+	return fsown.AlignToDir(keyPath)
 }

@@ -137,7 +137,9 @@ func NewSensor(
 			}
 		}
 	} else {
-		moduleLogger.Info().Msg("No license configured - using free tier (cpu, memory, logicaldisk, network)")
+		moduleLogger.Info().
+			Int("paid_probe_types", len(license.KnownPaidProbes())).
+			Msg("No license configured - free tier: every probe type runs except the paid ones")
 	}
 
 	return &sensor{
@@ -221,8 +223,18 @@ func (s *sensor) SyncConfiguration() error {
 		seenNames[probeConfig.Name] = true
 	}
 
-	// Phase 1: Start new probes
+	// Phase 1: decide which probes the configuration wants. Nothing is
+	// started yet: a probe whose configuration changed gets a new id, and
+	// its previous instance must release what it holds first. A listener
+	// (syslog, snmp_trap, otlp_receiver) started beside its predecessor
+	// found its port taken, failed, and the predecessor was then stopped,
+	// leaving nothing listening until the retry two minutes later.
 	processedNames := make(map[string]bool)
+	type pendingStart struct {
+		id     string
+		config configuration.ProbeConfig
+	}
+	toStart := []pendingStart{}
 	for _, probeConfig := range probeConfigs {
 		// Skip probes with invalid names (marked in pre-validation)
 		if probeConfig.Name == "" {
@@ -255,9 +267,7 @@ func (s *sensor) SyncConfiguration() error {
 
 		probeId := probes.GenerateProbeId(probeConfig)
 		validProbeIds = append(validProbeIds, probeId)
-		probeLogger := s.getLoggerForProbe(probeConfig)
 
-		// Check if probe is already running (by ID)
 		probeExists := false
 		for _, startedProbe := range s.startedProbes {
 			if startedProbe.ProbeId == probeId {
@@ -265,36 +275,14 @@ func (s *sensor) SyncConfiguration() error {
 				break
 			}
 		}
-
-		// Only start probe if it doesn't exist
-		if !probeExists {
-			s.moduleLogger.Info().
-				Str("probe_id", probeId).
-				Str("probe_name", probeConfig.Name).
-				Any("probe_params", configuration.SanitizeParamsForLog(probeConfig.Params)).
-				Msg("Starting new probe")
-
-			err := s.startProbe(probeConfig)
-			if err != nil {
-				probeLogger.Error().Err(err).
-					Str("probe_name", probeConfig.Name).
-					Str("probe_type", probeConfig.Type).
-					Dur("retry_in", probeStartRetryInterval).
-					Msg("Error starting probe")
-				s.failedProbes[probeId] = failedProbe{config: probeConfig, reason: err.Error()}
-			} else {
-				delete(s.failedProbes, probeId)
-				s.moduleLogger.Info().
-					Str("probe_id", probeId).
-					Str("probe_name", probeConfig.Name).
-					Msg("Probe started successfully")
-			}
-		} else {
+		if probeExists {
 			s.moduleLogger.Debug().
 				Str("probe_id", probeId).
 				Str("probe_name", probeConfig.Name).
 				Msg("Probe already running, skipping")
+			continue
 		}
+		toStart = append(toStart, pendingStart{id: probeId, config: probeConfig})
 	}
 
 	// Phase 2: Stop removed probes
@@ -335,6 +323,36 @@ func (s *sensor) SyncConfiguration() error {
 			}
 		}
 	}
+	s.startedProbes = activeProbes
+
+	// Phase 3: Start new probes, now that what they replace is gone.
+	startedCount := 0
+	for _, p := range toStart {
+		probeLogger := s.getLoggerForProbe(p.config)
+		s.moduleLogger.Info().
+			Str("probe_id", p.id).
+			Str("probe_name", p.config.Name).
+			Any("probe_params", configuration.SanitizeParamsForLog(p.config.Params)).
+			Msg("Starting new probe")
+
+		err := s.startProbe(p.config)
+		if err != nil {
+			probeLogger.Error().Err(err).
+				Str("probe_name", p.config.Name).
+				Str("probe_type", p.config.Type).
+				Dur("retry_in", probeStartRetryInterval).
+				Msg("Error starting probe")
+			s.failedProbes[p.id] = failedProbe{config: p.config, reason: err.Error()}
+		} else {
+			delete(s.failedProbes, p.id)
+			startedCount++
+			s.moduleLogger.Info().
+				Str("probe_id", p.id).
+				Str("probe_name", p.config.Name).
+				Msg("Probe started successfully")
+		}
+	}
+	activeProbes = s.startedProbes
 
 	// Update the slice to contain only active probes
 	s.startedProbes = activeProbes
@@ -356,7 +374,7 @@ func (s *sensor) SyncConfiguration() error {
 	s.publishFailedProbes()
 
 	s.moduleLogger.Info().
-		Int("probes_started", len(validProbeIds)-len(activeProbes)+stoppedCount).
+		Int("probes_started", startedCount).
 		Int("probes_stopped", stoppedCount).
 		Int("probes_active", len(activeProbes)).
 		Msg("Configuration synchronization completed")
@@ -582,10 +600,13 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 // to have when IsHealthy() implementations re-collected on demand).
 func publishActiveProbes(pollers []*probes.ProbePoller) {
 	out := make([]string, 0, len(pollers))
+	byName := make(map[string]string, len(pollers))
 	for _, pp := range pollers {
 		if pp != nil {
 			out = append(out, pp.ProbeId)
+			byName[pp.Probe.GetName()] = pp.ProbeId
 		}
 	}
 	agentstate.SetActiveProbes(out)
+	agentstate.SetActiveProbeNames(byName)
 }

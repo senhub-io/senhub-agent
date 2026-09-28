@@ -575,13 +575,12 @@ bound to your agent key and grants nothing on its own), so it is not sealed.
 > in `agent.yaml` keeps working, and is moved to `license.jwt` automatically on
 > the next start.
 
-### License Formats
+### License Format
 
-SenHub supports two license formats, both auto-detected:
-
-- **Compact key** (recommended): a short 40-character key bound to your agent
-  key, e.g. `SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY`.
-- **JWT token**: a longer token (~700 characters) starting with `eyJ`.
+A licence is a signed JWT, a token of about 700 characters starting with
+`eyJ`. The short `SH-...` keys of versions before 0.3.0 are no longer
+accepted; the agent says so when it meets one, and support re-issues it
+as a JWT.
 
 ### Activating a License
 
@@ -599,8 +598,11 @@ sudo systemctl restart senhub-agent
 agent-key binding, and writes `license.jwt` for you:
 
 ```bash
-senhub-agent license activate SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY
+sudo senhub-agent license activate - < license.jwt
 ```
+
+Read from standard input, the token stays out of the process list and the
+shell history; it is also accepted as the argument.
 
 Either way, **the license takes effect after restarting the agent** — a license
 change is not picked up while the agent is running.
