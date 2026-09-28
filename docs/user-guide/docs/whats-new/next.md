@@ -10,6 +10,14 @@ collection gaps that comparison exposed.
 
 ## Breaking Changes
 
+- **`service.instance.id` is now an RFC 4122 UUID.** The OpenTelemetry
+  semantic conventions ask for a UUID; the agent now derives one (version
+  5) from its key. Each agent's `service.instance.id` therefore changes
+  once at upgrade: series keyed on it start new, and the agent's
+  `service.instance` entity in a topology backend is replaced by a new one
+  (the old one expires). Setting `resource.service.instance.id` on the
+  OTLP output still overrides it.
+
 - **The `process` probe no longer reports every process by default.**
   Without a `filter`, it emitted six series per process, and the identity
   of those series carried the process id: a machine with 837 processes
