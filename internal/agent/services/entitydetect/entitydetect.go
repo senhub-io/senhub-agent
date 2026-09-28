@@ -84,7 +84,20 @@ type Service struct {
 
 // New builds the service. It does not start anything.
 func New(cfg Config, base *logger.Logger) *Service {
+	publishInstanceID(cfg)
 	return &Service{cfg: cfg, logger: logger.NewModuleLogger(base, "entity.detector")}
+}
+
+// publishInstanceID makes the agent's instance id readable before any
+// probe collects. A probe freezes its `monitors` edge into the
+// observation it builds at the end of a collection; one built before the
+// id was known carried no edge, so the detector's first cycle dropped
+// every remote database as an orphan, and entities enabled later from the
+// console began the same way.
+func publishInstanceID(cfg Config) {
+	if cfg.AgentInstanceID != "" {
+		agentstate.SetAgentInstanceID(cfg.AgentInstanceID)
+	}
 }
 
 func (s *Service) GetName() string { return "EntityDetector" }
@@ -112,6 +125,7 @@ func (s *Service) Reconfigure(cfg Config) error {
 	}
 	s.shutdownLocked()
 	s.cfg = cfg
+	publishInstanceID(cfg)
 	if s.runCtx == nil {
 		return nil // not started yet: Start will use the new configuration
 	}
