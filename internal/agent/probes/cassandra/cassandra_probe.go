@@ -10,6 +10,7 @@ package cassandra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -236,28 +237,36 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 		})
 
 		// latency mean (ms)
+		// A node that served no request of this kind has no mean yet:
+		// skip the point rather than report the node down.
 		mean, err := p.client.readFloat64(ctx, mbeanLatency, "Mean")
-		if err != nil {
+		switch {
+		case errors.Is(err, errNoValue):
+		case err != nil:
 			return nil, "", "", fmt.Errorf("Latency.Mean(%s): %w", op, err)
+		default:
+			points = append(points, data_store.DataPoint{
+				Name:      "cassandra.client.requests.latency",
+				Value:     float64(mean / 1000), // Cassandra reports in microseconds, convert to ms
+				Timestamp: now,
+				Tags:      opTags,
+			})
 		}
-		points = append(points, data_store.DataPoint{
-			Name:      "cassandra.client.requests.latency",
-			Value:     float64(mean / 1000), // Cassandra reports in microseconds, convert to ms
-			Timestamp: now,
-			Tags:      opTags,
-		})
 
 		// latency p99 (ms)
 		p99, err := p.client.readFloat64(ctx, mbeanLatency, "99thPercentile")
-		if err != nil {
+		switch {
+		case errors.Is(err, errNoValue):
+		case err != nil:
 			return nil, "", "", fmt.Errorf("Latency.99thPercentile(%s): %w", op, err)
+		default:
+			points = append(points, data_store.DataPoint{
+				Name:      "cassandra.client.requests.latency.p99",
+				Value:     float64(p99 / 1000),
+				Timestamp: now,
+				Tags:      opTags,
+			})
 		}
-		points = append(points, data_store.DataPoint{
-			Name:      "cassandra.client.requests.latency.p99",
-			Value:     float64(p99 / 1000),
-			Timestamp: now,
-			Tags:      opTags,
-		})
 
 		// errors count (Errors.Count)
 		errCount, err := p.client.readInt64(ctx, mbeanErrors, "Count")

@@ -2,8 +2,10 @@
 package cassandra
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,10 +59,18 @@ func (c *jolokiaClient) readInt64(ctx context.Context, mbean, attribute string) 
 	return v.Int64()
 }
 
+// errNoValue is a gauge JMX cannot serve yet: a latency mean over no
+// request is NaN, which Jolokia sends as null. It is an absent sample, not
+// a failure of the node.
+var errNoValue = errors.New("no value yet")
+
 func (c *jolokiaClient) readFloat64(ctx context.Context, mbean, attribute string) (float64, error) {
 	raw, err := c.read(ctx, mbean, attribute)
 	if err != nil {
 		return 0, err
+	}
+	if string(bytes.TrimSpace(raw)) == "null" {
+		return 0, errNoValue
 	}
 	var v json.Number
 	if err := json.Unmarshal(raw, &v); err != nil {
