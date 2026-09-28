@@ -163,11 +163,11 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	switch p.config.Protocol {
 	case "udp":
 		if err := server.ListenUDP(address); err != nil {
-			return fmt.Errorf("failed to start UDP listener: %w", err)
+			return fmt.Errorf("failed to start UDP listener: %w", types.ExplainBindError(err, p.config.Port))
 		}
 	case "tcp":
 		if err := server.ListenTCP(address); err != nil {
-			return fmt.Errorf("failed to start TCP listener: %w", err)
+			return fmt.Errorf("failed to start TCP listener: %w", types.ExplainBindError(err, p.config.Port))
 		}
 	}
 

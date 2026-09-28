@@ -29,10 +29,10 @@ func TestAPlatformOnlyMetricIsNotDeclaredWhereItCannotBeFed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if keysOfTemplate(linux)["senhub.system.cpu.dpcs[{#PROBE}]"] {
+	if keysOfTemplate(linux)["senhub.system.cpu.dpcs[{#PROBE_CPU}]"] {
 		t.Error("a Windows counter is declared on Linux, where it can only ever be an empty item")
 	}
-	if !keysOfTemplate(linux)["senhub.system.cpu.utilization[{#PROBE}]"] {
+	if !keysOfTemplate(linux)["senhub.system.cpu.utilization[{#PROBE_CPU}]"] {
 		t.Error("the portable metric was dropped with it")
 	}
 
@@ -40,7 +40,7 @@ func TestAPlatformOnlyMetricIsNotDeclaredWhereItCannotBeFed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !keysOfTemplate(windows)["senhub.system.cpu.dpcs[{#PROBE}]"] {
+	if !keysOfTemplate(windows)["senhub.system.cpu.dpcs[{#PROBE_CPU}]"] {
 		t.Error("the Windows counter is missing from the Windows template")
 	}
 }
@@ -50,7 +50,7 @@ func TestWithoutAPlatformEveryMetricIsStillDeclared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !keysOfTemplate(exp)["senhub.system.cpu.dpcs[{#PROBE}]"] {
+	if !keysOfTemplate(exp)["senhub.system.cpu.dpcs[{#PROBE_CPU}]"] {
 		t.Error("asking for no platform must keep the definition whole")
 	}
 	if n := exp.ZabbixExport.Templates[0].Template; strings.Contains(n, "(") {

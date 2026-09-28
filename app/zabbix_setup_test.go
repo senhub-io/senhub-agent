@@ -67,3 +67,55 @@ func TestDryRunCountsTheTemplatesItWouldLink(t *testing.T) {
 		t.Errorf("a dry run must count the templates it would import; said %q", out.String())
 	}
 }
+
+// Zabbix before 6.4 reads the token only from the JSON-RPC envelope, and
+// 8.0 refuses it there: each line must get the one it accepts, or every
+// authenticated call answers "Not authorized".
+func TestTheTokenTravelsWhereTheServerReadsIt(t *testing.T) {
+	for _, bodyAuth := range []bool{false, true} {
+		var header string
+		var envelope map[string]interface{}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			header = r.Header.Get("Authorization")
+			if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+				t.Errorf("reading the request: %v", err)
+			}
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{"jsonrpc": "2.0", "result": []interface{}{}, "id": 1}); err != nil {
+				t.Errorf("answering the API call: %v", err)
+			}
+		}))
+		api := newZabbixAPI(srv.URL, "tok")
+		api.bodyAuth = bodyAuth
+		if err := api.call("hostgroup.get", map[string]interface{}{}, nil); err != nil {
+			t.Fatal(err)
+		}
+		srv.Close()
+		_, inBody := envelope["auth"]
+		if bodyAuth && (!inBody || header != "") {
+			t.Errorf("pre-6.4: auth in body = %v, header = %q; want the body only", inBody, header)
+		}
+		if !bodyAuth && (inBody || header != "Bearer tok") {
+			t.Errorf("6.4 and later: auth in body = %v, header = %q; want the header only", inBody, header)
+		}
+	}
+}
+
+func TestZabbixBefore(t *testing.T) {
+	cases := []struct {
+		version      string
+		major, minor int
+		want         bool
+	}{
+		{"6.0.48", 6, 4, true},
+		{"6.0.48", 6, 2, true},
+		{"6.4.0", 6, 4, false},
+		{"7.0.30", 6, 4, false},
+		{"8.0.0", 6, 2, false},
+		{"unreadable", 6, 4, false},
+	}
+	for _, c := range cases {
+		if got := zabbixBefore(c.version, c.major, c.minor); got != c.want {
+			t.Errorf("zabbixBefore(%q, %d, %d) = %v, want %v", c.version, c.major, c.minor, got, c.want)
+		}
+	}
+}

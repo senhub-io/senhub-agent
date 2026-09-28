@@ -66,7 +66,7 @@ func TestGeneratedPrototypesNameTheKeysTheAgentSends(t *testing.T) {
 				// Substitute the macros of every prototype and look for the sent key.
 				found := false
 				for p := range protos {
-					candidate := strings.ReplaceAll(p, probeMacro, "inst")
+					candidate := strings.ReplaceAll(p, template.ProbeKeyMacro(def.ProbeName), "inst")
 					for _, l := range labels {
 						candidate = strings.ReplaceAll(candidate, macroFor(l), tags[l])
 					}

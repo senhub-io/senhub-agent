@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -143,5 +144,25 @@ func TestReconfigureStartsDetectionOnARunningAgent(t *testing.T) {
 	}
 	if svc.cancel != nil || len(svc.unregisters) != 0 {
 		t.Error("disabling entities left the detector running")
+	}
+}
+
+// Probes collect before the detector starts, and a disabled detector never
+// starts: the id their `monitors` edge names must be known from the moment
+// the service is built, or the first observations carry no edge and the
+// detector drops them as orphans.
+func TestTheInstanceIDIsKnownBeforeAnyProbeCollects(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	svc := New(Config{Enabled: false, AgentInstanceID: "0ef1a045-4be0-5c98-ae22-3e399f8a13f0"}, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
+	if got := agentstate.GetAgentInstanceID(); got != "0ef1a045-4be0-5c98-ae22-3e399f8a13f0" {
+		t.Fatalf("instance id after New = %q, want it published before Start", got)
+	}
+	if err := svc.Reconfigure(Config{Enabled: false, AgentInstanceID: "17986334-29c6-5d88-9c5e-42ea561fc603"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := agentstate.GetAgentInstanceID(); got != "17986334-29c6-5d88-9c5e-42ea561fc603" {
+		t.Errorf("instance id after a key change = %q, want the new one", got)
 	}
 }

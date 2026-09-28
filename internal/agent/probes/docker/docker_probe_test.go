@@ -26,7 +26,7 @@ func makeTestServer(t *testing.T, containerList []containerListItem, statsByID m
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/"+apiVersion+"/containers/json":
+		case strings.HasSuffix(r.URL.Path, "/containers/json"):
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(containerList)
 
