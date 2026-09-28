@@ -272,6 +272,13 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **The Pro web application checks no longer flood the log.** Their
+  probe types had no discriminant declaration, and the pull cache warned
+  once per datapoint: dozens of lines a minute per probe. They are
+  declared, like five other probe types that lacked one, the warning is
+  logged once per type, and a test now requires the declaration for
+  every probe that has a definition.
+
 - **No internal routing label on the exported series.** The Pro web
   application and gateway checks carried `prtg_metric_id`, a tag meant
   for the legacy PRTG push, and it reached Prometheus, OTLP and Zabbix

@@ -213,6 +213,20 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"windows_eventlog": {},
 	"snmp_trap":        {},
 
+	// Active checks (Pro): one URL per instance, split by url like their
+	// definitions' multi_instance_labels; the gateway probe has none.
+	"load_webapp":  {"url"},
+	"ping_webapp":  {"url"},
+	"ping_gateway": {},
+
+	// One series per metric: their definitions declare no
+	// multi_instance_labels, so an empty set is the declaration.
+	"event":     {},
+	"influxdb":  {},
+	"nats":      {},
+	"nginx":     {},
+	"zookeeper": {},
+
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
 	// syslog: the event counter is reported per sender, per facility and
@@ -534,6 +548,10 @@ type MetricCache struct {
 	// Example: "cpu:usage_percent:core=0" or "redfish:storage.drive.temperature:drive_id=disk.bay.0"
 	// Only discriminant tags are in the key - contextual tags are in CachedMetric.Tags
 	timeSeries map[string]CachedMetric
+	// unregisteredTypes remembers the probe types already reported as
+	// missing from DiscriminantTagsRegistry: the warning is for the
+	// developer, once, not one line per datapoint for the process lifetime.
+	unregisteredTypes sync.Map
 	// Index by probe for fast probe-specific queries
 	probeIndex map[string]map[string]bool // probe_name -> set of ts_keys
 	ttl        time.Duration
@@ -658,11 +676,13 @@ func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName str
 	if !exists {
 		// Unknown probe type - log warning and use no discriminant tags
 		// This is safe: creates single time series per metric (like system-level probes)
-		c.logger.Warn().
-			Str("probe_name", probeName).
-			Str("probe_type", probeType).
-			Str("metric_name", metricName).
-			Msg("Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+		if _, warned := c.unregisteredTypes.LoadOrStore(probeType, true); !warned {
+			c.logger.Warn().
+				Str("probe_name", probeName).
+				Str("probe_type", probeType).
+				Str("metric_name", metricName).
+				Msg("Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+		}
 		discriminantTagNames = []string{}
 	}
 
