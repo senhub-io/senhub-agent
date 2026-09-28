@@ -458,6 +458,10 @@ collection gaps that comparison exposed.
   already in use", the old one was then stopped, and nothing listened
   until the retry two minutes later. The old instance is now stopped
   first.
+- **`config check` accepts a working syslog probe.** It demanded a
+  `listen_address` parameter the probe has never read, and reported an
+  error on a configuration that ran; the probe's own schema, which
+  `config check` also applies, is what describes it.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
