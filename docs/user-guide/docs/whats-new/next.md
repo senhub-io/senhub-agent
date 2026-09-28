@@ -348,8 +348,8 @@ collection gaps that comparison exposed.
 ## Fixes
 
 - **A change made with `sudo` no longer stops a non-root service.**
-  `sudo senhub-agent config set ...` and `sudo senhub-agent secret set ...`
-  rewrote the file as root with mode 0600. The Linux service runs as
+  `sudo senhub-agent config set ...`, `secret set ...` and
+  `license activate` rewrote the file as root with mode 0600. The Linux service runs as
   `senhub` and could no longer read it: the reload was refused, and the
   next restart failed to start. A file written by root in the
   configuration directory now takes the owner of that directory.
