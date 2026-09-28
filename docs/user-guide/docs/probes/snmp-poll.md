@@ -10,12 +10,12 @@
 The `snmp_poll` probe polls a network device over SNMPv2c and turns
 standard MIB objects into typed metrics: system uptime, per-interface
 traffic, errors, discards, speed and status. Custom OID mappings
-cover the vendor-specific long tail. An optional discovery mode
-crawls the network topology from seed devices (LLDP) and reports
-devices and links as entities.
+cover the vendor-specific long tail. A discovery mode that crawls the
+network topology from seed devices (LLDP) is accepted in the
+configuration but not active yet (#953): the `discovery` block is
+validated and ignored.
 
-One probe instance polls one device; declare one instance per device
-(or use discovery to enumerate them).
+One probe instance polls one device; declare one instance per device.
 
 ## Quick start
 
@@ -37,7 +37,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:349ba218b9a06eb7fbae5d46cfeaa6997fba0cb192d28e82d585e7881ee594fb -->
+<!-- sha256:adde5eb861b0941dfd012fb4747a317fe2492e3b9686227e2f76a82db71ec2c8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -62,7 +62,7 @@ one series per interface (`if_index` tag).
 | `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
 | `custom_mappings[].type` | No | `gauge` | How the value is reported: a gauge as read, a counter as a monotonic total. One of `gauge`, `counter` |
 | `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
-| `discovery` | No | - | Topology crawl from seed devices |
+| `discovery` | No | - | Topology crawl from seed devices. Not active yet (#953): the block is validated and ignored |
 | `discovery.seeds` | Yes | - | Entry-point device addresses |
 | `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
 | `discovery.profile.version` | No | `v2c` | SNMP version used to probe the discovered devices. One of `v2c`, `2c`, `2` |

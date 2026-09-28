@@ -31,7 +31,7 @@ func init() {
 				{Key: "type", Kind: probes.KindString, Default: "gauge", Enum: []string{"gauge", "counter"}, Description: "How the value is reported: a gauge as read, a counter as a monotonic total"},
 				{Key: "index_label", Kind: probes.KindString, Description: "Walk the OID as a table and tag rows with this label"},
 			}},
-			{Key: "discovery", Kind: probes.KindBlock, Group: "discovery", Description: "Topology crawl from seed devices", Fields: []probes.ParamSpec{
+			{Key: "discovery", Kind: probes.KindBlock, Group: "discovery", Description: "Topology crawl from seed devices. Not active yet (#953): the block is validated and ignored", Fields: []probes.ParamSpec{
 				{Key: "seeds", Kind: probes.KindStringList, Required: true, Description: "Entry-point device addresses"},
 				{Key: "profile", Kind: probes.KindBlock, Required: true, Description: "Credentials for crawled devices (v2c only)", Fields: []probes.ParamSpec{
 					{Key: "version", Kind: probes.KindString, Default: "v2c", Enum: []string{"v2c", "2c", "2"}, Description: "SNMP version used to probe the discovered devices"},

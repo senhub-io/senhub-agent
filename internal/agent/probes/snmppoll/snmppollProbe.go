@@ -78,7 +78,7 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		// validated, silently inert block.
 		moduleLogger.Warn().
 			Str("target", cfg.Target).
-			Msg("snmp_poll discovery is configured but not active yet (#156): the block is validated and ignored; per-device topology (LLDP/routes/bridge) still runs")
+			Msg("snmp_poll discovery is configured but not active yet (#953): the block is validated and ignored; per-device topology (LLDP/routes/bridge) still runs")
 	}
 
 	entitySrc := newEntitySource(cfg, moduleLogger)
