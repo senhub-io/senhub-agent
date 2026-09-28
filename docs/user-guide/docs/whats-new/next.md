@@ -445,6 +445,13 @@ collection gaps that comparison exposed.
   restart. The new configuration is now checked first: refused, it is
   reported in the log and on the console while the output keeps running
   as before, and it is applied at the next change once fixed.
+- **A listener refused its port says what to do.** Syslog on 514 or
+  traps on 162, their standard ports, fail under the non-root Linux
+  service with a bare "bind: permission denied". The error now adds that
+  the port is below 1024 and names the two ways out: the
+  `CAP_NET_BIND_SERVICE` capability in a unit drop-in, or a port above
+  1023. The syslog guide no longer suggests `setcap`, which the service
+  unit ignores.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
