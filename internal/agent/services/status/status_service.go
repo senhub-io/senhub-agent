@@ -90,12 +90,13 @@ type PerformanceInfo struct {
 
 // AgentInfo represents agent build and version information
 type AgentInfo struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	GoVersion string `json:"go_version"`
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
-	BuildTime string `json:"build_time,omitempty"`
+	Version    string `json:"version"`
+	Commit     string `json:"commit"`
+	InstanceID string `json:"instance_id,omitempty"`
+	GoVersion  string `json:"go_version"`
+	OS         string `json:"os"`
+	Arch       string `json:"arch"`
+	BuildTime  string `json:"build_time,omitempty"`
 }
 
 // NewStatusService creates a new status service instance

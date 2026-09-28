@@ -276,6 +276,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 		Hostname:         hostname,
 		Version:          version,
 		Commit:           commit,
+		InstanceID:       configuration.AgentInstanceID(a.strategy.agentConfig.GetAuthenticationKey()),
 		GoVersion:        runtime.Version(),
 		OS:               runtime.GOOS,
 		Arch:             runtime.GOARCH,
