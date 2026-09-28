@@ -391,6 +391,14 @@ collection gaps that comparison exposed.
   read "server" where it should name the server; its badge was cut to
   "ZABBI". It now shows the server, the encryption, the push cadence and
   the polled port.
+- **A target that goes down stops showing its last values.** A probe
+  whose target is down keeps running and reports only that it is down.
+  Its other values were still inside the window during which the agent
+  presents a value as current, so OTLP exported them with fresh
+  timestamps, Zabbix received them, and PRTG, Nagios and Prometheus
+  served them, for up to about two and a half minutes. A run of a probe
+  now retires the series it no longer reports. Zabbix keeps them in
+  discovery, so its items are not disabled for the length of an outage.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice

@@ -85,8 +85,16 @@ func (s *Strategy) ValidateConfigParams(params configuration.StorageConfigParams
 }
 
 func (s *Strategy) AddDataPoints(data []datapoint.DataPoint) error {
+	arrival := time.Now()
+	probes := map[string]bool{}
 	for _, dp := range data {
-		s.store.upsert(dp)
+		s.store.upsertAt(dp, arrival)
+		if name := tagValue(dp.Tags, tagProbeName); name != "" {
+			probes[name] = true
+		}
+	}
+	if len(probes) > 0 {
+		s.store.retireSuperseded(probes, arrival)
 	}
 	return nil
 }
@@ -296,12 +304,12 @@ func (s *Strategy) push(ctx context.Context) {
 // items renders the current series as Zabbix items, dropping the series
 // not collected for three push intervals.
 func (s *Strategy) items(now time.Time) []item {
-	metrics := s.store.snapshot(now, 3*s.cfg.Interval)
+	metrics, discovered := s.store.snapshot(now, 3*s.cfg.Interval)
 	out := make([]item, 0, len(metrics))
 	for _, cm := range metrics {
 		out = append(out, itemsFor(s.cfg.KeyPrefix, s.lookup(cm.ProbeType), cm)...)
 	}
-	out = append(out, discoveryItems(s.cfg.KeyPrefix, s.defs, metrics)...)
+	out = append(out, discoveryItems(s.cfg.KeyPrefix, s.defs, discovered)...)
 	out = append(out, agentItems(s.cfg.Hostname)...)
 	return append(out, s.nameplateItems()...)
 }

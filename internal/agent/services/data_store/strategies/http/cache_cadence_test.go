@@ -69,3 +69,43 @@ func TestCacheKeepsTheTTLWhenTheCadenceIsUnknown(t *testing.T) {
 		t.Fatalf("a value past the TTL survived without a cadence; %d left", n)
 	}
 }
+
+func redisBatch(names ...string) []datapoint.DataPoint {
+	out := make([]datapoint.DataPoint, 0, len(names))
+	for _, n := range names {
+		out = append(out, datapoint.DataPoint{Name: n, Value: 1.0, Timestamp: time.Now(),
+			Tags: []tags.Tag{{Key: "probe_name", Value: "Lab-Redis"}, {Key: "probe_type", Value: "redis"}}})
+	}
+	return out
+}
+
+// A target that goes down leaves its probe reporting only that it is
+// down. The values the previous run reported must leave with the next
+// run instead of being served as current until the window closes (#951).
+func TestCacheRetiresWhatTheLatestRunNoLongerReports(t *testing.T) {
+	baseLogger := createTestLogger()
+	cache := NewMetricCache(5*time.Minute, logger.NewModuleLogger(baseLogger, "test"))
+	registry := transformers.NewTransformerRegistry(baseLogger)
+	cache.NoteProbeCadence("Lab-Redis", time.Minute)
+	cache.AddDataPointsWithTransformer(redisBatch("redis_up", "redis_uptime"), registry)
+
+	// The previous run happened one cadence ago.
+	cache.mu.Lock()
+	for k, m := range cache.timeSeries {
+		m.Timestamp = time.Now().Add(-time.Minute)
+		cache.timeSeries[k] = m
+	}
+	cache.mu.Unlock()
+
+	cache.AddDataPointsWithTransformer(redisBatch("redis_up"), registry)
+	got := cache.GetProbeMetrics("lab-redis")
+	if len(got) != 1 || got[0].MetricName != "redis_up" {
+		t.Errorf("cache holds %d series after the target went down, want only redis_up", len(got))
+	}
+
+	// A second batch of the same run a few seconds later keeps the first.
+	cache.AddDataPointsWithTransformer(redisBatch("redis_clients"), registry)
+	if n := len(cache.GetProbeMetrics("lab-redis")); n != 2 {
+		t.Errorf("a second batch of one run retired the first: %d series", n)
+	}
+}
