@@ -272,6 +272,12 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **No internal routing label on the exported series.** The Pro web
+  application and gateway checks carried `prtg_metric_id`, a tag meant
+  for the legacy PRTG push, and it reached Prometheus, OTLP and Zabbix
+  with its unexpanded `[name]` template. Private tags now stay inside
+  the agent.
+
 - **`config check` reads the service's environment.** A token set in the
   unit's `Environment=` or `EnvironmentFile=` was missing from the shell
   running the check, so every such host ended on an error for a working
