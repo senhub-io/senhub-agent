@@ -427,6 +427,10 @@ collection gaps that comparison exposed.
   codes, which reached `docker logs` and log collectors as `[90m` and
   `[32mINF[0m`. Colour is now used only when standard error is a
   terminal.
+- **`status` answers inside a container.** It asked the service manager
+  first and stopped when there was none, so in a container it printed
+  `"rc-service" failed` and nothing else. It now says there is no
+  service manager and asks the running agent, as it does on a host.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
