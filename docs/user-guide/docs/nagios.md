@@ -92,6 +92,10 @@ OK - Probe cpu healthy - 3 metrics collected | CPU_Total_Usage=12.00 CPU_System=
 The status is **OK** while the probe holds values, and **CRITICAL** when
 it holds none or when every availability metric it reports (a metric
 whose name ends in `.up`) is 0, meaning its target cannot be reached.
+A probe that relays records and measures nothing, such as `syslog` or
+`otlp_receiver`, holds no values by design: its summary follows the
+probe's own state instead, **OK** while it runs and its listener
+receives, **CRITICAL** with the cause when it fails.
 The summary never returns WARNING: thresholds belong to checks.
 
 Performance data labels are the PRTG channel labels of the probe's

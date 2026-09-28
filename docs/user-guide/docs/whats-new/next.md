@@ -480,6 +480,11 @@ collection gaps that comparison exposed.
   `ping_gateway`, which takes no parameter, and a `password` from a
   NetScaler probe configured with an API key, and reported working
   configurations in error.
+- **A syslog or OTLP receiver probe is no longer CRITICAL in Nagios.**
+  These probes relay records and hold no metric, and the probe summary
+  answered "No metrics available", CRITICAL, for as long as they ran.
+  It now reports the probe's own state: OK while it runs and receives,
+  CRITICAL with the cause when it fails.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice

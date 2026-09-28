@@ -600,10 +600,13 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 // to have when IsHealthy() implementations re-collected on demand).
 func publishActiveProbes(pollers []*probes.ProbePoller) {
 	out := make([]string, 0, len(pollers))
+	byName := make(map[string]string, len(pollers))
 	for _, pp := range pollers {
 		if pp != nil {
 			out = append(out, pp.ProbeId)
+			byName[pp.Probe.GetName()] = pp.ProbeId
 		}
 	}
 	agentstate.SetActiveProbes(out)
+	agentstate.SetActiveProbeNames(byName)
 }
