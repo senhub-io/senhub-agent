@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -52,9 +54,12 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	// Get probe metrics from cache
 	metrics := n.strategy.cache.GetProbeMetrics(probeNameLower)
 	if len(metrics) == 0 {
+		status, body := relayProbeSummary(probeNameLower)
 		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(500)
-		if _, err := w.Write([]byte("CRITICAL - No metrics available for probe " + probeNameLower)); err != nil {
+		if status >= 2 {
+			w.WriteHeader(500)
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
 			n.logger.Error().Err(err).Msg("Failed to write Nagios error response")
 		}
 		return
@@ -373,3 +378,23 @@ func (n *NagiosManager) getStatusText(status int) string {
 }
 
 // Utility Methods for Nagios processing
+
+// relayProbeSummary answers for a probe that holds no metric. A syslog or
+// OTLP receiver relays records and measures nothing, so "no metrics" is
+// its normal state, and answering CRITICAL for it kept those services red
+// for ever. The probe's own state decides instead: running and healthy is
+// OK, a failed cycle or a listener that cannot receive is CRITICAL with
+// its cause, and an unknown name stays CRITICAL.
+func relayProbeSummary(name string) (int, string) {
+	state, known := agentstate.ProbeRunStateByName(name)
+	switch {
+	case !known:
+		return 2, "CRITICAL - No metrics available for probe " + name
+	case state.Health == "failed":
+		return 2, "CRITICAL - Probe " + name + " is failing: " + state.LastError
+	case state.Health == "ok":
+		return 0, "OK - Probe " + name + " is running; it relays records and holds no metric"
+	default:
+		return 3, "UNKNOWN - Probe " + name + " has not completed a cycle yet"
+	}
+}
