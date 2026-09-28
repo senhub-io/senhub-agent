@@ -748,6 +748,9 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 		// Convert tags from []tags.Tag to map[string]string
 		tags := make(map[string]string)
 		for _, tag := range dp.Tags {
+			if tag.Private {
+				continue
+			}
 			tags[tag.Key] = tag.Value
 		}
 
