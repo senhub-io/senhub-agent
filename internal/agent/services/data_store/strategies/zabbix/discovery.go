@@ -107,7 +107,7 @@ func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []o
 		if blank && len(labels) > 0 {
 			continue
 		}
-		entry := map[string]string{probeMacro: cm.ProbeName}
+		entry := map[string]string{probeMacro: cm.ProbeName, template.ProbeKeyMacro(cm.ProbeType): cm.ProbeName}
 		id := cm.ProbeName
 		for _, l := range labels {
 			v := cm.Tags[l]
