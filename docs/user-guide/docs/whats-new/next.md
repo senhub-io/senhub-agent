@@ -485,6 +485,12 @@ collection gaps that comparison exposed.
   answered "No metrics available", CRITICAL, for as long as they ran.
   It now reports the probe's own state: OK while it runs and receives,
   CRITICAL with the cause when it fails.
+- **The console shows the agent key, not the administration key.** Its
+  licence card and the Settings page labelled "Agent key" the key the
+  console was opened with, which is the administration key, and checked
+  licence binding against it: a licence bound to this agent was reported
+  as issued for another one, and copying "the agent key" handed out the
+  key that changes the configuration. Both now use the agent key.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
