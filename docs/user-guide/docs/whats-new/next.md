@@ -405,6 +405,13 @@ collection gaps that comparison exposed.
   metrics written `cpu_user: OK 0.10%`. It now reads
   `cpu_usage_total: OK 2.50%`, and names the aggregation only when it
   combined several series: `(max of 4 series)`.
+- **An output that starts after entity detection receives the entities
+  at once.** The OTLP output subscribes to entity events when it starts,
+  which can be just after detection's first cycle: at agent start, or
+  when the output is enabled or changed from the console. It then missed
+  that cycle and waited for the next re-emission, up to ten minutes by
+  default, before learning of the host. A new subscriber now triggers a
+  cycle that sends it the whole current state.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
