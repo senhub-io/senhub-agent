@@ -197,4 +197,18 @@ else
 fi
 unset SENHUB_OTLP_TLS OTLP_BEARER_TOKEN
 
+# 12. Entities are on by default in the image, once, and SENHUB_ENTITIES
+#     turns them off.
+frag="$work/10-otlp-ent.yaml"
+printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+otlp_fragment_extras "$frag" 2>/dev/null
+otlp_fragment_extras "$frag" 2>/dev/null
+check "entities are enabled by default" "$(grep -c 'entities:' "$frag")" "1"
+printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+SENHUB_ENTITIES=false
+export SENHUB_ENTITIES
+otlp_fragment_extras "$frag" 2>/dev/null
+check "SENHUB_ENTITIES=false leaves them off" "$(grep -c 'entities:' "$frag")" "0"
+unset SENHUB_ENTITIES
+
 exit "$fail"

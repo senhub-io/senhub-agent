@@ -133,6 +133,11 @@ collection gaps that comparison exposed.
   `senhub-agent license activate - < license.jwt` keeps the token out of
   the process list and the shell history, as `secret set` already does
   for secrets. The argument still works.
+- **The container sends entities by default.** An agent started from the
+  image exported measurements and logs but no entities, so a topology
+  backend such as Toise never saw the host, the agent or what it
+  watches. The output the image writes now enables them;
+  `SENHUB_ENTITIES=false` turns them off.
 
 - **The agent shows its instance id.** `senhub-agent key instance-id`,
   `senhub-agent status` and the **Agent** card of the web console show
