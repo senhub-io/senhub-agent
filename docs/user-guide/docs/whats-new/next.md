@@ -359,6 +359,10 @@ collection gaps that comparison exposed.
   a 6.0 LTS server refused every call with "Not authorized". The token
   now travels where the server reads it, and a 6.0 server gets the 6.0
   export format and import rules without `--version`.
+- **A failed DNS lookup names the resolver it asked.** With `resolvers`
+  set, the query went to the named resolver, but the error still named
+  the system one (`lookup x on 127.0.0.53:53`), which sent operators to
+  the wrong server. It now names the resolver that was queried.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
