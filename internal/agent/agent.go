@@ -108,7 +108,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		entitydetect.Resolve(
 			localConfiguration.GetEntitiesConfig(),
 			localConfiguration.GetConfiguration().StorageConfig,
-			localConfiguration.GetAuthenticationKey(),
+			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
 		),
 		logger,
 	)
@@ -119,7 +119,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		if err := entityDetector.Reconfigure(entitydetect.Resolve(
 			localConfiguration.GetEntitiesConfig(),
 			localConfiguration.GetConfiguration().StorageConfig,
-			localConfiguration.GetAuthenticationKey(),
+			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
 		)); err != nil {
 			logger.Warn().Err(err).Msg("Entity detection could not follow the configuration change")
 		}
