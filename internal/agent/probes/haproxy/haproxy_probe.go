@@ -204,6 +204,12 @@ func (p *haproxyProbe) fetchCSV() ([][]string, error) {
 		return nil, fmt.Errorf("haproxy stats endpoint returned HTTP %d", resp.StatusCode)
 	}
 
+	// The HTML stats page answers on the same URL without ";csv", and read
+	// as CSV it fails on its first quote with an error that names nothing
+	// the operator can act on.
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+		return nil, fmt.Errorf("the endpoint returned the HTML stats page; point it at the CSV form, %s;csv", strings.TrimSuffix(p.cfg.Endpoint, "/"))
+	}
 	return parseCSV(resp.Body)
 }
 
