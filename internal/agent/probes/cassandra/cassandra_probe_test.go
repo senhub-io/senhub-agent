@@ -79,10 +79,16 @@ func defaultFixture() *jolokiaFixture {
 			"org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency/99thPercentile": float64(1500.0),
 
 			// Read errors
-			"org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Errors/Count": int64(5),
+			// Cassandra has no "Errors" MBean: failures, timeouts and
+			// unavailables are summed into the errors metric.
+			"org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Failures/Count":     int64(3),
+			"org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Timeouts/Count":     int64(1),
+			"org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Unavailables/Count": int64(1),
 
 			// Write errors
-			"org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Errors/Count": int64(2),
+			"org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Failures/Count":     int64(2),
+			"org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Timeouts/Count":     int64(0),
+			"org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Unavailables/Count": int64(0),
 
 			// Compaction
 			"org.apache.cassandra.metrics:type=Compaction,name=CompletedTasks/Value": int64(1234),
@@ -402,5 +408,31 @@ func TestCollect_NoReadYetKeepsTheNodeUp(t *testing.T) {
 	}
 	if readLatency != 0 {
 		t.Errorf("a read latency point was published from a null value")
+	}
+}
+
+// The errors metric is failures + timeouts + unavailables: Cassandra has no
+// "Errors" MBean, and reading one failed every collection on a real node.
+func TestCollect_ErrorsSumTheThreeCounters(t *testing.T) {
+	fix := defaultFixture()
+	srv := httptest.NewServer(fix.handler())
+	defer srv.Close()
+	points, err := newTestProbe(t, srv.URL+"/jolokia").Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	got := map[string]float64{}
+	for _, dp := range points {
+		if dp.Name != "cassandra.client.requests.errors" {
+			continue
+		}
+		for _, tg := range dp.Tags {
+			if tg.Key == "operation" {
+				got[tg.Value] = dp.Value
+			}
+		}
+	}
+	if got["read"] != 5 || got["write"] != 2 {
+		t.Errorf("errors = %v, want read 5 (3+1+1) and write 2", got)
 	}
 }

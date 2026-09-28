@@ -77,7 +77,7 @@ metrics:
     display_name: "Cassandra {operation} Errors"
     unit: "#"
     category: "requests"
-    description: "Total number of client request errors (Read or Write)"
+    description: "Client requests that did not succeed (Read or Write): failures, timeouts and unavailables"
     otel:
       name: cassandra.client.requests.errors
       unit: "{error}"
