@@ -379,6 +379,13 @@ collection gaps that comparison exposed.
   enabling entities from the console, dropped every remote database and
   service as having no relation. The id is now known before any probe
   runs.
+- **The Docker and Swarm probes speak the API version the engine
+  serves.** They called the Engine API at a fixed version 1.43. Docker
+  Engine 29 refuses anything below 1.44, so the Docker probe fell back
+  to reading cgroups, without container names, network or restart
+  counts, and reported the socket as unreachable; Engine 20.10, which
+  serves up to 1.41, refused it too. The probes now read the range the
+  engine serves and pick a version inside it.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
