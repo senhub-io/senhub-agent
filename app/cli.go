@@ -611,20 +611,9 @@ func Main() {
 func showHelp() {
 	exe := os.Args[0]
 
-	// Try to show the console URL if config is available
-	consoleURL := ""
-	configPath, err := cliArgs.GetAbsoluteConfigPath("")
-	if err == nil {
-		if key, err := extractAgentKeyFromConfig(configPath); err == nil && key != "" {
-			consoleURL = buildDashboardURL(configPath, key)
-		}
-	}
-
 	fmt.Println("SenHub Agent - Infrastructure Monitoring Agent")
 	fmt.Printf("Version: %s (%s)\n", cliArgs.Version, cliArgs.CommitHash)
-	if consoleURL != "" {
-		fmt.Printf("Console: %s\n", consoleURL)
-	}
+	fmt.Printf("Console: %s\n", consoleHint())
 	fmt.Println()
 
 	fmt.Printf(`Usage: %s [command] [options]

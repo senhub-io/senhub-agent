@@ -427,6 +427,13 @@ collection gaps that comparison exposed.
   codes, which reached `docker logs` and log collectors as `[90m` and
   `[32mINF[0m`. Colour is now used only when standard error is a
   terminal.
+- **`status` and `--help` no longer print a console link that answers
+  401.** Both built the console address on the agent key, which since
+  the administration key was introduced only reads metrics. They now
+  name `senhub-agent console`, which opens the console, rather than an
+  address carrying the administration key into output that is often
+  pasted into a ticket.
+
 - **`status` answers inside a container.** It asked the service manager
   first and stopped when there was none, so in a container it printed
   `"rc-service" failed` and nothing else. It now says there is no
