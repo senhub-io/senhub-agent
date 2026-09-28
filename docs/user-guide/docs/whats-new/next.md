@@ -272,6 +272,12 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **The container's volume warning names only what is lost.** A
+  container started with `SENHUB_HOST_ID` and `SENHUB_AGENT_KEY` but no
+  volume was told it would arrive as a new host; those two variables
+  already carry the identity and the key. The warning now lists only the
+  log bookmarks in that case, and says what losing them costs per probe.
+
 - **The Pro web application checks no longer flood the log.** Their
   probe types had no discriminant declaration, and the pull cache warned
   once per datapoint: dozens of lines a minute per probe. They are

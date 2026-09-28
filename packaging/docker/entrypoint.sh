@@ -281,6 +281,22 @@ YAML
   log "reading the console log stream of the Container Apps:$written"
 }
 
+# unmounted_state_warning says what a container without a volume on the
+# state directory loses, and only that: SENHUB_HOST_ID and SENHUB_AGENT_KEY
+# carry the identity and the key without one, the log bookmarks never are.
+# Without a bookmark a Container Apps stream re-sends its last tail_lines,
+# and a file probe starts at the end of each file.
+unmounted_state_warning() {
+  lost="log bookmarks"
+  [ -n "${SENHUB_AGENT_KEY:-}" ] || lost="agent key, $lost"
+  [ -n "${SENHUB_HOST_ID:-}" ] || lost="host identity, $lost"
+  log "$STATE_DIR is not a mounted volume: $lost live in this container only"
+  if [ -z "${SENHUB_HOST_ID:-}" ]; then
+    log "every new container will arrive as a new host: mount a volume on $STATE_DIR, or set SENHUB_HOST_ID"
+  fi
+  log "the log probes lose their place: a Container Apps stream re-sends its recent lines, a file probe skips what was written in between; mount a volume on $STATE_DIR to keep it"
+}
+
 resolve_machine_id
 
 if [ -f "$CONFIG" ]; then
@@ -340,9 +356,7 @@ if [ ! -w "$STATE_DIR" ]; then
   log "$STATE_DIR is not writable: the agent cannot keep its identity, its key or its bookmarks"
   log "mount a volume there, or fix its ownership"
 elif ! awk -v d="$STATE_DIR" '$2 == d { found = 1 } END { exit !found }' /proc/mounts 2>/dev/null; then
-  log "$STATE_DIR is not a mounted volume: identity, agent key and log bookmarks live in this container only"
-  log "every new container will arrive as a new host, and every log probe will re-read its tail"
-  log "mount a volume on $STATE_DIR, or set SENHUB_HOST_ID, to keep one identity"
+  unmounted_state_warning
 fi
 
 exec senhub-agent "$@" --config-path "$CONFIG"

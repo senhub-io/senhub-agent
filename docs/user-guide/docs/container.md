@@ -17,9 +17,12 @@ That is the whole of it for a first run: one variable, one mount.
 
 `/var/lib/senhub-agent` holds everything that makes this agent *this*
 agent: its host identity, its own key, and the bookmarks its log probes
-keep. **Mount it, or every container arrives as a new host** and
-re-reads the tail of every log it follows. The entrypoint says so on
-startup when the directory is not a mounted volume.
+keep. **Mount it, or every container arrives as a new host** and its
+log probes lose their place: a Container Apps stream re-sends its last
+`tail_lines`, a file probe skips what was written in between. The
+entrypoint says so on startup when the directory is not a mounted
+volume, naming only what `SENHUB_HOST_ID` and `SENHUB_AGENT_KEY` do not
+already carry.
 
 Two identities live there, and they answer different questions.
 
@@ -46,9 +49,10 @@ start.
 
 What survives a new container without a volume: the host identity and
 the agent identity when those two variables are set, the configuration
-the variables describe. What does not: the log bookmarks, so a log
-probe re-reads from where its source starts, and anything written to the
-configuration from the console.
+the variables describe. What does not: the log bookmarks, so a
+Container Apps stream re-sends its recent lines and a file probe skips
+what was written in between, and anything written to the configuration
+from the console.
 
 Nothing else needs a mount. The configuration lives inside the container
 unless you choose otherwise, and the log file is written to
