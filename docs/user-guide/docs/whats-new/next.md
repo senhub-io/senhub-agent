@@ -372,6 +372,13 @@ collection gaps that comparison exposed.
   after the probe type; the keys the agent sends are unchanged. Re-run
   `zabbix setup` to import the corrected templates, then link them to
   the hosts that registered without them (Mass update > Templates).
+- **A monitored database is not dropped at the first entity cycle.** A
+  probe records the agent's `monitors` link when it collects, and the
+  agent's instance id was published only when entity detection started,
+  after the first collections. The first cycle, and the first one after
+  enabling entities from the console, dropped every remote database and
+  service as having no relation. The id is now known before any probe
+  runs.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice
