@@ -272,6 +272,10 @@ collection gaps that comparison exposed.
 
 ## Fixes
 
+- **Windows Services names a selected service it cannot find.** A
+  misspelt or unreadable service simply had no series; the probe now
+  logs each such name once.
+
 - **The console's list fields show their example one value per line.**
   A list field split on lines but displayed the probe's example
   comma-separated (`wuauserv, Spooler`), so a list typed like the

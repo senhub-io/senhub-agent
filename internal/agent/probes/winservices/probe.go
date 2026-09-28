@@ -19,6 +19,7 @@ package winservices
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -77,6 +78,10 @@ type WinServicesProbe struct {
 	collect      collectFunc
 
 	entitySource *winServicesEntitySource
+
+	// reportedMissing holds the selected names already reported as not
+	// found, so each is logged once rather than every cycle.
+	reportedMissing map[string]bool
 }
 
 // NewWinServicesProbe constructs the probe. Config errors surface here;
@@ -162,8 +167,36 @@ func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 	for _, s := range states {
 		points = append(points, p.buildServiceDatapoints(s, now)...)
 	}
+	if err == nil {
+		p.reportMissing(states)
+	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// reportMissing names the selected services the SCM did not report. The
+// missing row was the only signal, and a PRTG or Nagios reader cannot see a
+// channel that never appeared: a name typed wrong, or a comma-separated
+// list saved as one name, went unnoticed.
+func (p *WinServicesProbe) reportMissing(states []serviceState) {
+	if len(p.config.Services) == 0 {
+		return
+	}
+	seen := make(map[string]bool, len(states))
+	for _, s := range states {
+		seen[strings.ToLower(s.name)] = true
+	}
+	for _, want := range p.config.Services {
+		if seen[strings.ToLower(want)] || p.reportedMissing[want] {
+			continue
+		}
+		if p.reportedMissing == nil {
+			p.reportedMissing = map[string]bool{}
+		}
+		p.reportedMissing[want] = true
+		p.moduleLogger.Warn().Str("service", want).
+			Msg("Selected service not found or not readable; it has no state series (check the short name, one per list entry)")
+	}
 }
 
 func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time) []data_store.DataPoint {
