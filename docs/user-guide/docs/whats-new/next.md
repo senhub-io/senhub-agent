@@ -417,6 +417,11 @@ collection gaps that comparison exposed.
   as a sidecar on `localhost:4317`, could only be reached by mounting a
   whole configuration; the export failed on "first record does not look
   like a TLS handshake". `SENHUB_OTLP_TLS=false` now does it.
+- **No colour codes in container logs.** Run in the foreground, as a
+  container runs it, the agent wrote its log lines with terminal colour
+  codes, which reached `docker logs` and log collectors as `[90m` and
+  `[32mINF[0m`. Colour is now used only when standard error is a
+  terminal.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice

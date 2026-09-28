@@ -14,6 +14,7 @@ import (
 
 	"github.com/kardianos/service"
 	"github.com/rs/zerolog"
+	"golang.org/x/term"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/debugshipper"
@@ -349,7 +350,7 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	// Add console output in interactive mode (run command)
 	// This ensures logs are visible in console when using: ./agent run
 	if isInteractive {
-		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
+		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, NoColor: !stderrIsTerminal(), TimeFormat: consoleTimeFormat}
 		writers = append(writers, NewMaskingWriter(consoleWriter))
 		bootstrapLog().Info().Msg("Running in interactive mode - console output enabled")
 	} else if journaldAttached() {
@@ -441,12 +442,20 @@ const consoleTimeFormat = "2006-01-02 15:04:05.000"
 // stateless and every caller here runs during start-up.
 var bootstrapLog = sync.OnceValue(func() *ModuleLogger {
 	l := zerolog.
-		New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}).
+		New(zerolog.ConsoleWriter{Out: os.Stderr, NoColor: !stderrIsTerminal(), TimeFormat: consoleTimeFormat}).
 		With().
 		Timestamp().
 		Logger()
 	return NewModuleLogger((*Logger)(&l), "logger.bootstrap")
 })
+
+// stderrIsTerminal says whether colour codes will reach a person. A
+// container runs the agent in the foreground with standard error captured
+// by the runtime, and the codes then land verbatim in docker logs and in
+// whatever collects them.
+func stderrIsTerminal() bool {
+	return term.IsTerminal(int(os.Stderr.Fd()))
+}
 
 // fileWriter wraps the rotating file in the layout chosen by --log-format.
 //
