@@ -354,6 +354,11 @@ collection gaps that comparison exposed.
   `/usr/local/bin/senhub-agent`, by its full path: on the RHEL family
   `sudo` does not search `/usr/local/bin`, and `sudo senhub-agent` is
   "command not found" there.
+- **`zabbix setup` works on Zabbix 6.0.** It sent the API token only as
+  an `Authorization: Bearer` header, which Zabbix reads from 6.4 on, so
+  a 6.0 LTS server refused every call with "Not authorized". The token
+  now travels where the server reads it, and a 6.0 server gets the 6.0
+  export format and import rules without `--version`.
 
 - **Enabling entities takes effect on save.** The console applies an
   output change without a restart, but entity detection kept the choice

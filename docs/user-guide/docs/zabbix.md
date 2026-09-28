@@ -510,6 +510,12 @@ Measured on a server of each line, not inferred from a changelog.
 | polled port read by `zabbix_get` | yes | yes |
 | proxy group redirection | yes | yes |
 
+`zabbix setup` also prepares a 6.0 LTS server (measured on 6.0.48). A
+server before 6.4 reads the API token only inside the request, and one
+before 6.2 has no template groups and cannot read the 7.0 export format;
+the command reads the server's version and adapts to both, so
+`--version 6.0` is chosen for you there.
+
 Two things are worth knowing about the 8.0 line specifically.
 
 **The API no longer accepts the session token in the request body.**
