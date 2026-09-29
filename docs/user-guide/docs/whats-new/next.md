@@ -37,3 +37,9 @@ Changes since 0.6.0, collected as they are merged.
   connection to each server or proxy address, SenHub cloud reaches the
   intake the agent pushes to. For the events output, the test reached
   the base URL; it now reaches `/event/insert`, where the agent posts.
+
+- **Two development endpoints are gone.** `POST
+  /api/{key}/debug/inject-test-metrics` and `inject-real-metrics`,
+  reachable with the administration key, wrote invented Dell PowerVault
+  series into the cache that PRTG, Nagios and Prometheus read, and
+  answered with links to a developer's agent on `localhost:8080`.
