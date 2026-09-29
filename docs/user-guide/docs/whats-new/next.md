@@ -554,7 +554,11 @@ Breaking Changes or Fixes below.
   A definition marks such a metric with `prtg_skip`. The IBM i per-job
   series are kept out of PRTG the same way: their names carry the job
   number, and a bench sensor had grown to 2,583 channels for 1,447 served,
-  enough to saturate the PRTG server.
+  enough to saturate the PRTG server. Its relayed events (QSYSOPR, QHST,
+  audit, MSGW) are kept out of PRTG too: each event had become a channel.
+  Two IBM i channel families named a tag the probe does not emit, so all
+  their series shared one name: the library list now names the library
+  (`Library QGPL (USER)`) and the table statistics their schema.
 
 - **A syslog probe has a PRTG channel.** The probe relays messages as
   events and published no metric, so its PRTG sensor found no channel
