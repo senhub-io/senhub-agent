@@ -616,6 +616,14 @@ Breaking Changes or Fixes below.
   `java_home`, `bridge_runner_dir` and `native_runner`, and Java on the
   PATH is used.
 
+- **The console's Settings page gathers the agent's identity and HTTPS
+  state.** The agent key, the instance ID and the administration key
+  (masked until revealed) now sit together in an Identity card, and an
+  HTTPS card shows whether TLS is on, the certificate and key files, the
+  certificate's subject and expiry, and links to where TLS is set. They
+  were spread over the Overview page, the Outputs page and the command
+  line.
+
 - **The console's Settings page shows the agent key.** It showed the
   administration key, which the console is opened with, under "Agent
   key", next to the advice to give that key to Sensor Factory when
