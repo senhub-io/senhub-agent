@@ -67,7 +67,7 @@
                 <div class="stack">
                     <div class="field">
                         <span class="lbl">Agent key</span>
-                        <div class="agentkey-box" id="agentkey">{{.AgentKey}}</div>
+                        <div class="agentkey-box" id="agentkey">{{.ReadKey}}</div>
                         <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A license is bound to it: give it to Sensor Factory when ordering one, and the license you receive is checked against it here. <button class="btn sm" id="copy-key" type="button">Copy</button> <span class="xs hide" id="copied" style="color:var(--ok)">copied</span></div>
                     </div>
                     <dl class="kv left">
@@ -216,11 +216,14 @@
             return ok;
         }
         $('copy-key').addEventListener('click', async () => {
+            // The agent key shown above, not window.AGENT_KEY: the console
+            // runs on the administration key, which no licence is bound to.
+            const agentKey = $('agentkey').textContent.trim();
             let ok = false;
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                ok = await navigator.clipboard.writeText(window.AGENT_KEY).then(() => true, () => copyFallback(window.AGENT_KEY));
+                ok = await navigator.clipboard.writeText(agentKey).then(() => true, () => copyFallback(agentKey));
             } else {
-                ok = copyFallback(window.AGENT_KEY);
+                ok = copyFallback(agentKey);
             }
             const c = $('copied');
             c.textContent = ok ? 'copied' : 'copy failed';
