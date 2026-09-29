@@ -540,6 +540,12 @@ Breaking Changes or Fixes below.
   `Service web Replicas Running`. PRTG sensors on the Swarm probe get
   these channels as new ones; the old, merged channels stop updating.
 
+- **The systemd probe leaves login sessions out.** Each user login
+  creates `run-user-UID.mount` and `user-runtime-dir@UID.service`, removed
+  at logout; in the default view they became series, and PRTG channels,
+  that died with the session. They are left out unless `units` names
+  them.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux

@@ -50,8 +50,14 @@ series per cycle.
 
 ## Operational notes
 
+- Without `units`, the probe watches every loaded unit of the included
+  types, except the units systemd creates for each user login and removes
+  at logout (`run-user-*.mount`, `user@*.service`,
+  `user-runtime-dir@*.service`). Services started on demand (packagekit,
+  systemd-oomd) also leave systemd's list when they stop. With a PRTG
+  sensor, which keeps every channel it has seen, name the units to watch
+  in `units` so the channel list stays stable.
 - The probe reads from the local system D-Bus socket. No special privileges are needed beyond D-Bus access, which is granted to root by default.
-- Transient units (runtime-generated, without a unit file) are excluded.
 - The `systemd.unit.type` tag carries the unit type suffix (service, socket, mount, timer, …).
 
 ## Metric reference
