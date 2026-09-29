@@ -54,6 +54,12 @@ Breaking Changes or Fixes below.
     once after upgrading: the installed service unit still forbids the
     writable-executable memory a JVM needs, and an upgrade does not
     rewrite the unit.
+13. **Linux agents that stopped after `sudo senhub-agent secret set`.** In
+    0.5.x that command left `/etc/senhub-agent/secrets.age` owned by root,
+    and the service, which runs as `senhub`, could no longer read it.
+    Give the file back before or after upgrading:
+    `sudo chown senhub:senhub /etc/senhub-agent/secrets.age`. From 0.6.0,
+    files written with sudo keep the owner of their directory.
 
 ## Breaking Changes
 
