@@ -204,47 +204,6 @@ func (d *DebugManager) HandleStatsCache(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// HandleConfigProbes handles GET requests for probe configuration
-func (d *DebugManager) HandleConfigProbes(w http.ResponseWriter, r *http.Request) {
-	_, authenticated := d.strategy.authManager.AuthenticateAndExtract(w, r)
-	if !authenticated {
-		return
-	}
-
-	// For now, return active probes from cache since we don't have direct access to configuration provider
-	// TODO: Refactor to pass configuration provider to HTTP strategy for full probe config access
-	d.strategy.cache.mu.RLock()
-	activeProbes := make(map[string]bool)
-	for _, metric := range d.strategy.cache.timeSeries {
-		activeProbes[metric.ProbeName] = true
-	}
-	d.strategy.cache.mu.RUnlock()
-
-	// Create simplified probe list
-	probes := make([]map[string]interface{}, 0)
-	for probeName := range activeProbes {
-		probes = append(probes, map[string]interface{}{
-			"name":    probeName,
-			"type":    "detected",
-			"enabled": true,
-			"status":  "active",
-		})
-	}
-
-	response := map[string]interface{}{
-		"probes": probes,
-		"count":  len(probes),
-		"note":   "Showing active probes from cache. Full configuration requires restart to change.",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		d.logger.Error().Err(err).Msg("Failed to encode probe config")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-}
-
 // HandleAdminCacheClear handles POST requests to clear the cache
 func (d *DebugManager) HandleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
 	_, authenticated := d.strategy.authManager.AuthenticateAndExtract(w, r)
@@ -267,44 +226,5 @@ func (d *DebugManager) HandleAdminCacheClear(w http.ResponseWriter, r *http.Requ
 		d.logger.Error().Err(err).Msg("Failed to encode cache clear response")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
-	}
-}
-
-// Utility Methods
-
-// GetDebugInfo returns comprehensive debug information
-func (d *DebugManager) GetDebugInfo() map[string]interface{} {
-	d.strategy.cache.mu.RLock()
-	totalMetrics := len(d.strategy.cache.timeSeries)
-	probeCount := len(d.strategy.cache.probeIndex)
-	d.strategy.cache.mu.RUnlock()
-
-	return map[string]interface{}{
-		"cache": map[string]interface{}{
-			"total_metrics": totalMetrics,
-			"active_probes": probeCount,
-			"ttl":           d.strategy.cache.ttl.String(),
-		},
-		"server": d.strategy.serverManager.GetServerStats(),
-		"config": d.strategy.configManager.GetConfigurationSummary(),
-		"health": d.strategy.healthManager.GetHealthMetrics(),
-	}
-}
-
-// GetSystemDiagnostics returns system diagnostic information
-func (d *DebugManager) GetSystemDiagnostics() map[string]interface{} {
-	return map[string]interface{}{
-		"modules": map[string]string{
-			"authentication": "active",
-			"health":         "active",
-			"metrics":        "active",
-			"configuration":  "active",
-			"server":         "active",
-			"cache":          "active",
-			"debug":          "active",
-		},
-		"endpoints_enabled": d.strategy.configManager.GetEnabledEndpointsList(),
-		"server_running":    d.strategy.serverManager.IsRunning(),
-		"cache_healthy":     d.strategy.cache != nil,
 	}
 }
