@@ -532,6 +532,14 @@ Breaking Changes or Fixes below.
   and stayed down. Like the file-tail and journal probes, it now reports
   `senhub.syslog.records_emitted`, the count of messages it has relayed.
 
+- **Swarm channels name their node, service and network.** The Swarm
+  display names were bare ("Node Ready", "Service Replicas Running",
+  "Senhub Node_Role_State"), so every node or service of a cluster
+  reached PRTG and Zabbix under the same name. They now carry the node,
+  service or network they describe, for example
+  `Service web Replicas Running`. PRTG sensors on the Swarm probe get
+  these channels as new ones; the old, merged channels stop updating.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
