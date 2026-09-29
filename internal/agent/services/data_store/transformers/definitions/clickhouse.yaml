@@ -4,11 +4,9 @@ version: "1.0.0"
 host_level: false
 multi_instance_labels: ["instance"]
 
-# FREE-tier probe. Scrapes ClickHouse /metrics (Prometheus text, available
-# since ClickHouse 20.1) and maps the known metric families:
-#   ClickHouseMetrics_*        → instantaneous gauges
-#   ClickHouseAsyncMetrics_*   → background/async gauges
-#   ClickHouseProfileEvents_*  → cumulative counters
+# FREE-tier probe. Reads system.metrics (instantaneous gauges),
+# system.asynchronous_metrics (background gauges) and system.events
+# (cumulative counters) through the HTTP interface.
 #
 # OTel units: By = bytes, s = seconds, {query}/{connection}/{row}/{part}/{merge} = counts.
 
@@ -18,7 +16,7 @@ metrics:
     display_name: "ClickHouse {instance} Up"
     unit: "#"
     category: "availability"
-    description: "1 when the ClickHouse /metrics endpoint answered successfully, 0 otherwise"
+    description: "1 when the ClickHouse HTTP interface answered the system-table query, 0 otherwise"
     otel:
       name: senhub.clickhouse.up
       unit: "{status}"
@@ -31,7 +29,7 @@ metrics:
     display_name: "ClickHouse {instance} Active Queries"
     unit: "#"
     category: "queries"
-    description: "Number of queries currently being processed (ClickHouseMetrics_Query)"
+    description: "Number of queries currently being processed (system.metrics Query)"
     otel:
       name: clickhouse.queries.active
       unit: "{query}"
@@ -44,7 +42,7 @@ metrics:
     display_name: "ClickHouse {instance} Connections"
     unit: "#"
     category: "connections"
-    description: "Number of open client connections (ClickHouseMetrics_Connection)"
+    description: "Open client connections: TCP, HTTP, MySQL and PostgreSQL interfaces (system.metrics)"
     otel:
       name: clickhouse.connections
       unit: "{connection}"
@@ -57,7 +55,7 @@ metrics:
     display_name: "ClickHouse {instance} Memory Used"
     unit: "B"
     category: "memory"
-    description: "Memory tracked by the query tracker (ClickHouseMetrics_MemoryTracking)"
+    description: "Memory tracked by the query tracker (system.metrics MemoryTracking)"
     otel:
       name: clickhouse.memory.used
       unit: "By"
@@ -70,7 +68,7 @@ metrics:
     display_name: "ClickHouse {instance} Active Parts"
     unit: "#"
     category: "storage"
-    description: "Active data parts in MergeTree tables (ClickHouseMetrics_Parts)"
+    description: "Active data parts in MergeTree tables (system.metrics PartsActive)"
     otel:
       name: clickhouse.parts.active
       unit: "{part}"
@@ -83,7 +81,7 @@ metrics:
     display_name: "ClickHouse {instance} Active Merges"
     unit: "#"
     category: "storage"
-    description: "MergeTree background merges currently running (ClickHouseMetrics_Merge)"
+    description: "MergeTree background merges currently running (system.metrics Merge)"
     otel:
       name: clickhouse.merges.active
       unit: "{merge}"
@@ -96,7 +94,7 @@ metrics:
     display_name: "ClickHouse {instance} Uptime"
     unit: "s"
     category: "availability"
-    description: "Server uptime in seconds (ClickHouseAsyncMetrics_Uptime)"
+    description: "Server uptime in seconds (system.asynchronous_metrics Uptime)"
     otel:
       name: clickhouse.uptime
       unit: "s"
@@ -109,7 +107,7 @@ metrics:
     display_name: "ClickHouse {instance} Total Queries"
     unit: "#"
     category: "queries"
-    description: "Cumulative number of queries executed (ClickHouseProfileEvents_Query)"
+    description: "Cumulative number of queries executed (system.events Query)"
     otel:
       name: clickhouse.queries.total
       unit: "{query}"
@@ -122,7 +120,7 @@ metrics:
     display_name: "ClickHouse {instance} SELECT Queries"
     unit: "#"
     category: "queries"
-    description: "Cumulative SELECT queries executed (ClickHouseProfileEvents_SelectQuery)"
+    description: "Cumulative SELECT queries executed (system.events SelectQuery)"
     otel:
       name: clickhouse.queries.select
       unit: "{query}"
@@ -135,7 +133,7 @@ metrics:
     display_name: "ClickHouse {instance} INSERT Queries"
     unit: "#"
     category: "queries"
-    description: "Cumulative INSERT queries executed (ClickHouseProfileEvents_InsertQuery)"
+    description: "Cumulative INSERT queries executed (system.events InsertQuery)"
     otel:
       name: clickhouse.queries.insert
       unit: "{query}"
@@ -148,7 +146,7 @@ metrics:
     display_name: "ClickHouse {instance} Inserted Rows"
     unit: "#"
     category: "throughput"
-    description: "Cumulative rows inserted (ClickHouseProfileEvents_InsertedRows)"
+    description: "Cumulative rows inserted (system.events InsertedRows)"
     otel:
       name: clickhouse.inserted.rows
       unit: "{row}"
@@ -161,7 +159,7 @@ metrics:
     display_name: "ClickHouse {instance} Inserted Bytes"
     unit: "B"
     category: "throughput"
-    description: "Cumulative bytes inserted (ClickHouseProfileEvents_InsertedBytes)"
+    description: "Cumulative bytes inserted (system.events InsertedBytes)"
     otel:
       name: clickhouse.inserted.data
       unit: "By"
@@ -174,7 +172,7 @@ metrics:
     display_name: "ClickHouse {instance} Read Compressed Bytes"
     unit: "B"
     category: "throughput"
-    description: "Cumulative compressed bytes read from storage (ClickHouseProfileEvents_ReadCompressedBytes)"
+    description: "Cumulative compressed bytes read from storage (system.events ReadCompressedBytes)"
     otel:
       name: clickhouse.read.data
       unit: "By"
@@ -187,7 +185,7 @@ metrics:
     display_name: "ClickHouse {instance} Written Compressed Bytes"
     unit: "B"
     category: "throughput"
-    description: "Cumulative compressed bytes written to storage (ClickHouseProfileEvents_WriteCompressedBytes)"
+    description: "Cumulative compressed bytes written to MergeTree parts by inserts (system.events MergeTreeDataWriterCompressedBytes)"
     otel:
       name: clickhouse.written.data
       unit: "By"

@@ -47,6 +47,10 @@ type SyslogProbe struct {
 	// Without it the probe's no-op Collect made it look healthy whether
 	// or not anything was listening (#289).
 	listening atomic.Bool
+	// emitted counts the records this instance has published to the log
+	// rail; Collect reports it so a metric sink (PRTG, Prometheus) sees
+	// the relay working instead of a probe with no channel at all.
+	emitted atomic.Uint64
 }
 
 // ListenerHealth implements types.ListenerProbe: this probe receives
@@ -119,9 +123,9 @@ func parseSyslogProbeConfig(config map[string]interface{}) (SyslogProbeConfig, e
 	}, nil
 }
 
-func (p *SyslogProbe) GetTargetStrategies() []string {
-	return []string{"event"}
-}
+// GetTargetStrategies is not overridden: the relayed messages ride the log
+// rail, routed by log_strategies, and only the records_emitted self-metric
+// goes through the metric sinks, like every other probe's.
 
 // Note: GetName() is now inherited from BaseProbe and will return the unique
 // probe name from configuration (e.g., "syslog", "syslog2") instead of the
@@ -135,8 +139,13 @@ func (p *SyslogProbe) GetInterval() time.Duration {
 	return DefaultSyncInterval
 }
 
+// Collect reports the relay's own throughput: the cumulative count of
+// records published to the log rail. The messages themselves are events.
 func (p *SyslogProbe) Collect() ([]data_store.DataPoint, error) {
-	return nil, nil // Event-driven, pas de collection périodique
+	points := []data_store.DataPoint{
+		{Name: "senhub.syslog.records_emitted", Value: float64(p.emitted.Load()), Timestamp: time.Now()},
+	}
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
@@ -268,6 +277,7 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		ProducerProbeName: p.GetName(),
 		ProducerProbeType: "syslog",
 	})
+	p.emitted.Add(1)
 }
 
 func (p *SyslogProbe) String() string {

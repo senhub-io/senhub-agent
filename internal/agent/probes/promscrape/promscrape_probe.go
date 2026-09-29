@@ -201,7 +201,19 @@ func looksLikeOwnEndpoint(target string) bool {
 		return false
 	}
 	path := strings.TrimRight(u.Path, "/")
-	return strings.HasSuffix(path, "/prometheus/metrics") || path == "/metrics"
+	if strings.HasSuffix(path, "/prometheus/metrics") {
+		return true
+	}
+	// A bare /metrics is what nearly every exporter serves, node_exporter
+	// included: warning on the path alone flagged the ordinary use of this
+	// probe. Only the agent's own address, this host on its default port,
+	// is suspect.
+	if path != "/metrics" {
+		return false
+	}
+	host := u.Hostname()
+	local := host == "localhost" || host == "::1" || strings.HasPrefix(host, "127.")
+	return local && (u.Port() == "" || u.Port() == "8080")
 }
 
 func (p *PromScrapeProbe) OnShutdown(ctx context.Context) error {

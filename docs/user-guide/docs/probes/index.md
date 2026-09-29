@@ -151,7 +151,7 @@ Each probe targets one class of system and turns its state into typed metrics an
     <img class="probe-logo probe-logo-mdi" src="../assets/probe-logos/snmp-poll.svg" alt="" loading="lazy">
     <span class="probe-name">SNMP Poll</span>
     <span class="probe-tier-badge free">Free</span>
-    <span class="probe-desc">SNMPv2c polling: MIB-2, IF-MIB, LLDP topology</span>
+    <span class="probe-desc">SNMP v2c and v3 polling: MIB-2, IF-MIB, LLDP topology</span>
   </a>
 
   <a href="snmp-trap/" class="probe-card" data-family="network" data-tier="free">
@@ -607,6 +607,13 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-name">Azure Container Apps</span>
     <span class="probe-tier-badge pro">Pro</span>
     <span class="probe-desc">Console log stream of every replica, read through ARM</span>
+  </a>
+
+  <a href="azure_container_app_jobs/" class="probe-card" data-family="cloud" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/azure_container_apps.svg" alt="" loading="lazy">
+    <span class="probe-name">Azure Container App Jobs</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Execution verdict, duration and output of each job run</span>
   </a>
 
 </div>

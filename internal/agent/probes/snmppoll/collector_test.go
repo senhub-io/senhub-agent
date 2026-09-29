@@ -195,7 +195,7 @@ func TestCollect_BestEffortOnWalkError(t *testing.T) {
 }
 
 func TestCollect_CorrelationTags(t *testing.T) {
-	// network.device.id (device-level) + interface.name (resolved from if_index)
+	// network.device.id (device-level) + network.interface.name (resolved from if_index)
 	// tag the metrics with the SAME identity as the topology entities, so a
 	// backend joins this interface's traffic to its network.interface entity.
 	cfg := &config{MIBs: []string{"if-mib"}}
@@ -214,8 +214,8 @@ func TestCollect_CorrelationTags(t *testing.T) {
 	if got := tagVal(p, "if_index"); got != "5" {
 		t.Errorf("if_index = %q, want 5", got)
 	}
-	if got := tagVal(p, "interface.name"); got != "Gi0/5" {
-		t.Errorf("interface.name = %q, want Gi0/5 (joins to the network.interface entity)", got)
+	if got := tagVal(p, "network.interface.name"); got != "Gi0/5" {
+		t.Errorf("network.interface.name = %q, want Gi0/5 (joins to the network.interface entity)", got)
 	}
 }
 
@@ -235,8 +235,8 @@ func TestCollect_NoCorrelationTagsBeforeSweep(t *testing.T) {
 	if got := tagVal(p, "network.device.id"); got != "" {
 		t.Errorf("network.device.id = %q, want absent before first sweep", got)
 	}
-	if got := tagVal(p, "interface.name"); got != "" {
-		t.Errorf("interface.name = %q, want absent without ifNames", got)
+	if got := tagVal(p, "network.interface.name"); got != "" {
+		t.Errorf("network.interface.name = %q, want absent without ifNames", got)
 	}
 }
 

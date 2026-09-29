@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	gops "github.com/shirou/gopsutil/v3/process"
@@ -84,10 +85,11 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		}
 		byName := map[string]*rollUp{}
 		for _, snap := range snaps {
-			r, ok := byName[snap.name]
+			name := snap.name
+			r, ok := byName[name]
 			if !ok {
 				r = &rollUp{}
-				byName[snap.name] = r
+				byName[name] = r
 			}
 			r.count++
 			r.cpu += snap.cpuPct
@@ -154,6 +156,21 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 	return points, snaps, nil
 }
 
+// rollUpName is the stable name a process is reported under. Linux kernel
+// workqueue threads rename themselves as they pick up work
+// ("kworker/1:1-ata_sff", "kworker/u4:0-writeback" then
+// "kworker/u4:0-ext4-rsv-conversion" under the same pid), and the pool
+// spawns and retires them. Reported as is, each name became a roll-up
+// series, and in the per-process detail each renaming a new Zabbix item
+// that got no second value. They are reported as "kworker"; a by_name
+// filter still sees the real name.
+func rollUpName(name string) string {
+	if strings.HasPrefix(name, "kworker/") {
+		return "kworker"
+	}
+	return name
+}
+
 // snapshotProcess reads one process and returns (snap, skip).
 // skip is true when the process should be excluded by filter or is gone.
 func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (processSnapshot, bool) {
@@ -200,7 +217,7 @@ func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (pro
 
 	return processSnapshot{
 		pid:        p.Pid,
-		name:       name,
+		name:       rollUpName(name),
 		owner:      owner,
 		cpuPct:     cpuPct,
 		rss:        rss,

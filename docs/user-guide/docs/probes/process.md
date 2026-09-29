@@ -20,7 +20,17 @@ Processes" sensor.
     program starts, and they are never fed again. Measured on a machine with
     837 processes, the unfiltered per-process view produced 4596 series and
     grew by about 50 a minute, indefinitely. The roll-up is stable, because a
-    process name is.
+    process name is. The one exception is Linux's kernel workqueue threads,
+    which rename themselves as they work (`kworker/1:1-ata_sff`, then another
+    name under the same process id): they are reported as `kworker`, in the
+    roll-up and in the per-process detail. A `by_name` filter still matches
+    the real name.
+
+    PRTG receives the roll-up only. It keeps every channel it has ever seen
+    on a sensor, and the per-process channels are keyed on the process id,
+    so each restart of a program would leave one more dead channel there.
+    The per-process detail stays on the Prometheus, OTLP, Nagios and Zabbix
+    outputs.
 
 ## Quick start
 
