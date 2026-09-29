@@ -320,3 +320,32 @@ func TestAppendLabelTags(t *testing.T) {
 		})
 	}
 }
+
+// Pulsar 4.0 on a broker without topics: the per-namespace series are
+// absent and only the broker aggregates (pulsar_broker_*) exist. Lines as
+// served by Pulsar 4.0.13 standalone.
+func TestParsePrometheusText_BrokerAggregates(t *testing.T) {
+	input := `pulsar_broker_topics_count{cluster="standalone"} 3
+pulsar_broker_rate_in{cluster="standalone"} 12.5
+pulsar_broker_msg_backlog{cluster="standalone"} 0
+pulsar_topics_count{cluster="standalone",namespace="public/default"} 3
+pulsar_broker_lookup_count{cluster="standalone"} 9
+`
+	got, err := parsePrometheusText(strings.NewReader(input), testTS(), nil)
+	if err != nil {
+		t.Fatalf("parsePrometheusText: %v", err)
+	}
+	byName := map[string]float64{}
+	for _, dp := range got {
+		if _, dup := byName[dp.Name]; dup {
+			t.Errorf("%s emitted twice: broker and namespace series must not both count", dp.Name)
+		}
+		byName[dp.Name] = dp.Value
+	}
+	if byName["pulsar.topics.count"] != 3 || byName["pulsar.rate.messages.in"] != 12.5 {
+		t.Errorf("points = %+v", got)
+	}
+	if _, ok := byName["pulsar.message.backlog"]; !ok {
+		t.Error("a zero broker aggregate must still be emitted")
+	}
+}
