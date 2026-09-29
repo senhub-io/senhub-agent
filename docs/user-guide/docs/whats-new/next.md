@@ -545,7 +545,10 @@ Breaking Changes or Fixes below.
   channel it has seen: each program restart left one more dead channel
   on the sensor (163 for 75 live on the recette bench). PRTG now gets the
   per-name roll-up; the per-process detail stays on the other outputs.
-  A definition marks such a metric with `prtg_skip`.
+  A definition marks such a metric with `prtg_skip`. The IBM i per-job
+  series are kept out of PRTG the same way: their names carry the job
+  number, and a bench sensor had grown to 2,583 channels for 1,447 served,
+  enough to saturate the PRTG server.
 
 - **A syslog probe has a PRTG channel.** The probe relays messages as
   events and published no metric, so its PRTG sensor found no channel
