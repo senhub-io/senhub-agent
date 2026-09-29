@@ -364,6 +364,12 @@ collection gaps that comparison exposed.
   It also read an `Errors` counter that Cassandra does not have, which
   failed every collection on a real node: the errors metric is now the
   sum of failures, timeouts and unavailables.
+- **A Zabbix server restart no longer leaves the host unavailable.** The
+  agent turned its heartbeat off at the first failed attempt, taking a
+  refused connection for a server too old to support it; after a
+  one-minute outage the host stayed unavailable in Zabbix for as long as
+  the agent ran, although its values kept arriving. Only a server that
+  answers that it does not know the request turns the heartbeat off now.
 
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
