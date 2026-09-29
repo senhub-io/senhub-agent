@@ -145,6 +145,9 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.HandleWebAssets).Methods("GET")
 	}
 
+	// The endpoint list is read from the router itself, so it names
+	// exactly the routes this agent registered.
+	h.strategy.router = router
 	return router
 }
 

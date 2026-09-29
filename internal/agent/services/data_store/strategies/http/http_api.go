@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -516,41 +517,93 @@ func (a *APIManager) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleListEndpoints lists all available API endpoints
+// endpointDescriptions says what the main routes are for; a route not
+// named here is still listed, without a description.
+var endpointDescriptions = map[string]string{
+	"/health":                                "Health check endpoint",
+	"/api/{agentkey}/endpoints":              "List the endpoints this agent serves",
+	"/api/{agentkey}/info/probes":            "List the running probes",
+	"/api/{agentkey}/info/tags/{probe}":      "Tags of one probe's series",
+	"/api/{agentkey}/info/schema/{probe}":    "Schema of one probe",
+	"/api/{agentkey}/info/system":            "Version, host, resources and cache",
+	"/api/{agentkey}/info/endpoints":         "Which pull formats are enabled",
+	"/api/{agentkey}/admin/cache/clear":      "Clear the metric cache",
+	"/api/{agentkey}/debug/logs":             "View or set log levels",
+	"/api/{agentkey}/license/status":         "License status and tier",
+	"/api/{agentkey}/prtg/metrics/{probe}":   "Metrics of one probe in PRTG format",
+	"/api/{agentkey}/prtg/probes":            "List probes for PRTG",
+	"/api/{agentkey}/nagios/metrics/{probe}": "Metrics of one probe in Nagios format",
+	"/api/{agentkey}/nagios/check/{check}":   "Run one configured Nagios check",
+	"/api/{agentkey}/nagios/metrics":         "Aggregated metrics in Nagios format",
+	"/api/{agentkey}/nagios/checks":          "List the configured Nagios checks",
+	"/api/{agentkey}/prometheus/metrics":     "Metrics in Prometheus format",
+}
+
+// endpointCategory files a route template under the section the
+// console's API reference shows it in.
+func endpointCategory(tmpl string) string {
+	rest := strings.TrimPrefix(tmpl, "/api/{agentkey}/")
+	switch {
+	case tmpl == "/health":
+		return "health"
+	case strings.HasPrefix(rest, "prtg/"):
+		return "prtg"
+	case strings.HasPrefix(rest, "nagios/"):
+		return "nagios"
+	case strings.HasPrefix(rest, "prometheus/") || tmpl == "/metrics":
+		return "prometheus"
+	case strings.HasPrefix(rest, "info/") || strings.HasPrefix(rest, "catalog/") || rest == "endpoints" || strings.HasPrefix(rest, "lookups"):
+		return "discovery"
+	case strings.HasPrefix(rest, "admin/") || strings.HasPrefix(rest, "debug/") || strings.HasPrefix(rest, "config/") || strings.HasPrefix(rest, "license/") || strings.HasPrefix(rest, "stats/"):
+		return "admin"
+	}
+	return "other"
+}
+
+// registeredEndpoints walks the router this agent serves, so the list
+// can neither name a route that does not exist nor miss one that does.
+// Console pages (/web/...) and the profiler are left out.
+func registeredEndpoints(router *mux.Router) []EndpointInfo {
+	if router == nil {
+		return nil
+	}
+	byPath := map[string]*EndpointInfo{}
+	var order []string
+	_ = router.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
+		tmpl, err := route.GetPathTemplate()
+		if err != nil || strings.HasPrefix(tmpl, "/web/") || strings.Contains(tmpl, "/debug/pprof") {
+			return nil
+		}
+		methods, _ := route.GetMethods()
+		e, seen := byPath[tmpl]
+		if !seen {
+			e = &EndpointInfo{Path: tmpl, Description: endpointDescriptions[tmpl], Category: endpointCategory(tmpl)}
+			byPath[tmpl] = e
+			order = append(order, tmpl)
+		}
+		for _, m := range methods {
+			if !slices.Contains(e.Methods, m) {
+				e.Methods = append(e.Methods, m)
+			}
+		}
+		return nil
+	})
+	sort.Strings(order)
+	out := make([]EndpointInfo, 0, len(order))
+	for _, p := range order {
+		out = append(out, *byPath[p])
+	}
+	return out
+}
+
+// HandleListEndpoints lists the API endpoints this agent registered
 func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request) {
 	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
 	if !authenticated {
 		return
 	}
 
-	endpoints := []EndpointInfo{
-		// Health and Discovery
-		{"/health", []string{"GET"}, "Health check endpoint", "health"},
-		{"/api/{agentkey}/endpoints", []string{"GET"}, "List all available endpoints", "discovery"},
-		{"/api/{agentkey}/info/probes", []string{"GET"}, "List available probes", "discovery"},
-		{"/api/{agentkey}/info/tags/{probe}", []string{"GET"}, "Get tags for specific probe", "discovery"},
-		{"/api/{agentkey}/info/schema/{probe}", []string{"GET"}, "Get schema for specific probe", "discovery"},
-
-		// Administration
-		{"/api/{agentkey}/admin/cache/clear", []string{"POST"}, "Clear the metric cache", "admin"},
-		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels", "admin"},
-		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels", "admin"},
-		{"/api/{agentkey}/license/status", []string{"GET"}, "Get license status and tier information", "admin"},
-
-		// PRTG Format
-		{"/api/{agentkey}/prtg/metrics/{probe}", []string{"GET"}, "Get metrics in PRTG format for specific probe", "prtg"},
-		{"/api/{agentkey}/prtg/probes", []string{"GET"}, "List probes for PRTG", "prtg"},
-
-		// Nagios Format
-		{"/api/{agentkey}/nagios/metrics/{probe}", []string{"GET"}, "Get metrics in Nagios format for specific probe", "nagios"},
-		{"/api/{agentkey}/nagios/check/{check}", []string{"GET"}, "Run one configured Nagios check, plugin output format", "nagios"},
-		{"/api/{agentkey}/nagios/metrics", []string{"GET", "POST"}, "Get aggregated metrics in Nagios format", "nagios"},
-		{"/api/{agentkey}/nagios/checks", []string{"GET"}, "List available Nagios checks", "nagios"},
-
-		// Prometheus Format (if enabled)
-		{"/api/{agentkey}/prometheus/metrics", []string{"GET"}, "Get metrics in Prometheus format", "prometheus"},
-	}
-
+	endpoints := registeredEndpoints(a.strategy.router)
 	response := EndpointsListResponse{
 		Endpoints: endpoints,
 	}
