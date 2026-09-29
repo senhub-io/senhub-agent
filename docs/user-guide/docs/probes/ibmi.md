@@ -88,7 +88,7 @@ Monitor several LPARs with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:59189fb7f2342b570259f06f03730237269b6af7cca03d1b6a84655e3aa6e388 -->
+<!-- sha256:c135d3f529a8a8e5aecab8ba3574d9dd0015e9a8fc323ad8c2d67477fdd0719e -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -97,7 +97,7 @@ Monitor several LPARs with separate probe instances:
 | `password` | Yes | - | Password of the user profile. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `bridge_runner_dir` | In practice | - | Directory holding Jt400Runner.class and jt400.jar; required unless native_runner is set, then only the working directory. Example: `/opt/senhub-agent/jt400` |
 | `native_runner` | No | - | GraalVM native-image jt400runner binary run instead of a JVM; bridge_runner_dir and java_home become optional. Example: `/opt/senhub-agent/jt400runner` |
-| `java_home` | No | - | JAVA_HOME used to launch the bridge; empty uses the environment |
+| `java_home` | No | - | JAVA_HOME used to launch the bridge; empty uses the JAVA_HOME variable, then java on the PATH |
 | `interval` | No | `30` | Seconds between collections |
 | `query_timeout_s` | No | `10` | Per-query timeout, in seconds |
 | `startup_timeout_s` | No | `15` | Bridge startup timeout, in seconds |
@@ -185,6 +185,12 @@ All metrics carry the standard host / probe attributes. Metric families that spl
 | `senhub.ibmi.job.page_faults` | `{fault}` | `ibmi.job.name` | Per-job page faults |
 | `senhub.ibmi.job.threads` | `{thread}` | `ibmi.job.name` | Per-job thread count |
 | `senhub.ibmi.job.priority` | `1` | `ibmi.job.name` | Per-job run priority |
+
+The per-job series are not sent to PRTG. A job's name carries its number
+(`851034/QUSER/QP0ZSPWT`), which changes at every run, and PRTG keeps every
+channel it has seen: each run would leave a dead channel on the sensor, and
+thousands of them overload the PRTG server. PRTG gets the aggregates above;
+the per-job detail stays on the Prometheus, OTLP, Nagios and Zabbix outputs.
 
 ## Job queues & scheduled jobs
 

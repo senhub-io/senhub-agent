@@ -49,6 +49,17 @@ Breaking Changes or Fixes below.
 11. **OTLP receiver counters.** Queries on the sending service of
     `senhub_agent_otlp_receiver_received_total` use the label
     `senhub_otlp_receiver_sender_service_name` instead of `service_name`.
+12. **Linux hosts running the IBM i probe, or Java or Node.js plugins
+    through the exec probe.** Run `sudo senhub-agent refresh-unit --yes`
+    once after upgrading: the installed service unit still forbids the
+    writable-executable memory a JVM needs, and an upgrade does not
+    rewrite the unit.
+13. **Linux agents that stopped after `sudo senhub-agent secret set`.** In
+    0.5.x that command left `/etc/senhub-agent/secrets.age` owned by root,
+    and the service, which runs as `senhub`, could no longer read it.
+    Give the file back before or after upgrading:
+    `sudo chown senhub:senhub /etc/senhub-agent/secrets.age`. From 0.6.0,
+    files written with sudo keep the owner of their directory.
 
 ## Breaking Changes
 
@@ -540,7 +551,10 @@ Breaking Changes or Fixes below.
   channel it has seen: each program restart left one more dead channel
   on the sensor (163 for 75 live on the recette bench). PRTG now gets the
   per-name roll-up; the per-process detail stays on the other outputs.
-  A definition marks such a metric with `prtg_skip`.
+  A definition marks such a metric with `prtg_skip`. The IBM i per-job
+  series are kept out of PRTG the same way: their names carry the job
+  number, and a bench sensor had grown to 2,583 channels for 1,447 served,
+  enough to saturate the PRTG server.
 
 - **A syslog probe has a PRTG channel.** The probe relays messages as
   events and published no metric, so its PRTG sensor found no channel
@@ -560,6 +574,74 @@ Breaking Changes or Fixes below.
   at logout; in the default view they became series, and PRTG channels,
   that died with the session. They are left out unless `units` names
   them.
+
+- **The Swarm probe tells a node outside any swarm from a worker.** The
+  Engine answers "This node is not a swarm manager" in both cases, so an
+  engine never joined to a swarm was reported as a worker, with advice to
+  point the probe at a manager. The probe now reads the node's swarm
+  state from `/info`.
+
+- **The [Wi-Fi](../probes/wifi-signal-strength.md) probe works without
+  iwconfig.** It needed `iwconfig` (wireless-tools), which current
+  distributions no longer install; it now falls back to `iw`, found in
+  `/usr/sbin` even off the PATH. The SSID tag also lost a closing quote
+  and padding it carried from iwconfig's output.
+
+- **The [Oracle](../probes/oracle.md) session limit is read inside a
+  PDB.** `V$RESOURCE_LIMIT` has no rows in a pluggable database, where a
+  monitoring user normally connects, so `oracle.sessions.limit` was never
+  reported and a warning was logged on every collection. The limit is
+  now read from `V$PARAMETER` there, which needs one more grant
+  (`GRANT SELECT ON V_$PARAMETER`).
+
+- **The IBM i probe starts on a Linux service.** The service unit set
+  `MemoryDenyWriteExecute=true`, which the processes the agent launches
+  inherit: the IBM i probe's Java bridge could not start its JVM, and its
+  native runner could not load. The unit no longer sets it (the agent
+  itself still makes no executable memory). An existing install picks it
+  up with `senhub-agent refresh-unit`.
+
+- **A refused password is not retried every two minutes.** A probe whose
+  start failed was retried on a two-minute timer, and for the IBM i probe
+  each retry was a sign-on: a wrong password disabled the monitoring
+  profile after three (QMAXSIGN). A start refused for its credentials now
+  waits for a configuration reload or a restart; other start failures
+  keep the timer.
+
+- **The IBM i probe finds its Java runtime and names the right
+  settings.** It read `JAVA_HOME` only, although an empty `java_home`
+  was documented to use the environment: a host with Java on the PATH
+  got "no IBM i runtime found". That message also named settings that
+  do not exist (`bridge.java_home`, `bridge.runner_dir`); it now names
+  `java_home`, `bridge_runner_dir` and `native_runner`, and Java on the
+  PATH is used.
+
+- **The console's Settings page gathers the agent's identity and HTTPS
+  state.** The agent key, the instance ID and the administration key
+  (masked until revealed) now sit together in an Identity card, and an
+  HTTPS card shows whether TLS is on, the certificate and key files, the
+  certificate's subject and expiry, and links to where TLS is set. They
+  were spread over the Overview page, the Outputs page and the command
+  line.
+
+- **The console's Settings page shows the agent key.** It showed the
+  administration key, which the console is opened with, under "Agent
+  key", next to the advice to give that key to Sensor Factory when
+  ordering a licence, and its Copy button copied it. It now shows and
+  copies the agent key, the one a licence is bound to, as the Overview
+  page already did.
+
+- **A disconnected UniFi access point no longer reports 0 satisfaction.**
+  For an access point that is not connected the controller returns a
+  null satisfaction, which the probe published as 0, the worst score,
+  with 0 clients. Only a connected access point now reports them, and a
+  null satisfaction reports nothing.
+
+- **OTLP metrics no longer carry a contradicting `unit` attribute.**
+  Every point carried the definition's display unit as an attribute, so
+  `system.cpu.utilization` reached the backend as a ratio (0.061) with
+  `unit="%"`, which a dashboard shows as 0.061 %. The attribute is gone;
+  the OTel unit remains the metric's own.
 
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and

@@ -57,7 +57,7 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 
 ## Operational notes
 
-- The probe needs a user that can open a session and read nine
+- The probe needs a user that can open a session and read ten
   dictionary views. On a multitenant database, create it in the
   pluggable database the probe connects to, then, as a privileged user
   of that PDB:
@@ -68,6 +68,7 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
     GRANT SELECT ON V_$INSTANCE TO senhub;
     GRANT SELECT ON V_$SESSION TO senhub;
     GRANT SELECT ON V_$RESOURCE_LIMIT TO senhub;
+    GRANT SELECT ON V_$PARAMETER TO senhub;
     GRANT SELECT ON V_$SYSSTAT TO senhub;
     GRANT SELECT ON V_$SGASTAT TO senhub;
     GRANT SELECT ON V_$PGASTAT TO senhub;
@@ -77,6 +78,8 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
     ```
 
     The `V_$` names are the grantable objects behind the `V$` views.
+    Inside a pluggable database `V$RESOURCE_LIMIT` has no rows, so the
+    session limit is read from `V$PARAMETER` there.
     `GRANT SELECT_CATALOG_ROLE` covers all of them in one line if your
     policy allows it. A view the user cannot read leaves out the
     metrics that depend on it; the other metrics keep reporting.
