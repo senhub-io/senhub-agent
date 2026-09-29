@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -52,6 +53,19 @@ func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
 }
 
 func (m *wifiSignalStrengthProbe) checkWifiLinux() bool {
+	// iw ships with current distributions (wireless-tools, hence iwconfig,
+	// often does not): a managed interface that is connected is enough.
+	if iw := iwBinary(); iw != "" {
+		if out, err := exec.Command(iw, "dev").Output(); err == nil {
+			for _, ifc := range parseIwDevInterfaces(string(out)) {
+				if link, err := exec.Command(iw, "dev", ifc, "link").Output(); err == nil {
+					if _, _, _, ok := parseIwLink(string(link)); ok {
+						return true
+					}
+				}
+			}
+		}
+	}
 	// First attempt using iwconfig
 	cmd := exec.Command("iwconfig")
 	output, err := cmd.Output()
@@ -211,6 +225,11 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 	cmd := exec.Command("iwconfig")
 	output, err := cmd.Output()
 	if err != nil {
+		// No iwconfig (wireless-tools is not installed by default any
+		// more): read the link with iw instead.
+		if points, ok := m.collectLinuxIw(); ok {
+			return points, nil
+		}
 		return nil, fmt.Errorf("error retrieving Wi-Fi information: %w", err)
 	}
 
@@ -291,4 +310,102 @@ func parseESSID(line string) string {
 		return ""
 	}
 	return strings.Trim(strings.TrimSpace(v), "\"")
+}
+
+// iwBinary finds iw. It lives in /usr/sbin, which is not on the PATH of an
+// unprivileged account, so the usual locations are tried after the PATH.
+func iwBinary() string {
+	if p, err := exec.LookPath("iw"); err == nil {
+		return p
+	}
+	for _, p := range []string{"/usr/sbin/iw", "/sbin/iw"} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// parseIwDevInterfaces lists the named interfaces of `iw dev`. A P2P
+// device appears as "Unnamed/non-netdev interface" and is skipped.
+func parseIwDevInterfaces(out string) []string {
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if name, ok := strings.CutPrefix(strings.TrimSpace(line), "Interface "); ok && name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// parseIwLink reads `iw dev <if> link`: the SSID, the access point, and the
+// signal in dBm. ok is false when the interface is not connected.
+func parseIwLink(out string) (ssid, bssid string, dbm int, ok bool) {
+	var haveSignal bool
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Connected to "):
+			bssid, _, _ = strings.Cut(strings.TrimPrefix(line, "Connected to "), " ")
+		case strings.HasPrefix(line, "SSID: "):
+			ssid = strings.TrimPrefix(line, "SSID: ")
+		case strings.HasPrefix(line, "signal: "):
+			f := strings.Fields(strings.TrimPrefix(line, "signal: "))
+			if len(f) > 0 {
+				if v, err := strconv.Atoi(f[0]); err == nil {
+					dbm, haveSignal = v, true
+				}
+			}
+		}
+	}
+	return ssid, bssid, dbm, bssid != "" && haveSignal
+}
+
+// qualityFromDBm is the link quality iwconfig reports, as a percentage:
+// iwconfig shows (dBm + 110) out of 70 (-62 dBm reads "Link Quality=48/70").
+// iw gives only the dBm.
+func qualityFromDBm(dbm int) float64 {
+	q := float64(dbm+110) / 70 * 100
+	if q < 0 {
+		return 0
+	}
+	if q > 100 {
+		return 100
+	}
+	return q
+}
+
+// collectLinuxIw reads the first connected managed interface through iw.
+func (m *wifiSignalStrengthProbe) collectLinuxIw() ([]data_store.DataPoint, bool) {
+	iw := iwBinary()
+	if iw == "" {
+		return nil, false
+	}
+	dev, err := exec.Command(iw, "dev").Output()
+	if err != nil {
+		return nil, false
+	}
+	for _, ifc := range parseIwDevInterfaces(string(dev)) {
+		link, err := exec.Command(iw, "dev", ifc, "link").Output()
+		if err != nil {
+			continue
+		}
+		ssid, bssid, dbm, ok := parseIwLink(string(link))
+		if !ok {
+			continue
+		}
+		var wifiTags []tags.Tag
+		if bssid != "" {
+			wifiTags = append(wifiTags, tags.Tag{Key: "bssid", Value: bssid})
+		}
+		if ssid != "" {
+			wifiTags = append(wifiTags, tags.Tag{Key: "ssid", Value: ssid})
+		}
+		now := time.Now()
+		return []data_store.DataPoint{
+			{Name: "wifi_signal_strength", Timestamp: now, Value: float64(dbm), Tags: wifiTags},
+			{Name: "wifi_quality", Timestamp: now, Value: qualityFromDBm(dbm), Tags: wifiTags},
+		}, true
+	}
+	return nil, false
 }
