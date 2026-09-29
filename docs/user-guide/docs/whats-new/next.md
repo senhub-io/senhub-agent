@@ -484,7 +484,11 @@ Breaking Changes or Fixes below.
   and service groups were never tagged with their vServer. Bindings and
   member statistics are now read per object; a group whose members
   cannot all be read leaves its traffic metrics out rather than
-  publishing a wrong sum.
+  publishing a wrong sum. The service group state read the
+  administrative flag (`ENABLED`) and showed UNKNOWN on every group, and
+  the member counts were always 0: the state now comes from the group's
+  effective state (`PARTIAL-UP` included) and the counts from its
+  members.
 
 - **An OTLP output that sends no entities says so.** A strategy file
   written without `signals.entities.enabled: true` sent metrics and logs
