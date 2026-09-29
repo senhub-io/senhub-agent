@@ -106,8 +106,11 @@ func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 		Str("target", req.Target).
 		Msg("PRTG metrics request received")
 
-	// For now, emulate configuration handling - just log the config
-	a.logger.Debug().Any("config", configuration.SanitizeParamsForLog(req.Config)).Msg("Emulating config handling")
+	// A config block in the body is not applied: the probe is configured
+	// on the agent, and this route only reads its cached metrics.
+	if len(req.Config) > 0 {
+		a.logger.Debug().Str("probe", req.Probe).Msg("PRTG request carried a config block; it is ignored")
+	}
 
 	// Get metrics from cache for the specified probe
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbe(req.Probe)

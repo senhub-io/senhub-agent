@@ -25,10 +25,6 @@ type fakeCache struct {
 
 func (f *fakeCache) GetProbeStatistics() map[string]ProbeStatistics { return f.probes }
 func (f *fakeCache) GetTotalEntries() int                           { return f.entries }
-func (f *fakeCache) GetCacheInfo() CacheInfo {
-	return CacheInfo{TotalEntries: f.entries, RetentionMinutes: 5}
-}
-func (f *fakeCache) GetHealthMetrics() map[string]interface{} { return nil }
 
 // TestCalculateProbeStatuses pins how a probe's raw statistics become
 // the status an operator reads. The precedence matters: a probe that is

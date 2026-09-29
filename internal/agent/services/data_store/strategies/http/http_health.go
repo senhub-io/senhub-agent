@@ -87,39 +87,6 @@ func (h *HealthManager) HandleBasicHealth(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// HandleDetailedHealth provides a comprehensive health check endpoint (authenticated)
-func (h *HealthManager) HandleDetailedHealth(w http.ResponseWriter, r *http.Request) {
-	// Authentication is handled by the calling handler
-	h.logger.Debug().Msg("Detailed health check request received")
-
-	// Get status from centralized service
-	systemStatus := h.strategy.statusService.GetSystemStatus()
-	probeStatuses := h.strategy.statusService.GetProbeStatuses()
-
-	// Count active probes
-	activeProbes := 0
-	for _, probe := range probeStatuses {
-		if probe.Status == "active" {
-			activeProbes++
-		}
-	}
-
-	response := HealthResponse{
-		Status:        "ok",
-		Version:       systemStatus.Agent.Version,
-		Commit:        systemStatus.Agent.Commit,
-		Uptime:        systemStatus.Performance.Uptime,
-		ProbesActive:  activeProbes,
-		MetricsCached: systemStatus.Performance.CacheEntries,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to encode detailed health response")
-	}
-}
-
 // BuildSystemHealth creates comprehensive health information for system info endpoint
 // This method now delegates to the centralized StatusService for consistency
 func (h *HealthManager) BuildSystemHealth() SystemHealth {
@@ -183,37 +150,4 @@ func (h *HealthManager) IsHealthy() bool {
 
 	// Consider healthy if status is "healthy" or "degraded" (not "unhealthy")
 	return healthStatus.Status == "healthy" || healthStatus.Status == "degraded"
-}
-
-// GetHealthMetrics returns health-related metrics for monitoring integration
-// This method now delegates to the centralized StatusService for consistency
-func (h *HealthManager) GetHealthMetrics() map[string]interface{} {
-	// Get comprehensive status from centralized service
-	systemStatus := h.strategy.statusService.GetSystemStatus()
-	probeStatuses := h.strategy.statusService.GetProbeStatuses()
-
-	// Count active probes
-	activeProbes := 0
-	for _, probe := range probeStatuses {
-		if probe.Status == "active" {
-			activeProbes++
-		}
-	}
-
-	// Calculate uptime in seconds for backward compatibility
-	uptimeSeconds := time.Since(h.startTime).Seconds()
-
-	return map[string]interface{}{
-		"uptime_seconds":    uptimeSeconds,
-		"memory_usage_mb":   systemStatus.Performance.MemoryUsageMB,
-		"cpu_usage_percent": systemStatus.Performance.CPUPercent,
-		"goroutines_count":  systemStatus.Performance.Goroutines,
-		"probes_active":     activeProbes,
-		"total_probes":      len(probeStatuses),
-		"metrics_cached":    systemStatus.Performance.CacheEntries,
-		"cache_ttl_seconds": h.strategy.cache.ttl.Seconds(),
-		"http_port":         h.strategy.port,
-		"status":            systemStatus.Health.Status,
-		"health_timestamp":  systemStatus.Health.Timestamp.Unix(),
-	}
 }

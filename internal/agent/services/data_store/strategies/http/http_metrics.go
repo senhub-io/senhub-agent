@@ -1029,30 +1029,9 @@ func (m *MetricsProcessor) severityToNagiosStatus(severity string) int {
 	}
 }
 
-// buildHealthPerfData builds optimized Nagios performance data for health metrics
+// buildHealthPerfData builds the Nagios performance data of a health metric
 func (m *MetricsProcessor) buildHealthPerfData(name string, value float64) string {
-	// Clean label name (no spaces, special chars)
-	cleanName := m.cleanPerfDataLabel(name)
-
-	// Health metrics format: label=value;warning;critical;min;max
-	// For health metrics with lookups, use desired_value as both warning and critical thresholds
-	// This helps Nagios visualize the expected value
-
-	// Try to get desired_value from lookup if available
-	desiredValue := ""
-	minValue := 0
-	maxValue := 3 // Default range for generic health metrics
-
-	// Note: We would need the metric name to look up the desired_value
-	// For now, use generic format
-	// Health metrics format: label=value;;;min;max
-	// No warning/critical thresholds since health values have predefined meanings
-	// min=0 (OK), max=3 (Unknown) to indicate the valid range
-
-	if desiredValue != "" {
-		// Include desired_value as warning/critical threshold when available
-		return fmt.Sprintf("%s=%.0f;%s;%s;%d;%d", cleanName, value, desiredValue, desiredValue, minValue, maxValue)
-	}
-
-	return fmt.Sprintf("%s=%.0f;;;%d;%d", cleanName, value, minValue, maxValue)
+	// Health values have predefined meanings, so no warning or critical
+	// threshold is set: min=0 (OK) and max=3 (Unknown) give the range.
+	return fmt.Sprintf("%s=%.0f;;;0;3", m.cleanPerfDataLabel(name), value)
 }
