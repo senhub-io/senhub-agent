@@ -629,6 +629,12 @@ Breaking Changes or Fixes below.
   with 0 clients. Only a connected access point now reports them, and a
   null satisfaction reports nothing.
 
+- **OTLP metrics no longer carry a contradicting `unit` attribute.**
+  Every point carried the definition's display unit as an attribute, so
+  `system.cpu.utilization` reached the backend as a ratio (0.061) with
+  `unit="%"`, which a dashboard shows as 0.061 %. The attribute is gone;
+  the OTel unit remains the metric's own.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
