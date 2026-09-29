@@ -186,6 +186,12 @@ All metrics carry the standard host / probe attributes. Metric families that spl
 | `senhub.ibmi.job.threads` | `{thread}` | `ibmi.job.name` | Per-job thread count |
 | `senhub.ibmi.job.priority` | `1` | `ibmi.job.name` | Per-job run priority |
 
+The per-job series are not sent to PRTG. A job's name carries its number
+(`851034/QUSER/QP0ZSPWT`), which changes at every run, and PRTG keeps every
+channel it has seen: each run would leave a dead channel on the sensor, and
+thousands of them overload the PRTG server. PRTG gets the aggregates above;
+the per-job detail stays on the Prometheus, OTLP, Nagios and Zabbix outputs.
+
 ## Job queues & scheduled jobs
 
 | Metric | Unit | Resource attribute | Description |
