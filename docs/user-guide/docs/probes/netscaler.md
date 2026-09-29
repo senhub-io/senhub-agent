@@ -156,7 +156,7 @@ These metrics prevent production outages:
 - `netscaler.system.network.packets_per_sec` - Packet rate (packets/sec)
 
 **Load Balancer Virtual Server Metrics:**
-- `netscaler.lbvserver.state` - vServer state (UP=1, DOWN=0)
+- `netscaler.lbvserver.state` - vServer state (7=UP, 1=DOWN, 2=UNKNOWN, 3=BUSY, 4=OUT OF SERVICE, 5=TROFS, 8=TROFS_DOWN)
 - `netscaler.lbvserver.health` - Health percentage (0-100%)
 - `netscaler.lbvserver.requests_per_sec` - Request rate
 - `netscaler.lbvserver.connections.active` - Active connections
@@ -165,14 +165,14 @@ These metrics prevent production outages:
 Tags: `vserver_name`, `vserver_type` (HTTP, SSL, TCP, UDP), `protocol`
 
 **Service Metrics:**
-- `netscaler.service.state` - Service state (UP=1, DOWN=0)
+- `netscaler.service.state` - Service state (7=UP, 1=DOWN, 2=UNKNOWN, 3=BUSY, 4=OUT OF SERVICE, 5=TROFS, 8=TROFS_DOWN)
 - `netscaler.service.throughput_mbps` - Service throughput
 - `netscaler.service.active_transactions` - Current transactions
 
 Tags: `service_name`, `vserver_name`, `ip_address`, `port`
 
 **Service Group Metrics:**
-- `netscaler.servicegroup.state` - Service group state (UP=1, DOWN=0)
+- `netscaler.servicegroup.state` - Service group effective state (same codes, plus 6=PARTIAL-UP when only some members are up)
 - `netscaler.servicegroup.members.total` - Total group members
 - `netscaler.servicegroup.members.active` - Active members
 
@@ -287,7 +287,7 @@ The NetScaler probe includes **PRTG Value Lookups** for human-readable status va
 **Available Lookups:**
 - `netscaler.lbvserver.state`: UP, DOWN, OUT OF SERVICE, BUSY, UNKNOWN
 - `netscaler.service.state`: UP, DOWN, OUT OF SERVICE, BUSY, UNKNOWN
-- `netscaler.servicegroup.state`: UP, DOWN, OUT OF SERVICE, BUSY, UNKNOWN
+- `netscaler.servicegroup.state`: UP, PARTIAL-UP, DOWN, OUT OF SERVICE, BUSY, UNKNOWN
 - `netscaler.interface.state`: ENABLED, DISABLED
 - `netscaler.ssl.certificate.status`: VALID, INVALID
 - `netscaler.ha.state`: PRIMARY, SECONDARY, UNKNOWN
