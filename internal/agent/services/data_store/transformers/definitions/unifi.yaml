@@ -47,7 +47,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["device_type"]
     category: "inventory"
-    description: "Number of adopted devices of this type"
+    description: "Number of devices of this type the controller marks adopted; a device whose adoption failed still counts, so read it with unifi.devices.disconnected"
     otel:
       name: unifi.devices.adopted
       unit: "{device}"

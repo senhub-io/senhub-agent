@@ -280,12 +280,14 @@ type deviceEnvelope struct {
 }
 
 type deviceRow struct {
-	Name     string  `json:"name"`
-	Type     string  `json:"type"`
-	State    int     `json:"state"`
-	Adopted  bool    `json:"adopted"`
-	NumSta   float64 `json:"num_sta"`
-	Score    float64 `json:"satisfaction"`
+	Name    string  `json:"name"`
+	Type    string  `json:"type"`
+	State   int     `json:"state"`
+	Adopted bool    `json:"adopted"`
+	NumSta  float64 `json:"num_sta"`
+	// Score is the controller's satisfaction (0-100), null when it has
+	// none (a device that is not connected, or too few clients).
+	Score    *float64 `json:"satisfaction"`
 	SysStats struct {
 		CPU string `json:"cpu"`
 		Mem string `json:"mem"`
@@ -366,7 +368,10 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 		if mem, ok := parseFloat(d.SysStats.Mem); ok {
 			points = append(points, data_store.DataPoint{Name: "unifi.device.memory", Value: float64(mem), Timestamp: ts, Tags: devTags})
 		}
-		if dt == "uap" {
+		// An access point that is not connected has no clients to count and
+		// no satisfaction to report: the controller returns null for it,
+		// and a 0 would read as the worst experience possible.
+		if dt == "uap" && d.State == 1 {
 			apTags := []tags.Tag{
 				{Key: "endpoint", Value: p.cfg.Endpoint},
 				{Key: "site", Value: p.cfg.Site},
@@ -375,8 +380,12 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 			}
 			points = append(points,
 				data_store.DataPoint{Name: "unifi.ap.clients", Value: float64(d.NumSta), Timestamp: ts, Tags: apTags},
-				data_store.DataPoint{Name: "unifi.ap.satisfaction", Value: float64(d.Score / 100), Timestamp: ts, Tags: apTags},
 			)
+			if d.Score != nil {
+				points = append(points,
+					data_store.DataPoint{Name: "unifi.ap.satisfaction", Value: *d.Score / 100, Timestamp: ts, Tags: apTags},
+				)
+			}
 		}
 	}
 
