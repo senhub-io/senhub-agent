@@ -45,7 +45,7 @@ func pushMetrics(
 	missingMappingHandler func(otelmapper.CacheMetric, error),
 	maxConcurrent int,
 ) (int, error) {
-	cms, observedAt := store.snapshot()
+	cms, pointTimes := store.snapshot(now)
 	if len(cms) == 0 && len(extraRecords) == 0 {
 		return 0, nil
 	}
@@ -67,13 +67,17 @@ func pushMetrics(
 			}
 			continue
 		}
-		// Carry when the value was measured. Without it every stored
-		// series is re-exported stamped `now`, which claims a fresh
-		// measurement of something that may not have been queried for
-		// hours (#812).
-		if i < len(observedAt) && !observedAt[i].IsZero() {
+		// The store decides the stamp: the export time while the probe
+		// still vouches for the value, the measurement time once it
+		// does not. Without it every stored series is re-exported
+		// stamped `now`, which claims a fresh measurement of something
+		// that may not have been queried for hours (#812); with only the
+		// measurement time, a probe that runs less often than the push
+		// yields one sample per run and vanishes from a short lookback
+		// (#890).
+		if i < len(pointTimes) && !pointTimes[i].IsZero() {
 			for j := range recs {
-				recs[j].ObservedAt = observedAt[i]
+				recs[j].ObservedAt = pointTimes[i]
 			}
 		}
 		records = append(records, recs...)

@@ -174,7 +174,7 @@ change how failures present:
 
 - **The redaction guard is incomplete.** `entityIdentityKeys`
   (`otlp/config.go:1164-1171`) enumerates only six identity keys and omits
-  `service.endpoint`, `interface.name`, `route.destination`,
+  `service.endpoint`, `network.interface.name`, `route.destination`,
   `network.address`, `server.address`/`server.port`/`network.transport`,
   `process.pid`, `process.creation.time`. An operator can put any of them
   in `redact_attributes` and the parser accepts it — destroying the
@@ -463,7 +463,7 @@ that quietly returns nothing.
 | `container` | 61 | own-key | `container.id` | shipped |
 | `service.instance` | 30 | own-key | `service.instance.id` (resource) | shipped |
 | `network.device` | 1 | own-key | `network.device.id` (per-metric) | shipped |
-| `network.interface` | 50 | own-key | `interface.name` (per-metric) | **half shipped — SNMP only (#748)** |
+| `network.interface` | 50 | own-key | `network.interface.name` (per-metric) | **half shipped — SNMP only (#748)** |
 | `db` | 7 | own-key | `db.instance.id` (per-metric) | **missing — needs C2/C3 first** |
 | `service.listener` | 305 | inherited via `runs_on` | — | works, undeclared |
 | `network.address` | 55 | graph-only | — | undeclared; bare IP kept **by design** (#743) — it is the host-route ↔ SNMP-device join point |
@@ -477,11 +477,13 @@ false. It is worth recording here rather than only in #748, because it is
 the best available illustration of C6 — better than any constructed
 example.
 
-The same notion travels under two labels: `interface_name` carries the 63
-`snmp_interface_*` series, `network_interface_name` carries the 256
-`system_network_*` host series. The entity is keyed `interface.name`, so a
-consumer following the entity's own key finds the SNMP interfaces and
-misses every host interface.
+The same notion travelled under two labels: `interface_name` carried the 63
+`snmp_interface_*` series, `network_interface_name` carried the 256
+`system_network_*` host series. The entity was keyed `interface.name`, so a
+consumer following the entity's own key found the SNMP interfaces and
+missed every host interface. Since 0.6.0 the entity key, the metric tag
+and the OTel attribute are all `network.interface.name` (label
+`network_interface_name`), on both planes.
 
 Underneath sits a second divergence, on values this time. On Windows the
 entity carries the connection name (`Ethernet`, `Ethernet 2`) while the

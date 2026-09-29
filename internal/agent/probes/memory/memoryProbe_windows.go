@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/mem"
 	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -234,6 +235,22 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 				Tags:      baseTags,
 			})
 		}
+	}
+
+	// The page file's size, which the Unix collector sends as the swap
+	// total and the native Zabbix agent as system.swap.size[,total].
+	// Windows publishes the usage as a percentage through the counters
+	// above, so without this the limit those percentages apply to was
+	// the one item of ours a Windows host could never fill.
+	if swap, serr := mem.SwapMemory(); serr == nil && swap.Total > 0 {
+		dataPoints = append(dataPoints, data_store.DataPoint{
+			Name:      "swap_total",
+			Timestamp: timestamp,
+			Value:     float64(swap.Total),
+			Tags:      baseTags,
+		})
+	} else if serr != nil {
+		w.logger.Debug().Err(serr).Msg("Page file size unavailable")
 	}
 
 	return dataPoints, nil

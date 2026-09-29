@@ -1,0 +1,530 @@
+// Package zabbix pushes the collected metrics to a Zabbix server or proxy
+// as a native active agent: the agent connects out to port 10051, asks for
+// the items the server wants for this host, and sends their values in
+// batches. An unknown host triggers the server's autoregistration, so a
+// fleet appears in Zabbix without anyone creating hosts by hand.
+//
+// The design and the protocol references are in
+// docs/developer-guide/zabbix/INTEGRATION-STUDY.md. The protocol is
+// implemented from its public documentation; no Zabbix source is used.
+package zabbix
+
+import (
+	"encoding/hex"
+	"fmt"
+	"net"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"senhub-agent.go/internal/agent/services/configuration"
+)
+
+const (
+	defaultPort              = "10051"
+	defaultInterval          = 60 * time.Second
+	defaultRefreshInterval   = 120 * time.Second
+	defaultHeartbeatInterval = 60 * time.Second
+	defaultTimeout           = 10 * time.Second
+	defaultKeyPrefix         = "senhub"
+	defaultHostMetadata      = "senhub-agent"
+)
+
+// TLSConfig encrypts the outbound connection, with a certificate or a
+// pre-shared key. Zabbix takes one or the other per connection, so a
+// block that names both is refused rather than silently picking.
+//
+// The pre-shared key matters beyond preference: measured on 8.0.0, the
+// autoregistration setting takes "none", "PSK" or both and refuses a
+// certificate, so PSK is the only way an agent registers itself on a
+// site that encrypts that step.
+type TLSConfig struct {
+	Enabled            bool
+	CAFile             string
+	CertFile           string
+	KeyFile            string
+	ServerName         string
+	InsecureSkipVerify bool
+
+	// PSKIdentity names which pre-shared key is meant. It travels in
+	// clear and is not a secret.
+	PSKIdentity string
+	// PSKFile holds the key, hex-encoded, the way Zabbix stores it. It
+	// is a file rather than a value in the configuration so its
+	// permissions carry the protection, and so `config show` has
+	// nothing to redact.
+	PSKFile string
+	// PSK is what PSKFile decoded to, filled at load time.
+	PSK []byte
+}
+
+// parseServers reads the 'server' parameter, which holds one address or
+// several separated by commas. Several is how a proxy group is named:
+// any member answers, and the one that does redirects the agent to
+// whichever member currently holds this host.
+func parseServers(raw string) ([]string, error) {
+	var out []string
+	seen := make(map[string]bool)
+	for _, part := range strings.Split(raw, ",") {
+		addr := strings.TrimSpace(part)
+		if addr == "" {
+			continue
+		}
+		if _, _, splitErr := net.SplitHostPort(addr); splitErr != nil {
+			if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
+				return nil, fmt.Errorf("zabbix: 'server' %q is not host:port", addr)
+			}
+			addr = net.JoinHostPort(strings.Trim(addr, "[]"), defaultPort)
+		}
+		if seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		out = append(out, addr)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("zabbix: 'server' is required (host:port of the Zabbix server or proxy; several separated by commas name a proxy group)")
+	}
+	return out, nil
+}
+
+// addresses lists the server addresses, tolerating a Config assembled by
+// hand with only Server set.
+func (c Config) addresses() []string {
+	if len(c.Servers) > 0 {
+		return c.Servers
+	}
+	if c.Server != "" {
+		return []string{c.Server}
+	}
+	return nil
+}
+
+// Config is the parsed strategy configuration.
+type Config struct {
+	// Server is the first address of Servers, kept for the messages and
+	// for the TLS name when the operator pinned neither.
+	Server string
+	// Servers is every address the agent may talk to, in order. A proxy
+	// group is written as several addresses separated by commas, the way
+	// Zabbix's own agent takes several ServerActive entries: the agent
+	// talks to the first that answers, and the group redirects it to
+	// whichever member currently holds this host.
+	Servers []string
+	// Hostname is the name this host registers under. Defaults to the
+	// machine's host name.
+	Hostname string
+	// HostMetadata travels with every check-list request; the server's
+	// autoregistration action matches on it to pick host groups and
+	// templates.
+	HostMetadata string
+	// Interval is the push cadence of the collected values.
+	Interval time.Duration
+	// RefreshInterval is how often the item list is asked again.
+	RefreshInterval time.Duration
+	// HeartbeatInterval is the cadence of the active-check heartbeat;
+	// the server declares the host unavailable after twice that.
+	HeartbeatInterval time.Duration
+	// Timeout bounds one connection, request and reply.
+	Timeout time.Duration
+	// KeyPrefix is the first segment of every item key.
+	KeyPrefix string
+	TLS       TLSConfig
+	Passive   PassiveConfig
+}
+
+// PassiveConfig is the optional listener the server polls, the way it
+// polls a classic Zabbix agent: it answers agent.ping so the host's
+// availability icon turns green, and serves the same item keys as the
+// active push for an operator who prefers passive items.
+type PassiveConfig struct {
+	Enabled     bool
+	BindAddress string
+	Port        int
+	// Allow lists the addresses (IP or CIDR) allowed to poll. Empty
+	// means the addresses the configured server resolves to.
+	Allow []string
+	// Advertise is the address the server should poll, sent with the
+	// registration request so autoregistration writes it on the agent
+	// interface. Empty leaves Zabbix to use the address the packets came
+	// from, which is wrong behind NAT: what the server sees is the
+	// translation, not where the agent can be reached.
+	Advertise string
+	// TLS encrypts what the server polls. The outbound connection and
+	// this one are configured apart because they are opposite roles:
+	// there the agent checks a server, here it presents itself to one.
+	TLS PassiveTLSConfig
+}
+
+// PassiveTLSConfig is certificate encryption on the polled port. The
+// agent presents CertFile and, when CAFile names an authority, requires
+// the poller to present a certificate that authority signed, which is
+// what stops anyone who can reach the port from reading the host's
+// measurements.
+//
+// It also takes a pre-shared key, with psk_identity and psk_file. A
+// listener carries one or the other: Zabbix picks the encryption per
+// connection from what the poller offers, and answering both from one
+// port would mean deciding which of two secrets proves the host.
+type PassiveTLSConfig struct {
+	Enabled  bool
+	CertFile string
+	KeyFile  string
+	CAFile   string
+
+	PSKIdentity string
+	PSKFile     string
+	PSK         []byte
+}
+
+const (
+	defaultPassiveBind = "0.0.0.0"
+	defaultPassivePort = 10050
+)
+
+var keyPrefixPattern = regexp.MustCompile(`^[0-9a-zA-Z_.-]+$`)
+
+// ParseConfig reads the strategy parameters and applies the defaults.
+func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
+	host, err := os.Hostname()
+	if err != nil {
+		host = ""
+	}
+	cfg := Config{
+		Hostname:          host,
+		HostMetadata:      defaultHostMetadata,
+		Interval:          defaultInterval,
+		RefreshInterval:   defaultRefreshInterval,
+		HeartbeatInterval: defaultHeartbeatInterval,
+		Timeout:           defaultTimeout,
+		KeyPrefix:         defaultKeyPrefix,
+	}
+
+	raw, _ := params["server"].(string)
+	servers, serverErr := parseServers(raw)
+	if serverErr != nil {
+		return cfg, serverErr
+	}
+	cfg.Servers = servers
+	cfg.Server = servers[0]
+
+	if v, ok := params["hostname"]; ok {
+		s, isStr := v.(string)
+		if !isStr || strings.TrimSpace(s) == "" {
+			return cfg, fmt.Errorf("zabbix: 'hostname' must be a non-empty string")
+		}
+		cfg.Hostname = strings.TrimSpace(s)
+	}
+	if cfg.Hostname == "" {
+		return cfg, fmt.Errorf("zabbix: 'hostname' is required when the machine's host name cannot be read")
+	}
+
+	if v, ok := params["host_metadata"]; ok {
+		s, isStr := v.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("zabbix: 'host_metadata' must be a string")
+		}
+		if len(s) > 2034 {
+			return cfg, fmt.Errorf("zabbix: 'host_metadata' is limited to 2034 bytes by Zabbix, got %d", len(s))
+		}
+		cfg.HostMetadata = s
+	}
+
+	if v, ok := params["key_prefix"]; ok {
+		s, isStr := v.(string)
+		if !isStr || !keyPrefixPattern.MatchString(s) {
+			return cfg, fmt.Errorf("zabbix: 'key_prefix' must contain only letters, digits, '_', '-' and '.'")
+		}
+		cfg.KeyPrefix = s
+	}
+
+	for _, d := range []struct {
+		key  string
+		dest *time.Duration
+	}{
+		{"interval", &cfg.Interval},
+		{"refresh_interval", &cfg.RefreshInterval},
+		{"heartbeat_interval", &cfg.HeartbeatInterval},
+		{"timeout", &cfg.Timeout},
+	} {
+		v, ok := params[d.key]
+		if !ok {
+			continue
+		}
+		dur, err := parseDuration(v)
+		if err != nil {
+			return cfg, fmt.Errorf("zabbix: '%s': %w", d.key, err)
+		}
+		if dur <= 0 {
+			return cfg, fmt.Errorf("zabbix: '%s' must be positive", d.key)
+		}
+		*d.dest = dur
+	}
+	if cfg.HeartbeatInterval < 1*time.Second {
+		return cfg, fmt.Errorf("zabbix: 'heartbeat_interval' must be at least 1s")
+	}
+
+	if raw, ok := params["tls"]; ok {
+		block, isMap := raw.(map[string]interface{})
+		if !isMap {
+			return cfg, fmt.Errorf("zabbix: 'tls' must be a block")
+		}
+		tlsCfg, err := parseTLS(block)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.TLS = tlsCfg
+	}
+
+	cfg.Passive = PassiveConfig{BindAddress: defaultPassiveBind, Port: defaultPassivePort}
+	if raw, ok := params["passive"]; ok {
+		block, isMap := raw.(map[string]interface{})
+		if !isMap {
+			return cfg, fmt.Errorf("zabbix: 'passive' must be a block")
+		}
+		pc, err := parsePassive(block, cfg.Passive)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.Passive = pc
+	}
+	return cfg, nil
+}
+
+func parsePassive(block map[string]interface{}, cfg PassiveConfig) (PassiveConfig, error) {
+	if v, ok := block["enabled"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return cfg, fmt.Errorf("zabbix: 'passive.enabled' must be true or false")
+		}
+		cfg.Enabled = b
+	}
+	if v, ok := block["bind_address"]; ok {
+		s, isStr := v.(string)
+		if !isStr || net.ParseIP(strings.TrimSpace(s)) == nil {
+			return cfg, fmt.Errorf("zabbix: 'passive.bind_address' must be an IP address")
+		}
+		cfg.BindAddress = strings.TrimSpace(s)
+	}
+	if v, ok := block["port"]; ok {
+		port, err := parsePort(v)
+		if err != nil {
+			return cfg, fmt.Errorf("zabbix: 'passive.port': %w", err)
+		}
+		cfg.Port = port
+	}
+	if v, ok := block["allow"]; ok {
+		list, isList := v.([]interface{})
+		if !isList {
+			return cfg, fmt.Errorf("zabbix: 'passive.allow' must be a list of IP addresses or CIDR ranges")
+		}
+		for _, e := range list {
+			s, isStr := e.(string)
+			if !isStr {
+				return cfg, fmt.Errorf("zabbix: 'passive.allow' must be a list of IP addresses or CIDR ranges")
+			}
+			s = strings.TrimSpace(s)
+			if _, _, err := net.ParseCIDR(s); err != nil && net.ParseIP(s) == nil {
+				return cfg, fmt.Errorf("zabbix: 'passive.allow' entry %q is neither an IP address nor a CIDR range", s)
+			}
+			cfg.Allow = append(cfg.Allow, s)
+		}
+	}
+	if v, ok := block["advertise"]; ok {
+		str, isStr := v.(string)
+		if !isStr || strings.TrimSpace(str) == "" {
+			return cfg, fmt.Errorf("zabbix: 'passive.advertise' must be an address or a name the server can reach")
+		}
+		cfg.Advertise = strings.TrimSpace(str)
+	}
+	if v, ok := block["tls"]; ok {
+		sub, isMap := v.(map[string]interface{})
+		if !isMap {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls' must be a block")
+		}
+		tlsCfg, err := parsePassiveTLS(sub)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.TLS = tlsCfg
+	}
+	return cfg, nil
+}
+
+func parsePassiveTLS(block map[string]interface{}) (PassiveTLSConfig, error) {
+	var cfg PassiveTLSConfig
+	if v, ok := block["enabled"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls.enabled' must be true or false")
+		}
+		cfg.Enabled = b
+	}
+	for key, dest := range map[string]*string{
+		"cert_file":    &cfg.CertFile,
+		"key_file":     &cfg.KeyFile,
+		"ca_file":      &cfg.CAFile,
+		"psk_identity": &cfg.PSKIdentity,
+		"psk_file":     &cfg.PSKFile,
+	} {
+		v, ok := block[key]
+		if !ok {
+			continue
+		}
+		s, isStr := v.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("zabbix: 'passive.tls.%s' must be a path", key)
+		}
+		*dest = strings.TrimSpace(s)
+	}
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+	key, err := loadPSK("passive.tls", cfg.PSKIdentity, cfg.PSKFile, cfg.CertFile != "")
+	if err != nil {
+		return cfg, err
+	}
+	cfg.PSK = key
+	if len(cfg.PSK) > 0 {
+		return cfg, nil
+	}
+	// Refuse at load rather than at the first poll: a listener that
+	// starts without the certificate it was told to present would serve
+	// in clear, which is the opposite of what was asked for.
+	if cfg.CertFile == "" || cfg.KeyFile == "" {
+		return cfg, fmt.Errorf("zabbix: 'passive.tls' needs a certificate (cert_file and key_file) or a pre-shared key (psk_identity and psk_file) to encrypt the polled port")
+	}
+	return cfg, nil
+}
+
+func parsePort(v interface{}) (int, error) {
+	var port int
+	switch t := v.(type) {
+	case int:
+		port = t
+	case int64:
+		port = int(t)
+	case float64:
+		port = int(t)
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return 0, fmt.Errorf("%q is not a port number", t)
+		}
+		port = n
+	default:
+		return 0, fmt.Errorf("expected a port number, got %T", v)
+	}
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%d is outside 1-65535", port)
+	}
+	return port, nil
+}
+
+func parseTLS(block map[string]interface{}) (TLSConfig, error) {
+	var cfg TLSConfig
+	if v, ok := block["enabled"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return cfg, fmt.Errorf("zabbix: 'tls.enabled' must be true or false")
+		}
+		cfg.Enabled = b
+	}
+	for _, s := range []struct {
+		key  string
+		dest *string
+	}{
+		{"ca_file", &cfg.CAFile},
+		{"cert_file", &cfg.CertFile},
+		{"key_file", &cfg.KeyFile},
+		{"server_name", &cfg.ServerName},
+		{"psk_identity", &cfg.PSKIdentity},
+		{"psk_file", &cfg.PSKFile},
+	} {
+		v, ok := block[s.key]
+		if !ok {
+			continue
+		}
+		str, isStr := v.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("zabbix: 'tls.%s' must be a string", s.key)
+		}
+		*s.dest = strings.TrimSpace(str)
+	}
+	if v, ok := block["insecure_skip_verify"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return cfg, fmt.Errorf("zabbix: 'tls.insecure_skip_verify' must be true or false")
+		}
+		cfg.InsecureSkipVerify = b
+	}
+	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
+		return cfg, fmt.Errorf("zabbix: 'tls.cert_file' and 'tls.key_file' go together")
+	}
+	key, err := loadPSK("tls", cfg.PSKIdentity, cfg.PSKFile, cfg.CertFile != "")
+	if err != nil {
+		return cfg, err
+	}
+	cfg.PSK = key
+	return cfg, nil
+}
+
+// loadPSK reads and validates the pre-shared key half of a tls block.
+//
+// It refuses a half-written one rather than falling back to no
+// encryption: an operator who named a key and mistyped the path has
+// asked for encryption, and starting without it is the failure nobody
+// looks at again.
+func loadPSK(block, identity, path string, hasCert bool) ([]byte, error) {
+	if identity == "" && path == "" {
+		return nil, nil
+	}
+	if identity == "" || path == "" {
+		return nil, fmt.Errorf("zabbix: '%s.psk_identity' and '%s.psk_file' go together", block, block)
+	}
+	if hasCert {
+		// Zabbix chooses one encryption per connection. Configuring both
+		// here would leave the agent deciding which secret proves it,
+		// silently, and the server would see whichever it happened to
+		// pick.
+		return nil, fmt.Errorf("zabbix: '%s' takes a certificate or a pre-shared key, not both", block)
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 - operator-supplied path
+	if err != nil {
+		return nil, fmt.Errorf("zabbix: reading '%s.psk_file': %w", block, err)
+	}
+	text := strings.TrimSpace(string(raw))
+	key, err := hex.DecodeString(text)
+	if err != nil {
+		return nil, fmt.Errorf("zabbix: '%s.psk_file' must hold the key as hexadecimal, the way Zabbix writes it: %w", block, err)
+	}
+	if len(key) < 16 {
+		return nil, fmt.Errorf("zabbix: '%s.psk_file' holds %d bytes; Zabbix requires at least 16 (32 hex characters)", block, len(key))
+	}
+	return key, nil
+}
+
+// parseDuration reads "30s", a number of seconds, or an integer.
+func parseDuration(v interface{}) (time.Duration, error) {
+	switch t := v.(type) {
+	case string:
+		s := strings.TrimSpace(t)
+		if d, err := time.ParseDuration(s); err == nil {
+			return d, nil
+		}
+		if n, err := strconv.ParseFloat(s, 64); err == nil {
+			return time.Duration(n * float64(time.Second)), nil
+		}
+		return 0, fmt.Errorf("%q is not a duration (use 30s, 2m)", t)
+	case int:
+		return time.Duration(t) * time.Second, nil
+	case int64:
+		return time.Duration(t) * time.Second, nil
+	case float64:
+		return time.Duration(t * float64(time.Second)), nil
+	default:
+		return 0, fmt.Errorf("expected a duration, got %T", v)
+	}
+}

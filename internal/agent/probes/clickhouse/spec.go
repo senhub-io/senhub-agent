@@ -5,7 +5,7 @@ import "senhub-agent.go/internal/agent/probes"
 func init() {
 	probes.RegisterProbeSpec(probes.ProbeSpec{
 		Type: "clickhouse", DisplayName: "ClickHouse", Category: "database",
-		Summary:  "Active queries, connections, memory, parts, merges and query and insert counters of a ClickHouse server from its /metrics endpoint; one instance per server.",
+		Summary:  "Active queries, connections, memory, parts, merges and query and insert counters of a ClickHouse server, read from its system tables over the HTTP interface; one instance per server.",
 		DocsPath: "docs/user-guide/docs/probes/clickhouse.md", MultiInstance: true, DefaultInterval: 60,
 		Params: []probes.ParamSpec{
 			{Key: "endpoint", Kind: probes.KindString, Default: "http://localhost:8123", Essential: true, Group: "connection", Description: "Base URL of the HTTP interface", Example: "http://clickhouse01:8123"},

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -79,6 +80,34 @@ func installSystemBinary(srcExe string) (string, error) {
 		return "", fmt.Errorf("setting mode on %s: %w", dst, err)
 	}
 	return dst, nil
+}
+
+// sameContents reports whether two files hold the same bytes. A missing b
+// reads as different, so the caller installs it.
+func sameContents(a, b string) (bool, error) {
+	ia, err := os.Stat(a)
+	if err != nil {
+		return false, err
+	}
+	ib, err := os.Stat(b)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if ia.Size() != ib.Size() {
+		return false, nil
+	}
+	da, err := os.ReadFile(a)
+	if err != nil {
+		return false, err
+	}
+	db, err := os.ReadFile(b)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(da, db), nil
 }
 
 // removeLegacyManagedBinary deletes the pre-0.5.4 second copy and its directory.

@@ -4,8 +4,8 @@
 //
 // Contract (topology-as-entities, ADR 0022; identity frozen with Toise, see
 // docs/data-model/otel-mapping.md): a host interface is a network.interface
-// entity identified by {host.id, interface.name} (the host-owner analogue of a
-// device port's {network.device.id, interface.name}); each unicast IP is a
+// entity identified by {host.id, network.interface.name} (the host-owner analogue of a
+// device port's {network.device.id, network.interface.name}); each unicast IP is a
 // network.address entity identified by {network.address} (the bare IP).
 // Attachment: network.address --bound_to--> network.interface, and the host
 // --has_interface--> network.interface (the host endpoint comes from the
@@ -36,7 +36,7 @@ const (
 	entityTypeNetworkInterface = "network.interface"
 	entityTypeNetworkAddress   = "network.address"
 	idKeyHost                  = "host.id"
-	idKeyInterfaceName         = "interface.name"
+	idKeyInterfaceName         = "network.interface.name"
 	idKeyNetworkAddress        = "network.address"
 	relBoundTo                 = "bound_to"
 	relHasInterface            = "has_interface"
@@ -250,7 +250,7 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 		}
 		out = append(out, ifaceAddrs{
 			Name: ifc.Name, IPs: ips,
-			MAC: ifc.HardwareAddr, MTU: int64(ifc.MTU),
+			MAC: canonicalMAC(ifc.HardwareAddr), MTU: int64(ifc.MTU),
 			OperState: lm.OperState, Type: lm.Type, Duplex: lm.Duplex, Speed: lm.Speed,
 		})
 	}
@@ -315,4 +315,12 @@ func resolvableIP(addr string) string {
 		return ""
 	}
 	return ip.String()
+}
+
+// canonicalMAC renders the OS-reported hardware address in the canonical MAC
+// form shared with the SNMP interfaces; an address that does not parse (some
+// tunnel interfaces report none) is left out.
+func canonicalMAC(s string) string {
+	mac, _ := entity.CanonicalMACString(s)
+	return mac
 }

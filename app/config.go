@@ -21,6 +21,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
@@ -341,6 +342,27 @@ func checkConfig(configPath string) {
 
 	fmt.Printf("Checking configuration: %s\n\n", absPath)
 
+	// The service reads ${env:} values from its unit, which the shell
+	// running this check does not have: a bearer token set there made
+	// every check end on an error for a working file (#892). Check with
+	// the service's environment when it runs this configuration; a
+	// variable already exported in the shell wins.
+	unitEnv, unitEnvErr := serviceEnvironment(absPath)
+	if unitEnvErr != nil {
+		fmt.Printf("  [WARN] Could not read the service environment: %v\n", unitEnvErr)
+	}
+	applied := 0
+	for k, v := range unitEnv {
+		if _, set := os.LookupEnv(k); !set {
+			if err := os.Setenv(k, v); err == nil {
+				applied++
+			}
+		}
+	}
+	if applied > 0 {
+		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent unit's environment\n", applied)
+	}
+
 	// Read raw bytes once so YAML-syntax errors can still print a
 	// useful "near this line" context (LoadFromDisk only returns a
 	// wrapped error).
@@ -386,6 +408,21 @@ func checkConfig(configPath string) {
 
 	errorCount := 0
 	warnings := 0
+
+	// A ${env:NAME} whose variable is not set resolves to "" without a
+	// word from the loader. Under the service unit the variable is there;
+	// in the shell running this check it usually is not, and the
+	// resulting error then points at a file that has no defect (#892).
+	// Name the variable first so the errors below read in that light.
+	unsetEnv := configuration.UnsetEnvReferences(configPath)
+	for _, ref := range unsetEnv {
+		fmt.Printf("  [WARN] ${env:%s} in %s: %s is not set in this shell\n", ref.Name, ref.File, ref.Name)
+		warnings++
+	}
+	if len(unsetEnv) > 0 {
+		fmt.Println("         The service reads its variables from its unit; run the check with the same")
+		fmt.Println("         environment (systemctl show senhub-agent -p Environment) or export them first.")
+	}
 
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
@@ -469,9 +506,15 @@ func checkConfig(configPath string) {
 			fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
 		}
 		registeredProbes := probes.GetRegisteredProbeTypes()
-		for _, p := range config.Probes {
+		duplicate := duplicateProbeIndexes(config.Probes)
+		for i, p := range config.Probes {
 			if p.Name == "" {
 				fmt.Println("  [ERROR] Probe with empty name")
+				errorCount++
+				continue
+			}
+			if duplicate[i] {
+				fmt.Printf("  [ERROR] Probe %q (type: %s): the name is already used by an earlier probe; the agent runs the first and ignores this one\n", p.Name, p.Type)
 				errorCount++
 				continue
 			}
@@ -481,7 +524,7 @@ func checkConfig(configPath string) {
 				continue
 			}
 			if !registeredProbes[p.Type] {
-				fmt.Printf("  [ERROR] Probe %q: unknown type %q\n", p.Name, p.Type)
+				fmt.Printf("  [ERROR] Probe %q: %s\n", p.Name, license.NotInThisBuild(p.Type))
 				errorCount++
 				continue
 			}
@@ -527,7 +570,10 @@ func checkConfig(configPath string) {
 		fmt.Println("  [WARN] No storage strategies configured")
 		warnings++
 	} else {
-		validStrategies := map[string]bool{"http": true, "prtg": true, "senhub": true, "event": true, "otlp": true}
+		validStrategies := map[string]bool{}
+		for _, name := range data_store.RegisteredStrategyNames() {
+			validStrategies[name] = true
+		}
 		for _, s := range config.Storage {
 			if !validStrategies[s.Name] {
 				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
@@ -555,6 +601,11 @@ func checkConfig(configPath string) {
 			// discovery to the restart (#848).
 			if verr := data_store.ValidateStrategyParams(s.Name, s.Params); verr != nil {
 				fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
+				var blank *otlp.BlankCredentialError
+				if errors.As(verr, &blank) && len(unsetEnv) > 0 {
+					fmt.Printf("          The credential is empty because %s is not set in this shell (see above);\n", unsetEnvNames(unsetEnv))
+					fmt.Println("          the file itself may be correct.")
+				}
 				errorCount++
 				continue
 			}
@@ -575,7 +626,10 @@ func checkConfig(configPath string) {
 			}
 			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
 		}
+		reportEntityEmission(config.Entities, config.Storage)
 	}
+
+	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
 
 	// Binary writability. What is correct differs per platform: on Linux the
 	// daemon must NOT be able to write its own executable (#794), everywhere
@@ -754,6 +808,24 @@ func showYAMLErrorContext(content string, yamlErr error) {
 }
 
 // validateProbeParams checks required parameters for each probe type
+// duplicateProbeIndexes marks every probe whose name an earlier probe
+// already uses: the sensor starts the first and skips the rest, so each
+// of them is configuration that never collects.
+func duplicateProbeIndexes(list []configuration.ProbeConfig) map[int]bool {
+	seen := map[string]bool{}
+	dup := map[int]bool{}
+	for i, p := range list {
+		if p.Name == "" {
+			continue
+		}
+		if seen[p.Name] {
+			dup[i] = true
+		}
+		seen[p.Name] = true
+	}
+	return dup
+}
+
 func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
 	// Checked for every probe type, before anything else: a parameter the
 	// probe does not read is invisible at runtime, and this verb is where
@@ -784,30 +856,6 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	if probeType == "citrix" {
 		citrixErrors, citrixWarnings := validateCitrixParams(name, params)
 		return errors + citrixErrors, warnings + citrixWarnings
-	}
-
-	// Required params per probe type (flat format)
-	requiredParams := map[string][]string{
-		"veeam":        {"endpoint", "username", "password"},
-		"netscaler":    {"base_url", "username", "password"},
-		"redfish":      {"endpoint", "username", "password"},
-		"ping_webapp":  {"url"},
-		"load_webapp":  {"url"},
-		"ping_gateway": {"destination"},
-		"syslog":       {"listen_address"},
-	}
-
-	required, hasRequired := requiredParams[probeType]
-	if !hasRequired {
-		return errors, warnings
-	}
-
-	for _, param := range required {
-		val, exists := params[param]
-		if !exists || val == nil || val == "" {
-			fmt.Printf("         [ERROR] Probe %q: missing required param %q\n", name, param)
-			errors++
-		}
 	}
 
 	// Check for common misconfigurations
@@ -1008,4 +1056,72 @@ func validateCitrixParams(name string, params map[string]interface{}) (errors, w
 		}
 	}
 	return errors, warnings
+}
+
+// unsetEnvNames joins the distinct variable names of refs for a message.
+func unsetEnvNames(refs []configuration.EnvReference) string {
+	var names []string
+	for _, ref := range refs {
+		if len(names) == 0 || names[len(names)-1] != ref.Name {
+			names = append(names, ref.Name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// extractAdminKeyFromConfig resolves the administration key of the HTTP
+// output — the one the console answers to. It is read through the real
+// loader, because an install seals it and the file then holds a
+// ${secret:} reference rather than the value.
+//
+// An empty answer means the installation has no administration key: the
+// console is not served, and the caller says so rather than opening an
+// address that would answer 404.
+func extractAdminKeyFromConfig(configPath string) (string, error) {
+	if err := validateConfigPath(configPath); err != nil {
+		return "", fmt.Errorf("invalid config path: %w", err)
+	}
+	cfg, err := configuration.LoadForShow(configPath, configuration.ShowResolved, nil)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", configPath, err)
+	}
+	for _, out := range cfg.Storage {
+		if out.Name != "http" {
+			continue
+		}
+		key, _ := out.Params["admin_key"].(string)
+		key = strings.TrimSpace(key)
+		if key != "" && !strings.Contains(key, "${") {
+			return key, nil
+		}
+	}
+	return "", nil
+}
+
+// reportEntityEmission says, next to an OTLP output that just read as
+// valid, that no entity event will leave this agent when nothing turns
+// emission on. It reports whether the note was printed.
+//
+// Emission is off unless an `entities:` block or the output's
+// `signals.entities.enabled` says otherwise. That default is deliberate,
+// so this is a note rather than a warning: an install that never wanted
+// entities is correct. What was not correct was the silence — a
+// hand-written strategies.d exports metrics and logs normally, `[OK]
+// Storage: otlp` prints, and the host is absent from every topology
+// built on the rail, with nothing anywhere saying why (#938).
+func reportEntityEmission(entities *configuration.EntitiesConfig, storage []configuration.StorageConfig) bool {
+	hasOTLP := false
+	for _, s := range storage {
+		if s.Name == "otlp" {
+			hasOTLP = true
+		}
+	}
+	if !hasOTLP || entitydetect.Resolve(entities, storage, "").Enabled {
+		return false
+	}
+	fmt.Println("  [NOTE] No entity event is emitted: neither an `entities:` block nor")
+	fmt.Println("         `signals.entities.enabled` on the otlp output is set. Metrics and")
+	fmt.Println("         logs export normally; a consumer of the topology sees this host")
+	fmt.Println("         as absent. Add `entities: {enabled: true}` to turn it on.")
+	return true
 }

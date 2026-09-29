@@ -11,7 +11,7 @@
 # VARIANT picks which build of the release is taken: `oss` needs no
 # licence and carries the free probes; the default carries the paid ones
 # and reads the licence from SENHUB_LICENSE.
-ARG ALPINE_VERSION=3.20
+ARG ALPINE_VERSION=3.22
 
 FROM alpine:${ALPINE_VERSION} AS fetch
 ARG VERSION

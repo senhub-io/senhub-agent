@@ -216,9 +216,9 @@ func showUpdateHelp() {
 
 Check for, list, or install agent updates.
 
-    %s update              Check for a newer version and install it
+    %s update              Check for a newer version (install one with update <version>)
     %s update --list       List all available versions (stable + beta)
-    %s update <version>    Install a specific version (e.g. %s update 0.4.1)
+    %s update <version>    Install a specific version (e.g. %s update 0.6.0)
 
 Updating replaces the running binary and requires the same privileges
 as the service commands (root on Linux, administrator on Windows).
@@ -611,20 +611,9 @@ func Main() {
 func showHelp() {
 	exe := os.Args[0]
 
-	// Try to show the console URL if config is available
-	consoleURL := ""
-	configPath, err := cliArgs.GetAbsoluteConfigPath("")
-	if err == nil {
-		if key, err := extractAgentKeyFromConfig(configPath); err == nil && key != "" {
-			consoleURL = buildDashboardURL(configPath, key)
-		}
-	}
-
 	fmt.Println("SenHub Agent - Infrastructure Monitoring Agent")
 	fmt.Printf("Version: %s (%s)\n", cliArgs.Version, cliArgs.CommitHash)
-	if consoleURL != "" {
-		fmt.Printf("Console: %s\n", consoleURL)
-	}
+	fmt.Printf("Console: %s\n", consoleHint())
 	fmt.Println()
 
 	fmt.Printf(`Usage: %s [command] [options]

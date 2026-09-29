@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"senhub-agent.go/internal/agent/services/fsown"
 )
 
 // atomicWriteFile writes data to path durably: it writes a uniquely named temp
@@ -46,6 +48,9 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("renaming temp file to %s: %w", path, err)
 	}
 	removeTmp = false
+	if err := fsown.AlignToDir(path); err != nil {
+		return err
+	}
 
 	// fsync the directory so the rename entry is durable; best-effort — a
 	// filesystem that rejects a directory Sync must not fail the write.

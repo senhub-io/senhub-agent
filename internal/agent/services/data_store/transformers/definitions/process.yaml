@@ -2,7 +2,7 @@ probe_name: "process"
 friendly_name: "Process Monitor"
 version: "3.0.0"
 host_level: true
-multi_instance_labels: ["process.pid", "process.name"]
+multi_instance_labels: ["process.name"]
 
 # Format v3 — OTel-first source of truth.
 # Metric names follow OTel semantic conventions for process metrics
@@ -19,6 +19,7 @@ metrics:
   - name: "process.cpu.utilization"
     channel: "process_cpu_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) CPU"
+    prtg_skip: true
     unit: "%"
     category: "cpu"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -39,6 +40,7 @@ metrics:
   - name: "process.memory.usage"
     channel: "process_mem_rss_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) RSS"
+    prtg_skip: true
     unit: "bytes"
     category: "memory"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -59,6 +61,7 @@ metrics:
   - name: "process.memory.virtual_memory_usage"
     channel: "process_mem_vms_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) VMS"
+    prtg_skip: true
     unit: "bytes"
     category: "memory"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -79,6 +82,7 @@ metrics:
   - name: "process.threads"
     channel: "process_threads_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) Threads"
+    prtg_skip: true
     unit: "#"
     category: "threads"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -99,6 +103,7 @@ metrics:
   - name: "process.open_file_descriptors"
     channel: "process_fds_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) FDs"
+    prtg_skip: true
     unit: "#"
     category: "resources"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -119,6 +124,7 @@ metrics:
   - name: "process.uptime"
     channel: "process_uptime_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) Uptime"
+    prtg_skip: true
     unit: "s"
     category: "status"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -136,6 +142,69 @@ metrics:
   # Aggregate count per distinct process name
   # OTel: process.count (gauge, {process}) — emitted when aggregate.enabled=true
   # ─────────────────────────────────────────────────────────────────────────
+  - name: "process.group.cpu.utilization"
+    channel: "process_group_cpu_{process.name}"
+    display_name: "Processes {process.name} CPU"
+    unit: "%"
+    category: "cpu"
+    multi_instance_labels: ["process.name"]
+    description: "CPU utilization summed over the processes sharing this name; reported whatever the filter, and the only CPU series when no filter narrows the process table"
+    otel:
+      name: senhub.process.group.cpu.utilization
+      unit: "1"
+      type: gauge
+
+  - name: "process.group.memory.usage"
+    channel: "process_group_memory_{process.name}"
+    display_name: "Processes {process.name} Memory"
+    unit: "B"
+    category: "memory"
+    multi_instance_labels: ["process.name"]
+    description: "Resident memory summed over the processes sharing this name; reported whatever the filter, and the only memory series when no filter narrows the process table"
+    otel:
+      name: senhub.process.group.memory.usage
+      unit: By
+      type: gauge
+
+  - name: "kernel_max_files"
+    channel: "kernel_max_files"
+    display_name: "Kernel Max Open Files"
+    unit: "#"
+    category: "limits"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux"]
+    description: "Ceiling the kernel puts on open file descriptors for the whole machine; the per-process counts above are measured against it"
+    otel:
+      name: senhub.system.kernel.max_files
+      unit: "{file}"
+      type: gauge
+
+  - name: "kernel_max_processes"
+    channel: "kernel_max_processes"
+    display_name: "Kernel Max Processes"
+    unit: "#"
+    category: "limits"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux"]
+    description: "Highest process id the kernel will assign, which is the ceiling on how many processes can exist at once"
+    otel:
+      name: senhub.system.kernel.max_processes
+      unit: "{process}"
+      type: gauge
+
+  - name: "users_logged_in"
+    channel: "users_logged_in"
+    display_name: "Logged-in Users"
+    unit: "#"
+    category: "limits"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux", "windows"]
+    description: "Open login sessions on the machine, one per login rather than per account: four terminals opened on the same account count four. Read from the login accounting file on Linux and from the terminal services sessions on Windows, where a session whose client is detached still counts"
+    otel:
+      name: senhub.system.users.count
+      unit: "{session}"
+      type: gauge
+
   - name: "process.count"
     channel: "process_count_{process.name}"
     display_name: "Process {process.name} Count"

@@ -47,6 +47,26 @@ resolve_machine_id 2>/dev/null
 check "SENHUB_HOST_ID wins and is normalised" "$(cat "$MACHINE_ID_PATH")" "aabbccddeeff00112233445566778899"
 unset SENHUB_HOST_ID
 
+# 2b. An example or blank SENHUB_HOST_ID is refused rather than written:
+#     every container given it would be one host on the graph.
+for bad in 01234567-89ab-cdef-0123-456789abcdef 00000000000000000000000000000000; do
+  SENHUB_HOST_ID=$bad
+  export SENHUB_HOST_ID
+  if (resolve_machine_id 2>/dev/null); then
+    check "SENHUB_HOST_ID=$bad is refused" "accepted" "refused"
+  else
+    check "SENHUB_HOST_ID=$bad is refused" "refused" "refused"
+  fi
+done
+unset SENHUB_HOST_ID
+for good in 6a6d1121-4a85-4e64-a222-746f7bc9c04c aabbccddeeff00112233445566778899; do
+  if degenerate_machine_id "$(printf '%s' "$good" | tr -d '-')"; then
+    check "$good is accepted" "refused" "accepted"
+  else
+    check "$good is accepted" "accepted" "accepted"
+  fi
+done
+
 # 3. A corrupt kept machine-id is ignored rather than written through: the
 #    file ends up with a fresh identity (Linux, where /proc provides one) or
 #    empty (macOS, where it does not), never with the corrupt value.
@@ -68,6 +88,27 @@ rm -f "$STATE_DIR/agent.key"
 printf 'config_version: 3\n\nagent:\n  key: "e313cd19-45d9-4711-8b09-3f58ac6e7595"\n' > "$CONFIG"
 keep_agent_key 2>/dev/null
 check "a fresh agent key is kept for the next container" "$(cat "$STATE_DIR/agent.key")" "e313cd19-45d9-4711-8b09-3f58ac6e7595"
+
+# 5b. SENHUB_AGENT_KEY names the agent without a volume: two containers
+#     with no shared state, each with a freshly generated agent.yaml,
+#     come up as the same agent. It wins over a kept key.
+for run in 1 2; do
+  rm -rf "$STATE_DIR"; mkdir -p "$STATE_DIR"
+  printf 'config_version: 3\n\nagent:\n  key: "%s"\n' "$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo 9f1c2e3d-4b5a-4c6d-8e7f-a1b2c3d4e5f$run)" > "$CONFIG"
+  SENHUB_AGENT_KEY="7E1D2C3B-4A59-4687-9A0B-1C2D3E4F5A6B"
+  export SENHUB_AGENT_KEY
+  keep_agent_key 2>/dev/null
+  check "SENHUB_AGENT_KEY names the agent, container $run" "$(sed -n 's/^  key: "\(.*\)"$/\1/p' "$CONFIG")" "7e1d2c3b-4a59-4687-9a0b-1c2d3e4f5a6b"
+done
+for bad in not-a-key 01234567-89ab-cdef-0123-456789abcdef; do
+  SENHUB_AGENT_KEY=$bad
+  if (keep_agent_key 2>/dev/null); then
+    check "SENHUB_AGENT_KEY=$bad is refused" "accepted" "refused"
+  else
+    check "SENHUB_AGENT_KEY=$bad is refused" "refused" "refused"
+  fi
+done
+unset SENHUB_AGENT_KEY
 
 # 6. The Container Apps shorthand writes one entry per name of the list,
 #    each with its own bookmark, so a collector follows several
@@ -113,5 +154,61 @@ else
   check "a name carrying a path separator is refused" "refused" "refused"
 fi
 unset SENHUB_AZURE_APP
+
+# 10. Without a volume, the warning names only what is actually lost: with
+#     SENHUB_HOST_ID and SENHUB_AGENT_KEY set, the identity and the key
+#     survive a new container, and only the log bookmarks do not.
+unset SENHUB_HOST_ID SENHUB_AGENT_KEY
+bare=$(unmounted_state_warning 2>&1)
+check "a bare container is told it loses identity, key and bookmarks" \
+  "$(printf '%s' "$bare" | grep -c 'host identity, agent key, log bookmarks')" "1"
+check "a bare container is told it arrives as a new host" "$(printf '%s' "$bare" | grep -c 'new host')" "1"
+SENHUB_HOST_ID=aabbccddeeff00112233445566778899 SENHUB_AGENT_KEY=e313cd19-45d9-4711-8b09-3f58ac6e7595
+export SENHUB_HOST_ID SENHUB_AGENT_KEY
+named=$(unmounted_state_warning 2>&1)
+check "a named container is told it loses only its bookmarks" \
+  "$(printf '%s' "$named" | grep -c 'volume: log bookmarks live')" "1"
+check "a named container is not told it arrives as a new host" "$(printf '%s' "$named" | grep -c 'new host')" "0"
+check "a named container is told what losing its place costs" \
+  "$(printf '%s' "$named" | grep -c 're-sends its recent lines, a file probe skips')" "1"
+unset SENHUB_HOST_ID SENHUB_AGENT_KEY
+
+# 11. A collector in plain text is reachable from the variables alone:
+#     SENHUB_OTLP_TLS=false turns TLS off in the written output, once, and
+#     the default leaves it on. A value that is neither is refused.
+frag="$work/10-otlp.yaml"
+printf 'otlp:\n  endpoint: localhost:4317\n  protocol: grpc\n' > "$frag"
+OTLP_BEARER_TOKEN=t SENHUB_OTLP_TLS=false
+export OTLP_BEARER_TOKEN SENHUB_OTLP_TLS
+otlp_fragment_extras "$frag" 2>/dev/null
+otlp_fragment_extras "$frag" 2>/dev/null
+check "SENHUB_OTLP_TLS=false turns TLS off" "$(grep -c 'enabled: false' "$frag")" "1"
+check "the bearer reference is written once" "$(grep -c 'Authorization' "$frag")" "1"
+printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+unset SENHUB_OTLP_TLS
+otlp_fragment_extras "$frag" 2>/dev/null
+check "TLS stays on by default" "$(grep -c 'tls:' "$frag")" "0"
+SENHUB_OTLP_TLS=maybe
+export SENHUB_OTLP_TLS
+if (otlp_fragment_extras "$frag" >/dev/null 2>&1); then
+  check "SENHUB_OTLP_TLS=maybe is refused" "accepted" "refused"
+else
+  check "SENHUB_OTLP_TLS=maybe is refused" "refused" "refused"
+fi
+unset SENHUB_OTLP_TLS OTLP_BEARER_TOKEN
+
+# 12. Entities are on by default in the image, once, and SENHUB_ENTITIES
+#     turns them off.
+frag="$work/10-otlp-ent.yaml"
+printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+otlp_fragment_extras "$frag" 2>/dev/null
+otlp_fragment_extras "$frag" 2>/dev/null
+check "entities are enabled by default" "$(grep -c 'entities:' "$frag")" "1"
+printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+SENHUB_ENTITIES=false
+export SENHUB_ENTITIES
+otlp_fragment_extras "$frag" 2>/dev/null
+check "SENHUB_ENTITIES=false leaves them off" "$(grep -c 'entities:' "$frag")" "0"
+unset SENHUB_ENTITIES
 
 exit "$fail"

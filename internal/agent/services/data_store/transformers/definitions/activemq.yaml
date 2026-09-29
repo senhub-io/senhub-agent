@@ -132,28 +132,28 @@ metrics:
       destination: messaging.destination.name
       destination_type: messaging.destination_kind
 
-  - name: "activemq.consumer.count"
+  - name: "activemq.destination.consumer.count"
     channel: "activemq_{destination_type}_{destination}_consumers"
     display_name: "ActiveMQ {destination_type} {destination} Consumers"
     unit: "#"
     category: "messaging"
     description: "Number of consumers currently subscribed to the destination"
     otel:
-      name: activemq.consumer.count
+      name: activemq.destination.consumer.count
       unit: "{consumer}"
       type: gauge
     tag_to_attribute:
       destination: messaging.destination.name
       destination_type: messaging.destination_kind
 
-  - name: "activemq.producer.count"
+  - name: "activemq.destination.producer.count"
     channel: "activemq_{destination_type}_{destination}_producers"
     display_name: "ActiveMQ {destination_type} {destination} Producers"
     unit: "#"
     category: "messaging"
     description: "Number of producers currently attached to the destination"
     otel:
-      name: activemq.producer.count
+      name: activemq.destination.producer.count
       unit: "{producer}"
       type: gauge
     tag_to_attribute:

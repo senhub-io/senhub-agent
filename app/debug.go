@@ -4,6 +4,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -64,19 +65,21 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// Get basic service status
 	serviceStatus, err := statusHelper.GetServiceStatus(svc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error checking service status: %v\n", err)
-		return
-	}
+		// No service manager to ask: a container, where the agent is the
+		// container's own process. The running agent can still answer for
+		// itself over HTTP, which is what an operator ran status for.
+		fmt.Printf("Service status: no service manager here (%v); asking the running agent\n\n", err)
+	} else {
+		// Capitalize first letter for display
+		displayStatus := strings.ToUpper(serviceStatus[:1]) + serviceStatus[1:]
+		fmt.Printf("Service status: %s\n\n", displayStatus)
 
-	// Capitalize first letter for display
-	displayStatus := strings.ToUpper(serviceStatus[:1]) + serviceStatus[1:]
-	fmt.Printf("Service status: %s\n\n", displayStatus)
-
-	// If service is not running, show basic info only
-	if serviceStatus != "running" {
-		fmt.Println("Agent service is not running.")
-		fmt.Println("Start the service with: " + os.Args[0] + " start")
-		return
+		// If service is not running, show basic info only
+		if serviceStatus != "running" {
+			fmt.Println("Agent service is not running.")
+			fmt.Println("Start the service with: " + os.Args[0] + " start")
+			return
+		}
 	}
 
 	// Try to get detailed status from running agent first (via HTTP).
@@ -126,7 +129,7 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 		if err == nil {
 			// Enrich with dashboard URL from config
 			if configPath != "" {
-				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
+				systemStatus.Connection.DashboardURL = consoleHint()
 			}
 			// Successfully got status from running agent
 			fmt.Print(formatter.FormatSystemStatus(*systemStatus))
@@ -242,15 +245,20 @@ func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error
 			systemStatus.Connection.Source = "Configuration file"
 			systemStatus.Connection.Status = "Available"
 
-			// Build dashboard URL from config
-			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
-			if err == nil {
-				systemStatus.Connection.DashboardURL = buildDashboardURL(configPath, agentKey)
-			}
+			systemStatus.Connection.DashboardURL = consoleHint()
 		}
 	}
 
 	return systemStatus, nil
+}
+
+// consoleHint is what status and help show for the console. The console
+// answers the administration key only, so an address built on the agent
+// key answered 401; and the administration key does not belong in output
+// that is routinely pasted into a ticket. The command prints the address
+// to whoever has the rights to read it.
+func consoleHint() string {
+	return "run '" + filepath.Base(os.Args[0]) + " console' (or 'console --print' for the address)"
 }
 
 // buildDashboardURL constructs the dashboard URL from the agent

@@ -104,15 +104,16 @@ func (h *StatusHelper) GetDetailedStatusFromHTTP(agentKey string, port int) (*Sy
 // HTTPSystemInfoResponse matches the HTTP strategy's system info response
 // This is a simplified version - in practice, we'd import the actual types
 type HTTPSystemInfoResponse struct {
-	Status    string `json:"status"`
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	GoVersion string `json:"go_version"`
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
-	Port      int    `json:"port"`
-	Uptime    string `json:"uptime"`
-	Health    struct {
+	Status     string `json:"status"`
+	Version    string `json:"version"`
+	Commit     string `json:"commit"`
+	InstanceID string `json:"instance_id"`
+	GoVersion  string `json:"go_version"`
+	OS         string `json:"os"`
+	Arch       string `json:"arch"`
+	Port       int    `json:"port"`
+	Uptime     string `json:"uptime"`
+	Health     struct {
 		Status    string            `json:"status"`
 		Timestamp int64             `json:"timestamp"`
 		Version   string            `json:"version"`
@@ -154,11 +155,12 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 			CacheEntries:  httpResp.Cache.TotalMetrics,
 		},
 		Agent: AgentInfo{
-			Version:   httpResp.Version,
-			Commit:    httpResp.Commit,
-			GoVersion: httpResp.GoVersion,
-			OS:        httpResp.OS,
-			Arch:      httpResp.Arch,
+			Version:    httpResp.Version,
+			Commit:     httpResp.Commit,
+			InstanceID: httpResp.InstanceID,
+			GoVersion:  httpResp.GoVersion,
+			OS:         httpResp.OS,
+			Arch:       httpResp.Arch,
 		},
 	}
 }

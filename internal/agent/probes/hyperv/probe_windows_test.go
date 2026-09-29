@@ -98,7 +98,7 @@ func TestBuildVMPoints_CPUNormalisation(t *testing.T) {
 
 	vms := []msvmComputerSystem{{Name: "guid-1", EnabledState: enabledStateRunning}}
 	sums := map[string]msvmSummaryInformation{
-		"guid-1": {Name: "guid-1", ElementName: "TestVM", CPUUsage: 100, MemoryUsage: 1024},
+		"guid-1": {Name: "guid-1", ElementName: "TestVM", ProcessorLoad: 100, MemoryUsage: 1024},
 	}
 	points := p.buildVMPoints(vms, sums, time.Now(), nil)
 
@@ -157,7 +157,7 @@ func TestBuildVMPoints_MemoryBytes(t *testing.T) {
 
 	vms := []msvmComputerSystem{{Name: "g1", EnabledState: enabledStateRunning}}
 	sums := map[string]msvmSummaryInformation{
-		"g1": {Name: "g1", CPUUsage: 0, MemoryUsage: 2048},
+		"g1": {Name: "g1", ProcessorLoad: 0, MemoryUsage: 2048},
 	}
 	points := p.buildVMPoints(vms, sums, time.Now(), nil)
 
@@ -216,6 +216,37 @@ func TestBuildVMPoints_CountBuckets(t *testing.T) {
 	for state, want := range cases {
 		if got := counts[state]; got != want {
 			t.Errorf("count[%s]: expected %v, got %v", state, want, got)
+		}
+	}
+}
+
+// Property lists of the two classes, as Get-CimClass reports them on a
+// Windows Server 2025 Hyper-V host. A selected name outside them turns
+// the whole WMI query into "Invalid query", which is how the probe
+// collected nothing: it asked Msvm_ComputerSystem for NumberOfProcessors
+// and Msvm_SummaryInformation for CPUUsage.
+var (
+	computerSystemSchema = "Caption,Description,ElementName,InstanceID,CommunicationStatus,DetailedStatus,HealthState,InstallDate,Name,OperatingStatus,OperationalStatus,PrimaryStatus,Status,StatusDescriptions,AvailableRequestedStates,EnabledDefault,EnabledState,OtherEnabledState,RequestedState,TimeOfLastStateChange,TransitioningToState,CreationClassName,IdentifyingDescriptions,NameFormat,OtherIdentifyingInfo,PrimaryOwnerContact,PrimaryOwnerName,Roles,Dedicated,OtherDedicatedDescriptions,PowerManagementCapabilities,ResetCapability,EnhancedSessionModeState,FailedOverReplicationType,HwThreadsPerCoreRealized,LastApplicationConsistentReplicationTime,LastReplicationTime,LastReplicationType,LastSuccessfulBackupTime,ManagementVtlImageFileName,ManagementVtlImageVersion,NumberOfNumaNodes,OnTimeInMilliseconds,ProcessID,ReplicationHealth,ReplicationMode,ReplicationState,TimeOfLastConfigurationChange"
+	summarySchema        = "Caption,Description,ElementName,InstanceID,CreationTime,EnabledState,EnhancedSessionModeState,HealthState,HostComputerSystemName,Name,Notes,NumberOfProcessors,OperationalStatus,OtherEnabledState,StatusDescriptions,UpTime,Version,VirtualSwitchNames,VirtualSystemSubType,AllocatedGPU,ApplicationHealth,AsynchronousTasks,AvailableMemoryBuffer,GuestOperatingSystem,Heartbeat,HypervisorPartitionId,IntegrationServicesVersionState,MemoryAvailable,MemorySpansPhysicalNumaNodes,MemoryUsage,ProcessorLoad,ProcessorLoadHistory,ReplicationHealth,ReplicationHealthEx,ReplicationMode,ReplicationProviderId,ReplicationState,ReplicationStateEx,Shielded,Snapshots,SwapFilesInUse,TestReplicaSystem,ThumbnailImage,ThumbnailImageHeight,ThumbnailImageWidth"
+)
+
+func TestSelectedPropertiesExistOnTheirClass(t *testing.T) {
+	for _, c := range []struct {
+		class  string
+		schema string
+		props  []string
+	}{
+		{"Msvm_ComputerSystem", computerSystemSchema, computerSystemProps},
+		{"Msvm_SummaryInformation", summarySchema, summaryProps},
+	} {
+		known := map[string]bool{}
+		for _, p := range strings.Split(c.schema, ",") {
+			known[p] = true
+		}
+		for _, p := range c.props {
+			if !known[p] {
+				t.Errorf("%s has no property %q: WMI would reject the whole query", c.class, p)
+			}
 		}
 	}
 }

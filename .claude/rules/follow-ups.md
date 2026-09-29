@@ -44,6 +44,32 @@ wrote one right now. Concretely:
 - Something already tracked: an issue with the same intent already
   open. The search-first step below catches these.
 
+## Before you open it: this tracker is public
+
+`senhub-io/senhub-agent` is a public repository. Everything written in
+an issue is readable by a prospect, a customer and a competitor, for
+ever, and editing it later leaves the first version one click away.
+
+Three kinds of follow-up do **not** belong there:
+
+- **A security weakness before its fix exists.** An open issue saying a
+  port serves in clear, or that a credential is weakly held, is a
+  disclosure. It goes to a private security advisory or to the private
+  companion repository, and becomes public once the fix has shipped, if
+  at all.
+- **A measurement that places the product behind a named competitor.**
+  The number is worth keeping; a public issue under our own name saying
+  we collect half of what another agent collects is not the place to
+  keep it. It belongs in the release note, in the developer guide, or in
+  the private repository.
+- **Anything naming a customer, a host, an address or an internal
+  machine.** Anonymise: "a Windows recette host", not its name.
+
+When a follow-up falls in one of those, open it in the private
+companion repository and reference it here by number only, or record it
+where the decision will be read. The rule above is about not losing a
+follow-up, not about publishing one.
+
 ## Procedure
 
 ### 1. Search first (dedup)

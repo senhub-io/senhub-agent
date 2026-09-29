@@ -97,5 +97,17 @@ func CheckBinaryReplaceable() string {
 	if err != nil {
 		return ""
 	}
-	return WritabilityPreflight(exe, pathWritable)
+	return binaryReplaceable(exe, isMsiManaged(), pathWritable)
+}
+
+// binaryReplaceable skips the check on an MSI-managed install: its update
+// applies a new MSI through msiexec and never writes the binary, so
+// whether this process can open the executable for writing says nothing
+// about it. It cannot, because the running service holds the file, which
+// is why config check warned on every freshly installed Windows host.
+func binaryReplaceable(exe string, msiManaged bool, canWrite func(path string) bool) string {
+	if msiManaged {
+		return ""
+	}
+	return WritabilityPreflight(exe, canWrite)
 }

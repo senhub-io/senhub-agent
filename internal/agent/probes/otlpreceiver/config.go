@@ -83,6 +83,19 @@ type receiverConfig struct {
 	// Signals selects which OTLP signal services the listener registers.
 	// Defaults to metrics only when `signals:` is absent.
 	Signals signalSet
+	// UnixPath is set when Address names a Unix domain socket
+	// ("unix:/run/senhub-agent/otlp.sock"). Whatever arrives there comes
+	// from this machine by construction, which is what lets the agent
+	// state the sender's host identity rather than infer it.
+	UnixPath string
+}
+
+// unixSocketPath returns the socket path of a "unix:" address, or "".
+func unixSocketPath(addr string) string {
+	if !strings.HasPrefix(addr, "unix:") {
+		return ""
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(addr, "unix://"), "unix:")
 }
 
 func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) {
@@ -110,10 +123,17 @@ func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) 
 		cfg.HTTPPath = v
 	}
 
+	cfg.UnixPath = unixSocketPath(cfg.Address)
+	if strings.HasPrefix(cfg.Address, "unix:") && cfg.UnixPath == "" {
+		return receiverConfig{}, fmt.Errorf("address %q names no socket path", cfg.Address)
+	}
+
 	// An explicit port override keeps the configured host but replaces
 	// the port — convenience for operators who only want to move the
 	// port off the default.
-	if port, ok := types.IntParam(config, "port"); ok {
+	if port, ok := types.IntParam(config, "port"); ok && cfg.UnixPath != "" {
+		return receiverConfig{}, fmt.Errorf("port %d does not apply to the unix socket %s", port, cfg.UnixPath)
+	} else if ok {
 		if port < minPort || port > maxPort {
 			return receiverConfig{}, fmt.Errorf("port must be between %d and %d, got %d", minPort, maxPort, port)
 		}
@@ -131,6 +151,9 @@ func parseReceiverConfig(config map[string]interface{}) (receiverConfig, error) 
 			return receiverConfig{}, fmt.Errorf("allowed_cidrs: invalid CIDR %q: %w", raw, err)
 		}
 		cfg.AllowedCIDRs = append(cfg.AllowedCIDRs, cidr)
+	}
+	if len(cfg.AllowedCIDRs) > 0 && cfg.UnixPath != "" {
+		return receiverConfig{}, fmt.Errorf("allowed_cidrs does not apply to the unix socket %s: a local socket has no source address; restrict it with the socket file's permissions", cfg.UnixPath)
 	}
 
 	if rps, ok := types.FloatParam(config, "rate_limit_rps"); ok {

@@ -51,9 +51,11 @@ const (
 )
 
 // pulsarMetricNames is the set of Prometheus metric names the probe
-// extracts from the /metrics exposition. Only broker-level aggregates
-// are listed; per-topic time series are intentionally excluded to keep
-// cardinality flat and predictable.
+// extracts from the /metrics exposition. The broker-level aggregates
+// (pulsar_broker_*, served by current brokers, 4.0 included) are read when the broker
+// exposes them; they exist even on a broker without topics. Older brokers
+// only publish the per-namespace series (pulsar_topics_count{namespace}),
+// which the probe falls back to. Per-topic series are never read.
 var pulsarMetricNames = map[string]string{
 	"pulsar_topics_count":       "pulsar.topics.count",
 	"pulsar_producers_count":    "pulsar.producers.count",
@@ -67,6 +69,10 @@ var pulsarMetricNames = map[string]string{
 	"pulsar_storage_read_rate":  "pulsar.storage.read.rate",
 	"pulsar_storage_write_rate": "pulsar.storage.write.rate",
 }
+
+// brokerMetricPrefix turns a per-namespace name into its broker-level
+// aggregate: pulsar_rate_in → pulsar_broker_rate_in.
+const brokerMetricPrefix = "pulsar_broker_"
 
 type probeConfig struct {
 	Endpoint     string
@@ -230,7 +236,7 @@ func (p *PulsarProbe) scrapeMetrics(ts time.Time, baseTags []tags.Tag) ([]data_s
 // 2.x+) and the probe only needs the numeric VALUE; it does not need
 // type/help metadata.
 func parsePrometheusText(r io.Reader, ts time.Time, baseTags []tags.Tag) ([]data_store.DataPoint, error) {
-	var points []data_store.DataPoint
+	var brokerPoints, namespacePoints []data_store.DataPoint
 	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
@@ -263,6 +269,11 @@ func parsePrometheusText(r io.Reader, ts time.Time, baseTags []tags.Tag) ([]data
 			valueStr = fields[1]
 		}
 
+		broker := false
+		if strings.HasPrefix(name, brokerMetricPrefix) {
+			name = "pulsar_" + strings.TrimPrefix(name, brokerMetricPrefix)
+			broker = true
+		}
 		otelName, tracked := pulsarMetricNames[name]
 		if !tracked {
 			continue
@@ -281,18 +292,28 @@ func parsePrometheusText(r io.Reader, ts time.Time, baseTags []tags.Tag) ([]data
 		copy(dpTags, baseTags)
 		dpTags = appendLabelTags(dpTags, labelStr)
 
-		points = append(points, data_store.DataPoint{
+		dp := data_store.DataPoint{
 			Name:      otelName,
 			Value:     float64(val),
 			Timestamp: ts,
 			Tags:      dpTags,
-		})
+		}
+		if broker {
+			brokerPoints = append(brokerPoints, dp)
+		} else {
+			namespacePoints = append(namespacePoints, dp)
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return points, fmt.Errorf("reading metrics exposition: %w", err)
+		return nil, fmt.Errorf("reading metrics exposition: %w", err)
 	}
-	return points, nil
+	// Both families describe the same traffic; mixing them would count it
+	// twice. The broker aggregates win whenever the broker has them.
+	if len(brokerPoints) > 0 {
+		return brokerPoints, nil
+	}
+	return namespacePoints, nil
 }
 
 // appendLabelTags parses a Prometheus label set string of the form

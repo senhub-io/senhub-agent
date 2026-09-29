@@ -16,7 +16,7 @@ you want per-container resource metrics as well.
 - The agent must run on a **manager** node. On a worker the Engine answers 503
   to every cluster query, and the probe reports that explicitly rather than
   showing an empty, healthy-looking cluster.
-- Read access to the Docker Engine: the socket `/var/run/docker.sock` on Linux and macOS, the named pipe `npipe://./pipe/docker_engine` on Windows.
+- Read access to the Docker Engine: the socket `/var/run/docker.sock` on Linux and macOS, the named pipe `npipe://./pipe/docker_engine` on Windows. The socket is `root:docker` mode `0660`, and the Linux service runs as the `senhub` account: add it to the `docker` group (`usermod -aG docker senhub`, then restart the service) or put a read-only socket proxy in front of the engine, as described for the [Docker probe](docker.md#running-without-access-to-the-docker-socket). Unlike the Docker probe, the Swarm probe has no fallback without the socket: the cluster state exists only in the Engine API, so it reports `senhub.swarm.up = 0`.
 
 Pointed at a worker or at an engine that is not in swarm mode, the probe still
 emits `senhub.swarm.up 0` plus a state series naming the reason — `worker`,
@@ -27,6 +27,7 @@ wrong node, another is a machine that was never clustered.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:014ec5cc82cacf703c729990ed4e69dc197d556d8d07e72f67058a8e03bede9b -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -37,13 +38,13 @@ wrong node, another is a machine that was never clustered.
 <!-- schema:params:end -->
 
 ```yaml
-probes:
-  - name: swarm
-    type: swarm
-    params:
-      socket_path: /var/run/docker.sock   # default
-      interval: 60                        # seconds, default 60
-      timeout: 10                         # seconds, default 10
+# probes.d/30-swarm.yaml: each file under probes.d/ is a YAML array of probes
+- name: swarm
+  type: swarm
+  params:
+    socket_path: /var/run/docker.sock   # default
+    interval: 60                        # seconds, default 60
+    timeout: 10                         # seconds, default 10
 ```
 
 On Windows the pipe may also be written `\\.\pipe\docker_engine`.
@@ -140,3 +141,51 @@ of two spec slots depending on the Engine version that created them, by id or
 by name. The probe reads both slots and both spellings; if an attachment is
 still missing, the service genuinely has none — which is also what correct
 isolation looks like.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.swarm.up` | `senhub.swarm.up` | Swarm Manager Up | # | 1 when this node is a swarm manager and answered; 0 for worker, non-swarm or unreachable — the state series says which |
+| `senhub.swarm.node_role_state` | `senhub.swarm.node_role_state` | Swarm Role {state} | # | one-hot over manager / worker / not_in_swarm / unreachable: why the probe sees what it sees |
+| `swarm.cluster.nodes` | `swarm.cluster.nodes` | Cluster Nodes | # | nodes known to the cluster |
+| `swarm.cluster.managers` | `swarm.cluster.managers` | Cluster Managers | # | manager nodes |
+| `swarm.cluster.managers.reachable` | `swarm.cluster.managers.reachable` | Cluster Managers Reachable | # | managers currently reachable by the Raft leader |
+| `swarm.cluster.workers` | `swarm.cluster.workers` | Cluster Workers | # | worker nodes |
+| `swarm.cluster.quorum` | `swarm.cluster.quorum` | Cluster Quorum | # | 1 when a strict majority of managers is reachable; 0 means the cluster accepts no change at all — no deploy, no rescheduling |
+| `swarm.cluster.tasks.orphaned` | `swarm.cluster.tasks.orphaned` | Cluster Tasks Orphaned | # | tasks whose service no longer exists; invisible from every per-service view |
+| `swarm.cluster.networks` | `swarm.cluster.networks` | Cluster Networks | # | swarm-scoped overlay segments |
+| `swarm.node.ready` | `swarm.node.ready` | Node {swarm.node.name} Ready | # | 1 when the node status is ready |
+| `swarm.node.state` | `swarm.node.state` | Node {swarm.node.name} State {state} | # | one-hot over ready / down / unknown / disconnected |
+| `swarm.node.availability` | `swarm.node.availability` | Node {swarm.node.name} Availability {availability} | # | one-hot over active / pause / drain — the operator's intent, as opposed to the node's actual state |
+| `swarm.node.cpu.allocatable` | `swarm.node.cpu.allocatable` | Node {swarm.node.name} CPU Allocatable | # | CPU cores the node advertises to the scheduler |
+| `swarm.node.memory.allocatable` | `swarm.node.memory.allocatable` | Node {swarm.node.name} Memory Allocatable | Bytes | memory the node advertises to the scheduler |
+| `swarm.node.manager.leader` | `swarm.node.manager.leader` | Node {swarm.node.name} Leader | # | 1 on the Raft leader |
+| `swarm.node.manager.reachable` | `swarm.node.manager.reachable` | Node {swarm.node.name} Manager Reachable | # | 1 when this manager is reachable by the leader |
+| `swarm.node.manager.reachability` | `swarm.node.manager.reachability` | Node {swarm.node.name} Reachability {reachability} | # | one-hot over reachable / unreachable / unknown |
+| `swarm.node.tasks.running` | `swarm.node.tasks.running` | Node {swarm.node.id} Tasks Running | # | running tasks placed on this node |
+| `swarm.service.replicas.desired` | `swarm.service.replicas.desired` | Service {swarm.service.name} Replicas Desired | # | replicas asked for; for a global service, the tasks Swarm intends to run |
+| `swarm.service.replicas.running` | `swarm.service.replicas.running` | Service {swarm.service.name} Replicas Running | # | replicas actually running, counted from tasks |
+| `swarm.service.converged` | `swarm.service.converged` | Service {swarm.service.name} Converged | # | 1 when running replicas have caught up with the declared count |
+| `swarm.service.update.state` | `swarm.service.update.state` | Service {swarm.service.name} Update {state} | # | one-hot over the rolling-update lifecycle; a service stuck in paused is a deploy waiting for a human |
+| `swarm.service.tasks.failed` | `swarm.service.tasks.failed` | Service {swarm.service.name} Tasks Failed | # | tasks in a terminal failure state (failed, rejected, orphaned) |
+| `swarm.service.port.published` | `swarm.service.port.published` | Service {swarm.service.name} Port {swarm.port.published}/{network.transport} | # | one series per published port; in ingress mode the port answers on every node, not only where the service runs |
+| `swarm.task.state` | `swarm.task.state` | Service {swarm.service.name} Tasks {state} | # | tasks per service per lifecycle state; separates 'not there yet' from 'will never get there' |
+| `swarm.service.network.attached` | `swarm.service.network.attached` | Service {swarm.service.name} On {swarm.network.name} | # | 1 per (service, overlay) pair — the reachability map: two services share a segment or they cannot talk |
+| `swarm.network.services` | `swarm.network.services` | Network {swarm.network.name} Services | # | services attached to this overlay |
+| `swarm.network.tasks` | `swarm.network.tasks` | Network {swarm.network.name} Tasks | # | task attachments on this overlay |
+| `swarm.network.ingress` | `swarm.network.ingress` | Network {swarm.network.name} Ingress | # | 1 on the routing-mesh segment that carries every published port |
+| `swarm.network.attachable` | `swarm.network.attachable` | Network {swarm.network.name} Attachable | # | 1 when standalone containers may join this overlay |
+| `swarm.network.internal` | `swarm.network.internal` | Network {swarm.network.name} Internal | # | 1 when the overlay has no external route |
+| `swarm.network.address.capacity` | `swarm.network.address.capacity` | Network {swarm.network.name} Address Capacity | # | assignable addresses in the overlay subnet; an overlay running out refuses new tasks with an error naming neither |
+
+<!-- schema:metrics:end -->
