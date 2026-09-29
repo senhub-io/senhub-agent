@@ -77,9 +77,9 @@ Breaking Changes or Fixes below.
     for anything scripted against the configuration API with the agent
     key.
 
-- **`service.instance.id` is now an RFC 4122 UUID.** It was the agent key
-  itself; the OpenTelemetry semantic conventions ask for a UUID, and the
-  agent now derives one (version 5) from its key. Each agent's
+- **`service.instance.id` is now an RFC 4122 UUID.** The OpenTelemetry
+  semantic conventions ask for a UUID; the agent now derives one (version
+  5) from its key. Each agent's
   `service.instance.id` therefore changes once at upgrade: series keyed
   on it start new, and the agent's `service.instance` entity in a
   topology backend is replaced by a new one (the old one expires).
