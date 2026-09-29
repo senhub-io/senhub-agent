@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -238,6 +239,14 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		}
 	}
 	tag, _ := logParts["tag"].(string)
+	if tag != "" {
+		// A sender that puts a space before the tag's colon, or doubles
+		// it ("tag : msg", "tag:: msg"), leaves the separator at the head
+		// of the content go-syslog hands over.
+		if rest, ok := strings.CutPrefix(strings.TrimLeft(content, " "), ": "); ok {
+			content = rest
+		}
+	}
 	if tag == "" {
 		if v, ok := logParts["app_name"].(string); ok {
 			tag = v

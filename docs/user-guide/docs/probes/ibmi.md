@@ -320,13 +320,53 @@ curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod?tags=metric_ty
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod?tags=metric_type:user_profile"
 ```
 
-Several families fit one sensor when their series stay under 50:
-`?tags=metric_type:cpu,memory,jobs`. A family with one series per disk
-unit, output queue or journal can exceed 50 on a large partition; add a
-`metrics=` filter to keep one measurement per sensor, for example
-`?tags=metric_type:disk&metrics=ibmi.disk.busy_percent`. The families
-are the ones of the metric reference below (`asp`, `cpu`, `disk`, `job_queue`,
-`netstat`, `output_queue`, `user_profile`, `collector`, …).
+Several families fit one sensor when their series stay under 50, with
+`?tags=metric_type:cpu,memory`. A family with one series per disk unit,
+listener, output queue or journal can exceed 50: add a `metrics=` filter
+to keep one or two measurements per sensor.
+
+The plan below was measured on a partition with 46 disk units, 38 TCP
+listeners, 33 output queues and 17 journals. Append each query to the
+probe's PRTG URL, `/api/{agentkey}/prtg/metrics/ibmi-prod`.
+
+**Base set** (nine sensors)
+
+| Sensor | Query | Channels measured |
+|---|---|---|
+| System: CPU, memory, pools, ASPs | `?tags=metric_type:cpu,memory,memory_pool,asp` | 30 |
+| Jobs by status | `?tags=metric_type:jobs&metrics=ibmi.jobs.count_by_status` | 23 to 28 |
+| Jobs by subsystem, totals | `?tags=metric_type:jobs&metrics=ibmi.jobs.count_by_subsystem,ibmi.jobs.total_count,ibmi.jobs.active_total` | 20 |
+| Subsystems and job queues | `?tags=metric_type:subsystem,job_queue` | 35 |
+| Disks, percent used | `?tags=metric_type:disk&metrics=ibmi.disk.percent_used` | 46 |
+| Active TCP listeners | `?tags=metric_type:netstat&metrics=ibmi.netstat.listener_up` | 38 |
+| TCP and HTTP servers | `?tags=metric_type:tcp,http_server` | 17 |
+| Security: system values, user profiles | `?tags=metric_type:sysval,user_profile` | 25 |
+| Collector failures | `?tags=metric_type:collector&metrics=ibmi.collector.failure_total` | 27 |
+
+**Optional**
+
+| Sensor | Query | Channels measured |
+|---|---|---|
+| Disks, free space | `?tags=metric_type:disk&metrics=ibmi.disk.available_gb` | 46 |
+| User storage, hardware, JVM, media, spool | `?tags=metric_type:user_storage,hardware_resource,jvm,media_library,spooled_file` | 27 |
+| Scheduled jobs | `?tags=metric_type:scheduled_job` | 28 |
+| Journals | `?tags=metric_type:journal&metrics=ibmi.journal.receivers_count,ibmi.journal.receivers_total_size_kb` | 34 |
+| Journal receivers | `?tags=metric_type:journal_receiver` | 40 |
+| Library list | `?tags=metric_type:library_list` | 15 |
+| Output queues, files | `?tags=metric_type:output_queue&metrics=ibmi.output_queue.files_count` | 33 |
+| Licences used | `?tags=metric_type:license&metrics=ibmi.license.usage_count,ibmi.license.usage_limit` | 24 |
+| Network interfaces and connections | `?tags=metric_type:netstat&metrics=ibmi.netstat.connections_by_state,ibmi.netstat.connections_total,ibmi.netstat.interface_up,ibmi.netstat.interface_mtu` | 15 |
+
+The counts grow with the partition. The job-status sensor follows the
+statuses present at each collection: a status that appears once leaves a
+channel PRTG keeps, empty, which is why jobs by status and jobs by
+subsystem are two sensors. The disk, listener and output-queue sensors
+follow the number of objects: a system with more than 50 disk units or
+listeners needs them split further, for example by ASP with
+`&tags=asp_number:1`; check the channel count in the console's
+Sensor URLs preview before creating a sensor. Do not point one PRTG
+sensor at the whole probe: on the partition above it returns about 800
+channels, sixteen times what PRTG takes on one sensor, and it loaded a test PRTG server to full CPU.
 
 ## Metric reference
 
