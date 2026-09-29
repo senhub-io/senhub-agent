@@ -394,10 +394,22 @@ func (c *client) heartbeat(ctx context.Context) error {
 		return err
 	}
 	if resp.Response != "" && resp.Response != "success" {
-		return fmt.Errorf("heartbeat refused: %s", firstNonEmpty(resp.Info, resp.Response))
+		info := firstNonEmpty(resp.Info, resp.Response)
+		if unsupportedRequest.MatchString(info) {
+			return fmt.Errorf("%w: %s", errHeartbeatUnsupported, info)
+		}
+		return fmt.Errorf("heartbeat refused: %s", info)
 	}
 	return nil
 }
+
+// errHeartbeatUnsupported is a server that does not know the heartbeat
+// request at all (before 6.2). Only that answer turns the heartbeat off:
+// a server that is down, restarting or not yet aware of the host is
+// asked again at the next beat.
+var errHeartbeatUnsupported = errors.New("heartbeat not supported by the server")
+
+var unsupportedRequest = regexp.MustCompile(`(?i)unknown request|unsupported|not supported`)
 
 var infoPattern = regexp.MustCompile(`processed: (\d+); failed: (\d+); total: (\d+)`)
 

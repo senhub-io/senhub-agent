@@ -41,23 +41,17 @@ metrics.
 
 ## Metrics
 
-| Metric | Unit | Description |
-|---|---|---|
-| `senhub.wildfly.up` | 1 | 1 when the Management API responded |
-| `jvm.memory.heap.used` | By | JVM heap memory currently used |
-| `jvm.memory.heap.max` | By | JVM maximum heap size |
-| `jvm.gc.collections.count` | {collection} | GC collections by collector, tagged with `collector` |
-| `wildfly.request.count` | {request} | HTTP requests processed by Undertow |
-| `wildfly.error.count` | {error} | HTTP request errors |
-| `wildfly.datasource.connections.active` | # | In-use connections in the datasource pool |
-| `wildfly.transaction.committed` | {transaction} | JTA transactions committed |
-| `wildfly.transaction.rolledback` | {transaction} | JTA transactions rolled back |
-| `wildfly.datasource.connections.active` | {connection} | Active JDBC pool connections per datasource, tagged with `datasource` |
-| `wildfly.datasource.connections.available` | {connection} | Available connections in the JDBC pool |
+JVM heap (used, committed, max), Undertow request, error and byte
+counters, JTA committed and rolled-back transactions, and the active and
+available connections of each datasource pool. The full list is in the
+[metric reference](#metric-reference) below.
 
 ## Operational notes
 
 - Create a dedicated management user with the `Monitor` role: `bin/add-user.sh -u monitor -p password -g Monitor`.
+- The management interface authenticates with HTTP Digest by default
+  (`ManagementRealm`); the probe answers the Digest challenge, and still
+  works with an interface configured for Basic.
 - For WildFly domain mode, point the endpoint at the domain controller (port 9990).
 - The probe uses the WildFly HTTP Management API (JSON over HTTP), not Jolokia — Jolokia is not required.
 

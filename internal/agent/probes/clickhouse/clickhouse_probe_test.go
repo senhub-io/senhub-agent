@@ -1,8 +1,10 @@
 package clickhouse
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,27 +12,38 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
-// sampleMetrics is a minimal /metrics Prometheus-text payload exercising
-// the three ClickHouse metric families.
-const sampleMetrics = `# HELP ClickHouseMetrics_Query Number of executing queries
-# TYPE ClickHouseMetrics_Query gauge
-ClickHouseMetrics_Query 3
-# HELP ClickHouseMetrics_Connection Number of connections to clickhouse server
-# TYPE ClickHouseMetrics_Connection gauge
-ClickHouseMetrics_Connection 10
-# HELP ClickHouseMetrics_MemoryTracking Total amount of memory (bytes) allocated in currently executing queries
-# TYPE ClickHouseMetrics_MemoryTracking gauge
-ClickHouseMetrics_MemoryTracking 524288000
-# HELP ClickHouseMetrics_Parts Total amount of data parts
-# TYPE ClickHouseMetrics_Parts gauge
-ClickHouseMetrics_Parts 42
-# HELP ClickHouseMetrics_Merge Number of executing background merges
-# TYPE ClickHouseMetrics_Merge gauge
-ClickHouseMetrics_Merge 2
-# HELP ClickHouseAsyncMetrics_Uptime Time the server has been running (in seconds)
-# TYPE ClickHouseAsyncMetrics_Uptime gauge
-ClickHouseAsyncMetrics_Uptime 3600
-`
+// sampleRows is what the HTTP interface answers to systemQuery on a
+// server that has run no INSERT yet: system.events leaves InsertQuery out.
+const sampleRows = "metrics\tQuery\t3\n" +
+	"metrics\tTCPConnection\t4\n" +
+	"metrics\tHTTPConnection\t6\n" +
+	"metrics\tMemoryTracking\t524288000\n" +
+	"metrics\tPartsActive\t42\n" +
+	"metrics\tMerge\t2\n" +
+	"events\tQuery\t17\n" +
+	"events\tSelectQuery\t17\n" +
+	"asynchronous_metrics\tUptime\t3600.5\n"
+
+// chServer answers the system-table query and serverUUID() like the
+// ClickHouse HTTP interface, and nothing on /metrics.
+func chServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case strings.Contains(string(body), "serverUUID()"):
+			_, _ = w.Write([]byte("5a8e0c74-3144-4eaf-89a6-3006e95cbf04\n"))
+		case string(body) == systemQuery:
+			_, _ = w.Write([]byte(sampleRows))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+}
 
 func newTestLogger() *logger.Logger {
 	return logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"})
@@ -88,15 +101,7 @@ func TestParseConfig_Override(t *testing.T) {
 }
 
 func TestCollect_Up(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/metrics" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(sampleMetrics))
-	}))
+	srv := chServer(t)
 	defer srv.Close()
 
 	probe, err := NewClickHouseProbe(map[string]interface{}{
@@ -110,32 +115,51 @@ func TestCollect_Up(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if len(points) == 0 {
-		t.Fatal("Collect returned no datapoints")
-	}
 
 	byName := make(map[string]float64, len(points))
 	for _, dp := range points {
 		byName[dp.Name] = dp.Value
 	}
 
-	if byName["senhub.clickhouse.up"] != 1 {
-		t.Errorf("senhub.clickhouse.up = %v, want 1", byName["senhub.clickhouse.up"])
+	want := map[string]float64{
+		"senhub.clickhouse.up":      1,
+		"clickhouse.queries.active": 3,
+		"clickhouse.connections":    10,
+		"clickhouse.memory.used":    524288000,
+		"clickhouse.parts.active":   42,
+		"clickhouse.merges.active":  2,
+		"clickhouse.uptime":         3600.5,
+		"clickhouse.queries.total":  17,
+		"clickhouse.queries.select": 17,
+		"clickhouse.queries.insert": 0,
+		"clickhouse.written.data":   0,
 	}
-	if byName["clickhouse.queries.active"] != 3 {
-		t.Errorf("clickhouse.queries.active = %v, want 3", byName["clickhouse.queries.active"])
+	for name, v := range want {
+		got, ok := byName[name]
+		if !ok {
+			t.Errorf("%s missing", name)
+			continue
+		}
+		if got != v {
+			t.Errorf("%s = %v, want %v", name, got, v)
+		}
 	}
-	if byName["clickhouse.connections"] != 10 {
-		t.Errorf("clickhouse.connections = %v, want 10", byName["clickhouse.connections"])
+}
+
+func TestCollect_RefusalCarriesTheServerReason(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("Code: 194. DB::Exception: default: Authentication failed\n\nmore text"))
+	}))
+	defer srv.Close()
+
+	p, err := NewClickHouseProbe(map[string]interface{}{"endpoint": srv.URL}, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewClickHouseProbe: %v", err)
 	}
-	if byName["clickhouse.parts.active"] != 42 {
-		t.Errorf("clickhouse.parts.active = %v, want 42", byName["clickhouse.parts.active"])
-	}
-	if byName["clickhouse.merges.active"] != 2 {
-		t.Errorf("clickhouse.merges.active = %v, want 2", byName["clickhouse.merges.active"])
-	}
-	if byName["clickhouse.uptime"] != 3600 {
-		t.Errorf("clickhouse.uptime = %v, want 3600", byName["clickhouse.uptime"])
+	_, err = p.(*ClickHouseProbe).fetchSystemRows()
+	if err == nil || !strings.Contains(err.Error(), "Authentication failed") {
+		t.Fatalf("error = %v, want the server's reason", err)
 	}
 }
 
@@ -171,9 +195,7 @@ func TestCollect_BasicAuth(t *testing.T) {
 	var gotUser, gotPass string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUser, gotPass, _ = r.BasicAuth()
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(""))
 	}))
 	defer srv.Close()
 
@@ -194,10 +216,7 @@ func TestCollect_BasicAuth(t *testing.T) {
 }
 
 func TestCollect_EnrichesWithProbeName(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = w.Write([]byte(sampleMetrics))
-	}))
+	srv := chServer(t)
 	defer srv.Close()
 
 	p, err := NewClickHouseProbe(map[string]interface{}{

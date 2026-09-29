@@ -531,11 +531,9 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 		{"/api/{agentkey}/info/schema/{probe}", []string{"GET"}, "Get schema for specific probe", "discovery"},
 
 		// Administration
-		{"/api/{agentkey}/admin/cache", []string{"GET"}, "View metric cache contents", "admin"},
-		{"/api/{agentkey}/admin/logs", []string{"GET"}, "View current log levels", "admin"},
-		{"/api/{agentkey}/admin/logs", []string{"POST"}, "Set log levels", "admin"},
-		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels (legacy)", "admin"},
-		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels (legacy)", "admin"},
+		{"/api/{agentkey}/admin/cache/clear", []string{"POST"}, "Clear the metric cache", "admin"},
+		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels", "admin"},
+		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels", "admin"},
 		{"/api/{agentkey}/license/status", []string{"GET"}, "Get license status and tier information", "admin"},
 
 		// PRTG Format

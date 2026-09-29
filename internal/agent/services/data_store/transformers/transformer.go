@@ -31,6 +31,18 @@ type OtelAware interface {
 	GetOtelMapping(metricName string) *OtelMapping
 }
 
+// PRTGAware is implemented by transformers whose definitions can keep a
+// metric out of PRTG (MetricDefinition.PRTGSkip).
+type PRTGAware interface {
+	SkipsPRTG(metricName string) bool
+}
+
+// SkipsPRTG reports whether t's definition keeps metricName out of PRTG.
+func SkipsPRTG(t MetricTransformer, metricName string) bool {
+	a, ok := t.(PRTGAware)
+	return ok && a.SkipsPRTG(metricName)
+}
+
 // TransformConfig represents the structure of a transformation YAML file (legacy)
 type TransformConfig struct {
 	Patterns map[string]string `yaml:"patterns"`
@@ -58,6 +70,11 @@ type MetricDefinition struct {
 	// on a Linux host, where it can never receive a value and reads as a
 	// defect. Values are GOOS names: linux, windows, darwin.
 	Platforms []string `yaml:"platforms,omitempty"`
+	// PRTGSkip keeps the metric out of the PRTG outputs, pull and push.
+	// PRTG keeps every channel it has ever seen on a sensor, so a series
+	// whose identity churns (a process id) piles up dead channels there;
+	// the metric stays on every other output.
+	PRTGSkip bool `yaml:"prtg_skip,omitempty"`
 
 	// OTel-first mapping (v3+). See docs/developer-guide/otel/senhub-semantic-conventions.md
 	Otel           *OtelMapping      `yaml:"otel,omitempty"`

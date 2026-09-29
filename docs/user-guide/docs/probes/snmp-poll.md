@@ -7,15 +7,23 @@
 
 # SNMP Poll Probe
 
-The `snmp_poll` probe polls a network device over SNMPv2c and turns
-standard MIB objects into typed metrics: system uptime, per-interface
-traffic, errors, discards, speed and status. Custom OID mappings
-cover the vendor-specific long tail. An optional discovery mode
-crawls the network topology from seed devices (LLDP) and reports
-devices and links as entities.
+The `snmp_poll` probe polls a network device over SNMP v2c or v3 and
+turns standard MIB objects into typed metrics: system uptime,
+per-interface traffic, errors, discards, speed and status. Custom OID
+mappings cover the vendor-specific long tail.
 
-One probe instance polls one device; declare one instance per device
-(or use discovery to enumerate them).
+The probe also reads the LLDP neighbor table of each polled device and
+reports its links. A link is reported when the neighbor advertises a
+named port (LLDP port ID subtype interface name or locally assigned);
+a port known only by its MAC address is not linked.
+
+A discovery mode that crawls the network outward from seed devices is
+accepted in the configuration but not active yet
+([#953](https://github.com/senhub-io/senhub-agent/issues/953)): the
+`discovery` block is validated and ignored. The crawl profile is v2c
+only.
+
+One probe instance polls one device; declare one instance per device.
 
 ## Quick start
 
@@ -37,7 +45,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:349ba218b9a06eb7fbae5d46cfeaa6997fba0cb192d28e82d585e7881ee594fb -->
+<!-- sha256:adde5eb861b0941dfd012fb4747a317fe2492e3b9686227e2f76a82db71ec2c8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -62,7 +70,7 @@ one series per interface (`if_index` tag).
 | `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
 | `custom_mappings[].type` | No | `gauge` | How the value is reported: a gauge as read, a counter as a monotonic total. One of `gauge`, `counter` |
 | `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
-| `discovery` | No | - | Topology crawl from seed devices |
+| `discovery` | No | - | Topology crawl from seed devices. Not active yet (#953): the block is validated and ignored |
 | `discovery.seeds` | Yes | - | Entry-point device addresses |
 | `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
 | `discovery.profile.version` | No | `v2c` | SNMP version used to probe the discovered devices. One of `v2c`, `2c`, `2` |
@@ -165,7 +173,7 @@ table and the row index becomes that tag.
     configuration shape is final. Per-device topology (LLDP
     neighbors, routes, bridge tables of the polled `target`) is
     active and independent of this block. Tracking:
-    [#156](https://github.com/senhub-io/senhub-agent/issues/156).
+    [#953](https://github.com/senhub-io/senhub-agent/issues/953).
 
 When the crawl ships, a `discovery` block will make the probe crawl
 outward from seed devices using LLDP neighbor tables, bounded by
@@ -255,7 +263,7 @@ a probe failure — the agent keeps polling.
   else goes through `custom_mappings`.
 - **Two rails, two cadences.** Metrics poll at `interval`; topology
   and entity sweeps run at the slower `topology_interval` so a dense
-  crawl never delays traffic counters.
+  sweep never delays traffic counters.
 - **Counters are raw.** `in_octets` and friends are emitted as
   counters; compute rates in the backend
   (`rate(snmp_interface_in_octets[5m])` in VictoriaMetrics).
