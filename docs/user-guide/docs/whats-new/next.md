@@ -607,6 +607,13 @@ Breaking Changes or Fixes below.
   `java_home`, `bridge_runner_dir` and `native_runner`, and Java on the
   PATH is used.
 
+- **The console's Settings page shows the agent key.** It showed the
+  administration key, which the console is opened with, under "Agent
+  key", next to the advice to give that key to Sensor Factory when
+  ordering a licence, and its Copy button copied it. It now shows and
+  copies the agent key, the one a licence is bound to, as the Overview
+  page already did.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
