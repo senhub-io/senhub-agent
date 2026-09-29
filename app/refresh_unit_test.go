@@ -459,3 +459,35 @@ WantedBy=multi-user.target
 		t.Errorf("EnvironmentFile= dropped on a canonical-ExecStart host:\n%s", got)
 	}
 }
+
+// The unit shipped before 0.6.0 set MemoryDenyWriteExecute=true; the
+// current one leaves it out because the IBM i probe's JVM cannot start
+// under it. Refreshing an installed unit carried it over as an operator
+// addition and the probe kept failing after `refresh-unit` (seen on the
+// recette bench).
+func TestRefreshedUnit_DropsRetiredDirectives(t *testing.T) {
+	installed := `[Unit]
+Description=SenHub Agent
+
+[Service]
+Type=simple
+User=senhub
+Group=senhub
+ExecStart=` + systemBinaryUnitPath() + `
+LockPersonality=true
+MemoryDenyWriteExecute=true
+EnvironmentFile=/etc/senhub-agent/bearer.env
+
+[Install]
+WantedBy=multi-user.target
+`
+	got := refreshedUnit(installed, func(string) bool { return true })
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "MemoryDenyWriteExecute=") {
+			t.Fatalf("the retired directive came back:\n%s", got)
+		}
+	}
+	if !strings.Contains(got, "EnvironmentFile=/etc/senhub-agent/bearer.env") {
+		t.Error("an operator directive was dropped along with the retired one")
+	}
+}
