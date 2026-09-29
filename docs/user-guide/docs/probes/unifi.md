@@ -56,6 +56,12 @@ throughput and connected-client totals.
 
 ## Operational notes
 
+- `unifi.devices.adopted` is what the controller reports as adopted. A
+  device whose adoption failed (state 10) still counts there; read it
+  together with `unifi.devices.disconnected`, which counts every device
+  that is not connected. A disconnected access point reports no client
+  count and no satisfaction.
+
 - Create a read-only local user in the UniFi Controller under **Settings → Admins**. The "Read Only" role is sufficient.
 - For UniFi OS (UDM/UDR), use `https://<controller>/proxy/network` as the endpoint, not the legacy `:8443` port.
 - `verify_tls: false` should only be used for home lab controllers with self-signed certificates. In production, install a valid certificate.
@@ -75,7 +81,7 @@ series' tags.
 |---|---|---|---|---|
 | `senhub.unifi.up` | `senhub.unifi.up` | UniFi Controller Up | # | 1 when the controller answered login and the stat endpoints this cycle, 0 otherwise |
 | `unifi.devices.total` | `unifi.devices.total` | UniFi {device_type} Devices | # | Number of devices of this type known to the controller |
-| `unifi.devices.adopted` | `unifi.devices.adopted` | UniFi {device_type} Adopted | # | Number of adopted devices of this type |
+| `unifi.devices.adopted` | `unifi.devices.adopted` | UniFi {device_type} Adopted | # | Number of devices of this type the controller marks adopted; a device whose adoption failed still counts, so read it with unifi.devices.disconnected |
 | `unifi.devices.disconnected` | `unifi.devices.disconnected` | UniFi {device_type} Disconnected | # | Number of devices of this type not in the connected state |
 | `unifi.clients.total` | `unifi.clients.total` | UniFi Clients | # | Total connected clients (wired + wireless) |
 | `unifi.clients.wifi` | `unifi.clients.wifi` | UniFi WiFi Clients | # | Connected wireless clients |

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -352,5 +353,42 @@ func TestEntitySource_AfterMarkReachable(t *testing.T) {
 	}
 	if v := ent.Attributes["unifi.reachable"]; v != true {
 		t.Errorf("unifi.reachable = %v; want true", v)
+	}
+}
+
+// Two access points whose adoption failed (state 10) came back with
+// satisfaction null, and the probe published satisfaction 0 and clients 0
+// for them: a 0 reads as the worst experience possible. Only a connected
+// access point reports them, and a null satisfaction reports nothing.
+func TestDisconnectedAccessPointReportsNoSatisfaction(t *testing.T) {
+	var env deviceEnvelope
+	body := `{"data":[
+		{"name":"U6 Pro","type":"uap","state":10,"adopted":true,"num_sta":0,"satisfaction":null},
+		{"name":"Hall","type":"uap","state":1,"adopted":true,"num_sta":4,"satisfaction":87},
+		{"name":"Quiet","type":"uap","state":1,"adopted":true,"num_sta":0,"satisfaction":null}
+	]}`
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatal(err)
+	}
+	p := &unifiProbe{}
+	got := map[string]float64{}
+	for _, dp := range p.buildDevicePoints(env, time.Now()) {
+		for _, tg := range dp.Tags {
+			if tg.Key == "device_name" {
+				got[dp.Name+"/"+tg.Value] = dp.Value
+			}
+		}
+	}
+	if _, ok := got["unifi.ap.satisfaction/U6 Pro"]; ok {
+		t.Error("a disconnected access point reported a satisfaction")
+	}
+	if _, ok := got["unifi.ap.clients/U6 Pro"]; ok {
+		t.Error("a disconnected access point reported a client count")
+	}
+	if got["unifi.ap.satisfaction/Hall"] != 0.87 || got["unifi.ap.clients/Hall"] != 4 {
+		t.Errorf("connected access point: %v", got)
+	}
+	if _, ok := got["unifi.ap.satisfaction/Quiet"]; ok {
+		t.Error("a null satisfaction was reported")
 	}
 }
