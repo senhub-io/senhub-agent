@@ -427,11 +427,11 @@ This combination provides:
 
 ## Known Limitations
 
-1. **IPv6 Support**: The probe currently focuses on IPv4 connectivity. IPv6 support is planned for future releases.
+1. **IPv6 Support**: The probe currently focuses on IPv4 connectivity.
 
 2. **Manual Gateway Override**: No option to specify a custom gateway IP. Auto-detection is the only supported mode.
 
-3. **Jitter Metrics**: The probe does not currently calculate jitter (latency variance). This is planned for future releases.
+3. **Jitter Metrics**: The probe does not currently calculate jitter (latency variance).
 
 ## Requirements
 
