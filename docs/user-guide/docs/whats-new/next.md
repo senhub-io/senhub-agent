@@ -426,6 +426,16 @@ Breaking Changes or Fixes below.
 
 ## Fixes
 
+- **[Syslog](../probes/syslog.md) reads a message sent without its
+  priority.** Some senders, the UniFi controller's activity log among
+  them, start the line at the timestamp. The whole line, header
+  included, ended up in the body, the hostname fell back to the sender's
+  address and the record took the default priority 13. The probe now
+  recovers the timestamp, hostname and tag, leaves out the facility and
+  priority it was not given, and for a CEF record takes the severity
+  from the CEF header (0-3 informational, 4-6 warning, 7-8 error, 9-10
+  critical).
+
 - **[File tail](../probes/filetail.md) reads a file whose directory
   appears after the agent starts.** A log path under a mount that comes
   up after the service, or a directory created later, was never read:
