@@ -332,12 +332,11 @@ func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.Da
 		return nil, err
 	}
 
-	// The /api/osd endpoint returns an array of OSD descriptors.
+	// The /api/osd endpoint returns an array of OSD descriptors carrying
+	// the OSD map's up and in flags at their top level.
 	var osds []struct {
-		OSDInfo struct {
-			Up int `json:"up"`
-			In int `json:"in"`
-		} `json:"osd_info"`
+		Up int `json:"up"`
+		In int `json:"in"`
 	}
 	if err := json.Unmarshal(raw, &osds); err != nil {
 		return nil, fmt.Errorf("decoding osd list: %w", err)
@@ -346,10 +345,10 @@ func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.Da
 	var total, inCount, upCount int
 	for _, o := range osds {
 		total++
-		if o.OSDInfo.Up == 1 {
+		if o.Up == 1 {
 			upCount++
 		}
-		if o.OSDInfo.In == 1 {
+		if o.In == 1 {
 			inCount++
 		}
 	}
@@ -367,9 +366,15 @@ func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.Da
 
 // --- monitors ---
 
+// monitorResponse is the part of /api/monitor the probe reads: the monitors
+// in quorum at the top level, the full monitor map under mon_status.
 type monitorResponse struct {
-	InQuorum []struct{} `json:"in_quorum"`
-	Mons     []struct{} `json:"mons"`
+	InQuorum  []struct{} `json:"in_quorum"`
+	MonStatus struct {
+		MonMap struct {
+			Mons []struct{} `json:"mons"`
+		} `json:"monmap"`
+	} `json:"mon_status"`
 }
 
 func (p *CephProbe) collectMonitors(now time.Time, instance string) ([]data_store.DataPoint, error) {
@@ -388,7 +393,7 @@ func (p *CephProbe) collectMonitors(now time.Time, instance string) ([]data_stor
 		{Key: "metric_type", Value: "monitor"},
 	}
 	return []data_store.DataPoint{
-		{Name: "ceph.monitor.count", Value: float64(len(mon.Mons)), Timestamp: now, Tags: base},
+		{Name: "ceph.monitor.count", Value: float64(len(mon.MonStatus.MonMap.Mons)), Timestamp: now, Tags: base},
 		{Name: "ceph.monitor.quorum_count", Value: float64(len(mon.InQuorum)), Timestamp: now, Tags: base},
 	}, nil
 }
@@ -406,15 +411,16 @@ type poolEntry struct {
 		} `json:"stored"`
 		ReadOps struct {
 			Latest float64 `json:"latest"`
-		} `json:"rd_ops"`
+		} `json:"rd"`
 		WriteOps struct {
 			Latest float64 `json:"latest"`
-		} `json:"wr_ops"`
+		} `json:"wr"`
 	} `json:"stats"`
 }
 
 func (p *CephProbe) collectPools(now time.Time, instance string) ([]data_store.DataPoint, error) {
-	raw, err := p.apiGet("/api/pool")
+	// Without stats=true the dashboard lists the pools with no statistics.
+	raw, err := p.apiGet("/api/pool?stats=true")
 	if err != nil {
 		return nil, err
 	}

@@ -112,9 +112,9 @@ func fakeServer(t *testing.T) (*httptest.Server, *CephProbe) {
 	mux.HandleFunc("/api/osd", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{"osd_info": map[string]int{"up": 1, "in": 1}},
-			{"osd_info": map[string]int{"up": 1, "in": 1}},
-			{"osd_info": map[string]int{"up": 0, "in": 0}},
+			{"osd": 0, "up": 1, "in": 1, "state": []string{"exists", "up"}},
+			{"osd": 1, "up": 1, "in": 1, "state": []string{"exists", "up"}},
+			{"osd": 2, "up": 0, "in": 0, "state": []string{"exists"}},
 		})
 	})
 
@@ -123,8 +123,11 @@ func fakeServer(t *testing.T) (*httptest.Server, *CephProbe) {
 		w.Header().Set("Content-Type", "application/json")
 		empty := map[string]any{}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"mons":      []any{empty, empty, empty},
-			"in_quorum": []any{empty, empty},
+			"mon_status": map[string]any{
+				"monmap": map[string]any{"mons": []any{empty, empty, empty}},
+			},
+			"in_quorum":  []any{empty, empty},
+			"out_quorum": []any{empty},
 		})
 	})
 
@@ -139,14 +142,18 @@ func fakeServer(t *testing.T) (*httptest.Server, *CephProbe) {
 	// GET /api/pool
 	mux.HandleFunc("/api/pool", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("stats") != "true" {
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"pool_name": "rbd"}})
+			return
+		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{
 			{
 				"pool_name": "rbd",
 				"stats": map[string]any{
 					"objects": map[string]any{"latest": float64(100)},
 					"stored":  map[string]any{"latest": float64(1024)},
-					"rd_ops":  map[string]any{"latest": float64(50)},
-					"wr_ops":  map[string]any{"latest": float64(25)},
+					"rd":      map[string]any{"latest": float64(50)},
+					"wr":      map[string]any{"latest": float64(25)},
 				},
 			},
 		})
