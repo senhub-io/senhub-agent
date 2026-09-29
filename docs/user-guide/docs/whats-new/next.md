@@ -527,6 +527,11 @@ Breaking Changes or Fixes below.
   per-name roll-up; the per-process detail stays on the other outputs.
   A definition marks such a metric with `prtg_skip`.
 
+- **A syslog probe has a PRTG channel.** The probe relays messages as
+  events and published no metric, so its PRTG sensor found no channel
+  and stayed down. Like the file-tail and journal probes, it now reports
+  `senhub.syslog.records_emitted`, the count of messages it has relayed.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
