@@ -16,7 +16,7 @@ import (
 // IF-MIB ports as network.interface entities (has_interface) and its routing
 // table as network.route entities (has_route, next hop a scalar next_hop.ip) —
 // topology-as-entities, ADR 0022, frozen with Toise #222/#87. Wire shapes
-// (network.device.id, interface.name, route.destination) are the Toise-frozen
+// (network.device.id, network.interface.name, route.destination) are the Toise-frozen
 // contract — see SNMP-OTEL-MAPPING.md Layer 2′; id-format decisions live in
 // resolveDeviceID (lldp.go). LLDP adjacency is emitted as bare connected_to
 // between the port entities. The legacy device-to-device edges (adjacent_to,
@@ -31,7 +31,7 @@ const (
 	idKeyNetworkDevice         = "network.device.id"
 	idKeyHost                  = "host.id"
 	idKeyRouteDestination      = "route.destination"
-	idKeyInterfaceName         = "interface.name"
+	idKeyInterfaceName         = "network.interface.name"
 	idKeyNetworkAddress        = "network.address"
 	attrNextHopIP              = "next_hop.ip"
 	attrRouteMetric            = "metric"
@@ -105,7 +105,7 @@ type snmpEntitySource struct {
 	swept bool
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
-	// tag SNMP metrics with network.device.id / interface.name — the same
+	// tag SNMP metrics with network.device.id / network.interface.name — the same
 	// identity as the topology entities, so a backend joins device/interface
 	// metrics to their entities. Replaced wholesale each sweep (never mutated in
 	// place), so a reader holding the returned map sees a stable snapshot.
@@ -160,7 +160,7 @@ func (s *snmpEntitySource) DeviceID() string {
 
 // InterfaceNames returns the ifIndex→ifName map from the last sweep (nil before
 // the first sweep). The metric collector resolves an interface metric's
-// if_index to interface.name so per-port metrics join to the network.interface
+// if_index to network.interface.name so per-port metrics join to the network.interface
 // entity. The returned map is a read-only snapshot (replaced, never mutated).
 func (s *snmpEntitySource) InterfaceNames() map[string]string {
 	s.mu.Lock()
@@ -529,7 +529,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
-	// duplicate interface.name keeps the first (identity is {device, name}).
+	// duplicate network.interface.name keeps the first (identity is {device, name}).
 	ifaceSeen := map[string]bool{}
 	for _, ifc := range ifaces {
 		if ifc.Name == "" || ifc.OperStatus == ifOperNotPresent || ifaceSeen[ifc.Name] {
@@ -563,7 +563,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		})
 	}
 
-	// interface.name lookups for connected_to: prefer the IF-MIB ifName so the
+	// network.interface.name lookups for connected_to: prefer the IF-MIB ifName so the
 	// local port matches the network.interface entity emitted above (most gear
 	// numbers lldpLocPortNum as ifIndex, so this hits); fall back to the LLDP
 	// local-port table.
