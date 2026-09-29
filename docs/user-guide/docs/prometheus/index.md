@@ -14,18 +14,18 @@ without any query rewrite.
 
 ## Quick start
 
-1. Enable the `prometheus` endpoint in your config:
+1. Enable the `prometheus` endpoint of the HTTP output, in
+   `strategies.d/00-http.yaml`:
 
 ```yaml
-storage:
-  - name: http
-    params:
-      bind_address: "0.0.0.0"
-      port: 8080
-      endpoints: [prtg, web, prometheus]   # add "prometheus" to the list
+http:
+  bind_address: "0.0.0.0"
+  port: 8080
+  endpoints: [prtg, web, prometheus]   # add "prometheus" to the list
 ```
 
-2. Restart the agent. Two routes are now exposed:
+2. The agent reloads its configuration when the file changes; no
+   restart is needed. Two routes are now exposed:
 
 | Route | Auth |
 |---|---|
@@ -49,13 +49,11 @@ Beyond enabling the endpoint, an optional `prometheus:` sub-block tunes
 the behavior:
 
 ```yaml
-storage:
-  - name: http
-    params:
-      endpoints: [prtg, web, prometheus]
-      prometheus:
-        include_probe_tags: true        # default — propagate custom_tags as labels
-        expose_host_metrics: true       # default — expose cpu/memory/network/filesystem
+http:
+  endpoints: [prtg, web, prometheus]
+  prometheus:
+    include_probe_tags: true        # default — propagate custom_tags as labels
+    expose_host_metrics: true       # default — expose cpu/memory/network/filesystem
 ```
 
 ### `include_probe_tags` (default: `true`)
@@ -64,12 +62,16 @@ When `true`, every `custom_tags` entry declared on a probe is propagated as a
 Prometheus label on that probe's metrics:
 
 ```yaml
-probes:
-  - name: netscaler-prod-paris
-    type: netscaler
-    custom_tags:
-      env: prod
-      site: paris
+# probes.d/20-netscaler.yaml, a YAML array of probes
+- name: netscaler-prod-paris
+  type: netscaler
+  params:
+    base_url: "https://netscaler.example.com"
+    username: "monitoring-user"
+    password: ${secret:netscaler-prod-paris.password}
+  custom_tags:
+    env: prod
+    site: paris
 ```
 
 All series for this probe then carry `env="prod"` and `site="paris"`. Set to
@@ -156,8 +158,15 @@ This matches the OTel spec for `hw.status` and lets you alert on
 
 ## Agent self-observability
 
-Nine metrics describe the agent's own state — always emitted when the
-endpoint is enabled:
+These metrics describe the agent's own state. Uptime, cache entries,
+the three probe gauges, the transformer fallback counter and
+`senhub_agent_build_info` are emitted on every scrape once the endpoint
+is enabled; `senhub_agent_collect_errors_total` and
+`senhub_agent_http_requests_total` carry one series per label set that
+has counted something, so a probe that never failed has no
+`collect_errors` series. The four `senhub_agent_otlp_receiver_*`
+counters appear only when an `otlp_receiver` probe runs and has taken
+traffic.
 
 | Metric | Type | Description |
 |---|---|---|
@@ -170,6 +179,18 @@ endpoint is enabled:
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served, with `endpoint` label (route template) |
 | `senhub_agent_build_info` | gauge (=1) | `version` and `commit` labels |
+| `senhub_agent_otlp_receiver_ingested_total` | counter | Items accepted by the OTLP receiver, per `signal` |
+| `senhub_agent_otlp_receiver_received_total` | counter | Records relayed by the OTLP receiver, by `signal`, `origin` and `service_name` |
+| `senhub_agent_otlp_receiver_received_without_host_id_total` | counter | Relayed records that still had no `host.id` |
+| `senhub_agent_otlp_receiver_dropped_total` | counter | Items the OTLP receiver discarded, by `signal` and `reason` |
+
+The exposition also carries the counters of the OTLP output
+(`senhub_agent_otlp_*`, at zero when no OTLP output is configured), the
+agent process metrics (`senhub_agent_process_*`), and series that
+appear only once they have something to report: per-reason drop,
+rejection and export-failure counters, a failed output, a refused
+licence, a configuration watch that is off. See the
+[metrics reference](metrics-reference.md#agent-self-observability).
 
 Build-info usage example (for dashboard joins):
 
@@ -229,9 +250,24 @@ prometheus.scrape "senhub" {
 ### TLS
 
 When the agent is configured with `tls.enabled: true` (see
-[HTTP/HTTPS](../http-https.md)), prefix the target with
-`https://` and add a `scheme: https` to the scrape config (plus a CA file
-or `insecure_skip_verify: true` for self-signed certs).
+[HTTP/HTTPS](../http-https.md)), set `scheme: https` on the scrape job
+and keep the target as `host:port`, without an `https://` prefix. Add a
+`tls_config` block for the certificate:
+
+```yaml
+scrape_configs:
+  - job_name: 'senhub-agent'
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/secrets/senhub-agent-key
+    tls_config:
+      ca_file: /etc/prometheus/senhub-agent-ca.pem
+      # insecure_skip_verify: true   # lab only, for a self-signed certificate
+    static_configs:
+      - targets: ['agent.internal:8443']
+```
 
 ## Sample PromQL queries
 
@@ -274,14 +310,8 @@ sum by (probe, reason) (rate(senhub_agent_collect_errors_total[5m])) * 60
 ### Endpoint returns 401
 
 Make sure the `Authorization: Bearer …` header (or `?token=…` query
-parameter) carries the **exact** agent key from the agent's config
-(`agent.key`). Comparison is constant-time and case-sensitive.
-
-### Endpoint returns 404 on `/metrics` but `/api/{key}/prometheus/metrics` works
-
-The `prometheus` endpoint is enabled, but only the SenHub-style route
-was activated. The standard `/metrics` route is served alongside —
-verify the agent version is **0.1.88-beta or newer**.
+parameter) carries the **exact** key printed by
+`senhub-agent key show`. Comparison is constant-time and case-sensitive.
 
 ### A probe is configured but its metrics are missing
 
@@ -300,7 +330,7 @@ the relevant `definitions/<probe>.yaml` and restart.
 
 ### Host-level metrics are missing
 
-Verify `expose_host_metrics: true` (default) under `storage[].params.prometheus`.
+Verify `expose_host_metrics: true` (default) in the `prometheus` block of the `http` output.
 When set to `false`, all `cpu`, `memory`, `network` and `logicaldisk` probe
 metrics are filtered out — confirm this is what you want.
 
