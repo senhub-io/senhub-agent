@@ -1,6 +1,7 @@
 package activemq
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -243,5 +244,23 @@ func TestProbeIntervalDefault(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{})
 	if got := p.GetInterval(); got != defaultInterval {
 		t.Errorf("GetInterval() = %v, want %v", got, defaultInterval)
+	}
+}
+
+// ActiveMQ 6's Jolokia refuses a request without an Origin header; the
+// probe names the agent's own origin, as the broker's web console does.
+func TestJolokiaRequestsCarryTheirOwnOrigin(t *testing.T) {
+	var origin string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin = r.Header.Get("Origin")
+		_, _ = w.Write([]byte(`{"status":200,"value":1}`))
+	}))
+	defer srv.Close()
+	c := &jolokiaClient{baseURL: srv.URL + "/api/jolokia", http: srv.Client()}
+	if _, err := c.read(context.Background(), "org.apache.activemq:type=Broker,brokerName=localhost", "TotalProducerCount"); err != nil {
+		t.Fatal(err)
+	}
+	if origin != srv.URL {
+		t.Errorf("Origin = %q, want the Jolokia agent's own origin %q", origin, srv.URL)
 	}
 }
