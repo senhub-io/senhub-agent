@@ -236,6 +236,33 @@ func (s clusterState) String() string {
 	}
 }
 
+// classifyUnavailable tells a worker from a node outside any swarm after
+// GET /swarm answered 503. The body cannot be trusted for it: the Engine
+// says "This node is not a swarm manager" in both cases, suggesting
+// "docker swarm init" to the node that is in no swarm. GET /info states it
+// (Swarm.LocalNodeState, Swarm.ControlAvailable); the body is the fallback.
+func (p *swarmProbe) classifyUnavailable(body []byte) clusterState {
+	if infoBody, status, err := p.get("/info"); err == nil && status == http.StatusOK {
+		var info struct {
+			Swarm struct {
+				LocalNodeState   string `json:"LocalNodeState"`
+				ControlAvailable bool   `json:"ControlAvailable"`
+			} `json:"Swarm"`
+		}
+		if json.Unmarshal(infoBody, &info) == nil && info.Swarm.LocalNodeState != "" {
+			if info.Swarm.LocalNodeState == "active" && !info.Swarm.ControlAvailable {
+				return stateWorker
+			}
+			return stateNotInSwarm
+		}
+	}
+	msg := strings.ToLower(string(body))
+	if strings.Contains(msg, "worker nodes") {
+		return stateWorker
+	}
+	return stateNotInSwarm
+}
+
 // fetchSwarm reads GET /swarm and classifies what this node can see.
 //
 // The Engine answers 503 both for "not a manager" and for "not in a swarm",
@@ -250,10 +277,7 @@ func (p *swarmProbe) fetchSwarm() (swarmInfo, clusterState, error) {
 		return info, stateUnreachable, err
 	}
 	if status == http.StatusServiceUnavailable {
-		if strings.Contains(strings.ToLower(string(body)), "not a swarm manager") {
-			return info, stateWorker, nil
-		}
-		return info, stateNotInSwarm, nil
+		return info, p.classifyUnavailable(body), nil
 	}
 	if status != http.StatusOK {
 		return info, stateUnreachable, fmt.Errorf("GET /swarm returned %d", status)

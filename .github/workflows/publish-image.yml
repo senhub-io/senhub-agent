@@ -37,16 +37,27 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Refuse a tag that has no release
+      # The image files (Dockerfile, entrypoint) must come from the commit
+      # the release was built from, not from the branch the dispatch ran
+      # on: dispatched from master, the 0.6.0 beta image shipped a 0.5.6
+      # entrypoint around a 0.6.0 binary, without SENHUB_OTLP_TLS, and
+      # could not reach a plain-text collector.
+      - name: Resolve the release commit
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null \
+          target=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" -q .target_commitish) \
             || { echo "::error::no release $TAG; the image is built from what the release published"; exit 1; }
+          [ -n "$target" ] || { echo "::error::release $TAG names no target commit"; exit 1; }
+          echo "Release $TAG was built from $target"
+          echo "ref=$target" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.ref }}
 
       - name: Name the image
         id: name
