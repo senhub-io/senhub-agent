@@ -623,6 +623,12 @@ Breaking Changes or Fixes below.
   copies the agent key, the one a licence is bound to, as the Overview
   page already did.
 
+- **A disconnected UniFi access point no longer reports 0 satisfaction.**
+  For an access point that is not connected the controller returns a
+  null satisfaction, which the probe published as 0, the worst score,
+  with 0 clients. Only a connected access point now reports them, and a
+  null satisfaction reports nothing.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
