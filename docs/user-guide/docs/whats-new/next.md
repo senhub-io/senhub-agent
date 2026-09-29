@@ -440,6 +440,12 @@ Breaking Changes or Fixes below.
   `controller=A`. Metrics that the probe emits without a definition are
   still missing from the Prometheus and OTLP outputs (#954).
 
+- **The [Ceph](../probes/ceph.md) probe reports OSDs, monitors and pools
+  as they are.** It read fields that the Manager dashboard API does not
+  return: every cluster showed 0 OSDs up and 0 in, which an OSD-down
+  alert fires on, and 0 monitors, and the pool statistics were never
+  requested, so objects, stored data and operations stayed at 0.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
