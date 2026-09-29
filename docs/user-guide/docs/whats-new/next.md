@@ -573,6 +573,13 @@ Breaking Changes or Fixes below.
   `/usr/sbin` even off the PATH. The SSID tag also lost a closing quote
   and padding it carried from iwconfig's output.
 
+- **The [Oracle](../probes/oracle.md) session limit is read inside a
+  PDB.** `V$RESOURCE_LIMIT` has no rows in a pluggable database, where a
+  monitoring user normally connects, so `oracle.sessions.limit` was never
+  reported and a warning was logged on every collection. The limit is
+  now read from `V$PARAMETER` there, which needs one more grant
+  (`GRANT SELECT ON V_$PARAMETER`).
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
