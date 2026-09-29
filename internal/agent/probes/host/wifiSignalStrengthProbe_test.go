@@ -82,3 +82,26 @@ func TestParseESSID(t *testing.T) {
 		}
 	}
 }
+
+// Outputs captured on a Raspberry Pi 5 running Debian 13, where iw ships
+// with the image and iwconfig does not.
+const iwDevPi = "phy#0\n\tUnnamed/non-netdev interface\n\t\twdev 0x3\n\t\taddr xx:xx:xx:xx:xx:xx\n\t\ttype P2P-device\n\t\ttxpower 31.00 dBm\n\tInterface wlan0\n\t\tifindex 3\n\t\twdev 0x1\n\t\taddr xx:xx:xx:xx:xx:xx\n\t\tssid Freebox-20BC32\n\t\ttype managed\n\t\tchannel 11 (2462 MHz), width: 20 MHz, center1: 2462 MHz\n\t\ttxpower 31.00 dBm\n"
+
+const iwLinkPi = "Connected to aa:bb:cc:dd:ee:ff (on wlan0)\n\tSSID: Freebox-20BC32\n\tfreq: 2462.0\n\tRX: 769140575 bytes (540505 packets)\n\tTX: 30714204 bytes (173891 packets)\n\tsignal: -62 dBm\n\trx bitrate: 65.0 MBit/s\n\ttx bitrate: 72.2 MBit/s\n\tbss flags: short-slot-time\n\tdtim period: 2\n\tbeacon int: 120\n"
+
+func TestParseIw(t *testing.T) {
+	if got := parseIwDevInterfaces(iwDevPi); len(got) != 1 || got[0] != "wlan0" {
+		t.Errorf("interfaces = %v, want [wlan0] (the P2P device has no name)", got)
+	}
+	ssid, bssid, dbm, ok := parseIwLink(iwLinkPi)
+	if !ok || ssid != "Freebox-20BC32" || bssid != "aa:bb:cc:dd:ee:ff" || dbm != -62 {
+		t.Errorf("parseIwLink = %q %q %d %v", ssid, bssid, dbm, ok)
+	}
+	if _, _, _, ok := parseIwLink("Not connected.\n"); ok {
+		t.Error("a disconnected interface parsed as connected")
+	}
+	// iwconfig on the same link printed "Link Quality=48/70 Signal level=-62 dBm".
+	if q := qualityFromDBm(-62); q < 68.5 || q > 68.6 {
+		t.Errorf("qualityFromDBm(-62) = %v, want 48/70 = 68.57%%", q)
+	}
+}

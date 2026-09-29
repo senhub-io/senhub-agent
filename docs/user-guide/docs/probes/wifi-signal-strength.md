@@ -27,16 +27,17 @@ every 60 seconds; the cadence is fixed in the code and a `params` block,
 | `wifi_signal_strength` | Signal level | dBm | Windows, Linux |
 | `wifi_quality` | Link quality | % | Linux only |
 
-On Linux the signal level is the one `iwconfig` reports. On Windows `netsh`
+On Linux the signal level is the one `iwconfig` reports, or, where
+`iwconfig` is not installed, the one `iw` reports; the link quality then
+follows iwconfig's own scale, (dBm + 110) out of 70. On Windows `netsh`
 reports a percentage, which the probe converts to dBm with the usual
 approximation (dBm = percentage / 2 - 100), so 100% reads as -50 dBm and 60%
-as -70 dBm. `wifi_quality` is emitted only when `iwconfig` prints the link
-quality on the same line as the signal level, which is its normal layout.
+as -70 dBm.
 
 ## Platform Support
 
 - **Windows** - Uses `netsh wlan show interfaces` (signal percentage, converted to dBm)
-- **Linux** - Uses `iwconfig` (signal level in dBm, link quality in %)
+- **Linux** - Uses `iwconfig` when present (package `wireless-tools`), otherwise `iw`, which current distributions install by default (Debian 13 and Raspberry Pi OS included). `iw` lives in `/usr/sbin`; the probe finds it there even when the service account's PATH does not include it.
 - **macOS** - Not supported
 - **BSD** - Not supported
 
