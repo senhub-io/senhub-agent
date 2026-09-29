@@ -13,10 +13,12 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/outputspec"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix"
 )
 
 // The outputs API is the strategies.d counterpart of the probes API:
@@ -425,6 +427,10 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 		steps = otlp.ProbeConnection(ctx, req.Params, guardedDialer(timeout).DialContext)
 	case "prtg", "event":
 		steps = probeHTTPTarget(ctx, req.Type, req.Params, timeout)
+	case "senhub":
+		steps = reachURL(ctx, cliArgs.ProductionURL, timeout)
+	case "zabbix":
+		steps = dialZabbixServers(ctx, req.Params, timeout)
 	case "http":
 		steps = []otlp.ConnectionStep{{Name: "listen", Passed: true, Detail: fmt.Sprintf("this console answers on port %d", h.configManager.GetPort())}}
 	default:
@@ -464,6 +470,11 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 			return "", fmt.Errorf("output %q declares no address to reach", outputType)
 		}
 		target, _ = params[spec.TestURLKey].(string)
+		// The event strategy posts to server_url + /event/insert: reach
+		// that path, not the bare base the operator typed.
+		if outputType == "event" && target != "" {
+			target = strings.TrimRight(target, "/") + "/event/insert"
+		}
 		return target, nil
 	}) {
 		return steps
@@ -480,6 +491,59 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 		_ = resp.Body.Close()
 		return fmt.Sprintf("HTTP %d", resp.StatusCode), nil
 	})
+	return steps
+}
+
+// reachURL is the reach step alone, for an output whose address is
+// fixed at build time rather than configured.
+func reachURL(ctx context.Context, target string, timeout time.Duration) []otlp.ConnectionStep {
+	t := time.Now()
+	step := otlp.ConnectionStep{Name: "reach"}
+	if target == "" {
+		step.Error = "this build has no intake address"
+		return []otlp.ConnectionStep{step}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
+	if err == nil {
+		var resp *http.Response
+		if resp, err = newConnectivityClient(timeout).Do(req); err == nil {
+			_ = resp.Body.Close()
+			step.Detail = fmt.Sprintf("%s: HTTP %d", target, resp.StatusCode)
+		}
+	}
+	step.Passed = err == nil
+	if err != nil {
+		step.Error = err.Error()
+	}
+	step.Duration = time.Since(t).Milliseconds()
+	return []otlp.ConnectionStep{step}
+}
+
+// dialZabbixServers opens a TCP connection to each address the 'server'
+// parameter names (several name a proxy group), without sending the
+// agent protocol: it proves the server or proxy is reachable, not that
+// it will accept this host.
+func dialZabbixServers(ctx context.Context, params map[string]interface{}, timeout time.Duration) []otlp.ConnectionStep {
+	raw, _ := params["server"].(string)
+	addrs, err := zabbix.ServerAddresses(raw)
+	if err != nil {
+		return []otlp.ConnectionStep{{Name: "config", Error: err.Error()}}
+	}
+	steps := []otlp.ConnectionStep{{Name: "config", Passed: true, Detail: strings.Join(addrs, ", ")}}
+	for _, addr := range addrs {
+		t := time.Now()
+		step := otlp.ConnectionStep{Name: "tcp " + addr}
+		conn, dialErr := guardedDialer(timeout).DialContext(ctx, "tcp", addr)
+		if dialErr == nil {
+			_ = conn.Close()
+			step.Passed = true
+			step.Detail = "connected"
+		} else {
+			step.Error = dialErr.Error()
+		}
+		step.Duration = time.Since(t).Milliseconds()
+		steps = append(steps, step)
+	}
 	return steps
 }
 
