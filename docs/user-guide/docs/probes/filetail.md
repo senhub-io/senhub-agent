@@ -76,8 +76,25 @@ params:
 ```
 
 With `match: after`, a matching line starts a new record and non-matching
-lines are continuations. With `match: before`, a matching line flushes the
-accumulated record first.
+lines are continuations. With `match: before`, a matching line ends the
+record: it is added to it, then the record is sent. `negate: true` inverts
+the test, so a line that does *not* match the pattern is the one that
+starts (or ends) a record.
+
+The pattern describes the line that **starts** a record, which is not how
+Filebeat reads the same keys. A Filebeat configuration for Java logs,
+`pattern: '^\['` with `negate: true` and `match: after`, describes the
+continuation lines; here the same record is written with `negate: false`:
+
+```yaml
+  multiline:
+    pattern: '^\['      # "[2026-09-29T18:21:51,024+02:00] ..." starts a record
+    negate: false
+    match: after
+```
+
+Copied as is from Filebeat, `negate: true` takes every stack-trace line
+for the start of a new record.
 
 ### Structured parsing
 
