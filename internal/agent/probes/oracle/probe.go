@@ -119,8 +119,11 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	up := float64(1)
-	if p.db == nil || p.db.PingContext(ctx) != nil {
+	if p.db == nil {
 		up = 0
+	} else if err := p.db.PingContext(ctx); err != nil {
+		up = 0
+		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("oracle ping failed")
 	}
 	points = append(points, p.point("senhub.db.up", up, now, metricTypeOverview, nil))
 
