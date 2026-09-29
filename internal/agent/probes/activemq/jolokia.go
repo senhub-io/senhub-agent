@@ -26,6 +26,7 @@ func (c *jolokiaClient) read(ctx context.Context, mbean, attribute string) (json
 	if err != nil {
 		return nil, err
 	}
+	setSameOrigin(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -79,4 +80,13 @@ func (c *jolokiaClient) readString(ctx context.Context, mbean, attribute string)
 		return "", err
 	}
 	return s, nil
+}
+
+// setSameOrigin names the Jolokia agent's own origin. ActiveMQ 6 ships
+// its Jolokia with strict CORS checking and refuses a request that has
+// no Origin ("Origin null is not allowed to call this agent"), which is
+// every request a server-side client makes; its own web console sends
+// its origin, which is what this does.
+func setSameOrigin(req *http.Request) {
+	req.Header.Set("Origin", req.URL.Scheme+"://"+req.URL.Host)
 }

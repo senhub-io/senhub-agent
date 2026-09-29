@@ -105,7 +105,7 @@ func TestUnshippedDeclarationsCiteAnIssue(t *testing.T) {
 // populated, and joins nothing: the consumer asks for the entity's key and
 // gets no series, while a near-identical label sits next to it holding all
 // of them. That is exactly network.interface today — entity keyed
-// `interface.name`, host metrics labelled `network.interface.name`.
+// `network.interface.name`, host metrics labelled `network.interface.name`.
 func TestTransformersDoNotRenameASubjectKeyIntoANearMiss(t *testing.T) {
 	produced := producedAttributes(t)
 	stamped := stampedTagKeys(t)
@@ -119,7 +119,7 @@ func TestTransformersDoNotRenameASubjectKeyIntoANearMiss(t *testing.T) {
 		// consumer's join works and a differently-named label beside it is
 		// redundancy, not a trap — which is the state network.interface is in
 		// after #748: `interface` still maps to network.interface.name for the
-		// dashboards built on it, while interface.name carries the identity.
+		// dashboards built on it, while network.interface.name carries the identity.
 		if produced[d.SubjectKey] != nil || stamped[d.SubjectKey] {
 			continue
 		}
@@ -207,13 +207,13 @@ func producedAttributes(t *testing.T) map[string][]string {
 //
 // It exists because the transformer YAML only shows keys a transformer
 // RENAMES — a key the probe stamps verbatim (network.device.id, and
-// interface.name since #748) never appears there, so reading the YAML alone
+// network.interface.name since #748) never appears there, so reading the YAML alone
 // would report a false gap for the types that actually work.
 //
 // KNOWN LIMIT, stated because it was measured rather than assumed: this scan
 // answers "does ANY probe stamp this key", not "does EVERY emitter of this
 // entity type stamp it". #748 was exactly the second question — snmppoll
-// stamped interface.name while the host probe did not, and both feed the same
+// stamped network.interface.name while the host probe did not, and both feed the same
 // entity type. Removing the host probe's literal does NOT make this test fail,
 // because snmppoll's occurrence still satisfies the scan.
 //

@@ -39,7 +39,7 @@ func TestParseInterfaces(t *testing.T) {
 	}
 	// First-seen order preserved (ifIndex 1 then 2).
 	if rows[0].Name != "Gi0/1" || rows[0].SpeedMbps != 1000 || rows[0].OperStatus != ifOperUp ||
-		rows[0].IfType != 6 || rows[0].Mtu != 1500 || rows[0].Mac != "aa:bb:cc:dd:ee:ff" || rows[0].Duplex != 3 {
+		rows[0].IfType != 6 || rows[0].Mtu != 1500 || rows[0].Mac != "AA-BB-CC-DD-EE-FF" || rows[0].Duplex != 3 {
 		t.Errorf("row[0] = %+v", rows[0])
 	}
 	if rows[1].Name != "Gi0/2" || rows[1].SpeedMbps != 10000 || rows[1].OperStatus != ifOperDown ||
@@ -61,8 +61,8 @@ func TestMacString(t *testing.T) {
 		in   []byte
 		want string
 	}{
-		{[]byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, "aa:bb:cc:dd:ee:ff"},
-		{[]byte{0x00, 0x1b, 0x21, 0x00, 0x00, 0x01}, "00:1b:21:00:00:01"},
+		{[]byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, "AA-BB-CC-DD-EE-FF"},
+		{[]byte{0x00, 0x1b, 0x21, 0x00, 0x00, 0x01}, "00-1B-21-00-00-01"},
 		{[]byte{0, 0, 0, 0, 0, 0}, ""},
 		{nil, ""},
 	}

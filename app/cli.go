@@ -216,9 +216,9 @@ func showUpdateHelp() {
 
 Check for, list, or install agent updates.
 
-    %s update              Check for a newer version and install it
+    %s update              Check for a newer version (install one with update <version>)
     %s update --list       List all available versions (stable + beta)
-    %s update <version>    Install a specific version (e.g. %s update 0.4.1)
+    %s update <version>    Install a specific version (e.g. %s update 0.6.0)
 
 Updating replaces the running binary and requires the same privileges
 as the service commands (root on Linux, administrator on Windows).

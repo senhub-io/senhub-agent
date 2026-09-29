@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/data_store/prtgnames"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -117,10 +118,14 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 
 	// Convert to PRTG format
 	channels := make([]PRTGChannel, 0, len(filteredMetrics))
+	channelTags := make([]map[string]string, 0, len(filteredMetrics))
 	now := time.Now()
 
 	for _, metric := range filteredMetrics {
 		if !f.cache.IsLive(metric, now) {
+			continue
+		}
+		if t, err := f.transformerRegistry.LoadTransformer(probeTypeOf(metric), "friendly"); err == nil && t != nil && transformers.SkipsPRTG(t, metric.MetricName) {
 			continue
 		}
 
@@ -136,7 +141,15 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 		// Transform to PRTG channel
 		if channel := f.transformToPRTGChannelWithFilter(tsKey, metric, filter); channel != nil {
 			channels = append(channels, *channel)
+			channelTags = append(channelTags, metric.Tags)
 		}
+	}
+	names := make([]string, len(channels))
+	for i, c := range channels {
+		names[i] = c.Channel
+	}
+	for i, n := range prtgnames.Disambiguate(names, channelTags) {
+		channels[i].Channel = n
 	}
 
 	f.logger.Debug().

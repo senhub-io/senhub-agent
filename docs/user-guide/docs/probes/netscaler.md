@@ -226,7 +226,7 @@ The NetScaler probe fully supports **High Availability clusters**:
 ## HA Tags
 
 - `ha_node_id`: Node ID (0 or 1)
-- `ha_node_ip`: Node IP address (e.g., "10.0.208.7")
+- `ha_node_ip`: Node IP address (e.g., "192.0.2.7")
 - `is_local_node`: "true" for connected node, "false" for remote
 - `connected_to`: Hostname of connected node
 

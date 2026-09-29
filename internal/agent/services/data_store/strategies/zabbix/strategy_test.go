@@ -119,9 +119,11 @@ func TestStrategyKeepsOneSessionAcrossPushes(t *testing.T) {
 	}
 }
 
+// A server before 6.2 does not know the heartbeat request and says so;
+// only that answer stops it (a transient failure is retried).
 func TestStrategySendsAHeartbeatAndStopsWhenRefused(t *testing.T) {
 	srv := newFakeServer(t)
-	srv.refuse["active check heartbeat"] = true
+	srv.refuseInfo["active check heartbeat"] = "unknown request"
 	s := startStrategy(t, srv, configuration.StorageConfigParams{
 		"server": srv.addr(), "hostname": "web-01", "interval": "1h", "refresh_interval": "1h", "heartbeat_interval": "1s",
 	})

@@ -38,7 +38,7 @@ const (
 	idKeyServiceEndpoint       = "service.endpoint"
 	idKeyServiceInstanceID     = "service.instance.id"
 	idKeyHost                  = "host.id"
-	idKeyInterfaceName         = "interface.name"
+	idKeyInterfaceName         = "network.interface.name"
 	attrProcessName            = "process.executable.name"
 	attrProcessPID             = "process.pid"
 	attrServiceName            = "service.name"

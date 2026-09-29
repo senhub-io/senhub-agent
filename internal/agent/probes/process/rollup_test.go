@@ -57,3 +57,16 @@ func TestNamingWhatToWatchFeedsTheGraphToo(t *testing.T) {
 		t.Error("a named watch list is an inventory and belongs on the graph")
 	}
 }
+
+func TestKernelWorkersAreCountedUnderOneName(t *testing.T) {
+	for _, n := range []string{"kworker/1:1-ata_sff", "kworker/u4:2-events_freezable_power_", "kworker/0:0H"} {
+		if got := rollUpName(n); got != "kworker" {
+			t.Errorf("rollUpName(%q) = %q, want kworker", n, got)
+		}
+	}
+	for _, n := range []string{"nginx", "ksoftirqd/0", "kworkerd"} {
+		if got := rollUpName(n); got != n {
+			t.Errorf("rollUpName(%q) = %q, want it unchanged", n, got)
+		}
+	}
+}

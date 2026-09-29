@@ -661,6 +661,7 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
+| `senhub.syslog.records_emitted` | `senhub.syslog.records_emitted` | Syslog Records Emitted | # | Cumulative count of syslog messages this probe has relayed to the log rail |
 | - | `syslog_event` | Syslog {facility_name} Severity | # | Syslog message severity level (RFC 3164) |
 
 <!-- schema:metrics:end -->

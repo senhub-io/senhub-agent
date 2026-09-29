@@ -14,10 +14,9 @@ import (
 // transformer — a subject key that survives only under another spelling
 // joins nothing, which is what #748 was.
 //
-// It is spelled the same as the SNMP side (snmppoll stamps interface.name on
-// every polled-device interface metric), so one query shape reaches both
-// planes.
-const interfaceNameTag = "interface.name"
+// It is spelled the same as the SNMP side (snmppoll stamps it on every
+// polled-device interface metric), so one query shape reaches both planes.
+const interfaceNameTag = "network.interface.name"
 
 // NewNetworkProbe crée une nouvelle instance de Network probe. Le cycle
 // de vie vient de hostpoll ; seule la collecte OS appartient à ce paquet.

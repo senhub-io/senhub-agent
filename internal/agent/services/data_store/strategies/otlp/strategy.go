@@ -284,6 +284,19 @@ func (s *OTLPSyncStrategy) ValidateConfigParams(params configuration.StorageConf
 // when metrics are enabled, launches the periodic push goroutine.
 // Idempotent — subsequent calls are no-ops while running. Once Shutdown
 // has been called, Start returns an error rather than silently restarting.
+// noticeEntitiesOff says, once per start, that this output sends no
+// entities. Metrics and logs keep flowing without them, so a topology
+// backend that stays empty would otherwise give no hint of the cause: a
+// strategy file written by hand without signals.entities.enabled.
+func (s *OTLPSyncStrategy) noticeEntitiesOff() {
+	if s.cfg.Entities.Enabled {
+		return
+	}
+	s.logger.Warn().
+		Str("setting", "signals.entities.enabled").
+		Msg("entity emission is off on this OTLP output: a topology backend receives no entities from this agent")
+}
+
 func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
@@ -397,6 +410,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	if s.cfg.Entities.Enabled && s.logs != nil {
 		s.startEntityEmission()
 	}
+	s.noticeEntitiesOff()
 
 	if s.cfg.Traces.Enabled && s.exporters.trace != nil {
 		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)

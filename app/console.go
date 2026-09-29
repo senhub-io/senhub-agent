@@ -133,4 +133,4 @@ func runConsole(argv []string) {
 	}
 }
 
-var errNoElevation = errors.New("the agent key is readable by administrators only; run this command as root or administrator")
+var errNoElevation = errors.New("the administration key is readable by administrators only; run this command as root or administrator")

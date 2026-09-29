@@ -50,12 +50,12 @@ Monitor several tenants with separate probe instances:
     client_secret: "${secret:ad-hybrid-corp.client_secret}"
     interval: 300
 
-- name: ad-hybrid-lab
+- name: ad-hybrid
   type: ad_hybrid
   params:
     tenant_id: "22222222-2222-2222-2222-222222222222"
     client_id: "33333333-3333-3333-3333-333333333333"
-    client_secret: "${secret:ad-hybrid-lab.client_secret}"
+    client_secret: "${secret:ad-hybrid.client_secret}"
     interval: 600
 ```
 

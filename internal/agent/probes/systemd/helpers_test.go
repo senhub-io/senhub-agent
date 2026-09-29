@@ -296,3 +296,25 @@ func TestBuildDatapoints_ListeningSubState(t *testing.T) {
 		t.Errorf("sub_state for listening socket = %v; want 1", byName["systemd.unit.sub_state"])
 	}
 }
+
+// Each SSH login creates run-user-UID.mount and user-runtime-dir@UID.service,
+// removed at logout; in the default view they became series (and PRTG
+// channels) that stopped with the session.
+func TestFilterUnits_DefaultViewLeavesSessionUnitsOut(t *testing.T) {
+	cfg := probeConfig{IncludeTypes: map[string]bool{"service": true, "mount": true}}
+	all := []dbus.UnitStatus{
+		makeUnit("nginx.service", "active", "running", "loaded"),
+		makeUnit("run-user-1000.mount", "active", "mounted", "loaded"),
+		makeUnit("user-runtime-dir@1000.service", "active", "exited", "loaded"),
+		makeUnit("user@1000.service", "active", "running", "loaded"),
+		makeUnit("home.mount", "active", "mounted", "loaded"),
+	}
+	got := filterUnits(cfg, all)
+	if len(got) != 2 || got[0].Name != "nginx.service" || got[1].Name != "home.mount" {
+		t.Errorf("default view = %v, want nginx.service and home.mount", got)
+	}
+	cfg.Units = []string{"user@*.service"}
+	if got := filterUnits(cfg, all); len(got) != 1 {
+		t.Errorf("an explicit units list must still reach session units, got %v", got)
+	}
+}

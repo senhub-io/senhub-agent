@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"fmt"
+	"net"
 	"net/netip"
 	"strings"
 )
@@ -38,4 +40,31 @@ func CanonicalCIDR(ip string, prefixLen int) (string, bool) {
 		return "", false
 	}
 	return p.Masked().String(), true
+}
+
+// CanonicalMAC renders a hardware address in the form the OpenTelemetry
+// semantic conventions define for MAC values: IEEE 802 octets as two
+// uppercase hex digits separated by hyphens (BC-24-11-1B-04-82). A MAC can
+// become an identity (the mac: rung of a device id), so every observer must
+// render it byte-identically. Empty input yields "".
+func CanonicalMAC(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = fmt.Sprintf("%02X", c)
+	}
+	return strings.Join(parts, "-")
+}
+
+// CanonicalMACString parses a textual MAC in any form net.ParseMAC accepts
+// (aa:bb:cc:dd:ee:ff, AA-BB-CC-DD-EE-FF, aabb.ccdd.eeff) and renders it with
+// CanonicalMAC. ok=false when s is not a MAC.
+func CanonicalMACString(s string) (string, bool) {
+	hw, err := net.ParseMAC(strings.TrimSpace(s))
+	if err != nil {
+		return "", false
+	}
+	return CanonicalMAC(hw), true
 }

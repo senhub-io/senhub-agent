@@ -328,11 +328,19 @@ func (s *Strategy) beat(ctx context.Context) {
 	if off {
 		return
 	}
-	if err := s.client.heartbeat(ctx); err != nil {
-		s.logger.Debug().Err(err).Msg("Heartbeat not accepted; the server may predate 6.2, heartbeat disabled")
+	err := s.client.heartbeat(ctx)
+	switch {
+	case err == nil:
+	case errors.Is(err, errHeartbeatUnsupported):
+		s.logger.Info().Err(err).Msg("The server does not support the heartbeat (before 6.2); heartbeat disabled")
 		s.mu.Lock()
 		s.heartbeatOff = true
 		s.mu.Unlock()
+	default:
+		// Any other failure is transient. Disabling on it left the host
+		// unavailable in Zabbix for good after a one-minute server outage,
+		// while its values kept arriving.
+		s.logger.Debug().Err(err).Msg("Heartbeat not delivered; retried at the next beat")
 	}
 }
 

@@ -404,7 +404,7 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 				Value:   interfaceInfo.connectionName,
 				Private: false,
 			})
-			// interface.name ties this series to its network.interface entity,
+			// network.interface.name ties this series to its network.interface entity,
 			// which is keyed on the connection name (net.Interface.Name). The
 			// `interface` tag above carries the PDH instance — the adapter
 			// description with PDH's dedup suffix ("… Adapter _2") — which is
