@@ -497,6 +497,13 @@ Breaking Changes or Fixes below.
   host. The probe now reads the processor count and load where Hyper-V
   publishes them.
 
+- **The [Pulsar](../probes/pulsar.md) probe reads the broker totals.**
+  It looked only for the per-namespace series, which a broker publishes
+  once topics exist: a current broker without topics reported `up` and
+  nothing else, and one with topics reported per namespace. It now reads
+  the broker-level `pulsar_broker_*` aggregates, and falls back to the
+  per-namespace series on a broker that does not publish them.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
