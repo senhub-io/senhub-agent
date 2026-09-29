@@ -8,7 +8,9 @@ side; PRTG, Nagios and Prometheus keep working next to it.
 
 It is proven against Zabbix 7.0 and 8.0 on a Linux and a Windows host:
 every generated template imports into both lines, and encryption works
-both ways with a certificate or a pre-shared key.
+both ways with a certificate or a pre-shared key. Zabbix 6.0 LTS is
+supported too: `zabbix setup` was measured on 6.0.48 and adapts to it on
+its own (see [Versions](#versions)).
 
 ## Configuration
 
@@ -39,7 +41,7 @@ zabbix:
 | `host_metadata` | `senhub-agent` | Sent with every check-list request; the autoregistration action matches on it to choose host groups and templates. The agent appends its operating system, so `senhub-agent linux`, which is how the per-platform actions tell hosts apart. Limited to 2034 bytes by Zabbix. |
 | `interval` | `60s` | Push cadence of the collected values. Each push sends the latest value of every item, including the value of a probe that runs less often, until that probe's next run is due. |
 | `refresh_interval` | `120s` | How often the item list is asked again. |
-| `heartbeat_interval` | `60s` | Heartbeat cadence; the server declares the host unavailable after twice that. |
+| `heartbeat_interval` | `60s` | Heartbeat cadence; the server declares the host unavailable after twice that. A server before 6.2 answers that it does not know the request; the agent then stops sending it. A heartbeat that fails because the connection failed is sent again at the next beat. |
 | `timeout` | `10s` | Bound on one connection, request and reply. |
 | `key_prefix` | `senhub` | First segment of every item key. |
 | `passive.enabled` | `false` | Answer the server's polls on the passive port (see below). |
@@ -47,7 +49,7 @@ zabbix:
 | `passive.port` | `10050` | Port the passive listener binds to; sent to the server so autoregistration creates the agent interface on it. |
 | `passive.allow` | server addresses | Addresses or CIDR ranges allowed to poll the passive port. |
 | `passive.advertise` | source address | Address or name the server should poll, sent with the registration. |
-| `passive.tls.enabled` | `false` | Encrypt what the server polls. Needs `cert_file` and `key_file`. |
+| `passive.tls.enabled` | `false` | Encrypt what the server polls. Needs `cert_file` and `key_file`, or `psk_identity` and `psk_file`. |
 | `passive.tls.cert_file`, `passive.tls.key_file` | | Certificate the agent presents to whoever polls it, and its key. |
 | `passive.tls.ca_file` | | Authority that signed the server's certificate. When set, a poller must present one it signed. |
 | `tls.enabled` | `false` | Encrypt the connection with TLS (certificate). |
@@ -192,9 +194,12 @@ Zabbix refuses to link two templates that declare the same key, and a
 plain `{#PROBE}` made the PostgreSQL and MySQL templates both declare
 `senhub.db.up[{#PROBE}]`. The key the agent sends is the same either
 way, `senhub.db.up[production-postgres]`; item names keep `{#PROBE}`. The agent serves these discovery keys like any other item, so
-a host gets its items within one discovery interval (1 hour by default,
-`--delay` does not change it; edit the rule in Zabbix if you want faster
-discovery on a lab). An enum metric with a lookup gets a value map.
+a host gets its items within one discovery interval. The generated
+templates set the discovery rules to 1 hour, and `--delay` does not
+change it. `zabbix setup` sets the rules of the templates it imports to
+5 minutes, so a new host fills within minutes; `--discovery-delay`
+chooses another interval, and `--no-discovery-delay` leaves the rules at
+the template's hour. An enum metric with a lookup gets a value map.
 
 An instance only gets the items of the metrics it sends. Each discovery
 row carries `{#SENHUB.FED}`, the list of metrics that instance feeds,
@@ -391,8 +396,27 @@ On the Zabbix side, set the host's "Connections to host" to
 *Certificate*. A certificate that cannot be read stops the agent at
 start rather than leaving a listener that serves in clear.
 
-Pre-shared keys are not available here either, for the reason given
-above.
+The polled port also takes a pre-shared key, in place of the
+certificate:
+
+```yaml
+zabbix:
+  server: "zabbix.example.com:10051"
+  passive:
+    enabled: true
+    port: 10050
+    tls:
+      enabled: true
+      psk_identity: "senhub-paris"
+      psk_file: /etc/senhub-agent/zabbix.psk
+```
+
+On the Zabbix side, set "Connections to host" to *PSK* with the same
+identity and key. A block takes a certificate or a pre-shared key, not
+both, and a key file that cannot be read or does not hold at least 16
+bytes in hexadecimal stops the agent at start.
+
+To restrict who may poll, without encryption:
 
 ```yaml
 zabbix:
@@ -530,9 +554,11 @@ Two things are worth knowing about the 8.0 line specifically.
 **The API no longer accepts the session token in the request body.**
 Where 7.0 took `"auth": "<token>"` inside the JSON-RPC envelope, 8.0
 answers `unexpected parameter "auth"` and wants an
-`Authorization: Bearer` header. `senhub-agent zabbix setup` has always
-sent the header, so it works on both lines without a flag; a script of
-your own that drives the API may need changing.
+`Authorization: Bearer` header. `senhub-agent zabbix setup` reads the
+server's version first and sends the header to 6.4 and later, the
+`auth` field inside the request to older servers, so it works on every
+line without a flag; a script of your own that drives the API may need
+changing.
 
 **The proxy group redirection is unchanged.** A host assigned to a group
 makes the server answer the check-list request with:
@@ -552,6 +578,34 @@ logs it and the next request is redirected normally.
 
 The templates are exported in the 7.0 format and import into 8.0 as they
 are; `--version 8.0` is not needed and does not exist.
+
+## `zabbix setup` options
+
+```
+senhub-agent zabbix setup --url <frontend> [--token-file <path>]
+                          [--group <name>] [--metadata <string>]
+                          [--action-name <name>] [--probe <type> ...]
+                          [--discovery-delay <interval> | --no-discovery-delay]
+                          [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
+```
+
+| Option | Default | Effect |
+|---|---|---|
+| `--url` | required | The Zabbix frontend, for example `https://zabbix.example.com`; `/api_jsonrpc.php` is appended |
+| `--token-file`, `--token` | | API token. Read from `--token-file`, then `--token`, then the environment variable `SENHUB_ZABBIX_TOKEN`. Prefer a file: a token on the command line is visible to every process on the machine |
+| `--group` | `SenHub Agents` | Host group new hosts are put in |
+| `--metadata` | `senhub-agent` | Host metadata the autoregistration action matches; must match the output's `host_metadata` |
+| `--action-name` | `Autoregistration — SenHub Agent` | Name of the autoregistration action |
+| `--probe` | the probes every machine runs | Also import and link the template of this probe type; repeat for several |
+| `--discovery-delay` | `5m` | Interval set on the discovery rules of the imported templates |
+| `--no-discovery-delay` | | Leave the discovery rules at the template's interval (1 hour) |
+| `--prefix` | `senhub` | Key prefix; must match the output's `key_prefix` |
+| `--version` | `7.0`, or `6.0` on a server before 6.2 | Template export format, `6.0` or `7.0` |
+| `--dry-run` | | Print what would be done without changing the server; without a token it describes the steps without reading the server |
+
+Run it once, as a Zabbix administrator; a deployed agent never holds an
+API token. Every step is idempotent, so re-running it is safe and is
+how templates are refreshed after an upgrade.
 
 ## Autoregistration
 

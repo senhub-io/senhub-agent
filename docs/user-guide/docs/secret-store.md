@@ -38,9 +38,11 @@ The active backend is selected automatically per platform. Each stores its data 
 
 On Linux, the `age-keyfile` backend is the default because it works unprivileged from any context and needs no systemd wiring. The `systemd-creds` backend is the hardened opt-in and is selected when any of the following holds:
 
-- `$CREDENTIALS_DIRECTORY` is set (the daemon runs under a unit that wired `LoadCredentialEncrypted=`);
 - `SENHUB_SECRET_BACKEND=systemd-creds` is set (explicit admin opt-in, e.g. for the seal step outside the unit);
-- a populated `creds.d/` store already exists.
+- a populated `creds.d/` store already exists;
+- `$CREDENTIALS_DIRECTORY` is set (the daemon runs under a unit that wired `LoadCredentialEncrypted=`) **and** no `secrets.age` store exists in the configuration directory. An existing age store is kept, so a unit credential added for another purpose does not orphan it.
+
+`SENHUB_SECRET_BACKEND` wins over the other rules. It accepts `systemd-creds` or `age`; `SENHUB_SECRET_BACKEND=age` forces the age key-file store, even under a unit that sets `$CREDENTIALS_DIRECTORY`.
 
 With `systemd-creds`, the service reads its secrets through the credentials systemd hands it at start, which the drop-in `/etc/systemd/system/senhub-agent.service.d/10-senhub-credentials.conf` declares, one `LoadCredentialEncrypted=` line per sealed secret. The agent keeps that drop-in in line with `creds.d/` by itself:
 
@@ -52,10 +54,10 @@ A host already on the age store keeps its secrets there when it moves to
 `systemd-creds`: while both stores exist the agent reads `creds.d/` first
 and the age store for the names it does not hold, so the move can be made
 one secret at a time, each re-stored with
-`SENHUB_SECRET_BACKEND=systemd-creds agent secret set <name>`, before the
+`sudo SENHUB_SECRET_BACKEND=systemd-creds /usr/local/bin/senhub-agent secret set <name>`, before the
 age files are removed.
 
-After a `secret set` or `secret rm`, run `agent secret wire-unit` (or `agent refresh-unit`) so the next start sees the change. None of these restart the service: run `agent restart` to load the new credentials.
+After a `secret set` or `secret rm`, run `sudo /usr/local/bin/senhub-agent secret wire-unit` (or `sudo /usr/local/bin/senhub-agent refresh-unit`) so the next start sees the change. None of these restart the service: run `sudo /usr/local/bin/senhub-agent restart` to load the new credentials.
 
 The store files are owned by the account the agent runs as and readable only by it (age key file `0600`, DPAPI files restricted to SYSTEM + Administrators). Because the store is root-/service-owned, resolving a sealed secret requires the same privilege as the agent itself — see the privilege note under [`agent key show`](#agent-key-show).
 
@@ -73,33 +75,33 @@ The store files are owned by the account the agent runs as and readable only by 
 | `secret status` | Show the active backend and store location and the number of stored secrets. |
 | `secret wire-unit` | (Linux/systemd-creds) Regenerate the unit credential drop-in from `creds.d/`, or remove it when the store is empty. |
 
-All subcommands honour `--config-path <path>` to locate a non-default configuration directory.
+All subcommands honour `--config-path <path>` to locate a non-default configuration directory. On Linux, run them as root with the full path of the installed binary, as below; on Windows, from an elevated prompt.
 
 ```bash
 # Store a secret from a hidden prompt
-senhub-agent secret set veeam-prod.password
+sudo /usr/local/bin/senhub-agent secret set veeam-prod.password
 # Secret value (hidden): ********
 # stored secret "veeam-prod.password" in age-keyfile; reference it as ${secret:veeam-prod.password}
 
 # Store from a file (no value on the command line)
-senhub-agent secret set db.password --from-file /root/db-pass.txt
+sudo /usr/local/bin/senhub-agent secret set db.password --from-file /root/db-pass.txt
 
 # Store from stdin (piping)
-printf '%s' "$DB_PASS" | senhub-agent secret set db.password
+printf '%s' "$DB_PASS" | sudo /usr/local/bin/senhub-agent secret set db.password
 
 # List names and show backend status
-senhub-agent secret list
-senhub-agent secret status
+sudo /usr/local/bin/senhub-agent secret list
+sudo /usr/local/bin/senhub-agent secret status
 ```
 
 ### `agent key show`
 
-`agent key show` prints the agent key — the bearer token an operator needs to reach the web UI and to configure PRTG/Nagios scrapers. It loads the configuration and prints the **resolved** key, so it works whether the key is still inline or has been sealed into the store as `${secret:agent.key}`.
+`agent key show` prints the agent key, the key PRTG, Nagios and a Prometheus scrape read the agent with. It does not open the web console, which answers only the administration key (`senhub-agent console` opens it). It loads the configuration and prints the **resolved** key, so it works whether the key is still inline or has been sealed into the store as `${secret:agent.key}`.
 
 Resolving a sealed key reads the root-/service-owned store, so `key show` runs behind the same privilege gate as `agent secret` — it is not a read-only command.
 
 ```bash
-senhub-agent key show
+sudo /usr/local/bin/senhub-agent key show
 ```
 
 ## Sealing inline secrets into the store
@@ -119,7 +121,7 @@ senhub-agent key show
     runs as a non-root account, and only root can encrypt with the host
     key. It then leaves the inline values in place and logs once, at
     start, `Inline secrets left in place: the secret store seals only as
-    root`. Seal them with `sudo senhub-agent secret migrate --wire-unit`
+    root`. Seal them with `sudo /usr/local/bin/senhub-agent secret migrate --wire-unit`
     and restart the service.
 
 `agent secret migrate` scans the configuration for fields whose NAME denotes a secret (`password`, `passphrase`, `secret`, `token`, `api_key`, `community`, `credential`, `dsn`, `uri`, `private_key`) and whose value is still an inline plaintext (not already a `${...}` reference). It moves each value into the store and rewrites the field to a `${secret:}` reference. Identifier-style fields such as `user`, `login` and `email` are deliberately left alone.
@@ -139,7 +141,7 @@ probes:
 Run the migration:
 
 ```bash
-senhub-agent secret migrate
+sudo /usr/local/bin/senhub-agent secret migrate
 # sealed inline secrets into the store and rewrote them to ${secret:} references
 ```
 

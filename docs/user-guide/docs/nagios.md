@@ -16,13 +16,20 @@ Two kinds of answer are available:
 ## Enable the endpoint
 
 The `nagios` endpoint of the HTTP output must be listed. The installer
-lists it by default:
+lists it by default, in `strategies.d/00-http.yaml`:
 
 ```yaml
 http:
   port: 8080
+  bind_address: "0.0.0.0"
   endpoints: ["prtg", "web", "nagios"]
 ```
+
+The installer binds the HTTP output to `127.0.0.1` unless HTTPS was
+enabled at install time. That address only answers requests made on the
+agent's own host, so a Nagios server elsewhere cannot reach it: set
+`bind_address` to `"0.0.0.0"`, or to the address of the interface Nagios
+reaches, and open the port in the firewall.
 
 Every URL below carries the agent key, printed by `senhub-agent key show`.
 See [HTTP / HTTPS](http-https.md) for the port, TLS and the firewall.
