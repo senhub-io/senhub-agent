@@ -34,6 +34,7 @@ you asked for leave the host.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:13141d7310bc242110520d6e9c21be70822ed08cc8efea0c3af1b9a0501e70a2 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -81,3 +82,20 @@ record never carries its own `host.name`.
 - **Bookmarks are cheap insurance.** Without `bookmark_path`, an
   agent restart loses whatever fired while it was down. With it,
   the subscription resumes exactly where it stopped.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.windows_eventlog.records_emitted` | `senhub.windows_eventlog.records_emitted` | Windows Event Log Records Emitted | # | Cumulative count of event records this probe has published to the log rail |
+
+<!-- schema:metrics:end -->

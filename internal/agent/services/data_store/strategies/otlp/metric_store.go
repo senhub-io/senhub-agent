@@ -39,6 +39,13 @@ type metricStore struct {
 	probeBudget int            // per-probe cap; 0 = unbounded
 	probeCounts map[string]int // probe_name → currently active series count
 	memGuard    *memoryLimiter // optional; nil = no memory limiter
+	// cadence is how often each probe collects, by probe_name. It bounds
+	// how long a probe's last value is re-published as current.
+	cadence map[string]time.Duration
+	// grace is added to a probe's cadence before its value stops being
+	// vouched for: the push interval, so a run that lands just after a
+	// push is not stamped stale for one cycle.
+	grace time.Duration
 }
 
 // storedMetric is one LWW slot — the metadata we need to feed
@@ -53,10 +60,18 @@ type storedMetric struct {
 	tags       map[string]string
 	histogram  *datapoint.HistogramValue
 	observedAt time.Time
+	// receivedAt is when the store took the point, on the agent's clock.
+	// observedAt may come from the source (a backup job's end time) and
+	// cannot tell one probe run from the next; the arrival time can.
+	receivedAt time.Time
+	// restored marks an entry read back from the checkpoint and not
+	// observed since: its producer may be gone, so its value is never
+	// presented as current until a datapoint replaces it.
+	restored bool
 }
 
 func newMetricStore() *metricStore {
-	return &metricStore{entries: make(map[string]storedMetric), probeCounts: map[string]int{}}
+	return &metricStore{entries: make(map[string]storedMetric), probeCounts: map[string]int{}, cadence: map[string]time.Duration{}}
 }
 
 // newMetricStoreWithCap returns a store that drops new series past
@@ -66,7 +81,44 @@ func newMetricStoreWithCap(maxEntries int) *metricStore {
 		entries:     make(map[string]storedMetric),
 		maxEntries:  maxEntries,
 		probeCounts: map[string]int{},
+		cadence:     map[string]time.Duration{},
 	}
+}
+
+// withFreshnessGrace sets the slack added to a probe's cadence before
+// its last value stops being vouched for. Returns the store for chaining.
+func (s *metricStore) withFreshnessGrace(d time.Duration) *metricStore {
+	s.grace = d
+	return s
+}
+
+// noteProbeCadence records how often the named probe collects. A probe
+// with no recorded cadence, or a cadence of zero, has its values
+// exported at their measurement time only.
+func (s *metricStore) noteProbeCadence(probeName string, interval time.Duration) {
+	if probeName == "" {
+		return
+	}
+	s.mu.Lock()
+	s.cadence[probeName] = interval
+	s.mu.Unlock()
+}
+
+// vouched says whether the producing probe still stands behind the
+// stored value at instant now: the entry was observed by this process,
+// the probe's cadence is known, and less than one and a half cadences
+// plus the grace have elapsed since the observation. A vouched value is
+// the probe's current reading between two runs; an unvouched one is a
+// measurement of the past (#812, #890).
+func (s *metricStore) vouched(e storedMetric, now time.Time) bool {
+	if e.restored {
+		return false
+	}
+	interval := s.cadence[e.probeName]
+	if interval <= 0 {
+		return false
+	}
+	return now.Sub(e.observedAt) <= interval+interval/2+s.grace
 }
 
 // withProbeBudget sets the per-probe cardinality budget on top of any
@@ -96,6 +148,10 @@ func (s *metricStore) withMemoryLimiter(ml *memoryLimiter) *metricStore {
 // series over admitting unbounded new cardinality, which is the
 // expected operator preference when a probe goes rogue on a label.
 func (s *metricStore) upsert(dp datapoint.DataPoint) {
+	s.upsertAt(dp, time.Now())
+}
+
+func (s *metricStore) upsertAt(dp datapoint.DataPoint, receivedAt time.Time) {
 	tagMap := flattenTags(dp.Tags)
 	probeName := tagMap["probe_name"]
 	probeType := tagMap["probe_type"]
@@ -172,8 +228,39 @@ func (s *metricStore) upsert(dp datapoint.DataPoint) {
 		tags:       tagsCopy,
 		histogram:  dp.Histogram,
 		observedAt: when,
+		receivedAt: receivedAt,
 	}
 	s.mu.Unlock()
+}
+
+// retireSuperseded drops, for each probe that just delivered a batch,
+// the series its previous runs reported and this one did not. A probe
+// whose target went down keeps running and reports only that the target
+// is down; its other series were still inside the vouching window and
+// went on being exported as current for minutes (#951). A run
+// supersedes the one before it: a series received more than half a
+// cadence before the batch belongs to an earlier run. Batches of one
+// run arrive seconds apart and are never mistaken for two runs. A probe
+// with no known cadence is left alone.
+func (s *metricStore) retireSuperseded(probes map[string]bool, arrival time.Time) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	retired := 0
+	for k, e := range s.entries {
+		if !probes[e.probeName] {
+			continue
+		}
+		interval := s.cadence[e.probeName]
+		if interval <= 0 || arrival.Sub(e.receivedAt) <= interval/2 {
+			continue
+		}
+		delete(s.entries, k)
+		if s.probeCounts[e.probeName] > 0 {
+			s.probeCounts[e.probeName]--
+		}
+		retired++
+	}
+	return retired
 }
 
 // probeSeriesCount returns the current number of distinct series held
@@ -233,22 +320,28 @@ func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
 			tags:       e.Tags,
 			histogram:  e.Histogram,
 			observedAt: e.ObservedAt,
+			restored:   true,
 		}
 		s.probeCounts[e.ProbeName]++
 	}
 }
 
 // snapshot returns a slice of CacheMetric ready to feed into
-// otelmapper.Resolve, plus the per-series observedAt time aligned by
-// index. Callers must not retain references — the maps inside are
-// snapshots and may be reused on the next call.
-func (s *metricStore) snapshot() ([]otelmapper.CacheMetric, []time.Time) {
+// otelmapper.Resolve, plus the time each series is exported with,
+// aligned by index: now for a series its probe still vouches for, the
+// measurement time otherwise. Callers must not retain references — the
+// maps inside are snapshots and may be reused on the next call.
+func (s *metricStore) snapshot(now time.Time) ([]otelmapper.CacheMetric, []time.Time) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	cms := make([]otelmapper.CacheMetric, 0, len(s.entries))
 	times := make([]time.Time, 0, len(s.entries))
 	for _, e := range s.entries {
+		when := e.observedAt
+		if s.vouched(e, now) {
+			when = now
+		}
 		cms = append(cms, otelmapper.CacheMetric{
 			ProbeName:  e.probeName,
 			ProbeType:  e.probeType,
@@ -258,7 +351,7 @@ func (s *metricStore) snapshot() ([]otelmapper.CacheMetric, []time.Time) {
 			Tags:       e.tags,
 			Histogram:  e.histogram,
 		})
-		times = append(times, e.observedAt)
+		times = append(times, when)
 	}
 	return cms, times
 }
@@ -273,10 +366,15 @@ func (s *metricStore) size() int {
 
 // flattenTags converts the datapoint's tag list into a map. Later tags
 // with the same key overwrite earlier ones — same precedence as the
-// existing http strategy's MetricCache.
+// existing http strategy's MetricCache. A private tag is routing for the
+// legacy PRTG push (prtg_metric_id and its [name] template) and never
+// becomes an attribute.
 func flattenTags(tagList []tags.Tag) map[string]string {
 	out := make(map[string]string, len(tagList))
 	for _, t := range tagList {
+		if t.Private {
+			continue
+		}
 		out[t.Key] = t.Value
 	}
 	return out

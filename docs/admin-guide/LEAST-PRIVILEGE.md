@@ -54,7 +54,6 @@ RestrictNamespaces=true
 RestrictSUIDSGID=true
 RestrictRealtime=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
 RemoveIPC=true
 UMask=0077
 

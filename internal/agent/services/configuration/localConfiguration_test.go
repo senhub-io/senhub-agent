@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -138,7 +141,39 @@ func TestLocalConfiguration_CustomCertificates(t *testing.T) {
 		t.Fatalf("Failed to start local configuration: %v", err)
 	}
 
-	// Verify configuration was loaded successfully
+	// Asserting the config is non-empty is what let #867 through: the
+	// flags were parsed, ignored, and the agent served the self-signed
+	// pair while the operator had supplied a CA-signed one. What matters
+	// is which paths the written fragment names.
+	fragment, err := os.ReadFile(filepath.Join(tempDir, "strategies.d", "00-http.yaml"))
+	if err != nil {
+		t.Fatalf("reading the generated http fragment: %v", err)
+	}
+	var written struct {
+		HTTP struct {
+			TLS struct {
+				CertFile string `yaml:"cert_file"`
+				KeyFile  string `yaml:"key_file"`
+			} `yaml:"tls"`
+		} `yaml:"http"`
+	}
+	if err := yaml.Unmarshal(fragment, &written); err != nil {
+		t.Fatalf("parsing the generated http fragment: %v", err)
+	}
+	if written.HTTP.TLS.CertFile != certFile || written.HTTP.TLS.KeyFile != keyFile {
+		t.Errorf("the generated fragment names %q / %q, want %q / %q:\n%s",
+			written.HTTP.TLS.CertFile, written.HTTP.TLS.KeyFile, certFile, keyFile, fragment)
+	}
+	if strings.Contains(string(fragment), "agent-cert.pem") {
+		t.Error("the fragment still points at the self-signed certificate although a pair was supplied")
+	}
+
+	// And nothing self-signed is written beside it: files nothing reads
+	// suggest the agent serves them.
+	if _, statErr := os.Stat(filepath.Join(tempDir, "certs", "agent-cert.pem")); statErr == nil {
+		t.Error("a self-signed certificate was generated although the operator supplied one")
+	}
+
 	config := localConfig.GetConfiguration()
 	if len(config.StorageConfig) == 0 {
 		t.Error("Storage configuration should not be empty")

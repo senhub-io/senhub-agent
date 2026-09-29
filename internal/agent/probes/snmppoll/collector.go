@@ -117,11 +117,11 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 			var extra []tags.Tag
 			if m.IndexLabel != "" {
 				extra = append(extra, tags.Tag{Key: m.IndexLabel, Value: index})
-				// Interface metrics: resolve the ifIndex to interface.name so the
+				// Interface metrics: resolve the ifIndex to network.interface.name so the
 				// datapoint joins to its network.interface entity.
 				if m.IndexLabel == "if_index" {
 					if name := ifNames[index]; name != "" {
-						extra = append(extra, tags.Tag{Key: "interface.name", Value: name})
+						extra = append(extra, tags.Tag{Key: "network.interface.name", Value: name})
 					}
 				}
 			}

@@ -591,7 +591,7 @@ define command {
     command_name    check_senhub_https
     command_line    /usr/lib/nagios/plugins/check_http \
                     -H $HOSTADDRESS$ -p 8443 -S \
-                    -u "/api/{agentkey}/nagios/check/cpu_usage" \
+                    -u "/api/{agentkey}/nagios/check/cpu_detailed" \
                     -C 30  # Certificate expiration warning
 }
 ```

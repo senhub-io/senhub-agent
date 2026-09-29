@@ -16,6 +16,10 @@ type (
 	BaseProbe         = itypes.BaseProbe
 )
 
+// ErrCredentialsRejected marks a start error the agent must not retry on
+// its timer; see the internal definition.
+var ErrCredentialsRejected = itypes.ErrCredentialsRejected
+
 // The param helpers read a typed value out of the free-form probe params
 // map decoded from YAML, accepting every encoding the decode path can
 // produce for that type. Use them instead of a bare type assertion:

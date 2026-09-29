@@ -251,3 +251,26 @@ func TestProcessLogMessage_RFC3164_And_RFC5424_Fallback(t *testing.T) {
 		})
 	}
 }
+
+// Without a metric the PRTG sensor for a syslog probe had no channel and
+// stayed Down ("No channel found"). Collect reports the relayed count.
+func TestCollectReportsTheRelayedCount(t *testing.T) {
+	zlog := zerolog.New(os.Stderr)
+	probe := &SyslogProbe{
+		BaseProbe:    &types.BaseProbe{},
+		moduleLogger: logger.NewModuleLogger((*logger.Logger)(&zlog), "probe.syslog.test"),
+	}
+	for i := 0; i < 3; i++ {
+		probe.processLogMessage(map[string]interface{}{
+			"facility": 1, "severity": 6, "priority": 14, "hostname": "h",
+			"client": "10.0.0.1:514", "timestamp": time.Now(), "content": "m", "tag": "app",
+		})
+	}
+	points, err := probe.Collect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 || points[0].Name != "senhub.syslog.records_emitted" || points[0].Value != 3 {
+		t.Fatalf("points = %+v, want one records_emitted at 3", points)
+	}
+}

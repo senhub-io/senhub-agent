@@ -32,15 +32,15 @@ same artifacts:
 
 ```bash
 # GitHub — public, and the one to prefer for a container build
-https://github.com/senhub-io/senhub-agent/releases/download/0.5.4/senhub-agent-linux-amd64.zip
+https://github.com/senhub-io/senhub-agent/releases/download/0.6.0/senhub-agent-linux-amd64.zip
 
 # SenHub release server
-https://eu-west-1.intake.senhub.io/download/0.5.4/senhub-agent-linux-amd64.zip
+https://eu-west-1.intake.senhub.io/download/0.6.0/senhub-agent-linux-amd64.zip
 ```
 
 !!! warning "Release tags carry no `v` prefix"
 
-    The tag is `0.5.4`, not `v0.5.4`. A URL built with the `v` returns
+    The tag is `0.6.0`, not `v0.6.0`. A URL built with the `v` returns
     404, which reads like a missing file rather than a wrong name — this
     is the single most common reason a direct download fails.
 
@@ -70,7 +70,7 @@ signature next to it. Verify before you run it, especially in an
 automated build:
 
 ```bash
-VERSION=0.5.4
+VERSION=0.6.0
 BASE=https://github.com/senhub-io/senhub-agent/releases/download/$VERSION
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip"
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip.minisig"
@@ -136,7 +136,7 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 
 Properties are consumed only on first install; they do not overwrite an existing `agent.yaml`.
 
-The guided install (double-click) asks for the licence file, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address ends with the agent key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it.
+The guided install (double-click) asks for the licence file, the port, the desktop shortcut and whether to open the web console at the end, all on one page. The console address carries the administration key, generated on the machine and kept sealed, so the wizard does not print it: the desktop shortcut and `senhub-agent console` open it, and `senhub-agent console --print` (as administrator) prints it. The administration key is not the agent key given to PRTG, Nagios or a Prometheus scrape, which only reads metrics.
 
 ```bat
 msiexec /i senhub-agent-<version>-amd64.msi /qn ^
@@ -222,7 +222,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.5.5","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.6.0","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
 ![Windows service running](images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
@@ -260,6 +260,8 @@ sudo /opt/senhub/bin/senhub-agent install
 
 This creates and registers a hardened systemd service (`senhub-agent.service`) that runs the agent as a dedicated unprivileged system user (`senhub`, created during install if missing) with all Linux capabilities dropped — the same unit the `.deb`/`.rpm` packages ship. A UUID agent key is generated automatically and saved to the configuration file, and the configuration and log directories are handed to the `senhub` user.
 
+`install` copies the binary to `/usr/local/bin/senhub-agent` and the service runs that copy; the one you extracted is no longer used, and you may delete `/opt/senhub/bin` once the install has succeeded. Every later command that touches the service, the secret store or the binary runs as root and calls the installed binary by its full path, `sudo /usr/local/bin/senhub-agent ...`. On RHEL, AlmaLinux and Rocky Linux, `sudo` leaves `/usr/local/bin` out of its search path, so `sudo senhub-agent status` answers "command not found" there while `sudo /usr/local/bin/senhub-agent status` works.
+
 If a probe needs a privilege the default unit does not grant (for example `snmp_trap` on UDP/162 or ICMP raw sockets), grant the single capability with a unit drop-in — see [Running the agent least-privilege](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/LEAST-PRIVILEGE.md). To keep the previous behavior of running the service as root:
 
 ```bash
@@ -267,7 +269,15 @@ sudo /opt/senhub/bin/senhub-agent install --user root
 ```
 
 !!! note "Upgrading from an earlier version"
-    `install` never touches an existing `senhub-agent.service` unit — it fails with "Init already exists". Existing installs keep running as before. The hardened unit applies only after an explicit `uninstall` followed by `install`; at that point review any probe that relied on root (privileged ports, raw sockets) against the per-probe privilege map in the least-privilege guide, or reinstall with `--user root`.
+    `install` never touches an existing `senhub-agent.service` unit; it fails with "Init already exists", and existing installs keep running as before. To move an existing install to the hardened unit, refresh the unit in place:
+
+    ```bash
+    sudo /usr/local/bin/senhub-agent refresh-unit
+    ```
+
+    `refresh-unit` compares the installed unit with the one embedded in the binary, prints the difference, asks for confirmation (`--yes` skips it), then rewrites `/etc/systemd/system/senhub-agent.service` and reloads systemd. It keeps the `User=` / `Group=` the unit already runs as and its `ExecStart` line while that binary still exists, and creates the service user if it is missing. Restart the service afterwards. Before moving a root install to the `senhub` user, review any probe that relied on root (privileged ports, raw sockets) against the per-probe privilege map in the least-privilege guide.
+
+    Do not use `uninstall` followed by `install` for this: `uninstall` deletes the configuration directory, including the sealed secret store and the agent key. Keep that sequence for a host being re-provisioned from scratch.
 
 To install with HTTPS enabled and a custom certificate hostname:
 
@@ -281,13 +291,13 @@ sudo /opt/senhub/bin/senhub-agent install \
 ### 3. Start the service
 
 ```bash
-sudo /opt/senhub/bin/senhub-agent start
+sudo /usr/local/bin/senhub-agent start
 ```
 
 ### 4. Verify the installation
 
 ```bash
-sudo /opt/senhub/bin/senhub-agent status
+sudo /usr/local/bin/senhub-agent status
 ```
 
 Or check the health endpoint:
@@ -368,19 +378,20 @@ Add additional probes by creating new fragment files under `probes.d/` (e.g. `10
 If you upgraded from a pre-0.2.x agent that used the single-file `agent-config.yaml` layout, the agent keeps loading it transparently — no immediate action required. To move to the multi-file layout cleanly:
 
 ```bash
-sudo senhub-agent config migrate /etc/senhub-agent/agent-config.yaml
+sudo /usr/local/bin/senhub-agent config migrate /etc/senhub-agent/agent-config.yaml
 ```
 
 The command takes a timestamped backup of the original, splits globals into `agent.yaml`, probes into `probes.d/00-host.yaml`, and strategies into per-strategy files under `strategies.d/`. It then verifies the post-split data matches the original (and restores the backup on any mismatch). Comments from the monolithic file are NOT carried into the fragments — they live in the backup for reference. The command is idempotent: running it on an already-multi-file install reports "nothing to do" and exits 0.
 
 ## Service Management Commands
 
-The agent binary provides built-in service management:
+The agent binary provides built-in service management. On Linux, run these as root with the full path of the installed binary (`sudo /usr/local/bin/senhub-agent ...`); on Windows, from an elevated prompt.
 
 | Command | Description |
 |---------|-------------|
 | `senhub-agent install` | Install the system service |
-| `senhub-agent uninstall` | Remove the system service and clean up files |
+| `senhub-agent uninstall` | Remove the system service and delete the configuration directory, including the sealed secret store and the agent key (irreversible) |
+| `senhub-agent refresh-unit` | Linux: bring the installed systemd unit up to date with this binary (`--yes` skips the confirmation) |
 | `senhub-agent start` | Start the service |
 | `senhub-agent stop` | Stop the service |
 | `senhub-agent restart` | Restart the service |
@@ -398,9 +409,9 @@ The agent binary provides built-in service management:
 The `run` command starts the agent interactively in the foreground (not as a service). This is useful for debugging:
 
 ```bash
-senhub-agent run
-senhub-agent run --verbose
-senhub-agent run --filter probe.veeam
+sudo /usr/local/bin/senhub-agent run
+sudo /usr/local/bin/senhub-agent run --verbose
+sudo /usr/local/bin/senhub-agent run --filter probe.veeam
 ```
 
 All logs are printed to the console. Press Ctrl+C to stop.
@@ -412,13 +423,13 @@ Use `--filter` to limit debug output to specific modules (see [CLI Reference](cl
 Check for available updates:
 
 ```bash
-senhub-agent update --list
+sudo /usr/local/bin/senhub-agent update --list
 ```
 
 Install a specific version:
 
 ```bash
-senhub-agent update 0.5.4
+sudo /usr/local/bin/senhub-agent update 0.6.0
 ```
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
@@ -427,10 +438,10 @@ On an MSI-managed Windows install, auto-update applies a new signed MSI rather t
 
 After installing and starting the agent, verify the following:
 
-1. The service is running: `senhub-agent status`
+1. The service is running: `sudo /usr/local/bin/senhub-agent status` (Linux) or `.\senhub-agent.exe status` from an elevated prompt (Windows)
 2. The health endpoint responds: `curl http://localhost:8080/health`
-3. The web console is accessible: open `http://localhost:8080/web/{key}/` in a browser
-4. Probes are collecting metrics: check the probes endpoint `curl http://localhost:8080/api/{key}/info/probes`
+3. The web console is accessible: `sudo /usr/local/bin/senhub-agent console --print` prints its address, `http://localhost:8080/web/{admin-key}/dashboard`, which carries the administration key
+4. Probes are collecting metrics: check the probes endpoint `curl http://localhost:8080/api/{key}/info/probes`, where `{key}` is the agent key (`sudo /usr/local/bin/senhub-agent key show`)
 5. The log file exists and is being written to
 
 ## Next Steps
@@ -465,8 +476,11 @@ This is not recoverable. To move a host to a newer version while keeping its lic
 
 **Linux:**
 ```bash
-sudo /opt/senhub/bin/senhub-agent stop
-sudo /opt/senhub/bin/senhub-agent uninstall
+sudo /usr/local/bin/senhub-agent stop
+sudo /usr/local/bin/senhub-agent uninstall
 ```
 
-The `uninstall` command stops the service, removes the service registration, and cleans up generated files (configuration, certificates, logs).
+The `uninstall` command asks for confirmation (`--yes` skips it), stops the service, removes the service registration, and deletes the whole configuration directory: `agent.yaml`, `probes.d/`, `strategies.d/`, `certs/`, the logs and the sealed secret store, which holds the agent key and every credential the agent sealed.
+
+!!! warning "Uninstall is irreversible"
+    Sealed values cannot be recovered after `uninstall`, and a later `install` generates a new agent key, so PRTG sensors and Nagios checks that carry the old key, and a licence bound to it, stop matching. Use `uninstall` only on a host being re-provisioned. To update the systemd unit of an existing install, use `refresh-unit` instead (see the upgrade note under [Linux Installation](#linux-installation)).

@@ -87,7 +87,7 @@ func TestProbeUpdateKeepsWorkingWhenARequiredSecretIsStored(t *testing.T) {
 		{Key: "password", Kind: spec.KindString, Required: true, Secret: true},
 	}})
 	router, dir := newOutputsTestRouter(t)
-	base := "/api/test-agent-key"
+	base := "/api/" + testAdminKey
 	code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
 		"name": "pg", "type": "pgtest", "params": map[string]interface{}{
 			"host": "db1", "password": "s3cret",
@@ -145,7 +145,7 @@ func TestProbeUpdateGivesTheProbeCheckerTheStoredValues(t *testing.T) {
 	defer func() { ProbeChecker = nil }()
 
 	router, _ := newOutputsTestRouter(t)
-	base := "/api/test-agent-key"
+	base := "/api/" + testAdminKey
 	if code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
 		"name": "pgc", "type": "pgcheck", "params": map[string]interface{}{"host": "db1", "password": "s3cret"},
 	}); code != 201 {
@@ -170,7 +170,7 @@ func TestProbeUpdateKeepsADisabledProbeDisabled(t *testing.T) {
 		{Key: "host", Kind: spec.KindString, Required: true},
 	}})
 	router, dir := newOutputsTestRouter(t)
-	base := "/api/test-agent-key"
+	base := "/api/" + testAdminKey
 	no := false
 	if code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
 		"name": "off", "type": "offtest", "enabled": no, "params": map[string]interface{}{"host": "a"},

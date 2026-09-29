@@ -36,6 +36,11 @@ type Provider interface {
 // distinguish "absent" (a default may apply) from a backend failure.
 var ErrNotFound = fmt.Errorf("secret not found")
 
+// ErrSealNeedsRoot is wrapped by Provider.Set when the backend can read in
+// this context but only seals as root: systemd-creds under a non-root unit
+// reads what systemd decrypted for it, and cannot encrypt with the host key.
+var ErrSealNeedsRoot = fmt.Errorf("this secret backend seals only as root")
+
 // MemoryProvider is an in-memory Provider used by tests and as a transient
 // holder. It never persists to disk. Safe for concurrent use.
 type MemoryProvider struct {

@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dockerapi"
 	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -39,7 +40,6 @@ const ProbeType = "swarm"
 const (
 	defaultInterval = 60 * time.Second
 	defaultTimeout  = 10 * time.Second
-	apiVersion      = "v1.43"
 )
 
 type probeConfig struct {
@@ -61,6 +61,8 @@ type swarmProbe struct {
 
 	entitySrc *entitySource
 	newClient func() *http.Client
+	// api is the Engine API version negotiated with the daemon.
+	api dockerapi.Version
 }
 
 // NewSwarmProbe builds the probe from its YAML config block.
@@ -234,6 +236,33 @@ func (s clusterState) String() string {
 	}
 }
 
+// classifyUnavailable tells a worker from a node outside any swarm after
+// GET /swarm answered 503. The body cannot be trusted for it: the Engine
+// says "This node is not a swarm manager" in both cases, suggesting
+// "docker swarm init" to the node that is in no swarm. GET /info states it
+// (Swarm.LocalNodeState, Swarm.ControlAvailable); the body is the fallback.
+func (p *swarmProbe) classifyUnavailable(body []byte) clusterState {
+	if infoBody, status, err := p.get("/info"); err == nil && status == http.StatusOK {
+		var info struct {
+			Swarm struct {
+				LocalNodeState   string `json:"LocalNodeState"`
+				ControlAvailable bool   `json:"ControlAvailable"`
+			} `json:"Swarm"`
+		}
+		if json.Unmarshal(infoBody, &info) == nil && info.Swarm.LocalNodeState != "" {
+			if info.Swarm.LocalNodeState == "active" && !info.Swarm.ControlAvailable {
+				return stateWorker
+			}
+			return stateNotInSwarm
+		}
+	}
+	msg := strings.ToLower(string(body))
+	if strings.Contains(msg, "worker nodes") {
+		return stateWorker
+	}
+	return stateNotInSwarm
+}
+
 // fetchSwarm reads GET /swarm and classifies what this node can see.
 //
 // The Engine answers 503 both for "not a manager" and for "not in a swarm",
@@ -248,10 +277,7 @@ func (p *swarmProbe) fetchSwarm() (swarmInfo, clusterState, error) {
 		return info, stateUnreachable, err
 	}
 	if status == http.StatusServiceUnavailable {
-		if strings.Contains(strings.ToLower(string(body)), "not a swarm manager") {
-			return info, stateWorker, nil
-		}
-		return info, stateNotInSwarm, nil
+		return info, p.classifyUnavailable(body), nil
 	}
 	if status != http.StatusOK {
 		return info, stateUnreachable, fmt.Errorf("GET /swarm returned %d", status)
@@ -305,12 +331,14 @@ func (p *swarmProbe) explainOnce(state clusterState, err error) {
 // The status is returned rather than folded into an error because several
 // callers treat 503 as information, not failure.
 func (p *swarmProbe) get(path string) ([]byte, int, error) {
-	url := fmt.Sprintf("http://localhost/%s%s", apiVersion, path)
-	resp, err := p.client.Get(url)
+	resp, err := p.client.Get(p.api.URL(p.client, path))
 	if err != nil {
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusBadRequest {
+		p.api.Forget()
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("reading %s body: %w", path, err)

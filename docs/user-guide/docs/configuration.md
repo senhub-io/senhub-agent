@@ -4,8 +4,8 @@ SenHub Agent uses YAML configuration to define monitoring probes, data storage, 
 
 Two layouts are supported and the agent auto-detects which one you use:
 
-- **Single file** — one `agent.yaml` (or legacy `agent-config.yaml`) with everything, used by the installer.
-- **Multi-file** — `agent.yaml` for global settings plus `probes.d/` and `strategies.d/` directories for fragments (introduced in 0.1.93). Cleaner once you start managing more than a handful of probes or sinks. See [Multi-File Configuration Layout](#multi-file-configuration-layout) below.
+- **Multi-file**: `agent.yaml` for global settings plus `probes.d/` and `strategies.d/` directories for fragments. This is the layout `install`, `config init` and the Windows MSI generate. See [Multi-File Configuration Layout](#multi-file-configuration-layout) below.
+- **Single file** (legacy): one `agent.yaml` or `agent-config.yaml` carrying top-level `probes:` and `storage:` blocks. Existing installs keep working; `senhub-agent config migrate` converts them. The single-file examples on this page show the same settings in one block for readability; in the multi-file layout, probes go under `probes.d/` and outputs under `strategies.d/`.
 
 ## Configuration File Location
 
@@ -17,18 +17,18 @@ The default configuration file is `agent.yaml` at the OS canonical path:
 | **Linux** | `/etc/senhub-agent/agent.yaml` |
 | **macOS** | `/usr/local/etc/senhub-agent/agent.yaml` |
 
-Legacy `agent-config.yaml` files continue to work unchanged. You can override the path at install time:
+Legacy `agent-config.yaml` files continue to work unchanged. You can override the path at install time; an absolute path is used as given, and a relative path resolves next to the binary:
 
 ```bash
-senhub-agent install --config-path /etc/senhub-agent/agent.yaml
+sudo ./senhub-agent install --config-path /etc/senhub-agent/agent.yaml
 ```
 
 ## Configuration Structure Overview
 
-The configuration file has four main sections:
+The configuration has four main sections, shown here in the legacy single-file form:
 
 ```yaml
-config_version: 2
+config_version: 3
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
@@ -57,11 +57,11 @@ and stamps the new version on disk.
 
 | Version | Introduced | Meaning |
 |---|---|---|
-| `1` | 0.1.x | Legacy baseline. |
-| `2` | — | Current baseline: multi-file layout and `${env:}` / `${file:}` substitution. |
-| `3` | 0.5.0 | Secret references: inline plaintext secrets are sealed into the [secret store](secret-store.md) and rewritten as `${secret:...}`. |
+| `1` | 0.1.x | Legacy. |
+| `2` | 0.2.x | Legacy: multi-file layout and `${env:}` / `${file:}` substitution. |
+| `3` | 0.5.0 | Current. Secret references: inline plaintext secrets are sealed into the [secret store](secret-store.md) and rewritten as `${secret:...}`. A new configuration is written at version 3. |
 
-On first boot under version 3, the agent seals any inline plaintext secret
+Versions 1 and 2 are legacy numbers an older configuration may still carry; the agent loads them and migrates them forward. On first boot under version 3, the agent seals any inline plaintext secret
 into the store, replaces it with a `${secret:...}` reference, and stamps the
 file `config_version: 3`. The bump to 3 happens **only when a secret is
 actually sealed** — a secret-free version 2 configuration stays at version 2
@@ -81,9 +81,47 @@ The `agent` section defines the agent identity.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `key` | Yes | Authentication key (UUID format), provided by SenHub support |
+| `key` | Yes | Agent key (UUID format), generated on the machine by `install`, `config init` or the MSI. It identifies the agent and is the key PRTG, Nagios and a Prometheus scrape read with. It must not be empty. It does not open the web console, which answers only the administration key (`admin_key` of the `http` output) |
 | `license` | No | License token for premium probes (see License section) |
 | `global_tags` | No | Key-value tags applied to every datapoint of every probe. A probe's own `custom_tags` win on a key present in both. Keep the set small — every key multiplies the series a backend stores |
+
+## Entities Section
+
+The `entities` section turns on **entity detection**: the agent
+describes what this host is, what runs on it and what it talks to, and
+publishes that as a stream any output may consume.
+
+```yaml
+entities:
+  enabled: true
+  interval: 5m
+  depends_on:
+    enabled: false
+    debounce: 3
+    exclude_cidrs: ["10.50.0.0/16"]
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `enabled` | see below | Runs the detector. Off means nothing is produced and nothing is polled |
+| `interval` | `5m` | Heartbeat: everything is re-described each interval, and the interval travels with each event as the consumer's staleness hint |
+| `depends_on.enabled` | `false` | Also map this host's outbound dependencies. Off by default because which peers a host talks to can be sensitive |
+| `depends_on.debounce` | `3` | How many consecutive scrapes a peer must persist before it counts as a dependency rather than a passing connection. The delay before one appears is `debounce × interval` |
+| `depends_on.exclude_cidrs` | none | Peer ranges to leave out entirely |
+
+**Why this is not under an output.** What a host *is* does not depend on
+where the description is shipped. The detector feeds a channel that
+several outputs can read at once, so the decision to describe the host
+is made once, here, rather than inherited from one output's settings.
+
+**The default of `enabled`.** Absent this section, the agent falls back
+to whatever an OTLP output declares under `signals.entities`, which is
+where this setting used to live — so an existing install keeps behaving
+exactly as it did. An agent with neither produces nothing.
+
+**It has a cost**, which is why it is not on for everyone: every source
+is polled each interval, and the dependency scanner reads the host's
+sockets. An agent that does not want it pays none of it.
 
 ## Probes Section
 
@@ -111,7 +149,7 @@ probes:
     enabled: false
     params:
       host: 127.0.0.1
-      user: monitor
+      username: monitor
 ```
 
 Deleting the entry works too, but it takes the credentials, intervals and tags
@@ -261,11 +299,11 @@ storage:
       tls:
         enabled: true
         min_tls_version: "1.2"
-        cert_file: "/opt/senhub/certs/agent-cert.pem"
-        key_file: "/opt/senhub/certs/agent-key.pem"
+        cert_file: "/etc/senhub-agent/certs/agent-cert.pem"
+        key_file: "/etc/senhub-agent/certs/agent-key.pem"
 ```
 
-If you installed with `--enable-https`, the agent generated self-signed certificates automatically in the `certs/` directory. You can replace them with your own certificates.
+If you installed with `--enable-https`, the agent generated self-signed certificates automatically in the `certs/` directory next to `agent.yaml` (`/etc/senhub-agent/certs/` on Linux, `%ProgramData%\SenHub\certs\` on Windows). You can replace them with your own certificates.
 
 | TLS Parameter | Default | Description |
 |---------------|---------|-------------|
@@ -314,7 +352,7 @@ cache:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `retention_minutes` | `5` | Number of minutes to keep metrics in cache |
+| `retention_minutes` | `5` | Number of minutes a value stays served by the pull outputs (PRTG, Nagios, Prometheus, Web UI) after its probe last produced it. A probe that runs less often keeps its last value until its next run is due, whatever this setting. |
 
 Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the retention period longer than the longest polling interval of your monitoring system.
 
@@ -325,7 +363,7 @@ Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the ret
 The simplest configuration with system monitoring probes:
 
 ```yaml
-config_version: 2
+config_version: 3
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
@@ -347,7 +385,7 @@ probes:
 A complete system monitoring setup with all free-tier probes:
 
 ```yaml
-config_version: 2
+config_version: 3
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
@@ -388,7 +426,7 @@ probes:
 A production setup monitoring Citrix and NetScaler infrastructure:
 
 ```yaml
-config_version: 2
+config_version: 3
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
@@ -431,13 +469,13 @@ probes:
   - name: "Citrix Production"
     type: citrix
     params:
-      base_url: "https://director.company.com"
-      interval: 120
-      auth:
-        username: "DOMAIN\\svc-monitoring"
-        password: "SecurePassword123"
-      tls:
+      director:
+        url: "https://director.company.com"
+        auth:
+          username: "DOMAIN\\svc-monitoring"
+          password: "${secret:citrix-production.password}"
         verify_ssl: true
+      interval: 120
       timeout: 30
     custom_tags:
       environment: "production"
@@ -448,7 +486,7 @@ probes:
     params:
       base_url: "https://netscaler.company.com"
       username: "monitoring-user"
-      password: "SecurePassword123"
+      password: "${secret:netscaler-lb.password}"
       interval: 60
     custom_tags:
       environment: "production"
@@ -456,12 +494,11 @@ probes:
   - name: "Hardware iDRAC"
     type: redfish
     params:
-      base_url: "https://idrac-server01.company.com"
+      endpoint: "https://idrac-server01.company.com"
       username: "monitoring"
-      password: "SecurePassword123"
+      password: "${secret:hardware-idrac.password}"
       interval: 300
-      tls:
-        verify_ssl: false
+      verify_ssl: false
 ```
 
 ### Web Application Monitoring Configuration
@@ -469,7 +506,7 @@ probes:
 Monitoring web application availability and load times:
 
 ```yaml
-config_version: 2
+config_version: 3
 
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
@@ -482,19 +519,19 @@ probes:
     params:
       url: "https://www.company.com"
       interval: 30
-      timeout: 10
 
   - name: "Website Load Time"
     type: load_webapp
     params:
       url: "https://www.company.com"
       interval: 60
-      timeout: 30
+      timeout: "30s"
 
-  - name: "Gateway Paris"
+  # One instance per host. The gateway is read from the routing table,
+  # so the probe takes no parameter beyond the common interval.
+  - name: "Gateway"
     type: ping_gateway
     params:
-      target: "192.168.1.1"
       interval: 30
 ```
 
@@ -531,19 +568,19 @@ The license is kept in a dedicated file, `license.jwt`, next to `agent.yaml`:
 
 Keeping it in its own file makes it easy to hand over and avoids pasting a long
 token into your YAML. The token is stored in clear text there by design (it is
-bound to your agent key and grants nothing on its own), so it is not sealed.
+signed, bound to your organisation or to one agent key, and grants nothing on
+its own), so it is not sealed.
 
 > An existing install that still has the token inline under `agent:` `license:`
 > in `agent.yaml` keeps working, and is moved to `license.jwt` automatically on
 > the next start.
 
-### License Formats
+### License Format
 
-SenHub supports two license formats, both auto-detected:
-
-- **Compact key** (recommended): a short 40-character key bound to your agent
-  key, e.g. `SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY`.
-- **JWT token**: a longer token (~700 characters) starting with `eyJ`.
+A licence is a signed JWT, a token of about 700 characters starting with
+`eyJ`. The short `SH-...` keys of versions before 0.3.0 are no longer
+accepted; the agent says so when it meets one, and support re-issues it
+as a JWT.
 
 ### Activating a License
 
@@ -557,12 +594,15 @@ sudo cp license.jwt /etc/senhub-agent/license.jwt
 sudo systemctl restart senhub-agent
 ```
 
-**Option B — CLI.** Activate with the token; this validates it, verifies the
-agent-key binding, and writes `license.jwt` for you:
+**Option B — CLI.** Activate with the token; this validates it, verifies that it
+is issued for this agent (or for your organisation), and writes `license.jwt` for you:
 
 ```bash
-senhub-agent license activate SH-040GMS-000100-02S3S2-HC3HMV-7RBZ4Y-PY
+sudo /usr/local/bin/senhub-agent license activate - < license.jwt
 ```
+
+Read from standard input, the token stays out of the process list and the
+shell history; it is also accepted as the argument.
 
 Either way, **the license takes effect after restarting the agent** — a license
 change is not picked up while the agent is running.
@@ -572,7 +612,7 @@ change is not picked up while the agent is running.
 You can check the license status at any time:
 
 ```bash
-senhub-agent license show
+sudo /usr/local/bin/senhub-agent license show
 ```
 
 Or via the API:
@@ -612,9 +652,10 @@ When a license expires, there is a 7-day grace period during which premium probe
 ### Other License Commands
 
 ```bash
-senhub-agent license show                # Show current license details
-senhub-agent license remove              # Remove license (reverts to free tier)
-senhub-agent license remove --force      # Remove without confirmation prompt
+sudo /usr/local/bin/senhub-agent license show            # Show current license details
+sudo /usr/local/bin/senhub-agent license key             # Print the agent key a licence is bound to
+sudo /usr/local/bin/senhub-agent license remove          # Remove license (reverts to free tier)
+sudo /usr/local/bin/senhub-agent license remove --force  # Remove without confirmation prompt
 ```
 
 ## Auto-Update
@@ -635,14 +676,15 @@ auto_update:
 | `url` | SenHub releases | Update server URL. The **base** the agent appends to — a value carrying `/releases` or `/download` makes every derived URL double it |
 | `version` | `latest` | Target the periodic updater tracks. `latest` resolves the newest stable; an explicit version pins to it |
 
-Even with `enabled: false`, the agent checks for new versions at startup and logs a message if an update is available. Use `senhub-agent update --list` to see available versions and `senhub-agent update <version>` to install manually.
+Even with `enabled: false`, the agent checks for new versions at startup and logs a message if an update is available. Use `sudo /usr/local/bin/senhub-agent update --list` to see available versions and `sudo /usr/local/bin/senhub-agent update <version>` to install manually.
 
 ## Validating Configuration
 
 Use the built-in configuration checker before deploying changes:
 
 ```bash
-senhub-agent config check agent-config.yaml
+sudo /usr/local/bin/senhub-agent config check
+sudo /usr/local/bin/senhub-agent config check /etc/senhub-agent/agent.yaml
 ```
 
 This validates:
@@ -654,9 +696,9 @@ This validates:
 
 Example output:
 ```
-Checking configuration: C:\SenHub\agent-config.yaml
+Checking configuration: /etc/senhub-agent/agent.yaml
 
-  [OK]   config_version: 2
+  [OK]   config_version: 3
   [OK]   agent.key: 550e8400-e29b-41d4-a716-446655440000
   [OK]   agent.license: tier=pro, expires=2031-04-14
   [OK]   License binding verified
@@ -669,7 +711,7 @@ Configuration is valid.
 
 ## Multi-File Configuration Layout
 
-Starting from version 0.1.93, the configuration can be split across multiple files. This is optional: an existing monolithic `agent-config.yaml` continues to work unchanged.
+The multi-file layout is what `install`, `config init` and the Windows MSI generate. An existing monolithic `agent-config.yaml` continues to work unchanged, and `senhub-agent config migrate` converts it.
 
 ### Per-OS default paths
 
@@ -677,12 +719,11 @@ The agent looks for the multi-file layout in the **same directory as `agent.yaml
 
 | OS | `agent.yaml` | `probes.d/` | `strategies.d/` |
 |---|---|---|---|
-| **Linux (systemd)** | `/etc/senhub-agent/agent.yaml` | `/etc/senhub-agent/probes.d/` | `/etc/senhub-agent/strategies.d/` |
-| **Linux (tarball)** | `/opt/senhub/bin/agent.yaml` | `/opt/senhub/bin/probes.d/` | `/opt/senhub/bin/strategies.d/` |
+| **Linux** | `/etc/senhub-agent/agent.yaml` | `/etc/senhub-agent/probes.d/` | `/etc/senhub-agent/strategies.d/` |
 | **Windows (MSI)** | `%ProgramData%\SenHub\agent.yaml` | `%ProgramData%\SenHub\probes.d\` | `%ProgramData%\SenHub\strategies.d\` |
 | **macOS** | `/usr/local/etc/senhub-agent/agent.yaml` | `/usr/local/etc/senhub-agent/probes.d/` | `/usr/local/etc/senhub-agent/strategies.d/` |
 
-Override any of these by passing `--config-path` to the agent — the directories `probes.d/` and `strategies.d/` are always resolved next to whichever `agent.yaml` is loaded.
+Override any of these by passing `--config-path` to the agent. An absolute path is used as given; a relative path resolves next to the binary. The directories `probes.d/` and `strategies.d/` are always resolved next to whichever `agent.yaml` is loaded.
 
 ### Layout
 
@@ -703,11 +744,12 @@ Override any of these by passing `--config-path` to the agent — the directorie
 - Files matching `.*` (dotfiles) or `*.disabled` are **skipped**. Disable a fragment by renaming it: `mv 20-citrix.yaml 20-citrix.yaml.disabled`.
 - An **empty** `probes.d/` or `strategies.d/` directory is valid (zero entries, no error).
 - Each file in `strategies.d/` has **exactly one** top-level key, which is the strategy name. Duplicate strategy across files: later file wins, a WARN log surfaces the override.
+- Only files ending in `.yaml` or `.yml` are read. A copy taken before an edit (`otlp.yaml.bak`, `otlp.yaml.20260908`) is not loaded, and the agent names the files it left out at start, so a copy is never mistaken for a live fragment. Rename a file to `*.disabled` to set it aside on purpose.
 
 ### `agent.yaml` example (global only)
 
 ```yaml
-config_version: 2
+config_version: 3
 agent:
   key: "550e8400-e29b-41d4-a716-446655440000"
 cache:
@@ -783,13 +825,13 @@ A missing required reference (file not found, no default) **aborts agent boot** 
 The `agent config show` command prints the final, merged configuration as YAML with map keys sorted alphabetically:
 
 ```bash
-senhub-agent config show              # default: --redact
-senhub-agent config show --redact     # secrets masked with ***
-senhub-agent config show --resolved   # references substituted, secrets in cleartext
-senhub-agent config show --raw        # references preserved
+sudo /usr/local/bin/senhub-agent config show              # default: --redact
+sudo /usr/local/bin/senhub-agent config show --redact     # secrets masked with ***
+sudo /usr/local/bin/senhub-agent config show --resolved   # references substituted, secrets in cleartext
+sudo /usr/local/bin/senhub-agent config show --raw        # references preserved
 ```
 
-- `--redact` (default): resolved configuration, but with values that came from `${file:..}` and any value whose YAML key matches `(?i)(key|token|password|secret)` masked with `***`. Safe to copy into a support ticket or commit to source control.
+- `--redact` (default): resolved configuration, but with values that came from `${file:..}` or `${secret:..}`, and any value whose YAML key matches `(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer|license|jwt)`, masked with `***`. Safe to copy into a support ticket or commit to source control.
 - `--resolved`: the same configuration the agent boots with — `${env:..}` / `${file:..}` / `${secret:..}` resolved against the current environment, filesystem and secret store, secrets in cleartext. Ask for it explicitly.
 - `--raw`: the merged configuration BEFORE substitution. Useful for auditing the layout (which files contributed which entries) before comparing against the resolved output.
 

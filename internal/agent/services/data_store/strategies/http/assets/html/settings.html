@@ -36,7 +36,7 @@
         <div class="page-h">
             <div>
                 <h1>Settings</h1>
-                <p class="sub">Where this console listens, and which license unlocks the Pro probes.</p>
+                <p class="sub">The identity of this agent, its license, where this console listens and whether it serves HTTPS.</p>
             </div>
         </div>
 
@@ -44,34 +44,33 @@
 
         <div class="grid g2">
             <div class="card">
-                <div class="card-h"><h2>Connection</h2><span class="pill acc">HTTP output</span></div>
-                <p class="lead">These are the settings of the HTTP output: the port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there. <a href="/web/{{.AgentKey}}/outputs/http">Endpoints, TLS and the sensor URLs are there</a>.</p>
+                <div class="card-h"><h2>Identity</h2></div>
+                <p class="lead">The three identifiers of this agent, and what each one is for.</p>
                 <div class="stack">
                     <div class="field">
-                        <label class="lbl" for="port">HTTP port</label>
-                        <input class="in" type="number" id="port" min="1" max="65535" />
+                        <span class="lbl">Agent key</span>
+                        <div class="agentkey-box" id="agentkey">{{.ReadKey}}</div>
+                        <div class="hint">Generated on this machine, not entered by you. PRTG, Nagios and Prometheus read the agent with it, and a license is bound to it: give it to Sensor Factory when ordering one. <button class="btn sm" id="copy-key" type="button">Copy</button> <span class="xs hide" id="copied" style="color:var(--ok)">copied</span></div>
                     </div>
                     <div class="field">
-                        <label class="lbl" for="bind">Bind address</label>
-                        <input class="in" type="text" id="bind" />
-                        <div class="hint">127.0.0.1 for local only, 0.0.0.0 to accept connections from other machines (use TLS when doing so).</div>
+                        <span class="lbl">Instance ID</span>
+                        <div class="agentkey-box" id="instance-id">...</div>
+                        <div class="hint">The <code>service.instance.id</code> this agent's telemetry and topology entity carry, derived from the agent key. Not a credential: use it to find this agent in a metrics store or a topology graph. <button class="btn sm" id="copy-iid" type="button">Copy</button> <span class="xs hide" id="copied-iid" style="color:var(--ok)">copied</span></div>
                     </div>
-                </div>
-                <div class="actions">
-                    <button class="btn primary" id="save-conn" type="button">Save connection settings</button>
+                    <div class="field">
+                        <span class="lbl">Administration key</span>
+                        <div class="agentkey-box" id="adminkey" data-hidden="1">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div>
+                        <div class="hint">Opens this console and the configuration API, and changes the agent. Give it to nobody who only needs to read: they need the agent key. <code>senhub-agent console --print</code> gives the console address from the machine. <button class="btn sm" id="reveal-admin" type="button">Reveal</button> <button class="btn sm" id="copy-admin" type="button">Copy</button> <span class="xs hide" id="copied-admin" style="color:var(--ok)">copied</span></div>
+                    </div>
                 </div>
             </div>
 
             <div class="card">
                 <div class="card-h"><h2>License</h2><span id="lic-status"></span></div>
                 <div class="stack">
-                    <div class="field">
-                        <span class="lbl">Agent key</span>
-                        <div class="agentkey-box" id="agentkey">{{.AgentKey}}</div>
-                        <div class="hint">This key identifies the agent. It is generated on this machine, not entered by you. A license is bound to it: give it to Sensor Factory when ordering one, and the license you receive is checked against it here. <button class="btn sm" id="copy-key" type="button">Copy</button> <span class="xs hide" id="copied" style="color:var(--ok)">copied</span></div>
-                    </div>
                     <dl class="kv left">
                         <dt>Tier</dt><dd class="v" id="lic-tier">...</dd>
+                        <dt>Scope</dt><dd id="lic-scope">...</dd>
                         <dt>Expires</dt><dd class="v" id="lic-exp">...</dd>
                         <dt>Pro probe types</dt><dd id="lic-locked" class="locked">...</dd>
                     </dl>
@@ -86,12 +85,48 @@
                             <span class="small muted" id="license-file-name">No file chosen</span>
                         </div>
                         <input type="file" id="license-file" accept=".jwt,.txt,.lic,text/plain" hidden />
-                        <div class="hint">Choose the license file you received, or paste the token below. It is checked against this agent key before it is saved. Activating a license places the Pro and Enterprise probes under the <a href="https://agent.senhub.io/docs/latest/license/" target="_blank" rel="noreferrer">SenHub Agent license agreement</a>; the core stays open source either way.</div>
+                        <div class="hint">Choose the license file you received, or paste the token below. It is checked against the agent key before it is saved. Activating a license places the Pro and Enterprise probes under the <a href="https://agent.senhub.io/docs/latest/license/" target="_blank" rel="noreferrer">SenHub Agent license agreement</a>; the core stays open source either way.</div>
                         <textarea class="ta" id="license" placeholder="...or paste the license token (JWT)"></textarea>
                     </div>
                 </div>
                 <div class="actions">
                     <button class="btn primary" id="save-lic" type="button">Activate license</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid g2 mt4">
+            <div class="card">
+                <div class="card-h"><h2>Connection</h2><span class="pill acc">HTTP output</span></div>
+                <p class="lead">The port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there.</p>
+                <div class="stack">
+                    <div class="field">
+                        <label class="lbl" for="port">HTTP port</label>
+                        <input class="in" type="number" id="port" min="1" max="65535" />
+                    </div>
+                    <div class="field">
+                        <label class="lbl" for="bind">Bind address</label>
+                        <input class="in" type="text" id="bind" />
+                        <div class="hint">127.0.0.1 for local only, 0.0.0.0 to accept connections from other machines (use HTTPS when doing so).</div>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button class="btn primary" id="save-conn" type="button">Save connection settings</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-h"><h2>HTTPS</h2><span id="tls-state"></span></div>
+                <p class="lead">Whether this console and the endpoints are served over TLS, with which certificate.</p>
+                <dl class="kv left">
+                    <dt>Certificate file</dt><dd class="v" id="tls-cert">-</dd>
+                    <dt>Key file</dt><dd class="v" id="tls-key">-</dd>
+                    <dt>Certificate</dt><dd id="tls-subject">-</dd>
+                    <dt>Expires</dt><dd id="tls-exp">-</dd>
+                    <dt>Minimum TLS</dt><dd class="v" id="tls-min">-</dd>
+                </dl>
+                <div class="actions">
+                    <a class="btn" href="/web/{{.AgentKey}}/outputs/http#sec-tls">Configure HTTPS</a>
                 </div>
             </div>
         </div>
@@ -119,15 +154,29 @@
                 const d = await r.json();
                 $('port').value = d.port;
                 $('bind').value = d.bind_address;
+                $('instance-id').textContent = d.instance_id || '-';
+                const t = d.tls || {};
+                $('tls-state').innerHTML = t.enabled ? pill('ok', 'enabled') : pill('off', 'disabled');
+                $('tls-cert').textContent = t.cert_file || '-';
+                $('tls-key').textContent = t.key_file || '-';
+                $('tls-min').textContent = t.min_version || '-';
+                if (t.cert_error) {
+                    $('tls-subject').innerHTML = pill('err', 'unreadable') + ' <span class="small muted">' + esc(t.cert_error) + '</span>';
+                } else {
+                    $('tls-subject').textContent = t.subject || '-';
+                }
+                $('tls-exp').innerHTML = t.not_after ? (t.expired ? pill('err', 'expired') + ' ' : '') + esc(t.not_after) : '-';
                 const lic = d.license || {};
                 if (!lic.configured) {
                     $('lic-status').innerHTML = pill('off', 'Free tier');
                     $('lic-tier').textContent = 'Free';
+                    $('lic-scope').textContent = '-';
                     $('lic-exp').textContent = '-';
                 } else {
                     const bound = lic.bound ? pill('ok', 'bound') : pill('err', 'not bound to this key');
                     $('lic-status').innerHTML = lic.expired ? pill('err', 'expired') : bound;
                     $('lic-tier').textContent = lic.tier || '-';
+                    $('lic-scope').textContent = lic.scope || '-';
                     $('lic-exp').textContent = lic.expires_at || '-';
                 }
             } catch (e) {
@@ -215,12 +264,39 @@
             document.body.removeChild(ta);
             return ok;
         }
-        $('copy-key').addEventListener('click', async () => {
+        async function copyText(text, flagId) {
             let ok = false;
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                ok = await navigator.clipboard.writeText(window.AGENT_KEY).then(() => true, () => copyFallback(window.AGENT_KEY));
+                ok = await navigator.clipboard.writeText(text).then(() => true, () => copyFallback(text));
             } else {
-                ok = copyFallback(window.AGENT_KEY);
+                ok = copyFallback(text);
+            }
+            const c = $(flagId);
+            if (c) { c.textContent = ok ? 'copied' : 'copy failed'; c.classList.remove('hide'); setTimeout(() => c.classList.add('hide'), 1500); }
+        }
+        $('copy-iid').addEventListener('click', () => copyText($('instance-id').textContent.trim(), 'copied-iid'));
+        $('copy-admin').addEventListener('click', () => copyText(window.AGENT_KEY, 'copied-admin'));
+        $('reveal-admin').addEventListener('click', () => {
+            const box = $('adminkey');
+            if (box.dataset.hidden === '1') {
+                box.textContent = window.AGENT_KEY;
+                box.dataset.hidden = '0';
+                $('reveal-admin').textContent = 'Hide';
+            } else {
+                box.innerHTML = '&bull;'.repeat(16);
+                box.dataset.hidden = '1';
+                $('reveal-admin').textContent = 'Reveal';
+            }
+        });
+        $('copy-key').addEventListener('click', async () => {
+            // The agent key shown above, not window.AGENT_KEY: the console
+            // runs on the administration key, which no licence is bound to.
+            const agentKey = $('agentkey').textContent.trim();
+            let ok = false;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                ok = await navigator.clipboard.writeText(agentKey).then(() => true, () => copyFallback(agentKey));
+            } else {
+                ok = copyFallback(agentKey);
             }
             const c = $('copied');
             c.textContent = ok ? 'copied' : 'copy failed';

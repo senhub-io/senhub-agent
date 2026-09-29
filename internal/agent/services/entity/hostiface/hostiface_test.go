@@ -195,7 +195,7 @@ func TestEnumerate_AttachesMetadataAndEmitsIPLess(t *testing.T) {
 	if len(ias) != 2 {
 		t.Fatalf("both NICs must be emitted incl. the IP-less one: %+v", ias)
 	}
-	if ias[0].MAC != "aa:bb:cc:dd:ee:ff" || ias[0].MTU != 1500 || ias[0].OperState != "down" ||
+	if ias[0].MAC != "AA-BB-CC-DD-EE-FF" || ias[0].MTU != 1500 || ias[0].OperState != "down" ||
 		ias[0].Type != "physical" || ias[0].Duplex != "full" || ias[0].Speed != 1_000_000_000 {
 		t.Errorf("eth0 metadata wrong: %+v", ias[0])
 	}

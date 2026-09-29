@@ -1,0 +1,48 @@
+name: Verify a release is finished
+
+# An incomplete release looks exactly like a finished one on GitHub: a
+# missing installer, an unsigned executable and a signature that no
+# longer matches its archive all render as a normal page. Twice the
+# Windows signing round ended without its files reaching the release,
+# and both times it was found by hand, days later, because somebody
+# thought to look.
+#
+# This runs the same three checks that hand check ran. Dispatch it after
+# a signing round, or on any tag you want to be sure about.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify (for example 0.5.6)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the verifiers
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq minisign osslsigncode unzip
+
+      - name: Verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./packaging/release/verify-release.sh "${{ inputs.tag }}" | tee verify.txt
+
+      - name: Put the result in the summary
+        if: always()
+        run: |
+          {
+            echo "### Release ${{ inputs.tag }}"
+            echo '```'
+            cat verify.txt 2>/dev/null || echo "the verification produced no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

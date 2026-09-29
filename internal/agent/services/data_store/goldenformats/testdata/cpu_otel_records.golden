@@ -4,6 +4,16 @@
       "probe_name": "cpu",
       "probe_type": "cpu"
     },
+    "metric": "cpu_context_switches",
+    "otel_name": "senhub.system.cpu.context_switches",
+    "type": "gauge",
+    "unit": "1/s"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
     "metric": "cpu_dpc_rate",
     "otel_name": "senhub.system.cpu.dpcs",
     "type": "gauge",
@@ -71,6 +81,16 @@
   },
   {
     "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_count",
+    "otel_name": "system.cpu.logical.count",
+    "type": "gauge",
+    "unit": "{cpu}"
+  },
+  {
+    "attributes": {
       "cpu.logical_number": "0",
       "cpu.mode": "interrupt",
       "probe_name": "cpu",
@@ -124,6 +144,28 @@
       "probe_type": "cpu"
     },
     "metric": "cpu_core_user",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "guest",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_guest",
+    "otel_name": "system.cpu.utilization",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "cpu.mode": "guest_nice",
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "cpu_guest_nice",
     "otel_name": "system.cpu.utilization",
     "type": "gauge",
     "unit": "1"
@@ -225,6 +267,17 @@
     "otel_name": "system.cpu.utilization",
     "type": "gauge",
     "unit": "1"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu",
+      "system.processes.status": "running"
+    },
+    "metric": "cpu_processes_running",
+    "otel_name": "system.processes.count",
+    "type": "gauge",
+    "unit": "{process}"
   },
   {
     "attributes": {

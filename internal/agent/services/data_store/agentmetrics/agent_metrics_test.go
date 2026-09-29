@@ -355,3 +355,27 @@ func TestBuildAgentRecords_ExportErrorsEmittedPerSignal(t *testing.T) {
 		t.Errorf("value=%v, want 2", got[0].Value)
 	}
 }
+
+// The receiver's coverage counters are the agent's own metrics. Carrying
+// the sender as "service.name" overrode the resource's
+// service.name=senhub-agent in the backend, and the counters read as the
+// sending service's.
+func TestOTLPReceiverCoverageDoesNotClaimTheSendersServiceName(t *testing.T) {
+	agentstate.RecordOTLPReceiverCoverage("metrics", "remote", "recette-otlp-in", 3, false)
+	var seen bool
+	for _, r := range BuildAgentRecords(AgentMetricsSnapshot{}) {
+		if !strings.HasPrefix(r.Name, "senhub.agent.otlp_receiver.received") {
+			continue
+		}
+		seen = true
+		if _, ok := r.Attributes["service.name"]; ok {
+			t.Errorf("%s carries service.name, a resource key", r.Name)
+		}
+		if r.Attributes[attrSenderService] == "" {
+			t.Errorf("%s lost the sending service", r.Name)
+		}
+	}
+	if !seen {
+		t.Fatal("no coverage counter built")
+	}
+}

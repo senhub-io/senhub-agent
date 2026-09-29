@@ -71,38 +71,23 @@ func TestLogProducersCarryConfiguredRouting(t *testing.T) {
 }
 
 // TestSyslogLogRoutingIsNotItsMetricRouting is the regression this whole
-// contract exists to prevent.
-//
-// The syslog probe sends its METRICS to the legacy event sink, so it
-// overrides GetTargetStrategies to ["event"]. Reusing that list for its
-// log records — the one-line wiring this looked like — would make
-// recordRoutesTo(["event"], "otlp") false and cut syslog logs off the
-// OTLP rail entirely. Silent data loss on a rail customers use.
+// contract exists to prevent: a log record that borrowed the probe's
+// metric routing would reach only the outputs that list names, and cut
+// syslog logs off the OTLP rail when that list lacked it. Silent data
+// loss on a rail customers use.
 func TestSyslogLogRoutingIsNotItsMetricRouting(t *testing.T) {
 	probe := constructProbe(t, "syslog", configuration.ProbeConfig{})
 
-	router, ok := probe.(interface{ GetTargetStrategies() []string })
-	if !ok {
-		t.Fatal("syslog probe has no metric router")
-	}
-	metricTargets := router.GetTargetStrategies()
-	if len(metricTargets) == 0 {
-		t.Skip("syslog no longer overrides its metric routing; the trap this guards is gone")
-	}
-
+	// syslog once routed its metrics to the event output only, and a log
+	// record that borrowed that list never reached OTLP. It now uses the
+	// default metric routing, but its log records must still follow
+	// log_strategies alone: unconfigured, they broadcast.
 	logTargets := probe.(interface{ LogTargets() []string }).LogTargets()
-	_ = logTargets
 	if len(logTargets) != 0 {
 		t.Fatalf("unconfigured syslog log routing = %v, want none", logTargets)
 	}
-
-	// With no configured routing the record broadcasts, so it reaches
-	// the OTLP subscriber. Borrowing the metric list would not.
 	if !recordReaches(logTargets, "otlp") {
 		t.Error("unconfigured syslog logs do not reach the OTLP rail")
-	}
-	if recordReaches(metricTargets, "otlp") {
-		t.Errorf("metric targets %v happen to include otlp, so this test proves nothing — pick another probe", metricTargets)
 	}
 }
 

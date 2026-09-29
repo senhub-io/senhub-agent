@@ -60,7 +60,13 @@ func newOutputsTestRouter(t *testing.T) (*mux.Router, string) {
 
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"})
 	cfg := pathedConfig{AgentConfiguration: configuration.NewAgentConfiguration("test-agent-key", "", baseLogger), path: main}
-	strategy, ok := NewHTTPSyncStrategy(cfg, map[string]interface{}{"endpoints": []interface{}{"web", "prtg"}}, baseLogger).(*HTTPSyncStrategy)
+	// The console and the configuration API are the administration
+	// surface: they are served only when an administration key exists,
+	// and they answer that key alone.
+	strategy, ok := NewHTTPSyncStrategy(cfg, map[string]interface{}{
+		"endpoints": []interface{}{"web", "prtg"},
+		"admin_key": testAdminKey,
+	}, baseLogger).(*HTTPSyncStrategy)
 	if !ok {
 		t.Fatal("strategy cast")
 	}
@@ -86,7 +92,7 @@ func doJSON(t *testing.T, router *mux.Router, method, url string, body interface
 
 func TestOutputsAPI_CatalogListWriteAndState(t *testing.T) {
 	router, dir := newOutputsTestRouter(t)
-	base := "/api/test-agent-key"
+	base := "/api/" + testAdminKey
 
 	code, cat := doJSON(t, router, "GET", base+"/catalog/outputs", nil)
 	if code != 200 {
@@ -164,7 +170,7 @@ func TestOutputsAPI_CatalogListWriteAndState(t *testing.T) {
 
 func TestOutputsAPI_ValidateAndTest(t *testing.T) {
 	router, _ := newOutputsTestRouter(t)
-	base := "/api/test-agent-key"
+	base := "/api/" + testAdminKey
 
 	code, resp := doJSON(t, router, "POST", base+"/config/outputs/validate", map[string]interface{}{"type": "otlp", "params": map[string]interface{}{}})
 	if code != 200 || resp["valid"] != false || resp["field"] != "endpoint" {
@@ -203,7 +209,7 @@ func TestInfoEvents(t *testing.T) {
 	router, _ := newOutputsTestRouter(t)
 	agentstate.ResetEventsForTest()
 	agentstate.RecordEvent(agentstate.EventWarn, agentstate.EventKindProbe, "cpu", "collect failed")
-	code, resp := doJSON(t, router, "GET", "/api/test-agent-key/info/events", nil)
+	code, resp := doJSON(t, router, "GET", "/api/"+testAdminKey+"/info/events", nil)
 	if code != 200 || resp["count"] != float64(1) {
 		t.Fatalf("events: %d %v", code, resp)
 	}
@@ -215,17 +221,17 @@ func TestInfoEvents(t *testing.T) {
 
 func TestExplorerRedirectsToTheSensorURLsTab(t *testing.T) {
 	router, _ := newOutputsTestRouter(t)
-	req := httptest.NewRequest("GET", "/web/test-agent-key/explorer", nil)
+	req := httptest.NewRequest("GET", "/web/"+testAdminKey+"/explorer", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/web/test-agent-key/outputs/http#urls" {
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/web/"+testAdminKey+"/outputs/http#urls" {
 		t.Errorf("want a redirect to the Sensor URLs tab, got %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 }
 
 func TestOutputsAPI_CreateDisabledAndListUnreadable(t *testing.T) {
 	router, dir := newOutputsTestRouter(t)
-	base := "/api/test-agent-key"
+	base := "/api/" + testAdminKey
 	code, resp := doJSON(t, router, "POST", base+"/config/outputs", map[string]interface{}{"type": "prtg", "enabled": false, "params": map[string]interface{}{"server_url": "http://prtg"}})
 	if code != 201 || !strings.HasSuffix(resp["path"].(string), "50-prtg.yaml.disabled") {
 		t.Fatalf("a disabled create must write the .disabled file directly: %d %v", code, resp)
@@ -254,7 +260,7 @@ func TestOutputsAPI_CreateDisabledAndListUnreadable(t *testing.T) {
 
 func TestOutputsAPI_PartialUpdateKeepsADisabledOutputDisabled(t *testing.T) {
 	router, _ := newOutputsTestRouter(t)
-	base := "/api/test-agent-key"
+	base := "/api/" + testAdminKey
 	if code, resp := doJSON(t, router, "POST", base+"/config/outputs", map[string]interface{}{
 		"type": "prtg", "enabled": false, "params": map[string]interface{}{"server_url": "http://prtg"},
 	}); code != 201 {
@@ -280,3 +286,8 @@ func TestOutputsAPI_PartialUpdateKeepsADisabledOutputDisabled(t *testing.T) {
 		}
 	}
 }
+
+// testAdminKey is the administration key the console and the
+// configuration API answer to in these tests. It is deliberately not
+// the agent key: telling the two apart is the contract under test.
+const testAdminKey = "test-admin-key"

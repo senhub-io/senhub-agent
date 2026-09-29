@@ -149,7 +149,7 @@ func NewHTTPSyncStrategy(
 	strategy.formatConverter = NewFormatConverter(strategy.transformerRegistry, moduleLogger, strategy.cache)
 
 	// Initialize authentication manager
-	strategy.authManager = NewAuthenticationManager(strategy.agentKey, agentConfig, moduleLogger)
+	strategy.authManager = NewAuthenticationManager(strategy.agentKey, adminKeyFrom(params), agentConfig, moduleLogger)
 
 	// Initialize web interface handler
 	strategy.webInterface = NewWebInterface(strategy, moduleLogger)
@@ -212,6 +212,12 @@ func NewHTTPSyncStrategy(
 }
 
 // GetStrategyName returns the strategy identifier
+// NoteProbeCadence records how often a probe collects, so the pull
+// outputs keep serving its last value until its next run is due.
+func (h *HTTPSyncStrategy) NoteProbeCadence(probeName string, interval time.Duration) {
+	h.cache.NoteProbeCadence(probeName, interval)
+}
+
 func (h *HTTPSyncStrategy) GetStrategyName() string {
 	return "http"
 }
@@ -334,18 +340,22 @@ type EndpointInfoStatus struct {
 
 // SystemInfoResponse represents the response for /info/system
 type SystemInfoResponse struct {
-	Status    string              `json:"status"`
-	Hostname  string              `json:"hostname"`
-	Version   string              `json:"version"`
-	Commit    string              `json:"commit"`
-	GoVersion string              `json:"go_version"`
-	OS        string              `json:"os"`
-	Arch      string              `json:"arch"`
-	Port      int                 `json:"port"`
-	Uptime    string              `json:"uptime"`
-	Health    HealthCheckResponse `json:"health"`
-	Cache     CacheInfoResponse   `json:"cache"`
-	Resources ResourcesInfo       `json:"resources"`
+	Status   string `json:"status"`
+	Hostname string `json:"hostname"`
+	Version  string `json:"version"`
+	Commit   string `json:"commit"`
+	// InstanceID is the agent's service.instance.id, as its telemetry and
+	// its entity carry it. Not a credential: shown so an operator can find
+	// this agent in a metrics store or a topology graph.
+	InstanceID string              `json:"instance_id"`
+	GoVersion  string              `json:"go_version"`
+	OS         string              `json:"os"`
+	Arch       string              `json:"arch"`
+	Port       int                 `json:"port"`
+	Uptime     string              `json:"uptime"`
+	Health     HealthCheckResponse `json:"health"`
+	Cache      CacheInfoResponse   `json:"cache"`
+	Resources  ResourcesInfo       `json:"resources"`
 	// StrategyFailures lists the configured outputs that are NOT running.
 	// Served here rather than computed by the CLI, because the CLI is a
 	// separate process: reading the in-memory state there would always

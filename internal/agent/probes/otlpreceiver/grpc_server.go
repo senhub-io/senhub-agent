@@ -3,8 +3,6 @@ package otlpreceiver
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -42,17 +40,19 @@ type tracesServiceServer struct {
 }
 
 func (s *logsServiceServer) Export(
-	_ context.Context,
+	ctx context.Context,
 	req *collectorlogspb.ExportLogsServiceRequest,
 ) (*collectorlogspb.ExportLogsServiceResponse, error) {
+	s.probe.stampLogs(peerAddr(ctx), req.GetResourceLogs())
 	s.probe.ingestLogs(req.GetResourceLogs())
 	return &collectorlogspb.ExportLogsServiceResponse{}, nil
 }
 
 func (s *tracesServiceServer) Export(
-	_ context.Context,
+	ctx context.Context,
 	req *collectortracepb.ExportTraceServiceRequest,
 ) (*collectortracepb.ExportTraceServiceResponse, error) {
+	s.probe.stampSpans(peerAddr(ctx), req.GetResourceSpans())
 	s.probe.ingestSpans(req.GetResourceSpans())
 	return &collectortracepb.ExportTraceServiceResponse{}, nil
 }
@@ -61,6 +61,7 @@ func (s *metricsServiceServer) Export(
 	ctx context.Context,
 	req *collectormetricspb.ExportMetricsServiceRequest,
 ) (*collectormetricspb.ExportMetricsServiceResponse, error) {
+	s.probe.stampMetrics(peerAddr(ctx), req.GetResourceMetrics())
 	points, dropped := flattenResourceMetrics(req.GetResourceMetrics())
 	s.probe.publishMetricBatch(req.GetResourceMetrics())
 	if err := s.probe.ingest(points, dropped); err != nil {
@@ -75,6 +76,14 @@ func (s *metricsServiceServer) Export(
 		}
 	}
 	return resp, nil
+}
+
+// peerAddr is the transport address of the gRPC caller, or "".
+func peerAddr(ctx context.Context) string {
+	if pr, ok := peer.FromContext(ctx); ok && pr.Addr != nil {
+		return pr.Addr.String()
+	}
+	return ""
 }
 
 // guardInterceptor enforces the optional ingress protections (bearer
@@ -114,9 +123,9 @@ func (p *OTLPReceiverProbe) guardInterceptor(
 }
 
 func (p *OTLPReceiverProbe) startGRPC(quitChannel chan struct{}) error {
-	lis, err := net.Listen("tcp", p.config.Address)
+	lis, err := p.listen()
 	if err != nil {
-		return fmt.Errorf("listening on %s: %w", p.config.Address, err)
+		return err
 	}
 
 	server := grpc.NewServer(

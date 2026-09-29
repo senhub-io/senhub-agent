@@ -170,7 +170,7 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 	},
 	TypeNetworkInterface: {
 		Status:     StatusOwnKey,
-		SubjectKey: "interface.name",
+		SubjectKey: "network.interface.name",
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
 	},

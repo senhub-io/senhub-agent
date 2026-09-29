@@ -41,7 +41,7 @@ func (a *HTTPCacheAdapter) GetProbeStatistics() map[string]status.ProbeStatistic
 			Name:         probeName,
 			MetricsCount: stats.MetricsCount,
 			LastUpdate:   stats.LastUpdate,
-			IsActive:     stats.MetricsCount > 0 && time.Since(stats.LastUpdate) < 5*time.Minute,
+			IsActive:     stats.MetricsCount > 0 && time.Since(stats.LastUpdate) < stats.LiveWindow,
 			LastError:    "", // HTTP cache doesn't track errors, could be enhanced
 		}
 	}
@@ -99,7 +99,7 @@ func (a *HTTPCacheAdapter) GetHealthMetrics() map[string]interface{} {
 
 	for _, stats := range probeStats {
 		totalMetrics += stats.MetricsCount
-		if stats.MetricsCount > 0 && time.Since(stats.LastUpdate) < 5*time.Minute {
+		if stats.MetricsCount > 0 && time.Since(stats.LastUpdate) < stats.LiveWindow {
 			activeProbeCount++
 		}
 	}

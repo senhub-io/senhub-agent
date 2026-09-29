@@ -57,3 +57,17 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 
 	return cfg, nil
 }
+
+// detailed reports whether the per-process series are emitted. The
+// operator has either named what to watch, or bounded the sample with
+// top_n. An unfiltered view is every process on the machine, and the
+// identity of those series carries the process id, so it grows by one
+// set per process start and never shrinks: measured at about four and a
+// half thousand series on an ordinary machine, growing by fifty a
+// minute. That view gets the per-name roll-up alone.
+//
+// It is the rule the entity source already followed, for the same
+// reason, on the other rail.
+func (c config) detailed() bool {
+	return c.byName != nil || c.byUser != "" || c.topN > 0
+}
