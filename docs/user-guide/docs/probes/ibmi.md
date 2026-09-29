@@ -308,6 +308,26 @@ curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ibmi-prod"
 ```
 
+### PRTG: one sensor per family
+
+A partition yields far more series than the 50 channels a PRTG sensor
+holds, so split it into several sensors. Every metric carries a
+`metric_type` tag naming its family, the segment after `ibmi.` in its
+name, and a sensor selects one family with it:
+
+```bash
+curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod?tags=metric_type:cpu"
+curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod?tags=metric_type:user_profile"
+```
+
+Several families fit one sensor when their series stay under 50:
+`?tags=metric_type:cpu,memory,jobs`. A family with one series per disk
+unit, output queue or journal can exceed 50 on a large partition; add a
+`metrics=` filter to keep one measurement per sensor, for example
+`?tags=metric_type:disk&metrics=ibmi.disk.busy_percent`. The families
+are the ones of the metric reference below (`asp`, `cpu`, `disk`, `job_queue`,
+`netstat`, `output_queue`, `user_profile`, `collector`, …).
+
 ## Metric reference
 
 Every metric this probe can emit. **Metric** is the OpenTelemetry name the

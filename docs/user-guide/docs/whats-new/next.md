@@ -426,6 +426,15 @@ Breaking Changes or Fixes below.
 
 ## Fixes
 
+- **[IBM i](../probes/ibmi.md) metrics carry their family for PRTG.**
+  A partition yields far more series than the 50 channels of a PRTG
+  sensor, and choosing a sensor's metrics meant listing each name in its
+  URL. Every IBM i metric now carries `metric_type`, its family
+  (`disk`, `cpu`, `user_profile`, ...), so a sensor selects one with
+  `?tags=metric_type:disk`. The tag also reaches the OTLP and Prometheus
+  outputs as an attribute, as on the other probes that set it. No other
+  probe changes.
+
 - **[Syslog](../probes/syslog.md) reads a message sent without its
   priority.** Some senders, the UniFi controller's activity log among
   them, start the line at the timestamp. The whole line, header
