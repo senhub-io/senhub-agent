@@ -402,6 +402,12 @@
             } catch (e) { /* the next tick retries */ }
         }, 30000);
     })();
+        // Settings links here with #sec-tls to configure HTTPS: open the
+        // section instead of landing on a folded one.
+        if (location.hash === '#sec-tls') {
+            const sec = document.getElementById('sec-tls');
+            if (sec) { sec.open = true; sec.scrollIntoView(); }
+        }
     </script>
 </body>
 </html>

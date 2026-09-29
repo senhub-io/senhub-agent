@@ -165,10 +165,12 @@ Copy pastes the URL into the poller's sensor. Below it, a preview reads the URL 
 
 The Settings page changes the agent's own configuration from the browser, so a Windows operator does not have to edit YAML on the server.
 
-![Settings](images/web-interface/settings.webp "Settings with the connection block on the left and the licence block on the right")
+![Settings](images/web-interface/settings.webp "Settings with the identity, licence, connection and HTTPS cards")
 
-- **Connection** shows the port and bind address of the HTTP output, the same values the Outputs page edits, and links to it for the endpoints, TLS and the sensor URLs. Changing the port moves the console to the new address; the page tells you where to reconnect. The change is applied live, with no restart.
-- **Licence** uploads the licence file you received, or takes the pasted token. A customer licence is valid across the whole fleet, so the same file activates every agent; a licence issued for one specific agent is checked against that agent. The card shows how many Pro probe types are locked and links to the catalogue.
+- **Identity** gathers the agent's three identifiers. The **agent key** is the one PRTG, Nagios and Prometheus read with and a licence is bound to: give it to Sensor Factory when ordering one. The **instance ID** is the `service.instance.id` the agent's telemetry and topology entity carry, derived from the agent key; it is not a credential. The **administration key** opens the console and the configuration API; it stays masked until you choose Reveal, and you should give it to nobody who only needs to read.
+- **Licence** shows the tier, the scope and the expiry of the active licence, uploads the licence file you received, or takes the pasted token. A customer licence is valid across the whole fleet, so the same file activates every agent; a licence issued for one specific agent is checked against that agent's key. The card shows how many Pro probe types are locked and links to the catalogue.
+- **Connection** changes the port and bind address of the HTTP output, the same values the Outputs page edits. Changing the port moves the console to the new address; the page tells you where to reconnect. The change is applied live, with no restart.
+- **HTTPS** shows whether the console and the endpoints are served over TLS, the certificate and key files, the certificate's subject and expiry read from the file, and the minimum TLS version. **Configure HTTPS** opens the TLS section of the HTTP output, where TLS is switched on and the files are set.
 
 These changes are written to the multi-file configuration and picked up by the running agent, exactly as the `senhub-agent config set` command does.
 
