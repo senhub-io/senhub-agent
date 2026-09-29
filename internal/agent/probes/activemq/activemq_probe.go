@@ -382,6 +382,7 @@ func (p *activemqProbe) listDestinationNames(ctx context.Context, destType strin
 	if err != nil {
 		return nil, err
 	}
+	setSameOrigin(req)
 	if p.cfg.Username != "" {
 		req.SetBasicAuth(p.cfg.Username, p.cfg.Password)
 	}
