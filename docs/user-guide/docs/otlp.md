@@ -43,8 +43,9 @@ An installation that still uses the legacy monolithic `agent-config.yaml`
 holds the same parameters under `storage:`, in the `params` of an entry
 named `otlp`.
 
-2. Restart the agent. The agent connects lazily — a missing collector
-   does not block startup; failures appear as retried export attempts.
+2. Save the file: the running agent picks the output up without a
+   restart. It connects lazily, so a collector that is not reachable yet
+   does not block anything; failures appear as retried export attempts.
 
 3. Verify the collector is receiving data:
 
