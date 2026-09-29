@@ -9,6 +9,7 @@ package oracle
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -119,8 +120,11 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	up := float64(1)
-	if p.db == nil || p.db.PingContext(ctx) != nil {
+	if p.db == nil {
 		up = 0
+	} else if err := p.db.PingContext(ctx); err != nil {
+		up = 0
+		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("oracle ping failed")
 	}
 	points = append(points, p.point("senhub.db.up", up, now, metricTypeOverview, nil))
 
@@ -170,11 +174,19 @@ func (p *oracleProbe) collectSessions(ctx context.Context, now time.Time) []data
 		}
 	}
 
+	// v$resource_limit is empty inside a pluggable database, whatever the
+	// user (checked on 21c XEPDB1: no rows, while CDB$ROOT lists 27), and
+	// a PDB is where a monitoring user normally connects. The configured
+	// limit is then read from v$parameter.
 	var limit sql.NullFloat64
-	row := p.db.QueryRowContext(ctx,
-		"SELECT limit_value FROM v$resource_limit WHERE resource_name = 'sessions'")
-	if err := row.Scan(&limit); err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("query v$resource_limit (sessions) failed")
+	err = p.db.QueryRowContext(ctx,
+		"SELECT limit_value FROM v$resource_limit WHERE resource_name = 'sessions'").Scan(&limit)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = p.db.QueryRowContext(ctx,
+			"SELECT value FROM v$parameter WHERE name = 'sessions'").Scan(&limit)
+	}
+	if err != nil {
+		p.moduleLogger.Warn().Err(err).Msg("session limit unavailable: v$resource_limit has no row in a PDB, and v$parameter needs GRANT SELECT ON V_$PARAMETER")
 	} else if limit.Valid {
 		points = append(points, p.point("oracle.sessions.limit", float64(limit.Float64), now, metricTypeConnections, nil))
 	}

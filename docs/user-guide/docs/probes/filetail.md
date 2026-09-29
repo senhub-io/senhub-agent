@@ -31,6 +31,7 @@ mode so the producing application is never blocked.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:d874161f4070f3751bfe0bed7380330677b173bcb843e68572f888646936ccaa -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -53,6 +54,12 @@ mode so the producing application is never blocked.
 Without `bookmark_path` the probe tails from the end of each file on every
 start. `from_beginning` only applies to a file no bookmark knows yet.
 
+A path that does not exist yet, or whose directory is not there yet (a
+mount that comes up after the agent), is picked up by the rescan once it
+appears. Such a file is read from its first line, whatever
+`from_beginning` says, since all of it was written after the probe
+started watching for it.
+
 ### Multiline folding
 
 Java stacktraces, Python tracebacks and pretty-printed payloads span
@@ -69,8 +76,25 @@ params:
 ```
 
 With `match: after`, a matching line starts a new record and non-matching
-lines are continuations. With `match: before`, a matching line flushes the
-accumulated record first.
+lines are continuations. With `match: before`, a matching line ends the
+record: it is added to it, then the record is sent. `negate: true` inverts
+the test, so a line that does *not* match the pattern is the one that
+starts (or ends) a record.
+
+The pattern describes the line that **starts** a record, which is not how
+Filebeat reads the same keys. A Filebeat configuration for Java logs,
+`pattern: '^\['` with `negate: true` and `match: after`, describes the
+continuation lines; here the same record is written with `negate: false`:
+
+```yaml
+  multiline:
+    pattern: '^\['      # "[2026-09-29T18:21:51,024+02:00] ..." starts a record
+    negate: false
+    match: after
+```
+
+Copied as is from Filebeat, `negate: true` takes every stack-trace line
+for the start of a new record.
 
 ### Structured parsing
 
@@ -104,3 +128,20 @@ or a JSON/logfmt key.
   `from_beginning: true` for files whose full history matters on
   first ingestion (combine with `bookmark_path` so it only happens
   once).
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.filetail.records_emitted` | `senhub.filetail.records_emitted` | File Tail Records Emitted | # | Cumulative count of log records this file-tail probe has published to the log rail |
+
+<!-- schema:metrics:end -->

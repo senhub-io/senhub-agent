@@ -1,0 +1,281 @@
+package template
+
+import (
+	"strings"
+	"testing"
+
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
+)
+
+type fakeLookups map[string]map[int]string
+
+func (f fakeLookups) Lookup(id string) (map[int]string, bool) {
+	m, ok := f[id]
+	return m, ok
+}
+
+func diskDefinition() transformers.ProbeDefinition {
+	return transformers.ProbeDefinition{
+		ProbeName:    "logicaldisk",
+		FriendlyName: "Logical disks",
+		Metrics: []transformers.MetricDefinition{
+			{
+				Name: "disk_free_mb", DisplayName: "Disk Free ({drive})", Unit: "MB", MultiInstanceLabels: []string{"drive"},
+				Description: "Free space",
+				Otel:        &transformers.OtelMapping{Name: "system.filesystem.usage", Unit: "By", Type: "updowncounter", Attributes: map[string]string{"system.filesystem.state": "free"}},
+			},
+			{
+				Name: "disk_used_mb", DisplayName: "Disk Used ({drive})", Unit: "MB", MultiInstanceLabels: []string{"drive"},
+				Otel: &transformers.OtelMapping{Name: "system.filesystem.usage", Unit: "By", Type: "updowncounter", Attributes: map[string]string{"system.filesystem.state": "used"}},
+			},
+			{
+				Name: "disk_health", DisplayName: "Disk health", Unit: "#", Lookup: "sfs.generic.boolean",
+				Otel: &transformers.OtelMapping{Name: "senhub.disk.health", Unit: "1", Type: "gauge", Expand: &transformers.ExpandDirective{Attribute: "hw.state", Mapping: map[string]int{"ok": 1, "failed": 0}}},
+			},
+			{
+				Name: "disk_legacy", DisplayName: "Legacy", Unit: "#",
+				Otel: &transformers.OtelMapping{Skip: true, Reason: "not mapped"},
+			},
+		},
+	}
+}
+
+func TestGenerateWritesOneRulePerDimensionSetWithPrototypesUnderIt(t *testing.T) {
+	exp, err := Generate(diskDefinition(), Options{Lookups: fakeLookups{"sfs.generic.boolean": {0: "No", 1: "Yes"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exp.ZabbixExport.Version != "7.0" {
+		t.Errorf("version = %s", exp.ZabbixExport.Version)
+	}
+	tpl := exp.ZabbixExport.Templates[0]
+	if tpl.Template != "SenHub Logical disks" {
+		t.Errorf("template = %s", tpl.Template)
+	}
+	if len(tpl.DiscoveryRules) != 2 {
+		t.Fatalf("rules = %d, want the plain rule and the filesystem usage family", len(tpl.DiscoveryRules))
+	}
+	byKey := map[string]DiscoveryRule{}
+	for _, r := range tpl.DiscoveryRules {
+		byKey[r.Key] = r
+	}
+	// The free and the used bytes of a filesystem share an OTel name and
+	// differ only by one attribute, so they are one prototype keyed on
+	// the macro of that attribute, under the rule that discovers which
+	// of the two this host actually feeds. Declaring both, as the
+	// generator used to, left one of them empty forever on every host
+	// that reports only the other.
+	usage := byKey["senhub.discovery.variants[logicaldisk,system.filesystem.usage,drive]"]
+	if len(usage.ItemPrototypes) != 1 {
+		t.Fatalf("the family must give exactly one prototype; got %+v", usage.ItemPrototypes)
+	}
+	proto := usage.ItemPrototypes[0]
+	if proto.Key != "senhub.system.filesystem.usage[{#PROBE_LOGICALDISK},{#DRIVE},{#STATE}]" {
+		t.Errorf("key = %s", proto.Key)
+	}
+	if proto.Name != "{#PROBE}: Disk ({#DRIVE}, {#STATE})" || proto.Units != "B" || proto.Type != "ZABBIX_ACTIVE" || proto.ValueType != "FLOAT" || proto.Description != "Free space" {
+		t.Errorf("prototype = %+v", proto)
+	}
+
+	plain := byKey["senhub.discovery[logicaldisk]"]
+	if len(plain.ItemPrototypes) != 1 {
+		t.Fatalf("the skipped metric must not appear; plain prototypes = %+v", plain.ItemPrototypes)
+	}
+	health := plain.ItemPrototypes[0]
+	if health.Key != "senhub.disk.health[{#PROBE_LOGICALDISK}]" || health.ValueMap == nil || health.ValueMap.Name != "sfs.generic.boolean" || health.Units != "" {
+		t.Errorf("enum prototype = %+v", health)
+	}
+	if len(tpl.ValueMaps) != 1 || tpl.ValueMaps[0].Mappings[0].Value != "0" || tpl.ValueMaps[0].Mappings[0].NewValue != "No" {
+		t.Errorf("value maps = %+v", tpl.ValueMaps)
+	}
+}
+
+func TestGenerateIsStableAcrossRuns(t *testing.T) {
+	a, _ := Generate(diskDefinition(), Options{})
+	b, _ := Generate(diskDefinition(), Options{})
+	ya, _ := Encode(a)
+	yb, _ := Encode(b)
+	if string(ya) != string(yb) {
+		t.Fatal("two generations of the same definition must be byte-identical (stable uuids)")
+	}
+	u := a.ZabbixExport.Templates[0].UUID
+	if len(u) != 32 || u[12] != '4' || !strings.ContainsRune("89ab", rune(u[16])) {
+		t.Errorf("uuid = %q, want the shape of a version 4 UUID, which Zabbix checks on import", u)
+	}
+}
+
+func TestEncodeProducesTheImportLayout(t *testing.T) {
+	exp, _ := Generate(diskDefinition(), Options{Version: "6.0", Prefix: "acme", ItemDelay: "30s", DiscoveryDelay: "10m", Group: "Templates/SenHub"})
+	out, err := Encode(exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	for _, want := range []string{
+		// 6.0 spells the root group tag "groups"; 7.0 renamed it to
+		// "template_groups". Asserting the 7.0 spelling on a 6.0 export
+		// pinned a file no server would import.
+		"zabbix_export:", "version: \"6.0\"", "groups:", "name: Templates/SenHub",
+		"discovery_rules:", "key: acme.discovery.variants[logicaldisk,system.filesystem.usage,drive]",
+		"delay: 10m", "item_prototypes:",
+		"key: acme.system.filesystem.usage[{#PROBE_LOGICALDISK},{#DRIVE},{#STATE}]", "delay: 30s", "value_type: FLOAT",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("export lacks %q\n%s", want, text)
+		}
+	}
+}
+
+func TestPrototypeNameDistinguishesCollapsedMetrics(t *testing.T) {
+	m := transformers.MetricDefinition{Name: "x", DisplayName: "Usage", Otel: &transformers.OtelMapping{Name: "n", Attributes: map[string]string{"state": "free"}}}
+	if got := prototypeName(m, nil); got != "{#PROBE}: Usage (free)" {
+		t.Errorf("got %q", got)
+	}
+	m.DisplayName = "Free usage"
+	if got := prototypeName(m, nil); got != "{#PROBE}: Free usage" {
+		t.Errorf("a name that already says it is left alone: %q", got)
+	}
+}
+
+func TestGenerateDeclaresAKeyOnceWhenTwoMetricsResolveToIt(t *testing.T) {
+	def := transformers.ProbeDefinition{ProbeName: "disk", Metrics: []transformers.MetricDefinition{
+		{Name: "free_mb", Otel: &transformers.OtelMapping{Name: "system.filesystem.usage", Attributes: map[string]string{"state": "free"}}},
+		{Name: "free_bytes", Otel: &transformers.OtelMapping{Name: "system.filesystem.usage", Attributes: map[string]string{"state": "free"}}},
+	}}
+	exp, err := Generate(def, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(exp.ZabbixExport.Templates[0].DiscoveryRules[0].ItemPrototypes); n != 1 {
+		t.Fatalf("%d prototypes for one key; Zabbix refuses a duplicate on import", n)
+	}
+}
+
+func TestGenerateRefusesANamelessDefinition(t *testing.T) {
+	if _, err := Generate(transformers.ProbeDefinition{}, Options{}); err == nil {
+		t.Fatal("want an error")
+	}
+}
+
+// A metric discovered per instance must name its instance. Without it,
+// every prototype under one rule yields identically named items and an
+// operator opening the host sees a column of the same line repeated.
+// Seen on a bench: six filesystems, six items called the same thing.
+func TestPrototypeNameCarriesTheDiscoveredInstance(t *testing.T) {
+	m := transformers.MetricDefinition{Name: "x", DisplayName: "Control Plane Reachable"}
+
+	if got := prototypeName(m, nil); got != "{#PROBE}: Control Plane Reachable" {
+		t.Errorf("without a dimension the name is unchanged, got %q", got)
+	}
+	got := prototypeName(m, []string{"azure_app"})
+	if got != "{#PROBE}: Control Plane Reachable ({#AZURE_APP})" {
+		t.Errorf("name = %q, want the discovered instance appended", got)
+	}
+	// A display name that already carries a placeholder keeps its own
+	// wording rather than being appended to twice.
+	withPlaceholder := transformers.MetricDefinition{Name: "y", DisplayName: "Interface {interface} traffic"}
+	got = prototypeName(withPlaceholder, []string{"interface"})
+	if strings.Count(got, "{#INTERFACE}") != 1 {
+		t.Errorf("name = %q, want the macro once", got)
+	}
+}
+
+// A probe whose every metric is unmapped yields a template with nothing in
+// it. The file still parses, still carries a name and a description saying
+// "the agent's zabbix output sends these keys", and an operator who imports
+// it links a host to something that will never receive a value. The two
+// conduit probes, syslog and event, are in exactly that case.
+func TestAnExportWithoutItemsSaysSo(t *testing.T) {
+	conduit := transformers.ProbeDefinition{
+		ProbeName:    "syslog",
+		FriendlyName: "Syslog",
+		Metrics: []transformers.MetricDefinition{{
+			Name: "syslog_event", DisplayName: "Severity", Unit: "#",
+			Otel: &transformers.OtelMapping{Skip: true, Reason: "event conduit"},
+		}},
+	}
+	exp, err := Generate(conduit, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exp.DeclaresNothing() {
+		t.Fatal("a definition whose every metric is unmapped must report an empty export")
+	}
+
+	if _, err := Generate(diskDefinition(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	full, _ := Generate(diskDefinition(), Options{})
+	if full.DeclaresNothing() {
+		t.Error("a definition with mapped metrics must not report an empty export")
+	}
+}
+
+// Zabbix validates a template's technical name as a host name: letters,
+// digits, spaces, dots, dashes and underscores, nothing else. Nine friendly
+// names in the definitions carry a slash, a parenthesis or an ampersand, and
+// a template built straight from them is refused at import with only
+// `Invalid parameter "/1/host": invalid host name.` to go on.
+func TestTheTechnicalNameHoldsOnlyWhatZabbixAcceptsInAHostName(t *testing.T) {
+	for _, c := range []struct{ friendly, want string }{
+		{"IBM i / Power Systems", "SenHub IBM i Power Systems"},
+		{"Chrony (NTP)", "SenHub Chrony NTP"},
+		{"Veeam Backup & Replication", "SenHub Veeam Backup Replication"},
+		{"MySQL / MariaDB", "SenHub MySQL MariaDB"},
+		{"Oracle Database (Enterprise / Diagnostics Pack)", "SenHub Oracle Database Enterprise Diagnostics Pack"},
+	} {
+		def := transformers.ProbeDefinition{
+			ProbeName: "p", FriendlyName: c.friendly,
+			Metrics: []transformers.MetricDefinition{{
+				Name: "m", DisplayName: "M", Unit: "#",
+				Otel: &transformers.OtelMapping{Name: "senhub.m", Type: "gauge"},
+			}},
+		}
+		exp, err := Generate(def, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tpl := exp.ZabbixExport.Templates[0]
+		if tpl.Template != c.want {
+			t.Errorf("technical name of %q = %q, want %q", c.friendly, tpl.Template, c.want)
+		}
+		// The name an operator reads keeps what the definition wrote.
+		if tpl.Name != "SenHub "+c.friendly {
+			t.Errorf("visible name of %q = %q, want it unchanged", c.friendly, tpl.Name)
+		}
+	}
+}
+
+// Zabbix renamed the root template-group tag in 7.0. Stamping "6.0" on the
+// 7.0 spelling produced a file every server refuses with `unexpected tag
+// "template_groups"` — the --version 6.0 option emitted nothing importable.
+func TestTheGroupTagFollowsTheExportVersion(t *testing.T) {
+	for _, c := range []struct{ version, want string }{
+		{"6.0", "groups"},
+		{"7.0", "template_groups"},
+		{"", "template_groups"},
+	} {
+		exp, err := Generate(diskDefinition(), Options{Version: c.version})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := Encode(exp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := string(body)
+		if !strings.Contains(got, "\n    "+c.want+":") {
+			t.Errorf("version %q: no %q tag in the export", c.version, c.want)
+		}
+		other := "template_groups"
+		if c.want == other {
+			other = "groups"
+		}
+		if strings.Contains(got, "\n    "+other+":") {
+			t.Errorf("version %q: the export also carries the %q tag", c.version, other)
+		}
+		if b := Base(Options{Version: c.version}); len(b.ZabbixExport.TemplateGroups)+len(b.ZabbixExport.Groups) != 1 {
+			t.Errorf("version %q: the base export must declare its group exactly once", c.version)
+		}
+	}
+}

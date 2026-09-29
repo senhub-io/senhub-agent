@@ -33,6 +33,13 @@ type pathInfo struct {
 }
 
 var networkCounterPaths = map[string]MetricDefinition{
+	// The negotiated speed of the link, which the Unix collector reads
+	// from sysfs. Windows publishes it as a counter, in bits per second
+	// already, so no conversion is needed.
+	"interface_speed": {
+		path:     "\\Network Interface\\Current Bandwidth",
+		instance: "*",
+	},
 	"bytes_sent": {
 		path:     "\\Network Interface\\Bytes Sent/sec",
 		instance: "*",
@@ -397,7 +404,7 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 				Value:   interfaceInfo.connectionName,
 				Private: false,
 			})
-			// interface.name ties this series to its network.interface entity,
+			// network.interface.name ties this series to its network.interface entity,
 			// which is keyed on the connection name (net.Interface.Name). The
 			// `interface` tag above carries the PDH instance — the adapter
 			// description with PDH's dedup suffix ("… Adapter _2") — which is

@@ -8,6 +8,7 @@ package dnslatency
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -236,10 +237,22 @@ func (p *DNSLatencyProbe) lookupOnce(name, resolver string) lookupResult {
 	addrs, err := r.LookupHost(ctx, name)
 	res.duration = time.Since(start)
 	if err != nil {
-		res.err = fmt.Errorf("resolving %s via %s: %w", name, resolver, err)
+		res.err = fmt.Errorf("resolving %s via %s: %w", name, resolver, withQueriedServer(err, resolver))
 		return res
 	}
 	res.up = true
 	res.answers = len(addrs)
 	return res
+}
+
+// withQueriedServer names the resolver that was actually asked. Dial sends
+// the query there, but the standard library still fills DNSError.Server
+// with the first nameserver of /etc/resolv.conf, so the message read
+// "lookup x on 127.0.0.53:53" for a query that never went near it.
+func withQueriedServer(err error, resolver string) error {
+	var dnsErr *net.DNSError
+	if resolver != systemResolverLabel && errors.As(err, &dnsErr) {
+		dnsErr.Server = resolver
+	}
+	return err
 }

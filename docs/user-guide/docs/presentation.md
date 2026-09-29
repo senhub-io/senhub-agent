@@ -12,7 +12,8 @@ or observability tool you already operate.
 You install a single binary on a host that has network access to
 the systems you want to monitor. A YAML file declares which probes
 the agent should run and where the values should go (PRTG / Nagios
-HTTP endpoints, Prometheus `/metrics` scrape page, OTLP/gRPC push).
+HTTP endpoints, Prometheus `/metrics` scrape page, a native Zabbix
+agent, OTLP push over gRPC or HTTP).
 The agent starts collecting on its own schedule and stays out of
 the way — restartable, observable, and runnable in air-gapped
 environments where no callback to the SenHub backend is allowed.
@@ -26,9 +27,9 @@ environments where no callback to the SenHub backend is allowed.
 - **One vocabulary across every output.** Probes emit values into
   a shared in-memory cache. From there the agent serves PRTG /
   Nagios HTTP endpoints, exposes a Prometheus `/metrics` scrape
-  page, and natively pushes OTLP/gRPC metrics and logs to any
-  OpenTelemetry receiver — collector, vmagent, Tempo, Grafana
-  Cloud OTLP. **Metric names, units and attributes match across
+  page, acts as a native Zabbix active agent, and natively pushes
+  OTLP metrics and logs, over gRPC or HTTP, to any OpenTelemetry receiver (collector, vmagent, Tempo, Grafana
+  Cloud OTLP). **Metric names, units and attributes match across
   all sinks**, so a query that works in Grafana today keeps working
   in your PRTG sensor template tomorrow.
 - **Tiered licensing.** The free tier ships the whole universal
@@ -61,12 +62,15 @@ environments where no callback to the SenHub backend is allowed.
 
 | Path | Protocol | Use case |
 |---|---|---|
-| `/api/{key}/prtg/metrics/{probe}` | HTTPS, JSON | Native PRTG sensor templates (Sensor URLs tab of the console) |
-| `/api/{key}/nagios/metrics/{probe}` | HTTPS, text | NRPE / Nagios performance line |
-| `/api/{key}/prometheus/metrics` | HTTPS, text exposition | Prometheus / VictoriaMetrics scrape |
-| OTLP gRPC client | gRPC, mTLS | Push to OTel collector, vmagent, Tempo, Grafana Cloud OTLP |
+| `/api/{key}/prtg/metrics/{probe}` | HTTP(S), JSON | Native PRTG sensor templates (Sensor URLs tab of the console) |
+| `/api/{key}/nagios/metrics/{probe}` | HTTP(S), text | NRPE / Nagios performance line |
+| `/api/{key}/prometheus/metrics` | HTTP(S), text exposition | Prometheus / VictoriaMetrics scrape |
+| Zabbix active agent | Zabbix protocol, TLS or PSK | Push to a Zabbix server or proxy on 10051, autoregistration and discovery |
+| OTLP client | gRPC or HTTP, TLS or mTLS | Push to OTel collector, vmagent, Tempo, Grafana Cloud OTLP |
 
-All four read from the same in-memory metric cache so the data is
+The three HTTP paths are served by the agent's `http` output, over HTTP on
+port 8080 by default, or HTTPS when TLS is enabled; `{key}` is the agent
+key. All five read from the same in-memory metric cache so the data is
 consistent regardless of which sinks you enable.
 
 ## Where to next
@@ -74,5 +78,6 @@ consistent regardless of which sinks you enable.
 - [Installation](installation.md) — install the binary on Windows or Linux
 - [Configuration](configuration.md) — write the YAML
 - [Probes](probes/index.md) — browse the probe catalog by vendor family
+- [Zabbix](zabbix.md) — native active agent, templates and autoregistration
 - [Prometheus / VictoriaMetrics](prometheus/index.md) — scrape configuration and metrics reference
 - [OTLP / OpenTelemetry](otlp.md) — push metrics + logs to an OTel receiver

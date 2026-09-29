@@ -276,6 +276,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 		Hostname:         hostname,
 		Version:          version,
 		Commit:           commit,
+		InstanceID:       configuration.AgentInstanceID(a.strategy.agentConfig.GetAuthenticationKey()),
 		GoVersion:        runtime.Version(),
 		OS:               runtime.GOOS,
 		Arch:             runtime.GOARCH,
@@ -530,11 +531,9 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 		{"/api/{agentkey}/info/schema/{probe}", []string{"GET"}, "Get schema for specific probe", "discovery"},
 
 		// Administration
-		{"/api/{agentkey}/admin/cache", []string{"GET"}, "View metric cache contents", "admin"},
-		{"/api/{agentkey}/admin/logs", []string{"GET"}, "View current log levels", "admin"},
-		{"/api/{agentkey}/admin/logs", []string{"POST"}, "Set log levels", "admin"},
-		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels (legacy)", "admin"},
-		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels (legacy)", "admin"},
+		{"/api/{agentkey}/admin/cache/clear", []string{"POST"}, "Clear the metric cache", "admin"},
+		{"/api/{agentkey}/debug/logs", []string{"GET"}, "View current log levels", "admin"},
+		{"/api/{agentkey}/debug/logs", []string{"POST"}, "Set log levels", "admin"},
 		{"/api/{agentkey}/license/status", []string{"GET"}, "Get license status and tier information", "admin"},
 
 		// PRTG Format
@@ -543,7 +542,7 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 
 		// Nagios Format
 		{"/api/{agentkey}/nagios/metrics/{probe}", []string{"GET"}, "Get metrics in Nagios format for specific probe", "nagios"},
-		// Removed: /nagios/check/{check_name} endpoint not needed
+		{"/api/{agentkey}/nagios/check/{check}", []string{"GET"}, "Run one configured Nagios check, plugin output format", "nagios"},
 		{"/api/{agentkey}/nagios/metrics", []string{"GET", "POST"}, "Get aggregated metrics in Nagios format", "nagios"},
 		{"/api/{agentkey}/nagios/checks", []string{"GET"}, "List available Nagios checks", "nagios"},
 

@@ -31,6 +31,26 @@ valid_machine_id() {
   [ ${#1} -eq 32 ]
 }
 
+# degenerate_machine_id succeeds for an identity no machine derives by
+# chance: fewer than four distinct hexadecimal digits, or a run of at
+# least sixteen ascending steps, which is the shape of an example value
+# such as 01234567-89ab-cdef-0123-456789abcdef. Every host carrying one
+# merges with every other host carrying it, silently, so it is refused
+# rather than written. Judged on its shape, since the next copied example
+# will not be on any list. Mirrors common.DegenerateHostID in the agent.
+degenerate_machine_id() {
+  printf '%s' "$1" | awk '{
+    hex = "0123456789abcdef"; distinct = 0; asc = 0
+    for (i = 1; i <= length($0); i++) {
+      c = substr($0, i, 1)
+      if (!(c in seen)) { seen[c] = 1; distinct++ }
+      if (i > 1 && (index(hex, prev) % 16) == index(hex, c) - 1) asc++
+      prev = c
+    }
+    exit !(distinct < 4 || asc >= 16)
+  }'
+}
+
 # host.id is not the agent's own key: it is the operating system's
 # machine-id, read by gopsutil from /etc/machine-id. An image carries no
 # machine-id, so without one gopsutil falls back to the kernel boot id,
@@ -50,6 +70,10 @@ resolve_machine_id() {
     wanted=$(printf '%s' "$SENHUB_HOST_ID" | tr -d '-' | tr 'ABCDEF' 'abcdef')
     if ! valid_machine_id "$wanted"; then
       log "SENHUB_HOST_ID is not a machine id: 32 hexadecimal characters, dashes optional"
+      exit 1
+    fi
+    if degenerate_machine_id "$wanted"; then
+      log "SENHUB_HOST_ID looks like an example or a blank value ($SENHUB_HOST_ID): every host carrying it would merge into one. Give each instance its own"
       exit 1
     fi
     log "host identity taken from SENHUB_HOST_ID"
@@ -95,18 +119,55 @@ init_config() {
 
   senhub-agent config init "$@"
 
-  if [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
-    fragment="$CONFIG_DIR/strategies.d/10-otlp.yaml"
-    if [ -f "$fragment" ] && ! grep -q 'Authorization' "$fragment"; then
-      # The token stays out of the file: the fragment carries the
-      # reference and the agent resolves it at every start.
-      # shellcheck disable=SC2016 # ${env:...} must reach the file literally
-      printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
-      log "OTLP export authenticates with OTLP_BEARER_TOKEN"
-    fi
-  else
+  if [ -z "${OTLP_BEARER_TOKEN:-}" ]; then
     log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"
   fi
+  otlp_fragment_extras "$CONFIG_DIR/strategies.d/10-otlp.yaml"
+}
+
+# otlp_fragment_extras adds to the OTLP output what `config init` does not
+# write: the bearer reference, and TLS turned off for a collector that
+# listens in plain text, such as a sidecar on localhost:4317. Without the
+# second, such a collector could only be reached by mounting a whole
+# configuration.
+otlp_fragment_extras() {
+  fragment=$1
+  [ -f "$fragment" ] || return 0
+  if [ -n "${OTLP_BEARER_TOKEN:-}" ] && ! grep -q 'Authorization' "$fragment"; then
+    # The token stays out of the file: the fragment carries the
+    # reference and the agent resolves it at every start.
+    # shellcheck disable=SC2016 # ${env:...} must reach the file literally
+    printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
+    log "OTLP export authenticates with OTLP_BEARER_TOKEN"
+  fi
+  # Entities (the host, the agent, what its probes watch) are what a
+  # topology backend builds its map from; without them a container agent
+  # sends measurements nobody can place. On by default in the image.
+  case "${SENHUB_ENTITIES:-true}" in
+    true | TRUE | True | 1 | yes)
+      if ! grep -q '^  signals:' "$fragment"; then
+        printf '  signals:\n    entities:\n      enabled: true\n' >> "$fragment"
+      fi
+      ;;
+    false | FALSE | False | 0 | no) ;;
+    *)
+      log "SENHUB_ENTITIES must be true or false, not '$SENHUB_ENTITIES'"
+      exit 1
+      ;;
+  esac
+  case "${SENHUB_OTLP_TLS:-true}" in
+    true | TRUE | True | 1 | yes) ;;
+    false | FALSE | False | 0 | no)
+      if ! grep -q '^  tls:' "$fragment"; then
+        printf '  tls:\n    enabled: false\n' >> "$fragment"
+        log "OTLP export in plain text (SENHUB_OTLP_TLS=false): the token crosses the network unencrypted, keep it to a collector on the same host or a trusted network"
+      fi
+      ;;
+    *)
+      log "SENHUB_OTLP_TLS must be true or false, not '$SENHUB_OTLP_TLS'"
+      exit 1
+      ;;
+  esac
 }
 
 # The agent key is the agent's own identity, distinct from host.id: it is
@@ -117,6 +178,29 @@ init_config() {
 # it beside the machine-id gives one agent identity per volume.
 keep_agent_key() {
   kept="$STATE_DIR/agent.key"
+
+  # SENHUB_AGENT_KEY is to the agent identity what SENHUB_HOST_ID is to
+  # the host: with both, a deployment without a volume keeps one host and
+  # one agent across containers. It wins over a kept key.
+  if [ -n "${SENHUB_AGENT_KEY:-}" ]; then
+    key=$(printf '%s' "$SENHUB_AGENT_KEY" | tr 'ABCDEF' 'abcdef')
+    if ! printf '%s' "$key" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+      log "SENHUB_AGENT_KEY is not an agent key: a UUID such as e313cd19-45d9-4711-8b09-3f58ac6e7595"
+      exit 1
+    fi
+    if degenerate_machine_id "$(printf '%s' "$key" | tr -d '-')"; then
+      log "SENHUB_AGENT_KEY looks like an example or a blank value ($SENHUB_AGENT_KEY): every agent given it would be one agent downstream. Give each instance its own"
+      exit 1
+    fi
+    tmp="$CONFIG.new"
+    if sed "s|^  key: \".*\"$|  key: \"$key\"|" "$CONFIG" > "$tmp" 2>/dev/null && mv "$tmp" "$CONFIG"; then
+      log "agent key taken from SENHUB_AGENT_KEY"
+      return 0
+    fi
+    rm -f "$tmp"
+    log "could not write SENHUB_AGENT_KEY into $CONFIG"
+    exit 1
+  fi
 
   if [ ! -r "$kept" ]; then
     key=$(sed -n 's/^  key: "\(.*\)"$/\1/p' "$CONFIG" | head -1)
@@ -234,6 +318,22 @@ YAML
   log "reading the console log stream of the Container Apps:$written"
 }
 
+# unmounted_state_warning says what a container without a volume on the
+# state directory loses, and only that: SENHUB_HOST_ID and SENHUB_AGENT_KEY
+# carry the identity and the key without one, the log bookmarks never are.
+# Without a bookmark a Container Apps stream re-sends its last tail_lines,
+# and a file probe starts at the end of each file.
+unmounted_state_warning() {
+  lost="log bookmarks"
+  [ -n "${SENHUB_AGENT_KEY:-}" ] || lost="agent key, $lost"
+  [ -n "${SENHUB_HOST_ID:-}" ] || lost="host identity, $lost"
+  log "$STATE_DIR is not a mounted volume: $lost live in this container only"
+  if [ -z "${SENHUB_HOST_ID:-}" ]; then
+    log "every new container will arrive as a new host: mount a volume on $STATE_DIR, or set SENHUB_HOST_ID"
+  fi
+  log "the log probes lose their place: a Container Apps stream re-sends its recent lines, a file probe skips what was written in between; mount a volume on $STATE_DIR to keep it"
+}
+
 resolve_machine_id
 
 if [ -f "$CONFIG" ]; then
@@ -293,9 +393,7 @@ if [ ! -w "$STATE_DIR" ]; then
   log "$STATE_DIR is not writable: the agent cannot keep its identity, its key or its bookmarks"
   log "mount a volume there, or fix its ownership"
 elif ! awk -v d="$STATE_DIR" '$2 == d { found = 1 } END { exit !found }' /proc/mounts 2>/dev/null; then
-  log "$STATE_DIR is not a mounted volume: identity, agent key and log bookmarks live in this container only"
-  log "every new container will arrive as a new host, and every log probe will re-read its tail"
-  log "mount a volume on $STATE_DIR, or set SENHUB_HOST_ID, to keep one identity"
+  unmounted_state_warning
 fi
 
 exec senhub-agent "$@" --config-path "$CONFIG"

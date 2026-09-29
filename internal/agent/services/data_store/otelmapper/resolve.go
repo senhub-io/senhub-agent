@@ -321,6 +321,13 @@ func isSystemTag(tag string) bool {
 	switch tag {
 	case "probe_name", "probe_type":
 		return true
+	case "unit":
+		// The data store stamps the definition's display unit on every
+		// point so conversions can run (% to ratio, MB to bytes). As an
+		// attribute it contradicts the value it sits on: a ratio of 0.061
+		// went out labelled unit="%". The OTel unit travels in the
+		// record's own Unit field.
+		return true
 	}
 	return false
 }

@@ -138,7 +138,10 @@ func TestNewHTTPSyncStrategy(t *testing.T) {
 func TestHTTPSyncStrategy_Interface(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Test interface methods
 	if strategy.GetStrategyName() != "http" {
@@ -216,7 +219,10 @@ func TestHTTPSyncStrategy_Interface(t *testing.T) {
 func TestHTTPSyncStrategy_AddDataPoints(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Create test datapoints
 	datapoints := []datapoint.DataPoint{
@@ -372,7 +378,10 @@ func TestMetricCache_Cleanup(t *testing.T) {
 func TestHTTPSyncStrategy_HealthEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -397,7 +406,10 @@ func TestHTTPSyncStrategy_HealthEndpoint(t *testing.T) {
 func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Add test data to cache using public interface
 	now := time.Now()
@@ -456,7 +468,10 @@ func TestHTTPSyncStrategy_GetMetricsForProbe(t *testing.T) {
 func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	tests := []struct {
 		name           string
@@ -568,7 +583,10 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 func TestHTTPSyncStrategy_Shutdown(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Start the strategy
 	err := strategy.Start(context.Background())
@@ -592,7 +610,10 @@ func TestHTTPSyncStrategy_Shutdown(t *testing.T) {
 func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Start the strategy to initialize the server
 	err := strategy.Start(context.Background())
@@ -613,11 +634,20 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 		expectedInBody string
 	}{
 		{
-			name:           "Valid agent key GET",
-			agentKey:       "test-agent-key",
+			name:           "Administration key GET",
+			agentKey:       "test-admin-key",
 			method:         "GET",
 			expectedStatus: http.StatusOK,
 			expectedInBody: "module_levels",
+		},
+		{
+			// The agent's own logs are not what a poller reads. The key
+			// handed to PRTG or Nagios opens the metrics and stops there.
+			name:           "Agent key GET is refused",
+			agentKey:       "test-agent-key",
+			method:         "GET",
+			expectedStatus: http.StatusUnauthorized,
+			expectedInBody: "Unauthorized",
 		},
 		{
 			name:           "Invalid agent key GET",
@@ -654,7 +684,10 @@ func TestHTTPSyncStrategy_DebugLogsEndpoint(t *testing.T) {
 func TestHTTPSyncStrategy_TransformToPRTGChannel_NoProbeNameInChannel(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Create a metric with probe_name in the key
 	key := "cpu_usage_total.probe_name=cpu"
@@ -795,7 +828,10 @@ func TestHTTPSyncStrategy_PRTGMetricsGET(t *testing.T) {
 func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 	agentConfig := createTestAgentConfig()
 	logger := createTestLogger()
-	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{}, logger).(*HTTPSyncStrategy)
+	strategy := NewHTTPSyncStrategy(agentConfig, map[string]interface{}{"admin_key": "test-admin-key"}, logger).(*HTTPSyncStrategy)
+	// Port 0: these tests drive the router in memory, and a fixed 8080
+	// failed them whenever a local agent or anything else held it.
+	strategy.port = 0
 
 	// Start the strategy to initialize the server
 	err := strategy.Start(context.Background())
@@ -817,7 +853,7 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 	}{
 		{
 			name:     "Valid log level setting",
-			agentKey: "test-agent-key",
+			agentKey: "test-admin-key",
 			body: `{
 				"module_levels": [
 					{"module": "strategy.http", "level": "debug"},
@@ -828,6 +864,15 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 			expectedInBody: "success",
 		},
 		{
+			// Changing what the agent logs is an administration act. The
+			// key a monitoring tool holds must not do it.
+			name:           "Agent key is refused",
+			agentKey:       "test-agent-key",
+			body:           `{"module_levels": []}`,
+			expectedStatus: http.StatusUnauthorized,
+			expectedInBody: "Unauthorized",
+		},
+		{
 			name:           "Invalid agent key",
 			agentKey:       "wrong-key",
 			body:           `{"module_levels": []}`,
@@ -836,7 +881,7 @@ func TestHTTPSyncStrategy_SetLogLevelsEndpoint(t *testing.T) {
 		},
 		{
 			name:           "Invalid JSON",
-			agentKey:       "test-agent-key",
+			agentKey:       "test-admin-key",
 			body:           `{invalid json}`,
 			expectedStatus: http.StatusBadRequest,
 			expectedInBody: "Invalid JSON",

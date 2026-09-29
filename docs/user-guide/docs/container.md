@@ -8,7 +8,7 @@ else is a parameter.
 docker run -d --name senhub-agent \
   -e OTLP_BEARER_TOKEN=<your token> \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.5.5-beta
+  ghcr.io/senhub-io/senhub-agent:0.6.0
 ```
 
 That is the whole of it for a first run: one variable, one mount.
@@ -17,9 +17,12 @@ That is the whole of it for a first run: one variable, one mount.
 
 `/var/lib/senhub-agent` holds everything that makes this agent *this*
 agent: its host identity, its own key, and the bookmarks its log probes
-keep. **Mount it, or every container arrives as a new host** and
-re-reads the tail of every log it follows. The entrypoint says so on
-startup when the directory is not a mounted volume.
+keep. **Mount it, or every container arrives as a new host** and its
+log probes lose their place: a Container Apps stream re-sends its last
+`tail_lines`, a file probe skips what was written in between. The
+entrypoint says so on startup when the directory is not a mounted
+volume, naming only what `SENHUB_HOST_ID` and `SENHUB_AGENT_KEY` do not
+already carry.
 
 Two identities live there, and they answer different questions.
 
@@ -37,9 +40,25 @@ carrying the same key are one agent to everything downstream. Keeping it
 in the volume means one agent per volume, not one per container.
 
 If your platform already knows what this host is, `SENHUB_HOST_ID`
-settles the first without a volume. Give each instance its own value:
-an identity shared between several running agents is worse than one
-that changes, because nothing signals it.
+settles the first without a volume, and `SENHUB_AGENT_KEY` the second.
+With both set, a container without a volume comes back as the same host
+and the same agent. Give each instance its own values: an identity
+shared between several running agents is worse than one that changes,
+because nothing signals it, and an example or blank value is refused at
+start.
+
+What survives a new container without a volume: the host identity and
+the agent identity when those two variables are set, the configuration
+the variables describe. What does not: the log bookmarks, so a
+Container Apps stream re-sends its recent lines and a file probe skips
+what was written in between, and anything written to the configuration
+from the console.
+
+The host's *name* is another matter: it is the container's host name,
+which Docker sets to the container id unless told otherwise, so a new
+container shows up under a new name while keeping the same identity.
+Give it one that means something with `--hostname` (`hostname:` in a
+Compose file).
 
 Nothing else needs a mount. The configuration lives inside the container
 unless you choose otherwise, and the log file is written to
@@ -47,26 +66,32 @@ unless you choose otherwise, and the log file is written to
 
 ## Variables
 
-One is required. The rest have defaults or are only read when the
-feature they configure is wanted.
+None is strictly required. `OTLP_BEARER_TOKEN` is what a first run
+needs to export to SenHub; the rest have defaults or are only read when
+the feature they configure is wanted. These variables are read only when
+the entrypoint writes the configuration, that is when no `agent.yaml` is
+present (see [Bringing your own configuration](#bringing-your-own-configuration)).
 
 | Variable | Required | Default | What it does |
 |---|---|---|---|
-| `OTLP_BEARER_TOKEN` | Yes | - | Authenticates the export to SenHub. Without it the agent collects and exports nothing |
-| `SENHUB_OTLP_ENDPOINT` | No | `eu-west-1.intake.senhub.io:443` | Another collector: your own OpenTelemetry collector, VictoriaMetrics, Grafana Alloy |
+| `OTLP_BEARER_TOKEN` | No (needed to export to SenHub) | - | Authenticates the export to SenHub, sent as `Authorization: Bearer` and resolved from the environment at every start, never written to a file. Without it and without `SENHUB_OTLP_ENDPOINT`, no OTLP output is written: the agent collects and serves its local HTTP endpoints but exports nothing, and the entrypoint says so on startup. With `SENHUB_OTLP_ENDPOINT` set, the export goes out without an `Authorization` header |
+| `SENHUB_OTLP_ENDPOINT` | No | `eu-west-1.intake.senhub.io:443` when `OTLP_BEARER_TOKEN` is set | Another collector: your own OpenTelemetry collector, VictoriaMetrics, Grafana Alloy |
 | `SENHUB_OTLP_PROTOCOL` | No | `grpc` | `grpc` or `http`, the latter for a backend that ingests OTLP over HTTP |
+| `SENHUB_ENTITIES` | No | `true` | Sends the entities (this host, the agent, what its probes watch) a topology backend builds its map from. `false` exports measurements and logs only. Any value other than `true` or `false` stops the container |
+| `SENHUB_OTLP_TLS` | No | `true` | `false` for a collector that listens in plain text, such as a sidecar on `localhost:4317`. The token then crosses the network unencrypted: keep it to the same host or a trusted network. Any value other than `true` or `false` stops the container |
 | `SENHUB_LICENSE` | No | - | Licence token, for the probes that need one |
 | `SENHUB_TAGS` | No | - | Tags on every metric, as `key=value,key2=value2` |
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key and the bookmarks live |
-| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance |
+| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |
+| `SENHUB_AGENT_KEY` | No | kept in the state directory | Agent identity, a UUID. One value per instance; with `SENHUB_HOST_ID` it lets a container without a volume keep one identity |
 | `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. Not merged with `SENHUB_AZURE_APP`, see [Reading Azure Container Apps](#reading-azure-container-apps) |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
 
-The agent key is **not** a variable: the agent generates its own on
-first start, and the entrypoint keeps it in the state directory so the
-next container reuses it. That is why the mount matters.
+Without `SENHUB_AGENT_KEY` the agent generates its own key on first
+start, and the entrypoint keeps it in the state directory so the next
+container reuses it. That is why the mount matters.
 
 Never bake either identity into an image. An image is deployed in
 several copies by construction, so an identity that belongs to the image
@@ -182,7 +207,7 @@ ignores your variables tells you why.
 docker run -d --name senhub-agent \
   -v /srv/senhub/conf:/etc/senhub-agent \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.5.5-beta
+  ghcr.io/senhub-io/senhub-agent:0.6.0
 ```
 
 Your configuration wins completely, and that includes the agent key
@@ -193,17 +218,20 @@ metrics land on the same series with different values. Nothing signals
 it, and the counters it hides are the ones read when looking for missing
 data.
 
-Two ways out, both cheap. Give each instance its own value through the
-environment, which works because substitution is applied to the whole
-file before it is parsed:
+With a mounted configuration, each instance must therefore carry its own
+key. Reference it from the environment, which works because substitution
+is applied to the whole file before it is parsed, and give every
+instance its own `SENHUB_AGENT_KEY`:
 
 ```yaml
 agent:
   key: "${env:SENHUB_AGENT_KEY}"
 ```
 
-Or leave the key out of the shared configuration entirely and let each
-instance generate its own, kept in its own state volume.
+The agent resolves that reference itself, even though the entrypoint
+ignores `SENHUB_*` variables in this mode. Do not leave the key out or
+empty: the loader refuses a configuration whose agent key is empty, and
+the container stops at start.
 
 ## What the container does not do
 

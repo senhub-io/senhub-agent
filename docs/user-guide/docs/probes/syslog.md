@@ -70,6 +70,7 @@ The Syslog probe is platform-independent. It listens on the loopback interface b
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:54ce1c720fc663806d6432688a679d4f207229fc6f569d8847c3c4910c54cb27 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -285,22 +286,29 @@ grep -rA5 "type: syslog" /etc/senhub-agent/probes.d/
 **Symptom:** Error binding to port 514 on Unix/Linux systems
 
 **Solution:**
-Ports below 1024 require elevated privileges on Unix/Linux:
+The Linux service runs as the unprivileged `senhub` account with every
+capability dropped, so it cannot bind a port below 1024. The error says
+so: `bind: permission denied: port 514 is below 1024`. Two ways out:
 
 ```bash
-# Option 1: Run agent as root (not recommended)
-sudo senhub-agent run
+# Option 1: grant the one capability in a unit drop-in
+sudo systemctl edit senhub-agent.service
+#   [Service]
+#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
+sudo systemctl daemon-reload && sudo systemctl restart senhub-agent
 
-# Option 2: Grant port binding capability (Linux)
-sudo setcap cap_net_bind_service=+ep /opt/senhub/bin/senhub-agent
-
-# Option 3: Use alternate port (>1024) and configure syslog sources
+# Option 2: listen on a port above 1023 and point the senders at it
 # /etc/senhub-agent/probes.d/10-syslog.yaml:
 - name: syslog
   type: syslog
   params:
     port: 1514  # Non-privileged port
 ```
+
+`setcap` on the binary does not help: the unit's empty capability bounding
+set removes file capabilities, and an update replaces the file. See
+[Running the agent least-privilege](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/LEAST-PRIVILEGE.md).
 
 **Configure syslog sources to use alternate port:**
 ```bash
@@ -598,6 +606,22 @@ Example:
 <13>1 2025-10-13T14:23:45.000Z server01 sshd 1234 ID47 [exampleSDID@32473 eventID="1"] Connection from 192.168.1.100
 ```
 
+### Messages without a PRI
+
+Some senders start the line at the timestamp, with no `<PRI>`: the UniFi
+controller's activity log, for one.
+
+```
+Sep 29 18:08:37 unifi-pi CEF:0|Ubiquiti|UniFi Network|10.6.106|546|Config Modified|5|...
+```
+
+The probe still reads the timestamp, the hostname and the tag from such a
+line, and keeps the rest as the body. It sets no `facility` or `priority`,
+since the sender gave none. The severity is `5` (notice), unless the body
+is a CEF record: the severity then comes from the CEF header, 0-3 as
+informational, 4-6 as warning, 7-8 as error and 9-10 as critical. A
+message that carries a PRI keeps the severity of its PRI.
+
 ### Priority (PRI) Calculation
 
 ```
@@ -639,3 +663,21 @@ The Syslog probe requires no authentication for incoming syslog messages. Access
 ### Syslog Sources
 - RFC 3164 (BSD Syslog) or RFC 5424 (IETF Syslog) format
 - UDP or TCP transport support
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.syslog.records_emitted` | `senhub.syslog.records_emitted` | Syslog Records Emitted | # | Cumulative count of syslog messages this probe has relayed to the log rail |
+| - | `syslog_event` | Syslog {facility_name} Severity | # | Syslog message severity level (RFC 3164) |
+
+<!-- schema:metrics:end -->

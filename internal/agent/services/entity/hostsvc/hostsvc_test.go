@@ -14,9 +14,11 @@ func TestBuildObservation_Listeners(t *testing.T) {
 		{Pid: 1001, Proc: "nginx", Address: "0.0.0.0", Port: 80, Transport: "tcp"},
 		{Pid: 22, Proc: "sshd", Address: "0.0.0.0", Port: 22, Transport: "tcp"},
 	}
-	obs := buildObservation("h-1", ls, nil) // wildcard binds → no interface to resolve
+	obs := buildObservation("h-1", ls, nil, 0) // wildcard binds → no interface to resolve
 
-	if len(obs.Entities) != 2 || len(obs.Relations) != 2 {
+	// Two listeners, plus the service.instance each one says exists and
+	// its runs_on.
+	if len(listenersOf(obs)) != 2 || len(instancesOf(obs)) != 2 {
 		t.Fatalf("obs = %+v", obs)
 	}
 
@@ -37,15 +39,39 @@ func TestBuildObservation_Listeners(t *testing.T) {
 		t.Errorf("attrs = %+v", nginx.Attributes)
 	}
 
-	// Wildcard binds attach to the host (interim runs_on).
+	// Wildcard binds attach to the host (interim runs_on), and so does
+	// every instance.
 	for _, r := range obs.Relations {
 		if r.Type != relRunsOn {
 			t.Errorf("relation type = %q, want runs_on", r.Type)
 		}
-		if r.FromType != entityTypeServiceListener || r.ToType != entityTypeHost || r.ToID[idKeyHost] != "h-1" {
+		if r.FromType != entityTypeServiceListener && r.FromType != entityTypeServiceInstance {
+			t.Errorf("runs_on from %q", r.FromType)
+		}
+		if r.ToType != entityTypeHost || r.ToID[idKeyHost] != "h-1" {
 			t.Errorf("runs_on wrong: %+v", r)
 		}
 	}
+}
+
+// listenersOf and instancesOf split an observation by entity type: the
+// source emits both, and most assertions are about one of them.
+func listenersOf(obs entity.Observation) []entity.Entity {
+	return entitiesOfType(obs, entityTypeServiceListener)
+}
+
+func instancesOf(obs entity.Observation) []entity.Entity {
+	return entitiesOfType(obs, entityTypeServiceInstance)
+}
+
+func entitiesOfType(obs entity.Observation, want string) []entity.Entity {
+	var out []entity.Entity
+	for _, e := range obs.Entities {
+		if e.Type == want {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // TestBuildObservation_ListensOnInterface (#252): a non-wildcard bind resolves
@@ -60,7 +86,7 @@ func TestBuildObservation_ListensOnInterface(t *testing.T) {
 		{Pid: 40, Proc: "app", Address: "192.0.2.9", Port: 9000, Transport: "tcp"},   // specific, no local iface → runs_on
 	}
 	ipToIface := map[string]string{"10.0.0.5": "eth0"}
-	obs := buildObservation("h-1", ls, ipToIface)
+	obs := buildObservation("h-1", ls, ipToIface, 0)
 
 	// pg: listens_on → network.interface{h-1, eth0}, no listen.address, port on entity.
 	pg, _ := entityByProc(obs, "pg")
@@ -103,23 +129,29 @@ func TestBuildObservation_ListensOnInterface(t *testing.T) {
 			runsOn++
 		}
 	}
-	if runsOn != 3 {
-		t.Errorf("want 3 runs_on (wildcard/loopback/unresolved), got %d", runsOn)
+	// Three listeners fall back to the host, and each of the four
+	// processes gets the runs_on of the instance it is.
+	if runsOn != 3+len(instancesOf(obs)) {
+		t.Errorf("want %d runs_on (wildcard/loopback/unresolved, plus one per instance), got %d",
+			3+len(instancesOf(obs)), runsOn)
 	}
 }
 
 func TestBuildObservation_EmptyGuards(t *testing.T) {
-	if o := buildObservation("", []listener{{Port: 80, Transport: "tcp"}}, nil); len(o.Entities) != 0 {
+	if o := buildObservation("", []listener{{Port: 80, Transport: "tcp"}}, nil, 0); len(o.Entities) != 0 {
 		t.Error("no hostID → empty")
 	}
-	if o := buildObservation("h", nil, nil); len(o.Entities) != 0 {
+	if o := buildObservation("h", nil, nil, 0); len(o.Entities) != 0 {
 		t.Error("no listeners → empty")
 	}
 }
 
 func TestBuildObservation_ProcAndPidOmittedWhenAbsent(t *testing.T) {
-	obs := buildObservation("h-1", []listener{{Port: 443, Transport: "tcp"}}, nil) // no Proc, Pid 0, no Address
-	a := obs.Entities[0].Attributes
+	obs := buildObservation("h-1", []listener{{Port: 443, Transport: "tcp"}}, nil, 0) // no Proc, Pid 0, no Address
+	if n := len(instancesOf(obs)); n != 0 {
+		t.Errorf("a listener whose owner cannot be named mints no instance; got %d", n)
+	}
+	a := listenersOf(obs)[0].Attributes
 	if _, ok := a[attrProcessName]; ok {
 		t.Error("process.executable.name should be omitted when unknown")
 	}
@@ -150,8 +182,8 @@ func TestObserve_CachesBetweenRefreshes(t *testing.T) {
 	if calls != 1 {
 		t.Errorf("enumerate called %d times, want 1 (cached within refresh)", calls)
 	}
-	if len(o1.Entities) != 1 || len(o2.Entities) != 1 {
-		t.Errorf("obs1=%d obs2=%d entities", len(o1.Entities), len(o2.Entities))
+	if len(listenersOf(o1)) != 1 || len(listenersOf(o2)) != 1 {
+		t.Errorf("obs1=%d obs2=%d listeners", len(listenersOf(o1)), len(listenersOf(o2)))
 	}
 }
 
@@ -209,4 +241,63 @@ func entityByProc(obs entity.Observation, proc string) (entity.Entity, bool) {
 		}
 	}
 	return entity.Entity{}, false
+}
+
+// A server that listens without end must exist without end. Before this,
+// the service.instance was minted by the dependency source alone, as the
+// source of an outbound edge it had sampled, so a reverse proxy whose
+// upstream connections are brief lost its instance whenever two
+// consecutive samples caught none — nine times in sixty-three hours on a
+// host where it never stopped running.
+func TestAListeningProcessExistsWhateverItConnectsTo(t *testing.T) {
+	obs := buildObservation("h-1", []listener{
+		{Pid: 1001, Proc: "nginx", Address: "0.0.0.0", Port: 80, Transport: "tcp"},
+		{Pid: 1002, Proc: "nginx", Address: "0.0.0.0", Port: 443, Transport: "tcp"},
+	}, nil, 0)
+
+	inst := instancesOf(obs)
+	if len(inst) != 1 {
+		t.Fatalf("one process, one instance, whatever it listens on; got %+v", inst)
+	}
+	if inst[0].ID[idKeyServiceInstanceID] != "nginx@h-1" {
+		t.Errorf("id = %v; the dependency source mints the same one, or the two nodes never merge",
+			inst[0].ID[idKeyServiceInstanceID])
+	}
+	if inst[0].Attributes[attrServiceName] != "nginx" {
+		t.Errorf("attrs = %+v", inst[0].Attributes)
+	}
+
+	var anchored bool
+	for _, r := range obs.Relations {
+		if r.FromType == entityTypeServiceInstance && r.Type == relRunsOn && r.ToID[idKeyHost] == "h-1" {
+			anchored = true
+		}
+	}
+	if !anchored {
+		t.Error("the instance floats: without runs_on it hangs off no host")
+	}
+}
+
+// The agent's own service.instance is the foundation's, keyed on the agent
+// instance id. Minting <exe>@<host> for the agent's own listening console
+// would put a second node beside it for the same running thing (#494).
+func TestTheAgentsOwnListenerMintsNoParallelInstance(t *testing.T) {
+	obs := buildObservation("h-1", []listener{
+		{Pid: 4242, Proc: "senhub-agent", Address: "127.0.0.1", Port: 18058, Transport: "tcp"},
+		{Pid: 1001, Proc: "nginx", Address: "0.0.0.0", Port: 80, Transport: "tcp"},
+	}, nil, 4242)
+
+	for _, e := range instancesOf(obs) {
+		if e.ID[idKeyServiceInstanceID] == "senhub-agent@h-1" {
+			t.Errorf("the agent got a second instance beside the foundation's: %+v", e.ID)
+		}
+	}
+	if len(instancesOf(obs)) != 1 {
+		t.Errorf("the other process still gets its instance; got %+v", instancesOf(obs))
+	}
+	// The listener itself is still published: what the agent exposes is a
+	// fact about the host like any other.
+	if len(listenersOf(obs)) != 2 {
+		t.Errorf("listeners = %d, want both", len(listenersOf(obs)))
+	}
 }

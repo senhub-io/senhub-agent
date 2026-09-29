@@ -40,6 +40,7 @@ identical to records produced by the `syslog` and `event` probes
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:207ad5d72f4e63f324f5ba2ee6129f56dbd746b3e9f3e68e653d205355b32e39 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -140,3 +141,20 @@ Severity mapping (RFC 5424 → OTel):
   only this probe is inert.
 - **No CGO.** Uses subprocess + JSON parsing, not `libsystemd` —
   preserves the agent's pure-Go build profile.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.linux_logs.records_emitted` | `senhub.linux_logs.records_emitted` | Linux Logs Records Emitted | # | Cumulative count of journal records this probe has published to the log rail |
+
+<!-- schema:metrics:end -->

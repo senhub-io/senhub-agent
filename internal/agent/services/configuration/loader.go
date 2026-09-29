@@ -112,6 +112,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	}
 
 	// Multi-file mode — pull probes and strategies from siblings.
+	reportIgnoredFragments(log, probesDir, strategiesDir)
 	extraProbes, err := loadProbesD(probesDir)
 	if err != nil {
 		return LocalConfigurationData{}, err
@@ -275,6 +276,44 @@ func listYAMLFiles(dir string) ([]string, error) {
 	}
 	sort.Strings(paths)
 	return paths, nil
+}
+
+// ignoredFragments lists the files of dir that the loader leaves out
+// without being told to: not a dotfile, not *.disabled, and not ending in
+// .yaml or .yml. A copy taken before an edit, otlp.yaml.bak-20260908,
+// is the usual one. It is not loaded, which is right, and it is said, so
+// an operator who meant it as a fragment learns it does not count.
+func ignoredFragments(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".disabled") {
+			continue
+		}
+		if ext := strings.ToLower(filepath.Ext(name)); ext != ".yaml" && ext != ".yml" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func reportIgnoredFragments(log *logger.ModuleLogger, dirs ...string) {
+	if log == nil {
+		return
+	}
+	for _, dir := range dirs {
+		if names := ignoredFragments(dir); len(names) > 0 {
+			log.Info().
+				Str("dir", dir).
+				Strs("files", names).
+				Msg("Files not loaded: only *.yaml and *.yml are read here (rename to *.disabled to keep one aside explicitly)")
+		}
+	}
 }
 
 // mergeConfigs returns a copy of base with probes and strategies

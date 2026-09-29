@@ -1,0 +1,174 @@
+package zabbix
+
+import (
+	"encoding/json"
+	"sort"
+	"strings"
+
+	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/template"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
+)
+
+// Low-level discovery lets the server create the items of a series whose
+// identity is only known at collection time: one item per filesystem,
+// per interface, per database. The agent serves one discovery key per
+// probe type and per set of dimensions:
+//
+//	<prefix>.discovery[<probe type>,<label>,...]
+//
+// whose value is the JSON array Zabbix expects, one object per instance,
+// with the probe name under {#PROBE} and every dimension under its own
+// macro ({#DEVICE}, {#MOUNT_POINT}). A template generated from the
+// definitions declares the matching rules and prototypes, with the same
+// macros in the prototype keys, so the probe name itself is discovered
+// and a template is written per probe type rather than per instance.
+
+const probeMacro = "{#PROBE}"
+
+// macroFor turns a tag key into the Zabbix macro that carries its value.
+func macroFor(label string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(label) {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	return "{#" + b.String() + "}"
+}
+
+// discoveryKey names the discovery rule of one probe type and one set
+// of dimensions; no dimension gives the rule that discovers the probe
+// instances alone.
+func discoveryKey(prefix, probeType string, labels []string) string {
+	params := append([]string{probeType}, labels...)
+	return buildKey(prefix, "discovery", params)
+}
+
+// discoveryItems renders the discovery values for the series currently
+// held, one item per (probe type, dimension set) seen.
+func discoveryItems(prefix string, defs otelmapper.DefinitionLookup, metrics []otelmapper.CacheMetric) []item {
+	type rule struct {
+		probeType string
+		labels    []string
+		instances map[string]map[string]string
+		fed       map[string]map[string]bool // instance id -> FedIDs it sends
+	}
+	rules := map[string]*rule{}
+	families := map[string]map[string]*variantFamily{}
+	for _, cm := range metrics {
+		var def *transformers.ProbeDefinition
+		if defs != nil {
+			def = defs.GetProbeDefinition(cm.ProbeType)
+		}
+		md := findMetric(def, cm.MetricName)
+		labels := relayDimensions(def, md, cm.Tags)
+
+		// A metric that belongs to a variant family is discovered under
+		// the family's own rule, carrying the attribute value this
+		// metric stands for. Only the members the host actually feeds
+		// reach here, which is the whole point: the generator declares
+		// one prototype keyed on the macro, and only the values sent
+		// become items.
+		var fam *variantFamily
+		if md != nil {
+			byMetric, ok := families[cm.ProbeType]
+			if !ok {
+				byMetric = familiesOf(def)
+				families[cm.ProbeType] = byMetric
+			}
+			fam = byMetric[md.Name]
+		}
+
+		key := discoveryKey(prefix, cm.ProbeType, labels)
+		if fam != nil {
+			key = variantRuleKey(prefix, cm.ProbeType, fam.otelName, labels)
+		}
+		r, ok := rules[key]
+		if !ok {
+			r = &rule{probeType: cm.ProbeType, labels: labels, instances: map[string]map[string]string{}, fed: map[string]map[string]bool{}}
+			rules[key] = r
+		}
+		// A series that carries none of the rule's labels is not an
+		// instance: it is the probe's own aggregate, published beside
+		// the per-instance ones. Discovering it creates an item whose
+		// name ends in empty parentheses, which an operator reads as a
+		// defect rather than as a total.
+		blank := false
+		for _, l := range labels {
+			if cm.Tags[l] == "" {
+				blank = true
+				break
+			}
+		}
+		if blank && len(labels) > 0 {
+			continue
+		}
+		entry := map[string]string{probeMacro: cm.ProbeName, template.ProbeKeyMacro(cm.ProbeType): cm.ProbeName}
+		id := cm.ProbeName
+		for _, l := range labels {
+			v := cm.Tags[l]
+			entry[macroFor(l)] = v
+			id += "\x00" + v
+		}
+		if fam != nil {
+			macros := attrMacros(fam.labels, fam.attrKeys)
+			for i, v := range staticAttributeValues(md) {
+				if i >= len(macros) {
+					break
+				}
+				entry[macros[i]] = v
+				id += "\x00" + v
+			}
+		}
+		if existing, ok := r.instances[id]; ok {
+			entry = existing
+		}
+		r.instances[id] = entry
+		// A family's rows already list only the values fed; the other
+		// rules say, per instance, which of their metrics it sends.
+		if fam == nil && md != nil {
+			if r.fed[id] == nil {
+				r.fed[id] = map[string]bool{}
+			}
+			r.fed[id][template.FedID(*md)] = true
+		}
+	}
+
+	keys := make([]string, 0, len(rules))
+	for k := range rules {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]item, 0, len(keys))
+	for _, k := range keys {
+		r := rules[k]
+		ids := make([]string, 0, len(r.instances))
+		for id := range r.instances {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		rows := make([]map[string]string, 0, len(ids))
+		for _, id := range ids {
+			row := r.instances[id]
+			if fed := r.fed[id]; len(fed) > 0 {
+				list := make([]string, 0, len(fed))
+				for f := range fed {
+					list = append(list, f)
+				}
+				sort.Strings(list)
+				row[template.FedMacro] = template.FedList(list)
+			}
+			rows = append(rows, row)
+		}
+		body, err := json.Marshal(rows)
+		if err != nil {
+			continue
+		}
+		out = append(out, item{Key: k, Value: string(body)})
+	}
+	return out
+}

@@ -33,11 +33,17 @@ var logoFile embed.FS
 type TemplateData struct {
 	AgentKey    string
 	PRTGEnabled bool
+	// ReadKey is the agent key proper, the one a monitoring tool and a
+	// licence are bound to. The console is opened with the administration
+	// key, which is AgentKey here, and must not present that one as the
+	// agent's key.
+	ReadKey string
 }
 
 // AssetHandler provides methods for serving embedded assets
 type AssetHandler struct {
 	agentKey    string
+	readKey     string
 	prtgEnabled bool
 	templates   map[string]*template.Template
 }
@@ -87,6 +93,12 @@ func (ah *AssetHandler) parseTemplates() {
 	}
 }
 
+// WithReadKey sets the agent key the pages show as the agent's own.
+func (ah *AssetHandler) WithReadKey(key string) *AssetHandler {
+	ah.readKey = key
+	return ah
+}
+
 // RenderTemplate renders an HTML template with data
 func (ah *AssetHandler) RenderTemplate(name string) (string, error) {
 	tmpl, exists := ah.templates[name]
@@ -98,6 +110,7 @@ func (ah *AssetHandler) RenderTemplate(name string) (string, error) {
 	data := TemplateData{
 		AgentKey:    ah.agentKey,
 		PRTGEnabled: ah.prtgEnabled,
+		ReadKey:     ah.readKey,
 	}
 
 	err := tmpl.Execute(&buf, data)

@@ -95,7 +95,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// Infrastructure probes
 	"redfish": {
 		// Storage components
-		"controller", "controller_id",
+		"controller", "controller_id", "controller_name", "controller_slot",
 		"drive_id", "drive_name",
 		"volume_id", "volume_name",
 		"pool_name", "pool_id",
@@ -104,6 +104,26 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"processor_id",
 		"memory_module_id",
 		"fan_name", "sensor_name",
+		// The machine a series came from. One agent polls several
+		// service processors, and every one of them numbers its drives
+		// from the same small set of slots.
+		"host", "system_name",
+		// Where a component sits on the chassis. A slot identifies a
+		// drive and an enclosure identifies the shelf holding it, on a
+		// machine that carries many of both.
+		"enclosure_id", "slot", "psu_location",
+		// A redundancy set is something a controller belongs to rather
+		// than owns, and a machine carries several.
+		"redundancy_set", "redundancy_group", "redundancy_mode",
+		// Properties of a component that its identifier already picks
+		// out: a drive's type and interface, a volume's RAID level, the
+		// machine's model and serial number. They create no series,
+		// since their value is fixed for the instance the identifier
+		// names, and leaving one out costs a whole family if that
+		// reading is ever wrong. The key is internal and never shown,
+		// so registering them is free.
+		"drive_type", "drive_interface", "raid_type",
+		"model", "serial_number",
 	},
 
 	// Storage-array probes — powerstore emits cluster aggregates plus per-resource
@@ -111,6 +131,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// drive and per replication session.
 	"powerstore": {
 		"metric_type", "severity",
+		"cluster",   // per-cluster: every metric carries it, and one agent can poll several
 		"volume",    // per-volume state/capacity
 		"appliance", // per-appliance perf/capacity/state
 		"node",      // per-node performance
@@ -124,7 +145,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"job_name", "job_type", // Backup jobs
 		"repo_name",                  // Repositories
 		"proxy_name",                 // Proxies
+		"object_id",                  // What makes a protected object unique: several share a name
 		"object_name", "object_type", // Protected objects
+		"platform",                   // Objects grouped by platform when they get no status channel
 		"server_name", "server_type", // Managed servers
 	},
 
@@ -135,9 +158,26 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"error_bucket", // per directory-sync export-error bucket
 	},
 	"exchange_online": {"service_display_name"}, // per Exchange service-health entry
-	// azure_container_apps reports the state of one application per instance;
-	// its lines ride the log rail, so nothing splits its metrics.
-	"azure_container_apps": {"metric_type"},
+	// azure_container_apps used to report one application per instance.
+	// Since subscription discovery it follows every application a
+	// credential can read, so its state metrics are split by application
+	// and its scan failures by cause; without these the cache keeps one
+	// application's state and one failure reason, whichever arrived last.
+	"azure_container_apps": {
+		"metric_type", // per collection-state series
+		"azure_app",   // per followed application
+		"reason",      // per scan-failure cause
+	},
+
+	// azure_container_app_jobs watches one job per instance, and an
+	// agent may watch several. The job name is what tells their series
+	// apart; the resource group is what tells two jobs of the same name
+	// in two groups apart.
+	"azure_container_app_jobs": {
+		"metric_type",
+		"azure_job",
+		"azure_resource_group",
+	},
 
 	// High-availability probes
 	"hyperv_ha": {
@@ -173,9 +213,30 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"windows_eventlog": {},
 	"snmp_trap":        {},
 
+	// Active checks (Pro): one URL per instance, split by url like their
+	// definitions' multi_instance_labels; the gateway probe has none.
+	"load_webapp":  {"url"},
+	"ping_webapp":  {"url"},
+	"ping_gateway": {},
+
+	// One series per metric: their definitions declare no
+	// multi_instance_labels, so an empty set is the declaration.
+	"event":     {},
+	"influxdb":  {},
+	"nats":      {},
+	"nginx":     {},
+	"zookeeper": {},
+
 	// Event probes
 	"winevents": {"event_id", "source"}, // Windows Event Log events
-	"syslog":    {"event_id", "source"}, // Syslog events
+	// syslog: the event counter is reported per sender, per facility and
+	// per tag, so all three split it. Without them one machine's events
+	// overwrote every other machine's on the pull sinks.
+	"syslog": {
+		"event_id", "source",
+		"hostname", "tag",
+		"facility", "facility_name",
+	},
 	// systemd: one series per supervised unit; systemd.unit is the sole
 	// discriminant declared in multi_instance_labels.
 	"systemd": {"systemd.unit"},
@@ -255,7 +316,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"solr": {"core"}, // per-core metrics (solr.document.count, solr.index.size)
 	// memcached: network by direction (transmit/receive), operations by result
 	// (hit/miss), commands by command (get/set/flush), cpu.usage by state (user/system).
-	"memcached": {"result", "command", "state", "direction", "metric_type"},
+	// memcached: one series per polled server beside the per-command and
+	// per-state breakdowns; instance is what tells two servers apart.
+	"memcached": {"instance", "result", "command", "state", "direction", "metric_type"},
 	// nvidia: one series per GPU card; gpu.index + gpu.name uniquely
 	// identify a card within the host, gpu.uuid is added for stable joins.
 	"nvidia": {"gpu.index", "gpu.name", "gpu.uuid", "metric_type"},
@@ -391,6 +454,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	},
 
 	"swarm": {
+		"swarm.cluster.name", // per-cluster, declared on every series of the probe
 		"swarm.node.name",
 		"swarm.node.id", // per-node task placement, which carries no hostname
 		"swarm.node.role",
@@ -428,8 +492,12 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// Work queues & spool backlog (job_queue, output_queue,
 		// message_queue multi-instance, spooled_file).
 		"queue_name", "queue_library",
-		// Storage pools & ASPs (asp, memory_pool, disk_status).
-		"asp_number", "pool_name", "pool_id",
+		// Storage pools & ASPs (asp, memory_pool, disk_status). The asp
+		// collector names the pool asp_number and the user_storage one
+		// names it asp: one user holds storage in several pools, so the
+		// second identifies as much as the first. asp_type describes
+		// the pool the number already names.
+		"asp_number", "asp", "asp_type", "pool_name", "pool_id",
 		"unit_number", "device_name",
 		// DB & journaling (sys_table_stats, index_advisor, journal_*).
 		"table_schema", "table_name", "key_columns",
@@ -438,6 +506,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// Identity, security, config (user_profile, user_storage,
 		// system_value, library_list, license).
 		"user", "user_name", "schema",
+		// The class a profile belongs to, which is the whole of what
+		// user_profile.count_by_class reports: without it the classes
+		// landed on one slot and every one but the last was dropped.
+		"user_class",
 		"sysval",
 		"library",
 		"product_id", "feature_id",
@@ -445,10 +517,15 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// netstat_connection, http_server, jvm).
 		"address", "local_port", "port_name", "protocol",
 		"tcp_state", "interface",
+		// The line an interface binds to. The address identifies it;
+		// the line describes which physical line carries it.
+		"line_description",
 		"server_name",
 		// Compliance & hardware (ptf_group, watch_info,
 		// hardware_resource, authority_collection).
-		"group", "session_id", "category",
+		// program describes the object a watch session watches, which
+		// session_id identifies.
+		"group", "session_id", "program", "category",
 		// Dimensions on count_by_* aggregates.
 		"status", "state", "job_type", "type",
 		// Event discriminants (history_log, message_queue,
@@ -471,6 +548,10 @@ type MetricCache struct {
 	// Example: "cpu:usage_percent:core=0" or "redfish:storage.drive.temperature:drive_id=disk.bay.0"
 	// Only discriminant tags are in the key - contextual tags are in CachedMetric.Tags
 	timeSeries map[string]CachedMetric
+	// unregisteredTypes remembers the probe types already reported as
+	// missing from DiscriminantTagsRegistry: the warning is for the
+	// developer, once, not one line per datapoint for the process lifetime.
+	unregisteredTypes sync.Map
 	// Index by probe for fast probe-specific queries
 	probeIndex map[string]map[string]bool // probe_name -> set of ts_keys
 	ttl        time.Duration
@@ -481,8 +562,14 @@ type MetricCache struct {
 	// eviction frees slots, so a dropped-then-expired series can be
 	// re-admitted later. 0 = unbounded.
 	maxSeries int
-	stopChan  chan struct{}
-	logger    *logger.ModuleLogger
+	// cadences holds how often each probe collects, keyed by the
+	// case-folded probe name. A probe slower than the TTL vouches for its
+	// last value until its next run is due; without it an hourly probe
+	// was served for five minutes an hour and absent the other
+	// fifty-five, on PRTG, Nagios and Prometheus alike.
+	cadences map[string]time.Duration
+	stopChan chan struct{}
+	logger   *logger.ModuleLogger
 }
 
 // CachedMetric represents a stored metric with metadata
@@ -506,8 +593,61 @@ func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache
 		probeIndex: make(map[string]map[string]bool),
 		ttl:        ttl,
 		maxSeries:  DefaultMaxCacheSeries,
+		cadences:   make(map[string]time.Duration),
 		logger:     logger,
 	}
+}
+
+// NoteProbeCadence records how often the named probe collects.
+func (c *MetricCache) NoteProbeCadence(probeName string, interval time.Duration) {
+	if probeName == "" || interval <= 0 {
+		return
+	}
+	c.mu.Lock()
+	c.cadences[strings.ToLower(probeName)] = interval
+	c.mu.Unlock()
+}
+
+// liveWindowLocked is how long a value of the probe stays current: the
+// TTL, plus one and a half cadences for a probe whose cadence is known.
+// The caller holds c.mu.
+func (c *MetricCache) liveWindowLocked(probeName string) time.Duration {
+	return c.ttl + c.cadences[strings.ToLower(probeName)]*3/2
+}
+
+// retireSupersededLocked drops, for each probe (case-folded name) that
+// just delivered a batch, the series its previous runs reported and this
+// one did not: a series stored more than half a cadence before the batch.
+// A probe whose target went down reports only that; its other values were
+// served as current until the live window closed, on PRTG, Nagios and
+// Prometheus alike (#951). Batches of one run arrive seconds apart and
+// are kept together; a probe with no known cadence is left alone. The
+// caller holds c.mu.
+func (c *MetricCache) retireSupersededLocked(probes map[string]bool, arrival time.Time) {
+	for idxKey := range probes {
+		interval := c.cadences[idxKey]
+		if interval <= 0 {
+			continue
+		}
+		for tsKey := range c.probeIndex[idxKey] {
+			m, ok := c.timeSeries[tsKey]
+			if !ok || arrival.Sub(m.Timestamp) <= interval/2 {
+				continue
+			}
+			delete(c.timeSeries, tsKey)
+			delete(c.probeIndex[idxKey], tsKey)
+		}
+		if len(c.probeIndex[idxKey]) == 0 {
+			delete(c.probeIndex, idxKey)
+		}
+	}
+}
+
+// IsLive reports whether a cached value is still current at now.
+func (c *MetricCache) IsLive(metric CachedMetric, now time.Time) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return now.Sub(metric.Timestamp) <= c.liveWindowLocked(metric.ProbeName)
 }
 
 // SetMaxSeries overrides the cardinality cap. 0 disables it. Existing
@@ -564,11 +704,13 @@ func (c *MetricCache) generateTimeSeriesKey(probeName, probeType, metricName str
 	if !exists {
 		// Unknown probe type - log warning and use no discriminant tags
 		// This is safe: creates single time series per metric (like system-level probes)
-		c.logger.Warn().
-			Str("probe_name", probeName).
-			Str("probe_type", probeType).
-			Str("metric_name", metricName).
-			Msg("Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+		if _, warned := c.unregisteredTypes.LoadOrStore(probeType, true); !warned {
+			c.logger.Warn().
+				Str("probe_name", probeName).
+				Str("probe_type", probeType).
+				Str("metric_name", metricName).
+				Msg("Probe type not in DiscriminantTagsRegistry - using no discriminant tags")
+		}
 		discriminantTagNames = []string{}
 	}
 
@@ -649,11 +791,16 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 		Msg("Cache - Adding data points")
 
 	now := time.Now()
+	batchProbes := map[string]bool{}
+	defer c.retireSupersededLocked(batchProbes, now)
 
 	for _, dp := range dataPoints {
 		// Convert tags from []tags.Tag to map[string]string
 		tags := make(map[string]string)
 		for _, tag := range dp.Tags {
+			if tag.Private {
+				continue
+			}
 			tags[tag.Key] = tag.Value
 		}
 
@@ -762,6 +909,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			c.probeIndex[idxKey] = make(map[string]bool)
 		}
 		c.probeIndex[idxKey][tsKey] = true
+		batchProbes[idxKey] = true
 
 		c.logger.Debug().
 			Str("ts_key", tsKey).
@@ -783,7 +931,7 @@ func (c *MetricCache) cleanup() {
 
 	// Find expired metrics
 	for key, metric := range c.timeSeries {
-		if now.Sub(metric.Timestamp) > c.ttl {
+		if now.Sub(metric.Timestamp) > c.liveWindowLocked(metric.ProbeName) {
 			expiredKeys = append(expiredKeys, key)
 		}
 	}
@@ -892,6 +1040,9 @@ type ProbeStatistics struct {
 	Name         string    `json:"name"`
 	MetricsCount int       `json:"metrics_count"`
 	LastUpdate   time.Time `json:"last_update"`
+	// LiveWindow is how long after LastUpdate the probe's values stay
+	// current, which grows with the probe's own cadence.
+	LiveWindow time.Duration `json:"-"`
 	// TargetUp carries the probe's own verdict on whether what it watches
 	// answered, read from the `senhub.<area>.up` series that 49 probe
 	// types emit. Nil when the probe emits none, which is the case for
@@ -984,6 +1135,7 @@ func (c *MetricCache) GetProbeStatistics() map[string]ProbeStatistics {
 			Name:         probeName,
 			MetricsCount: metricCount,
 			LastUpdate:   lastUpdate,
+			LiveWindow:   c.liveWindowLocked(probeName),
 			TargetUp:     targetUp,
 			TargetMetric: targetMetric,
 		}
@@ -1152,6 +1304,7 @@ func (c *MetricCache) GetStatistics() CacheStatistics {
 			Name:         probeName,
 			MetricsCount: count,
 			LastUpdate:   lastUpdated[probeName],
+			LiveWindow:   c.liveWindowLocked(probeName),
 		})
 	}
 

@@ -10,6 +10,17 @@ friendly_name: "Syslog"
 version: "3.0.0"
 
 metrics:
+  - name: "senhub.syslog.records_emitted"
+    channel: "syslog_records_emitted"
+    display_name: "Syslog Records Emitted"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of syslog messages this probe has relayed to the log rail"
+    otel:
+      name: senhub.syslog.records_emitted
+      unit: "{record}"
+      type: counter
+
   # Syslog Event Severity — relayed log message, not a metric.
   - name: "syslog_event"
     channel: "syslog_severity"

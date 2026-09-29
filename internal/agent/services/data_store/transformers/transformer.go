@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 )
 
-//go:embed definitions/*.yaml definitions/shared/*.yaml lookups/*.lookup corrections/*.yaml
+//go:embed definitions/*.yaml definitions/shared/*.yaml corrections/*.yaml
 var definitionFiles embed.FS
 
 // MetricTransformer defines the interface for transforming metric names
@@ -29,6 +29,18 @@ type MetricTransformer interface {
 // implement it; callers type-assert.
 type OtelAware interface {
 	GetOtelMapping(metricName string) *OtelMapping
+}
+
+// PRTGAware is implemented by transformers whose definitions can keep a
+// metric out of PRTG (MetricDefinition.PRTGSkip).
+type PRTGAware interface {
+	SkipsPRTG(metricName string) bool
+}
+
+// SkipsPRTG reports whether t's definition keeps metricName out of PRTG.
+func SkipsPRTG(t MetricTransformer, metricName string) bool {
+	a, ok := t.(PRTGAware)
+	return ok && a.SkipsPRTG(metricName)
 }
 
 // TransformConfig represents the structure of a transformation YAML file (legacy)
@@ -51,6 +63,18 @@ type MetricDefinition struct {
 	AlertThresholdWarning  int               `yaml:"alert_threshold_warning"`
 	AlertThresholdCritical int               `yaml:"alert_threshold_critical"`
 	Lookup                 string            `yaml:"lookup"`
+	// Platforms restricts the metric to the operating systems that can
+	// produce it. Empty means every platform, which is the case for all
+	// but a handful. It exists because a template generated from the
+	// definitions would otherwise declare a Windows performance counter
+	// on a Linux host, where it can never receive a value and reads as a
+	// defect. Values are GOOS names: linux, windows, darwin.
+	Platforms []string `yaml:"platforms,omitempty"`
+	// PRTGSkip keeps the metric out of the PRTG outputs, pull and push.
+	// PRTG keeps every channel it has ever seen on a sensor, so a series
+	// whose identity churns (a process id) piles up dead channels there;
+	// the metric stays on every other output.
+	PRTGSkip bool `yaml:"prtg_skip,omitempty"`
 
 	// OTel-first mapping (v3+). See docs/developer-guide/otel/senhub-semantic-conventions.md
 	Otel           *OtelMapping      `yaml:"otel,omitempty"`
@@ -81,6 +105,14 @@ type OtelMapping struct {
 	// automatically by the mapper from Unit comparison; ValueScale is for
 	// probe-specific conversions not derivable from units alone.
 	ValueScale float64 `yaml:"value_scale,omitempty"`
+
+	// Distribution marks a metric that arrives as a histogram rather
+	// than a scalar: a count, a sum and a bucket ladder. A sink holding
+	// one value per series carries the count and the sum, under keys
+	// that say which is which, so the generated items and the sent ones
+	// agree. Type then describes those two parts, which are cumulative
+	// counters, rather than the instrument they come from.
+	Distribution bool `yaml:"distribution,omitempty"`
 }
 
 // ExpandDirective declares how a numeric-enum metric (via lookup) is emitted
@@ -138,6 +170,21 @@ type ProbeDefinition struct {
 	// definition-level list used to be silently ignored, leaving the
 	// literal placeholder in rendered channels (#317).
 	MultiInstanceLabels []string `yaml:"multi_instance_labels,omitempty"`
+	// DiscoverPerMetric gives each metric its own discovery rule instead
+	// of grouping them by the dimensions they happen to share.
+	//
+	// It is for a definition whose metrics are independent of each other:
+	// the relay definition describes what OTHER programs send, so an
+	// application exporting jvm.thread.count says nothing about whether
+	// it exports jvm.class.count. Grouped by dimension set, one rule
+	// declares a prototype per metric and an application relaying one of
+	// them gets items for all, the rest staying empty for ever (#922).
+	//
+	// A definition of what the agent itself collects wants the opposite:
+	// a filesystem that reports used bytes reports free bytes, so one
+	// rule per mount point is right and one rule per metric would
+	// multiply the rules for nothing.
+	DiscoverPerMetric bool `yaml:"discover_per_metric,omitempty"`
 
 	// HostLevel marks probes that observe the local host (CPU, memory,
 	// network interfaces, filesystem of the agent's machine). When the
@@ -682,3 +729,17 @@ func (tr *TransformerRegistry) loadCorrectionsConfigFromEmbed(probeName string) 
 }
 
 // TransformMetricName implements MetricTransformer interface for definition-based transformer
+
+// RunsOn reports whether the metric can be produced on the named
+// platform. A metric that names none runs everywhere.
+func (m MetricDefinition) RunsOn(goos string) bool {
+	if len(m.Platforms) == 0 {
+		return true
+	}
+	for _, p := range m.Platforms {
+		if p == goos {
+			return true
+		}
+	}
+	return false
+}

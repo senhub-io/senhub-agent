@@ -13,6 +13,10 @@ DARWIN_ARM64_DIR=$(DIST_DIR)/darwin-arm64
 LINUX_AMD64=$(LINUX_AMD64_DIR)/$(EXECUTABLE)
 LINUX_ARM64=$(LINUX_ARM64_DIR)/$(EXECUTABLE)
 WINDOWS=$(WINDOWS_AMD64_DIR)/$(EXECUTABLE).exe
+# The console launcher ships beside the agent on Windows only. It is
+# built for the GUI subsystem so a shortcut opens the console without
+# allocating a terminal; see cmd/console-launcher.
+CONSOLE_LAUNCHER=$(WINDOWS_AMD64_DIR)/senhub-console.exe
 DARWIN=$(DARWIN_AMD64_DIR)/$(EXECUTABLE)
 DARWIN_ARM64=$(DARWIN_ARM64_DIR)/$(EXECUTABLE)
 # Version embedded in binaries.
@@ -125,6 +129,7 @@ build: build-windows build-linux build-darwin ## Build binaries
 build-windows: create-dist ## Build for Windows
 		@mkdir -p $(WINDOWS_AMD64_DIR)
 		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(CONSOLE_LAUNCHER) -ldflags="$(LDFLAGS) -H windowsgui" ./cmd/console-launcher/
 
 build-linux: create-dist ## Build for Linux
 		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
@@ -158,7 +163,7 @@ verify-static: ## Fail if a linux binary carries an ELF interpreter (would not r
 # always the same name.
 package: build ## Create ZIP packages for all platforms
 	@echo "$(GREEN)📦 Creating ZIP packages...$(NC)"
-	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
+	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe senhub-console.exe
 	@cd $(LINUX_AMD64_DIR)   && zip -9 ../$(EXECUTABLE)-linux-amd64.zip   $(EXECUTABLE)
 	@cd $(LINUX_ARM64_DIR)   && zip -9 ../$(EXECUTABLE)-linux-arm64.zip   $(EXECUTABLE)
 	@cd $(DARWIN_AMD64_DIR)  && zip -9 ../$(EXECUTABLE)-darwin-amd64.zip  $(EXECUTABLE)
@@ -168,7 +173,7 @@ package: build ## Create ZIP packages for all platforms
 
 package-windows: build-windows ## Create ZIP package for Windows
 	@echo "$(GREEN)📦 Creating Windows ZIP package...$(NC)"
-	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe
+	@cd $(WINDOWS_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-windows-amd64.zip $(EXECUTABLE).exe senhub-console.exe
 	@echo "$(GREEN)✅ Windows ZIP package created: $(DIST_DIR)/$(EXECUTABLE)-windows-amd64.zip$(NC)"
 
 # Build a Windows MSI from the staged Windows binary using WiX v4.
@@ -180,7 +185,7 @@ package-windows-msi: build-windows ## Build Windows MSI (requires WiX v4 `wix` t
 	@command -v wix >/dev/null 2>&1 || { echo "$(RED)wix tool not found. Install: dotnet tool install --global wix --version '4.*'$(NC)"; exit 1; }
 	@echo "$(GREEN)📦 Building Windows MSI (version $(VERSION))...$(NC)"
 	@wix build packaging/windows/senhub-agent.wxs \
-		-d Version="$(VERSION)" \
+		-d Version="$(shell echo $(VERSION) | sed -E 's/^v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/')" \
 		-d BinDir="$(WINDOWS_AMD64_DIR)" \
 		-arch x64 \
 		-ext WixToolset.Util.wixext \
@@ -249,6 +254,15 @@ test-entrypoint: ## Check the container entrypoint's identity resolution (no dae
 #       -run TestProbePagesCarryTheirSchema -count=1
 third-party-notices: ## Regenerate THIRD-PARTY-NOTICES.md from the build's dependency graph
 	@python3 scripts/third-party-notices.py
+
+test-zabbix-import: ## Import every generated Zabbix template into the server named by ZABBIX_URL (+ ZABBIX_API_TOKEN, or ZABBIX_USER/ZABBIX_PASSWORD)
+	@test -n "$(ZABBIX_URL)" || (echo "ZABBIX_URL is not set"; exit 2)
+	@go test ./app/ -run TestEveryTemplateImportsIntoALiveZabbix -count=1 -v 2>&1 | grep -E "imported|refused|Zabbix|^(ok|FAIL|---)"
+
+docs-metrics: ## Regenerate the metric reference of the probe pages from their definitions
+	@echo "Regenerating the probe metric references..."
+	@UPDATE_DOCS=1 go test ./internal/docsmetrics/ -run TestProbePagesCarryTheirMetricReference -count=1
+	@echo "Done. Review the diff before committing."
 
 docs-params: ## Regenerate the parameter tables of the probe pages from their schemas
 	@echo "Regenerating the probe parameter tables..."
@@ -391,4 +405,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params help
+.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help

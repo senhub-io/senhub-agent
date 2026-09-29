@@ -23,10 +23,7 @@ func TestEveryMultiInstanceProbeHasDiscriminantTags(t *testing.T) {
 	// Documented baseline: enterprise/synthetic legacy probes with
 	// multi_instance_labels but no registry entry. The guard enforces the rule
 	// for everything NOT listed here.
-	knownDiscriminantGaps := map[string]bool{
-		"load_webapp": true,
-		"ping_webapp": true,
-	}
+	knownDiscriminantGaps := map[string]bool{}
 
 	for name, def := range defs {
 		if knownDiscriminantGaps[def.ProbeName] {
@@ -59,6 +56,84 @@ func TestEveryMultiInstanceProbeHasDiscriminantTags(t *testing.T) {
 				"DiscriminantTagsRegistry entry — its per-instance series collapse to one "+
 				"cache slot on the PRTG/Nagios pull sinks (#459). Add the raw discriminant "+
 				"tag keys to DiscriminantTagsRegistry in http_cache.go.", name)
+		}
+	}
+}
+
+// TestEveryDeclaredDimensionIsRegistered closes the hole the guard above
+// leaves: it proves a probe is registered, not that what splits its
+// series is. azure_container_apps was registered on metric_type alone,
+// and when subscription discovery made it follow several applications
+// the new azure_app dimension went unregistered. The probe still had an
+// entry, so the guard above stayed green while the cache kept one
+// application's state and dropped the other five on every pull sink.
+//
+// A label that describes an instance without splitting it does not need
+// registering, but the two errors do not cost the same. A label left
+// out because it looked descriptive and was not costs a whole family of
+// series, silently, on every pull sink; one registered although its
+// value is fixed for the instance its identifier names creates no
+// series at all, and the key is internal — the channel an operator
+// reads is built from the metric's own tags. So where the reading is
+// not certain, the label is registered and the reason written beside
+// it in http_cache.go. An entry that stops matching fails this test,
+// the way the documented-key guard works.
+func TestEveryDeclaredDimensionIsRegistered(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatalf("load transformer definitions: %v", err)
+	}
+
+	for _, def := range defs {
+		entry, registered := DiscriminantTagsRegistry[def.ProbeName]
+		if !registered || fullTagKeyProbes[def.ProbeName] {
+			// The guard above already rules on an absent entry, and a
+			// full-tag-keyed probe never collapses.
+			continue
+		}
+		known := make(map[string]bool, len(entry))
+		for _, tag := range entry {
+			known[tag] = true
+		}
+		declared := append([]string{}, def.MultiInstanceLabels...)
+		for _, m := range def.Metrics {
+			declared = append(declared, m.MultiInstanceLabels...)
+		}
+		var missing []string
+		seen := map[string]bool{}
+		for _, label := range declared {
+			if label == "" || known[label] || seen[label] {
+				continue
+			}
+			seen[label] = true
+			missing = append(missing, label)
+		}
+		if len(missing) == 0 {
+			continue
+		}
+		t.Errorf("probe %q splits its series on %v, which DiscriminantTagsRegistry does not list: "+
+			"the cache keys on the registered tags alone, so every value of those labels lands on "+
+			"one slot and all but the last is lost on the PRTG, Nagios and Web UI pull sinks. "+
+			"Register them in http_cache.go, with the reason beside them.", def.ProbeName, missing)
+	}
+}
+
+// Every probe that has a definition declares how its series are keyed on
+// the pull sinks, even when the answer is "by probe name alone". An
+// undeclared type fell back to no discriminant with a warning; for the
+// webapp probes that warning fired once per datapoint, dozens of lines a
+// minute, and the choice was never made by anyone.
+func TestEveryDefinedProbeDeclaresItsDiscriminants(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatalf("load transformer definitions: %v", err)
+	}
+	for _, def := range defs {
+		if fullTagKeyProbes[def.ProbeName] {
+			continue
+		}
+		if _, ok := DiscriminantTagsRegistry[def.ProbeName]; !ok {
+			t.Errorf("probe %q has a definition but no DiscriminantTagsRegistry entry; declare its discriminant tags ({} when one series per metric)", def.ProbeName)
 		}
 	}
 }

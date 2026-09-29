@@ -57,6 +57,10 @@ type AgentMetricsSnapshot struct {
 // errors via agentstate.IncrementCollectErrors, http requests via the
 // CountRequests middleware, probes.healthy via push-based
 // agentstate.RecordProbeHealth from ProbePoller.collect).
+// attrSenderService names the service that sent the records an OTLP
+// receiver relayed, on the agent's own counters.
+const attrSenderService = "senhub.otlp_receiver.sender.service.name"
+
 func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	uptime := time.Since(snap.StartTime).Seconds()
 
@@ -443,6 +447,35 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(n),
 			Description: "Cumulative count of items the OTLP receiver discarded, by signal and reason (no_sink, unmapped).",
 		})
+	}
+
+	// Host-join coverage of what the receiver relays. The total and the
+	// share still lacking host.id are two series rather than a ratio, so
+	// a rule keeps its denominator when traffic drops to zero; origin
+	// tells the expected gap (remote senders are never stamped) from a
+	// defect (a local socket should never leave one without).
+	for key, c := range agentstate.GetOTLPReceiverCoverage() {
+		// The sending service is not this agent's service.name: named so,
+		// it overrode the resource's service.name=senhub-agent in the
+		// backend and the agent's own counters read as the sender's.
+		attrs := map[string]string{"signal": key.Signal, "origin": key.Origin, attrSenderService: key.Service}
+		records = append(records,
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.otlp_receiver.received",
+				Unit:        "{record}",
+				Type:        "counter",
+				Attributes:  attrs,
+				Value:       float64(c.Received),
+				Description: "Cumulative count of records the OTLP receiver relayed, by signal, origin (uds, tcp_loopback, remote) and sending service.",
+			},
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.otlp_receiver.received.without_host_id",
+				Unit:        "{record}",
+				Type:        "counter",
+				Attributes:  attrs,
+				Value:       float64(c.WithoutHostID),
+				Description: "Cumulative count of relayed records that still carried no host.id once the receiver was done with them. Expected on origin=remote; a defect on uds.",
+			})
 	}
 
 	// Checkpoint self-metrics. These are emitted regardless of whether

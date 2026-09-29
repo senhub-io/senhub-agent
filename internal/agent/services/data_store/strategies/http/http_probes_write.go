@@ -161,7 +161,7 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey strin
 		writeJSONError(w, http.StatusForbidden, fmt.Sprintf("probe type %q: %s", req.Type, verdict.Reason))
 		return ps, nil, false
 	}
-	asWritten := paramsAsWritten(stored, req.Params)
+	asWritten := paramsAsWritten(stored, req.Params, secretPathsOf(ps))
 	if problems := ps.CheckParams(asWritten); len(problems) > 0 {
 		msgs := make([]string, 0, len(problems))
 		for _, p := range problems {

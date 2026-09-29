@@ -6,6 +6,9 @@
 // banner at the top.
 (function () {
     const KEY = (window.AGENT_KEY || '').trim();
+    // The console is opened with the administration key; the agent key, the
+    // one PRTG or Nagios read with and a licence is bound to, is another.
+    const READ_KEY = (window.AGENT_READ_KEY || '').trim() || KEY;
     const API = '/api/' + KEY + '/';
     const WEB = '/web/' + KEY + '/';
     const GS_FLAG = 'senhub.overview.gettingStartedHidden';
@@ -386,6 +389,7 @@
         const rows = [
             ['Version', esc((d.version || '?') + commit)],
             ['Host', esc(d.hostname || '?') + (d.os ? ', ' + esc(d.os + (d.arch ? '/' + d.arch : '')) : '')],
+            ['Instance ID', d.instance_id ? '<span title="service.instance.id of this agent in its telemetry and in a topology graph">' + esc(d.instance_id) + '</span>' : '-'],
             ['Uptime', esc(uptime(d.uptime))],
             ['Port', esc(d.port || '?')],
             ['Config', d.config_path ? esc(d.config_path) : '-'],
@@ -435,11 +439,11 @@
             ['Expires', expires],
             ['Probe types', catalog ? num(available) + ' available' : '-'],
             ['Pro types', catalog ? num(locked) + ' need a license' : '-'],
-            ['Agent key', '<span title="' + esc(KEY) + '">' + esc(shortKey(KEY)) + '</span><button type="button" class="btn sm" id="copy-key">Copy</button><span class="copied hide" id="copied">copied</span>']
+            ['Agent key', '<span title="' + esc(READ_KEY) + '">' + esc(shortKey(READ_KEY)) + '</span><button type="button" class="btn sm" id="copy-key">Copy</button><span class="copied hide" id="copied">copied</span>']
         ];
         $('lic-kv').innerHTML = rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
         $('copy-key').addEventListener('click', async () => {
-            const ok = await copyText(KEY);
+            const ok = await copyText(READ_KEY);
             const c = $('copied');
             c.textContent = ok ? 'copied' : 'copy failed';
             c.classList.remove('hide');

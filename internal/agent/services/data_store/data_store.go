@@ -237,6 +237,9 @@ func (d *dataStore) GetCallback() AddCallback {
 					break
 				}
 			}
+			if !shouldSendToStrategy && consumesOtelMetrics(strategy) && targetsStrategy(targetStrategies, "otlp") {
+				shouldSendToStrategy = true
+			}
 
 			if !shouldSendToStrategy {
 				// Skip strategies that are not in the target list
@@ -250,6 +253,12 @@ func (d *dataStore) GetCallback() AddCallback {
 				Str("strategy", strategy.GetStrategyName()).
 				Int("datapoints_count", len(correctedData)).
 				Msg("Sending data to strategy")
+
+			if sink, ok := strategy.(ProbeCadenceSink); ok {
+				if pc, ok := probe.(probeCadence); ok {
+					sink.NoteProbeCadence(pc.GetName(), pc.GetInterval())
+				}
+			}
 
 			// Log the first few events for debugging
 			if strategy.GetStrategyName() == "event" && len(correctedData) > 0 {
@@ -610,6 +619,24 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 		}
 	}
 
+	// Build and validate the replacement BEFORE touching the running
+	// instance. A configuration that cannot be used (a key file the service
+	// cannot read, a malformed value) used to stop the working output first
+	// and then fail, leaving the agent with no output of that type until a
+	// restart. Construction is side-effect free: every strategy takes its
+	// ports, subscriptions and goroutines in Start.
+	strategy, refusal := d.buildStrategy(strategyConfig)
+	if strategy == nil {
+		if replaced != nil {
+			d.logger.Error().
+				Str("strategy", strategyConfig.Name).
+				Str("reason", refusal).
+				Msg("New configuration refused; the output keeps running with its previous configuration")
+			return replaced
+		}
+		return nil
+	}
+
 	// Tear the old instance down before the replacement starts so a strategy
 	// owning process-global state hands it off cleanly rather than overlapping
 	// (#495). Shutdown is idempotent, so the post-refresh cleanup in
@@ -629,54 +656,6 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 				Msg("Failed to shut down replaced strategy")
 		}
 		cancel()
-	}
-
-	// Create a new strategy
-	d.logger.Debug().
-		Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
-		Msg("Creating new strategy")
-
-	factory, known := lookupStrategyFactory(strategyConfig.Name)
-	if !known {
-		d.logger.Error().
-			Str("strategy", strategyConfig.Name).
-			Strs("available", RegisteredStrategyNames()).
-			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
-			Msg("Unknown strategy")
-		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureUnknownType, "no strategy of this type is compiled into this build")
-		return nil
-	}
-
-	strategy, err := factory(strategyConfig.Params, StrategyDeps{
-		AgentConfig: d.agentConfig,
-		Logger:      d.logger.Logger,
-		Registry:    d.transformerRegistry,
-	})
-	if err != nil {
-		d.logger.Error().
-			Err(err).
-			Str("strategy", strategyConfig.Name).
-			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
-			Msg("Invalid strategy configuration, strategy skipped")
-		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
-		return nil
-	}
-
-	if strategy == nil {
-		d.logger.Error().
-			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
-			Msg("Failed to create strategy")
-		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureCreate, "strategy constructor returned nothing")
-		return nil
-	}
-
-	if err := strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
-		d.logger.Error().
-			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
-			Err(err).
-			Msg("Invalid strategy configuration")
-		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
-		return nil
 	}
 
 	// runCtx is read under refreshMu, which every caller of this
@@ -702,6 +681,58 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 	agentstate.ClearStrategyFailure(strategyConfig.Name)
 	d.logger.Debug().Msg("Strategy created successfully")
 	return strategy
+}
+
+// buildStrategy constructs and validates a strategy without starting it.
+// On refusal it records the failure for the console and returns the reason.
+func (d *dataStore) buildStrategy(strategyConfig configuration.StorageConfig) (SyncStrategy, string) {
+	d.logger.Debug().
+		Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+		Msg("Creating new strategy")
+
+	factory, known := lookupStrategyFactory(strategyConfig.Name)
+	if !known {
+		d.logger.Error().
+			Str("strategy", strategyConfig.Name).
+			Strs("available", RegisteredStrategyNames()).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+			Msg("Unknown strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureUnknownType, "no strategy of this type is compiled into this build")
+		return nil, "no strategy of this type is compiled into this build"
+	}
+
+	strategy, err := factory(strategyConfig.Params, StrategyDeps{
+		AgentConfig: d.agentConfig,
+		Logger:      d.logger.Logger,
+		Registry:    d.transformerRegistry,
+	})
+	if err != nil {
+		d.logger.Error().
+			Err(err).
+			Str("strategy", strategyConfig.Name).
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+			Msg("Invalid strategy configuration, strategy skipped")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
+		return nil, err.Error()
+	}
+
+	if strategy == nil {
+		d.logger.Error().
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+			Msg("Failed to create strategy")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureCreate, "strategy constructor returned nothing")
+		return nil, "strategy constructor returned nothing"
+	}
+
+	if err := strategy.ValidateConfigParams(strategyConfig.Params); err != nil {
+		d.logger.Error().
+			Any("params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+			Err(err).
+			Msg("Invalid strategy configuration")
+		agentstate.RecordStrategyFailure(strategyConfig.Name, agentstate.StrategyFailureInvalidConfig, err.Error())
+		return nil, err.Error()
+	}
+	return strategy, ""
 }
 
 // applyUnitCorrections applies unit corrections to datapoints for consistent metrics across all strategies
@@ -848,4 +879,28 @@ func (d *dataStore) noteTransformerFallback(probeName, probeType string, tagMap 
 		Str("probe_name", probeName).
 		Str("probe_type", probeType).
 		Msg("Probe has no transformer definition - datapoints ship without unit injection or corrections. Add a YAML under transformers/definitions to fix.")
+}
+
+// OtelMetricSink is implemented by a strategy that consumes the same
+// mapper-shaped metrics the OTLP output consumes. The probes name their
+// target strategies in a fixed list written before such sinks existed
+// (senhub, prtg, http, otlp); rather than editing every probe when one is
+// added, the store sends to any sink of this kind whatever it sends to
+// otlp.
+type OtelMetricSink interface {
+	ConsumesOtelMetrics() bool
+}
+
+func consumesOtelMetrics(s SyncStrategy) bool {
+	sink, ok := s.(OtelMetricSink)
+	return ok && sink.ConsumesOtelMetrics()
+}
+
+func targetsStrategy(targets []string, name string) bool {
+	for _, t := range targets {
+		if t == name {
+			return true
+		}
+	}
+	return false
 }

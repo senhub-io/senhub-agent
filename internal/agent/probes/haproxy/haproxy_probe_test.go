@@ -217,3 +217,19 @@ func findMetricValue(points []data_store.DataPoint, name string) *float64 {
 	}
 	return nil
 }
+
+// The HTML stats page answers on the URL without ";csv". Read as CSV it
+// failed on "bare \" in non-quoted-field"; the error now names the fix.
+func TestFetchCSV_HTMLPageNamesTheCSVForm(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body class="x">stats</body></html>`))
+	}))
+	defer srv.Close()
+
+	probe := makeTestProbe(srv.URL + "/stats")
+	_, err := probe.fetchCSV()
+	if err == nil || !strings.Contains(err.Error(), "/stats;csv") {
+		t.Errorf("error = %v, want it to point at the ;csv form", err)
+	}
+}

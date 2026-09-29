@@ -30,6 +30,7 @@ Once started, the probe listens on `http://<address>:<port>/event` and accepts `
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:61d6931e8650193829a7f2ff595b3734819b816bbd70cf0e71c9be7100758f8c -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -200,3 +201,20 @@ Or start the agent with:
 ```bash
 senhub-agent run --filter probe.event
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| - | `event_event` | Custom Event | # | Custom event received via HTTP POST (RFC 5424-style severity, host, message + arbitrary fields) |
+
+<!-- schema:metrics:end -->

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dockerapi"
 	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -35,7 +36,6 @@ const ProbeType = "docker"
 const (
 	defaultInterval       = 60 * time.Second
 	defaultTimeout        = 10 * time.Second
-	apiVersion            = "v1.43"
 	maxParallelContainers = 16
 )
 
@@ -63,6 +63,8 @@ type dockerProbe struct {
 	// socketWarned keeps the "falling back to cgroups" explanation to once per
 	// probe lifetime instead of once per cycle.
 	socketWarned bool
+	// api is the Engine API version negotiated with the daemon.
+	api dockerapi.Version
 }
 
 // containerListItem is the shape of one element in GET /containers/json.
@@ -334,15 +336,18 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 // the socket dial itself fails (engine not running); a non-2xx status or a
 // JSON error is a real error.
 func (p *dockerProbe) listContainers() ([]containerListItem, bool, error) {
-	url := fmt.Sprintf("http://localhost/%s/containers/json?all=true", apiVersion)
-	resp, err := p.client.Get(url)
+	resp, err := p.client.Get(p.api.URL(p.client, "/containers/json?all=true"))
 	if err != nil {
 		return nil, false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, true, fmt.Errorf("docker containers/json returned %d", resp.StatusCode)
+		if resp.StatusCode == http.StatusBadRequest {
+			p.api.Forget()
+		}
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, true, fmt.Errorf("docker containers/json returned %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -360,8 +365,7 @@ func (p *dockerProbe) listContainers() ([]containerListItem, bool, error) {
 // the container has stopped (HTTP 409) or disappeared (HTTP 404) — both cases
 // are normal race conditions in a dynamic environment.
 func (p *dockerProbe) fetchStats(id string) (*containerStats, error) {
-	url := fmt.Sprintf("http://localhost/%s/containers/%s/stats?stream=false", apiVersion, id)
-	resp, err := p.client.Get(url)
+	resp, err := p.client.Get(p.api.URL(p.client, "/containers/"+id+"/stats?stream=false"))
 	if err != nil {
 		return nil, err
 	}

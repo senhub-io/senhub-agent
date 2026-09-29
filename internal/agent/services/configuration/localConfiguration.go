@@ -7,6 +7,7 @@ package configuration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -27,6 +29,36 @@ type LocalConfigurationData struct {
 	Probes        []ProbeConfig     `yaml:"probes"`
 	AutoUpdate    *AutoUpdateConfig `yaml:"auto_update,omitempty"`
 	Cache         *CacheConfig      `yaml:"cache,omitempty"`
+	// Entities configures the entity rail's PRODUCER. It sits here
+	// rather than under an output because what this host is does not
+	// depend on where the description is shipped: the detector feeds a
+	// fan-out channel every output may subscribe to. Absent, the agent
+	// falls back to whatever an OTLP output declares, which is where
+	// this used to live (#932).
+	Entities *EntitiesConfig `yaml:"entities,omitempty"`
+}
+
+// EntitiesConfig is the operator's control over entity detection.
+//
+// Detection has a cost — every source is polled on a cycle, and the
+// dependency scanner reads sockets — so an agent that does not want it
+// pays nothing, and one that does says so here rather than inheriting
+// the decision from an output's settings.
+type EntitiesConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Interval string `yaml:"interval,omitempty"`
+	// DependsOn maps this host's outbound dependencies. Off by default:
+	// reading which peers a host talks to can be privacy-sensitive.
+	DependsOn *EntitiesDependsOnConfig `yaml:"depends_on,omitempty"`
+}
+
+type EntitiesDependsOnConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Debounce is how many consecutive scrapes a peer must persist
+	// before its dependency is reported — the line between a durable
+	// dependency and a passing connection.
+	Debounce     int      `yaml:"debounce,omitempty"`
+	ExcludeCIDRs []string `yaml:"exclude_cidrs,omitempty"`
 }
 
 // LocalAgentConfig represents agent-specific configuration
@@ -204,7 +236,7 @@ func (lc *LocalConfiguration) GetAutoUpdateConfig() *AutoUpdateConfig {
 		// block and runs once per datapoint batch — so the previous
 		// unconditional warning meant one identical line per batch, for
 		// the life of the process (#840).
-		if ShouldWarnRegistryURL(cfg.URL) {
+		if RegistryURLHadPath(cfg.URL, fixed) && ShouldWarnRegistryURL(cfg.URL) {
 			lc.logger.Warn().
 				Str("configured", cfg.URL).
 				Str("using", fixed).
@@ -236,6 +268,16 @@ func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 			Msg("Cache configuration loaded from YAML")
 	}
 	return cfg
+}
+
+// GetEntitiesConfig returns the global entity-detection block, or nil
+// when the configuration does not carry one.
+func (lc *LocalConfiguration) GetEntitiesConfig() *EntitiesConfig {
+	d := lc.snapshot()
+	if d == nil {
+		return nil
+	}
+	return d.Entities
 }
 
 // GetConfiguration returns the configuration data in ConfigurationData format
@@ -297,11 +339,24 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	// made a clean install report two warnings naming a missing file, which
 	// is the first thing an operator sees on a machine that is in fact fine.
 	if _, statErr := os.Stat(lc.configPath); statErr == nil {
+		// Give an installation made before the read and administration
+		// surfaces were told apart the key the second one now needs —
+		// before the seal below, so the fresh plaintext key is moved
+		// into the OS store in the same start rather than sitting in
+		// the file until the next one.
+		if err := EnsureAdminKey(lc.configPath, lc.logger); err != nil {
+			lc.logger.Warn().Err(err).Msg("Adding the administration key failed; the console and the configuration API will not answer until one is set")
+		}
+
 		// Seal any inline plaintext secrets into the OS-native store (default
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
 		// on any error, and we continue with the existing config rather than
 		// refusing to start — a sealing fault must never brick the agent.
-		if err := SealInlineSecrets(lc.configPath, lc.logger); err != nil {
+		if err := SealInlineSecrets(lc.configPath, lc.logger); errors.Is(err, secret.ErrSealNeedsRoot) {
+			lc.logger.Info().
+				Str("seal_with", "sudo senhub-agent secret migrate --wire-unit").
+				Msg("Inline secrets left in place: the secret store seals only as root")
+		} else if err != nil {
 			lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
 		}
 

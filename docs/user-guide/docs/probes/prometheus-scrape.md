@@ -29,6 +29,7 @@ push (OTLP) and pull (Prometheus) sources.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:fa5b9326cfb47aa6fb2ca59950f394d482fbc754d27573875f350f3228af780c -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -81,3 +82,23 @@ One series per target (`target` tag).
 - **PRTG / Nagios outputs.** These sinks key series per target;
   finer per-label splits are carried on the Prometheus and OTLP
   outputs.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.promscrape.up` | `senhub.promscrape.up` | Scrape {target} Up | # | 1 when the target answered with a parseable exposition |
+| `senhub.promscrape.scrape.duration` | `senhub.promscrape.scrape.duration` | Scrape {target} Duration | ms | Wall-clock time of the scrape including parsing |
+| `senhub.promscrape.samples` | `senhub.promscrape.samples` | Scrape {target} Samples | # | Scalar series ingested from the last scrape |
+| `senhub.promscrape.dropped` | `senhub.promscrape.dropped` | Scrape {target} Dropped Series | # | Series in unsupported families (histogram/summary) dropped by the last scrape |
+
+<!-- schema:metrics:end -->

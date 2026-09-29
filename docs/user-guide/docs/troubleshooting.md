@@ -11,7 +11,7 @@ Use the built-in status command to get a comprehensive overview of the agent:
 
 **Linux:**
 ```bash
-sudo /opt/senhub/bin/senhub-agent status
+sudo /usr/local/bin/senhub-agent status
 ```
 
 The status command displays:
@@ -27,7 +27,7 @@ You can also check the service directly using system commands:
 
 **Windows:**
 ```powershell
-Get-Service "SenHub Agent"
+Get-Service senhub-agent
 ```
 
 **Linux:**
@@ -49,7 +49,7 @@ Expected response:
 ```json
 {
   "status": "ok",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "uptime": "2h30m15s",
   "probes_active": 4,
   "metrics_cached": 156
@@ -70,7 +70,7 @@ Response:
 ```json
 {
   "status": "running",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "os": "linux",
   "arch": "amd64",
   "port": 8080,
@@ -214,10 +214,12 @@ grep 'module=probe.citrix' /var/log/senhub-agent/senhubagent.log | tail -20
 
 ### Runtime Debug (No Restart Required)
 
-You can enable debug logging for specific modules at runtime via the API. This is the recommended approach as it does not require restarting the service:
+You can enable debug logging for specific modules at runtime via the API. This is the recommended approach as it does not require restarting the service.
+
+The `debug/logs` and `admin/cache/clear` routes belong to the administration surface: they answer only the administration key, written `{admin-key}` below, and refuse the agent key PRTG or Nagios read with. The administration key is the segment after `/web/` in the address `sudo /usr/local/bin/senhub-agent console --print` prints (on Windows, `senhub-agent.exe console --print` from an elevated prompt).
 
 ```bash
-curl -X POST http://localhost:8080/api/{key}/debug/logs \
+curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
   -H "Content-Type: application/json" \
   -d '{"module_levels": [{"module": "probe.citrix", "level": "debug"}]}'
 ```
@@ -225,7 +227,7 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 You can enable debug for multiple modules at once:
 
 ```bash
-curl -X POST http://localhost:8080/api/{key}/debug/logs \
+curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
   -H "Content-Type: application/json" \
   -d '{"module_levels": [
     {"module": "probe.citrix", "level": "debug"},
@@ -237,7 +239,7 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 To check current log levels for all modules:
 
 ```bash
-curl http://localhost:8080/api/{key}/debug/logs
+curl http://localhost:8080/api/{admin-key}/debug/logs
 ```
 
 Response:
@@ -255,7 +257,7 @@ Response:
 To revert a module to normal logging:
 
 ```bash
-curl -X POST http://localhost:8080/api/{key}/debug/logs \
+curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
   -H "Content-Type: application/json" \
   -d '{"module_levels": [{"module": "probe.citrix", "level": "info"}]}'
 ```
@@ -266,7 +268,7 @@ The agent prints its own list, one line per probe type it carries plus the
 agent's own modules:
 
 ```bash
-senhub-agent debug-modules-list
+sudo /usr/local/bin/senhub-agent debug-modules-list
 ```
 
 Use that rather than a list written here: the probe entries are read from
@@ -288,12 +290,12 @@ For troubleshooting startup issues or when the API is not available, run the age
 
 **All modules (verbose):**
 ```bash
-senhub-agent run --verbose
+sudo /usr/local/bin/senhub-agent run --verbose
 ```
 
 **Specific modules only:**
 ```bash
-senhub-agent run --filter probe.citrix,strategy.http
+sudo /usr/local/bin/senhub-agent run --filter probe.citrix,strategy.http
 ```
 
 This runs the agent in the foreground (not as a service) and outputs detailed logs to the console. Press Ctrl+C to stop. This is useful for:
@@ -320,12 +322,12 @@ This runs the agent in the foreground (not as a service) and outputs detailed lo
 
 ### Configuration Changes Not Applied
 
-**Symptom:** Changes to `agent-config.yaml` are not reflected in agent behavior.
+**Symptom:** Changes to the configuration (`agent.yaml`, `probes.d/`, `strategies.d/`) are not reflected in agent behavior.
 
 **Possible causes and solutions:**
 
 - **YAML syntax error in the modified section**: The agent keeps the previous valid configuration when it encounters a syntax error. Check logs for configuration reload errors.
-- **Config file path mismatch**: Verify the agent is monitoring the correct file. Check with `senhub-agent status` or logs.
+- **Config file path mismatch**: Verify the agent is monitoring the correct file. Check with `sudo /usr/local/bin/senhub-agent status` or logs.
 - **File not saved**: Ensure the editor saved the file (some editors use temporary files).
 
 The agent detects file changes automatically within a few seconds. No restart is required.
@@ -341,14 +343,14 @@ The agent detects file changes automatically within a few seconds. No restart is
 | Invalid credentials | Logs show "401" or "authentication failed" | Verify username/password in the probe config |
 | Network connectivity | Logs show "connection refused" or "timeout" | Verify: `curl -k https://target-server/` from the agent host |
 | SSL/TLS certificate | Logs show "certificate" errors | Set `tls.verify_ssl: false` in the probe config for testing |
-| License restriction | Logs show "license" or "unauthorized probe" | Check license: `senhub-agent license show` |
+| License restriction | Logs show "license" or "unauthorized probe" | Check license: `sudo /usr/local/bin/senhub-agent license show` |
 | Missing required params | Logs show "missing parameter" | Check the probe guide for required parameters |
 | DNS resolution | Logs show "no such host" | Verify DNS from the agent host: `nslookup target-server` |
 
 Enable debug logging for the specific probe module to get detailed error information:
 
 ```bash
-curl -X POST http://localhost:8080/api/{key}/debug/logs \
+curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
   -H "Content-Type: application/json" \
   -d '{"module_levels": [{"module": "probe.citrix", "level": "debug"}]}'
 ```
@@ -359,10 +361,10 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 
 **Possible causes and solutions:**
 
-- **Service not running**: Check with `senhub-agent status` and start if needed
+- **Service not running**: Check with `sudo /usr/local/bin/senhub-agent status` and start if needed
 - **Firewall blocking the port**: See Firewall Configuration in the [HTTP/HTTPS section](http-https.md)
-- **Agent bound to a different interface**: Check `bind_address` in the storage config. If set to `127.0.0.1`, the API is only accessible from localhost
-- **Different port configured**: Check the `port` in the storage config section of `agent-config.yaml`
+- **Agent bound to a different interface**: Check `bind_address` in the `http` output (`strategies.d/`). If set to `127.0.0.1`, the API is only accessible from localhost
+- **Different port configured**: Check the `port` of the `http` output in `strategies.d/`, or run `sudo /usr/local/bin/senhub-agent config show`
 - **HTTPS enabled**: If HTTPS is enabled, use `https://` instead of `http://`
 
 ### TLS / HTTPS Errors
@@ -384,7 +386,7 @@ curl -X POST http://localhost:8080/api/{key}/debug/logs \
 
 **Possible causes and solutions:**
 
-- **No license activated**: Check with `senhub-agent license show`. Without a license the agent runs every Free-tier probe — the whole universal collection tier (OS/host, logs, network checks, application, database and broker probes); only the Pro probes need a license. Each page of the [probe catalog](probes/index.md) shows the tier badge.
+- **No license activated**: Check with `sudo /usr/local/bin/senhub-agent license show`. Without a license the agent runs every Free-tier probe — the whole universal collection tier (OS/host, logs, network checks, application, database and broker probes); only the Pro probes need a license. Each page of the [probe catalog](probes/index.md) shows the tier badge.
 - **License expired**: Check the expiration date. There is a 7-day grace period after expiration. Contact support for renewal.
 - **Probe not in license tier**: Verify the probe type is included in your tier. See the License Tiers table in the [Configuration section](configuration.md).
 
@@ -435,20 +437,22 @@ curl http://localhost:8080/api/{key}/info/system
 
 Clear the cache if needed:
 ```bash
-curl -X POST http://localhost:8080/api/{key}/admin/cache/clear
+curl -X POST http://localhost:8080/api/{admin-key}/admin/cache/clear
 ```
+
+This route answers only the administration key (see [Runtime Debug](#runtime-debug-no-restart-required)).
 
 ## Diagnostic Checklist
 
 When troubleshooting, follow these steps in order:
 
-1. **Service running?** `senhub-agent status`
+1. **Service running?** `sudo /usr/local/bin/senhub-agent status`
 2. **Health OK?** `curl http://localhost:8080/health`
 3. **Probes active?** `curl http://localhost:8080/api/{key}/info/probes`
 4. **Errors in logs?** Check the last 50 lines of the log file for errors
-5. **Configuration valid?** Validate YAML syntax
+5. **Configuration valid?** `sudo /usr/local/bin/senhub-agent config check`
 6. **Network reachable?** Test connectivity from the agent host to target systems
-7. **License active?** `senhub-agent license show`
+7. **License active?** `sudo /usr/local/bin/senhub-agent license show`
 8. **Enable debug** for the relevant module and check detailed logs
 
 ## Getting Support
@@ -460,5 +464,5 @@ If you cannot resolve the issue:
   - Agent version (`senhub-agent version`)
   - Operating system and version
   - Relevant log entries (last 50 lines with errors)
-  - Your `agent-config.yaml` (with passwords removed)
-  - The output of `senhub-agent status`
+  - The output of `sudo /usr/local/bin/senhub-agent config show`, which masks secret values
+  - The output of `sudo /usr/local/bin/senhub-agent status`

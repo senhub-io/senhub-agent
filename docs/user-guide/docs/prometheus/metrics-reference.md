@@ -15,8 +15,9 @@ for the underlying naming convention.
 
 ## Agent self-observability
 
-Always emitted when the `prometheus` endpoint is active, regardless of
-configured probes.
+Emitted when the `prometheus` endpoint is active, regardless of
+configured probes. A counter appears once it has counted something, and
+the OTLP receiver counters once that probe has received traffic.
 
 | Prometheus name | Type | Description | Key labels |
 |---|---|---|---|
@@ -28,6 +29,8 @@ configured probes.
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, per probe type and failure reason | `probe`, `reason` |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) | – |
 | `senhub_agent_otlp_receiver_ingested_total` | counter | Items accepted by the OTLP receiver, per signal (metrics: emitted internal datapoints after family expansion — a summary counts as its count/sum/quantile points; logs: records; traces: spans) | `signal` |
+| `senhub_agent_otlp_receiver_received_total` | counter | Records relayed by the OTLP receiver, by signal, origin and sending service | `signal`, `origin`, `senhub_otlp_receiver_sender_service_name` |
+| `senhub_agent_otlp_receiver_received_without_host_id_total` | counter | Relayed records that still had no `host.id` afterwards; expected on `origin=remote`, a defect on `uds` | `signal`, `origin`, `senhub_otlp_receiver_sender_service_name` |
 | `senhub_agent_otlp_receiver_dropped_total` | counter | Items the OTLP receiver discarded, by signal and reason (`no_sink`, `unmapped`) | `signal`, `reason` |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served per route template | `endpoint` |
 | `senhub_agent_build_info` | gauge (=1) | Agent build metadata | `version`, `commit` |
@@ -43,6 +46,47 @@ attributed without log correlation:
 
 Each series appears only once its first error occurs; sum across labels for the
 lifetime total: `sum(senhub_agent_collect_errors_total)`.
+
+
+### OTLP output
+
+Emitted when an OTLP output is configured.
+
+| Prometheus name | Type | Description |
+|---|---|---|
+| `senhub_agent_otlp_active_endpoint_index` | gauge | Index of the OTLP endpoint currently serving exports: 0 = primary, >0 = a configured fallback (endpoint failover, #217). Always 0 when no fallback_endpoints are configured. |
+| `senhub_agent_otlp_buffer_fill_ratio` | gauge | Highest fill ratio (0..1) across all active log channel subscriptions at scrape time. Approaches 1 means the consumer is falling behind producers. |
+| `senhub_agent_otlp_checkpoint_last_save_age_seconds` | gauge | Seconds since the most recent successful OTLP checkpoint save. 0 when persistence disabled or no save has succeeded yet. |
+| `senhub_agent_otlp_checkpoint_restored_entries` | gauge | Number of entries restored from the OTLP checkpoint at the last agent boot. 0 means no restore (no file present, persistence disabled, or fresh install). |
+| `senhub_agent_otlp_checkpoint_size_bytes` | gauge | Size in bytes of the most recently written OTLP checkpoint file. 0 when persistence disabled or no save has succeeded yet. |
+| `senhub_agent_otlp_dropped_log_records_total` | counter | Cumulative count of log records dropped due to subscriber backpressure on the agent log channel. |
+| `senhub_agent_otlp_dropped_span_batches_total` | counter | Cumulative count of received span batches dropped due to backpressure on the agent span channel (the trace relay could not keep up). |
+| `senhub_agent_otlp_endpoint_switches_total` | counter | Cumulative endpoint failover switches (the active OTLP endpoint changed). Rising means the primary is flapping. |
+| `senhub_agent_otlp_export_duration_seconds` | gauge | Wall-clock duration of the most recent successful OTLP metrics export. |
+| `senhub_agent_otlp_logs_pushed_total` | counter | Cumulative count of log records emitted via OTLP/gRPC. |
+| `senhub_agent_otlp_logs_queue_bytes` | gauge | Bytes currently held by the on-disk logs dead-letter queue. |
+| `senhub_agent_otlp_logs_queue_records` | gauge | Event-log records currently held in the on-disk dead-letter queue (awaiting replay). 0 when the backend is healthy or persistence is disabled. |
+| `senhub_agent_otlp_logs_queued_total` | counter | Cumulative event-log records written to the dead-letter queue after a failed export. |
+| `senhub_agent_otlp_logs_relayed_total` | counter | Cumulative count of ingested log records forwarded verbatim, with the emitting application's Resource preserved. Distinct from logs.pushed, which counts records the agent itself produced. |
+| `senhub_agent_otlp_logs_replayed_total` | counter | Cumulative event-log records re-emitted from the dead-letter queue at boot or on backend recovery. |
+| `senhub_agent_otlp_metrics_pushed_total` | counter | Cumulative count of metric records successfully pushed via OTLP/gRPC. |
+| `senhub_agent_otlp_metrics_relayed_total` | counter | Cumulative count of ingested metric points forwarded verbatim, with the emitting application's Resource preserved. Distinct from metrics.pushed, which counts points re-encoded from the agent's own store. |
+| `senhub_agent_otlp_parallel_sub_batches` | gauge | Number of sub-batches the most recent OTLP push fanned out across. 1 means the single-batch path (max_concurrent_exports=1 or cycle below threshold); >1 means per-probe parallel export fired. |
+| `senhub_agent_otlp_spans_relayed_total` | counter | Cumulative count of received spans forwarded verbatim by the trace relay. Pairs with the receiver's ingested{signal=traces} counter: equal totals mean every ingested span left the agent. |
+| `senhub_agent_otlp_store_size` | gauge | Number of distinct series held in the OTLP strategy's last-writer-wins metric store at the last push. |
+
+### Agent process
+
+The agent's own process, always emitted.
+
+| Prometheus name | Type | Description |
+|---|---|---|
+| `senhub_agent_process_cpu_time_seconds_total` | counter | Cumulative CPU time consumed by the agent process since startup, in seconds. |
+| `senhub_agent_process_gc_cycles_total` | counter | Cumulative number of Go garbage collection cycles. Rate over time exposes GC pressure. |
+| `senhub_agent_process_goroutines` | gauge | Number of goroutines currently running in the agent process. Monotonic growth typically indicates a goroutine leak. |
+| `senhub_agent_process_memory_heap_bytes` | gauge | Go runtime heap memory currently allocated for objects, in bytes. Useful with process.memory.resident to spot heap-vs-OS memory leaks. |
+| `senhub_agent_process_memory_resident_bytes` | gauge | Resident set size of the agent process, in bytes (OS-reported VmRSS / WorkingSetSize). 0 if the running OS exposes no such counter. |
+| `senhub_agent_process_open_fds` | gauge | Open file descriptors / Windows handles for the agent process. 0 if the running OS exposes no such counter. |
 
 ## System probes
 

@@ -1,11 +1,15 @@
 package http
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/license"
@@ -13,11 +17,28 @@ import (
 
 // settingsResponse is the GET view of the settings the web page can change.
 type settingsResponse struct {
-	AgentKey    string      `json:"agent_key"`
+	AgentKey string `json:"agent_key"`
+	// InstanceID is the service.instance.id derived from the agent key,
+	// as the agent's telemetry and entity carry it. Not a credential.
+	InstanceID  string      `json:"instance_id"`
 	Port        int         `json:"port"`
 	BindAddress string      `json:"bind_address"`
 	TLSEnabled  bool        `json:"tls_enabled"`
+	TLS         tlsView     `json:"tls"`
 	License     licenseView `json:"license"`
+}
+
+// tlsView is the HTTPS state of the HTTP output: what is configured, and,
+// when the certificate file can be read, whom it names and until when.
+type tlsView struct {
+	Enabled    bool   `json:"enabled"`
+	CertFile   string `json:"cert_file,omitempty"`
+	KeyFile    string `json:"key_file,omitempty"`
+	MinVersion string `json:"min_version,omitempty"`
+	Subject    string `json:"subject,omitempty"`
+	NotAfter   string `json:"not_after,omitempty"`
+	Expired    bool   `json:"expired,omitempty"`
+	CertError  string `json:"cert_error,omitempty"`
 }
 
 type licenseView struct {
@@ -51,7 +72,7 @@ func (h *HTTPSyncStrategy) handleWebSettings(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	assetHandler := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg"))
+	assetHandler := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg")).WithReadKey(h.authManager.GetAgentKey())
 	content, err := assetHandler.RenderTemplate("settings")
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to render settings template")
@@ -71,7 +92,7 @@ func (h *HTTPSyncStrategy) handleWebPage(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
-	content, err := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg")).RenderTemplate(template)
+	content, err := NewAssetHandlerWithPRTG(agentKey, h.configManager.IsEndpointEnabled("prtg")).WithReadKey(h.authManager.GetAgentKey()).RenderTemplate(template)
 	if err != nil {
 		h.logger.Error().Err(err).Str("template", template).Msg("Failed to render console page")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -86,18 +107,54 @@ func (h *HTTPSyncStrategy) handleWebPage(w http.ResponseWriter, r *http.Request,
 
 // handleConfigSettingsGet returns the current, editable settings as JSON.
 func (h *HTTPSyncStrategy) handleConfigSettingsGet(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
-	if !ok {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
 		return
 	}
+	// The key in the URL is the administration key the console was opened
+	// with. The agent's own key, the one a licence is bound to, is the
+	// configured one.
+	agentKey := h.authManager.GetAgentKey()
 	resp := settingsResponse{
 		AgentKey:    agentKey,
+		InstanceID:  configuration.AgentInstanceID(agentKey),
 		Port:        h.configManager.GetPort(),
 		BindAddress: h.configManager.GetBindAddress(),
 		TLSEnabled:  h.configManager.IsTLSEnabled(),
-		License:     h.currentLicenseView(agentKey),
+		TLS: describeTLS(h.configManager.IsTLSEnabled(), h.configManager.GetTLSCertFile(),
+			h.configManager.GetTLSKeyFile(), h.configManager.GetTLSMinVersion(), time.Now()),
+		License: h.currentLicenseView(agentKey),
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// describeTLS reports the configured HTTPS state and reads the first
+// certificate of the certificate file for its subject and expiry. A file
+// that cannot be read or parsed is reported, not fatal: the page shows
+// why instead of an empty field.
+func describeTLS(enabled bool, certFile, keyFile, minVersion string, now time.Time) tlsView {
+	v := tlsView{Enabled: enabled, CertFile: certFile, KeyFile: keyFile, MinVersion: minVersion}
+	if certFile == "" {
+		return v
+	}
+	raw, err := os.ReadFile(certFile)
+	if err != nil {
+		v.CertError = err.Error()
+		return v
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil || block.Type != "CERTIFICATE" {
+		v.CertError = "no PEM certificate in " + certFile
+		return v
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		v.CertError = err.Error()
+		return v
+	}
+	v.Subject = cert.Subject.String()
+	v.NotAfter = cert.NotAfter.UTC().Format(time.RFC3339)
+	v.Expired = now.After(cert.NotAfter)
+	return v
 }
 
 // currentLicenseView resolves the effective licence and reports its tier,
@@ -161,10 +218,12 @@ func samePort(current map[string]interface{}, port int) bool {
 }
 
 func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
-	if !ok {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
 		return
 	}
+	// A licence bound to one agent is bound to its agent key, not to the
+	// administration key in the URL.
+	agentKey := h.authManager.GetAgentKey()
 	configPath := h.agentConfig.GetConfigPath()
 	if configPath == "" {
 		writeJSONError(w, http.StatusInternalServerError, "the agent config path is not known to this strategy")

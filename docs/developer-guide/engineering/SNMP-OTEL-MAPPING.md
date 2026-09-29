@@ -53,7 +53,7 @@ emit on independent rails.
 **The two rails are correlated by shared identity.** The entity source resolves
 the device id once per topology sweep and caches it (+ the ifIndex→ifName map);
 the metric collector tags every datapoint with `network.device.id` and, on
-interface metrics, `interface.name` (resolved from `if_index`). So a device's
+interface metrics, `network.interface.name` (resolved from `if_index`). So a device's
 interface-traffic metric carries the **same identity** as its
 `network.interface` entity — a backend joins the traffic to the topology node.
 The device id / interface names are empty until the first sweep (the tags are
@@ -148,14 +148,15 @@ same device derive byte-identical ids.
   ENTITY-MIB `entPhysicalMfgName`/`ModelName`/`FirmwareRev` of the **single**
   chassis row), never as a second identity key. These make the device readable
   in a backend instead of just its cryptic id; neighbours carry `sys.name`.
-  Canonicalization (producer side): `mac` = lowercase hex `:`-separated;
+  Canonicalization (producer side): `mac` = uppercase hex `-`-separated
+  (`BC-24-11-1B-04-82`, the OpenTelemetry form, `entity.CanonicalMAC`);
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
   preserved); `mgmt` = `net.IP` canonical form. All in one function:
   `resolveDeviceID` (lldp.go); identity reads in `readSelfIdentity`/
   `chassisSerial` (entity_source.go).
 - **Interfaces → `network.interface` entities** (topology-as-entities, ADR
   0022, pinned with Toise #87): IF-MIB ifXTable `ifName` → one
-  `network.interface` entity `{network.device.id, interface.name}` the device
+  `network.interface` entity `{network.device.id, network.interface.name}` the device
   **owns** via `has_interface`. `oper_state` (ifOperStatus) is a Toise
   **state-key** (underscore spelling — a change fires `entity.state_changed`;
   the earlier dotted `oper.state` was silently demoted to a plain attribute);
@@ -186,7 +187,7 @@ same device derive byte-identical ids.
   `lldpRemTable` → one `connected_to` edge between the **local** port
   `network.interface` (named via the IF-MIB ifName for `lldpLocPortNum`,
   falling back to lldpLocPortTable) and the **remote** port
-  `{remote network.device.id, remote interface.name}`. The neighbour is still
+  `{remote network.device.id, remote network.interface.name}`. The neighbour is still
   emitted as a discovered `network.device`; the remote port entity is referenced
   (the neighbour's own poll emits it). The edge is **skipped** when a port can't
   be named by exact identity — an unanchored local port, an unresolvable

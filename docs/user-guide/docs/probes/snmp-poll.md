@@ -7,15 +7,23 @@
 
 # SNMP Poll Probe
 
-The `snmp_poll` probe polls a network device over SNMPv2c and turns
-standard MIB objects into typed metrics: system uptime, per-interface
-traffic, errors, discards, speed and status. Custom OID mappings
-cover the vendor-specific long tail. An optional discovery mode
-crawls the network topology from seed devices (LLDP) and reports
-devices and links as entities.
+The `snmp_poll` probe polls a network device over SNMP v2c or v3 and
+turns standard MIB objects into typed metrics: system uptime,
+per-interface traffic, errors, discards, speed and status. Custom OID
+mappings cover the vendor-specific long tail.
 
-One probe instance polls one device; declare one instance per device
-(or use discovery to enumerate them).
+The probe also reads the LLDP neighbor table of each polled device and
+reports its links. A link is reported when the neighbor advertises a
+named port (LLDP port ID subtype interface name or locally assigned);
+a port known only by its MAC address is not linked.
+
+A discovery mode that crawls the network outward from seed devices is
+accepted in the configuration but not active yet
+([#953](https://github.com/senhub-io/senhub-agent/issues/953)): the
+`discovery` block is validated and ignored. The crawl profile is v2c
+only.
+
+One probe instance polls one device; declare one instance per device.
 
 ## Quick start
 
@@ -37,6 +45,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:adde5eb861b0941dfd012fb4747a317fe2492e3b9686227e2f76a82db71ec2c8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -59,13 +68,13 @@ one series per interface (`if_index` tag).
 | `custom_mappings` | No | - | OID to metric mappings |
 | `custom_mappings[].oid` | Yes | - | OID, leading dot optional |
 | `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
-| `custom_mappings[].type` | No | `gauge` | A string. One of `gauge`, `counter` |
+| `custom_mappings[].type` | No | `gauge` | How the value is reported: a gauge as read, a counter as a monotonic total. One of `gauge`, `counter` |
 | `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
-| `discovery` | No | - | Topology crawl from seed devices |
+| `discovery` | No | - | Topology crawl from seed devices. Not active yet (#953): the block is validated and ignored |
 | `discovery.seeds` | Yes | - | Entry-point device addresses |
 | `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
-| `discovery.profile.version` | No | `v2c` | A string. One of `v2c`, `2c`, `2` |
-| `discovery.profile.community` | Yes | - | A string. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `discovery.profile.version` | No | `v2c` | SNMP version used to probe the discovered devices. One of `v2c`, `2c`, `2` |
+| `discovery.profile.community` | Yes | - | Community string used to probe the discovered devices. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `discovery.allowed_cidrs` | Yes | - | The crawl never leaves these ranges |
 | `discovery.max_devices` | No | `200` | Hard cap on the number of discovered devices |
 | `discovery.max_hops` | No | `4` | Crawl depth from the seeds |
@@ -164,7 +173,7 @@ table and the row index becomes that tag.
     configuration shape is final. Per-device topology (LLDP
     neighbors, routes, bridge tables of the polled `target`) is
     active and independent of this block. Tracking:
-    [#156](https://github.com/senhub-io/senhub-agent/issues/156).
+    [#953](https://github.com/senhub-io/senhub-agent/issues/953).
 
 When the crawl ships, a `discovery` block will make the probe crawl
 outward from seed devices using LLDP neighbor tables, bounded by
@@ -254,7 +263,35 @@ a probe failure — the agent keeps polling.
   else goes through `custom_mappings`.
 - **Two rails, two cadences.** Metrics poll at `interval`; topology
   and entity sweeps run at the slower `topology_interval` so a dense
-  crawl never delays traffic counters.
+  sweep never delays traffic counters.
 - **Counters are raw.** `in_octets` and friends are emitted as
   counters; compute rates in the backend
   (`rate(snmp_interface_in_octets[5m])` in VictoriaMetrics).
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.snmp.up` | `senhub.snmp.up` | SNMP {instance} Reachability | # | 1 when the last poll reached the SNMP target, 0 otherwise |
+| `senhub.snmp.poll.duration` | `senhub.snmp.poll.duration` | SNMP {instance} Poll Duration | s | Wall-clock time taken by the last poll cycle |
+| `snmp.sys.uptime` | `snmp.sys.uptime` | SNMP {instance} Uptime | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
+| `snmp.interface.in_octets` | `snmp.interface.in_octets` | SNMP {instance} IF{if_index} In Octets | bytes | ifInOctets — total octets received on the interface |
+| `snmp.interface.out_octets` | `snmp.interface.out_octets` | SNMP {instance} IF{if_index} Out Octets | bytes | ifOutOctets — total octets transmitted on the interface |
+| `snmp.interface.in_errors` | `snmp.interface.in_errors` | SNMP {instance} IF{if_index} In Errors | # | ifInErrors — inbound packets containing errors |
+| `snmp.interface.out_errors` | `snmp.interface.out_errors` | SNMP {instance} IF{if_index} Out Errors | # | ifOutErrors — outbound packets that could not be transmitted due to errors |
+| `snmp.interface.in_discards` | `snmp.interface.in_discards` | SNMP {instance} IF{if_index} In Discards | # | ifInDiscards — inbound packets discarded though no error was detected |
+| `snmp.interface.out_discards` | `snmp.interface.out_discards` | SNMP {instance} IF{if_index} Out Discards | # | ifOutDiscards — outbound packets discarded though no error was detected |
+| `snmp.interface.speed` | `snmp.interface.speed` | SNMP {instance} IF{if_index} Speed | bits/s | ifSpeed — nominal bandwidth of the interface in bits per second |
+| `snmp.interface.admin_status` | `snmp.interface.admin_status` | SNMP {instance} IF{if_index} Admin Status | # | ifAdminStatus — desired interface state (1=up, 2=down, 3=testing) |
+| `snmp.interface.oper_status` | `snmp.interface.oper_status` | SNMP {instance} IF{if_index} Oper Status | # | ifOperStatus — current operational interface state (1=up, 2=down, 3=testing, ...) |
+
+<!-- schema:metrics:end -->

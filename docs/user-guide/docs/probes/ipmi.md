@@ -26,6 +26,7 @@ against the local BMC.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:20c83e2b740a31ae3a756aeaea8ddf2412db4cbaa25a9b6b68faaff486493909 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -71,10 +72,32 @@ and give the BMC under the `remote` block. Sensor filters live under the
 | `hardware.temperature` | Cel | Temperature per BMC sensor, tagged with `hardware.component` |
 | `hardware.fan.speed` | RPM | Fan speed per sensor |
 | `hardware.voltage` | V | Voltage per sensor |
-| `hardware.status` | 1 | Sensor status: 1 = ok, 0 = critical/non-recoverable |
+| `hw.status` | # | Sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
 
 ## Operational notes
 
 - The agent must run as `root` on Linux for `ipmitool` to access the `/dev/ipmi0` device.
 - Load the OpenIPMI driver before starting the agent: `modprobe ipmi_si && modprobe ipmi_devintf`.
 - Sensor names (the `hardware.component` tag) come directly from `ipmitool sdr` output and vary by hardware vendor.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `hw.temperature` | `hardware.temperature` | Temp {hardware.component} | Degrees Celsius | Temperature reported by the BMC sensor (degrees Celsius) |
+| `hw.fan.speed` | `hardware.fan.speed` | Fan Speed {hardware.component} | RPM | Fan speed in rotations per minute as reported by the BMC |
+| `hw.voltage` | `hardware.voltage` | Voltage {hardware.component} | Volts | Voltage reported by the BMC sensor (volts) |
+| `hw.status` | `hardware.power_supply.status` | PSU Status {hardware.component} | # | Power supply status: 1 = ok, 0 = fault or not available |
+| `hw.status` | `hardware.sensor.status` | Sensor {hardware.component} | # | Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
+| `senhub.ipmi.up` | `senhub.ipmi.up` | IPMI Reachable | # | 1 when ipmitool ran successfully and the BMC responded, 0 otherwise |
+
+<!-- schema:metrics:end -->

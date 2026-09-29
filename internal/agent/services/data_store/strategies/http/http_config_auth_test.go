@@ -40,7 +40,7 @@ func newConfigAuthTestStrategy(agentKey string) *HTTPSyncStrategy {
 		logger:      moduleLogger,
 		agentKey:    agentKey,
 	}
-	strategy.authManager = NewAuthenticationManager(agentKey, agentConfig, moduleLogger)
+	strategy.authManager = NewAuthenticationManager(agentKey, "", agentConfig, moduleLogger)
 	strategy.configManager = NewConfigurationManager(agentConfig, nil, moduleLogger)
 	return strategy
 }

@@ -26,6 +26,7 @@ collection interval can be tuned.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:ee7bf255dd43cad3f39aa6d60e35ef18c57f0dc5fbeb0479a18c61aa1be6ac50 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -48,3 +49,24 @@ collection interval can be tuned.
 - The agent must run with administrator privileges — the Hyper-V WMI namespace is access-controlled.
 - One set of metrics per discovered VM; the `hyperv.vm.name` tag carries the VM's display name and the `vmid` tag its immutable identifier.
 - Per-VM CPU and memory are read from the summary information Hyper-V keeps for each VM; a VM without it only reports its state.
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.hyperv.up` | `senhub.hyperv.up` | Hyper-V Reachability | # | 1 when the Hyper-V WMI namespace is reachable, 0 otherwise |
+| `hyperv.vm.cpu.usage` | `hyperv.vm.cpu.usage` | VM {hyperv.vm.name} CPU Usage | % | CPU utilisation of the virtual machine in percent (0–100) |
+| `hyperv.vm.memory.usage` | `hyperv.vm.memory.usage` | VM {hyperv.vm.name} Memory Usage | Bytes | Memory consumed by the virtual machine in bytes |
+| `hyperv.vm.state` | `hyperv.vm.state` | VM {hyperv.vm.name} State | # | 1 when the VM is in running state, 0 otherwise |
+| `hyperv.vm.count` | `hyperv.vm.count` | VM Count ({state}) | # | Number of virtual machines in the given state (running / stopped / paused) |
+
+<!-- schema:metrics:end -->

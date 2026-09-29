@@ -7,21 +7,51 @@ SenHub Agent ships a web console. It answers the questions an operator asks in t
 The console is served by the `http` output on the agent's port. Open:
 
 ```
-http://agent-server:8080/web/{agent-key}/
+http://agent-server:8080/web/{admin-key}/
 ```
 
-Replace `agent-server` with the address of the machine running the agent and `{agent-key}` with the agent's key. The key is printed by `senhub-agent key show` and by `senhub-agent console --print`; on Windows the installer creates a Start Menu shortcut that opens the console directly. With HTTPS enabled, use `https://` and the HTTPS port (8443 by default).
+Replace `agent-server` with the address of the machine running the agent and `{admin-key}` with the administration key, the `admin_key` of the `http` output. `senhub-agent console --print`, run as root or administrator, prints the full address with that key in it; on Windows the installer creates a Start Menu shortcut that opens the console directly. `senhub-agent key show` prints the agent key, which only reads metrics and does not open the console. With HTTPS enabled, use `https://` and the HTTPS port (8443 by default).
 
-The console requires the `web` endpoint of the `http` output, which the installer enables:
+The console requires the `web` endpoint of the `http` output and an
+administration key. **The agent generates that key by itself** on the
+first start that finds none, so an upgraded installation keeps working
+without anyone touching its configuration:
 
 ```yaml
 http:
   port: 8080
   bind_address: "127.0.0.1"
   endpoints: ["prtg", "web", "nagios"]
+  admin_key: "${secret:agent.admin_key}"
 ```
 
-The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{agent-key}/docs`.
+## The key that reads and the key that changes
+
+The agent key is what you give a monitoring tool to read this agent —
+PRTG, Nagios, a Prometheus scrape. It travels in the URL, so it ends up
+in the access log of every machine between the poller and the agent.
+
+The console does not read: it edits probes and outputs, tests them with
+live credentials, changes log levels and clears the cache. So it answers
+`admin_key` and nothing else, and the address you open it with carries
+that key: `http://agent-server:8080/web/{admin-key}/dashboard`.
+
+The administration key also reads, so one key is enough to use the
+console. The reverse is not true: the key in your PRTG sensor opens the
+metrics and stops there.
+
+The Windows desktop and Start Menu shortcuts keep working across the
+change: they name the agent, not the key, and `senhub-agent console`
+resolves the right one. An address you bookmarked by hand does not — it
+carries the old key. Take a fresh one from the shortcut or from
+`senhub-agent console --print`.
+
+**Without `admin_key`, the console is not served** — its addresses answer
+404 rather than asking for a key nobody has. An agent installed to feed
+PRTG or Nagios therefore exposes nothing that can change it. Your
+pollers are unaffected either way.
+
+The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{admin-key}/docs`.
 
 ## Overview
 
@@ -32,8 +62,8 @@ The Overview is the landing page.
 - **Getting started** lists four steps and computes their state from the agent: the agent runs, probes are configured, data is sent somewhere, the poller has its sensor URL. The current step is highlighted and carries the link that resolves it. Hide it once you are done; it disappears on its own when every step is complete.
 - **Probes** is a compact table of the configured probes, the ones needing attention first, with their state, the number of series they hold and the time of their last collection. Probes whose target is down are counted on their own, not under "running".
 - **Outputs** lists every output with its state and the action that matters: build a sensor URL for the HTTP output, edit a push output, enable a disabled one.
-- **Agent** merges the former status, health and resources cards: version, host, uptime, port, memory, CPU, goroutines and cache size. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
-- **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button.
+- **Agent** merges the former status, health and resources cards: version, host, instance ID, uptime, port, configuration path, memory, CPU, goroutines and cache size. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
+- **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button. The Settings page gathers the identifiers and the licence in full.
 - **Recent events** shows the last transitions: a probe that started failing or recovered, an output that could not start, a save made from the console, a configuration reloaded from disk. The agent keeps the last fifty in memory; they do not survive a restart.
 
 The page refreshes every thirty seconds.
@@ -102,6 +132,15 @@ A file under `strategies.d` the agent cannot read, because of a YAML error or be
 
 The OTLP editor follows the probe editor: the endpoint, the transport, TLS and the authorization header in the block at the top; signals, authentication and routing, TLS details, resource attributes, delivery, memory and persistence in collapsed sections; the YAML at the bottom.
 
+![OTLP editor](images/web-interface/output-editor.webp "OTLP editor with two stored headers, their Replace and remove buttons, and the file that will be written")
+
+A header's value never comes back to the page. A stored one shows as
+**Stored** with **Replace**, and the file keeps it when the page is
+saved without touching it; the **×** of its row removes it from the file
+and from the secret store. A header written in clear in the file is
+moved into the secret store at the first save, as the schema says, and
+the **What will be written** panel shows the reference it will get.
+
 **Test connection** opens a fresh connection with the values on the page, saved or not, and reports each step: name resolution, TCP, the TLS handshake with the certificate's subject and expiry, and the export of one test metric the receiver has to accept. A failing step is shown with its error, so a dead collector is diagnosed from the page.
 
 The right column carries the counters of the OTLP pipeline (exports, errors, dropped points, mean export time, log queue, store size) that used to live on the dashboard.
@@ -118,7 +157,7 @@ The HTTP output page has two tabs.
 2. The probe.
 3. An optional filter on the probe's tags, for probes that return many components.
 
-Copy pastes the URL into the poller's sensor. Below it, a preview reads the URL on screen and follows it: change the poller, the probe or the filter and the panel refreshes on its own, and the Refresh button re-reads the same URL on demand. It opens on the raw response — what the poller actually receives — with the channel table one click away; whichever view you pick is the one you get next time. The page also offers the PRTG lookups for download and lists the steps on the PRTG side. The old address `/web/{agent-key}/explorer` redirects here.
+Copy pastes the URL into the poller's sensor. Below it, a preview reads the URL on screen and follows it: change the poller, the probe or the filter and the panel refreshes on its own, and the Refresh button re-reads the same URL on demand. It opens on the raw response — what the poller actually receives — with the channel table one click away; whichever view you pick is the one you get next time. The page also offers the PRTG lookups for download and lists the steps on the PRTG side. The old address `/web/{admin-key}/explorer` redirects here.
 
 ![Sensor URLs](images/web-interface/sensor-urls.webp "Sensor URLs tab with a PRTG URL and its preview")
 
@@ -126,10 +165,12 @@ Copy pastes the URL into the poller's sensor. Below it, a preview reads the URL 
 
 The Settings page changes the agent's own configuration from the browser, so a Windows operator does not have to edit YAML on the server.
 
-![Settings](images/web-interface/settings.webp "Settings with the connection block on the left and the licence block on the right")
+![Settings](images/web-interface/settings.webp "Settings with the identity, licence, connection and HTTPS cards")
 
-- **Connection** shows the port and bind address of the HTTP output, the same values the Outputs page edits, and links to it for the endpoints, TLS and the sensor URLs. Changing the port moves the console to the new address; the page tells you where to reconnect. The change is applied live, with no restart.
-- **Licence** uploads the licence file you received, or takes the pasted token. A customer licence is valid across the whole fleet, so the same file activates every agent; a licence issued for one specific agent is checked against that agent. The card shows how many Pro probe types are locked and links to the catalogue.
+- **Identity** gathers the agent's three identifiers. The **agent key** is the one PRTG, Nagios and Prometheus read with and a licence is bound to: give it to Sensor Factory when ordering one. The **instance ID** is the `service.instance.id` the agent's telemetry and topology entity carry, derived from the agent key; it is not a credential. The **administration key** opens the console and the configuration API; it stays masked until you choose Reveal, and you should give it to nobody who only needs to read.
+- **Licence** shows the tier, the scope and the expiry of the active licence, uploads the licence file you received, or takes the pasted token. A customer licence is valid across the whole fleet, so the same file activates every agent; a licence issued for one specific agent is checked against that agent's key. The card shows how many Pro probe types are locked and links to the catalogue.
+- **Connection** changes the port and bind address of the HTTP output, the same values the Outputs page edits. Changing the port moves the console to the new address; the page tells you where to reconnect. The change is applied live, with no restart.
+- **HTTPS** shows whether the console and the endpoints are served over TLS, the certificate and key files, the certificate's subject and expiry read from the file, and the minimum TLS version. **Configure HTTPS** opens the TLS section of the HTTP output, where TLS is switched on and the files are set.
 
 These changes are written to the multi-file configuration and picked up by the running agent, exactly as the `senhub-agent config set` command does.
 
@@ -178,6 +219,8 @@ The agent returns metrics in the PRTG JSON format:
 ```
 
 Each channel becomes a separate metric in PRTG with its own graph and alerting thresholds.
+
+PRTG keeps one value per channel name, so no two channels of one result share a name: when two series would, the agent appends the tag value that tells them apart (a CPU number, a container name), or a number when no tag does. PRTG takes at most 50 channels per sensor; narrow a larger result with a tag or `metrics=` filter.
 
 #### Finding available probe names
 
@@ -238,17 +281,10 @@ http://agent-server:8080/api/{key}/nagios/metrics/{probe-name}
 The response follows the standard Nagios plugin output format:
 
 ```
-OK - Probe has 12 metrics | cpu_usage=45.2% memory_available=8192MB
+OK - Probe cpu healthy - 3 metrics collected | CPU_Total_Usage=12.00 CPU_System=5.00 CPU_User=10.00
 ```
 
-This can be used with `check_http` or a custom check command. Example Nagios command definition:
-
-```
-define command {
-    command_name    check_senhub
-    command_line    /usr/lib/nagios/plugins/check_http -H $HOSTADDRESS$ -p 8080 -u '/api/{key}/nagios/metrics/$ARG1$'
-}
-```
+Nagios reads the status from the plugin's exit code, which an HTTP answer does not carry. The `check_senhub` script in [Call the agent from Nagios](nagios.md#call-the-agent-from-nagios) turns the first word of the answer into that exit code, with the matching command and service definitions.
 
 To list available checks:
 
@@ -264,18 +300,23 @@ Prometheus scrapes every probe from one URL, `/metrics` on the agent's port, wit
 
 Everything the console does goes through the agent's JSON API, so scripts can do the same.
 
-| Route | Purpose |
-|---|---|
-| `GET /api/{key}/catalog/probes` | Probe types with their parameter schema, tier and licence verdict |
-| `GET /api/{key}/config/probes` | Configured probes with their live state, interval, series count and last update |
-| `POST /api/{key}/config/probes`, `PUT` and `DELETE` on `.../{name}` | Create, update, delete a probe fragment |
-| `POST /api/{key}/config/validate`, `POST /api/{key}/config/test` | Check values against the schema; run one real collection |
-| `GET /api/{key}/catalog/outputs` | Output types with their parameter schema |
-| `GET /api/{key}/config/outputs` | Configured outputs with their state, delivery record and, for HTTP, the last poller per endpoint |
-| `POST /api/{key}/config/outputs`, `PUT` and `DELETE` on `.../{name}` | Create (with `enabled: false` to write the file as `.disabled`), update, delete an output file |
-| `POST /api/{key}/config/outputs/validate`, `POST /api/{key}/config/outputs/test` | Check values; test the connection step by step |
-| `GET /api/{key}/config/settings`, `POST` | Port, bind address, licence |
-| `GET /api/{key}/info/events` | The recent events shown on the Overview |
+The routes marked **admin** answer the administration key alone and exist only when `admin_key` is set on the `http` output; without it they answer 404. The catalog, `config/outputs`, `config/settings` and the probe create, update and delete routes also need the `web` endpoint, as the console does. The other routes answer the agent key or the administration key.
+
+| Route | Key | Purpose |
+|---|---|---|
+| `GET /api/{key}/catalog/probes` | admin | Probe types with their parameter schema, tier and licence verdict |
+| `GET /api/{key}/config/probes` | admin | Configured probes with their live state, interval, series count and last update |
+| `POST /api/{key}/config/probes`, `PUT` and `DELETE` on `.../{name}` | admin | Create, update, delete a probe fragment |
+| `POST /api/{key}/config/validate`, `POST /api/{key}/config/preview`, `POST /api/{key}/config/test` | admin | Check values against the schema; preview; run one real collection |
+| `GET /api/{key}/catalog/outputs` | admin | Output types with their parameter schema |
+| `GET /api/{key}/config/outputs` | admin | Configured outputs with their state, delivery record and, for HTTP, the last poller per endpoint |
+| `POST /api/{key}/config/outputs`, `PUT` and `DELETE` on `.../{name}` | admin | Create (with `enabled: false` to write the file as `.disabled`), update, delete an output file |
+| `POST /api/{key}/config/outputs/validate`, `POST /api/{key}/config/outputs/test` | admin | Check values; test the connection step by step |
+| `GET /api/{key}/config/settings`, `POST` | admin | Port, bind address, licence; the GET also returns the instance ID and the TLS state (certificate subject and expiry) |
+| `POST /api/{key}/admin/cache/clear` | admin | Empty the metric cache |
+| `GET /api/{key}/debug/logs`, `POST` | admin | Read the agent's recent logs; change log levels |
+| `GET /api/{key}/debug/pprof/...` | admin | Go runtime profiler |
+| `GET /api/{key}/info/events` | agent or admin | The recent events shown on the Overview |
 
 An update sends only what it changes. A `PUT` on an output without `enabled` keeps it in its current state, so a parameter edit never re-enables what an operator disabled. A stored secret the body does not mention is kept, for probes and outputs alike; to drop one, send its key with the value `null`, inside a block or a list of blocks as well.
 
@@ -287,16 +328,17 @@ An update sends only what it changes. A `PUT` on an output without `enabled` kee
 curl http://agent-server:8080/health
 ```
 
-Response:
+The route is public: it takes no key. Response:
 ```json
 {
   "status": "ok",
-  "version": "0.5.5",
-  "uptime": "2h30m",
-  "probes_active": 4,
-  "metrics_cached": 156
+  "timestamp": "2026-09-29T10:15:00+02:00",
+  "memory_mb": 18.4,
+  "version": "HTTP Strategy v1.0"
 }
 ```
+
+`memory_mb` is the memory the Go runtime holds at the time of the request. `version` names the HTTP output's handler, not the agent release; `GET /api/{key}/info/system` returns the agent version.
 
 ### List collected probes
 
@@ -365,7 +407,7 @@ Returns the number of cached metrics, memory usage, and the cache's time to live
 If you need to force a fresh collection:
 
 ```bash
-curl -X POST http://agent-server:8080/api/{key}/admin/cache/clear
+curl -X POST http://agent-server:8080/api/{admin-key}/admin/cache/clear
 ```
 
-This clears all cached metrics. The next collection cycle repopulates the cache.
+This route answers the administration key only; the agent key gets 401. It clears all cached metrics. The next collection cycle repopulates the cache.

@@ -1,11 +1,10 @@
 // Package clickhouse implements the free clickhouse probe: monitors a
-// ClickHouse server by scraping its /metrics Prometheus-text endpoint
-// (available since ClickHouse 20.1).
+// ClickHouse server through its HTTP interface (port 8123) by reading
+// system.metrics, system.events and system.asynchronous_metrics.
 //
-// ClickHouse exposes three metric families under /metrics:
-//   - ClickHouseMetrics_*       instantaneous gauges (active connections, queries, …)
-//   - ClickHouseAsyncMetrics_*  background/async gauges (uptime, …)
-//   - ClickHouseProfileEvents_* cumulative counters (queries run, bytes written, …)
+// The Prometheus endpoint is not used: it is off by default and needs a
+// <prometheus> block and a port of its own, whereas the HTTP interface
+// answers on every install.
 //
 // The probe maps a fixed set of these to OTel-canonical names and always
 // emits senhub.clickhouse.up so the pipeline has a health signal even when
@@ -17,13 +16,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	"strconv"
 	"strings"
 	"time"
-
-	dto "github.com/prometheus/client_model/go"
-	"github.com/prometheus/common/expfmt"
-	"github.com/prometheus/common/model"
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -42,43 +37,60 @@ const (
 	defaultTimeout  = 10 * time.Second
 	defaultInterval = 60 * time.Second
 
-	maxBodyBytes = 8 << 20 // 8 MiB — /metrics can be large on busy clusters
+	maxBodyBytes = 1 << 20
 )
 
-// metricMapping links a ClickHouse Prometheus metric name to the OTel-canonical
-// internal name the probe emits.
+// ClickHouse system tables the probe reads.
+const (
+	tableMetrics      = "metrics"
+	tableEvents       = "events"
+	tableAsyncMetrics = "asynchronous_metrics"
+)
+
+// metricMapping links ClickHouse system-table rows to the OTel-canonical
+// internal name the probe emits. Several names are summed into one value.
 type metricMapping struct {
-	clickhouseName string
-	internalName   string
-	metricType     string // "gauge" or "counter" — overrides the Prom type when set
+	table        string
+	names        []string
+	internalName string
 }
 
-// knownMetrics is the curated set of ClickHouse /metrics series the probe
-// collects. Unlisted series are silently ignored.
+// knownMetrics is the curated set the probe collects. system.events only
+// lists events that have happened at least once, so an event absent from
+// the answer is reported as 0 rather than left out.
 var knownMetrics = []metricMapping{
-	{clickhouseName: "ClickHouseMetrics_Query", internalName: "clickhouse.queries.active", metricType: "gauge"},
-	{clickhouseName: "ClickHouseMetrics_Connection", internalName: "clickhouse.connections", metricType: "gauge"},
-	{clickhouseName: "ClickHouseMetrics_MemoryTracking", internalName: "clickhouse.memory.used", metricType: "gauge"},
-	{clickhouseName: "ClickHouseMetrics_Parts", internalName: "clickhouse.parts.active", metricType: "gauge"},
-	{clickhouseName: "ClickHouseMetrics_Merge", internalName: "clickhouse.merges.active", metricType: "gauge"},
-	{clickhouseName: "ClickHouseAsyncMetrics_Uptime", internalName: "clickhouse.uptime", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_Query", internalName: "clickhouse.queries.total", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_SelectQuery", internalName: "clickhouse.queries.select", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_InsertQuery", internalName: "clickhouse.queries.insert", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_InsertedRows", internalName: "clickhouse.inserted.rows", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_InsertedBytes", internalName: "clickhouse.inserted.data", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_ReadCompressedBytes", internalName: "clickhouse.read.data", metricType: "counter"},
-	{clickhouseName: "ClickHouseProfileEvents_WriteCompressedBytes", internalName: "clickhouse.written.data", metricType: "counter"},
+	{table: tableMetrics, names: []string{"Query"}, internalName: "clickhouse.queries.active"},
+	{table: tableMetrics, names: []string{"TCPConnection", "HTTPConnection", "MySQLConnection", "PostgreSQLConnection"}, internalName: "clickhouse.connections"},
+	{table: tableMetrics, names: []string{"MemoryTracking"}, internalName: "clickhouse.memory.used"},
+	{table: tableMetrics, names: []string{"PartsActive"}, internalName: "clickhouse.parts.active"},
+	{table: tableMetrics, names: []string{"Merge"}, internalName: "clickhouse.merges.active"},
+	{table: tableAsyncMetrics, names: []string{"Uptime"}, internalName: "clickhouse.uptime"},
+	{table: tableEvents, names: []string{"Query"}, internalName: "clickhouse.queries.total"},
+	{table: tableEvents, names: []string{"SelectQuery"}, internalName: "clickhouse.queries.select"},
+	{table: tableEvents, names: []string{"InsertQuery"}, internalName: "clickhouse.queries.insert"},
+	{table: tableEvents, names: []string{"InsertedRows"}, internalName: "clickhouse.inserted.rows"},
+	{table: tableEvents, names: []string{"InsertedBytes"}, internalName: "clickhouse.inserted.data"},
+	{table: tableEvents, names: []string{"ReadCompressedBytes"}, internalName: "clickhouse.read.data"},
+	{table: tableEvents, names: []string{"MergeTreeDataWriterCompressedBytes"}, internalName: "clickhouse.written.data"},
 }
 
-// knownIndex maps the ClickHouse Prometheus name to its mapping for O(1) lookup.
-var knownIndex map[string]metricMapping
+// systemQuery reads every row knownMetrics needs in one round trip.
+var systemQuery = buildSystemQuery()
 
-func init() {
-	knownIndex = make(map[string]metricMapping, len(knownMetrics))
+func buildSystemQuery() string {
+	byTable := map[string][]string{}
 	for _, m := range knownMetrics {
-		knownIndex[m.clickhouseName] = m
+		for _, n := range m.names {
+			byTable[m.table] = append(byTable[m.table], "'"+n+"'")
+		}
 	}
+	column := map[string]string{tableMetrics: "metric", tableEvents: "event", tableAsyncMetrics: "metric"}
+	var parts []string
+	for _, t := range []string{tableMetrics, tableEvents, tableAsyncMetrics} {
+		parts = append(parts, fmt.Sprintf("SELECT '%s', %s, toFloat64(value) FROM system.%s WHERE %s IN (%s)",
+			t, column[t], t, column[t], strings.Join(byTable[t], ",")))
+	}
+	return strings.Join(parts, " UNION ALL ") + " FORMAT TabSeparated"
 }
 
 type probeConfig struct {
@@ -91,7 +103,7 @@ type probeConfig struct {
 	Interval     time.Duration
 }
 
-// ClickHouseProbe monitors a single ClickHouse server via its /metrics endpoint.
+// ClickHouseProbe monitors a single ClickHouse server through its HTTP interface.
 type ClickHouseProbe struct {
 	*types.BaseProbe
 	config       probeConfig
@@ -182,8 +194,8 @@ func (p *ClickHouseProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect scrapes the /metrics endpoint and maps the known ClickHouse series
-// to OTel-canonical names. A failing scrape is recorded as up=0; Collect
+// Collect reads the system tables and maps the known ClickHouse rows to
+// OTel-canonical names. A failing read is recorded as up=0; Collect
 // always returns nil so the framework does not mark the probe unhealthy.
 //
 // On the first successful scrape, Collect also fetches the server UUID via
@@ -199,11 +211,11 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	up := float64(1)
-	families, err := p.fetchMetrics()
+	rows, err := p.fetchSystemRows()
 	if err != nil {
 		up = 0
 		p.entitySrc.setReachable(false, "")
-		p.moduleLogger.Warn().Err(err).Str("endpoint", p.config.Endpoint).Msg("clickhouse scrape failed")
+		p.moduleLogger.Warn().Err(err).Str("endpoint", p.config.Endpoint).Msg("clickhouse collection failed")
 	} else {
 		// Try to pin the instance id on the first successful collect.
 		// isPinned() is a no-op check when instance_name was already set.
@@ -224,18 +236,21 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	if err == nil {
-		for chName, family := range families {
-			mapping, ok := knownIndex[chName]
-			if !ok {
-				continue
+		for _, m := range knownMetrics {
+			var value float64
+			found := false
+			for _, n := range m.names {
+				if v, ok := rows[m.table+"."+n]; ok {
+					value += v
+					found = true
+				}
 			}
-			value, ok := extractScalar(family)
-			if !ok {
+			if !found && m.table != tableEvents {
 				continue
 			}
 			points = append(points, data_store.DataPoint{
-				Name:      mapping.internalName,
-				Value:     float64(value),
+				Name:      m.internalName,
+				Value:     value,
 				Timestamp: now,
 				Tags:      baseTags,
 			})
@@ -245,35 +260,53 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
-// fetchMetrics GETs <endpoint>/metrics with Basic Auth if credentials are set.
-func (p *ClickHouseProbe) fetchMetrics() (map[string]*dto.MetricFamily, error) {
-	metricsURL := p.config.Endpoint + "/metrics"
-
-	req, err := http.NewRequest(http.MethodGet, metricsURL, nil)
+// fetchSystemRows runs systemQuery and returns the values keyed by
+// "<table>.<name>".
+func (p *ClickHouseProbe) fetchSystemRows() (map[string]float64, error) {
+	body, err := p.query(systemQuery)
 	if err != nil {
-		return nil, fmt.Errorf("building request for %s: %w", metricsURL, err)
+		return nil, err
 	}
-	req.Header.Set("Accept", "text/plain;version=0.0.4")
+	rows := make(map[string]float64)
+	for _, line := range strings.Split(strings.TrimSpace(body), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			continue
+		}
+		v, err := strconv.ParseFloat(fields[2], 64)
+		if err != nil {
+			continue
+		}
+		rows[fields[0]+"."+fields[1]] = v
+	}
+	return rows, nil
+}
+
+// query POSTs one SQL statement to the HTTP interface and returns the
+// answer. ClickHouse puts the reason for a refusal in the body, so it is
+// carried into the error.
+func (p *ClickHouseProbe) query(sql string) (string, error) {
+	req, err := http.NewRequest(http.MethodPost, p.config.Endpoint+"/", strings.NewReader(sql))
+	if err != nil {
+		return "", fmt.Errorf("building query request: %w", err)
+	}
 	if p.config.Username != "" || p.config.Password != "" {
 		req.SetBasicAuth(p.config.Username, p.config.Password)
 	}
-
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GET %s: %w", metricsURL, err)
+		return "", fmt.Errorf("POST %s: %w", p.config.Endpoint, err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: unexpected status %d", metricsURL, resp.StatusCode)
-	}
-
-	parser := expfmt.NewTextParser(model.UTF8Validation)
-	families, err := parser.TextToMetricFamilies(io.LimitReader(resp.Body, maxBodyBytes))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
-		return nil, fmt.Errorf("parsing /metrics from %s: %w", p.config.Endpoint, err)
+		return "", fmt.Errorf("reading answer from %s: %w", p.config.Endpoint, err)
 	}
-	return families, nil
+	if resp.StatusCode != http.StatusOK {
+		msg, _, _ := strings.Cut(strings.TrimSpace(string(raw)), "\n")
+		return "", fmt.Errorf("POST %s: HTTP %d: %s", p.config.Endpoint, resp.StatusCode, msg)
+	}
+	return string(raw), nil
 }
 
 // fetchServerUUID queries SELECT serverUUID() through the ClickHouse HTTP
@@ -282,56 +315,13 @@ func (p *ClickHouseProbe) fetchMetrics() (map[string]*dto.MetricFamily, error) {
 // the server is unreachable or does not support serverUUID() (pre-21.x).
 // The caller pins the result via entitySrc.pinTechID.
 func (p *ClickHouseProbe) fetchServerUUID() (string, error) {
-	queryURL := p.config.Endpoint + "/"
-	req, err := http.NewRequest(http.MethodGet, queryURL, nil)
+	body, err := p.query("SELECT serverUUID()")
 	if err != nil {
-		return "", fmt.Errorf("building serverUUID request: %w", err)
+		return "", fmt.Errorf("serverUUID: %w", err)
 	}
-	q := url.Values{}
-	q.Set("query", "SELECT serverUUID()")
-	req.URL.RawQuery = q.Encode()
-	if p.config.Username != "" || p.config.Password != "" {
-		req.SetBasicAuth(p.config.Username, p.config.Password)
-	}
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("serverUUID GET: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("serverUUID: unexpected status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 256))
-	if err != nil {
-		return "", fmt.Errorf("serverUUID read body: %w", err)
-	}
-	uuid := strings.TrimSpace(string(body))
+	uuid := strings.TrimSpace(body)
 	if uuid == "" {
 		return "", fmt.Errorf("serverUUID returned empty response")
 	}
 	return uuid, nil
-}
-
-// extractScalar returns the single numeric value from a MetricFamily that
-// holds exactly one gauge, counter, or untyped series. Returns false when
-// the family is empty or has an unsupported type (histogram, summary).
-func extractScalar(family *dto.MetricFamily) (float64, bool) {
-	metrics := family.GetMetric()
-	if len(metrics) == 0 {
-		return 0, false
-	}
-	m := metrics[0]
-	switch family.GetType() {
-	case dto.MetricType_GAUGE:
-		return m.GetGauge().GetValue(), true
-	case dto.MetricType_COUNTER:
-		return m.GetCounter().GetValue(), true
-	case dto.MetricType_UNTYPED:
-		return m.GetUntyped().GetValue(), true
-	default:
-		return 0, false
-	}
 }

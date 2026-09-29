@@ -37,7 +37,7 @@ metrics:
   - name: "hyperv.vm.memory.usage"
     channel: "hyperv_vm_mem_{hyperv.vm.name}"
     display_name: "VM {hyperv.vm.name} Memory Usage"
-    unit: "Bytes Memory"
+    unit: "Bytes"
     multi_instance_labels: ["hyperv.vm.name"]
     category: "memory"
     description: "Memory consumed by the virtual machine in bytes"

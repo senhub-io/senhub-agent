@@ -4,15 +4,19 @@ All commands are run from the agent binary. Release artifacts are ZIP archives n
 
 ## Output conventions
 
-CLI output is plain text with no decorative symbols. Data and command results are written to stdout, so a command can be piped or captured without post-processing. Diagnostic errors and warnings go to stderr, and a fatal error prints a single `Error: <message>` line to stderr before the process exits non-zero. Destructive commands (`uninstall`, `secret rm`, `license remove`) prompt for confirmation before acting; each accepts a flag to skip the prompt for unattended runs (see the relevant sections below).
+CLI output is plain text with no decorative symbols. Data and command results are written to stdout, so a command can be piped or captured without post-processing. Diagnostic errors and warnings go to stderr, and a fatal error prints a single `Error: <message>` line to stderr before the process exits non-zero. Destructive commands (`uninstall`, `refresh-unit`, `secret rm`, `license remove`) prompt for confirmation before acting; each accepts a flag to skip the prompt for unattended runs (see the relevant sections below).
+
+On Linux, commands that touch the service, the secret store or the binary run as root with the full path of the installed binary: `sudo /usr/local/bin/senhub-agent <command>`. On RHEL, AlmaLinux and Rocky Linux, the `sudo` search path leaves out `/usr/local/bin`, so `sudo senhub-agent` is not found there. The short `senhub-agent` form below stands for that full invocation; on Windows, run `senhub-agent.exe` from an elevated prompt.
 
 ## Service Management
 
 | Command | Description |
 |---------|-------------|
 | `install` | Install as system service |
-| `uninstall` | Remove the system service (prompts before deleting config/certs/logs) |
-| `uninstall --yes` | Remove the system service without confirmation |
+| `uninstall` | Remove the system service and delete the configuration directory, including the sealed secret store and the agent key. Irreversible; prompts first |
+| `uninstall --yes` | Same, without confirmation |
+| `refresh-unit` | Linux: bring the installed systemd unit up to date with the one embedded in this binary |
+| `refresh-unit --yes` | Same, without confirmation |
 | `start` | Start the service |
 | `stop` | Stop the service |
 | `restart` | Restart the service |
@@ -23,8 +27,8 @@ CLI output is plain text with no decorative symbols. Data and command results ar
 ### Status
 
 ```bash
-senhub-agent status
-senhub-agent status --otlp
+sudo /usr/local/bin/senhub-agent status
+sudo /usr/local/bin/senhub-agent status --otlp
 ```
 
 The default `status` view prints service state, version, health, probes summary and resource usage. `--otlp` appends a four-section block summarising the OTLP push pipeline:
@@ -40,6 +44,17 @@ Drops with `reason=probe_cardinality` indicate the per-probe cardinality budget 
 
 `--otlp` calls the local HTTP strategy on port 8080 — the agent must have the `web` (or any other HTTP) endpoint enabled for the flag to return data. If the call fails, the standard `status` output still prints; a single-line note explains what went wrong.
 
+### Refresh unit
+
+```bash
+sudo /usr/local/bin/senhub-agent refresh-unit
+sudo /usr/local/bin/senhub-agent refresh-unit --yes
+```
+
+Linux only, as root. Compares `/etc/systemd/system/senhub-agent.service` with the unit embedded in the running binary, prints the difference and, once confirmed, rewrites the unit and runs `systemctl daemon-reload`. It keeps the `User=` / `Group=` the unit runs as and its `ExecStart` line while that binary still exists, creates the service user if it is missing, and keeps the systemd-creds drop-in in line with the secret store. It does not restart the service: run `restart` afterwards.
+
+This is the way to move an existing install to the hardened unit. Do not use `uninstall` followed by `install` for that: `uninstall` deletes the configuration directory, the sealed secret store and the agent key with it.
+
 ### Run (Console Mode)
 
 ```bash
@@ -54,7 +69,8 @@ The agent reads its configuration from the YAML file pointed at by `--config-pat
 |------|-------------|
 | `--verbose`, `-v` | Enable debug logging for all modules |
 | `--filter MODULES` | Filter debug logs by module prefix (implies verbose) |
-| `--config-path PATH` | Configuration file path (default: OS canonical path) |
+| `--config-path PATH` | Configuration file path (default: OS canonical path; a relative path resolves next to the binary) |
+| `--log-format text\|json` | Layout of the log file: `text` (default) or `json`. Also read from `SENHUB_LOG_FORMAT`. The console output stays readable text |
 
 ### Debug Filter Examples
 
@@ -70,12 +86,12 @@ Use `debug-modules-list` to see all available filters.
 
 ### console
 
-Opens the built-in web console in the default browser, or prints its address with `--print`. The address carries the agent key, which is sealed on a modern install: the command needs the rights of the service account or an administrator. On Windows, a non-elevated call asks for elevation once, then opens the browser with the user's own rights. The command waits up to fifteen seconds for the agent to answer on its port before opening the page.
+Opens the built-in web console in the default browser, or prints its address with `--print`. The address carries the administration key, the key of the `http` output's `admin_key` setting, which the agent generates when it writes its configuration (or, on an older install, at its first start after the upgrade) and seals. It is not the agent key PRTG, Nagios or a Prometheus scrape read with: the console and the administration API answer only the administration key. Reading it needs the rights of the service account or an administrator. On Windows, a non-elevated call asks for elevation once, then opens the browser with the user's own rights. The command waits up to fifteen seconds for the agent to answer on its port before opening the page.
 
 ```bash
 senhub-agent console
-senhub-agent console --print
-senhub-agent console --config-path /etc/senhub/agent.yaml
+sudo /usr/local/bin/senhub-agent console --print
+sudo /usr/local/bin/senhub-agent console --print --config-path /etc/senhub-agent/agent.yaml
 ```
 
 | Flag | Description |
@@ -113,6 +129,8 @@ senhub-agent config init --license <jwt> --tags env=prod,site=paris
 senhub-agent config init --otlp-endpoint otlp.example.com:4317
 senhub-agent config init --otlp-endpoint vm.example.com:4318 --otlp-protocol http
 senhub-agent config init --http-port 9080
+senhub-agent config init --license-file /tmp/customer.jwt
+senhub-agent config init --license-dir /mnt/install
 ```
 
 Before writing anything, `config init` binds the HTTP port it is about to configure and releases it. A port already in use is refused with the reason and the command exits non-zero, so an unattended install fails visibly instead of leaving a service that runs and answers nothing.
@@ -122,11 +140,13 @@ Before writing anything, `config init` binds the HTTP port it is about to config
 | `--config-path PATH` | Target configuration file (default: OS canonical path) |
 | `--http-port PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
 | `--license JWT` | License token to seed (unlocks paid probe tiers) |
+| `--license-file PATH` | Read the licence token from this file; it takes precedence over `--license` unless the file is empty |
+| `--license-dir DIR` | Look for a single `*.jwt` file in this directory and use it as `--license-file`. No file installs on the Free tier; more than one is refused |
 | `--tags k=v,k2=v2` | Host-level global tags applied to the generated config |
 | `--otlp-endpoint HOST:PORT` | Provision an OTLP push endpoint as a strategy fragment (metrics + logs) |
 | `--otlp-protocol grpc\|http` | OTLP transport (default `grpc`; use `http` for a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint) |
 
-The generated layout is the multi-file form (`agent.yaml` + `probes.d/` + `strategies.d/`). By default the generated configuration pushes to no collector; `--otlp-endpoint` is what wires up a push.
+The generated layout is the multi-file form (`agent.yaml` + `probes.d/` + `strategies.d/`), the same one `install` and the Windows MSI write. By default the generated configuration pushes to no collector; `--otlp-endpoint` is what wires up a push.
 
 ### config check
 
@@ -198,26 +218,36 @@ A secret value is never passed on the command line — it would leak through the
 | `secret list` | List secret names (never values) |
 | `secret rm <name>` | Delete a secret (prompts to confirm; `--yes` to skip) |
 | `secret status` | Show the active backend and store location |
-| `secret migrate` | Move inline plaintext secrets from the config into the store |
+| `secret migrate` | Move inline plaintext secrets from the config into the store (`--wire-unit` also wires the systemd-creds drop-in) |
 | `secret wire-unit` | Regenerate the systemd unit credential drop-in (Linux/systemd-creds only) |
 
 ```bash
-senhub-agent secret set veeam_password          # hidden prompt
-senhub-agent secret set veeam_password --from-file /root/veeam.pw
-printf '%s' "$PW" | senhub-agent secret set veeam_password
-senhub-agent secret list
-senhub-agent secret status
+sudo /usr/local/bin/senhub-agent secret set veeam_password          # hidden prompt
+sudo /usr/local/bin/senhub-agent secret set veeam_password --from-file /root/veeam.pw
+printf '%s' "$PW" | sudo /usr/local/bin/senhub-agent secret set veeam_password
+sudo /usr/local/bin/senhub-agent secret list
+sudo /usr/local/bin/senhub-agent secret status
 ```
+
+On Linux the backend is chosen automatically (see the [Secret Store guide](secret-store.md#backends-per-os)). `SENHUB_SECRET_BACKEND=age` or `SENHUB_SECRET_BACKEND=systemd-creds` forces one, for example `sudo SENHUB_SECRET_BACKEND=systemd-creds /usr/local/bin/senhub-agent secret migrate --wire-unit`.
 
 Once stored, reference the secret from the configuration as `${secret:veeam_password}`.
 
 ### Agent key
 
 ```bash
-senhub-agent key show
+sudo /usr/local/bin/senhub-agent key show
+sudo /usr/local/bin/senhub-agent key show --config-path /etc/senhub-agent/agent.yaml
 ```
 
-Prints the configured agent key — the bearer token needed to reach the web interface and to configure PRTG / Nagios scrapers. It resolves the key whether it is still inline in the config or has been sealed into the store as `${secret:agent.key}`. Because it reveals a sealed value, the command runs behind the same privilege gate as the service commands.
+Prints the configured agent key: the key PRTG, Nagios and a Prometheus scrape read the agent with. It does not open the web console or the administration API, which answer only the administration key; open the console with `senhub-agent console`. It resolves the key whether it is still inline in the config or has been sealed into the store as `${secret:agent.key}`. Because it reveals a sealed value, the command runs behind the same privilege gate as the service commands.
+
+```bash
+sudo /usr/local/bin/senhub-agent key instance-id
+sudo /usr/local/bin/senhub-agent key instance-id --config-path /etc/senhub-agent/agent.yaml
+```
+
+Prints the agent's instance id: the `service.instance.id` its telemetry and its topology entity carry, an RFC 4122 UUID derived from the agent key. Use it to find this agent in a metrics store or in a topology graph. It is not a credential; `senhub-agent status`, the **Identity** card of the console's Settings page and the **Agent** card of its Overview show it too.
 
 ## Database Helpers
 
@@ -260,10 +290,97 @@ Lists all stable versions. If `auto_update.include_beta: true` is set in the con
 ### Install a specific version
 
 ```bash
-senhub-agent update 0.5.4
+sudo /usr/local/bin/senhub-agent update 0.6.0
+sudo /usr/local/bin/senhub-agent update 0.6.0 --dry-run
+sudo /usr/local/bin/senhub-agent update 0.6.0 --registry-url https://releases.example.com
 ```
 
-Downloads and installs the specified version. Restart the service to apply.
+Downloads and installs the specified version. Restart the service to apply. Updating replaces the binary and needs the same privileges as the service commands.
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run`, `-d` | Do not install; print the version that would be installed |
+| `--registry-url URL` | Release registry to download from, instead of the built-in one |
+| `--verbose`, `-v` | Enable verbose logging |
+
+## Zabbix
+
+### zabbix setup
+
+Prepares a Zabbix server for the agent in one call: it imports the
+generated templates, creates the host group, and creates the
+autoregistration action that turns an agent's first contact into a host
+carrying them. After it, a machine needs the agent and two lines naming
+the server, with nothing typed in the Zabbix interface.
+
+It is an administrator command, run once. A deployed agent never holds
+an API token and still registers by itself. Every step is idempotent, so
+re-running it is safe and is also how a template is refreshed after an
+upgrade.
+
+```bash
+senhub-agent zabbix setup --url https://zabbix.example.com --token-file ~/.zbx-token
+senhub-agent zabbix setup --url https://zabbix.example.com --token-file ~/.zbx-token \
+  --probe cpu --probe memory --probe veeam --group "SenHub agents"
+senhub-agent zabbix setup --url https://zabbix.example.com --dry-run
+```
+
+| Flag | Description |
+|------|-------------|
+| `--url URL` | Zabbix frontend, required. The agent pushes to the trapper port, not this one |
+| `--token-file PATH` | File holding the API token. Preferred: a token on the command line is visible to every process on the machine |
+| `--token VALUE` | API token. Read after `--token-file` and before `SENHUB_ZABBIX_TOKEN` |
+| `--probe TYPE` | Probe whose template is linked to every host that registers. Repeatable. Without it, the probes every machine runs: cpu, memory, network, logicaldisk, process |
+| `--group NAME` | Host group the registering hosts join |
+| `--metadata STRING` | Host metadata the autoregistration action matches on; must equal the agent's `host_metadata` |
+| `--action-name NAME` | Name of the autoregistration action it writes |
+| `--discovery-delay INTERVAL` | Update interval of the discovery rules, which Zabbix sets to one hour by default |
+| `--no-discovery-delay` | Leave the discovery rules as the template declares them |
+| `--prefix PREFIX` | First segment of the item keys; must match the output's `key_prefix` |
+| `--version 6.0\|7.0` | Export format of the templates written |
+| `--dry-run` | Describe what it would do and change nothing. Works without a token |
+
+The token is read from `--token-file`, then `--token`, then the
+environment variable `SENHUB_ZABBIX_TOKEN`.
+
+`setup` also names any other enabled autoregistration action a
+registering agent would match. Zabbix runs every matching action, and
+two that both link templates do not merge: the second link fails,
+because Zabbix refuses two linked templates declaring one key, and it
+fails silently. The host then comes up with whichever set won and items
+that never fill. `setup` reports it rather than disabling it, since an
+action you wrote may do things it knows nothing about.
+
+Every template is imported, including the probes not named with
+`--probe`; only the linking is narrowed. A template linked to a host
+whose agent does not run that probe adds discovery rules that never
+answer, which is why the default is the universal set.
+
+### zabbix template
+
+Writes the Zabbix templates generated from the probe definitions, one
+file per probe type, without touching a server. Use it to read what will
+be imported, to keep the templates under version control, or to import
+them by a route of your own.
+
+```bash
+senhub-agent zabbix template --out ./templates
+senhub-agent zabbix template --probe memory --platform linux
+senhub-agent zabbix template --probe veeam --version 6.0
+```
+
+| Flag | Description |
+|------|-------------|
+| `--probe TYPE` | Probe type to generate. Repeatable. Without it, every definition |
+| `--platform linux\|windows` | Keep only the metrics that platform can produce. Without it, the definition whole |
+| `--version 6.0\|7.0` | Export format, `7.0` by default |
+| `--prefix PREFIX` | First segment of the item keys; must match the output's `key_prefix` |
+| `--delay INTERVAL` | Update interval of the item prototypes |
+| `--out DIR` | Directory to write into. Without it, and with a single `--probe`, the template goes to standard output |
+
+With `--out`, a small **SenHub Agent** template is written beside the
+others, carrying the agent's own items. Link it on every host: it is
+what turns the host's availability green.
 
 ## License
 
@@ -273,13 +390,25 @@ Downloads and installs the specified version. Restart the service to apply.
 senhub-agent license show
 ```
 
+### Print the agent key for a licence
+
+```bash
+sudo /usr/local/bin/senhub-agent license key
+```
+
+Prints this agent's key, the value to give Sensor Factory when a licence is ordered for this agent, and the value `license activate` checks the licence binding against.
+
 ### Activate a license
 
 ```bash
-senhub-agent license activate <license-jwt>
+sudo /usr/local/bin/senhub-agent license activate - < license.jwt
+cat license.jwt | sudo /usr/local/bin/senhub-agent license activate -
+sudo /usr/local/bin/senhub-agent license activate <license-jwt>
 ```
 
-Validates the license and writes it to the `license.jwt` file next to
+With `-`, or with no argument and a file or pipe on standard input, the
+token is read from standard input and never appears in the process list
+or the shell history. Validates the license and writes it to the `license.jwt` file next to
 `agent.yaml`. Restart the agent for the change to take effect. You can also
 simply place the `license.jwt` file next to the config yourself and restart —
 no CLI needed.
@@ -287,8 +416,8 @@ no CLI needed.
 ### Remove license
 
 ```bash
-senhub-agent license remove
-senhub-agent license remove --force
+sudo /usr/local/bin/senhub-agent license remove
+sudo /usr/local/bin/senhub-agent license remove --force
 ```
 
 Reverts to the free tier: deletes `license.jwt` and clears any inline license. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs. Restart the agent for the change to take effect.

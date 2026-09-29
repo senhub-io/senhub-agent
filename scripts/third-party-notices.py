@@ -131,6 +131,15 @@ def main():
     dest.write_text("\n".join(lines))
     print("%s: %d components, %d distinct licences"
           % (dest.relative_to(ROOT), len(rows), len(counts)))
+
+    # The user guide publishes the same list as Annex 1 of the licence
+    # agreement. It used to be copied by hand and fell behind the build;
+    # it is written here from the same rows, only its preamble differs.
+    doc = ROOT / "docs" / "user-guide" / "docs" / "license" / "third-party.md"
+    annex = ("This page corresponds to Annex 1 of the [SenHub Agent license "
+             "agreement](agreement-fr.md), and is refreshed with every published version.")
+    doc.write_text("\n".join(annex if l.startswith("Regenerate with") else l for l in lines))
+    print("%s: written from the same list" % doc.relative_to(ROOT))
     if unknown:
         print("licence not identified for: " + ", ".join(unknown), file=sys.stderr)
         return 1

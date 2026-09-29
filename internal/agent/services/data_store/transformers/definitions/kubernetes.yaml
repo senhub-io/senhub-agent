@@ -17,6 +17,7 @@ metrics:
   # --- Availability (tags: k8s.cluster.name) ---
 
   - name: "senhub.kubernetes.up"
+    multi_instance_labels: []
     channel: "k8s_cluster_up"
     display_name: "Kubernetes API reachable"
     unit: "#"
@@ -32,6 +33,7 @@ metrics:
   # --- Node metrics (tags: k8s.node.name, k8s.cluster.name) ---
 
   - name: "k8s.node.ready"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_ready"
     display_name: "Node {k8s.node.name} Ready"
     unit: "#"
@@ -46,6 +48,7 @@ metrics:
       k8s.cluster.name: k8s.cluster.name
 
   - name: "k8s.node.cpu.allocatable"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_cpu_allocatable"
     display_name: "Node {k8s.node.name} Allocatable CPUs"
     unit: "#"
@@ -60,6 +63,7 @@ metrics:
       k8s.cluster.name: k8s.cluster.name
 
   - name: "k8s.node.memory.allocatable"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_memory_allocatable"
     display_name: "Node {k8s.node.name} Allocatable Memory"
     unit: "B"
@@ -74,6 +78,7 @@ metrics:
       k8s.cluster.name: k8s.cluster.name
 
   - name: "k8s.node.pods.capacity"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_pods_capacity"
     display_name: "Node {k8s.node.name} Pod Capacity"
     unit: "#"
@@ -88,6 +93,7 @@ metrics:
       k8s.cluster.name: k8s.cluster.name
 
   - name: "k8s.node.pods.allocatable"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_pods_allocated"
     display_name: "Node {k8s.node.name} Pods Allocatable"
     unit: "#"
@@ -104,6 +110,7 @@ metrics:
   # --- Pod metrics (tags: k8s.pod.name, k8s.namespace.name, k8s.node.name) ---
 
   - name: "k8s.pod.phase"
+    multi_instance_labels: ["k8s.pod.name", "k8s.namespace.name", "k8s.node.name"]
     channel: "k8s_pod_{k8s.namespace.name}_{k8s.pod.name}_phase"
     display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Running"
     unit: "#"
@@ -119,6 +126,7 @@ metrics:
       k8s.node.name: k8s.node.name
 
   - name: "k8s.pod.ready"
+    multi_instance_labels: ["k8s.pod.name", "k8s.namespace.name", "k8s.node.name"]
     channel: "k8s_pod_{k8s.namespace.name}_{k8s.pod.name}_ready"
     display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Ready"
     unit: "#"
@@ -134,6 +142,7 @@ metrics:
       k8s.node.name: k8s.node.name
 
   - name: "k8s.pod.restarts"
+    multi_instance_labels: ["k8s.pod.name", "k8s.namespace.name", "k8s.node.name"]
     channel: "k8s_pod_{k8s.namespace.name}_{k8s.pod.name}_restarts"
     display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Restarts"
     unit: "#"
@@ -151,6 +160,7 @@ metrics:
   # --- Container metrics (tags: k8s.container.name, k8s.pod.name, k8s.namespace.name) ---
 
   - name: "k8s.container.ready"
+    multi_instance_labels: ["k8s.container.name", "k8s.pod.name", "k8s.namespace.name"]
     channel: "k8s_container_{k8s.namespace.name}_{k8s.pod.name}_{k8s.container.name}_ready"
     display_name: "Container {k8s.namespace.name}/{k8s.pod.name}/{k8s.container.name} Ready"
     unit: "#"
@@ -166,6 +176,7 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
 
   - name: "k8s.container.restarts"
+    multi_instance_labels: ["k8s.container.name", "k8s.pod.name", "k8s.namespace.name"]
     channel: "k8s_container_{k8s.namespace.name}_{k8s.pod.name}_{k8s.container.name}_restarts"
     display_name: "Container {k8s.namespace.name}/{k8s.pod.name}/{k8s.container.name} Restarts"
     unit: "#"
@@ -183,6 +194,7 @@ metrics:
   # --- Deployment metrics (tags: k8s.deployment.name, k8s.namespace.name) ---
 
   - name: "k8s.deployment.available"
+    multi_instance_labels: ["k8s.deployment.name", "k8s.namespace.name"]
     channel: "k8s_deployment_{k8s.namespace.name}_{k8s.deployment.name}_available"
     display_name: "Deployment {k8s.namespace.name}/{k8s.deployment.name} Available"
     unit: "#"
@@ -197,6 +209,7 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
 
   - name: "k8s.deployment.desired"
+    multi_instance_labels: ["k8s.deployment.name", "k8s.namespace.name"]
     channel: "k8s_deployment_{k8s.namespace.name}_{k8s.deployment.name}_desired"
     display_name: "Deployment {k8s.namespace.name}/{k8s.deployment.name} Desired"
     unit: "#"
@@ -211,6 +224,7 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
 
   - name: "k8s.deployment.ready"
+    multi_instance_labels: ["k8s.deployment.name", "k8s.namespace.name"]
     channel: "k8s_deployment_{k8s.namespace.name}_{k8s.deployment.name}_ready"
     display_name: "Deployment {k8s.namespace.name}/{k8s.deployment.name} Ready"
     unit: "#"
@@ -227,6 +241,7 @@ metrics:
   # --- Node conditions (#756) — 1 means the pressure IS present ---
 
   - name: "k8s.node.condition.memory_pressure"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_memory_pressure"
     display_name: "Node {k8s.node.name} Memory Pressure"
     unit: "#"
@@ -241,6 +256,7 @@ metrics:
       k8s.cluster.name: k8s.cluster.name
 
   - name: "k8s.node.condition.disk_pressure"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_disk_pressure"
     display_name: "Node {k8s.node.name} Disk Pressure"
     unit: "#"
@@ -255,6 +271,7 @@ metrics:
       k8s.cluster.name: k8s.cluster.name
 
   - name: "k8s.node.condition.pid_pressure"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_pid_pressure"
     display_name: "Node {k8s.node.name} PID Pressure"
     unit: "#"
@@ -269,6 +286,7 @@ metrics:
       k8s.cluster.name: k8s.cluster.name
 
   - name: "k8s.node.condition.network_unavailable"
+    multi_instance_labels: ["k8s.node.name"]
     channel: "k8s_node_{k8s.node.name}_network_unavailable"
     display_name: "Node {k8s.node.name} Network Unavailable"
     unit: "#"
@@ -285,6 +303,7 @@ metrics:
   # --- Pod and container resource reservations (#756) ---
 
   - name: "k8s.pod.cpu.request"
+    multi_instance_labels: ["k8s.pod.name", "k8s.namespace.name", "k8s.node.name"]
     channel: "k8s_pod_{k8s.pod.name}_cpu_request"
     display_name: "Pod {k8s.pod.name} CPU Request"
     unit: "cores"
@@ -300,6 +319,7 @@ metrics:
       k8s.node.name: k8s.node.name
 
   - name: "k8s.pod.cpu.limit"
+    multi_instance_labels: ["k8s.pod.name", "k8s.namespace.name", "k8s.node.name"]
     channel: "k8s_pod_{k8s.pod.name}_cpu_limit"
     display_name: "Pod {k8s.pod.name} CPU Limit"
     unit: "cores"
@@ -315,6 +335,7 @@ metrics:
       k8s.node.name: k8s.node.name
 
   - name: "k8s.pod.memory.request"
+    multi_instance_labels: ["k8s.pod.name", "k8s.namespace.name", "k8s.node.name"]
     channel: "k8s_pod_{k8s.pod.name}_memory_request"
     display_name: "Pod {k8s.pod.name} Memory Request"
     unit: "bytes"
@@ -330,6 +351,7 @@ metrics:
       k8s.node.name: k8s.node.name
 
   - name: "k8s.pod.memory.limit"
+    multi_instance_labels: ["k8s.pod.name", "k8s.namespace.name", "k8s.node.name"]
     channel: "k8s_pod_{k8s.pod.name}_memory_limit"
     display_name: "Pod {k8s.pod.name} Memory Limit"
     unit: "bytes"
@@ -345,6 +367,7 @@ metrics:
       k8s.node.name: k8s.node.name
 
   - name: "k8s.container.cpu.request"
+    multi_instance_labels: ["k8s.container.name", "k8s.pod.name", "k8s.namespace.name"]
     channel: "k8s_container_{k8s.container.name}_cpu_request"
     display_name: "Container {k8s.container.name} CPU Request"
     unit: "cores"
@@ -360,6 +383,7 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
 
   - name: "k8s.container.cpu.limit"
+    multi_instance_labels: ["k8s.container.name", "k8s.pod.name", "k8s.namespace.name"]
     channel: "k8s_container_{k8s.container.name}_cpu_limit"
     display_name: "Container {k8s.container.name} CPU Limit"
     unit: "cores"
@@ -375,6 +399,7 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
 
   - name: "k8s.container.memory.request"
+    multi_instance_labels: ["k8s.container.name", "k8s.pod.name", "k8s.namespace.name"]
     channel: "k8s_container_{k8s.container.name}_memory_request"
     display_name: "Container {k8s.container.name} Memory Request"
     unit: "bytes"
@@ -390,6 +415,7 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
 
   - name: "k8s.container.memory.limit"
+    multi_instance_labels: ["k8s.container.name", "k8s.pod.name", "k8s.namespace.name"]
     channel: "k8s_container_{k8s.container.name}_memory_limit"
     display_name: "Container {k8s.container.name} Memory Limit"
     unit: "bytes"
@@ -405,6 +431,7 @@ metrics:
       k8s.namespace.name: k8s.namespace.name
 
   - name: "k8s.container.waiting"
+    multi_instance_labels: ["k8s.container.name", "k8s.pod.name", "k8s.namespace.name", "k8s.container.waiting.reason"]
     channel: "k8s_container_{k8s.container.name}_waiting"
     display_name: "Container {k8s.container.name} Waiting"
     unit: "#"
@@ -423,6 +450,7 @@ metrics:
   # --- Workload kinds beyond Deployment (#756) ---
 
   - name: "k8s.statefulset.desired"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_statefulset_{k8s.workload.name}_desired"
     display_name: "Statefulset {k8s.workload.name} desired"
     unit: "#"
@@ -439,6 +467,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.statefulset.ready"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_statefulset_{k8s.workload.name}_ready"
     display_name: "Statefulset {k8s.workload.name} ready"
     unit: "#"
@@ -455,6 +484,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.statefulset.current"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_statefulset_{k8s.workload.name}_current"
     display_name: "Statefulset {k8s.workload.name} current"
     unit: "#"
@@ -471,6 +501,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.statefulset.updated"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_statefulset_{k8s.workload.name}_updated"
     display_name: "Statefulset {k8s.workload.name} updated"
     unit: "#"
@@ -487,6 +518,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.daemonset.desired_scheduled"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_daemonset_{k8s.workload.name}_desired_scheduled"
     display_name: "Daemonset {k8s.workload.name} desired scheduled"
     unit: "#"
@@ -503,6 +535,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.daemonset.current_scheduled"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_daemonset_{k8s.workload.name}_current_scheduled"
     display_name: "Daemonset {k8s.workload.name} current scheduled"
     unit: "#"
@@ -519,6 +552,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.daemonset.ready"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_daemonset_{k8s.workload.name}_ready"
     display_name: "Daemonset {k8s.workload.name} ready"
     unit: "#"
@@ -535,6 +569,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.daemonset.misscheduled"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_daemonset_{k8s.workload.name}_misscheduled"
     display_name: "Daemonset {k8s.workload.name} misscheduled"
     unit: "#"
@@ -551,6 +586,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.replicaset.desired"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_replicaset_{k8s.workload.name}_desired"
     display_name: "Replicaset {k8s.workload.name} desired"
     unit: "#"
@@ -567,6 +603,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.replicaset.ready"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_replicaset_{k8s.workload.name}_ready"
     display_name: "Replicaset {k8s.workload.name} ready"
     unit: "#"
@@ -583,6 +620,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.replicaset.available"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_replicaset_{k8s.workload.name}_available"
     display_name: "Replicaset {k8s.workload.name} available"
     unit: "#"
@@ -599,6 +637,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.job.active"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_job_{k8s.workload.name}_active"
     display_name: "Job {k8s.workload.name} active"
     unit: "#"
@@ -615,6 +654,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.job.succeeded"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_job_{k8s.workload.name}_succeeded"
     display_name: "Job {k8s.workload.name} succeeded"
     unit: "#"
@@ -631,6 +671,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.job.failed"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_job_{k8s.workload.name}_failed"
     display_name: "Job {k8s.workload.name} failed"
     unit: "#"
@@ -647,6 +688,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.job.desired_completions"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_job_{k8s.workload.name}_desired_completions"
     display_name: "Job {k8s.workload.name} desired completions"
     unit: "#"
@@ -663,6 +705,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.cronjob.active_jobs"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_cronjob_{k8s.workload.name}_active_jobs"
     display_name: "Cronjob {k8s.workload.name} active jobs"
     unit: "#"
@@ -679,6 +722,7 @@ metrics:
       k8s.workload.name: k8s.workload.name
 
   - name: "k8s.cronjob.suspended"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.workload.kind", "k8s.workload.name"]
     channel: "k8s_cronjob_{k8s.workload.name}_suspended"
     display_name: "Cronjob {k8s.workload.name} suspended"
     unit: "#"
@@ -697,6 +741,7 @@ metrics:
   # --- Storage, quotas, autoscaling (#756) ---
 
   - name: "k8s.persistentvolume.capacity"
+    multi_instance_labels: ["k8s.persistentvolume.name"]
     channel: "k8s_pv_{k8s.persistentvolume.name}_capacity"
     display_name: "Volume {k8s.persistentvolume.name} Capacity"
     unit: "bytes"
@@ -712,6 +757,7 @@ metrics:
       k8s.storageclass.name: k8s.storageclass.name
 
   - name: "k8s.persistentvolume.phase"
+    multi_instance_labels: ["k8s.persistentvolume.name", "phase"]
     channel: "k8s_pv_{k8s.persistentvolume.name}_phase_{phase}"
     display_name: "Volume {k8s.persistentvolume.name} Phase {phase}"
     unit: "#"
@@ -728,6 +774,7 @@ metrics:
       phase: phase
 
   - name: "k8s.persistentvolumeclaim.requested"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.persistentvolumeclaim.name"]
     channel: "k8s_pvc_{k8s.persistentvolumeclaim.name}_requested"
     display_name: "Claim {k8s.persistentvolumeclaim.name} Requested"
     unit: "bytes"
@@ -743,6 +790,7 @@ metrics:
       k8s.persistentvolumeclaim.name: k8s.persistentvolumeclaim.name
 
   - name: "k8s.persistentvolumeclaim.capacity"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.persistentvolumeclaim.name"]
     channel: "k8s_pvc_{k8s.persistentvolumeclaim.name}_capacity"
     display_name: "Claim {k8s.persistentvolumeclaim.name} Capacity"
     unit: "bytes"
@@ -758,6 +806,7 @@ metrics:
       k8s.persistentvolumeclaim.name: k8s.persistentvolumeclaim.name
 
   - name: "k8s.persistentvolumeclaim.phase"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.persistentvolumeclaim.name", "phase"]
     channel: "k8s_pvc_{k8s.persistentvolumeclaim.name}_phase_{phase}"
     display_name: "Claim {k8s.persistentvolumeclaim.name} Phase {phase}"
     unit: "#"
@@ -774,6 +823,7 @@ metrics:
       phase: phase
 
   - name: "k8s.resourcequota.hard"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.resourcequota.name", "k8s.resourcequota.resource"]
     channel: "k8s_quota_{k8s.resourcequota.name}_{k8s.resourcequota.resource}_hard"
     display_name: "Quota {k8s.resourcequota.name} {k8s.resourcequota.resource} Hard"
     unit: "#"
@@ -790,6 +840,7 @@ metrics:
       k8s.resourcequota.resource: k8s.resourcequota.resource
 
   - name: "k8s.resourcequota.used"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.resourcequota.name", "k8s.resourcequota.resource"]
     channel: "k8s_quota_{k8s.resourcequota.name}_{k8s.resourcequota.resource}_used"
     display_name: "Quota {k8s.resourcequota.name} {k8s.resourcequota.resource} Used"
     unit: "#"
@@ -806,6 +857,7 @@ metrics:
       k8s.resourcequota.resource: k8s.resourcequota.resource
 
   - name: "k8s.hpa.current_replicas"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.hpa.name"]
     channel: "k8s_hpa_{k8s.hpa.name}_current_replicas"
     display_name: "HPA {k8s.hpa.name} Current Replicas"
     unit: "#"
@@ -822,6 +874,7 @@ metrics:
       k8s.hpa.target: k8s.hpa.target
 
   - name: "k8s.hpa.desired_replicas"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.hpa.name"]
     channel: "k8s_hpa_{k8s.hpa.name}_desired_replicas"
     display_name: "HPA {k8s.hpa.name} Desired Replicas"
     unit: "#"
@@ -838,6 +891,7 @@ metrics:
       k8s.hpa.target: k8s.hpa.target
 
   - name: "k8s.hpa.min_replicas"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.hpa.name"]
     channel: "k8s_hpa_{k8s.hpa.name}_min_replicas"
     display_name: "HPA {k8s.hpa.name} Min Replicas"
     unit: "#"
@@ -854,6 +908,7 @@ metrics:
       k8s.hpa.target: k8s.hpa.target
 
   - name: "k8s.hpa.max_replicas"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.hpa.name"]
     channel: "k8s_hpa_{k8s.hpa.name}_max_replicas"
     display_name: "HPA {k8s.hpa.name} Max Replicas"
     unit: "#"

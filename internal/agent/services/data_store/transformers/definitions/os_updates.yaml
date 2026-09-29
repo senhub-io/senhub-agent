@@ -50,6 +50,20 @@ metrics:
     tag_to_attribute:
       package_manager: os.package_manager
 
+  - name: "senhub.os.packages.installed"
+    channel: "os_packages_installed"
+    display_name: "Installed Packages"
+    unit: "#"
+    category: "patching"
+    platforms: ["linux"]
+    description: "Number of packages the backend has installed on the machine, which is what the pending count above is measured against. Read from dpkg or rpm; the Windows Update Agent enumerates updates, not installed software, so the count is Linux only"
+    otel:
+      name: senhub.os.packages.installed
+      unit: "{package}"
+      type: gauge
+    tag_to_attribute:
+      package_manager: os.package_manager
+
   - name: "senhub.os.updates.reboot_required"
     channel: "os_updates_reboot_required"
     display_name: "Reboot Required"

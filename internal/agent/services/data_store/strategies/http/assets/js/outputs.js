@@ -64,7 +64,7 @@
         return '<span class="pill acc">' + esc(mode || 'push') + '</span>';
     }
 
-    const SHORT = { http: 'HTTP', otlp: 'OTLP', prtg: 'PRTG', senhub: 'CLOUD', event: 'EVENT' };
+    const SHORT = { http: 'HTTP', otlp: 'OTLP', prtg: 'PRTG', senhub: 'CLOUD', event: 'EVENT', zabbix: 'ZBX' };
     function shortType(t) { return SHORT[t] || String(t || '?').slice(0, 5).toUpperCase(); }
 
     // The agent reports the file's full path; on Windows it is backslash-separated.
@@ -153,6 +153,13 @@
         if (t === 'event') {
             return 'Push to <code>' + esc(p.server_url || '(no server_url)') + '</code>, sync every ' + esc(dur(p.sync_interval) || '30s') +
                 ', queue ' + esc(p.queue_size || 1000);
+        }
+        if (t === 'zabbix') {
+            const tls = p.tls && p.tls.enabled ? (p.tls.psk_identity ? 'PSK' : 'TLS on') : 'no TLS';
+            const passive = p.passive && p.passive.enabled ? ', polled on port ' + esc(p.passive.port || 10050) : '';
+            return 'Active agent to <code>' + esc(p.server || '(no server)') + '</code>, ' + tls +
+                ' &middot; push every ' + esc(dur(p.interval) || '60s') +
+                (p.hostname ? ' as <code>' + esc(p.hostname) + '</code>' : '') + passive;
         }
         if (t === 'senhub') {
             return 'Batches to <code>intake.senhub.io</code> every ' + esc(dur(p.interval) || '5s') + ', authenticated by the agent key';

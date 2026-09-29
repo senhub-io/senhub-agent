@@ -55,6 +55,7 @@ Platform-specific ping commands are automatically used based on the operating sy
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:eb522779780a196332d9ce760a1d4aa72329a53b6b37e6d98607976a87d671a1 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -551,3 +552,21 @@ For application-layer monitoring with authentication, use the Load WebApp probe 
 - **DNS resolvable**: Hostname must resolve to IP address
 - **ICMP enabled**: Target must respond to ICMP Echo Request
 - **Network accessible**: No firewall blocking between agent and target
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.probe.icmp.duration_seconds` | `averageLatency` | Average Latency ({url}) | ms | Average round-trip time to the web application endpoint |
+| `senhub.probe.icmp.packet_loss_ratio` | `packetLoss` | Packet Loss ({url}) | % | Percentage of ICMP packets lost to the web application endpoint |
+
+<!-- schema:metrics:end -->

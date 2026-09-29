@@ -2,8 +2,10 @@ package snmppoll
 
 import (
 	"fmt"
-	"senhub-agent.go/internal/agent/services/snmpcore"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/snmpcore"
 )
 
 // IF-MIB interface inventory (entity rail): the device's ports as
@@ -156,28 +158,17 @@ func operStateName(v int) string {
 	}
 }
 
-// macString formats ifPhysAddress octets as lowercase colon-separated hex
-// (aa:bb:cc:dd:ee:ff). An empty or all-zero address yields "" — many virtual
-// and loopback ports report 6 zero bytes, which is not a usable identity.
+// macString formats ifPhysAddress octets in the canonical MAC form
+// (entity.CanonicalMAC). An empty or all-zero address yields "" — many
+// virtual and loopback ports report 6 zero bytes, which is not a usable
+// identity.
 func macString(b []byte) string {
-	if len(b) == 0 {
-		return ""
-	}
-	allZero := true
 	for _, c := range b {
 		if c != 0 {
-			allZero = false
-			break
+			return entity.CanonicalMAC(b)
 		}
 	}
-	if allZero {
-		return ""
-	}
-	parts := make([]string, len(b))
-	for i, c := range b {
-		parts[i] = fmt.Sprintf("%02x", c)
-	}
-	return strings.Join(parts, ":")
+	return ""
 }
 
 // ifTypeName maps the IANAifType enum to the frozen interface.type vocabulary
