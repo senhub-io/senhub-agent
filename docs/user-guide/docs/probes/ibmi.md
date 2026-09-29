@@ -295,7 +295,7 @@ message remains visible there through the jobs-by-status count.
 # Requirements
 
 - **Db2 for i SQL services** reachable from the agent host over the JT400 (JTOpen) toolbox — the database host server must be started (`STRHOSTSVR SERVER(*DATABASE)`).
-- An **IBM i user profile** for the probe with read access to the SQL services used (system, jobs, storage, database, network and message catalogs under `QSYS2` / `SYSTOOLS`). A profile with `*USE` authority to those services is sufficient; `*ALLOBJ` is not required. Give it a non-expiring password and no interactive display sessions.
+- An **IBM i user profile** for the probe with read access to the SQL services used (system, jobs, storage, database, network and message catalogs under `QSYS2` / `SYSTOOLS`). A profile with `*USE` authority to those services is sufficient; `*ALLOBJ` is not required. Give it a non-expiring password and no interactive display sessions. When IBM i refuses the password, the probe is not retried on its own: each retry would be another invalid sign-on, and the system disables a profile after a few (`QMAXSIGN`). The agent log says so; fix the password, then reload the configuration or restart the agent.
 - The **JT400 bridge**: either the bundled `Jt400Runner.class` + `jt400.jar` under `bridge_runner_dir` with a JRE on the agent host, or a GraalVM native-image `jt400runner` binary referenced via `native_runner`.
 - Network path from the agent host to the partition (default database host-server port `8471`, plus the port-mapper on `449`).
 
