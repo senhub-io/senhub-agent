@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	gops "github.com/shirou/gopsutil/v3/process"
@@ -84,10 +85,11 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		}
 		byName := map[string]*rollUp{}
 		for _, snap := range snaps {
-			r, ok := byName[snap.name]
+			name := rollUpName(snap.name)
+			r, ok := byName[name]
 			if !ok {
 				r = &rollUp{}
-				byName[snap.name] = r
+				byName[name] = r
 			}
 			r.count++
 			r.cpu += snap.cpuPct
@@ -152,6 +154,19 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 	}
 
 	return points, snaps, nil
+}
+
+// rollUpName is the name a process is counted under in the roll-up. Linux
+// kernel workqueue threads rename themselves as they pick up work
+// ("kworker/1:1-ata_sff", "kworker/u4:2-events_freezable_power_"), and
+// the pool spawns and retires them, so each name lives seconds: counted as
+// is, every one became a series, and a Zabbix item left without data once
+// it was gone. They are counted together as "kworker".
+func rollUpName(name string) string {
+	if strings.HasPrefix(name, "kworker/") {
+		return "kworker"
+	}
+	return name
 }
 
 // snapshotProcess reads one process and returns (snap, skip).
