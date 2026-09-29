@@ -329,12 +329,13 @@ The plan below was measured on a partition with 46 disk units, 38 TCP
 listeners, 33 output queues and 17 journals. Append each query to the
 probe's PRTG URL, `/api/{agentkey}/prtg/metrics/ibmi-prod`.
 
-**Base set**
+**Base set** (nine sensors)
 
 | Sensor | Query | Channels measured |
 |---|---|---|
 | System: CPU, memory, pools, ASPs | `?tags=metric_type:cpu,memory,memory_pool,asp` | 30 |
-| Jobs by status and subsystem | `?tags=metric_type:jobs` | 44 |
+| Jobs by status | `?tags=metric_type:jobs&metrics=ibmi.jobs.count_by_status` | 23 to 28 |
+| Jobs by subsystem, totals | `?tags=metric_type:jobs&metrics=ibmi.jobs.count_by_subsystem,ibmi.jobs.total_count,ibmi.jobs.active_total` | 20 |
 | Subsystems and job queues | `?tags=metric_type:subsystem,job_queue` | 35 |
 | Disks, percent used | `?tags=metric_type:disk&metrics=ibmi.disk.percent_used` | 46 |
 | Active TCP listeners | `?tags=metric_type:netstat&metrics=ibmi.netstat.listener_up` | 38 |
@@ -356,9 +357,13 @@ probe's PRTG URL, `/api/{agentkey}/prtg/metrics/ibmi-prod`.
 | Licences used | `?tags=metric_type:license&metrics=ibmi.license.usage_count,ibmi.license.usage_limit` | 24 |
 | Network interfaces and connections | `?tags=metric_type:netstat&metrics=ibmi.netstat.connections_by_state,ibmi.netstat.connections_total,ibmi.netstat.interface_up,ibmi.netstat.interface_mtu` | 15 |
 
-The counts grow with the partition. A system with more than 50 disk
-units or listeners needs those sensors split further, for example by
-ASP with `&tags=asp_number:1`; check the channel count in the console's
+The counts grow with the partition. The job-status sensor follows the
+statuses present at each collection: a status that appears once leaves a
+channel PRTG keeps, empty, which is why jobs by status and jobs by
+subsystem are two sensors. The disk, listener and output-queue sensors
+follow the number of objects: a system with more than 50 disk units or
+listeners needs them split further, for example by ASP with
+`&tags=asp_number:1`; check the channel count in the console's
 Sensor URLs preview before creating a sensor. Do not point one PRTG
 sensor at the whole probe: on the partition above it returns about 800
 channels, sixteen times what PRTG takes on one sensor, and it loaded a test PRTG server to full CPU.
