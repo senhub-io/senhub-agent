@@ -68,3 +68,17 @@ func TestWifiProbe_DatapointsCarryProbeTags(t *testing.T) {
 		t.Errorf("probe_type = %q, want wifi_signal_strength", tagsByKey["probe_type"])
 	}
 }
+
+// iwconfig pads the ESSID field; stripping the quotes before the spaces
+// left `Freebox-20BC32"  ` in the ssid tag (seen on a Raspberry Pi).
+func TestParseESSID(t *testing.T) {
+	for line, want := range map[string]string{
+		`wlan0     IEEE 802.11  ESSID:"Freebox-20BC32"  `:   "Freebox-20BC32",
+		`wlan0     IEEE 802.11  ESSID:"Home Net"`:           "Home Net",
+		`wlan0     unassociated  Nickname:"<WIFI@REALTEK>"`: "",
+	} {
+		if got := parseESSID(line); got != want {
+			t.Errorf("parseESSID(%q) = %q, want %q", line, got, want)
+		}
+	}
+}
