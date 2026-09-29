@@ -15,6 +15,7 @@ import (
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/prtgnames"
 	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/exporterrors"
@@ -297,12 +298,17 @@ type PrtgData struct {
 func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	// Transform data points to PRTG format
 	jsonData := PrtgData{}
-	for _, p := range data {
-		jsonData.Prtg.Result = append(jsonData.Prtg.Result, PrtgResult{
-			s.channelName(p),
-			p.Value,
-			1,
-		})
+	names := make([]string, len(data))
+	tags := make([]map[string]string, len(data))
+	for i, p := range data {
+		names[i] = s.channelName(p)
+		tags[i] = make(map[string]string, len(p.Tags))
+		for _, t := range p.Tags {
+			tags[i][t.Key] = t.Value
+		}
+	}
+	for i, n := range prtgnames.Disambiguate(names, tags) {
+		jsonData.Prtg.Result = append(jsonData.Prtg.Result, PrtgResult{n, data[i].Value, 1})
 	}
 
 	// Send data to PRTG
