@@ -40,6 +40,15 @@ Breaking Changes or Fixes below.
 9. **Interface queries.** SNMP interface series move from the label
    `interface_name` to `network_interface_name`; interface entities are
    replaced once.
+10. **PRTG sensors.** Recreate the sensors of the `process` and `swarm`
+    probes: `process` no longer sends its per-process channels to PRTG,
+    and `swarm` channels are renamed after the node, service or network
+    they describe. PRTG keeps the old channels without values until the
+    sensor is recreated. On any probe, channels that used to share a name
+    now carry a suffix that sets them apart, and appear as new channels.
+11. **OTLP receiver counters.** Queries on the sending service of
+    `senhub_agent_otlp_receiver_received_total` use the label
+    `senhub_otlp_receiver_sender_service_name` instead of `service_name`.
 
 ## Breaking Changes
 
