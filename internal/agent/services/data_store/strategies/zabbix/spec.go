@@ -25,20 +25,24 @@ func init() {
 				{Key: "port", Kind: spec.KindInt, Default: defaultPassivePort, Description: "Port the listener binds to; sent to the server so autoregistration creates the interface on it"},
 				{Key: "allow", Kind: spec.KindStringList, Description: "Addresses or CIDR ranges allowed to poll the passive port; every configured server address when empty, since any member of a proxy group may be the one polling"},
 				{Key: "advertise", Kind: spec.KindString, Description: "Address or name the server should poll, sent with the registration; without it Zabbix records where the packets came from, which is the translation behind NAT", Example: "web-01.example.com"},
-				{Key: "tls", Kind: spec.KindBlock, Description: "Certificate-based encryption of the polled port, configured apart from the outbound connection because the roles are opposite", Fields: []spec.ParamSpec{
-					{Key: "enabled", Kind: spec.KindBool, Default: false, Description: "Encrypt what the server polls; needs cert_file and key_file"},
+				{Key: "tls", Kind: spec.KindBlock, Description: "Encryption of the polled port, by certificate or pre-shared key, configured apart from the outbound connection because the roles are opposite", Fields: []spec.ParamSpec{
+					{Key: "enabled", Kind: spec.KindBool, Default: false, Description: "Encrypt what the server polls; needs cert_file and key_file, or psk_identity and psk_file"},
 					{Key: "cert_file", Kind: spec.KindString, Description: "Certificate the agent presents to whoever polls it"},
 					{Key: "key_file", Kind: spec.KindString, Secret: true, Description: "Private key of that certificate"},
 					{Key: "ca_file", Kind: spec.KindString, Description: "Authority that signed the server's certificate; when set, a poller must present one it signed"},
+					{Key: "psk_identity", Kind: spec.KindString, Description: "Pre-shared key identity, the one set on the host in Zabbix; instead of a certificate"},
+					{Key: "psk_file", Kind: spec.KindString, Description: "File holding the pre-shared key, hex-encoded as Zabbix writes it; readable by the service account"},
 				}},
 			}},
-			{Key: "tls", Kind: spec.KindBlock, Group: "tls", Description: "Certificate-based encryption of the connection (Zabbix pre-shared keys are not supported)", Fields: []spec.ParamSpec{
+			{Key: "tls", Kind: spec.KindBlock, Group: "tls", Description: "Encryption of the connection to the server, by certificate or pre-shared key (PSK)", Fields: []spec.ParamSpec{
 				{Key: "enabled", Kind: spec.KindBool, Default: false, Description: "Encrypt the connection with TLS"},
 				{Key: "ca_file", Kind: spec.KindString, Description: "CA certificate that signed the server's certificate"},
 				{Key: "cert_file", Kind: spec.KindString, Description: "Client certificate presented to the server"},
 				{Key: "key_file", Kind: spec.KindString, Secret: true, Description: "Private key of the client certificate"},
 				{Key: "server_name", Kind: spec.KindString, Description: "Name expected in the server's certificate when it differs from the address"},
 				{Key: "insecure_skip_verify", Kind: spec.KindBool, Default: false, Description: "Skip the server certificate check"},
+				{Key: "psk_identity", Kind: spec.KindString, Description: "Pre-shared key identity, as set on the host or in autoregistration in Zabbix; instead of a certificate"},
+				{Key: "psk_file", Kind: spec.KindString, Description: "File holding the pre-shared key, hex-encoded as Zabbix writes it; readable by the service account"},
 			}},
 		},
 	})

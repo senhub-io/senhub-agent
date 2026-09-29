@@ -51,7 +51,7 @@ func init() {
 					{Key: "depends_on_enabled", Kind: spec.KindBool, Default: false, Advanced: true, Description: "Emit depends_on relationships from observed connections"},
 					{Key: "depends_on_debounce", Kind: spec.KindInt, Default: 3, Advanced: true, Description: "Sweeps a connection must survive before it becomes a relationship"},
 					{Key: "depends_on_exclude_cidrs", Kind: spec.KindStringList, Advanced: true, Description: "Peers in these ranges never become relationships"},
-					{Key: "redact_attributes", Kind: spec.KindStringList, Advanced: true, Description: "Entity attributes replaced by [REDACTED] before export"},
+					{Key: "redact_attributes", Kind: spec.KindStringList, Advanced: true, Description: "Descriptive entity attributes dropped before export; identity keys cannot be listed"},
 				}},
 			}},
 			{Key: "relay", Kind: spec.KindBlock, Group: "signals", Description: "Telemetry forwarded on behalf of applications (otlp_receiver)", Fields: []spec.ParamSpec{
