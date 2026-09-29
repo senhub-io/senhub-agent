@@ -189,7 +189,8 @@ Run two instances to serve both protocols at once:
   the records relayed and
   `senhub_agent_otlp_receiver_received_without_host_id_total` those that
   still had no `host.id` afterwards, both by `signal`, `origin` (`uds`,
-  `tcp_loopback`, `remote`) and `service_name`. The share without is
+  `tcp_loopback`, `remote`) and the sending service
+  (`senhub_otlp_receiver_sender_service_name`). The share without is
   expected on `remote` and a defect on `uds`. The sending service is
   capped at 200 distinct values; past them records count under `other`.
 - **The agent carries the three signals of the machine.** Sending logs
