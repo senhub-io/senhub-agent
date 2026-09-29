@@ -599,6 +599,14 @@ Breaking Changes or Fixes below.
   waits for a configuration reload or a restart; other start failures
   keep the timer.
 
+- **The IBM i probe finds its Java runtime and names the right
+  settings.** It read `JAVA_HOME` only, although an empty `java_home`
+  was documented to use the environment: a host with Java on the PATH
+  got "no IBM i runtime found". That message also named settings that
+  do not exist (`bridge.java_home`, `bridge.runner_dir`); it now names
+  `java_home`, `bridge_runner_dir` and `native_runner`, and Java on the
+  PATH is used.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
