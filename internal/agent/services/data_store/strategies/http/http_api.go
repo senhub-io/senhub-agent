@@ -262,6 +262,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	for _, tsKeys := range a.strategy.cache.probeIndex {
 		totalMetrics += len(tsKeys)
 	}
+	probeCount := len(a.strategy.cache.probeIndex)
 	a.strategy.cache.mu.RUnlock()
 
 	// Build system info response
@@ -290,7 +291,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 		Cache: CacheInfoResponse{
 			TotalMetrics: totalMetrics,
 			TTL:          a.strategy.cache.ttl.String(),
-			MemoryUsage:  fmt.Sprintf("%.2f MB", systemHealth.Resources.MemoryUsageMB),
+			ProbeCount:   probeCount,
 		},
 		Resources: systemHealth.Resources,
 	}

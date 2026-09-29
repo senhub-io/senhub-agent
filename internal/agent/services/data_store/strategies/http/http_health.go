@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"runtime"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/logger"
@@ -47,9 +46,14 @@ type HealthCheckResponse struct {
 
 // ResourcesInfo represents system resource usage information
 type ResourcesInfo struct {
+	// MemoryUsageMB is the process's resident set; HeapMB the Go heap.
 	MemoryUsageMB float64 `json:"memory_usage_mb"`
-	CPUPercent    float64 `json:"cpu_percent"`
-	Goroutines    int     `json:"goroutines"`
+	HeapMB        float64 `json:"heap_mb"`
+	// CPUPercent is a share of the whole machine; meaningful only when
+	// Measured is true.
+	CPUPercent float64 `json:"cpu_percent"`
+	Measured   bool    `json:"measured"`
+	Goroutines int     `json:"goroutines"`
 }
 
 // SystemHealth represents comprehensive health status for system info endpoint
@@ -63,11 +67,7 @@ type SystemHealth struct {
 func (h *HealthManager) HandleBasicHealth(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug().Msg("Basic health check request received")
 
-	// Get memory stats for health info
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	memUsageMB := float64(memStats.Alloc) / 1024 / 1024
-
+	perf := h.strategy.statusService.GetPerformanceMetrics()
 	healthInfo := struct {
 		Status    string  `json:"status"`
 		Timestamp string  `json:"timestamp"`
@@ -76,8 +76,8 @@ func (h *HealthManager) HandleBasicHealth(w http.ResponseWriter, r *http.Request
 	}{
 		Status:    "ok",
 		Timestamp: time.Now().Format(time.RFC3339),
-		Memory:    memUsageMB,
-		Version:   "HTTP Strategy v1.0",
+		Memory:    perf.MemoryUsageMB,
+		Version:   h.strategy.utilsManager.parseVersionInfo().Version,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -141,7 +141,9 @@ func (h *HealthManager) BuildSystemHealth() SystemHealth {
 	// Convert resources info
 	resources := ResourcesInfo{
 		MemoryUsageMB: systemStatus.Performance.MemoryUsageMB,
+		HeapMB:        systemStatus.Performance.HeapMB,
 		CPUPercent:    systemStatus.Performance.CPUPercent,
+		Measured:      systemStatus.Performance.Measured,
 		Goroutines:    systemStatus.Performance.Goroutines,
 	}
 
