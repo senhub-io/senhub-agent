@@ -247,7 +247,7 @@ sudo /usr/local/bin/senhub-agent key instance-id
 sudo /usr/local/bin/senhub-agent key instance-id --config-path /etc/senhub-agent/agent.yaml
 ```
 
-Prints the agent's instance id: the `service.instance.id` its telemetry and its topology entity carry, an RFC 4122 UUID derived from the agent key. Use it to find this agent in a metrics store or in a topology graph. It is not a credential; `senhub-agent status` and the **Agent** card of the web console show it too.
+Prints the agent's instance id: the `service.instance.id` its telemetry and its topology entity carry, an RFC 4122 UUID derived from the agent key. Use it to find this agent in a metrics store or in a topology graph. It is not a credential; `senhub-agent status`, the **Identity** card of the console's Settings page and the **Agent** card of its Overview show it too.
 
 ## Database Helpers
 
