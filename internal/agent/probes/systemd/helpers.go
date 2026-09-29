@@ -74,6 +74,23 @@ func unitTypeSuffix(name string) string {
 	return ""
 }
 
+// sessionUnitPatterns match the units systemd creates for each user login
+// and removes at logout (run-user-1000.mount, user@1000.service,
+// user-runtime-dir@1000.service). They are plumbing of a session, not
+// services to watch, and every SSH login would otherwise add series that
+// stop the moment it ends. They are left out of the default view only;
+// a units list can still name them.
+var sessionUnitPatterns = []string{"run-user-*.mount", "user@*.service", "user-runtime-dir@*.service"}
+
+func isSessionUnit(name string) bool {
+	for _, p := range sessionUnitPatterns {
+		if ok, _ := filepath.Match(p, name); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // filterUnits applies the include_types filter and, when units is
 // non-empty, restricts to units matching at least one glob pattern.
 func filterUnits(cfg probeConfig, all []dbus.UnitStatus) []dbus.UnitStatus {
@@ -84,7 +101,9 @@ func filterUnits(cfg probeConfig, all []dbus.UnitStatus) []dbus.UnitStatus {
 			continue
 		}
 		if len(cfg.Units) == 0 {
-			out = append(out, u)
+			if !isSessionUnit(u.Name) {
+				out = append(out, u)
+			}
 			continue
 		}
 		for _, pattern := range cfg.Units {
