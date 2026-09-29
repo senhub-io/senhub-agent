@@ -163,6 +163,8 @@ Expected response:
 {"status":"ok","timestamp":"2026-09-29T10:15:00+02:00","memory_mb":18.4,"version":"HTTP Strategy v1.0"}
 ```
 
+The **HTTPS** card of the console's [Settings](web-interface.md#settings) page shows the same state without a shell: whether TLS is on, the certificate and key files, the certificate's subject and expiry read from the file, and the minimum TLS version.
+
 ## API Endpoints Reference
 
 All API endpoints require a key in the URL path, except `/health`. Two keys exist:

@@ -62,8 +62,8 @@ The Overview is the landing page.
 - **Getting started** lists four steps and computes their state from the agent: the agent runs, probes are configured, data is sent somewhere, the poller has its sensor URL. The current step is highlighted and carries the link that resolves it. Hide it once you are done; it disappears on its own when every step is complete.
 - **Probes** is a compact table of the configured probes, the ones needing attention first, with their state, the number of series they hold and the time of their last collection. Probes whose target is down are counted on their own, not under "running".
 - **Outputs** lists every output with its state and the action that matters: build a sensor URL for the HTTP output, edit a push output, enable a disabled one.
-- **Agent** merges the former status, health and resources cards: version, host, uptime, port, memory, CPU, goroutines and cache size. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
-- **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button.
+- **Agent** merges the former status, health and resources cards: version, host, instance ID, uptime, port, configuration path, memory, CPU, goroutines and cache size. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
+- **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button. The Settings page gathers the identifiers and the licence in full.
 - **Recent events** shows the last transitions: a probe that started failing or recovered, an output that could not start, a save made from the console, a configuration reloaded from disk. The agent keeps the last fifty in memory; they do not survive a restart.
 
 The page refreshes every thirty seconds.
@@ -220,6 +220,8 @@ The agent returns metrics in the PRTG JSON format:
 
 Each channel becomes a separate metric in PRTG with its own graph and alerting thresholds.
 
+PRTG keeps one value per channel name, so no two channels of one result share a name: when two series would, the agent appends the tag value that tells them apart (a CPU number, a container name), or a number when no tag does. PRTG takes at most 50 channels per sensor; narrow a larger result with a tag or `metrics=` filter.
+
 #### Finding available probe names
 
 To see which probe names are available for PRTG sensors:
@@ -310,7 +312,7 @@ The routes marked **admin** answer the administration key alone and exist only w
 | `GET /api/{key}/config/outputs` | admin | Configured outputs with their state, delivery record and, for HTTP, the last poller per endpoint |
 | `POST /api/{key}/config/outputs`, `PUT` and `DELETE` on `.../{name}` | admin | Create (with `enabled: false` to write the file as `.disabled`), update, delete an output file |
 | `POST /api/{key}/config/outputs/validate`, `POST /api/{key}/config/outputs/test` | admin | Check values; test the connection step by step |
-| `GET /api/{key}/config/settings`, `POST` | admin | Port, bind address, licence |
+| `GET /api/{key}/config/settings`, `POST` | admin | Port, bind address, licence; the GET also returns the instance ID and the TLS state (certificate subject and expiry) |
 | `POST /api/{key}/admin/cache/clear` | admin | Empty the metric cache |
 | `GET /api/{key}/debug/logs`, `POST` | admin | Read the agent's recent logs; change log levels |
 | `GET /api/{key}/debug/pprof/...` | admin | Go runtime profiler |

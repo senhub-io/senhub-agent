@@ -324,6 +324,10 @@ Entity events (the infrastructure graph: hosts, interfaces, services and
 their relationships) ride the OTLP **log** signal, so this signal has no
 endpoint or batch knobs of its own — it reuses the log transport.
 
+When `entities.enabled` is off, the output logs one warning at start,
+`entity emission is off on this OTLP output`, so an empty topology can be
+traced to its cause from the agent log.
+
 ```yaml
     entities:
       enabled: true            # opt-in (default false)
