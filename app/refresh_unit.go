@@ -90,6 +90,14 @@ func refreshedUnitBody(installed string, binaryExists func(string) bool) string 
 	return strings.Join(out, "\n")
 }
 
+// retiredUnitDirectives are directives an earlier packaged unit set and the
+// current one leaves out on purpose. Found in an installed unit they are our
+// own old default, not an operator's addition, and preserving them would put
+// the retired setting straight back: MemoryDenyWriteExecute=true, removed
+// because the IBM i probe's JVM and native runner cannot start under it,
+// came back on every refreshed unit.
+var retiredUnitDirectives = []string{"MemoryDenyWriteExecute"}
+
 // withPreservedDirectives carries operator-added [Service] directives from
 // the installed unit over to the refreshed one.
 //
@@ -111,6 +119,9 @@ func withPreservedDirectives(refreshed, installed string) string {
 	// Preserving those would undo the rules above.
 	for _, decided := range []string{"ExecStart", "WorkingDirectory", "User", "Group"} {
 		managed[decided] = true
+	}
+	for _, retired := range retiredUnitDirectives {
+		managed[retired] = true
 	}
 	var extra []string
 	for _, line := range serviceSectionLines(installed) {
