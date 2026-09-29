@@ -446,6 +446,15 @@ Breaking Changes or Fixes below.
   alert fires on, and 0 monitors, and the pool statistics were never
   requested, so objects, stored data and operations stayed at 0.
 
+- **The [NetScaler](../probes/netscaler.md) probe reports service group
+  traffic.** It asked NITRO for all bindings and all member statistics
+  at once, which NITRO refuses: every service group published 0
+  requests, responses, throughput and connections whatever its traffic,
+  and service groups were never tagged with their vServer. Bindings and
+  member statistics are now read per object; a group whose members
+  cannot all be read leaves its traffic metrics out rather than
+  publishing a wrong sum.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
