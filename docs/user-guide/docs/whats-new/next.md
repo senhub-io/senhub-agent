@@ -30,3 +30,10 @@ Changes since 0.6.0, collected as they are merged.
   URLs tab turned "no PRTG request seen" into "last PRTG request just
   now" for a sensor that did not exist yet. The export counts on the
   Outputs page now say they run since the agent started.
+
+- **Test connection tests every push output.** On a Zabbix or SenHub
+  cloud output it answered "test failed" in red, the same as an
+  unreachable server, because no test existed. Zabbix now opens a TCP
+  connection to each server or proxy address, SenHub cloud reaches the
+  intake the agent pushes to. For the events output, the test reached
+  the base URL; it now reaches `/event/insert`, where the agent posts.
