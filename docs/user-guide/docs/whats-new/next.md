@@ -504,6 +504,14 @@ Breaking Changes or Fixes below.
   the broker-level `pulsar_broker_*` aggregates, and falls back to the
   per-namespace series on a broker that does not publish them.
 
+- **The OTLP receiver's own counters stay the agent's.**
+  `senhub.agent.otlp_receiver.received` and `…received.without_host_id`
+  named the sending service `service.name`, which overrode the
+  resource's `service.name=senhub-agent` in the backend: the agent's own
+  counters read as metrics of the service it relayed. The sender is now
+  `senhub.otlp_receiver.sender.service.name` (Prometheus
+  `senhub_otlp_receiver_sender_service_name`).
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
