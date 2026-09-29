@@ -499,8 +499,10 @@ Breaking Changes or Fixes below.
 - **The [process](../probes/process.md) roll-up no longer churns on
   Linux kernel workers.** Kernel workqueue threads rename themselves as
   they pick up work and live seconds, so each became its own roll-up
-  series and, on the Zabbix output, an item left without data. They are
-  now counted together under `kworker`.
+  series and, on the Zabbix output, an item left without data; the same
+  thread even changed name under one process id, so per-process Zabbix
+  items churned too. They are now reported as `kworker`, in the roll-up
+  and in the per-process detail.
 
 - **The [Hyper-V](../probes/hyperv.md) probe collects.** Its two WMI
   queries named properties the Hyper-V classes do not have
