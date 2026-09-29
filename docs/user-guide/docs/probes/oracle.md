@@ -57,7 +57,32 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 
 ## Operational notes
 
-- The minimum grant for the monitoring user: `GRANT CREATE SESSION TO monitor; GRANT SELECT ON V_$SESSION TO monitor;` plus similar grants on other v$ views used.
+- The probe needs a user that can open a session and read nine
+  dictionary views. On a multitenant database, create it in the
+  pluggable database the probe connects to, then, as a privileged user
+  of that PDB:
+
+    ```sql
+    CREATE USER senhub IDENTIFIED BY "…";
+    GRANT CREATE SESSION TO senhub;
+    GRANT SELECT ON V_$INSTANCE TO senhub;
+    GRANT SELECT ON V_$SESSION TO senhub;
+    GRANT SELECT ON V_$RESOURCE_LIMIT TO senhub;
+    GRANT SELECT ON V_$SYSSTAT TO senhub;
+    GRANT SELECT ON V_$SGASTAT TO senhub;
+    GRANT SELECT ON V_$PGASTAT TO senhub;
+    GRANT SELECT ON V_$SYSTEM_WAIT_CLASS TO senhub;
+    GRANT SELECT ON DBA_TABLESPACES TO senhub;
+    GRANT SELECT ON DBA_TABLESPACE_USAGE_METRICS TO senhub;
+    ```
+
+    The `V_$` names are the grantable objects behind the `V$` views.
+    `GRANT SELECT_CATALOG_ROLE` covers all of them in one line if your
+    policy allows it. A view the user cannot read leaves out the
+    metrics that depend on it; the other metrics keep reporting.
+- When the database is unreachable or refuses the login, the probe
+  publishes `senhub.db.up = 0` and logs the reason (`ORA-01017` for a
+  wrong password, `ORA-12514` for a service the listener does not know).
 - No Oracle client (OCI) installation is needed — `go-ora` speaks the Oracle wire protocol directly.
 - The probe connects using the service name, not the SID.
 
