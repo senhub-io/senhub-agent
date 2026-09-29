@@ -24,6 +24,12 @@ Processes" sensor.
     which rename themselves as they work (`kworker/1:1-ata_sff`): the roll-up
     counts them together under `kworker`.
 
+    PRTG receives the roll-up only. It keeps every channel it has ever seen
+    on a sensor, and the per-process channels are keyed on the process id,
+    so each restart of a program would leave one more dead channel there.
+    The per-process detail stays on the Prometheus, OTLP, Nagios and Zabbix
+    outputs.
+
 ## Quick start
 
 ```yaml

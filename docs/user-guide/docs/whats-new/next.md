@@ -520,6 +520,13 @@ Breaking Changes or Fixes below.
   that collide now carry the tags that set them apart, for example
   `Node CPU Seconds (cpu=0, mode=idle)`.
 
+- **The process probe no longer piles up PRTG channels.** Its
+  per-process channels carried the process id, and PRTG keeps every
+  channel it has seen: each program restart left one more dead channel
+  on the sensor (163 for 75 live on the recette bench). PRTG now gets the
+  per-name roll-up; the per-process detail stays on the other outputs.
+  A definition marks such a metric with `prtg_skip`.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux

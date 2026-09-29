@@ -19,6 +19,7 @@ metrics:
   - name: "process.cpu.utilization"
     channel: "process_cpu_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) CPU"
+    prtg_skip: true
     unit: "%"
     category: "cpu"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -39,6 +40,7 @@ metrics:
   - name: "process.memory.usage"
     channel: "process_mem_rss_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) RSS"
+    prtg_skip: true
     unit: "bytes"
     category: "memory"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -59,6 +61,7 @@ metrics:
   - name: "process.memory.virtual_memory_usage"
     channel: "process_mem_vms_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) VMS"
+    prtg_skip: true
     unit: "bytes"
     category: "memory"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -79,6 +82,7 @@ metrics:
   - name: "process.threads"
     channel: "process_threads_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) Threads"
+    prtg_skip: true
     unit: "#"
     category: "threads"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -99,6 +103,7 @@ metrics:
   - name: "process.open_file_descriptors"
     channel: "process_fds_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) FDs"
+    prtg_skip: true
     unit: "#"
     category: "resources"
     multi_instance_labels: ["process.name", "process.pid"]
@@ -119,6 +124,7 @@ metrics:
   - name: "process.uptime"
     channel: "process_uptime_{process.name}_{process.pid}"
     display_name: "Process {process.name} ({process.pid}) Uptime"
+    prtg_skip: true
     unit: "s"
     category: "status"
     multi_instance_labels: ["process.name", "process.pid"]

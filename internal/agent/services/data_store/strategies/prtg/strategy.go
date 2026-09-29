@@ -298,6 +298,7 @@ type PrtgData struct {
 func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	// Transform data points to PRTG format
 	jsonData := PrtgData{}
+	data = s.withoutPRTGSkipped(data)
 	names := make([]string, len(data))
 	tags := make([]map[string]string, len(data))
 	for i, p := range data {
@@ -341,6 +342,30 @@ func (s *SyncStrategyPrtg) doSyncData(data []datapoint.DataPoint) error {
 	}
 
 	return nil
+}
+
+// withoutPRTGSkipped drops the points whose definition keeps them out of
+// PRTG (prtg_skip), as the pull endpoint does.
+func (s *SyncStrategyPrtg) withoutPRTGSkipped(data []datapoint.DataPoint) []datapoint.DataPoint {
+	if s.registry == nil {
+		return data
+	}
+	out := data[:0:0]
+	for _, p := range data {
+		probeType := ""
+		for _, t := range p.Tags {
+			if t.Key == "probe_type" {
+				probeType = t.Value
+			}
+		}
+		if probeType != "" {
+			if t, err := s.registry.LoadTransformer(probeType, "friendly"); err == nil && t != nil && transformers.SkipsPRTG(t, p.Name) {
+				continue
+			}
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // channelName is the label a measurement carries into PRTG.
