@@ -28,3 +28,22 @@ func TestSettingsShowsTheAgentKeyNotTheAdministrationKey(t *testing.T) {
 		t.Error("the Copy button copies the administration key")
 	}
 }
+
+// Settings gathers the three identifiers and the HTTPS state.
+func TestSettingsGathersIdentifiersAndHTTPS(t *testing.T) {
+	html, err := NewAssetHandler("admin-key").WithReadKey("agent-key").RenderTemplate("settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{`id="agentkey"`, `id="instance-id"`, `id="adminkey"`, `id="reveal-admin"`, `id="tls-state"`, `id="tls-cert"`, `id="tls-exp"`, `outputs/http#sec-tls`} {
+		if !strings.Contains(html, id) {
+			t.Errorf("settings page lacks %s", id)
+		}
+	}
+	// The administration key is not written into the page's visible markup;
+	// it is shown only on Reveal.
+	i := strings.Index(html, `id="adminkey"`)
+	if strings.Contains(html[i:i+200], "admin-key") {
+		t.Error("the administration key is printed in clear before Reveal")
+	}
+}
