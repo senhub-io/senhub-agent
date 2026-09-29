@@ -48,6 +48,7 @@ type HTTPSyncStrategy struct {
 	statusService       *status.StatusService  // centralized status calculation service
 	lookupRegistry      *LookupRegistry        // lookup definitions registry for status/health mappings
 	lookupsManager      *LookupsManager        // lookups API endpoints manager
+	router              *mux.Router            // what SetupRoutes built; the endpoint list walks it
 }
 
 // SenHubMetric represents a metric in standardized SenHub raw format
