@@ -24,3 +24,9 @@ Changes since 0.6.0, collected as they are merged.
   with the types that run on another platform only. After a failed test,
   the probe editor printed "0 metrics" whatever the test had collected;
   it gives the real count.
+
+- **Previewing a sensor URL no longer counts as a poller.** The console's
+  preview reads the same route as PRTG or Nagios, so opening the Sensor
+  URLs tab turned "no PRTG request seen" into "last PRTG request just
+  now" for a sensor that did not exist yet. The export counts on the
+  Outputs page now say they run since the agent started.
