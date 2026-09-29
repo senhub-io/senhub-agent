@@ -501,6 +501,7 @@ metrics:
   - name: "ibmi.msgw_job.event"
     channel: "ibmi_msgw_event"
     display_name: "MSGW — {job_name}"
+    prtg_skip: true
     unit: "s"
     category: "jobs"
     multi_instance_labels: ["job_name", "internal_job_id"]
@@ -820,62 +821,62 @@ metrics:
   # ============================================================
   - name: "ibmi.table.rows_count"
     channel: "ibmi_table_rows"
-    display_name: "Rows — {table_schema}.{table_name}"
+    display_name: "Rows — {schema}.{table_name}"
     unit: "#"
     category: "database"
-    multi_instance_labels: ["table_schema", "table_name"]
+    multi_instance_labels: ["schema", "table_name"]
     description: "Rows in this table"
     otel:
       name: senhub.ibmi.table.rows
       unit: "{row}"
       type: gauge
     tag_to_attribute:
-      table_schema: ibmi.table.schema
+      schema: ibmi.table.schema
       table_name: ibmi.table.name
 
   - name: "ibmi.table.logical_reads_total"
     channel: "ibmi_table_logical_reads"
-    display_name: "Logical Reads — {table_schema}.{table_name}"
+    display_name: "Logical Reads — {schema}.{table_name}"
     unit: "#"
     category: "database"
-    multi_instance_labels: ["table_schema", "table_name"]
+    multi_instance_labels: ["schema", "table_name"]
     description: "Logical reads against this table since the statistics were last reset"
     otel:
       name: senhub.ibmi.table.logical_reads
       unit: "{read}"
       type: counter
     tag_to_attribute:
-      table_schema: ibmi.table.schema
+      schema: ibmi.table.schema
       table_name: ibmi.table.name
 
   - name: "ibmi.table.updates_total"
     channel: "ibmi_table_updates"
-    display_name: "Updates — {table_schema}.{table_name}"
+    display_name: "Updates — {schema}.{table_name}"
     unit: "#"
     category: "database"
-    multi_instance_labels: ["table_schema", "table_name"]
+    multi_instance_labels: ["schema", "table_name"]
     description: "Update operations against this table since the statistics were last reset"
     otel:
       name: senhub.ibmi.table.updates
       unit: "{update}"
       type: counter
     tag_to_attribute:
-      table_schema: ibmi.table.schema
+      schema: ibmi.table.schema
       table_name: ibmi.table.name
 
   - name: "ibmi.table.deleted_rows"
     channel: "ibmi_table_deleted_rows"
-    display_name: "Deleted Rows — {table_schema}.{table_name}"
+    display_name: "Deleted Rows — {schema}.{table_name}"
     unit: "#"
     category: "database"
-    multi_instance_labels: ["table_schema", "table_name"]
+    multi_instance_labels: ["schema", "table_name"]
     description: "Rows deleted but not yet reorganised; space a REORG would reclaim"
     otel:
       name: senhub.ibmi.table.deleted_rows
       unit: "{row}"
       type: gauge
     tag_to_attribute:
-      table_schema: ibmi.table.schema
+      schema: ibmi.table.schema
       table_name: ibmi.table.name
 
   - name: "ibmi.index_advisor.times_advised"
@@ -1300,17 +1301,17 @@ metrics:
   # ============================================================
   - name: "ibmi.library_list.position"
     channel: "ibmi_liblist_position"
-    display_name: "Library {library} ({type})"
+    display_name: "Library {schema} ({type})"
     unit: "#"
     category: "config"
-    multi_instance_labels: ["library", "type"]
+    multi_instance_labels: ["schema", "type"]
     description: "Position of this library in the list, in order of search"
     otel:
       name: senhub.ibmi.library_list.position
       unit: "{position}"
       type: gauge
     tag_to_attribute:
-      library: ibmi.library.name
+      schema: ibmi.library.name
       type: ibmi.library.type
 
   # ============================================================
@@ -1401,6 +1402,7 @@ metrics:
   - name: "ibmi.message_queue.event"
     channel: "ibmi_msgq_event"
     display_name: "QSYSOPR Message"
+    prtg_skip: true
     unit: "#"
     category: "events"
     description: "A message reached QSYSOPR; carries the message identifier and text as attributes"
@@ -1411,6 +1413,7 @@ metrics:
   - name: "ibmi.history_log.event"
     channel: "ibmi_history_event"
     display_name: "QHST Event"
+    prtg_skip: true
     unit: "#"
     category: "events"
     description: "An entry was written to the history log QHST"
@@ -1421,6 +1424,7 @@ metrics:
   - name: "ibmi.audit_journal.event"
     channel: "ibmi_audit_event"
     display_name: "Audit Event"
+    prtg_skip: true
     unit: "#"
     category: "events"
     description: "An entry was written to the audit journal"
