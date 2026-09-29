@@ -10,6 +10,7 @@ import (
 
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -59,6 +60,10 @@ type sensor struct {
 type failedProbe struct {
 	config configuration.ProbeConfig
 	reason string
+	// noRetry is set when the target refused the credentials: retrying
+	// on the timer would be a failed sign-on every interval, which locks
+	// accounts on some targets. A reload or a restart still tries again.
+	noRetry bool
 }
 
 // probeStartRetryInterval is how often a probe that failed to start is
@@ -337,12 +342,20 @@ func (s *sensor) SyncConfiguration() error {
 
 		err := s.startProbe(p.config)
 		if err != nil {
-			probeLogger.Error().Err(err).
-				Str("probe_name", p.config.Name).
-				Str("probe_type", p.config.Type).
-				Dur("retry_in", probeStartRetryInterval).
-				Msg("Error starting probe")
-			s.failedProbes[p.id] = failedProbe{config: p.config, reason: err.Error()}
+			noRetry := errors.Is(err, types.ErrCredentialsRejected)
+			if noRetry {
+				probeLogger.Error().Err(err).
+					Str("probe_name", p.config.Name).
+					Str("probe_type", p.config.Type).
+					Msg("Error starting probe: the target refused the credentials; not retried automatically, to avoid locking the account. Fix them, then reload the configuration or restart the agent")
+			} else {
+				probeLogger.Error().Err(err).
+					Str("probe_name", p.config.Name).
+					Str("probe_type", p.config.Type).
+					Dur("retry_in", probeStartRetryInterval).
+					Msg("Error starting probe")
+			}
+			s.failedProbes[p.id] = failedProbe{config: p.config, reason: err.Error(), noRetry: noRetry}
 		} else {
 			delete(s.failedProbes, p.id)
 			startedCount++
@@ -536,6 +549,9 @@ func (s *sensor) retryFailedProbesOnce() {
 		return
 	}
 	for id, f := range s.failedProbes {
+		if f.noRetry {
+			continue
+		}
 		err := s.startProbe(f.config)
 		switch {
 		case err == nil:
@@ -545,7 +561,7 @@ func (s *sensor) retryFailedProbesOnce() {
 				Str("probe_type", f.config.Type).
 				Msg("Probe started after a failed start")
 		case err.Error() != f.reason:
-			s.failedProbes[id] = failedProbe{config: f.config, reason: err.Error()}
+			s.failedProbes[id] = failedProbe{config: f.config, reason: err.Error(), noRetry: errors.Is(err, types.ErrCredentialsRejected)}
 			s.moduleLogger.Warn().Err(err).
 				Str("probe_name", f.config.Name).
 				Str("probe_type", f.config.Type).
