@@ -524,8 +524,7 @@ func reachURL(ctx context.Context, target string, timeout time.Duration) []otlp.
 // agent protocol: it proves the server or proxy is reachable, not that
 // it will accept this host.
 func dialZabbixServers(ctx context.Context, params map[string]interface{}, timeout time.Duration) []otlp.ConnectionStep {
-	raw, _ := params["server"].(string)
-	addrs, err := zabbix.ServerAddresses(raw)
+	addrs, err := zabbix.ServerAddresses(params)
 	if err != nil {
 		return []otlp.ConnectionStep{{Name: "config", Error: err.Error()}}
 	}
