@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -367,12 +368,13 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 	return points, brokerID, nil
 }
 
-// listDestinationNames queries the Jolokia list endpoint for all known
-// destination names of a given type (Queue or Topic). Returns the names
-// after applying the queue_filter glob list (if configured).
+// listDestinationNames asks Jolokia to search the destination MBeans of
+// one type (Queue or Topic) and returns their names, after applying the
+// queue_filter glob list (if configured). Jolokia's list operation cannot
+// be used here: it walks exact MBean names and rejects a partial one.
 func (p *activemqProbe) listDestinationNames(ctx context.Context, destType string) ([]string, error) {
 	path := fmt.Sprintf(
-		"%s/list/org.apache.activemq%%3Atype%%3DBroker,brokerName%%3D%s,destinationType%%3D%s",
+		"%s/search/org.apache.activemq:type=Broker,brokerName=%s,destinationType=%s,destinationName=*",
 		p.cfg.JolokiaURL,
 		p.cfg.BrokerName,
 		destType,
@@ -397,27 +399,68 @@ func (p *activemqProbe) listDestinationNames(ctx context.Context, destType strin
 		return nil, err
 	}
 
-	// Jolokia list response: {"value": {"<destName>": {...}}, "status": 200}
+	// Jolokia search response: {"value": ["<mbean name>", ...], "status": 200}
 	var jr struct {
-		Value  map[string]json.RawMessage `json:"value"`
-		Status int                        `json:"status"`
-		Error  string                     `json:"error"`
+		Value  []string `json:"value"`
+		Status int      `json:"status"`
+		Error  string   `json:"error"`
 	}
 	if err := json.Unmarshal(body, &jr); err != nil {
-		return nil, fmt.Errorf("jolokia list parse: %w", err)
+		return nil, fmt.Errorf("jolokia search parse: %w", err)
 	}
 	if jr.Status != 200 {
-		return nil, fmt.Errorf("jolokia list error: %s", jr.Error)
+		return nil, fmt.Errorf("jolokia search error: %s", jr.Error)
 	}
 
 	var names []string
-	for name := range jr.Value {
-		if !p.matchesFilter(name) {
+	for _, mbean := range jr.Value {
+		name := mbeanProperty(mbean, "destinationName")
+		if name == "" || !p.matchesFilter(name) {
 			continue
 		}
 		names = append(names, name)
 	}
 	return names, nil
+}
+
+// mbeanProperty returns the value of key in an MBean name such as
+// "org.apache.activemq:brokerName=b,destinationName=orders,type=Broker",
+// unquoting an ObjectName-quoted value.
+func mbeanProperty(mbean, key string) string {
+	_, props, ok := strings.Cut(mbean, ":")
+	if !ok {
+		return ""
+	}
+	for _, kv := range splitUnquoted(props) {
+		k, v, ok := strings.Cut(kv, "=")
+		if ok && k == key {
+			if uq, err := strconv.Unquote(v); err == nil {
+				return uq
+			}
+			return v
+		}
+	}
+	return ""
+}
+
+// splitUnquoted splits ObjectName properties on commas outside quotes.
+func splitUnquoted(props string) []string {
+	var out []string
+	start, quoted := 0, false
+	for i := 0; i < len(props); i++ {
+		switch props[i] {
+		case '\\':
+			i++
+		case '"':
+			quoted = !quoted
+		case ',':
+			if !quoted {
+				out = append(out, props[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(out, props[start:])
 }
 
 // matchesFilter returns true when name matches at least one glob in

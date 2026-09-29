@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
@@ -92,14 +93,18 @@ func jolokiaServer(t *testing.T) *httptest.Server {
 		}
 	})
 
-	// List endpoint for queues — returns two queue names.
+	// Jolokia refuses a list on a partial MBean name, as a real broker does.
 	mux.HandleFunc("/api/jolokia/list/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "destinationType%3DQueue") || strings.Contains(r.URL.Path, "destinationType=Queue") {
-			fmt.Fprintf(w, `{"value":{"orders":{},"shipping":{}},"status":200}`)
+		fmt.Fprintf(w, `{"error":"java.lang.IllegalArgumentException : Invalid path within the MBean part given.","status":400}`)
+	})
+
+	// Search endpoint — two queues, no topic, in Jolokia's canonical key order.
+	mux.HandleFunc("/api/jolokia/search/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "destinationType=Queue") {
+			fmt.Fprintf(w, `{"value":["org.apache.activemq:brokerName=localhost,destinationName=orders,destinationType=Queue,type=Broker","org.apache.activemq:brokerName=localhost,destinationName=\"ship,ping\",destinationType=Queue,type=Broker"],"status":200}`)
 			return
 		}
-		// Topics — empty for simplicity.
-		fmt.Fprintf(w, `{"value":{},"status":200}`)
+		fmt.Fprintf(w, `{"value":[],"status":200}`)
 	})
 
 	return httptest.NewServer(mux)
@@ -262,5 +267,20 @@ func TestJolokiaRequestsCarryTheirOwnOrigin(t *testing.T) {
 	}
 	if origin != srv.URL {
 		t.Errorf("Origin = %q, want the Jolokia agent's own origin %q", origin, srv.URL)
+	}
+}
+
+func TestListDestinationNames_UsesSearch(t *testing.T) {
+	srv := jolokiaServer(t)
+	defer srv.Close()
+
+	p := newTestProbe(t, map[string]interface{}{"jolokia_url": srv.URL + "/api/jolokia"})
+	names, err := p.listDestinationNames(context.Background(), "Queue")
+	if err != nil {
+		t.Fatalf("listDestinationNames: %v", err)
+	}
+	sort.Strings(names)
+	if want := []string{"orders", "ship,ping"}; strings.Join(names, "|") != strings.Join(want, "|") {
+		t.Errorf("names = %q, want %q", names, want)
 	}
 }
