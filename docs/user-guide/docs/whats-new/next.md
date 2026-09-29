@@ -101,6 +101,13 @@ Breaking Changes or Fixes below.
   where the adapter description sat before; the description stays in the
   `interface` attribute.
 
+- **MAC addresses take the OpenTelemetry form.** The entity attributes
+  and identities that carry a MAC (SNMP and host interfaces, LLDP
+  neighbours, the `mac:` device identity) render it in uppercase with
+  hyphens, `BC-24-11-1B-04-82`, instead of `bc:24:11:1b:04:82`. Metric
+  labels are unchanged: the Redfish and Wi-Fi probes pass on the MAC as
+  the device reports it.
+
 - **The `process` probe no longer reports every process by default.**
   Without a `filter`, it emitted six series per process, and the identity
   of those series carried the process id: a machine with 837 processes

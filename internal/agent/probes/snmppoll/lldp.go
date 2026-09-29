@@ -354,14 +354,8 @@ func namedPortID(subtype int, portId []byte) string {
 	}
 }
 
-// macHex renders bytes as lowercase colon-separated hex (00:11:22:...).
+// macHex renders bytes in the canonical MAC form (entity.CanonicalMAC). It
+// builds the mac: identity rung, so it must match every other observer.
 func macHex(b []byte) string {
-	if len(b) == 0 {
-		return ""
-	}
-	parts := make([]string, len(b))
-	for i, c := range b {
-		parts[i] = fmt.Sprintf("%02x", c)
-	}
-	return strings.Join(parts, ":")
+	return entity.CanonicalMAC(b)
 }

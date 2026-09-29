@@ -148,7 +148,8 @@ same device derive byte-identical ids.
   ENTITY-MIB `entPhysicalMfgName`/`ModelName`/`FirmwareRev` of the **single**
   chassis row), never as a second identity key. These make the device readable
   in a backend instead of just its cryptic id; neighbours carry `sys.name`.
-  Canonicalization (producer side): `mac` = lowercase hex `:`-separated;
+  Canonicalization (producer side): `mac` = uppercase hex `-`-separated
+  (`BC-24-11-1B-04-82`, the OpenTelemetry form, `entity.CanonicalMAC`);
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
   preserved); `mgmt` = `net.IP` canonical form. All in one function:
   `resolveDeviceID` (lldp.go); identity reads in `readSelfIdentity`/
