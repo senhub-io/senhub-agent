@@ -477,6 +477,12 @@ Breaking Changes or Fixes below.
   cannot all be read leaves its traffic metrics out rather than
   publishing a wrong sum.
 
+- **An OTLP output that sends no entities says so.** A strategy file
+  written without `signals.entities.enabled: true` sent metrics and logs
+  but no entity, and a topology backend stayed empty with nothing in the
+  agent log to explain it. The agent now logs a warning at start naming
+  the setting.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
