@@ -80,7 +80,7 @@ func TestBuildObservation_ConnectedTo(t *testing.T) {
 	if obs.Entities[0].ID[idKeyNetworkDevice] != "serial:9:FOC1" {
 		t.Errorf("self id = %v", obs.Entities[0].ID)
 	}
-	if obs.Entities[1].ID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" {
+	if obs.Entities[1].ID[idKeyNetworkDevice] != "mac:AA-BB-CC-DD-EE-FF" {
 		t.Errorf("neighbor id = %v", obs.Entities[1].ID)
 	}
 	if len(obs.Relations) != 1 {
@@ -94,8 +94,8 @@ func TestBuildObservation_ConnectedTo(t *testing.T) {
 	if r.FromID[idKeyNetworkDevice] != "serial:9:FOC1" || r.FromID[idKeyInterfaceName] != "Gi1/0/5" {
 		t.Errorf("local port = %v, want serial:9:FOC1 / Gi1/0/5", r.FromID)
 	}
-	if r.ToID[idKeyNetworkDevice] != "mac:aa:bb:cc:dd:ee:ff" || r.ToID[idKeyInterfaceName] != "Gi0/1" {
-		t.Errorf("remote port = %v, want mac:aa:bb:cc:dd:ee:ff / Gi0/1", r.ToID)
+	if r.ToID[idKeyNetworkDevice] != "mac:AA-BB-CC-DD-EE-FF" || r.ToID[idKeyInterfaceName] != "Gi0/1" {
+		t.Errorf("remote port = %v, want mac:AA-BB-CC-DD-EE-FF / Gi0/1", r.ToID)
 	}
 	if len(r.Attributes) != 0 {
 		t.Errorf("connected_to should be a bare edge, got attrs %v", r.Attributes)
