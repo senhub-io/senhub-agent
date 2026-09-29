@@ -403,7 +403,9 @@ Breaking Changes or Fixes below.
   broker.** ActiveMQ Classic 5.16 and later refuse a Jolokia request that
   carries no `Origin` header (HTTP 403), which is every request the probe
   made, so the probe stayed down on a default install. It now names the
-  broker's own address as the origin.
+  broker's own address as the origin. The per-queue and per-topic
+  metrics were never collected either: the probe listed destinations
+  with a Jolokia request every broker rejects, and now searches for them.
 
 - **The [WildFly](../probes/wildfly.md) probe authenticates on a
   default install.** The management interface asks for HTTP Digest and
