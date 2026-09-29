@@ -1,6 +1,6 @@
 # OTLP / OpenTelemetry
 
-SenHub Agent can push metrics, logs and traces natively over **OTLP/gRPC** to any
+SenHub Agent can push metrics, logs and traces natively over **OTLP/gRPC** or **OTLP/HTTP** to any
 OpenTelemetry receiver — an OTel collector, vmagent's OTLP endpoint, a
 direct VictoriaMetrics / VictoriaLogs ingest, Grafana Cloud OTLP, etc.
 
@@ -24,22 +24,24 @@ senhub-agent config init --otlp-endpoint vm.internal:4318 --otlp-protocol http
 
 This enables metrics + logs export out of the box. To wire it by hand instead:
 
-1. Add an `otlp` storage block to your config:
+1. Create `strategies.d/10-otlp.yaml`:
 
 ```yaml
-storage:
-  - name: otlp
-    params:
-      endpoint: "otel-collector.internal:4317"   # required
-      tls:
-        enabled: true
-      signals:
-        metrics:
-          enabled: true
-          interval: 30s
-        logs:
-          enabled: true
+otlp:
+  endpoint: "otel-collector.internal:4317"   # required
+  tls:
+    enabled: true
+  signals:
+    metrics:
+      enabled: true
+      interval: 30s
+    logs:
+      enabled: true
 ```
+
+An installation that still uses the legacy monolithic `agent-config.yaml`
+holds the same parameters under `storage:`, in the `params` of an entry
+named `otlp`.
 
 2. Restart the agent. The agent connects lazily — a missing collector
    does not block startup; failures appear as retried export attempts.
@@ -59,106 +61,120 @@ curl -G http://vm:8428/api/v1/query \
 The full set of knobs (every key maps directly to an OTel SDK option):
 
 ```yaml
-storage:
-  - name: otlp
-    params:
-      # Required: gRPC endpoint of the receiver (no scheme prefix).
-      endpoint: "otel-collector.internal:4317"
+# strategies.d/10-otlp.yaml
+otlp:
+  # Required: host:port of the receiver, no scheme prefix.
+  endpoint: "otel-collector.internal:4317"
 
-      # Optional multi-tenant routing: sugar for the X-Scope-OrgID header
-      # (the standard tenant key for Mimir / Loki / Tempo / VictoriaMetrics).
-      # "org_id" is accepted as an alias. Env-expandable.
-      tenant: "acme"
+  # Transport: grpc (OTLP/gRPC, port 4317) or http (OTLP/HTTP protobuf,
+  # port 4318). "http/protobuf" is accepted as an alias of http.
+  protocol: grpc                  # default grpc
 
-      # Optional headers (for example bearer auth at the gateway).
-      headers:
-        Authorization: "Bearer YOUR-INGEST-TOKEN"
+  # Standby receivers, tried in order when an export to the primary
+  # fails; the agent returns to the primary once it recovers.
+  fallback_endpoints:
+    - "otel-collector-standby.internal:4317"
 
-      # TLS — defaults to enabled. Disable explicitly for plaintext
-      # localhost / lab environments.
-      tls:
-        enabled: true                 # default true
-        insecure_skip_verify: false   # opt-in for self-signed certs in test
-        ca_file: /etc/ssl/private/otlp-ca.pem
-        cert_file: /etc/ssl/private/agent.pem    # mTLS, optional
-        key_file:  /etc/ssl/private/agent.key    # required if cert_file set
+  # Optional multi-tenant routing: sugar for the X-Scope-OrgID header
+  # (the standard tenant key for Mimir / Loki / Tempo / VictoriaMetrics).
+  # "org_id" is accepted as an alias. Env-expandable.
+  tenant: "acme"
 
-      # Base path for backends that serve OTLP under a prefix rather than
-      # at the root (see below). OTLP/HTTP only.
-      url_path_prefix: "/api/v2/otlp"
+  # Optional headers (for example bearer auth at the gateway).
+  headers:
+    Authorization: "Bearer YOUR-INGEST-TOKEN"
 
-      # Close an idle HTTP connection before the ingress does (see below).
-      # OTLP/HTTP only; unset keeps the Go default of 90s.
-      idle_conn_timeout: 45s
+  # TLS — defaults to enabled. Disable explicitly for plaintext
+  # localhost / lab environments.
+  tls:
+    enabled: true                 # default true
+    insecure_skip_verify: false   # opt-in for self-signed certs in test
+    ca_file: /etc/ssl/private/otlp-ca.pem
+    cert_file: /etc/ssl/private/agent.pem    # mTLS, optional
+    key_file:  /etc/ssl/private/agent.key    # required if cert_file set
 
-      compression: gzip               # gzip | none — default gzip
-      timeout: 60s                    # per-export deadline — default 60s
+  # Base path for backends that serve OTLP under a prefix rather than
+  # at the root (see below). OTLP/HTTP only.
+  url_path_prefix: "/api/v2/otlp"
 
-      retry:
-        enabled: true
-        initial_interval: 5s
-        max_interval: 30s
-        max_elapsed_time: 1m
+  # Close an idle HTTP connection before the ingress does (see below).
+  # OTLP/HTTP only; unset keeps the Go default of 90s.
+  idle_conn_timeout: 45s
 
-      signals:
-        metrics:
-          enabled: true
-          interval: 30s               # push cadence
-          temporality: cumulative     # cumulative | delta — default cumulative
-        logs:
-          enabled: true
-          batch_size: 1000            # max records per gRPC export
-          batch_timeout: 5s           # flush even if batch_size not reached
-          buffer_size: 10000          # bounded queue; drop-oldest beyond
-        traces:
-          enabled: true               # default false — relays spans ingested by an
-                                      # otlp_receiver probe (signals: [traces])
-          batch_size: 512
-          batch_timeout: 5s
-          buffer_size: 2048           # bounded queue; drop beyond
-          sample_ratio: 1.0           # head sampling, 0.0-1.0
+  compression: gzip               # gzip | none — default gzip
+  timeout: 60s                    # per-export deadline — default 60s
 
-      # Telemetry forwarded on behalf of applications (otlp_receiver).
-      relay:
-        enrichment: true              # default true; add the agent's context
-                                      # to relayed telemetry (see below)
+  retry:
+    enabled: true
+    initial_interval: 5s
+    max_interval: 30s
+    max_elapsed_time: 1m
 
-      # How many exports may be in flight at once. The push splits a
-      # large cycle per probe and ships the parts in parallel; 1 means
-      # the single-batch path. Accepted range 1-64.
-      max_concurrent_exports: 4       # default 4
+  signals:
+    metrics:
+      enabled: true
+      interval: 30s               # push cadence
+      temporality: cumulative     # cumulative | delta — default cumulative
+    logs:
+      enabled: true
+      batch_size: 1000            # max records per gRPC export
+      batch_timeout: 5s           # flush even if batch_size not reached
+      buffer_size: 10000          # bounded queue; drop-oldest beyond
+    traces:
+      enabled: true               # default false — relays spans ingested by an
+                                  # otlp_receiver probe (signals: [traces])
+      batch_size: 512
+      batch_timeout: 5s
+      buffer_size: 2048           # bounded queue; drop beyond
+      sample_ratio: 1.0           # head sampling, 0.0-1.0
 
-      # Cap the memory the metric store may use, in MiB of Go heap.
-      # Past the soft limit the store keeps its existing series and
-      # refuses new ones; past the hard limit it refuses all writes and
-      # forces a collection. 0 disables either threshold.
-      memory_limit:
-        soft_mib: 200                 # default 200
-        hard_mib: 400                 # default 400
-        check_interval: 5s            # default 5s
+  # Telemetry forwarded on behalf of applications (otlp_receiver).
+  relay:
+    enrichment: true              # default true; add the agent's context
+                                  # to relayed telemetry (see below)
 
-      # Survive a restart: the last value of every series is written to
-      # disk and restored at boot, so cumulative counters continue
-      # instead of resetting.
-      persistence:
-        enabled: true                 # default true, but the checkpoint stays
-                                      # off until `path` is set; enabled: false
-                                      # turns it off even with a path
-        path: /var/lib/senhub-agent/otlp   # empty means no checkpoint
-        interval: 30s                 # default 30s
-        # Disk cap for the logs dead-letter queue, which holds batches
-        # the receiver could not take during an outage. Past it the
-        # oldest batches are evicted. 0 keeps the default.
-        logs_queue_max_bytes: 134217728   # default 128 MiB
+  # Cardinality caps and staleness (see "Cardinality controls").
+  max_store_size: 50000           # default 50000 series in all; 0 = unbounded
+  max_active_series_per_probe: 10000  # default 10000 per probe; 0 = no per-probe cap
+  staleness_ttl: 10m              # default 10m; a series silent this long is
+                                  # evicted. 0s disables eviction
 
-      # Resource attributes attached to every emitted batch. Defaults
-      # are derived from agent identity if omitted.
-      resource:
-        service.name: senhub-agent             # default
-        service.instance.id: <uuid>             # default: an RFC 4122 UUID derived from agent.key
-        deployment.environment: prod
-        # Any additional keys are passed through as resource attributes.
-        k8s.cluster.name: edge-01
+  # How many exports may be in flight at once. The push splits a
+  # large cycle per probe and ships the parts in parallel; 1 means
+  # the single-batch path. Accepted range 1-64.
+  max_concurrent_exports: 4       # default 4
+
+  # Cap the memory the metric store may use, in MiB of Go heap.
+  # Past the soft limit the store keeps its existing series and
+  # refuses new ones; past the hard limit it refuses all writes and
+  # forces a collection. 0 disables either threshold.
+  memory_limit:
+    soft_mib: 200                 # default 200
+    hard_mib: 400                 # default 400
+    check_interval: 5s            # default 5s
+
+  # Survive a restart: the last value of every series is written to
+  # disk and restored at boot, so cumulative counters continue
+  # instead of resetting.
+  persistence:
+    enabled: true                 # default true, but the checkpoint stays
+                                  # off until `path` is set; enabled: false
+                                  # turns it off even with a path
+    path: /var/lib/senhub-agent/otlp   # empty means no checkpoint
+    interval: 30s                 # default 30s
+    # Disk cap for the logs dead-letter queue, which holds batches
+    # the receiver could not take during an outage. Past it the
+    # oldest batches are evicted. 0 keeps the default.
+    logs_queue_max_bytes: 134217728   # default 128 MiB
+
+  # Resource attributes attached to every emitted batch. Defaults
+  # are derived from agent identity if omitted.
+  resource:
+    service.name: senhub-agent             # default
+    service.instance.id: <uuid>             # default: an RFC 4122 UUID derived from agent.key
+    deployment.environment: prod
+    # Any additional keys are passed through as resource attributes.
+    k8s.cluster.name: edge-01
 ```
 
 ### `tenant` (optional multi-tenant routing)
@@ -177,8 +193,12 @@ agent can still push over OTLP.
 
 ### `endpoint` (required)
 
-`host:port` of the OTLP/gRPC receiver. No scheme prefix (it's gRPC).
-Default OTLP/gRPC port is **4317**. There is intentionally **no
+`host:port` of the OTLP receiver, without a scheme prefix, for both
+transports. `protocol` selects the transport: `grpc` (the default,
+OTLP/gRPC, usual port **4317**) or `http` (OTLP/HTTP protobuf, usual
+port **4318**). With `http`, the agent builds the URL itself: `https://`
+when `tls.enabled` is true, `http://` otherwise, then the standard
+`/v1/metrics`, `/v1/logs` and `/v1/traces` paths. There is intentionally **no
 default** for this field — silently shipping data to localhost when
 the operator forgets to set it would be a worse failure mode than
 refusing to start.
@@ -310,7 +330,7 @@ endpoint or batch knobs of its own — it reuses the log transport.
       buffer_size: 256         # bounded queue; drop-oldest beyond
       depends_on_enabled: false  # opt-in (default false): outbound dependency
                                  # edges. Needs root — see below
-      depends_on_debounce: 3   # consecutive scrapes before an outbound
+      depends_on_debounce: 3   # scrapes (not necessarily consecutive) before an outbound
                                # dependency edge is emitted (>= 1, default 3)
       depends_on_exclude_cidrs: []  # peer ranges dropped before anything is
                                     # emitted (operator privacy filter)
@@ -676,14 +696,12 @@ Grafana Cloud accepts OTLP push at a public gRPC endpoint. Get the
 endpoint URL and ingest token from the Grafana Cloud console:
 
 ```yaml
-storage:
-  - name: otlp
-    params:
-      endpoint: "otlp-gateway-prod-eu-west-2.grafana.net:443"
-      headers:
-        Authorization: "Basic eW91...="   # from Grafana Cloud console
-      tls:
-        enabled: true
+otlp:
+  endpoint: "otlp-gateway-prod-eu-west-2.grafana.net:443"
+  headers:
+    Authorization: "Basic eW91...="   # from Grafana Cloud console
+  tls:
+    enabled: true
 ```
 
 ## Agent self-observability
@@ -712,7 +730,7 @@ you can read without scraping Prometheus, via three surfaces:
 - **JSON endpoint** — `GET /api/{agentkey}/info/otlp` returns the same
   data as a single JSON snapshot. Useful for custom dashboards or
   external alerting. The field reference lives in
-  [OTLP observability](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/OTLP-OBSERVABILITY.md) (admin guide).
+  [OTLP observability](https://github.com/senhub-io/senhub-agent/blob/master/docs/admin-guide/OTLP-OBSERVABILITY.md) (admin guide).
 
 ### What to look at
 

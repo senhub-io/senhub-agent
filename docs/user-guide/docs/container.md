@@ -66,16 +66,19 @@ unless you choose otherwise, and the log file is written to
 
 ## Variables
 
-One is required. The rest have defaults or are only read when the
-feature they configure is wanted.
+None is strictly required. `OTLP_BEARER_TOKEN` is what a first run
+needs to export to SenHub; the rest have defaults or are only read when
+the feature they configure is wanted. These variables are read only when
+the entrypoint writes the configuration, that is when no `agent.yaml` is
+present (see [Bringing your own configuration](#bringing-your-own-configuration)).
 
 | Variable | Required | Default | What it does |
 |---|---|---|---|
-| `OTLP_BEARER_TOKEN` | Yes | - | Authenticates the export to SenHub. Without it the agent collects and exports nothing |
-| `SENHUB_OTLP_ENDPOINT` | No | `eu-west-1.intake.senhub.io:443` | Another collector: your own OpenTelemetry collector, VictoriaMetrics, Grafana Alloy |
+| `OTLP_BEARER_TOKEN` | No (needed to export to SenHub) | - | Authenticates the export to SenHub, sent as `Authorization: Bearer` and resolved from the environment at every start, never written to a file. Without it and without `SENHUB_OTLP_ENDPOINT`, no OTLP output is written: the agent collects and serves its local HTTP endpoints but exports nothing, and the entrypoint says so on startup. With `SENHUB_OTLP_ENDPOINT` set, the export goes out without an `Authorization` header |
+| `SENHUB_OTLP_ENDPOINT` | No | `eu-west-1.intake.senhub.io:443` when `OTLP_BEARER_TOKEN` is set | Another collector: your own OpenTelemetry collector, VictoriaMetrics, Grafana Alloy |
 | `SENHUB_OTLP_PROTOCOL` | No | `grpc` | `grpc` or `http`, the latter for a backend that ingests OTLP over HTTP |
-| `SENHUB_ENTITIES` | No | `true` | Sends the entities (this host, the agent, what its probes watch) a topology backend builds its map from. `false` exports measurements and logs only |
-| `SENHUB_OTLP_TLS` | No | `true` | `false` for a collector that listens in plain text, such as a sidecar on `localhost:4317`. The token then crosses the network unencrypted: keep it to the same host or a trusted network |
+| `SENHUB_ENTITIES` | No | `true` | Sends the entities (this host, the agent, what its probes watch) a topology backend builds its map from. `false` exports measurements and logs only. Any value other than `true` or `false` stops the container |
+| `SENHUB_OTLP_TLS` | No | `true` | `false` for a collector that listens in plain text, such as a sidecar on `localhost:4317`. The token then crosses the network unencrypted: keep it to the same host or a trusted network. Any value other than `true` or `false` stops the container |
 | `SENHUB_LICENSE` | No | - | Licence token, for the probes that need one |
 | `SENHUB_TAGS` | No | - | Tags on every metric, as `key=value,key2=value2` |
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
@@ -215,17 +218,20 @@ metrics land on the same series with different values. Nothing signals
 it, and the counters it hides are the ones read when looking for missing
 data.
 
-Two ways out, both cheap. Give each instance its own value through the
-environment, which works because substitution is applied to the whole
-file before it is parsed:
+With a mounted configuration, each instance must therefore carry its own
+key. Reference it from the environment, which works because substitution
+is applied to the whole file before it is parsed, and give every
+instance its own `SENHUB_AGENT_KEY`:
 
 ```yaml
 agent:
   key: "${env:SENHUB_AGENT_KEY}"
 ```
 
-Or leave the key out of the shared configuration entirely and let each
-instance generate its own, kept in its own state volume.
+The agent resolves that reference itself, even though the entrypoint
+ignores `SENHUB_*` variables in this mode. Do not leave the key out or
+empty: the loader refuses a configuration whose agent key is empty, and
+the container stops at start.
 
 ## What the container does not do
 
