@@ -73,6 +73,7 @@ type WildflyProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *wildflyEntitySource
+	digest       digestAuth
 }
 
 // NewWildflyProbe is the probe constructor.
@@ -208,6 +209,45 @@ func (p *WildflyProbe) collectAll(ctx context.Context, now time.Time, points *[]
 	return nil
 }
 
+// post sends one management request. A 401 carrying a Digest challenge
+// is answered once with the signed request; later requests reuse the
+// challenge until the server issues a new one.
+func (p *WildflyProbe) post(ctx context.Context, body []byte) (*http.Response, error) {
+	const path = "/management"
+	send := func() (*http.Response, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.Endpoint+path, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if p.cfg.Username != "" && p.cfg.Password != "" {
+			if h := p.digest.header(http.MethodPost, path, p.cfg.Username, p.cfg.Password); h != "" {
+				httpReq.Header.Set("Authorization", h)
+			} else {
+				httpReq.SetBasicAuth(p.cfg.Username, p.cfg.Password)
+			}
+		}
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("http: %w", err)
+		}
+		return resp, nil
+	}
+
+	resp, err := send()
+	if err != nil || resp.StatusCode != http.StatusUnauthorized || p.cfg.Username == "" {
+		return resp, err
+	}
+	challenge, ok := parseDigestChallenge(resp.Header.Get("WWW-Authenticate"))
+	if !ok {
+		return resp, nil
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
+	resp.Body.Close()
+	p.digest.set(challenge)
+	return send()
+}
+
 // mgmtCall performs a single POST /management API call and unmarshals
 // the result into dst.
 func (p *WildflyProbe) mgmtCall(ctx context.Context, req mgmtRequest, dst interface{}) error {
@@ -216,19 +256,9 @@ func (p *WildflyProbe) mgmtCall(ctx context.Context, req mgmtRequest, dst interf
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := p.cfg.Endpoint + "/management"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	resp, err := p.post(ctx, body)
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if p.cfg.Username != "" && p.cfg.Password != "" {
-		httpReq.SetBasicAuth(p.cfg.Username, p.cfg.Password)
-	}
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("http: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
 

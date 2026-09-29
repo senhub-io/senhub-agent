@@ -405,6 +405,12 @@ Breaking Changes or Fixes below.
   made, so the probe stayed down on a default install. It now names the
   broker's own address as the origin.
 
+- **The [WildFly](../probes/wildfly.md) probe authenticates on a
+  default install.** The management interface asks for HTTP Digest and
+  refuses Basic, the only scheme the probe sent: every collection ended
+  on HTTP 401. The probe now answers the Digest challenge, and keeps
+  working against an interface set to Basic.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux

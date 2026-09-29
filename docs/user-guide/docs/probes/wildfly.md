@@ -49,6 +49,9 @@ available connections of each datasource pool. The full list is in the
 ## Operational notes
 
 - Create a dedicated management user with the `Monitor` role: `bin/add-user.sh -u monitor -p password -g Monitor`.
+- The management interface authenticates with HTTP Digest by default
+  (`ManagementRealm`); the probe answers the Digest challenge, and still
+  works with an interface configured for Basic.
 - For WildFly domain mode, point the endpoint at the domain controller (port 9990).
 - The probe uses the WildFly HTTP Management API (JSON over HTTP), not Jolokia — Jolokia is not required.
 
