@@ -567,6 +567,12 @@ Breaking Changes or Fixes below.
   point the probe at a manager. The probe now reads the node's swarm
   state from `/info`.
 
+- **The [Wi-Fi](../probes/wifi-signal-strength.md) probe works without
+  iwconfig.** It needed `iwconfig` (wireless-tools), which current
+  distributions no longer install; it now falls back to `iw`, found in
+  `/usr/sbin` even off the PATH. The SSID tag also lost a closing quote
+  and padding it carried from iwconfig's output.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
