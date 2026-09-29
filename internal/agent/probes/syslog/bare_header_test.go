@@ -138,3 +138,18 @@ func TestCEFSeverity(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessLogMessage_SeparatorAfterTagIsNotKept(t *testing.T) {
+	for _, sep := range []string{" : ", ":: ", ": : "} {
+		rec := relay(t, "<14>Sep 29 19:40:01 USW-Lite-8-PoE d8b370646a45,USW-Lite-8-PoE-7.5.15+17146"+sep+"cfgmtd[9128]: Phase4")
+		if rec.Body != "cfgmtd[9128]: Phase4" {
+			t.Errorf("separator %q: body = %q", sep, rec.Body)
+		}
+		if got := rec.Attributes["syslog.appname"]; got != "d8b370646a45,USW-Lite-8-PoE-7.5.15+17146" {
+			t.Errorf("separator %q: syslog.appname = %q", sep, got)
+		}
+	}
+	if rec := relay(t, "<14>Sep 29 19:40:01 host app: :-) kept"); rec.Body != ":-) kept" {
+		t.Errorf("a body that starts with a colon lost it: %q", rec.Body)
+	}
+}
