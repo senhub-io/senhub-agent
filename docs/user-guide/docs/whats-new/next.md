@@ -444,6 +444,8 @@ Breaking Changes or Fixes below.
   priority it was not given, and for a CEF record takes the severity
   from the CEF header (0-3 informational, 4-6 warning, 7-8 error, 9-10
   critical).
+  A record from a UniFi switch no longer opens with ": ": the separator
+  some senders leave after the tag is dropped.
 
 - **[File tail](../probes/filetail.md) reads a file whose directory
   appears after the agent starts.** A log path under a mount that comes
