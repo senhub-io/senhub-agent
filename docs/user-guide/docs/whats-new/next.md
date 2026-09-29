@@ -424,6 +424,22 @@ Breaking Changes or Fixes below.
   parts reads `PartsActive`, and written data reads the bytes written to
   MergeTree parts.
 
+- **The [vSphere HA](../probes/vsphere_ha.md) probe connects with the
+  documented address.** Given a bare `https://vcenter` host, as in the
+  documentation, it sent its requests to the root of the server instead
+  of the `/sdk` endpoint, and vCenter answered 404 on every collection.
+  The `/sdk` path, and `https://` when no scheme is given, are now
+  supplied.
+
+- **The [Redfish](../probes/redfish.md) probe reads standard power
+  supplies and storage.** A supply described as the Redfish schema
+  defines it (`InputRanges` as a list) failed to parse, so a conformant
+  BMC produced no power-supply metric; the storage collection requested
+  a doubled `Systems/Systems/...` path and got 404 on every generic
+  system; and any supply whose name contained the letter "a" was tagged
+  `controller=A`. Metrics that the probe emits without a definition are
+  still missing from the Prometheus and OTLP outputs (#954).
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
