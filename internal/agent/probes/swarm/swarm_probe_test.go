@@ -143,7 +143,8 @@ outer:
 // answer, because nothing looks wrong.
 func TestCollect_WorkerNodeIsNotAnEmptyCluster(t *testing.T) {
 	p := newTestProbe(t, engine(t, map[string]any{
-		"/swarm": errBody{http.StatusServiceUnavailable, "This node is not a swarm manager."},
+		"/swarm": errBody{http.StatusServiceUnavailable, "This node is not a swarm manager. Worker nodes can't be used to view or modify cluster state. Please run this command on a manager node or promote the current node to a manager."},
+		"/info":  map[string]any{"Swarm": map[string]any{"LocalNodeState": "active", "ControlAvailable": false}},
 	}))
 
 	points, err := p.Collect()
@@ -164,9 +165,14 @@ func TestCollect_WorkerNodeIsNotAnEmptyCluster(t *testing.T) {
 // "Not in a swarm at all" and "not a manager" are both 503 and mean different
 // things: one is a probe pointed at the wrong node, the other at a machine that
 // was never clustered.
+//
+// The Engine's 503 body says "not a swarm manager" to a node outside any
+// swarm too (it suggests "docker swarm init"), so the body alone read a
+// never-clustered engine as a worker. /info settles it.
 func TestCollect_NotInSwarmIsDistinctFromWorker(t *testing.T) {
 	p := newTestProbe(t, engine(t, map[string]any{
-		"/swarm": errBody{http.StatusServiceUnavailable, "This node is not part of a swarm"},
+		"/swarm": errBody{http.StatusServiceUnavailable, `This node is not a swarm manager. Use "docker swarm init" or "docker swarm join" to connect this node to swarm and try again.`},
+		"/info":  map[string]any{"Swarm": map[string]any{"LocalNodeState": "inactive", "ControlAvailable": false}},
 	}))
 	points, _ := p.Collect()
 	if v, ok := value(t, points, "senhub.swarm.node_role_state", map[string]string{"state": "not_in_swarm"}); !ok || v != 1 {
@@ -442,7 +448,7 @@ func TestCollect_LosingManagerRoleWithdrawsTheEntity(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/swarm") && !manager {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("This node is not a swarm manager."))
+			_, _ = w.Write([]byte("This node is not a swarm manager. Worker nodes can't be used to view or modify cluster state. Please run this command on a manager node or promote the current node to a manager."))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

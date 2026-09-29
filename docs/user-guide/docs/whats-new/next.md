@@ -561,6 +561,12 @@ Breaking Changes or Fixes below.
   that died with the session. They are left out unless `units` names
   them.
 
+- **The Swarm probe tells a node outside any swarm from a worker.** The
+  Engine answers "This node is not a swarm manager" in both cases, so an
+  engine never joined to a swarm was reported as a worker, with advice to
+  point the probe at a manager. The probe now reads the node's swarm
+  state from `/info`.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
