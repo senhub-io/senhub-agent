@@ -56,9 +56,13 @@ type FileTailProbe struct {
 
 	mu      sync.Mutex
 	tailing map[string]*tail.Tail // active tails keyed by absolute path
-	wg      sync.WaitGroup
-	quit    chan struct{}
-	stopped bool
+	// awaiting holds literal paths that did not exist when first scanned.
+	// When one appears, everything in it was written after the probe
+	// started watching, so it is read from its first byte.
+	awaiting map[string]bool
+	wg       sync.WaitGroup
+	quit     chan struct{}
+	stopped  bool
 
 	// emitted counts log records this probe instance has published to the
 	// log rail — the conduit's own throughput self-metric, surfaced through
@@ -82,6 +86,7 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		config:       parsed,
 		moduleLogger: moduleLogger,
 		tailing:      map[string]*tail.Tail{},
+		awaiting:     map[string]bool{},
 		quit:         make(chan struct{}),
 	}
 	p.SetProbeType(ProbeType)
@@ -208,10 +213,20 @@ func (p *FileTailProbe) scanAndTail() {
 			p.moduleLogger.Warn().Err(err).Str("pattern", pattern).Msg("invalid glob pattern; skipping")
 			continue
 		}
-		// A literal (non-glob) path that does not yet exist still
-		// deserves a tail with ReOpen so it is picked up when created.
+		// A literal path that does not exist yet is not tailed: a tail
+		// opened on a missing file waits on an inotify watch of the parent
+		// directory, which dies when that directory is missing and never
+		// fires when a mount appears over it. The rescan picks the file up
+		// once it exists.
 		if len(matches) == 0 && !hasGlobMeta(pattern) {
-			matches = []string{pattern}
+			abs, err := filepath.Abs(pattern)
+			if err != nil {
+				abs = pattern
+			}
+			p.mu.Lock()
+			p.awaiting[abs] = true
+			p.mu.Unlock()
+			continue
 		}
 		for _, m := range matches {
 			abs, err := filepath.Abs(m)
@@ -240,7 +255,8 @@ func (p *FileTailProbe) startTail(file string) {
 		size = fi.Size()
 	}
 	stored, hasStored := p.bookmarks.Get(file)
-	offset := resolveStartOffset(stored, hasStored, fp, size, p.config.FromBeginning)
+	offset := resolveStartOffset(stored, hasStored, fp, size, p.config.FromBeginning || p.awaiting[file])
+	delete(p.awaiting, file)
 
 	cfg := tail.Config{
 		ReOpen:        true,
@@ -321,6 +337,21 @@ func (p *FileTailProbe) consume(file string, t *tail.Tail) {
 		p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 	}
 	persist()
+	p.forgetDeadTail(file, t)
+}
+
+// forgetDeadTail drops a tail that ended on its own (the file vanished
+// with its directory, a read error) so the next rescan starts a new one.
+// Without it the dead tail stays registered and the file is never read
+// again until the probe restarts.
+func (p *FileTailProbe) forgetDeadTail(file string, t *tail.Tail) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.stopped || p.tailing[file] != t {
+		return
+	}
+	delete(p.tailing, file)
+	p.moduleLogger.Warn().Err(t.Err()).Str("file", file).Msg("tail ended; retrying on next rescan")
 }
 
 func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time, probeName, file string) {

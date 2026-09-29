@@ -247,6 +247,30 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		timestamp = time.Now()
 	}
 
+	attributes := map[string]string{
+		"syslog.facility":      fmt.Sprintf("%d", facility),
+		"syslog.severity_code": fmt.Sprintf("%d", severity),
+		"syslog.priority":      fmt.Sprintf("%d", priority),
+		"syslog.hostname":      hostname,
+		"syslog.appname":       tag,
+		"syslog.client":        client,
+	}
+	if tag == "" {
+		if hdr, ok := parseBareHeader(content, time.Now()); ok {
+			// No PRI was sent: the facility and priority above are the
+			// library's defaults, not the sender's.
+			content, hostname, timestamp = hdr.rest, hdr.hostname, hdr.timestamp
+			attributes["syslog.appname"] = hdr.tag
+			delete(attributes, "syslog.facility")
+			delete(attributes, "syslog.priority")
+			attributes["syslog.hostname"] = hostname
+			if cef, ok := cefSeverity(content); ok {
+				severity = cef
+			}
+			attributes["syslog.severity_code"] = fmt.Sprintf("%d", severity)
+		}
+	}
+
 	p.moduleLogger.Debug().
 		Int("facility", facility).
 		Int("severity", severity).
@@ -261,19 +285,12 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 	// DataPoint → data_store → event strategy path was dropped — it was a
 	// duplicate of the same message ("a log, not a metric").
 	agentstate.PublishLog(agentstate.LogRecord{
-		TargetStrategies: p.LogTargets(),
-		Timestamp:        timestamp,
-		Severity:         agentstate.SyslogPriorityToSeverity(severity),
-		SeverityText:     agentstate.SyslogPriorityToText(severity),
-		Body:             content,
-		Attributes: map[string]string{
-			"syslog.facility":      fmt.Sprintf("%d", facility),
-			"syslog.severity_code": fmt.Sprintf("%d", severity),
-			"syslog.priority":      fmt.Sprintf("%d", priority),
-			"syslog.hostname":      hostname,
-			"syslog.appname":       tag,
-			"syslog.client":        client,
-		},
+		TargetStrategies:  p.LogTargets(),
+		Timestamp:         timestamp,
+		Severity:          agentstate.SyslogPriorityToSeverity(severity),
+		SeverityText:      agentstate.SyslogPriorityToText(severity),
+		Body:              content,
+		Attributes:        attributes,
 		ProducerProbeName: p.GetName(),
 		ProducerProbeType: "syslog",
 	})

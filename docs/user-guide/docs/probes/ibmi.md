@@ -191,6 +191,9 @@ The per-job series are not sent to PRTG. A job's name carries its number
 channel it has seen: each run would leave a dead channel on the sensor, and
 thousands of them overload the PRTG server. PRTG gets the aggregates above;
 the per-job detail stays on the Prometheus, OTLP, Nagios and Zabbix outputs.
+The relayed events (QSYSOPR messages, QHST and audit entries, MSGW jobs) are
+kept out of PRTG for the same reason; the number of jobs waiting on a
+message remains visible there through the jobs-by-status count.
 
 ## Job queues & scheduled jobs
 
@@ -292,7 +295,7 @@ the per-job detail stays on the Prometheus, OTLP, Nagios and Zabbix outputs.
 # Requirements
 
 - **Db2 for i SQL services** reachable from the agent host over the JT400 (JTOpen) toolbox — the database host server must be started (`STRHOSTSVR SERVER(*DATABASE)`).
-- An **IBM i user profile** for the probe with read access to the SQL services used (system, jobs, storage, database, network and message catalogs under `QSYS2` / `SYSTOOLS`). A profile with `*USE` authority to those services is sufficient; `*ALLOBJ` is not required. Give it a non-expiring password and no interactive display sessions.
+- An **IBM i user profile** for the probe with read access to the SQL services used (system, jobs, storage, database, network and message catalogs under `QSYS2` / `SYSTOOLS`). A profile with `*USE` authority to those services is sufficient; `*ALLOBJ` is not required. Give it a non-expiring password and no interactive display sessions. When IBM i refuses the password, the probe is not retried on its own: each retry would be another invalid sign-on, and the system disables a profile after a few (`QMAXSIGN`). The agent log says so; fix the password, then reload the configuration or restart the agent.
 - The **JT400 bridge**: either the bundled `Jt400Runner.class` + `jt400.jar` under `bridge_runner_dir` with a JRE on the agent host, or a GraalVM native-image `jt400runner` binary referenced via `native_runner`.
 - Network path from the agent host to the partition (default database host-server port `8471`, plus the port-mapper on `449`).
 
@@ -304,6 +307,26 @@ IBM i metrics are available through every configured output — OTLP, Prometheus
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ibmi-prod"
 ```
+
+### PRTG: one sensor per family
+
+A partition yields far more series than the 50 channels a PRTG sensor
+holds, so split it into several sensors. Every metric carries a
+`metric_type` tag naming its family, the segment after `ibmi.` in its
+name, and a sensor selects one family with it:
+
+```bash
+curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod?tags=metric_type:cpu"
+curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ibmi-prod?tags=metric_type:user_profile"
+```
+
+Several families fit one sensor when their series stay under 50:
+`?tags=metric_type:cpu,memory,jobs`. A family with one series per disk
+unit, output queue or journal can exceed 50 on a large partition; add a
+`metrics=` filter to keep one measurement per sensor, for example
+`?tags=metric_type:disk&metrics=ibmi.disk.busy_percent`. The families
+are the ones of the metric reference below (`asp`, `cpu`, `disk`, `job_queue`,
+`netstat`, `output_queue`, `user_profile`, `collector`, …).
 
 ## Metric reference
 
@@ -372,10 +395,10 @@ series' tags.
 | `senhub.ibmi.user_storage.quota` | `ibmi.user_storage.quota_kb` | User Quota — {user} | KB | Storage limit set on this user profile; 0 means no limit |
 | `senhub.ibmi.user_storage.utilization` | `ibmi.user_storage.usage_ratio_percent` | User Storage Ratio — {user} | % | Share of this user's quota in use; absent when no quota is set |
 | `senhub.ibmi.user_storage.over_threshold` | `ibmi.user_storage.users_over_80pct` | Users Over 80% Quota | # | User profiles past 80% of their storage quota |
-| `senhub.ibmi.table.rows` | `ibmi.table.rows_count` | Rows — {table_schema}.{table_name} | # | Rows in this table |
-| `senhub.ibmi.table.logical_reads` | `ibmi.table.logical_reads_total` | Logical Reads — {table_schema}.{table_name} | # | Logical reads against this table since the statistics were last reset |
-| `senhub.ibmi.table.updates` | `ibmi.table.updates_total` | Updates — {table_schema}.{table_name} | # | Update operations against this table since the statistics were last reset |
-| `senhub.ibmi.table.deleted_rows` | `ibmi.table.deleted_rows` | Deleted Rows — {table_schema}.{table_name} | # | Rows deleted but not yet reorganised; space a REORG would reclaim |
+| `senhub.ibmi.table.rows` | `ibmi.table.rows_count` | Rows — {schema}.{table_name} | # | Rows in this table |
+| `senhub.ibmi.table.logical_reads` | `ibmi.table.logical_reads_total` | Logical Reads — {schema}.{table_name} | # | Logical reads against this table since the statistics were last reset |
+| `senhub.ibmi.table.updates` | `ibmi.table.updates_total` | Updates — {schema}.{table_name} | # | Update operations against this table since the statistics were last reset |
+| `senhub.ibmi.table.deleted_rows` | `ibmi.table.deleted_rows` | Deleted Rows — {schema}.{table_name} | # | Rows deleted but not yet reorganised; space a REORG would reclaim |
 | `senhub.ibmi.index_advisor.times_advised` | `ibmi.index_advisor.times_advised` | Times Advised — {table_schema}.{table_name} | # | Missing-index recommendation hit count |
 | `senhub.ibmi.index_advisor.mti_used` | `ibmi.index_advisor.mti_used` | MTI Used — {table_schema}.{table_name} | # | Times the system built a temporary index for this table instead of using a permanent one |
 | `senhub.ibmi.index_advisor.avg_query_estimate` | `ibmi.index_advisor.avg_query_estimate_seconds` | Avg Query Estimate — {table_schema}.{table_name} | s | Estimated query time the advisor expects to save by creating the advised index |
@@ -406,7 +429,7 @@ series' tags.
 | `senhub.ibmi.user_profile.failed_signons` | `ibmi.user_profile.failed_signon_total` | Users with Failed Signons | # | User profiles carrying at least one failed sign-on attempt |
 | `senhub.ibmi.sysval.security_level` | `ibmi.sysval.security_level` | QSECURITY | # | QSECURITY system value: 20 no resource security, 30 resource security, 40 and 50 add integrity protection |
 | `senhub.ibmi.sysval.audit_level` | `ibmi.sysval.audit_level` | QAUDLVL | # | QAUDLVL as a numeric code; 0 means auditing is off |
-| `senhub.ibmi.library_list.position` | `ibmi.library_list.position` | Library {library} ({type}) | # | Position of this library in the list, in order of search |
+| `senhub.ibmi.library_list.position` | `ibmi.library_list.position` | Library {schema} ({type}) | # | Position of this library in the list, in order of search |
 | `senhub.ibmi.license.licensed_users` | `ibmi.license.licensed_user_count` | Licensed Users — {product_id} | # | Users currently licensed for this product |
 | `senhub.ibmi.license.usage_limit` | `ibmi.license.usage_limit` | License Usage Limit — {product_id} | # | Users this product's licence allows |
 | `senhub.ibmi.ptf_group.installed` | `ibmi.ptf_group.installed` | PTF Group — {group} | # | 1 when this PTF group is installed at the level the system expects |

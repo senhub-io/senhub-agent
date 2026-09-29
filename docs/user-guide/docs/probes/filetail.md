@@ -54,6 +54,12 @@ mode so the producing application is never blocked.
 Without `bookmark_path` the probe tails from the end of each file on every
 start. `from_beginning` only applies to a file no bookmark knows yet.
 
+A path that does not exist yet, or whose directory is not there yet (a
+mount that comes up after the agent), is picked up by the rescan once it
+appears. Such a file is read from its first line, whatever
+`from_beginning` says, since all of it was written after the probe
+started watching for it.
+
 ### Multiline folding
 
 Java stacktraces, Python tracebacks and pretty-printed payloads span

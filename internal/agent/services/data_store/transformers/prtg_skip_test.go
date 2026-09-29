@@ -41,9 +41,12 @@ func TestIBMiPerJobSeriesStayOutOfPRTG(t *testing.T) {
 	def := defs["ibmi"]
 	tr := &DefinitionBasedTransformer{definition: &def, moduleLogger: createTestModuleLogger()}
 	for _, m := range def.Metrics {
-		perJob := strings.HasPrefix(m.Name, "ibmi.job.")
-		if got := SkipsPRTG(tr, m.Name); got != perJob {
-			t.Errorf("%s: SkipsPRTG = %v, want %v", m.Name, got, perJob)
+		// Per-job series and relayed events: each job run or event would
+		// be a channel PRTG keeps for good (185 "QHST Event" channels on
+		// the bench). MSGW stays visible through the jobs-by-status count.
+		want := strings.HasPrefix(m.Name, "ibmi.job.") || strings.HasSuffix(m.Name, ".event")
+		if got := SkipsPRTG(tr, m.Name); got != want {
+			t.Errorf("%s: SkipsPRTG = %v, want %v", m.Name, got, want)
 		}
 	}
 }

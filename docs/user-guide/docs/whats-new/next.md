@@ -426,6 +426,33 @@ Breaking Changes or Fixes below.
 
 ## Fixes
 
+- **[IBM i](../probes/ibmi.md) metrics carry their family for PRTG.**
+  A partition yields far more series than the 50 channels of a PRTG
+  sensor, and choosing a sensor's metrics meant listing each name in its
+  URL. Every IBM i metric now carries `metric_type`, its family
+  (`disk`, `cpu`, `user_profile`, ...), so a sensor selects one with
+  `?tags=metric_type:disk`. The tag also reaches the OTLP and Prometheus
+  outputs as an attribute, as on the other probes that set it. No other
+  probe changes.
+
+- **[Syslog](../probes/syslog.md) reads a message sent without its
+  priority.** Some senders, the UniFi controller's activity log among
+  them, start the line at the timestamp. The whole line, header
+  included, ended up in the body, the hostname fell back to the sender's
+  address and the record took the default priority 13. The probe now
+  recovers the timestamp, hostname and tag, leaves out the facility and
+  priority it was not given, and for a CEF record takes the severity
+  from the CEF header (0-3 informational, 4-6 warning, 7-8 error, 9-10
+  critical).
+
+- **[File tail](../probes/filetail.md) reads a file whose directory
+  appears after the agent starts.** A log path under a mount that comes
+  up after the service, or a directory created later, was never read:
+  the tail gave up at start and the probe kept it registered, so nothing
+  was sent until a restart. The probe now waits for the file to exist,
+  reads it from its first line since all of it was written after the
+  agent began watching, and restarts any tail that ends on its own.
+
 - **`prometheus_scrape` no longer warns on every exporter.** A target
   ending in `/metrics` was taken for the agent's own endpoint, which
   flagged node_exporter and almost any exporter, the probe's ordinary
@@ -554,7 +581,11 @@ Breaking Changes or Fixes below.
   A definition marks such a metric with `prtg_skip`. The IBM i per-job
   series are kept out of PRTG the same way: their names carry the job
   number, and a bench sensor had grown to 2,583 channels for 1,447 served,
-  enough to saturate the PRTG server.
+  enough to saturate the PRTG server. Its relayed events (QSYSOPR, QHST,
+  audit, MSGW) are kept out of PRTG too: each event had become a channel.
+  Two IBM i channel families named a tag the probe does not emit, so all
+  their series shared one name: the library list now names the library
+  (`Library QGPL (USER)`) and the table statistics their schema.
 
 - **A syslog probe has a PRTG channel.** The probe relays messages as
   events and published no metric, so its PRTG sensor found no channel

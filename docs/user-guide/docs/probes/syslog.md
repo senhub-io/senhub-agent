@@ -606,6 +606,22 @@ Example:
 <13>1 2025-10-13T14:23:45.000Z server01 sshd 1234 ID47 [exampleSDID@32473 eventID="1"] Connection from 192.168.1.100
 ```
 
+### Messages without a PRI
+
+Some senders start the line at the timestamp, with no `<PRI>`: the UniFi
+controller's activity log, for one.
+
+```
+Sep 29 18:08:37 unifi-pi CEF:0|Ubiquiti|UniFi Network|10.6.106|546|Config Modified|5|...
+```
+
+The probe still reads the timestamp, the hostname and the tag from such a
+line, and keeps the rest as the body. It sets no `facility` or `priority`,
+since the sender gave none. The severity is `5` (notice), unless the body
+is a CEF record: the severity then comes from the CEF header, 0-3 as
+informational, 4-6 as warning, 7-8 as error and 9-10 as critical. A
+message that carries a PRI keeps the severity of its PRI.
+
 ### Priority (PRI) Calculation
 
 ```
