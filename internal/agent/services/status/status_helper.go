@@ -128,7 +128,9 @@ type HTTPSystemInfoResponse struct {
 	ConfigWatch      *ConfigWatch      `json:"config_watch"`
 	Resources        struct {
 		MemoryUsageMB float64 `json:"memory_usage_mb"`
+		HeapMB        float64 `json:"heap_mb"`
 		CPUPercent    float64 `json:"cpu_percent"`
+		Measured      bool    `json:"measured"`
 		Goroutines    int     `json:"goroutines"`
 	} `json:"resources"`
 }
@@ -150,7 +152,9 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 		Performance: PerformanceInfo{
 			Uptime:        httpResp.Uptime,
 			MemoryUsageMB: httpResp.Resources.MemoryUsageMB,
+			HeapMB:        httpResp.Resources.HeapMB,
 			CPUPercent:    httpResp.Resources.CPUPercent,
+			Measured:      httpResp.Resources.Measured,
 			Goroutines:    httpResp.Resources.Goroutines,
 			CacheEntries:  httpResp.Cache.TotalMetrics,
 		},
