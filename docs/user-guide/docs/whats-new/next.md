@@ -43,3 +43,9 @@ Changes since 0.6.0, collected as they are merged.
   reachable with the administration key, wrote invented Dell PowerVault
   series into the cache that PRTG, Nagios and Prometheus read, and
   answered with links to a developer's agent on `localhost:8080`.
+
+- **The console's API reference lists the routes this agent serves.** Its
+  endpoint list and count came from a hand-written table of 16 routes
+  that missed most of the configuration, catalogue and information
+  routes; they are now read from the agent's router. The page also
+  rewrote `/admin/` paths to `/debug/`, showing routes that do not exist.
