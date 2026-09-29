@@ -209,6 +209,7 @@ metrics:
   - name: "ibmi.job.elapsed_cpu_percent"
     channel: "ibmi_job_elapsed_cpu_percent"
     display_name: "CPU % — {job_name}"
+    prtg_skip: true
     unit: "%"
     category: "jobs"
     multi_instance_labels: ["job_name", "job_user", "subsystem"]
@@ -225,6 +226,7 @@ metrics:
   - name: "ibmi.job.elapsed_cpu_ms"
     channel: "ibmi_job_elapsed_cpu_ms"
     display_name: "Elapsed CPU — {job_name}"
+    prtg_skip: true
     unit: "ms"
     category: "jobs"
     multi_instance_labels: ["job_name", "job_user", "subsystem"]
@@ -241,6 +243,7 @@ metrics:
   - name: "ibmi.job.cpu_time_ms"
     channel: "ibmi_job_cpu_time_ms"
     display_name: "Cumulative CPU — {job_name}"
+    prtg_skip: true
     unit: "ms"
     category: "jobs"
     multi_instance_labels: ["job_name", "job_user", "subsystem"]
@@ -257,6 +260,7 @@ metrics:
   - name: "ibmi.job.cpu_time_ms_delta"
     channel: "ibmi_job_cpu_time_ms_delta"
     display_name: "CPU Delta — {job_name}"
+    prtg_skip: true
     unit: "ms"
     category: "jobs"
     multi_instance_labels: ["job_name"]
@@ -271,6 +275,7 @@ metrics:
   - name: "ibmi.job.cpu_time_ms_rate_per_sec"
     channel: "ibmi_job_cpu_time_ms_rate"
     display_name: "CPU Rate — {job_name}"
+    prtg_skip: true
     unit: "ms/s"
     category: "jobs"
     multi_instance_labels: ["job_name"]
@@ -286,6 +291,7 @@ metrics:
   - name: "ibmi.job.temp_storage_mb"
     channel: "ibmi_job_temp_storage_mb"
     display_name: "Temp Storage — {job_name}"
+    prtg_skip: true
     unit: "MB"
     category: "jobs"
     multi_instance_labels: ["job_name"]
@@ -300,6 +306,7 @@ metrics:
   - name: "ibmi.job.total_disk_io"
     channel: "ibmi_job_total_disk_io"
     display_name: "Total Disk I/O — {job_name}"
+    prtg_skip: true
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
@@ -314,6 +321,7 @@ metrics:
   - name: "ibmi.job.elapsed_total_disk_io"
     channel: "ibmi_job_elapsed_disk_io"
     display_name: "Disk I/O (elapsed) — {job_name}"
+    prtg_skip: true
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
@@ -328,6 +336,7 @@ metrics:
   - name: "ibmi.job.elapsed_page_faults"
     channel: "ibmi_job_elapsed_page_faults"
     display_name: "Page Faults — {job_name}"
+    prtg_skip: true
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
@@ -342,6 +351,7 @@ metrics:
   - name: "ibmi.job.thread_count"
     channel: "ibmi_job_thread_count"
     display_name: "Threads — {job_name}"
+    prtg_skip: true
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
@@ -356,6 +366,7 @@ metrics:
   - name: "ibmi.job.run_priority"
     channel: "ibmi_job_run_priority"
     display_name: "Run Priority — {job_name}"
+    prtg_skip: true
     unit: "#"
     category: "jobs"
     multi_instance_labels: ["job_name"]
