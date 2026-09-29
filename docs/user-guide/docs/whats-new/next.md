@@ -426,6 +426,14 @@ Breaking Changes or Fixes below.
 
 ## Fixes
 
+- **[File tail](../probes/filetail.md) reads a file whose directory
+  appears after the agent starts.** A log path under a mount that comes
+  up after the service, or a directory created later, was never read:
+  the tail gave up at start and the probe kept it registered, so nothing
+  was sent until a restart. The probe now waits for the file to exist,
+  reads it from its first line since all of it was written after the
+  agent began watching, and restarts any tail that ends on its own.
+
 - **`prometheus_scrape` no longer warns on every exporter.** A target
   ending in `/metrics` was taken for the agent's own endpoint, which
   flagged node_exporter and almost any exporter, the probe's ordinary
