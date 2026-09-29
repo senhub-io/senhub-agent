@@ -227,7 +227,7 @@ func (m *wifiSignalStrengthProbe) collectLinux() ([]data_store.DataPoint, error)
 			}
 		}
 		if strings.Contains(line, "ESSID:") {
-			ssid = strings.Trim(strings.Split(line, "ESSID:")[1], "\"")
+			ssid = parseESSID(line)
 		}
 	}
 
@@ -279,4 +279,16 @@ func (m *wifiSignalStrengthProbe) OnStart(quitChannel chan struct{}) error {
 }
 func (m *wifiSignalStrengthProbe) OnShutdown(ctx context.Context) error {
 	return nil
+}
+
+// parseESSID reads the network name from an iwconfig line such as
+// `wlan0     IEEE 802.11  ESSID:"Freebox-20BC32"  `. The spaces after the
+// closing quote must go before the quotes are stripped, or the closing
+// quote stays in the name.
+func parseESSID(line string) string {
+	_, v, ok := strings.Cut(line, "ESSID:")
+	if !ok {
+		return ""
+	}
+	return strings.Trim(strings.TrimSpace(v), "\"")
 }
