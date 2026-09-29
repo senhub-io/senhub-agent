@@ -7,13 +7,21 @@
 
 # SNMP Poll Probe
 
-The `snmp_poll` probe polls a network device over SNMPv2c and turns
-standard MIB objects into typed metrics: system uptime, per-interface
-traffic, errors, discards, speed and status. Custom OID mappings
-cover the vendor-specific long tail. A discovery mode that crawls the
-network topology from seed devices (LLDP) is accepted in the
-configuration but not active yet (#953): the `discovery` block is
-validated and ignored.
+The `snmp_poll` probe polls a network device over SNMP v2c or v3 and
+turns standard MIB objects into typed metrics: system uptime,
+per-interface traffic, errors, discards, speed and status. Custom OID
+mappings cover the vendor-specific long tail.
+
+The probe also reads the LLDP neighbor table of each polled device and
+reports its links. A link is reported when the neighbor advertises a
+named port (LLDP port ID subtype interface name or locally assigned);
+a port known only by its MAC address is not linked.
+
+A discovery mode that crawls the network outward from seed devices is
+accepted in the configuration but not active yet
+([#953](https://github.com/senhub-io/senhub-agent/issues/953)): the
+`discovery` block is validated and ignored. The crawl profile is v2c
+only.
 
 One probe instance polls one device; declare one instance per device.
 
@@ -165,7 +173,7 @@ table and the row index becomes that tag.
     configuration shape is final. Per-device topology (LLDP
     neighbors, routes, bridge tables of the polled `target`) is
     active and independent of this block. Tracking:
-    [#156](https://github.com/senhub-io/senhub-agent/issues/156).
+    [#953](https://github.com/senhub-io/senhub-agent/issues/953).
 
 When the crawl ships, a `discovery` block will make the probe crawl
 outward from seed devices using LLDP neighbor tables, bounded by
@@ -255,7 +263,7 @@ a probe failure — the agent keeps polling.
   else goes through `custom_mappings`.
 - **Two rails, two cadences.** Metrics poll at `interval`; topology
   and entity sweeps run at the slower `topology_interval` so a dense
-  crawl never delays traffic counters.
+  sweep never delays traffic counters.
 - **Counters are raw.** `in_octets` and friends are emitted as
   counters; compute rates in the backend
   (`rate(snmp_interface_in_octets[5m])` in VictoriaMetrics).
