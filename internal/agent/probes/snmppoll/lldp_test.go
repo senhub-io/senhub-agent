@@ -21,7 +21,7 @@ func TestResolveDeviceID_Precedence(t *testing.T) {
 		{"serial+PEN wins", full, "serial:9:FOC1234"},
 		{"serial without PEN falls to engine", deviceIdentity{Serial: "FOC1234", EngineID: []byte{0x01}, SysName: "x"}, "engine:01"},
 		{"engine when no serial", deviceIdentity{EngineID: []byte{0x80, 0x01, 0x02}, ChassisMAC: mac, SysName: "x"}, "engine:800102"},
-		{"mac when no serial/engine", deviceIdentity{ChassisMAC: mac, SysName: "x"}, "mac:00:11:22:33:44:55"},
+		{"mac when no serial/engine", deviceIdentity{ChassisMAC: mac, SysName: "x"}, "mac:00-11-22-33-44-55"},
 		{"name when only name", deviceIdentity{SysName: "  sw1 "}, "name:sw1"},
 		{"mgmt last resort v4", deviceIdentity{MgmtIP: "192.0.2.10"}, "mgmt:192.0.2.10"},
 		{"mgmt canon v6", deviceIdentity{MgmtIP: "2001:DB8::1"}, "mgmt:2001:db8::1"},
@@ -53,8 +53,8 @@ func TestVendorPEN(t *testing.T) {
 func TestNeighborIdentity(t *testing.T) {
 	// MAC chassis subtype → usable mac id.
 	macN := lldpNeighbor{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0xaa, 0xbb}, SysName: "n1"}
-	if got := resolveDeviceID(neighborIdentity(macN)); got != "mac:aa:bb" {
-		t.Errorf("mac neighbor id = %q, want mac:aa:bb", got)
+	if got := resolveDeviceID(neighborIdentity(macN)); got != "mac:AA-BB" {
+		t.Errorf("mac neighbor id = %q, want mac:AA-BB", got)
 	}
 	// Non-MAC chassis subtype → fall back to advertised sysName.
 	localN := lldpNeighbor{ChassisIdSubtype: 7, ChassisId: []byte("edge-b"), SysName: "n2"}
@@ -67,8 +67,8 @@ func TestRenderPortID(t *testing.T) {
 	if got := renderPortID(portSubtypeIfName, []byte("Gi0/1")); got != "Gi0/1" {
 		t.Errorf("ifName port = %q, want Gi0/1", got)
 	}
-	if got := renderPortID(subtypeMacAddress, []byte{0xaa, 0xbb}); got != "aa:bb" {
-		t.Errorf("mac port = %q, want aa:bb", got)
+	if got := renderPortID(subtypeMacAddress, []byte{0xaa, 0xbb}); got != "AA-BB" {
+		t.Errorf("mac port = %q, want AA-BB", got)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestParseLLDPLocal(t *testing.T) {
 		t.Errorf("chassisId = %x", loc.ChassisId)
 	}
 	// And the contract-bound identity on top of the parse (chassis MAC rung):
-	if got := resolveDeviceID(deviceIdentity{ChassisMAC: loc.ChassisId}); got != "mac:de:ad:be:ef:00:01" {
+	if got := resolveDeviceID(deviceIdentity{ChassisMAC: loc.ChassisId}); got != "mac:DE-AD-BE-EF-00-01" {
 		t.Errorf("resolved local id = %q", got)
 	}
 	// Local port table: only the named port is kept; the MAC-only one is dropped.
@@ -149,7 +149,7 @@ func TestParseLLDPNeighbors(t *testing.T) {
 	if ns[1].MgmtIP != "" {
 		t.Errorf("neighbor b should have no mgmt IP, got %q", ns[1].MgmtIP)
 	}
-	if resolveDeviceID(neighborIdentity(a)) != "mac:aa:bb:cc:dd:ee:ff" {
+	if resolveDeviceID(neighborIdentity(a)) != "mac:AA-BB-CC-DD-EE-FF" {
 		t.Errorf("neighbor a id = %q", resolveDeviceID(neighborIdentity(a)))
 	}
 	if renderPortID(a.PortIdSubtype, a.PortId) != "Gi0/1" {

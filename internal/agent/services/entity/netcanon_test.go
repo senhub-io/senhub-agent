@@ -62,3 +62,24 @@ func TestCanonicalIP(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalMAC(t *testing.T) {
+	if got := CanonicalMAC([]byte{0xbc, 0x24, 0x11, 0x1b, 0x04, 0x82}); got != "BC-24-11-1B-04-82" {
+		t.Errorf("CanonicalMAC = %q", got)
+	}
+	if got := CanonicalMAC(nil); got != "" {
+		t.Errorf("CanonicalMAC(nil) = %q", got)
+	}
+	for in, want := range map[string]string{
+		"bc:24:11:1b:04:82": "BC-24-11-1B-04-82",
+		"BC-24-11-1B-04-82": "BC-24-11-1B-04-82",
+		"bc24.111b.0482":    "BC-24-11-1B-04-82",
+	} {
+		if got, ok := CanonicalMACString(in); !ok || got != want {
+			t.Errorf("CanonicalMACString(%q) = %q, %v", in, got, ok)
+		}
+	}
+	if _, ok := CanonicalMACString("not a mac"); ok {
+		t.Error("CanonicalMACString accepted a non-MAC")
+	}
+}
