@@ -512,6 +512,14 @@ Breaking Changes or Fixes below.
   `senhub.otlp_receiver.sender.service.name` (Prometheus
   `senhub_otlp_receiver_sender_service_name`).
 
+- **PRTG no longer merges channels that share a name.** PRTG keeps one
+  value per channel name, and several series could reach it under the
+  same name: a scraped exporter's labels, the CPUs of a Redfish system,
+  two containers of a pod. They collapsed into one channel and the other
+  values were lost. On both the pull endpoint and the push output, names
+  that collide now carry the tags that set them apart, for example
+  `Node CPU Seconds (cpu=0, mode=idle)`.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
