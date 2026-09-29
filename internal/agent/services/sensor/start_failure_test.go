@@ -3,6 +3,7 @@ package sensor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -92,5 +93,46 @@ func TestAProbeThisBuildDoesNotCarryNamesTheEdition(t *testing.T) {
 	state := agentstate.GetProbeRunState(probes.GenerateProbeId(cfg))
 	if !strings.Contains(state.LastError, "full edition") || strings.Contains(state.LastError, "licen") {
 		t.Errorf("reason = %q, want the edition named and no licence advice", state.LastError)
+	}
+}
+
+var rejectedStartFails atomic.Bool
+
+func init() {
+	probes.RegisterProbe("rejected_start_test", func(params map[string]interface{}, l *logger.Logger) (types.Probe, error) {
+		if rejectedStartFails.Load() {
+			return nil, fmt.Errorf("connect: Password is incorrect: %w", types.ErrCredentialsRejected)
+		}
+		cpu, _ := probes.LookupProbeConstructor("cpu")
+		return cpu(params, l)
+	})
+}
+
+// A refused password is not retried on the timer: on IBM i each retry is
+// another invalid sign-on, and three disable the monitoring profile. A
+// reload, which is what follows fixing the credentials, still starts it.
+func TestRejectedCredentialsAreNotRetriedOnTheTimer(t *testing.T) {
+	rejectedStartFails.Store(true)
+	defer rejectedStartFails.Store(false)
+
+	cfg := configuration.ProbeConfig{Name: "ibmi-bad-password", Type: "rejected_start_test", Params: map[string]interface{}{"interval": 30}}
+	provider := &MockConfigProvider{config: configuration.ConfigurationData{Probes: []configuration.ProbeConfig{cfg}}}
+	add := func([]datapoint.DataPoint, data_store.StrategyRouter) error { return nil }
+	s := NewSensor(add, provider, logger.NewLogger(&cliArgs.ParsedArgs{})).(*sensor)
+	s.licenseValidator = &fakeLicenseValidator{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	rejectedStartFails.Store(false)
+	s.retryFailedProbesOnce()
+	if state := agentstate.GetProbeRunState(probes.GenerateProbeId(cfg)); state.Running {
+		t.Fatal("the timer retried a start whose credentials were refused")
+	}
+	if !s.failedProbes[probes.GenerateProbeId(cfg)].noRetry {
+		t.Error("the refusal was not recorded as not retryable")
 	}
 }
