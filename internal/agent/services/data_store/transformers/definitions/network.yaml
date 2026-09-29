@@ -57,8 +57,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: transmit
-    tag_to_attribute:
-      interface: network.interface.name
 
   - name: "bytes_received"
     channel: "network_bytes_received"
@@ -73,8 +71,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: receive
-    tag_to_attribute:
-      interface: network.interface.name
 
   # ─────────────────────────────────────────────────────────────────────────
   # Packet counts (packets per second, instantaneous rate)
@@ -94,8 +90,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: transmit
-    tag_to_attribute:
-      interface: network.interface.name
 
   - name: "packets_received"
     channel: "network_packets_received"
@@ -110,8 +104,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: receive
-    tag_to_attribute:
-      interface: network.interface.name
 
   # ─────────────────────────────────────────────────────────────────────────
   # Errors (per second, instantaneous rate)
@@ -131,8 +123,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: transmit
-    tag_to_attribute:
-      interface: network.interface.name
 
   - name: "errors_received"
     channel: "network_errors_received"
@@ -147,8 +137,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: receive
-    tag_to_attribute:
-      interface: network.interface.name
 
   # ─────────────────────────────────────────────────────────────────────────
   # Packets dropped / discards (per second, instantaneous rate)
@@ -168,8 +156,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: transmit
-    tag_to_attribute:
-      interface: network.interface.name
 
   - name: "discards_received"
     channel: "network_discards_received"
@@ -184,8 +170,6 @@ metrics:
       type: gauge
       attributes:
         network.io.direction: receive
-    tag_to_attribute:
-      interface: network.interface.name
 
 tag_metadata:
   interface:

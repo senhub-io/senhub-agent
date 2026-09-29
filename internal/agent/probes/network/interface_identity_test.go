@@ -17,7 +17,7 @@ import (
 //
 // Before the fix the only interface-bearing tag was `interface`, which a
 // transformer renames to network.interface.name — a label that exists, is
-// populated, and joins nothing, because the entity is keyed interface.name.
+// populated, and joins nothing, because the entity is keyed network.interface.name.
 // The Windows half was worse: `interface` carries the PDH instance name (the
 // adapter description) while the entity carries the connection name, so even
 // the right key would have joined nothing.

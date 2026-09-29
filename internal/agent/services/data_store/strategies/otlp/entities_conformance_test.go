@@ -143,7 +143,7 @@ func TestEntityEncodingMatchesToiseSDK(t *testing.T) {
 		Interval: 90 * time.Second,
 		Entity: &entity.Entity{
 			Type:       "network.interface",
-			ID:         map[string]any{"host.id": "h-1", "interface.name": iface},
+			ID:         map[string]any{"host.id": "h-1", "network.interface.name": iface},
 			Attributes: map[string]any{"interface.type": "ethernet"},
 			Relationships: []entity.Relationship{{
 				Type:       "runs_on",
@@ -159,7 +159,7 @@ func TestEntityEncodingMatchesToiseSDK(t *testing.T) {
 	}
 	theirs := buildEmitReference(t, wire.EventEntityState, emit.Entity{
 		Type:       "network.interface",
-		ID:         map[string]string{"host.id": "h-1", "interface.name": iface},
+		ID:         map[string]string{"host.id": "h-1", "network.interface.name": iface},
 		Attributes: map[string]string{"interface.type": "ethernet"},
 		Interval:   90 * time.Second,
 		Relationships: []emit.Relationship{{

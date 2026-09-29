@@ -37,6 +37,9 @@ Breaking Changes or Fixes below.
    relink the templates (**Mass update > Templates**) on the hosts that
    registered before; see
    [Zabbix](../zabbix.md#a-host-already-registered-keeps-the-templates-it-was-given).
+9. **Interface queries.** SNMP interface series move from the label
+   `interface_name` to `network_interface_name`; interface entities are
+   replaced once.
 
 ## Breaking Changes
 
@@ -85,6 +88,18 @@ Breaking Changes or Fixes below.
   topology backend is replaced by a new one (the old one expires).
   Setting `resource.service.instance.id` on the OTLP output still
   overrides it.
+
+- **Interfaces are keyed on `network.interface.name`.** The attribute
+  that names a network interface, and identifies the `network.interface`
+  entity with its device or host, follows the OpenTelemetry name:
+  `interface.name` becomes `network.interface.name` on the entities, on
+  the SNMP interface metrics and on the host network metrics (Prometheus
+  label `network_interface_name`, which the host series already used).
+  Every interface entity in a topology backend is replaced once, and SNMP
+  interface series change label. On Windows, the host network metrics now
+  carry the connection name (`Ethernet 2`) in `network.interface.name`,
+  where the adapter description sat before; the description stays in the
+  `interface` attribute.
 
 - **The `process` probe no longer reports every process by default.**
   Without a `filter`, it emitted six series per process, and the identity
