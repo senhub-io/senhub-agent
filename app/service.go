@@ -225,15 +225,14 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 				if args.EnableHttps {
 					fmt.Printf("HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
 				}
-				scheme, port := resolveHTTPStrategyEndpoint(configPath)
-				// The key was generated two lines above; printing the
-				// template instead hands the operator a URL that cannot
-				// be opened, on the one line that tells them where to go.
-				key, keyErr := extractAgentKeyFromConfig(configPath)
-				if keyErr != nil || key == "" {
-					key = "{agentkey}"
+				// The console opens with the administration key, which the
+				// service generates at its first start: an address built
+				// here, on the agent key, could never be opened.
+				exe := svcConfig.Executable
+				if exe == "" {
+					exe = os.Args[0]
 				}
-				fmt.Printf("\nAccess your agent at: %s://localhost:%d/web/%s/dashboard\n", scheme, port, key)
+				fmt.Printf("\nOnce the service has started, open the console with:\n    %s console\n(or '%s console --print' for its address)\n", exe, exe)
 			}
 
 			// The installer runs as root but the daemon does not; the
