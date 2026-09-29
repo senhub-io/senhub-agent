@@ -489,6 +489,14 @@ Breaking Changes or Fixes below.
   series and, on the Zabbix output, an item left without data. They are
   now counted together under `kworker`.
 
+- **The [Hyper-V](../probes/hyperv.md) probe collects.** Its two WMI
+  queries named properties the Hyper-V classes do not have
+  (`NumberOfProcessors` on `Msvm_ComputerSystem`, `CPUUsage` on
+  `Msvm_SummaryInformation`), and WMI rejects a whole query for one
+  unknown property: every collection failed with "Invalid query", on any
+  host. The probe now reads the processor count and load where Hyper-V
+  publishes them.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
