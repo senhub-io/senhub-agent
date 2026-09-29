@@ -517,7 +517,7 @@
       $('picker-search').placeholder = 'Search ' + Ed.catalog.length + ' probe types';
       const locked = Ed.catalog.filter(licenceLocked).length;
       const elsewhere = Ed.catalog.filter(platformOnly).length;
-      $('picker-foot').innerHTML = (locked ? locked + ' Pro type' + (locked > 1 ? 's' : '') + ' unlock with a license. ' : 'Pro types unlock with a license. ') + '<a href="' + WEB + '/settings">Settings</a>' + (elsewhere ? ' &middot; ' + elsewhere + ' type' + (elsewhere > 1 ? 's run' : ' runs') + ' on another platform only.' : '');
+      $('picker-foot').innerHTML = (locked ? locked + ' Pro type' + (locked > 1 ? 's unlock' : ' unlocks') + ' with a license. ' : 'Pro types unlock with a license. ') + '<a href="' + WEB + '/settings">Settings</a>' + (elsewhere ? ' &middot; ' + elsewhere + ' type' + (elsewhere > 1 ? 's run' : ' runs') + ' on another platform only.' : '');
       Ed.renderPicker();
     },
     renderPicker() {
