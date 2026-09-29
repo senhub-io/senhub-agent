@@ -85,7 +85,7 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		}
 		byName := map[string]*rollUp{}
 		for _, snap := range snaps {
-			name := rollUpName(snap.name)
+			name := snap.name
 			r, ok := byName[name]
 			if !ok {
 				r = &rollUp{}
@@ -156,12 +156,14 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 	return points, snaps, nil
 }
 
-// rollUpName is the name a process is counted under in the roll-up. Linux
-// kernel workqueue threads rename themselves as they pick up work
-// ("kworker/1:1-ata_sff", "kworker/u4:2-events_freezable_power_"), and
-// the pool spawns and retires them, so each name lives seconds: counted as
-// is, every one became a series, and a Zabbix item left without data once
-// it was gone. They are counted together as "kworker".
+// rollUpName is the stable name a process is reported under. Linux kernel
+// workqueue threads rename themselves as they pick up work
+// ("kworker/1:1-ata_sff", "kworker/u4:0-writeback" then
+// "kworker/u4:0-ext4-rsv-conversion" under the same pid), and the pool
+// spawns and retires them. Reported as is, each name became a roll-up
+// series, and in the per-process detail each renaming a new Zabbix item
+// that got no second value. They are reported as "kworker"; a by_name
+// filter still sees the real name.
 func rollUpName(name string) string {
 	if strings.HasPrefix(name, "kworker/") {
 		return "kworker"
@@ -215,7 +217,7 @@ func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (pro
 
 	return processSnapshot{
 		pid:        p.Pid,
-		name:       name,
+		name:       rollUpName(name),
 		owner:      owner,
 		cpuPct:     cpuPct,
 		rss:        rss,
