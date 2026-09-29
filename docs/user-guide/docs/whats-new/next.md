@@ -399,6 +399,12 @@ Breaking Changes or Fixes below.
   node: the errors metric is now the sum of failures, timeouts and
   unavailables.
 
+- **The [ActiveMQ](../probes/activemq.md) probe reaches a current
+  broker.** ActiveMQ Classic 5.16 and later refuse a Jolokia request that
+  carries no `Origin` header (HTTP 403), which is every request the probe
+  made, so the probe stayed down on a default install. It now names the
+  broker's own address as the origin.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
