@@ -195,11 +195,8 @@ func NewHTTPSyncStrategy(
 	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
 
 	// Initialize status service with centralized status calculations
-	strategy.statusService = status.NewStatusService(
-		moduleLogger.Logger,
-		"unknown", // Version will be set later if available
-		"unknown", // Commit will be set later if available
-	)
+	buildInfo := strategy.utilsManager.parseVersionInfo()
+	strategy.statusService = status.NewStatusService(moduleLogger.Logger, buildInfo.Version, buildInfo.Commit)
 
 	// Configure status service with cache provider and agent mode
 	cacheAdapter := NewHTTPCacheAdapter(strategy.cache, moduleLogger.Logger)
