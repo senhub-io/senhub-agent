@@ -52,6 +52,16 @@ func (dt *DefinitionBasedTransformer) GetUnit(metricName string) string {
 	return ""
 }
 
+// SkipsPRTG reports whether the metric's definition keeps it out of PRTG.
+func (dt *DefinitionBasedTransformer) SkipsPRTG(metricName string) bool {
+	for _, metric := range dt.definition.Metrics {
+		if metric.Name == metricName {
+			return metric.PRTGSkip
+		}
+	}
+	return false
+}
+
 // GetOtelMapping returns the OTel mapping declared for a metric, or nil
 // when the metric has none. Sink converters use it to derive
 // semantically correct display units (rate vs absolute, byte context)

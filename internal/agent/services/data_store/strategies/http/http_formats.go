@@ -125,6 +125,9 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 		if !f.cache.IsLive(metric, now) {
 			continue
 		}
+		if t, err := f.transformerRegistry.LoadTransformer(probeTypeOf(metric), "friendly"); err == nil && t != nil && transformers.SkipsPRTG(t, metric.MetricName) {
+			continue
+		}
 
 		// Extract probe type from tags (fallback to probe name if not present)
 		probeType := metric.Tags["probe_type"]
