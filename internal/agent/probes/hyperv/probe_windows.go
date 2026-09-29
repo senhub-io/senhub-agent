@@ -5,8 +5,8 @@
 // administrator privileges (the Hyper-V WMI namespace is protected).
 //
 // The probe queries root\virtualization\v2:
-//   - Msvm_ComputerSystem (EnabledState, NumberOfProcessors)
-//   - Msvm_SummaryInformation (CPUUsage, MemoryUsage, UpTime)
+//   - Msvm_ComputerSystem (EnabledState)
+//   - Msvm_SummaryInformation (NumberOfProcessors, ProcessorLoad, MemoryUsage, UpTime)
 //   - Msvm_KvpExchangeComponentSettingData (guest machine-id via KVP)
 //
 // Metrics emitted (OTel-first):
@@ -57,19 +57,28 @@ const (
 
 // msvmComputerSystem is the WMI projection of Msvm_ComputerSystem.
 type msvmComputerSystem struct {
-	Name               string
-	EnabledState       uint16
-	NumberOfProcessors uint16
+	Name         string
+	EnabledState uint16
 }
 
 // msvmSummaryInformation is the WMI projection of Msvm_SummaryInformation.
 type msvmSummaryInformation struct {
-	Name        string
-	ElementName string
-	CPUUsage    uint32
-	MemoryUsage uint64
-	UpTime      uint64
+	Name               string
+	ElementName        string
+	NumberOfProcessors uint16
+	ProcessorLoad      uint16
+	MemoryUsage        uint64
+	UpTime             uint64
 }
+
+// The properties the probe selects. WMI rejects a whole query that names a
+// property its class does not have ("Invalid query"), so every name here
+// must exist on the class; the test pins them against the class schema read
+// from a Windows Server 2025 Hyper-V host.
+var (
+	computerSystemProps = []string{"Name", "EnabledState"}
+	summaryProps        = []string{"Name", "ElementName", "NumberOfProcessors", "ProcessorLoad", "MemoryUsage", "UpTime"}
+)
 
 // wmiQueryFn is the function used to run WMI queries; replaceable in tests.
 type wmiQueryFn func(query string, dst interface{}, namespace string) error
@@ -193,13 +202,13 @@ func withHost(hostTags []tags.Tag, extra ...tags.Tag) []tags.Tag {
 // queryWMI runs both WMI queries.
 func (p *HypervProbe) queryWMI() ([]msvmComputerSystem, map[string]msvmSummaryInformation, error) {
 	var vms []msvmComputerSystem
-	vmQuery := "SELECT Name,EnabledState,NumberOfProcessors FROM Msvm_ComputerSystem WHERE Caption='Virtual Machine'"
+	vmQuery := "SELECT " + strings.Join(computerSystemProps, ",") + " FROM Msvm_ComputerSystem WHERE Caption='Virtual Machine'"
 	if err := p.queryFn(vmQuery, &vms, hypervNamespace); err != nil {
 		return nil, nil, fmt.Errorf("Msvm_ComputerSystem query: %w", err)
 	}
 
 	var summaries []msvmSummaryInformation
-	sumQuery := "SELECT Name,ElementName,CPUUsage,MemoryUsage,UpTime FROM Msvm_SummaryInformation WHERE ElementName IS NOT NULL"
+	sumQuery := "SELECT " + strings.Join(summaryProps, ",") + " FROM Msvm_SummaryInformation"
 	if err := p.queryFn(sumQuery, &summaries, hypervNamespace); err != nil {
 		return nil, nil, fmt.Errorf("Msvm_SummaryInformation query: %w", err)
 	}
@@ -222,15 +231,12 @@ func (p *HypervProbe) queryWMI() ([]msvmComputerSystem, map[string]msvmSummaryIn
 func toVMInfos(vms []msvmComputerSystem, sumByName map[string]msvmSummaryInformation) []vmInfo {
 	infos := make([]vmInfo, 0, len(vms))
 	for _, vm := range vms {
-		name := ""
-		if si, ok := sumByName[vm.Name]; ok && si.ElementName != "" {
-			name = si.ElementName
-		}
+		si := sumByName[vm.Name]
 		infos = append(infos, vmInfo{
 			GUID:   vm.Name,
-			VMName: name,
+			VMName: si.ElementName,
 			State:  vmStateName(vm.EnabledState),
-			VCPU:   int64(vm.NumberOfProcessors),
+			VCPU:   int64(si.NumberOfProcessors),
 		})
 	}
 	return infos
@@ -303,10 +309,10 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 		}
 
 		if si, ok := sumByName[vm.Name]; ok {
-			// hyperv.vm.cpu.usage — CPUUsage is a percentage, emitted as 0–100.
+			// hyperv.vm.cpu.usage — ProcessorLoad is a percentage, emitted as 0–100.
 			points = append(points, data_store.DataPoint{
 				Name:      "hyperv.vm.cpu.usage",
-				Value:     float64(si.CPUUsage),
+				Value:     float64(si.ProcessorLoad),
 				Timestamp: ts,
 				Tags:      vmTags,
 			})
