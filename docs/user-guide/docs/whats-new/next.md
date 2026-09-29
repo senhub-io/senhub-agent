@@ -483,6 +483,12 @@ Breaking Changes or Fixes below.
   agent log to explain it. The agent now logs a warning at start naming
   the setting.
 
+- **The [process](../probes/process.md) roll-up no longer churns on
+  Linux kernel workers.** Kernel workqueue threads rename themselves as
+  they pick up work and live seconds, so each became its own roll-up
+  series and, on the Zabbix output, an item left without data. They are
+  now counted together under `kworker`.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux
