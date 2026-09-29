@@ -3,7 +3,9 @@
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
 
-# Overview
+# Dell PowerStore Probe
+
+## Overview
 
 The PowerStore probe monitors Dell PowerStore storage arrays through the PowerStore REST API, providing cluster health, hardware faults, capacity, performance, and active-alert metrics. One probe instance monitors one array (cluster); add more instances for additional arrays.
 
@@ -22,9 +24,9 @@ aggregates are complemented by **per-resource series** (per volume, appliance,
 node, drive and replication session), each carrying a resource attribute that
 also acts as a filter in the Sensor URLs tab of the console.
 
-# Quick Start
+## Quick Start
 
-## Basic Configuration
+### Basic Configuration
 
 ```yaml
 # probes.d/20-powerstore.yaml — each file under probes.d/ is a YAML array of probes
@@ -40,7 +42,7 @@ also acts as a filter in the Sensor URLs tab of the console.
 
 `endpoint` may be given with or without a scheme; `https://` is assumed when none is provided. The `${secret:...}` reference resolves the password from the OS-native secret store (see [Configuration](../configuration.md)).
 
-## Multiple Arrays
+### Multiple Arrays
 
 Monitor several arrays with separate probe instances:
 
@@ -64,7 +66,7 @@ Monitor several arrays with separate probe instances:
     verify_ssl: false   # self-signed management certificate
 ```
 
-# Configuration Parameters
+## Configuration Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
@@ -104,10 +106,12 @@ agent's series cap. Raise `top_n` deliberately after checking your array's volum
 count.
 
 ```yaml
-probes:
-  - type: powerstore
-    endpoint: "https://10.0.199.11"
-    username: "supervision"
+# probes.d/20-powerstore.yaml
+- name: powerstore
+  type: powerstore
+  params:
+    endpoint: "https://powerstore.example.com"
+    username: "monitoring"
     password: "${secret:powerstore.password}"
     interval: 300
     volume_perf:
@@ -116,24 +120,24 @@ probes:
       interval: 600
 ```
 
-# Metrics Collected
+## Metrics Collected
 
 All metrics carry a `cluster` attribute identifying the array. Metric families that split by direction or state (IOPS, bandwidth, latency, hardware) use an OTel attribute rather than separate metric names.
 
-## Cluster
+### Cluster
 
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.powerstore.up` | `1` | `1` when the management API answered this cycle, else `0` |
 | `senhub.powerstore.cluster.state` | `1` | Cluster configuration state (Configured=2, Unconfigured=1, other=0) |
 
-## Hardware
+### Hardware
 
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.powerstore.hardware.components` | `{component}` | Hardware component count, split by `senhub.powerstore.hardware.state` (`healthy` / `faulted`) |
 
-## Capacity
+### Capacity
 
 | Metric | Unit | Description |
 |--------|------|-------------|
@@ -143,7 +147,7 @@ All metrics carry a `cluster` attribute identifying the array. Metric families t
 | `senhub.powerstore.data_reduction_ratio` | `1` | Data-reduction ratio |
 | `senhub.powerstore.efficiency_ratio` | `1` | Overall efficiency ratio |
 
-## Performance
+### Performance
 
 | Metric | Unit | Description |
 |--------|------|-------------|
@@ -158,26 +162,26 @@ All metrics carry a `cluster` attribute identifying the array. Metric families t
     `0..1` ratios (OTel unit `1`). The PRTG and Nagios views display them as
     percentages (e.g. `42 %`, not `0.42`).
 
-## Replication
+### Replication
 
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.powerstore.replication.sessions` | `{session}` | Number of replication sessions |
 
-## Volumes
+### Volumes
 
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.powerstore.volumes` | `{volume}` | Total number of volumes |
 | `senhub.powerstore.volumes.not_ready` | `{volume}` | Volumes not in a ready state |
 
-## Alerts
+### Alerts
 
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.powerstore.alerts.active` | `{alert}` | Active alerts, split by `severity` |
 
-## Per-resource series
+### Per-resource series
 
 In addition to the cluster-level aggregates above, the probe emits one series per
 resource. Each carries a resource attribute (mapped from the `volume`,
@@ -211,7 +215,7 @@ OTLP/Prometheus and become filterable in the Web UI.
     with many volumes. Appliance- and node-level performance cover the array
     without that per-volume cost.
 
-## Filtering (Sensor URLs tab of the console)
+### Filtering (Sensor URLs tab of the console)
 
 The Sensor URLs tab of the console exposes filters for this probe:
 
@@ -223,13 +227,13 @@ The Sensor URLs tab of the console exposes filters for this probe:
 `Replication State` render as text (e.g. `CONFIGURED`, `UP`, `Healthy`) via PRTG
 value lookups rather than raw numbers.
 
-# Requirements
+## Requirements
 
 - **PowerStore REST API** reachable from the agent host (HTTPS, default port 443).
 - A **PowerStore user** with read access to the REST API (a monitoring/operator role is sufficient; no administrative rights are required).
 - Network path from the agent to the array's management endpoint.
 
-# Outputs
+## Outputs
 
 PowerStore metrics are available through every configured output — OTLP, Prometheus, and the pull formats (PRTG, Nagios, Web UI). For PRTG and Nagios, query the probe by its configured `name`:
 
@@ -238,7 +242,7 @@ curl "http://localhost:8080/api/{agentkey}/prtg/metrics/powerstore-prod"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/powerstore-prod"
 ```
 
-## Metric reference
+### Metric reference
 
 Every metric this probe can emit. **Metric** is the OpenTelemetry name the
 OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a

@@ -38,13 +38,13 @@ wrong node, another is a machine that was never clustered.
 <!-- schema:params:end -->
 
 ```yaml
-probes:
-  - name: swarm
-    type: swarm
-    params:
-      socket_path: /var/run/docker.sock   # default
-      interval: 60                        # seconds, default 60
-      timeout: 10                         # seconds, default 10
+# probes.d/30-swarm.yaml: each file under probes.d/ is a YAML array of probes
+- name: swarm
+  type: swarm
+  params:
+    socket_path: /var/run/docker.sock   # default
+    interval: 60                        # seconds, default 60
+    timeout: 10                         # seconds, default 10
 ```
 
 On Windows the pipe may also be written `\\.\pipe\docker_engine`.

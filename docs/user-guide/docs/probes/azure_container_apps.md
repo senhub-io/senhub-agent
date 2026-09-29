@@ -52,7 +52,7 @@ The `governance` block is the agent's per-probe governance (see [Configuration](
 Naming applications one by one stops working at the scale of a tenant: the list has to be maintained, and an application created last week is collected only once somebody remembers it. A `discovery` block replaces the list with a question asked of Azure.
 
 ```yaml
-- name: aca-recette
+- name: aca-subscription
   type: azure_container_apps
   params:
     tenant_id: "${env:AZ_TENANT}"
