@@ -411,6 +411,17 @@ Breaking Changes or Fixes below.
   on HTTP 401. The probe now answers the Digest challenge, and keeps
   working against an interface set to Basic.
 
+- **The [ClickHouse](../probes/clickhouse.md) probe collects on a
+  default install.** It read the Prometheus `/metrics` page on port 8123,
+  which ClickHouse does not serve there (HTTP 404; the Prometheus endpoint
+  is off unless configured on a port of its own), so the probe reported
+  every server down. It now reads the system tables over the HTTP
+  interface with the configured user. Three metrics named counters that
+  ClickHouse does not have and were never emitted: connections is now
+  the sum of the TCP, HTTP, MySQL and PostgreSQL connections, active
+  parts reads `PartsActive`, and written data reads the bytes written to
+  MergeTree parts.
+
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and
   `license activate` rewrote the file as root with mode 0600. The Linux

@@ -5,9 +5,11 @@
 
 # ClickHouse
 
-The `clickhouse` probe monitors a ClickHouse server by scraping the standard
-Prometheus `/metrics` endpoint (available since ClickHouse 20.1), mapping the
-key instantaneous gauges, async metrics, and cumulative profile-event counters.
+The `clickhouse` probe monitors a ClickHouse server through its HTTP
+interface (port 8123). It reads `system.metrics`, `system.events` and
+`system.asynchronous_metrics` in one query per collection: active queries,
+connections, memory, parts and merges, and the query, insert and I/O
+counters since the server started.
 
 ## Quick start
 
@@ -17,6 +19,8 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
   type: clickhouse
   params:
     endpoint: http://localhost:8123
+    username: senhub
+    password: ${secret:clickhouse.password}
 ```
 
 ## Parameters
@@ -39,22 +43,21 @@ key instantaneous gauges, async metrics, and cumulative profile-event counters.
 
 ## Metrics
 
-| Metric | Unit | Description |
-|---|---|---|
-| `senhub.clickhouse.up` | 1 | 1 when the `/metrics` endpoint answered successfully |
-| `clickhouse.queries.active` | {query} | Queries currently executing (`ClickHouseMetrics_Query`) |
-| `clickhouse.connections` | {connection} | Open client connections |
-| `clickhouse.merges.active` | {merge} | Background merge operations currently running |
-| `clickhouse.parts.active` | {part} | Total data parts across all tables |
-| `clickhouse.memory.used` | By | Process memory allocated by the ClickHouse server |
-| `clickhouse.inserted.rows` | {row} | Rows inserted since server start (profile counter) |
-| `clickhouse.queries.select` | {query} | SELECT queries since server start |
-| `clickhouse.queries.insert` | {query} | INSERT queries since server start |
+Active queries, open client connections, memory tracked by the server,
+active parts and running merges, uptime, and the cumulative query, insert
+and read and write counters. The full list is in the
+[metric reference](#metric-reference) below.
 
 ## Operational notes
 
-- The probe uses the Prometheus text format at `/metrics`, not the SQL interface. No extra user grant is required unless metrics access is restricted.
-- ClickHouse 20.1+ exposes the Prometheus endpoint by default on the HTTP port (8123). Older installations require `prometheus.port` in the server config.
+- The probe needs a user that can read the `system` tables, nothing more.
+  A read-only user is enough:
+  `CREATE USER senhub IDENTIFIED BY '…' SETTINGS readonly = 1; GRANT SELECT ON system.* TO senhub;`
+- It does not use the Prometheus endpoint, which ClickHouse leaves off
+  unless a `<prometheus>` block gives it a port of its own. `/metrics` on
+  port 8123 answers 404 on a default install.
+- A counter the server has never incremented, such as the INSERT count on
+  a server that has received none, is reported as 0.
 
 ## Metric reference
 
@@ -69,19 +72,19 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
-| `senhub.clickhouse.up` | `senhub.clickhouse.up` | ClickHouse {instance} Up | # | 1 when the ClickHouse /metrics endpoint answered successfully, 0 otherwise |
-| `clickhouse.queries.active` | `clickhouse.queries.active` | ClickHouse {instance} Active Queries | # | Number of queries currently being processed (ClickHouseMetrics_Query) |
-| `clickhouse.connections` | `clickhouse.connections` | ClickHouse {instance} Connections | # | Number of open client connections (ClickHouseMetrics_Connection) |
-| `clickhouse.memory.used` | `clickhouse.memory.used` | ClickHouse {instance} Memory Used | B | Memory tracked by the query tracker (ClickHouseMetrics_MemoryTracking) |
-| `clickhouse.parts.active` | `clickhouse.parts.active` | ClickHouse {instance} Active Parts | # | Active data parts in MergeTree tables (ClickHouseMetrics_Parts) |
-| `clickhouse.merges.active` | `clickhouse.merges.active` | ClickHouse {instance} Active Merges | # | MergeTree background merges currently running (ClickHouseMetrics_Merge) |
-| `clickhouse.uptime` | `clickhouse.uptime` | ClickHouse {instance} Uptime | s | Server uptime in seconds (ClickHouseAsyncMetrics_Uptime) |
-| `clickhouse.queries.total` | `clickhouse.queries.total` | ClickHouse {instance} Total Queries | # | Cumulative number of queries executed (ClickHouseProfileEvents_Query) |
-| `clickhouse.queries.select` | `clickhouse.queries.select` | ClickHouse {instance} SELECT Queries | # | Cumulative SELECT queries executed (ClickHouseProfileEvents_SelectQuery) |
-| `clickhouse.queries.insert` | `clickhouse.queries.insert` | ClickHouse {instance} INSERT Queries | # | Cumulative INSERT queries executed (ClickHouseProfileEvents_InsertQuery) |
-| `clickhouse.inserted.rows` | `clickhouse.inserted.rows` | ClickHouse {instance} Inserted Rows | # | Cumulative rows inserted (ClickHouseProfileEvents_InsertedRows) |
-| `clickhouse.inserted.data` | `clickhouse.inserted.data` | ClickHouse {instance} Inserted Bytes | B | Cumulative bytes inserted (ClickHouseProfileEvents_InsertedBytes) |
-| `clickhouse.read.data` | `clickhouse.read.data` | ClickHouse {instance} Read Compressed Bytes | B | Cumulative compressed bytes read from storage (ClickHouseProfileEvents_ReadCompressedBytes) |
-| `clickhouse.written.data` | `clickhouse.written.data` | ClickHouse {instance} Written Compressed Bytes | B | Cumulative compressed bytes written to storage (ClickHouseProfileEvents_WriteCompressedBytes) |
+| `senhub.clickhouse.up` | `senhub.clickhouse.up` | ClickHouse {instance} Up | # | 1 when the ClickHouse HTTP interface answered the system-table query, 0 otherwise |
+| `clickhouse.queries.active` | `clickhouse.queries.active` | ClickHouse {instance} Active Queries | # | Number of queries currently being processed (system.metrics Query) |
+| `clickhouse.connections` | `clickhouse.connections` | ClickHouse {instance} Connections | # | Open client connections: TCP, HTTP, MySQL and PostgreSQL interfaces (system.metrics) |
+| `clickhouse.memory.used` | `clickhouse.memory.used` | ClickHouse {instance} Memory Used | B | Memory tracked by the query tracker (system.metrics MemoryTracking) |
+| `clickhouse.parts.active` | `clickhouse.parts.active` | ClickHouse {instance} Active Parts | # | Active data parts in MergeTree tables (system.metrics PartsActive) |
+| `clickhouse.merges.active` | `clickhouse.merges.active` | ClickHouse {instance} Active Merges | # | MergeTree background merges currently running (system.metrics Merge) |
+| `clickhouse.uptime` | `clickhouse.uptime` | ClickHouse {instance} Uptime | s | Server uptime in seconds (system.asynchronous_metrics Uptime) |
+| `clickhouse.queries.total` | `clickhouse.queries.total` | ClickHouse {instance} Total Queries | # | Cumulative number of queries executed (system.events Query) |
+| `clickhouse.queries.select` | `clickhouse.queries.select` | ClickHouse {instance} SELECT Queries | # | Cumulative SELECT queries executed (system.events SelectQuery) |
+| `clickhouse.queries.insert` | `clickhouse.queries.insert` | ClickHouse {instance} INSERT Queries | # | Cumulative INSERT queries executed (system.events InsertQuery) |
+| `clickhouse.inserted.rows` | `clickhouse.inserted.rows` | ClickHouse {instance} Inserted Rows | # | Cumulative rows inserted (system.events InsertedRows) |
+| `clickhouse.inserted.data` | `clickhouse.inserted.data` | ClickHouse {instance} Inserted Bytes | B | Cumulative bytes inserted (system.events InsertedBytes) |
+| `clickhouse.read.data` | `clickhouse.read.data` | ClickHouse {instance} Read Compressed Bytes | B | Cumulative compressed bytes read from storage (system.events ReadCompressedBytes) |
+| `clickhouse.written.data` | `clickhouse.written.data` | ClickHouse {instance} Written Compressed Bytes | B | Cumulative compressed bytes written to MergeTree parts by inserts (system.events MergeTreeDataWriterCompressedBytes) |
 
 <!-- schema:metrics:end -->
