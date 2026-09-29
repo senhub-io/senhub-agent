@@ -49,6 +49,11 @@ Breaking Changes or Fixes below.
 11. **OTLP receiver counters.** Queries on the sending service of
     `senhub_agent_otlp_receiver_received_total` use the label
     `senhub_otlp_receiver_sender_service_name` instead of `service_name`.
+12. **Linux hosts running the IBM i probe, or Java or Node.js plugins
+    through the exec probe.** Run `sudo senhub-agent refresh-unit --yes`
+    once after upgrading: the installed service unit still forbids the
+    writable-executable memory a JVM needs, and an upgrade does not
+    rewrite the unit.
 
 ## Breaking Changes
 
@@ -579,6 +584,20 @@ Breaking Changes or Fixes below.
   reported and a warning was logged on every collection. The limit is
   now read from `V$PARAMETER` there, which needs one more grant
   (`GRANT SELECT ON V_$PARAMETER`).
+
+- **The IBM i probe starts on a Linux service.** The service unit set
+  `MemoryDenyWriteExecute=true`, which the processes the agent launches
+  inherit: the IBM i probe's Java bridge could not start its JVM, and its
+  native runner could not load. The unit no longer sets it (the agent
+  itself still makes no executable memory). An existing install picks it
+  up with `senhub-agent refresh-unit`.
+
+- **A refused password is not retried every two minutes.** A probe whose
+  start failed was retried on a two-minute timer, and for the IBM i probe
+  each retry was a sign-on: a wrong password disabled the monitoring
+  profile after three (QMAXSIGN). A start refused for its credentials now
+  waits for a configuration reload or a restart; other start failures
+  keep the timer.
 
 - **A change made with `sudo` no longer stops a non-root service.**
   `sudo senhub-agent config set ...`, `secret set ...` and

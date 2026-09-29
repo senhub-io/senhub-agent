@@ -59,13 +59,19 @@ ProtectKernelLogs=true
 ProtectControlGroups=true
 
 # Process-level restrictions. None of these are used by any probe: the agent
-# does not create namespaces, does not need SUID files, does not change its
-# ABI personality, and generates no executable memory (Go does not JIT).
+# does not create namespaces, does not need SUID files and does not change
+# its ABI personality.
+#
+# MemoryDenyWriteExecute is deliberately NOT set. The agent itself makes no
+# executable memory, but the setting is inherited by what it launches: the
+# IBM i probe's Java bridge (a JVM needs writable-executable memory for its
+# JIT, and failed with "Error occurred during initialization of VM"), its
+# native runner (text relocations), and any Java or Node.js plugin the exec
+# probe runs.
 RestrictNamespaces=true
 RestrictSUIDSGID=true
 RestrictRealtime=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
 RemoveIPC=true
 UMask=0077
 
