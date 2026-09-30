@@ -95,6 +95,18 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **SNMP devices no longer expire in the topology between two reports.** The
+  agent publishes a whole topology cycle at once; on a fleet of about
+  forty devices that is more events than the OTLP exporter's entity
+  buffer holds, and the overflow was dropped without a trace. The same
+  leading devices were dropped cycle after cycle, stayed unannounced past
+  their liveness interval, and expired in the topology backend together
+  with their interfaces, to come back a few minutes later; on the lab
+  fleet some did so twenty times in twelve hours. A full buffer now makes
+  the publish wait for room, and an event still dropped, when the
+  exporter stops draining, is counted as
+  `senhub.agent.otlp.dropped{reason="entity_queue_full"}`.
+
 - **Hardware health follows the OpenTelemetry states.** Redfish emitted
   `hw.status{hw.state="unknown"}` for a component whose health the BMC does
   not report; the convention has no such state, so a conforming backend
