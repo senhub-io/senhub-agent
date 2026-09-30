@@ -1,0 +1,95 @@
+# SenHub Agent as a Podman Quadlet unit.
+#
+# Quadlet turns this file into senhub-agent.service at the next
+# `systemctl daemon-reload`. Place it, with senhub-agent.env beside it, in:
+#
+#   rootful   /etc/containers/systemd/
+#   rootless  ~/.config/containers/systemd/   (use `systemctl --user`)
+#
+# Requires Podman 4.6 or later (AutoUpdate=). On 4.4 and 4.5, replace
+# AutoUpdate=registry with Label=io.containers.autoupdate=registry.
+# Full walk-through: docs/user-guide/docs/podman.md.
+
+[Unit]
+Description=SenHub Agent (container)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+# Pin a released version, 0.6.1 or later: earlier images listen on the
+# container's loopback only, and the published port answers nothing.
+# There is no moving tag: moving to a new version means editing this
+# line, see "Updates" below. The -oss image needs no licence.
+Image=ghcr.io/senhub-io/senhub-agent:0.6.1
+ContainerName=senhub-agent
+
+# Updates. The agent's own auto-update is off in a container: it would
+# replace a binary inside a layer that the next container discards.
+# `podman auto-update` pulls the reference above again and restarts the
+# unit when the registry serves a different digest for it, so it picks
+# up a republished image of this version, not a new version.
+AutoUpdate=registry
+
+# Plain settings. The entrypoint reads them on the FIRST start only, when
+# the configuration volume holds no agent.yaml yet. The path is relative
+# to this file.
+EnvironmentFile=senhub-agent.env
+
+# Secrets, kept by Podman rather than written in the environment file.
+# Create each one first, as the same user that runs this unit, then
+# uncomment its line:
+#   printf '%s' "<token>" | podman secret create senhub-otlp-token -
+#Secret=senhub-otlp-token,type=env,target=OTLP_BEARER_TOKEN
+#Secret=senhub-license,type=env,target=SENHUB_LICENSE
+#Secret=senhub-azure-client-secret,type=env,target=SENHUB_AZURE_CLIENT_SECRET
+
+# Named volumes. Podman creates them on first use and copies the image's
+# directories into them, ownership included, so they belong to the
+# agent's uid 10001 whether the unit runs rootful or rootless.
+# UserNS=keep-id brings nothing here: it maps your own uid into the
+# container, and the agent runs as the image's fixed uid 10001, not as
+# yours. A host directory still needs `U`, below.
+#
+# State: host identity, agent key, log bookmarks. Losing it makes the
+# agent arrive as a new host.
+Volume=senhub-agent-state:/var/lib/senhub-agent
+# Configuration: written from the environment on first start, then kept,
+# console edits included. To rebuild it from a changed environment file,
+# stop the unit and `podman volume rm senhub-agent-config`; the identity
+# lives in the state volume and survives.
+Volume=senhub-agent-config:/etc/senhub-agent
+
+# A host directory instead of a named volume: `Z` gives it a private
+# SELinux label, `U` hands it to the container's uid 10001 (mapped into
+# your sub-uid range when rootless).
+#Volume=/srv/senhub-agent/probes.d:/etc/senhub-agent/probes.d:Z,U
+
+# HTTP output: console, PRTG, Nagios, Prometheus. Keep both sides equal
+# to SENHUB_HTTP_PORT. Rootless Podman cannot publish a host port below
+# 1024 unless net.ipv4.ip_unprivileged_port_start allows it.
+PublishPort=8080:8080
+
+# The host name the agent reports. Without it the container id is used,
+# and every new container shows up under a new name.
+#HostName=senhub-agent-%H
+
+# The image's own health check, restated so it applies whatever manifest
+# format the image was pulled in. `kill` hands an unhealthy agent to
+# systemd, which restarts it (Restart= below). The port is literal:
+# systemd would expand a ${...} variable here itself.
+HealthCmd=wget -q -O /dev/null http://127.0.0.1:8080/health
+HealthInterval=30s
+HealthTimeout=5s
+HealthStartPeriod=20s
+HealthRetries=3
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+# The first start pulls the image, which can outlast systemd's 90 s.
+TimeoutStartSec=900
+
+[Install]
+# Quadlet units are not `systemctl enable`d: this line starts it at boot.
+# Rootless, it starts at login, or at boot with `loginctl enable-linger`.
+WantedBy=default.target
