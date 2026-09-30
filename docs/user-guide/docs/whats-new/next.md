@@ -4,6 +4,62 @@ Changes since 0.6.0, collected as they are merged.
 
 <div class="rn-filter"></div>
 
+## Breaking Changes
+
+- **Metric names and units follow the Prometheus and OpenTelemetry
+  rules.** `promtool check metrics` flagged 0.6.0: some series were
+  exported in milliseconds, microseconds, nanoseconds, hours, days or
+  bits per second, where both conventions ask for seconds and bytes, and
+  some gauges ended in `.total`, which Prometheus reserves for counters
+  (`senhub_veeam_jobs_total` read as a counter to every tool). There is
+  no transition period: dashboards, alerts and recording rules on the old
+  names must be updated when upgrading. PRTG, Nagios and Zabbix are not
+  affected: they keep their channel names and the probe's display unit.
+
+  Units: every duration is now exported in seconds (Cassandra, Consul,
+  Docker, Elasticsearch, Envoy, OpenSearch, RabbitMQ, Redis, SMART, Solr,
+  Tomcat, ZooKeeper, and the HTTP check certificate expiry, which was in
+  days), and every throughput in bytes per second (host network interface
+  speed, NetScaler, Redfish, SNMP interfaces). The value is converted, so
+  a Prometheus series gains the `_seconds` or `_bytes_per_second` suffix
+  and a scale factor, for instance `senhub_redis_cmd_time_seconds_total`
+  where `senhub_redis_cmd_usec_microseconds_total` was.
+
+  Renamed gauges:
+
+  | 0.6.0 | 0.6.1 |
+  |---|---|
+  | `senhub.ad_hybrid.sync.agents.total` | `senhub.ad_hybrid.sync.agent.count` |
+  | `ceph.osd.total` | `ceph.osd.count` |
+  | `senhub.citrix.machines.total` | `senhub.citrix.machine.count` |
+  | `senhub.citrix.connection_failures.total` | `senhub.citrix.connection_failure.count` |
+  | `senhub.ibmi.jobs.total` | `senhub.ibmi.job.count` |
+  | `senhub.ibmi.hardware.total` | `senhub.ibmi.hardware.resource.count` |
+  | `senhub.db.database.size.total` (MySQL) | `senhub.db.mysql.data.size` |
+  | `gpu.memory.total` | `gpu.memory.limit` |
+  | `oracle.sga.total` | `oracle.sga.size` |
+  | `oracle.pga.total` | `oracle.pga.size` |
+  | `oracle.tablespace.total` | `oracle.tablespace.limit` |
+  | `phpfpm.processes.total` | `phpfpm.process.count` |
+  | `proxmox.node.memory.total` | `proxmox.node.memory.limit` |
+  | `proxmox.vm.memory.total` | `proxmox.vm.memory.limit` |
+  | `proxmox.storage.total` | `proxmox.storage.limit` |
+  | `rabbitmq.consumers.total` | `rabbitmq.consumer.count` |
+  | `rabbitmq.queues.total` | `rabbitmq.queue.count` |
+  | `rabbitmq.connections.total` | `rabbitmq.connection.count` |
+  | `rabbitmq.channels.total` | `rabbitmq.channel.count` |
+  | `unifi.devices.total` | `unifi.device.count` |
+  | `unifi.clients.total` | `unifi.client.count` |
+  | `senhub.veeam.jobs.total` | `senhub.veeam.job.count` |
+  | `senhub.vsphere_ha.nsx.transport_nodes.total` | `senhub.vsphere_ha.nsx.transport_node.count` |
+  | `redis.cmd.usec` | `redis.cmd.time` |
+  | `smart.disk.power_on_hours` | `smart.disk.power_on.time` |
+
+  In Prometheus, each name above takes underscores (`senhub_veeam_job_count`).
+  Names ending in `.count` that OpenTelemetry defines, such as
+  `system.process.count`, are kept although `promtool` warns on them.
+  The Grafana dashboards shipped under `docs/grafana/` use the new names.
+
 ## Features
 
 - **A route is identified by its destination and its next hop.** In the

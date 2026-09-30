@@ -91,7 +91,7 @@ Sync and agent series carry attributes identifying the sync service (`senhub.ad_
 |--------|------|-------------|
 | `senhub.ad_hybrid.sync.health` | `1` | Sync service health (Healthy=2, Warning=1, Error/other=0), per `service.name` |
 | `senhub.ad_hybrid.sync.agents.healthy` | `{agent}` | Number of sync agents reporting a healthy state, per `service.name` |
-| `senhub.ad_hybrid.sync.agents.total` | `{agent}` | Total number of registered sync agents, per `service.name` |
+| `senhub.ad_hybrid.sync.agent.count` | `{agent}` | Total number of registered sync agents, per `service.name` |
 | `senhub.ad_hybrid.sync.export_errors` | `{error}` | Directory-sync export error count, per `service.name` and `error.bucket` |
 
 ## Agents
@@ -132,7 +132,7 @@ series' tags.
 | `senhub.ad_hybrid.up` | `ad_hybrid_up` | Service Reachable | # | 1 when the Azure AD Connect Health API answered this cycle, else 0 |
 | `senhub.ad_hybrid.sync.health` | `ad_hybrid_sync_health` | Sync Health ({service_name}) | # | Sync service health (Healthy=2, Warning=1, Error/other=0) |
 | `senhub.ad_hybrid.sync.agents.healthy` | `ad_hybrid_sync_agents_healthy` | Healthy Sync Agents ({service_name}) | # | Number of sync agents reporting a healthy state |
-| `senhub.ad_hybrid.sync.agents.total` | `ad_hybrid_sync_agents_total` | Total Sync Agents ({service_name}) | # | Total number of registered sync agents |
+| `senhub.ad_hybrid.sync.agent.count` | `ad_hybrid_sync_agents_total` | Total Sync Agents ({service_name}) | # | Total number of registered sync agents |
 | `senhub.ad_hybrid.sync.export_errors` | `ad_hybrid_sync_export_errors` | Export Errors ({error_bucket}) | # | Directory-sync export error count, per error bucket |
 | `senhub.ad_hybrid.agent.last_seen` | `ad_hybrid_agent_last_seen` | Agent Last Seen ({agent_server}) | s | Seconds since the sync agent last reported to Azure AD Connect Health |
 

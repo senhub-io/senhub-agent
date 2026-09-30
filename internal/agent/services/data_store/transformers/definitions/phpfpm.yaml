@@ -119,7 +119,7 @@ metrics:
     category: "processes"
     description: "Total number of processes (active + idle)"
     otel:
-      name: phpfpm.processes.total
+      name: phpfpm.process.count
       unit: "{process}"
       type: gauge
     tag_to_attribute:

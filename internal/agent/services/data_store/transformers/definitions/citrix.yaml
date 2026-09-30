@@ -48,7 +48,7 @@ metrics:
     category: "infrastructure"
     description: "Total number of VDA machines in the delivery group"
     otel:
-      name: senhub.citrix.machines.total
+      name: senhub.citrix.machine.count
       unit: "{machine}"
       type: gauge
 
@@ -257,7 +257,7 @@ metrics:
     category: "failures"
     description: "Total number of failed user connection attempts across all failure categories"
     otel:
-      name: senhub.citrix.connection_failures.total
+      name: senhub.citrix.connection_failure.count
       unit: "{failure}"
       type: gauge
 

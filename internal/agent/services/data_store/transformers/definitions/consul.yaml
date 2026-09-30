@@ -50,7 +50,7 @@ metrics:
     description: "Mean Raft commit time over the last interval (milliseconds)"
     otel:
       name: consul.raft.commit.time
-      unit: "ms"
+      unit: "s"
       type: gauge
 
   - name: "consul.rpc.requests"
