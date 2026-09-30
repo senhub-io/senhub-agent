@@ -147,12 +147,19 @@ func (o Observation) foldRelationships() (entities []Entity, orphans []Relation)
 		entities[i].Relationships = nil
 		idx[entityKey(entities[i].Type, entities[i].ID)] = i
 	}
+	seen := make(map[string]bool, len(o.Relations))
 	for _, r := range o.Relations {
 		i, ok := idx[entityKey(r.FromType, r.FromID)]
 		if !ok {
 			orphans = append(orphans, r)
 			continue
 		}
+		// Two sources can state the same relation; one descriptor carries it.
+		rk := entityKey(r.FromType, r.FromID) + "\x00" + r.Type + "\x00" + entityKey(r.ToType, r.ToID)
+		if seen[rk] {
+			continue
+		}
+		seen[rk] = true
 		entities[i].Relationships = append(entities[i].Relationships, Relationship{
 			Type:       r.Type,
 			TargetType: r.ToType,
