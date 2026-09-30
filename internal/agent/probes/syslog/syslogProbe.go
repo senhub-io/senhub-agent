@@ -255,6 +255,9 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 	if timestamp.IsZero() {
 		timestamp = time.Now()
 	}
+	if _, rfc3164 := logParts["tag"]; rfc3164 {
+		timestamp = hostLocalWallClock(timestamp)
+	}
 
 	attributes := map[string]string{
 		"syslog.facility":      fmt.Sprintf("%d", facility),
@@ -308,4 +311,18 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 
 func (p *SyslogProbe) String() string {
 	return fmt.Sprintf("SyslogProbe{protocol=%s, bind=%s, port=%d}", p.config.Protocol, p.config.BindAddress, p.config.Port)
+}
+
+// hostLocalWallClock reads an RFC 3164 timestamp in the host's time zone.
+// The header carries no zone; senders write their local time, and a
+// sender and its collector share a zone far more often than not. The
+// parser go-syslog embeds reads it as UTC and offers no way to change
+// that, so a Paris device's 09:49:59 arrived as 09:49:59Z, two hours in
+// the future. A timestamp the parser did not read (it stamps the arrival
+// time in the local zone) is left alone.
+func hostLocalWallClock(ts time.Time) time.Time {
+	if ts.Location() != time.UTC {
+		return ts
+	}
+	return time.Date(ts.Year(), ts.Month(), ts.Day(), ts.Hour(), ts.Minute(), ts.Second(), ts.Nanosecond(), time.Local)
 }

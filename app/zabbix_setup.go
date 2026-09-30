@@ -541,19 +541,29 @@ func runZabbixSetup(args []string) {
 	}
 
 	fmt.Println()
+	server := hostOf(rawURL)
 	fmt.Println("The server is ready. On every machine to monitor, install the agent")
-	fmt.Println("and give it two lines:")
+	fmt.Println("with the server's address:")
 	fmt.Println()
-	fmt.Println("  # strategies.d/20-zabbix.yaml")
+	fmt.Print(serverAddressNote(server))
+	fmt.Println()
+	fmt.Printf("  Windows:    msiexec /i senhub-agent-<version>-amd64.msi /qn ZABBIX_SERVER=%s\n", server)
+	fmt.Printf("  Linux:      sudo /usr/local/bin/senhub-agent config init --zabbix-server %s\n", server)
+	fmt.Printf("  Container:  SENHUB_ZABBIX_SERVER=%s\n", server)
+	fmt.Println()
+	fmt.Println("or write the two lines yourself in strategies.d/20-zabbix.yaml:")
+	fmt.Println()
 	fmt.Println("  zabbix:")
-	fmt.Printf("    server: %q\n", hostOf(rawURL))
+	fmt.Printf("    server: %q\n", server)
 	fmt.Println()
 	fmt.Println("It registers by itself at its first contact. Nothing else to do,")
 	fmt.Println("and nothing to type in the Zabbix interface.")
 }
 
-// hostOf turns the frontend URL into the host:port an agent pushes to,
-// which is the trapper port and not the frontend's.
+// hostOf keeps the host of the frontend URL and no port: the setup only
+// talks to the frontend, and the trapper port an agent pushes to is set
+// in the server's own configuration, which the API does not expose. The
+// agent adds 10051 to an address without a port.
 func hostOf(rawURL string) string {
 	u := rawURL
 	for _, p := range []string{"https://", "http://"} {
@@ -562,7 +572,13 @@ func hostOf(rawURL string) string {
 	if i := strings.IndexAny(u, "/:"); i >= 0 {
 		u = u[:i]
 	}
-	return u + ":10051"
+	return u
+}
+
+func serverAddressNote(host string) string {
+	return fmt.Sprintf("  %s is the frontend's host. Without a port the agent uses 10051;\n"+
+		"  if the server or proxy listens elsewhere (ListenPort in its\n"+
+		"  configuration), or runs on another machine, write host:port instead.\n", host)
 }
 
 // supportedPlatforms are the operating systems the agent is published

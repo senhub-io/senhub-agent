@@ -43,7 +43,7 @@ No parameters are required. The probe auto-detects all GPUs visible to
 | `senhub.nvidia.up` | 1 | 1 when `nvidia-smi` returned data for the GPU, 0 when absent or failed |
 | `gpu.utilization` | 1 | GPU core utilization ratio (0–1), tagged with `gpu.index` / `gpu.name` |
 | `gpu.memory.used` | By | GPU memory currently in use |
-| `gpu.memory.total` | By | Total GPU memory |
+| `gpu.memory.limit` | By | Total GPU memory |
 | `gpu.temperature` | Cel | GPU die temperature |
 | `gpu.power.usage` | W | Power draw in watts |
 | `gpu.encoder.utilization` | 1 | Video encoder utilization ratio (0–1) |
@@ -72,7 +72,7 @@ series' tags.
 | `senhub.nvidia.up` | `senhub.nvidia.up` | GPU {gpu.index} ({gpu.name}) Availability | # | 1 when nvidia-smi returned data for this GPU, 0 when nvidia-smi is absent or failed |
 | `gpu.utilization` | `gpu.utilization` | GPU {gpu.index} ({gpu.name}) Utilization | % | GPU core utilization in percent (0–100); share of time the GPU was busy over the last sample period |
 | `gpu.memory.used` | `gpu.memory.used` | GPU {gpu.index} ({gpu.name}) Memory Used | B | GPU framebuffer memory currently in use, in bytes |
-| `gpu.memory.total` | `gpu.memory.total` | GPU {gpu.index} ({gpu.name}) Memory Total | B | Total GPU framebuffer memory capacity, in bytes |
+| `gpu.memory.limit` | `gpu.memory.total` | GPU {gpu.index} ({gpu.name}) Memory Total | B | Total GPU framebuffer memory capacity, in bytes |
 | `gpu.memory.utilization` | `gpu.memory.utilization` | GPU {gpu.index} ({gpu.name}) Memory Utilization | % | GPU framebuffer memory utilization in percent (0–100); share of total framebuffer in use |
 | `gpu.temperature` | `gpu.temperature` | GPU {gpu.index} ({gpu.name}) Temperature | °C | GPU die temperature in degrees Celsius |
 | `gpu.power.usage` | `gpu.power.usage` | GPU {gpu.index} ({gpu.name}) Power Draw | W | Current GPU power draw in watts (not emitted when nvidia-smi reports N/A) |

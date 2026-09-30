@@ -37,7 +37,7 @@ storage:
   - name: http
     params:
       port: 8080
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
 
 cache:
   retention_minutes: 5
@@ -265,7 +265,7 @@ storage:
     params:
       port: 8080
       bind_address: "0.0.0.0"
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
 ```
 
 ### HTTP Storage Parameters
@@ -274,7 +274,7 @@ storage:
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
-| `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios"]` |
+| `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
 
 ### Available Endpoint Types
@@ -295,7 +295,7 @@ storage:
   - name: http
     params:
       port: 8443
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
       tls:
         enabled: true
         min_tls_version: "1.2"
@@ -394,7 +394,7 @@ storage:
   - name: http
     params:
       port: 8080
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
 
 cache:
   retention_minutes: 5
@@ -437,7 +437,7 @@ storage:
   - name: http
     params:
       port: 8443
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
       tls:
         enabled: true
         min_tls_version: "1.2"
@@ -699,7 +699,7 @@ Example output:
 Checking configuration: /etc/senhub-agent/agent.yaml
 
   [OK]   config_version: 3
-  [OK]   agent.key: 550e8400-e29b-41d4-a716-446655440000
+  [OK]   agent.key: set (UUID, value hidden; `senhub-agent key show` prints it)
   [OK]   agent.license: tier=pro, expires=2031-04-14
   [OK]   License binding verified
   [OK]   1 probe(s) configured

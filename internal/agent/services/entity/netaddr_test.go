@@ -1,6 +1,9 @@
 package entity
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestIsHostLocalAddressStr(t *testing.T) {
 	// hostLocal=true means "must NOT be emitted as a shared network.address".
@@ -55,5 +58,21 @@ func TestIsContainerBridgeIface(t *testing.T) {
 		if got := IsContainerBridgeIface(in); got != want {
 			t.Errorf("IsContainerBridgeIface(%q) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+func TestInterfaceNetworkAttributes(t *testing.T) {
+	got := InterfaceNetworkAttributes(
+		[]string{"10.10.0.60", "10.10.0.61", "192.168.5.1", "2001:db8::5", "10.9.9.9"},
+		map[string]int{"10.10.0.60": 24, "10.10.0.61": 24, "192.168.5.1": 16, "2001:db8::5": 64},
+	)
+	if !reflect.DeepEqual(got[AttrInterfaceAddresses], []string{"10.10.0.60/24", "10.10.0.61/24", "192.168.5.1/16", "2001:db8::5/64"}) {
+		t.Errorf("addresses = %v", got[AttrInterfaceAddresses])
+	}
+	if !reflect.DeepEqual(got[AttrInterfaceSubnets], []string{"10.10.0.0/24", "192.168.0.0/16", "2001:db8::/64"}) {
+		t.Errorf("subnets = %v", got[AttrInterfaceSubnets])
+	}
+	if InterfaceNetworkAttributes([]string{"10.0.0.1"}, map[string]int{"10.0.0.1": 0}) != nil {
+		t.Error("an unknown (zero) prefix gives no attribute")
 	}
 }

@@ -493,7 +493,7 @@ series' tags.
 | `hw.status` | `hardware.power.health` | {psu_name} Health | # | Power supply unit health status |
 | `hw.physical_disk.size` | `hardware.storage.drive.capacity.total` | {drive_name} Total Capacity | Bytes | Total drive capacity in bytes |
 | `hw.status` | `hardware.storage.drive.health` | {drive_name} Health | # | Drive health status |
-| `senhub.hardware.physical_disk.failure_predicted` | `hardware.storage.drive.failure_predicted` | {drive_name} Failure Predicted | # | Drive failure prediction status |
+| `hw.status` | `hardware.storage.drive.failure_predicted` | {drive_name} Failure Predicted | # | Drive failure prediction status |
 | `senhub.hardware.physical_disk.has_active_operations` | `hardware.storage.drive.has_operations` | {drive_name} Has Operations | # | Indicates if drive has active operations |
 | `senhub.hardware.physical_disk.operation.progress_ratio` | `hardware.storage.drive.operation.progress` | {drive_name} Operation Progress | % | Drive operation progress percentage |
 | `senhub.hardware.physical_disk.link_speed` | `hardware.storage.drive.speed_gbs` | {drive_name} Negotiated Speed | Gbps | Drive negotiated speed in Gbps |

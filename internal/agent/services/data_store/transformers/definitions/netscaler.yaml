@@ -68,7 +68,7 @@ metrics:
     description: "Aggregate network receive throughput across all interfaces"
     otel:
       name: senhub.netscaler.system.network.throughput
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       attributes:
         network.io.direction: receive
@@ -83,7 +83,7 @@ metrics:
     description: "Aggregate network transmit throughput across all interfaces"
     otel:
       name: senhub.netscaler.system.network.throughput
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       attributes:
         network.io.direction: transmit
@@ -156,7 +156,7 @@ metrics:
     description: "Total network throughput (RX + TX) of the NetScaler"
     otel:
       name: senhub.netscaler.ns.throughput
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       attributes:
         senhub.netscaler.traffic_type: total
@@ -170,7 +170,7 @@ metrics:
     description: "HTTP-only throughput of the NetScaler"
     otel:
       name: senhub.netscaler.ns.throughput
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       attributes:
         senhub.netscaler.traffic_type: http
@@ -547,8 +547,8 @@ metrics:
     category: "ssl_certificates"
     description: "Days until SSL certificate expires (negative if expired)"
     otel:
-      name: senhub.netscaler.ssl.certificate.days_to_expiration
-      unit: "{day}"
+      name: senhub.netscaler.ssl.certificate.expiry
+      unit: "s"
       type: gauge
     tag_to_attribute:
       certname: senhub.netscaler.ssl.certificate.name
@@ -898,7 +898,7 @@ metrics:
     description: "Receive throughput rate of the interface"
     otel:
       name: senhub.netscaler.interface.throughput
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       attributes:
         network.io.direction: receive
@@ -915,7 +915,7 @@ metrics:
     description: "Transmit throughput rate of the interface"
     otel:
       name: senhub.netscaler.interface.throughput
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       attributes:
         network.io.direction: transmit
@@ -995,7 +995,7 @@ metrics:
     description: "Negotiated link speed of the interface"
     otel:
       name: senhub.netscaler.interface.link_speed
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       # Mapper ×1e6 (Mbps → bit/s)
     tag_to_attribute:

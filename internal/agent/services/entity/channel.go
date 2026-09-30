@@ -3,16 +3,18 @@ package entity
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // eventChannelState is the agent's process-lifetime entity-event fan-out:
 // detectors publish Events, sinks (today the OTLP strategy's entity pump)
-// subscribe. Mirrors the agentstate log channel — one package-level value,
-// non-blocking publish with drop-oldest under backpressure.
+// subscribe. One package-level value; a publish waits, within a bound, for
+// room in a subscriber's buffer (see PublishEvent).
 type eventChannelState struct {
-	mu      sync.RWMutex
-	subs    []chan Event
-	dropped atomic.Uint64
+	mu        sync.RWMutex
+	subs      []*subscriber
+	delivered atomic.Uint64
+	dropped   atomic.Uint64
 	// joined are signalled, without blocking, each time a subscriber
 	// arrives, so a running detector can send it the current state.
 	joined []chan struct{}
@@ -20,11 +22,24 @@ type eventChannelState struct {
 
 var eventCh = &eventChannelState{}
 
+// subscriber is one receiver. stalled marks a receiver that let a publish
+// wait out publishWait: later events skip the wait until it takes one
+// again, so a stuck receiver costs one wait, not one per event.
+type subscriber struct {
+	ch      chan Event
+	stalled atomic.Bool
+}
+
+// publishWait bounds how long a publish waits for room in a subscriber's
+// buffer. The detector publishes a whole cycle at once, far more events than
+// the default buffer holds on a large fleet; the receiver drains in
+// microseconds, so waiting delivers them where dropping lost them.
+var publishWait = time.Second
+
 // SubscribeEvents returns a channel that receives Events published via
-// PublishEvent. buf sets the receive buffer; if the consumer falls behind
-// and the buffer fills, events are dropped (oldest-first) and the global
-// drop counter is bumped. Callers must drain the channel and call
-// UnsubscribeEvents when done.
+// PublishEvent. buf sets the receive buffer; a publish that finds it full
+// waits for room (see PublishEvent). Callers must drain the channel and
+// call UnsubscribeEvents when done.
 func SubscribeEvents(buf int) <-chan Event {
 	if buf <= 0 {
 		buf = 256
@@ -34,9 +49,9 @@ func SubscribeEvents(buf int) <-chan Event {
 	// Copy-on-write: publishers snapshot the slice header under RLock
 	// and iterate after releasing — the backing array must therefore
 	// never be mutated in place (#262).
-	next := make([]chan Event, len(eventCh.subs), len(eventCh.subs)+1)
+	next := make([]*subscriber, len(eventCh.subs), len(eventCh.subs)+1)
 	copy(next, eventCh.subs)
-	eventCh.subs = append(next, ch)
+	eventCh.subs = append(next, &subscriber{ch: ch})
 	joined := eventCh.joined
 	eventCh.mu.Unlock()
 	for _, j := range joined {
@@ -80,10 +95,10 @@ func UnsubscribeEvents(ch <-chan Event) {
 	eventCh.mu.Lock()
 	defer eventCh.mu.Unlock()
 	for i, sub := range eventCh.subs {
-		if (<-chan Event)(sub) == ch {
+		if (<-chan Event)(sub.ch) == ch {
 			// Copy-on-write removal — never shift the shared backing
 			// array in place (#262).
-			next := make([]chan Event, 0, len(eventCh.subs)-1)
+			next := make([]*subscriber, 0, len(eventCh.subs)-1)
 			next = append(next, eventCh.subs[:i]...)
 			next = append(next, eventCh.subs[i+1:]...)
 			eventCh.subs = next
@@ -92,32 +107,59 @@ func UnsubscribeEvents(ch <-chan Event) {
 	}
 }
 
-// PublishEvent fans an Event out to every subscriber. Non-blocking: a full
-// subscriber buffer gets one stale event dropped before retrying, then the
-// new event is dropped for that subscriber only if still full. Producers
-// never block — emission is best-effort under backpressure, and the
-// at-least-once/idempotent contract means a dropped heartbeat is recovered
-// by the next one.
+// PublishEvent fans an Event out to every subscriber. When a subscriber's
+// buffer is full it waits up to publishWait for room, then drops the event
+// for that subscriber, counts it, and stops waiting on that subscriber until
+// it accepts one again.
+//
+// It used to drop at once, oldest first. The detector publishes a whole
+// cycle in one burst and marks each event published, so a dropped heartbeat
+// was not retried before the next refresh window, and the burst dropped the
+// same leading entities every time: on a 40-device SNMP fleet the first
+// devices went unannounced for five to ten cycles in a row and expired in
+// the consumer, cascading their interfaces (#993). The drop was counted but
+// the count was exported nowhere; EventStats now feeds the SDK processor
+// metrics (otel.sdk.processor.log.*).
 func PublishEvent(ev Event) {
 	eventCh.mu.RLock()
 	subs := eventCh.subs
 	eventCh.mu.RUnlock()
-	for _, ch := range subs {
+	for _, sub := range subs {
 		select {
-		case ch <- ev:
+		case sub.ch <- ev:
+			sub.stalled.Store(false)
+			eventCh.delivered.Add(1)
+			continue
 		default:
+		}
+		if !sub.stalled.Load() {
+			t := time.NewTimer(publishWait)
 			select {
-			case <-ch:
-				eventCh.dropped.Add(1)
-			default:
-			}
-			select {
-			case ch <- ev:
-			default:
-				eventCh.dropped.Add(1)
+			case sub.ch <- ev:
+				t.Stop()
+				eventCh.delivered.Add(1)
+				continue
+			case <-t.C:
+				sub.stalled.Store(true)
 			}
 		}
+		eventCh.dropped.Add(1)
 	}
+}
+
+// EventStats reports the hand-off to the subscribers as an OpenTelemetry
+// SDK log processor would: events handed over, events dropped because a
+// buffer stayed full, and the buffers' current fill and capacity summed
+// over the subscribers.
+func EventStats() (delivered, dropped uint64, size, capacity int) {
+	eventCh.mu.RLock()
+	subs := eventCh.subs
+	eventCh.mu.RUnlock()
+	for _, sub := range subs {
+		size += len(sub.ch)
+		capacity += cap(sub.ch)
+	}
+	return eventCh.delivered.Load(), eventCh.dropped.Load(), size, capacity
 }
 
 // GetDroppedEntityEventsTotal returns the lifetime count of entity events
@@ -133,5 +175,6 @@ func resetEventChannelForTest() {
 	eventCh.subs = nil
 	eventCh.joined = nil
 	eventCh.dropped.Store(0)
+	eventCh.delivered.Store(0)
 	eventCh.mu.Unlock()
 }

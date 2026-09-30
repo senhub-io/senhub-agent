@@ -43,16 +43,19 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	//   6 process      (cpu.time, memory.{resident,heap}, goroutines,
 	//                   gc.cycles, open_fds)
 	//
-	// Note: `senhub.agent.otlp.export.errors{signal=...}` is emitted only
-	// for signals that have actually failed (#821), so like the other
-	// attribute-keyed counters it contributes nothing here.
+	// plus `senhub.agent.otlp.export.errors`, one series per signal, and
+	// `senhub.agent.otlp.dropped`, one per known reason, both from 0
+	// (#972: an absent series read as "no error" on a healthy agent).
 	// `senhub.agent.collect.errors{probe,reason}`,
-	// `senhub.agent.otlp.dropped{reason=...}`,
 	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	if len(recs) != 33 {
-		t.Fatalf("expected 33 records (no build info, no http requests, no collect errors, no OTLP export errors, no OTLP drops, no checkpoint errors), got %d", len(recs))
+	// The entity-event hand-off adds four OpenTelemetry SDK series:
+	// processed, processed{error.type=queue_full}, queue.size, capacity;
+	// plus senhub.agent.entity.attribute.conflicts and .duplicates.merged.
+	want := 33 + 6 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
+	if len(recs) != want {
+		t.Fatalf("expected %d records (no build info, no http requests, no collect errors, no checkpoint errors), got %d", want, len(recs))
 	}
 
 	names := map[string]bool{}
@@ -63,7 +66,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.uptime_seconds",
 		"senhub.agent.cache.entries",
 		"senhub.agent.probes.active",
-		"senhub.agent.probes.total",
+		"senhub.agent.probe.count",
 		"senhub.agent.probes.healthy",
 		"senhub.agent.transformer.fallback",
 		"senhub.agent.otlp.metrics.pushed",
@@ -322,37 +325,50 @@ func TestSelfMetricsDeclareNoFalseRatios(t *testing.T) {
 }
 
 func TestBuildAgentRecords_ExportErrorsEmittedPerSignal(t *testing.T) {
-	// The counter is attribute-keyed: nothing is emitted until a signal
-	// has actually failed, and then one series per failing signal. This
-	// is what makes a dying logs pipeline visible next to healthy metric
-	// pushes (#821).
+	// One series per signal, present from start at 0 so a dashboard on a
+	// healthy agent shows 0 rather than nothing (#972), and a failing
+	// logs pipeline shows next to healthy metric pushes (#821).
 	agentstate.ResetOTLPExportErrorsBySignalForTest()
 	t.Cleanup(agentstate.ResetOTLPExportErrorsBySignalForTest)
 
 	snap := AgentMetricsSnapshot{StartTime: time.Now()}
-	for _, r := range BuildAgentRecords(snap) {
-		if r.Name == "senhub.agent.otlp.export.errors" {
-			t.Fatalf("export.errors emitted before any failure: %+v", r.Attributes)
+	bySignal := func() map[string]float64 {
+		out := map[string]float64{}
+		for _, r := range BuildAgentRecords(snap) {
+			if r.Name == "senhub.agent.otlp.export.errors" {
+				out[r.Attributes["signal"]] = r.Value
+			}
+		}
+		return out
+	}
+
+	before := bySignal()
+	for _, sig := range agentstate.OTLPSignals {
+		if v, ok := before[sig]; !ok || v != 0 {
+			t.Errorf("before any failure, signal %q = %v (present %v), want 0 and present", sig, v, ok)
 		}
 	}
 
 	agentstate.IncrementOTLPExportErrors("logs")
 	agentstate.IncrementOTLPExportErrors("logs")
 
-	var got []otelmapper.OtelRecord
-	for _, r := range BuildAgentRecords(snap) {
-		if r.Name == "senhub.agent.otlp.export.errors" {
-			got = append(got, r)
+	after := bySignal()
+	if after["logs"] != 2 || after["metrics"] != 0 {
+		t.Errorf("after two logs failures, got %v", after)
+	}
+}
+
+func TestBuildAgentRecords_DropReasonsEmittedFromZero(t *testing.T) {
+	seen := map[string]bool{}
+	for _, r := range BuildAgentRecords(AgentMetricsSnapshot{StartTime: time.Now()}) {
+		if r.Name == "senhub.agent.otlp.dropped" {
+			seen[r.Attributes["reason"]] = true
 		}
 	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 export.errors series, got %d", len(got))
-	}
-	if got[0].Attributes["signal"] != "logs" {
-		t.Errorf("signal attribute=%q, want %q", got[0].Attributes["signal"], "logs")
-	}
-	if got[0].Value != 2 {
-		t.Errorf("value=%v, want 2", got[0].Value)
+	for _, reason := range agentstate.OTLPDropReasons {
+		if !seen[reason] {
+			t.Errorf("drop reason %q not emitted before any drop", reason)
+		}
 	}
 }
 

@@ -81,13 +81,14 @@ metrics:
     unit: "#"
     multi_instance_labels: ["hardware.component"]
     category: "hardware"
-    description: "Power supply status: 1 = ok, 0 = fault or not available"
+    description: "Power supply status: 1 = ok, 0 = fault. A supply the BMC has no reading for emits no value"
     otel:
       name: hw.status
       unit: "1"
       type: updowncounter
       attributes:
         hw.type: power_supply
+        hw.state: ok
     tag_to_attribute:
       hardware.component: hw.id
 
@@ -101,11 +102,13 @@ metrics:
     unit: "#"
     multi_instance_labels: ["hardware.component"]
     category: "hardware"
-    description: "Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable"
+    description: "Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable. A sensor with no reading (ns) emits no value"
     otel:
       name: hw.status
       unit: "1"
       type: updowncounter
+      attributes:
+        hw.state: ok
     tag_to_attribute:
       hardware.component: hw.id
 

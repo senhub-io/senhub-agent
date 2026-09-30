@@ -47,7 +47,7 @@ The status page must answer in JSON: add `?json` to the endpoint or configure th
 | `phpfpm.listen_queue.max` | {connection} | Maximum observed listen queue length |
 | `phpfpm.processes.active` | {process} | PHP-FPM worker processes currently serving a request |
 | `phpfpm.processes.idle` | {process} | Idle worker processes |
-| `phpfpm.processes.total` | {process} | Total worker processes in the pool |
+| `phpfpm.process.count` | {process} | Total worker processes in the pool |
 | `phpfpm.slow_requests` | # | Requests exceeding the slow request threshold (cumulative) |
 | `phpfpm.slow_requests` | {request} | Requests that exceeded `request_slowlog_timeout` |
 
@@ -77,7 +77,7 @@ series' tags.
 | `phpfpm.listen_queue.max` | `phpfpm.listen_queue.max` | PHP-FPM {pool} Listen Queue Max | # | Maximum number of requests observed in the listen queue since pool start |
 | `phpfpm.processes.active` | `phpfpm.processes.active` | PHP-FPM {pool} Active Processes | # | Number of active (currently serving requests) processes |
 | `phpfpm.processes.idle` | `phpfpm.processes.idle` | PHP-FPM {pool} Idle Processes | # | Number of idle processes waiting for requests |
-| `phpfpm.processes.total` | `phpfpm.processes.total` | PHP-FPM {pool} Total Processes | # | Total number of processes (active + idle) |
+| `phpfpm.process.count` | `phpfpm.processes.total` | PHP-FPM {pool} Total Processes | # | Total number of processes (active + idle) |
 | `phpfpm.max_children_reached` | `phpfpm.max_children_reached` | PHP-FPM {pool} Max Children Reached | # | Total number of times the max_children limit was reached since pool start |
 
 <!-- schema:metrics:end -->

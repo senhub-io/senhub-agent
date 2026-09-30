@@ -282,12 +282,12 @@ func (cm *ConfigurationManager) validateProbeConnectivity(probeName string, conf
 		result = cm.testRedfishConnectivity(config, timeout)
 	case "ping_webapp", "load_webapp":
 		result = cm.testWebAppConnectivity(config, timeout)
-	case "syslog":
-		result = cm.testSyslogConnectivity(config, timeout)
 	default:
-		// For local probes (cpu, memory, etc.), connectivity always passes
+		// A local probe, or a receiver such as syslog, has no target to
+		// reach: the test collection that follows is the check, and for
+		// a receiver it opens the listening port.
 		result.Passed = true
-		result.Details = "Local probe - no connectivity test required"
+		result.Details = "No outbound connection to test; the test collection checks this probe"
 	}
 
 	result.Duration = time.Since(startTime).Milliseconds()
@@ -584,14 +584,6 @@ func (cm *ConfigurationManager) testWebAppConnectivity(config map[string]interfa
 		result.Error = fmt.Sprintf("unexpected HTTP status: %d", resp.StatusCode)
 	}
 
-	return result
-}
-
-// testSyslogConnectivity tests syslog server connectivity (basic port check)
-func (cm *ConfigurationManager) testSyslogConnectivity(config map[string]interface{}, timeout int) ValidationTestResult {
-	result := ValidationTestResult{Passed: true}
-	result.Details = "Syslog connectivity test not implemented - assuming valid"
-	// TODO: Implement actual syslog server connectivity test
 	return result
 }
 

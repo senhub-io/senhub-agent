@@ -275,6 +275,7 @@ func parseUpdateCommand(argv []string) (parsed *cliArgs.ParsedArgs, wantHelp boo
 	base.WantedVersion = ua.Version
 	base.UpdateRegistryUrl = ua.RegistryUrl
 	base.DryRun = ua.DryRun
+	base.NoRestart = ua.NoRestart
 	if ua.Verbose {
 		base.Verbose = true
 	}
@@ -542,7 +543,7 @@ func Main() {
 		// copy the unprivileged daemon can replace itself; nothing else
 		// keeps them in sync, so `update` (which runs as root) reconciles
 		// it here (#723).
-		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary))
+		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RestartService(restartServiceAfterUpdate))
 		return
 	case "refresh-unit":
 		runRefreshUnit()
@@ -653,7 +654,9 @@ Other Commands:
     config init [opts]    Create the default offline configuration if none
                           exists (idempotent). Accepts --config-path,
                           --http-port <n>, --license <jwt>, --tags k=v,...,
-                          --otlp-endpoint; refuses a port already in use
+                          --otlp-endpoint, --zabbix-server host:port,
+                          --zabbix-host-metadata; refuses a port already
+                          in use
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML

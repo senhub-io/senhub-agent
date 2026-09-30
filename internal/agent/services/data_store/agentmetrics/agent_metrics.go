@@ -5,6 +5,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // AgentMetricsSnapshot is a frozen-in-time view of the agent's own
@@ -64,6 +65,7 @@ const attrSenderService = "senhub.otlp_receiver.sender.service.name"
 func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	uptime := time.Since(snap.StartTime).Seconds()
 
+	delivered, dropped, queued, capacity := entity.EventStats()
 	records := []otelmapper.OtelRecord{
 		{
 			Name:        "senhub.agent.uptime_seconds",
@@ -90,7 +92,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Number of probes that have emitted at least one data point in the cache window.",
 		},
 		{
-			Name:        "senhub.agent.probes.total",
+			Name:        "senhub.agent.probe.count",
 			Unit:        "{probe}",
 			Type:        "gauge",
 			Attributes:  map[string]string{},
@@ -216,6 +218,44 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(agentstate.GetDroppedLogRecordsTotal()),
 			Description: "Cumulative count of log records dropped due to subscriber backpressure on the agent log channel.",
 		},
+		// The entity-event hand-off is reported with the OpenTelemetry SDK
+		// processor metrics: it is a log processor queue in all but name
+		// (entity events travel as OTLP log records), and a standard
+		// dashboard reads these names.
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.entity.attribute.conflicts",
+			Unit:        "{conflict}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(entity.AttributeConflictsTotal()),
+			Description: "Entity attributes two sources of this agent reported with different values in one cycle; each is a defect to fix, the kept value is chosen by scope order.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.entity.duplicates.merged",
+			Unit:        "{entity}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(entity.DuplicatesMergedTotal()),
+			Description: "Entity copies merged into another copy of the same entity because several sources of this agent reported it in one cycle.",
+		},
+		entityProcessed(delivered, ""),
+		entityProcessed(dropped, "queue_full"),
+		otelmapper.OtelRecord{
+			Name:        "otel.sdk.processor.log.queue.size",
+			Unit:        "{log_record}",
+			Type:        "updowncounter",
+			Attributes:  entityChannelComponent(),
+			Value:       float64(queued),
+			Description: "Entity events waiting in the hand-off to the OTLP exporter.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "otel.sdk.processor.log.queue.capacity",
+			Unit:        "{log_record}",
+			Type:        "updowncounter",
+			Attributes:  entityChannelComponent(),
+			Value:       float64(capacity),
+			Description: "Entity events the hand-off to the OTLP exporter can hold (signals.entities.buffer_size).",
+		},
 		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.dropped_span_batches",
 			Unit:        "{batch}",
@@ -261,9 +301,9 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	// Export-error counters — one OTel metric with a `signal` attribute
 	// (metrics / logs / traces). The total is the sum over signals; the
 	// breakdown exists because a failing logs pipeline was invisible in
-	// a total dominated by healthy metric pushes (#821). Until a signal
-	// has failed at least once it emits no series (standard counter
-	// semantics: absence = zero).
+	// a total dominated by healthy metric pushes (#821). Every signal is
+	// emitted from start, at 0 until it fails: an absent series left the
+	// dashboards of healthy agents empty (#972).
 	for signal, n := range agentstate.GetOTLPExportErrorsBySignal() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.export.errors",
@@ -316,9 +356,8 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	}
 
 	// Per-reason drop counters — emitted as a single OTel metric with
-	// `reason` attribute. Operators alert on this rising. Today the only
-	// reason emitted is `store_cap` (cardinality cap on the metric store);
-	// future reasons will be added without changing this metric shape.
+	// `reason` attribute. Operators alert on this rising. Every known
+	// reason is emitted from start at 0 (agentstate.OTLPDropReasons).
 	for reason, n := range agentstate.GetOTLPDroppedByReason() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.dropped",
@@ -657,4 +696,32 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	}
 
 	return records
+}
+
+// entityChannelComponent names the entity-event hand-off the way the SDK
+// self-observability conventions name a component.
+func entityChannelComponent() map[string]string {
+	return map[string]string{
+		"otel.component.type": "senhub_entity_channel",
+		"otel.component.name": "senhub_entity_channel/0",
+	}
+}
+
+// entityProcessed is otel.sdk.processor.log.processed for the entity
+// hand-off: without error.type for the events handed over, with
+// error.type="queue_full" for those dropped because the buffer stayed
+// full, as the convention requires of a log processor.
+func entityProcessed(n uint64, errorType string) otelmapper.OtelRecord {
+	attrs := entityChannelComponent()
+	if errorType != "" {
+		attrs["error.type"] = errorType
+	}
+	return otelmapper.OtelRecord{
+		Name:        "otel.sdk.processor.log.processed",
+		Unit:        "{log_record}",
+		Type:        "counter",
+		Attributes:  attrs,
+		Value:       float64(n),
+		Description: "Entity events handed to the OTLP exporter; with error.type, those dropped instead.",
+	}
 }

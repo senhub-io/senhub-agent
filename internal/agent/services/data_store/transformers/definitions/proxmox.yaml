@@ -58,7 +58,7 @@ metrics:
     category: "memory"
     description: "Total installed memory on the Proxmox node"
     otel:
-      name: proxmox.node.memory.total
+      name: proxmox.node.memory.limit
       unit: "By"
       type: gauge
     tag_to_attribute:
@@ -118,7 +118,7 @@ metrics:
     category: "memory"
     description: "Total memory allocated to the VM or container"
     otel:
-      name: proxmox.vm.memory.total
+      name: proxmox.vm.memory.limit
       unit: "By"
       type: gauge
     tag_to_attribute:
@@ -230,7 +230,7 @@ metrics:
     category: "storage"
     description: "Total capacity of the Proxmox storage pool"
     otel:
-      name: proxmox.storage.total
+      name: proxmox.storage.limit
       unit: "By"
       type: gauge
     tag_to_attribute:

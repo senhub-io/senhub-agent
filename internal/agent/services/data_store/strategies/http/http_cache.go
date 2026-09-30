@@ -643,6 +643,21 @@ func (c *MetricCache) retireSupersededLocked(probes map[string]bool, arrival tim
 	}
 }
 
+// ForgetProbes drops every series of the named probes and their
+// cadence. Names are matched case-folded, like the index.
+func (c *MetricCache) ForgetProbes(probeNames []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, name := range probeNames {
+		idxKey := strings.ToLower(name)
+		for tsKey := range c.probeIndex[idxKey] {
+			delete(c.timeSeries, tsKey)
+		}
+		delete(c.probeIndex, idxKey)
+		delete(c.cadences, idxKey)
+	}
+}
+
 // IsLive reports whether a cached value is still current at now.
 func (c *MetricCache) IsLive(metric CachedMetric, now time.Time) bool {
 	c.mu.RLock()
@@ -1238,7 +1253,6 @@ type CacheInfoResponse struct {
 	TotalMetrics int    `json:"total_metrics"`
 	ProbeCount   int    `json:"probe_count"`
 	TTL          string `json:"ttl"`
-	MemoryUsage  string `json:"memory_usage"`
 }
 
 // DebugCacheEntry represents a single cache entry for debugging

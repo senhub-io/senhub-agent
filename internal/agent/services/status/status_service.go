@@ -21,6 +21,7 @@ type StatusService struct {
 	cacheProvider CacheStatisticsProvider // For accessing cache statistics
 	version       string
 	commit        string
+	process       *processSampler
 }
 
 // SystemStatus represents the complete system status
@@ -83,9 +84,13 @@ type ProbeStatus struct {
 type PerformanceInfo struct {
 	Uptime        string  `json:"uptime"`
 	MemoryUsageMB float64 `json:"memory_usage_mb"`
+	HeapMB        float64 `json:"heap_mb"`
 	CPUPercent    float64 `json:"cpu_percent"`
-	Goroutines    int     `json:"goroutines"`
-	CacheEntries  int     `json:"cache_entries"`
+	// Measured is false when the operating system could not be asked
+	// about the process: memory is then the Go heap and CPU is unknown.
+	Measured     bool `json:"measured"`
+	Goroutines   int  `json:"goroutines"`
+	CacheEntries int  `json:"cache_entries"`
 }
 
 // AgentInfo represents agent build and version information
@@ -108,6 +113,7 @@ func NewStatusService(baseLogger *logger.Logger, version, commit string) *Status
 		startTime: time.Now(),
 		version:   version,
 		commit:    commit,
+		process:   newProcessSampler(),
 	}
 }
 
@@ -237,18 +243,26 @@ func (s *StatusService) calculatePerformanceInfo() PerformanceInfo {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
-	uptime := time.Since(s.startTime)
-	uptimeStr := s.formatUptime(uptime)
+	proc := s.process.sample()
+	started := s.startTime
+	if !proc.Started.IsZero() {
+		started = proc.Started
+	}
+	uptimeStr := s.formatUptime(time.Since(started))
 
-	// Memory usage in MB
-	memoryMB := float64(memStats.Alloc) / 1024 / 1024
+	// Memory is the process's resident set, what the operating system
+	// charges to the agent. The Go heap alone is a fraction of it (the
+	// binary's mapped pages, stacks and runtime overhead are not in it)
+	// and read as the agent's memory, it understated it about tenfold.
+	// When the OS cannot be asked, the heap is still reported, labelled
+	// as such.
+	heapMB := float64(memStats.Alloc) / 1024 / 1024
+	memoryMB := heapMB
+	if proc.OK {
+		memoryMB = proc.RSSMB
+	}
 
-	// Goroutine count
 	goroutines := runtime.NumGoroutine()
-
-	// CPU usage would require more complex calculation
-	// For now, return 0 - can be enhanced later
-	cpuPercent := 0.0
 
 	// Cache entries count
 	cacheEntries := 0
@@ -259,7 +273,9 @@ func (s *StatusService) calculatePerformanceInfo() PerformanceInfo {
 	return PerformanceInfo{
 		Uptime:        uptimeStr,
 		MemoryUsageMB: memoryMB,
-		CPUPercent:    cpuPercent,
+		HeapMB:        heapMB,
+		CPUPercent:    proc.CPUPercent,
+		Measured:      proc.OK,
 		Goroutines:    goroutines,
 		CacheEntries:  cacheEntries,
 	}

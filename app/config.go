@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -360,7 +361,7 @@ func checkConfig(configPath string) {
 		}
 	}
 	if applied > 0 {
-		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent unit's environment\n", applied)
+		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent service's environment\n", applied)
 	}
 
 	// Read raw bytes once so YAML-syntax errors can still print a
@@ -420,8 +421,13 @@ func checkConfig(configPath string) {
 		warnings++
 	}
 	if len(unsetEnv) > 0 {
-		fmt.Println("         The service reads its variables from its unit; run the check with the same")
-		fmt.Println("         environment (systemctl show senhub-agent -p Environment) or export them first.")
+		if runtime.GOOS == "windows" {
+			fmt.Println("         The service reads its variables from its registry key (HKLM\\SYSTEM\\CurrentControlSet\\")
+			fmt.Println("         Services\\senhub-agent, value Environment); set them there or in this shell.")
+		} else {
+			fmt.Println("         The service reads its variables from its unit; run the check with the same")
+			fmt.Println("         environment (systemctl show senhub-agent -p Environment) or export them first.")
+		}
 	}
 
 	// Config version. Validate against the agent's supported range
@@ -444,12 +450,13 @@ func checkConfig(configPath string) {
 		fmt.Printf("  [OK]   config_version: %d\n", config.ConfigVersion)
 	}
 
-	// Agent key
-	if config.Agent.Key != "" {
-		fmt.Printf("  [OK]   agent.key: %s\n", config.Agent.Key)
-	} else {
-		fmt.Println("  [ERROR] agent.key is missing")
+	keyLine, keyErr, keyWarn := agentKeyCheckLine(config.Agent.Key)
+	fmt.Println(keyLine)
+	if keyErr {
 		errorCount++
+	}
+	if keyWarn {
+		warnings++
 	}
 
 	// License
@@ -706,6 +713,22 @@ func checkConfig(configPath string) {
 //
 // Errors abort with exit 1 and a single human-readable line on
 // stderr — the goal is "fits in a CI log".
+// agentKeyCheckLine reports the agent key without its value: the key is
+// the bearer token a monitoring tool reads the agent with, and the output
+// of a check gets pasted into tickets and chats.
+func agentKeyCheckLine(key string) (line string, isError, isWarning bool) {
+	switch {
+	case key == "":
+		return "  [ERROR] agent.key is missing", true, false
+	case !uuidShape.MatchString(key):
+		return "  [WARN] agent.key: set, but not a UUID (the agent generates a random UUID; a short key is guessable)", false, true
+	default:
+		return "  [OK]   agent.key: set (UUID, value hidden; `senhub-agent key show` prints it)", false, false
+	}
+}
+
+var uuidShape = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 func showConfig(args []string) {
 	mode := configuration.ShowRedact
 	// Empty string means "use the OS-canonical default" — resolved
@@ -892,8 +915,11 @@ func reportSchemaProblems(name, probeType string, params map[string]interface{})
 			if _, isLegacy := legacy[problem.Key]; isLegacy {
 				continue
 			}
-			fmt.Printf("         [ERROR] Probe %q: param %q is not read by this probe\n", name, problem.Key)
-			errors++
+			// The agent starts the probe and ignores the key, so the
+			// check says so rather than failing a configuration that runs
+			// (#973): a script that stops on ERROR stopped on a working file.
+			fmt.Printf("         [WARN] Probe %q: param %q is not read by this probe and has no effect\n", name, problem.Key)
+			warnings++
 		}
 	}
 	return errors, warnings

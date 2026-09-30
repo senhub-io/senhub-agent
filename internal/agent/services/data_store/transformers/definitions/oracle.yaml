@@ -102,7 +102,7 @@ metrics:
     category: "memory"
     description: "Total SGA allocated in bytes (SUM(bytes) over v$sgastat)"
     otel:
-      name: oracle.sga.total
+      name: oracle.sga.size
       unit: "By"
       type: gauge
 
@@ -113,7 +113,7 @@ metrics:
     category: "memory"
     description: "Total PGA allocated in bytes (v$pgastat 'total PGA allocated')"
     otel:
-      name: oracle.pga.total
+      name: oracle.pga.size
       unit: "By"
       type: gauge
 
@@ -142,7 +142,7 @@ metrics:
     multi_instance_labels: ["tablespace"]
     description: "Maximum size per tablespace in bytes (dba_tablespace_usage_metrics)"
     otel:
-      name: oracle.tablespace.total
+      name: oracle.tablespace.limit
       unit: "By"
       type: gauge
     tag_to_attribute:

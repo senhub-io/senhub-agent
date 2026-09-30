@@ -51,7 +51,7 @@ JVM probes keeps working, and only its scheme, host and port are used.
 | `jvm.threads.count` | {thread} | Current live JVM thread count |
 | `solr.requests.count` | {request} | Requests processed by the node |
 | `solr.errors.count` | {error} | Request errors on the node |
-| `solr.requests.time` | ms | Time spent handling QUERY requests (cumulative) |
+| `solr.requests.time` | s | Time spent handling QUERY requests (cumulative) |
 | `solr.cache.inserts` | # | Query result cache inserts (cumulative) |
 | `solr.cache.hits` | {hit} | Cache hits |
 | `solr.document.count` | {document} | Number of indexed documents per core, tagged with `core` |

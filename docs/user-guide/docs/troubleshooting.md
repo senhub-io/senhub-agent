@@ -85,12 +85,14 @@ Response:
   },
   "cache": {
     "total_metrics": 156,
-    "ttl": "5m0s",
-    "memory_usage": "2.45 MB"
+    "probe_count": 7,
+    "ttl": "5m0s"
   },
   "resources": {
-    "memory_usage_mb": 45.67,
-    "cpu_percent": 2.5,
+    "memory_usage_mb": 104.8,
+    "heap_mb": 11.2,
+    "cpu_percent": 0.4,
+    "measured": true,
     "goroutines": 42
   }
 }

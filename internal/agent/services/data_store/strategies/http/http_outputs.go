@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -13,10 +14,12 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/outputspec"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix"
 )
 
 // The outputs API is the strategies.d counterpart of the probes API:
@@ -425,6 +428,10 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 		steps = otlp.ProbeConnection(ctx, req.Params, guardedDialer(timeout).DialContext)
 	case "prtg", "event":
 		steps = probeHTTPTarget(ctx, req.Type, req.Params, timeout)
+	case "senhub":
+		steps = probeSenhubIntake(ctx, cliArgs.ProductionURL, h.agentConfig.GetAuthenticationKey(), timeout)
+	case "zabbix":
+		steps = dialZabbixServers(ctx, req.Params, timeout)
 	case "http":
 		steps = []otlp.ConnectionStep{{Name: "listen", Passed: true, Detail: fmt.Sprintf("this console answers on port %d", h.configManager.GetPort())}}
 	default:
@@ -464,6 +471,11 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 			return "", fmt.Errorf("output %q declares no address to reach", outputType)
 		}
 		target, _ = params[spec.TestURLKey].(string)
+		// The event strategy posts to server_url + /event/insert: reach
+		// that path, not the bare base the operator typed.
+		if outputType == "event" && target != "" {
+			target = strings.TrimRight(target, "/") + "/event/insert"
+		}
 		return target, nil
 	}) {
 		return steps
@@ -478,8 +490,117 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 			return "", err
 		}
 		_ = resp.Body.Close()
-		return fmt.Sprintf("HTTP %d", resp.StatusCode), nil
+		detail := fmt.Sprintf("HTTP %d", resp.StatusCode)
+		// A 404 means nothing is served at this address and a 5xx a server
+		// in error: neither is an output that works. A 405 or a 401 still
+		// proves the route exists, which is all this step claims.
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
+			return detail, fmt.Errorf("%s answered %s", target, detail)
+		}
+		return detail, nil
 	})
+	return steps
+}
+
+// probeSenhubIntake tests the SenHub cloud output: the intake address is
+// fixed at build time and the credential is the agent key. Any HTTP
+// answer used to pass, so a 404 from the intake root read as a working
+// output. The intake serves GET /status without authentication and GET
+// /configs behind the same X-AGENT-KEY check as POST /metrics; reading
+// /configs proves the key is accepted without pushing a data point.
+func probeSenhubIntake(ctx context.Context, base, agentKey string, timeout time.Duration) []otlp.ConnectionStep {
+	var steps []otlp.ConnectionStep
+	run := func(name string, fn func() (string, error)) bool {
+		t := time.Now()
+		detail, err := fn()
+		s := otlp.ConnectionStep{Name: name, Passed: err == nil, Detail: detail, Duration: time.Since(t).Milliseconds()}
+		if err != nil {
+			s.Error = err.Error()
+		}
+		steps = append(steps, s)
+		return err == nil
+	}
+	base = strings.TrimRight(base, "/")
+	if !run("config", func() (string, error) {
+		if base == "" {
+			return "", errors.New("this build has no intake address")
+		}
+		if agentKey == "" {
+			return "", errors.New("the SenHub cloud output authenticates with the agent key, and none is configured")
+		}
+		return base, nil
+	}) {
+		return steps
+	}
+	client := newConnectivityClient(timeout)
+	get := func(path string, withKey bool) (int, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+		if err != nil {
+			return 0, err
+		}
+		if withKey {
+			req.Header.Set("X-AGENT-KEY", agentKey)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		return resp.StatusCode, nil
+	}
+	if !run("reach", func() (string, error) {
+		code, err := get("/status", false)
+		if err != nil {
+			return "", err
+		}
+		if code < 200 || code > 299 {
+			return "", fmt.Errorf("%s/status answered HTTP %d: this address does not serve the SenHub intake", base, code)
+		}
+		return fmt.Sprintf("%s: HTTP %d", base, code), nil
+	}) {
+		return steps
+	}
+	run("authenticate", func() (string, error) {
+		code, err := get("/configs", true)
+		if err != nil {
+			return "", err
+		}
+		switch {
+		case code == http.StatusUnauthorized || code == http.StatusForbidden:
+			return "", fmt.Errorf("the intake refused the agent key (HTTP %d): this agent is not registered with SenHub cloud", code)
+		case code < 200 || code > 299:
+			return "", fmt.Errorf("the intake answered HTTP %d to an authenticated request", code)
+		}
+		return "agent key accepted", nil
+	})
+	return steps
+}
+
+// dialZabbixServers opens a TCP connection to each address the 'server'
+// parameter names (several name a proxy group), without sending the
+// agent protocol: it proves the server or proxy is reachable, not that
+// it will accept this host.
+func dialZabbixServers(ctx context.Context, params map[string]interface{}, timeout time.Duration) []otlp.ConnectionStep {
+	addrs, err := zabbix.ServerAddresses(params)
+	if err != nil {
+		return []otlp.ConnectionStep{{Name: "config", Error: err.Error()}}
+	}
+	steps := []otlp.ConnectionStep{{Name: "config", Passed: true, Detail: strings.Join(addrs, ", ")}}
+	for _, addr := range addrs {
+		t := time.Now()
+		step := otlp.ConnectionStep{Name: "tcp " + addr}
+		conn, dialErr := guardedDialer(timeout).DialContext(ctx, "tcp", addr)
+		if dialErr == nil {
+			_ = conn.Close()
+			step.Passed = true
+			step.Detail = "connected"
+		} else {
+			step.Error = dialErr.Error()
+		}
+		step.Duration = time.Since(t).Milliseconds()
+		steps = append(steps, step)
+	}
 	return steps
 }
 

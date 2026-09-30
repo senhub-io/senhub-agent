@@ -24,12 +24,12 @@ metrics:
   - name: "interface_speed"
     channel: "interface_speed"
     display_name: "Network {interface} Speed"
-    unit: "bps"
+    unit: "bit/s"
     category: "capacity"
     description: "Speed the link negotiated; absent on a virtual interface, which is not the same as zero"
     otel:
       name: senhub.system.network.interface.speed
-      unit: bit/s
+      unit: "By/s"
       type: gauge
 
   - name: "interface_up"

@@ -169,8 +169,8 @@ metrics:
     category: "throughput"
     description: "Instantaneous commands per second (instantaneous_ops_per_sec)"
     otel:
-      name: redis.ops.per_sec
-      unit: "{op}/s"
+      name: redis.commands
+      unit: "{command}/s"
       type: gauge
 
   - name: "redis.keyspace.hits"
@@ -331,7 +331,7 @@ metrics:
     description: "Duration of the latest fork operation in microseconds (latest_fork_usec)"
     otel:
       name: redis.latest.fork
-      unit: "us"
+      unit: "s"
       type: gauge
 
   - name: "redis.cpu.time"
@@ -390,7 +390,7 @@ metrics:
     description: "Average TTL in milliseconds of keys with an expiry in logical database (keyspace section: dbN:avg_ttl=T)"
     otel:
       name: redis.db.avg_ttl
-      unit: "ms"
+      unit: "s"
       type: gauge
     tag_to_attribute:
       db: db.redis.database_index
@@ -450,8 +450,8 @@ metrics:
     category: "commands"
     description: "Cumulative microseconds spent executing the given Redis command (INFO commandstats: cmdstat_X:usec=N)"
     otel:
-      name: redis.cmd.usec
-      unit: "us"
+      name: redis.cmd.time
+      unit: "s"
       type: counter
     tag_to_attribute:
       cmd: redis.command

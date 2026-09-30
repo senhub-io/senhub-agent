@@ -46,7 +46,7 @@
       "targets": [
         { "refId": "A", "expr": "hw_status{service_name=~\"$service\",hw_type=\"physical_disk\"} == 1", "format": "table", "instant": true },
         { "refId": "B", "expr": "hw_physical_disk_size_bytes{service_name=~\"$service\"}",                "format": "table", "instant": true },
-        { "refId": "C", "expr": "senhub_hardware_physical_disk_link_speed_bits_per_second{service_name=~\"$service\"}", "format": "table", "instant": true }
+        { "refId": "C", "expr": "senhub_hardware_physical_disk_link_speed_bytes_per_second{service_name=~\"$service\"}", "format": "table", "instant": true }
       ],
       "transformations": [
         { "id": "joinByField", "options": { "byField": "hw_id", "mode": "outer" } }

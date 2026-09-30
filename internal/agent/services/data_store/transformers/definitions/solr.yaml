@@ -62,7 +62,7 @@ metrics:
     description: "Cumulative time spent handling QUERY requests (meanMs * count, ms)"
     otel:
       name: solr.requests.time
-      unit: "ms"
+      unit: "s"
       type: counter
 
   - name: "solr.errors.count"

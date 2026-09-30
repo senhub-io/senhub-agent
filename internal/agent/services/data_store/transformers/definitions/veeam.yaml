@@ -18,7 +18,7 @@ metrics:
     multi_instance_labels: ["job_type"]
     description: "Backup jobs of this type. Covers the virtual jobs the backup server runs and the agent-managed backups of physical machines, which carry their own job_type (WindowsAgentBackup, LinuxAgentBackup) — so the estate reads whole or split"
     otel:
-      name: senhub.veeam.jobs.total
+      name: senhub.veeam.job.count
       unit: "{job}"
       type: gauge
     tag_to_attribute:
@@ -363,8 +363,8 @@ metrics:
     category: "license"
     description: "Number of days until the Veeam license expires"
     otel:
-      name: senhub.veeam.license.days_remaining
-      unit: "{day}"
+      name: senhub.veeam.license.expiry
+      unit: "s"
       type: gauge
 
   - name: "veeam_license_instances_total"

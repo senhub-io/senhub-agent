@@ -14,8 +14,9 @@ without any query rewrite.
 
 ## Quick start
 
-1. Enable the `prometheus` endpoint of the HTTP output, in
-   `strategies.d/00-http.yaml`:
+1. The `prometheus` endpoint is on in a configuration written by an
+   installer from 0.6.1. An older configuration keeps the list it was
+   written with: add `prometheus` to it, in `strategies.d/00-http.yaml`:
 
 ```yaml
 http:
@@ -173,7 +174,7 @@ traffic.
 | `senhub_agent_uptime_seconds` | gauge | Process uptime since start |
 | `senhub_agent_cache_entries` | gauge | Distinct time series in the shared cache |
 | `senhub_agent_probes_active` | gauge | Probes that have emitted ≥1 datapoint in the cache window |
-| `senhub_agent_probes_total` | gauge | Configured probes currently running |
+| `senhub_agent_probe_count` | gauge | Configured probes currently running |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` |
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, with `probe` (type) and `reason` (collect/timeout/route) labels |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) |

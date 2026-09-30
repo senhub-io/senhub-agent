@@ -144,7 +144,7 @@ metrics:
     description: "Cumulative wall-clock time spent in GC for the given collector"
     otel:
       name: elasticsearch.jvm.gc.collections.elapsed
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       collector: jvm.gc.name
@@ -172,7 +172,7 @@ metrics:
     description: "Cumulative time spent in indexing operations"
     otel:
       name: elasticsearch.indexing.operations.time
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       operation: elasticsearch.indexing.operation
@@ -198,7 +198,7 @@ metrics:
     description: "Cumulative time spent in search operations"
     otel:
       name: elasticsearch.search.operations.time
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       operation: elasticsearch.search.operation

@@ -96,7 +96,7 @@ series' tags.
 | `redis.commands.processed` | `redis.commands.processed` | Commands Processed | # | Cumulative commands processed (total_commands_processed) |
 | `redis.net.input` | `redis.net.input` | Network Input | B | Cumulative bytes received from clients (total_net_input_bytes) |
 | `redis.net.output` | `redis.net.output` | Network Output | B | Cumulative bytes sent to clients (total_net_output_bytes) |
-| `redis.ops.per_sec` | `redis.ops.per_sec` | Ops/s | # | Instantaneous commands per second (instantaneous_ops_per_sec) |
+| `redis.commands` | `redis.ops.per_sec` | Ops/s | # | Instantaneous commands per second (instantaneous_ops_per_sec) |
 | `redis.keyspace.hits` | `redis.keyspace.hits` | Keyspace Hits | # | Cumulative successful key lookups (keyspace_hits) |
 | `redis.keyspace.misses` | `redis.keyspace.misses` | Keyspace Misses | # | Cumulative failed key lookups (keyspace_misses) |
 | `redis.keyspace.hit.ratio` | `redis.keyspace.hit.ratio` | Hit Ratio | % | keyspace_hits / (keyspace_hits + keyspace_misses) — derived gauge, 0 when no traffic |
@@ -120,7 +120,7 @@ series' tags.
 | `redis.evicted_keys` | `redis.evicted_keys` | Evicted Keys | # | Cumulative keys evicted due to maxmemory policy (evicted_keys) |
 | `redis.expired_keys` | `redis.expired_keys` | Expired Keys | # | Cumulative keys expired by the TTL mechanism (expired_keys) |
 | `redis.cmd.calls` | `redis.cmd.calls` | Cmd {cmd} Calls | # | Cumulative call count for the given Redis command (INFO commandstats: cmdstat_X:calls=N) |
-| `redis.cmd.usec` | `redis.cmd.usec` | Cmd {cmd} Usec | μs | Cumulative microseconds spent executing the given Redis command (INFO commandstats: cmdstat_X:usec=N) |
+| `redis.cmd.time` | `redis.cmd.usec` | Cmd {cmd} Usec | μs | Cumulative microseconds spent executing the given Redis command (INFO commandstats: cmdstat_X:usec=N) |
 | `redis.cluster.state` | `redis.cluster.state` | Cluster State | # | Cluster health: 1=ok, 0=fail (cluster_state from INFO cluster; emitted only when cluster_enabled=1) |
 | `redis.cluster.slots.assigned` | `redis.cluster.slots.assigned` | Cluster Slots Assigned | # | Number of slots assigned to cluster nodes (cluster_slots_assigned) |
 | `redis.cluster.slots.ok` | `redis.cluster.slots.ok` | Cluster Slots OK | # | Number of slots not in FAIL or PFAIL state (cluster_slots_ok) |

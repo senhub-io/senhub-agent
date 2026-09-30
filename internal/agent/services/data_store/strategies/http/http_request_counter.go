@@ -22,6 +22,10 @@ import (
 // httpRequestCounters maps route template → atomic counter.
 // Package-level to be shared across handler invocations and accessible
 // by the Prometheus bridge without weaving state through structs.
+// previewHeader marks a request the console sends to preview a sensor
+// URL; it is served normally and not counted as a poller.
+const previewHeader = "X-SenHub-Preview"
+
 var (
 	httpRequestCountersMu sync.RWMutex
 	httpRequestCounters   = map[string]*atomic.Uint64{}
@@ -47,7 +51,13 @@ func CountRequests(next http.Handler) http.Handler {
 			}
 		}
 		incrementRequestCounter(endpoint)
-		noteRequest(endpoint, r.RemoteAddr)
+		// The console's sensor-URL preview reads the same routes a poller
+		// does. Counted as a reader, opening that tab made the outputs
+		// page report "last PRTG request just now" for a sensor that did
+		// not exist yet.
+		if r.Header.Get(previewHeader) == "" {
+			noteRequest(endpoint, r.RemoteAddr)
+		}
 		next.ServeHTTP(w, r)
 	})
 }
