@@ -6,6 +6,14 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Features
 
+- **Network interfaces carry their subnets.** A `network.interface`
+  entity, on a host and on an SNMP device, now carries
+  `network.interface.addresses`, the list of its addresses with their
+  prefix (`10.10.0.60/24`), and `network.interface.subnets`, the subnets
+  they are in (`10.10.0.0/24`), so a topology backend can tell which
+  network an address belongs to. On a device the mask comes from IP-MIB
+  `ipAdEntNetMask`.
+
 - **The Zabbix server is set at install time.** The MSI takes
   `ZABBIX_SERVER` (and `ZABBIX_HOST_METADATA`), `config init` takes
   `--zabbix-server`, the container `SENHUB_ZABBIX_SERVER`. With a server

@@ -530,6 +530,17 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
 	// duplicate network.interface.name keeps the first (identity is {device, name}).
+	// Addresses per ifIndex with their mask, for the interface's
+	// descriptive network attributes (ipAddrTable, IP-MIB).
+	ifIPs := map[string][]string{}
+	ifPrefixes := map[string]map[string]int{}
+	for _, a := range addrs {
+		ifIPs[a.IfIndex] = append(ifIPs[a.IfIndex], a.IP)
+		if ifPrefixes[a.IfIndex] == nil {
+			ifPrefixes[a.IfIndex] = map[string]int{}
+		}
+		ifPrefixes[a.IfIndex][a.IP] = a.Prefix
+	}
 	ifaceSeen := map[string]bool{}
 	for _, ifc := range ifaces {
 		if ifc.Name == "" || ifc.OperStatus == ifOperNotPresent || ifaceSeen[ifc.Name] {
@@ -552,6 +563,9 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		}
 		if d := duplexName(ifc.Duplex); d != "" {
 			attrs[attrDuplex] = d
+		}
+		for k, v := range entity.InterfaceNetworkAttributes(ifIPs[ifc.Index], ifPrefixes[ifc.Index]) {
+			attrs[k] = v
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs, Scope: entity.ScopeSNMPIFMIB,

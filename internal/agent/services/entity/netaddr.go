@@ -70,3 +70,54 @@ func IsHostLocalAddressStr(s string) bool {
 	}
 	return IsHostLocalAddress(net.ParseIP(host))
 }
+
+// Descriptive attributes of a network.interface that say which networks
+// it is on, each a list of strings in address order. addresses is the
+// observed fact: each IP with its prefix, host bits KEPT (10.10.0.60/24),
+// an exception to the canonical-CIDR rule that zeroes host bits.
+// subnets is derived from it, host bits zeroed (10.10.0.0/24),
+// deduplicated; a disagreement between the two is a producer bug. Both
+// are absent, never empty, when no prefix is known. They sit on the
+// interface, not on the network.address (shared across hosts: a gateway
+// has no mask of its own) nor on the bound_to edge (edge attributes do
+// not reach the topology backend).
+const (
+	AttrInterfaceAddresses = "network.interface.addresses"
+	AttrInterfaceSubnets   = "network.interface.subnets"
+)
+
+// InterfaceNetworkAttributes renders an interface's addresses (IP to
+// prefix length, in the given order) as the two attributes above. An
+// address whose prefix is unknown is left out; nil when none is known.
+func InterfaceNetworkAttributes(ips []string, prefixes map[string]int) map[string]any {
+	var addrs, subnets []string
+	seenSubnet := map[string]bool{}
+	for _, ip := range ips {
+		p, ok := prefixes[ip]
+		addr := net.ParseIP(ip)
+		if !ok || addr == nil || p <= 0 {
+			continue
+		}
+		bits := 128
+		if v4 := addr.To4(); v4 != nil {
+			bits, addr = 32, v4
+		}
+		if p > bits {
+			continue
+		}
+		mask := net.CIDRMask(p, bits)
+		addrs = append(addrs, (&net.IPNet{IP: addr, Mask: mask}).String())
+		sub := (&net.IPNet{IP: addr.Mask(mask), Mask: mask}).String()
+		if !seenSubnet[sub] {
+			seenSubnet[sub] = true
+			subnets = append(subnets, sub)
+		}
+	}
+	if len(addrs) == 0 {
+		return nil
+	}
+	return map[string]any{
+		AttrInterfaceAddresses: addrs,
+		AttrInterfaceSubnets:   subnets,
+	}
+}
