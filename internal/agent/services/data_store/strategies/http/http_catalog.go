@@ -18,6 +18,9 @@ type catalogEntry struct {
 	Tier       string `json:"tier"`
 	Authorized bool   `json:"authorized"`
 	Reason     string `json:"reason,omitempty"`
+	// RunsHere is false for a type this operating system cannot run, which
+	// no licence unlocks; pages count licence locks without those.
+	RunsHere bool `json:"runs_here"`
 }
 
 type catalogResponse struct {
@@ -74,9 +77,10 @@ func (h *HTTPSyncStrategy) currentLicense() *license.License {
 // start: free-tier probes always run; a paid probe needs a licence that
 // is valid, bound to this agent, not expired, and that authorises it.
 func annotateCatalogEntry(ps spec.Probe, lic *license.License, agentKey string) catalogEntry {
-	e := catalogEntry{Probe: ps, Tier: "free", Authorized: true}
+	e := catalogEntry{Probe: ps, Tier: "free", Authorized: true, RunsHere: true}
 	if !ps.RunsOn(runtime.GOOS) {
 		e.Authorized = false
+		e.RunsHere = false
 		e.Reason = platformReason(ps.Platforms)
 		if license.IsProbeAuthorizable(ps.Type) && !isFreeTier(ps.Type) {
 			e.Tier = "pro"

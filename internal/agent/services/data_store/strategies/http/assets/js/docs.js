@@ -63,15 +63,9 @@ class DocsPage {
     }
 
     renderEndpointsByCategory(endpoints) {
-        // Filter: only keep GET endpoints and fix admin/debug paths
-        const filteredEndpoints = endpoints.filter(endpoint => {
-            // Only show GET endpoints
-            return endpoint.methods && endpoint.methods.includes('GET');
-        }).map(endpoint => {
-            // Fix paths: admin/* should be debug/* (legacy endpoints)
-            const fixedPath = endpoint.path.replace('/admin/', '/debug/');
-            return { ...endpoint, path: fixedPath };
-        });
+        // Each entry opens in the browser, so only routes that answer GET
+        // are listed; the count above includes every registered route.
+        const filteredEndpoints = endpoints.filter(endpoint => endpoint.methods && endpoint.methods.includes('GET'));
 
         // Group endpoints by category
         const categories = {};
