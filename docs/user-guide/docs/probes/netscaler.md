@@ -542,7 +542,7 @@ series' tags.
 | `senhub.netscaler.servicegroup.members` | `netscaler.servicegroup.members.active` | Service Group Active Members ({servicegroup}) | # | Number of healthy members serving traffic |
 | `senhub.netscaler.servicegroup.members` | `netscaler.servicegroup.members.inactive` | Service Group Inactive Members ({servicegroup}) | # | Number of inactive members in service group |
 | `senhub.netscaler.servicegroup.surge_queue_length` | `netscaler.servicegroup.surge_queue_length` | Service Group Surge Queue Length ({servicegroup}) | # | Surge queue length (backend saturation indicator) |
-| `senhub.netscaler.ssl.certificate.days_to_expiration` | `netscaler.ssl.certificate.days_to_expiration` | SSL Certificate Days to Expiration ({certname}) | days | Days until SSL certificate expires (negative if expired) |
+| `senhub.netscaler.ssl.certificate.expiry` | `netscaler.ssl.certificate.days_to_expiration` | SSL Certificate Days to Expiration ({certname}) | days | Days until SSL certificate expires (negative if expired) |
 | `senhub.netscaler.ssl.certificate.status` | `netscaler.ssl.certificate.status` | SSL Certificate Status ({certname}) | # | Certificate status: 1=valid, 0=expired |
 | `senhub.netscaler.ha.role` | `netscaler.ha.state` | HA State ({ha_node_ip}) | # | HA role: 2=PRIMARY, 1=SECONDARY, 0=UNKNOWN (per node) |
 | `senhub.netscaler.ha.node.status` | `netscaler.ha.node.state` | HA Node Operational State ({ha_node_ip}) | # | Node operational state: 1=UP, 0=DOWN (per node) |

@@ -51,7 +51,7 @@ func TestBuildAgentRecords_SerializesToValidPrometheus(t *testing.T) {
 		"senhub_agent_uptime_seconds",
 		"senhub_agent_cache_entries",
 		"senhub_agent_probes_active",
-		"senhub_agent_probes_total",
+		"senhub_agent_probe_count",
 		"senhub_agent_probes_healthy",
 		"senhub_agent_collect_errors_total",
 		"senhub_agent_transformer_fallback_total",
