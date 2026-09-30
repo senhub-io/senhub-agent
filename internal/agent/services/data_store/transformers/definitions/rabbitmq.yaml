@@ -88,7 +88,7 @@ metrics:
     category: "connections"
     description: "Total number of consumers across all queues (object_totals.consumers)"
     otel:
-      name: rabbitmq.consumers.total
+      name: rabbitmq.consumer.count
       unit: "{consumer}"
       type: gauge
 
@@ -99,7 +99,7 @@ metrics:
     category: "overview"
     description: "Total number of queues (object_totals.queues)"
     otel:
-      name: rabbitmq.queues.total
+      name: rabbitmq.queue.count
       unit: "{queue}"
       type: gauge
 
@@ -110,7 +110,7 @@ metrics:
     category: "connections"
     description: "Total number of open connections (object_totals.connections)"
     otel:
-      name: rabbitmq.connections.total
+      name: rabbitmq.connection.count
       unit: "{connection}"
       type: gauge
 
@@ -121,7 +121,7 @@ metrics:
     category: "connections"
     description: "Total number of open channels (object_totals.channels)"
     otel:
-      name: rabbitmq.channels.total
+      name: rabbitmq.channel.count
       unit: "{channel}"
       type: gauge
 
@@ -206,7 +206,7 @@ metrics:
     multi_instance_labels: ["node"]
     otel:
       name: rabbitmq.node.uptime
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       node: rabbitmq.node.name

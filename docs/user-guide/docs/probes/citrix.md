@@ -283,7 +283,7 @@ distinguished by `senhub.citrix.logon.phase`.
 
 | Metric | Attribute | Channel | Unit |
 |---|---|---|---|
-| `senhub.citrix.machines.total` | - | `machines_total` | `#` |
+| `senhub.citrix.machine.count` | - | `machines_total` | `#` |
 | `senhub.citrix.machines.by_registration_state` | `machine.registration_state=registered` | `machines_registered` | `#` |
 | `senhub.citrix.machines.by_registration_state` | `machine.registration_state=unregistered` | `machines_unregistered` | `#` |
 | `senhub.citrix.machines.by_registration_state` | `machine.registration_state=faulty` | `machines_faulty` | `#` |
@@ -314,7 +314,7 @@ distinguished by `senhub.citrix.logon.phase`.
 
 | Metric | Attribute | Channel | Unit |
 |---|---|---|---|
-| `senhub.citrix.connection_failures.total` | - | `failures_total` | `#` |
+| `senhub.citrix.connection_failure.count` | - | `failures_total` | `#` |
 | `senhub.citrix.connection_failures.by_category` | `connection_failure.category=client_connection` | `client_connection_failures` | `#` |
 | `senhub.citrix.connection_failures.by_category` | `connection_failure.category=configuration` | `configuration_errors` | `#` |
 | `senhub.citrix.connection_failures.by_category` | `connection_failure.category=machine` | `machine_failures` | `#` |
@@ -534,7 +534,7 @@ series' tags.
 |---|---|---|---|---|
 | `senhub.citrix.sessions.count` | `sessions_connected` | Sessions Connected | # | Number of active user sessions currently connected to virtual desktops |
 | `senhub.citrix.sessions.count` | `sessions_disconnected` | Sessions Disconnected | # | Number of user sessions in disconnected state but not yet logged off |
-| `senhub.citrix.machines.total` | `machines_total` | Machines Total | # | Total number of VDA machines in the delivery group |
+| `senhub.citrix.machine.count` | `machines_total` | Machines Total | # | Total number of VDA machines in the delivery group |
 | `senhub.citrix.machines.by_registration_state` | `machines_registered` | Machines Registered | # | Number of VDA machines successfully registered with the Delivery Controller |
 | `senhub.citrix.machines.by_registration_state` | `machines_unregistered` | Machines Unregistered | # | Number of VDA machines not registered with the Delivery Controller |
 | `senhub.citrix.machines.by_registration_state` | `machines_faulty` | Machines Faulty | # | Number of VDA machines in a faulty state unable to accept user connections |
@@ -550,7 +550,7 @@ series' tags.
 | `senhub.citrix.logon.phase_duration` | `logon_scripts` | Logon Scripts | s | Time spent executing logon scripts during session initialization |
 | `senhub.citrix.logon.phase_duration` | `logon_profile` | Logon Profile | s | Time spent loading the user profile during session logon |
 | `senhub.citrix.logon.phase_duration` | `logon_interactive` | Logon Interactive | s | Time spent on interactive session setup after profile load completes |
-| `senhub.citrix.connection_failures.total` | `failures_total` | Connection Failures Total | # | Total number of failed user connection attempts across all failure categories |
+| `senhub.citrix.connection_failure.count` | `failures_total` | Connection Failures Total | # | Total number of failed user connection attempts across all failure categories |
 | `senhub.citrix.connection_failures.by_category` | `client_connection_failures` | Client Connection Failures | # | Connection failures caused by client-side issues such as network or endpoint errors |
 | `senhub.citrix.connection_failures.by_category` | `configuration_errors` | Configuration Errors | # | Connection failures caused by misconfigured delivery groups or policies |
 | `senhub.citrix.connection_failures.by_category` | `machine_failures` | Machine Failures | # | Connection failures caused by VDA machines being unavailable or unresponsive |

@@ -126,8 +126,8 @@ metrics:
     category: "usage"
     description: "Total drive power-on time (attribute 9)"
     otel:
-      name: smart.disk.power_on_hours
-      unit: "h"
+      name: smart.disk.power_on.time
+      unit: "s"
       type: counter
     tag_to_attribute:
       smart.device: smart.disk.device

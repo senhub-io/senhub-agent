@@ -367,7 +367,7 @@ All metrics under `senhub.veeam.*` (no OTel semconv for backup).
 
 | Prometheus name | Type | Notes |
 |---|---|---|
-| `senhub_veeam_jobs_total` | gauge | `senhub_veeam_job_type` |
+| `senhub_veeam_job_count` | gauge | `senhub_veeam_job_type` |
 | `senhub_veeam_jobs_by_last_result` | gauge | `senhub_veeam_job_last_result` ∈ {success, warning, failed, running} |
 | `senhub_veeam_job_status` | updowncounter | strict-OTel expand: `senhub_veeam_job_state` ∈ {none, success, warning, failed, running} |
 | `senhub_veeam_job_seconds_since_last_run` | gauge (s) | `senhub_veeam_job_name`, `senhub_veeam_job_type` |
@@ -412,7 +412,7 @@ All metrics under `senhub.citrix.*` (no Citrix CVAD OTel convention; design from
 | Prometheus name | Type | Notes |
 |---|---|---|
 | `senhub_citrix_sessions_count` | gauge | `senhub_citrix_session_state` ∈ {connected, disconnected} |
-| `senhub_citrix_machines_total` | gauge | – |
+| `senhub_citrix_machine_count` | gauge | – |
 | `senhub_citrix_machines_by_registration_state` | gauge | `senhub_citrix_machine_registration_state` ∈ {registered, unregistered, faulty, maintenance} |
 | `senhub_citrix_machines_overloaded` | gauge | – |
 | `senhub_citrix_machines_multi_session_fault_total` | gauge | – |
@@ -437,7 +437,7 @@ All metrics under `senhub.citrix.*` (no Citrix CVAD OTel convention; design from
 
 | Prometheus name | Type | Notes |
 |---|---|---|
-| `senhub_citrix_connection_failures_total` | gauge | – |
+| `senhub_citrix_connection_failure_count` | gauge | – |
 | `senhub_citrix_connection_failures_by_category` | gauge | `senhub_citrix_connection_failure_category` ∈ {client_connection, configuration, machine, capacity_unavailable, licenses_unavailable, other} |
 | `senhub_citrix_load_index_ratio` | gauge | `senhub_citrix_load_index_dimension` ∈ {effective, cpu, memory, disk, network, sessions} (mapper ÷100) |
 

@@ -125,7 +125,7 @@ metrics:
     description: "Cumulative upstream request latency across all requests to cluster members"
     otel:
       name: envoy.cluster.upstream.requests.time
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       cluster: envoy.cluster_name

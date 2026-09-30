@@ -50,11 +50,11 @@ the probe reports `not_installed` on a host that has chrony, an absolute
 |---|---|---|
 | `senhub.chrony.up` | 1 | 1 when chronyc returned a valid tracking response, 0 when chronyc failed or is not installed |
 | `senhub.chrony.state` | 1 | One series per reason, exactly one of which is 1: `ok`, `not_installed`, `exec_failed`, `parse_failed` |
-| `ntp.time.offset` | ms | Estimated error of the system clock relative to the NTP reference |
+| `ntp.time.offset` | s | Estimated error of the system clock relative to the NTP reference |
 | `ntp.frequency.offset` | ppm | Rate at which the system clock gains or loses time (parts per million) |
 | `ntp.skew` | ppm | Estimated frequency error of the clock (uncertainty band) |
-| `ntp.root.delay` | ms | Total round-trip delay to the reference clock source |
-| `ntp.root.dispersion` | ms | Maximum error of the local clock relative to the reference source |
+| `ntp.root.delay` | s | Total round-trip delay to the reference clock source |
+| `ntp.root.dispersion` | s | Maximum error of the local clock relative to the reference source |
 | `ntp.stratum` | 1 | Stratum of the NTP reference (1 = GPS/atomic, 2 = primary, …) |
 | `ntp.leap_status` | 1 | Encoded leap indicator: 0 = normal, 1 = insert second, 2 = delete second, 3 = not synchronised |
 

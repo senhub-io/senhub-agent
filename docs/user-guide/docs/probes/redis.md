@@ -120,7 +120,7 @@ series' tags.
 | `redis.evicted_keys` | `redis.evicted_keys` | Evicted Keys | # | Cumulative keys evicted due to maxmemory policy (evicted_keys) |
 | `redis.expired_keys` | `redis.expired_keys` | Expired Keys | # | Cumulative keys expired by the TTL mechanism (expired_keys) |
 | `redis.cmd.calls` | `redis.cmd.calls` | Cmd {cmd} Calls | # | Cumulative call count for the given Redis command (INFO commandstats: cmdstat_X:calls=N) |
-| `redis.cmd.usec` | `redis.cmd.usec` | Cmd {cmd} Usec | μs | Cumulative microseconds spent executing the given Redis command (INFO commandstats: cmdstat_X:usec=N) |
+| `redis.cmd.time` | `redis.cmd.usec` | Cmd {cmd} Usec | μs | Cumulative microseconds spent executing the given Redis command (INFO commandstats: cmdstat_X:usec=N) |
 | `redis.cluster.state` | `redis.cluster.state` | Cluster State | # | Cluster health: 1=ok, 0=fail (cluster_state from INFO cluster; emitted only when cluster_enabled=1) |
 | `redis.cluster.slots.assigned` | `redis.cluster.slots.assigned` | Cluster Slots Assigned | # | Number of slots assigned to cluster nodes (cluster_slots_assigned) |
 | `redis.cluster.slots.ok` | `redis.cluster.slots.ok` | Cluster Slots OK | # | Number of slots not in FAIL or PFAIL state (cluster_slots_ok) |

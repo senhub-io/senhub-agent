@@ -81,7 +81,7 @@ metrics:
     description: "Cumulative request processing time in milliseconds"
     otel:
       name: tomcat.processing_time
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       connector: tomcat.connector
@@ -192,7 +192,7 @@ metrics:
     description: "Total time spent in garbage collection by the collector"
     otel:
       name: jvm.gc.collections.elapsed
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       collector: jvm.gc.name

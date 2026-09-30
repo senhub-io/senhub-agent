@@ -415,7 +415,7 @@ Aligned with OTel where possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `
 **Jobs (overview + detail):**
 | Senhub metric | Unit | Type |
 |---|---|---|
-| `senhub.veeam.jobs.total` | `{job}` | Gauge |
+| `senhub.veeam.job.count` | `{job}` | Gauge |
 | `senhub.veeam.jobs.by_last_result` | `{job}` | Gauge (`senhub.veeam.job.last_result` attribute ∈ {success, warning, failed, running}) |
 | `senhub.veeam.job.status` | `1` | UpDownCounter (**expand** `senhub.veeam.job.state` ∈ {none, success, warning, failed, running}) |
 | `senhub.veeam.job.seconds_since_last_run` | `s` | Gauge |
@@ -486,7 +486,7 @@ Every metric lives under `senhub.citrix.*`, collapsed systematically by function
 - `senhub.citrix.sessions.count` (gauge, `{session}`) + `senhub.citrix.session.state` ∈ {connected, disconnected}
 
 **Machines (infrastructure):**
-- `senhub.citrix.machines.total` (gauge, `{machine}`) — total in the delivery group
+- `senhub.citrix.machine.count` (gauge, `{machine}`) — total in the delivery group
 - `senhub.citrix.machines.by_registration_state` (gauge, `{machine}`) + `senhub.citrix.machine.registration_state` ∈ {registered, unregistered, faulty, maintenance}
 
 **Logon performance:**
@@ -496,7 +496,7 @@ Every metric lives under `senhub.citrix.*`, collapsed systematically by function
 - `senhub.citrix.logon.phase_duration` (gauge, `s`) + `senhub.citrix.logon.phase` ∈ {brokering, vm_start, hdx, authentication, gpo, scripts, profile, interactive} — **8 phases collapsed**
 
 **Connection failures:**
-- `senhub.citrix.connection_failures.total` (gauge, `{failure}`)
+- `senhub.citrix.connection_failure.count` (gauge, `{failure}`)
 - `senhub.citrix.connection_failures.by_category` (gauge, `{failure}`) + `senhub.citrix.connection_failure.category` ∈ {client_connection, configuration, machine, capacity_unavailable, licenses_unavailable, other}
 
 **Load index (VDA utilisation):**
@@ -764,7 +764,7 @@ Every probe is mapped. Phase 0.5 is complete.
 
 | Our metric | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
-| Total jobs | `senhub.ibmi.jobs.total` | `{job}` | gauge | — |
+| Total jobs | `senhub.ibmi.job.count` | `{job}` | gauge | — |
 | Active jobs | `senhub.ibmi.jobs.active` | `{job}` | gauge | — |
 | Jobs by status | `senhub.ibmi.jobs.by_status` | `{job}` | gauge | `ibmi.job.type`, `ibmi.job.status` |
 | Jobs by subsystem | `senhub.ibmi.jobs.by_subsystem` | `{job}` | gauge | `ibmi.subsystem` |
@@ -861,7 +861,7 @@ Every probe is mapped. Phase 0.5 is complete.
 | Our metric | OTel name | Unit | Type | Attributes |
 |---|---|---|---|---|
 | Hardware count (by category & status) | `senhub.ibmi.hardware.count` | `{resource}` | gauge | `ibmi.hardware.category`, `ibmi.hardware.status` |
-| Hardware total | `senhub.ibmi.hardware.total` | `{resource}` | gauge | — |
+| Hardware total | `senhub.ibmi.hardware.resource.count` | `{resource}` | gauge | — |
 | Non-operational hardware | `senhub.ibmi.hardware.non_operational` | `{resource}` | gauge | — |
 
 **Security (users, sysval) — 6 metrics:**
@@ -1156,7 +1156,7 @@ Aligned with the otelcol-contrib httpcheck receiver wherever the metric exists (
 | `httpcheck.duration` | `s` | gauge | Total, wire ms `value_scale: 0.001` (contrib name) |
 | `senhub.httpcheck.duration.{dns,connect,tls,ttfb}` | `s` | gauge | httptrace phases, wire ms |
 | `senhub.httpcheck.response.size` | `By` | gauge | Body read (capped at 1 MiB) |
-| `senhub.httpcheck.tls.expiry` | `d` | gauge | Days left on the leaf certificate (negative when expired) |
+| `senhub.httpcheck.tls.expiry` | `s` | gauge | Time left on the leaf certificate (negative when expired); the probe measures days, exported as seconds over OTel |
 | `senhub.httpcheck.content.match` | `1` | gauge | Emitted only when content_match is configured |
 
 Reported redirects are not followed; keep-alive is disabled, so each cycle measures a full handshake.
@@ -1443,18 +1443,18 @@ PVEAPIToken` header). The `proxmox.*` namespace (vendor-specific) +
 | `senhub.proxmox.up` | `1` | gauge | 1 = the API answered; 0 = any connection or authentication error. Always emitted, including on failure. |
 | `proxmox.node.cpu.utilization` | `1` | gauge | Node CPU ratio (0–1) |
 | `proxmox.node.memory.used` | `By` | gauge | Memory used on the node |
-| `proxmox.node.memory.total` | `By` | gauge | Total memory installed on the node |
+| `proxmox.node.memory.limit` | `By` | gauge | Total memory installed on the node |
 | `proxmox.node.status` | `1` | gauge | 1 = online, 0 = offline |
 | `proxmox.vm.cpu.utilization` | `1` | gauge | VM/LXC CPU ratio (0–1) |
 | `proxmox.vm.memory.used` | `By` | gauge | Memory used by the VM/container |
-| `proxmox.vm.memory.total` | `By` | gauge | Memory allocated to the VM/container |
+| `proxmox.vm.memory.limit` | `By` | gauge | Memory allocated to the VM/container |
 | `proxmox.vm.disk.read` | `By` | counter | Bytes read since boot |
 | `proxmox.vm.disk.write` | `By` | counter | Bytes written since boot |
 | `proxmox.vm.network.in` | `By` | counter | Bytes received on all vNICs |
 | `proxmox.vm.network.out` | `By` | counter | Bytes sent on all vNICs |
 | `proxmox.vm.status` | `1` | gauge | 1 = running, 0 = stopped |
 | `proxmox.storage.used` | `By` | gauge | Bytes used in the pool |
-| `proxmox.storage.total` | `By` | gauge | Total pool capacity |
+| `proxmox.storage.limit` | `By` | gauge | Total pool capacity |
 
 Discriminant attributes (via `tag_to_attribute`): `proxmox.node`,
 `proxmox.vmid`, `proxmox.vm.name`, `proxmox.vm.type`, `proxmox.storage`.
@@ -1469,10 +1469,10 @@ clients, WAN throughput, and per-AP CPU/RAM/satisfaction.
 | OTel metric | Unit | Type | Attributes / Notes |
 |---|---|---|---|
 | `senhub.unifi.up` | `1` | gauge | `unifi.endpoint`, `unifi.site` |
-| `unifi.devices.total` | `{device}` | gauge | `unifi.device.type` (`uap`/`usw`/`ugw`) |
+| `unifi.device.count` | `{device}` | gauge | `unifi.device.type` (`uap`/`usw`/`ugw`) |
 | `unifi.devices.adopted` | `{device}` | gauge | `unifi.device.type` |
 | `unifi.devices.disconnected` | `{device}` | gauge | `unifi.device.type` |
-| `unifi.clients.total` | `{client}` | gauge | `unifi.site` |
+| `unifi.client.count` | `{client}` | gauge | `unifi.site` |
 | `unifi.clients.wifi` | `{client}` | gauge | `unifi.site` |
 | `unifi.network.io` | `By` | counter | `network.io.direction` ∈ {`transmit`, `receive`} ; `unifi.site` |
 | `unifi.device.cpu` | `1` | gauge | `unifi.device.name`, `unifi.device.type`, `unifi.site` |
@@ -1731,7 +1731,7 @@ transformer
 | `senhub.ad_hybrid.up` | Gauge `1` | — | 1 when the API answered this cycle, 0 otherwise |
 | `senhub.ad_hybrid.sync.health` | Gauge `1` | `senhub.ad_hybrid.service.name` | Healthy=2, Warning=1, Error/anything else=0 |
 | `senhub.ad_hybrid.sync.agents.healthy` | Gauge `{agent}` | `…service.name` | Sync agents in a healthy state |
-| `senhub.ad_hybrid.sync.agents.total` | Gauge `{agent}` | `…service.name` | Registered sync agents |
+| `senhub.ad_hybrid.sync.agent.count` | Gauge `{agent}` | `…service.name` | Registered sync agents |
 | `senhub.ad_hybrid.sync.export_errors` | Gauge `{error}` | `…service.name` + `senhub.ad_hybrid.error.bucket` | Directory export errors, per bucket |
 | `senhub.ad_hybrid.agent.last_seen` | Gauge `s` | `…service.name` + `senhub.ad_hybrid.agent.server` | Seconds since the agent last reported |
 
@@ -1828,7 +1828,7 @@ OTel — metrics live under `senhub.vsphere_ha.*`. NSX-T is only queried when
 | `senhub.vsphere_ha.vsan.objects` | Gauge `{object}` | `senhub.vsphere_ha.vsan.object.state` (`healthy`/`degraded`) + `…cluster.name` | `objectHealth.objectHealthDetail` |
 | `senhub.vsphere_ha.vsan.resync` | Gauge `By` | `…cluster.name` | `totalBytesToSync` |
 | `senhub.vsphere_ha.nsx.manager.health` | Gauge `1` | — | `mgr_connectivity_status == CONNECTED` |
-| `senhub.vsphere_ha.nsx.transport_nodes.total` / `.up` | Gauge `{node}` | — | `/transport-nodes/status` |
+| `senhub.vsphere_ha.nsx.transport_node.count` / `.up` | Gauge `{node}` | — | `/transport-nodes/status` |
 | `senhub.vsphere_ha.nsx.logical_switches` | Gauge `{switch}` | — | `/logical-switches.result_count` |
 | `senhub.vsphere_ha.nsx.edge_cluster.health` | Gauge `1` | `senhub.vsphere_ha.nsx.edge_cluster.id` | `/edge-clusters` (1 if every member is UP, 0 otherwise) |
 

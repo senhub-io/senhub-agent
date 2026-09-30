@@ -148,7 +148,7 @@ metrics:
     category: "jobs"
     description: "Jobs in the system, active and inactive (TOTAL_JOBS_IN_SYSTEM)"
     otel:
-      name: senhub.ibmi.jobs.total
+      name: senhub.ibmi.job.count
       unit: "{job}"
       type: gauge
 
@@ -1203,7 +1203,7 @@ metrics:
     category: "hardware"
     description: "Hardware resources the partition reports"
     otel:
-      name: senhub.ibmi.hardware.total
+      name: senhub.ibmi.hardware.resource.count
       unit: "{resource}"
       type: gauge
 
