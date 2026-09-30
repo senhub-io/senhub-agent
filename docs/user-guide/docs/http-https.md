@@ -16,7 +16,7 @@ The installer writes the HTTP output to `strategies.d/00-http.yaml`:
 http:
   port: 8080
   bind_address: "127.0.0.1"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
   admin_key: "..."
 ```
 
@@ -30,7 +30,7 @@ An installation that still uses the legacy monolithic `agent-config.yaml` holds 
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
-| `endpoints` | none | Enabled endpoint types (`prtg`, `nagios`, `prometheus`, `web`). There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios"]` |
+| `endpoints` | none | Enabled endpoint types (`prtg`, `nagios`, `prometheus`, `web`). There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `admin_key` | generated | Administration key. It opens the web console, the configuration API, the log levels, the cache clear and the profiler; these routes are not served at all when it is absent. The installer writes one, and an older installation without it gets one generated on its first start. It is not the agent key: the agent key only reads metrics |
 
 To change the port or other parameters, edit `strategies.d/00-http.yaml`. The change is applied automatically without restarting the service.
@@ -90,7 +90,7 @@ You can also configure HTTPS directly in `strategies.d/00-http.yaml`:
 http:
   port: 8443
   bind_address: "0.0.0.0"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
   tls:
     enabled: true
     min_tls_version: "1.2"

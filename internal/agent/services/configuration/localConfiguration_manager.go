@@ -248,7 +248,11 @@ func (lc *LocalConfiguration) generateHTTPStrategyFragment(adminKey string) stri
 			"    key_file: \"" + keyPathYAML + "\"\n"
 	}
 
-	endpointsCSV := `"prtg", "web", "nagios"`
+	// Every endpoint answers from the start. The listen address and the
+	// keys are what restrict access, not this list: on loopback nobody
+	// else can read them, and each route but /health needs a key.
+	// Leaving one out only added a step to every deployment.
+	endpointsCSV := `"prtg", "web", "nagios", "prometheus"`
 	return fmt.Sprintf(HTTPStrategyFragmentTemplate, port, bindAddress, endpointsCSV, adminKey, tlsSection)
 }
 
@@ -286,7 +290,7 @@ func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 	httpParams := map[string]interface{}{
 		"port":         lc.defaultHTTPPort(),
 		"bind_address": "127.0.0.1",
-		"endpoints":    []string{"prtg", "web", "nagios"},
+		"endpoints":    []string{"prtg", "web", "nagios", "prometheus"},
 	}
 
 	// Add TLS configuration if HTTPS is enabled
