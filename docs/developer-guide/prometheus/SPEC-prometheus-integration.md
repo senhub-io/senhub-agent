@@ -88,7 +88,7 @@ Strict Prometheus rules:
 | Internal bus key | Prometheus metric | Type |
 |---|---|---|
 | `agent.uptime_seconds` | `senhub_agent_uptime_seconds` | gauge |
-| `agent.probes.total` | `senhub_agent_probes_total` | gauge |
+| `agent.probe.count` | `senhub_agent_probe_count` | gauge |
 | `agent.probes.healthy` | `senhub_agent_probes_healthy` | gauge |
 | `agent.collect.errors_total` | `senhub_agent_collect_errors_total` | counter |
 | `agent.http.requests_total` | `senhub_agent_http_requests_total` | counter |
@@ -131,9 +131,9 @@ avoid colliding with Prometheus's reserved `instance` label, which carries the
 # TYPE senhub_agent_uptime_seconds gauge
 senhub_agent_uptime_seconds 84231
 
-# HELP senhub_agent_probes_total Number of configured probe instances
-# TYPE senhub_agent_probes_total gauge
-senhub_agent_probes_total 3
+# HELP senhub_agent_probe_count Number of configured probe instances
+# TYPE senhub_agent_probe_count gauge
+senhub_agent_probe_count 3
 
 # HELP senhub_agent_probes_healthy Number of healthy probe instances
 # TYPE senhub_agent_probes_healthy gauge
@@ -288,7 +288,7 @@ senhub_probe_up{probe_type="netscaler"}
 senhub_probe_connections_active{site="paris", group="vserver"}
 
 # Healthy / total probe ratio
-senhub_agent_probes_healthy / senhub_agent_probes_total
+senhub_agent_probes_healthy / senhub_agent_probe_count
 
 # Alert: probe down for 5 minutes
 senhub_probe_up == 0  # for 5m
