@@ -347,11 +347,18 @@ func (p *ipmiProbe) shouldInclude(row sensorRow) bool {
 	return false
 }
 
-// parseSdrOutput parses the ipmitool "sdr elist full" format:
+// parseSdrOutput parses both layouts ipmitool prints. `sdr elist full`,
+// which the probe runs, puts the sensor number and the entity between
+// the name and the reading:
 //
-//	CPU Temp        | 45 degrees C      | ok
+//	CPU Temp         | 30h | ok  |  3.1 | 45 degrees C
 //
-// Fields are pipe-separated; the probe only uses the first three.
+// while the plain `sdr` listing has three fields:
+//
+//	CPU Temp         | 45 degrees C      | ok
+//
+// Reading the elist line as the plain one took the sensor number for the
+// reading, so no temperature, fan or voltage value was ever emitted.
 func parseSdrOutput(output string) []sensorRow {
 	lines := strings.Split(output, "\n")
 	rows := make([]sensorRow, 0, len(lines))
@@ -360,14 +367,18 @@ func parseSdrOutput(output string) []sensorRow {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 4)
-		if len(parts) < 3 {
-			continue
+		parts := strings.Split(line, "|")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
 		}
-		row := sensorRow{
-			name:   strings.TrimSpace(parts[0]),
-			value:  strings.TrimSpace(parts[1]),
-			status: strings.TrimSpace(strings.ToLower(parts[2])),
+		var row sensorRow
+		switch {
+		case len(parts) >= 5 && sensorNumber.MatchString(parts[1]):
+			row = sensorRow{name: parts[0], value: parts[4], status: strings.ToLower(parts[2])}
+		case len(parts) >= 3:
+			row = sensorRow{name: parts[0], value: parts[1], status: strings.ToLower(parts[2])}
+		default:
+			continue
 		}
 		if row.name == "" {
 			continue
@@ -376,6 +387,10 @@ func parseSdrOutput(output string) []sensorRow {
 	}
 	return rows
 }
+
+// sensorNumber is the second field of an elist line, the sensor number
+// in hexadecimal ("30h").
+var sensorNumber = regexp.MustCompile(`^[0-9A-Fa-f]{1,2}h$`)
 
 // parseValueUnit classifies a sensor reading by unit and returns the
 // numeric value (nil when not a number or "no reading"), the raw unit
