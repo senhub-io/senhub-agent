@@ -46,3 +46,31 @@ func TestCountRequests_PerRouteTemplate(t *testing.T) {
 		t.Errorf("/health count: got %d, want 2 (counts=%v)", counts["/health"], counts)
 	}
 }
+
+func TestCountRequests_PreviewIsNotAPoller(t *testing.T) {
+	resetHTTPRequestCountersForTest()
+
+	router := mux.NewRouter()
+	router.Use(CountRequests)
+	router.HandleFunc("/api/{agentkey}/prtg/metrics/{probe}", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/k/prtg/metrics/cpu", nil)
+	req.Header.Set(previewHeader, "1")
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+	}
+	if a, seen := GetRequestActivity()["prtg"]; seen && a.Total > 0 {
+		t.Fatalf("the console's preview was counted as a PRTG poller: %+v", a)
+	}
+
+	if resp, err := http.Get(srv.URL + "/api/k/prtg/metrics/cpu"); err == nil {
+		resp.Body.Close()
+	}
+	if a := GetRequestActivity()["prtg"]; a.Total != 1 {
+		t.Fatalf("a poller's request must be counted once, got %+v", a)
+	}
+}

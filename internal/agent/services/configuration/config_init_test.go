@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestWriteOTLPStrategyFragment(t *testing.T) {
@@ -167,4 +169,53 @@ agent:
 		t.Fatalf("SetLicenseField remove: %v", err)
 	}
 	assertMultiFileIntact(t, "")
+}
+
+func TestWriteZabbixStrategyFragment(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteZabbixStrategyFragment(dir, "zbx-a.example.com:10051,zbx-b.example.com", "senhub-agent site-paris"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "strategies.d", "20-zabbix.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]map[string]string
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("the fragment is not valid YAML: %v\n%s", err, raw)
+	}
+	if doc["zabbix"]["server"] != "zbx-a.example.com:10051,zbx-b.example.com" || doc["zabbix"]["host_metadata"] != "senhub-agent site-paris" {
+		t.Errorf("fragment = %v", doc)
+	}
+
+	// Never overwrites what is already there.
+	if err := WriteZabbixStrategyFragment(dir, "other:10051", ""); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := os.ReadFile(filepath.Join(dir, "strategies.d", "20-zabbix.yaml"))
+	if string(again) != string(raw) {
+		t.Error("an existing Zabbix fragment was rewritten")
+	}
+
+	if err := WriteZabbixStrategyFragment(t.TempDir(), "", ""); err != nil {
+		t.Errorf("no server means nothing to write, got %v", err)
+	}
+}
+
+func TestValidateZabbixInstallArgs(t *testing.T) {
+	for _, bad := range [][2]string{
+		{"zbx:10051\n  tls: {}", ""},
+		{"zbx 10051", ""},
+		{"zbx:10051,", ""},
+		{`zbx"`, ""},
+		{"", "senhub-agent"},
+		{"zbx:10051", "meta#x"},
+	} {
+		if err := ValidateZabbixInstallArgs(bad[0], bad[1]); err == nil {
+			t.Errorf("server %q metadata %q accepted", bad[0], bad[1])
+		}
+	}
+	if err := ValidateZabbixInstallArgs("zbx:10051", "senhub-agent paris"); err != nil {
+		t.Errorf("a plain server and metadata refused: %v", err)
+	}
 }

@@ -34,7 +34,7 @@ metrics:
     category: "inventory"
     description: "Number of devices of this type known to the controller"
     otel:
-      name: unifi.devices.total
+      name: unifi.device.count
       unit: "{device}"
       type: gauge
     tag_to_attribute:
@@ -78,7 +78,7 @@ metrics:
     category: "clients"
     description: "Total connected clients (wired + wireless)"
     otel:
-      name: unifi.clients.total
+      name: unifi.client.count
       unit: "{client}"
       type: gauge
     tag_to_attribute:

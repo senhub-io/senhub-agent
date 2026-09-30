@@ -81,7 +81,10 @@ present (see [Bringing your own configuration](#bringing-your-own-configuration)
 | `SENHUB_OTLP_TLS` | No | `true` | `false` for a collector that listens in plain text, such as a sidecar on `localhost:4317`. The token then crosses the network unencrypted: keep it to the same host or a trusted network. Any value other than `true` or `false` stops the container |
 | `SENHUB_LICENSE` | No | - | Licence token, for the probes that need one |
 | `SENHUB_TAGS` | No | - | Tags on every metric, as `key=value,key2=value2` |
+| `SENHUB_ZABBIX_SERVER` | No | - | Zabbix server or proxy, `host:port`: writes the Zabbix output, and the container registers in Zabbix at its first contact |
+| `SENHUB_ZABBIX_HOST_METADATA` | No | `senhub-agent` | Host metadata the Zabbix autoregistration action matches |
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
+| `SENHUB_HTTP_BIND` | No | `0.0.0.0` | Address the console and the PRTG, Nagios and Prometheus endpoints listen on. The container's own loopback is reachable by no one, so the image listens on every address and relies on the container network; `127.0.0.1` keeps them inside the container |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key and the bookmarks live |
 | `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |

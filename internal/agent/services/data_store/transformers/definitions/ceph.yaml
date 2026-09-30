@@ -71,7 +71,7 @@ metrics:
     category: "osd"
     description: "Total number of OSDs configured in the cluster"
     otel:
-      name: ceph.osd.total
+      name: ceph.osd.count
       unit: "{osd}"
       type: gauge
     tag_to_attribute:
@@ -124,7 +124,7 @@ metrics:
     category: "monitor"
     description: "Number of monitors currently in quorum"
     otel:
-      name: ceph.monitor.quorum_count
+      name: ceph.monitor.quorum.count
       unit: "{monitor}"
       type: gauge
     tag_to_attribute:

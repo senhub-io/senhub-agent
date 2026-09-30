@@ -37,7 +37,7 @@ dependable than an HTTP round trip.
 | Metric | Unit | Description |
 |---|---|---|
 | `senhub.tcpdial.up` | bool | Connect completed within the timeout |
-| `senhub.tcpdial.duration` | ms | Three-way-handshake time (emitted only when up) |
+| `senhub.tcpdial.duration` | s | Three-way-handshake time (emitted only when up) |
 
 A refused or timed out target is a measurement (`up = 0`), never a
 probe failure.

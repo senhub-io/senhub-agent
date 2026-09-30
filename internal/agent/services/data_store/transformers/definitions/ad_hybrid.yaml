@@ -61,7 +61,7 @@ metrics:
     multi_instance_labels: ["service_name"]
     description: "Total number of registered sync agents"
     otel:
-      name: senhub.ad_hybrid.sync.agents.total
+      name: senhub.ad_hybrid.sync.agent.count
       unit: "{agent}"
       type: gauge
     tag_to_attribute:

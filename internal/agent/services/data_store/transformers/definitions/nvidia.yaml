@@ -64,7 +64,7 @@ metrics:
     category: "memory"
     description: "Total GPU framebuffer memory capacity, in bytes"
     otel:
-      name: gpu.memory.total
+      name: gpu.memory.limit
       unit: "By"
       type: gauge
     tag_to_attribute:

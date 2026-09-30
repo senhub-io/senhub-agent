@@ -12,7 +12,7 @@
         "label": "Veeam server",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-        "query": "label_values(senhub_veeam_jobs_total, service_name)",
+        "query": "label_values(senhub_veeam_job_count, service_name)",
         "refresh": 1,
         "multi": true,
         "includeAll": true,
@@ -26,7 +26,7 @@
       "type": "stat", "id": 10, "title": "Total jobs",
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "sum(senhub_veeam_jobs_total{service_name=~\"$service\"})", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "sum(senhub_veeam_job_count{service_name=~\"$service\"})", "instant": true }],
       "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "background_solid" }
     },

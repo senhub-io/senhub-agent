@@ -34,7 +34,7 @@ func surfaceStatus(t *testing.T, router *mux.Router, method, url string) int {
 
 // The key a monitoring tool is given reads this agent. It must not be
 // able to change it. Before the two were told apart, the key handed to
-// PRTG also cleared the metric cache, injected values into it and
+// PRTG also cleared the metric cache and
 // changed the agent's log levels — and that key travels in the URL
 // path, so it lands in every access log between the two.
 func TestTheReadKeyDoesNotOpenTheAdministrationSurface(t *testing.T) {
@@ -45,7 +45,6 @@ func TestTheReadKeyDoesNotOpenTheAdministrationSurface(t *testing.T) {
 
 	for _, route := range []struct{ method, path string }{
 		{"POST", "/api/read-key/admin/cache/clear"},
-		{"POST", "/api/read-key/debug/inject-real-metrics"},
 		{"POST", "/api/read-key/debug/logs"},
 		{"GET", "/api/read-key/debug/logs"},
 		{"POST", "/api/read-key/config/test"},
@@ -91,7 +90,6 @@ func TestWithoutAnAdministrationKeyTheSurfaceIsNotServed(t *testing.T) {
 
 	for _, route := range []struct{ method, path string }{
 		{"POST", "/api/read-key/admin/cache/clear"},
-		{"POST", "/api/read-key/debug/inject-real-metrics"},
 		{"GET", "/web/read-key/dashboard"},
 		{"GET", "/api/read-key/config/probes"},
 	} {

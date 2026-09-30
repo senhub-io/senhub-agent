@@ -50,8 +50,8 @@ usage, connection counts and exchange statistics.
 | `rabbitmq.messages.ready` | {message} | Messages ready to be delivered |
 | `rabbitmq.queue.messages.ready` | {message} | Messages ready per queue, tagged with `queue` / `vhost` |
 | `rabbitmq.queue.consumers` | {consumer} | Active consumers per queue |
-| `rabbitmq.consumers.total` | {consumer} | Total consumers connected to the broker |
-| `rabbitmq.connections.total` | {connection} | Total client connections |
+| `rabbitmq.consumer.count` | {consumer} | Total consumers connected to the broker |
+| `rabbitmq.connection.count` | {connection} | Total client connections |
 | `rabbitmq.node.memory.used` | By | Memory used by the broker process, tagged with `node` |
 | `rabbitmq.node.disk.free` | By | Free disk space on the node |
 | `rabbitmq.node.fd.used` | {fd} | Open file descriptors on the node |
@@ -81,10 +81,10 @@ series' tags.
 | `rabbitmq.messages.acknowledged` | `rabbitmq.messages.acknowledged` | RabbitMQ Messages Acknowledged | # | Total messages acknowledged by consumers (message_stats.ack) |
 | `rabbitmq.messages.unacknowledged` | `rabbitmq.messages.unacknowledged` | RabbitMQ Messages Unacknowledged | # | Current number of messages delivered but not yet acknowledged (queue_totals.messages_unacknowledged) |
 | `rabbitmq.messages.ready` | `rabbitmq.messages.ready` | RabbitMQ Messages Ready | # | Current number of messages ready for delivery (queue_totals.messages_ready) |
-| `rabbitmq.consumers.total` | `rabbitmq.consumers.total` | RabbitMQ Consumers | # | Total number of consumers across all queues (object_totals.consumers) |
-| `rabbitmq.queues.total` | `rabbitmq.queues.total` | RabbitMQ Queues | # | Total number of queues (object_totals.queues) |
-| `rabbitmq.connections.total` | `rabbitmq.connections.total` | RabbitMQ Connections | # | Total number of open connections (object_totals.connections) |
-| `rabbitmq.channels.total` | `rabbitmq.channels.total` | RabbitMQ Channels | # | Total number of open channels (object_totals.channels) |
+| `rabbitmq.consumer.count` | `rabbitmq.consumers.total` | RabbitMQ Consumers | # | Total number of consumers across all queues (object_totals.consumers) |
+| `rabbitmq.queue.count` | `rabbitmq.queues.total` | RabbitMQ Queues | # | Total number of queues (object_totals.queues) |
+| `rabbitmq.connection.count` | `rabbitmq.connections.total` | RabbitMQ Connections | # | Total number of open connections (object_totals.connections) |
+| `rabbitmq.channel.count` | `rabbitmq.channels.total` | RabbitMQ Channels | # | Total number of open channels (object_totals.channels) |
 | `rabbitmq.node.memory.used` | `rabbitmq.node.memory.used` | RabbitMQ {node} Memory Used | bytes | Bytes of RAM used by the Erlang VM on this node (mem_used) |
 | `rabbitmq.node.disk.free` | `rabbitmq.node.disk.free` | RabbitMQ {node} Disk Free | bytes | Bytes of free disk space on the node's data partition (disk_free) |
 | `rabbitmq.node.fd.used` | `rabbitmq.node.fd.used` | RabbitMQ {node} File Descriptors Used | # | Number of file descriptors in use by the node (fd_used) |

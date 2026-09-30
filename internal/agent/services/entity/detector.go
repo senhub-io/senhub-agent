@@ -2,6 +2,7 @@ package entity
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,18 @@ const livenessSlackOverReEmit = 3
 // (reEmitTicks × livenessSlackOverReEmit): 6× at the 60s default → a 360s
 // window, i.e. 3× the 120s re-emission cadence.
 const livenessSlackFactor = reEmitTicks * livenessSlackOverReEmit
+
+// reportInterval is the entity.report.interval the running detector
+// announces, in nanoseconds; 0 before a detector starts.
+var reportInterval atomic.Int64
+
+// ReportInterval is the liveness interval announced on every entity: the
+// consumer expires an entity not re-asserted within it, with no margin of
+// its own. A producer holding an observation back must stay well inside it;
+// 0 when no detector runs.
+func ReportInterval() time.Duration {
+	return time.Duration(reportInterval.Load())
+}
 
 // lastGoodTTL bounds how long the detector keeps serving a source's last
 // good observation once Observe starts reporting failures (ok=false). A
@@ -64,6 +77,8 @@ type Detector struct {
 	now            func() time.Time
 	onOrphan       func([]Relation)
 	onOrphanEntity func([]Entity)
+	onConflict     func(AttributeConflict)
+	onMerge        func(Entity, int)
 	// lastGood caches, per registered-source id, the most recent
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
@@ -88,6 +103,20 @@ func NewDetector(host HostIdentityFunc, agent AgentIdentityFunc, interval time.D
 // producer bug via its logger.
 func (d *Detector) OnOrphanRelations(fn func([]Relation)) {
 	d.onOrphan = fn
+}
+
+// OnAttributeConflict registers a hook called for every attribute two
+// sources reported with different values for the same entity in one cycle
+// (see mergeDuplicates). Nil-safe; the wiring layer surfaces it as a
+// warning.
+func (d *Detector) OnAttributeConflict(fn func(AttributeConflict)) {
+	d.onConflict = fn
+}
+
+// OnDuplicateMerged registers a hook called for every entity reported by
+// more than one copy in a cycle, with the number of copies. Nil-safe.
+func (d *Detector) OnDuplicateMerged(fn func(Entity, int)) {
+	d.onMerge = fn
 }
 
 // OnOrphanEntities registers a hook called with any entity dropped before
@@ -115,6 +144,7 @@ func (d *Detector) Run(ctx context.Context) {
 	// Suppress unchanged heartbeats for reEmitTicks ticks — this defines the
 	// effective re-emission cadence the liveness window is sized against
 	// (see livenessSlackOverReEmit).
+	reportInterval.Store(int64(d.interval * livenessSlackFactor))
 	tracker := NewTracker(publish, reEmitTicks*d.interval)
 	joined, stop := NotifyOnSubscribe()
 	defer stop()
@@ -208,6 +238,7 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	obs = inheritHostGovernance(obs, h.ID, h.Governance)
 	// Fold each relation onto its source entity (embedded entity.relationships)
 	// before the tracker, so the tracker reconciles entities only.
+	obs = obs.mergeDuplicates(d.onConflict, d.onMerge)
 	entities, orphans := obs.foldRelationships()
 	if len(orphans) > 0 && d.onOrphan != nil {
 		d.onOrphan(orphans)

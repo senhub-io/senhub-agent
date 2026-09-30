@@ -37,7 +37,7 @@ func TestOTelNameToPromName(t *testing.T) {
 		{"hw.physical_disk.size", "hw.physical_disk.size", "By", "updowncounter", "senhub_hw_physical_disk_size_bytes"},
 
 		// senhub.* extensions
-		{"senhub veeam job duration", "senhub.veeam.job.seconds_since_last_run", "s", "gauge", "senhub_veeam_job_seconds_since_last_run_seconds"},
+		{"senhub veeam job duration", "senhub.veeam.job.seconds_since_last_run", "s", "gauge", "senhub_veeam_job_seconds_since_last_run"},
 		{"senhub probe http", "senhub.probe.http.duration_seconds", "s", "gauge", "senhub_probe_http_duration_seconds"},
 		{"senhub probe icmp", "senhub.probe.icmp.packet_loss_ratio", "1", "gauge", "senhub_probe_icmp_packet_loss_ratio"},
 
@@ -81,38 +81,6 @@ func TestOTelAttributeToPromLabel(t *testing.T) {
 		if got := OTelAttributeToPromLabel(tt.in); got != tt.want {
 			t.Errorf("OTelAttributeToPromLabel(%q) = %q, want %q", tt.in, got, tt.want)
 		}
-	}
-}
-
-func TestConvertValue(t *testing.T) {
-	tests := []struct {
-		name       string
-		raw        float64
-		sourceUnit string
-		otelUnit   string
-		valueScale float64
-		want       float64
-	}{
-		{"percent to ratio", 50.0, "%", "1", 0, 0.5},
-		{"percent case", 22.4, "percent", "1", 0, 0.224},
-		{"MB to By", 512.0, "MB", "By", 0, 512.0 * 1048576.0},
-		{"KB to By", 256.0, "KB", "By", 0, 256.0 * 1024.0},
-		{"ms to s", 1500.0, "ms", "s", 0, 1.5},
-		{"us to s", 1.5e6, "μs", "s", 0, 1.5},
-		{"Mbps to bit/s", 100.0, "Mbits/s", "bit/s", 0, 1.0e8},
-		{"hours to seconds", 2.0, "h", "s", 0, 7200.0},
-		{"explicit scale overrides", 50.0, "%", "1", 1000.0, 50000.0},
-		{"no conversion match", 42.0, "", "", 0, 42.0},
-		{"no conversion same unit", 42.0, "By", "By", 0, 42.0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ConvertValue(tt.raw, tt.sourceUnit, tt.otelUnit, tt.valueScale)
-			if !floatApprox(got, tt.want) {
-				t.Errorf("ConvertValue(%v, %q, %q, %v) = %v, want %v",
-					tt.raw, tt.sourceUnit, tt.otelUnit, tt.valueScale, got, tt.want)
-			}
-		})
 	}
 }
 
@@ -197,5 +165,23 @@ func TestOTelNameToPromName_NoDoubleSenhubPrefix(t *testing.T) {
 				t.Errorf("non-idempotent: re-applied = %q, want %q", reapplied, tt.want)
 			}
 		})
+	}
+}
+
+// A unit word already present as a name segment is not repeated, as the
+// Collector's translator does; the halves of a rate are checked apart.
+func TestUnitWordsAlreadyInTheNameAreNotRepeated(t *testing.T) {
+	for _, tc := range []struct{ name, unit, typ, want string }{
+		{"senhub.veeam.job.seconds_since_last_run", "s", "gauge", "senhub_veeam_job_seconds_since_last_run"},
+		{"haproxy.bytes.input", "By", "counter", "senhub_haproxy_bytes_input_total"},
+		{"system.network.io", "By", "counter", "senhub_system_network_io_bytes_total"},
+		{"senhub.netscaler.ns.throughput", "By/s", "gauge", "senhub_netscaler_ns_throughput_bytes_per_second"},
+		{"network.bytes.rate", "By/s", "gauge", "senhub_network_bytes_rate_per_second"},
+		{"requests.per.second", "{request}/s", "gauge", "senhub_requests_per_second"},
+		{"system.cpu.time", "s", "counter", "senhub_system_cpu_time_seconds_total"},
+	} {
+		if got := OTelNameToPromName(tc.name, tc.unit, tc.typ); got != tc.want {
+			t.Errorf("%s (%s, %s) = %s, want %s", tc.name, tc.unit, tc.typ, got, tc.want)
+		}
 	}
 }

@@ -166,7 +166,7 @@ series' tags.
 | `container.memory.rss` | `container.memory.rss` | Docker {container_name} Memory RSS | B | Anonymous memory (RSS on cgroupsv1, anon on cgroupsv2) |
 | `container.memory.cache` | `container.memory.cache` | Docker {container_name} Memory Cache | B | Page cache memory (cache on cgroupsv1, file on cgroupsv2) |
 | `container.memory.swap` | `container.memory.swap` | Docker {container_name} Memory Swap | B | Swap memory usage |
-| `senhub.docker.memory.working_set` | `senhub.docker.memory.working_set` | Docker {container_name} Memory Working Set | B | Working set memory (usage minus page cache) — what docker stats reports as MEM USAGE |
+| `container.memory.working_set` | `senhub.docker.memory.working_set` | Docker {container_name} Memory Working Set | B | Working set memory (usage minus page cache) — what docker stats reports as MEM USAGE |
 | `container.memory.anon` | `container.memory.anon` | Docker {container_name} Memory Anonymous | B | Anonymous (non-file-backed) memory; uses rss key on cgroupsv1, anon on cgroupsv2 |
 | `container.memory.mapped_file` | `container.memory.mapped_file` | Docker {container_name} Memory Mapped File | B | Memory mapped to files (cgroupsv1 mapped_file; absent on cgroupsv2) |
 | `container.memory.pgfault` | `container.memory.pgfault` | Docker {container_name} Memory Page Faults | # | Cumulative minor page faults (pgfault from memory_stats.stats) |

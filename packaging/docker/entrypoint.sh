@@ -7,7 +7,7 @@
 #   1. Set OTLP_BEARER_TOKEN and nothing else. The agent generates its
 #      own key, watches the host it runs on, and pushes to SenHub.
 #   2. Add the variables your deployment needs: another collector, a
-#      licence, tags, a Container Apps log stream.
+#      Zabbix server, a licence, tags, a Container Apps log stream.
 #   3. Mount your own /etc/senhub-agent. Nothing is written then and
 #      every variable is ignored: your files win.
 #
@@ -101,7 +101,11 @@ resolve_machine_id() {
 # doing it in the body would overwrite the command the container was
 # given, and the agent would then be started with the init flags.
 init_config() {
-  set -- --config-path "$CONFIG" --http-port "${SENHUB_HTTP_PORT:-8080}"
+  # The loopback of a container is reachable by no one: PRTG, Nagios and a
+  # Prometheus scrape come through the published port, so the output
+  # listens on every address unless told otherwise. The container network
+  # is the isolation, and every route but /health needs a key.
+  set -- --config-path "$CONFIG" --http-port "${SENHUB_HTTP_PORT:-8080}" --http-bind "${SENHUB_HTTP_BIND:-0.0.0.0}"
 
   endpoint="${SENHUB_OTLP_ENDPOINT:-}"
   if [ -z "$endpoint" ] && [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
@@ -115,6 +119,15 @@ init_config() {
   fi
   if [ -n "${SENHUB_TAGS:-}" ]; then
     set -- "$@" --tags "$SENHUB_TAGS"
+  fi
+  # A Zabbix server is all the Zabbix output needs: the host registers by
+  # itself at its first contact once the server was prepared with
+  # 'senhub-agent zabbix setup'.
+  if [ -n "${SENHUB_ZABBIX_SERVER:-}" ]; then
+    set -- "$@" --zabbix-server "$SENHUB_ZABBIX_SERVER"
+    if [ -n "${SENHUB_ZABBIX_HOST_METADATA:-}" ]; then
+      set -- "$@" --zabbix-host-metadata "$SENHUB_ZABBIX_HOST_METADATA"
+    fi
   fi
 
   senhub-agent config init "$@"

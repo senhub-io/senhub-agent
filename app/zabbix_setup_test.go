@@ -9,6 +9,25 @@ import (
 	"testing"
 )
 
+// The setup only knows the frontend URL. It printed host:10051 whatever
+// the trapper port, and a server listening on another port got agents
+// pointed at a closed one. The address it prints carries no port, which
+// the agent completes with 10051.
+func TestSetupPrintsNoPortItCannotKnow(t *testing.T) {
+	for _, u := range []string{
+		"https://zabbix.example.com",
+		"http://zabbix.example.com:8080/zabbix",
+		"zabbix.example.com/",
+	} {
+		if got := hostOf(u); got != "zabbix.example.com" {
+			t.Errorf("hostOf(%q) = %q, want the bare host", u, got)
+		}
+	}
+	if note := serverAddressNote("zabbix.example.com"); !strings.Contains(note, "10051") || !strings.Contains(note, "host:port") {
+		t.Errorf("the note must say the default port and how to name another: %q", note)
+	}
+}
+
 // Naming a probe adds it to the ones every machine runs. Replacing them
 // was a trap: an operator adding one commercial template silently
 // unlinked the processor, the memory, the network and the disks from the

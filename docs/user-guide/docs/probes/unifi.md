@@ -45,9 +45,9 @@ throughput and connected-client totals.
 | Metric | Unit | Description |
 |---|---|---|
 | `senhub.unifi.up` | 1 | 1 when the controller answered login and stat endpoints |
-| `unifi.devices.total` | {device} | Known devices by type (uap/usw/ugw), tagged with `device_type` |
+| `unifi.device.count` | {device} | Known devices by type (uap/usw/ugw), tagged with `device_type` |
 | `unifi.devices.adopted` | {device} | Adopted devices by type |
-| `unifi.clients.total` | # | Connected clients, wired and wireless |
+| `unifi.client.count` | # | Connected clients, wired and wireless |
 | `unifi.device.cpu` | 1 | CPU utilization ratio per device, tagged with `device_name` / `device_type` |
 | `unifi.device.memory` | 1 | Memory utilization ratio per device |
 | `unifi.ap.satisfaction` | 1 | AP user experience satisfaction score (0–100 normalized to 0–1), per AP |
@@ -80,10 +80,10 @@ series' tags.
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
 | `senhub.unifi.up` | `senhub.unifi.up` | UniFi Controller Up | # | 1 when the controller answered login and the stat endpoints this cycle, 0 otherwise |
-| `unifi.devices.total` | `unifi.devices.total` | UniFi {device_type} Devices | # | Number of devices of this type known to the controller |
+| `unifi.device.count` | `unifi.devices.total` | UniFi {device_type} Devices | # | Number of devices of this type known to the controller |
 | `unifi.devices.adopted` | `unifi.devices.adopted` | UniFi {device_type} Adopted | # | Number of devices of this type the controller marks adopted; a device whose adoption failed still counts, so read it with unifi.devices.disconnected |
 | `unifi.devices.disconnected` | `unifi.devices.disconnected` | UniFi {device_type} Disconnected | # | Number of devices of this type not in the connected state |
-| `unifi.clients.total` | `unifi.clients.total` | UniFi Clients | # | Total connected clients (wired + wireless) |
+| `unifi.client.count` | `unifi.clients.total` | UniFi Clients | # | Total connected clients (wired + wireless) |
 | `unifi.clients.wifi` | `unifi.clients.wifi` | UniFi WiFi Clients | # | Connected wireless clients |
 | `unifi.network.io` | `unifi.network.io` | UniFi WAN IO {direction} | bytes | WAN byte rate reported by the controller, discriminated by direction (transmit/receive) |
 | `unifi.device.cpu` | `unifi.device.cpu` | UniFi {device_name} CPU | % | Per-device CPU utilization percentage |

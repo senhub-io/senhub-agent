@@ -48,6 +48,7 @@ type HTTPSyncStrategy struct {
 	statusService       *status.StatusService  // centralized status calculation service
 	lookupRegistry      *LookupRegistry        // lookup definitions registry for status/health mappings
 	lookupsManager      *LookupsManager        // lookups API endpoints manager
+	router              *mux.Router            // what SetupRoutes built; the endpoint list walks it
 }
 
 // SenHubMetric represents a metric in standardized SenHub raw format
@@ -195,11 +196,8 @@ func NewHTTPSyncStrategy(
 	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
 
 	// Initialize status service with centralized status calculations
-	strategy.statusService = status.NewStatusService(
-		moduleLogger.Logger,
-		"unknown", // Version will be set later if available
-		"unknown", // Commit will be set later if available
-	)
+	buildInfo := strategy.utilsManager.parseVersionInfo()
+	strategy.statusService = status.NewStatusService(moduleLogger.Logger, buildInfo.Version, buildInfo.Commit)
 
 	// Configure status service with cache provider and agent mode
 	cacheAdapter := NewHTTPCacheAdapter(strategy.cache, moduleLogger.Logger)
@@ -216,6 +214,12 @@ func NewHTTPSyncStrategy(
 // outputs keep serving its last value until its next run is due.
 func (h *HTTPSyncStrategy) NoteProbeCadence(probeName string, interval time.Duration) {
 	h.cache.NoteProbeCadence(probeName, interval)
+}
+
+// ForgetProbes drops the cached values of probes that stopped running,
+// so the PRTG, Nagios, Prometheus and console views stop listing them.
+func (h *HTTPSyncStrategy) ForgetProbes(probeNames []string) {
+	h.cache.ForgetProbes(probeNames)
 }
 
 func (h *HTTPSyncStrategy) GetStrategyName() string {
@@ -545,16 +549,6 @@ func (h *HTTPSyncStrategy) handleSetLogLevels(w http.ResponseWriter, r *http.Req
 	h.debugManager.HandleSetLogLevels(w, r)
 }
 
-// handleTestInjectMetrics handles POST requests to inject test metrics (delegated to DebugManager)
-func (h *HTTPSyncStrategy) handleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {
-	h.debugManager.HandleTestInjectMetrics(w, r)
-}
-
-// handleInjectRealMetrics handles POST requests to inject real production metrics (delegated to DebugManager)
-func (h *HTTPSyncStrategy) handleInjectRealMetrics(w http.ResponseWriter, r *http.Request) {
-	h.debugManager.HandleInjectRealMetrics(w, r)
-}
-
 // handleNagiosMetricsGET handles GET requests for Nagios format metrics by probe (delegated to NagiosManager)
 func (h *HTTPSyncStrategy) handleNagiosMetricsGET(w http.ResponseWriter, r *http.Request) {
 	h.nagiosManager.HandleNagiosMetricsGET(w, r)
@@ -751,6 +745,7 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 	// runtime changed the config and nothing else — the new endpoint kept
 	// answering 404 until someone restarted the service (#822).
 	previousEndpoints := endpointSetSignature(h.configManager.GetEnabledEndpoints())
+	previousTLS := h.configManager.tlsSignature()
 
 	// Update the configuration manager
 	if err := h.configManager.UpdateConfiguration(newParams); err != nil {
@@ -794,6 +789,16 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 			h.bindAddress = newBind
 			return h.restartServer()
 		}
+	}
+
+	// The listener picks plain or TLS serving, and its certificate, when
+	// it starts, so a TLS change needs the same rebuild a bind change gets.
+	if current := h.configManager.tlsSignature(); current != previousTLS {
+		h.logger.Info().
+			Str("old_tls", previousTLS).
+			Str("new_tls", current).
+			Msg("TLS configuration changed, restarting HTTP server")
+		return h.restartServer()
 	}
 
 	// Update cache configuration if agent config is LocalConfiguration

@@ -45,7 +45,7 @@
       "title": "Probes total",
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "sum(senhub_agent_probes_total{service_name=~\"$service\"})", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "sum(senhub_agent_probe_count{service_name=~\"$service\"})", "instant": true }],
       "fieldConfig": { "defaults": { "decimals": 0 } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
     },
@@ -94,7 +94,7 @@
       "gridPos": { "h": 7, "w": 8, "x": 8, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
       "targets": [
-        { "refId": "A", "expr": "senhub_agent_probes_total{service_name=~\"$service\"}",   "legendFormat": "{{service_name}} total" },
+        { "refId": "A", "expr": "senhub_agent_probe_count{service_name=~\"$service\"}",   "legendFormat": "{{service_name}} total" },
         { "refId": "B", "expr": "senhub_agent_probes_healthy{service_name=~\"$service\"}", "legendFormat": "{{service_name}} healthy" }
       ],
       "fieldConfig": { "defaults": { "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 0 } } },

@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,5 +250,86 @@ func TestSafeFilenameComponent(t *testing.T) {
 		if got != want {
 			t.Errorf("safeFilenameComponent(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func backups(t *testing.T, dir string) []string {
+	t.Helper()
+	m, _ := filepath.Glob(filepath.Join(dir, "*.pre-multi-file.*"))
+	return m
+}
+
+// Fragments a failed attempt left behind made every later attempt fail
+// the equality check and leave one more backup, at every start (#974).
+func TestMigrateToMultiFile_RemovesLeftoversOfAFailedAttempt(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMonolithicFixture(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, "probes.d"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	leftover := filepath.Join(dir, "probes.d", "00-host.yaml")
+	if err := os.WriteFile(leftover, []byte("# Probes migrated from monolithic config on 20260805-101010.\n- name: stale\n  type: cpu\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := MigrateToMultiFile(path, nil)
+	if err != nil {
+		t.Fatalf("migration with leftovers of an earlier attempt: %v", err)
+	}
+	body, _ := os.ReadFile(leftover)
+	if strings.Contains(string(body), "stale") {
+		t.Error("the leftover fragment was kept instead of being rewritten from the source")
+	}
+	if len(backups(t, dir)) != 1 || res.BackupPath == "" {
+		t.Errorf("a successful migration keeps exactly one backup, got %v", backups(t, dir))
+	}
+}
+
+// A fragment the operator wrote is ignored by the legacy loader; migrating
+// would start it, so the migration refuses and writes nothing.
+func TestMigrateToMultiFile_RefusesBesideOperatorFragments(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMonolithicFixture(t, dir)
+	before, _ := os.ReadFile(path)
+	if err := os.MkdirAll(filepath.Join(dir, "strategies.d"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "strategies.d", "50-mine.yaml"), []byte("otlp:\n  endpoint: x:4317\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := MigrateToMultiFile(path, nil)
+	var fe *FragmentsBesideMonolithicError
+	if !errors.As(err, &fe) || len(fe.Fragments) != 1 {
+		t.Fatalf("want FragmentsBesideMonolithicError naming the fragment, got %v", err)
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != string(before) || len(backups(t, dir)) != 0 {
+		t.Error("a refused migration must leave the file untouched and no backup")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "probes.d")); err == nil {
+		t.Error("a refused migration must not write fragments")
+	}
+}
+
+// A migration that fails after writing leaves the host as it found it.
+func TestMigrateToMultiFile_FailureLeavesNothingBehind(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent-config.yaml")
+	src := []byte("config_version: 2\nagent:\n  key: \"k\"\nstorage:\n  - params: {port: 8080}\nprobes:\n  - name: cpu\n    type: cpu\n")
+	if err := os.WriteFile(path, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MigrateToMultiFile(path, nil); err == nil {
+		t.Fatal("a strategy without a name must fail the migration")
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != string(src) {
+		t.Error("the original file was not restored")
+	}
+	if b := backups(t, dir); len(b) != 0 {
+		t.Errorf("the backup of a restored file must go, got %v", b)
+	}
+	owned, foreign := classifyFragments(dir)
+	if len(owned)+len(foreign) != 0 {
+		t.Errorf("fragments left behind: %v %v", owned, foreign)
 	}
 }

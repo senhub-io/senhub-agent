@@ -59,6 +59,19 @@ func convertValue(raw float64, sourceUnit, otelUnit string, valueScale float64) 
 		}
 	}
 
+	if dst == "By/s" {
+		switch src {
+		case "bit/s", "bps", "bits/s":
+			return raw / 8.0
+		case "kbit/s", "kbps", "kbits/s":
+			return raw * 1.0e3 / 8.0
+		case "mbits/s", "mbps", "megabits/s", "mbit/s":
+			return raw * 1.0e6 / 8.0
+		case "gbits/s", "gbps", "gigabits/s", "gbit/s":
+			return raw * 1.0e9 / 8.0
+		}
+	}
+
 	if dst == "bit/s" {
 		switch src {
 		case "mbits/s", "mbps", "megabits/s":

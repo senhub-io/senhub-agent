@@ -269,7 +269,7 @@ Beyond the probe metrics, the agent exposes its own operational metrics:
 | Name | Type | Description |
 |---|---|---|
 | `senhub_agent_uptime_seconds` | gauge | Process uptime |
-| `senhub_agent_probes_total` | gauge | Number of configured probe instances |
+| `senhub_agent_probe_count` | gauge | Number of configured probe instances |
 | `senhub_agent_probes_healthy` | gauge | Number of instances in a healthy state |
 | `senhub_agent_collect_errors_total` | counter | Total collection errors |
 | `senhub_agent_http_requests_total{endpoint=…}` | counter | HTTP requests served, per endpoint |

@@ -42,7 +42,7 @@ explicit servers are configured.
 | Metric | Unit | Description |
 |---|---|---|
 | `senhub.dns.up` | bool | Lookup answered within the timeout |
-| `senhub.dns.lookup.duration` | ms | Resolution time (only when up) |
+| `senhub.dns.lookup.duration` | s | Resolution time (only when up) |
 | `senhub.dns.answers` | count | Addresses returned |
 
 A failing lookup is a measurement (`up = 0`), never a probe failure.

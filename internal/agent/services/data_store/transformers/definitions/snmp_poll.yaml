@@ -160,7 +160,7 @@ metrics:
     description: "ifSpeed — nominal bandwidth of the interface in bits per second"
     otel:
       name: snmp.interface.speed
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
     tag_to_attribute:
       instance: snmp.target

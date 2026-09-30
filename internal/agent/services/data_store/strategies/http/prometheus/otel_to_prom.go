@@ -77,8 +77,8 @@ func OTelNameToPromName(otelName, unit, metricType string) string {
 	// the suffix when the OTel type is updowncounter or counter.
 	if suffix := unitSuffix(unit); suffix != "" {
 		skipSuffix := suffix == "ratio" && (strings.EqualFold(metricType, "updowncounter") || strings.EqualFold(metricType, "counter"))
-		if !skipSuffix && !strings.HasSuffix(name, "_"+suffix) {
-			name = name + "_" + suffix
+		if !skipSuffix {
+			name = appendUnitSuffix(name, suffix)
 		}
 	}
 
@@ -87,6 +87,38 @@ func OTelNameToPromName(otelName, unit, metricType string) string {
 		name = name + "_total"
 	}
 
+	return name
+}
+
+// appendUnitSuffix adds the unit words the name does not already carry,
+// as the OpenTelemetry Collector's Prometheus translator does: a word
+// already present as a name segment is not repeated, and the two halves of
+// a rate (`bytes`, `per_second`) are checked apart. Checking only the end of
+// the name exported senhub_veeam_job_seconds_since_last_run_seconds and
+// senhub_haproxy_bytes_input_bytes_total, names no backend converting OTLP
+// the Collector's way produces, so queries written for one missed the other.
+func appendUnitSuffix(name, suffix string) string {
+	tokens := strings.Split(name, "_")
+	has := func(word string) bool {
+		for _, t := range tokens {
+			if t == word {
+				return true
+			}
+		}
+		return false
+	}
+	main, per := suffix, ""
+	if rest, ok := strings.CutPrefix(suffix, "per_"); ok {
+		main, per = "", rest
+	} else if m, p, ok := strings.Cut(suffix, "_per_"); ok {
+		main, per = m, p
+	}
+	if main != "" && !has(main) {
+		name += "_" + main
+	}
+	if per != "" && !has(per) {
+		name += "_per_" + per
+	}
 	return name
 }
 
@@ -228,79 +260,6 @@ func PromType(otelType string) string {
 	default:
 		return "gauge" // safe default
 	}
-}
-
-// ConvertValue applies unit-based scaling to the raw cache value so that it
-// matches the OTel unit declared in the YAML.
-//
-// Conversions applied:
-//   - Percent → ratio (sourceUnit ∈ {%, percent}, otelUnit == "1"): ÷100
-//   - Kilobytes → bytes (sourceUnit ∈ {KB, kb, kilobyte}, otelUnit == "By"): ×1024
-//   - Megabytes → bytes (sourceUnit ∈ {MB, mb, megabyte}, otelUnit == "By"): ×1048576
-//   - Gigabytes → bytes: ×1073741824
-//   - Milliseconds → seconds (ms → s): ÷1000
-//   - Microseconds → seconds (us/μs → s): ÷1e6
-//   - Megabits per second → bits per second (Mbps/Mbits/s → bit/s): ×1e6
-//   - Gigabits per second → bits per second: ×1e9
-//   - Hours → seconds (h → s): ×3600
-//   - Days → seconds (d → s): ×86400
-//
-// Also applies the explicit ValueScale from the YAML if present (takes
-// precedence over unit-based conversions).
-func ConvertValue(raw float64, sourceUnit, otelUnit string, valueScale float64) float64 {
-	// Explicit scale wins (probe-specific conversions)
-	if valueScale != 0 {
-		return raw * valueScale
-	}
-
-	src := strings.ToLower(strings.TrimSpace(sourceUnit))
-	dst := strings.TrimSpace(otelUnit)
-
-	// % → ratio
-	if dst == "1" && (src == "%" || src == "percent") {
-		return raw / 100.0
-	}
-
-	// *B → By (bytes)
-	if dst == "By" {
-		switch src {
-		case "kb", "kib", "kibibyte", "kilobyte":
-			return raw * 1024.0
-		case "mb", "mib", "mebibyte", "megabyte":
-			return raw * 1048576.0
-		case "gb", "gib", "gibibyte", "gigabyte":
-			return raw * 1073741824.0
-		}
-	}
-
-	// ms/us → s
-	if dst == "s" {
-		switch src {
-		case "ms", "millisecond", "milliseconds":
-			return raw / 1000.0
-		case "us", "μs", "microsecond", "microseconds":
-			return raw / 1.0e6
-		case "ns", "nanosecond", "nanoseconds":
-			return raw / 1.0e9
-		case "h", "hour", "hours":
-			return raw * 3600.0
-		case "d", "day", "days":
-			return raw * 86400.0
-		}
-	}
-
-	// Mbits/s → bit/s
-	if dst == "bit/s" {
-		switch src {
-		case "mbits/s", "mbps", "megabits/s":
-			return raw * 1.0e6
-		case "gbits/s", "gbps", "gigabits/s", "gbit/s":
-			return raw * 1.0e9
-		}
-	}
-
-	// No conversion needed
-	return raw
 }
 
 // HelpString returns a sanitized single-line help string safe for the

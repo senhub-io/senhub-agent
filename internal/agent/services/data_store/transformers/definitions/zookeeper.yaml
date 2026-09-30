@@ -28,7 +28,7 @@ metrics:
     description: "Average request processing latency in milliseconds (zk_avg_latency)"
     otel:
       name: zookeeper.latency.avg
-      unit: "ms"
+      unit: "s"
       type: gauge
 
   - name: "zookeeper.latency.max"
@@ -39,7 +39,7 @@ metrics:
     description: "Maximum request processing latency in milliseconds (zk_max_latency)"
     otel:
       name: zookeeper.latency.max
-      unit: "ms"
+      unit: "s"
       type: gauge
 
   - name: "zookeeper.latency.min"
@@ -50,7 +50,7 @@ metrics:
     description: "Minimum request processing latency in milliseconds (zk_min_latency)"
     otel:
       name: zookeeper.latency.min
-      unit: "ms"
+      unit: "s"
       type: gauge
 
   - name: "zookeeper.packets.received"

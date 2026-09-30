@@ -117,7 +117,7 @@ storage:
     params:
       port: 8443
       bind_address: "0.0.0.0"
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
       tls:
         enabled: true
         min_tls_version: "1.2"
@@ -135,7 +135,7 @@ storage:
     params:
       port: 8443
       bind_address: "0.0.0.0"
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
       tls:
         enabled: true
         min_tls_version: "1.2"

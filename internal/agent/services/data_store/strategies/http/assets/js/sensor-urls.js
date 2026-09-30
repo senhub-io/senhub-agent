@@ -261,7 +261,7 @@
             this.respBody.innerHTML = '';
             const t0 = performance.now();
             try {
-                const r = await fetch(p);
+                const r = await fetch(p, { headers: { 'X-SenHub-Preview': '1' } });
                 const ms = Math.round(performance.now() - t0);
                 const text = await r.text();
                 if (seq !== this.previewSeq) return;

@@ -42,8 +42,8 @@ state (leader/follower/observer).
 | Metric | Unit | Description |
 |---|---|---|
 | `senhub.zookeeper.up` | 1 | 1 when the node answered the `mntr` command |
-| `zookeeper.latency.avg` | ms | Average request processing latency (`zk_avg_latency`) |
-| `zookeeper.latency.max` | ms | Maximum request processing latency |
+| `zookeeper.latency.avg` | s | Average request processing latency (`zk_avg_latency`) |
+| `zookeeper.latency.max` | s | Maximum request processing latency |
 | `zookeeper.connections` | {connection} | Current client connections |
 | `zookeeper.packets.received` | {packet} | Packets received since start |
 | `zookeeper.packets.sent` | {packet} | Packets sent since start |

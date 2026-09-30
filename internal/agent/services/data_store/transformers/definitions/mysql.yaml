@@ -345,7 +345,7 @@ metrics:
     category: "storage"
     description: "Total size of all user databases (information_schema.tables sum)"
     otel:
-      name: senhub.db.database.size.total
+      name: senhub.db.mysql.data.size
       unit: "By"
       type: gauge
 

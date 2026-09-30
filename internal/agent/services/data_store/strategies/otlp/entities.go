@@ -95,7 +95,7 @@ func buildEntityRecord(ev entity.Event) (scope string, _ log.Record, _ error) {
 			attrs = append(attrs, attribute.String(wire.AttrEntityDeleteReason, ev.DeleteReason))
 		}
 		if ev.Kind == entity.EntityState && len(e.Attributes) > 0 {
-			a, err := scalarMap(attrEntityDescription, e.Attributes)
+			a, err := descriptiveMap(attrEntityDescription, e.Attributes)
 			if err != nil {
 				return scope, rec, err
 			}
@@ -217,4 +217,30 @@ func scalarKV(k string, v any) (attribute.KeyValue, error) {
 	default:
 		return attribute.KeyValue{}, fmt.Errorf("non-scalar value of type %T", v)
 	}
+}
+
+// descriptiveMap is scalarMap for an entity's descriptive attributes,
+// which may also hold a list of strings (an interface's addresses): the
+// topology backend stores any value there, and a list cannot be misread
+// as one value the way a joined string can. Identifying attributes stay
+// scalar-only.
+func descriptiveMap(key string, m map[string]any) (attribute.KeyValue, error) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	kvs := make([]attribute.KeyValue, 0, len(keys))
+	for _, k := range keys {
+		if list, ok := m[k].([]string); ok {
+			kvs = append(kvs, attribute.StringSlice(k, list))
+			continue
+		}
+		kv, err := scalarKV(k, m[k])
+		if err != nil {
+			return attribute.KeyValue{}, fmt.Errorf("%s[%s]: %w", key, k, err)
+		}
+		kvs = append(kvs, kv)
+	}
+	return attribute.Map(key, kvs...), nil
 }

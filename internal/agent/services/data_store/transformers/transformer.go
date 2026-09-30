@@ -120,6 +120,10 @@ type OtelMapping struct {
 type ExpandDirective struct {
 	Attribute string         `yaml:"attribute"` // target attribute name, e.g. "hw.state"
 	Mapping   map[string]int `yaml:"mapping"`   // state_name → raw lookup code
+	// Closed marks an attribute whose values a convention enumerates, such
+	// as hw.state: a raw value matching no state leaves every series at 0
+	// instead of adding an "unknown" series the convention does not define.
+	Closed bool `yaml:"closed,omitempty"`
 }
 
 // UnitCorrection represents a correction rule for inconsistent source data

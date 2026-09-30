@@ -34,7 +34,7 @@ storage:
     params:
       port: 8080
       bind_address: "127.0.0.1"
-      endpoints: ["prtg", "web", "nagios"]
+      endpoints: ["prtg", "web", "nagios", "prometheus"]
 ```
 
 Multi-file layout (`strategies.d/00-http.yaml`), one top-level key per file:
@@ -43,7 +43,7 @@ Multi-file layout (`strategies.d/00-http.yaml`), one top-level key per file:
 http:
   port: 8080
   bind_address: "127.0.0.1"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
 ```
 
 ### Parameters
