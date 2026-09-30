@@ -46,6 +46,9 @@ VERSION_EXACT=$(shell git describe --tags --exact-match --match '[0-9]*.[0-9]*.[
 VERSION_DEV=$(VERSION_LINE)-dev.$(shell git rev-list --count HEAD 2>/dev/null || echo 0).g$(shell git rev-parse --short=8 HEAD 2>/dev/null || echo unknown)
 VERSION=$(strip $(or $(VERSION_EXACT),$(and $(VERSION_LINE),$(VERSION_DEV)),$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null),0.0.0-dev))
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
+# Fourth field of the Windows file version (see build-windows): the commit
+# count, so a later build of the same X.Y.Z carries a higher file version.
+WINDOWS_BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 ENV ?= production
 PRODUCTION_URL="https://eu-west-1.intake.senhub.io"
 DEVELOPMENT_URL="https://eu-west-1.intake-dev.senhub.io"
@@ -126,10 +129,20 @@ build: build-windows build-linux build-darwin ## Build binaries
 # invisible until the binary meets a musl container, where the failure
 # reads "no such file or directory" — the missing interpreter, not a
 # missing file. Local builds must be the same shape as shipped ones.
+#
+# Both Windows exes carry a VERSIONINFO resource (file/product version,
+# company, product, icon). Without it Windows Installer sees an
+# unversioned file and an MSI of a newer build of the same X.Y.Z keeps
+# the exe already installed (#1002). The .syso files are generated per
+# build and removed afterwards, so a stale one never stamps a later build.
 build-windows: create-dist ## Build for Windows
 		@mkdir -p $(WINDOWS_AMD64_DIR)
-		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/
-		@env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(CONSOLE_LAUNCHER) -ldflags="$(LDFLAGS) -H windowsgui" ./cmd/console-launcher/
+		@export BUILD_NUMBER=$(WINDOWS_BUILD_NUMBER); \
+		trap 'rm -f cmd/agent/rsrc_windows_amd64.syso cmd/console-launcher/rsrc_windows_amd64.syso' EXIT; \
+		./packaging/windows/embed-version-resource.sh "$(VERSION)" cmd/agent senhub-agent.exe "SenHub Agent" && \
+		./packaging/windows/embed-version-resource.sh "$(VERSION)" cmd/console-launcher senhub-console.exe "SenHub Agent console launcher" && \
+		env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/ && \
+		env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(CONSOLE_LAUNCHER) -ldflags="$(LDFLAGS) -H windowsgui" ./cmd/console-launcher/
 
 build-linux: create-dist ## Build for Linux
 		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
