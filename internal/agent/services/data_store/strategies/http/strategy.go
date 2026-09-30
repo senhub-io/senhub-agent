@@ -739,6 +739,7 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 	// runtime changed the config and nothing else — the new endpoint kept
 	// answering 404 until someone restarted the service (#822).
 	previousEndpoints := endpointSetSignature(h.configManager.GetEnabledEndpoints())
+	previousTLS := h.configManager.tlsSignature()
 
 	// Update the configuration manager
 	if err := h.configManager.UpdateConfiguration(newParams); err != nil {
@@ -782,6 +783,16 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 			h.bindAddress = newBind
 			return h.restartServer()
 		}
+	}
+
+	// The listener picks plain or TLS serving, and its certificate, when
+	// it starts, so a TLS change needs the same rebuild a bind change gets.
+	if current := h.configManager.tlsSignature(); current != previousTLS {
+		h.logger.Info().
+			Str("old_tls", previousTLS).
+			Str("new_tls", current).
+			Msg("TLS configuration changed, restarting HTTP server")
+		return h.restartServer()
 	}
 
 	// Update cache configuration if agent config is LocalConfiguration
