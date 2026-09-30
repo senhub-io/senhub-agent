@@ -111,6 +111,19 @@ fact belongs on an entity.
    `network.route` entities `{host.id, route.destination}`, attached by
    `has_route` (host → route). The gateway is a shared `network.address` node
    the route reaches via `next_hop_via` (plus a scalar `next_hop.ip`).
+   Read from `/proc/net/route` on Linux and from `GetIpForwardTable` on
+   Windows (indirect routes only; for one destination the lowest metric,
+   then the lowest interface index, so two default routes never alternate).
+   The route carries its egress interface as the descriptive
+   `network.interface.name`. No `network.address` / `next_hop_via` is
+   emitted for a host-local gateway (wildcard, loopback, link-local,
+   172.17/16) nor for a gateway reached through a container bridge
+   (`IsContainerBridgeIface`: `docker*`, `br-*`, `cni*`, `virbr*`, ...);
+   the egress interface is what explains that absence. Known limitation:
+   OpenWrt's routed bridges `br-lan` / `br-wan` match `br-` and lose a
+   legitimately shared gateway. Pending decision: the egress interface as
+   a third identity key, so two routes to one destination over two
+   interfaces are two entities.
 5. **SNMP topology MIBs** (with #156) → ports as `network.interface` entities
    (`has_interface`), link adjacency as port-to-port `connected_to`, routing as
    `network.route` + `has_route`, interface IPs as `network.address` entities
