@@ -224,7 +224,9 @@ Changes since 0.6.0, collected as they are merged.
   by default) was full, without counting them anywhere; a dropped event
   was not sent again before the next refresh, so the topology backend
   could let the entity expire. A fleet of about forty SNMP devices with
-  their interfaces is larger than that buffer. A full buffer now makes the
+  their interfaces is larger than that buffer: on the lab, one of them was
+  re-asserted at a median of 180 s with gaps of up to nine minutes, where
+  its neighbours kept the nominal 120 s. A full buffer now makes the
   publish wait for room, and an event still dropped, when the exporter
   stops draining, is counted under the OpenTelemetry SDK names
   a standard dashboard reads: `otel.sdk.processor.log.processed` with
