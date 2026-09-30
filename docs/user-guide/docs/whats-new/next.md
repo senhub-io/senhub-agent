@@ -16,6 +16,13 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **`config check` on Windows resolves `${env:}` as the service does.** A
+  reference such as `Bearer ${env:OTLP_BEARER_TOKEN}` set for the service
+  was reported as an error from an administrator prompt, which does not
+  have the service's variables. The check now reads the service's
+  environment (its registry key) when that service runs the checked
+  configuration, as it already read the systemd unit's on Linux.
+
 - **`update` restarts the Linux service.** It installed the new binary
   and printed "Restart the agent to use the new version", and the service
   kept running the old one, deleted from disk, while `senhub-agent
