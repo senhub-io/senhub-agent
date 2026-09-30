@@ -63,7 +63,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.uptime_seconds",
 		"senhub.agent.cache.entries",
 		"senhub.agent.probes.active",
-		"senhub.agent.probes.total",
+		"senhub.agent.probe.count",
 		"senhub.agent.probes.healthy",
 		"senhub.agent.transformer.fallback",
 		"senhub.agent.otlp.metrics.pushed",

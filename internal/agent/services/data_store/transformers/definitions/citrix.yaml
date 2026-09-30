@@ -512,7 +512,7 @@ metrics:
     category: "machine_health"
     description: "Total number of multi-session VDA machines in a fault state"
     otel:
-      name: senhub.citrix.machines.multi_session_fault_total
+      name: senhub.citrix.machine.multi_session_fault.count
       unit: "{machine}"
       type: gauge
 

@@ -80,8 +80,8 @@ series' tags.
 | `mongodb.memory.usage` | `mongodb.memory.usage` | Memory {type} | Bytes | Memory usage in bytes (mem.resident / mem.virtual — converted from MB) |
 | `mongodb.document.operation.count` | `mongodb.document.operations` | Documents {operation} | # | Document operations since startup (metrics.document.*) — deleted/inserted/returned/updated |
 | `mongodb.cache.operations` | `mongodb.cache.operations` | Cache {type} | # | WiredTiger cache page operations — read: pages read into cache; write: pages written from cache |
-| `mongodb.lock.acquire.wait_count` | `mongodb.active.reads` | Active Reads Queued | # | Clients queued waiting for a read lock (globalLock.currentQueue.readers) |
-| `mongodb.lock.acquire.wait_count` | `mongodb.active.writes` | Active Writes Queued | # | Clients queued waiting for a write lock (globalLock.currentQueue.writers) |
+| `senhub.mongodb.lock.queue.length` | `mongodb.active.reads` | Active Reads Queued | # | Clients queued waiting for a read lock (globalLock.currentQueue.readers) |
+| `senhub.mongodb.lock.queue.length` | `mongodb.active.writes` | Active Writes Queued | # | Clients queued waiting for a write lock (globalLock.currentQueue.writers) |
 | `mongodb.collection.count` | `mongodb.collection.count` | Collections {database} | # | Number of collections in the database (dbStats.collections) |
 | `mongodb.data.size` | `mongodb.data.size` | Data Size {database} | Bytes | Uncompressed in-memory size of all documents (dbStats.dataSize) |
 | `mongodb.index.count` | `mongodb.index.count` | Indexes {database} | # | Number of indexes across all collections (dbStats.indexes) |

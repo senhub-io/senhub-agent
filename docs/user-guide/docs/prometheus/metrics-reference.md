@@ -24,7 +24,7 @@ the OTLP receiver counters once that probe has received traffic.
 | `senhub_agent_uptime_seconds` | gauge | Process uptime since start | – |
 | `senhub_agent_cache_entries` | gauge | Distinct time series in shared cache | – |
 | `senhub_agent_probes_active` | gauge | Probes that have emitted ≥1 datapoint in cache window | – |
-| `senhub_agent_probes_total` | gauge | Configured probes currently running | – |
+| `senhub_agent_probe_count` | gauge | Configured probes currently running | – |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` | – |
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, per probe type and failure reason | `probe`, `reason` |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) | – |
@@ -260,7 +260,7 @@ backend (`rate(...[5m])`).
 | `senhub_snmp_interface_in_octets_bytes_total` / `_out_` | counter | By | `snmp_target`, `network_interface_index` |
 | `senhub_snmp_interface_in_errors_total` / `_out_` | counter | {error} | `snmp_target`, `network_interface_index` |
 | `senhub_snmp_interface_in_discards_total` / `_out_` | counter | {packet} | `snmp_target`, `network_interface_index` |
-| `senhub_snmp_interface_speed_bits_per_second` | gauge | bit/s | `snmp_target`, `network_interface_index` |
+| `senhub_snmp_interface_speed_bytes_per_second` | gauge | By/s | `snmp_target`, `network_interface_index` |
 | `senhub_snmp_interface_admin_status` / `_oper_status` | gauge | IF-MIB enum (1=up, 2=down, ...) | `snmp_target`, `network_interface_index` |
 
 Custom mappings and dynamic OIDs surface under the name configured in
@@ -346,7 +346,7 @@ the BMC does not report has every state at `0`: the convention defines no
 | `senhub_hardware_storage_pool_utilization_ratio` | gauge | 1 | `senhub_hardware_storage_pool_state` ∈ {free, used} |
 | `senhub_hardware_storage_pool_io_operations_total` | counter | {operation} | `disk_io_direction` |
 | `senhub_hardware_storage_pool_io_bytes_total` | counter | By | `disk_io_direction` |
-| `senhub_hardware_physical_disk_link_speed_bits_per_second` | gauge | bit/s | per drive (Gbps × 1e9) |
+| `senhub_hardware_physical_disk_link_speed_bytes_per_second` | gauge | By/s | per drive (Gbps × 1e9 / 8) |
 | `senhub_hardware_physical_disk_block_size_bytes` | gauge | By | per drive |
 | `senhub_hardware_physical_disk_operation_progress_ratio` | gauge | 1 | per drive (mapper ÷100) |
 | `senhub_hardware_physical_disk_has_active_operations` | gauge | 1 | bool |
@@ -390,7 +390,7 @@ All metrics under `senhub.veeam.*` (no OTel semconv for backup).
 | Prometheus name | Type | Notes |
 |---|---|---|
 | `senhub_veeam_license_status` | updowncounter | expand: `senhub_veeam_license_state` ∈ {valid, expired, invalid} |
-| `senhub_veeam_license_days_remaining` | gauge | – |
+| `senhub_veeam_license_expiry_seconds` | gauge (s) | – |
 | `senhub_veeam_license_instances` | gauge | `senhub_veeam_license_instances_state` ∈ {total, used, remaining} |
 
 ### Proxies, objects, infrastructure
@@ -417,7 +417,7 @@ All metrics under `senhub.citrix.*` (no Citrix CVAD OTel convention; design from
 | `senhub_citrix_machine_count` | gauge | – |
 | `senhub_citrix_machines_by_registration_state` | gauge | `senhub_citrix_machine_registration_state` ∈ {registered, unregistered, faulty, maintenance} |
 | `senhub_citrix_machines_overloaded` | gauge | – |
-| `senhub_citrix_machines_multi_session_fault_total` | gauge | – |
+| `senhub_citrix_machine_multi_session_fault_count` | gauge | – |
 | `senhub_citrix_machines_by_fault_state` | gauge | `senhub_citrix_machine_fault_state` ∈ {boot_failure, stuck_at_boot, unregistered, max_capacity, vm_not_found, unknown} |
 | `senhub_citrix_license_sessions_active` | gauge | – |
 | `senhub_citrix_license_peak_concurrent_users` | gauge | – |
@@ -479,10 +479,10 @@ the NITRO state enum mapping (1=down, 2=unknown, 3=busy, 4=out_of_service,
 |---|---|---|---|
 | `senhub_netscaler_system_cpu_utilization_ratio` | gauge | 1 | `senhub_netscaler_cpu_plane` ∈ {data, management} |
 | `senhub_netscaler_system_memory_utilization_ratio` | gauge | 1 | – |
-| `senhub_netscaler_system_network_throughput_bits_per_second` | gauge | bit/s | `network_io_direction` (Mbps × 1e6) |
+| `senhub_netscaler_system_network_throughput_bytes_per_second` | gauge | By/s | `network_io_direction` (Mbps × 1e6 / 8) |
 | `senhub_netscaler_system_http_messages_rate_per_second` | gauge | 1/s | `senhub_netscaler_http_message_type` ∈ {request, response} |
 | `senhub_netscaler_system_tcp_connections_active` | updowncounter | {connection} | `senhub_netscaler_tcp_side` ∈ {client, server} |
-| `senhub_netscaler_ns_throughput_bits_per_second` | gauge | bit/s | `senhub_netscaler_traffic_type` ∈ {total, http} |
+| `senhub_netscaler_ns_throughput_bytes_per_second` | gauge | By/s | `senhub_netscaler_traffic_type` ∈ {total, http} |
 | `senhub_netscaler_system_network_packets_rate_per_second` | gauge | 1/s | `network_io_direction` |
 | `senhub_netscaler_system_network_packets_total` | counter | {packet} | `network_io_direction` |
 | `senhub_netscaler_system_dpcs_per_second` etc. | – | – | (windows specifics not present on appliance) |
