@@ -16,6 +16,17 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **A legacy single-file configuration no longer fails its migration at
+  every start.** When `probes.d/` or `strategies.d/` held fragments, the
+  migration to the multi-file layout failed its own check, restored the
+  file and left its fragments and a backup behind, so it failed again at
+  the next start: one host had 30 `agent.yaml.pre-multi-file.*` copies.
+  Fragments a failed attempt left are now removed before migrating, a
+  failed attempt undoes what it wrote and drops its backup, and fragments
+  an operator wrote there stop the migration with a message naming them,
+  since migrating would start what the agent ignores today. The backups
+  already written can be deleted.
+
 - **`config check` reports a probe parameter the probe does not read as a
   warning.** It was an ERROR although the agent starts the probe and
   ignores the key, so a script stopping on ERROR stopped on a working
