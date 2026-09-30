@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -202,6 +203,41 @@ func TestOutputsAPI_ValidateAndTest(t *testing.T) {
 	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", map[string]interface{}{"type": "http", "params": map[string]interface{}{}})
 	if code != 200 || resp["valid"] != true {
 		t.Errorf("the http output reports that it listens, got %d %v", code, resp)
+	}
+}
+
+func TestOutputTest_EveryPushOutputIsReallyTested(t *testing.T) {
+	router, _ := newOutputsTestRouter(t)
+	base := "/api/" + testAdminKey
+
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	code, resp := doJSON(t, router, "POST", base+"/config/outputs/test", map[string]interface{}{"type": "event", "params": map[string]interface{}{"server_url": srv.URL + "/"}, "timeout": 3})
+	if code != 200 || resp["valid"] != true || path != "/event/insert" {
+		t.Errorf("the event test must reach the path the strategy posts to, got %d %v path %q", code, resp, path)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", map[string]interface{}{"type": "zabbix", "params": map[string]interface{}{"server": ln.Addr().String()}, "timeout": 3})
+	if code != 200 || resp["valid"] != true {
+		t.Errorf("a listening Zabbix address must pass, got %d %v", code, resp)
+	}
+	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", map[string]interface{}{"type": "zabbix", "params": map[string]interface{}{"server": "127.0.0.1:1"}, "timeout": 3})
+	if code != 200 || resp["valid"] != false {
+		t.Errorf("a closed Zabbix port must fail, got %d %v", code, resp)
+	}
+	for _, e := range resp["errors"].([]interface{}) {
+		if strings.Contains(e.(string), "no connection test") {
+			t.Errorf("zabbix must be tested, not reported as untestable: %v", resp)
+		}
 	}
 }
 

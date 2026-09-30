@@ -80,7 +80,15 @@
         const tests = {};      // name -> last test result html, kept across refreshes
         let outputs = [];
 
-        const NEED = { otlp: 'Endpoint and a token', prtg: 'Server URL', senhub: 'Interval', event: 'Server URL' };
+        // What a card says must be filled, read from the output's schema
+        // rather than written here, so a new output or a changed schema
+        // does not leave a stale hint.
+        function need(c) {
+            const req = (c.params || []).filter(p => p.required).map(p => (p.key || '').replace(/_/g, ' ').replace(/\burl\b/, 'URL'));
+            if (!req.length) return 'Nothing required';
+            const s = req.join(', ');
+            return s.charAt(0).toUpperCase() + s.slice(1);
+        }
 
         const q = new URLSearchParams(location.search);
         if (q.get('msg')) {
@@ -129,7 +137,7 @@
         }
 
         function renderCards(catalog) {
-            const order = { otlp: 0, prtg: 1, senhub: 2, event: 3 };
+            const order = { otlp: 0, prtg: 1, zabbix: 2, senhub: 3, event: 4 };
             const entries = (catalog.outputs || []).filter(c => !c.singleton).sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9));
             cards.innerHTML = entries.map(c => {
                 const done = !!c.configured;
@@ -137,7 +145,7 @@
                 return '<a class="scard' + (done ? ' off' : '') + '" href="' + href + '"' + (done ? ' aria-disabled="true"' : '') + '>' +
                     '<div class="t">' + esc(c.display_name) + '</div>' +
                     '<div class="d">' + esc(c.summary || '') + '</div>' +
-                    '<div class="need' + (done ? ' done' : '') + '">' + (done ? 'Already configured' : esc(NEED[c.type] || 'A few values')) + '</div></a>';
+                    '<div class="need' + (done ? ' done' : '') + '">' + (done ? 'Already configured' : esc(need(c))) + '</div></a>';
             }).join('');
         }
 

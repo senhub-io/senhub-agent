@@ -228,12 +228,13 @@ func (f *CLIFormatter) formatPerformanceInfo(perf PerformanceInfo) string {
 	}
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 	output.WriteString(fmt.Sprintf("Uptime:     %s\n", perf.Uptime))
-	output.WriteString(fmt.Sprintf("Memory:     %.1f MB\n", perf.MemoryUsageMB))
-	output.WriteString(fmt.Sprintf("Goroutines: %d\n", perf.Goroutines))
-
-	if perf.CPUPercent > 0 {
-		output.WriteString(fmt.Sprintf("CPU:        %.1f%%\n", perf.CPUPercent))
+	if perf.Measured {
+		output.WriteString(fmt.Sprintf("Memory:     %.1f MB resident (Go heap %.1f MB)\n", perf.MemoryUsageMB, perf.HeapMB))
+		output.WriteString(fmt.Sprintf("CPU:        %.1f%% of the machine\n", perf.CPUPercent))
+	} else {
+		output.WriteString(fmt.Sprintf("Memory:     %.1f MB Go heap (resident size unavailable)\n", perf.MemoryUsageMB))
 	}
+	output.WriteString(fmt.Sprintf("Goroutines: %d\n", perf.Goroutines))
 
 	if perf.CacheEntries > 0 {
 		output.WriteString(fmt.Sprintf("Cache:      %d entries\n", perf.CacheEntries))

@@ -194,7 +194,7 @@
         const a = o.activity || {};
         if (a.last_success) {
             return 'Last export ' + rel(a.last_success) + ' &middot; ' + esc(a.successes || 0) + ' exports' +
-                (a.failures ? ' &middot; <span class="lifewarn">' + esc(a.failures) + ' failures</span>' : ' &middot; 0 failures');
+                (a.failures ? ' &middot; <span class="lifewarn">' + esc(a.failures) + ' failures</span>' : ' &middot; 0 failures') + ' since start';
         }
         return 'No export yet' + (o.state === 'idle' ? ', nothing to send so far' : '');
     }
