@@ -2,7 +2,19 @@
 title: Documentation — three-tier structure
 paths:
   - docs/**
+  - README.md
 ---
+
+## The README is part of every documentation review
+
+`README.md` is the first page a visitor of the public repository reads,
+before any guide. A documentation review, a release-notes cut or a
+change of what the agent offers (outputs, tiers, install paths, console
+access) re-reads it and corrects it in the same change. It must not
+contradict the user guide: tier lists come from `license/probe_catalog.go`,
+outputs and install paths from the current release. GitHub shows the
+README of `master`, so a correction reaches visitors with the next merge
+to `master`.
 
 ## Three audiences, three trees
 
