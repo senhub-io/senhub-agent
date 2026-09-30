@@ -23,7 +23,12 @@ func TestDuplicateCopiesMergeIntoOneFullEntity(t *testing.T) {
 		},
 	}
 	var conflicts []AttributeConflict
-	entities, orphans := obs.mergeDuplicates(func(c AttributeConflict) { conflicts = append(conflicts, c) }).foldRelationships()
+	var mergedCopies int
+	before := DuplicatesMergedTotal()
+	entities, orphans := obs.mergeDuplicates(func(c AttributeConflict) { conflicts = append(conflicts, c) }, func(_ Entity, n int) { mergedCopies = n }).foldRelationships()
+	if mergedCopies != 2 || DuplicatesMergedTotal()-before != 1 {
+		t.Errorf("merge reported %d copies, counted %d merged; want 2 copies, 1 merged", mergedCopies, DuplicatesMergedTotal()-before)
+	}
 	if len(orphans) != 0 || len(conflicts) != 0 {
 		t.Fatalf("orphans %v, conflicts %v; want none", orphans, conflicts)
 	}
@@ -57,7 +62,7 @@ func TestAConflictIsResolvedTheSameWayInAnyOrderAndReported(t *testing.T) {
 	for _, order := range [][]Entity{{a, b, c}, {c, b, a}, {b, a, c}, {b, c, a}} {
 		before := AttributeConflictsTotal()
 		var reported int
-		out := Observation{Entities: order}.mergeDuplicates(func(AttributeConflict) { reported++ })
+		out := Observation{Entities: order}.mergeDuplicates(func(AttributeConflict) { reported++ }, nil)
 		if len(out.Entities) != 1 {
 			t.Fatalf("entities = %d, want 1", len(out.Entities))
 		}
