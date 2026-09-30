@@ -104,7 +104,7 @@ type Entity struct {
 // attribute a fact to its method. Names are aligned with the Toise team; an
 // entity that leaves Scope empty rides the generic entities scope.
 const (
-	ScopeSNMPLLDP  = "senhub-agent/snmp-lldp"  // LLDP adjacency (connected_to + discovered neighbours)
+	ScopeSNMPLLDP  = "senhub-agent/snmp-lldp"  // reserved: LLDP neighbours are no longer built as devices
 	ScopeSNMPRoute = "senhub-agent/snmp-route" // device routing table (network.route)
 	ScopeSNMPIFMIB = "senhub-agent/snmp-ifmib" // device + IF-MIB ports/addresses
 	ScopeHostRoute = "senhub-agent/host-route" // host kernel routing table

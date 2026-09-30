@@ -635,16 +635,18 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 
 	// connected_to — bare port-to-port link adjacency (supersedes adjacent_to).
 	// Both endpoints are network.interface entities; the local one was emitted
-	// above. The neighbour device is still emitted as a discovered network.device.
-	// The link is skipped when either port cannot be named by exact identity (no
-	// phantom port — point 7): an unnamed local port, an unresolvable neighbour,
-	// or a MAC-only remote port.
+	// above, the remote one by the neighbour's own poll. The neighbour device
+	// is not built here: no relation targets a device, so the anti-orphan
+	// guard dropped it on every cycle with a warning, and where the neighbour
+	// is also polled its thin copy competed with the full one under the same
+	// key. The link is skipped when either port cannot be named by exact
+	// identity (no phantom port — point 7): an unnamed local port, an
+	// unresolvable neighbour, or a MAC-only remote port.
 	for _, n := range topo.Neighbors {
 		nID := resolveNeighbor(neighborIdentity(n))
 		if nID == "" || nID == selfID {
 			continue
 		}
-		addEntity(nID, neighborAttrs(n), entity.ScopeSNMPLLDP)
 
 		localIf := ifIndexName[n.LocalPortNum]
 		if localIf == "" {
@@ -741,7 +743,7 @@ func interfacePortKey(deviceID, ifName string) map[string]any {
 	return map[string]any{idKeyNetworkDevice: deviceID, idKeyInterfaceName: ifName}
 }
 
-// selfAttrs / neighborAttrs carry only observer-independent descriptive
+// selfAttrs carries only observer-independent descriptive
 // attributes (ENTITY-DETECTION.md §6b): the same device seen by two agents
 // must not flap on last-writer-wins.
 func selfAttrs(self deviceIdentity) map[string]any {
@@ -759,14 +761,6 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	add(attrHwVendor, self.HwVendor)
 	add(attrHwModel, self.HwModel)
 	add(attrHwFirmwareVer, self.HwFirmware)
-	return attrs
-}
-
-func neighborAttrs(n lldpNeighbor) map[string]any {
-	attrs := map[string]any{}
-	if n.SysName != "" {
-		attrs["sys.name"] = n.SysName
-	}
 	return attrs
 }
 

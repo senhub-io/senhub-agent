@@ -597,6 +597,11 @@ Example:
 <13>Oct 13 14:23:45 server01 sshd[1234]: Connection from 192.168.1.100
 ```
 
+The RFC 3164 timestamp carries no time zone. The probe reads it in the
+agent host's zone, which is right when the senders and the agent share one;
+a sender set to another zone arrives shifted by the difference. RFC 5424
+timestamps carry their offset and are kept as sent.
+
 ### RFC 5424 (IETF Syslog)
 
 ```
