@@ -78,6 +78,7 @@ type Detector struct {
 	onOrphan       func([]Relation)
 	onOrphanEntity func([]Entity)
 	onConflict     func(AttributeConflict)
+	onMerge        func(Entity, int)
 	// lastGood caches, per registered-source id, the most recent
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
@@ -110,6 +111,12 @@ func (d *Detector) OnOrphanRelations(fn func([]Relation)) {
 // warning.
 func (d *Detector) OnAttributeConflict(fn func(AttributeConflict)) {
 	d.onConflict = fn
+}
+
+// OnDuplicateMerged registers a hook called for every entity reported by
+// more than one copy in a cycle, with the number of copies. Nil-safe.
+func (d *Detector) OnDuplicateMerged(fn func(Entity, int)) {
+	d.onMerge = fn
 }
 
 // OnOrphanEntities registers a hook called with any entity dropped before
@@ -231,7 +238,7 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	obs = inheritHostGovernance(obs, h.ID, h.Governance)
 	// Fold each relation onto its source entity (embedded entity.relationships)
 	// before the tracker, so the tracker reconciles entities only.
-	obs = obs.mergeDuplicates(d.onConflict)
+	obs = obs.mergeDuplicates(d.onConflict, d.onMerge)
 	entities, orphans := obs.foldRelationships()
 	if len(orphans) > 0 && d.onOrphan != nil {
 		d.onOrphan(orphans)

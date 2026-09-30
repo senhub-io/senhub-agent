@@ -260,6 +260,23 @@ func (s *Service) startLocked(ctx context.Context) error {
 			Interface("dropped", c.Dropped).
 			Msg("two sources report different values for the same entity attribute; kept one by scope order")
 	})
+	// Which entities several sources report is a fact of the deployment,
+	// not a fault: say it once per entity, at debug.
+	mergedSeen := map[string]bool{}
+	det.OnDuplicateMerged(func(e entity.Entity, copies int) {
+		key := fmt.Sprintf("%s|%v", e.Type, e.ID)
+		conflictMu.Lock()
+		first := !mergedSeen[key]
+		mergedSeen[key] = true
+		conflictMu.Unlock()
+		if first {
+			s.logger.Debug().
+				Str("entity_type", e.Type).
+				Interface("entity_id", e.ID).
+				Int("copies", copies).
+				Msg("entity reported by several sources; copies merged")
+		}
+	})
 	det.OnOrphanEntities(func(orphans []entity.Entity) {
 		for _, e := range orphans {
 			s.logger.Warn().

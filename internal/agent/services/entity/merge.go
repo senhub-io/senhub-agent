@@ -17,7 +17,14 @@ type AttributeConflict struct {
 	Dropped   any
 }
 
-var attributeConflicts atomic.Uint64
+var (
+	attributeConflicts atomic.Uint64
+	duplicatesMerged   atomic.Uint64
+)
+
+// DuplicatesMergedTotal is the number of entity copies folded into another
+// copy of the same key since the start (senhub.agent.entity.duplicates.merged).
+func DuplicatesMergedTotal() uint64 { return duplicatesMerged.Load() }
 
 // AttributeConflictsTotal is the number of attribute conflicts resolved
 // since the start (senhub.agent.entity.attribute.conflicts).
@@ -39,7 +46,7 @@ func AttributeConflictsTotal() uint64 { return attributeConflicts.Load() }
 // first too, a provisional rule until scopes are readable downstream. Every
 // conflict is counted and reported to onConflict: two sources of one agent
 // asserting different facts is a defect to fix, not a detail to settle.
-func (o Observation) mergeDuplicates(onConflict func(AttributeConflict)) Observation {
+func (o Observation) mergeDuplicates(onConflict func(AttributeConflict), onMerge func(Entity, int)) Observation {
 	type group struct {
 		copies []Entity
 	}
@@ -65,6 +72,10 @@ func (o Observation) mergeDuplicates(onConflict func(AttributeConflict)) Observa
 		if len(copies) == 1 {
 			merged = append(merged, copies[0])
 			continue
+		}
+		duplicatesMerged.Add(uint64(len(copies) - 1))
+		if onMerge != nil {
+			onMerge(copies[0], len(copies))
 		}
 		sort.SliceStable(copies, func(i, j int) bool { return copies[i].Scope < copies[j].Scope })
 		out := Entity{Type: copies[0].Type, ID: copies[0].ID, Scope: copies[0].Scope, Attributes: map[string]any{}}
