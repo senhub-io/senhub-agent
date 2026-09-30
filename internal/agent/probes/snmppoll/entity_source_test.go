@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -591,4 +592,25 @@ func TestVendorName(t *testing.T) {
 	if vendorName("99999") != "" {
 		t.Error("unknown PEN → empty (PEN still lives in the serial: identity)")
 	}
+}
+
+// The mask from ipAdEntNetMask reaches the interface's attributes.
+func TestBuildObservation_InterfaceCarriesItsSubnet(t *testing.T) {
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
+	ifaces := []ifaceRow{{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp}}
+	addrs := []ipAddr{{IfIndex: "1", IP: "10.0.0.1", Prefix: -1}}
+	applyNetMasks(addrs, []snmpRawBind{{OID: ipAdEntNetMask + ".10.0.0.1", Value: []byte{255, 255, 255, 0}}})
+	if addrs[0].Prefix != 24 {
+		t.Fatalf("prefix = %d, want 24", addrs[0].Prefix)
+	}
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs, resolveDeviceID)
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkInterface {
+			if !reflect.DeepEqual(e.Attributes[entity.AttrInterfaceSubnets], []string{"10.0.0.0/24"}) || !reflect.DeepEqual(e.Attributes[entity.AttrInterfaceAddresses], []string{"10.0.0.1/24"}) {
+				t.Errorf("interface attributes = %v", e.Attributes)
+			}
+			return
+		}
+	}
+	t.Fatal("no interface entity")
 }

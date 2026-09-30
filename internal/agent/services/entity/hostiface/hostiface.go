@@ -72,8 +72,11 @@ type linkMeta struct {
 // metadata. An interface is emitted even with no IPs (AT13: a down/IP-less NIC
 // is still a real entity, so a link going down is a clean state_changed).
 type ifaceAddrs struct {
-	Name      string
-	IPs       []string
+	Name string
+	IPs  []string
+	// Prefixes holds each IP's prefix length on this interface, when the
+	// OS reported it ("ip/prefix").
+	Prefixes  map[string]int
 	MAC       string
 	MTU       int64
 	OperState string
@@ -202,6 +205,9 @@ func ifaceAttributes(ia ifaceAddrs) map[string]any {
 	if ia.Speed > 0 {
 		attrs[attrKeySpeed] = ia.Speed
 	}
+	for k, v := range entity.InterfaceNetworkAttributes(ia.IPs, ia.Prefixes) {
+		attrs[k] = v
+	}
 	if len(attrs) == 0 {
 		return nil
 	}
@@ -236,9 +242,14 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 			continue
 		}
 		ips := make([]string, 0, len(ifc.Addrs))
+		prefixes := map[string]int{}
 		for _, a := range ifc.Addrs {
 			if ip := resolvableIP(a.Addr); ip != "" {
 				ips = append(ips, ip)
+				if _, n, err := net.ParseCIDR(a.Addr); err == nil {
+					ones, _ := n.Mask.Size()
+					prefixes[ip] = ones
+				}
 			}
 		}
 		lm := lmFn(ifc.Name, ifc.Flags)
@@ -249,7 +260,7 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 			continue
 		}
 		out = append(out, ifaceAddrs{
-			Name: ifc.Name, IPs: ips,
+			Name: ifc.Name, IPs: ips, Prefixes: prefixes,
 			MAC: canonicalMAC(ifc.HardwareAddr), MTU: int64(ifc.MTU),
 			OperState: lm.OperState, Type: lm.Type, Duplex: lm.Duplex, Speed: lm.Speed,
 		})
