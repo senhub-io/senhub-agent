@@ -35,6 +35,11 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **File tail reads a Windows log its writer keeps open.** On Windows a
+  file another process holds open for writing, such as PRTG's core log,
+  sends no change notification until it is closed: the probe waited and
+  read nothing, without an error. It now polls the file size on Windows.
+
 - **A Windows host is linked to its gateway in the topology.** The agent
   read routes from the Linux routing table only, so a Windows host sent
   none and stood alone in a topology backend. It now reads the Windows
