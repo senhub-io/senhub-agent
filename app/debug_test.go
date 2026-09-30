@@ -85,3 +85,10 @@ func TestResolveHTTPStrategyListen_BindAndLocalHost(t *testing.T) {
 		}
 	}
 }
+
+func TestReportSchemaProblems_UnreadParamIsAWarning(t *testing.T) {
+	errs, warns := reportSchemaProblems("cpu", "cpu", map[string]interface{}{"no_such_param": 1})
+	if errs != 0 || warns != 1 {
+		t.Errorf("an unread parameter the agent ignores must be a warning, got %d errors %d warnings", errs, warns)
+	}
+}

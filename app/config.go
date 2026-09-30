@@ -897,8 +897,11 @@ func reportSchemaProblems(name, probeType string, params map[string]interface{})
 			if _, isLegacy := legacy[problem.Key]; isLegacy {
 				continue
 			}
-			fmt.Printf("         [ERROR] Probe %q: param %q is not read by this probe\n", name, problem.Key)
-			errors++
+			// The agent starts the probe and ignores the key, so the
+			// check says so rather than failing a configuration that runs
+			// (#973): a script that stops on ERROR stopped on a working file.
+			fmt.Printf("         [WARN] Probe %q: param %q is not read by this probe and has no effect\n", name, problem.Key)
+			warnings++
 		}
 	}
 	return errors, warnings

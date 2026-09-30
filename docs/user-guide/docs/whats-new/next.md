@@ -16,6 +16,11 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **`config check` reports a probe parameter the probe does not read as a
+  warning.** It was an ERROR although the agent starts the probe and
+  ignores the key, so a script stopping on ERROR stopped on a working
+  configuration. A missing required parameter is still an error.
+
 - **`senhub-agent status` reaches an agent bound to one address or
   serving HTTPS.** It always asked `http://localhost:<port>`, so an HTTP
   output bound to one interface, or serving TLS, answered nothing and
