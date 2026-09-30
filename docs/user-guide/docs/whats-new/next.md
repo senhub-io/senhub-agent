@@ -16,6 +16,14 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **The OTLP export error and drop counters are present at 0.** Since
+  0.6.0, `senhub.agent.otlp.export.errors` (by `signal`) and
+  `senhub.agent.otlp.dropped` (by `reason`) appeared only after their
+  first increment, so a dashboard on a healthy agent showed nothing, and
+  an empty panel reads as "no error". Every signal and every reason is
+  now emitted from start, at 0. In Prometheus the total across signals
+  is `sum without(signal) (senhub_agent_otlp_export_errors_total)`.
+
 - **A new installation answers PRTG, Nagios and Prometheus at once.** The
   installers enabled the console, PRTG and Nagios but not Prometheus, so a
   scrape answered 404 until the list was edited. Every endpoint is now on
