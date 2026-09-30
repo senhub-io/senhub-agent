@@ -86,6 +86,10 @@ type dataStore struct {
 	// and be "removed" in the same millisecond (#827). Guarded by
 	// refreshMu, like every field it touches.
 	replacedThisRefresh map[SyncStrategy]bool
+	// runningProbes is the set of enabled probe names seen by the last
+	// refresh, case-folded. Guarded by refreshMu. Nil until the first
+	// refresh, so nothing is retired at start-up.
+	runningProbes       map[string]bool
 	logger              *logger.ModuleLogger
 	configProvider      configuration.ConfigurationProvider
 	agentConfig         configuration.AgentConfiguration
@@ -490,6 +494,7 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 		kept[strategy] = true
 	}
 	d.strategies.Store(&next)
+	d.retireRemovedProbes(next)
 
 	// Shut down strategies dropped or replaced by this refresh —
 	// otherwise their listener ports, gRPC connections and scheduler
@@ -526,6 +531,39 @@ func (d *dataStore) OnConfigRefreshed(reason string) {
 	// — logs never pass through this router, so without this they would
 	// miss the per-probe tags entirely (#294).
 	d.publishSignalContext()
+}
+
+// retireRemovedProbes tells the outputs that keep per-probe state which
+// probes stopped running with this refresh: removed from the
+// configuration, renamed or disabled. A probe whose parameters changed
+// keeps its name and is not retired; it restarts and overwrites its
+// values. The caller holds refreshMu.
+func (d *dataStore) retireRemovedProbes(strategies []SyncStrategy) {
+	current := make(map[string]bool)
+	for _, p := range d.configProvider.GetConfiguration().Probes {
+		if p.IsEnabled() {
+			current[strings.ToLower(p.Name)] = true
+		}
+	}
+	previous := d.runningProbes
+	d.runningProbes = current
+
+	var retired []string
+	for name := range previous {
+		if !current[name] {
+			retired = append(retired, name)
+		}
+	}
+	if len(retired) == 0 {
+		return
+	}
+	sort.Strings(retired)
+	d.logger.Info().Strs("probes", retired).Msg("Dropping the last values of probes no longer running")
+	for _, strategy := range strategies {
+		if sink, ok := strategy.(ProbeRetireSink); ok {
+			sink.ForgetProbes(retired)
+		}
+	}
 }
 
 // publishSignalContext snapshots the agent's global_tags and per-probe
