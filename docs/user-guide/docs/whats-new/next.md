@@ -95,6 +95,20 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **A restart no longer removes SNMP links from the topology for one
+  cycle.** After a restart, a device polled before its LLDP neighbours
+  could not resolve them yet and left those links out of what it
+  published until its next topology sweep (five minutes on the lab
+  fleet); a topology backend recorded the links as removed by the agent
+  and got them back one sweep later. Neighbours are now resolved when
+  the topology is published, and after the start a device waits for the
+  neighbours the agent has not polled yet instead of publishing without
+  them, for at most a third of the entity liveness interval (two minutes
+  by default). The backend keeps the device as it was meanwhile. The
+  cost: during that wait, a lost report can let the device expire in the
+  backend where it used to survive two; the agent chooses an honest
+  expiry over a false removal.
+
 - **Hardware health follows the OpenTelemetry states.** Redfish emitted
   `hw.status{hw.state="unknown"}` for a component whose health the BMC does
   not report; the convention has no such state, so a conforming backend
