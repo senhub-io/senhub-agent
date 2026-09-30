@@ -443,7 +443,7 @@ Aligned with OTel where possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `
 | Senhub metric | Unit | Type |
 |---|---|---|
 | `senhub.veeam.license.status` | `1` | UpDownCounter (**expand** `senhub.veeam.license.state` ∈ {valid, expired, invalid}) |
-| `senhub.veeam.license.days_remaining` | `{day}` | Gauge |
+| `senhub.veeam.license.expiry` | `s` | Gauge |
 | `senhub.veeam.license.instances` | `{instance}` | Gauge (`senhub.veeam.license.instances_state` attribute ∈ {total, used, remaining}) |
 
 **Proxies:**
@@ -521,7 +521,7 @@ Every metric lives under `senhub.citrix.*`, collapsed systematically by function
 - `senhub.citrix.license.grace.time_remaining` (gauge, `s`) — **mapper ×3600** (hours → seconds)
 
 **Machine fault states (Director):**
-- `senhub.citrix.machines.multi_session_fault_total` (gauge, `{machine}`) — distinct from `by_registration_state{faulty}` (DDC source vs Director)
+- `senhub.citrix.machine.multi_session_fault.count` (gauge, `{machine}`) — distinct from `by_registration_state{faulty}` (DDC source vs Director)
 - `senhub.citrix.machines.by_fault_state` (gauge, `{machine}`) + `senhub.citrix.machine.fault_state` ∈ {boot_failure, stuck_at_boot, unregistered, max_capacity, vm_not_found, unknown}
 
 #### 4.11.2 Summary
@@ -1290,7 +1290,7 @@ series.
 | `kafka.consumer_group.members` | `{member}` | gauge | `messaging.kafka.consumer.group` | |
 | `kafka.consumer_group.offset` | `{item}` | gauge | group + topic + partition | |
 | `kafka.consumer_group.lag` | `{item}` | gauge | id. | Floored at 0 (never negative) |
-| `kafka.consumer_group.lag_sum` | `{item}` | gauge | group + topic | sum of lag across all partitions |
+| `kafka.consumer_group.topic.lag` | `{item}` | gauge | group + topic | sum of lag across all partitions (contrib calls it `lag_sum`; Prometheus reserves `_sum` for histograms and summaries) |
 
 `kafka.partition.replicas_in_sync` comes from `client.InSyncReplicas(topic, partition)` (sarama). A per-partition error is logged at `Warn` and the metric omitted for that cycle; `kafka.partition.replicas` is always emitted. A typical alert condition: `replicas_in_sync < replicas`.
 ### 4.29 Probe `clickhouse` (free, #465)
@@ -1368,7 +1368,7 @@ exposed yet (tracked in #394).
 | `redis.commands.processed` | `{command}` | counter | `total_commands_processed` |
 | `redis.net.input` | `By` | counter | `total_net_input_bytes` |
 | `redis.net.output` | `By` | counter | `total_net_output_bytes` |
-| `redis.ops.per_sec` | `{op}/s` | gauge | `instantaneous_ops_per_sec` |
+| `redis.commands` | `{command}/s` | gauge | `instantaneous_ops_per_sec` |
 | `redis.keyspace.hits` | `{hit}` | counter | `keyspace_hits` |
 | `redis.keyspace.misses` | `{miss}` | counter | `keyspace_misses` |
 | `redis.keyspace.hit.ratio` | `1` | gauge | Derived: hits/(hits+misses), 0 when there is no traffic |

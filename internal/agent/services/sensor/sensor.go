@@ -382,7 +382,7 @@ func (s *sensor) SyncConfiguration() error {
 	}
 
 	// Publish the live probe set for the Prometheus bridge to read
-	// (senhub_agent_probes_total / senhub_agent_probes_active).
+	// (senhub_agent_probe_count / senhub_agent_probes_active).
 	publishActiveProbes(s.startedProbes)
 	s.publishFailedProbes()
 
@@ -606,7 +606,7 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 
 // publishActiveProbes publishes the IDs of currently-running probes to the
 // agentstate package so the Prometheus bridge can expose
-// senhub_agent_probes_total and senhub_agent_probes_healthy without a
+// senhub_agent_probe_count and senhub_agent_probes_healthy without a
 // direct dependency from the http strategy back to the sensor.
 //
 // We send IDs (not the probe objects) because health is pushed via
