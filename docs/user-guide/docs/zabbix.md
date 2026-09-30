@@ -12,6 +12,28 @@ both ways with a certificate or a pre-shared key. Zabbix 6.0 LTS is
 supported too: `zabbix setup` was measured on 6.0.48 and adapts to it on
 its own (see [Versions](#versions)).
 
+## Deploying
+
+Prepare the Zabbix server once with [`zabbix setup`](#zabbix-setup-options):
+it imports the templates and creates the autoregistration actions. Then
+give every agent the server's address when you install it; nothing else
+is set, on the agent or in the Zabbix interface:
+
+| Where | How |
+|---|---|
+| Windows | `msiexec /i senhub-agent-<version>-amd64.msi /qn ZABBIX_SERVER=zabbix.example.com:10051` |
+| Linux | after `install`: `sudo /usr/local/bin/senhub-agent config init --zabbix-server zabbix.example.com:10051` |
+| Container | `SENHUB_ZABBIX_SERVER=zabbix.example.com:10051` |
+
+The agent asks the server for its items; the server does not know the
+host and runs its autoregistration action, which creates it, puts it in
+the SenHub group and links the templates of its platform. Discovery then
+creates the items: on a Zabbix 8.0 server prepared by `zabbix setup`, a
+new host appeared within a minute and had its items within five, with no
+step on the Zabbix side. A machine already configured gets the output
+the same way: `config init` adds the Zabbix file to an existing
+configuration and the running agent picks it up.
+
 ## Configuration
 
 ```yaml
