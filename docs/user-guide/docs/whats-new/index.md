@@ -27,6 +27,7 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 | Version | Date | Headline |
 |---|---|---|
 | [**Next (unreleased)**](next.md) | in progress | — |
+| [**0.6.1**](0.6.1.md) | 2026-09-30 | Metric names and units follow the Prometheus and OpenTelemetry rules, Zabbix server set at install, versioned Windows executables |
 | [**0.6.0**](0.6.0.md) | 2026-09-29 | Native Zabbix output, separate console/API administration key, `service.instance.id` as a UUID |
 | [**0.5.6**](0.5.6.md) | 2026-09-19 | `SENHUB_AZURE_APP` follows several Container Apps from one collector |
 | [**0.5.5**](0.5.5.md) | 2026-09-15 | Probe editor and settings page in the console, TLS without a supplied certificate, container image, licence agreement published, `config check` reads values, log routing per probe, Azure Container Apps probe |
