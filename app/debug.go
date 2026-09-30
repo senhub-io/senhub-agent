@@ -3,9 +3,11 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,10 +123,12 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 
 	// Try HTTP endpoint first (for running agent with HTTP strategy)
 	if agentKey != "" {
-		httpPort := resolveHTTPStrategyPort(configPath)
+		scheme, bind, httpPort := resolveHTTPStrategyListen(configPath)
+		host := localHostFor(bind)
+		statusHelper.SetEndpoint(scheme, host)
 		systemStatus, err := statusHelper.GetDetailedStatusFromHTTP(agentKey, httpPort)
 		if err != nil {
-			reachProblem = fmt.Sprintf("the running agent did not answer on port %d (%v)", httpPort, err)
+			reachProblem = fmt.Sprintf("the running agent did not answer at %s://%s (%v)", scheme, net.JoinHostPort(host, strconv.Itoa(httpPort)), err)
 		}
 		if err == nil {
 			// Enrich with dashboard URL from config
@@ -305,13 +309,32 @@ func resolveHTTPStrategyPort(configPath string) int {
 // every such host, which also hid the dead-output report (#826), and
 // every printed console address named 8080 whatever the file said.
 func resolveHTTPStrategyEndpoint(configPath string) (scheme string, port int) {
+	scheme, _, port = resolveHTTPStrategyListen(configPath)
+	return scheme, port
+}
+
+// localHostFor turns the output's bind address into the host a command on
+// this machine dials: the address itself when the output is bound to one,
+// loopback when it listens on every address or on none in particular.
+func localHostFor(bind string) string {
+	switch bind {
+	case "", "0.0.0.0", "::", "[::]":
+		return "127.0.0.1"
+	}
+	return bind
+}
+
+// resolveHTTPStrategyListen is resolveHTTPStrategyEndpoint plus the bind
+// address, which a command on this machine must dial when the output is
+// bound to one interface (#969).
+func resolveHTTPStrategyListen(configPath string) (scheme, bind string, port int) {
 	scheme, port = "http", defaultHTTPPort
 	if configPath == "" {
-		return scheme, port
+		return scheme, bind, port
 	}
 	cfg, err := configuration.LoadFromDisk(configPath, nil)
 	if err != nil {
-		return scheme, port
+		return scheme, bind, port
 	}
 	for _, storage := range cfg.Storage {
 		if storage.Name != "http" {
@@ -330,9 +353,12 @@ func resolveHTTPStrategyEndpoint(configPath string) (scheme string, port int) {
 		if tlsEnabledParam(storage.Params["tls"]) {
 			scheme = "https"
 		}
-		return scheme, port
+		if b, ok := storage.Params["bind_address"].(string); ok {
+			bind = b
+		}
+		return scheme, bind, port
 	}
-	return scheme, port
+	return scheme, bind, port
 }
 
 // tlsEnabledParam reads `tls.enabled` from a strategy parameter block.
