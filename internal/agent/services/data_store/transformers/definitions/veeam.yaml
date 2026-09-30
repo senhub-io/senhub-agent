@@ -363,8 +363,8 @@ metrics:
     category: "license"
     description: "Number of days until the Veeam license expires"
     otel:
-      name: senhub.veeam.license.days_remaining
-      unit: "{day}"
+      name: senhub.veeam.license.expiry
+      unit: "s"
       type: gauge
 
   - name: "veeam_license_instances_total"

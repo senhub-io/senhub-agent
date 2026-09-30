@@ -77,8 +77,8 @@ func OTelNameToPromName(otelName, unit, metricType string) string {
 	// the suffix when the OTel type is updowncounter or counter.
 	if suffix := unitSuffix(unit); suffix != "" {
 		skipSuffix := suffix == "ratio" && (strings.EqualFold(metricType, "updowncounter") || strings.EqualFold(metricType, "counter"))
-		if !skipSuffix && !strings.HasSuffix(name, "_"+suffix) {
-			name = name + "_" + suffix
+		if !skipSuffix {
+			name = appendUnitSuffix(name, suffix)
 		}
 	}
 
@@ -87,6 +87,38 @@ func OTelNameToPromName(otelName, unit, metricType string) string {
 		name = name + "_total"
 	}
 
+	return name
+}
+
+// appendUnitSuffix adds the unit words the name does not already carry,
+// as the OpenTelemetry Collector's Prometheus translator does: a word
+// already present as a name segment is not repeated, and the two halves of
+// a rate (`bytes`, `per_second`) are checked apart. Checking only the end of
+// the name exported senhub_veeam_job_seconds_since_last_run_seconds and
+// senhub_haproxy_bytes_input_bytes_total, names no backend converting OTLP
+// the Collector's way produces, so queries written for one missed the other.
+func appendUnitSuffix(name, suffix string) string {
+	tokens := strings.Split(name, "_")
+	has := func(word string) bool {
+		for _, t := range tokens {
+			if t == word {
+				return true
+			}
+		}
+		return false
+	}
+	main, per := suffix, ""
+	if rest, ok := strings.CutPrefix(suffix, "per_"); ok {
+		main, per = "", rest
+	} else if m, p, ok := strings.Cut(suffix, "_per_"); ok {
+		main, per = m, p
+	}
+	if main != "" && !has(main) {
+		name += "_" + main
+	}
+	if per != "" && !has(per) {
+		name += "_per_" + per
+	}
 	return name
 }
 
