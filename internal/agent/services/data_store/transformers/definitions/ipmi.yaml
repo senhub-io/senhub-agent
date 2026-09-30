@@ -88,6 +88,7 @@ metrics:
       type: updowncounter
       attributes:
         hw.type: power_supply
+        hw.state: ok
     tag_to_attribute:
       hardware.component: hw.id
 
@@ -106,6 +107,8 @@ metrics:
       name: hw.status
       unit: "1"
       type: updowncounter
+      attributes:
+        hw.state: ok
     tag_to_attribute:
       hardware.component: hw.id
 
