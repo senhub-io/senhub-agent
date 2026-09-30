@@ -216,6 +216,9 @@ func (lc *LocalConfiguration) generateAgentYAML(agentKey string) ([]byte, error)
 func (lc *LocalConfiguration) generateHTTPStrategyFragment(adminKey string) string {
 	port := lc.defaultHTTPPort()
 	bindAddress := "127.0.0.1"
+	if lc.args != nil && lc.args.HttpBindAddress != "" {
+		bindAddress = lc.args.HttpBindAddress
+	}
 	tlsSection := ""
 
 	if lc.args != nil && lc.args.EnableHttps {

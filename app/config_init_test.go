@@ -199,3 +199,16 @@ func TestFindLicenseInDir(t *testing.T) {
 		t.Errorf("--license-dir must parse: %v", err)
 	}
 }
+
+func TestParseInitConfigArgs_HTTPBind(t *testing.T) {
+	opts, err := parseInitConfigArgs([]string{"--http-bind", "0.0.0.0"})
+	if err != nil || opts.httpBind != "0.0.0.0" {
+		t.Fatalf("got %+v, %v", opts, err)
+	}
+	if opts, err := parseInitConfigArgs([]string{"--http-bind", ""}); err != nil || opts.httpBind != "" {
+		t.Errorf("an empty value means the default, got %+v, %v", opts, err)
+	}
+	if _, err := parseInitConfigArgs([]string{"--http-bind", "0.0.0.0\n  tls: {}"}); err == nil {
+		t.Error("a value that is not an IP address must be refused")
+	}
+}
