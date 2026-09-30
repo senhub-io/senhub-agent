@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -428,7 +429,7 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 	case "prtg", "event":
 		steps = probeHTTPTarget(ctx, req.Type, req.Params, timeout)
 	case "senhub":
-		steps = reachURL(ctx, cliArgs.ProductionURL, timeout)
+		steps = probeSenhubIntake(ctx, cliArgs.ProductionURL, h.agentConfig.GetAuthenticationKey(), timeout)
 	case "zabbix":
 		steps = dialZabbixServers(ctx, req.Params, timeout)
 	case "http":
@@ -494,29 +495,79 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 	return steps
 }
 
-// reachURL is the reach step alone, for an output whose address is
-// fixed at build time rather than configured.
-func reachURL(ctx context.Context, target string, timeout time.Duration) []otlp.ConnectionStep {
-	t := time.Now()
-	step := otlp.ConnectionStep{Name: "reach"}
-	if target == "" {
-		step.Error = "this build has no intake address"
-		return []otlp.ConnectionStep{step}
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
-	if err == nil {
-		var resp *http.Response
-		if resp, err = newConnectivityClient(timeout).Do(req); err == nil {
-			_ = resp.Body.Close()
-			step.Detail = fmt.Sprintf("%s: HTTP %d", target, resp.StatusCode)
+// probeSenhubIntake tests the SenHub cloud output: the intake address is
+// fixed at build time and the credential is the agent key. Any HTTP
+// answer used to pass, so a 404 from the intake root read as a working
+// output. The intake serves GET /status without authentication and GET
+// /configs behind the same X-AGENT-KEY check as POST /metrics; reading
+// /configs proves the key is accepted without pushing a data point.
+func probeSenhubIntake(ctx context.Context, base, agentKey string, timeout time.Duration) []otlp.ConnectionStep {
+	var steps []otlp.ConnectionStep
+	run := func(name string, fn func() (string, error)) bool {
+		t := time.Now()
+		detail, err := fn()
+		s := otlp.ConnectionStep{Name: name, Passed: err == nil, Detail: detail, Duration: time.Since(t).Milliseconds()}
+		if err != nil {
+			s.Error = err.Error()
 		}
+		steps = append(steps, s)
+		return err == nil
 	}
-	step.Passed = err == nil
-	if err != nil {
-		step.Error = err.Error()
+	base = strings.TrimRight(base, "/")
+	if !run("config", func() (string, error) {
+		if base == "" {
+			return "", errors.New("this build has no intake address")
+		}
+		if agentKey == "" {
+			return "", errors.New("the SenHub cloud output authenticates with the agent key, and none is configured")
+		}
+		return base, nil
+	}) {
+		return steps
 	}
-	step.Duration = time.Since(t).Milliseconds()
-	return []otlp.ConnectionStep{step}
+	client := newConnectivityClient(timeout)
+	get := func(path string, withKey bool) (int, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+		if err != nil {
+			return 0, err
+		}
+		if withKey {
+			req.Header.Set("X-AGENT-KEY", agentKey)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		return resp.StatusCode, nil
+	}
+	if !run("reach", func() (string, error) {
+		code, err := get("/status", false)
+		if err != nil {
+			return "", err
+		}
+		if code < 200 || code > 299 {
+			return "", fmt.Errorf("%s/status answered HTTP %d: this address does not serve the SenHub intake", base, code)
+		}
+		return fmt.Sprintf("%s: HTTP %d", base, code), nil
+	}) {
+		return steps
+	}
+	run("authenticate", func() (string, error) {
+		code, err := get("/configs", true)
+		if err != nil {
+			return "", err
+		}
+		switch {
+		case code == http.StatusUnauthorized || code == http.StatusForbidden:
+			return "", fmt.Errorf("the intake refused the agent key (HTTP %d): this agent is not registered with SenHub cloud", code)
+		case code < 200 || code > 299:
+			return "", fmt.Errorf("the intake answered HTTP %d to an authenticated request", code)
+		}
+		return "agent key accepted", nil
+	})
+	return steps
 }
 
 // dialZabbixServers opens a TCP connection to each address the 'server'
