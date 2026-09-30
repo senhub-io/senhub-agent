@@ -96,8 +96,8 @@ series' tags.
 | `hw.temperature` | `hardware.temperature` | Temp {hardware.component} | Degrees Celsius | Temperature reported by the BMC sensor (degrees Celsius) |
 | `hw.fan.speed` | `hardware.fan.speed` | Fan Speed {hardware.component} | RPM | Fan speed in rotations per minute as reported by the BMC |
 | `hw.voltage` | `hardware.voltage` | Voltage {hardware.component} | Volts | Voltage reported by the BMC sensor (volts) |
-| `hw.status` | `hardware.power_supply.status` | PSU Status {hardware.component} | # | Power supply status: 1 = ok, 0 = fault or not available |
-| `hw.status` | `hardware.sensor.status` | Sensor {hardware.component} | # | Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
+| `hw.status` | `hardware.power_supply.status` | PSU Status {hardware.component} | # | Power supply status: 1 = ok, 0 = fault. A supply the BMC has no reading for emits no value |
+| `hw.status` | `hardware.sensor.status` | Sensor {hardware.component} | # | Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable. A sensor with no reading (ns) emits no value |
 | `senhub.ipmi.up` | `senhub.ipmi.up` | IPMI Reachable | # | 1 when ipmitool ran successfully and the BMC responded, 0 otherwise |
 
 <!-- schema:metrics:end -->

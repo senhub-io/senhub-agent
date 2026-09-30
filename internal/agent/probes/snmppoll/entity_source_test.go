@@ -73,16 +73,13 @@ func TestBuildObservation_ConnectedTo(t *testing.T) {
 	}
 	obs := buildObservation(self, topo, nil, nil, nil, resolveDeviceID)
 
-	// self device + neighbour device (the remote port entity is referenced by
-	// the edge, not emitted here — the neighbour's own poll emits it).
-	if len(obs.Entities) != 2 {
-		t.Fatalf("want 2 entities, got %d (%+v)", len(obs.Entities), obs.Entities)
+	// Only the self device: the neighbour device and its port are referenced
+	// by the edge, not emitted here — the neighbour's own poll emits them.
+	if len(obs.Entities) != 1 {
+		t.Fatalf("want 1 entity, got %d (%+v)", len(obs.Entities), obs.Entities)
 	}
 	if obs.Entities[0].ID[idKeyNetworkDevice] != "serial:9:FOC1" {
 		t.Errorf("self id = %v", obs.Entities[0].ID)
-	}
-	if obs.Entities[1].ID[idKeyNetworkDevice] != "mac:AA-BB-CC-DD-EE-FF" {
-		t.Errorf("neighbor id = %v", obs.Entities[1].ID)
 	}
 	if len(obs.Relations) != 1 {
 		t.Fatalf("want 1 relation, got %d", len(obs.Relations))
@@ -124,15 +121,16 @@ func TestBuildObservation_ConnectedTo_Gating(t *testing.T) {
 			t.Errorf("no connected_to expected (MAC-only remote + unanchored local), got %+v", r)
 		}
 	}
-	// Both neighbours are still discovered as network.device entities.
+	// Neighbours are not built as devices: nothing anchors them, and the
+	// anti-orphan guard dropped them on every cycle (#992).
 	var devs int
 	for _, e := range obs.Entities {
 		if e.Type == entityTypeNetworkDevice {
 			devs++
 		}
 	}
-	if devs != 3 { // self + 2 neighbours
-		t.Errorf("device entities = %d, want 3 (self + 2 neighbours)", devs)
+	if devs != 1 {
+		t.Errorf("device entities = %d, want 1 (self only)", devs)
 	}
 }
 

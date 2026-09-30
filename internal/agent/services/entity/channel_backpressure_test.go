@@ -4,8 +4,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
 // The detector publishes a whole cycle in one burst. A 40-device SNMP
@@ -59,7 +57,7 @@ func TestABurstLargerThanTheBufferIsDeliveredWhole(t *testing.T) {
 
 // A receiver that stops draining costs one bounded wait, not one per
 // event, and every event it misses is counted where an operator sees it:
-// senhub.agent.otlp.dropped{reason="entity_queue_full"}.
+// otel.sdk.processor.log.processed{error.type="queue_full"}.
 func TestAStuckReceiverCostsOneWaitAndIsCounted(t *testing.T) {
 	resetEventChannelForTest()
 	defer resetEventChannelForTest()
@@ -68,7 +66,6 @@ func TestAStuckReceiverCostsOneWaitAndIsCounted(t *testing.T) {
 
 	ch := SubscribeEvents(1)
 	defer UnsubscribeEvents(ch)
-	before := agentstate.GetOTLPDroppedByReason()["entity_queue_full"]
 
 	start := time.Now()
 	for i := 0; i < 101; i++ {
@@ -80,8 +77,8 @@ func TestAStuckReceiverCostsOneWaitAndIsCounted(t *testing.T) {
 	if n := GetDroppedEntityEventsTotal(); n != 100 {
 		t.Fatalf("dropped %d, want 100 (one fits the buffer)", n)
 	}
-	if after := agentstate.GetOTLPDroppedByReason()["entity_queue_full"]; after-before != 100 {
-		t.Fatalf("entity_queue_full counted %d, want 100", after-before)
+	if delivered, dropped, size, capacity := EventStats(); delivered != 1 || dropped != 100 || size != 1 || capacity != 1 {
+		t.Fatalf("EventStats = delivered %d, dropped %d, queue %d/%d; want 1, 100, 1/1", delivered, dropped, size, capacity)
 	}
 
 	// Once it drains again it gets events again, with no drop.

@@ -68,8 +68,8 @@ func TestPolledRegistry_TTLExpiry(t *testing.T) {
 
 // TestBuildObservation_NeighborReconciledViaRegistry pins the end-to-end fix:
 // a neighbour known by a MAC that the registry maps to a polled device's
-// canonical id is emitted under that canonical id (one node per device), and the
-// connected_to remote endpoint rides the same canonical id.
+// canonical id is linked under that canonical id: the connected_to remote
+// endpoint rides the id the neighbour's own poll assigned, not a mac: shadow.
 func TestBuildObservation_NeighborReconciledViaRegistry(t *testing.T) {
 	neighMAC := []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
 	resolve := func(n deviceIdentity) string {
@@ -93,17 +93,6 @@ func TestBuildObservation_NeighborReconciledViaRegistry(t *testing.T) {
 	}
 	obs := buildObservation(self, topo, nil, nil, nil, resolve)
 
-	// Neighbour node carries the canonical id, NOT mac:aa:bb:...
-	var neigh *string
-	for i := range obs.Entities {
-		if obs.Entities[i].Type == entityTypeNetworkDevice && obs.Entities[i].ID[idKeyNetworkDevice] != "serial:9:FOC1" {
-			id := obs.Entities[i].ID[idKeyNetworkDevice].(string)
-			neigh = &id
-		}
-	}
-	if neigh == nil || *neigh != "serial:9:NEIGH" {
-		t.Fatalf("neighbour id = %v, want serial:9:NEIGH (reconciled, not a mac: shadow)", neigh)
-	}
 	// connected_to remote endpoint uses the canonical device id.
 	var found bool
 	for _, r := range obs.Relations {
