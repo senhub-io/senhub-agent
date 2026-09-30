@@ -174,7 +174,7 @@ filter still matches. Frozen scope names (aligned with Toise):
 | Scope name | Discovery method |
 |---|---|
 | `senhub-agent/snmp-ifmib` | polled device identity + IF-MIB ports/addresses |
-| `senhub-agent/snmp-lldp`  | LLDP-discovered neighbours + `connected_to` adjacency |
+| `senhub-agent/snmp-lldp`  | reserved: LLDP neighbours are no longer built as devices; `connected_to` rides its local interface |
 | `senhub-agent/snmp-route` | device routing table (`network.route`) |
 | `senhub-agent/host-route` | host kernel routing table |
 | `senhub-agent/host-iface` | host interface/address inventory |

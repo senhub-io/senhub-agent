@@ -114,6 +114,13 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **An SNMP device keeps its full description in the topology.** Each
+  LLDP neighbour was also built as a device carrying only its name, then
+  dropped before sending with a warning, 54 a minute on a 40-device lab.
+  Where that neighbour was also polled, its thin copy could win over the
+  full one, and the device reached the topology backend with its name
+  alone. Neighbours are no longer built; the warnings stop.
+
 - **Syslog RFC 3164 messages are timed in the host's zone.** The header
   of an RFC 3164 message carries the sender's local time with no zone, and
   the parser read it as UTC: on a host in Paris, a UniFi access point's
