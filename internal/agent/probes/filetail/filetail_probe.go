@@ -317,32 +317,54 @@ func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64) {
 		}
 	}
 
-	for line := range t.Lines {
-		if line == nil {
-			continue
-		}
-		if line.Err != nil {
-			p.moduleLogger.Debug().Err(line.Err).Str("file", file).Msg("tail line error")
-			continue
-		}
-		lastOffset = line.SeekInfo.Offset
+	// A burst of lines inside one flush interval used to leave the
+	// bookmark at its first line until the next line arrived: a crash
+	// meanwhile replayed lines already sent. The ticker persists an
+	// offset that moved, whether or not another line follows.
+	ticker := time.NewTicker(bookmarkFlushInterval)
+	defer ticker.Stop()
+	dirty := false
+read:
+	for {
+		select {
+		case line, ok := <-t.Lines:
+			if !ok {
+				break read
+			}
+			if line == nil {
+				continue
+			}
+			if line.Err != nil {
+				p.moduleLogger.Debug().Err(line.Err).Str("file", file).Msg("tail line error")
+				continue
+			}
+			lastOffset = line.SeekInfo.Offset
+			dirty = true
 
-		readTime := line.Time
-		if readTime.IsZero() {
-			readTime = time.Now()
-		}
+			readTime := line.Time
+			if readTime.IsZero() {
+				readTime = time.Now()
+			}
 
-		// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
-		// CRLF files; strip it so bodies/attributes are clean and parsers
-		// behave identically across platforms.
-		text := strings.TrimSuffix(line.Text, "\r")
-		for _, logical := range asm.Append(text) {
-			p.publish(p.config.Parser, logical, readTime, probeName, file)
-		}
+			// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
+			// CRLF files; strip it so bodies/attributes are clean and parsers
+			// behave identically across platforms.
+			text := strings.TrimSuffix(line.Text, "\r")
+			for _, logical := range asm.Append(text) {
+				p.publish(p.config.Parser, logical, readTime, probeName, file)
+			}
 
-		if time.Since(lastFlush) >= bookmarkFlushInterval {
-			persist()
-			lastFlush = time.Now()
+			if time.Since(lastFlush) >= bookmarkFlushInterval {
+				persist()
+				lastFlush = time.Now()
+				dirty = false
+			}
+		case <-ticker.C:
+			if dirty {
+				persist()
+				lastFlush = time.Now()
+				dirty = false
+			}
 		}
 	}
 

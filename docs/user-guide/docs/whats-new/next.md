@@ -129,6 +129,12 @@ Changes since 0.6.0, collected as they are merged.
   seen for the first time are read as before: from the end, or from the
   first byte with `from_beginning`.
 
+- **File tail keeps its bookmark up to date after a burst.** Lines
+  arriving together inside one flush interval left the bookmark at the
+  first of them until another line came, so a crash meanwhile replayed
+  lines already sent. The bookmark is now written within two seconds of
+  the last line read, whether or not another follows.
+
 - **`config check` no longer prints the agent key.** It reports that the
   key is set and has the expected form.
 
