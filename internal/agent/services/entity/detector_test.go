@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -101,5 +102,26 @@ func TestDetector_Reconcile_SkipsOnMissingIdentity(t *testing.T) {
 
 	if publishCount != 0 {
 		t.Fatalf("published %d events on missing identity, want 0", publishCount)
+	}
+}
+
+// The running detector announces the liveness interval it stamps on every
+// entity, so a producer that holds an observation back can size the wait
+// against it instead of a constant that could drift from it.
+func TestTheDetectorAnnouncesItsLivenessInterval(t *testing.T) {
+	t.Cleanup(func() { reportInterval.Store(0) })
+	for _, tick := range []time.Duration{30 * time.Second, time.Minute, 5 * time.Minute} {
+		d := NewDetector(
+			func() (HostIdentity, error) { return HostIdentity{ID: "h"}, nil },
+			func() AgentIdentity { return AgentIdentity{InstanceID: "a"} },
+			tick,
+		)
+		d.publish = func(Event) {}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		d.Run(ctx)
+		if got, want := ReportInterval(), tick*livenessSlackFactor; got != want {
+			t.Errorf("tick %v: announced %v, want %v", tick, got, want)
+		}
 	}
 }

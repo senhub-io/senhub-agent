@@ -3,6 +3,8 @@ package snmppoll
 import (
 	"sync"
 	"time"
+
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // polledRegistry reconciles the SAME physical device across SNMP sources so the
@@ -28,6 +30,12 @@ import (
 type polledRegistry struct {
 	mu    sync.Mutex
 	byMAC map[string]registryEntry
+	// started is when the registry began filling: the agent's start for
+	// the shared one. It is empty then, and fills in the order the probe
+	// instances happen to sweep.
+	started time.Time
+	// warmupOverride replaces the interval-derived window in tests.
+	warmupOverride time.Duration
 }
 
 type registryEntry struct {
@@ -46,7 +54,26 @@ const polledRegistryTTL = 3 * defaultTopologyInterval
 var sharedPolledRegistry = newPolledRegistry()
 
 func newPolledRegistry() *polledRegistry {
-	return &polledRegistry{byMAC: map[string]registryEntry{}}
+	return &polledRegistry{byMAC: map[string]registryEntry{}, started: time.Now()}
+}
+
+// warming reports whether the registry may still be missing devices that
+// will be polled shortly after the start. The window is a third of the
+// announced entity liveness interval: the consumer expires what is not
+// re-asserted within that interval, the last heartbeat before a restart can
+// be a third of it old (the re-emission cadence), so holding back for
+// another third keeps a missed heartbeat absorbable. Tied to the interval,
+// it cannot drift from it; with no detector running there is nothing to
+// hold back for.
+func (r *polledRegistry) warming(now time.Time) bool {
+	return now.Sub(r.started) < r.warmup()
+}
+
+func (r *polledRegistry) warmup() time.Duration {
+	if r.warmupOverride > 0 {
+		return r.warmupOverride
+	}
+	return entity.ReportInterval() / 3
 }
 
 // recordPolled registers a directly-polled device's chassis MAC under its
