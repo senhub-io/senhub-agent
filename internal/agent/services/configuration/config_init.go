@@ -237,6 +237,73 @@ func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
 	return nil
 }
 
+// badZabbixRune reports a character that has no place in a Zabbix server
+// list or host metadata written into YAML by an installer: whitespace
+// other than a plain space in the metadata, quotes, and YAML structure.
+func badZabbixRune(r rune, allowSpace bool) bool {
+	if r == ' ' {
+		return !allowSpace
+	}
+	return r < ' ' || r == '#' || r == '{' || r == '}' || r == '"' || r == '\'' || r == '\\'
+}
+
+// ValidateZabbixInstallArgs checks what an installer passes for the Zabbix
+// output before anything is written. The server is one host[:port] or
+// several separated by commas (a proxy group). The metadata needs a server.
+func ValidateZabbixInstallArgs(server, metadata string) error {
+	if server == "" {
+		if metadata != "" {
+			return fmt.Errorf("--zabbix-host-metadata requires --zabbix-server")
+		}
+		return nil
+	}
+	if strings.IndexFunc(server, func(r rune) bool { return badZabbixRune(r, false) }) >= 0 {
+		return fmt.Errorf("--zabbix-server %q contains whitespace or an invalid character; expected host:port, several separated by commas", server)
+	}
+	for _, part := range strings.Split(server, ",") {
+		if part == "" {
+			return fmt.Errorf("--zabbix-server %q has an empty address", server)
+		}
+	}
+	if strings.IndexFunc(metadata, func(r rune) bool { return badZabbixRune(r, true) }) >= 0 {
+		return fmt.Errorf("--zabbix-host-metadata %q contains an invalid character", metadata)
+	}
+	return nil
+}
+
+// WriteZabbixStrategyFragment writes strategies.d/20-zabbix.yaml for an
+// installer that was given a Zabbix server, the one step that otherwise
+// separates installing the agent from the host appearing in Zabbix. It is
+// idempotent and never overwrites an existing fragment.
+func WriteZabbixStrategyFragment(configDir, server, metadata string) error {
+	if server == "" {
+		return nil
+	}
+	if err := ValidateZabbixInstallArgs(server, metadata); err != nil {
+		return err
+	}
+	dir := filepath.Join(configDir, "strategies.d")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("creating %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, "20-zabbix.yaml")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	body := "# SenHub Agent — Zabbix output (provisioned by 'config init').\n" +
+		"# Registers this host by autoregistration and pushes its values as an\n" +
+		"# active agent. Prepare the server once with 'senhub-agent zabbix setup'.\n" +
+		"zabbix:\n" +
+		"  server: \"" + server + "\"\n"
+	if metadata != "" {
+		body += "  host_metadata: \"" + metadata + "\"\n"
+	}
+	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
+}
+
 func marshalDocument(doc *yaml.Node) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)

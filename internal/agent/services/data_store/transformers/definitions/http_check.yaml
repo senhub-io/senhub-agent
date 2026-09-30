@@ -128,7 +128,8 @@ metrics:
     description: "Days until the leaf certificate expires (negative once expired)"
     otel:
       name: senhub.httpcheck.tls.expiry
-      unit: "d"
+      unit: "s"
+      value_scale: 86400  # the probe reports days
       type: gauge
     tag_to_attribute:
       target: httpcheck.target

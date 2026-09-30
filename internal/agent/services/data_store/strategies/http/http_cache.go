@@ -1238,7 +1238,6 @@ type CacheInfoResponse struct {
 	TotalMetrics int    `json:"total_metrics"`
 	ProbeCount   int    `json:"probe_count"`
 	TTL          string `json:"ttl"`
-	MemoryUsage  string `json:"memory_usage"`
 }
 
 // DebugCacheEntry represents a single cache entry for debugging

@@ -21,7 +21,7 @@ without anyone touching its configuration:
 http:
   port: 8080
   bind_address: "127.0.0.1"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
   admin_key: "${secret:agent.admin_key}"
 ```
 
@@ -62,7 +62,7 @@ The Overview is the landing page.
 - **Getting started** lists four steps and computes their state from the agent: the agent runs, probes are configured, data is sent somewhere, the poller has its sensor URL. The current step is highlighted and carries the link that resolves it. Hide it once you are done; it disappears on its own when every step is complete.
 - **Probes** is a compact table of the configured probes, the ones needing attention first, with their state, the number of series they hold and the time of their last collection. Probes whose target is down are counted on their own, not under "running".
 - **Outputs** lists every output with its state and the action that matters: build a sensor URL for the HTTP output, edit a push output, enable a disabled one.
-- **Agent** merges the former status, health and resources cards: version, host, instance ID, uptime, port, configuration path, memory, CPU, goroutines and cache size. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
+- **Agent** merges the former status, health and resources cards: version, host, instance ID, uptime, port, configuration path, memory, CPU, goroutines and cache size. Memory is the resident set the operating system charges to the agent, CPU its share of the whole machine over the last interval; both are asked of the operating system at each refresh. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
 - **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button. The Settings page gathers the identifiers and the licence in full.
 - **Recent events** shows the last transitions: a probe that started failing or recovered, an output that could not start, a save made from the console, a configuration reloaded from disk. The agent keeps the last fifty in memory; they do not survive a restart.
 
@@ -333,12 +333,12 @@ The route is public: it takes no key. Response:
 {
   "status": "ok",
   "timestamp": "2026-09-29T10:15:00+02:00",
-  "memory_mb": 18.4,
-  "version": "HTTP Strategy v1.0"
+  "memory_mb": 104.8,
+  "version": "0.6.0"
 }
 ```
 
-`memory_mb` is the memory the Go runtime holds at the time of the request. `version` names the HTTP output's handler, not the agent release; `GET /api/{key}/info/system` returns the agent version.
+`memory_mb` is the agent's resident memory at the time of the request, as the operating system counts it. `version` is the agent release.
 
 ### List collected probes
 

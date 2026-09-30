@@ -530,6 +530,17 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
 	// duplicate network.interface.name keeps the first (identity is {device, name}).
+	// Addresses per ifIndex with their mask, for the interface's
+	// descriptive network attributes (ipAddrTable, IP-MIB).
+	ifIPs := map[string][]string{}
+	ifPrefixes := map[string]map[string]int{}
+	for _, a := range addrs {
+		ifIPs[a.IfIndex] = append(ifIPs[a.IfIndex], a.IP)
+		if ifPrefixes[a.IfIndex] == nil {
+			ifPrefixes[a.IfIndex] = map[string]int{}
+		}
+		ifPrefixes[a.IfIndex][a.IP] = a.Prefix
+	}
 	ifaceSeen := map[string]bool{}
 	for _, ifc := range ifaces {
 		if ifc.Name == "" || ifc.OperStatus == ifOperNotPresent || ifaceSeen[ifc.Name] {
@@ -552,6 +563,9 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		}
 		if d := duplexName(ifc.Duplex); d != "" {
 			attrs[attrDuplex] = d
+		}
+		for k, v := range entity.InterfaceNetworkAttributes(ifIPs[ifc.Index], ifPrefixes[ifc.Index]) {
+			attrs[k] = v
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type: entityTypeNetworkInterface, ID: portID, Attributes: attrs, Scope: entity.ScopeSNMPIFMIB,
@@ -627,11 +641,13 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	}
 
 	// network.route — the polled device's remote routes as entities it owns
-	// (has_route, mirror of has_interface), the next hop carried as a scalar
-	// next_hop.ip (network.address — the gateway as its own node — is deferred,
-	// so no provisional mgmt:/mac: device for it). One entity per destination
-	// CIDR, first-seen order; ECMP (a destination with several next-hops) keeps
-	// the first. This supersedes the legacy routes_via device-to-device edge.
+	// (has_route, mirror of has_interface). Identity after IP-FORWARD-MIB
+	// (RFC 4292), which indexes a route on its destination and its next
+	// hop: {device, destination, next hop}, so ECMP (one destination,
+	// several next hops) is several routes rather than the first one.
+	// Only remote routes with a usable next hop are emitted, which keeps
+	// the next hop always present. TOS and policy are not read. This
+	// supersedes the legacy routes_via device-to-device edge.
 	routeSeen := map[string]bool{}
 	for _, r := range routes {
 		if r.Type != routeTypeRemote || r.Destination == "" {
@@ -640,15 +656,16 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		if !usableNextHop(r.NextHop, self.MgmtIP) {
 			continue
 		}
-		if routeSeen[r.Destination] {
+		key := r.Destination + " " + r.NextHop
+		if routeSeen[key] {
 			continue
 		}
-		routeSeen[r.Destination] = true
+		routeSeen[key] = true
 
-		routeID := map[string]any{idKeyNetworkDevice: selfID, idKeyRouteDestination: r.Destination}
-		attrs := map[string]any{attrNextHopIP: r.NextHop}
+		routeID := map[string]any{idKeyNetworkDevice: selfID, idKeyRouteDestination: r.Destination, attrNextHopIP: r.NextHop}
+		var attrs map[string]any
 		if r.Metric > 0 {
-			attrs[attrRouteMetric] = int64(r.Metric)
+			attrs = map[string]any{attrRouteMetric: int64(r.Metric)}
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs, Scope: entity.ScopeSNMPRoute,

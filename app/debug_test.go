@@ -57,3 +57,38 @@ func TestBuildDashboardURL_MultiFileWithTLS(t *testing.T) {
 		t.Errorf("url without an agent key = %q, want empty", got)
 	}
 }
+
+func TestResolveHTTPStrategyListen_BindAndLocalHost(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(main, []byte("config_version: 3\nagent:\n  key: \"k\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "strategies.d"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "strategies.d", "00-http.yaml"),
+		[]byte("http:\n  port: 19100\n  bind_address: \"10.0.0.5\"\n  endpoints: [\"prtg\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scheme, bind, port := resolveHTTPStrategyListen(main)
+	if scheme != "http" || bind != "10.0.0.5" || port != 19100 {
+		t.Errorf("got %s %s %d", scheme, bind, port)
+	}
+	// An output bound to one interface does not answer on localhost.
+	if got := localHostFor(bind); got != "10.0.0.5" {
+		t.Errorf("localHostFor(10.0.0.5) = %s", got)
+	}
+	for _, any := range []string{"", "0.0.0.0", "::"} {
+		if got := localHostFor(any); got != "127.0.0.1" {
+			t.Errorf("localHostFor(%q) = %s, want loopback", any, got)
+		}
+	}
+}
+
+func TestReportSchemaProblems_UnreadParamIsAWarning(t *testing.T) {
+	errs, warns := reportSchemaProblems("cpu", "cpu", map[string]interface{}{"no_such_param": 1})
+	if errs != 0 || warns != 1 {
+		t.Errorf("an unread parameter the agent ignores must be a warning, got %d errors %d warnings", errs, warns)
+	}
+}

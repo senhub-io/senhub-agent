@@ -108,9 +108,28 @@ fact belongs on an entity.
    transformer `tag_metadata` `type: resource` set already *is* an entity
    identity → generic synthesis, no per-probe code.
 4. **Host routing table** (topology, now — #212) → the host's routes as
-   `network.route` entities `{host.id, route.destination}`, attached by
+   `network.route` entities `{host.id, route.destination, next_hop.ip}`, attached by
    `has_route` (host → route). The gateway is a shared `network.address` node
-   the route reaches via `next_hop_via` (plus a scalar `next_hop.ip`).
+   the route reaches via `next_hop_via`.
+   Read from `/proc/net/route` on Linux and from `GetIpForwardTable` on
+   Windows. Identity follows IP-FORWARD-MIB (RFC 4292), which indexes a
+   route on destination AND next hop: two routes to one destination
+   through two gateways (two NICs, a VPN, ECMP) are two entities, and a
+   gateway change is a delete and a create. The next hop is canonical
+   (RFC 5952) since identity is byte-exact. **Load-bearing:** only
+   indirect routes are emitted, which is what keeps the next hop always
+   present; emitting direct (on-link) routes would break the identity.
+   TOS and policy, also in the MIB index, are not read: routes differing
+   only by them collapse.
+   The route carries its egress interface as the descriptive
+   `network.interface.name`. No `network.address` / `next_hop_via` is
+   emitted for a host-local gateway (wildcard, loopback, link-local,
+   172.17/16) nor for a gateway reached through a container bridge
+   (`IsContainerBridgeIface`: `docker*`, `br-*`, `cni*`, `virbr*`, ...);
+   the egress interface is what explains that absence. Known limitation:
+   OpenWrt's routed bridges `br-lan` / `br-wan` match `br-` and lose a
+   legitimately shared gateway. The egress interface is descriptive, not
+   identity: the MIB defines it as a plain column that may be absent.
 5. **SNMP topology MIBs** (with #156) → ports as `network.interface` entities
    (`has_interface`), link adjacency as port-to-port `connected_to`, routing as
    `network.route` + `has_route`, interface IPs as `network.address` entities

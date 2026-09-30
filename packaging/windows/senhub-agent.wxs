@@ -29,6 +29,12 @@
   button fills in); LICENSE_KEY=<jwt> carries the token itself, for
   scripted installs.
 
+  ZABBIX_SERVER=<host:port> (and optionally ZABBIX_HOST_METADATA) writes
+  the Zabbix output, so a host registers in Zabbix at its first contact
+  with no further step, as the Zabbix agent's SERVERACTIVE does:
+
+      msiexec /i senhub-agent.msi /qn ZABBIX_SERVER=zabbix.example.com:10051
+
   HTTP_PORT moves the local HTTP endpoints (PRTG, Web UI, Nagios) off
   the 8080 default. The seeding step refuses a port already in use, and
   the install fails with it: a service that starts on a taken port runs,
@@ -131,6 +137,11 @@
     <Property Id="TAGS" Secure="yes" />
     <!-- Optional: push metrics/logs to an OTLP collector (host:port). -->
     <Property Id="OTLP_ENDPOINT" Secure="yes" />
+    <!-- Optional: Zabbix server or proxy (host:port, several separated by
+         commas for a proxy group) and the host metadata the server's
+         autoregistration action matches. -->
+    <Property Id="ZABBIX_SERVER" Secure="yes" />
+    <Property Id="ZABBIX_HOST_METADATA" Secure="yes" />
     <!-- Port of the local HTTP endpoints. Defaulted so the options page
          shows the value the seeding step will use. -->
     <Property Id="HTTP_PORT" Value="8080" Secure="yes" />
@@ -214,7 +225,7 @@
       repair and reinstall are unaffected.
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --zabbix-server &quot;[ZABBIX_SERVER]&quot; --zabbix-host-metadata &quot;[ZABBIX_HOST_METADATA]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot;"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -328,8 +339,8 @@
     <!--                                                               -->
     <!-- The SenHub options page (SenHubOptionsDlg below) is inserted   -->
     <!-- after the directory page: licence key, HTTP port and the      -->
-    <!-- desktop shortcut, open the console at the end. TAGS and       -->
-    <!-- OTLP_ENDPOINT stay command-line                               -->
+    <!-- desktop shortcut, open the console at the end. TAGS,          -->
+    <!-- OTLP_ENDPOINT and ZABBIX_SERVER stay command-line             -->
     <!-- properties: they belong to fleet provisioning, not to a       -->
     <!-- person clicking through a wizard.                             -->
     <!-- ============================================================ -->

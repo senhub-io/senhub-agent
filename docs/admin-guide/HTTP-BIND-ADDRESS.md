@@ -17,7 +17,7 @@ under a single top-level `http:` key:
 http:
   port: 8080
   bind_address: "127.0.0.1"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
 ```
 
 ## Common Use Cases

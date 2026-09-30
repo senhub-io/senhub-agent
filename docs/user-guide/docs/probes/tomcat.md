@@ -44,7 +44,7 @@ and the Tomcat thread pool state.
 | `tomcat.sessions.active` | {session} | Active HTTP sessions per web application context, tagged with `context` |
 | `tomcat.requests.total` | {request} | Requests processed per connector, tagged with `connector` |
 | `tomcat.errors.total` | {error} | Request errors per connector |
-| `tomcat.processing_time` | ms | Cumulative request processing time per connector |
+| `tomcat.processing_time` | s | Cumulative request processing time per connector |
 | `tomcat.threads.current` | {thread} | Current thread pool size |
 | `tomcat.threads.busy` | {thread} | Threads currently handling a request |
 | `tomcat.threads.max` | {thread} | Maximum thread pool size |

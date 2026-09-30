@@ -393,8 +393,14 @@
             ['Uptime', esc(uptime(d.uptime))],
             ['Port', esc(d.port || '?')],
             ['Config', d.config_path ? esc(d.config_path) : '-'],
-            ['Memory', res.memory_usage_mb != null ? esc(Number(res.memory_usage_mb).toFixed(1)) + ' MB' : '-'],
-            ['CPU', res.cpu_percent != null ? esc(Number(res.cpu_percent).toFixed(1)) + ' %' : '-'],
+            // Resident memory and CPU are asked of the operating system;
+            // an agent that could not ask reports its Go heap, said so.
+            ['Memory', res.memory_usage_mb == null ? '-' : res.measured
+                ? '<span title="Resident set: what the operating system charges to the agent. Go heap: ' + esc(Number(res.heap_mb || 0).toFixed(1)) + ' MB">' + esc(Number(res.memory_usage_mb).toFixed(1)) + ' MB resident</span>'
+                : esc(Number(res.memory_usage_mb).toFixed(1)) + ' MB Go heap'],
+            ['CPU', res.measured && res.cpu_percent != null
+                ? '<span title="CPU time over the last interval, as a share of the whole machine">' + esc(Number(res.cpu_percent).toFixed(1)) + ' % of the machine</span>'
+                : '-'],
             ['Goroutines', res.goroutines != null ? num(res.goroutines) : '-'],
             ['Cache', cache.total_metrics != null ? num(cache.total_metrics) + ' series' + (cache.ttl ? ', TTL ' + esc(cache.ttl) : '') : '-']
         ];
@@ -428,7 +434,7 @@
         const probes = (catalog && catalog.probes) || [];
         const available = probes.filter(x => x.authorized !== false).length;
         // A Pro type refused for its platform is not one a license would unlock.
-        const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false && !/ only$/.test(x.reason || '')).length;
+        const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false && x.runs_here !== false).length;
         let expires = '-';
         if (lic.expires_at) {
             expires = esc(dateOnly(lic.expires_at));

@@ -527,6 +527,35 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 			wantSpeedSize: "Byte",
 		},
 		{
+			// The value PRTG receives stays in the probe's display
+			// unit, so the input scale follows it: declared in bits,
+			// a Mbit/s value showed a million times too small.
+			name: "Mbit rate keeps its display scale",
+			key:  "netscaler.interface.rx.mbits_per_sec",
+			metric: CachedMetric{
+				Value:      float64(940),
+				Unit:       "Mbits/s",
+				MetricName: "netscaler.interface.rx.mbits_per_sec",
+				ProbeName:  "netscaler",
+				Tags:       map[string]string{"interface": "1/1"},
+			},
+			wantUnit:      "SpeedNet",
+			wantSpeedSize: "MegaBit",
+		},
+		{
+			name: "Link speed in bits",
+			key:  "interface_speed",
+			metric: CachedMetric{
+				Value:      float64(1e9),
+				Unit:       "bit/s",
+				MetricName: "interface_speed",
+				ProbeName:  "network",
+				Tags:       map[string]string{"interface": "eth0"},
+			},
+			wantUnit:      "SpeedNet",
+			wantSpeedSize: "Bit",
+		},
+		{
 			name: "Invalid string value",
 			key:  "test.metric",
 			metric: CachedMetric{
