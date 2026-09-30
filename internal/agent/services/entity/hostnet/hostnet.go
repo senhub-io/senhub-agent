@@ -33,7 +33,7 @@ const (
 	idKeyHost                = "host.id"
 	idKeyRouteDestination    = "route.destination"
 	idKeyNetworkAddress      = "network.address"
-	attrNextHopIP            = "next_hop.ip"
+	idKeyNextHopIP           = "next_hop.ip"
 	attrMetric               = "metric"
 	attrEgressInterface      = "network.interface.name"
 	relHasRoute              = "has_route"
@@ -104,8 +104,19 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 	obs := entity.Observation{}
 	addrSeen := map[string]bool{}
 	for _, r := range routes {
-		routeID := map[string]any{idKeyHost: hostID, idKeyRouteDestination: r.Destination}
-		attrs := map[string]any{attrNextHopIP: r.NextHop}
+		// Identity after IP-FORWARD-MIB (RFC 4292), which indexes a route on
+		// its destination AND its next hop: two routes to one destination
+		// through two gateways are two routes. The next hop is always
+		// present because only indirect routes are emitted; emitting direct
+		// (on-link) routes would break this identity. A gateway change is a
+		// delete and a create. TOS and policy, also in the MIB index, are
+		// not read: routes differing only by them collapse.
+		nextHop := r.NextHop
+		if c, ok := entity.CanonicalIP(nextHop); ok {
+			nextHop = c
+		}
+		routeID := map[string]any{idKeyHost: hostID, idKeyRouteDestination: r.Destination, idKeyNextHopIP: nextHop}
+		attrs := map[string]any{}
 		if r.Metric > 0 {
 			attrs[attrMetric] = r.Metric
 		}
@@ -114,6 +125,9 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		// apart when a host has two paths.
 		if r.Iface != "" {
 			attrs[attrEgressInterface] = r.Iface
+		}
+		if len(attrs) == 0 {
+			attrs = nil
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type:       entityTypeNetworkRoute,
@@ -131,12 +145,12 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		// (e.g. a Docker bridge) is the same value on every host, so a shared
 		// node would falsely join unrelated hosts (Toise otel-mapping contract);
 		// the next hop still rides as the host-scoped next_hop.ip attribute above.
-		if entity.IsHostLocalAddressStr(r.NextHop) || entity.IsContainerBridgeIface(r.Iface) {
+		if entity.IsHostLocalAddressStr(nextHop) || entity.IsContainerBridgeIface(r.Iface) {
 			continue
 		}
-		addrID := map[string]any{idKeyNetworkAddress: r.NextHop}
-		if !addrSeen[r.NextHop] {
-			addrSeen[r.NextHop] = true
+		addrID := map[string]any{idKeyNetworkAddress: nextHop}
+		if !addrSeen[nextHop] {
+			addrSeen[nextHop] = true
 			obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: addrID})
 		}
 		obs.Relations = append(obs.Relations, entity.Relation{
@@ -182,10 +196,10 @@ func parseProcRoute(data []byte) []hostRoute {
 		if !ok {
 			continue
 		}
-		if seen[cidr] {
+		if seen[cidr+" "+gw] {
 			continue
 		}
-		seen[cidr] = true
+		seen[cidr+" "+gw] = true
 		var metric int64
 		if m, err := strconv.ParseInt(f[6], 10, 64); err == nil {
 			metric = m
