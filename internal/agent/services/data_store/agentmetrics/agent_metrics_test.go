@@ -50,7 +50,9 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// `senhub.agent.cache.dropped{reason=...}` and
 	// `senhub.agent.otlp.checkpoint.errors{stage=...}` are emitted only
 	// when their counter has been touched, so they don't count here.
-	want := 33 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
+	// The entity-event hand-off adds four OpenTelemetry SDK series:
+	// processed, processed{error.type=queue_full}, queue.size, capacity.
+	want := 33 + 4 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
 	if len(recs) != want {
 		t.Fatalf("expected %d records (no build info, no http requests, no collect errors, no checkpoint errors), got %d", want, len(recs))
 	}
