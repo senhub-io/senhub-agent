@@ -175,8 +175,16 @@ same device derive byte-identical ids.
   two is a producer bug. Both are absent, never empty, when no prefix is
   known; IPv6 in RFC 5952 form. They sit on the interface because a
   `network.address` is shared (a gateway has no mask of its own) and edge
-  attributes do not reach the topology backend. Validated with the Toise
-  contract owner (names pending the OTel alignment check). The port inventory that
+  attributes do not reach the topology backend. Value form after the OTel
+  CIDR notation (semantic-conventions #4144): IPv4 dotted-decimal with a
+  prefix length 0 to 32, IPv6 RFC 5952 with 0 to 128; `subnets` has host
+  bits zero as #4144 requires, `addresses` deliberately does not, which is
+  why it is not named `cidr`. Validated with the Toise contract owner; no
+  upstream convention names either concept (checked 30/09/2026).
+  **`subnets` is provisional**: the OTel network observability work lists
+  "IP subnet" as an L3 entity for October 2026 to January 2027; when a
+  subnet becomes an entity with its own identity, a traversal replaces
+  this attribute. The port inventory that
   anchors `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by
   the device's port count. **DONE (#156).**
 - **Interface IPs → `network.address` entities** (topology-as-entities, ADR
