@@ -653,7 +653,9 @@ Other Commands:
     config init [opts]    Create the default offline configuration if none
                           exists (idempotent). Accepts --config-path,
                           --http-port <n>, --license <jwt>, --tags k=v,...,
-                          --otlp-endpoint; refuses a port already in use
+                          --otlp-endpoint, --zabbix-server host:port,
+                          --zabbix-host-metadata; refuses a port already
+                          in use
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present)
     config show [opts]    Print merged + resolved configuration as YAML

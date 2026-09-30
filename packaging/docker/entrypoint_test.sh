@@ -32,6 +32,29 @@ mkdir -p "$SENHUB_STATE_DIR" "$SENHUB_CONFIG_DIR"
 # shellcheck source=/dev/null
 . "$work/lib.sh"
 
+# 0. SENHUB_ZABBIX_SERVER reaches config init, with its metadata; nothing
+#    Zabbix is passed when the variable is unset.
+mkdir -p "$work/bin"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/init-args"\n' "$work" > "$work/bin/senhub-agent"
+chmod +x "$work/bin/senhub-agent"
+saved_path=$PATH
+PATH="$work/bin:$PATH"
+SENHUB_ZABBIX_SERVER=zbx.example.com:10051
+SENHUB_ZABBIX_HOST_METADATA=senhub-agent
+init_config >/dev/null 2>&1 || true
+unset SENHUB_ZABBIX_SERVER SENHUB_ZABBIX_HOST_METADATA
+case "$(cat "$work/init-args")" in
+  *"--zabbix-server zbx.example.com:10051 --zabbix-host-metadata senhub-agent"*) check "SENHUB_ZABBIX_SERVER reaches config init" "yes" "yes" ;;
+  *) check "SENHUB_ZABBIX_SERVER reaches config init" "$(cat "$work/init-args")" "--zabbix-server zbx.example.com:10051 --zabbix-host-metadata senhub-agent" ;;
+esac
+init_config >/dev/null 2>&1 || true
+case "$(cat "$work/init-args")" in
+  *zabbix*) check "no Zabbix flag without SENHUB_ZABBIX_SERVER" "$(cat "$work/init-args")" "no zabbix flag" ;;
+  *) check "no Zabbix flag without SENHUB_ZABBIX_SERVER" "ok" "ok" ;;
+esac
+PATH=$saved_path
+rm -rf "$SENHUB_CONFIG_DIR" && mkdir -p "$SENHUB_CONFIG_DIR"
+
 kept_id=0123456789abcdef0123456789abcdef
 kept_key=11111111-2222-3333-4444-555555555555
 
