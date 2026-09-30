@@ -134,7 +134,13 @@ func (cm *ConfigurationManager) loadConfiguration() {
 		}
 	}
 
-	// Parse TLS configuration
+	// Parse TLS configuration. The fields are reset first: a reload runs
+	// over the same manager, and a block that lost `enabled` or its paths
+	// must not keep serving the values it no longer carries.
+	cm.tlsEnabled = false
+	cm.tlsMinVersion = "1.2"
+	cm.tlsCertFile = ""
+	cm.tlsKeyFile = ""
 	if tlsParam, exists := cm.params["tls"]; exists {
 		if tlsConfig, ok := tlsParam.(map[string]interface{}); ok {
 			// TLS enabled
@@ -296,6 +302,13 @@ func (cm *ConfigurationManager) GetTLSKeyFile() string {
 	return cm.tlsKeyFile
 }
 
+// tlsSignature identifies every TLS setting the listener is built from,
+// so a runtime change to any of them can be told apart from a no-op.
+func (cm *ConfigurationManager) tlsSignature() string {
+	return fmt.Sprintf("enabled=%t min=%s cert=%s key=%s",
+		cm.tlsEnabled, cm.tlsMinVersion, cm.tlsCertFile, cm.tlsKeyFile)
+}
+
 // GetAgentConfig returns the agent configuration
 func (cm *ConfigurationManager) GetAgentConfig() configuration.AgentConfiguration {
 	return cm.agentConfig
@@ -313,6 +326,12 @@ func (cm *ConfigurationManager) UpdateConfiguration(newParams map[string]interfa
 	// Update parameters
 	for key, value := range newParams {
 		cm.params[key] = value
+	}
+	// Other keys merge, but the TLS block is all-or-nothing: the data
+	// store hands over the full strategy params, so a missing block means
+	// TLS was removed, and merging would keep serving HTTPS on the old one.
+	if _, exists := newParams["tls"]; !exists {
+		delete(cm.params, "tls")
 	}
 
 	// Reload configuration
