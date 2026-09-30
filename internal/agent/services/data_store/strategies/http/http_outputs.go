@@ -490,7 +490,14 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 			return "", err
 		}
 		_ = resp.Body.Close()
-		return fmt.Sprintf("HTTP %d", resp.StatusCode), nil
+		detail := fmt.Sprintf("HTTP %d", resp.StatusCode)
+		// A 404 means nothing is served at this address and a 5xx a server
+		// in error: neither is an output that works. A 405 or a 401 still
+		// proves the route exists, which is all this step claims.
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
+			return detail, fmt.Errorf("%s answered %s", target, detail)
+		}
+		return detail, nil
 	})
 	return steps
 }
