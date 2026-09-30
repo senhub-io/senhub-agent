@@ -141,6 +141,9 @@ type ParsedArgs struct {
 	// HttpPort is the port the generated HTTP strategy listens on when
 	// HTTPS is off. Zero means the 8080 default.
 	HttpPort int
+	// HttpBindAddress is the address the generated HTTP strategy binds
+	// when HTTPS is off. Empty means loopback.
+	HttpBindAddress string
 
 	// HTTPS options
 	EnableHttps   bool
