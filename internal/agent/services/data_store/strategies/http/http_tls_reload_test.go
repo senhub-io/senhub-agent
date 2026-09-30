@@ -91,3 +91,23 @@ func servesTLS(addr string) bool {
 	_ = conn.Close()
 	return true
 }
+
+// Endpoints were only ever added on a reload, so one taken out of the
+// list kept being served until the agent restarted.
+func TestUpdateConfiguration_RemovedEndpointStopsBeingEnabled(t *testing.T) {
+	port := reservePort(t)
+	strategy := newServerTestStrategy(t, port)
+	both := map[string]interface{}{"port": port, "bind_address": "127.0.0.1", "endpoints": []interface{}{"prtg", "prometheus"}}
+	one := map[string]interface{}{"port": port, "bind_address": "127.0.0.1", "endpoints": []interface{}{"prtg"}}
+
+	if err := strategy.UpdateConfiguration(both); err != nil {
+		t.Fatalf("enabling prtg and prometheus: %v", err)
+	}
+	if err := strategy.UpdateConfiguration(one); err != nil {
+		t.Fatalf("keeping prtg only: %v", err)
+	}
+	cm := strategy.configManager
+	if !cm.IsEndpointEnabled("prtg") || cm.IsEndpointEnabled("prometheus") {
+		t.Fatalf("enabled endpoints = %v, want prtg only", cm.GetEnabledEndpoints())
+	}
+}
