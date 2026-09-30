@@ -218,16 +218,15 @@ Changes since 0.6.0, collected as they are merged.
   backend where it used to survive two; the agent chooses an honest
   expiry over a false removal.
 
-- **SNMP devices no longer expire in the topology between two reports.** The
-  agent publishes a whole topology cycle at once; on a fleet of about
-  forty devices that is more events than the OTLP exporter's entity
-  buffer holds, and the overflow was dropped without a trace. The same
-  leading devices were dropped cycle after cycle, stayed unannounced past
-  their liveness interval, and expired in the topology backend together
-  with their interfaces, to come back a few minutes later; on the lab
-  fleet some did so twenty times in twelve hours. A full buffer now makes
-  the publish wait for room, and an event still dropped, when the
-  exporter stops draining, is counted under the OpenTelemetry SDK names
+- **Entity events are no longer dropped silently when a cycle is large.**
+  The agent publishes a whole topology cycle at once, and the hand-off to
+  the OTLP exporter dropped the oldest events as soon as its buffer (256
+  by default) was full, without counting them anywhere; a dropped event
+  was not sent again before the next refresh, so the topology backend
+  could let the entity expire. A fleet of about forty SNMP devices with
+  their interfaces is larger than that buffer. A full buffer now makes the
+  publish wait for room, and an event still dropped, when the exporter
+  stops draining, is counted under the OpenTelemetry SDK names
   a standard dashboard reads: `otel.sdk.processor.log.processed` with
   `error.type="queue_full"` (without it, the events handed over), and
   `otel.sdk.processor.log.queue.size` and `.capacity` for the hand-off's
