@@ -1,89 +1,115 @@
 # SenHub Agent
 
 A single-binary infrastructure monitoring agent: it collects metrics, logs
-and **infrastructure topology** from hosts and network devices, and serves
-or pushes them to the monitoring stack you already run.
+and **infrastructure topology** from hosts, applications and network
+devices, and serves or pushes them to the monitoring stack you already run:
+PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
 
 [![Go tests](https://github.com/senhub-io/senhub-agent/actions/workflows/go-test.yml/badge.svg)](https://github.com/senhub-io/senhub-agent/actions/workflows/go-test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## What it does
 
-- **Host observability** (free): CPU, memory, network, disks/filesystems,
-  OS logs (systemd journal, Windows Event Log), flat-file log tailing,
-  Wi-Fi signal.
-- **Active checks** (free): multi-target ping, HTTP(S) with TLS-expiry
-  tracking, TCP connect, DNS resolution — a failing target is a
-  measurement, never a probe failure.
-- **Network monitoring** (free): SNMP v2c polling (MIB-II / IF-MIB,
-  custom OIDs), SNMP v2c/v3 trap receiver with operator-supplied MIB
-  resolution.
+- **Hosts** (free): CPU, memory, network, disks and filesystems, processes,
+  OS updates, SMART, IPMI, GPUs, time sync, OS logs (systemd journal,
+  Windows Event Log), file tailing.
+- **Applications and databases** (free): MySQL, PostgreSQL, SQL Server,
+  Oracle, MongoDB, Redis, Elasticsearch/OpenSearch, Cassandra, ClickHouse,
+  Kafka, RabbitMQ, ActiveMQ, NATS, Pulsar, Nginx, Apache, HAProxy, Tomcat,
+  WildFly, Docker, Kubernetes, Proxmox, Ceph and more.
+- **Active checks** (free): ping, HTTP(S) with certificate expiry, TCP
+  connect, DNS resolution. A failing target is a measurement, never a
+  probe failure.
+- **Network devices** (free): SNMP v2c/v3 polling (MIB-II, IF-MIB, custom
+  OIDs), SNMP trap receiver with your MIBs, LLDP and routing topology.
 - **Universal collection** (free): embedded OTLP receiver, Prometheus
-  endpoint scraping, syslog receiver, and an exec probe that runs your
-  existing Nagios plugins unchanged.
-- **Topology & entities**: emits OpenTelemetry entity events (hosts,
-  services, network devices/interfaces/routes) with embedded
-  relationships — your metrics, logs and infrastructure graph share the
-  same identity keys. [Toise](https://github.com/toise-dev/toise) consumes
-  these events to build a temporal infrastructure graph, queryable as of
-  any point in time.
-- **Outputs**: PRTG and Nagios (pull, primary), Prometheus exposition,
-  OTLP push (gRPC/HTTP — metrics, logs and entity events), plus a built-in
-  web console.
-- **Paid probes** (Pro/Enterprise license): IBM i, MySQL, PostgreSQL,
-  Citrix, NetScaler, Veeam, Redfish, and more.
+  scraping, syslog receiver, and an exec probe that runs your Nagios
+  plugins unchanged.
+- **Topology**: OpenTelemetry entity events (hosts, services, devices,
+  interfaces, routes) with their relationships, sharing identity keys with
+  the metrics and logs. [Toise](https://github.com/toise-dev/toise)
+  consumes them to build an infrastructure graph you can query at any
+  point in time.
+- **Paid probes** (Pro/Enterprise licence): Citrix, NetScaler, Veeam,
+  Redfish, IBM i, Dell PowerStore, SQL Server and Oracle high availability,
+  vSphere and Hyper-V HA, Active Directory hybrid, Exchange Online, Azure
+  Container Apps, synthetic web checks.
 
-One internal vocabulary, OTel-first: every metric follows OpenTelemetry
-semantic conventions internally; sink formats are derived from it.
+## Outputs
+
+- **PRTG** and **Nagios**: pull endpoints for their HTTP sensors and checks.
+- **Zabbix**: native active agent with generated templates and
+  autoregistration (`senhub-agent zabbix setup`), Zabbix 6.0 to 8.0.
+- **Prometheus**: scrape endpoint.
+- **OTLP**: push over gRPC or HTTP, for metrics, logs and entity events.
+- A built-in **web console** to configure and check the agent.
+
+Every metric follows the OpenTelemetry semantic conventions internally;
+the format of each output is derived from it.
 
 ## Install
 
-Download the ZIP for your platform from the
+**Linux**: download the ZIP for your platform from the
 [releases page](https://github.com/senhub-io/senhub-agent/releases)
-(`senhub-agent-<os>-<arch>.zip` — the `-oss-` variants are the free-only
-edition), then:
+(`senhub-agent-linux-<arch>.zip`; the `-oss-` variants carry the free
+probes only), then:
 
 ```bash
 unzip senhub-agent-linux-amd64.zip
-sudo ./senhub-agent install     # registers the service + generates a default config
+sudo ./senhub-agent install     # registers the service and writes a default configuration
 sudo ./senhub-agent start
 ```
 
-The agent runs from local YAML configuration only — no account or SaaS
-required. Open the console at
-`http://localhost:8080/web/{agentkey}/` (the agent key is printed
-at install time and stored in the config).
+**Windows**: run the signed MSI from the same page
+(`senhub-agent-<version>-amd64.msi`). The installer takes the Zabbix
+server and the HTTP port as properties.
+
+**Container**: `ghcr.io/senhub-io/senhub-agent:<version>` (or
+`senhub-agent-oss`), configured from environment variables. See
+[Running the agent in a container](docs/user-guide/docs/container.md).
+
+The agent runs from local YAML configuration: no account or SaaS
+required. Open the console with:
+
+```bash
+sudo senhub-agent console          # or --print for its address
+```
 
 ## Configure
 
-Configuration lives in `agent.yaml` + `probes.d/*.yaml` +
-`strategies.d/*.yaml` (a single-file legacy layout is auto-detected).
-Validate any change with:
+Configuration lives in `agent.yaml`, `probes.d/*.yaml` and
+`strategies.d/*.yaml` (a single-file legacy layout is detected). Check a
+change with:
 
 ```bash
 senhub-agent config check
 senhub-agent config show --redact
 ```
 
-Start here:
+Documentation: [agent.senhub.io/docs](https://agent.senhub.io/docs), or
+in this repository:
 
-- [Installation guide](docs/user-guide/docs/installation.md)
-- [Configuration reference](docs/user-guide/docs/configuration.md)
-- [OTLP / OpenTelemetry output](docs/user-guide/docs/otlp.md)
+- [Installation](docs/user-guide/docs/installation.md)
+- [Configuration](docs/user-guide/docs/configuration.md)
+- [Zabbix](docs/user-guide/docs/zabbix.md) ·
+  [Prometheus](docs/user-guide/docs/prometheus/index.md) ·
+  [OTLP](docs/user-guide/docs/otlp.md) ·
+  [Nagios](docs/user-guide/docs/nagios.md)
 - [CLI reference](docs/user-guide/docs/cli.md)
+- [What's new](docs/user-guide/docs/whats-new/index.md)
 
 ## Build from source
 
 ```bash
-make build          # all platforms (darwin/linux/windows)
-make test           # unit tests — the Makefile is the only supported entry point
+make build          # all platforms
+make test           # unit tests; the Makefile is the supported entry point
 ```
 
 Developer documentation: [docs/developer-guide](docs/developer-guide/README.md)
-— architecture, probe authoring, OTel semantic conventions.
+(architecture, probe authoring, OpenTelemetry conventions).
 
 ## License
 
-[Apache 2.0](LICENSE). The free tier (host observability, SNMP, OTLP
-receiver, log probes) needs no license key; paid probes are unlocked by a
-SenHub license.
+[Apache 2.0](LICENSE). The free probes (hosts, applications and databases,
+checks, SNMP, log and OTLP collection) need no licence key; the paid
+probes are unlocked by a SenHub licence.
