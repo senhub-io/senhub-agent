@@ -71,7 +71,7 @@ const HostProbesFragmentTemplate = `# Default host probes. Add more via new file
 `
 
 // HTTPStrategyFragmentTemplate is the default strategies.d/00-http.yaml.
-// The HTTP strategy exposes PRTG / Nagios / Web UI endpoints. Each
+// The HTTP strategy exposes PRTG / Nagios / Prometheus / Web UI endpoints. Each
 // fragment in strategies.d/ MUST carry exactly one top-level key
 // (the strategy name). Add another strategy by creating a new file
 // (e.g. 10-otlp.yaml containing `otlp:\n  endpoint: ...`).
@@ -82,7 +82,7 @@ const HostProbesFragmentTemplate = `# Default host probes. Add more via new file
 //  2. bind_address (str)    %s
 //  3. endpoints (str list)  %s — already formatted: "prtg", "web", ...
 //  4. TLS section (str)     %s — empty when HTTPS is not enabled
-const HTTPStrategyFragmentTemplate = `# Default HTTP strategy — exposes PRTG / Nagios / Web UI endpoints.
+const HTTPStrategyFragmentTemplate = `# Default HTTP strategy — exposes PRTG / Nagios / Prometheus / Web UI endpoints.
 # Each file in strategies.d/ MUST have exactly ONE top-level key (the
 # strategy name). Add other strategies (otlp, prtg, ...) by creating
 # new files. Disable a strategy by renaming the file to *.disabled.
