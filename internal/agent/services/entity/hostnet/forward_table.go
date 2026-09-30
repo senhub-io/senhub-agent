@@ -32,7 +32,12 @@ func parseForwardTable(buf []byte, ifName func(int) string) []hostRoute {
 	}
 	n := int(binary.LittleEndian.Uint32(buf[0:4]))
 	var out []hostRoute
-	seen := map[string]bool{}
+	// One route per destination, the one Windows uses: lowest metric,
+	// then lowest interface index, so two default routes (two NICs, a
+	// VPN) never alternate from one reading to the next.
+	best := map[string]int{}
+	type rank struct{ metric, ifIndex uint32 }
+	ranks := map[string]rank{}
 	for i := 0; i < n; i++ {
 		off := forwardHeadSize + i*forwardRowSize
 		if off+forwardRowSize > len(buf) {
@@ -52,18 +57,25 @@ func parseForwardTable(buf []byte, ifName func(int) string) []hostRoute {
 			continue
 		}
 		cidr, ok := entity.CanonicalCIDR(dst, ones)
-		if !ok || seen[cidr] {
+		if !ok {
 			continue
 		}
-		seen[cidr] = true
-		r := hostRoute{
-			Destination: cidr,
-			NextHop:     gw.String(),
-			Metric:      int64(binary.LittleEndian.Uint32(row[offMetric1:])),
-		}
+		metric := binary.LittleEndian.Uint32(row[offMetric1:])
+		ifIndex := binary.LittleEndian.Uint32(row[offIfIndex:])
+		r := hostRoute{Destination: cidr, NextHop: gw.String(), Metric: int64(metric)}
 		if ifName != nil {
-			r.Iface = ifName(int(binary.LittleEndian.Uint32(row[offIfIndex:])))
+			r.Iface = ifName(int(ifIndex))
 		}
+		if i, seen := best[cidr]; seen {
+			prev := ranks[cidr]
+			if metric < prev.metric || (metric == prev.metric && ifIndex < prev.ifIndex) {
+				out[i] = r
+				ranks[cidr] = rank{metric, ifIndex}
+			}
+			continue
+		}
+		best[cidr] = len(out)
+		ranks[cidr] = rank{metric, ifIndex}
 		out = append(out, r)
 	}
 	return out

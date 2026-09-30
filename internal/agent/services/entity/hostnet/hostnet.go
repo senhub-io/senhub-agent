@@ -35,6 +35,7 @@ const (
 	idKeyNetworkAddress      = "network.address"
 	attrNextHopIP            = "next_hop.ip"
 	attrMetric               = "metric"
+	attrEgressInterface      = "network.interface.name"
 	relHasRoute              = "has_route"
 	relNextHopVia            = "next_hop_via"
 
@@ -107,6 +108,12 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		attrs := map[string]any{attrNextHopIP: r.NextHop}
 		if r.Metric > 0 {
 			attrs[attrMetric] = r.Metric
+		}
+		// The egress interface explains an absent next_hop_via (a
+		// container bridge) and tells two routes to one destination
+		// apart when a host has two paths.
+		if r.Iface != "" {
+			attrs[attrEgressInterface] = r.Iface
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type:       entityTypeNetworkRoute,
