@@ -164,7 +164,27 @@ same device derive byte-identical ids.
   dropped), `mtu` (ifMtu), `interface.type` (IANAifType →
   physical/virtual/wireless/loopback) and `duplex` (EtherLike-MIB
   dot3StatsDuplexStatus → full/half/unknown) are descriptive — the same
-  vocabulary the host interface path (hostiface) emits. The port inventory that
+  vocabulary the host interface path (hostiface) emits. So are
+  `network.interface.addresses` and `network.interface.subnets`, lists of
+  strings in address order, from IP-MIB `ipAdEntNetMask` here and from the
+  OS on a host: they answer which network an address belongs to.
+  `addresses` is the observed fact, each IP with its prefix and its host
+  bits KEPT (`10.0.0.1/24`), an explicit exception to the canonical-CIDR
+  rule that zeroes host bits; `subnets` is derived from it, host bits
+  zeroed and deduplicated (`10.0.0.0/24`), and a disagreement between the
+  two is a producer bug. Both are absent, never empty, when no prefix is
+  known; IPv6 in RFC 5952 form. They sit on the interface because a
+  `network.address` is shared (a gateway has no mask of its own) and edge
+  attributes do not reach the topology backend. Value form after the OTel
+  CIDR notation (semantic-conventions #4144): IPv4 dotted-decimal with a
+  prefix length 0 to 32, IPv6 RFC 5952 with 0 to 128; `subnets` has host
+  bits zero as #4144 requires, `addresses` deliberately does not, which is
+  why it is not named `cidr`. Validated with the Toise contract owner; no
+  upstream convention names either concept (checked 30/09/2026).
+  **`subnets` is provisional**: the OTel network observability work lists
+  "IP subnet" as an L3 entity for October 2026 to January 2027; when a
+  subnet becomes an entity with its own identity, a traversal replaces
+  this attribute. The port inventory that
   anchors `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by
   the device's port count. **DONE (#156).**
 - **Interface IPs → `network.address` entities** (topology-as-entities, ADR
@@ -176,10 +196,18 @@ same device derive byte-identical ids.
   (#156).**
 - **Routing → `network.route` entities** (topology-as-entities, ADR 0022,
   pinned with Toise #87): ipCidrRouteTable / ipForwardTable → one
-  `network.route` entity `{network.device.id, route.destination}` (CIDR from
-  the entry index) that the device **owns** via `has_route` (mirror of
-  `has_interface`), the next hop carried as a scalar `next_hop.ip` attribute
-  (+ `metric`). The gateway is **not** a node — `network.address` is deferred,
+  `network.route` entity `{network.device.id, route.destination,
+  next_hop.ip}` (identity as IP-FORWARD-MIB indexes it: an ECMP destination
+  is one route per next hop) that the device **owns** via `has_route`
+  (mirror of `has_interface`), with `metric` descriptive. Only remote routes
+  with a usable next hop are emitted, which keeps the identity complete.
+  Rows are keyed on the full table index (destination, mask, TOS or
+  policy, next hop), so no distinct next hop is dropped; the only
+  de-duplication is an exact (destination, next hop) repeat, typically one
+  route read from both ipCidrRouteTable and inetCidrRouteTable. Not
+  emitted, by design: a next hop that is unspecified, loopback, or the
+  polled device's own management address (not a route through another
+  device). Boundary: two rows differing only by TOS or policy collapse. The gateway is **not** a node — `network.address` is deferred,
   so no `mgmt:`/`mac:` device is synthesized for it. This supersedes the legacy
   `routes_via` device→next-hop edge; ARP convergence (which existed only to
   give that edge a device-typed next-hop) is therefore gone. **DONE (#156).**

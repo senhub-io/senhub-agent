@@ -48,6 +48,7 @@ type HTTPSyncStrategy struct {
 	statusService       *status.StatusService  // centralized status calculation service
 	lookupRegistry      *LookupRegistry        // lookup definitions registry for status/health mappings
 	lookupsManager      *LookupsManager        // lookups API endpoints manager
+	router              *mux.Router            // what SetupRoutes built; the endpoint list walks it
 }
 
 // SenHubMetric represents a metric in standardized SenHub raw format
@@ -195,11 +196,8 @@ func NewHTTPSyncStrategy(
 	strategy.metricsProcessor = NewMetricsProcessor(strategy.cache, strategy.formatConverter, strategy.lookupRegistry, moduleLogger)
 
 	// Initialize status service with centralized status calculations
-	strategy.statusService = status.NewStatusService(
-		moduleLogger.Logger,
-		"unknown", // Version will be set later if available
-		"unknown", // Commit will be set later if available
-	)
+	buildInfo := strategy.utilsManager.parseVersionInfo()
+	strategy.statusService = status.NewStatusService(moduleLogger.Logger, buildInfo.Version, buildInfo.Commit)
 
 	// Configure status service with cache provider and agent mode
 	cacheAdapter := NewHTTPCacheAdapter(strategy.cache, moduleLogger.Logger)
@@ -543,16 +541,6 @@ func (h *HTTPSyncStrategy) handleDebugLogs(w http.ResponseWriter, r *http.Reques
 // handleSetLogLevels handles POST requests to set log levels (delegated to DebugManager)
 func (h *HTTPSyncStrategy) handleSetLogLevels(w http.ResponseWriter, r *http.Request) {
 	h.debugManager.HandleSetLogLevels(w, r)
-}
-
-// handleTestInjectMetrics handles POST requests to inject test metrics (delegated to DebugManager)
-func (h *HTTPSyncStrategy) handleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {
-	h.debugManager.HandleTestInjectMetrics(w, r)
-}
-
-// handleInjectRealMetrics handles POST requests to inject real production metrics (delegated to DebugManager)
-func (h *HTTPSyncStrategy) handleInjectRealMetrics(w http.ResponseWriter, r *http.Request) {
-	h.debugManager.HandleInjectRealMetrics(w, r)
 }
 
 // handleNagiosMetricsGET handles GET requests for Nagios format metrics by probe (delegated to NagiosManager)

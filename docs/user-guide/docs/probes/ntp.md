@@ -58,11 +58,11 @@ reference servers produce two independent sets.
 |---|---|---|
 | `senhub.ntp.up` | 1 | 1 when the server answered with a usable measurement, 0 otherwise |
 | `senhub.ntp.state` | 1 | One series per reason, exactly one of which is 1: `ok`, `unreachable`, `refused`, `unsynchronised`, `invalid_response` |
-| `ntp.time.offset` | ms | Measured error of the system clock. Positive means the local clock is ahead of the reference, negative means behind. |
-| `ntp.round_trip.delay` | ms | How long the measuring exchange spent in flight. This is the confidence attached to the offset beside it — see [Accuracy](#accuracy-and-its-limits). |
+| `ntp.time.offset` | s | Measured error of the system clock. Positive means the local clock is ahead of the reference, negative means behind. |
+| `ntp.round_trip.delay` | s | How long the measuring exchange spent in flight. This is the confidence attached to the offset beside it — see [Accuracy](#accuracy-and-its-limits). |
 | `ntp.stratum` | 1 | Stratum of the reference server (1 = directly attached to a reference clock) |
-| `ntp.root.delay` | ms | Delay from the reference server up to its own stratum-1 source |
-| `ntp.root.dispersion` | ms | Maximum error the reference server itself accumulates relative to its stratum-1 source |
+| `ntp.root.delay` | s | Delay from the reference server up to its own stratum-1 source |
+| `ntp.root.dispersion` | s | Maximum error the reference server itself accumulates relative to its stratum-1 source |
 | `ntp.leap_status` | 1 | Leap indicator the server announces: 0 = normal, 1 = the last minute of the day has 61 seconds, 2 = it has 59 |
 
 ## Reading the numbers

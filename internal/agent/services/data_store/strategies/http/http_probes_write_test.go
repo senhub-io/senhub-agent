@@ -70,6 +70,12 @@ func TestCatalogEntryOffPlatform(t *testing.T) {
 	if e.Authorized || e.Reason != "plan9 only" {
 		t.Errorf("a probe for another platform must be refused with the reason, got %+v", e)
 	}
+	if e.RunsHere {
+		t.Error("a probe for another platform must say it does not run here, so no page counts it as a licence lock")
+	}
+	if e := annotateCatalogEntry(spec.Probe{Type: "event"}, nil, "k"); !e.RunsHere || e.Authorized || e.Tier != "pro" {
+		t.Errorf("a Pro type without a licence runs here and is locked by the licence alone, got %+v", e)
+	}
 	if e := annotateCatalogEntry(spec.Probe{Type: "cpu"}, nil, "k"); !e.Authorized {
 		t.Error("no platform list means every platform")
 	}

@@ -520,7 +520,7 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
-| `senhub.system.network.interface.speed` | `interface_speed` | Network {interface} Speed | bps | Speed the link negotiated; absent on a virtual interface, which is not the same as zero |
+| `senhub.system.network.interface.speed` | `interface_speed` | Network {interface} Speed | bit/s | Speed the link negotiated; absent on a virtual interface, which is not the same as zero |
 | `senhub.system.network.interface.up` | `interface_up` | Network {interface} Operational State | # | 1 when the interface is operationally up, else 0 |
 | `system.network.io` | `bytes_sent` | Network {interface} Bytes Sent | bytes | Bytes per second transmitted on the network interface |
 | `system.network.io` | `bytes_received` | Network {interface} Bytes Received | bytes | Bytes per second received on the network interface |

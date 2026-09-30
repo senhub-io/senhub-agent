@@ -324,10 +324,12 @@ possible `hw_state`, value `1` if active else `0`.
 
 | Prometheus name | `hw_type` values | `hw_state` values |
 |---|---|---|
-| `senhub_hw_status` | `power_supply`, `physical_disk`, `logical_disk`, `disk_controller`, `enclosure` | `ok`, `degraded`, `failed`, `predicted_failure`, `unknown` |
+| `senhub_hw_status` | `power_supply`, `physical_disk`, `logical_disk`, `disk_controller`, `enclosure` | `ok`, `degraded`, `failed`, `predicted_failure` |
 
 Drive failure prediction is encoded as `hw_state="predicted_failure"` on
-the same metric (independent of overall health).
+the same metric (independent of overall health). A component whose health
+the BMC does not report has every state at `0`: the convention defines no
+`unknown` state. An IPMI sensor emits the `ok` series only.
 
 ### Drives, volumes, pools (capacity & I/O)
 
@@ -367,7 +369,7 @@ All metrics under `senhub.veeam.*` (no OTel semconv for backup).
 
 | Prometheus name | Type | Notes |
 |---|---|---|
-| `senhub_veeam_jobs_total` | gauge | `senhub_veeam_job_type` |
+| `senhub_veeam_job_count` | gauge | `senhub_veeam_job_type` |
 | `senhub_veeam_jobs_by_last_result` | gauge | `senhub_veeam_job_last_result` ∈ {success, warning, failed, running} |
 | `senhub_veeam_job_status` | updowncounter | strict-OTel expand: `senhub_veeam_job_state` ∈ {none, success, warning, failed, running} |
 | `senhub_veeam_job_seconds_since_last_run` | gauge (s) | `senhub_veeam_job_name`, `senhub_veeam_job_type` |
@@ -412,7 +414,7 @@ All metrics under `senhub.citrix.*` (no Citrix CVAD OTel convention; design from
 | Prometheus name | Type | Notes |
 |---|---|---|
 | `senhub_citrix_sessions_count` | gauge | `senhub_citrix_session_state` ∈ {connected, disconnected} |
-| `senhub_citrix_machines_total` | gauge | – |
+| `senhub_citrix_machine_count` | gauge | – |
 | `senhub_citrix_machines_by_registration_state` | gauge | `senhub_citrix_machine_registration_state` ∈ {registered, unregistered, faulty, maintenance} |
 | `senhub_citrix_machines_overloaded` | gauge | – |
 | `senhub_citrix_machines_multi_session_fault_total` | gauge | – |
@@ -437,7 +439,7 @@ All metrics under `senhub.citrix.*` (no Citrix CVAD OTel convention; design from
 
 | Prometheus name | Type | Notes |
 |---|---|---|
-| `senhub_citrix_connection_failures_total` | gauge | – |
+| `senhub_citrix_connection_failure_count` | gauge | – |
 | `senhub_citrix_connection_failures_by_category` | gauge | `senhub_citrix_connection_failure_category` ∈ {client_connection, configuration, machine, capacity_unavailable, licenses_unavailable, other} |
 | `senhub_citrix_load_index_ratio` | gauge | `senhub_citrix_load_index_dimension` ∈ {effective, cpu, memory, disk, network, sessions} (mapper ÷100) |
 

@@ -128,6 +128,15 @@ func IncrementOTLPMetricsRelayed(n int) {
 	otlpMetricsRelayed.Add(uint64(n))
 }
 
+// OTLPSignals and OTLPDropReasons are the label values the export-error
+// and drop counters can take. They are emitted from start at 0: a
+// counter that appears only after its first increment leaves a dashboard
+// empty on a healthy agent, and an empty panel reads as "no error" (#972).
+var (
+	OTLPSignals     = []string{"metrics", "logs", "traces"}
+	OTLPDropReasons = []string{"store_cap", "probe_cardinality", "memory_soft_limit", "memory_hard_limit", "staleness", "logs_queue_full", "receiver_rejected"}
+)
+
 // IncrementOTLPExportErrors records one failed export (after retry
 // exhaustion) for one signal ("metrics", "logs", "traces"). The total
 // stays for "any export failure" alerting; the per-signal breakdown is
@@ -152,11 +161,15 @@ func ResetOTLPExportErrorsBySignalForTest() {
 }
 
 // GetOTLPExportErrorsBySignal returns a snapshot copy of the
-// per-signal export-error counters. Safe for the caller to mutate.
+// per-signal export-error counters, every known signal present from 0.
+// Safe for the caller to mutate.
 func GetOTLPExportErrorsBySignal() map[string]uint64 {
 	otlpExportErrorsBySignal.mu.RLock()
 	defer otlpExportErrorsBySignal.mu.RUnlock()
-	out := make(map[string]uint64, len(otlpExportErrorsBySignal.m))
+	out := make(map[string]uint64, len(otlpExportErrorsBySignal.m)+len(OTLPSignals))
+	for _, k := range OTLPSignals {
+		out[k] = 0
+	}
 	for k, v := range otlpExportErrorsBySignal.m {
 		out[k] = v
 	}
@@ -188,11 +201,15 @@ func IncrementOTLPDropped(reason string) {
 }
 
 // GetOTLPDroppedByReason returns a snapshot copy of the per-reason
-// drop counters. The map is safe to mutate by the caller.
+// drop counters, every known reason present from 0. The map is safe to
+// mutate by the caller.
 func GetOTLPDroppedByReason() map[string]uint64 {
 	otlpDropped.mu.RLock()
 	defer otlpDropped.mu.RUnlock()
-	out := make(map[string]uint64, len(otlpDropped.m))
+	out := make(map[string]uint64, len(otlpDropped.m)+len(OTLPDropReasons))
+	for _, k := range OTLPDropReasons {
+		out[k] = 0
+	}
 	for k, v := range otlpDropped.m {
 		out[k] = v
 	}

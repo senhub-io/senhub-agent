@@ -221,6 +221,16 @@ func (f *FormatConverter) applyPRTGUnit(channel *PRTGChannel, displayUnit string
 
 	if otel != nil && strings.HasSuffix(otel.Unit, "/s") {
 		f.applyPRTGRateUnit(channel, otel.Unit, metric)
+		// PRTG receives the raw value, in the probe's display unit; the
+		// OTel unit only says it is a rate. The input scale therefore
+		// follows the display unit when it names one: a NetScaler value
+		// in Mbit/s was declared in bits (off by a million), and an OTel
+		// unit moved to By/s must not relabel a value still in bits.
+		if size, ok := prtgSpeedSize(displayUnit); ok {
+			channel.Unit = "SpeedNet"
+			channel.SpeedSize = size
+			channel.SpeedTime = "Second"
+		}
 		return
 	}
 
@@ -273,6 +283,22 @@ func (f *FormatConverter) applyPRTGRateUnit(channel *PRTGChannel, otelUnit strin
 		channel.Unit = "Custom"
 		channel.CustomUnit = humanizeRateUnit(otelUnit)
 	}
+}
+
+// prtgSpeedSize maps a probe's display unit for a bit or byte rate to
+// PRTG's input scale; ok is false for any other unit.
+func prtgSpeedSize(displayUnit string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(displayUnit)) {
+	case "bps", "bit/s", "bits/s":
+		return "Bit", true
+	case "kbps", "kbit/s", "kbits/s":
+		return "KiloBit", true
+	case "mbps", "mbit/s", "mbits/s":
+		return "MegaBit", true
+	case "gbps", "gbit/s", "gbits/s":
+		return "GigaBit", true
+	}
+	return "", false
 }
 
 // humanizeRateUnit turns a UCUM-ish rate unit into a display suffix:

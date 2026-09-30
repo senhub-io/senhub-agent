@@ -261,9 +261,9 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	// Export-error counters — one OTel metric with a `signal` attribute
 	// (metrics / logs / traces). The total is the sum over signals; the
 	// breakdown exists because a failing logs pipeline was invisible in
-	// a total dominated by healthy metric pushes (#821). Until a signal
-	// has failed at least once it emits no series (standard counter
-	// semantics: absence = zero).
+	// a total dominated by healthy metric pushes (#821). Every signal is
+	// emitted from start, at 0 until it fails: an absent series left the
+	// dashboards of healthy agents empty (#972).
 	for signal, n := range agentstate.GetOTLPExportErrorsBySignal() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.export.errors",
@@ -316,9 +316,8 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	}
 
 	// Per-reason drop counters — emitted as a single OTel metric with
-	// `reason` attribute. Operators alert on this rising. Today the only
-	// reason emitted is `store_cap` (cardinality cap on the metric store);
-	// future reasons will be added without changing this metric shape.
+	// `reason` attribute. Operators alert on this rising. Every known
+	// reason is emitted from start at 0 (agentstate.OTLPDropReasons).
 	for reason, n := range agentstate.GetOTLPDroppedByReason() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.dropped",

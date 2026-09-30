@@ -100,7 +100,7 @@ vSAN metrics carry a `cluster` attribute identifying the vSAN cluster; the objec
 | Metric | Unit | Description |
 |--------|------|-------------|
 | `senhub.vsphere_ha.nsx.manager.health` | `1` | NSX manager connectivity (1 = CONNECTED, else 0) |
-| `senhub.vsphere_ha.nsx.transport_nodes.total` | `{node}` | Total number of transport nodes |
+| `senhub.vsphere_ha.nsx.transport_node.count` | `{node}` | Total number of transport nodes |
 | `senhub.vsphere_ha.nsx.transport_nodes.up` | `{node}` | Transport nodes deployed (NODE_READY) and not in maintenance |
 | `senhub.vsphere_ha.nsx.logical_switches` | `{switch}` | Number of logical switches (segments) |
 | `senhub.vsphere_ha.nsx.edge_cluster.health` | `1` | Per-edge-cluster health (1 = all members UP, else 0), attribute `nsx.edge_cluster.id` |
@@ -148,7 +148,7 @@ series' tags.
 | `senhub.vsphere_ha.vsan.objects` | `vsphere_ha_vsan_objects_degraded` | vSAN Objects Degraded ({cluster}) | # | Number of vSAN objects not in a healthy state |
 | `senhub.vsphere_ha.vsan.resync` | `vsphere_ha_vsan_resync_bytes` | vSAN Resync Pending ({cluster}) | Bytes | Total bytes pending vSAN resync on the cluster |
 | `senhub.vsphere_ha.nsx.manager.health` | `vsphere_ha_nsx_manager_health` | NSX Manager Health | # | NSX manager connectivity (1 = CONNECTED, else 0) |
-| `senhub.vsphere_ha.nsx.transport_nodes.total` | `vsphere_ha_nsx_transport_nodes_total` | NSX Transport Nodes Total | # | Total number of NSX transport nodes |
+| `senhub.vsphere_ha.nsx.transport_node.count` | `vsphere_ha_nsx_transport_nodes_total` | NSX Transport Nodes Total | # | Total number of NSX transport nodes |
 | `senhub.vsphere_ha.nsx.transport_nodes.up` | `vsphere_ha_nsx_transport_nodes_up` | NSX Transport Nodes Up | # | Transport nodes deployed (NODE_READY) and not in maintenance |
 | `senhub.vsphere_ha.nsx.logical_switches` | `vsphere_ha_nsx_logical_switches` | NSX Logical Switches | # | Number of NSX logical switches (segments) |
 | `senhub.vsphere_ha.nsx.edge_cluster.health` | `vsphere_ha_nsx_edge_clusters_health` | NSX Edge Cluster Health ({edge_cluster_id}) | # | Edge cluster health (1 = all members UP, else 0) |

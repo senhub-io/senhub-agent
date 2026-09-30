@@ -129,6 +129,7 @@ senhub-agent config init --license <jwt> --tags env=prod,site=paris
 senhub-agent config init --otlp-endpoint otlp.example.com:4317
 senhub-agent config init --otlp-endpoint vm.example.com:4318 --otlp-protocol http
 senhub-agent config init --http-port 9080
+senhub-agent config init --zabbix-server zabbix.example.com:10051
 senhub-agent config init --license-file /tmp/customer.jwt
 senhub-agent config init --license-dir /mnt/install
 ```
@@ -139,12 +140,15 @@ Before writing anything, `config init` binds the HTTP port it is about to config
 |------|-------------|
 | `--config-path PATH` | Target configuration file (default: OS canonical path) |
 | `--http-port PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
+| `--http-bind ADDRESS` | Address the HTTP endpoints listen on (default `127.0.0.1`; the container image passes `0.0.0.0`) |
 | `--license JWT` | License token to seed (unlocks paid probe tiers) |
 | `--license-file PATH` | Read the licence token from this file; it takes precedence over `--license` unless the file is empty |
 | `--license-dir DIR` | Look for a single `*.jwt` file in this directory and use it as `--license-file`. No file installs on the Free tier; more than one is refused |
 | `--tags k=v,k2=v2` | Host-level global tags applied to the generated config |
 | `--otlp-endpoint HOST:PORT` | Provision an OTLP push endpoint as a strategy fragment (metrics + logs) |
 | `--otlp-protocol grpc\|http` | OTLP transport (default `grpc`; use `http` for a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint) |
+| `--zabbix-server HOST:PORT` | Provision the Zabbix output (`strategies.d/20-zabbix.yaml`); several addresses separated by commas name a proxy group. With a server prepared by `zabbix setup`, the host registers at its first contact |
+| `--zabbix-host-metadata TEXT` | Host metadata the autoregistration action matches (default `senhub-agent`); needs `--zabbix-server` |
 
 The generated layout is the multi-file form (`agent.yaml` + `probes.d/` + `strategies.d/`), the same one `install` and the Windows MSI write. By default the generated configuration pushes to no collector; `--otlp-endpoint` is what wires up a push.
 
@@ -295,12 +299,13 @@ sudo /usr/local/bin/senhub-agent update 0.6.0 --dry-run
 sudo /usr/local/bin/senhub-agent update 0.6.0 --registry-url https://releases.example.com
 ```
 
-Downloads and installs the specified version. Restart the service to apply. Updating replaces the binary and needs the same privileges as the service commands.
+Downloads and installs the specified version. On Linux, when the systemd service is running, it is then restarted and the command checks that the new process runs the binary just installed, printing the version it runs; if it does not, the command fails. Updating replaces the binary and needs the same privileges as the service commands. On Windows, the MSI restarts the service itself.
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run`, `-d` | Do not install; print the version that would be installed |
 | `--registry-url URL` | Release registry to download from, instead of the built-in one |
+| `--no-restart` | Install the binary and leave the running service as it is, for a script that restarts it itself. Until the service restarts it keeps running the previous version, whatever `senhub-agent version` says: that command reads the file on disk |
 | `--verbose`, `-v` | Enable verbose logging |
 
 ## Zabbix

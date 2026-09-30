@@ -120,7 +120,7 @@ metrics:
     category: "nsx"
     description: "Total number of NSX transport nodes"
     otel:
-      name: senhub.vsphere_ha.nsx.transport_nodes.total
+      name: senhub.vsphere_ha.nsx.transport_node.count
       unit: "{node}"
       type: gauge
 

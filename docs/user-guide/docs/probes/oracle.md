@@ -47,11 +47,11 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 | `senhub.db.up` | 1 | 1 when the agent reached the instance this cycle |
 | `oracle.sessions.count` | {session} | Sessions by status (Active/Inactive), tagged with `status` |
 | `oracle.sessions.limit` | {session} | Maximum allowed sessions |
-| `oracle.sga.total` | By | System Global Area total size |
-| `oracle.pga.total` | By | PGA memory currently allocated |
+| `oracle.sga.size` | By | System Global Area total size |
+| `oracle.pga.size` | By | PGA memory currently allocated |
 | `oracle.buffer.cache.hit_ratio` | % | Buffer cache hit ratio (data blocks found in memory) |
 | `oracle.tablespace.used` | By | Tablespace space used per tablespace, tagged with `tablespace` |
-| `oracle.tablespace.total` | By | Tablespace total capacity |
+| `oracle.tablespace.limit` | By | Tablespace total capacity |
 | `oracle.wait_class.total` | # | Time waited per wait class in centiseconds, tagged with `wait_class` |
 | `oracle.enqueue_deadlocks` | {deadlock} | Enqueue (row/table lock) deadlocks since instance start |
 
@@ -108,10 +108,10 @@ series' tags.
 | `oracle.physical.reads` | `oracle.physical.reads` | Physical Reads | # | Cumulative physical reads (v$sysstat 'physical reads') |
 | `oracle.physical.writes` | `oracle.physical.writes` | Physical Writes | # | Cumulative physical writes (v$sysstat 'physical writes') |
 | `oracle.buffer.cache.hit_ratio` | `oracle.buffer.cache.hit_ratio` | Buffer Cache Hit Ratio | % | 1 - physical reads / (consistent gets + db block gets), derived from v$sysstat |
-| `oracle.sga.total` | `oracle.sga.total` | SGA Total | B | Total SGA allocated in bytes (SUM(bytes) over v$sgastat) |
-| `oracle.pga.total` | `oracle.pga.total` | PGA Total | B | Total PGA allocated in bytes (v$pgastat 'total PGA allocated') |
+| `oracle.sga.size` | `oracle.sga.total` | SGA Total | B | Total SGA allocated in bytes (SUM(bytes) over v$sgastat) |
+| `oracle.pga.size` | `oracle.pga.total` | PGA Total | B | Total PGA allocated in bytes (v$pgastat 'total PGA allocated') |
 | `oracle.tablespace.used` | `oracle.tablespace.used` | Tablespace {tablespace} Used | B | Used space per tablespace in bytes (dba_tablespace_usage_metrics) |
-| `oracle.tablespace.total` | `oracle.tablespace.total` | Tablespace {tablespace} Total | B | Maximum size per tablespace in bytes (dba_tablespace_usage_metrics) |
+| `oracle.tablespace.limit` | `oracle.tablespace.total` | Tablespace {tablespace} Total | B | Maximum size per tablespace in bytes (dba_tablespace_usage_metrics) |
 | `oracle.wait_class.total` | `oracle.wait_class.total` | Wait Class {wait_class} | # | Cumulative time waited per wait class in centiseconds (v$system_wait_class) |
 | `oracle.enqueue_deadlocks` | `oracle.enqueue_deadlocks` | Enqueue Deadlocks | # | Cumulative enqueue deadlocks detected (v$sysstat 'enqueue deadlocks') |
 

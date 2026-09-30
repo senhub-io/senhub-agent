@@ -14,8 +14,9 @@ without any query rewrite.
 
 ## Quick start
 
-1. Enable the `prometheus` endpoint of the HTTP output, in
-   `strategies.d/00-http.yaml`:
+1. The `prometheus` endpoint is on in a configuration written by an
+   installer from 0.6.1. An older configuration keeps the list it was
+   written with: add `prometheus` to it, in `strategies.d/00-http.yaml`:
 
 ```yaml
 http:

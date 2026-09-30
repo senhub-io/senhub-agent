@@ -2,6 +2,7 @@ package hostiface
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
@@ -317,5 +318,28 @@ func TestObserve_TransientFailureKeepsCache(t *testing.T) {
 	s.last = s.last.Add(-2 * defaultRefresh)
 	if _, ok := s.Observe(); ok {
 		t.Error("transient failure must report ok=false (not delete the interfaces)")
+	}
+}
+
+// The prefix the OS reports with each address reaches the interface as its
+// addresses and subnets (#966).
+func TestObserve_InterfaceCarriesItsSubnet(t *testing.T) {
+	s := New(func() string { return "h-1" })
+	s.interfaces = func() (gnet.InterfaceStatList, error) {
+		return gnet.InterfaceStatList{
+			{Name: "eth0", Flags: []string{"up"}, Addrs: gnet.InterfaceAddrList{{Addr: "10.10.0.60/24"}}},
+		}, nil
+	}
+	ias, err := s.enumerate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs := buildObservation("h-1", ias)
+	eth0, ok := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, "eth0")
+	if !ok {
+		t.Fatal("eth0 not emitted")
+	}
+	if !reflect.DeepEqual(eth0.Attributes[entity.AttrInterfaceSubnets], []string{"10.10.0.0/24"}) || !reflect.DeepEqual(eth0.Attributes[entity.AttrInterfaceAddresses], []string{"10.10.0.60/24"}) {
+		t.Errorf("attributes = %v", eth0.Attributes)
 	}
 }

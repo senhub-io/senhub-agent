@@ -69,6 +69,23 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 		return result, nil
 	}
 
+	// The legacy loader ignores probes.d/ and strategies.d/, but the
+	// equality check below loads them. A fragment an operator wrote there
+	// would make the migrated agent start what it ignores today, so it is
+	// refused before anything is written. Fragments a failed migration
+	// left behind are removed: they made every later attempt fail the
+	// same check, and each attempt left one more backup (#974).
+	fragmentsDir := filepath.Dir(configPath)
+	owned, foreign := classifyFragments(fragmentsDir)
+	if len(foreign) > 0 {
+		return result, &FragmentsBesideMonolithicError{ConfigPath: configPath, Fragments: foreign}
+	}
+	for _, p := range owned {
+		if err := os.Remove(p); err != nil {
+			return result, fmt.Errorf("removing %s, left by an earlier migration attempt: %w", p, err)
+		}
+	}
+
 	// Snapshot the merged view BEFORE we touch anything.
 	before, err := LoadFromDisk(configPath, log)
 	if err != nil {
@@ -85,7 +102,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	// Parse the source as a free-form map.
 	var srcMap map[string]interface{}
 	if err := yaml.Unmarshal(raw, &srcMap); err != nil {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("parse source: %w", err)
 	}
 
@@ -97,14 +114,14 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	// New agent.yaml (globals only).
 	globalsYAML, err := yaml.Marshal(srcMap)
 	if err != nil {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("marshal globals: %w", err)
 	}
 	agentYAML := append([]byte("# SenHub Agent — globals (migrated to multi-file layout on "+timestamp+")\n"+
 		"# Probes live in probes.d/ ; storage strategies in strategies.d/.\n"+
 		"# Original monolithic file kept as "+filepath.Base(backupPath)+".\n\n"), globalsYAML...)
 	if err := atomicWriteFile(configPath, agentYAML, 0600); err != nil {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("write agent.yaml: %w", err)
 	}
 
@@ -112,11 +129,11 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	probesDir := filepath.Join(configDir, "probes.d")
 	strategiesDir := filepath.Join(configDir, "strategies.d")
 	if err := os.MkdirAll(probesDir, 0750); err != nil {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("mkdir %s: %w", probesDir, err)
 	}
 	if err := os.MkdirAll(strategiesDir, 0750); err != nil {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("mkdir %s: %w", strategiesDir, err)
 	}
 
@@ -124,7 +141,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	if probesRaw != nil {
 		probesYAML, err := yaml.Marshal(probesRaw)
 		if err != nil {
-			restoreSplitBackup(configPath, backupPath, log)
+			abandonSplit(configPath, backupPath, log)
 			return result, fmt.Errorf("marshal probes: %w", err)
 		}
 		probesPath := filepath.Join(probesDir, "00-host.yaml")
@@ -132,7 +149,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 			"# Add new probes by creating additional files in this directory\n"+
 			"# (e.g. 10-mydb.yaml). Files load alphabetically.\n\n"), probesYAML...)
 		if err := atomicWriteFile(probesPath, body, 0600); err != nil {
-			restoreSplitBackup(configPath, backupPath, log)
+			abandonSplit(configPath, backupPath, log)
 			return result, fmt.Errorf("write %s: %w", probesPath, err)
 		}
 		result.WroteProbes = true
@@ -141,7 +158,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	// strategies.d/NN-<name>.yaml — one file per strategy.
 	count, err := splitStrategies(storageRaw, strategiesDir, timestamp)
 	if err != nil {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, err
 	}
 	result.StrategyCount = count
@@ -149,11 +166,11 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	// Equality check.
 	after, err := LoadFromDisk(configPath, log)
 	if err != nil {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("post-write load failed: %w", err)
 	}
 	if !reflect.DeepEqual(before, after) {
-		restoreSplitBackup(configPath, backupPath, log)
+		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("post-write data drifted from pre-write snapshot — backup restored")
 	}
 
@@ -307,17 +324,91 @@ func safeFilenameComponent(name string) string {
 // configPath if anything went wrong mid-migration. Best-effort: it
 // logs failures through the module logger when one is supplied, else
 // falls back to stderr so the operator running the CLI still sees it.
-func restoreSplitBackup(configPath, backupPath string, log *logger.ModuleLogger) {
+func restoreSplitBackup(configPath, backupPath string, log *logger.ModuleLogger) bool {
 	data, err := os.ReadFile(backupPath) // #nosec G304 - path generated above
 	if err != nil {
 		warnRestore(log, fmt.Sprintf("backup restore failed (cannot read %s): %v", backupPath, err))
-		return
+		return false
 	}
 	if err := atomicWriteFile(configPath, data, 0600); err != nil {
 		warnRestore(log, fmt.Sprintf("backup restore failed (cannot write %s): %v", configPath, err))
-		return
+		return false
 	}
 	warnRestore(log, fmt.Sprintf("backup restored from %s", backupPath))
+	return true
+}
+
+// abandonSplit undoes a migration that did not complete: the original
+// file is restored, the fragments this attempt wrote are removed, and the
+// backup, now identical to the restored file, is deleted. A failed
+// attempt leaves the host as it found it, so the next start does not
+// fail the same way on its leftovers. The backup stays when the restore
+// itself failed.
+func abandonSplit(configPath, backupPath string, log *logger.ModuleLogger) {
+	if !restoreSplitBackup(configPath, backupPath, log) {
+		return
+	}
+	owned, _ := classifyFragments(filepath.Dir(configPath))
+	for _, p := range owned {
+		if err := os.Remove(p); err != nil {
+			warnRestore(log, fmt.Sprintf("could not remove %s after the failed migration: %v", p, err))
+		}
+	}
+	if err := os.Remove(backupPath); err != nil {
+		warnRestore(log, fmt.Sprintf("could not remove %s, identical to the restored file: %v", backupPath, err))
+	}
+}
+
+// migratedFragmentMarker is in the first line of every fragment the
+// migration writes, which is how its leftovers are told from an
+// operator's files.
+const migratedFragmentMarker = " migrated from monolithic config on "
+
+// classifyFragments lists the YAML fragments in probes.d/ and
+// strategies.d/, split between those a migration wrote and the others.
+func classifyFragments(configDir string) (owned, foreign []string) {
+	for _, sub := range []string{"probes.d", "strategies.d"} {
+		entries, err := os.ReadDir(filepath.Join(configDir, sub))
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || strings.HasPrefix(name, ".") || !(strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")) {
+				continue
+			}
+			p := filepath.Join(configDir, sub, name)
+			if firstLineHas(p, migratedFragmentMarker) {
+				owned = append(owned, p)
+			} else {
+				foreign = append(foreign, p)
+			}
+		}
+	}
+	return owned, foreign
+}
+
+func firstLineHas(path, marker string) bool {
+	data, err := os.ReadFile(path) // #nosec G304 - a fragment of the agent's own configuration
+	if err != nil {
+		return false
+	}
+	first, _, _ := strings.Cut(string(data), "\n")
+	return strings.Contains(first, marker)
+}
+
+// FragmentsBesideMonolithicError is returned when a legacy configuration
+// that still holds probes: or storage: has fragments in probes.d/ or
+// strategies.d/ that the agent ignores today; migrating would start
+// them, so it is left to the operator.
+type FragmentsBesideMonolithicError struct {
+	ConfigPath string
+	Fragments  []string
+}
+
+func (e *FragmentsBesideMonolithicError) Error() string {
+	return fmt.Sprintf("%s still holds probes:/storage:, and %s exist beside it; the agent ignores those files today and migrating would start them. Move what they hold into %s, or remove them, then run 'senhub-agent config migrate'",
+		filepath.Base(e.ConfigPath), strings.Join(e.Fragments, ", "), filepath.Base(e.ConfigPath))
 }
 
 func warnRestore(log *logger.ModuleLogger, msg string) {

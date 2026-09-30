@@ -60,13 +60,11 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// Everything below changes this agent or reveals its internals. It
 	// is registered only when an administration key exists, and it
 	// answers that key alone — the key a monitoring tool is given must
-	// not clear the cache, inject values into it, change log levels or
+	// not clear the cache, change log levels or
 	// read the agent's own logs. See adminOnly.
 	if h.strategy.authManager.AdminEnabled() {
 		router.HandleFunc("/api/{agentkey}/debug/logs", h.adminOnly(h.HandleDebugLogs)).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/debug/logs", h.adminOnly(h.HandleSetLogLevels)).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/debug/inject-test-metrics", h.adminOnly(h.HandleTestInjectMetrics)).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/debug/inject-real-metrics", h.adminOnly(h.HandleInjectRealMetrics)).Methods("POST")
 
 		// Runtime profiling — Go's net/http/pprof handlers. A goroutine
 		// dump is how a stall is investigated and also a map of the
@@ -147,6 +145,9 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.HandleWebAssets).Methods("GET")
 	}
 
+	// The endpoint list is read from the router itself, so it names
+	// exactly the routes this agent registered.
+	h.strategy.router = router
 	return router
 }
 
@@ -279,14 +280,6 @@ func (h *HTTPHandlers) HandleProbeUpdate(w http.ResponseWriter, r *http.Request)
 
 func (h *HTTPHandlers) HandleProbeDelete(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleProbeDelete(w, r)
-}
-
-func (h *HTTPHandlers) HandleTestInjectMetrics(w http.ResponseWriter, r *http.Request) {
-	h.strategy.handleTestInjectMetrics(w, r)
-}
-
-func (h *HTTPHandlers) HandleInjectRealMetrics(w http.ResponseWriter, r *http.Request) {
-	h.strategy.handleInjectRealMetrics(w, r)
 }
 
 // PRTG handlers (delegating to strategy for now)

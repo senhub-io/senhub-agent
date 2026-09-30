@@ -199,3 +199,32 @@ func TestFindLicenseInDir(t *testing.T) {
 		t.Errorf("--license-dir must parse: %v", err)
 	}
 }
+
+func TestParseInitConfigArgs_Zabbix(t *testing.T) {
+	opts, err := parseInitConfigArgs([]string{"--zabbix-server", "zbx.example.com:10051", "--zabbix-host-metadata", "senhub-agent"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.zabbixServer != "zbx.example.com:10051" || opts.zabbixMetadata != "senhub-agent" {
+		t.Errorf("parsed %+v", opts)
+	}
+	if _, err := parseInitConfigArgs([]string{"--zabbix-host-metadata", "x"}); err == nil {
+		t.Error("metadata without a server must be refused before anything is written")
+	}
+	if _, err := parseInitConfigArgs([]string{"--zabbix-server", "zbx 10051"}); err == nil {
+		t.Error("a server with whitespace must be refused")
+	}
+}
+
+func TestParseInitConfigArgs_HTTPBind(t *testing.T) {
+	opts, err := parseInitConfigArgs([]string{"--http-bind", "0.0.0.0"})
+	if err != nil || opts.httpBind != "0.0.0.0" {
+		t.Fatalf("got %+v, %v", opts, err)
+	}
+	if opts, err := parseInitConfigArgs([]string{"--http-bind", ""}); err != nil || opts.httpBind != "" {
+		t.Errorf("an empty value means the default, got %+v, %v", opts, err)
+	}
+	if _, err := parseInitConfigArgs([]string{"--http-bind", "0.0.0.0\n  tls: {}"}); err == nil {
+		t.Error("a value that is not an IP address must be refused")
+	}
+}
