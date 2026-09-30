@@ -6,6 +6,17 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Features
 
+- **A route is identified by its destination and its next hop.** In the
+  topology, a `network.route` was `{host.id, route.destination}` (a
+  device's: `{network.device.id, route.destination}`) with its gateway as
+  an attribute; the gateway now joins the identity, as IP-FORWARD-MIB
+  indexes a route. Two routes to one destination through two gateways
+  (two NICs, a VPN, ECMP) are two routes instead of one whose gateway
+  changed, and a gateway change reads as the route through the old
+  gateway gone and one through the new gateway present. Existing route
+  entities are replaced once. Routes also carry their egress interface
+  (`network.interface.name`), and Windows hosts now emit their routes.
+
 - **Network interfaces carry their subnets.** A `network.interface`
   entity, on a host and on an SNMP device, now carries
   `network.interface.addresses`, the list of its addresses with their
