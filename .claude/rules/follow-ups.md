@@ -1,18 +1,42 @@
 ---
-title: Follow-ups — open a GitHub issue every time
+title: Follow-ups — open a private GitHub issue every time
 ---
 
 ## The rule
 
 Whenever a follow-up is detected during a session — something real that
 won't be addressed before the session ends — you **MUST** open a
-GitHub issue against `senhub-io/senhub-agent` to track it. No follow-up
-left in commit messages, release notes, code comments or chat without
-an issue number you can quote.
+GitHub issue against the **private** tracker
+`senhub-io/senhub-agent-enterprise` to track it. No follow-up left in
+commit messages, release notes, code comments or chat without an issue
+number you can quote.
 
 Applies to every session on this repo. The cost of opening an issue is
 ~30 seconds; the cost of a forgotten follow-up surfacing months later
 in production is hours.
+
+## The public tracker is not a planning tool
+
+`senhub-io/senhub-agent` is public: what goes in a release, the defects
+we find ourselves, lab measurements and internal decisions are not
+written there. Users reading it would see our work in progress, and an
+issue edited later keeps its first version one click away.
+
+- Follow-ups, release planning (milestones), defects found internally,
+  recette results: **private tracker only**.
+- The public tracker receives the issues **users** open. Answer them
+  there; the internal work they lead to is tracked privately.
+- It also keeps a few issues of our own, so that the project reads as
+  alive: features a user would want to follow (a new probe, an output,
+  packaging), written as a public roadmap item. English, neutral, no
+  estimate, no audit or recette finding, no customer or host, no paid-tier
+  strategy. When a release adds a user-visible feature worth announcing,
+  open or close one there; the working detail stays private.
+- Nothing that names a customer, a host, an address or an internal
+  machine goes in any issue without being anonymised ("a Windows
+  recette host").
+- A security weakness goes to the private tracker or a private security
+  advisory, never a public issue, until the fix has shipped.
 
 ## What counts as a follow-up
 
@@ -21,19 +45,12 @@ wrote one right now. Concretely:
 
 - A `TODO(...)` / `FIXME(...)` you (or anyone) added to the code in
   this session.
-- A "deferred to a later PR" decision noted in a commit message or
-  release note (the v0.2.0 PR had three of these — they all needed
-  issues and got none).
-- A bug or drift discovered while doing something else (e.g. during
-  OTLP/HTTP work you noticed `swap_*` metrics aren't OTel-mapped —
-  that's a follow-up).
+- A "deferred to a later PR" decision noted in a commit message.
+- A bug or drift discovered while doing something else.
 - A code-review finding tagged as **Optional** or **Minor** that you
   chose not to fix this round.
-- A pre-existing test flake you accepted (e.g. the four documented
-  flakes in `internal/agent/services/configuration` under `-race`).
+- A pre-existing test flake you accepted.
 - A doc gap, a config-schema drift, a missing test for a new branch.
-- Any "Known follow-ups" / "TODO" bullet you write into a release
-  note — each bullet needs an issue number alongside it.
 
 ## What does **not** need an issue
 
@@ -44,32 +61,6 @@ wrote one right now. Concretely:
 - Something already tracked: an issue with the same intent already
   open. The search-first step below catches these.
 
-## Before you open it: this tracker is public
-
-`senhub-io/senhub-agent` is a public repository. Everything written in
-an issue is readable by a prospect, a customer and a competitor, for
-ever, and editing it later leaves the first version one click away.
-
-Three kinds of follow-up do **not** belong there:
-
-- **A security weakness before its fix exists.** An open issue saying a
-  port serves in clear, or that a credential is weakly held, is a
-  disclosure. It goes to a private security advisory or to the private
-  companion repository, and becomes public once the fix has shipped, if
-  at all.
-- **A measurement that places the product behind a named competitor.**
-  The number is worth keeping; a public issue under our own name saying
-  we collect half of what another agent collects is not the place to
-  keep it. It belongs in the release note, in the developer guide, or in
-  the private repository.
-- **Anything naming a customer, a host, an address or an internal
-  machine.** Anonymise: "a Windows recette host", not its name.
-
-When a follow-up falls in one of those, open it in the private
-companion repository and reference it here by number only, or record it
-where the decision will be read. The rule above is about not losing a
-follow-up, not about publishing one.
-
 ## Procedure
 
 ### 1. Search first (dedup)
@@ -77,21 +68,21 @@ follow-up, not about publishing one.
 Before creating, check the repo doesn't already track it:
 
 ```bash
-gh issue list --repo senhub-io/senhub-agent --state open --search "<short keywords>" --limit 10
+gh issue list --repo senhub-io/senhub-agent-enterprise --state open --search "<short keywords>" --limit 10
 ```
 
 If a matching issue exists, **add a comment** with the new context
 instead of opening a duplicate:
 
 ```bash
-gh issue comment <number> --repo senhub-io/senhub-agent --body "<note>"
+gh issue comment <number> --repo senhub-io/senhub-agent-enterprise --body "<note>"
 ```
 
 ### 2. Create the issue
 
 ```bash
 gh issue create \
-  --repo senhub-io/senhub-agent \
+  --repo senhub-io/senhub-agent-enterprise \
   --title "<area>: <one-line specifics>" \
   --label <one-of: bug|enhancement|documentation|question> \
   --body "<see body template below>"
@@ -131,11 +122,11 @@ The whole point of an issue is that the deferred work surfaces later
 through GitHub, not through "I should remember". So:
 
 - If the follow-up lives in a `TODO(...)` code comment, append the
-  issue number: `// TODO(#234): rename RemoteConfigurationData`.
-- If it's a bullet under "Known follow-ups" in a release note, the
-  bullet must end with `(#234)`.
+  private issue number: `// TODO(ent#234): rename RemoteConfigurationData`.
 - If it's a code-review item that landed in a commit message, mention
-  the issue number alongside.
+  the issue number alongside (`ent#234`).
+- Release notes are public: they describe what shipped, not what is
+  planned. No "Known follow-ups" list pointing at internal work.
 
 A `TODO` without an issue number is technical debt with no exit;
 GitHub issues are the exit.
@@ -147,8 +138,6 @@ GitHub issues are the exit.
   belongs there too.
 - **Before the commit that defers the work** — so the commit message
   can quote the issue number.
-- **Before writing the "Known follow-ups" section** of a release
-  note — every bullet needs an issue number when it's written.
 
 If a session ends with follow-ups you didn't issue, the next session
 will inherit untracked debt — and Claude's memory of "I noticed X" is
