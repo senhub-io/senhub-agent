@@ -40,7 +40,9 @@ func IsHostLocalAddress(ip net.IP) bool {
 // is not distinguishable by IP, but its OWNING INTERFACE is — context the
 // producer has and a by-IP consumer does not. "br-" is Docker's user-bridge
 // naming (br-<12 hex>); plain "br0"/"bridge0" are NOT matched so a real router's
-// routed bridge keeps its address.
+// routed bridge keeps its address. Known limitation: OpenWrt names its
+// routed bridges br-lan / br-wan, which match "br-" and lose a gateway
+// that is legitimately shared.
 var containerBridgePrefixes = []string{
 	"docker", "br-", "virbr", "cni", "cbr", "flannel", "lxcbr", "kube", "cali", "antrea", "weave", "ovs-system",
 }

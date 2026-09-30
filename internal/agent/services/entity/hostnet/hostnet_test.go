@@ -202,8 +202,8 @@ func TestParseForwardTable(t *testing.T) {
 	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 1}, 7, routeIndirect, 25)...)
 	// direct route: its "next hop" is the host's own address
 	buf = append(buf, row([4]byte{10, 10, 0, 0}, [4]byte{255, 255, 255, 0}, [4]byte{10, 10, 0, 60}, 7, 3, 281)...)
-	// duplicate destination
-	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 2}, 7, routeIndirect, 50)...)
+	// second default route (a second NIC), higher metric: not the one used
+	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 2}, 9, routeIndirect, 50)...)
 
 	got := parseForwardTable(buf, func(i int) string { return "Ethernet" })
 	if len(got) != 1 {
@@ -214,5 +214,34 @@ func TestParseForwardTable(t *testing.T) {
 	}
 	if parseForwardTable([]byte{1, 0}, nil) != nil {
 		t.Error("a truncated buffer yields no route")
+	}
+}
+
+// Two default routes: the lowest metric wins whatever the table order, so
+// the route's next hop cannot alternate between readings.
+func TestParseForwardTable_LowestMetricWins(t *testing.T) {
+	mk := func(nh byte, ifIndex, metric uint32) []byte {
+		b := make([]byte, forwardRowSize)
+		copy(b[offNextHop:], []byte{10, 0, 0, nh})
+		binary.LittleEndian.PutUint32(b[offIfIndex:], ifIndex)
+		binary.LittleEndian.PutUint32(b[offType:], routeIndirect)
+		binary.LittleEndian.PutUint32(b[offMetric1:], metric)
+		return b
+	}
+	for _, order := range [][2][]byte{{mk(2, 9, 50), mk(1, 7, 25)}, {mk(1, 7, 25), mk(2, 9, 50)}} {
+		buf := []byte{2, 0, 0, 0}
+		buf = append(append(buf, order[0]...), order[1]...)
+		got := parseForwardTable(buf, nil)
+		if len(got) != 1 || got[0].NextHop != "10.0.0.1" {
+			t.Errorf("want the metric-25 route via 10.0.0.1, got %+v", got)
+		}
+	}
+}
+
+func TestBuildObservation_RouteCarriesItsEgressInterface(t *testing.T) {
+	obs := buildObservation("h1", []hostRoute{{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Iface: "Ethernet"}})
+	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
+	if !ok || route.Attributes[attrEgressInterface] != "Ethernet" {
+		t.Errorf("route attributes = %+v", route.Attributes)
 	}
 }
