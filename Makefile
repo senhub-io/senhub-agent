@@ -292,6 +292,25 @@ test-entrypoint: ## Check the container entrypoint's identity resolution (no dae
 	@echo "Testing the container entrypoint..."
 	@sh packaging/docker/entrypoint_test.sh
 
+# The chart is checked with helm alone: lint, then a render of every
+# values file under ci/ (the ServiceMonitor CRD is declared so its
+# template renders). Nothing is installed and no cluster is contacted:
+# `helm template` never reads one. Not part of `test`, since helm is not
+# a build dependency of the agent.
+HELM ?= helm
+CHART_DIR = charts/senhub-agent
+helm-lint: ## Lint and render the Helm chart with its default and ci/ values
+	@command -v $(HELM) >/dev/null 2>&1 || { echo "helm not found: install Helm 3.8+ or set HELM=/path/to/helm" >&2; exit 1; }
+	@$(HELM) lint --strict $(CHART_DIR)
+	@$(HELM) template senhub-agent $(CHART_DIR) >/dev/null
+	@for f in $(CHART_DIR)/ci/*.yaml; do \
+		echo "==> $$f"; \
+		$(HELM) lint --strict --quiet $(CHART_DIR) -f $$f || exit 1; \
+		$(HELM) template senhub-agent $(CHART_DIR) -f $$f \
+			--api-versions monitoring.coreos.com/v1/ServiceMonitor >/dev/null || exit 1; \
+	done
+	@echo "helm chart: lint and render OK"
+
 # The commercial probes register their schemas in senhub-agent-enterprise,
 # which this module never links, so this target regenerates the pages of the
 # probes compiled here only. The other half runs the same generator from
@@ -454,4 +473,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help

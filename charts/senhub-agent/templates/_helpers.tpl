@@ -1,0 +1,140 @@
+{{/* Chart name, truncated to a DNS label. */}}
+{{- define "senhub-agent.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/* Fully qualified release name. */}}
+{{- define "senhub-agent.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "senhub-agent.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "senhub-agent.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "senhub-agent.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "senhub-agent.labels" -}}
+helm.sh/chart: {{ include "senhub-agent.chart" . }}
+{{ include "senhub-agent.selectorLabels" . }}
+app.kubernetes.io/version: {{ include "senhub-agent.imageTag" . | quote }}
+app.kubernetes.io/component: agent
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{- define "senhub-agent.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "senhub-agent.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{- define "senhub-agent.imageTag" -}}
+{{- default .Chart.AppVersion .Values.image.tag }}
+{{- end }}
+
+{{- define "senhub-agent.image" -}}
+{{- $repo := .Values.image.repository }}
+{{- if not $repo }}
+{{- if eq .Values.edition "oss" }}
+{{- $repo = "ghcr.io/senhub-io/senhub-agent-oss" }}
+{{- else if eq .Values.edition "full" }}
+{{- $repo = "ghcr.io/senhub-io/senhub-agent" }}
+{{- else }}
+{{- fail (printf "edition must be full or oss, not %q" .Values.edition) }}
+{{- end }}
+{{- end }}
+{{- printf "%s:%s" $repo (include "senhub-agent.imageTag" .) }}
+{{- end }}
+
+{{- define "senhub-agent.hostname" -}}
+{{- default (include "senhub-agent.fullname" .) .Values.hostname | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "senhub-agent.identitySecretName" -}}
+{{- default (printf "%s-identity" (include "senhub-agent.fullname" .)) .Values.identity.existingSecret }}
+{{- end }}
+
+{{- define "senhub-agent.envSecretName" -}}
+{{- printf "%s-env" (include "senhub-agent.fullname" .) }}
+{{- end }}
+
+{{/*
+Whether the pod needs the service account token: only the kubernetes
+probe talks to the API server.
+*/}}
+{{- define "senhub-agent.automountToken" -}}
+{{- if or .Values.rbac.kubernetesProbe.enabled .Values.serviceAccount.automountToken }}true{{ else }}false{{ end }}
+{{- end }}
+
+{{/*
+A fragment key becomes a file name: keep it to what a file name and a
+ConfigMap key both accept.
+*/}}
+{{- define "senhub-agent.checkFragmentKey" -}}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9_-]*$" .) }}
+{{- fail (printf "config fragment key %q: use lowercase letters, digits, - and _ only" .) }}
+{{- end }}
+{{- end }}
+
+{{/*
+The SENHUB_* variables the image entrypoint reads, as a YAML list. A value
+is set only when given: a boolean false is a value (SENHUB_OTLP_TLS=false),
+an empty string is not.
+*/}}
+{{- define "senhub-agent.entrypointEnv" -}}
+{{- $e := .Values.env }}
+{{- $tags := list }}
+{{- range $k, $v := $e.tags }}
+{{- $tags = append $tags (printf "%s=%s" $k (toString $v)) }}
+{{- end }}
+{{- $pairs := list
+  (list "SENHUB_OTLP_ENDPOINT" $e.otlpEndpoint)
+  (list "SENHUB_OTLP_PROTOCOL" $e.otlpProtocol)
+  (list "SENHUB_OTLP_TLS" $e.otlpTLS)
+  (list "SENHUB_ENTITIES" $e.entities)
+  (list "SENHUB_TAGS" (join "," $tags))
+  (list "SENHUB_ZABBIX_SERVER" $e.zabbixServer)
+  (list "SENHUB_ZABBIX_HOST_METADATA" $e.zabbixHostMetadata)
+  (list "SENHUB_AZURE_APP" $e.azure.app)
+  (list "SENHUB_AZURE_TENANT_ID" $e.azure.tenantId)
+  (list "SENHUB_AZURE_CLIENT_ID" $e.azure.clientId)
+  (list "SENHUB_AZURE_SUBSCRIPTION_ID" $e.azure.subscriptionId)
+  (list "SENHUB_AZURE_RESOURCE_GROUP" $e.azure.resourceGroup)
+  (list "TZ" $e.timezone) }}
+{{- $out := list }}
+{{- range $pairs }}
+{{- $v := toString (index . 1) }}
+{{- if and (ne $v "") (ne $v "<nil>") }}
+{{- $out = append $out (dict "name" (index . 0) "value" $v) }}
+{{- end }}
+{{- end }}
+{{- toYaml $out }}
+{{- end }}
+
+{{/* agent.yaml when the operator provides one. */}}
+{{- define "senhub-agent.agentYAML" -}}
+{{- $cfg := deepCopy .Values.config.agent }}
+{{- $agent := default (dict) (get $cfg "agent") }}
+{{- if not (get $agent "key") }}
+{{- $_ := set $agent "key" "${env:SENHUB_AGENT_KEY}" }}
+{{- end }}
+{{- $_ := set $cfg "agent" $agent }}
+{{- if not (hasKey $cfg "config_version") }}
+{{- $_ := set $cfg "config_version" 3 }}
+{{- end }}
+{{- toYaml $cfg }}
+{{- end }}
