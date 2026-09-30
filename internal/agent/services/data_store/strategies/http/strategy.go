@@ -216,6 +216,12 @@ func (h *HTTPSyncStrategy) NoteProbeCadence(probeName string, interval time.Dura
 	h.cache.NoteProbeCadence(probeName, interval)
 }
 
+// ForgetProbes drops the cached values of probes that stopped running,
+// so the PRTG, Nagios, Prometheus and console views stop listing them.
+func (h *HTTPSyncStrategy) ForgetProbes(probeNames []string) {
+	h.cache.ForgetProbes(probeNames)
+}
+
 func (h *HTTPSyncStrategy) GetStrategyName() string {
 	return "http"
 }

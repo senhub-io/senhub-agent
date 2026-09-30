@@ -22,6 +22,14 @@ type ProbeCadenceSink interface {
 	NoteProbeCadence(probeName string, interval time.Duration)
 }
 
+// ProbeRetireSink is an output that keeps the last values of each probe
+// and must drop them once the probe no longer runs: otherwise a probe
+// whose configuration was removed stays listed, with its last values,
+// until those age out of the live window.
+type ProbeRetireSink interface {
+	ForgetProbes(probeNames []string)
+}
+
 // probeCadence is what a periodic probe exposes about its own rhythm.
 type probeCadence interface {
 	GetName() string
