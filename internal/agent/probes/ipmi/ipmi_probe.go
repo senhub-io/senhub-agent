@@ -239,7 +239,7 @@ func (p *ipmiProbe) Collect() ([]data_store.DataPoint, error) {
 // status datapoint. hostTags carries host.id and other resource attributes
 // so telemetry joins the host entity emitted by the foundation detector.
 func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tags.Tag) []data_store.DataPoint {
-	if !p.shouldInclude(row) {
+	if !p.shouldInclude(row) || hasNoReading(row) {
 		return nil
 	}
 
@@ -443,6 +443,18 @@ func classifyUnit(unit string) string {
 	default:
 		return ""
 	}
+}
+
+// hasNoReading reports a sensor the BMC has no reading for: "ns" (not
+// scanning, the usual answer for an absent fan or an empty PSU bay) or
+// "na". It says nothing about the component's health, so it yields no
+// point at all: a status of 0 read as a failed component on every sink.
+func hasNoReading(row sensorRow) bool {
+	switch row.status {
+	case "ns", "na":
+		return true
+	}
+	return strings.EqualFold(row.value, "no reading")
 }
 
 // isStatusOk returns true for "ok" and "nc" (non-critical).
