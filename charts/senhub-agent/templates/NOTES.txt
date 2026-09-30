@@ -1,0 +1,38 @@
+SenHub Agent {{ include "senhub-agent.imageTag" . }} ({{ .Values.edition }} edition) is deployed as
+{{ .Release.Namespace }}/{{ include "senhub-agent.fullname" . }}, one pod.
+
+Watch it start (the entrypoint says which configuration it wrote):
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "senhub-agent.fullname" . }} -c agent -f
+
+Its identity lives in the Secret {{ include "senhub-agent.identitySecretName" . }}
+(host-id, agent-key){{ if not .Values.identity.existingSecret }}, kept after helm uninstall{{ end }}. Read the agent key,
+which PRTG, Nagios and a Prometheus scrape authenticate with:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "senhub-agent.identitySecretName" . }} -o jsonpath='{.data.agent-key}' | base64 -d; echo
+{{- if and (not .Values.identity.existingSecret) (not .Values.identity.hostId) }}
+
+Rendering with `helm template` (Argo CD, Flux with post-rendering) cannot read that
+Secret and mints a new identity at each render: set identity.hostId and
+identity.agentKey, or identity.existingSecret, under such a tool.
+{{- end }}
+{{- if .Values.service.enabled }}
+
+Reach the HTTP output (console, PRTG, Nagios, Prometheus):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "senhub-agent.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl http://127.0.0.1:{{ .Values.service.port }}/health
+Inside the cluster: http://{{ include "senhub-agent.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+{{- end }}
+{{- if and .Values.kubernetesProbe.enabled (not .Values.rbac.kubernetesProbe.enabled) (not (get .Values.kubernetesProbe.params "kubeconfig")) }}
+
+WARNING: kubernetesProbe.enabled reads this cluster through the pod's service
+account, but rbac.kubernetesProbe.enabled is false: every collector will be
+refused. Set rbac.kubernetesProbe.enabled=true, or give the probe a kubeconfig.
+{{- end }}
+{{- if and (eq .Values.edition "full") (not .Values.secrets.existingSecret) (not (hasKey .Values.secrets.values "SENHUB_LICENSE")) }}
+
+No SENHUB_LICENSE in secrets.values: the licensed probes stay off (Free tier),
+unless the Secret given as secrets.existingSecret carries one.
+{{- end }}
+{{- if .Values.config.agent }}
+
+config.agent is set: the configuration is yours, and every `env` value is ignored.
+{{- end }}

@@ -1,0 +1,42 @@
+# The configuration is the operator's own: agent.yaml from config.agent,
+# no entrypoint-written file, the edition without licence. Used by
+# `make helm-lint`.
+edition: oss
+
+identity:
+  existingSecret: senhub-agent-identity
+
+config:
+  agent:
+    agent:
+      global_tags:
+        environment: recette
+    entities:
+      enabled: true
+  probes:
+    kubernetes:
+      - name: cluster
+        type: kubernetes
+        params:
+          collect:
+            events: false
+  strategies:
+    otlp: |
+      otlp:
+        endpoint: otel-collector.observability.svc:4317
+        protocol: grpc
+        tls:
+          enabled: false
+
+rbac:
+  kubernetesProbe:
+    enabled: true
+
+service:
+  enabled: false
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

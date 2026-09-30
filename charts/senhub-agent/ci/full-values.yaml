@@ -1,0 +1,67 @@
+# Exercises every optional part of the chart: configuration fragments,
+# secrets from both sources, the Kubernetes probe with its RBAC, a state
+# volume and a ServiceMonitor. Used by `make helm-lint`; the values are
+# examples, not credentials.
+edition: full
+
+identity:
+  hostId: 7c3e9a1f-4b2d-4e8a-9f61-2d5b8c0e4a17
+  agentKey: 9b1f2c3d-5e6a-4b7c-8d9e-0f1a2b3c4d5e
+
+hostname: senhub-cluster-agent
+
+env:
+  otlpEndpoint: otel-collector.observability.svc:4317
+  otlpProtocol: grpc
+  otlpTLS: false
+  entities: true
+  tags:
+    environment: recette
+    cluster: k3s-lab
+  timezone: Europe/Paris
+
+secrets:
+  existingSecret: senhub-agent-credentials
+  values:
+    OTLP_BEARER_TOKEN: example-token
+    ORDERS_DB_PASSWORD: example-password
+
+config:
+  probes:
+    databases:
+      - name: orders-db
+        type: postgresql
+        params:
+          host: orders-db.shop.svc
+          port: 5432
+          username: monitor
+          password: "${env:ORDERS_DB_PASSWORD}"
+    web:
+      name: shop-front
+      type: http_check
+      params:
+        targets: ["http://shop-front.shop.svc/health"]
+  strategies:
+    zabbix:
+      server: zabbix-server.monitoring.svc:10051
+      host_metadata: senhub-agent
+
+kubernetesProbe:
+  enabled: true
+  params:
+    interval: 60
+    namespaces:
+      exclude: [kube-system, kube-public]
+
+rbac:
+  kubernetesProbe:
+    enabled: true
+
+persistence:
+  enabled: true
+  size: 512Mi
+
+serviceMonitor:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack

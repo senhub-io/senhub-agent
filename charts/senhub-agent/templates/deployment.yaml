@@ -1,0 +1,204 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "senhub-agent.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "senhub-agent.labels" . | nindent 4 }}
+spec:
+  # One agent per release, never more: see the head of values.yaml.
+  replicas: 1
+  # The old pod stops before the new one starts, so two pods never run
+  # with one identity, and a ReadWriteOnce state volume can move.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "senhub-agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "senhub-agent.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # A new configuration or a new chart-managed secret means a new
+        # pod: the configuration is built once per pod, at start.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.secrets.values }}
+        checksum/secrets: {{ include (print $.Template.BasePath "/env-secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      hostname: {{ include "senhub-agent.hostname" . }}
+      serviceAccountName: {{ include "senhub-agent.serviceAccountName" . }}
+      automountServiceAccountToken: {{ include "senhub-agent.automountToken" . }}
+      # Service links would put <SERVICE>_PORT variables in the agent's
+      # environment, some of them named SENHUB_AGENT_*.
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # Copies the chart's fragments into the configuration directory.
+        # The directory is an emptyDir, not the ConfigMap itself, because
+        # the entrypoint and the agent write there: agent.yaml, the
+        # default fragments, the secret store key.
+        - name: config
+          image: {{ include "senhub-agent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              for src in /senhub-config/*; do
+                [ -f "$src" ] || continue
+                name=${src##*/}
+                case "$name" in
+                  *__*) dir=/etc/senhub-agent/${name%%__*}; file=${name#*__} ;;
+                  *) dir=/etc/senhub-agent; file=$name ;;
+                esac
+                mkdir -p "$dir"
+                cp "$src" "$dir/$file"
+                chmod 0600 "$dir/$file"
+                echo "config: $dir/$file"
+              done
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config-src
+              mountPath: /senhub-config
+              readOnly: true
+            - name: config
+              mountPath: /etc/senhub-agent
+      containers:
+        - name: agent
+          image: {{ include "senhub-agent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["run"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.http.port }}
+              protocol: TCP
+          env:
+            # The identity, from the Secret: SENHUB_HOST_ID is also read by
+            # the agent to mark the host identity as configured.
+            - name: SENHUB_HOST_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "senhub-agent.identitySecretName" . }}
+                  key: host-id
+            - name: SENHUB_AGENT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "senhub-agent.identitySecretName" . }}
+                  key: agent-key
+            - name: SENHUB_HTTP_PORT
+              value: {{ .Values.http.port | quote }}
+            - name: SENHUB_HTTP_BIND
+              value: {{ .Values.http.bind | quote }}
+            {{- with (include "senhub-agent.entrypointEnv" . | fromYamlArray) }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if or .Values.secrets.existingSecret .Values.secrets.values }}
+          envFrom:
+            {{- with .Values.secrets.existingSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+            {{- if .Values.secrets.values }}
+            - secretRef:
+                name: {{ include "senhub-agent.envSecretName" . }}
+            {{- end }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/senhub-agent
+            - name: state
+              mountPath: /var/lib/senhub-agent
+            - name: logs
+              mountPath: /var/log/senhub-agent
+            - name: tmp
+              mountPath: /tmp
+            # host.id is read from /etc/machine-id. Mounted from the
+            # identity Secret, it is the same on every pod of the release
+            # and needs no writable root filesystem.
+            - name: identity
+              mountPath: /etc/machine-id
+              subPath: machine-id
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: config-src
+          configMap:
+            name: {{ include "senhub-agent.fullname" . }}
+        - name: config
+          emptyDir: {}
+        - name: state
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-state" (include "senhub-agent.fullname" .)) .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: logs
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: identity
+          secret:
+            secretName: {{ include "senhub-agent.identitySecretName" . }}
+            defaultMode: 0444
+            items:
+              - key: host-id
+                path: machine-id
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

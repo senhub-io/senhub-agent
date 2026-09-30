@@ -1,0 +1,58 @@
+{{- /*
+Every fragment is a key of this ConfigMap; the init container copies them
+into the configuration directory (an emptyDir), where the agent may seal
+or rewrite them. File names start at 55/60 so they never replace the
+ones the entrypoint writes (00-host, 00-http, 10-otlp, 20-zabbix, 50-*)
+and load after them.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "senhub-agent.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "senhub-agent.labels" . | nindent 4 }}
+{{- if not (or .Values.config.agent .Values.kubernetesProbe.enabled .Values.config.probes .Values.config.strategies) }}
+data: {}
+{{- else }}
+data:
+  {{- if .Values.config.agent }}
+  agent.yaml: |
+    {{- include "senhub-agent.agentYAML" . | nindent 4 }}
+  {{- if not (hasKey .Values.config.strategies "http") }}
+  strategies.d__00-http.yaml: |
+    http:
+      port: {{ .Values.http.port }}
+      bind_address: {{ .Values.http.bind | quote }}
+      endpoints: ["prtg", "nagios", "prometheus"]
+  {{- end }}
+  {{- end }}
+  {{- if .Values.kubernetesProbe.enabled }}
+  probes.d__55-kubernetes-cluster.yaml: |
+    {{- $probe := dict "name" .Values.kubernetesProbe.name "type" "kubernetes" }}
+    {{- if .Values.kubernetesProbe.params }}
+    {{- $_ := set $probe "params" .Values.kubernetesProbe.params }}
+    {{- end }}
+    {{- toYaml (list $probe) | nindent 4 }}
+  {{- end }}
+  {{- range $key, $body := .Values.config.probes }}
+  {{- include "senhub-agent.checkFragmentKey" $key }}
+  probes.d__60-{{ $key }}.yaml: |
+    {{- if kindIs "string" $body }}
+    {{- $body | nindent 4 }}
+    {{- else if kindIs "slice" $body }}
+    {{- toYaml $body | nindent 4 }}
+    {{- else }}
+    {{- toYaml (list $body) | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  {{- range $key, $body := .Values.config.strategies }}
+  {{- include "senhub-agent.checkFragmentKey" $key }}
+  strategies.d__60-{{ $key }}.yaml: |
+    {{- if kindIs "string" $body }}
+    {{- $body | nindent 4 }}
+    {{- else }}
+    {{- toYaml (dict $key $body) | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

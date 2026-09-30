@@ -1,0 +1,66 @@
+{{- if .Values.rbac.kubernetesProbe.enabled }}
+{{- /*
+Exactly what the kubernetes probe calls (internal/agent/probes/kubernetes):
+one-shot List calls at each interval, no watch, no write, and one Get of
+the kube-system namespace, whose UID is the cluster identity. Secrets and
+ConfigMaps are never read.
+*/ -}}
+{{- $name := printf "%s-%s-kubernetes-probe" .Release.Namespace (include "senhub-agent.fullname" .) | trunc 63 | trimSuffix "-" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "senhub-agent.labels" . | nindent 4 }}
+rules:
+  # cluster_uid.go: Get kube-system; kubernetes_probe.go resolveNamespaces:
+  # List (skipped when namespaces.include is set).
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  # kubernetes_probe.go (nodes, pods), capacity.go (persistentvolumes,
+  # persistentvolumeclaims, resourcequotas), events.go (events, core/v1).
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - pods
+      - persistentvolumes
+      - persistentvolumeclaims
+      - resourcequotas
+      - events
+    verbs: ["list"]
+  # kubernetes_probe.go (deployments), workloads.go (the others).
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+    verbs: ["list"]
+  # workloads.go.
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["list"]
+  # capacity.go, autoscaling/v2.
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "senhub-agent.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "senhub-agent.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
