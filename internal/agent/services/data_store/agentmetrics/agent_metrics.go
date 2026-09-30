@@ -230,6 +230,14 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(entity.AttributeConflictsTotal()),
 			Description: "Entity attributes two sources of this agent reported with different values in one cycle; each is a defect to fix, the kept value is chosen by scope order.",
 		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.entity.duplicates.merged",
+			Unit:        "{entity}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(entity.DuplicatesMergedTotal()),
+			Description: "Entity copies merged into another copy of the same entity because several sources of this agent reported it in one cycle.",
+		},
 		entityProcessed(delivered, ""),
 		entityProcessed(dropped, "queue_full"),
 		otelmapper.OtelRecord{
