@@ -35,6 +35,12 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **PRTG shows NetScaler throughput at its real scale.** The NetScaler
+  throughput and link-speed channels carry values in megabits per second
+  but told PRTG they were in bits, so PRTG displayed them a million
+  times too small. The channel's scale now follows the unit the probe
+  reads.
+
 - **File tail reads a Windows log its writer keeps open.** On Windows a
   file another process holds open for writing, such as PRTG's core log,
   sends no change notification until it is closed: the probe waited and

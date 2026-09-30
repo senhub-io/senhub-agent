@@ -32,7 +32,7 @@ units:
 
   # Rate units  
   bytes_per_second:
-    aliases: ["Bytes/s", "bytes/s", "BPS", "bps"]
+    aliases: ["Bytes/s", "bytes/s"]
     standard: "Bytes/s"
     description: "Data transfer rate in bytes per second"
     
