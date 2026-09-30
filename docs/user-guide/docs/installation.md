@@ -129,6 +129,8 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 | `LICENSE_KEY` | The licence token itself, for scripted installs |
 | `TAGS` | Comma-separated `k=v` list applied as host `global_tags` (e.g. `site=paris,env=prod`) |
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
+| `ZABBIX_SERVER` | Optional Zabbix server or proxy `host:port` — writes the Zabbix output (`strategies.d\20-zabbix.yaml`); the host then registers in Zabbix at its first contact |
+| `ZABBIX_HOST_METADATA` | Host metadata the Zabbix autoregistration action matches (default `senhub-agent`) |
 | `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`). A port already in use fails the install. |
 | `DESKTOP_SHORTCUT` | `1` (default) creates a "SenHub Agent Console" desktop shortcut; `0` skips it |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
@@ -261,6 +263,14 @@ sudo /opt/senhub/bin/senhub-agent install
 This creates and registers a hardened systemd service (`senhub-agent.service`) that runs the agent as a dedicated unprivileged system user (`senhub`, created during install if missing) with all Linux capabilities dropped — the same unit the `.deb`/`.rpm` packages ship. A UUID agent key is generated automatically and saved to the configuration file, and the configuration and log directories are handed to the `senhub` user.
 
 `install` copies the binary to `/usr/local/bin/senhub-agent` and the service runs that copy; the one you extracted is no longer used, and you may delete `/opt/senhub/bin` once the install has succeeded. Every later command that touches the service, the secret store or the binary runs as root and calls the installed binary by its full path, `sudo /usr/local/bin/senhub-agent ...`. On RHEL, AlmaLinux and Rocky Linux, `sudo` leaves `/usr/local/bin` out of its search path, so `sudo senhub-agent status` answers "command not found" there while `sudo /usr/local/bin/senhub-agent status` works.
+
+To send to Zabbix, give the agent its server once the service is
+installed; the running agent picks the output up and the host registers
+in Zabbix at its first contact (see [Zabbix](zabbix.md#deploying)):
+
+```bash
+sudo /usr/local/bin/senhub-agent config init --zabbix-server zabbix.example.com:10051
+```
 
 If a probe needs a privilege the default unit does not grant (for example `snmp_trap` on UDP/162 or ICMP raw sockets), grant the single capability with a unit drop-in — see [Running the agent least-privilege](https://github.com/senhub-io/senhub-agent/blob/dev/docs/admin-guide/LEAST-PRIVILEGE.md). To keep the previous behavior of running the service as root:
 
