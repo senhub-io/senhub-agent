@@ -34,6 +34,8 @@ mkdir -p "$SENHUB_STATE_DIR" "$SENHUB_CONFIG_DIR"
 
 # 0. SENHUB_ZABBIX_SERVER reaches config init, with its metadata; nothing
 #    Zabbix is passed when the variable is unset.
+# 0b. The HTTP output listens beyond the container's loopback by default,
+#    and SENHUB_HTTP_BIND narrows it.
 mkdir -p "$work/bin"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/init-args"\n' "$work" > "$work/bin/senhub-agent"
 chmod +x "$work/bin/senhub-agent"
@@ -51,6 +53,17 @@ init_config >/dev/null 2>&1 || true
 case "$(cat "$work/init-args")" in
   *zabbix*) check "no Zabbix flag without SENHUB_ZABBIX_SERVER" "$(cat "$work/init-args")" "no zabbix flag" ;;
   *) check "no Zabbix flag without SENHUB_ZABBIX_SERVER" "ok" "ok" ;;
+esac
+case "$(cat "$work/init-args")" in
+  *"--http-bind 0.0.0.0"*) check "the HTTP output listens on every address by default" "yes" "yes" ;;
+  *) check "the HTTP output listens on every address by default" "$(cat "$work/init-args")" "--http-bind 0.0.0.0" ;;
+esac
+SENHUB_HTTP_BIND=127.0.0.1
+init_config >/dev/null 2>&1 || true
+unset SENHUB_HTTP_BIND
+case "$(cat "$work/init-args")" in
+  *"--http-bind 127.0.0.1"*) check "SENHUB_HTTP_BIND sets the address" "yes" "yes" ;;
+  *) check "SENHUB_HTTP_BIND sets the address" "$(cat "$work/init-args")" "--http-bind 127.0.0.1" ;;
 esac
 PATH=$saved_path
 rm -rf "$SENHUB_CONFIG_DIR" && mkdir -p "$SENHUB_CONFIG_DIR"

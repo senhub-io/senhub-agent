@@ -59,3 +59,9 @@ Changes since 0.6.0, collected as they are merged.
   that missed most of the configuration, catalogue and information
   routes; they are now read from the agent's router. The page also
   rewrote `/admin/` paths to `/debug/`, showing routes that do not exist.
+
+- **The container image answers PRTG, Nagios and Prometheus from outside.**
+  Its HTTP output listened on the container's loopback, which nothing
+  outside the container reaches: a published port answered "connection
+  refused". The image now listens on every address, set with
+  `SENHUB_HTTP_BIND`; `config init` takes `--http-bind`.
