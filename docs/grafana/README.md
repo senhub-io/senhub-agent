@@ -66,6 +66,41 @@ Every dashboard follows the same shape:
 Time range default `now-1h`, refresh `30s`, tags
 `["senhub", "agents", "<audience>"]`, schemaVersion 39.
 
+## Data path prerequisite
+
+Every dashboard here queries metrics the agent pushed over OTLP, stored
+under their Prometheus-style names, with the resource attributes as
+labels. Two things must hold:
+
+- **Names are the OTLP names converted to Prometheus naming**: dots
+  become underscores, the unit becomes a suffix, counters end in
+  `_total`, and there is no `senhub_` prefix outside the `senhub.*`
+  namespace. The queries read `hw_status`, `system_cpu_utilization_ratio`,
+  `system_network_io_bytes_total`, `senhub_veeam_job_count`.
+- **`service_name` is a label on every series**, promoted from the
+  `service.name` resource attribute; the `$service` variable and most
+  queries filter on it.
+
+Two paths give that:
+
+- **VictoriaMetrics** ingesting OTLP on `/opentelemetry/v1/metrics`,
+  started with `-opentelemetry.usePrometheusNaming`. VictoriaMetrics
+  promotes the resource attributes to labels by default, so
+  `service.name` becomes `service_name`.
+- **An OpenTelemetry Collector** with the `prometheusremotewrite`
+  exporter, unit suffixes left on (the default), and
+  `resource_to_telemetry_conversion: enabled: true`, so resource
+  attributes become labels instead of staying on `target_info`.
+
+The dashboards do not work as they are on:
+
+- **the agent's own Prometheus endpoint** (`/metrics`): it prefixes every
+  name with `senhub_` (`senhub_system_cpu_utilization_ratio`,
+  `senhub_hw_status`) and carries no `service_name` label; the resource
+  sits on `target_info`;
+- **a backend that keeps the dotted OTLP names** (`system.cpu.utilization`,
+  VictoriaMetrics without `-opentelemetry.usePrometheusNaming`).
+
 ## Datasources expected
 
 Provisioned on the operations Grafana host today (must exist on the target Grafana):
