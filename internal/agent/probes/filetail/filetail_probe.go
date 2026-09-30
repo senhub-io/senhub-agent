@@ -16,8 +16,10 @@
 package filetail
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -259,12 +261,13 @@ func (p *FileTailProbe) startTail(file string) {
 	offset := resolveStartOffset(stored, hasStored, fp, size, p.config.FromBeginning || p.awaiting[file])
 	delete(p.awaiting, file)
 
+	reopened := make(chan struct{})
 	cfg := tail.Config{
 		ReOpen:        true,
 		Follow:        true,
 		MustExist:     false,
 		CompleteLines: true,
-		Logger:        tail.DiscardingLogger,
+		Logger:        log.New(&reopenSignal{reopened: reopened, quit: p.quit}, "", 0),
 		// On Windows a change notification for a file is not delivered
 		// while its writer keeps it open: a log such as PRTG's, held open
 		// for the life of the service, was never read, without an error
@@ -296,12 +299,34 @@ func (p *FileTailProbe) startTail(file string) {
 		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 	}
 
-	go p.consume(file, t, offset)
+	go p.consume(file, t, offset, reopened)
+}
+
+// reopenSignal turns nxadm/tail's log line announcing a reopen into an
+// event. The library reports a rotated or truncated file only through its
+// logger, and reads the new file from its first byte without a line to
+// say so. The write happens on the tail's own goroutine, which has already
+// handed over every line of the previous file (Lines is unbuffered) and
+// sends none of the new one until the event is taken: consume sees the
+// reopen exactly between the two files.
+type reopenSignal struct {
+	reopened chan<- struct{}
+	quit     <-chan struct{}
+}
+
+func (r *reopenSignal) Write(b []byte) (int, error) {
+	if bytes.HasPrefix(b, []byte("Successfully reopened")) {
+		select {
+		case r.reopened <- struct{}{}:
+		case <-r.quit:
+		}
+	}
+	return len(b), nil
 }
 
 // consume drains one file's tail channel, folds multiline records,
 // parses each, publishes it, and periodically persists the offset.
-func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64) {
+func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64, reopened <-chan struct{}) {
 	defer p.wg.Done()
 
 	asm := logparse.NewAssembler(p.config.Multiline, p.config.MaxBytesPerLine)
@@ -326,45 +351,63 @@ func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64) {
 	dirty := false
 read:
 	for {
+		var line *tail.Line
 		select {
-		case line, ok := <-t.Lines:
-			if !ok {
-				break read
+		case <-reopened:
+			// The file was rotated or truncated and the tail now reads the
+			// new one from its start. Bookmark that at once: until the next
+			// line the entry held the previous file's offset, which the
+			// periodic flush then paired with the new file's fingerprint,
+			// and a restart in between resumed the new file at the old
+			// offset, skipping or replaying its lines (#999).
+			for _, logical := range asm.Flush() {
+				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
-			if line == nil {
-				continue
-			}
-			if line.Err != nil {
-				p.moduleLogger.Debug().Err(line.Err).Str("file", file).Msg("tail line error")
-				continue
-			}
-			lastOffset = line.SeekInfo.Offset
-			dirty = true
-
-			readTime := line.Time
-			if readTime.IsZero() {
-				readTime = time.Now()
-			}
-
-			// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
-			// CRLF files; strip it so bodies/attributes are clean and parsers
-			// behave identically across platforms.
-			text := strings.TrimSuffix(line.Text, "\r")
-			for _, logical := range asm.Append(text) {
-				p.publish(p.config.Parser, logical, readTime, probeName, file)
-			}
-
-			if time.Since(lastFlush) >= bookmarkFlushInterval {
-				persist()
-				lastFlush = time.Now()
-				dirty = false
-			}
+			lastOffset = 0
+			persist()
+			lastFlush = time.Now()
+			dirty = false
+			continue
 		case <-ticker.C:
 			if dirty {
 				persist()
 				lastFlush = time.Now()
 				dirty = false
 			}
+			continue
+		case l, ok := <-t.Lines:
+			if !ok {
+				break read
+			}
+			line = l
+		}
+		if line == nil {
+			continue
+		}
+		if line.Err != nil {
+			p.moduleLogger.Debug().Err(line.Err).Str("file", file).Msg("tail line error")
+			continue
+		}
+		lastOffset = line.SeekInfo.Offset
+		dirty = true
+
+		readTime := line.Time
+		if readTime.IsZero() {
+			readTime = time.Now()
+		}
+
+		// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
+		// CRLF files; strip it so bodies/attributes are clean and parsers
+		// behave identically across platforms.
+		text := strings.TrimSuffix(line.Text, "\r")
+		for _, logical := range asm.Append(text) {
+			p.publish(p.config.Parser, logical, readTime, probeName, file)
+		}
+
+		if time.Since(lastFlush) >= bookmarkFlushInterval {
+			persist()
+			lastFlush = time.Now()
+			dirty = false
 		}
 	}
 
