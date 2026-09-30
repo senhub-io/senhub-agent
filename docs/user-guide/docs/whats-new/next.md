@@ -181,8 +181,14 @@ Changes since 0.6.0, collected as they are merged.
   with their interfaces, to come back a few minutes later; on the lab
   fleet some did so twenty times in twelve hours. A full buffer now makes
   the publish wait for room, and an event still dropped, when the
-  exporter stops draining, is counted as
-  `senhub.agent.otlp.dropped{reason="entity_queue_full"}`.
+  exporter stops draining, is counted under the OpenTelemetry SDK names
+  a standard dashboard reads: `otel.sdk.processor.log.processed` with
+  `error.type="queue_full"` (without it, the events handed over), and
+  `otel.sdk.processor.log.queue.size` and `.capacity` for the hand-off's
+  buffer, identified by `otel.component.type="senhub_entity_channel"`. In
+  Prometheus: `senhub_otel_sdk_processor_log_processed_total`. Beta 2
+  counted it as `senhub.agent.otlp.dropped{reason="entity_queue_full"}`,
+  which no stable release carried.
 
 - **Hardware health follows the OpenTelemetry states.** Redfish emitted
   `hw.status{hw.state="unknown"}` for a component whose health the BMC does
