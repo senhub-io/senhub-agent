@@ -84,3 +84,32 @@ func TestParseSdrOutput_ElistLayout(t *testing.T) {
 		t.Errorf("row = %+v, want %+v", rows[0], want)
 	}
 }
+
+// A sensor ipmitool reports "ns" / "No Reading" (an absent fan) is not a
+// failed component: it emitted hardware.sensor.status 0, which the OTel
+// mapping ships as hw.status{hw.state="ok"} 0 and every sink read as a
+// fault (#994). It yields no point; a real fault still yields 0.
+func TestCollect_NoReadingSensorEmitsNoStatus(t *testing.T) {
+	points := collectOutput(t, realElistOutput)
+
+	for _, fan := range []string{"Fan5B", "Fan6B"} {
+		if got := pointsOf(points, fan); len(got) != 0 {
+			t.Errorf("%s has no reading but emitted %v", fan, got)
+		}
+	}
+	if got, ok := pointsOf(points, "Temp")["hardware.sensor.status"]; !ok || got != 0 {
+		t.Errorf("critical sensor status = %v (present %v), want 0", got, ok)
+	}
+	if got, ok := pointsOf(points, "Fan1A")["hardware.sensor.status"]; !ok || got != 1 {
+		t.Errorf("healthy fan status = %v (present %v), want 1", got, ok)
+	}
+}
+
+// The plain `sdr` layout reports the same absent sensor with the status
+// in the third field.
+func TestCollect_NoReadingSensorEmitsNoStatus_PlainLayout(t *testing.T) {
+	points := collectOutput(t, "PS2 Status       | No Reading        | ns\n")
+	if got := pointsOf(points, "PS2 Status"); len(got) != 0 {
+		t.Errorf("PS2 Status has no reading but emitted %v", got)
+	}
+}
