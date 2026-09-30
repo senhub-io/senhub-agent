@@ -200,7 +200,14 @@ same device derive byte-identical ids.
   next_hop.ip}` (identity as IP-FORWARD-MIB indexes it: an ECMP destination
   is one route per next hop) that the device **owns** via `has_route`
   (mirror of `has_interface`), with `metric` descriptive. Only remote routes
-  with a usable next hop are emitted, which keeps the identity complete. The gateway is **not** a node — `network.address` is deferred,
+  with a usable next hop are emitted, which keeps the identity complete.
+  Rows are keyed on the full table index (destination, mask, TOS or
+  policy, next hop), so no distinct next hop is dropped; the only
+  de-duplication is an exact (destination, next hop) repeat, typically one
+  route read from both ipCidrRouteTable and inetCidrRouteTable. Not
+  emitted, by design: a next hop that is unspecified, loopback, or the
+  polled device's own management address (not a route through another
+  device). Boundary: two rows differing only by TOS or policy collapse. The gateway is **not** a node — `network.address` is deferred,
   so no `mgmt:`/`mac:` device is synthesized for it. This supersedes the legacy
   `routes_via` device→next-hop edge; ARP convergence (which existed only to
   give that edge a device-typed next-hop) is therefore gone. **DONE (#156).**
