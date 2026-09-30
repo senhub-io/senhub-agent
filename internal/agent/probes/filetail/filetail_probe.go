@@ -271,11 +271,13 @@ func (p *FileTailProbe) startTail(file string) {
 		// (#945). The size is polled there instead.
 		Poll: runtime.GOOS == "windows",
 	}
+	// Tailing from the end seeks to the size just measured rather than to
+	// the end at open time, so the offset recorded below is exactly where
+	// reading starts.
 	if offset < 0 {
-		cfg.Location = &tail.SeekInfo{Offset: 0, Whence: 2} // io.SeekEnd
-	} else {
-		cfg.Location = &tail.SeekInfo{Offset: offset, Whence: 0} // io.SeekStart
+		offset = size
 	}
+	cfg.Location = &tail.SeekInfo{Offset: offset, Whence: 0} // io.SeekStart
 
 	t, err := tail.TailFile(file, cfg)
 	if err != nil {
@@ -287,19 +289,26 @@ func (p *FileTailProbe) startTail(file string) {
 	p.wg.Add(1)
 	p.mu.Unlock()
 
-	go p.consume(file, t)
+	// A file that produces no line during the run must still be
+	// bookmarked: without an entry, or with the zero offset consume
+	// would otherwise persist at stop, the next start reads it again.
+	if err := p.bookmarks.Set(file, bookmarkEntry{Offset: offset, Fingerprint: fp}); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
+	}
+
+	go p.consume(file, t, offset)
 }
 
 // consume drains one file's tail channel, folds multiline records,
 // parses each, publishes it, and periodically persists the offset.
-func (p *FileTailProbe) consume(file string, t *tail.Tail) {
+func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64) {
 	defer p.wg.Done()
 
 	asm := logparse.NewAssembler(p.config.Multiline, p.config.MaxBytesPerLine)
 	probeName := p.GetName()
 
 	lastFlush := time.Now()
-	var lastOffset int64
+	lastOffset := startOffset
 
 	persist := func() {
 		fp := fingerprint(file, DefaultFingerprintLength)
