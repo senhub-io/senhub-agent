@@ -51,7 +51,7 @@
       "type": "table", "id": 20, "title": "Top-10 certificates closest to expiry",
       "gridPos": { "h": 10, "w": 12, "x": 0, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "bottomk(10, senhub_netscaler_ssl_certificate_days_to_expiration{service_name=~\"$service\"})", "format": "table", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "bottomk(10, senhub_netscaler_ssl_certificate_expiry_seconds{service_name=~\"$service\"})", "format": "table", "instant": true }],
       "transformations": [
         {
           "id": "organize",
@@ -63,7 +63,7 @@
               "unit": true
             },
             "renameByName": {
-              "Value": "Days remaining",
+              "Value": "Time remaining",
               "service_name": "Appliance",
               "senhub_netscaler_ssl_certificate_name": "Certificate"
             }
@@ -73,16 +73,16 @@
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto" } },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "Days remaining" },
+          { "matcher": { "id": "byName", "options": "Time remaining" },
             "properties": [
-              { "id": "unit", "value": "d" }, { "id": "decimals", "value": 0 },
+              { "id": "unit", "value": "s" }, { "id": "decimals", "value": 0 },
               { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 30 }, { "color": "green", "value": 90 }] } }
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 2592000 }, { "color": "green", "value": 7776000 }] } }
             ]
           }
         ]
       },
-      "options": { "showHeader": true, "sortBy": [{ "displayName": "Days remaining", "desc": false }] }
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "Time remaining", "desc": false }] }
     },
     {
       "type": "timeseries", "id": 21, "title": "SSL transactions per second",

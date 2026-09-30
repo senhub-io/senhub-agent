@@ -157,7 +157,7 @@ metrics:
     category: "consumer_group"
     description: "Current approximate sum of consumer group lag across all partitions of a Kafka topic"
     otel:
-      name: kafka.consumer_group.lag_sum
+      name: kafka.consumer_group.topic.lag
       unit: "{item}"
       type: gauge
     tag_to_attribute:

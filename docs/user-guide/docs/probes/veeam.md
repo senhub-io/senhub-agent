@@ -229,7 +229,7 @@ series' tags.
 | `senhub.veeam.repository.usage` | `veeam_repo_free` | Repository Free ({repo_name}) | Bytes | Free space available in the backup repository |
 | `senhub.veeam.repository.utilization` | `veeam_repo_free_pct` | Repository Free % ({repo_name}) | % | Percentage of free space in the backup repository |
 | `senhub.veeam.license.status` | `veeam_license_status` | License Status | # | License status: 0=Valid, 1=Expired, 2=Invalid |
-| `senhub.veeam.license.days_remaining` | `veeam_license_days_left` | License Days Left | days | Number of days until the Veeam license expires |
+| `senhub.veeam.license.expiry` | `veeam_license_days_left` | License Days Left | days | Number of days until the Veeam license expires |
 | `senhub.veeam.license.instances` | `veeam_license_instances_total` | Licensed Instances Total | # | Total number of licensed instances |
 | `senhub.veeam.license.instances` | `veeam_license_instances_used` | Licensed Instances Used | # | Number of licensed instances currently in use |
 | `senhub.veeam.license.instances` | `veeam_license_instances_remaining` | Licensed Instances Remaining | # | Number of licensed instances still available |
