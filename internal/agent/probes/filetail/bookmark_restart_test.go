@@ -169,3 +169,40 @@ func TestFileTail_RestartDoesNotReplayLinesReadJustBeforeStop(t *testing.T) {
 		t.Fatalf("restart replayed %d records read before the stop", got)
 	}
 }
+
+// A burst of lines within one flush interval left the bookmark at the
+// first of them until another line arrived: on the Windows lab, five
+// lines sent at once kept the bookmark one line in for minutes, and a
+// crash then would have replayed four records already sent.
+func TestFileTail_BookmarkCatchesUpWithoutAnotherLine(t *testing.T) {
+	dir := t.TempDir()
+	busy := filepath.Join(dir, "busy.log")
+	if err := os.WriteFile(busy, []byte(backlog(40)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := map[string]interface{}{
+		"paths":         []interface{}{busy},
+		"bookmark_path": filepath.Join(dir, "bookmark.json"),
+	}
+	p := startFileTail(t, cfg)
+	defer stopFileTail(t, p)
+
+	appendLines(t, busy, "2026-09-30 10:01:00 INFO one", "2026-09-30 10:01:00 INFO two", "2026-09-30 10:01:00 INFO three", "2026-09-30 10:01:00 INFO four", "2026-09-30 10:01:00 INFO five")
+	if got := waitEmitted(p, 5, 5*time.Second); got != 5 {
+		t.Fatalf("emitted %d, want 5", got)
+	}
+	fi, _ := os.Stat(busy)
+	deadline := time.Now().Add(3 * bookmarkFlushInterval)
+	for {
+		onDisk, err := newBookmark(cfg["bookmark_path"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored, ok := onDisk.Get(busy); ok && stored.Offset == fi.Size() {
+			return
+		} else if time.Now().After(deadline) {
+			t.Fatalf("bookmark offset = %d after %v with no new line, want end of file %d", stored.Offset, 3*bookmarkFlushInterval, fi.Size())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}

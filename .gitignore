@@ -152,3 +152,6 @@ docs/user-guide/site/
 # Agent worktrees (transient, never part of the repo)
 .claude/worktrees/
 
+
+# Windows version resources, generated per build by packaging/windows/embed-version-resource.sh
+rsrc_windows_*.syso
