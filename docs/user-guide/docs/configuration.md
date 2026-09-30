@@ -699,7 +699,7 @@ Example output:
 Checking configuration: /etc/senhub-agent/agent.yaml
 
   [OK]   config_version: 3
-  [OK]   agent.key: 550e8400-e29b-41d4-a716-446655440000
+  [OK]   agent.key: set (UUID, value hidden; `senhub-agent key show` prints it)
   [OK]   agent.license: tier=pro, expires=2031-04-14
   [OK]   License binding verified
   [OK]   1 probe(s) configured
