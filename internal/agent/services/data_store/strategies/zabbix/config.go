@@ -60,6 +60,14 @@ type TLSConfig struct {
 	PSK []byte
 }
 
+// ServerAddresses returns the host:port addresses an output's 'server'
+// parameter names, as the strategy dials them; the console's connection
+// test uses it.
+func ServerAddresses(params map[string]interface{}) ([]string, error) {
+	raw, _ := params["server"].(string)
+	return parseServers(raw)
+}
+
 // parseServers reads the 'server' parameter, which holds one address or
 // several separated by commas. Several is how a proxy group is named:
 // any member answers, and the one that does redirects the agent to
