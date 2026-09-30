@@ -299,12 +299,13 @@ sudo /usr/local/bin/senhub-agent update 0.6.0 --dry-run
 sudo /usr/local/bin/senhub-agent update 0.6.0 --registry-url https://releases.example.com
 ```
 
-Downloads and installs the specified version. Restart the service to apply. Updating replaces the binary and needs the same privileges as the service commands.
+Downloads and installs the specified version. On Linux, when the systemd service is running, it is then restarted and the command checks that the new process runs the binary just installed, printing the version it runs; if it does not, the command fails. Updating replaces the binary and needs the same privileges as the service commands. On Windows, the MSI restarts the service itself.
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run`, `-d` | Do not install; print the version that would be installed |
 | `--registry-url URL` | Release registry to download from, instead of the built-in one |
+| `--no-restart` | Install the binary and leave the running service as it is, for a script that restarts it itself. Until the service restarts it keeps running the previous version, whatever `senhub-agent version` says: that command reads the file on disk |
 | `--verbose`, `-v` | Enable verbose logging |
 
 ## Zabbix

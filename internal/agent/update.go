@@ -17,6 +17,7 @@ type UpdateOption func(*updateOptions)
 
 type updateOptions struct {
 	afterInstall func(newBinary string) (string, error)
+	restart      func() (string, error)
 }
 
 // AfterInstall registers a hook run once the new binary is on disk and
@@ -31,6 +32,16 @@ type updateOptions struct {
 // service on the old binary did not do what the operator asked (#723).
 func AfterInstall(hook func(newBinary string) (string, error)) UpdateOption {
 	return func(o *updateOptions) { o.afterInstall = hook }
+}
+
+// RestartService registers the hook that restarts the installed service
+// once the new binary is in place and says what now runs. Without it, a
+// service kept executing the old, deleted binary after a successful
+// update while every check read the new file on disk (#975). It returns
+// "" when there is no running service to restart; an error means the
+// service did not come back on the new binary, and fails the command.
+func RestartService(hook func() (string, error)) UpdateOption {
+	return func(o *updateOptions) { o.restart = hook }
 }
 
 // UpdateAgent handles the "update" CLI command.
@@ -179,18 +190,31 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		}
 	}
 
+	restarted := ""
+	if (updated || reconciled != "") && !args.DryRun && !args.NoRestart && options.restart != nil {
+		restarted, err = options.restart()
+		if err != nil {
+			log.Error().Err(err).Msg("The new binary is installed but the service does not run it")
+			os.Exit(1)
+		}
+	}
+	restartLine := "Restart the agent to use the new version (MSI-managed installs restart automatically)."
+	if restarted != "" {
+		restartLine = restarted
+	}
+
 	switch {
 	case updated && reconciled != "":
 		fmt.Println("Update installed:")
 		fmt.Printf("  %s (CLI)\n", self)
 		fmt.Printf("  %s (systemd service)\n", reconciled)
-		fmt.Println("Restart the agent to use the new version (MSI-managed installs restart automatically).")
+		fmt.Println(restartLine)
 	case updated:
 		fmt.Printf("Update installed: %s\n", self)
-		fmt.Println("Restart the agent to use the new version (MSI-managed installs restart automatically).")
+		fmt.Println(restartLine)
 	case reconciled != "":
 		fmt.Printf("Already up to date; the systemd service binary was stale and has been refreshed:\n  %s\n", reconciled)
-		fmt.Println("Restart the agent to use the new version.")
+		fmt.Println(restartLine)
 	default:
 		fmt.Println("Already up to date.")
 	}
