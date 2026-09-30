@@ -114,6 +114,31 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **An entity reported by two sources arrives whole.** When two probes of
+  one agent described the same entity in a cycle (a device polled directly
+  and seen in another's LLDP table, an address named by a route and by an
+  interface), its relations went to whichever copy came last, and a thin
+  copy could replace a full one. The copies are now merged: every
+  attribute and every relation. Where two sources disagree on a value,
+  the one kept does not depend on the order the probes started in; the
+  disagreement is logged once as a warning and counted in
+  `senhub.agent.entity.attribute.conflicts`, since it is a defect to fix.
+
+- **An SNMP device keeps its full description in the topology.** Each
+  LLDP neighbour was also built as a device carrying only its name, then
+  dropped before sending with a warning, 54 a minute on a 40-device lab.
+  Where that neighbour was also polled, its thin copy could win over the
+  full one, and the device reached the topology backend with its name
+  alone. Neighbours are no longer built; the warnings stop.
+
+- **Syslog RFC 3164 messages are timed in the host's zone.** The header
+  of an RFC 3164 message carries the sender's local time with no zone, and
+  the parser read it as UTC: on a host in Paris, a UniFi access point's
+  09:49:59 reached the log store as 09:49:59Z, two hours in the future, so
+  a search on the last minutes found nothing and log alerts fired two
+  hours late. The timestamp is now read in the agent host's zone. RFC 5424
+  timestamps, which carry their offset, are unchanged.
+
 - **TLS and the endpoint list apply without a restart.** Enabling or
   removing the `tls` block of the HTTP output logged a successful update
   but kept serving the previous protocol until the bind address changed
@@ -128,6 +153,12 @@ Changes since 0.6.0, collected as they are merged.
   Each file's position is now recorded as soon as its tail starts. Files
   seen for the first time are read as before: from the end, or from the
   first byte with `from_beginning`.
+
+- **File tail keeps its bookmark up to date after a burst.** Lines
+  arriving together inside one flush interval left the bookmark at the
+  first of them until another line came, so a crash meanwhile replayed
+  lines already sent. The bookmark is now written within two seconds of
+  the last line read, whether or not another follows.
 
 - **`config check` no longer prints the agent key.** It reports that the
   key is set and has the expected form.
@@ -167,8 +198,14 @@ Changes since 0.6.0, collected as they are merged.
   with their interfaces, to come back a few minutes later; on the lab
   fleet some did so twenty times in twelve hours. A full buffer now makes
   the publish wait for room, and an event still dropped, when the
-  exporter stops draining, is counted as
-  `senhub.agent.otlp.dropped{reason="entity_queue_full"}`.
+  exporter stops draining, is counted under the OpenTelemetry SDK names
+  a standard dashboard reads: `otel.sdk.processor.log.processed` with
+  `error.type="queue_full"` (without it, the events handed over), and
+  `otel.sdk.processor.log.queue.size` and `.capacity` for the hand-off's
+  buffer, identified by `otel.component.type="senhub_entity_channel"`. In
+  Prometheus: `senhub_otel_sdk_processor_log_processed_total`. Beta 2
+  counted it as `senhub.agent.otlp.dropped{reason="entity_queue_full"}`,
+  which no stable release carried.
 
 - **Hardware health follows the OpenTelemetry states.** Redfish emitted
   `hw.status{hw.state="unknown"}` for a component whose health the BMC does

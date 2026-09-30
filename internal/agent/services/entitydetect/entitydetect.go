@@ -16,6 +16,7 @@ package entitydetect
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"reflect"
 	"sync"
@@ -236,6 +237,44 @@ func (s *Service) startLocked(ctx context.Context) error {
 				Str("from_type", r.FromType).
 				Str("to_type", r.ToType).
 				Msg("entity relation has no source entity this cycle; dropped before emission")
+		}
+	})
+	// A conflict repeats every cycle until its cause is fixed: warn once per
+	// entity and attribute, and let the counter carry the rate.
+	var conflictMu sync.Mutex
+	conflictWarned := map[string]bool{}
+	det.OnAttributeConflict(func(c entity.AttributeConflict) {
+		key := fmt.Sprintf("%s|%v|%s", c.Type, c.ID, c.Attribute)
+		conflictMu.Lock()
+		first := !conflictWarned[key]
+		conflictWarned[key] = true
+		conflictMu.Unlock()
+		if !first {
+			return
+		}
+		s.logger.Warn().
+			Str("entity_type", c.Type).
+			Interface("entity_id", c.ID).
+			Str("attribute", c.Attribute).
+			Interface("kept", c.Kept).
+			Interface("dropped", c.Dropped).
+			Msg("two sources report different values for the same entity attribute; kept one by scope order")
+	})
+	// Which entities several sources report is a fact of the deployment,
+	// not a fault: say it once per entity, at debug.
+	mergedSeen := map[string]bool{}
+	det.OnDuplicateMerged(func(e entity.Entity, copies int) {
+		key := fmt.Sprintf("%s|%v", e.Type, e.ID)
+		conflictMu.Lock()
+		first := !mergedSeen[key]
+		mergedSeen[key] = true
+		conflictMu.Unlock()
+		if first {
+			s.logger.Debug().
+				Str("entity_type", e.Type).
+				Interface("entity_id", e.ID).
+				Int("copies", copies).
+				Msg("entity reported by several sources; copies merged")
 		}
 	})
 	det.OnOrphanEntities(func(orphans []entity.Entity) {

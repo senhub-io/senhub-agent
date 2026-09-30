@@ -4,8 +4,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
 // eventChannelState is the agent's process-lifetime entity-event fan-out:
@@ -13,9 +11,10 @@ import (
 // subscribe. One package-level value; a publish waits, within a bound, for
 // room in a subscriber's buffer (see PublishEvent).
 type eventChannelState struct {
-	mu      sync.RWMutex
-	subs    []*subscriber
-	dropped atomic.Uint64
+	mu        sync.RWMutex
+	subs      []*subscriber
+	delivered atomic.Uint64
+	dropped   atomic.Uint64
 	// joined are signalled, without blocking, each time a subscriber
 	// arrives, so a running detector can send it the current state.
 	joined []chan struct{}
@@ -119,7 +118,8 @@ func UnsubscribeEvents(ch <-chan Event) {
 // same leading entities every time: on a 40-device SNMP fleet the first
 // devices went unannounced for five to ten cycles in a row and expired in
 // the consumer, cascading their interfaces (#993). The drop was counted but
-// the count was exported nowhere.
+// the count was exported nowhere; EventStats now feeds the SDK processor
+// metrics (otel.sdk.processor.log.*).
 func PublishEvent(ev Event) {
 	eventCh.mu.RLock()
 	subs := eventCh.subs
@@ -128,6 +128,7 @@ func PublishEvent(ev Event) {
 		select {
 		case sub.ch <- ev:
 			sub.stalled.Store(false)
+			eventCh.delivered.Add(1)
 			continue
 		default:
 		}
@@ -136,14 +137,29 @@ func PublishEvent(ev Event) {
 			select {
 			case sub.ch <- ev:
 				t.Stop()
+				eventCh.delivered.Add(1)
 				continue
 			case <-t.C:
 				sub.stalled.Store(true)
 			}
 		}
 		eventCh.dropped.Add(1)
-		agentstate.IncrementOTLPDropped("entity_queue_full")
 	}
+}
+
+// EventStats reports the hand-off to the subscribers as an OpenTelemetry
+// SDK log processor would: events handed over, events dropped because a
+// buffer stayed full, and the buffers' current fill and capacity summed
+// over the subscribers.
+func EventStats() (delivered, dropped uint64, size, capacity int) {
+	eventCh.mu.RLock()
+	subs := eventCh.subs
+	eventCh.mu.RUnlock()
+	for _, sub := range subs {
+		size += len(sub.ch)
+		capacity += cap(sub.ch)
+	}
+	return eventCh.delivered.Load(), eventCh.dropped.Load(), size, capacity
 }
 
 // GetDroppedEntityEventsTotal returns the lifetime count of entity events
@@ -159,5 +175,6 @@ func resetEventChannelForTest() {
 	eventCh.subs = nil
 	eventCh.joined = nil
 	eventCh.dropped.Store(0)
+	eventCh.delivered.Store(0)
 	eventCh.mu.Unlock()
 }
