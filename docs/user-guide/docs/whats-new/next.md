@@ -98,8 +98,9 @@ Changes since 0.6.0, collected as they are merged.
 - **A restart no longer removes SNMP links from the topology for one
   cycle.** After a restart, a device polled before its LLDP neighbours
   could not resolve them yet and left those links out of what it
-  published until its next topology sweep (five minutes on the lab
-  fleet); a topology backend recorded the links as removed by the agent
+  published until its next topology sweep, one polling cycle (five or
+  ten minutes on the lab fleets, an hour on a fleet polled hourly); a
+  topology backend recorded the links as removed by the agent
   and got them back one sweep later. Neighbours are now resolved when
   the topology is published, and after the start a device waits for the
   neighbours the agent has not polled yet instead of publishing without
@@ -108,6 +109,18 @@ Changes since 0.6.0, collected as they are merged.
   cost: during that wait, a lost report can let the device expire in the
   backend where it used to survive two; the agent chooses an honest
   expiry over a false removal.
+
+- **SNMP devices no longer expire in the topology between two reports.** The
+  agent publishes a whole topology cycle at once; on a fleet of about
+  forty devices that is more events than the OTLP exporter's entity
+  buffer holds, and the overflow was dropped without a trace. The same
+  leading devices were dropped cycle after cycle, stayed unannounced past
+  their liveness interval, and expired in the topology backend together
+  with their interfaces, to come back a few minutes later; on the lab
+  fleet some did so twenty times in twelve hours. A full buffer now makes
+  the publish wait for room, and an event still dropped, when the
+  exporter stops draining, is counted as
+  `senhub.agent.otlp.dropped{reason="entity_queue_full"}`.
 
 - **Hardware health follows the OpenTelemetry states.** Redfish emitted
   `hw.status{hw.state="unknown"}` for a component whose health the BMC does
