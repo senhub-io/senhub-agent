@@ -16,6 +16,15 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **`update` restarts the Linux service.** It installed the new binary
+  and printed "Restart the agent to use the new version", and the service
+  kept running the old one, deleted from disk, while `senhub-agent
+  version` read the new file: thirteen hosts of a fleet stayed on the
+  previous release for a night with every check green. On Linux the
+  running service is now restarted, and the command checks that the new
+  process runs the installed binary and prints its version; it fails
+  otherwise. `--no-restart` keeps the previous behaviour for scripts.
+
 - **The OTLP export error and drop counters are present at 0.** Since
   0.6.0, `senhub.agent.otlp.export.errors` (by `signal`) and
   `senhub.agent.otlp.dropped` (by `reason`) appeared only after their

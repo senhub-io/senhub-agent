@@ -78,6 +78,7 @@ type UpdateSubcommandArgs struct {
 	RegistryUrl string `arg:"--registry-url" help:"URL of the registry to use"`
 	Verbose     bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 	DryRun      bool   `arg:"-d,--dry-run" help:"Do not perform the update, only print the new version"`
+	NoRestart   bool   `arg:"--no-restart" help:"Install the new binary but leave the running service as it is"`
 }
 
 type StartSubcommandArgs struct {
@@ -113,15 +114,17 @@ type StartSubcommandArgs struct {
 //   - UpdateRegistryUrl is the only registry-side URL still set via
 //     CLI; it gates `agent update` to a custom registry for testing.
 type ParsedArgs struct {
-	AuthenticationKey     string
-	UpdateRegistryUrl     string
-	Verbose               bool
-	DebugModules          []string
-	Env                   string
-	Version               string
-	WantedVersion         string
-	CommitHash            string
-	DryRun                bool
+	AuthenticationKey string
+	UpdateRegistryUrl string
+	Verbose           bool
+	DebugModules      []string
+	Env               string
+	Version           string
+	WantedVersion     string
+	CommitHash        string
+	DryRun            bool
+	// NoRestart leaves a service running the old binary after update.
+	NoRestart             bool
 	DebugLogShipperUrl    string
 	DebugLogShipperTags   map[string]string
 	DebugLogShipperBuffer int
