@@ -209,7 +209,7 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
-| `senhub.veeam.jobs.total` | `veeam_jobs_total` | Jobs Total ({job_type}) | # | Backup jobs of this type. Covers the virtual jobs the backup server runs and the agent-managed backups of physical machines, which carry their own job_type (WindowsAgentBackup, LinuxAgentBackup) — so the estate reads whole or split |
+| `senhub.veeam.job.count` | `veeam_jobs_total` | Jobs Total ({job_type}) | # | Backup jobs of this type. Covers the virtual jobs the backup server runs and the agent-managed backups of physical machines, which carry their own job_type (WindowsAgentBackup, LinuxAgentBackup) — so the estate reads whole or split |
 | `senhub.veeam.jobs.by_last_result` | `veeam_jobs_success` | Jobs Success ({job_type}) | # | Jobs of this type whose last run succeeded |
 | `senhub.veeam.jobs.by_last_result` | `veeam_jobs_warning` | Jobs Warning ({job_type}) | # | Number of jobs with warnings on last run |
 | `senhub.veeam.jobs.by_last_result` | `veeam_jobs_failed` | Jobs Failed ({job_type}) | # | Jobs of this type whose last run failed. The number to alert on, together with the age of the last success |

@@ -49,7 +49,7 @@ One series per metric per target (`target` tag).
 |---|---|---|
 | `senhub.httpcheck.up` | bool | Expected status (and content, if configured) |
 | `senhub.httpcheck.status.code` | code | Last response status |
-| `httpcheck.duration` | ms | Total request time |
+| `httpcheck.duration` | s | Total request time |
 | `senhub.httpcheck.duration.dns` / `.connect` / `.tls` / `.ttfb` | ms | Phase breakdown |
 | `senhub.httpcheck.response.size` | B | Body size (1 MiB read cap) |
 | `senhub.httpcheck.tls.expiry` | days | Days until the certificate expires — negative once expired. Alert under 30 |

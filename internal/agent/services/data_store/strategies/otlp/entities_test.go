@@ -261,19 +261,25 @@ func TestBuildEntityRecord_ReturnsScope(t *testing.T) {
 	}
 }
 
-// TestBuildEntityRecord_RejectsNonScalar asserts a non-scalar leaf is an
-// error, never silently dropped (our side of the no-silent-loss contract).
-func TestBuildEntityRecord_RejectsNonScalar(t *testing.T) {
-	ev := entity.Event{
-		Kind: entity.EntityState,
-		Time: time.Unix(1780272000, 0).UTC(),
-		Entity: &entity.Entity{
-			Type:       "host",
-			ID:         map[string]any{"host.id": "h-001"},
-			Attributes: map[string]any{"addresses": []string{"10.0.0.1", "10.0.0.2"}},
-		},
+// Descriptive attributes take a list of strings (the topology backend
+// stores any value there since its v0.9.0, and a list cannot be misread as
+// one value); any other non-scalar is an error, never silently dropped,
+// and an identifying attribute stays scalar-only.
+func TestBuildEntityRecord_NonScalarValues(t *testing.T) {
+	ev := func(id, attrs map[string]any) entity.Event {
+		return entity.Event{
+			Kind:   entity.EntityState,
+			Time:   time.Unix(1780272000, 0).UTC(),
+			Entity: &entity.Entity{Type: "network.interface", ID: id, Attributes: attrs},
+		}
 	}
-	if _, _, err := buildEntityRecord(ev); err == nil {
-		t.Fatal("expected error for non-scalar attribute value, got nil")
+	if _, _, err := buildEntityRecord(ev(map[string]any{"host.id": "h-001"}, map[string]any{"network.interface.addresses": []string{"10.0.0.1/24", "10.0.0.2/24"}})); err != nil {
+		t.Errorf("a list of strings in a descriptive attribute must encode, got %v", err)
+	}
+	if _, _, err := buildEntityRecord(ev(map[string]any{"host.id": "h-001"}, map[string]any{"x": map[string]any{"a": 1}})); err == nil {
+		t.Error("a map in a descriptive attribute must be an error")
+	}
+	if _, _, err := buildEntityRecord(ev(map[string]any{"host.id": []string{"a", "b"}}, nil)); err == nil {
+		t.Error("a list in an identifying attribute must be an error")
 	}
 }

@@ -1,6 +1,7 @@
 package hostnet
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -81,7 +82,7 @@ func TestBuildObservation_HostRoute(t *testing.T) {
 	if !ok || route.ID[idKeyHost] != "h1" || route.ID[idKeyRouteDestination] != "0.0.0.0/0" {
 		t.Errorf("route entity wrong: %+v", route)
 	}
-	if route.Attributes[attrNextHopIP] != "192.168.1.1" || route.Attributes[attrMetric] != int64(100) {
+	if route.ID[idKeyNextHopIP] != "192.168.1.1" || route.Attributes[attrMetric] != int64(100) {
 		t.Errorf("route attrs wrong: %+v", route.Attributes)
 	}
 	addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress)
@@ -141,8 +142,8 @@ func TestBuildObservation_EmptyGuards(t *testing.T) {
 
 func TestObserve_InjectedReader(t *testing.T) {
 	s := &Source{
-		hostID:    func() string { return "h1" },
-		readRoute: func() ([]byte, error) { return []byte(routeSample), nil },
+		hostID:     func() string { return "h1" },
+		readRoutes: func() ([]hostRoute, error) { return parseProcRoute([]byte(routeSample)), nil },
 	}
 	obs, ok := s.Observe()
 	if !ok {
@@ -154,11 +155,102 @@ func TestObserve_InjectedReader(t *testing.T) {
 	}
 	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
 	if !ok || route.ID[idKeyRouteDestination] != "0.0.0.0/0" ||
-		route.Attributes[attrNextHopIP] != "192.168.1.1" {
+		route.ID[idKeyNextHopIP] != "192.168.1.1" {
 		t.Errorf("unexpected route entity: %+v", route)
 	}
 	if addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress); !ok ||
 		addr.ID[idKeyNetworkAddress] != "192.168.1.1" {
 		t.Errorf("unexpected address entity: %+v", addr)
+	}
+}
+
+// A gateway reached through a container bridge (a Docker user bridge on
+// br-<id>, 172.18.0.1 on every such host) is not a shared identity.
+func TestBuildObservation_ContainerBridgeGatewayIsNotShared(t *testing.T) {
+	obs := buildObservation("h1", []hostRoute{
+		{Destination: "10.1.0.0/16", NextHop: "172.18.0.1", Iface: "br-02338442b035"},
+		{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Iface: "eth0"},
+	})
+	vias := 0
+	for _, r := range obs.Relations {
+		if r.Type == relNextHopVia {
+			vias++
+			if r.ToID[idKeyNetworkAddress] != "10.10.0.1" {
+				t.Errorf("next_hop_via to %v", r.ToID)
+			}
+		}
+	}
+	if vias != 1 {
+		t.Errorf("want one next_hop_via (the real gateway), got %d", vias)
+	}
+}
+
+// Windows' routing table, as GetIpForwardTable returns it.
+func TestParseForwardTable(t *testing.T) {
+	row := func(dst, mask, nh [4]byte, ifIndex, typ, metric uint32) []byte {
+		b := make([]byte, forwardRowSize)
+		copy(b[offDest:], dst[:])
+		copy(b[offMask:], mask[:])
+		copy(b[offNextHop:], nh[:])
+		binary.LittleEndian.PutUint32(b[offIfIndex:], ifIndex)
+		binary.LittleEndian.PutUint32(b[offType:], typ)
+		binary.LittleEndian.PutUint32(b[offMetric1:], metric)
+		return b
+	}
+	buf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(buf, 3)
+	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 1}, 7, routeIndirect, 25)...)
+	// direct route: its "next hop" is the host's own address
+	buf = append(buf, row([4]byte{10, 10, 0, 0}, [4]byte{255, 255, 255, 0}, [4]byte{10, 10, 0, 60}, 7, 3, 281)...)
+	// exact repeat of the first row
+	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 1}, 7, routeIndirect, 25)...)
+
+	got := parseForwardTable(buf, func(i int) string { return "Ethernet" })
+	if len(got) != 1 {
+		t.Fatalf("want the default route only, got %+v", got)
+	}
+	if got[0].Destination != "0.0.0.0/0" || got[0].NextHop != "10.10.0.1" || got[0].Metric != 25 || got[0].Iface != "Ethernet" {
+		t.Errorf("route = %+v", got[0])
+	}
+	if parseForwardTable([]byte{1, 0}, nil) != nil {
+		t.Error("a truncated buffer yields no route")
+	}
+}
+
+// Two default routes (two NICs, a VPN) are two routes: the next hop is
+// part of the identity (IP-FORWARD-MIB), so the inventory keeps both
+// instead of a sample of one.
+func TestParseForwardTable_TwoGatewaysAreTwoRoutes(t *testing.T) {
+	mk := func(nh byte, ifIndex, metric uint32) []byte {
+		b := make([]byte, forwardRowSize)
+		copy(b[offNextHop:], []byte{10, 0, 0, nh})
+		binary.LittleEndian.PutUint32(b[offIfIndex:], ifIndex)
+		binary.LittleEndian.PutUint32(b[offType:], routeIndirect)
+		binary.LittleEndian.PutUint32(b[offMetric1:], metric)
+		return b
+	}
+	buf := []byte{3, 0, 0, 0}
+	buf = append(append(append(buf, mk(2, 9, 50)...), mk(1, 7, 25)...), mk(1, 7, 25)...)
+	got := parseForwardTable(buf, nil)
+	if len(got) != 2 {
+		t.Fatalf("want two default routes (the exact repeat dropped), got %+v", got)
+	}
+	obs := buildObservation("h1", got)
+	ids := map[string]bool{}
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkRoute {
+			ids[e.ID[idKeyNextHopIP].(string)] = true
+		}
+	}
+	if !ids["10.0.0.1"] || !ids["10.0.0.2"] {
+		t.Errorf("route identities = %v", ids)
+	}
+}
+
+func TestBuildObservation_RouteCarriesItsEgressInterface(t *testing.T) {
+	obs := buildObservation("h1", []hostRoute{{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Iface: "Ethernet"}})
+	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
+	if !ok || route.Attributes[attrEgressInterface] != "Ethernet" {
+		t.Errorf("route attributes = %+v", route.Attributes)
 	}
 }

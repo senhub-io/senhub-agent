@@ -46,7 +46,7 @@ I/O statistics.
 | `ceph.health.status` | 1 | Cluster health: 2 = HEALTH_OK, 1 = HEALTH_WARN, 0 = HEALTH_ERR |
 | `ceph.cluster.capacity` | By | Raw cluster storage capacity |
 | `ceph.cluster.used` | By | Raw storage space in use |
-| `ceph.osd.total` | {osd} | Total number of OSDs in the cluster |
+| `ceph.osd.count` | {osd} | Total number of OSDs in the cluster |
 | `ceph.osd.up` | {osd} | OSDs currently in the `up` state |
 | `ceph.osd.in` | {osd} | OSDs currently in the `in` state (participating in data placement) |
 | `ceph.monitor.quorum_count` | {monitor} | Number of monitors participating in the quorum |
@@ -76,7 +76,7 @@ series' tags.
 | `ceph.health.status` | `ceph.health.status` | Ceph {instance} Health Status | # | Cluster health: 2=HEALTH_OK, 1=HEALTH_WARN, 0=HEALTH_ERR |
 | `ceph.cluster.capacity` | `ceph.cluster.capacity` | Ceph {instance} Raw Capacity | B | Total raw cluster capacity in bytes |
 | `ceph.cluster.used` | `ceph.cluster.used` | Ceph {instance} Used Capacity | B | Total bytes currently used across the cluster |
-| `ceph.osd.total` | `ceph.osd.total` | Ceph {instance} OSD Total | # | Total number of OSDs configured in the cluster |
+| `ceph.osd.count` | `ceph.osd.total` | Ceph {instance} OSD Total | # | Total number of OSDs configured in the cluster |
 | `ceph.osd.in` | `ceph.osd.in` | Ceph {instance} OSD In | # | Number of OSDs that are in (participating in the cluster) |
 | `ceph.osd.up` | `ceph.osd.up` | Ceph {instance} OSD Up | # | Number of OSDs that are up (running) |
 | `ceph.monitor.count` | `ceph.monitor.count` | Ceph {instance} Monitor Count | # | Total number of monitor daemons |

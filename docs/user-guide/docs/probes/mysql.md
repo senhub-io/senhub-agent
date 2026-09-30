@@ -288,7 +288,7 @@ series' tags.
 | `senhub.db.mysql.row_lock.time.avg` | `senhub.db.mysql.row_lock.time.avg` | Row Lock Time Avg | ms | Average row lock wait time. Source Innodb_row_lock_time_avg in ms — converted to seconds for OTel (mapper ÷ 1000). |
 | `senhub.db.mysql.io` | `senhub.db.mysql.io.read` | IO Read | B | Bytes read by InnoDB (Innodb_data_read) |
 | `senhub.db.mysql.io` | `senhub.db.mysql.io.write` | IO Write | B | Bytes written by InnoDB (Innodb_data_written) |
-| `senhub.db.database.size.total` | `senhub.db.database.size` | Database Size | B | Total size of all user databases (information_schema.tables sum) |
+| `senhub.db.mysql.data.size` | `senhub.db.database.size` | Database Size | B | Total size of all user databases (information_schema.tables sum) |
 | `senhub.db.mysql.table.count` | `senhub.db.mysql.table.count` | Tables Count | # | Number of user tables across all databases (excludes information_schema, performance_schema, mysql, sys) |
 | `senhub.db.replication.role` | `senhub.db.replication.role` | Replication Role | # | Detected replication role of this instance |
 | `senhub.db.replication.health` | `senhub.db.replication.health` | Replication Health | # | Composite gauge: 1 if replication looks healthy (or instance is standalone), 0 if degraded |

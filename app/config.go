@@ -360,7 +360,7 @@ func checkConfig(configPath string) {
 		}
 	}
 	if applied > 0 {
-		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent unit's environment\n", applied)
+		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent service's environment\n", applied)
 	}
 
 	// Read raw bytes once so YAML-syntax errors can still print a
@@ -420,8 +420,13 @@ func checkConfig(configPath string) {
 		warnings++
 	}
 	if len(unsetEnv) > 0 {
-		fmt.Println("         The service reads its variables from its unit; run the check with the same")
-		fmt.Println("         environment (systemctl show senhub-agent -p Environment) or export them first.")
+		if runtime.GOOS == "windows" {
+			fmt.Println("         The service reads its variables from its registry key (HKLM\\SYSTEM\\CurrentControlSet\\")
+			fmt.Println("         Services\\senhub-agent, value Environment); set them there or in this shell.")
+		} else {
+			fmt.Println("         The service reads its variables from its unit; run the check with the same")
+			fmt.Println("         environment (systemctl show senhub-agent -p Environment) or export them first.")
+		}
 	}
 
 	// Config version. Validate against the agent's supported range
@@ -892,8 +897,11 @@ func reportSchemaProblems(name, probeType string, params map[string]interface{})
 			if _, isLegacy := legacy[problem.Key]; isLegacy {
 				continue
 			}
-			fmt.Printf("         [ERROR] Probe %q: param %q is not read by this probe\n", name, problem.Key)
-			errors++
+			// The agent starts the probe and ignores the key, so the
+			// check says so rather than failing a configuration that runs
+			// (#973): a script that stops on ERROR stopped on a working file.
+			fmt.Printf("         [WARN] Probe %q: param %q is not read by this probe and has no effect\n", name, problem.Key)
+			warnings++
 		}
 	}
 	return errors, warnings

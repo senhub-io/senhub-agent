@@ -17,7 +17,8 @@ import (
 //   - Unit conversions (% → ratio, MB → By, etc.) and explicit ValueScale
 //   - Expand: produces N records when otel.expand is declared, plus a
 //     synthetic "unknown" record when the raw value matches no declared
-//     state (only if the YAML didn't enumerate "unknown" itself)
+//     state (unless the YAML enumerates "unknown" itself or declares the
+//     attribute closed)
 //   - Systematic labels probe_name, probe_type, and best-effort
 //     passthrough of remaining tags when opts.IncludeProbeTags is true
 //
@@ -158,7 +159,7 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 	// Note: the expand attribute is set unconditionally to "unknown",
 	// overwriting any value that may have been in baseAttrs under the same
 	// key — same convention as the matched-state branch above.
-	if !matched {
+	if !matched && !mdef.Otel.Expand.Closed {
 		if _, alreadyDeclared := mdef.Otel.Expand.Mapping["unknown"]; !alreadyDeclared {
 			attrs := make(map[string]string, len(baseAttrs)+1)
 			for k, v := range baseAttrs {

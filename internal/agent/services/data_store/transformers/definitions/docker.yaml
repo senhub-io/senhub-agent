@@ -62,7 +62,7 @@ metrics:
     description: "Cumulative CPU time consumed by the container"
     otel:
       name: container.cpu.usage.total
-      unit: "ns"
+      unit: "s"
       type: counter
     tag_to_attribute:
       container_id: container.id
@@ -76,7 +76,7 @@ metrics:
     description: "Cumulative CPU time consumed in kernel mode by the container"
     otel:
       name: container.cpu.usage.kernelmode
-      unit: "ns"
+      unit: "s"
       type: counter
     tag_to_attribute:
       container_id: container.id
@@ -90,7 +90,7 @@ metrics:
     description: "Cumulative CPU time consumed in user mode by the container"
     otel:
       name: container.cpu.usage.usermode
-      unit: "ns"
+      unit: "s"
       type: counter
     tag_to_attribute:
       container_id: container.id
@@ -104,7 +104,7 @@ metrics:
     description: "System CPU time since the container started (used to compute CPU %)"
     otel:
       name: senhub.docker.cpu.system
-      unit: "ns"
+      unit: "s"
       type: counter
     tag_to_attribute:
       container_id: container.id
@@ -146,7 +146,7 @@ metrics:
     description: "Cumulative CPU time consumed by the container on a specific core (percpu_usage)"
     otel:
       name: container.cpu.usage.percpu
-      unit: "ns"
+      unit: "s"
       type: counter
     tag_to_attribute:
       container_id: container.id
@@ -189,7 +189,7 @@ metrics:
     description: "Cumulative nanoseconds the container was throttled (from throttling_data)"
     otel:
       name: container.cpu.throttling_data.throttled_time
-      unit: "ns"
+      unit: "s"
       type: counter
     tag_to_attribute:
       container_id: container.id
@@ -272,7 +272,7 @@ metrics:
     category: "memory"
     description: "Working set memory (usage minus page cache) — what docker stats reports as MEM USAGE"
     otel:
-      name: senhub.docker.memory.working_set
+      name: container.memory.working_set
       unit: "By"
       type: gauge
     tag_to_attribute:
@@ -632,7 +632,7 @@ metrics:
     description: "Cumulative block I/O service time in nanoseconds (io_service_time_recursive Total; cgroupsv1 only)"
     otel:
       name: senhub.docker.blkio.service_time.total
-      unit: "ns"
+      unit: "s"
       type: counter
     tag_to_attribute:
       container_id: container.id

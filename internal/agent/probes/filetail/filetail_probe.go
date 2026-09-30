@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -264,6 +265,11 @@ func (p *FileTailProbe) startTail(file string) {
 		MustExist:     false,
 		CompleteLines: true,
 		Logger:        tail.DiscardingLogger,
+		// On Windows a change notification for a file is not delivered
+		// while its writer keeps it open: a log such as PRTG's, held open
+		// for the life of the service, was never read, without an error
+		// (#945). The size is polled there instead.
+		Poll: runtime.GOOS == "windows",
 	}
 	if offset < 0 {
 		cfg.Location = &tail.SeekInfo{Offset: 0, Whence: 2} // io.SeekEnd

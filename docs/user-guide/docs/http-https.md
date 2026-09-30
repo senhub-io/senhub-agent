@@ -16,7 +16,7 @@ The installer writes the HTTP output to `strategies.d/00-http.yaml`:
 http:
   port: 8080
   bind_address: "127.0.0.1"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
   admin_key: "..."
 ```
 
@@ -30,7 +30,7 @@ An installation that still uses the legacy monolithic `agent-config.yaml` holds 
 |-----------|---------|-------------|
 | `port` | `8080` | TCP port for the HTTP API |
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
-| `endpoints` | none | Enabled endpoint types (`prtg`, `nagios`, `prometheus`, `web`). There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios"]` |
+| `endpoints` | none | Enabled endpoint types (`prtg`, `nagios`, `prometheus`, `web`). There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `admin_key` | generated | Administration key. It opens the web console, the configuration API, the log levels, the cache clear and the profiler; these routes are not served at all when it is absent. The installer writes one, and an older installation without it gets one generated on its first start. It is not the agent key: the agent key only reads metrics |
 
 To change the port or other parameters, edit `strategies.d/00-http.yaml`. The change is applied automatically without restarting the service.
@@ -90,7 +90,7 @@ You can also configure HTTPS directly in `strategies.d/00-http.yaml`:
 http:
   port: 8443
   bind_address: "0.0.0.0"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
   tls:
     enabled: true
     min_tls_version: "1.2"
@@ -160,7 +160,7 @@ The `-k` flag is required for self-signed certificates. For CA-signed certificat
 
 Expected response:
 ```json
-{"status":"ok","timestamp":"2026-09-29T10:15:00+02:00","memory_mb":18.4,"version":"HTTP Strategy v1.0"}
+{"status":"ok","timestamp":"2026-09-29T10:15:00+02:00","memory_mb":104.8,"version":"0.6.0"}
 ```
 
 The **HTTPS** card of the console's [Settings](web-interface.md#settings) page shows the same state without a shell: whether TLS is on, the certificate and key files, the certificate's subject and expiry read from the file, and the minimum TLS version.
@@ -248,12 +248,12 @@ curl http://localhost:8080/health
 {
   "status": "ok",
   "timestamp": "2026-09-29T10:15:00+02:00",
-  "memory_mb": 18.4,
-  "version": "HTTP Strategy v1.0"
+  "memory_mb": 104.8,
+  "version": "0.6.0"
 }
 ```
 
-`/health` takes no key. `memory_mb` is the memory the Go runtime holds; `version` names the HTTP output's handler, not the agent release, which `/api/{key}/info/system` returns.
+`/health` takes no key. `memory_mb` is the agent's resident memory, as the operating system counts it; `version` is the agent release.
 
 ### Probes Information
 
@@ -298,16 +298,20 @@ curl http://localhost:8080/api/{key}/info/system
   },
   "cache": {
     "total_metrics": 156,
-    "ttl": "5m0s",
-    "memory_usage": "2.45 MB"
+    "probe_count": 7,
+    "ttl": "5m0s"
   },
   "resources": {
-    "memory_usage_mb": 45.67,
-    "cpu_percent": 2.5,
+    "memory_usage_mb": 104.8,
+    "heap_mb": 11.2,
+    "cpu_percent": 0.4,
+    "measured": true,
     "goroutines": 42
   }
 }
 ```
+
+`resources.memory_usage_mb` is the resident set the operating system charges to the agent (the working set on Windows) and `heap_mb` the part the Go heap holds; `cpu_percent` is the agent's CPU time over the last interval as a share of the whole machine. `measured` is false when the operating system could not be asked: memory is then the Go heap and CPU is not known.
 
 ### PRTG Metrics Response
 

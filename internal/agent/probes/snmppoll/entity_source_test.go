@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -164,17 +165,18 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
 	routes := []routeRow{
 		{Destination: "10.20.0.0/16", NextHop: "10.0.0.254", Type: routeTypeRemote, Metric: 10},
-		{Destination: "10.20.0.0/16", NextHop: "10.0.0.2", Type: routeTypeRemote}, // same dest (ECMP) → keep first
-		{Destination: "0.0.0.0/0", NextHop: "10.0.0.254", Type: routeTypeRemote},  // default route
-		{Destination: "10.30.0.0/16", NextHop: "0.0.0.0", Type: routeTypeRemote},  // unspecified next-hop → skip
-		{Destination: "10.40.0.0/16", NextHop: "10.0.0.1", Type: routeTypeRemote}, // == self mgmt → skip
-		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},               // not remote → skip
-		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},             // unparseable index → skip
+		{Destination: "10.20.0.0/16", NextHop: "10.0.0.2", Type: routeTypeRemote},   // same dest, other next hop (ECMP) → its own route
+		{Destination: "10.20.0.0/16", NextHop: "10.0.0.254", Type: routeTypeRemote}, // exact repeat → dropped
+		{Destination: "0.0.0.0/0", NextHop: "10.0.0.254", Type: routeTypeRemote},    // default route
+		{Destination: "10.30.0.0/16", NextHop: "0.0.0.0", Type: routeTypeRemote},    // unspecified next-hop → skip
+		{Destination: "10.40.0.0/16", NextHop: "10.0.0.1", Type: routeTypeRemote},   // == self mgmt → skip
+		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},                 // not remote → skip
+		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},               // unparseable index → skip
 	}
 	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, resolveDeviceID)
 
-	// self device + 2 distinct route destinations (10.20.0.0/16, 0.0.0.0/0)
-	if len(obs.Entities) != 3 {
+	// self device + 3 routes: 10.20.0.0/16 via .254 and via .2, 0.0.0.0/0
+	if len(obs.Entities) != 4 {
 		t.Fatalf("entities = %d (%+v)", len(obs.Entities), obs.Entities)
 	}
 	var routeEnts, hasRoute int
@@ -186,10 +188,13 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		if e.ID[idKeyNetworkDevice] != "serial:9:S1" {
 			t.Errorf("route owner = %v, want serial:9:S1", e.ID[idKeyNetworkDevice])
 		}
-		if e.ID[idKeyRouteDestination] == "10.20.0.0/16" {
-			if e.Attributes[attrNextHopIP] != "10.0.0.254" || e.Attributes[attrRouteMetric] != int64(10) {
-				t.Errorf("route 10.20.0.0/16 attrs = %+v", e.Attributes)
+		if e.ID[idKeyRouteDestination] == "10.20.0.0/16" && e.ID[attrNextHopIP] == "10.0.0.254" {
+			if e.Attributes[attrRouteMetric] != int64(10) {
+				t.Errorf("route 10.20.0.0/16 via 10.0.0.254 attrs = %+v", e.Attributes)
 			}
+		}
+		if _, isAttr := e.Attributes[attrNextHopIP]; isAttr {
+			t.Errorf("next_hop.ip is identity now, not an attribute: %+v", e)
 		}
 	}
 	for _, r := range obs.Relations {
@@ -205,8 +210,8 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 			t.Errorf("has_route should be a bare edge, got attrs %v", r.Attributes)
 		}
 	}
-	if routeEnts != 2 || hasRoute != 2 {
-		t.Fatalf("routeEnts=%d hasRoute=%d, want 2/2", routeEnts, hasRoute)
+	if routeEnts != 3 || hasRoute != 3 {
+		t.Fatalf("routeEnts=%d hasRoute=%d, want 3/3", routeEnts, hasRoute)
 	}
 }
 
@@ -591,4 +596,25 @@ func TestVendorName(t *testing.T) {
 	if vendorName("99999") != "" {
 		t.Error("unknown PEN → empty (PEN still lives in the serial: identity)")
 	}
+}
+
+// The mask from ipAdEntNetMask reaches the interface's attributes.
+func TestBuildObservation_InterfaceCarriesItsSubnet(t *testing.T) {
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
+	ifaces := []ifaceRow{{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp}}
+	addrs := []ipAddr{{IfIndex: "1", IP: "10.0.0.1", Prefix: -1}}
+	applyNetMasks(addrs, []snmpRawBind{{OID: ipAdEntNetMask + ".10.0.0.1", Value: []byte{255, 255, 255, 0}}})
+	if addrs[0].Prefix != 24 {
+		t.Fatalf("prefix = %d, want 24", addrs[0].Prefix)
+	}
+	obs := buildObservation(self, lldpTopology{}, nil, ifaces, addrs, resolveDeviceID)
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkInterface {
+			if !reflect.DeepEqual(e.Attributes[entity.AttrInterfaceSubnets], []string{"10.0.0.0/24"}) || !reflect.DeepEqual(e.Attributes[entity.AttrInterfaceAddresses], []string{"10.0.0.1/24"}) {
+				t.Errorf("interface attributes = %v", e.Attributes)
+			}
+			return
+		}
+	}
+	t.Fatal("no interface entity")
 }
