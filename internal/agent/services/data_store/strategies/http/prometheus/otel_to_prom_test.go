@@ -37,7 +37,7 @@ func TestOTelNameToPromName(t *testing.T) {
 		{"hw.physical_disk.size", "hw.physical_disk.size", "By", "updowncounter", "senhub_hw_physical_disk_size_bytes"},
 
 		// senhub.* extensions
-		{"senhub veeam job duration", "senhub.veeam.job.seconds_since_last_run", "s", "gauge", "senhub_veeam_job_seconds_since_last_run_seconds"},
+		{"senhub veeam job duration", "senhub.veeam.job.seconds_since_last_run", "s", "gauge", "senhub_veeam_job_seconds_since_last_run"},
 		{"senhub probe http", "senhub.probe.http.duration_seconds", "s", "gauge", "senhub_probe_http_duration_seconds"},
 		{"senhub probe icmp", "senhub.probe.icmp.packet_loss_ratio", "1", "gauge", "senhub_probe_icmp_packet_loss_ratio"},
 
@@ -165,5 +165,23 @@ func TestOTelNameToPromName_NoDoubleSenhubPrefix(t *testing.T) {
 				t.Errorf("non-idempotent: re-applied = %q, want %q", reapplied, tt.want)
 			}
 		})
+	}
+}
+
+// A unit word already present as a name segment is not repeated, as the
+// Collector's translator does; the halves of a rate are checked apart.
+func TestUnitWordsAlreadyInTheNameAreNotRepeated(t *testing.T) {
+	for _, tc := range []struct{ name, unit, typ, want string }{
+		{"senhub.veeam.job.seconds_since_last_run", "s", "gauge", "senhub_veeam_job_seconds_since_last_run"},
+		{"haproxy.bytes.input", "By", "counter", "senhub_haproxy_bytes_input_total"},
+		{"system.network.io", "By", "counter", "senhub_system_network_io_bytes_total"},
+		{"senhub.netscaler.ns.throughput", "By/s", "gauge", "senhub_netscaler_ns_throughput_bytes_per_second"},
+		{"network.bytes.rate", "By/s", "gauge", "senhub_network_bytes_rate_per_second"},
+		{"requests.per.second", "{request}/s", "gauge", "senhub_requests_per_second"},
+		{"system.cpu.time", "s", "counter", "senhub_system_cpu_time_seconds_total"},
+	} {
+		if got := OTelNameToPromName(tc.name, tc.unit, tc.typ); got != tc.want {
+			t.Errorf("%s (%s, %s) = %s, want %s", tc.name, tc.unit, tc.typ, got, tc.want)
+		}
 	}
 }
