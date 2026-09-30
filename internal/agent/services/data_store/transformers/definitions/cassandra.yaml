@@ -54,7 +54,7 @@ metrics:
     description: "Mean client request latency in milliseconds (Read or Write)"
     otel:
       name: cassandra.client.requests.latency
-      unit: "ms"
+      unit: "s"
       type: gauge
     tag_to_attribute:
       operation: cassandra.request.operation
@@ -67,7 +67,7 @@ metrics:
     description: "99th percentile client request latency in milliseconds (Read or Write)"
     otel:
       name: cassandra.client.requests.latency.p99
-      unit: "ms"
+      unit: "s"
       type: gauge
     tag_to_attribute:
       operation: cassandra.request.operation
@@ -161,7 +161,7 @@ metrics:
     description: "Total elapsed time in milliseconds spent in garbage collection by the named GC collector"
     otel:
       name: jvm.gc.collections.elapsed
-      unit: "ms"
+      unit: "s"
       type: counter
     tag_to_attribute:
       collector: jvm.gc.name

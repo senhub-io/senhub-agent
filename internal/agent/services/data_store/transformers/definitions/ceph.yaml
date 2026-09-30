@@ -71,7 +71,7 @@ metrics:
     category: "osd"
     description: "Total number of OSDs configured in the cluster"
     otel:
-      name: ceph.osd.total
+      name: ceph.osd.count
       unit: "{osd}"
       type: gauge
     tag_to_attribute:

@@ -163,7 +163,7 @@ metrics:
     category: "drives"
     otel:
       name: senhub.hardware.physical_disk.link_speed
-      unit: "bit/s"
+      unit: "By/s"
       type: gauge
       # Mapper converts Gbps → bit/s (×1e9)
     tag_to_attribute:

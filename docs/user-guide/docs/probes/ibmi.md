@@ -171,7 +171,7 @@ All metrics carry the standard host / probe attributes. Metric families that spl
 
 | Metric | Unit | Resource attribute | Description |
 |--------|------|--------------------|-------------|
-| `senhub.ibmi.jobs.total` | `{job}` | - | Total jobs on the partition |
+| `senhub.ibmi.job.count` | `{job}` | - | Total jobs on the partition |
 | `senhub.ibmi.jobs.active` | `{job}` | - | Active jobs |
 | `senhub.ibmi.jobs.by_status` | `{job}` | `ibmi.job.type`, `ibmi.job.status` | Job count split by type and status |
 | `senhub.ibmi.jobs.by_subsystem` | `{job}` | `ibmi.subsystem` | Job count per subsystem |
@@ -257,7 +257,7 @@ message remains visible there through the jobs-by-status count.
 | Metric | Unit | Resource attribute | Description |
 |--------|------|--------------------|-------------|
 | `senhub.ibmi.hardware.count` | `{resource}` | `ibmi.hardware.category`, `ibmi.hardware.status` | Hardware resource count by category and status |
-| `senhub.ibmi.hardware.total` | `{resource}` | - | Total hardware resources |
+| `senhub.ibmi.hardware.resource.count` | `{resource}` | - | Total hardware resources |
 | `senhub.ibmi.hardware.non_operational` | `{resource}` | - | Resources in any non-OPERATIONAL status |
 
 ## Security & compliance
@@ -389,7 +389,7 @@ series' tags.
 | `senhub.ibmi.asp.utilization` | `ibmi.asp.used_percent` | ASP Used ({asp_number}) | % | Percentage of this ASP in use |
 | `senhub.ibmi.asp.capacity` | `ibmi.asp.total_capacity_mb` | ASP Total Capacity ({asp_number}) | MB | Total capacity of this ASP |
 | `senhub.ibmi.asp.threshold` | `ibmi.asp.storage_threshold_percent` | ASP Storage Threshold ({asp_number}) | % | Threshold at which this ASP raises a storage warning, as configured — not a measurement |
-| `senhub.ibmi.jobs.total` | `ibmi.jobs.total_count` | Jobs Total | # | Jobs in the system, active and inactive (TOTAL_JOBS_IN_SYSTEM) |
+| `senhub.ibmi.job.count` | `ibmi.jobs.total_count` | Jobs Total | # | Jobs in the system, active and inactive (TOTAL_JOBS_IN_SYSTEM) |
 | `senhub.ibmi.jobs.active` | `ibmi.jobs.active_total` | Jobs Active Total | # | Active jobs returned by the scan; capped by the row limit, see ibmi.jobs.topn_cap_hit |
 | `senhub.ibmi.jobs.by_status` | `ibmi.jobs.count_by_status` | Jobs {job_type} / {status} | # | Active jobs of this type in this status; the enum values come from IBM, so cardinality is bounded |
 | `senhub.ibmi.jobs.by_subsystem` | `ibmi.jobs.count_by_subsystem` | Jobs in {subsystem} | # | Active jobs running in this subsystem |
@@ -461,7 +461,7 @@ series' tags.
 | `senhub.ibmi.http_server.threads.idle` | `ibmi.http_server.idle_threads` | HTTP Idle Threads — {server_name} | # | Threads idle on this HTTP server; no idle thread left means requests are queuing |
 | `senhub.ibmi.http_server.responses` | `ibmi.http_server.total_responses` | HTTP Responses — {server_name} | # | Responses this HTTP server has sent since it started |
 | `senhub.ibmi.hardware.count` | `ibmi.hardware_resource.count` | HW {category} ({status}) | # | Hardware resources of this category in this status |
-| `senhub.ibmi.hardware.total` | `ibmi.hardware_resource.total` | Hardware Resources Total | # | Hardware resources the partition reports |
+| `senhub.ibmi.hardware.resource.count` | `ibmi.hardware_resource.total` | Hardware Resources Total | # | Hardware resources the partition reports |
 | `senhub.ibmi.hardware.non_operational` | `ibmi.hardware_resource.non_operational_total` | Non-operational HW | # | Resources in any non-OPERATIONAL status |
 | `senhub.ibmi.user_profile.count` | `ibmi.user_profile.total` | User Profiles Total | # | User profiles on the partition |
 | `senhub.ibmi.user_profile.by_status` | `ibmi.user_profile.count_by_status` | Users — {status} | # | User profiles in this status |

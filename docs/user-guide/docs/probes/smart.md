@@ -53,7 +53,7 @@ sudoers rule for `smartctl`.
 |---|---|---|
 | `smart.disk.health` | 1 | 1 when S.M.A.R.T. overall assessment passed, 0 when failed, tagged with `smart.device` |
 | `smart.disk.reallocated_sectors` | {sector} | Reallocated sector count (SATA/SAS) — non-zero indicates drive degradation |
-| `smart.disk.power_on_hours` | h | Cumulative power-on hours |
+| `smart.disk.power_on.time` | s | Cumulative power-on time (the drive reports hours; exported as seconds over OTel) |
 | `smart.disk.temperature` | Cel | Drive temperature |
 | `smart.nvme.media_errors` | # | Cumulative media and data integrity errors |
 | `smart.nvme.available_spare` | % | NVMe available spare capacity percentage |
@@ -88,7 +88,7 @@ series' tags.
 | `smart.disk.reallocated_sectors` | `smart.disk.reallocated_sectors` | Reallocated Sectors {smart.device} | # | Count of sectors remapped to spare area (attribute 5); >0 signals media degradation |
 | `smart.disk.pending_sectors` | `smart.disk.pending_sectors` | Pending Sectors {smart.device} | # | Sectors waiting to be remapped (attribute 197); >0 indicates unstable sectors |
 | `smart.disk.uncorrectable_errors` | `smart.disk.uncorrectable_errors` | Uncorrectable Errors {smart.device} | # | Offline uncorrectable sectors (attribute 198); persistent read failures |
-| `smart.disk.power_on_hours` | `smart.disk.power_on_hours` | Power-On Hours {smart.device} | h | Total drive power-on time (attribute 9) |
+| `smart.disk.power_on.time` | `smart.disk.power_on_hours` | Power-On Hours {smart.device} | h | Total drive power-on time (attribute 9) |
 | `smart.disk.temperature` | `smart.disk.temperature` | Temperature {smart.device} | °C | Drive temperature in degrees Celsius (attribute 194 or NVMe temperature log) |
 | `smart.disk.read_error_rate` | `smart.disk.read_error_rate` | Read Error Rate {smart.device} | # | Raw read error rate (attribute 1); high values indicate head or platter issues |
 | `smart.nvme.available_spare` | `smart.nvme.available_spare` | NVMe Available Spare {smart.device} | % | Percentage of spare capacity remaining (0-100; <threshold triggers warning) |

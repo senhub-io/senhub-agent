@@ -48,7 +48,7 @@ usage.
 | `senhub.proxmox.up` | 1 | 1 when the Proxmox API answered successfully |
 | `proxmox.node.cpu.utilization` | 1 | Node CPU utilization ratio (0–1), tagged with `proxmox.node` |
 | `proxmox.node.memory.used` | By | Node memory in use |
-| `proxmox.node.memory.total` | By | Node total memory |
+| `proxmox.node.memory.limit` | By | Node total memory |
 | `proxmox.node.status` | 1 | Node online state: 1 = online, 0 = offline |
 | `proxmox.vm.cpu.utilization` | 1 | VM CPU utilization, tagged with `proxmox.vmid` / `proxmox.vm.name` |
 | `proxmox.vm.memory.used` | By | VM memory used |
@@ -58,7 +58,7 @@ usage.
 | `proxmox.vm.network.out` | By | VM network bytes transmitted |
 | `proxmox.vm.status` | 1 | VM state: 1 = running, 0 = stopped/other |
 | `proxmox.storage.used` | By | Storage pool space used, tagged with `proxmox.storage` |
-| `proxmox.storage.total` | By | Storage pool total capacity |
+| `proxmox.storage.limit` | By | Storage pool total capacity |
 
 ## Operational notes
 
@@ -82,17 +82,17 @@ series' tags.
 | `senhub.proxmox.up` | `senhub.proxmox.up` | Proxmox API Up | # | 1 when the Proxmox REST API answered successfully, 0 on any connection or authentication failure |
 | `proxmox.node.cpu.utilization` | `proxmox.node.cpu.utilization` | Proxmox Node {proxmox.node} CPU | % | CPU utilization of the Proxmox node in percent (0–100) |
 | `proxmox.node.memory.used` | `proxmox.node.memory.used` | Proxmox Node {proxmox.node} Memory Used | B | Bytes of memory currently used on the Proxmox node |
-| `proxmox.node.memory.total` | `proxmox.node.memory.total` | Proxmox Node {proxmox.node} Memory Total | B | Total installed memory on the Proxmox node |
+| `proxmox.node.memory.limit` | `proxmox.node.memory.total` | Proxmox Node {proxmox.node} Memory Total | B | Total installed memory on the Proxmox node |
 | `proxmox.node.status` | `proxmox.node.status` | Proxmox Node {proxmox.node} Status | # | 1 when the node is online, 0 otherwise |
 | `proxmox.vm.cpu.utilization` | `proxmox.vm.cpu.utilization` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) CPU | % | CPU utilization of the VM or LXC container in percent (0–100) |
 | `proxmox.vm.memory.used` | `proxmox.vm.memory.used` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Memory Used | B | Bytes of memory currently used by the VM or container |
-| `proxmox.vm.memory.total` | `proxmox.vm.memory.total` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Memory Total | B | Total memory allocated to the VM or container |
+| `proxmox.vm.memory.limit` | `proxmox.vm.memory.total` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Memory Total | B | Total memory allocated to the VM or container |
 | `proxmox.vm.disk.read` | `proxmox.vm.disk.read` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Disk Read | B | Cumulative bytes read from disk by the VM or container since last boot |
 | `proxmox.vm.disk.write` | `proxmox.vm.disk.write` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Disk Write | B | Cumulative bytes written to disk by the VM or container since last boot |
 | `proxmox.vm.network.in` | `proxmox.vm.network.in` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Network In | B | Cumulative bytes received on all virtual NICs of the VM or container since last boot |
 | `proxmox.vm.network.out` | `proxmox.vm.network.out` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Network Out | B | Cumulative bytes transmitted on all virtual NICs of the VM or container since last boot |
 | `proxmox.vm.status` | `proxmox.vm.status` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Status | # | 1 when the VM or container is running, 0 otherwise |
 | `proxmox.storage.used` | `proxmox.storage.used` | Proxmox Storage {proxmox.storage} Used | B | Bytes used on the Proxmox storage pool |
-| `proxmox.storage.total` | `proxmox.storage.total` | Proxmox Storage {proxmox.storage} Total | B | Total capacity of the Proxmox storage pool |
+| `proxmox.storage.limit` | `proxmox.storage.total` | Proxmox Storage {proxmox.storage} Total | B | Total capacity of the Proxmox storage pool |
 
 <!-- schema:metrics:end -->
