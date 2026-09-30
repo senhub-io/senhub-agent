@@ -140,6 +140,7 @@ Before writing anything, `config init` binds the HTTP port it is about to config
 |------|-------------|
 | `--config-path PATH` | Target configuration file (default: OS canonical path) |
 | `--http-port PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
+| `--http-bind ADDRESS` | Address the HTTP endpoints listen on (default `127.0.0.1`; the container image passes `0.0.0.0`) |
 | `--license JWT` | License token to seed (unlocks paid probe tiers) |
 | `--license-file PATH` | Read the licence token from this file; it takes precedence over `--license` unless the file is empty |
 | `--license-dir DIR` | Look for a single `*.jwt` file in this directory and use it as `--license-file`. No file installs on the Free tier; more than one is refused |

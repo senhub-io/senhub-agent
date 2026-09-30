@@ -35,6 +35,7 @@ type initConfigArgs struct {
 	zabbixMetadata string
 	tags           map[string]string
 	httpPort       int
+	httpBind       string
 	licenseFile    string
 	licenseDir     string
 }
@@ -80,6 +81,11 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.zabbixServer, err = value(&i)
 		case "--zabbix-host-metadata":
 			out.zabbixMetadata, err = value(&i)
+		case "--http-bind":
+			var raw string
+			if raw, err = value(&i); err == nil {
+				out.httpBind, err = parseHTTPBind(raw)
+			}
 		case "--http-port":
 			var raw string
 			if raw, err = value(&i); err == nil {
@@ -103,6 +109,21 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 		return out, err
 	}
 	return out, nil
+}
+
+// parseHTTPBind reads the --http-bind value: an IP address the HTTP
+// output listens on, 127.0.0.1 unless told otherwise. A container image
+// passes 0.0.0.0, since the loopback of a container is reachable by no
+// one: its isolation is the container network.
+func parseHTTPBind(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if net.ParseIP(raw) == nil {
+		return "", fmt.Errorf("--http-bind must be an IP address, got %q", raw)
+	}
+	return raw, nil
 }
 
 // parseHTTPPort reads the --http-port value. An empty value means the
@@ -175,6 +196,9 @@ func initConfig(argv []string) {
 		//   - a port asked for on this run that the kept config ignores,
 		//     which is exactly the reinstall-over-kept-config surprise;
 		//   - a kept port that is already taken.
+		if opts.httpBind != "" {
+			fmt.Printf("Warning: --http-bind %s was ignored; an existing configuration keeps its address. Change it with 'senhub-agent config set http.bind_address %s'.\n", opts.httpBind, opts.httpBind)
+		}
 		if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
 			if opts.httpPort != 0 && opts.httpPort != port {
 				fmt.Printf("Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d'.\n", opts.httpPort, port, opts.httpPort)
@@ -223,11 +247,15 @@ func initConfig(argv []string) {
 	if httpPort == 0 {
 		httpPort = defaultHTTPPort
 	}
-	if err := checkHTTPPortFree(defaultHTTPBindAddress, httpPort); err != nil {
+	bind := defaultHTTPBindAddress
+	if opts.httpBind != "" {
+		bind = opts.httpBind
+	}
+	if err := checkHTTPPortFree(bind, httpPort); err != nil {
 		fatalf("config init: %v", err)
 	}
 
-	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: opts.httpPort}
+	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: opts.httpPort, HttpBindAddress: opts.httpBind}
 	if err := generateConfiguration(args); err != nil {
 		fatalf("config init: %v", err)
 	}
@@ -254,7 +282,7 @@ func initConfig(argv []string) {
 	}
 
 	fmt.Printf("Configuration created at %s\n", configPath)
-	fmt.Printf("  http: %s\n", net.JoinHostPort(defaultHTTPBindAddress, strconv.Itoa(httpPort)))
+	fmt.Printf("  http: %s\n", net.JoinHostPort(bind, strconv.Itoa(httpPort)))
 	if license != "" {
 		fmt.Println("  license: set")
 	}
