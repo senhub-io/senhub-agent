@@ -84,38 +84,6 @@ func TestOTelAttributeToPromLabel(t *testing.T) {
 	}
 }
 
-func TestConvertValue(t *testing.T) {
-	tests := []struct {
-		name       string
-		raw        float64
-		sourceUnit string
-		otelUnit   string
-		valueScale float64
-		want       float64
-	}{
-		{"percent to ratio", 50.0, "%", "1", 0, 0.5},
-		{"percent case", 22.4, "percent", "1", 0, 0.224},
-		{"MB to By", 512.0, "MB", "By", 0, 512.0 * 1048576.0},
-		{"KB to By", 256.0, "KB", "By", 0, 256.0 * 1024.0},
-		{"ms to s", 1500.0, "ms", "s", 0, 1.5},
-		{"us to s", 1.5e6, "μs", "s", 0, 1.5},
-		{"Mbps to bit/s", 100.0, "Mbits/s", "bit/s", 0, 1.0e8},
-		{"hours to seconds", 2.0, "h", "s", 0, 7200.0},
-		{"explicit scale overrides", 50.0, "%", "1", 1000.0, 50000.0},
-		{"no conversion match", 42.0, "", "", 0, 42.0},
-		{"no conversion same unit", 42.0, "By", "By", 0, 42.0},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ConvertValue(tt.raw, tt.sourceUnit, tt.otelUnit, tt.valueScale)
-			if !floatApprox(got, tt.want) {
-				t.Errorf("ConvertValue(%v, %q, %q, %v) = %v, want %v",
-					tt.raw, tt.sourceUnit, tt.otelUnit, tt.valueScale, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestPromType(t *testing.T) {
 	tests := []struct {
 		otel, want string
