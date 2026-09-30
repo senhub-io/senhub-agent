@@ -272,7 +272,7 @@ metrics:
     category: "memory"
     description: "Working set memory (usage minus page cache) — what docker stats reports as MEM USAGE"
     otel:
-      name: senhub.docker.memory.working_set
+      name: container.memory.working_set
       unit: "By"
       type: gauge
     tag_to_attribute:
