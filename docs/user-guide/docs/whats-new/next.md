@@ -16,6 +16,14 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **`senhub-agent status` reaches an agent bound to one address or
+  serving HTTPS.** It always asked `http://localhost:<port>`, so an HTTP
+  output bound to one interface, or serving TLS, answered nothing and
+  `status` reported a running agent as unreachable. It now dials the
+  configured address (loopback when the output listens on every
+  address) with the configured scheme, and names the address when it
+  cannot reach it.
+
 - **`config check` on Windows resolves `${env:}` as the service does.** A
   reference such as `Bearer ${env:OTLP_BEARER_TOKEN}` set for the service
   was reported as an error from an administrator prompt, which does not

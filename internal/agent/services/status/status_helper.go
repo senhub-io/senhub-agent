@@ -1,10 +1,13 @@
 package status
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/kardianos/service"
@@ -15,6 +18,45 @@ import (
 // StatusHelper provides utilities for getting status information from CLI
 type StatusHelper struct {
 	logger *logger.ModuleLogger
+	// scheme and host of the running agent's HTTP output; http and
+	// localhost unless SetEndpoint says otherwise.
+	scheme string
+	host   string
+}
+
+// SetEndpoint points the helper at the address the HTTP output actually
+// listens on. An output bound to one interface does not answer on
+// localhost, and one serving TLS does not answer plain HTTP: both read as
+// "the agent did not answer" while it ran (#969).
+func (h *StatusHelper) SetEndpoint(scheme, host string) {
+	if scheme != "" {
+		h.scheme = scheme
+	}
+	if host != "" {
+		h.host = host
+	}
+}
+
+func (h *StatusHelper) baseURL(port int) string {
+	scheme, host := h.scheme, h.host
+	if scheme == "" {
+		scheme = "http"
+	}
+	if host == "" {
+		host = "localhost"
+	}
+	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+// client reads the agent's own endpoint. Its certificate is often
+// self-signed and issued for a name, not for the address dialled, so it
+// is not verified: the connection goes to this machine's own listener.
+func (h *StatusHelper) client() *http.Client {
+	c := &http.Client{Timeout: 5 * time.Second}
+	if h.scheme == "https" {
+		c.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} // #nosec G402 - the agent's own local listener
+	}
+	return c
 }
 
 // NewStatusHelper creates a new status helper
@@ -52,15 +94,13 @@ func (h *StatusHelper) GetDetailedStatusFromHTTP(agentKey string, port int) (*Sy
 	}
 
 	// Try to connect to local HTTP endpoint
-	url := fmt.Sprintf("http://localhost:%d/api/%s/info/system", port, agentKey)
+	url := fmt.Sprintf("%s/api/%s/info/system", h.baseURL(port), agentKey)
 
 	h.logger.Debug().
 		Str("url", url).
 		Msg("Attempting to get detailed status from HTTP endpoint")
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
+	client := h.client()
 
 	resp, err := client.Get(url)
 	if err != nil {
@@ -212,9 +252,9 @@ func (h *StatusHelper) GetOTLPInfoFromHTTP(agentKey string, port int) (*OTLPInfo
 		return nil, fmt.Errorf("agent key required for OTLP info")
 	}
 
-	url := fmt.Sprintf("http://localhost:%d/api/%s/info/otlp", port, agentKey)
+	url := fmt.Sprintf("%s/api/%s/info/otlp", h.baseURL(port), agentKey)
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := h.client()
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to HTTP endpoint: %w", err)
@@ -244,15 +284,13 @@ func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int)
 	}
 
 	// Try to get probe information from HTTP endpoint
-	url := fmt.Sprintf("http://localhost:%d/api/%s/info/probes", port, agentKey)
+	url := fmt.Sprintf("%s/api/%s/info/probes", h.baseURL(port), agentKey)
 
 	h.logger.Debug().
 		Str("url", url).
 		Msg("Attempting to get probe status from HTTP endpoint")
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
+	client := h.client()
 
 	resp, err := client.Get(url)
 	if err != nil {
