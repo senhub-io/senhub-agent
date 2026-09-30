@@ -39,14 +39,13 @@ func TestYAMLDefinitions_OtelTypeUnitNamingGuard(t *testing.T) {
 	//     renaming them would diverge from the standard we align to. Kept by
 	//     design, not a gap.
 	knownUnitSuffixGaps := map[string]bool{
-		"senhub.citrix.machines.multi_session_fault_total": true,
-		"senhub.probe.http.duration_seconds":               true,
-		"senhub.netscaler.compression.bytes":               true,
-		"senhub.probe.icmp.duration_seconds":               true,
-		"senhub.veeam.job.last_run.bytes":                  true,
-		"container.network.io.usage.tx_bytes":              true, // dockerstatsreceiver
-		"container.network.io.usage.rx_bytes":              true, // dockerstatsreceiver
-		"memcached.bytes":                                  true, // memcachedreceiver
+		"senhub.probe.http.duration_seconds":  true,
+		"senhub.netscaler.compression.bytes":  true,
+		"senhub.probe.icmp.duration_seconds":  true,
+		"senhub.veeam.job.last_run.bytes":     true,
+		"container.network.io.usage.tx_bytes": true, // dockerstatsreceiver
+		"container.network.io.usage.rx_bytes": true, // dockerstatsreceiver
+		"memcached.bytes":                     true, // memcachedreceiver
 	}
 
 	entries, err := definitionFiles.ReadDir("definitions")

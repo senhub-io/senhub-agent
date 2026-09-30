@@ -90,7 +90,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Number of probes that have emitted at least one data point in the cache window.",
 		},
 		{
-			Name:        "senhub.agent.probes.total",
+			Name:        "senhub.agent.probe.count",
 			Unit:        "{probe}",
 			Type:        "gauge",
 			Attributes:  map[string]string{},
