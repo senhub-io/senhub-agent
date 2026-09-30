@@ -77,6 +77,7 @@ type Detector struct {
 	now            func() time.Time
 	onOrphan       func([]Relation)
 	onOrphanEntity func([]Entity)
+	onConflict     func(AttributeConflict)
 	// lastGood caches, per registered-source id, the most recent
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
@@ -101,6 +102,14 @@ func NewDetector(host HostIdentityFunc, agent AgentIdentityFunc, interval time.D
 // producer bug via its logger.
 func (d *Detector) OnOrphanRelations(fn func([]Relation)) {
 	d.onOrphan = fn
+}
+
+// OnAttributeConflict registers a hook called for every attribute two
+// sources reported with different values for the same entity in one cycle
+// (see mergeDuplicates). Nil-safe; the wiring layer surfaces it as a
+// warning.
+func (d *Detector) OnAttributeConflict(fn func(AttributeConflict)) {
+	d.onConflict = fn
 }
 
 // OnOrphanEntities registers a hook called with any entity dropped before
@@ -222,6 +231,7 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	obs = inheritHostGovernance(obs, h.ID, h.Governance)
 	// Fold each relation onto its source entity (embedded entity.relationships)
 	// before the tracker, so the tracker reconciles entities only.
+	obs = obs.mergeDuplicates(d.onConflict)
 	entities, orphans := obs.foldRelationships()
 	if len(orphans) > 0 && d.onOrphan != nil {
 		d.onOrphan(orphans)

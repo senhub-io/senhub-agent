@@ -114,6 +114,16 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **An entity reported by two sources arrives whole.** When two probes of
+  one agent described the same entity in a cycle (a device polled directly
+  and seen in another's LLDP table, an address named by a route and by an
+  interface), its relations went to whichever copy came last, and a thin
+  copy could replace a full one. The copies are now merged: every
+  attribute and every relation. Where two sources disagree on a value,
+  the one kept does not depend on the order the probes started in; the
+  disagreement is logged once as a warning and counted in
+  `senhub.agent.entity.attribute.conflicts`, since it is a defect to fix.
+
 - **An SNMP device keeps its full description in the topology.** Each
   LLDP neighbour was also built as a device carrying only its name, then
   dropped before sending with a warning, 54 a minute on a 40-device lab.
