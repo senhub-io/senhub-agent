@@ -222,6 +222,14 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		// processor metrics: it is a log processor queue in all but name
 		// (entity events travel as OTLP log records), and a standard
 		// dashboard reads these names.
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.entity.attribute.conflicts",
+			Unit:        "{conflict}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(entity.AttributeConflictsTotal()),
+			Description: "Entity attributes two sources of this agent reported with different values in one cycle; each is a defect to fix, the kept value is chosen by scope order.",
+		},
 		entityProcessed(delivered, ""),
 		entityProcessed(dropped, "queue_full"),
 		otelmapper.OtelRecord{
