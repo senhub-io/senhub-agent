@@ -129,6 +129,7 @@ senhub-agent config init --license <jwt> --tags env=prod,site=paris
 senhub-agent config init --otlp-endpoint otlp.example.com:4317
 senhub-agent config init --otlp-endpoint vm.example.com:4318 --otlp-protocol http
 senhub-agent config init --http-port 9080
+senhub-agent config init --zabbix-server zabbix.example.com:10051
 senhub-agent config init --license-file /tmp/customer.jwt
 senhub-agent config init --license-dir /mnt/install
 ```
@@ -145,6 +146,8 @@ Before writing anything, `config init` binds the HTTP port it is about to config
 | `--tags k=v,k2=v2` | Host-level global tags applied to the generated config |
 | `--otlp-endpoint HOST:PORT` | Provision an OTLP push endpoint as a strategy fragment (metrics + logs) |
 | `--otlp-protocol grpc\|http` | OTLP transport (default `grpc`; use `http` for a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint) |
+| `--zabbix-server HOST:PORT` | Provision the Zabbix output (`strategies.d/20-zabbix.yaml`); several addresses separated by commas name a proxy group. With a server prepared by `zabbix setup`, the host registers at its first contact |
+| `--zabbix-host-metadata TEXT` | Host metadata the autoregistration action matches (default `senhub-agent`); needs `--zabbix-server` |
 
 The generated layout is the multi-file form (`agent.yaml` + `probes.d/` + `strategies.d/`), the same one `install` and the Windows MSI write. By default the generated configuration pushes to no collector; `--otlp-endpoint` is what wires up a push.
 

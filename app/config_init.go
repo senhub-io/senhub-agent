@@ -29,10 +29,14 @@ type initConfigArgs struct {
 	license      string
 	otlpEndpoint string
 	otlpProtocol string
-	tags         map[string]string
-	httpPort     int
-	licenseFile  string
-	licenseDir   string
+	// zabbixServer is the output's 'server' (host:port, several separated
+	// by commas for a proxy group); zabbixMetadata its host_metadata.
+	zabbixServer   string
+	zabbixMetadata string
+	tags           map[string]string
+	httpPort       int
+	licenseFile    string
+	licenseDir     string
 }
 
 // parseInitConfigArgs parses the flags after `config init`. A value-taking
@@ -72,6 +76,10 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.otlpEndpoint, err = value(&i)
 		case "--otlp-protocol":
 			out.otlpProtocol, err = value(&i)
+		case "--zabbix-server":
+			out.zabbixServer, err = value(&i)
+		case "--zabbix-host-metadata":
+			out.zabbixMetadata, err = value(&i)
 		case "--http-port":
 			var raw string
 			if raw, err = value(&i); err == nil {
@@ -89,6 +97,9 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 	// a partial config already sits on disk, where a corrected rerun hits
 	// the idempotency guard and silently never provisions OTLP (audit M4/m12).
 	if err := validateOTLPArgs(out.otlpEndpoint, out.otlpProtocol); err != nil {
+		return out, err
+	}
+	if err := configuration.ValidateZabbixInstallArgs(out.zabbixServer, out.zabbixMetadata); err != nil {
 		return out, err
 	}
 	return out, nil
@@ -179,6 +190,9 @@ func initConfig(argv []string) {
 		if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint, otlpProtocol); err != nil {
 			fatalf("config init: writing OTLP strategy: %v", err)
 		}
+		if err := configuration.WriteZabbixStrategyFragment(filepath.Dir(configPath), opts.zabbixServer, opts.zabbixMetadata); err != nil {
+			fatalf("config init: writing Zabbix strategy: %v", err)
+		}
 		return
 	}
 
@@ -235,6 +249,9 @@ func initConfig(argv []string) {
 	if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint, otlpProtocol); err != nil {
 		fatalf("config init: writing OTLP strategy: %v", err)
 	}
+	if err := configuration.WriteZabbixStrategyFragment(filepath.Dir(configPath), opts.zabbixServer, opts.zabbixMetadata); err != nil {
+		fatalf("config init: writing Zabbix strategy: %v", err)
+	}
 
 	fmt.Printf("Configuration created at %s\n", configPath)
 	fmt.Printf("  http: %s\n", net.JoinHostPort(defaultHTTPBindAddress, strconv.Itoa(httpPort)))
@@ -246,6 +263,9 @@ func initConfig(argv []string) {
 	}
 	if otlpEndpoint != "" {
 		fmt.Printf("  otlp endpoint: %s\n", otlpEndpoint)
+	}
+	if opts.zabbixServer != "" {
+		fmt.Printf("  zabbix server: %s\n", opts.zabbixServer)
 	}
 	fmt.Printf("  probes: %s\n", filepath.Join(filepath.Dir(configPath), "probes.d"))
 }
