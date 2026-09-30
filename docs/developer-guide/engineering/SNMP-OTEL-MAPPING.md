@@ -164,7 +164,19 @@ same device derive byte-identical ids.
   dropped), `mtu` (ifMtu), `interface.type` (IANAifType →
   physical/virtual/wireless/loopback) and `duplex` (EtherLike-MIB
   dot3StatsDuplexStatus → full/half/unknown) are descriptive — the same
-  vocabulary the host interface path (hostiface) emits. The port inventory that
+  vocabulary the host interface path (hostiface) emits. So are
+  `network.interface.addresses` and `network.interface.subnets`, lists of
+  strings in address order, from IP-MIB `ipAdEntNetMask` here and from the
+  OS on a host: they answer which network an address belongs to.
+  `addresses` is the observed fact, each IP with its prefix and its host
+  bits KEPT (`10.0.0.1/24`), an explicit exception to the canonical-CIDR
+  rule that zeroes host bits; `subnets` is derived from it, host bits
+  zeroed and deduplicated (`10.0.0.0/24`), and a disagreement between the
+  two is a producer bug. Both are absent, never empty, when no prefix is
+  known; IPv6 in RFC 5952 form. They sit on the interface because a
+  `network.address` is shared (a gateway has no mask of its own) and edge
+  attributes do not reach the topology backend. Validated with the Toise
+  contract owner (names pending the OTel alignment check). The port inventory that
   anchors `connected_to`; `notPresent` and unnamed rows are skipped. Bounded by
   the device's port count. **DONE (#156).**
 - **Interface IPs → `network.address` entities** (topology-as-entities, ADR
