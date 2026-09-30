@@ -211,6 +211,7 @@
             case 'tls': return 'TLS';
             case 'export': return 'Export 1 metric';
             case 'reach': return 'Reach ' + (p.server_url || '');
+            case 'authenticate': return 'Agent key';
             case 'listen': return 'Listen';
             default: return step.name;
         }

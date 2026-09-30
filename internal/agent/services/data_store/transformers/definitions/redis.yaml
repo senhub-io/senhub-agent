@@ -169,8 +169,8 @@ metrics:
     category: "throughput"
     description: "Instantaneous commands per second (instantaneous_ops_per_sec)"
     otel:
-      name: redis.ops.per_sec
-      unit: "{op}/s"
+      name: redis.commands
+      unit: "{command}/s"
       type: gauge
 
   - name: "redis.keyspace.hits"

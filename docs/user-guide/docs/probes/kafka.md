@@ -55,7 +55,7 @@ Metric parity with the OpenTelemetry Collector contrib `kafkametricsreceiver`.
 | `kafka.partition.replicas` | {replica} | Total replicas per partition |
 | `kafka.partition.replicas_in_sync` | {replica} | In-sync replicas per partition |
 | `kafka.consumer_group.lag` | {message} | Lag per group/topic/partition, tagged with `group`/`topic`/`partition` |
-| `kafka.consumer_group.lag_sum` | {message} | Total lag summed across partitions per group/topic |
+| `kafka.consumer_group.topic.lag` | {message} | Total lag summed across partitions per group/topic |
 
 ## Operational notes
 
@@ -85,6 +85,6 @@ series' tags.
 | `kafka.consumer_group.members` | `kafka.consumer_group.members` | Kafka {group} Members | {member} | Count of members in the consumer group |
 | `kafka.consumer_group.offset` | `kafka.consumer_group.offset` | Kafka {group}/{topic}/{partition} Offset | {item} | Current offset of the consumer group at partition of a Kafka topic |
 | `kafka.consumer_group.lag` | `kafka.consumer_group.lag` | Kafka {group}/{topic}/{partition} Lag | {item} | Current approximate lag of consumer group at partition of a Kafka topic |
-| `kafka.consumer_group.lag_sum` | `kafka.consumer_group.lag_sum` | Kafka {group}/{topic} Lag Sum | {item} | Current approximate sum of consumer group lag across all partitions of a Kafka topic |
+| `kafka.consumer_group.topic.lag` | `kafka.consumer_group.lag_sum` | Kafka {group}/{topic} Lag Sum | {item} | Current approximate sum of consumer group lag across all partitions of a Kafka topic |
 
 <!-- schema:metrics:end -->

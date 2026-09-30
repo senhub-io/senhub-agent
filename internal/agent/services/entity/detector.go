@@ -2,6 +2,7 @@ package entity
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,18 @@ const livenessSlackOverReEmit = 3
 // (reEmitTicks × livenessSlackOverReEmit): 6× at the 60s default → a 360s
 // window, i.e. 3× the 120s re-emission cadence.
 const livenessSlackFactor = reEmitTicks * livenessSlackOverReEmit
+
+// reportInterval is the entity.report.interval the running detector
+// announces, in nanoseconds; 0 before a detector starts.
+var reportInterval atomic.Int64
+
+// ReportInterval is the liveness interval announced on every entity: the
+// consumer expires an entity not re-asserted within it, with no margin of
+// its own. A producer holding an observation back must stay well inside it;
+// 0 when no detector runs.
+func ReportInterval() time.Duration {
+	return time.Duration(reportInterval.Load())
+}
 
 // lastGoodTTL bounds how long the detector keeps serving a source's last
 // good observation once Observe starts reporting failures (ok=false). A
@@ -115,6 +128,7 @@ func (d *Detector) Run(ctx context.Context) {
 	// Suppress unchanged heartbeats for reEmitTicks ticks — this defines the
 	// effective re-emission cadence the liveness window is sized against
 	// (see livenessSlackOverReEmit).
+	reportInterval.Store(int64(d.interval * livenessSlackFactor))
 	tracker := NewTracker(publish, reEmitTicks*d.interval)
 	joined, stop := NotifyOnSubscribe()
 	defer stop()

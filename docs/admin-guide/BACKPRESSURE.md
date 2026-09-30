@@ -19,6 +19,7 @@ runtime counters these mechanisms expose, see
 | Memory limiter | Heap blow-up during a prolonged backend outage | `memory_soft_limit`, `memory_hard_limit` |
 | Persistent checkpoint (metrics) | Losing the **metric** store across an agent restart while the backend is down | — (no loss) |
 | Logs dead-letter queue | Losing **event logs** during a backend outage (queued to disk, replayed at boot and on recovery) | `logs_queue_full` (only when the disk cap is hit) |
+| Entity event hand-off | Losing **entity events** when a cycle publishes more than the exporter's buffer holds (`signals.entities.buffer_size`, 256): the publish waits up to 1 s for room instead of dropping | `entity_queue_full` (only when the exporter stops draining) |
 | Endpoint failover | The primary ingress being down (switch to a standby ingress, return to primary on recovery) | — (no loss; switch is logged + counted) |
 
 A fifth, **parallel export** (`max_concurrent_exports`), splits a large

@@ -58,8 +58,27 @@ Changes since 0.6.0, collected as they are merged.
   | `redis.cmd.usec` | `redis.cmd.time` |
   | `smart.disk.power_on_hours` | `smart.disk.power_on.time` |
   | `senhub.docker.memory.working_set` | `container.memory.working_set` |
+  | `senhub.agent.probes.total` | `senhub.agent.probe.count` |
+  | `kafka.consumer_group.lag_sum` | `kafka.consumer_group.topic.lag` |
+  | `redis.ops.per_sec` | `redis.commands` |
+  | `senhub.netscaler.ssl.certificate.days_to_expiration` (days) | `senhub.netscaler.ssl.certificate.expiry` (seconds) |
+  | `senhub.veeam.license.days_remaining` (days) | `senhub.veeam.license.expiry` (seconds) |
+  | `ceph.monitor.quorum_count` | `ceph.monitor.quorum.count` |
+  | `senhub.citrix.machines.multi_session_fault_total` | `senhub.citrix.machine.multi_session_fault.count` |
+  | `mongodb.lock.acquire.wait_count` | `senhub.mongodb.lock.queue.length` |
 
   In Prometheus, each name above takes underscores (`senhub_veeam_job_count`).
+
+  The agent's own Prometheus endpoint also stops repeating a unit word a
+  name already carries, as the OpenTelemetry Collector's translator does,
+  which is the form the shipped Grafana dashboards query:
+  `senhub_veeam_job_seconds_since_last_run_seconds` becomes
+  `senhub_veeam_job_seconds_since_last_run`, and the byte counters of
+  HAProxy, CouchDB, NATS, Tomcat, WildFly and container block I/O lose
+  their second `bytes` (`senhub_haproxy_bytes_input_bytes_total` becomes
+  `senhub_haproxy_bytes_input_total`). `senhub_netscaler_ns_throughput_bytes_per_second`
+  is still reported by `promtool` as an abbreviated unit: `ns` is
+  NetScaler's name for the appliance scope, not nanoseconds.
   Names ending in `.count` that OpenTelemetry defines, such as
   `system.process.count`, are kept although `promtool` warns on them.
   The Grafana dashboards shipped under `docs/grafana/` use the new names.
@@ -94,6 +113,62 @@ Changes since 0.6.0, collected as they are merged.
   install.
 
 ## Fixes
+
+- **TLS and the endpoint list apply without a restart.** Enabling or
+  removing the `tls` block of the HTTP output logged a successful update
+  but kept serving the previous protocol until the bind address changed
+  or the service restarted; an endpoint taken out of `endpoints` kept
+  being served likewise. Any change to `tls` now rebuilds the listener,
+  and the endpoint list is replaced, not added to, on each reload.
+
+- **File tail no longer reads an idle file again after a restart.** A
+  watched file that wrote no line while the agent ran was saved in the
+  bookmark at offset 0 when the agent stopped, and read again from its
+  first byte at the next start (over 1 600 records for one PRTG log).
+  Each file's position is now recorded as soon as its tail starts. Files
+  seen for the first time are read as before: from the end, or from the
+  first byte with `from_beginning`.
+
+- **`config check` no longer prints the agent key.** It reports that the
+  key is set and has the expected form.
+
+- **The console's connection tests fail when the output would.** The
+  SenHub cloud test passed on any HTTP answer, a 404 from the intake
+  included, without checking the agent key: it now fails when the key is
+  missing or refused. The PRTG and event tests fail on a 404 or a server
+  error instead of counting them as reached.
+
+- **`zabbix setup` no longer prints a trapper port it cannot know.** Its
+  install instructions showed the frontend host with `:10051` whatever
+  port the server listens on; they now show the host alone, which the
+  agent completes with 10051, and say to add the port when it differs.
+
+- **A restart no longer removes SNMP links from the topology for one
+  cycle.** After a restart, a device polled before its LLDP neighbours
+  could not resolve them yet and left those links out of what it
+  published until its next topology sweep, one polling cycle (five or
+  ten minutes on the lab fleets, an hour on a fleet polled hourly); a
+  topology backend recorded the links as removed by the agent
+  and got them back one sweep later. Neighbours are now resolved when
+  the topology is published, and after the start a device waits for the
+  neighbours the agent has not polled yet instead of publishing without
+  them, for at most a third of the entity liveness interval (two minutes
+  by default). The backend keeps the device as it was meanwhile. The
+  cost: during that wait, a lost report can let the device expire in the
+  backend where it used to survive two; the agent chooses an honest
+  expiry over a false removal.
+
+- **SNMP devices no longer expire in the topology between two reports.** The
+  agent publishes a whole topology cycle at once; on a fleet of about
+  forty devices that is more events than the OTLP exporter's entity
+  buffer holds, and the overflow was dropped without a trace. The same
+  leading devices were dropped cycle after cycle, stayed unannounced past
+  their liveness interval, and expired in the topology backend together
+  with their interfaces, to come back a few minutes later; on the lab
+  fleet some did so twenty times in twelve hours. A full buffer now makes
+  the publish wait for room, and an event still dropped, when the
+  exporter stops draining, is counted as
+  `senhub.agent.otlp.dropped{reason="entity_queue_full"}`.
 
 - **Hardware health follows the OpenTelemetry states.** Redfish emitted
   `hw.status{hw.state="unknown"}` for a component whose health the BMC does
@@ -165,6 +240,9 @@ Changes since 0.6.0, collected as they are merged.
   running service is now restarted, and the command checks that the new
   process runs the installed binary and prints its version; it fails
   otherwise. `--no-restart` keeps the previous behaviour for scripts.
+  The fix is in the new release's `update`: going from 0.6.0 to 0.6.1 still
+  runs the 0.6.0 command, so restart the service once after that update
+  (`sudo systemctl restart senhub-agent`).
 
 - **The OTLP export error and drop counters are present at 0.** Since
   0.6.0, `senhub.agent.otlp.export.errors` (by `signal`) and

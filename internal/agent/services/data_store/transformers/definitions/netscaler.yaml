@@ -547,8 +547,8 @@ metrics:
     category: "ssl_certificates"
     description: "Days until SSL certificate expires (negative if expired)"
     otel:
-      name: senhub.netscaler.ssl.certificate.days_to_expiration
-      unit: "{day}"
+      name: senhub.netscaler.ssl.certificate.expiry
+      unit: "s"
       type: gauge
     tag_to_attribute:
       certname: senhub.netscaler.ssl.certificate.name

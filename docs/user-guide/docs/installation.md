@@ -131,7 +131,7 @@ Public MSI properties drive an unattended install from the `msiexec` command lin
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `ZABBIX_SERVER` | Optional Zabbix server or proxy `host:port` — writes the Zabbix output (`strategies.d\20-zabbix.yaml`); the host then registers in Zabbix at its first contact |
 | `ZABBIX_HOST_METADATA` | Host metadata the Zabbix autoregistration action matches (default `senhub-agent`) |
-| `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`). A port already in use fails the install. |
+| `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios / Prometheus (default `8080`). A port already in use fails the install. |
 | `DESKTOP_SHORTCUT` | `1` (default) creates a "SenHub Agent Console" desktop shortcut; `0` skips it |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `ADOPT` | `ADOPT=1` takes over an agent installed outside the MSI (see below) |
@@ -342,7 +342,7 @@ The `install` command accepts the following options:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--http-port PORT` | `8080` | HTTP listening port (PRTG / Web UI / Nagios endpoints) |
+| `--http-port PORT` | `8080` | HTTP listening port (PRTG / Web UI / Nagios / Prometheus endpoints) |
 | `--enable-https` | disabled | Enable HTTPS on the agent API |
 | `--https-port PORT` | `8443` | HTTPS listening port |
 | `--https-hosts HOSTS` | `localhost,127.0.0.1` | Hostnames for the auto-generated certificate (comma-separated) |
