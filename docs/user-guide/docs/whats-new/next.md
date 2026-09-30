@@ -114,6 +114,14 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **Syslog RFC 3164 messages are timed in the host's zone.** The header
+  of an RFC 3164 message carries the sender's local time with no zone, and
+  the parser read it as UTC: on a host in Paris, a UniFi access point's
+  09:49:59 reached the log store as 09:49:59Z, two hours in the future, so
+  a search on the last minutes found nothing and log alerts fired two
+  hours late. The timestamp is now read in the agent host's zone. RFC 5424
+  timestamps, which carry their offset, are unchanged.
+
 - **TLS and the endpoint list apply without a restart.** Enabling or
   removing the `tls` block of the HTTP output logged a successful update
   but kept serving the previous protocol until the bind address changed
