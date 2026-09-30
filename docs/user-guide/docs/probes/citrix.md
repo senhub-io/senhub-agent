@@ -289,7 +289,7 @@ distinguished by `senhub.citrix.logon.phase`.
 | `senhub.citrix.machines.by_registration_state` | `machine.registration_state=faulty` | `machines_faulty` | `#` |
 | `senhub.citrix.machines.by_registration_state` | `machine.registration_state=maintenance` | `machines_maintenance` | `#` |
 | `senhub.citrix.machines.overloaded` | - | `load_overloaded_machines` | `#` |
-| `senhub.citrix.machines.multi_session_fault_total` | - | `machines_faulty_total` | `#` |
+| `senhub.citrix.machine.multi_session_fault.count` | - | `machines_faulty_total` | `#` |
 | `senhub.citrix.machines.by_fault_state` | `machine.fault_state=boot_failure` | `boot_failure` | `#` |
 | `senhub.citrix.machines.by_fault_state` | `machine.fault_state=stuck_at_boot` | `stuck_at_boot` | `#` |
 | `senhub.citrix.machines.by_fault_state` | `machine.fault_state=unregistered` | `unregistered` | `#` |
@@ -570,7 +570,7 @@ series' tags.
 | `senhub.citrix.license.grace.sessions_remaining` | `license_grace_sessions_left` | License Grace Sessions Left | # | Remaining supplemental grace sessions available when license limit is exceeded |
 | `senhub.citrix.license.grace.active` | `license_grace_period_active` | License Grace Period Active | # | Indicates whether the supplemental grace period is currently active (1) or not (0) |
 | `senhub.citrix.license.grace.time_remaining` | `license_grace_hours_left` | License Grace Hours Left | h | Hours remaining before the supplemental grace period expires |
-| `senhub.citrix.machines.multi_session_fault_total` | `machines_faulty_total` | Machines Faulty Total (Multi-Session) | # | Total number of multi-session VDA machines in a fault state |
+| `senhub.citrix.machine.multi_session_fault.count` | `machines_faulty_total` | Machines Faulty Total (Multi-Session) | # | Total number of multi-session VDA machines in a fault state |
 | `senhub.citrix.machines.by_fault_state` | `boot_failure` | Boot Failure | # | Number of machines that failed to boot within the expected timeframe |
 | `senhub.citrix.machines.by_fault_state` | `stuck_at_boot` | Stuck At Boot | # | Number of machines stuck in the boot process and not progressing to registration |
 | `senhub.citrix.machines.by_fault_state` | `unregistered` | Unregistered | # | Number of powered-on machines that have not registered with the Delivery Controller |

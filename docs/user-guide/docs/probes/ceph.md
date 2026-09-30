@@ -49,7 +49,7 @@ I/O statistics.
 | `ceph.osd.count` | {osd} | Total number of OSDs in the cluster |
 | `ceph.osd.up` | {osd} | OSDs currently in the `up` state |
 | `ceph.osd.in` | {osd} | OSDs currently in the `in` state (participating in data placement) |
-| `ceph.monitor.quorum_count` | {monitor} | Number of monitors participating in the quorum |
+| `ceph.monitor.quorum.count` | {monitor} | Number of monitors participating in the quorum |
 | `ceph.pool.rd_ops` | {read} | Read operations per pool (tagged with `pool`) |
 | `ceph.pool.wr_ops` | {write} | Write operations per pool |
 
@@ -80,7 +80,7 @@ series' tags.
 | `ceph.osd.in` | `ceph.osd.in` | Ceph {instance} OSD In | # | Number of OSDs that are in (participating in the cluster) |
 | `ceph.osd.up` | `ceph.osd.up` | Ceph {instance} OSD Up | # | Number of OSDs that are up (running) |
 | `ceph.monitor.count` | `ceph.monitor.count` | Ceph {instance} Monitor Count | # | Total number of monitor daemons |
-| `ceph.monitor.quorum_count` | `ceph.monitor.quorum_count` | Ceph {instance} Monitor Quorum | # | Number of monitors currently in quorum |
+| `ceph.monitor.quorum.count` | `ceph.monitor.quorum_count` | Ceph {instance} Monitor Quorum | # | Number of monitors currently in quorum |
 | `ceph.pool.objects` | `ceph.pool.objects` | Ceph {instance} Pool {pool} Objects | # | Number of objects stored in the pool |
 | `ceph.pool.used` | `ceph.pool.used` | Ceph {instance} Pool {pool} Used | B | Bytes stored in the pool |
 | `ceph.pool.rd_ops` | `ceph.pool.rd_ops` | Ceph {instance} Pool {pool} Read Ops | # | Cumulative read operations on the pool |

@@ -96,7 +96,7 @@ series' tags.
 | `redis.commands.processed` | `redis.commands.processed` | Commands Processed | # | Cumulative commands processed (total_commands_processed) |
 | `redis.net.input` | `redis.net.input` | Network Input | B | Cumulative bytes received from clients (total_net_input_bytes) |
 | `redis.net.output` | `redis.net.output` | Network Output | B | Cumulative bytes sent to clients (total_net_output_bytes) |
-| `redis.ops.per_sec` | `redis.ops.per_sec` | Ops/s | # | Instantaneous commands per second (instantaneous_ops_per_sec) |
+| `redis.commands` | `redis.ops.per_sec` | Ops/s | # | Instantaneous commands per second (instantaneous_ops_per_sec) |
 | `redis.keyspace.hits` | `redis.keyspace.hits` | Keyspace Hits | # | Cumulative successful key lookups (keyspace_hits) |
 | `redis.keyspace.misses` | `redis.keyspace.misses` | Keyspace Misses | # | Cumulative failed key lookups (keyspace_misses) |
 | `redis.keyspace.hit.ratio` | `redis.keyspace.hit.ratio` | Hit Ratio | % | keyspace_hits / (keyspace_hits + keyspace_misses) — derived gauge, 0 when no traffic |
