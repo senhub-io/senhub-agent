@@ -13,8 +13,11 @@ Changes since 0.6.0, collected as they are merged.
   some gauges ended in `.total`, which Prometheus reserves for counters
   (`senhub_veeam_jobs_total` read as a counter to every tool). There is
   no transition period: dashboards, alerts and recording rules on the old
-  names must be updated when upgrading. PRTG, Nagios and Zabbix are not
-  affected: they keep their channel names and the probe's display unit.
+  names must be updated when upgrading. PRTG and Nagios are not affected:
+  they keep their channel names and the probe's display unit. Zabbix item
+  keys are built from these names and values from these units, so re-run
+  `zabbix setup` after upgrading to refresh the templates; the items under
+  the old keys stop receiving data and their history stays under them.
 
   Units: every duration is now exported in seconds (Cassandra, Consul,
   Docker, Elasticsearch, Envoy, OpenSearch, RabbitMQ, Redis, SMART, Solr,
