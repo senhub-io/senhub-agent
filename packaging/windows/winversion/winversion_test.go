@@ -1,8 +1,14 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
+	"unicode/utf16"
 )
 
 func TestNumericVersion(t *testing.T) {
@@ -90,5 +96,90 @@ func TestWinresJSON_FinalHasNoPrereleaseFlag(t *testing.T) {
 	v := decodeWinres(t, resourceSpec{Version: "0.6.1", Build: 2870, OriginalFilename: "senhub-agent.exe"})
 	if flags, ok := v["fixed"].(map[string]any)["flags"]; ok {
 		t.Errorf("final release carries flags %v", flags)
+	}
+}
+
+// encodeNode writes one VS_VERSIONINFO-style block, the inverse of parseNode.
+func encodeNode(key string, value []byte, valueLen uint16, text bool, children ...[]byte) []byte {
+	b := make([]byte, 6)
+	for _, c := range utf16.Encode([]rune(key)) {
+		b = binary.LittleEndian.AppendUint16(b, c)
+	}
+	b = binary.LittleEndian.AppendUint16(b, 0)
+	pad := func() {
+		for len(b)%4 != 0 {
+			b = append(b, 0)
+		}
+	}
+	pad()
+	b = append(b, value...)
+	for _, child := range children {
+		pad()
+		b = append(b, child...)
+	}
+	binary.LittleEndian.PutUint16(b, uint16(len(b)))
+	binary.LittleEndian.PutUint16(b[2:], valueLen)
+	if text {
+		binary.LittleEndian.PutUint16(b[4:], 1)
+	}
+	return b
+}
+
+func encodeString(key, value string) []byte {
+	var v []byte
+	u := append(utf16.Encode([]rune(value)), 0)
+	for _, c := range u {
+		v = binary.LittleEndian.AppendUint16(v, c)
+	}
+	return encodeNode(key, v, uint16(len(u)), true)
+}
+
+func TestParseVersionInfo_RoundTrip(t *testing.T) {
+	fixed := make([]byte, 52)
+	binary.LittleEndian.PutUint32(fixed, fixedFileInfoMagic)
+	binary.LittleEndian.PutUint32(fixed[8:], 0<<16|6)
+	binary.LittleEndian.PutUint32(fixed[12:], 1<<16|2864)
+	binary.LittleEndian.PutUint32(fixed[16:], 0<<16|6)
+	binary.LittleEndian.PutUint32(fixed[20:], 1<<16|2864)
+	table := encodeNode("040904B0", nil, 0, true,
+		encodeString("CompanyName", companyName),
+		encodeString("ProductName", productName),
+		encodeString("FileVersion", "0.6.1-beta2"),
+		encodeString("ProductVersion", "0.6.1-beta2"),
+	)
+	blob := encodeNode("VS_VERSION_INFO", fixed, 52, false,
+		encodeNode("StringFileInfo", nil, 0, true, table))
+
+	vi, err := parseVersionInfo(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [4]uint16{0, 6, 1, 2864}
+	if err := checkVersionInfo(vi, want, "0.6.1-beta2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkVersionInfo(vi, [4]uint16{0, 6, 1, 2865}, "0.6.1-beta2"); err == nil {
+		t.Fatal("a different build number was accepted")
+	}
+}
+
+// The guard the build relies on: an exe linked without the .syso has no
+// version resource, and verify must say so rather than pass.
+func TestReadVersionInfo_ExeWithoutResourceIsRejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("cross-compiles a Windows binary")
+	}
+	exe := filepath.Join(t.TempDir(), "plain.exe")
+	cmd := exec.Command("go", "build", "-o", exe, "senhub-agent.go/cmd/console-launcher")
+	cmd.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("building a windows exe: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join("..", "..", "..", "cmd", "console-launcher", "rsrc_windows_amd64.syso")); err == nil {
+		t.Skip("a generated .syso is present in cmd/console-launcher; the plain build is not plain")
+	}
+	_, err := readVersionInfo(exe)
+	if !errors.Is(err, errNoVersionResource) {
+		t.Fatalf("readVersionInfo on a plain exe = %v, want errNoVersionResource", err)
 	}
 }

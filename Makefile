@@ -143,6 +143,12 @@ build-windows: create-dist ## Build for Windows
 		./packaging/windows/embed-version-resource.sh "$(VERSION)" cmd/console-launcher senhub-console.exe "SenHub Agent console launcher" && \
 		env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(WINDOWS) -ldflags="$(LDFLAGS)" ./cmd/agent/ && \
 		env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o $(CONSOLE_LAUNCHER) -ldflags="$(LDFLAGS) -H windowsgui" ./cmd/console-launcher/
+		@$(MAKE) --no-print-directory verify-windows-version
+
+verify-windows-version: ## Fail if a Windows exe lacks its version resource or carries the wrong version
+		@for f in $(WINDOWS) $(CONSOLE_LAUNCHER); do \
+			go run ./packaging/windows/winversion verify -exe "$$f" -version "$(VERSION)" -build $(WINDOWS_BUILD_NUMBER) || exit 1; \
+		done
 
 build-linux: create-dist ## Build for Linux
 		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
@@ -418,4 +424,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help
+.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help
