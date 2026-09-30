@@ -82,7 +82,7 @@ func TestBuildObservation_HostRoute(t *testing.T) {
 	if !ok || route.ID[idKeyHost] != "h1" || route.ID[idKeyRouteDestination] != "0.0.0.0/0" {
 		t.Errorf("route entity wrong: %+v", route)
 	}
-	if route.Attributes[attrNextHopIP] != "192.168.1.1" || route.Attributes[attrMetric] != int64(100) {
+	if route.ID[idKeyNextHopIP] != "192.168.1.1" || route.Attributes[attrMetric] != int64(100) {
 		t.Errorf("route attrs wrong: %+v", route.Attributes)
 	}
 	addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress)
@@ -155,7 +155,7 @@ func TestObserve_InjectedReader(t *testing.T) {
 	}
 	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
 	if !ok || route.ID[idKeyRouteDestination] != "0.0.0.0/0" ||
-		route.Attributes[attrNextHopIP] != "192.168.1.1" {
+		route.ID[idKeyNextHopIP] != "192.168.1.1" {
 		t.Errorf("unexpected route entity: %+v", route)
 	}
 	if addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress); !ok ||
@@ -202,8 +202,8 @@ func TestParseForwardTable(t *testing.T) {
 	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 1}, 7, routeIndirect, 25)...)
 	// direct route: its "next hop" is the host's own address
 	buf = append(buf, row([4]byte{10, 10, 0, 0}, [4]byte{255, 255, 255, 0}, [4]byte{10, 10, 0, 60}, 7, 3, 281)...)
-	// second default route (a second NIC), higher metric: not the one used
-	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 2}, 9, routeIndirect, 50)...)
+	// exact repeat of the first row
+	buf = append(buf, row([4]byte{0, 0, 0, 0}, [4]byte{0, 0, 0, 0}, [4]byte{10, 10, 0, 1}, 7, routeIndirect, 25)...)
 
 	got := parseForwardTable(buf, func(i int) string { return "Ethernet" })
 	if len(got) != 1 {
@@ -217,9 +217,10 @@ func TestParseForwardTable(t *testing.T) {
 	}
 }
 
-// Two default routes: the lowest metric wins whatever the table order, so
-// the route's next hop cannot alternate between readings.
-func TestParseForwardTable_LowestMetricWins(t *testing.T) {
+// Two default routes (two NICs, a VPN) are two routes: the next hop is
+// part of the identity (IP-FORWARD-MIB), so the inventory keeps both
+// instead of a sample of one.
+func TestParseForwardTable_TwoGatewaysAreTwoRoutes(t *testing.T) {
 	mk := func(nh byte, ifIndex, metric uint32) []byte {
 		b := make([]byte, forwardRowSize)
 		copy(b[offNextHop:], []byte{10, 0, 0, nh})
@@ -228,13 +229,21 @@ func TestParseForwardTable_LowestMetricWins(t *testing.T) {
 		binary.LittleEndian.PutUint32(b[offMetric1:], metric)
 		return b
 	}
-	for _, order := range [][2][]byte{{mk(2, 9, 50), mk(1, 7, 25)}, {mk(1, 7, 25), mk(2, 9, 50)}} {
-		buf := []byte{2, 0, 0, 0}
-		buf = append(append(buf, order[0]...), order[1]...)
-		got := parseForwardTable(buf, nil)
-		if len(got) != 1 || got[0].NextHop != "10.0.0.1" {
-			t.Errorf("want the metric-25 route via 10.0.0.1, got %+v", got)
+	buf := []byte{3, 0, 0, 0}
+	buf = append(append(append(buf, mk(2, 9, 50)...), mk(1, 7, 25)...), mk(1, 7, 25)...)
+	got := parseForwardTable(buf, nil)
+	if len(got) != 2 {
+		t.Fatalf("want two default routes (the exact repeat dropped), got %+v", got)
+	}
+	obs := buildObservation("h1", got)
+	ids := map[string]bool{}
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkRoute {
+			ids[e.ID[idKeyNextHopIP].(string)] = true
 		}
+	}
+	if !ids["10.0.0.1"] || !ids["10.0.0.2"] {
+		t.Errorf("route identities = %v", ids)
 	}
 }
 

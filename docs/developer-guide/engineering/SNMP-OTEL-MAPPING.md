@@ -196,10 +196,11 @@ same device derive byte-identical ids.
   (#156).**
 - **Routing → `network.route` entities** (topology-as-entities, ADR 0022,
   pinned with Toise #87): ipCidrRouteTable / ipForwardTable → one
-  `network.route` entity `{network.device.id, route.destination}` (CIDR from
-  the entry index) that the device **owns** via `has_route` (mirror of
-  `has_interface`), the next hop carried as a scalar `next_hop.ip` attribute
-  (+ `metric`). The gateway is **not** a node — `network.address` is deferred,
+  `network.route` entity `{network.device.id, route.destination,
+  next_hop.ip}` (identity as IP-FORWARD-MIB indexes it: an ECMP destination
+  is one route per next hop) that the device **owns** via `has_route`
+  (mirror of `has_interface`), with `metric` descriptive. Only remote routes
+  with a usable next hop are emitted, which keeps the identity complete. The gateway is **not** a node — `network.address` is deferred,
   so no `mgmt:`/`mac:` device is synthesized for it. This supersedes the legacy
   `routes_via` device→next-hop edge; ARP convergence (which existed only to
   give that edge a device-typed next-hop) is therefore gone. **DONE (#156).**
