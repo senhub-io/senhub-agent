@@ -25,6 +25,13 @@ is set, on the agent or in the Zabbix interface:
 | Linux | after `install`: `sudo /usr/local/bin/senhub-agent config init --zabbix-server zabbix.example.com:10051` |
 | Container | `SENHUB_ZABBIX_SERVER=zabbix.example.com:10051` |
 
+The port is the server's or proxy's trapper port (`ListenPort` in its
+configuration), 10051 by default; an address without a port gets 10051.
+`zabbix setup` ends by printing these lines with the frontend's host and
+no port, since it only talks to the frontend: add the port when the
+server listens elsewhere, and replace the host when the server does not
+run on the frontend's machine.
+
 The agent asks the server for its items; the server does not know the
 host and runs its autoregistration action, which creates it, puts it in
 the SenHub group and links the templates of its platform. Discovery then
