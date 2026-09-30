@@ -54,6 +54,7 @@ Changes since 0.6.0, collected as they are merged.
   | `senhub.vsphere_ha.nsx.transport_nodes.total` | `senhub.vsphere_ha.nsx.transport_node.count` |
   | `redis.cmd.usec` | `redis.cmd.time` |
   | `smart.disk.power_on_hours` | `smart.disk.power_on.time` |
+  | `senhub.docker.memory.working_set` | `container.memory.working_set` |
 
   In Prometheus, each name above takes underscores (`senhub_veeam_job_count`).
   Names ending in `.count` that OpenTelemetry defines, such as
