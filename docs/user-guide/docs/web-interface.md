@@ -21,7 +21,7 @@ without anyone touching its configuration:
 http:
   port: 8080
   bind_address: "127.0.0.1"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
   admin_key: "${secret:agent.admin_key}"
 ```
 

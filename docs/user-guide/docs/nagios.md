@@ -22,7 +22,7 @@ lists it by default, in `strategies.d/00-http.yaml`:
 http:
   port: 8080
   bind_address: "0.0.0.0"
-  endpoints: ["prtg", "web", "nagios"]
+  endpoints: ["prtg", "web", "nagios", "prometheus"]
 ```
 
 The installer binds the HTTP output to `127.0.0.1` unless HTTPS was

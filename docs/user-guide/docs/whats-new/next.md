@@ -16,6 +16,13 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **A new installation answers PRTG, Nagios and Prometheus at once.** The
+  installers enabled the console, PRTG and Nagios but not Prometheus, so a
+  scrape answered 404 until the list was edited. Every endpoint is now on
+  in a configuration an installer writes; what limits access is the
+  listen address (loopback by default) and the keys. An existing
+  configuration keeps its list.
+
 - **The console's Agent card, `senhub-agent status` and `/health` report
   measured values.** CPU was a constant 0 %, and "Memory" was the Go
   heap, about a tenth of what the operating system charges to the agent.
