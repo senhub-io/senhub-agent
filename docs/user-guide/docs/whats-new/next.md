@@ -16,6 +16,14 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **A Windows host is linked to its gateway in the topology.** The agent
+  read routes from the Linux routing table only, so a Windows host sent
+  none and stood alone in a topology backend. It now reads the Windows
+  routing table and links the host's routes to their gateway, as on
+  Linux. On both, a gateway behind a container bridge (a Docker user
+  bridge, a CNI bridge) is no longer emitted as a shared address: the
+  same value exists on every such host.
+
 - **A legacy single-file configuration no longer fails its migration at
   every start.** When `probes.d/` or `strategies.d/` held fragments, the
   migration to the multi-file layout failed its own check, restored the

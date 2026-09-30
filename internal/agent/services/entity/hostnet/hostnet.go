@@ -46,34 +46,46 @@ type hostRoute struct {
 	Destination string // canonical CIDR, e.g. "0.0.0.0/0"
 	NextHop     string // gateway IP (dotted)
 	Metric      int64
+	// Iface names the interface the route leaves by, when the platform
+	// says so; a container bridge's gateway is the same on every host.
+	Iface string
 }
 
 // Source implements entity.Source for the host routing table.
 type Source struct {
-	hostID    func() string
-	readRoute func() ([]byte, error)
+	hostID     func() string
+	readRoutes func() ([]hostRoute, error)
 }
 
 // New builds the host-route source. hostID returns the host's stable id
 // (gopsutil HostID) used as the route entity's owning host.id.
 func New(hostID func() string) *Source {
 	return &Source{
-		hostID:    hostID,
-		readRoute: func() ([]byte, error) { return os.ReadFile(procRoute) },
+		hostID:     hostID,
+		readRoutes: platformRoutes,
 	}
 }
 
-// Observe reads the routing table and builds the snapshot. Reading the local
-// /proc file is fast and non-blocking. A read failure reports ok=false so
-// the detector keeps the last good snapshot instead of deleting the host's
-// routes on a transient error (audit D3); on non-Linux the read fails every
-// cycle and the source simply never contributes.
+// Observe reads the routing table and builds the snapshot: /proc/net/route
+// on Linux, the IP helper API on Windows. Both are fast and non-blocking.
+// A read failure reports ok=false so the detector keeps the last good
+// snapshot instead of deleting the host's routes on a transient error
+// (audit D3); where no reader exists the source never contributes.
 func (s *Source) Observe() (entity.Observation, bool) {
-	b, err := s.readRoute()
+	routes, err := s.readRoutes()
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	return buildObservation(s.hostID(), parseProcRoute(b)).WithScope(entity.ScopeHostRoute), true
+	return buildObservation(s.hostID(), routes).WithScope(entity.ScopeHostRoute), true
+}
+
+// procRoutes reads the Linux kernel routing table.
+func procRoutes() ([]hostRoute, error) {
+	b, err := os.ReadFile(procRoute)
+	if err != nil {
+		return nil, err
+	}
+	return parseProcRoute(b), nil
 }
 
 // buildObservation maps next-hop routes → network.route entities owned by the
@@ -112,7 +124,7 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		// (e.g. a Docker bridge) is the same value on every host, so a shared
 		// node would falsely join unrelated hosts (Toise otel-mapping contract);
 		// the next hop still rides as the host-scoped next_hop.ip attribute above.
-		if entity.IsHostLocalAddressStr(r.NextHop) {
+		if entity.IsHostLocalAddressStr(r.NextHop) || entity.IsContainerBridgeIface(r.Iface) {
 			continue
 		}
 		addrID := map[string]any{idKeyNetworkAddress: r.NextHop}
@@ -171,7 +183,7 @@ func parseProcRoute(data []byte) []hostRoute {
 		if m, err := strconv.ParseInt(f[6], 10, 64); err == nil {
 			metric = m
 		}
-		out = append(out, hostRoute{Destination: cidr, NextHop: gw, Metric: metric})
+		out = append(out, hostRoute{Destination: cidr, NextHop: gw, Metric: metric, Iface: f[0]})
 	}
 	return out
 }
