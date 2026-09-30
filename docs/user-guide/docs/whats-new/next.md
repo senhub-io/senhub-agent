@@ -114,6 +114,35 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **A newer Windows build replaces the installed exe.** `senhub-agent.exe`
+  and `senhub-console.exe` had no version resource, so Windows Installer
+  could not tell builds apart and an MSI of a newer build could keep the
+  exe already installed. Both now carry their version (the release plus a
+  build number, so every later build is higher), the company and product
+  name, visible in the file's Properties > Details (#1002).
+
+- **A removed probe leaves the PRTG, Nagios and Prometheus lists at once.**
+  After its configuration was removed, renamed or disabled, a probe stayed
+  in `/prtg/probes`, the Nagios views, Prometheus and the console until its
+  cached series expired, up to an hour and a half for an hourly probe. The
+  HTTP output now drops it on the reload (#997).
+
+- **File tail follows a rotated idle file.** When an idle file was rotated
+  or truncated, its bookmark kept the previous file's offset until the
+  next line, so a restart in between skipped or replayed lines of the new
+  file. The bookmark moves to the new file's start as soon as it is
+  reopened (#999).
+
+- **IPMI reports sensor readings, and no longer reports a missing sensor as
+  failed.** The probe read `ipmitool sdr elist full` as if it were the
+  plain `sdr` layout and took the sensor number for the reading, so no
+  temperature, fan speed, voltage or power value was ever sent, only a
+  status per sensor. The readings now reach every output: PRTG sensors on
+  real hardware gain Temperature, Fan Speed, Voltage and PSU channels, which
+  can bring a host with many sensors close to PRTG's channel limit per
+  sensor. A sensor the BMC has no reading for (`ns`, "No Reading", such as
+  an absent fan) sends no value instead of a status at 0 (#994).
+
 - **An entity reported by two sources arrives whole.** When two probes of
   one agent described the same entity in a cycle (a device polled directly
   and seen in another's LLDP table, an address named by a route and by an
