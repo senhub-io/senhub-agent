@@ -5,6 +5,9 @@ and **infrastructure topology** from hosts, applications and network
 devices, and serves or pushes them to the monitoring stack you already run:
 PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
 
+**Website: [agent.senhub.io](https://agent.senhub.io)** · Documentation:
+[agent.senhub.io/docs](https://agent.senhub.io/docs)
+
 [![Go tests](https://github.com/senhub-io/senhub-agent/actions/workflows/go-test.yml/badge.svg)](https://github.com/senhub-io/senhub-agent/actions/workflows/go-test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
