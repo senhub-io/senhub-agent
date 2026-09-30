@@ -108,16 +108,20 @@ func (cm *ConfigurationManager) loadConfiguration() {
 		}
 	}
 
-	// Load endpoints configuration
+	// Load endpoints configuration. The set is rebuilt, not added to: a
+	// reload runs over the same manager, and an endpoint taken out of the
+	// list must stop being served.
+	enabled := make(map[string]bool)
 	if endpointsParam, exists := cm.params["endpoints"]; exists {
 		if endpointsList, ok := endpointsParam.([]interface{}); ok {
 			for _, endpoint := range endpointsList {
 				if endpointStr, ok := endpoint.(string); ok {
-					cm.enabledEndpoints[endpointStr] = true
+					enabled[endpointStr] = true
 				}
 			}
 		}
 	}
+	cm.enabledEndpoints = enabled
 
 	// If no endpoints specified, default to no endpoints enabled
 	// User must explicitly configure endpoints
