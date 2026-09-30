@@ -324,10 +324,12 @@ possible `hw_state`, value `1` if active else `0`.
 
 | Prometheus name | `hw_type` values | `hw_state` values |
 |---|---|---|
-| `senhub_hw_status` | `power_supply`, `physical_disk`, `logical_disk`, `disk_controller`, `enclosure` | `ok`, `degraded`, `failed`, `predicted_failure`, `unknown` |
+| `senhub_hw_status` | `power_supply`, `physical_disk`, `logical_disk`, `disk_controller`, `enclosure` | `ok`, `degraded`, `failed`, `predicted_failure` |
 
 Drive failure prediction is encoded as `hw_state="predicted_failure"` on
-the same metric (independent of overall health).
+the same metric (independent of overall health). A component whose health
+the BMC does not report has every state at `0`: the convention defines no
+`unknown` state. An IPMI sensor emits the `ok` series only.
 
 ### Drives, volumes, pools (capacity & I/O)
 

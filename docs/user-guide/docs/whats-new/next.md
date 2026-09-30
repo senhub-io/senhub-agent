@@ -95,6 +95,18 @@ Changes since 0.6.0, collected as they are merged.
 
 ## Fixes
 
+- **Hardware health follows the OpenTelemetry states.** Redfish emitted
+  `hw.status{hw.state="unknown"}` for a component whose health the BMC does
+  not report; the convention has no such state, so a conforming backend
+  ignored the series. Such a component now has every state at 0. A drive's
+  predicted failure, a separate `senhub.hardware.physical_disk.failure_predicted`
+  gauge since 0.6.0, is again the `hw.state="predicted_failure"` series of
+  its `hw.status`, which the shipped Redfish Grafana dashboard reads: its
+  "predicted failure" panel showed nothing in 0.6.0. IPMI's `hw.status` gains
+  the `hw.state="ok"` attribute the convention requires. PRTG channels do
+  not change; the Zabbix items of both change key, refreshed by re-running
+  `zabbix setup`.
+
 - **PRTG shows NetScaler throughput at its real scale.** The NetScaler
   throughput and link-speed channels carry values in megabits per second
   but told PRTG they were in bits, so PRTG displayed them a million

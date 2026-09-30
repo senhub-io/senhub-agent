@@ -357,15 +357,25 @@ These would require reworking the probe code to maintain internal counters. Sepa
 | `hw.logical_disk.usage` | `By` | UpDownCounter | Volume in use (allocated/free), with `hw.logical_disk.state` |
 | `hw.logical_disk.utilization` | `1` | Gauge | Volume occupancy ratio |
 
-**The `hw.state` attribute** — values emitted through the expansion:
-- official OTel: `ok`, `degraded`, `failed`, `predicted_failure`
-- **`unknown` extension** — for Redfish code 3 (Unknown), which has no standard OTel equivalent. An honest value: "Redfish could not determine the state".
+**The `hw.state` attribute** takes only the convention's values: `ok`,
+`degraded`, `failed`, `needs_cleaning`, `predicted_failure`. The expansion
+over it is declared `closed: true`, so a code matching no state leaves every
+series at 0 rather than adding an `unknown` series no backend reads; a guard
+test (`hw_state_guard_test.go`) rejects any other value, and an `hw.status`
+without `hw.state`.
 
 **Mapping of the `sfs.redfish.health` lookup codes:**
 - 0 (OK) → `hw.state=ok`
 - 1 (Warning) → `hw.state=degraded`
 - 2 (Critical) → `hw.state=failed`
-- 3 (Unknown) → `hw.state=unknown` *(extension)*
+- 3 (Unknown) → every state at 0
+
+**Predicted drive failure** (`Drive.FailurePredicted`) is the
+`hw.state=predicted_failure` series of the drive's `hw.status`, beside the
+three its health emits: a drive can be `ok` and predict a failure at once.
+
+**IPMI** reports a sensor as ok or not; it emits the `hw.state=ok` series
+(1 when ok, 0 otherwise).
 
 #### 4.9.2 `senhub.*` extensions
 
@@ -374,7 +384,6 @@ Extensions created for concepts the official OTel hardware namespace does not co
 | Senhub metric | Type | Reason |
 |---|---|---|
 | `senhub.hardware.physical_disk.has_active_operations` | Gauge bool | No OTel equivalent |
-| `senhub.hardware.physical_disk.failure_predicted` | Gauge bool | No OTel equivalent; not a `hw.state` of `hw.status`, because a predicted failure is a fact about a disk that is still ok |
 | `senhub.hardware.physical_disk.operation.progress_ratio` | Gauge `1` | No OTel equivalent |
 | `senhub.hardware.physical_disk.link_speed` | Gauge `bit/s` | No OTel equivalent (Redfish exposes NegotiatedSpeed in Gbps; mapper ×1e9) |
 | `senhub.hardware.physical_disk.location_indicator_active` | Gauge bool | No OTel equivalent |

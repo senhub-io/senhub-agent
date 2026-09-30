@@ -30,11 +30,11 @@ metrics:
         hw.type: power_supply
       expand:
         attribute: hw.state
+        closed: true
         mapping:
           ok: 0
           degraded: 1
           failed: 2
-          unknown: 3
     tag_to_attribute:
       psu_name: hw.id
       psu_location: hw.name
@@ -80,11 +80,11 @@ metrics:
         hw.type: physical_disk
       expand:
         attribute: hw.state
+        closed: true
         mapping:
           ok: 0
           degraded: 1
           failed: 2
-          unknown: 3
     tag_to_attribute:
       drive_id: hw.id
       drive_name: hw.name
@@ -102,15 +102,16 @@ metrics:
     category: "drives"
     lookup: "sfs.redfish.failure_predicted"
     otel:
-      # Its own gauge, not a state of hw.status. A prediction is a fact
-      # about a disk that is still ok; expanding it over hw.state made
-      # every healthy disk emit hw.state=unknown=1, which overwrote the
-      # health metric's own unknown series on every push output.
-      name: senhub.hardware.physical_disk.failure_predicted
+      # The predicted_failure series of the drive's hw.status, beside the
+      # ok/degraded/failed series its health emits: a drive can be ok and
+      # predict a failure at once, as the convention's per-state series
+      # allow.
+      name: hw.status
       unit: "1"
-      type: gauge
+      type: updowncounter
       attributes:
         hw.type: physical_disk
+        hw.state: predicted_failure
     tag_to_attribute:
       drive_id: hw.id
       drive_name: hw.name
@@ -361,11 +362,11 @@ metrics:
         hw.type: logical_disk
       expand:
         attribute: hw.state
+        closed: true
         mapping:
           ok: 0
           degraded: 1
           failed: 2
-          unknown: 3
     tag_to_attribute:
       volume_id: hw.id
       volume_name: hw.name
@@ -706,11 +707,11 @@ metrics:
         hw.type: enclosure
       expand:
         attribute: hw.state
+        closed: true
         mapping:
           ok: 0
           degraded: 1
           failed: 2
-          unknown: 3
     tag_to_attribute:
       system_name: hw.name
       model: hw.model
@@ -756,11 +757,11 @@ metrics:
         hw.type: disk_controller
       expand:
         attribute: hw.state
+        closed: true
         mapping:
           ok: 0
           degraded: 1
           failed: 2
-          unknown: 3
     tag_to_attribute:
       controller_id: hw.id
       controller_name: hw.name
