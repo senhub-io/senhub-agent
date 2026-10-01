@@ -96,8 +96,13 @@ func (r statusResult) exitCode() int {
 
 // collectStatus gathers the status without printing anything.
 func collectStatus(svc service.Service, args *cliArgs.ParsedArgs) statusResult {
+	return collectStatusWith(svc, args, agentLogger.NewLogger(&cliArgs.ParsedArgs{Verbose: false}))
+}
+
+// collectStatusWith is collectStatus with the logger the caller chooses,
+// so a read-only command can keep the file logger from opening.
+func collectStatusWith(svc service.Service, args *cliArgs.ParsedArgs, logger *agentLogger.Logger) statusResult {
 	var res statusResult
-	logger := agentLogger.NewLogger(&cliArgs.ParsedArgs{Verbose: false})
 	statusHelper := status.NewStatusHelper(logger)
 
 	serviceStatus, err := statusHelper.GetServiceStatus(svc)
@@ -180,7 +185,7 @@ func collectStatus(svc service.Service, args *cliArgs.ParsedArgs) statusResult {
 	res.notice = daemonUnreachableNotice(keyProblem, reachProblem)
 
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
-	systemStatus, err := getSystemStatusDirect(args)
+	systemStatus, err := getSystemStatusWith(args, logger)
 	if err != nil {
 		res.localErr = err
 		res.source = "minimal"
@@ -303,16 +308,14 @@ func runStatus(svc service.Service, args *cliArgs.ParsedArgs, jsonMode bool, out
 
 // getSystemStatusDirect gets system status directly using StatusService (no HTTP dependency)
 func getSystemStatusDirect(args *cliArgs.ParsedArgs) (status.SystemStatus, error) {
+	return getSystemStatusWith(args, agentLogger.NewLogger(&cliArgs.ParsedArgs{Verbose: false}))
+}
+
+func getSystemStatusWith(args *cliArgs.ParsedArgs, logger *agentLogger.Logger) (status.SystemStatus, error) {
 	// Handle nil args case
 	if args == nil {
 		args = &cliArgs.ParsedArgs{}
 	}
-
-	// Create a completely silent logger for the status service (no output during status command)
-	silentArgs := &cliArgs.ParsedArgs{
-		Verbose: false,
-	}
-	logger := agentLogger.NewLogger(silentArgs)
 
 	// Try to get version and commit information
 	version := cliArgs.Version
