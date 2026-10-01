@@ -79,7 +79,7 @@ func TestFileTail_TailStuckOnRotatedFileIsReportedAndRestartedFromZero(t *testin
 	if _, err := p.Collect(); err == nil || !strings.Contains(err.Error(), file) || !strings.Contains(err.Error(), "restarted") {
 		t.Fatalf("Collect error = %v, want the stall reported against %s", err, file)
 	}
-	if got := logs.count("did not follow a rotated or truncated file"); got != 1 {
+	if got := logs.count("tail does not follow its file"); got != 1 {
 		t.Fatalf("stall logged %d times, want once", got)
 	}
 
@@ -192,4 +192,35 @@ func TestFileTail_TwoProbesOnOnePathRecoverFromARotation(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("emitted %d and %d of %d lines of the new file", probes[0].emitted.Load(), probes[1].emitted.Load(), len(lines))
+}
+
+// The right file, but a tail that reads nothing of what was appended: it
+// restarts where it was, so nothing is replayed and nothing is lost.
+func TestFileTail_TailThatReadsNothingOfAGrowingFileResumesAtItsOffset(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "access.log")
+	content := backlog(40)
+	writeFile(t, file, content)
+
+	p, _ := stallProbe(t, file)
+	defer stopFileTail(t, p)
+	stuck := tailStateOf(t, p, file)
+
+	lastThree := 0
+	for _, l := range strings.SplitAfter(content, "\n")[37:40] {
+		lastThree += len(l)
+	}
+	stuck.offset.Store(int64(len(content) - lastThree))
+
+	fresh := rescanUntilRestarted(t, p, file, stuck)
+	if fresh == stuck {
+		t.Fatal("same tail after the restart")
+	}
+	if got := waitEmitted(p, 3, 5*time.Second); got != 3 {
+		t.Fatalf("emitted %d, want the 3 lines past the offset", got)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if got := p.emitted.Load(); got != 3 {
+		t.Fatalf("emitted %d, want exactly 3", got)
+	}
 }

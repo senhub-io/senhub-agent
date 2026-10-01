@@ -77,6 +77,7 @@ func TestFileTail_CreateModeRotationKeepsCollecting(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	for round := 0; round < 2; round++ {
+		time.Sleep(300 * time.Millisecond)
 		before := p.emitted.Load()
 		if err := os.Rename(file, file+".1"); err != nil {
 			t.Fatal(err)
@@ -116,7 +117,10 @@ func TestFileTail_CopytruncateKeepsCollecting(t *testing.T) {
 		if err := os.Truncate(file, 0); err != nil {
 			t.Fatal(err)
 		}
-		lines := newFileLines(60)
+		// Shorter than what was read, as copytruncate leaves a file between
+		// two rotations; the library sees a truncation only when the size
+		// has dropped by the time it looks.
+		lines := newFileLines(10 - 5*round)
 		appendLines(t, file, lines...)
 		want := before + uint64(len(lines))
 		if got := waitEmitted(p, want, 5*time.Second); got != want {

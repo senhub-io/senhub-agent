@@ -155,7 +155,7 @@ func (p *FileTailProbe) unreadableError() error {
 			continue
 		}
 		if _, listed := all[k]; !listed {
-			all[k] = "tail was stuck on a rotated or truncated file and was restarted"
+			all[k] = "tail was not following its file and was restarted"
 		}
 	}
 	if len(all) == 0 {
@@ -455,6 +455,7 @@ type tailState struct {
 	mu            sync.Mutex
 	opened        os.FileInfo
 	mismatchSince time.Time
+	checkedOffset int64
 
 	superseded atomic.Bool
 }
@@ -471,28 +472,37 @@ func (ts *tailState) markOpened(path string) {
 }
 
 // divergence says why the tail no longer follows the file at path, or "".
+// resume is true when the tail is still on the right file, so a restart
+// can continue at the offset already read instead of from the first byte.
 // It never asks the tail: a tail stuck on a rotated file is exactly the
 // one that would not answer.
-func (ts *tailState) divergence(path string) string {
+func (ts *tailState) divergence(path string) (reason string, resume bool) {
 	cur, err := os.Stat(path)
 	if err != nil {
-		return ""
+		return "", false
 	}
+	offset := ts.offset.Load()
 	ts.mu.Lock()
 	opened := ts.opened
+	unchanged := ts.checkedOffset == offset
+	ts.checkedOffset = offset
 	ts.mu.Unlock()
 	if opened != nil && !os.SameFile(opened, cur) {
-		return "the path names a different file than the one being read"
+		return "the path names a different file than the one being read", false
 	}
-	if cur.Size() < ts.offset.Load() {
-		return "the file is shorter than the offset already read"
+	if cur.Size() < offset {
+		return "the file is shorter than the offset already read", false
 	}
-	return ""
+	if cur.Size() > offset && unchanged {
+		return "the file grew and the tail read nothing of it", true
+	}
+	return "", false
 }
 
-// restartStalledTails restarts, from the first byte, every tail whose file
-// has been rotated or truncated for longer than the grace period without
-// the tail having followed. The library signals rotation through a shared
+// restartStalledTails restarts every tail that has not followed its file
+// (rotated, truncated, or grown without a line read) for longer than the
+// grace period: from the first byte when the file changed, at the offset
+// already read when it did not. The library signals rotation through a shared
 // per-path inotify channel that a second tail on the same path, or a lost
 // event, leaves a tail waiting on for good, with no error and no line.
 func (p *FileTailProbe) restartStalledTails() {
@@ -500,12 +510,13 @@ func (p *FileTailProbe) restartStalledTails() {
 		file   string
 		ts     *tailState
 		reason string
+		resume bool
 	}
 	var due []candidate
 
 	p.mu.Lock()
 	for file, ts := range p.tailing {
-		reason := ts.divergence(file)
+		reason, resume := ts.divergence(file)
 		ts.mu.Lock()
 		switch {
 		case reason == "":
@@ -513,18 +524,18 @@ func (p *FileTailProbe) restartStalledTails() {
 		case ts.mismatchSince.IsZero():
 			ts.mismatchSince = time.Now()
 		case time.Since(ts.mismatchSince) >= p.stallGrace:
-			due = append(due, candidate{file, ts, reason})
+			due = append(due, candidate{file, ts, reason, resume})
 		}
 		ts.mu.Unlock()
 	}
 	p.mu.Unlock()
 
 	for _, c := range due {
-		p.restartStalledTail(c.file, c.ts, c.reason)
+		p.restartStalledTail(c.file, c.ts, c.reason, c.resume)
 	}
 }
 
-func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason string) {
+func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason string, resume bool) {
 	p.mu.Lock()
 	if p.stopped || p.tailing[file] != ts {
 		p.mu.Unlock()
@@ -537,10 +548,15 @@ func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason st
 	p.mu.Unlock()
 
 	p.moduleLogger.Warn().Str("file", file).Str("reason", reason).
-		Msg("tail did not follow a rotated or truncated file; restarting it from the first byte")
+		Bool("resume_at_offset", resume).
+		Msg("tail does not follow its file; restarting it")
 
 	ts.t.Kill(nil)
-	if err := p.bookmarks.Set(file, bookmarkEntry{}); err != nil {
+	entry := bookmarkEntry{}
+	if resume {
+		entry = bookmarkEntry{Offset: ts.offset.Load(), Fingerprint: fingerprint(file, DefaultFingerprintLength)}
+	}
+	if err := p.bookmarks.Set(file, entry); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 	}
 	if err := p.startTail(file); err != nil {
