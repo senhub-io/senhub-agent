@@ -252,6 +252,12 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		}
 	}
 
+	ioPoints, err := c.collectDiskIO(timestamp, baseTags)
+	if err != nil {
+		c.logger.Warn().Err(err).Msg("cannot read block device I/O counters; skipping")
+	}
+	dataPoints = append(dataPoints, ioPoints...)
+
 	return dataPoints, nil
 }
 
