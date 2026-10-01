@@ -299,7 +299,7 @@ func (p *FileTailProbe) startTail(file string) {
 		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 	}
 
-	go p.consume(file, t, offset, reopened)
+	go p.consume(file, t, offset, fp, reopened)
 }
 
 // reopenSignal turns nxadm/tail's log line announcing a reopen into an
@@ -326,7 +326,13 @@ func (r *reopenSignal) Write(b []byte) (int, error) {
 
 // consume drains one file's tail channel, folds multiline records,
 // parses each, publishes it, and periodically persists the offset.
-func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64, reopened <-chan struct{}) {
+//
+// fp is the fingerprint of the file the offset was read from. It is only
+// replaced when the tail reports a reopen, never recomputed from the path
+// at persist time: by then the path may name a newer file, and pairing the
+// old file's offset with the new file's head hash is what let a restart
+// resume past the end of the file that replaced it.
+func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64, fp string, reopened <-chan struct{}) {
 	defer p.wg.Done()
 
 	asm := logparse.NewAssembler(p.config.Multiline, p.config.MaxBytesPerLine)
@@ -336,7 +342,14 @@ func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64, re
 	lastOffset := startOffset
 
 	persist := func() {
-		fp := fingerprint(file, DefaultFingerprintLength)
+		// A file below the fingerprint window has none yet. Once the offset
+		// shows the window was read, take it, provided the path still holds
+		// at least that many bytes.
+		if fp == "" && lastOffset >= DefaultFingerprintLength {
+			if fi, err := os.Stat(file); err == nil && fi.Size() >= lastOffset {
+				fp = fingerprint(file, DefaultFingerprintLength)
+			}
+		}
 		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: lastOffset, Fingerprint: fp}); err != nil {
 			p.moduleLogger.Warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 		}
@@ -364,6 +377,7 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
+			fp = fingerprint(file, DefaultFingerprintLength)
 			persist()
 			lastFlush = time.Now()
 			dirty = false
@@ -417,21 +431,21 @@ read:
 		p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 	}
 	persist()
-	p.forgetDeadTail(file, t)
+	p.forgetDeadTail(file, t, t.Wait())
 }
 
 // forgetDeadTail drops a tail that ended on its own (the file vanished
 // with its directory, a read error) so the next rescan starts a new one.
 // Without it the dead tail stays registered and the file is never read
 // again until the probe restarts.
-func (p *FileTailProbe) forgetDeadTail(file string, t *tail.Tail) {
+func (p *FileTailProbe) forgetDeadTail(file string, t *tail.Tail, cause error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.stopped || p.tailing[file] != t {
 		return
 	}
 	delete(p.tailing, file)
-	p.moduleLogger.Warn().Err(t.Err()).Str("file", file).Msg("tail ended; retrying on next rescan")
+	p.moduleLogger.Warn().Err(cause).Str("file", file).Msg("tail ended; retrying on next rescan")
 }
 
 func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time, probeName, file string) {
