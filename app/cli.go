@@ -12,8 +12,10 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"github.com/kardianos/service"
+
 	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // maxStopBudget caps the wall-clock the daemon spends stopping,
@@ -75,7 +77,7 @@ func (p *program) Stop(s service.Service) error {
 
 func (p *program) run(ctx context.Context) {
 	if err := p.agent.Start(ctx); err != nil {
-		// handleStartError already calls os.Exit(1) before Start returns
+		// handleStartError already exits non-zero before Start returns
 		// an error on misconfiguration. This path is a defence-in-depth
 		// fallback for callers that override exitFn (tests) or for future
 		// code that makes handleStartError non-fatal.
@@ -153,7 +155,7 @@ func checkPrivileges(command string) error {
 // rather than with a timestamped log line.
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
-	os.Exit(1)
+	os.Exit(cliexit.Failure)
 }
 
 // readYesConfirmation reads a single interactive answer from stdin and
@@ -417,7 +419,7 @@ func Main() {
 	if !known && !registered {
 		fmt.Fprintf(os.Stderr, "Error: unknown command or flag %q\n", os.Args[1])
 		fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	// If first argument is a service command
@@ -440,7 +442,7 @@ func Main() {
 	if !readOnlyCommand(os.Args) {
 		if err := checkPrivileges(command); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
@@ -515,7 +517,7 @@ func Main() {
 		if len(os.Args) > 2 {
 			fmt.Fprintf(os.Stderr, "Error: unknown config subcommand %q\n", os.Args[2])
 			fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 		showHelp()
 		return

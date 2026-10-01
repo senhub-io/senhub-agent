@@ -7,9 +7,11 @@ import (
 
 	goversion "github.com/hashicorp/go-version"
 	"gopkg.in/yaml.v2"
+
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // UpdateOption customises the update command.
@@ -97,7 +99,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 	stable, err := updater.ListAvailableVersions(false)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch versions")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	// Fetch beta only if enabled
@@ -167,13 +169,13 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 	self, exeErr := os.Executable()
 	if exeErr != nil {
 		log.Error().Err(exeErr).Msg("Cannot resolve the running executable")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	updated, err := updater.Update(args.WantedVersion, args.UpdateRegistryUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Update failed")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	// The hook runs even when the binary was already at the wanted version:
@@ -186,7 +188,7 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		reconciled, err = options.afterInstall(self)
 		if err != nil {
 			log.Error().Err(err).Msg("Updating the systemd-managed service binary failed")
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
@@ -195,7 +197,7 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		restarted, err = options.restart()
 		if err != nil {
 			log.Error().Err(err).Msg("The new binary is installed but the service does not run it")
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 	restartLine := "Restart the agent to use the new version (MSI-managed installs restart automatically)."
@@ -224,7 +226,7 @@ func checkAndPrompt(updater auto_update.AutoUpdate, includeBeta bool, log *logge
 	newer, err := updater.CheckForNewVersion(includeBeta)
 	if err != nil {
 		log.Error().Err(err).Msg("Version check failed")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	if newer == nil {
