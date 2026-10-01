@@ -21,7 +21,7 @@ agent:
 # Auto-update configuration
 auto_update:
   enabled: false
-  url: "https://eu-west-1.intake.senhub.io/releases"
+  url: "https://eu-west-1.intake.senhub.io"
 
 # Cache configuration
 cache:
