@@ -87,12 +87,44 @@ func TestVersionJSON(t *testing.T) {
 	}
 }
 
-func TestConfigCheckJSONWarning(t *testing.T) {
+func TestConfigCheckJSONFreeTierIsClean(t *testing.T) {
 	path := copyExampleConfig(t, "example-config-free-tier.yaml")
 	var out bytes.Buffer
 	code := runConfigCheck([]string{"--json", path}, &out)
+	if code != cliexit.OK {
+		t.Fatalf("exit code = %d, want %d: the free tier is a supported setup, not a warning\n%s", code, cliexit.OK, out.String())
+	}
+	doc := decodeJSONDocument(t, out.String())
+	requireHeader(t, doc, "senhub.cli.config.check/v1", cliexit.OK)
+	found := false
+	for _, f := range doc["findings"].([]any) {
+		m := f.(map[string]any)
+		if m["level"] == "info" && strings.Contains(m["message"].(string), "free tier") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the free-tier line is missing from findings: %v", doc["findings"])
+	}
+}
+
+func TestConfigCheckJSONWarning(t *testing.T) {
+	path := copyExampleConfig(t, "example-config-free-tier.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+	cut := strings.Index(string(data), "\nprobes:")
+	if cut < 0 {
+		t.Fatal("the example has no top-level probes block")
+	}
+	if err := os.WriteFile(path, append(data[:cut+1], []byte("probes: []\n")...), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	var out bytes.Buffer
+	code := runConfigCheck([]string{"--json", path}, &out)
 	if code != cliexit.Warning {
-		t.Fatalf("exit code = %d, want %d (the free-tier example warns)\n%s", code, cliexit.Warning, out.String())
+		t.Fatalf("exit code = %d, want %d (no probe configured warns)\n%s", code, cliexit.Warning, out.String())
 	}
 	doc := decodeJSONDocument(t, out.String())
 	requireHeader(t, doc, "senhub.cli.config.check/v1", cliexit.Warning)
@@ -189,7 +221,7 @@ func TestConfigShowJSONRedactsByDefault(t *testing.T) {
 	if _, ok := doc["config"].(map[string]any); !ok {
 		t.Fatalf("config is not an object: %T", doc["config"])
 	}
-	if strings.Contains(out.String(), "test-agent-free-tier-12345") {
+	if strings.Contains(out.String(), "00000000-0000-4000-8000-000000000000") {
 		t.Errorf("the agent key appears in the redacted JSON:\n%s", out.String())
 	}
 }
@@ -204,7 +236,7 @@ func TestConfigShowJSONResolvedIsExplicit(t *testing.T) {
 	if doc["mode"] != "resolved" {
 		t.Errorf("mode = %v, want resolved", doc["mode"])
 	}
-	if !strings.Contains(out.String(), "test-agent-free-tier-12345") {
+	if !strings.Contains(out.String(), "00000000-0000-4000-8000-000000000000") {
 		t.Error("--resolved must show the value in the clear, as it does in text mode")
 	}
 }

@@ -8,8 +8,8 @@ Changes land here as they are merged to `dev`.
 
 - **Exit codes of the command line are a contract.** `0` done, `1`
   warning, `2` failure, `3` unchanged. Failures that exited `1` now exit
-  `2`, and `config check` exits `1` when it found warnings only (a missing
-  licence is one) and `status` exits `1` when the service is stopped, the
+  `2`, and `config check` exits `1` when it found warnings only (running
+  without a licence is the free tier, reported as information) and `status` exits `1` when the service is stopped, the
   agent does not answer or it reports itself unhealthy. A script that
   tests for any non-zero code is unaffected; one that compares with `1`
   must follow. The container image and the Windows installer are updated

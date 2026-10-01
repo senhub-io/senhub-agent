@@ -52,7 +52,7 @@ type configCheckReport struct {
 	Findings   []checkFinding `json:"findings"`
 }
 
-var checkFindingLine = regexp.MustCompile(`^\s*\[(OK|WARN|ERROR|OFF)\]\s+(.*\S)\s*$`)
+var checkFindingLine = regexp.MustCompile(`^\s*\[(OK|INFO|WARN|ERROR|OFF)\]\s+(.*\S)\s*$`)
 
 // parseCheckFindings turns the text report of checkConfig into one entry
 // per status line. Continuation lines (hints, context dumps) belong to
