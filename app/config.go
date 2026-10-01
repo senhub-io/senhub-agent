@@ -332,10 +332,10 @@ func extractAgentKeyFromConfig(configPath string) (string, error) {
 // no longer fall through as "no probes configured" warnings.
 //
 // Errors that prevent loading (file missing, malformed YAML, broken
-// substitution) abort with exit 1 + a context dump for YAML parse
-// errors. Validation errors are collected, reported, and reflected in
-// the final non-zero exit code.
-func checkConfig(configPath string) {
+// substitution) are returned as outcome.loadErr after a context dump for
+// YAML parse errors. Validation errors are collected and reported; the
+// caller turns the outcome into the exit code.
+func checkConfig(configPath string) checkOutcome {
 	absPath, err := filepath.Abs(configPath)
 	if err != nil {
 		absPath = configPath
@@ -370,7 +370,7 @@ func checkConfig(configPath string) {
 	content, err := os.ReadFile(configPath) // #nosec G304 - user-provided path for CLI tool
 	if err != nil {
 		fmt.Printf("  [ERROR] Cannot read file: %v\n", err)
-		os.Exit(1)
+		return checkOutcome{loadErr: fmt.Errorf("cannot read file: %w", err)}
 	}
 
 	// Build a minimal logger for the loader so the WARN events
@@ -404,7 +404,7 @@ func checkConfig(configPath string) {
 			}
 			showYAMLErrorContext(string(src), parseErr.Err)
 		}
-		os.Exit(1)
+		return checkOutcome{loadErr: fmt.Errorf("configuration load failed: %w", err)}
 	}
 
 	errorCount := 0
@@ -489,8 +489,9 @@ func checkConfig(configPath string) {
 			}
 		}
 	} else {
-		fmt.Println("  [WARN] agent.license not set (free tier only)")
-		warnings++
+		// The free tier is a supported setup, not a condition to fix: it
+		// must not turn config check (and a validator built on it) amber.
+		fmt.Println("  [INFO] agent.license not set (free tier)")
 	}
 
 	// Probes
@@ -685,34 +686,10 @@ func checkConfig(configPath string) {
 		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
 	} else {
 		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errorCount, warnings)
-		os.Exit(1)
 	}
+	return checkOutcome{errors: errorCount, warnings: warnings}
 }
 
-// showConfig prints the merged configuration as YAML for diffability
-// and audit. Modes:
-//
-//	--resolved (default) — ${env:..} / ${file:..} references resolved
-//	                       against the current environment / FS.
-//	                       This is what the agent boots with.
-//	--raw                — references preserved as written, useful
-//	                       for reviewing the loaded layout before
-//	                       comparing against the resolved output.
-//	--redact             — the DEFAULT: resolved, but values that came
-//	                       from ${file:..} OR sit under a YAML key whose
-//	                       name matches (?i)(key|token|password|secret)
-//	                       are masked with "***". Safe for tickets.
-//	--resolved           — resolved WITHOUT redaction: secrets in
-//	                       cleartext. Requires the explicit flag —
-//	                       operators paste config show into tickets,
-//	                       so the safe behavior is the default (#279).
-//
-// Output: YAML, with map keys sorted alphabetically (yaml.v3 + a
-// post-pass over the marshaled node tree) so two runs produce
-// byte-identical output and dashboards/diffs stay stable.
-//
-// Errors abort with exit 1 and a single human-readable line on
-// stderr — the goal is "fits in a CI log".
 // agentKeyCheckLine reports the agent key without its value: the key is
 // the bearer token a monitoring tool reads the agent with, and the output
 // of a check gets pasted into tickets and chats.
@@ -728,66 +705,6 @@ func agentKeyCheckLine(key string) (line string, isError, isWarning bool) {
 }
 
 var uuidShape = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-
-func showConfig(args []string) {
-	mode := configuration.ShowRedact
-	// Empty string means "use the OS-canonical default" — resolved
-	// below via GetAbsoluteConfigPath. An explicit positional path
-	// argument overrides it.
-	configPath := ""
-
-	for _, a := range args {
-		switch a {
-		case "--raw":
-			mode = configuration.ShowRaw
-		case "--resolved":
-			mode = configuration.ShowResolved
-		case "--redact":
-			mode = configuration.ShowRedact
-		case "-h", "--help":
-			fmt.Println("Usage: agent config show [--raw|--resolved|--redact] [path]")
-			return
-		default:
-			if strings.HasPrefix(a, "--") {
-				fmt.Fprintf(os.Stderr, "Error: config show: unknown flag %q\n", a)
-				os.Exit(2)
-			}
-			configPath = a
-		}
-	}
-
-	// Resolve to the OS-canonical absolute path when no explicit path
-	// was given, mirroring what `agent run` / `agent start` use. The
-	// pre-0.2.0 default was the working-directory-relative
-	// ./agent-config.yaml, which diverged from where the agent
-	// actually reads its config.
-	if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
-		configPath = resolved
-	} else if absPath, absErr := filepath.Abs(configPath); absErr == nil {
-		configPath = absPath
-	}
-
-	// We need a logger so the loader can WARN about legacy detection
-	// and duplicate strategies. Build a minimal one writing to stderr
-	// at WARN level; --verbose flips it to debug if the operator wants
-	// to see the loader's chatter.
-	zlog := zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
-	base := (*agentLogger.Logger)(&zlog)
-	log := agentLogger.NewModuleLogger(base, "configuration.show")
-
-	data, err := configuration.LoadForShow(configPath, mode, log)
-	if err != nil {
-		fatalf("config show: %v", err)
-	}
-
-	out, err := configuration.MarshalSortedYAML(&data)
-	if err != nil {
-		fatalf("config show: marshaling output: %v", err)
-	}
-	if _, err := os.Stdout.Write(out); err != nil {
-		fatalf("config show: write: %v", err)
-	}
-}
 
 // showYAMLErrorContext shows the problematic line from the YAML file
 func showYAMLErrorContext(content string, yamlErr error) {

@@ -21,6 +21,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,6 +87,26 @@ func TestBootSmoke_Version(t *testing.T) {
 	}
 }
 
+// TestBootSmoke_VersionJSON pins the machine-readable contract on the
+// real binary: one JSON object on stdout, with the schema id.
+func TestBootSmoke_VersionJSON(t *testing.T) {
+	bin := buildAgent(t)
+	out, err := execAgent(t, bin, "version", "--json")
+	if err != nil {
+		t.Fatalf("`senhub-agent version --json` returned error: %v\noutput:\n%s", err, out)
+	}
+	var doc struct {
+		Schema string `json:"schema"`
+		OK     bool   `json:"ok"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("`senhub-agent version --json` is not one JSON object: %v\noutput:\n%s", err, out)
+	}
+	if doc.Schema != "senhub.cli.version/v1" || !doc.OK {
+		t.Errorf("unexpected document: %+v", doc)
+	}
+}
+
 // TestBootSmoke_VersionFlag pins the post-#134 contract:
 // `senhub-agent --version` prints the version and exits 0 instead of
 // spawning a full agent. Pre-fix it fell through to `run`, racing
@@ -133,7 +155,7 @@ func TestBootSmoke_ConfigCheckFreeTier(t *testing.T) {
 
 	out, err := execAgent(t, bin, "config", "check", cfg)
 	if err != nil {
-		t.Fatalf("`senhub-agent config check %s` returned non-zero exit: %v\noutput:\n%s",
+		t.Fatalf("`senhub-agent config check %s` failed: %v\noutput:\n%s",
 			cfg, err, out)
 	}
 	if strings.Contains(out, "[ERROR]") {
@@ -142,5 +164,61 @@ func TestBootSmoke_ConfigCheckFreeTier(t *testing.T) {
 	if !strings.Contains(out, "Configuration is valid") {
 		t.Errorf("`senhub-agent config check %s` did not report a valid configuration:\n%s",
 			cfg, out)
+	}
+}
+
+// TestBootSmoke_DoctorJSON runs the diagnosis on the free-tier example
+// with no service installed. The exit code depends on the host (a
+// warning for the missing service, a failure if port 8080 is taken), so
+// the contract pinned here is the document and the absence of a crash.
+func TestBootSmoke_DoctorJSON(t *testing.T) {
+	bin := buildAgent(t)
+	example, err := os.ReadFile(filepath.Join(repoRoot(t), "examples", "example-config-free-tier.yaml"))
+	if err != nil {
+		t.Fatalf("reading the free-tier example: %v", err)
+	}
+	cfg := filepath.Join(t.TempDir(), "agent-config.yaml")
+	if err := os.WriteFile(cfg, example, 0o600); err != nil {
+		t.Fatalf("writing the config copy: %v", err)
+	}
+
+	cmd := exec.Command(bin, "doctor", "--json", "--config-path", cfg)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	runErr := cmd.Run()
+	code := 0
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("`senhub-agent doctor --json` did not run: %v", runErr)
+		}
+		code = exitErr.ExitCode()
+	}
+
+	var doc struct {
+		Schema   string `json:"schema"`
+		ExitCode int    `json:"exit_code"`
+		Checks   []struct {
+			Section string `json:"section"`
+			ID      string `json:"id"`
+			Level   string `json:"level"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("`senhub-agent doctor --json` is not one JSON object: %v\noutput:\n%s", err, stdout.String())
+	}
+	if doc.Schema != "senhub.cli.doctor/v1" {
+		t.Errorf("schema %q", doc.Schema)
+	}
+	if code > 2 || doc.ExitCode != code {
+		t.Errorf("process exit code %d, document says %d", code, doc.ExitCode)
+	}
+	if len(doc.Checks) == 0 {
+		t.Error("the document carries no check")
+	}
+	for _, c := range doc.Checks {
+		if c.ID == "config.check" && c.Level != "ok" {
+			t.Errorf("the free-tier example is not reported valid: %+v", c)
+		}
 	}
 }
