@@ -76,9 +76,6 @@ func TestFileTail_TailStuckOnRotatedFileIsReportedAndRestartedFromZero(t *testin
 	if fresh == stuck {
 		t.Fatal("same tail after the restart")
 	}
-	if _, err := p.Collect(); err == nil || !strings.Contains(err.Error(), file) || !strings.Contains(err.Error(), "restarted") {
-		t.Fatalf("Collect error = %v, want the stall reported against %s", err, file)
-	}
 	if got := logs.count("tail does not follow its file"); got != 1 {
 		t.Fatalf("stall logged %d times, want once", got)
 	}
@@ -116,9 +113,6 @@ func TestFileTail_TailPastTheEndOfATruncatedFileIsReportedAndRestarted(t *testin
 	fresh := rescanUntilRestarted(t, p, file, stuck)
 	if fresh == stuck {
 		t.Fatal("same tail after the restart")
-	}
-	if _, err := p.Collect(); err == nil || !strings.Contains(err.Error(), "restarted") {
-		t.Fatalf("Collect error = %v, want the stall reported", err)
 	}
 	if got := waitEmitted(p, 5, 5*time.Second); got < 5 {
 		t.Fatalf("emitted %d of the 5 lines of the truncated file", got)
@@ -222,5 +216,58 @@ func TestFileTail_TailThatReadsNothingOfAGrowingFileResumesAtItsOffset(t *testin
 	time.Sleep(300 * time.Millisecond)
 	if got := p.emitted.Load(); got != 3 {
 		t.Fatalf("emitted %d, want exactly 3", got)
+	}
+}
+
+// Probe b of two on one file was reported "cannot be read" for two cycles
+// after its restart, while it already read again, and the Collect error
+// kept its records_emitted series from being published.
+func TestFileTail_RestartedTailClearsTheStallOnceItReads(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "access.log")
+	other := filepath.Join(dir, "rotated.log")
+	writeFile(t, file, backlog(40))
+	writeFile(t, other, backlog(3))
+
+	p, _ := stallProbe(t, file)
+	defer stopFileTail(t, p)
+	stuck := tailStateOf(t, p, file)
+	otherInfo, err := os.Stat(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stuck.mu.Lock()
+	stuck.opened = otherInfo
+	stuck.mu.Unlock()
+
+	rescanUntilRestarted(t, p, file, stuck)
+	if got := waitEmitted(p, 40, 5*time.Second); got < 40 {
+		t.Fatalf("emitted %d of the 40 lines after the restart", got)
+	}
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect after the restarted tail read: %v", err)
+	}
+	if len(points) != 1 || points[0].Value < 40 {
+		t.Fatalf("records_emitted not published with the count: %+v", points)
+	}
+}
+
+// A restart on a file with nothing new to read is still reported, once.
+func TestFileTail_StallOfAQuietFileIsReportedOnce(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "access.log")
+	writeFile(t, file, backlog(3))
+	p, _ := stallProbe(t, file)
+	defer stopFileTail(t, p)
+
+	p.mu.Lock()
+	p.stalled[file] = struct{}{}
+	p.mu.Unlock()
+	if _, err := p.Collect(); err == nil || !strings.Contains(err.Error(), "restarted") {
+		t.Fatalf("Collect error = %v, want the stall reported", err)
+	}
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("the stall was reported twice: %v", err)
 	}
 }
