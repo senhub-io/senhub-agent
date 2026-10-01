@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,7 +31,8 @@ import (
 const statfsTimeout = 5 * time.Second
 
 type unixLogicalDiskCollector struct {
-	logger *logger.ModuleLogger
+	logger         *logger.ModuleLogger
+	mountinfoWarns sync.Once
 }
 
 // newLogicalDiskCollector creates a new collector instance
@@ -287,7 +289,9 @@ func (c *unixLogicalDiskCollector) getMountPointsLinux() ([]mountInfo, error) {
 	if err == nil {
 		return parseMountInfo(string(data)), nil
 	}
-	c.logger.Warn().Err(err).Msg("cannot read /proc/self/mountinfo; falling back to /proc/mounts without bind-mount deduplication")
+	c.mountinfoWarns.Do(func() {
+		c.logger.Warn().Err(err).Msg("cannot read /proc/self/mountinfo; falling back to /proc/mounts without bind-mount deduplication")
+	})
 	return c.getMountPointsProcMounts()
 }
 
