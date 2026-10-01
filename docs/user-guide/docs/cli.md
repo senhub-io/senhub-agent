@@ -8,11 +8,70 @@ CLI output is plain text with no decorative symbols. Data and command results ar
 
 On Linux, commands that touch the service, the secret store or the binary run as root with the full path of the installed binary: `sudo /usr/local/bin/senhub-agent <command>`. On RHEL, AlmaLinux and Rocky Linux, the `sudo` search path leaves out `/usr/local/bin`, so `sudo senhub-agent` is not found there. The short `senhub-agent` form below stands for that full invocation; on Windows, run `senhub-agent.exe` from an elevated prompt.
 
+## Exit codes
+
+Every command ends with one of four codes, so a script can branch without reading the text.
+
+| Code | Meaning |
+|------|---------|
+| `0` | Done: the command did what was asked |
+| `1` | Warning: the command ran, but something needs attention |
+| `2` | Failure: the command could not do what was asked, including a malformed command line |
+| `3` | Unchanged: the machine was already in the requested state and nothing was written |
+
+Which commands use which codes:
+
+| Command | `1` Warning | `2` Failure | `3` Unchanged |
+|---------|-------------|-------------|---------------|
+| `config check` | warnings only (a missing licence is one) | an error, or a configuration that cannot be read | |
+| `status` | service stopped, agent not answering, agent unhealthy or with a dead output | the service manager could not be queried | |
+| `config init` | | invalid value, port in use, nothing written | configuration already present |
+| `config set` | | unknown key, invalid value | the key already holds the value |
+| `install` | | any error | service already installed, configuration present, binary current |
+
+Any other command exits `0` on success and `2` on failure. Before this contract, failures exited `1`; a script that tests only for a non-zero code is unaffected, one that compares with `1` must now compare with `2`.
+
+A command that exits `3` has written nothing: no file is rewritten, and its modification time is unchanged. A script that provisions a machine can run `config init`, `config set` and `install` again and treat `0` and `3` as success.
+
+## JSON output
+
+`version`, `status`, `config check`, `config show`, `config set`, `config init` and `secret status` accept `--json`. The command then prints a single JSON object on stdout and nothing else there; diagnostics still go to stderr. Without the flag the output is the text described below.
+
+Every object starts with the same fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | Document identifier, `senhub.cli.<command>/v1` |
+| `ok` | boolean | `false` only when the command failed (exit code `2`) |
+| `status` | string | `ok`, `warning`, `failure` or `unchanged`, the name of the exit code |
+| `exit_code` | integer | The exit code the process returns |
+| `error` | string | The reason, present when `ok` is `false` |
+
+A failure in JSON mode is still a JSON object, with `ok` set to `false` and `error` set, and the process still exits `2`. The `v1` suffix changes only when a field is removed or changes meaning; new fields can appear under `v1`.
+
+| Schema | Fields after the common ones |
+|--------|------------------------------|
+| `senhub.cli.version/v1` | `version`, `commit`, `build_time`, `go_version`, `environment`, and `service_binary` (`path`, `version`, `skew`) when the systemd service runs another build |
+| `senhub.cli.status/v1` | `service` (`state`, `manager_available`, `detail`), `source` (`daemon`, `local`, `minimal` or `none`), `notice`, `agent` (health, connection, probes, performance and agent blocks, as the agent reports them), `otlp` with `--otlp` |
+| `senhub.cli.config.check/v1` | `config_path`, `errors`, `warnings`, `findings` (a list of `level`, one of `ok`, `warn`, `error`, `off`, and `message`) |
+| `senhub.cli.config.show/v1` | `config_path`, `mode` (`redact`, `resolved` or `raw`), `config` (the merged configuration as an object) |
+| `senhub.cli.config.set/v1` | `key`, `value`, `config_path`, `file`, `changed` |
+| `senhub.cli.config.init/v1` | `config_path`, `changed`, `created`, `written` (the files it wrote) |
+| `senhub.cli.secret.status/v1` | `backend`, `store`, `secrets` (a count; names and values never appear) |
+
+`config show --json` applies the same redaction as the text view: secret values are masked unless `--resolved` is passed.
+
+```bash
+senhub-agent config check --json | jq '.findings[] | select(.level == "error")'
+senhub-agent status --json | jq -r '.agent.health.status'
+senhub-agent config set http.port 9080 --json; echo "exit $?"
+```
+
 ## Service Management
 
 | Command | Description |
 |---------|-------------|
-| `install` | Install as system service |
+| `install` | Install as system service. On a machine where the service is already installed, the configuration is present and (Linux) the system binary is the one running, it changes nothing and exits `3` |
 | `uninstall` | Remove the system service and delete the configuration directory, including the sealed secret store and the agent key. Irreversible; prompts first |
 | `uninstall --yes` | Same, without confirmation |
 | `refresh-unit` | Linux: bring the installed systemd unit up to date with the one embedded in this binary |
@@ -22,6 +81,7 @@ On Linux, commands that touch the service, the secret store or the binary run as
 | `restart` | Restart the service |
 | `status` | Show service status and health |
 | `status --otlp` | Same as `status`, plus an OTLP pipeline self-metrics block |
+| `status --json` | The status as one JSON object (see [JSON output](#json-output)) |
 | `run` | Run interactively in console mode |
 
 ### Status
@@ -30,6 +90,8 @@ On Linux, commands that touch the service, the secret store or the binary run as
 sudo /usr/local/bin/senhub-agent status
 sudo /usr/local/bin/senhub-agent status --otlp
 ```
+
+`status` exits `1` when the service is stopped, when the running agent does not answer, or when it reports itself unhealthy or with an output that is not running; it exits `0` for a healthy agent.
 
 The default `status` view prints service state, version, health, probes summary and resource usage. `--otlp` appends a four-section block summarising the OTLP push pipeline:
 
@@ -117,11 +179,13 @@ senhub-agent config set http.bind_address 0.0.0.0
 | `http.port` | Port of the local HTTP endpoints (1-65535) |
 | `http.bind_address` | Address the HTTP server binds to |
 
+A key that already holds the value is not written again: the file keeps its content and its modification time, the command prints that there is nothing to do and exits `3`. `--json` prints the key, the value, the fragment edited and `changed`.
+
 Changing `http.port` moves the web console and the PRTG / Nagios / Prometheus endpoints to the new port; reconnect on the new address.
 
 ### config init
 
-Creates the default configuration for an unattended install (for example a silent MSI install or a scripted provisioning step), then applies the fields an installer can pass. It is idempotent: if a configuration already exists at the target path it is left untouched.
+Creates the default configuration for an unattended install (for example a silent MSI install or a scripted provisioning step), then applies the fields an installer can pass. It is idempotent: if a configuration already exists at the target path it is left untouched, and the command exits `3`. A kept configuration still receives an OTLP or Zabbix fragment the run asks for when that fragment is missing; the command then exits `0`.
 
 ```bash
 senhub-agent config init
@@ -149,6 +213,8 @@ Before writing anything, `config init` binds the HTTP port it is about to config
 | `--otlp-protocol grpc\|http` | OTLP transport (default `grpc`; use `http` for a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint) |
 | `--zabbix-server HOST:PORT` | Provision the Zabbix output (`strategies.d/20-zabbix.yaml`); several addresses separated by commas name a proxy group. With a server prepared by `zabbix setup`, the host registers at its first contact |
 | `--zabbix-host-metadata TEXT` | Host metadata the autoregistration action matches (default `senhub-agent`); needs `--zabbix-server` |
+| `--json` | Print one JSON object: `changed`, `created` and the files written |
+| `--ok-if-unchanged` | Exit `0` instead of `3` when the configuration was already there, for an installer that treats any non-zero code as a failure (the Windows MSI and the container image use it) |
 
 The generated layout is the multi-file form (`agent.yaml` + `probes.d/` + `strategies.d/`), the same one `install` and the Windows MSI write. By default the generated configuration pushes to no collector; `--otlp-endpoint` is what wires up a push.
 
@@ -159,7 +225,10 @@ Validates a configuration file and reports errors and warnings.
 ```bash
 senhub-agent config check
 senhub-agent config check /path/to/agent-config.yaml
+senhub-agent config check --json
 ```
+
+Exit code `0` means no finding, `1` warnings only, `2` an error or a file that cannot be read. With `--json` every status line of the report becomes an entry of `findings`.
 
 Checks performed:
 - YAML syntax (with line-level error context)
@@ -182,6 +251,7 @@ senhub-agent config show
 senhub-agent config show --raw
 senhub-agent config show --resolved
 senhub-agent config show /path/to/agent.yaml
+senhub-agent config show --json
 ```
 
 | Flag | Description |
@@ -189,6 +259,7 @@ senhub-agent config show /path/to/agent.yaml
 | `--redact` | Substitute `${env:}` / `${file:}` / `${secret:}` references but mask secret values (default) |
 | `--resolved` | Substitute all references, printing secret values in cleartext |
 | `--raw` | Leave references exactly as written in the file |
+| `--json` | Print the configuration inside one JSON object (see [JSON output](#json-output)); the redaction mode applies as in text |
 
 An optional trailing path selects a config file other than the OS default.
 
@@ -221,7 +292,7 @@ A secret value is never passed on the command line — it would leak through the
 | `secret get <name>` | Print a secret value to stdout (a deliberate reveal) |
 | `secret list` | List secret names (never values) |
 | `secret rm <name>` | Delete a secret (prompts to confirm; `--yes` to skip) |
-| `secret status` | Show the active backend and store location |
+| `secret status` | Show the active backend and store location (`--json` for a JSON object) |
 | `secret migrate` | Move inline plaintext secrets from the config into the store (`--wire-unit` also wires the systemd-creds drop-in) |
 | `secret wire-unit` | Regenerate the systemd unit credential drop-in (Linux/systemd-creds only) |
 
@@ -431,4 +502,4 @@ Reverts to the free tier: deletes `license.jwt` and clears any inline license. T
 
 | Command | Description |
 |---------|-------------|
-| `version` | Show agent version and build information |
+| `version` | Show agent version and build information (`--json` for a JSON object) |
