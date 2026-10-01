@@ -24,7 +24,7 @@ Which commands use which codes:
 | Command | `1` Warning | `2` Failure | `3` Unchanged |
 |---------|-------------|-------------|---------------|
 | `config check` | warnings only (no licence is not one: the free tier is reported as information) | an error, or a configuration that cannot be read | |
-| `status` | service stopped, agent not answering, agent unhealthy or with a dead output | the service manager could not be queried | |
+| `status` | service stopped, agent not answering, agent unhealthy, with a dead output or a probe in error | the service manager could not be queried | |
 | `doctor` | at least one check is a warning | at least one check failed | |
 | `config init` | | invalid value, port in use, nothing written | configuration already present |
 | `config set` | | unknown key, invalid value | the key already holds the value |

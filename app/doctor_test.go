@@ -548,3 +548,21 @@ func TestReadSecretStatusWithoutStoreCreatesNothing(t *testing.T) {
 		t.Error("looking for a store created one")
 	}
 }
+
+func TestStatusExitCodeWarnsOnProbeInError(t *testing.T) {
+	r := runningStatus()
+	r.system.Health.Status = "healthy"
+	if code := r.exitCode(); code != cliexit.OK {
+		t.Fatalf("healthy agent: exit code %d, want %d", code, cliexit.OK)
+	}
+	r.system.Probes = append(r.system.Probes, status.ProbeStatus{Name: "nginx-logs", Status: "error", LastError: "permission denied"})
+	if code := r.exitCode(); code != cliexit.Warning {
+		t.Errorf("a probe in error: exit code %d, want %d", code, cliexit.Warning)
+	}
+	r = runningStatus()
+	r.system.Health.Status = "healthy"
+	r.system.ProbesError = "decoding /info/probes: unexpected shape"
+	if code := r.exitCode(); code != cliexit.Warning {
+		t.Errorf("unreadable probe list: exit code %d, want %d", code, cliexit.Warning)
+	}
+}
