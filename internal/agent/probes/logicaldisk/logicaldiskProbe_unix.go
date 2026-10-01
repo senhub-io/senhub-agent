@@ -5,6 +5,7 @@ package logicaldisk
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -179,10 +180,14 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		return nil, fmt.Errorf("error getting mount points: %w", err)
 	}
 
+	var candidates []mountInfo
 	for _, mount := range mounts {
-		if !c.shouldCollectMount(mount.fstype, mount.mountpoint, mount.device) {
-			continue
+		if c.shouldCollectMount(mount.fstype, mount.mountpoint, mount.device) {
+			candidates = append(candidates, mount)
 		}
+	}
+
+	for _, mount := range dedupeMountsByDevice(candidates) {
 
 		stat, err := statfsWithTimeout(mount.mountpoint)
 		if err != nil {
@@ -259,6 +264,10 @@ type mountInfo struct {
 	device     string
 	mountpoint string
 	fstype     string
+	// majMin and root come from /proc/self/mountinfo; both are empty when the
+	// mount list was built from another source.
+	majMin string
+	root   string
 }
 
 func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
@@ -274,6 +283,15 @@ func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
 }
 
 func (c *unixLogicalDiskCollector) getMountPointsLinux() ([]mountInfo, error) {
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err == nil {
+		return parseMountInfo(string(data)), nil
+	}
+	c.logger.Warn().Err(err).Msg("cannot read /proc/self/mountinfo; falling back to /proc/mounts without bind-mount deduplication")
+	return c.getMountPointsProcMounts()
+}
+
+func (c *unixLogicalDiskCollector) getMountPointsProcMounts() ([]mountInfo, error) {
 	var mounts []mountInfo
 
 	// Read /proc/mounts
