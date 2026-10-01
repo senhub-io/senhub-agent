@@ -321,6 +321,8 @@ func readOnlyCommand(args []string) bool {
 	switch args[1] {
 	case "--help", "-h", "help", "--version", "version", "debug-modules-list":
 		return true
+	case "doctor":
+		return true
 	case "console":
 		// Reads the configuration only; when the sealed key needs more
 		// rights than the caller has, it asks for them itself.
@@ -374,6 +376,7 @@ var knownTopLevelArgs = map[string]struct{}{
 	"status": {}, "run": {},
 	"refresh-unit": {},
 	"console":      {},
+	"doctor":       {},
 }
 
 func Main() {
@@ -551,6 +554,11 @@ func Main() {
 	case "console":
 		runConsole(os.Args[2:])
 		return
+	case "doctor":
+		if code := runDoctor(os.Args[2:], os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
+		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
 		// Commands that take no positional args: dispatched directly.
 		// `status` carries the optional --otlp view flag; `uninstall` the
@@ -651,6 +659,10 @@ License Commands:
 Other Commands:
     version              Show agent version (--json for a JSON object)
     license key          Print this agent's key (order a licence for it)
+    doctor               Diagnose the install, configuration, outputs, probes
+                         and host in one pass (--json for a JSON object;
+                         --config-path <path>; exits 1 on a warning, 2 on a
+                         failure)
     console              Open the web console in the browser (--print to
                           show the address only; asks for elevation when
                           the sealed agent key requires it)

@@ -22,6 +22,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,5 +164,61 @@ func TestBootSmoke_ConfigCheckFreeTier(t *testing.T) {
 	if !strings.Contains(out, "Configuration is valid") {
 		t.Errorf("`senhub-agent config check %s` did not report a valid configuration:\n%s",
 			cfg, out)
+	}
+}
+
+// TestBootSmoke_DoctorJSON runs the diagnosis on the free-tier example
+// with no service installed. The exit code depends on the host (a
+// warning for the missing service, a failure if port 8080 is taken), so
+// the contract pinned here is the document and the absence of a crash.
+func TestBootSmoke_DoctorJSON(t *testing.T) {
+	bin := buildAgent(t)
+	example, err := os.ReadFile(filepath.Join(repoRoot(t), "examples", "example-config-free-tier.yaml"))
+	if err != nil {
+		t.Fatalf("reading the free-tier example: %v", err)
+	}
+	cfg := filepath.Join(t.TempDir(), "agent-config.yaml")
+	if err := os.WriteFile(cfg, example, 0o600); err != nil {
+		t.Fatalf("writing the config copy: %v", err)
+	}
+
+	cmd := exec.Command(bin, "doctor", "--json", "--config-path", cfg)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	runErr := cmd.Run()
+	code := 0
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("`senhub-agent doctor --json` did not run: %v", runErr)
+		}
+		code = exitErr.ExitCode()
+	}
+
+	var doc struct {
+		Schema   string `json:"schema"`
+		ExitCode int    `json:"exit_code"`
+		Checks   []struct {
+			Section string `json:"section"`
+			ID      string `json:"id"`
+			Level   string `json:"level"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("`senhub-agent doctor --json` is not one JSON object: %v\noutput:\n%s", err, stdout.String())
+	}
+	if doc.Schema != "senhub.cli.doctor/v1" {
+		t.Errorf("schema %q", doc.Schema)
+	}
+	if code > 2 || doc.ExitCode != code {
+		t.Errorf("process exit code %d, document says %d", code, doc.ExitCode)
+	}
+	if len(doc.Checks) == 0 {
+		t.Error("the document carries no check")
+	}
+	for _, c := range doc.Checks {
+		if c.ID == "config.check" && c.Level != "ok" {
+			t.Errorf("the free-tier example is not reported valid: %+v", c)
+		}
 	}
 }
