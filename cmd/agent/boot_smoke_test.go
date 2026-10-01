@@ -21,12 +21,16 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"senhub-agent.go/internal/cliexit"
 )
 
 // buildAgent builds the senhub-agent binary once per test process and
@@ -85,6 +89,26 @@ func TestBootSmoke_Version(t *testing.T) {
 	}
 }
 
+// TestBootSmoke_VersionJSON pins the machine-readable contract on the
+// real binary: one JSON object on stdout, with the schema id.
+func TestBootSmoke_VersionJSON(t *testing.T) {
+	bin := buildAgent(t)
+	out, err := execAgent(t, bin, "version", "--json")
+	if err != nil {
+		t.Fatalf("`senhub-agent version --json` returned error: %v\noutput:\n%s", err, out)
+	}
+	var doc struct {
+		Schema string `json:"schema"`
+		OK     bool   `json:"ok"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("`senhub-agent version --json` is not one JSON object: %v\noutput:\n%s", err, out)
+	}
+	if doc.Schema != "senhub.cli.version/v1" || !doc.OK {
+		t.Errorf("unexpected document: %+v", doc)
+	}
+}
+
 // TestBootSmoke_VersionFlag pins the post-#134 contract:
 // `senhub-agent --version` prints the version and exits 0 instead of
 // spawning a full agent. Pre-fix it fell through to `run`, racing
@@ -132,8 +156,11 @@ func TestBootSmoke_ConfigCheckFreeTier(t *testing.T) {
 	cfg := filepath.Join(repoRoot(t), "examples", "example-config-free-tier.yaml")
 
 	out, err := execAgent(t, bin, "config", "check", cfg)
-	if err != nil {
-		t.Fatalf("`senhub-agent config check %s` returned non-zero exit: %v\noutput:\n%s",
+	// Exit 1 is the warning code: the example carries no licence, which
+	// config check reports as a warning. Only exit 2 is a failure.
+	var exitErr *exec.ExitError
+	if err != nil && !(errors.As(err, &exitErr) && exitErr.ExitCode() == cliexit.Warning) {
+		t.Fatalf("`senhub-agent config check %s` failed: %v\noutput:\n%s",
 			cfg, err, out)
 	}
 	if strings.Contains(out, "[ERROR]") {

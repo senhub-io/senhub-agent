@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
+	"senhub-agent.go/internal/cliexit"
 )
 
 func showDebugModules() {
@@ -55,36 +57,60 @@ func showDebugModules() {
 	fmt.Println()
 }
 
-// showEnhancedStatus displays enhanced status information using the status service
-func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
-	// Create logger for status operations
+// statusResult is everything `status` learned, before any of it is
+// rendered: the text and JSON views both read from it, so they cannot
+// disagree about what was found.
+type statusResult struct {
+	// serviceState is the service manager's answer, "" when there is no
+	// manager to ask (a container).
+	serviceState string
+	managerErr   error
+	// notRunning is true when the manager says the service is not running.
+	notRunning bool
+	// source says where the status came from: "daemon" (the running agent
+	// answered over HTTP), "local" (computed by this process) or "minimal"
+	// (even that failed). Empty when the service is not running.
+	source string
+	system status.SystemStatus
+	// notice is the explanation printed before a local view that stands
+	// in for the daemon's.
+	notice   string
+	otlp     *status.OTLPInfo
+	otlpErr  error
+	localErr error
+}
+
+// exitCode: a stopped service, a daemon that did not answer, or an agent
+// that reports itself unhealthy or with a dead output all need attention
+// but do not make the status query itself fail.
+func (r statusResult) exitCode() int {
+	switch {
+	case r.notRunning || r.source != "daemon":
+		return cliexit.Warning
+	case r.system.Health.Status != "healthy" || len(r.system.StrategyFailures) > 0:
+		return cliexit.Warning
+	default:
+		return cliexit.OK
+	}
+}
+
+// collectStatus gathers the status without printing anything.
+func collectStatus(svc service.Service, args *cliArgs.ParsedArgs) statusResult {
+	var res statusResult
 	logger := agentLogger.NewLogger(&cliArgs.ParsedArgs{Verbose: false})
-
-	// Create status helper and formatter
 	statusHelper := status.NewStatusHelper(logger)
-	formatter := status.NewCLIFormatter()
 
-	// Get basic service status
 	serviceStatus, err := statusHelper.GetServiceStatus(svc)
 	if err != nil {
-		// No service manager to ask: a container, where the agent is the
-		// container's own process. The running agent can still answer for
-		// itself over HTTP, which is what an operator ran status for.
-		fmt.Printf("Service status: no service manager here (%v); asking the running agent\n\n", err)
+		res.managerErr = err
 	} else {
-		// Capitalize first letter for display
-		displayStatus := strings.ToUpper(serviceStatus[:1]) + serviceStatus[1:]
-		fmt.Printf("Service status: %s\n\n", displayStatus)
-
-		// If service is not running, show basic info only
+		res.serviceState = serviceStatus
 		if serviceStatus != "running" {
-			fmt.Println("Agent service is not running.")
-			fmt.Println("Start the service with: " + os.Args[0] + " start")
-			return
+			res.notRunning = true
+			return res
 		}
 	}
 
-	// Try to get detailed status from running agent first (via HTTP).
 	// The authentication key always comes from the configuration file
 	// in 0.2.0+ — the CLI flag was removed with the legacy remote-config loader.
 	agentKey := ""
@@ -93,23 +119,20 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	keyProblem := ""
 	reachProblem := ""
 	if args != nil {
-		// Read agent key from config file
-		{
-			// Use absolute path based on binary location (fixes Windows Service issue)
-			configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
-			if err != nil {
-				// Fallback to provided path if absolute path resolution fails
-				configPath = args.ConfigPath
-				if configPath == "" {
-					configPath = "./agent-config.yaml"
-				}
+		// Use absolute path based on binary location (fixes Windows Service issue)
+		configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+		if err != nil {
+			// Fallback to provided path if absolute path resolution fails
+			configPath = args.ConfigPath
+			if configPath == "" {
+				configPath = "./agent-config.yaml"
 			}
+		}
 
-			if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
-				agentKey = extractedKey
-			} else {
-				keyProblem = fmt.Sprintf("the agent key could not be read from %s (%v)", configPath, err)
-			}
+		if extractedKey, err := extractAgentKeyFromConfig(configPath); err == nil {
+			agentKey = extractedKey
+		} else {
+			keyProblem = fmt.Sprintf("the agent key could not be read from %s (%v)", configPath, err)
 		}
 	}
 
@@ -135,20 +158,15 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 			if configPath != "" {
 				systemStatus.Connection.DashboardURL = consoleHint()
 			}
-			// Successfully got status from running agent
-			fmt.Print(formatter.FormatSystemStatus(*systemStatus))
+			res.source = "daemon"
+			res.system = *systemStatus
 
 			// --otlp adds an OTLP self-metric block after the standard view.
 			// Failure here is non-fatal: the standard status already printed.
 			if args != nil && args.ShowOTLP {
-				if info, err := statusHelper.GetOTLPInfoFromHTTP(agentKey, httpPort); err == nil {
-					fmt.Print("\n")
-					fmt.Print(formatter.FormatOTLPInfo(info))
-				} else {
-					fmt.Fprintf(os.Stderr, "\nNote: could not fetch OTLP info (%v)\n", err)
-				}
+				res.otlp, res.otlpErr = statusHelper.GetOTLPInfoFromHTTP(agentKey, httpPort)
 			}
-			return
+			return res
 		}
 		// HTTP failed, fall back to direct method
 		// Note: this happens when the HTTP strategy is not enabled, or the
@@ -159,36 +177,128 @@ func showEnhancedStatus(svc service.Service, args *cliArgs.ParsedArgs) {
 	// say which outputs are running or whether the configuration is
 	// watched. Saying so, and why, is the difference between a degraded
 	// answer and a wrong one.
-	if notice := daemonUnreachableNotice(keyProblem, reachProblem); notice != "" {
-		fmt.Print(notice)
-	}
+	res.notice = daemonUnreachableNotice(keyProblem, reachProblem)
 
 	// Fallback: Get system status directly using StatusService (no HTTP dependency)
 	systemStatus, err := getSystemStatusDirect(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Note: Could not get system status (%v), showing minimal status\n\n", err)
-
-		// Minimal fallback status
-		basicHealth := status.HealthInfo{
-			Status:    "unknown",
-			Timestamp: time.Now(),
-			Message:   "Service is running but status unavailable",
+		res.localErr = err
+		res.source = "minimal"
+		res.system = status.SystemStatus{
+			Health: status.HealthInfo{
+				Status:    "unknown",
+				Timestamp: time.Now(),
+				Message:   "Service is running but status unavailable",
+			},
+			Agent: status.AgentInfo{
+				Version:   "unknown",
+				Commit:    "unknown",
+				GoVersion: runtime.Version(),
+				OS:        runtime.GOOS,
+				Arch:      runtime.GOARCH,
+			},
 		}
+		return res
+	}
+	res.source = "local"
+	res.system = systemStatus
+	return res
+}
 
-		basicAgent := status.AgentInfo{
-			Version:   "unknown",
-			Commit:    "unknown",
-			GoVersion: runtime.Version(),
-			OS:        runtime.GOOS,
-			Arch:      runtime.GOARCH,
+// renderStatusText prints the status the way `status` always has.
+func renderStatusText(res statusResult, out io.Writer) {
+	formatter := status.NewCLIFormatter()
+
+	if res.managerErr != nil {
+		// No service manager to ask: a container, where the agent is the
+		// container's own process. The running agent can still answer for
+		// itself over HTTP, which is what an operator ran status for.
+		fmt.Fprintf(out, "Service status: no service manager here (%v); asking the running agent\n\n", res.managerErr)
+	} else {
+		// Capitalize first letter for display
+		displayStatus := strings.ToUpper(res.serviceState[:1]) + res.serviceState[1:]
+		fmt.Fprintf(out, "Service status: %s\n\n", displayStatus)
+
+		// If service is not running, show basic info only
+		if res.notRunning {
+			fmt.Fprintln(out, "Agent service is not running.")
+			fmt.Fprintln(out, "Start the service with: "+os.Args[0]+" start")
+			return
 		}
-
-		fmt.Print(formatter.FormatBasicStatus(basicHealth, basicAgent))
-		return
 	}
 
-	// Display full system status
-	fmt.Print(formatter.FormatSystemStatus(systemStatus))
+	switch res.source {
+	case "daemon":
+		fmt.Fprint(out, formatter.FormatSystemStatus(res.system))
+		if res.otlp != nil {
+			fmt.Fprint(out, "\n")
+			fmt.Fprint(out, formatter.FormatOTLPInfo(res.otlp))
+		} else if res.otlpErr != nil {
+			fmt.Fprintf(os.Stderr, "\nNote: could not fetch OTLP info (%v)\n", res.otlpErr)
+		}
+	case "minimal":
+		if res.notice != "" {
+			fmt.Fprint(out, res.notice)
+		}
+		fmt.Fprintf(os.Stderr, "Note: Could not get system status (%v), showing minimal status\n\n", res.localErr)
+		fmt.Fprint(out, formatter.FormatBasicStatus(res.system.Health, res.system.Agent))
+	default:
+		if res.notice != "" {
+			fmt.Fprint(out, res.notice)
+		}
+		fmt.Fprint(out, formatter.FormatSystemStatus(res.system))
+	}
+}
+
+type statusReport struct {
+	jsonHeader
+	Service statusServiceInfo    `json:"service"`
+	Source  string               `json:"source"`
+	Notice  string               `json:"notice,omitempty"`
+	Agent   *status.SystemStatus `json:"agent,omitempty"`
+	OTLP    *status.OTLPInfo     `json:"otlp,omitempty"`
+}
+
+type statusServiceInfo struct {
+	State            string `json:"state"`
+	ManagerAvailable bool   `json:"manager_available"`
+	Detail           string `json:"detail,omitempty"`
+}
+
+// runStatus implements `status [--otlp] [--json]` and returns the exit
+// code.
+func runStatus(svc service.Service, args *cliArgs.ParsedArgs, jsonMode bool, out io.Writer) int {
+	res := collectStatus(svc, args)
+	code := res.exitCode()
+	if !jsonMode {
+		renderStatusText(res, out)
+		return code
+	}
+
+	report := statusReport{
+		jsonHeader: newJSONHeader("status", code),
+		Service: statusServiceInfo{
+			State:            res.serviceState,
+			ManagerAvailable: res.managerErr == nil,
+		},
+		Source: res.source,
+		Notice: strings.TrimSpace(res.notice),
+		OTLP:   res.otlp,
+	}
+	if res.managerErr != nil {
+		report.Service.State = "unknown"
+		report.Service.Detail = res.managerErr.Error()
+	}
+	if res.notRunning {
+		report.Source = "none"
+	} else {
+		sys := res.system
+		report.Agent = &sys
+	}
+	if err := writeJSON(out, report); err != nil {
+		return reportFailure("status", false, out, err)
+	}
+	return code
 }
 
 // getSystemStatusDirect gets system status directly using StatusService (no HTTP dependency)

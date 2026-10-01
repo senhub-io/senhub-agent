@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,40 +43,34 @@ The value of a secret is never read from the command line.
 }
 
 func runSecretCommand() {
-	args := os.Args[2:]
+	args, jsonMode := extractJSONFlag(os.Args[2:])
 	if len(args) == 0 {
 		secretUsage()
+		os.Exit(cliexit.Failure)
+	}
+	if jsonMode && args[0] != "status" {
+		fmt.Fprintf(os.Stderr, "Error: --json is only supported by 'secret status'\n")
 		os.Exit(cliexit.Failure)
 	}
 
 	configDir, err := secretConfigDir(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(cliexit.Failure)
+		os.Exit(reportFailure("secret.status", jsonMode, os.Stdout, err))
 	}
 	if err := secret.InitRegistry(configDir); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: initialising secret backend: %v\n", err)
-		os.Exit(cliexit.Failure)
+		os.Exit(reportFailure("secret.status", jsonMode, os.Stdout, fmt.Errorf("initialising secret backend: %w", err)))
 	}
 	p := secret.ActiveProvider()
 	if p == nil {
-		fmt.Fprintln(os.Stderr, "Error: no secret backend available on this host")
-		os.Exit(cliexit.Failure)
+		os.Exit(reportFailure("secret.status", jsonMode, os.Stdout, errors.New("no secret backend available on this host")))
 	}
 
 	sub := args[0]
 	switch sub {
 	case "status":
-		fmt.Printf("backend: %s\nstore:   %s\n", p.Name(), configDir)
-		names, err := p.List()
-		if err != nil {
-			// `status` is the command an operator runs to diagnose a
-			// broken store (corrupt file, permission denied); swallowing
-			// the error and printing "secrets: 0" would hide exactly that.
-			fmt.Fprintf(os.Stderr, "Error: reading secret store: %v\n", err)
-			os.Exit(cliexit.Failure)
+		if code := runSecretStatus(p, configDir, jsonMode, os.Stdout); code != cliexit.OK {
+			os.Exit(code)
 		}
-		fmt.Printf("secrets: %d\n", len(names))
 
 	case "list":
 		names, err := p.List()
@@ -281,4 +276,41 @@ func readSecretValue(args []string) (string, error) {
 		return "", fmt.Errorf("reading secret from stdin: %w", err)
 	}
 	return strings.TrimRight(line, "\r\n"), nil
+}
+
+type secretStatusReport struct {
+	jsonHeader
+	Backend string `json:"backend"`
+	Store   string `json:"store"`
+	Secrets int    `json:"secrets"`
+}
+
+// runSecretStatus implements `secret status [--json]`: the active backend,
+// the store location and how many secrets it holds. Names and values are
+// never part of the report.
+func runSecretStatus(p secret.Provider, configDir string, jsonMode bool, out io.Writer) int {
+	if !jsonMode {
+		fmt.Fprintf(out, "backend: %s\nstore:   %s\n", p.Name(), configDir)
+	}
+	names, err := p.List()
+	if err != nil {
+		// `status` is the command an operator runs to diagnose a broken
+		// store (corrupt file, permission denied); swallowing the error and
+		// printing "secrets: 0" would hide exactly that.
+		return reportFailure("secret.status", jsonMode, out, fmt.Errorf("reading secret store: %w", err))
+	}
+	if !jsonMode {
+		fmt.Fprintf(out, "secrets: %d\n", len(names))
+		return cliexit.OK
+	}
+	report := secretStatusReport{
+		jsonHeader: newJSONHeader("secret.status", cliexit.OK),
+		Backend:    p.Name(),
+		Store:      configDir,
+		Secrets:    len(names),
+	}
+	if err := writeJSON(out, report); err != nil {
+		return reportFailure("secret.status", false, out, err)
+	}
+	return cliexit.OK
 }
