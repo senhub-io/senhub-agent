@@ -1,12 +1,15 @@
 package app
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // settableKey describes one `config set` key: which strategy fragment and
@@ -46,16 +49,32 @@ var settableKeys = map[string]settableKey{
 	},
 }
 
-// runConfigSet implements `config set <key> <value>`: change one setting in
-// the multi-file layout without hand-editing YAML. The running agent reloads
-// it through the config watcher, so no restart is needed.
-func runConfigSet(argv []string) {
+type configSetReport struct {
+	jsonHeader
+	Key        string `json:"key"`
+	Value      string `json:"value"`
+	ConfigPath string `json:"config_path"`
+	File       string `json:"file,omitempty"`
+	Changed    bool   `json:"changed"`
+}
+
+// runConfigSet implements `config set <key> <value> [--json]`: change one
+// setting in the multi-file layout without hand-editing YAML. The running
+// agent reloads it through the config watcher, so no restart is needed. A
+// setting that already holds the value is not written again and the
+// command exits with the Unchanged code.
+func runConfigSet(argv []string, out io.Writer) int {
+	argv, jsonMode := extractJSONFlag(argv)
+	fail := func(err error) int {
+		return reportFailure("config.set", jsonMode, out, err)
+	}
+
 	var key, value, configPath string
 	var positional []string
 	for i := 0; i < len(argv); i++ {
 		if argv[i] == "--config-path" {
 			if i+1 >= len(argv) {
-				fatalf("config set: --config-path needs a value")
+				return fail(errors.New("config set: --config-path needs a value"))
 			}
 			configPath = argv[i+1]
 			i++
@@ -64,30 +83,55 @@ func runConfigSet(argv []string) {
 		positional = append(positional, argv[i])
 	}
 	if len(positional) != 2 {
-		fatalf("config set: expected <key> <value>, e.g. 'config set http.port 9080'\nknown keys: %s", strings.Join(sortedSettableKeys(), ", "))
+		return fail(fmt.Errorf("config set: expected <key> <value>, e.g. 'config set http.port 9080'\nknown keys: %s", strings.Join(sortedSettableKeys(), ", ")))
 	}
 	key, value = positional[0], positional[1]
 
 	spec, ok := settableKeys[key]
 	if !ok {
-		fatalf("config set: unknown key %q; known keys: %s", key, strings.Join(sortedSettableKeys(), ", "))
+		return fail(fmt.Errorf("config set: unknown key %q; known keys: %s", key, strings.Join(sortedSettableKeys(), ", ")))
 	}
 	if err := spec.validate(value); err != nil {
-		fatalf("config set %s: %v", key, err)
+		return fail(fmt.Errorf("config set %s: %w", key, err))
 	}
 
 	if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
 		configPath = resolved
 	}
 	if configPath == "" {
-		fatalf("config set: could not resolve a config path")
+		return fail(errors.New("config set: could not resolve a config path"))
 	}
 
-	if err := configuration.SetStrategyScalar(configPath, spec.strategy, spec.param, value, spec.tag); err != nil {
-		fatalf("config set %s: %v", key, err)
+	fragment, changed, err := configuration.SetStrategyScalarReport(configPath, spec.strategy, spec.param, value, spec.tag)
+	if err != nil {
+		return fail(fmt.Errorf("config set %s: %w", key, err))
 	}
-	fmt.Printf("Set %s = %s\n", key, value)
-	fmt.Println("The running agent reloads the change on its own; no restart needed.")
+
+	code := cliexit.OK
+	if !changed {
+		code = cliexit.Unchanged
+	}
+	if jsonMode {
+		report := configSetReport{
+			jsonHeader: newJSONHeader("config.set", code),
+			Key:        key,
+			Value:      value,
+			ConfigPath: configPath,
+			File:       fragment,
+			Changed:    changed,
+		}
+		if err := writeJSON(out, report); err != nil {
+			return reportFailure("config.set", false, out, err)
+		}
+		return code
+	}
+	if !changed {
+		fmt.Fprintf(out, "%s is already %s; nothing to do.\n", key, value)
+		return code
+	}
+	fmt.Fprintf(out, "Set %s = %s\n", key, value)
+	fmt.Fprintln(out, "The running agent reloads the change on its own; no restart needed.")
+	return code
 }
 
 func sortedSettableKeys() []string {

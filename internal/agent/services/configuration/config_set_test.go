@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeMultiFileForSet(t *testing.T) string {
@@ -82,5 +83,33 @@ func TestSetStrategyScalar_NoFragment(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "strategies.d"), 0o750)
 	if err := SetStrategyScalar(main, "http", "port", "9090", "!!int"); err == nil || !strings.Contains(err.Error(), "no \"http\"") {
 		t.Errorf("a missing http fragment must be reported, got: %v", err)
+	}
+}
+
+func TestSetStrategyScalarReport_UnchangedValueWritesNothing(t *testing.T) {
+	main := writeMultiFileForSet(t)
+	frag := filepath.Join(filepath.Dir(main), "strategies.d", "00-http.yaml")
+	old := time.Now().Add(-48 * time.Hour).Truncate(time.Second)
+	if err := os.Chtimes(frag, old, old); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(frag)
+
+	path, changed, err := SetStrategyScalarReport(main, "http", "port", "8080", "!!int")
+	if err != nil {
+		t.Fatalf("SetStrategyScalarReport: %v", err)
+	}
+	if changed || path != frag {
+		t.Errorf("changed = %v, path = %q; want false, %q", changed, path, frag)
+	}
+	info, _ := os.Stat(frag)
+	after, _ := os.ReadFile(frag)
+	if !info.ModTime().Equal(old) || string(before) != string(after) {
+		t.Error("an unchanged value rewrote the fragment")
+	}
+
+	_, changed, err = SetStrategyScalarReport(main, "http", "port", "9090", "!!int")
+	if err != nil || !changed {
+		t.Errorf("a new value: changed = %v, err = %v; want true, nil", changed, err)
 	}
 }

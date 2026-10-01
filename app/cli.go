@@ -493,7 +493,9 @@ func Main() {
 			// agent config set <key> <value> [--config-path <path>]
 			// Change one setting in the multi-file layout without
 			// hand-editing YAML. The running agent reloads the change.
-			runConfigSet(os.Args[3:])
+			if code := runConfigSet(os.Args[3:], os.Stdout); code != cliexit.OK {
+				os.Exit(code)
+			}
 			return
 		}
 		if len(os.Args) > 2 && os.Args[2] == "init" {
@@ -624,7 +626,8 @@ func showHelp() {
 Service Commands:
     install              Install as system service (auto-generates a UUID agent key).
                          On Linux the service runs as the dedicated 'senhub' user
-                         under a hardened systemd unit.
+                         under a hardened systemd unit. Exits 3 and changes
+                         nothing when the service is already installed.
     install --user USER  Service user for the Linux unit (default: senhub;
                          use 'root' to keep the legacy root unit)
     uninstall            Remove the system service (prompts before deleting
@@ -658,8 +661,11 @@ Other Commands:
                           exists (idempotent). Accepts --config-path,
                           --http-port <n>, --license <jwt>, --tags k=v,...,
                           --otlp-endpoint, --zabbix-server host:port,
-                          --zabbix-host-metadata; refuses a port already
-                          in use
+                          --zabbix-host-metadata, --json, --ok-if-unchanged;
+                          refuses a port already in use; exits 3 when the
+                          configuration was already there
+    config set <key> <v>  Change one setting (http.port, http.bind_address);
+                          exits 3 when it already holds the value
     config check [path]   Validate configuration (covers fragments under
                           probes.d/ and strategies.d/ if present);
                           --json prints the result as one JSON object
