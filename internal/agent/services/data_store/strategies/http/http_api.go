@@ -189,24 +189,47 @@ func (a *APIManager) HandleInfoProbes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.strategy.cache.mu.RLock()
-	defer a.strategy.cache.mu.RUnlock()
+	stats := a.strategy.cache.GetProbeStatistics()
+	running := agentstate.RunningProbeStates()
 
 	probeMetrics := make(map[string]int)
-	var probes []string
+	probes := []string{}
+	details := []ProbeDetail{}
 	totalMetrics := 0
+	seen := make(map[string]struct{})
 
-	for probe, tsKeys := range a.strategy.cache.probeIndex {
-		count := len(tsKeys)
-		probes = append(probes, probe)
-		probeMetrics[probe] = count
-		totalMetrics += count
+	for name, st := range stats {
+		seen[strings.ToLower(name)] = struct{}{}
+		d := ProbeDetail{Name: name, MetricsCount: st.MetricsCount}
+		if !st.LastUpdate.IsZero() {
+			d.LastUpdate = st.LastUpdate.UTC().Format(time.RFC3339)
+		}
+		if rs, ok := running[strings.ToLower(name)]; ok {
+			d.Running, d.Health, d.LastError = rs.Running, rs.Health, rs.LastError
+		}
+		probes = append(probes, name)
+		details = append(details, d)
+		probeMetrics[name] = st.MetricsCount
+		totalMetrics += st.MetricsCount
 	}
+	// A probe that runs but holds no metric (its input is missing, say)
+	// is exactly the one an operator needs to see.
+	for name, rs := range running {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		probes = append(probes, name)
+		details = append(details, ProbeDetail{Name: name, Running: rs.Running, Health: rs.Health, LastError: rs.LastError})
+		probeMetrics[name] = 0
+	}
+	sort.Strings(probes)
+	sort.Slice(details, func(i, j int) bool { return details[i].Name < details[j].Name })
 
 	response := ProbesInfoResponse{
 		Probes:       probes,
 		ProbeMetrics: probeMetrics,
 		TotalMetrics: totalMetrics,
+		Details:      details,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -428,6 +428,9 @@ func checkProbes(d doctorDeps, st statusResult) []doctorCheck {
 		return []doctorCheck{skipCheck(sectionProbes, "probes.status", "not checkable: "+reason)}
 	}
 	probes := st.system.Probes
+	if len(probes) == 0 && st.system.ProbesError != "" {
+		return []doctorCheck{warnCheck(sectionProbes, "probes.status", "the probe list could not be read from the agent: "+st.system.ProbesError, doctorConfigHint)}
+	}
 	if len(probes) == 0 {
 		return []doctorCheck{warnCheck(sectionProbes, "probes.status", "the agent reports no probe", doctorConfigHint)}
 	}
