@@ -61,6 +61,13 @@ This ensures the probe stays functional even when platform limitations exist, pr
 | `cpu_system` | System-mode CPU time | All platforms |
 | `cpu_irq` | Hardware interrupt time | All platforms |
 | `cpu_softirq` | Software interrupt time | All platforms |
+| `system_time` | Host clock, in seconds since the Unix epoch (OTel name `senhub.system.time`); not exposed to PRTG | Linux, Windows |
+
+`system_time` lets a monitoring server check clock drift. Prometheus reads it
+with `time() - senhub_system_time_seconds`; the Zabbix template shows it as a
+date and raises a trigger when it differs from the server's time by more than
+`{$SENHUB.CLOCK.DRIFT.MAX}` (60 seconds by default). The value is the time of
+the last collection, so a reading is up to one collection interval old.
 
 ### Unix/Linux/macOS Specific
 

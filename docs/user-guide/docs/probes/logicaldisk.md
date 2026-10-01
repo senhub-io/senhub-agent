@@ -61,6 +61,15 @@ Platform-specific metrics are automatically detected and collected based on the 
 | `disk_read_bytes_sec` | Disk read throughput (bytes/sec) | Windows |
 | `disk_write_bytes_sec` | Disk write throughput (bytes/sec) | Windows |
 | `disk_queue_length` | Current disk queue length | Windows |
+| `diskio_read_bytes`, `diskio_write_bytes` | Bytes read and written since boot (cumulative, OTel `system.disk.io`, `disk.io.direction`) | Linux |
+| `diskio_read_ops`, `diskio_write_ops` | Read and write operations since boot (cumulative, OTel `system.disk.operations`) | Linux |
+| `diskio_busy_seconds` | Time the device had I/O in flight since boot (cumulative, OTel `system.disk.io_time`) | Linux |
+
+On Linux the I/O counters are read from `/proc/diskstats`, one series per
+whole block device (`sda`, `nvme0n1`, `vda`, `dm-0`, `md0`). Partitions
+(`sda1`, `nvme0n1p1`) and `loop`, `ram`, `zram`, `fd` and `sr` devices are
+not reported. The values only grow: Prometheus reads a throughput with
+`rate()`. They are on by default, with no parameter to set.
 
 ### Unix/Linux/macOS Specific
 
