@@ -17,6 +17,13 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **`doctor` diagnoses an install in one pass.** It aggregates the
+  service state, the systemd unit and binary comparison, `config check`,
+  the secret store, the licence expiry, the HTTP port, the connection
+  test of every output, the probes' last cycle and the disk, prints a
+  `fix` for each problem, and exits `1` on a warning and `2` on a
+  failure. It needs no root and works with the service stopped.
+  `--json` prints `senhub.cli.doctor/v1`. See [Doctor](../cli.md#doctor).
 - **`--json` output.** `version`, `status`, `config check`, `config
   show`, `config set`, `config init` and `secret status` print one JSON
   object with a `senhub.cli.<command>/v1` schema identifier. Failures

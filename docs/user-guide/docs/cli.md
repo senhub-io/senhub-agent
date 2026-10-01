@@ -25,6 +25,7 @@ Which commands use which codes:
 |---------|-------------|-------------|---------------|
 | `config check` | warnings only (no licence is not one: the free tier is reported as information) | an error, or a configuration that cannot be read | |
 | `status` | service stopped, agent not answering, agent unhealthy or with a dead output | the service manager could not be queried | |
+| `doctor` | at least one check is a warning | at least one check failed | |
 | `config init` | | invalid value, port in use, nothing written | configuration already present |
 | `config set` | | unknown key, invalid value | the key already holds the value |
 | `install` | | any error | service already installed, configuration present, binary current |
@@ -35,7 +36,7 @@ A command that exits `3` has written nothing: no file is rewritten, and its modi
 
 ## JSON output
 
-`version`, `status`, `config check`, `config show`, `config set`, `config init` and `secret status` accept `--json`. The command then prints a single JSON object on stdout and nothing else there; diagnostics still go to stderr. Without the flag the output is the text described below.
+`version`, `status`, `doctor`, `config check`, `config show`, `config set`, `config init` and `secret status` accept `--json`. The command then prints a single JSON object on stdout and nothing else there; diagnostics still go to stderr. Without the flag the output is the text described below.
 
 Every object starts with the same fields:
 
@@ -53,6 +54,7 @@ A failure in JSON mode is still a JSON object, with `ok` set to `false` and `err
 |--------|------------------------------|
 | `senhub.cli.version/v1` | `version`, `commit`, `build_time`, `go_version`, `environment`, and `service_binary` (`path`, `version`, `skew`) when the systemd service runs another build |
 | `senhub.cli.status/v1` | `service` (`state`, `manager_available`, `detail`), `source` (`daemon`, `local`, `minimal` or `none`), `notice`, `agent` (health, connection, probes, performance and agent blocks, as the agent reports them), `otlp` with `--otlp` |
+| `senhub.cli.doctor/v1` | `config_path`, `summary` (`ok`, `warn`, `fail`, `skip` counts), `checks` (a list of `section`, `id`, `level`, `message`, `fix`) |
 | `senhub.cli.config.check/v1` | `config_path`, `errors`, `warnings`, `findings` (a list of `level`, one of `ok`, `warn`, `error`, `off`, and `message`) |
 | `senhub.cli.config.show/v1` | `config_path`, `mode` (`redact`, `resolved` or `raw`), `config` (the merged configuration as an object) |
 | `senhub.cli.config.set/v1` | `key`, `value`, `config_path`, `file`, `changed` |
@@ -116,6 +118,70 @@ sudo /usr/local/bin/senhub-agent refresh-unit --yes
 Linux only, as root. Compares `/etc/systemd/system/senhub-agent.service` with the unit embedded in the running binary, prints the difference and, once confirmed, rewrites the unit and runs `systemctl daemon-reload`. It keeps the `User=` / `Group=` the unit runs as and its `ExecStart` line while that binary still exists, creates the service user if it is missing, and keeps the systemd-creds drop-in in line with the secret store. It does not restart the service: run `restart` afterwards.
 
 This is the way to move an existing install to the hardened unit. Do not use `uninstall` followed by `install` for that: `uninstall` deletes the configuration directory, the sealed secret store and the agent key with it.
+
+### Doctor
+
+```bash
+senhub-agent doctor
+senhub-agent doctor --json
+senhub-agent doctor --config-path /etc/senhub-agent/agent.yaml
+```
+
+`doctor` runs the checks an operator would otherwise chain by hand (`status`, `config check`, `secret status`, the console's output test, `refresh-unit` in comparison mode) and prints one line per check, grouped by section. Each line that is not `OK` carries a `fix`: the command or action that clears it. It changes nothing on the machine, needs no root and works with the service stopped: a check it cannot make is reported `SKIP` with the reason (for example the running binary of the service, which only root can read).
+
+```
+Install
+  [WARN] install.unit: the systemd unit differs from the one this binary ships (2 lines)
+         fix: sudo senhub-agent refresh-unit
+Configuration
+  [OK]   config.check: the configuration is valid
+```
+
+Levels: `OK`, `WARN`, `FAIL` and `SKIP`. The exit code is `2` when a check failed, `1` when none failed and one warned, `0` otherwise; `SKIP` counts for neither.
+
+| Section | Check | What it looks at |
+|---------|-------|------------------|
+| install | `install.service` | The service manager's answer, as `status` reads it |
+| install | `install.unit` | Linux: the installed systemd unit against the one embedded in this binary (the comparison `refresh-unit` makes) |
+| install | `install.binary` | Linux: the service runs the binary that is on disk (not replaced or deleted since it started); needs root to read the process |
+| install | `install.skew` | The service copy of the binary is on the same version as this command |
+| install | `install.log_group` | Linux: the service user is in the `adm` group when a `filetail` probe reads system logs under `/var/log` |
+| install | `install.log_dir` | The log directory exists and the service user can write it |
+| configuration | `config.check` | One line per error or warning of `config check`; the free tier is not a warning |
+| configuration | `config.secrets` | The secret store, when there is one, can be read (`secret status`) |
+| configuration | `config.license` | The licence expiry: a warning under 30 days, a failure once expired. Validity and binding come from `config.check` |
+| configuration | `config.http_port` | The HTTP port is served by this agent, or is free |
+| outputs | `outputs.<name>` | Each configured output is reached, with the console's connection test (DNS, TCP, TLS, authentication as the output allows) |
+| outputs | `outputs.running` | Outputs that failed to start inside the running agent |
+| probes | `probes.<name>` | From the running agent: last cycle, last error, and a warning for a probe that has produced no data |
+| host | `host.disk` | Free space of the log volume: a warning under 10 %, a failure under 2 % |
+| host | `host.memory` | Memory used by the running agent |
+
+The probes section and `host.memory` need the agent to answer over HTTP; when it does not, they are skipped and say why. In JSON, the document is `senhub.cli.doctor/v1`:
+
+```json
+{
+  "schema": "senhub.cli.doctor/v1",
+  "ok": true,
+  "status": "warning",
+  "exit_code": 1,
+  "config_path": "/etc/senhub-agent/agent.yaml",
+  "summary": { "ok": 9, "warn": 1, "fail": 0, "skip": 2 },
+  "checks": [
+    {
+      "section": "install",
+      "id": "install.unit",
+      "level": "warn",
+      "message": "the systemd unit differs from the one this binary ships (2 lines)",
+      "fix": "sudo senhub-agent refresh-unit"
+    }
+  ]
+}
+```
+
+```bash
+senhub-agent doctor --json | jq -r '.checks[] | select(.level != "ok" and .level != "skip") | "\(.id): \(.fix)"'
+```
 
 ### Run (Console Mode)
 
