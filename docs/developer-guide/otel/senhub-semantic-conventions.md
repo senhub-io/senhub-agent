@@ -123,6 +123,16 @@ Attributes: `cpu.logical_number` (optional, present when measured per core).
 
 > **Possible V2 evolution**: refactor the probe to emit cumulative counters and align fully with windows_exporter (`senhub_system_cpu_dpcs_total` and so on). To be discussed later.
 
+#### 4.1.4 `senhub.*` extension: host clock
+
+**Rationale:** a monitoring server needs the host's own time to check drift. OTel defines no such metric, and `system.*` stays reserved for the metrics OTel defines, so the clock lives in the SenHub extension namespace, next to the metrics above. It rides on the `cpu` probe because that probe runs in every default configuration, on Linux and Windows.
+
+| Senhub metric | Unit | Type | Probe source | Notes |
+|---|---|---|---|---|
+| `senhub.system.time` | `s` | Gauge | `system_time` | Seconds since the Unix epoch, fractional, read at the end of the collection cycle. No attribute. Excluded from PRTG (`prtg_skip`): an epoch is not a channel. |
+
+Prometheus: `time() - senhub_system_time_seconds` is the drift, plus the age of the sample (up to one collection interval). Zabbix: the generator shows the item as `unixtime` and adds a `fuzzytime(/<template>/<key>,{$SENHUB.CLOCK.DRIFT.MAX})=0` trigger (Warning, default `60s`), the same expression in 6.0 and 7.0.
+
 ### 4.2 `memory` probe (system)
 
 **Primary source:** [OTel system metrics — Memory](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/)
@@ -232,6 +242,18 @@ Official OTel values: `free, reserved, used`
 | `senhub.system.disk.operations` | `1/s` | Gauge | `disk.io.direction: read` or `write` |
 | `senhub.system.disk.io` | `By/s` | Gauge | `disk.io.direction: read` or `write` |
 | `senhub.system.disk.queue_length` | `{operation}` | Gauge | – |
+
+#### 4.4.3b Native OTel disk metrics (block devices — Linux)
+
+Linux reads `/proc/diskstats` and reports the OTel metrics as defined, cumulative since boot (the Windows rates above are the extension, these are not):
+
+| OTel metric | Unit | Type | Attributes | Probe source |
+|---|---|---|---|---|
+| `system.disk.io` | `By` | Counter | `disk.io.direction: read` or `write`, `system.device` | `diskio_read_bytes`, `diskio_write_bytes` (sectors × 512) |
+| `system.disk.operations` | `{operation}` | Counter | `disk.io.direction`, `system.device` | `diskio_read_ops`, `diskio_write_ops` |
+| `system.disk.io_time` | `s` | Counter | `system.device` | `diskio_busy_seconds` (time with I/O in flight) |
+
+`system.device` is the kernel name of a whole device (`sda`, `nvme0n1`, `vda`, `dm-0`, `md0`), not a `/dev` path. Partitions and `loop`, `ram`, `zram`, `fd`, `sr` devices are not reported. The probe type stays `logicaldisk`. Zabbix discovers one set of items per `system.device`, with the direction as a macro of the item key.
 
 #### 4.4.4 Attributes (tag → attribute mapping)
 

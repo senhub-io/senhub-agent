@@ -109,6 +109,7 @@ OTel-aligned via `system.cpu.*`. Time-mode breakdown collapsed under
 | `senhub_system_cpu_interrupts_per_second` | gauge | 1/s | `cpu_logical_number`, `senhub_cpu_perfmon_instance` (Windows) |
 | `senhub_system_cpu_queue_length` | gauge | {thread} | – |
 | `senhub_system_processes_count` | gauge | {process} | – |
+| `senhub_system_time_seconds` | gauge | s | – (host clock as a Unix timestamp; `time() - senhub_system_time_seconds` gives the drift) |
 
 Notes (since 0.1.91):
 - **Per-mode utilization** is exposed as `senhub_system_cpu_utilization_ratio` with a `cpu_mode` label, value in [0,1]. On Unix the probe diffs `cpu.Times()` between two collect cycles; on Windows it reads `\Processor\% User Time` and siblings directly from PDH. The previous `senhub_system_cpu_time_seconds_total` counter was retired because Windows could not produce a true cumulative seconds value through PDH — the metric is now honest about being a gauge rate.
@@ -167,6 +168,9 @@ but the metrics it emits use the OTel `system.filesystem.*` convention
 | `senhub_system_disk_operations_per_second` | gauge | 1/s | `disk_io_direction` ∈ {read, write} (Windows) |
 | `senhub_system_disk_io_bytes_per_second` | gauge | By/s | `disk_io_direction` (Windows) |
 | `senhub_system_disk_queue_length` | gauge | {operation} | (Windows) |
+| `senhub_system_disk_io_bytes_total` | counter | By | `disk_io_direction` ∈ {read, write}, `system_device` (Linux, whole block devices) |
+| `senhub_system_disk_operations_total` | counter | {operation} | `disk_io_direction` ∈ {read, write}, `system_device` (Linux) |
+| `senhub_system_disk_io_time_seconds_total` | counter | s | `system_device` (Linux) |
 
 Notes:
 - Windows drive letters and Linux mount points both surface as
