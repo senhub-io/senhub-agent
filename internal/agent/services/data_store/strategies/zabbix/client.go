@@ -147,6 +147,12 @@ func (c *client) dialServer(ctx context.Context, addr string) (net.Conn, error) 
 	if err != nil {
 		return nil, err
 	}
+	return c.secure(ctx, conn, addr)
+}
+
+// secure runs the encryption handshake the configuration asks for on a
+// connected socket, or returns it as is.
+func (c *client) secure(ctx context.Context, conn net.Conn, addr string) (net.Conn, error) {
 	// A pre-shared key takes its own handshake: Go's TLS has no external
 	// PSK, so the profile Zabbix speaks lives in the psk package.
 	if len(c.cfg.TLS.PSK) > 0 {
@@ -157,7 +163,7 @@ func (c *client) dialServer(ctx context.Context, addr string) (net.Conn, error) 
 		})
 		if pskErr != nil {
 			conn.Close()
-			return nil, pskErr
+			return nil, &handshakeError{kind: "PSK", err: pskErr}
 		}
 		return pc, nil
 	}
@@ -174,7 +180,7 @@ func (c *client) dialServer(ctx context.Context, addr string) (net.Conn, error) 
 	tc := tls.Client(conn, conf)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		conn.Close()
-		return nil, err
+		return nil, &handshakeError{kind: "TLS", err: err}
 	}
 	return tc, nil
 }
@@ -320,7 +326,7 @@ func (c *client) activeChecks(ctx context.Context) (items []activeItem, changed 
 		if strings.Contains(resp.Info, "not found") {
 			return nil, false, fmt.Errorf("%w: %s", errHostUnknown, resp.Info)
 		}
-		return nil, false, fmt.Errorf("server refused the check list: %s", firstNonEmpty(resp.Info, resp.Response))
+		return nil, false, fmt.Errorf("%w: %s", errServerRefused, firstNonEmpty(resp.Info, resp.Response))
 	}
 	// Measured against a real 7.0.30: when the list has not changed the
 	// reply carries neither data nor a revision — not the revision we
@@ -341,6 +347,21 @@ func (c *client) activeChecks(ctx context.Context) (items []activeItem, changed 
 // errHostUnknown is the server's answer while the host does not exist
 // yet; the request that got it is what triggers the autoregistration.
 var errHostUnknown = errors.New("host not known to the server")
+
+// errServerRefused is a well-formed "failed" answer to the check list
+// that is not about an unknown host.
+var errServerRefused = errors.New("server refused the check list")
+
+// handshakeError is a failed encryption handshake on an open socket: the
+// server or proxy was reached, and refused or could not complete the
+// PSK or TLS exchange.
+type handshakeError struct {
+	kind string
+	err  error
+}
+
+func (e *handshakeError) Error() string { return e.err.Error() }
+func (e *handshakeError) Unwrap() error { return e.err }
 
 // sendValues pushes one batch and reports what the server processed.
 func (c *client) sendValues(ctx context.Context, items []item, now time.Time) (pushResult, error) {
