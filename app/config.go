@@ -489,8 +489,9 @@ func checkConfig(configPath string) checkOutcome {
 			}
 		}
 	} else {
-		fmt.Println("  [WARN] agent.license not set (free tier only)")
-		warnings++
+		// The free tier is a supported setup, not a condition to fix: it
+		// must not turn config check (and a validator built on it) amber.
+		fmt.Println("  [INFO] agent.license not set (free tier)")
 	}
 
 	// Probes

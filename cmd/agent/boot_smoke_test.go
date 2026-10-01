@@ -22,15 +22,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-
-	"senhub-agent.go/internal/cliexit"
 )
 
 // buildAgent builds the senhub-agent binary once per test process and
@@ -156,10 +153,7 @@ func TestBootSmoke_ConfigCheckFreeTier(t *testing.T) {
 	cfg := filepath.Join(repoRoot(t), "examples", "example-config-free-tier.yaml")
 
 	out, err := execAgent(t, bin, "config", "check", cfg)
-	// Exit 1 is the warning code: the example carries no licence, which
-	// config check reports as a warning. Only exit 2 is a failure.
-	var exitErr *exec.ExitError
-	if err != nil && !(errors.As(err, &exitErr) && exitErr.ExitCode() == cliexit.Warning) {
+	if err != nil {
 		t.Fatalf("`senhub-agent config check %s` failed: %v\noutput:\n%s",
 			cfg, err, out)
 	}
