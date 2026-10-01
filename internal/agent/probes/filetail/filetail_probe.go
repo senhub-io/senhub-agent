@@ -59,7 +59,7 @@ type FileTailProbe struct {
 	bookmarks bookmarkStore
 
 	mu      sync.Mutex
-	tailing map[string]*tail.Tail // active tails keyed by absolute path
+	tailing map[string]*tailState // active tails keyed by absolute path
 	// awaiting holds literal paths that did not exist when first scanned.
 	// When one appears, everything in it was written after the probe
 	// started watching, so it is read from its first byte.
@@ -67,10 +67,19 @@ type FileTailProbe struct {
 	// issues holds, per configured path or discovered file, why it cannot
 	// be read right now. It is rebuilt by every scan and surfaced as a
 	// Collect error, so a path the service cannot open does not look healthy.
-	issues  map[string]string
-	wg      sync.WaitGroup
-	quit    chan struct{}
-	stopped bool
+	issues map[string]string
+	// polling lists files whose tail was restarted after a stall: they are
+	// followed by polling, which does not go through the inotify tracker
+	// that every tail of the process shares.
+	polling map[string]bool
+	// stalled remembers when a tail was found stuck on a rotated or
+	// truncated file, so the error outlives the scan that handled it and is
+	// still there when Collect next runs.
+	stalled    map[string]time.Time
+	stallGrace time.Duration
+	wg         sync.WaitGroup
+	quit       chan struct{}
+	stopped    bool
 
 	// emitted counts log records this probe instance has published to the
 	// log rail — the conduit's own throughput self-metric, surfaced through
@@ -93,7 +102,10 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		BaseProbe:    &types.BaseProbe{},
 		config:       parsed,
 		moduleLogger: moduleLogger,
-		tailing:      map[string]*tail.Tail{},
+		tailing:      map[string]*tailState{},
+		polling:      map[string]bool{},
+		stalled:      map[string]time.Time{},
+		stallGrace:   2 * globRescanInterval,
 		awaiting:     map[string]bool{},
 		issues:       map[string]string{},
 		quit:         make(chan struct{}),
@@ -133,17 +145,30 @@ func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) {
 func (p *FileTailProbe) unreadableError() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.issues) == 0 {
+	all := make(map[string]string, len(p.issues)+len(p.stalled))
+	for k, v := range p.issues {
+		all[k] = v
+	}
+	for k, at := range p.stalled {
+		if time.Since(at) > 2*p.GetInterval() {
+			delete(p.stalled, k)
+			continue
+		}
+		if _, listed := all[k]; !listed {
+			all[k] = "tail was stuck on a rotated or truncated file and was restarted"
+		}
+	}
+	if len(all) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(p.issues))
-	for k := range p.issues {
+	keys := make([]string, 0, len(all))
+	for k := range all {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
-		parts = append(parts, k+": "+p.issues[k])
+		parts = append(parts, k+": "+all[k])
 	}
 	return fmt.Errorf("filetail: %d configured path(s) cannot be read: %s", len(keys), strings.Join(parts, "; "))
 }
@@ -217,10 +242,10 @@ func (p *FileTailProbe) shutdown(ctx context.Context) {
 	p.stopped = true
 	close(p.quit)
 	tails := make([]*tail.Tail, 0, len(p.tailing))
-	for _, t := range p.tailing {
-		tails = append(tails, t)
+	for _, ts := range p.tailing {
+		tails = append(tails, ts.t)
 	}
-	p.tailing = map[string]*tail.Tail{}
+	p.tailing = map[string]*tailState{}
 	p.mu.Unlock()
 
 	for _, t := range tails {
@@ -257,6 +282,7 @@ func (p *FileTailProbe) rescanLoop() {
 // any matched file not already being tailed. Paths that cannot be read are
 // recorded and reported through Collect.
 func (p *FileTailProbe) scanAndTail() {
+	p.restartStalledTails()
 	issues := map[string]string{}
 	for _, pattern := range p.config.Paths {
 		matches, err := filepath.Glob(pattern)
@@ -358,6 +384,7 @@ func (p *FileTailProbe) startTail(file string) error {
 		return fmt.Errorf("%s: %w", describePathError(err), err)
 	}
 	size := fi.Size()
+	opened := fi
 	readable, err := os.Open(file)
 	if err != nil {
 		p.mu.Unlock()
@@ -385,7 +412,7 @@ func (p *FileTailProbe) startTail(file string) error {
 		// while its writer keeps it open: a log such as PRTG's, held open
 		// for the life of the service, was never read, without an error
 		// (#945). The size is polled there instead.
-		Poll: runtime.GOOS == "windows",
+		Poll: runtime.GOOS == "windows" || p.polling[file],
 	}
 	// Tailing from the end seeks to the size just measured rather than to
 	// the end at open time, so the offset recorded below is exactly where
@@ -401,7 +428,9 @@ func (p *FileTailProbe) startTail(file string) error {
 		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("failed to start tail")
 		return fmt.Errorf("failed to start tail: %w", err)
 	}
-	p.tailing[file] = t
+	ts := &tailState{t: t, opened: opened}
+	ts.offset.Store(offset)
+	p.tailing[file] = ts
 	p.wg.Add(1)
 	p.mu.Unlock()
 
@@ -412,8 +441,111 @@ func (p *FileTailProbe) startTail(file string) error {
 		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 	}
 
-	go p.consume(file, t, offset, fp, reopened)
+	go p.consume(file, ts, offset, fp, reopened)
 	return nil
+}
+
+// tailState is what the probe knows about one running tail beyond the
+// tail itself: the file it opened and how far it has read, which is what
+// lets the probe notice a tail that no longer follows the file at its path.
+type tailState struct {
+	t      *tail.Tail
+	offset atomic.Int64
+
+	mu            sync.Mutex
+	opened        os.FileInfo
+	mismatchSince time.Time
+
+	superseded atomic.Bool
+}
+
+// markOpened records the file now at path as the one the tail reads.
+func (ts *tailState) markOpened(path string) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	ts.mu.Lock()
+	ts.opened = fi
+	ts.mu.Unlock()
+}
+
+// divergence says why the tail no longer follows the file at path, or "".
+// It never asks the tail: a tail stuck on a rotated file is exactly the
+// one that would not answer.
+func (ts *tailState) divergence(path string) string {
+	cur, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	ts.mu.Lock()
+	opened := ts.opened
+	ts.mu.Unlock()
+	if opened != nil && !os.SameFile(opened, cur) {
+		return "the path names a different file than the one being read"
+	}
+	if cur.Size() < ts.offset.Load() {
+		return "the file is shorter than the offset already read"
+	}
+	return ""
+}
+
+// restartStalledTails restarts, from the first byte, every tail whose file
+// has been rotated or truncated for longer than the grace period without
+// the tail having followed. The library signals rotation through a shared
+// per-path inotify channel that a second tail on the same path, or a lost
+// event, leaves a tail waiting on for good, with no error and no line.
+func (p *FileTailProbe) restartStalledTails() {
+	type candidate struct {
+		file   string
+		ts     *tailState
+		reason string
+	}
+	var due []candidate
+
+	p.mu.Lock()
+	for file, ts := range p.tailing {
+		reason := ts.divergence(file)
+		ts.mu.Lock()
+		switch {
+		case reason == "":
+			ts.mismatchSince = time.Time{}
+		case ts.mismatchSince.IsZero():
+			ts.mismatchSince = time.Now()
+		case time.Since(ts.mismatchSince) >= p.stallGrace:
+			due = append(due, candidate{file, ts, reason})
+		}
+		ts.mu.Unlock()
+	}
+	p.mu.Unlock()
+
+	for _, c := range due {
+		p.restartStalledTail(c.file, c.ts, c.reason)
+	}
+}
+
+func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason string) {
+	p.mu.Lock()
+	if p.stopped || p.tailing[file] != ts {
+		p.mu.Unlock()
+		return
+	}
+	delete(p.tailing, file)
+	ts.superseded.Store(true)
+	p.polling[file] = true
+	p.stalled[file] = time.Now()
+	p.mu.Unlock()
+
+	p.moduleLogger.Warn().Str("file", file).Str("reason", reason).
+		Msg("tail did not follow a rotated or truncated file; restarting it from the first byte")
+
+	ts.t.Kill(nil)
+	if err := p.bookmarks.Set(file, bookmarkEntry{}); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
+	}
+	if err := p.startTail(file); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("restarting stalled tail failed")
+	}
 }
 
 // reopenSignal turns nxadm/tail's log line announcing a reopen into an
@@ -446,7 +578,8 @@ func (r *reopenSignal) Write(b []byte) (int, error) {
 // at persist time: by then the path may name a newer file, and pairing the
 // old file's offset with the new file's head hash is what let a restart
 // resume past the end of the file that replaced it.
-func (p *FileTailProbe) consume(file string, t *tail.Tail, startOffset int64, fp string, reopened <-chan struct{}) {
+func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, fp string, reopened <-chan struct{}) {
+	t := ts.t
 	defer p.wg.Done()
 
 	asm := logparse.NewAssembler(p.config.Multiline, p.config.MaxBytesPerLine)
@@ -491,6 +624,8 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
+			ts.offset.Store(0)
+			ts.markOpened(file)
 			fp = fingerprint(file, DefaultFingerprintLength)
 			persist()
 			lastFlush = time.Now()
@@ -517,6 +652,7 @@ read:
 			continue
 		}
 		lastOffset = line.SeekInfo.Offset
+		ts.offset.Store(lastOffset)
 		dirty = true
 
 		readTime := line.Time
@@ -544,18 +680,22 @@ read:
 	for _, logical := range asm.Flush() {
 		p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 	}
+	cause := t.Wait()
+	if ts.superseded.Load() {
+		return
+	}
 	persist()
-	p.forgetDeadTail(file, t, t.Wait())
+	p.forgetDeadTail(file, ts, cause)
 }
 
 // forgetDeadTail drops a tail that ended on its own (the file vanished
 // with its directory, a read error) so the next rescan starts a new one.
 // Without it the dead tail stays registered and the file is never read
 // again until the probe restarts.
-func (p *FileTailProbe) forgetDeadTail(file string, t *tail.Tail, cause error) {
+func (p *FileTailProbe) forgetDeadTail(file string, ts *tailState, cause error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.stopped || p.tailing[file] != t {
+	if p.stopped || p.tailing[file] != ts {
 		return
 	}
 	delete(p.tailing, file)
