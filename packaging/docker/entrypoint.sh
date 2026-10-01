@@ -130,7 +130,13 @@ init_config() {
     fi
   fi
 
-  senhub-agent config init "$@"
+  # Exit 3 means the configuration was already there and nothing was
+  # written: a restart over a persisted volume, which is the normal case.
+  init_rc=0
+  senhub-agent config init "$@" || init_rc=$?
+  if [ "$init_rc" -ne 0 ] && [ "$init_rc" -ne 3 ]; then
+    exit "$init_rc"
+  fi
 
   if [ -z "${OTLP_BEARER_TOKEN:-}" ]; then
     log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"

@@ -138,6 +138,21 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	if serviceUser == "" {
 		serviceUser = defaultServiceUser
 	}
+
+	// A second install on a machine that already is in the requested state
+	// changes nothing: no binary copy, no unit write, no configuration
+	// touch. It says so and exits with the Unchanged code.
+	if command == "install" {
+		probe, probeErr := service.New(&program{done: make(chan bool, 1), args: args}, svcConfig)
+		if probeErr == nil {
+			state := detectInstallState(probe, configPath, func() bool { return installBinaryCurrent(executablePath, serviceUser) })
+			if state.alreadyDone() {
+				fmt.Printf("The service is already installed and the configuration is present at %s; nothing to do.\n", configPath)
+				fmt.Println("To change the installed unit use 'refresh-unit' (Linux); to change the binary use 'update'.")
+				os.Exit(cliexit.Unchanged)
+			}
+		}
+	}
 	if runtime.GOOS == "linux" {
 		// Never fall back to kardianos's built-in systemd script: it
 		// places StartLimitInterval/StartLimitBurst in [Service], where
@@ -227,10 +242,14 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			}
 
 			// Always generate the local configuration at install time
-			if err := generateConfiguration(args); err != nil {
+			if changed, err := generateConfigurationReport(args, configPath, generateConfiguration); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate configuration: %v\n", err)
 			} else {
-				fmt.Printf("Configuration generated: %s\n", configPath)
+				if changed {
+					fmt.Printf("Configuration generated: %s\n", configPath)
+				} else {
+					fmt.Printf("Configuration already present, unchanged: %s\n", configPath)
+				}
 				if args.EnableHttps {
 					fmt.Printf("HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
 				}
