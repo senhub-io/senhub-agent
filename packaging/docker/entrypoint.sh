@@ -386,7 +386,11 @@ else
     write_azure_probe
   fi
 
-  if senhub-agent config check --config-path "$CONFIG" >/dev/null 2>&1; then
+  # config check exits 0 clean, 1 with warnings (a missing licence is
+  # one), 2 on an error: only an error stops the container.
+  check_rc=0
+  senhub-agent config check --config-path "$CONFIG" >/dev/null 2>&1 || check_rc=$?
+  if [ "$check_rc" -le 1 ]; then
     log "configuration written and checked"
   else
     log "the configuration that was written does not pass config check:"

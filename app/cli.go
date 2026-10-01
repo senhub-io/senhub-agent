@@ -389,10 +389,9 @@ func Main() {
 	// a different build than this one, and the parser lives in cliArgs,
 	// below the layer that knows about units (#723).
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
-		cliArgs.PrintVersion()
-		serviceBinary := installedServiceBinary()
-		if note := serviceBinarySkewNote(cliArgs.Version, binaryVersion(serviceBinary), serviceBinary); note != "" {
-			fmt.Print(note)
+		_, jsonMode := extractJSONFlag(os.Args[2:])
+		if code := runVersion(jsonMode, os.Stdout); code != cliexit.OK {
+			os.Exit(code)
 		}
 		return
 	}
@@ -460,19 +459,16 @@ func Main() {
 		return
 	case "config":
 		if len(os.Args) > 2 && os.Args[2] == "check" {
-			configPath, err := parseConfigPathArgs(os.Args[3:])
-			if err != nil {
-				fatalf("config check: %v", err)
+			if code := runConfigCheck(os.Args[3:], os.Stdout); code != cliexit.OK {
+				os.Exit(code)
 			}
-			if resolved, resErr := cliArgs.GetAbsoluteConfigPath(configPath); resErr == nil {
-				configPath = resolved
-			}
-			checkConfig(configPath)
 			return
 		}
 		if len(os.Args) > 2 && os.Args[2] == "show" {
-			// agent config show [--raw|--resolved|--redact] [path]
-			showConfig(os.Args[3:])
+			// agent config show [--raw|--resolved|--redact] [--json] [path]
+			if code := runConfigShow(os.Args[3:], os.Stdout); code != cliexit.OK {
+				os.Exit(code)
+			}
 			return
 		}
 		if len(os.Args) > 2 && os.Args[2] == "migrate" {
@@ -561,10 +557,14 @@ func Main() {
 		// against the right file (otherwise cleanupFiles resolves the
 		// DEFAULT path and leaves the custom config/certs behind).
 		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
-			// --otlp / --yes are view/confirm flags the start parser does
+			// --otlp / --yes / --json are view/confirm flags the start parser does
 			// not know; strip them before parsing so it does not reject
 			// them, then set the corresponding fields explicitly.
-			args := cliArgs.ParseStartArgs(stripFlags(os.Args[2:], "--otlp", "--yes"))
+			viewFlags := []string{"--otlp", "--yes"}
+			if command == "status" {
+				viewFlags = append(viewFlags, jsonFlag)
+			}
+			args := cliArgs.ParseStartArgs(stripFlags(os.Args[2:], viewFlags...))
 			if command == "status" {
 				args.ShowOTLP = hasArg("--otlp")
 			}
@@ -635,6 +635,7 @@ Service Commands:
     restart              Restart the service
     status               Show service and probe status
     status --otlp        Also show OTLP pipeline self-metrics
+    status --json        Print the status as one JSON object
     run                  Run interactively in console mode
     refresh-unit         Refresh the installed systemd unit to the version
                          embedded in this binary (Linux only; requires root)
@@ -645,7 +646,7 @@ License Commands:
     license remove       Remove current license (revert to free tier)
 
 Other Commands:
-    version              Show agent version
+    version              Show agent version (--json for a JSON object)
     license key          Print this agent's key (order a licence for it)
     console              Open the web console in the browser (--print to
                           show the address only; asks for elevation when
@@ -660,11 +661,13 @@ Other Commands:
                           --zabbix-host-metadata; refuses a port already
                           in use
     config check [path]   Validate configuration (covers fragments under
-                          probes.d/ and strategies.d/ if present)
+                          probes.d/ and strategies.d/ if present);
+                          --json prints the result as one JSON object
     config show [opts]    Print merged + resolved configuration as YAML
                             --resolved            env/file references substituted, secrets in cleartext
                             --raw                 references preserved as written
                             --redact              substituted but secrets masked (default)
+                            --json                wrap the output in one JSON object
                             [path]                config file path
     config migrate [path] Convert a legacy monolithic agent-config.yaml
                           into the 0.2.x multi-file layout
@@ -681,11 +684,18 @@ Secret Store Commands:
     secret migrate       Move inline plaintext secrets from config into the store
     secret wire-unit     (Linux/systemd-creds) regenerate the unit credential drop-in
     secret status        Show the active backend and store location
+                         (--json for a JSON object)
     key show             Print the configured agent key
 
 Database Helper Commands:
     db-monitoring init   Generate least-privilege SQL to provision a
                          monitoring user (--engine mysql|postgresql --user NAME)
+
+Exit codes:
+    0  ok
+    1  warning (the command ran, something needs attention)
+    2  failure (including a malformed command line)
+    3  unchanged (already in the requested state, nothing written)
 
 Agent Options:
     --config-path PATH                     Path to the agent configuration file.

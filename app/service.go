@@ -76,8 +76,12 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// Build the ExecStart arguments for the installed service: pass
 	// --config-path with the resolved absolute path so the service
 	// finds the file regardless of working directory.
+	jsonStatus := command == "status" && hasArg(jsonFlag)
 	executablePath, err := os.Executable()
 	if err != nil {
+		if jsonStatus {
+			os.Exit(reportFailure("status", true, os.Stdout, fmt.Errorf("getting executable path: %w", err)))
+		}
 		fmt.Fprintf(os.Stderr, "Error getting executable path: %v\n", err)
 		os.Exit(cliexit.Failure)
 	}
@@ -191,6 +195,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
+		if jsonStatus {
+			os.Exit(reportFailure("status", true, os.Stdout, err))
+		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(cliexit.Failure)
 	}
@@ -357,7 +364,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Printf("Final service status: %s\n", getServiceStatusText(finalStatus))
 		}
 	case "status":
-		showEnhancedStatus(s, args)
+		if code := runStatus(s, args, jsonStatus, os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
 	case "run":
 		// The agent expects to find its YAML configuration on disk; the
 		// install path generates a default one if missing, so a
