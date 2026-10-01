@@ -67,6 +67,31 @@ func appendLines(t *testing.T, path string, lines ...string) {
 	}
 }
 
+// awaitTailWatching returns once the tail on path is certain to react to a
+// write, and reports how many lines it appended to find out.
+//
+// nxadm/tail registers its change watch only after its first read reaches
+// the end of the file, and a write landing between that read and the
+// registration raises no event: the line sits unread until the next write.
+// The library offers no signal for that moment, so the test writes a
+// readiness line, and another whenever none was picked up, until one is.
+// The write that follows a missed one wakes the tail, which then reads both.
+func awaitTailWatching(t *testing.T, p *FileTailProbe, path string) uint64 {
+	t.Helper()
+	base := p.emitted.Load()
+	var appended uint64
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		appendLines(t, path, "2026-09-30 10:59:59 INFO tail readiness")
+		appended++
+		if waitEmitted(p, base+appended, 250*time.Millisecond) == base+appended {
+			return appended
+		}
+	}
+	t.Fatalf("tail on %s never reacted to %d readiness writes", path, appended)
+	return appended
+}
+
 // A watched file that produced no line during a run must resume where it
 // was on the next start, not be read again from its first byte.
 func TestFileTail_RestartDoesNotReplayAnIdleFile(t *testing.T) {
@@ -105,9 +130,10 @@ func TestFileTail_RestartDoesNotReplayAnIdleFile(t *testing.T) {
 		t.Fatalf("restart replayed %d records of an unchanged file", got)
 	}
 
+	ready := awaitTailWatching(t, second, idle)
 	appendLines(t, idle, "2026-09-30 11:00:00 INFO after restart")
-	if got := waitEmitted(second, 1, 5*time.Second); got != 1 {
-		t.Fatalf("line appended after restart: %d emitted, want 1", got)
+	if got := waitEmitted(second, ready+1, 5*time.Second); got != ready+1 {
+		t.Fatalf("line appended after restart: %d emitted, want %d", got, ready+1)
 	}
 }
 
@@ -152,9 +178,10 @@ func TestFileTail_RestartDoesNotReplayLinesReadJustBeforeStop(t *testing.T) {
 	}
 
 	first := startFileTail(t, cfg)
+	ready := awaitTailWatching(t, first, file)
 	appendLines(t, file, "a", "b", "c", "d", "e", "f", "g")
-	if got := waitEmitted(first, 7, 5*time.Second); got != 7 {
-		t.Fatalf("appended lines: %d emitted, want 7", got)
+	if got := waitEmitted(first, ready+7, 5*time.Second); got != ready+7 {
+		t.Fatalf("appended lines: %d emitted, want %d", got, ready+7)
 	}
 	stopFileTail(t, first)
 
@@ -187,9 +214,10 @@ func TestFileTail_BookmarkCatchesUpWithoutAnotherLine(t *testing.T) {
 	p := startFileTail(t, cfg)
 	defer stopFileTail(t, p)
 
+	ready := awaitTailWatching(t, p, busy)
 	appendLines(t, busy, "2026-09-30 10:01:00 INFO one", "2026-09-30 10:01:00 INFO two", "2026-09-30 10:01:00 INFO three", "2026-09-30 10:01:00 INFO four", "2026-09-30 10:01:00 INFO five")
-	if got := waitEmitted(p, 5, 5*time.Second); got != 5 {
-		t.Fatalf("emitted %d, want 5", got)
+	if got := waitEmitted(p, ready+5, 5*time.Second); got != ready+5 {
+		t.Fatalf("emitted %d, want %d", got, ready+5)
 	}
 	fi, _ := os.Stat(busy)
 	deadline := time.Now().Add(3 * bookmarkFlushInterval)
