@@ -389,7 +389,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	if err != nil {
 		return Export{}, err
 	}
-	tpl.Macros = macros
+	tpl.Macros = append(macros, clockTriggers(name, def, opts, rules)...)
 
 	for _, k := range order {
 		rule := rules[k]
@@ -605,6 +605,9 @@ func asPercent(p *ItemPrototype, m transformers.MetricDefinition) {
 func units(m transformers.MetricDefinition) string {
 	if m.Otel == nil || m.Otel.Name == "" {
 		return m.Unit
+	}
+	if m.Otel.Name == ClockMetric {
+		return "unixtime"
 	}
 	switch m.Otel.Unit {
 	case "By":
