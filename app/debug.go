@@ -81,17 +81,28 @@ type statusResult struct {
 }
 
 // exitCode: a stopped service, a daemon that did not answer, or an agent
-// that reports itself unhealthy or with a dead output all need attention
-// but do not make the status query itself fail.
+// that reports itself unhealthy, with a dead output or a probe in error
+// all need attention but do not make the status query itself fail.
 func (r statusResult) exitCode() int {
 	switch {
 	case r.notRunning || r.source != "daemon":
 		return cliexit.Warning
 	case r.system.Health.Status != "healthy" || len(r.system.StrategyFailures) > 0:
 		return cliexit.Warning
+	case r.system.ProbesError != "" || anyProbeInError(r.system.Probes):
+		return cliexit.Warning
 	default:
 		return cliexit.OK
 	}
+}
+
+func anyProbeInError(probes []status.ProbeStatus) bool {
+	for _, p := range probes {
+		if p.Status == "error" {
+			return true
+		}
+	}
+	return false
 }
 
 // collectStatus gathers the status without printing anything.
