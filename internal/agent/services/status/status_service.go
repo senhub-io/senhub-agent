@@ -26,9 +26,12 @@ type StatusService struct {
 
 // SystemStatus represents the complete system status
 type SystemStatus struct {
-	Health      HealthInfo      `json:"health"`
-	Connection  ConnectionInfo  `json:"connection"`
-	Probes      []ProbeStatus   `json:"probes"`
+	Health     HealthInfo     `json:"health"`
+	Connection ConnectionInfo `json:"connection"`
+	Probes     []ProbeStatus  `json:"probes"`
+	// ProbesError is why the probe list could not be read from the
+	// running agent; empty when it was read.
+	ProbesError string          `json:"probes_error,omitempty"`
 	Performance PerformanceInfo `json:"performance"`
 	Agent       AgentInfo       `json:"agent"`
 	// StrategyFailures are the configured outputs that are not running.

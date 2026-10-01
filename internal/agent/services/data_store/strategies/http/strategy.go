@@ -459,6 +459,19 @@ type ProbesInfoResponse struct {
 	Probes       []string       `json:"probes"`
 	ProbeMetrics map[string]int `json:"probe_metrics"`
 	TotalMetrics int            `json:"total_metrics"`
+	// Details carries each probe's state next to its name. Probes stays a
+	// list of names because the web console reads it as one.
+	Details []ProbeDetail `json:"details"`
+}
+
+// ProbeDetail is one probe's state in /info/probes.
+type ProbeDetail struct {
+	Name         string `json:"name"`
+	MetricsCount int    `json:"metrics_count"`
+	LastUpdate   string `json:"last_update,omitempty"`
+	Running      bool   `json:"running"`
+	Health       string `json:"health,omitempty"`
+	LastError    string `json:"last_error,omitempty"`
 }
 
 // TagInfoResponse represents the response for /info/tags/{probe}
