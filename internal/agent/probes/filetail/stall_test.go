@@ -253,8 +253,9 @@ func TestFileTail_RestartedTailClearsTheStallOnceItReads(t *testing.T) {
 	}
 }
 
-// A restart on a file with nothing new to read is still reported, once.
-func TestFileTail_StallOfAQuietFileIsReportedOnce(t *testing.T) {
+// A stall the probe repaired itself does not fail the cycle: the file is
+// readable and read again, so doctor and status must not show an error.
+func TestFileTail_RepairedStallDoesNotFailTheCycle(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "access.log")
 	writeFile(t, file, backlog(3))
@@ -262,12 +263,13 @@ func TestFileTail_StallOfAQuietFileIsReportedOnce(t *testing.T) {
 	defer stopFileTail(t, p)
 
 	p.mu.Lock()
-	p.stalled[file] = struct{}{}
+	ts := p.tailing[file]
 	p.mu.Unlock()
-	if _, err := p.Collect(); err == nil || !strings.Contains(err.Error(), "restarted") {
-		t.Fatalf("Collect error = %v, want the stall reported", err)
+	if ts == nil {
+		t.Fatal("no tail started")
 	}
+	p.restartStalledTail(file, ts, "test", false)
 	if _, err := p.Collect(); err != nil {
-		t.Fatalf("the stall was reported twice: %v", err)
+		t.Fatalf("Collect after a self-repaired stall = %v, want nil", err)
 	}
 }
