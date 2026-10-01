@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
+
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // serviceRemover is the part of service.Service removeService needs, so
@@ -77,7 +79,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	executablePath, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting executable path: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	workingDir := filepath.Dir(executablePath)
 
@@ -151,7 +153,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			if userErr := ensureServiceUser(serviceUser); userErr != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
 				fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 
 			// ExecStart MUST point at the installed system binary, never
@@ -164,7 +166,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: could not install the agent binary to %s: %v\n", systemBinaryDir, err)
 				fmt.Fprintln(os.Stderr, "The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 			svcConfig.Executable = installed
 			svcConfig.WorkingDirectory = systemBinaryDir
@@ -190,7 +192,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	switch command {
@@ -276,13 +278,13 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			err = s.Stop()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 			time.Sleep(2 * time.Second)
 		}
 
 		if removeService(s, args, os.Stdout, os.Stderr) != nil {
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	case "start":
 		// Heal a pre-0.2.x Windows registration whose command line
@@ -304,7 +306,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		status, statusErr := s.Status()
 		if statusErr != nil {
 			fmt.Fprintf(os.Stderr, "Error checking service status: %v\n", statusErr)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 
 		fmt.Printf("Current service status: %s\n", getServiceStatusText(status))
@@ -315,7 +317,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			err = s.Stop()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 
 			// Wait and verify the service has stopped
@@ -372,7 +374,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			fmt.Printf("    %s install\n", os.Args[0])
 			fmt.Printf("\nThen you can run the agent:\n")
 			fmt.Printf("    %s run\n", os.Args[0])
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 
 		// Pin the resolved absolute path so every downstream consumer
@@ -385,7 +387,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 }
 
@@ -425,7 +427,7 @@ func runAgent(args *cliArgs.ParsedArgs) {
 		// Start agent directly
 		if err := prg.Start(s); err != nil {
 			appLogger.Error().Err(err).Msg("Failed to start agent")
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 
 		// Setup signal handling

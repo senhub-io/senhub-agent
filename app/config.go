@@ -25,6 +25,7 @@ import (
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // generateConfiguration runs at install time. In addition to
@@ -370,7 +371,7 @@ func checkConfig(configPath string) {
 	content, err := os.ReadFile(configPath) // #nosec G304 - user-provided path for CLI tool
 	if err != nil {
 		fmt.Printf("  [ERROR] Cannot read file: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	// Build a minimal logger for the loader so the WARN events
@@ -404,7 +405,7 @@ func checkConfig(configPath string) {
 			}
 			showYAMLErrorContext(string(src), parseErr.Err)
 		}
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	errorCount := 0
@@ -685,7 +686,7 @@ func checkConfig(configPath string) {
 		fmt.Printf("Configuration is valid with %d warning(s).\n", warnings)
 	} else {
 		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errorCount, warnings)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 }
 
@@ -750,7 +751,7 @@ func showConfig(args []string) {
 		default:
 			if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "Error: config show: unknown flag %q\n", a)
-				os.Exit(2)
+				os.Exit(cliexit.Failure)
 			}
 			configPath = a
 		}

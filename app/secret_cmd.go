@@ -13,6 +13,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // The `secret` verb manages the OS-native secret store that backs ${secret:}
@@ -44,22 +45,22 @@ func runSecretCommand() {
 	args := os.Args[2:]
 	if len(args) == 0 {
 		secretUsage()
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	configDir, err := secretConfigDir(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	if err := secret.InitRegistry(configDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: initialising secret backend: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	p := secret.ActiveProvider()
 	if p == nil {
 		fmt.Fprintln(os.Stderr, "Error: no secret backend available on this host")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	sub := args[0]
@@ -72,7 +73,7 @@ func runSecretCommand() {
 			// broken store (corrupt file, permission denied); swallowing
 			// the error and printing "secrets: 0" would hide exactly that.
 			fmt.Fprintf(os.Stderr, "Error: reading secret store: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Printf("secrets: %d\n", len(names))
 
@@ -80,7 +81,7 @@ func runSecretCommand() {
 		names, err := p.List()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		for _, n := range names {
 			fmt.Println(n)
@@ -90,16 +91,16 @@ func runSecretCommand() {
 		name, err := secretArgName(args)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 		val, err := readSecretValue(args)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		if err := p.Set(name, secret.New(val)); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Printf("stored secret %q in %s; reference it as ${secret:%s}\n", name, p.Name(), name)
 
@@ -107,12 +108,12 @@ func runSecretCommand() {
 		name, err := secretArgName(args)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 		v, err := p.Get(name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		if !term.IsTerminal(int(os.Stdout.Fd())) {
 			fmt.Fprintln(os.Stderr, "warning: writing a secret value to a non-terminal")
@@ -123,7 +124,7 @@ func runSecretCommand() {
 		name, err := secretArgName(args)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 		if !secretHasFlag(args, "--yes") {
 			fmt.Printf("Remove secret %q? [y/N] ", name)
@@ -134,7 +135,7 @@ func runSecretCommand() {
 		}
 		if err := p.Delete(name); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Printf("removed secret %q\n", name)
 
@@ -142,29 +143,29 @@ func runSecretCommand() {
 		cfgPath, err := secretConfigFile(args)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		if err := configuration.SealInlineSecrets(cfgPath, nil); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Println("sealed inline secrets into the store and rewrote them to ${secret:} references")
 		if hasArg("--wire-unit") {
 			if err := wireSystemdUnit(configDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 		}
 
 	case "wire-unit":
 		if err := wireSystemdUnit(configDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 
 	default:
 		secretUsage()
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 }
 
