@@ -445,7 +445,8 @@ func runAgent(args *cliArgs.ParsedArgs) {
 
 	svcLogger, err := s.Logger(nil)
 	if err != nil {
-		appLogger.Fatal().Err(err).Msg("Failed to create service logger")
+		appLogger.Error().Err(err).Msg("Failed to create service logger")
+		os.Exit(cliexit.Failure)
 	}
 
 	// Interactive mode (run command or direct execution)
@@ -484,7 +485,8 @@ func runAgent(args *cliArgs.ParsedArgs) {
 		if logErr := svcLogger.Error("Error running service: ", err); logErr != nil {
 			appLogger.Warn().Err(logErr).Msg("Failed to log service error")
 		}
-		appLogger.Fatal().Err(err).Msg("Service failed to run")
+		appLogger.Error().Err(err).Msg("Service failed to run")
+		os.Exit(cliexit.Failure)
 	}
 }
 
