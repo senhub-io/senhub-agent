@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,9 +64,13 @@ type FileTailProbe struct {
 	// When one appears, everything in it was written after the probe
 	// started watching, so it is read from its first byte.
 	awaiting map[string]bool
-	wg       sync.WaitGroup
-	quit     chan struct{}
-	stopped  bool
+	// issues holds, per configured path or discovered file, why it cannot
+	// be read right now. It is rebuilt by every scan and surfaced as a
+	// Collect error, so a path the service cannot open does not look healthy.
+	issues  map[string]string
+	wg      sync.WaitGroup
+	quit    chan struct{}
+	stopped bool
 
 	// emitted counts log records this probe instance has published to the
 	// log rail — the conduit's own throughput self-metric, surfaced through
@@ -90,6 +95,7 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		moduleLogger: moduleLogger,
 		tailing:      map[string]*tail.Tail{},
 		awaiting:     map[string]bool{},
+		issues:       map[string]string{},
 		quit:         make(chan struct{}),
 	}
 	p.SetProbeType(ProbeType)
@@ -120,7 +126,47 @@ func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) {
 	points := []data_store.DataPoint{
 		{Name: "senhub.filetail.records_emitted", Value: float64(p.emitted.Load()), Timestamp: time.Now()},
 	}
-	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), p.unreadableError()
+}
+
+// unreadableError reports the paths the last scan could not read, or nil.
+func (p *FileTailProbe) unreadableError() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.issues) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(p.issues))
+	for k := range p.issues {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+": "+p.issues[k])
+	}
+	return fmt.Errorf("filetail: %d configured path(s) cannot be read: %s", len(keys), strings.Join(parts, "; "))
+}
+
+// recordIssues replaces the unreadable-path set with the result of a scan.
+// A line is logged only when a path's state changes, so a path that stays
+// unreadable costs one line, not one per rescan.
+func (p *FileTailProbe) recordIssues(current map[string]string) {
+	p.mu.Lock()
+	previous := p.issues
+	p.issues = current
+	p.mu.Unlock()
+
+	for k, msg := range current {
+		if previous[k] != msg {
+			p.moduleLogger.Warn().Str("path", k).Str("reason", msg).Msg("configured path cannot be read")
+		}
+	}
+	for k := range previous {
+		if _, still := current[k]; !still {
+			p.moduleLogger.Info().Str("path", k).Msg("configured path is readable again")
+		}
+	}
 }
 
 // OnStart loads the bookmark store, performs the first glob expansion,
@@ -208,13 +254,20 @@ func (p *FileTailProbe) rescanLoop() {
 }
 
 // scanAndTail expands every configured path glob and starts a tail for
-// any matched file not already being tailed.
+// any matched file not already being tailed. Paths that cannot be read are
+// recorded and reported through Collect.
 func (p *FileTailProbe) scanAndTail() {
+	issues := map[string]string{}
 	for _, pattern := range p.config.Paths {
 		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Str("pattern", pattern).Msg("invalid glob pattern; skipping")
 			continue
+		}
+		if len(matches) == 0 {
+			if msg := unmatchedIssue(pattern); msg != "" {
+				issues[pattern] = msg
+			}
 		}
 		// A literal path that does not exist yet is not tailed: a tail
 		// opened on a missing file waits on an inotify watch of the parent
@@ -236,27 +289,87 @@ func (p *FileTailProbe) scanAndTail() {
 			if err != nil {
 				abs = m
 			}
-			p.startTail(abs)
+			if err := p.startTail(abs); err != nil {
+				issues[abs] = err.Error()
+			}
 		}
 	}
+	p.recordIssues(issues)
 }
 
-func (p *FileTailProbe) startTail(file string) {
+// unmatchedIssue explains why a pattern matched nothing when that is an
+// error rather than "not there yet": a literal path is expected to exist
+// for the service (a unit with ProtectHome=yes sees /home empty), and a
+// glob whose literal directory cannot be listed is not merely empty.
+func unmatchedIssue(pattern string) string {
+	if !hasGlobMeta(pattern) {
+		if _, err := os.Stat(pattern); err != nil {
+			return describePathError(err)
+		}
+		return ""
+	}
+	dir := filepath.Dir(pattern)
+	if hasGlobMeta(dir) {
+		return ""
+	}
+	entries, err := os.Open(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ""
+		}
+		return describePathError(err)
+	}
+	if err := entries.Close(); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+func describePathError(err error) string {
+	switch {
+	case os.IsNotExist(err):
+		return "does not exist for the agent service"
+	case os.IsPermission(err):
+		return "permission denied"
+	}
+	return err.Error()
+}
+
+// startTail begins tailing file unless it is already tailed. It returns an
+// error when the file exists but cannot be read; a file that vanished
+// between the scan and here is left for the next rescan.
+func (p *FileTailProbe) startTail(file string) error {
 	p.mu.Lock()
 	if p.stopped {
 		p.mu.Unlock()
-		return
+		return nil
 	}
 	if _, exists := p.tailing[file]; exists {
 		p.mu.Unlock()
-		return
+		return nil
 	}
 
-	fp := fingerprint(file, DefaultFingerprintLength)
-	var size int64
-	if fi, err := os.Stat(file); err == nil {
-		size = fi.Size()
+	fi, err := os.Stat(file)
+	if err != nil {
+		p.mu.Unlock()
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("%s: %w", describePathError(err), err)
 	}
+	size := fi.Size()
+	readable, err := os.Open(file)
+	if err != nil {
+		p.mu.Unlock()
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("%s: %w", describePathError(err), err)
+	}
+	if err := readable.Close(); err != nil {
+		p.moduleLogger.Debug().Err(err).Str("file", file).Msg("closing readability check failed")
+	}
+	fp := fingerprint(file, DefaultFingerprintLength)
 	stored, hasStored := p.bookmarks.Get(file)
 	offset := resolveStartOffset(stored, hasStored, fp, size, p.config.FromBeginning || p.awaiting[file])
 	delete(p.awaiting, file)
@@ -286,7 +399,7 @@ func (p *FileTailProbe) startTail(file string) {
 	if err != nil {
 		p.mu.Unlock()
 		p.moduleLogger.Warn().Err(err).Str("file", file).Msg("failed to start tail")
-		return
+		return fmt.Errorf("failed to start tail: %w", err)
 	}
 	p.tailing[file] = t
 	p.wg.Add(1)
@@ -300,6 +413,7 @@ func (p *FileTailProbe) startTail(file string) {
 	}
 
 	go p.consume(file, t, offset, fp, reopened)
+	return nil
 }
 
 // reopenSignal turns nxadm/tail's log line announcing a reopen into an
