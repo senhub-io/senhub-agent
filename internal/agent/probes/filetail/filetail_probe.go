@@ -72,12 +72,7 @@ type FileTailProbe struct {
 	// polling lists files whose tail was restarted after a stall: they are
 	// followed by polling, which does not go through the inotify tracker
 	// that every tail of the process shares.
-	polling map[string]bool
-	// stalled remembers that a tail was found stuck on a rotated or
-	// truncated file, so the error outlives the scan that handled it and is
-	// still there when Collect next runs. It is dropped by that Collect, or
-	// earlier by the restarted tail's first read.
-	stalled    map[string]struct{}
+	polling    map[string]bool
 	stallGrace time.Duration
 	wg         sync.WaitGroup
 	quit       chan struct{}
@@ -106,7 +101,6 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		moduleLogger: moduleLogger,
 		tailing:      map[string]*tailState{},
 		polling:      map[string]bool{},
-		stalled:      map[string]struct{}{},
 		stallGrace:   2 * globRescanInterval,
 		awaiting:     map[string]bool{},
 		issues:       map[string]string{},
@@ -147,18 +141,12 @@ func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) {
 func (p *FileTailProbe) unreadableError() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	all := make(map[string]string, len(p.issues)+len(p.stalled))
+	// A stalled tail the probe restarted is not listed: the file is
+	// readable and read again, and failing the cycle reported a probe in
+	// error while it collected. The restart is logged at Warn.
+	all := make(map[string]string, len(p.issues))
 	for k, v := range p.issues {
 		all[k] = v
-	}
-	// A restart is reported once, then forgotten: the new tail is reading
-	// again, and an error that outlived the fix kept the probe failing
-	// (and its counter unpublished) for cycles after it had recovered.
-	for k := range p.stalled {
-		if _, listed := all[k]; !listed {
-			all[k] = "tail was not following its file and was restarted"
-		}
-		delete(p.stalled, k)
 	}
 	if len(all) == 0 {
 		return nil
@@ -474,8 +462,6 @@ type tailState struct {
 	checkedOffset int64
 
 	superseded atomic.Bool
-	// read is set by the tail's first line or reopen.
-	read atomic.Bool
 }
 
 // markOpened records the file now at path as the one the tail reads.
@@ -562,7 +548,6 @@ func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason st
 	delete(p.tailing, file)
 	ts.superseded.Store(true)
 	p.polling[file] = true
-	p.stalled[file] = struct{}{}
 	p.mu.Unlock()
 
 	p.warn().Str("file", file).Str("reason", reason).
@@ -657,7 +642,6 @@ read:
 			for _, logical := range asm.Flush() {
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
-			p.noteRead(file, ts)
 			lastOffset = 0
 			ts.offset.Store(0)
 			ts.markOpened(file)
@@ -689,7 +673,6 @@ read:
 		lastOffset = line.SeekInfo.Offset
 		ts.offset.Store(lastOffset)
 		dirty = true
-		p.noteRead(file, ts)
 
 		readTime := line.Time
 		if readTime.IsZero() {
@@ -722,19 +705,6 @@ read:
 	}
 	persist()
 	p.forgetDeadTail(file, ts, cause)
-}
-
-// noteRead clears the stall recorded for file once its restarted tail
-// reads: from then on the file is followed and nothing is left to report.
-func (p *FileTailProbe) noteRead(file string, ts *tailState) {
-	if ts.read.Swap(true) {
-		return
-	}
-	p.mu.Lock()
-	if p.tailing[file] == ts {
-		delete(p.stalled, file)
-	}
-	p.mu.Unlock()
 }
 
 // forgetDeadTail drops a tail that ended on its own (the file vanished
