@@ -149,6 +149,14 @@ p { margin: 0; }
 .chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
 .chip .n { color: var(--muted); } .chip.on .n { color: #d1d5db; }
 
+/* One Pro probe per line in the licence card and section. */
+.lic-use { display: flex; gap: var(--s2); align-items: center; justify-content: flex-end; margin-bottom: 4px; }
+.lic-use:last-child { margin-bottom: 0; }
+.lic-cover { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.lic-cover td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.lic-cover tr:last-child td { border-bottom: none; }
+.lic-cover .why { color: var(--muted); font-size: var(--fs-xs); display: block; }
+
 /* KV rows */
 .kv { display: grid; grid-template-columns: max-content 1fr; column-gap: var(--s4); row-gap: 6px; font-size: var(--fs-sm); }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); text-align: right; }
