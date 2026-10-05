@@ -42,38 +42,37 @@ func ApplyInstallOverrides(configPath, license string, tags map[string]string) e
 // applyTagOverrides writes agent.global_tags into configPath in place with a
 // node-level edit, preserving the template comments.
 func applyTagOverrides(configPath string, tags map[string]string) error {
-	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	_, err := rewriteFile(configPath, func(raw []byte) ([]byte, error) {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", configPath, err)
+		}
+		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: unexpected top-level shape", configPath)
+		}
+		root := doc.Content[0]
+
+		agent := mappingChild(root, "agent")
+		if agent == nil {
+			// The generated agent.yaml always carries an agent block; if it is
+			// missing, add one rather than fail the install.
+			agent = &yaml.Node{Kind: yaml.MappingNode}
+			appendPair(root, "agent", agent)
+		}
+		if agent.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: agent block is not a mapping", configPath)
+		}
+
+		setTagsField(agent, "global_tags", tags)
+
+		out, err := marshalDocument(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("re-encoding %s: %w", configPath, err)
+		}
+		return out, nil
+	})
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", configPath, err)
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("parsing %s: %w", configPath, err)
-	}
-	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: unexpected top-level shape", configPath)
-	}
-	root := doc.Content[0]
-
-	agent := mappingChild(root, "agent")
-	if agent == nil {
-		// The generated agent.yaml always carries an agent block; if it is
-		// missing, add one rather than fail the install.
-		agent = &yaml.Node{Kind: yaml.MappingNode}
-		appendPair(root, "agent", agent)
-	}
-	if agent.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: agent block is not a mapping", configPath)
-	}
-
-	setTagsField(agent, "global_tags", tags)
-
-	out, err := marshalDocument(&doc)
-	if err != nil {
-		return fmt.Errorf("re-encoding %s: %w", configPath, err)
-	}
-	if err := atomicWriteFile(configPath, out, fileModeOr(configPath, 0o600)); err != nil {
-		return fmt.Errorf("writing %s: %w", configPath, err)
+		return fmt.Errorf("applying tags to %s: %w", configPath, err)
 	}
 	return nil
 }
@@ -86,45 +85,44 @@ func applyTagOverrides(configPath string, tags map[string]string) error {
 // ignore probes.d/ + strategies.d/. An empty license clears the field (free
 // tier). This backs `license activate` and `license remove`.
 func SetLicenseField(configPath, license string) error {
-	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	_, err := rewriteFile(configPath, func(raw []byte) ([]byte, error) {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", configPath, err)
+		}
+
+		var root *yaml.Node
+		switch {
+		case len(doc.Content) == 0:
+			// Empty or comment-only file: start a fresh mapping document.
+			root = &yaml.Node{Kind: yaml.MappingNode}
+			doc.Kind = yaml.DocumentNode
+			doc.Content = []*yaml.Node{root}
+		case doc.Content[0].Kind == yaml.MappingNode:
+			root = doc.Content[0]
+		default:
+			return nil, fmt.Errorf("%s: unexpected top-level shape", configPath)
+		}
+
+		agent := mappingChild(root, "agent")
+		if agent == nil {
+			agent = &yaml.Node{Kind: yaml.MappingNode}
+			appendPair(root, "agent", agent)
+		}
+		if agent.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: agent block is not a mapping", configPath)
+		}
+
+		setScalarField(agent, "license", license)
+
+		out, err := marshalDocument(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("re-encoding %s: %w", configPath, err)
+		}
+		return out, nil
+	})
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", configPath, err)
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("parsing %s: %w", configPath, err)
-	}
-
-	var root *yaml.Node
-	switch {
-	case len(doc.Content) == 0:
-		// Empty or comment-only file: start a fresh mapping document.
-		root = &yaml.Node{Kind: yaml.MappingNode}
-		doc.Kind = yaml.DocumentNode
-		doc.Content = []*yaml.Node{root}
-	case doc.Content[0].Kind == yaml.MappingNode:
-		root = doc.Content[0]
-	default:
-		return fmt.Errorf("%s: unexpected top-level shape", configPath)
-	}
-
-	agent := mappingChild(root, "agent")
-	if agent == nil {
-		agent = &yaml.Node{Kind: yaml.MappingNode}
-		appendPair(root, "agent", agent)
-	}
-	if agent.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: agent block is not a mapping", configPath)
-	}
-
-	setScalarField(agent, "license", license)
-
-	out, err := marshalDocument(&doc)
-	if err != nil {
-		return fmt.Errorf("re-encoding %s: %w", configPath, err)
-	}
-	if err := atomicWriteFile(configPath, out, fileModeOr(configPath, 0o600)); err != nil {
-		return fmt.Errorf("writing %s: %w", configPath, err)
+		return fmt.Errorf("setting license in %s: %w", configPath, err)
 	}
 	return nil
 }
