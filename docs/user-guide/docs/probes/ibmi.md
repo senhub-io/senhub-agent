@@ -291,13 +291,49 @@ message remains visible there through the jobs-by-status count.
 | `senhub.ibmi.collector.last_duration` | `s` | `ibmi.collector` | Duration of the last collection |
 | `senhub.ibmi.collector.last_success_timestamp` | `s` | `ibmi.collector` | Unix timestamp of the last successful collection |
 
-!!! note "Event conduits"
-    The `message_queue` (QSYSOPR), `history_log` (QHST), `audit_journal` (QAUDJRN)
-    and `msgw_job` (message-wait jobs) collectors relay operational events rather
-    than numeric metrics. They are not exported to OTLP/Prometheus; a future
-    release will export them as OTLP logs. Their timestamps are the
-    partition's own: the probe reads the partition's clock and zone, so an
-    agent and a partition in different zones report the same instants.
+!!! note "Events as logs"
+    The `message_queue` (QSYSOPR), `history_log` (QHST) and `audit_journal`
+    (QAUDJRN) collectors relay operational events rather than numeric metrics.
+    They are not exported as OTLP or Prometheus metrics; each event is sent as
+    an OpenTelemetry log record on the agent's log rail, the same path as the
+    `filetail`, `syslog` and `windows_eventlog` probes, so it reaches the logs
+    backend of the OTLP output (and honours the probe's `log_strategies`). The
+    `msgw_job` collector (jobs in message wait) stays a metric-side
+    condition: it re-reports the same job every cycle, which is a state, not a
+    log. A collector that is not enabled sends nothing.
+
+    A log record carries:
+
+    - **Body**: the message text (for the audit journal, `QAUDJRN <type>: user=... object=lib/name/type`).
+    - **Timestamp**: the event's own time on the partition, converted to UTC
+      with the partition's clock and zone, so an agent and a partition in
+      different zones report the same instants.
+    - **Severity**: the IBM i severity (0-99) mapped to an OTel severity, with
+      the original number kept in `ibmi.severity`.
+    - **Attributes**: `ibmi.event.source` (`history_log`, `message_queue` or
+      `audit_journal`), `server.address` (the partition's host), `ibmi.severity`,
+      `ibmi.message.id`, `ibmi.message.type`, `ibmi.from.user`, `ibmi.from.job`
+      and `ibmi.from.program` (history log and message queue; no program for the
+      queue), `ibmi.queue.name` and `ibmi.queue.library` (message queue),
+      `ibmi.audit.entry_type`, `ibmi.object.name`, `ibmi.object.library`,
+      `ibmi.object.type`, `ibmi.job.name` and `ibmi.user.name` (audit journal),
+      plus `senhub.probe.name` and `senhub.probe.type`.
+
+    | IBM i severity | OTel severity |
+    |----------------|---------------|
+    | 0-29 (information, notification) | `INFO` (9) |
+    | 30-39 (warning) | `WARN` (13) |
+    | 40-59 (error) | `ERROR` (17) |
+    | 60-79 (severe error) | `ERROR3` (19) |
+    | 80-99 (abnormal end of job or system) | `FATAL` (21) |
+
+    The volume lever is the `history_log_min_severity` parameter (0-99, default 0): a partition such as PUB400
+    logs thousands of QHST messages a minute, and the floor is applied on the
+    server, so messages below it neither cross the bridge nor reach the log
+    rail. For a message queue the equivalent is `message_queues[].min_severity`.
+    The audit journal reads the entry types AF, CA, CO, CP, DO, OR, OW, PA, PW,
+    SV and ZC only, with the severity 60 for AF and PW, 50 for SV, CA and OW, and
+    30 otherwise.
 
 # Requirements
 

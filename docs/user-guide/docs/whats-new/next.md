@@ -11,6 +11,7 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **IBM i: QHST, QSYSOPR and audit events reach the logs backend.** The history log, message queue and audit journal collectors read their events but sent none of them on: each event is now an OpenTelemetry log record (message text as body, the partition's own time as timestamp, IBM i severity 0-99 mapped to `INFO`, `WARN`, `ERROR`, `ERROR3` or `FATAL`, attributes under `ibmi.*`). `history_log_min_severity` is the volume lever. The scheduled-job and other age gauges no longer read below zero when the partition clock runs ahead of the reference.
 - **`status` works on every install.** The agent now answers `senhub-agent status` on a local channel (a Unix socket in its state directory, readable by the service account and root only; a named pipe restricted to administrators on Windows), whether or not the HTTP output is enabled. Hosts installed before the HTTP output was on by default used to get a degraded view computed by the command itself. `status` asks the local channel first and falls back to the HTTP output. The channel is read-only: it sends the status and reads nothing. It reports probe health and failed outputs but not the per-probe metric counts, which only the HTTP cache holds.
 - **Two agents on one host no longer describe each other twice.** Each agent
   writes its own `service.instance.id` to `instance.id` in its state
