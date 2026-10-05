@@ -25,7 +25,7 @@ func wireProbeHooks() {
 // quietProbeLogger keeps a probe built for a check from writing into the
 // agent's log as if it were running.
 func quietProbeLogger() *agentLogger.Logger {
-	discard := zerolog.New(io.Discard)
+	discard := zerolog.New(io.Discard).Level(zerolog.Disabled)
 	return (*agentLogger.Logger)(&discard)
 }
 
