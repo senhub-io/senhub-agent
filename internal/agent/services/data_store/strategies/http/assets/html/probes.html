@@ -512,7 +512,9 @@
     buildPicker() {
       const cats = [...new Set(Ed.catalog.map(t => t.category || 'other'))].sort();
       const box = $('picker-cats');
-      box.innerHTML = '<button type="button" class="chip on" data-cat="all">All</button>' + cats.map(c => '<button type="button" class="chip" data-cat="' + esc(c) + '">' + esc(SchemaForm.titleCase(c)) + '</button>').join('');
+      const want = q.get('cat') === 'pro' && Ed.catalog.some(t => t.tier === 'pro') ? 'pro' : 'all';
+      Ed.cat = want;
+      box.innerHTML = '<button type="button" class="chip' + (want === 'all' ? ' on' : '') + '" data-cat="all">All</button><button type="button" class="chip' + (want === 'pro' ? ' on' : '') + '" data-cat="pro">Pro</button>' + cats.map(c => '<button type="button" class="chip" data-cat="' + esc(c) + '">' + esc(SchemaForm.titleCase(c)) + '</button>').join('');
       box.querySelectorAll('.chip').forEach(c => c.onclick = () => { Ed.cat = c.dataset.cat; box.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === c)); Ed.renderPicker(); });
       $('picker-search').placeholder = 'Search ' + Ed.catalog.length + ' probe types';
       const locked = Ed.catalog.filter(licenceLocked).length;
@@ -522,7 +524,7 @@
     },
     renderPicker() {
       const l = $('picker-list'); l.innerHTML = '';
-      const list = Ed.catalog.filter(t => (Ed.cat === 'all' || (t.category || 'other') === Ed.cat) && (!Ed.pickerSearch || (t.type + ' ' + t.display_name + ' ' + (t.summary || '')).toLowerCase().includes(Ed.pickerSearch)));
+      const list = Ed.catalog.filter(t => (Ed.cat === 'all' || (Ed.cat === 'pro' ? t.tier === 'pro' : (t.category || 'other') === Ed.cat)) && (!Ed.pickerSearch || (t.type + ' ' + t.display_name + ' ' + (t.summary || '')).toLowerCase().includes(Ed.pickerSearch)));
       if (!list.length) { l.innerHTML = '<p class="small muted">No type matches.</p>'; return; }
       for (const t of list) {
         const d = document.createElement('div');
