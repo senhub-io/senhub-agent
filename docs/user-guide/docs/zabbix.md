@@ -123,6 +123,17 @@ utilization by 100 on the server side, so it is stored and shown as a
 percentage (`95.31 %`) as the native agent shows it; write a trigger or
 a calculated item against the percentage.
 
+A metric that is a cumulative counter (network bytes and packets, disk
+I/O, CPU time, request totals) is sent as its ever-growing total, which
+a graph cannot read. The generated templates therefore add the
+**Change per second** preprocessing step to its item, so the server
+stores and shows a rate. The unit follows: bytes become `Bps`, a bare
+count becomes `/s`, and any other unit gets `/s` appended (CPU time,
+in seconds, is shown as `s/s`: the share of a second spent per second).
+The key and what the agent sends do not change. Gauges, non-monotonic
+sums (current connections) and the count and sum of a distribution are
+stored as sent. Write a trigger or a calculated item against the rate.
+
 The server only receives the keys it asked for. Until the host exists on
 the server and a template gives it items, the log says so at start and
 nothing is pushed.
