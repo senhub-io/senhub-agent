@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -421,6 +422,19 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		}
 	}
 
+	for _, st := range []struct{ field, metric string }{
+		{"rdb_last_bgsave_status", "redis.rdb.last_bgsave.status"},
+		{"aof_last_bgrewrite_status", "redis.aof.last_bgrewrite.status"},
+		{"aof_last_write_status", "redis.aof.last_write.status"},
+	} {
+		if raw, present := info[st.field]; present && raw != "" {
+			p.addGauge(&pts, st.metric, statusValue(raw), ts, "persistence")
+		}
+	}
+	if v, ok := parseFloat(info["aof_last_rewrite_time_sec"]); ok {
+		p.addGauge(&pts, "redis.aof.last_rewrite.duration", v, ts, "persistence")
+	}
+
 	// cpu
 	for _, state := range []struct{ field, label string }{
 		{"used_cpu_sys", "sys"},
@@ -455,6 +469,24 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 	// replication backlog
 	if v, ok := parseFloat(info["repl_backlog_first_byte_offset"]); ok {
 		p.addGauge(&pts, "redis.replication.backlog_first_byte_offset", v, ts, "replication")
+	}
+
+	if v, ok := parseFloat(info["repl_backlog_active"]); ok {
+		p.addGauge(&pts, "redis.replication.backlog_active", v, ts, "replication")
+	}
+	if v, ok := parseFloat(info["repl_backlog_size"]); ok {
+		p.addGauge(&pts, "redis.replication.backlog_size", v, ts, "replication")
+	}
+	if v, ok := parseFloat(info["repl_backlog_histlen"]); ok {
+		p.addGauge(&pts, "redis.replication.backlog_histlen", v, ts, "replication")
+	}
+
+	// pub/sub
+	if v, ok := parseFloat(info["pubsub_channels"]); ok {
+		p.addGauge(&pts, "redis.pubsub.channels", v, ts, "pubsub")
+	}
+	if v, ok := parseFloat(info["pubsub_patterns"]); ok {
+		p.addGauge(&pts, "redis.pubsub.patterns", v, ts, "pubsub")
 	}
 
 	// evicted and expired keys
@@ -517,6 +549,12 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		p.addGauge(&pts, "redis.sentinel.ok_slaves", float64(okSlaves), ts, "sentinel")
 		p.addGauge(&pts, "redis.sentinel.sentinels", float64(totalSentinels), ts, "sentinel")
 		p.addGauge(&pts, "redis.sentinel.ok_sentinels", float64(okSentinels), ts, "sentinel")
+		for _, m := range parseSentinelMasters(sentinelInfo) {
+			masterTag := tags.Tag{Key: "master", Value: m.name}
+			p.addGauge(&pts, "redis.sentinel.master.status", m.statusValue(), ts, "sentinel", masterTag)
+			p.addGauge(&pts, "redis.sentinel.master.slaves", float64(m.slaves), ts, "sentinel", masterTag)
+			p.addGauge(&pts, "redis.sentinel.master.sentinels", float64(m.sentinels), ts, "sentinel", masterTag)
+		}
 	}
 
 	// tracking metrics (RESP3 client-side tracking, present in INFO clients
@@ -529,6 +567,73 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 	}
 
 	return pts
+}
+
+// statusValue maps a Redis "ok"/"err" status field to 1/0.
+func statusValue(raw string) float64 {
+	if strings.TrimSpace(raw) == "ok" {
+		return 1
+	}
+	return 0
+}
+
+// sentinelMaster is one monitored master from an INFO sentinel masterN line.
+type sentinelMaster struct {
+	name      string
+	status    string
+	slaves    int
+	sentinels int
+}
+
+func (m sentinelMaster) statusValue() float64 { return statusValue(m.status) }
+
+// parseSentinelMasters returns the monitored masters of an INFO sentinel map,
+// ordered by their masterN index. A line without a name is skipped: the name
+// is the only identity a series can carry.
+func parseSentinelMasters(m map[string]string) []sentinelMaster {
+	type indexed struct {
+		idx int
+		sentinelMaster
+	}
+	var found []indexed
+	for k, v := range m {
+		suffix, ok := strings.CutPrefix(k, "master")
+		if !ok {
+			continue
+		}
+		idx, err := strconv.Atoi(suffix)
+		if err != nil || idx < 0 {
+			continue
+		}
+		var sm sentinelMaster
+		for _, field := range strings.Split(v, ",") {
+			fk, fv, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			fv = strings.TrimSpace(fv)
+			switch strings.TrimSpace(fk) {
+			case "name":
+				sm.name = fv
+			case "status":
+				sm.status = fv
+			case "slaves":
+				sm.slaves, _ = strconv.Atoi(fv)
+			case "sentinels":
+				sm.sentinels, _ = strconv.Atoi(fv)
+			}
+		}
+		if sm.name == "" {
+			continue
+		}
+		found = append(found, indexed{idx, sm})
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].idx < found[j].idx })
+	out := make([]sentinelMaster, 0, len(found))
+	for _, f := range found {
+		out = append(out, f.sentinelMaster)
+	}
+	return out
 }
 
 // parseSentinelMasterStats sums slaves and sentinels across all monitored
