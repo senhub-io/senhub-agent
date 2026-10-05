@@ -164,24 +164,32 @@ func TestObserve_InjectedReader(t *testing.T) {
 	}
 }
 
-// A gateway reached through a container bridge (a Docker user bridge on
-// br-<id>, 172.18.0.1 on every such host) is not a shared identity.
-func TestBuildObservation_ContainerBridgeGatewayIsNotShared(t *testing.T) {
+// next_hop_via is decided by the gateway address alone: a gateway reached by a
+// Windows adapter, a Kubernetes node's CNI bridge or a user-defined bridge keeps
+// its edge, while the exclusion list (wildcard, loopback, link-local, 172.17/16)
+// never gets one, whatever the interface.
+func TestBuildObservation_NextHopViaDependsOnTheAddressAlone(t *testing.T) {
 	obs := buildObservation("h1", []hostRoute{
-		{Destination: "10.1.0.0/16", NextHop: "172.18.0.1", Iface: "br-02338442b035"},
-		{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Iface: "eth0"},
+		{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Iface: "Ethernet 2"},
+		{Destination: "10.1.0.0/16", NextHop: "10.244.1.1", Iface: "cni0"},
+		{Destination: "10.2.0.0/16", NextHop: "172.18.0.1", Iface: "br-02338442b035"},
+		{Destination: "10.3.0.0/16", NextHop: "172.17.0.1", Iface: "eth0"},
+		{Destination: "10.4.0.0/16", NextHop: "169.254.1.1", Iface: "eth0"},
+		{Destination: "10.5.0.0/16", NextHop: "127.0.0.2", Iface: "eth0"},
 	})
-	vias := 0
+	got := map[string]bool{}
 	for _, r := range obs.Relations {
 		if r.Type == relNextHopVia {
-			vias++
-			if r.ToID[idKeyNetworkAddress] != "10.10.0.1" {
-				t.Errorf("next_hop_via to %v", r.ToID)
-			}
+			got[r.ToID[idKeyNetworkAddress].(string)] = true
 		}
 	}
-	if vias != 1 {
-		t.Errorf("want one next_hop_via (the real gateway), got %d", vias)
+	for _, want := range []string{"10.10.0.1", "10.244.1.1", "172.18.0.1"} {
+		if !got[want] {
+			t.Errorf("missing next_hop_via to %s (have %v)", want, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("excluded gateways must carry no next_hop_via, got %v", got)
 	}
 }
 

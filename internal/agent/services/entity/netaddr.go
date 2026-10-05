@@ -32,6 +32,18 @@ func IsHostLocalAddress(ip net.IP) bool {
 		dockerDefaultBridge.Contains(ip)
 }
 
+// AddressEdgeAllowed is the single rule deciding whether a network.address may
+// be the target of a next_hop_via edge or the source of a bound_to edge. The
+// address alone decides, whatever interface carries it: a bare address in
+// 0.0.0.0 / ::, 127.0.0.0/8 / ::1, 169.254.0.0/16 / fe80::/10 or 172.17.0.0/16
+// (and, as a superset kept on purpose, multicast) exists independently on every
+// host, so one shared node would join unrelated hosts. An unparseable value is
+// refused too: a missing edge beats a false one. Every emitter of next_hop_via
+// and bound_to goes through this function so the rule cannot drift between them.
+func AddressEdgeAllowed(addr string) bool {
+	return !IsHostLocalAddressStr(addr)
+}
+
 // containerBridgePrefixes name host-local virtualization bridges (Docker,
 // libvirt, CNI, LXC, …). Their gateway address (172.17.0.1 on docker0, but also
 // user-defined bridges on br-<hex> using 172.18+/custom ranges) is reused
