@@ -282,7 +282,7 @@ func (d *dataStore) GetCallback() AddCallback {
 					Str("strategy", strategy.GetStrategyName()).
 					Msg("Error adding data points to strategy")
 			} else {
-				d.logger.Info().
+				d.logger.Debug().
 					Str("strategy", strategy.GetStrategyName()).
 					Int("count", len(correctedData)).
 					Msg("Successfully sent datapoints to strategy")

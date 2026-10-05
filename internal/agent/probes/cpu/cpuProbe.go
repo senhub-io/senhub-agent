@@ -2,6 +2,8 @@
 package cpu
 
 import (
+	"time"
+
 	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -16,7 +18,11 @@ func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 		Subject:  "CPU",
 		TypeName: "CPUProbe",
 		NewCollector: func(cfg map[string]interface{}, _ *logger.Logger, moduleLogger *logger.ModuleLogger) (hostpoll.Collector, error) {
-			return newCPUCollector(cfg, moduleLogger.Logger)
+			collector, err := newCPUCollector(cfg, moduleLogger.Logger)
+			if err != nil {
+				return nil, err
+			}
+			return withClock{Collector: collector, now: time.Now}, nil
 		},
 	})
 	if err != nil {

@@ -950,3 +950,9 @@ func processUsername() string {
 	}
 	return strconv.Itoa(os.Getuid())
 }
+
+// ForgetProbes drops the stored values of probes that stopped running,
+// so the next push no longer exports them.
+func (s *OTLPSyncStrategy) ForgetProbes(probeNames []string) {
+	s.store.forgetProbes(probeNames)
+}

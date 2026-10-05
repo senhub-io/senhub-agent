@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/entitydetect"
+	"senhub-agent.go/internal/cliexit"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
@@ -48,7 +49,7 @@ type agent struct {
 	sensors            sensor.Sensor
 	entityDetector     *entitydetect.Service
 	updater            auto_update.AutoUpdate
-	// exitFn is called by handleStartError with exit code 1. It defaults to
+	// exitFn is called by handleStartError with cliexit.Failure. It defaults to
 	// os.Exit; tests inject a no-op to capture the call without aborting.
 	exitFn func(int)
 }
@@ -256,8 +257,8 @@ func (a agent) handleStartError() {
 	// defeats Restart=always and StartLimitBurst protection.
 	a.logger.Error().Msg("One or more services failed to start; exiting with error")
 	if a.exitFn != nil {
-		a.exitFn(1)
+		a.exitFn(cliexit.Failure)
 	} else {
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 }
