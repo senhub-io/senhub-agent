@@ -21,6 +21,15 @@ Changes land here as they are merged to `dev`.
   new.
 ## Before you upgrade
 
+- **Three entity identities change once.** The `unifi`, `kubernetes` and
+  `systemd` probes no longer key their entities on an address or a hostname.
+  A UniFi controller is identified by the UUID it reports about itself (or
+  `unifi@<host.id>` when it runs on the agent's host); a controller that is
+  remote and whose UUID the account cannot read has no entity. A Kubernetes
+  cluster is identified by its `kube-system` namespace UID alone, so a
+  cluster whose UID is unreadable has no cluster entity. A systemd unit is
+  `systemd://<host.id>/<unit>`. The old entities are retired once: a
+  consumer sees one disappearance, then the new identity.
 - **Zabbix counter items become rates.** In the generated templates, every
   item built from a cumulative counter (network bytes and packets, disk
   I/O, CPU time, request totals) now carries the Change per second
