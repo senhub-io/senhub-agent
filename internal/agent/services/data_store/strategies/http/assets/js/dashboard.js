@@ -421,7 +421,7 @@
 
     // ---- License ----------------------------------------------------------
 
-    function renderLicense(lic, catalog) {
+    function renderLicense(lic, catalog, configured) {
         lic = lic || {};
         const tier = (lic.tier || 'free').toLowerCase();
         const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
@@ -431,10 +431,8 @@
         else if (lic.status === 'active') p = pill('pro', tierLabel);
         else p = pill('off', 'Free');
         $('lic-pill').innerHTML = p;
-        const probes = (catalog && catalog.probes) || [];
-        const available = probes.filter(x => x.authorized !== false).length;
-        // A Pro type refused for its platform is not one a license would unlock.
-        const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false && x.runs_here !== false).length;
+        const sum = catalog ? LicenceView.summarise(catalog.probes, configured) : null;
+        const licensed = lic.status === 'active' || lic.status === 'grace_period';
         let expires = '-';
         if (lic.expires_at) {
             expires = esc(dateOnly(lic.expires_at));
@@ -442,11 +440,23 @@
         }
         const rows = [
             ['Tier', esc(tierLabel)],
-            ['Expires', expires],
-            ['Probe types', catalog ? num(available) + ' available' : '-'],
-            ['Pro types', catalog ? num(locked) + ' need a license' : '-'],
-            ['Agent key', '<span title="' + esc(READ_KEY) + '">' + esc(shortKey(READ_KEY)) + '</span><button type="button" class="btn sm" id="copy-key">Copy</button><span class="copied hide" id="copied">copied</span>']
+            ['Expires', expires]
         ];
+        if (sum && licensed) {
+            rows.push(['Covered by this licence', '<span title="' + esc(sum.covered.join(', ')) + '">' + plural(sum.covered.length, 'Pro probe type') + '</span> <a class="small" href="' + WEB + 'probes?new=1&cat=pro#picker">list</a>']);
+        } else if (sum) {
+            rows.push(['Free tier', plural(sum.freeCount, 'probe type')]);
+        } else {
+            rows.push(['Covered by this licence', '-']);
+        }
+        if (sum && (licensed || sum.inUse.length)) {
+            const items = sum.inUse.map(u => {
+                const kind = u.state === 'running' ? 'ok' : (u.state === 'failing' || u.state === 'not covered' ? 'err' : 'off');
+                return '<div class="lic-use" title="' + esc(u.reason || u.name) + '"><code>' + esc(u.type) + '</code> ' + pill(kind, u.state) + '</div>';
+            });
+            rows.push(['In use', items.length ? items.join('') : '<span class="muted">no Pro probe configured</span>']);
+        }
+        rows.push(['Agent key', '<span title="' + esc(READ_KEY) + '">' + esc(shortKey(READ_KEY)) + '</span><button type="button" class="btn sm" id="copy-key">Copy</button><span class="copied hide" id="copied">copied</span>']);
         $('lic-kv').innerHTML = rows.map(r => '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>').join('');
         $('copy-key').addEventListener('click', async () => {
             const ok = await copyText(READ_KEY);
@@ -500,7 +510,7 @@
         else $('probes-body').innerHTML = '<div class="empty-line">Probe list unavailable.</div>';
         if (outputs) outputList = renderOutputs(outputs);
         else $('outputs-body').innerHTML = '<div class="empty-line">Output list unavailable.</div>';
-        if (lic || catalog) renderLicense(lic, catalog);
+        if (lic || catalog) renderLicense(lic, catalog, probes && probes.probes);
         else $('lic-kv').innerHTML = '';
         if (events) renderEvents(events);
         else $('events-body').innerHTML = '<div class="empty-line">Events unavailable.</div>';
