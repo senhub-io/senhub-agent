@@ -102,7 +102,8 @@
         <div class="grid g2 mt4">
             <div class="card">
                 <div class="card-h"><h2>Connection</h2><span class="pill acc">HTTP output</span></div>
-                <p class="lead">The port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there.</p>                <div class="stack">
+                <p class="lead">The port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there.</p>
+                <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:var(--s3)" id="ep-summary"></div>                <div class="stack">
                     <div class="field">
                         <label class="lbl" for="port">HTTP port</label>
                         <input class="in" type="number" id="port" min="1" max="65535" />
@@ -319,7 +320,26 @@
             setTimeout(() => c.classList.add('hide'), 1500);
         });
 
+        async function loadEndpoints() {
+            const el = $('ep-summary');
+            const link = '<a class="small" href="/web/' + window.AGENT_KEY + '/outputs">Manage in Outputs</a>';
+            try {
+                const r = await fetch('/api/' + window.AGENT_KEY + '/config/outputs');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const http = ((await r.json()).outputs || []).find(o => o.type === 'http');
+                const p = (http && http.params) || {};
+                const on = Array.isArray(p.endpoints)
+                    ? new Set(p.endpoints.map(String))
+                    : new Set(((http && http.readers) || []).filter(x => x.enabled).map(x => x.endpoint));
+                const names = [['prometheus', 'Prometheus'], ['prtg', 'PRTG'], ['nagios', 'Nagios']];
+                el.innerHTML = names.map(n => '<span class="small">' + esc(n[1]) + ' ' + (on.has(n[0]) ? pill('ok', 'on') : pill('off', 'off')) + '</span>').join(' ') + link;
+            } catch (e) {
+                el.innerHTML = '<a class="small" href="/web/' + window.AGENT_KEY + '/outputs">Prometheus, PRTG and Nagios endpoints: see Outputs</a>';
+            }
+        }
+
         load().then(loadLocked);
+        loadEndpoints();
     </script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
 </body>
