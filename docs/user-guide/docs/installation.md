@@ -329,24 +329,42 @@ Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
 
 ### Install from packages
 
-The agent is also available as a `.deb` (Debian, Ubuntu) and an `.rpm` (RHEL, Rocky Linux, openSUSE) for amd64 and arm64. Download the file for your distribution and architecture, then install it with your package manager:
+The agent is also available as a `.deb` (Debian, Ubuntu) and an `.rpm` (RHEL, Rocky Linux, openSUSE) for amd64 and arm64, in two editions. Download the file for your edition, distribution and architecture, then install it with your package manager:
+
+| Edition | Package name | Choose it when |
+|---------|--------------|----------------|
+| Open source | `senhub-agent-oss` | You use the free probes (OS and host, logs, network checks, applications, databases and brokers). Licensed under Apache-2.0. |
+| Full | `senhub-agent` | You use the paid probes (Citrix, NetScaler, Veeam, Redfish and the other deep vendor probes), with a license token. |
+
+Both editions install the same files and the same service, so only one can be installed at a time.
 
 ```bash
 # Debian, Ubuntu
-sudo apt install ./senhub-agent_<version>_amd64.deb
+sudo apt install ./senhub-agent-oss_<version>-1_amd64.deb
 
 # RHEL, Rocky Linux, AlmaLinux
-sudo dnf install ./senhub-agent-<version>.x86_64.rpm
+sudo dnf install ./senhub-agent-oss-<version>-1.x86_64.rpm
 
 # openSUSE, SLES
-sudo zypper install --allow-unsigned-rpm ./senhub-agent-<version>.x86_64.rpm
+sudo zypper install --allow-unsigned-rpm ./senhub-agent-oss-<version>-1.x86_64.rpm
+```
+
+For the full edition, use the `senhub-agent` file in the same commands. A beta carries its number after a tilde, for example `senhub-agent-oss_0.6.2~beta.1-1_amd64.deb`: the package manager sorts `0.6.2~beta.1` and `0.6.2~beta.2` before the final `0.6.2`, so the release replaces its betas as an ordinary upgrade.
+
+#### Switching edition
+
+Install the other edition's file with the same command. The package manager replaces the installed edition with it in one step, restarts the service, and keeps your configuration, agent key, secrets and data. Switching in either direction works the same way.
+
+```bash
+# from the open source edition to the full edition, on Debian or Ubuntu
+sudo apt install ./senhub-agent_<version>-1_amd64.deb
 ```
 
 The package creates the `senhub` service user, installs the binary at `/usr/bin/senhub-agent` and the hardened `senhub-agent.service` unit, writes the default configuration to `/etc/senhub-agent/` with a key of its own for this host, and starts the service. It does not run `senhub-agent install`; do not run both.
 
 - **Upgrade**: install the newer file the same way. Your edits to the configuration are kept and the service restarts on the new binary.
 - **Version**: the package manager owns it. `auto_update` is `false` in the packaged configuration, so the agent never replaces itself; leave it that way.
-- **Removal**: `sudo apt remove senhub-agent` (or `dnf remove`, `zypper remove`) stops and disables the service and keeps `/etc/senhub-agent`, `/var/lib/senhub-agent` and the logs. `sudo apt purge senhub-agent` also deletes them, and the `senhub` user.
+- **Removal**: `sudo apt remove senhub-agent-oss` (or `dnf remove`, `zypper remove`; use the package name of your edition) stops and disables the service and keeps `/etc/senhub-agent`, `/var/lib/senhub-agent` and the logs. `sudo apt purge senhub-agent-oss` also deletes them, and the `senhub` user.
 
 - **Host already installed with `senhub-agent install`**: installing the package takes over. It stops the service, removes the unit in `/etc/systemd/system` and the binary in `/usr/local/bin` (a copy is kept as `/var/lib/senhub-agent/senhub-agent.pre-package`), and starts the packaged service. Your configuration, agent key, secrets and data are not touched. The reverse (going back from a package to `install`) is not supported: remove the package first, then install from the ZIP.
 

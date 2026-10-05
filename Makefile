@@ -105,7 +105,7 @@ check-version:
 		fi
 
 # Version tags are NOT managed from this repo. Release tags (X.Y.Z and
-# X.Y.Z-beta, no v prefix) live on senhub-agent-enterprise, whose
+# X.Y.Z-beta.N, no v prefix) live on senhub-agent-enterprise, whose
 # workflows build and publish the releases; see the release-manager
 # flow in that repo. The old bump-version/delete-version targets were
 # removed: they created v-prefixed tags (which no workflow matches)
