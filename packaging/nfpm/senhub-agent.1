@@ -1,0 +1,69 @@
+.TH SENHUB-AGENT 1 "" "SenHub Agent" "User Commands"
+.SH NAME
+senhub-agent \- infrastructure monitoring agent
+.SH SYNOPSIS
+.B senhub-agent
+[\fIcommand\fR] [\fIoptions\fR]
+.SH DESCRIPTION
+The SenHub Agent collects metrics, logs and events from the host and from
+the services it runs, and ships them to PRTG, Nagios, Prometheus, OTLP,
+Zabbix or the SenHub cloud. The package installs it as the
+.B senhub-agent
+systemd service, running as the unprivileged
+.B senhub
+user.
+.SH COMMANDS
+.TP
+.B status
+Show the service and probe status (\fB\-\-json\fR for a JSON object).
+.TP
+.B doctor
+Diagnose the install, configuration, outputs, probes and host in one pass.
+Exits 1 on a warning and 2 on a failure.
+.TP
+.B version
+Show the agent version.
+.TP
+.B console
+Open the web console (\fB\-\-print\fR to show the address only).
+.TP
+.B config check
+Validate the configuration, including the fragments under
+.I probes.d/
+and
+.IR strategies.d/ .
+.TP
+.B config show
+Print the merged and resolved configuration (\fB\-\-raw\fR,
+\fB\-\-resolved\fR, \fB\-\-redact\fR).
+.TP
+.B config set \fIkey\fR \fIvalue\fR
+Change one setting (http.port, http.bind_address).
+.TP
+.B license show
+Show the current license. \fBlicense key\fR prints this agent's key and
+\fBlicense activate\fR installs a license token.
+.TP
+.B refresh-unit
+Refresh the installed systemd unit to the version embedded in this binary.
+.PP
+Run
+.B senhub-agent \-\-help
+for the complete list. Start, stop and restart the service with
+.BR systemctl (1).
+.SH FILES
+.TP
+.I /etc/senhub-agent/agent.yaml
+Main configuration. Probes and outputs are read from the fragments in
+.I /etc/senhub-agent/probes.d/
+and
+.IR /etc/senhub-agent/strategies.d/ .
+Kept across upgrades and removal.
+.TP
+.I /var/lib/senhub-agent/
+State and data.
+.TP
+.I /var/log/senhub-agent/
+Agent log files, rotated by the agent.
+.SH SEE ALSO
+Documentation: https://agent.senhub.io
