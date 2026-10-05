@@ -28,6 +28,17 @@ func TestShouldUpdateTo(t *testing.T) {
 		{"prod upgrades to next-minor beta", "0.1.91", "0.1.92-beta", true, false},
 		// Downgrade across minors is refused.
 		{"prod refuses downgrade across minors", "0.2.0", "0.1.99", false, false},
+		// Numbered betas (X.Y.Z-beta.N) follow semver pre-release rules:
+		// the identifiers compare one by one, numerically when numeric.
+		{"next numbered beta upgrades", "0.6.2-beta.2", "0.6.2-beta.3", true, false},
+		{"older numbered beta is refused", "0.6.2-beta.3", "0.6.2-beta.2", false, false},
+		{"beta.10 outranks beta.9", "0.6.2-beta.9", "0.6.2-beta.10", true, false},
+		{"numbered beta to its release upgrades", "0.6.2-beta.3", "0.6.2", true, false},
+		{"release refuses its own numbered beta", "0.6.2", "0.6.2-beta.3", false, false},
+		{"numbered beta to next-patch beta upgrades", "0.6.2-beta.3", "0.6.3-beta.1", true, false},
+		{"same numbered beta stays put", "0.6.2-beta.3", "0.6.2-beta.3", false, false},
+		{"legacy beta to numbered beta of the same triplet", "0.6.2-beta", "0.6.2-beta.1", true, false},
+		{"dev build sorts before its release", "0.6.2-dev.57.g1a2b3c4d", "0.6.2", true, false},
 		// Parse failure on either side is fail-closed.
 		{"unparseable current fails closed", "latest-dev", "0.1.91", false, true},
 		{"unparseable expected fails closed", "0.1.91", "??-not-a-version", false, true},
@@ -62,3 +73,19 @@ func TestErrFirst_ReturnsFirstNonNil(t *testing.T) {
 type mockErr struct{ msg string }
 
 func (e *mockErr) Error() string { return e.msg }
+
+func TestGetLatestVersion_NumberedBetas(t *testing.T) {
+	versions := []VersionMetadata{
+		{Name: "0.6.2-beta.2", Version: "0.6.2-beta.2"},
+		{Name: "0.6.2-beta.10", Version: "0.6.2-beta.10"},
+		{Name: "0.6.2-beta.9", Version: "0.6.2-beta.9"},
+		{Name: "0.6.1", Version: "0.6.1"},
+	}
+	if got := GetLatestVersion(versions); got == nil || got.Version != "0.6.2-beta.10" {
+		t.Fatalf("GetLatestVersion() = %v, want 0.6.2-beta.10", got)
+	}
+	versions = append(versions, VersionMetadata{Name: "0.6.2", Version: "0.6.2"})
+	if got := GetLatestVersion(versions); got == nil || got.Version != "0.6.2" {
+		t.Fatalf("GetLatestVersion() = %v, want 0.6.2", got)
+	}
+}
