@@ -847,3 +847,29 @@ func BenchmarkLoadTransformer_Cached(b *testing.B) {
 		}
 	})
 }
+
+// The PRTG channel name is built from the sanitised tag; the verbatim
+// companion tag a probe may ship for the OTel attributes must not alter it.
+func TestRedfishChannelNameIgnoresExactCompanion(t *testing.T) {
+	defs, err := Definitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := defs["redfish"]
+	transformer := &DefinitionBasedTransformer{
+		probeName:    "redfish",
+		definition:   &def,
+		moduleLogger: createTestModuleLogger(),
+	}
+	tags := map[string]string{
+		"drive_name": "Lab drive 1 failure predicted", "drive_id": "Disk.Bay.1",
+	}
+	want := transformer.TransformMetricName("hardware.storage.drive.health", tags)
+	if want != "Lab drive 1 failure predicted Health" {
+		t.Fatalf("channel name = %q", want)
+	}
+	tags["drive_name_exact"] = "Lab drive 1 (failure predicted)"
+	if got := transformer.TransformMetricName("hardware.storage.drive.health", tags); got != want {
+		t.Errorf("channel name changed with the companion tag: %q != %q", got, want)
+	}
+}
