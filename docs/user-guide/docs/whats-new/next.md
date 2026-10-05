@@ -33,3 +33,4 @@ Changes land here as they are merged to `dev`.
   `install` run again on a machine already in the requested state write
   nothing and exit `3`. `config init --ok-if-unchanged` exits `0` in that
   case, for installers that treat any other code as a failure.
+- **filetail reports where each tail stands.** For every file followed, `senhub.filetail.read_offset` and `senhub.filetail.file_size` (Prometheus `senhub_filetail_read_offset_bytes` and `senhub_filetail_file_size_bytes`, attribute `log.file.path`) let a rule detect a frozen tail: the file grew and the offset did not move.
