@@ -142,6 +142,19 @@ func TestBootSmoke_UnknownArgRejected(t *testing.T) {
 	}
 }
 
+const binaryExposureWarning = "can be modified by a non-root account"
+
+// onlyBinaryExposureWarning reports whether err is the warning exit code
+// of a `config check` whose single warning is the binary-ownership one.
+func onlyBinaryExposureWarning(err error, out string) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		return false
+	}
+	return strings.Contains(out, "Configuration is valid with 1 warning(s)") &&
+		strings.Contains(out, binaryExposureWarning)
+}
+
 // TestBootSmoke_ConfigCheckFreeTier exercises `agent config check` on
 // the free-tier example. Free-tier is the only example we can assert
 // is fully error-free out of the box: the Pro / Enterprise / grace
@@ -154,7 +167,11 @@ func TestBootSmoke_ConfigCheckFreeTier(t *testing.T) {
 	cfg := filepath.Join(repoRoot(t), "examples", "example-config-free-tier.yaml")
 
 	out, err := execAgent(t, bin, "config", "check", cfg)
-	if err != nil {
+	// `go build` leaves the binary owned by the invoking user, which
+	// `config check` reports as a warning (exit 1) on Linux: a property
+	// of where this test ran, not of the example. Any other warning, and
+	// any error, still fails.
+	if err != nil && !onlyBinaryExposureWarning(err, out) {
 		t.Fatalf("`senhub-agent config check %s` failed: %v\noutput:\n%s",
 			cfg, err, out)
 	}
@@ -202,6 +219,7 @@ func TestBootSmoke_DoctorJSON(t *testing.T) {
 			Section string `json:"section"`
 			ID      string `json:"id"`
 			Level   string `json:"level"`
+			Message string `json:"message"`
 		} `json:"checks"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
@@ -217,6 +235,12 @@ func TestBootSmoke_DoctorJSON(t *testing.T) {
 		t.Error("the document carries no check")
 	}
 	for _, c := range doc.Checks {
+		// `go build` leaves the binary owned by the invoking user, which
+		// `config check` reports as a warning on Linux: a property of where
+		// this test ran, not of the example.
+		if c.ID == "config.check" && c.Level == "warn" && strings.Contains(c.Message, binaryExposureWarning) {
+			continue
+		}
 		if c.ID == "config.check" && c.Level != "ok" {
 			t.Errorf("the free-tier example is not reported valid: %+v", c)
 		}
