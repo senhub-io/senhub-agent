@@ -219,3 +219,24 @@ func TestValidateZabbixInstallArgs(t *testing.T) {
 		t.Errorf("a plain server and metadata refused: %v", err)
 	}
 }
+
+func TestEnsureStrategyFragmentsReportWhatTheyWrote(t *testing.T) {
+	dir := t.TempDir()
+
+	if written, err := EnsureOTLPStrategyFragment(dir, "", ""); err != nil || written {
+		t.Errorf("no endpoint: written = %v, err = %v; want false, nil", written, err)
+	}
+	if written, err := EnsureOTLPStrategyFragment(dir, "otlp:4317", ""); err != nil || !written {
+		t.Errorf("first write: written = %v, err = %v; want true, nil", written, err)
+	}
+	if written, err := EnsureOTLPStrategyFragment(dir, "other:4317", ""); err != nil || written {
+		t.Errorf("existing fragment: written = %v, err = %v; want false, nil", written, err)
+	}
+
+	if written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", ""); err != nil || !written {
+		t.Errorf("zabbix first write: written = %v, err = %v; want true, nil", written, err)
+	}
+	if written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", ""); err != nil || written {
+		t.Errorf("zabbix existing fragment: written = %v, err = %v; want false, nil", written, err)
+	}
+}

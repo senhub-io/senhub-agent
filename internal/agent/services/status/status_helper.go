@@ -127,10 +127,12 @@ func (h *StatusHelper) GetDetailedStatusFromHTTP(agentKey string, port int) (*Sy
 	systemStatus := h.convertHTTPResponseToSystemStatus(httpResponse)
 
 	// Enrich with individual probe status
-	if probes, err := h.GetDetailedProbeStatusFromHTTP(agentKey, port); err == nil {
-		systemStatus.Probes = probes
+	probes, err := h.GetDetailedProbeStatusFromHTTP(agentKey, port)
+	if err != nil {
+		h.logger.Warn().Err(err).Msg("Could not get detailed probe status, the probe list is empty")
+		systemStatus.ProbesError = err.Error()
 	} else {
-		h.logger.Debug().Err(err).Msg("Could not get detailed probe status, using summary")
+		systemStatus.Probes = probes
 	}
 
 	h.logger.Debug().
@@ -307,30 +309,42 @@ func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int)
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Parse probe response
+	// /info/probes lists names in "probes" (the web console reads that)
+	// and each probe's state in "details".
 	var probeResponse struct {
-		Probes []struct {
+		Probes       []string       `json:"probes"`
+		ProbeMetrics map[string]int `json:"probe_metrics"`
+		Details      []struct {
 			Name         string `json:"name"`
 			MetricsCount int    `json:"metrics_count"`
 			LastUpdate   string `json:"last_update,omitempty"`
-		} `json:"probes"`
+			Health       string `json:"health,omitempty"`
+			LastError    string `json:"last_error,omitempty"`
+		} `json:"details"`
 	}
 
 	if err := json.Unmarshal(body, &probeResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse probe response: %w", err)
 	}
 
-	// Convert to our format
-	var probeStatuses []ProbeStatus
-	for _, probe := range probeResponse.Probes {
+	probeStatuses := make([]ProbeStatus, 0, len(probeResponse.Probes))
+	described := make(map[string]struct{}, len(probeResponse.Details))
+	for _, probe := range probeResponse.Details {
+		described[probe.Name] = struct{}{}
 		status := "active"
-		if probe.MetricsCount == 0 {
+		switch {
+		case probe.LastError != "" || probe.Health == "failed":
+			status = "error"
+		case probe.MetricsCount == 0:
 			status = "inactive"
 		}
 
 		var lastUpdate time.Time
 		if probe.LastUpdate != "" {
-			if parsed, err := time.Parse(time.RFC3339, probe.LastUpdate); err == nil {
+			parsed, err := time.Parse(time.RFC3339, probe.LastUpdate)
+			if err != nil {
+				h.logger.Debug().Err(err).Str("probe", probe.Name).Str("value", probe.LastUpdate).Msg("Ignoring unparseable probe last_update")
+			} else {
 				lastUpdate = parsed
 			}
 		}
@@ -340,7 +354,20 @@ func (h *StatusHelper) GetDetailedProbeStatusFromHTTP(agentKey string, port int)
 			Status:       status,
 			MetricsCount: probe.MetricsCount,
 			LastUpdate:   lastUpdate,
+			LastError:    probe.LastError,
 		})
+	}
+	// An agent that predates "details" only sends names and counts.
+	for _, name := range probeResponse.Probes {
+		if _, ok := described[name]; ok {
+			continue
+		}
+		count := probeResponse.ProbeMetrics[name]
+		status := "active"
+		if count == 0 {
+			status = "inactive"
+		}
+		probeStatuses = append(probeStatuses, ProbeStatus{Name: name, Status: status, MetricsCount: count})
 	}
 
 	h.logger.Debug().
