@@ -4,6 +4,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,6 +24,7 @@ type ServerManager struct {
 	logger   *logger.ModuleLogger
 	strategy *HTTPSyncStrategy // Reference to parent strategy for access to modules
 	server   *http.Server
+	listener net.Listener
 	handlers *HTTPHandlers
 	// stopOnCancel releases the context.AfterFunc registered in Start.
 	stopOnCancel func() bool
@@ -68,7 +70,19 @@ func (s *ServerManager) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("binding HTTP server on %s: %w", s.server.Addr, err)
 	}
-	go s.serveAsync(ln)
+	s.listener = ln
+	// Everything the serving goroutine needs is read here, on the caller's
+	// goroutine. A goroutine that read s.server or the configuration
+	// later could observe the next restart's server and settings, and
+	// serve this listener with them.
+	go s.serveAsync(ln, s.server, serveSettings{
+		tls:        s.strategy.configManager.IsTLSEnabled(),
+		certFile:   s.strategy.configManager.GetTLSCertFile(),
+		keyFile:    s.strategy.configManager.GetTLSKeyFile(),
+		minVersion: s.strategy.configManager.GetTLSMinVersion(),
+		port:       s.strategy.port,
+		bind:       s.strategy.bindAddress,
+	})
 
 	// Cancelling the lifecycle context stops the server even when
 	// nobody calls Shutdown — the case where the agent context is
@@ -104,11 +118,24 @@ func (s *ServerManager) Shutdown(ctx context.Context) error {
 	s.strategy.cache.Stop()
 
 	// Shutdown HTTP server
+	var err error
 	if s.server != nil {
-		return s.server.Shutdown(ctx)
+		err = s.server.Shutdown(ctx)
 	}
 
-	return nil
+	// http.Server.Shutdown closes only listeners Serve has already
+	// registered. Shut down before the serving goroutine got that far
+	// (or after the TLS path bailed out early) and the socket stays
+	// bound until that goroutine runs, so an immediate restart on the
+	// same port fails with "address already in use".
+	if s.listener != nil {
+		if cerr := s.listener.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) && err == nil {
+			err = fmt.Errorf("closing HTTP listener: %w", cerr)
+		}
+		s.listener = nil
+	}
+
+	return err
 }
 
 // createHTTPServer creates and configures the HTTP server instance
@@ -125,21 +152,31 @@ func (s *ServerManager) createHTTPServer(router *mux.Router) *http.Server {
 }
 
 // serveAsync serves on the already-bound listener (TLS or plain).
-func (s *ServerManager) serveAsync(ln net.Listener) {
-	address := s.server.Addr
-
-	if s.strategy.configManager.IsTLSEnabled() {
-		s.startHTTPSServer(ln, address)
+func (s *ServerManager) serveAsync(ln net.Listener, srv *http.Server, cfg serveSettings) {
+	if cfg.tls {
+		s.startHTTPSServer(ln, srv, cfg)
 	} else {
-		s.startHTTPServer(ln, address)
+		s.startHTTPServer(ln, srv, cfg)
 	}
 }
 
+// serveSettings is the configuration a serving goroutine runs with,
+// captured when the server is started.
+type serveSettings struct {
+	tls        bool
+	certFile   string
+	keyFile    string
+	minVersion string
+	port       int
+	bind       string
+}
+
 // startHTTPSServer serves HTTPS on the already-bound listener.
-func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
+func (s *ServerManager) startHTTPSServer(ln net.Listener, srv *http.Server, cfg serveSettings) {
+	address := srv.Addr
 	// Get certificate paths from configuration (absolute paths generated during installation)
-	certFile := s.strategy.configManager.GetTLSCertFile()
-	keyFile := s.strategy.configManager.GetTLSKeyFile()
+	certFile := cfg.certFile
+	keyFile := cfg.keyFile
 
 	// Nothing configured means the operator asked for TLS and left the
 	// files to us. The pair then goes next to the configuration, which is
@@ -153,7 +190,7 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 		certFile = filepath.Join(certsDir, "agent-cert.pem")
 		keyFile = filepath.Join(certsDir, "agent-key.pem")
 
-		if err := configuration.EnsureSelfSignedCert(certFile, keyFile, s.selfSignedHosts()); err != nil {
+		if err := configuration.EnsureSelfSignedCert(certFile, keyFile, selfSignedHosts(cfg.bind)); err != nil {
 			s.logger.Error().Err(err).
 				Str("cert_file", certFile).
 				Str("key_file", keyFile).
@@ -168,12 +205,12 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 	// by a socket that still accepted 1.2 and had nothing on screen saying
 	// so. A security control that is announced and not applied is worse
 	// than one that is absent.
-	configured := s.strategy.configManager.GetTLSMinVersion()
+	configured := cfg.minVersion
 	minVersion := tlsVersionOf(configured)
-	if s.server.TLSConfig == nil {
-		s.server.TLSConfig = &tls.Config{MinVersion: minVersion}
+	if srv.TLSConfig == nil {
+		srv.TLSConfig = &tls.Config{MinVersion: minVersion}
 	} else {
-		s.server.TLSConfig.MinVersion = minVersion
+		srv.TLSConfig.MinVersion = minVersion
 	}
 
 	// The certificate is checked before anything is announced. Serving used
@@ -201,8 +238,8 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 
 	s.logger.Info().
 		Str("address", address).
-		Int("port", s.strategy.port).
-		Str("bind_address", s.strategy.bindAddress).
+		Int("port", cfg.port).
+		Str("bind_address", cfg.bind).
 		Bool("tls_enabled", true).
 		Str("cert_file", certAbs).
 		Str("key_file", keyAbs).
@@ -215,7 +252,7 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 			Msg("Using a self-signed certificate the agent manages; replace these files with your own to be trusted by a browser")
 	}
 
-	if err := s.server.ServeTLS(ln, certAbs, keyAbs); err != nil && err != http.ErrServerClosed {
+	if err := srv.ServeTLS(ln, certAbs, keyAbs); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTPS server error")
 	}
 }
@@ -225,9 +262,8 @@ func (s *ServerManager) startHTTPSServer(ln net.Listener, address string) {
 // the machine itself; the bind address joins it when it designates one
 // interface rather than all of them, since a certificate for 0.0.0.0
 // matches nothing a client would type.
-func (s *ServerManager) selfSignedHosts() []string {
+func selfSignedHosts(bind string) []string {
 	hosts := []string{"localhost", "127.0.0.1"}
-	bind := s.strategy.bindAddress
 	if bind != "" && bind != "0.0.0.0" && bind != "::" && bind != "127.0.0.1" {
 		hosts = append(hosts, bind)
 	}
@@ -266,15 +302,16 @@ func tlsVersionOf(configured string) uint16 {
 }
 
 // startHTTPServer serves plain HTTP on the already-bound listener.
-func (s *ServerManager) startHTTPServer(ln net.Listener, address string) {
+func (s *ServerManager) startHTTPServer(ln net.Listener, srv *http.Server, cfg serveSettings) {
+	address := srv.Addr
 	s.logger.Info().
 		Str("address", address).
-		Int("port", s.strategy.port).
-		Str("bind_address", s.strategy.bindAddress).
+		Int("port", cfg.port).
+		Str("bind_address", cfg.bind).
 		Bool("tls_enabled", false).
 		Msg("HTTP server listening")
 
-	if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		s.logger.Error().Err(err).Msg("HTTP server error")
 	}
 }
