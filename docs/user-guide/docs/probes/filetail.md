@@ -129,6 +129,46 @@ or a JSON/logfmt key.
   first ingestion (combine with `bookmark_path` so it only happens
   once).
 
+## Detecting a tail that no longer reads
+
+For every file it follows, the probe reports two gauges carrying the
+file's absolute path in the `log.file.path` attribute (`log_file_path`
+label in Prometheus): `senhub.filetail.read_offset`, the byte offset the
+tail has read up to, and `senhub.filetail.file_size`, the size of the file
+at collection time. A healthy tail has an offset equal to the size, give
+or take the lines being written at that instant: on an active file a
+non-zero gap is normal, because the tail reads while the writer writes
+(several kilobytes on a large busy log). What is abnormal is a tail whose
+offset stops moving while the file grows, a condition the number of
+records emitted cannot show, since a quiet file and a stuck tail both
+leave it flat. A path that does not exist yet or cannot be read reports neither
+metric (it is reported as a probe error instead); when the file cannot be
+sized, only the offset is reported.
+
+In Prometheus the metrics are `senhub_filetail_read_offset_bytes` and
+`senhub_filetail_file_size_bytes`. This expression
+fires when, over 15 minutes, the file grew and the offset did not move:
+
+```promql
+changes(senhub_filetail_read_offset_bytes[15m]) == 0
+and on (instance, probe_name, log_file_path)
+delta(senhub_filetail_file_size_bytes[15m]) > 0
+```
+
+The labels on each series are `log_file_path`, `probe_name` and
+`probe_type`; `instance` is added by your Prometheus when it scrapes the
+agent (use the label your backend attaches to identify the host, for
+example `host_id` when the metrics arrive through OTLP). Both gauges
+carry the same labels; compare the series count of each side before
+relying on the rule.
+
+Both are gauges, hence `changes()` and `delta()` rather than
+`increase()`, which would treat any drop as a counter reset. Across a
+rotation the size drops, so the window containing the switch stays
+silent; a real freeze lasts hours and is caught on the next window. Do
+not alert on `file_size - read_offset > 0`: that gap is rarely zero on a
+busy file.
+
 ## Metric reference
 
 Every metric this probe can emit. **Metric** is the OpenTelemetry name the
@@ -143,5 +183,7 @@ series' tags.
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
 | `senhub.filetail.records_emitted` | `senhub.filetail.records_emitted` | File Tail Records Emitted | # | Cumulative count of log records this file-tail probe has published to the log rail |
+| `senhub.filetail.read_offset` | `senhub.filetail.read_offset` | File Tail Read Offset {log.file.path} | bytes | Byte offset the tail of a followed file has read up to |
+| `senhub.filetail.file_size` | `senhub.filetail.file_size` | File Tail File Size {log.file.path} | bytes | Current size in bytes of a followed file; a healthy tail has a read offset equal to it |
 
 <!-- schema:metrics:end -->

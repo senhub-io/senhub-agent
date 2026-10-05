@@ -248,7 +248,7 @@ func TestFileTail_RestartedTailClearsTheStallOnceItReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect after the restarted tail read: %v", err)
 	}
-	if len(points) != 1 || points[0].Value < 40 {
+	if len(points) == 0 || points[0].Name != "senhub.filetail.records_emitted" || points[0].Value < 40 {
 		t.Fatalf("records_emitted not published with the count: %+v", points)
 	}
 }
