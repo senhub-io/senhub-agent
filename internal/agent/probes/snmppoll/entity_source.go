@@ -693,7 +693,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
 		if ifName == "" || addrSeen[a.IP] ||
-			entity.IsHostLocalAddressStr(a.IP) || entity.IsContainerBridgeIface(ifName) {
+			!entity.AddressEdgeAllowed(a.IP) || entity.IsContainerBridgeIface(ifName) {
 			continue
 		}
 		addrSeen[a.IP] = true
