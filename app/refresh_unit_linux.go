@@ -13,9 +13,10 @@ import (
 	"senhub-agent.go/internal/cliexit"
 )
 
-// installedUnitPath is where kardianos/service and the .deb/.rpm packages
-// both place the systemd unit for a system (non-user) service named
-// "senhub-agent". Writing here requires root.
+// installedUnitPath is where kardianos/service places the systemd unit for a
+// system (non-user) service named "senhub-agent". Writing here requires root.
+// The .deb/.rpm packages ship theirs under /usr/lib/systemd/system instead;
+// loadedUnitPath finds whichever systemd actually loads.
 const installedUnitPath = "/etc/systemd/system/senhub-agent.service"
 
 // runRefreshUnit compares the refreshed unit (see refreshedUnit) with the
@@ -35,10 +36,11 @@ func runRefreshUnit() {
 		os.Exit(cliexit.Failure)
 	}
 
-	installed, err := os.ReadFile(installedUnitPath)
+	unitPath := loadedUnitPath()
+	installed, err := os.ReadFile(unitPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "no unit found at %s; run 'senhub-agent install' first\n", installedUnitPath)
+			fmt.Fprintf(os.Stderr, "no unit found at %s; run 'senhub-agent install' first\n", unitPath)
 			os.Exit(cliexit.Failure)
 		}
 		fmt.Fprintf(os.Stderr, "reading installed unit: %v\n", err)
@@ -78,6 +80,11 @@ func runRefreshUnit() {
 	}
 	fmt.Println()
 
+	if unitOwnedByPackage(unitPath) {
+		fmt.Fprintf(os.Stderr, "%s belongs to the senhub-agent package; upgrade the package (apt, dnf or zypper) to update it instead of rewriting it here.\n", unitPath)
+		os.Exit(cliexit.Failure)
+	}
+
 	if !*yes {
 		fmt.Print("Apply changes? [y/N] ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -102,7 +109,7 @@ func runRefreshUnit() {
 		os.Exit(cliexit.Failure)
 	}
 
-	if err := os.WriteFile(installedUnitPath, []byte(refreshed), 0644); err != nil {
+	if err := os.WriteFile(unitPath, []byte(refreshed), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "writing unit file: %v\n", err)
 		os.Exit(cliexit.Failure)
 	}

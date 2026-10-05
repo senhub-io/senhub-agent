@@ -17,8 +17,7 @@ const serviceUnitName = "senhub-agent"
 func restartServiceAfterUpdate() (string, error) {
 	return serviceRestarter{
 		installed: func() bool {
-			_, err := os.Stat(installedUnitPath)
-			return err == nil
+			return resolveUnitPath("", func(p string) bool { _, err := os.Stat(p); return err == nil }) != ""
 		},
 		isActive: func() bool {
 			out, _ := exec.Command("systemctl", "is-active", serviceUnitName).Output()

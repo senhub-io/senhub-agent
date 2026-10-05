@@ -33,7 +33,7 @@ const logReaderGroup = "adm"
 
 // ensureServiceUser creates the dedicated system user/group the
 // hardened unit runs as, mirroring what the .deb/.rpm postinstall
-// script does (packaging/scripts/postinstall.sh) so a ZIP/CLI install
+// script does (packaging/nfpm/scripts/preinstall.sh) so a ZIP/CLI install
 // reaches the same posture as a package install. Idempotent: an
 // existing user is left untouched.
 func ensureServiceUser(name string) error {
