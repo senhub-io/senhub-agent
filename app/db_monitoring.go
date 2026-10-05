@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"senhub-agent.go/internal/cliexit"
 )
 
 // handleDbMonitoringCommand dispatches the `senhub-agent
@@ -18,7 +20,7 @@ func handleDbMonitoringCommand() {
 	// db-monitoring init …
 	if len(os.Args) < 3 {
 		printDbMonitoringHelp()
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	sub := os.Args[2]
 	switch sub {
@@ -29,7 +31,7 @@ func handleDbMonitoringCommand() {
 	default:
 		fmt.Fprintf(os.Stderr, "unknown subcommand: db-monitoring %s\n\n", sub)
 		printDbMonitoringHelp()
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 }
 
@@ -88,7 +90,7 @@ func handleDbMonitoringInit(args []string) {
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag: %s\n\n", a)
 			printDbMonitoringHelp()
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
@@ -96,7 +98,7 @@ func handleDbMonitoringInit(args []string) {
 		fmt.Fprintln(os.Stderr, "error: --engine is required")
 		fmt.Fprintln(os.Stderr, "")
 		printDbMonitoringHelp()
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	switch engine {
@@ -106,7 +108,7 @@ func handleDbMonitoringInit(args []string) {
 		printPostgreSQLGrant(user)
 	default:
 		fmt.Fprintf(os.Stderr, "unsupported engine: %q (want mysql|mariadb|postgresql)\n", engine)
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 }
 
