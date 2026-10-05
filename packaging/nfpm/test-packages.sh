@@ -108,7 +108,7 @@ remove_cmd() {
 }
 
 start_container() {
-    CID=$(docker run -d --privileged --cgroupns=host \
+    CID=$(docker run -d --platform "linux/$ARCH" --privileged --cgroupns=host \
         -v /sys/fs/cgroup:/sys/fs/cgroup:rw -v "$PKGDIR":/pkgs:ro \
         --tmpfs /run --tmpfs /run/lock "$1" /usr/lib/systemd/systemd)
     local i
@@ -161,16 +161,16 @@ run_distro() {
 
     echo "== $DISTRO ($image, $FMT, $ARCH)"
 
-    local tag="senhub-pkgtest-$DISTRO"
+    local tag="senhub-pkgtest-$DISTRO-$ARCH"
     if ! docker image inspect "$tag" >/dev/null 2>&1; then
         echo "    building test image (systemd)"
-        if ! printf 'FROM %s\nRUN %s\n' "$image" "$prep" | docker build -q -t "$tag" - >/dev/null; then
+        if ! printf 'FROM %s\nRUN %s\n' "$image" "$prep" | docker build -q --platform "linux/$ARCH" -t "$tag" - >/dev/null; then
             echo "    FAIL test image build"; DISTRO_FAIL=1
             RESULTS+=("$DISTRO $ARCH FAIL(image)"); FAILED=1; return
         fi
     fi
 
-    CID=$(docker run -d --privileged --cgroupns=host \
+    CID=$(docker run -d --platform "linux/$ARCH" --privileged --cgroupns=host \
         -v /sys/fs/cgroup:/sys/fs/cgroup:rw -v "$PKGDIR":/pkgs:ro \
         --tmpfs /run --tmpfs /run/lock "$tag" /usr/lib/systemd/systemd)
     local i
