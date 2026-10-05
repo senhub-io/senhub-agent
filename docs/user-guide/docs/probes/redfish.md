@@ -64,6 +64,8 @@ something outside the default set, or to deliberately collect less.
 
     The moment this key is present, the six defaults are **discarded** and
     only what you list is collected. It is a replacement, not a filter.
+    This is deliberate: it is the only way to collect less, which is what
+    you want against a slow BMC.
 
     So this configuration does **not** mean "everything except storage":
 
@@ -73,8 +75,15 @@ something outside the default set, or to deliberately collect less.
     ```
 
     It means the probe collects system and power, and nothing else. The
-    sensor still reports OK — with far fewer channels than before, every
-    one of them healthy. There is no error and no warning.
+    sensor still reports OK, with far fewer channels than before, every
+    one of them healthy. The agent now says so when the probe starts, at
+    Info level:
+
+    ```text
+    redfish: 'collections' replaces the default set; these default
+    subsystems are NOT collected  collections=[system power]
+    disabled_defaults=[thermal processor memory storage]
+    ```
 
     If you are turning one subsystem off, write out every subsystem you
     still want:
@@ -82,6 +91,17 @@ something outside the default set, or to deliberately collect less.
     ```yaml
     collections: ["system", "thermal", "power", "processor", "memory"]
     ```
+
+    A configuration that lists all six defaults behaves exactly as if the
+    key were absent.
+
+The list is checked when the probe loads. An unknown name, a value that
+is not a string, or an empty list stops the probe with an error that
+names the accepted values; names are case-insensitive and a repeated name
+is ignored. The `Redfish probe initialized` line logged at start carries
+the final `collections` list, and a collection the detected BMC cannot
+serve (for example `drives` on a generic BMC) is logged as a warning
+instead of yielding nothing quietly.
 
 ### Accepted values
 
@@ -93,19 +113,13 @@ something outside the default set, or to deliberately collect less.
 | `processor` | CPU health, speed, temperature, utilisation | Yes |
 | `memory` | DIMM health, capacity, speed, ECC errors | Yes |
 | `storage` | Controllers, drives, volumes, pools | Yes |
-| `drives` | Physical drives on their own | **No** |
-| `network` | Network interface health and link state | **No** |
+| `drives` | Physical drives on their own; Dell, HPE, Cisco, Lenovo and storage-system collectors only (a generic BMC logs a warning) | **No** |
+| `network` | Accepted, but no collector serves it today (logged as a warning at start); use `networkadapter` | **No** |
 | `networkadapter` | Network adapter detail | **No** |
 
 The last three are **never collected unless you list them** — a default
 configuration does not include them. Listing them means also re-listing
 the defaults you want, per the warning above.
-
-A value that is not in this table is accepted at load time and fails on
-every collection cycle instead. A typo — `cpu` for `processor`, `disk`
-for `storage` — silently collects nothing from that subsystem. Check the
-spelling against the table, and see
-[Missing channels](#missing-channels-in-prtg-or-nagios) below.
 
 ## Interval and the PRTG TTL
 
@@ -289,6 +303,14 @@ Monitor the health status of hardware components. Health values use a standard s
 
 All metrics include contextual tags for filtering and grouping.
 
+!!! note "Names keep the BMC's own text in OTLP, Prometheus and Zabbix"
+
+    `hw.name` and the other name attributes carry the value exactly as the
+    BMC reports it, for example `Lab drive 1 (failure predicted)`. The PRTG
+    channel names and the URL filters are built from a cleaned copy with
+    `, ; ( ) [ ] { } < > | \ " ' ` # & ? =` removed (`Lab drive 1 failure
+    predicted`), which is what they always used; they are unchanged.
+
 ## Controller Tags
 
 | Tag | Description | Example |
@@ -439,12 +461,15 @@ Nothing is broken; the probe was told to collect less. Check, in order:
    only the subsystems it lists are collected — the defaults are gone.
    This is the usual cause. See
    [Choosing what to collect](#choosing-what-to-collect-collections).
-2. **Spelling of each value**, against the table in that section. An
-   unrecognised value is accepted at load and fails per cycle:
+2. **The start-up log.** The agent logs which default subsystems the
+   list turned off, and warns about a collection the BMC cannot serve:
 
    ```bash
-   journalctl -u senhub-agent | grep "unsupported collection type"
+   journalctl -u senhub-agent | grep -E "collections.*replaces|not supported by this vendor"
    ```
+
+   An unrecognised value no longer gets this far: the probe refuses to
+   start and the error names the accepted values.
 
 3. **`interval` above 300 seconds**, if you read the probe through
    PRTG — channels then disappear between scrapes. See
@@ -537,5 +562,105 @@ series' tags.
 | `senhub.hardware.redundancy.controllers.count` | `hardware.storage.redundancy.controllers_active` | {redundancy_group} Controllers Active | # | Number of active redundant storage controllers |
 | `senhub.hardware.redundancy.controllers.count` | `hardware.storage.redundancy.controllers_min` | {redundancy_group} Controllers Min | # | Minimum number of storage controllers for redundancy |
 | `senhub.hardware.redundancy.controllers.count` | `hardware.storage.redundancy.controllers_max` | {redundancy_group} Controllers Max | # | Maximum number of storage controllers supported |
+| `hw.status` | `hardware.cpu.health` | CPU Health | # | Processor health status |
+| `senhub.hardware.cpu.cores` | `hardware.cpu.cores` | CPU Cores | # | Physical cores of the processor |
+| `senhub.hardware.cpu.threads` | `hardware.cpu.threads` | CPU Threads | # | Hardware threads of the processor |
+| `senhub.hardware.cpu.speed` | `hardware.cpu.max_speed` | CPU Max Speed | MHz | Maximum processor speed |
+| `senhub.hardware.cpu.speed` | `hardware.cpu.current_speed` | CPU Current Speed | MHz | Current processor speed |
+| `senhub.hardware.cpu.speed` | `hardware.cpu.average_frequency` | CPU Average Frequency | MHz | Average processor frequency |
+| `hw.temperature` | `hardware.cpu.temperature` | CPU Temperature | °C | Processor temperature |
+| `senhub.hardware.cpu.throttling_temperature` | `hardware.cpu.throttling_temperature` | CPU Throttling Temperature | °C | Temperature at which the processor throttles |
+| `senhub.hardware.cpu.thermal_margin` | `hardware.cpu.thermal_margin` | CPU Thermal Margin | °C | Margin between the processor temperature and its throttling temperature |
+| `hw.power` | `hardware.cpu.power_consumption` | CPU Power Consumption | W | Power drawn by the processor |
+| `senhub.hardware.cpu.power_limit` | `hardware.cpu.power_limit` | CPU Power Limit | W | Power cap applied to the processor |
+| `senhub.hardware.cpu.utilization` | `hardware.cpu.utilization` | CPU Utilization | % | Processor utilization reported by the BMC |
+| `senhub.hardware.cpu.utilization` | `hardware.cpu.user_percent` | CPU User Percent | % | Processor time spent in user mode |
+| `senhub.hardware.cpu.utilization` | `hardware.cpu.kernel_percent` | CPU Kernel Percent | % | Processor time spent in kernel mode |
+| `senhub.hardware.cpu.utilization` | `hardware.cpu.io_wait_percent` | CPU IO Wait Percent | % | Processor time spent waiting for I/O |
+| `senhub.hardware.cpu.utilization` | `hardware.cpu.utilization.dell` | CPU Utilization Dell | % | Processor utilization from the Dell OEM metrics |
+| `senhub.hardware.cpu.utilization` | `hardware.cpu.utilization.hpe` | CPU Utilization Hpe | % | Processor utilization from the HPE OEM metrics |
+| `senhub.hardware.cpu.cache.usage` | `hardware.cpu.cache.occupancy` | CPU Cache Occupancy | Bytes | Bytes held in the processor cache |
+| `senhub.hardware.cpu.cache.hit_ratio` | `hardware.cpu.cache.hit_ratio` | CPU Cache Hit Ratio | ratio | Processor cache hit ratio |
+| `hw.status` | `hardware.memory.health` | Memory Health | # | Memory module health status |
+| `hw.memory.size` | `hardware.memory.capacity` | Memory Capacity | MiB | Memory module capacity |
+| `senhub.hardware.memory.logical_size` | `hardware.memory.logical_size` | Memory Logical Size | MiB | Memory module logical size |
+| `senhub.hardware.memory.cache_size` | `hardware.memory.cache_size` | Memory Cache Size | MiB | Cache size of the memory module |
+| `senhub.hardware.memory.speed` | `hardware.memory.speed` | Memory Speed | MHz | Operating speed of the memory module |
+| `senhub.hardware.memory.speed` | `hardware.memory.configured_speed` | Memory Configured Speed | MHz | Configured speed of the memory module |
+| `senhub.hardware.memory.width` | `hardware.memory.bus_width` | Memory Bus Width | bits | Total bus width of the memory module |
+| `senhub.hardware.memory.width` | `hardware.memory.data_width` | Memory Data Width | bits | Data width of the memory module |
+| `senhub.hardware.memory.ranks` | `hardware.memory.rank_count` | Memory Rank Count | # | Ranks of the memory module |
+| `senhub.hardware.memory.max_tdp` | `hardware.memory.max_tdp` | Memory Max Tdp | mW | Maximum thermal design power of the memory module |
+| `hw.power` | `hardware.memory.power_consumption` | Memory Power Consumption | W | Power drawn by the memory module |
+| `hw.temperature` | `hardware.memory.temperature` | Memory Temperature | °C | Memory module temperature |
+| `senhub.hardware.memory.thermal_margin` | `hardware.memory.thermal_margin` | Memory Thermal Margin | °C | Margin between the memory module temperature and its limit |
+| `senhub.hardware.memory.bandwidth.utilization` | `hardware.memory.bandwidth_utilization` | Memory Bandwidth Utilization | % | Memory bandwidth utilization |
+| `senhub.hardware.memory.block_size` | `hardware.memory.block_size` | Memory Block Size | Bytes | Block size of the memory module |
+| `senhub.hardware.memory.errors` | `hardware.memory.correctable_ecc_errors` | Memory Correctable Ecc Errors | # | Correctable ECC errors since the module was installed |
+| `senhub.hardware.memory.errors` | `hardware.memory.uncorrectable_ecc_errors` | Memory Uncorrectable Ecc Errors | # | Uncorrectable ECC errors since the module was installed |
+| `senhub.hardware.memory.throttled_cycles` | `hardware.memory.throttled_cycles` | Memory Throttled Cycles | # | Cycles the memory module spent throttled |
+| `senhub.hardware.memory.alarm` | `hardware.memory.alarm.temperature` | Memory Alarm Temperature | # | Memory temperature alarm raised |
+| `senhub.hardware.memory.alarm` | `hardware.memory.alarm.spares` | Memory Alarm Spares | # | Memory spares alarm raised |
+| `senhub.hardware.memory.alarm` | `hardware.memory.alarm.correctable_ecc` | Memory Alarm Correctable Ecc | # | Correctable ECC alarm raised |
+| `senhub.hardware.memory.alarm` | `hardware.memory.alarm.uncorrectable` | Memory Alarm Uncorrectable | # | Uncorrectable ECC alarm raised |
+| `senhub.hardware.memory.period.blocks` | `hardware.memory.current_period.blocks_read` | Memory Current Period Blocks Read | # | Blocks read in the current period |
+| `senhub.hardware.memory.period.blocks` | `hardware.memory.current_period.blocks_written` | Memory Current Period Blocks Written | # | Blocks written in the current period |
+| `senhub.hardware.memory.blocks` | `hardware.memory.lifetime.blocks_read` | Memory Lifetime Blocks Read | # | Blocks read over the module lifetime |
+| `senhub.hardware.memory.blocks` | `hardware.memory.lifetime.blocks_written` | Memory Lifetime Blocks Written | # | Blocks written over the module lifetime |
+| `senhub.hardware.memory.spares` | `hardware.memory.dell.remaining_spares` | Memory Dell Remaining Spares | # | Dell OEM: spare memory still available |
+| `senhub.hardware.memory.spares` | `hardware.memory.dell.used_spares` | Memory Dell Used Spares | # | Dell OEM: spare memory already used |
+| `hw.voltage` | `hardware.memory.hpe.current_voltage` | Memory Hpe Current Voltage | mV | HPE OEM: current operating voltage of the memory module |
+| `hw.voltage` | `hardware.memory.hpe.min_voltage` | Memory Hpe Min Voltage | mV | HPE OEM: min operating voltage of the memory module |
+| `hw.voltage` | `hardware.memory.hpe.max_voltage` | Memory Hpe Max Voltage | mV | HPE OEM: max operating voltage of the memory module |
+| `hw.status` | `hardware.network.health` | Network Health | # | Network adapter health status |
+| `hw.network.up` | `hardware.network.link_up` | Network Link Up | # | Network adapter link state (1 up, 0 down) |
+| `hw.network.bandwidth.limit` | `hardware.network.speed_mbps` | Network Speed Mbps | Mbps | Negotiated link speed of the network adapter |
+| `hw.status` | `network.adapter.health` | Network Adapter Health | # | Network adapter health status |
+| `hw.status` | `network.port.health` | Network Port Health | # | Network port health status |
+| `hw.network.up` | `network.port.link_up` | Network Port Link Up | # | Network port link state (1 up, 0 down) |
+| `hw.network.bandwidth.limit` | `network.port.speed_gbps` | Network Port Speed Gbps | Gbps | Negotiated link speed of the network port |
+| `hw.power` | `hardware.power.usage` | Usage | W | Power delivered by the power supply |
+| `senhub.hardware.power_supply.limit` | `hardware.power.limit` | Limit | W | Rated output of the power supply |
+| `hw.voltage` | `hardware.power.input_voltage` | Input Voltage | Volts | Line input voltage of the power supply |
+| `hw.power` | `hardware.power.consumption` | Consumption | W | Power drawn by the chassis |
+| `senhub.hardware.enclosure.power.capacity` | `hardware.power.capacity` | Capacity | W | Power the chassis can draw |
+| `hw.temperature` | `thermal.temperature` | Temperature | °C | Temperature sensor reading |
+| `hw.fan.speed_ratio` | `thermal.fan_speed_percent` | Fan Speed Percent | % | Fan speed as a share of its maximum |
+| `senhub.hardware.system.cpu.count` | `hardware.system.cpu.count` | System CPU Count | # | Processors installed in the system |
+| `senhub.hardware.system.cpu.status` | `hardware.system.cpu.health` | System CPU Health | # | Health of the system's processors as a whole |
+| `senhub.hardware.system.memory.size` | `hardware.system.memory.size` | System Memory Size | GiB | Total system memory |
+| `senhub.hardware.system.memory.status` | `hardware.system.memory.health` | System Memory Health | # | Health of the system's memory as a whole |
+| `senhub.hardware.firmware.info` | `system.idrac_firmware` | System Idrac Firmware | # | Presence marker (always 1) carrying the idrac firmware version as an attribute |
+| `senhub.hardware.firmware.info` | `system.lifecycle_controller` | System Lifecycle Controller | # | Presence marker (always 1) carrying the lifecycle_controller firmware version as an attribute |
+| `senhub.hardware.firmware.info` | `system.ilo_firmware` | System Ilo Firmware | # | Presence marker (always 1) carrying the ilo firmware version as an attribute |
+| `senhub.hardware.firmware.info` | `system.cimc_firmware` | System Cimc Firmware | # | Presence marker (always 1) carrying the cimc firmware version as an attribute |
+| `senhub.hardware.firmware.info` | `system.xcc_firmware` | System Xcc Firmware | # | Presence marker (always 1) carrying the xcc firmware version as an attribute |
+| `senhub.hardware.eventservice.subscriptions` | `hardware.eventservice.subscriptions` | Eventservice Subscriptions | # | Event subscriptions registered on the BMC |
+| `senhub.hardware.log.entries` | `hardware.logs.entries.total` | Logs Entries Total | # | Entries in the BMC event log |
+| `senhub.hardware.log.entries` | `hardware.logs.entries.critical` | Logs Entries Critical | # | Critical entries in the BMC event log |
+| `senhub.hardware.log.entries` | `hardware.logs.entries.warning` | Logs Entries Warning | # | Warning entries in the BMC event log |
+| `senhub.hardware.log.entries` | `hardware.logs.entries.info` | Logs Entries Info | # | Informational entries in the BMC event log |
+| `senhub.hardware.log.entries` | `hardware.logs.entries.last_24h` | Logs Entries Last 24h | # | Entries logged in the last 24 hours |
+| `senhub.hardware.log.entries` | `hardware.logs.entries.last_7d` | Logs Entries Last 7d | # | Entries logged in the last 7 days |
+| `senhub.hardware.storage.status` | `hardware.storage.health` | Health | # | Health of the storage subsystem |
+| `hw.status` | `hardware.storage.controller.health` | Controller Health | # | Storage controller health status |
+| `hw.status` | `storage.controller.health` | Controller Health | # | Storage controller health status |
+| `senhub.hardware.disk_controller.link_speed` | `hardware.storage.controller.speed_gbps` | Controller Speed Gbps | Gbps | Link speed of the storage controller |
+| `hw.status` | `storage.drive.health` | Drive Health | # | Drive health status |
+| `hw.physical_disk.size` | `hardware.storage.drive.capacity_bytes` | Drive Capacity Bytes | Bytes | Total drive capacity |
+| `hw.physical_disk.size` | `storage.drive.capacity_gb` | Drive Capacity Gb | GB | Total drive capacity |
+| `senhub.hardware.physical_disk.hotspare` | `hardware.storage.drive.hotspare` | Drive Hotspare | # | Drive configured as a hot spare (1) or not (0) |
+| `senhub.hardware.physical_disk.media_life_remaining` | `storage.drive.media_life_percent` | Drive Media Life Percent | % | Predicted media life left on the drive |
+| `senhub.hardware.physical_disk.rotation_speed` | `storage.drive.rotation_rpm` | Drive Rotation Rpm | RPM | Rotation speed of the drive |
+| `hw.status` | `storage.volume.health` | Volume Health | # | Volume health status |
+| `hw.logical_disk.limit` | `storage.volume.capacity_gb` | Volume Capacity Gb | GB | Total volume capacity |
+| `senhub.hardware.logical_disk.reserved` | `hardware.storage.volume.capacity.reserved` | Volume Capacity Reserved | Bytes | Capacity reserved on the volume |
+| - | `hardware.storage.volume.io.read.latency` | Volume IO Read Latency | # | Volume read latency |
+| - | `hardware.storage.volume.io.write.latency` | Volume IO Write Latency | # | Volume write latency |
+| `senhub.hardware.storage.pool.usage` | `hardware.storage.pool.capacity.free` | Pool Capacity Free | Bytes | Free pool capacity |
+| `senhub.hardware.storage.pool.usage` | `hardware.storage.pool.capacity.committed` | Pool Capacity Committed | Bytes | Capacity committed on the pool |
+| `senhub.hardware.storage.pool.usage` | `hardware.storage.pool.capacity.overcommit` | Pool Capacity Overcommit | Bytes | Capacity over-committed on the pool |
+| `senhub.hardware.storage.pool.usage` | `hardware.storage.pool.capacity.snapshots` | Pool Capacity Snapshots | Bytes | Pool capacity taken by snapshots |
+| `senhub.hardware.storage.pool.usage` | `hardware.storage.pool.capacity.volumes` | Pool Capacity Volumes | Bytes | Pool capacity taken by volumes |
 
 <!-- schema:metrics:end -->

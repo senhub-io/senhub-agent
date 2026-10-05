@@ -1,9 +1,12 @@
 package configuration
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	"senhub-agent.go/internal/agent/services/fsown"
 )
@@ -59,6 +62,58 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		_ = d.Close()
 	}
 	return nil
+}
+
+// maxRewriteAttempts bounds how many times rewriteFile redoes an edit because
+// the file changed under it.
+const maxRewriteAttempts = 5
+
+// ErrConfigChangedConcurrently is returned by rewriteFile when the file kept
+// changing between the read and the write for every attempt. Nothing was
+// written: the caller may retry later (the seal does, at the next start).
+var ErrConfigChangedConcurrently = errors.New("configuration file kept changing while it was being rewritten")
+
+// beforeCommitHook is a test seam: it runs after an edit was computed and
+// before the file is re-read to detect a concurrent write.
+var beforeCommitHook atomic.Pointer[func(path string, attempt int)]
+
+// rewriteFile is the read-modify-write primitive for operator-owned config
+// files. It reads path, hands the bytes to edit, and just before the atomic
+// rename re-reads the file: if the bytes changed since the first read (an
+// operator saved the file meanwhile) the edit is redone from the fresh bytes,
+// so that change is never overwritten. After maxRewriteAttempts it gives up
+// without writing and returns ErrConfigChangedConcurrently.
+//
+// edit returns the new content, or nil to leave the file untouched. It may run
+// several times and must derive everything from the bytes it is given. A
+// narrow window remains between the re-read and the rename; it cannot be closed
+// without a lock the operator's editor would not honour.
+func rewriteFile(path string, edit func(data []byte) ([]byte, error)) (bool, error) {
+	for attempt := 1; attempt <= maxRewriteAttempts; attempt++ {
+		data, err := os.ReadFile(path) // #nosec G304 - the agent's own configuration
+		if err != nil {
+			return false, err
+		}
+		out, err := edit(data)
+		if err != nil || out == nil {
+			return false, err
+		}
+		if h := beforeCommitHook.Load(); h != nil {
+			(*h)(path, attempt)
+		}
+		fresh, err := os.ReadFile(path) // #nosec G304 - the agent's own configuration
+		if err != nil {
+			return false, err
+		}
+		if !bytes.Equal(fresh, data) {
+			continue
+		}
+		if err := atomicWriteFile(path, out, fileModeOr(path, 0o600)); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, fmt.Errorf("%s: %w", path, ErrConfigChangedConcurrently)
 }
 
 // fileModeOr returns the current mode of path, or fallback when path does not
