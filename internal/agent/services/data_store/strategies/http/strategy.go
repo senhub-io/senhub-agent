@@ -261,14 +261,14 @@ func (h *HTTPSyncStrategy) Start(ctx context.Context) error {
 
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
-	h.logger.Info().Int("count", len(datapoints)).Msg("HTTP Strategy - Received datapoints")
+	h.logger.Debug().Int("count", len(datapoints)).Msg("HTTP Strategy - Received datapoints")
 
 	// Use the cache's method to add data points
 	h.cache.AddDataPointsWithTransformer(datapoints, h.transformerRegistry)
 
 	// Get cache info for logging
 	cacheInfo := h.cache.GetCacheInfo()
-	h.logger.Info().
+	h.logger.Debug().
 		Int("count", len(datapoints)).
 		Int("total_time_series", cacheInfo.TotalMetrics).
 		Int("active_probes", cacheInfo.ProbeCount).

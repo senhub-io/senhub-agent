@@ -156,6 +156,9 @@ func NewProbePoller(
 		moduleLogger: moduleLogger,
 	}
 
+	// Two probes of one type share the module logger; the scheduler's retry
+	// and error lines must say which of them failed.
+	schedulerLogger := moduleLogger.With().Str("probe", probe.GetName()).Logger()
 	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
 		Interval:          probe.GetInterval(),
 		MaxRetries:        3,
@@ -164,7 +167,7 @@ func NewProbePoller(
 		Execute:           probePoller.collect,
 		OnStart:           probe.OnStart,
 		OnShutdown:        probe.OnShutdown,
-	}, moduleLogger.Logger)
+	}, &schedulerLogger)
 	probePoller.scheduler = scheduler
 
 	if probeWithCallback, ok := probe.(types.ProbeWithCallback); ok {
