@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"senhub-agent.go/internal/cliexit"
 )
 
 // installedUnitPath is where kardianos/service and the .deb/.rpm packages
@@ -30,17 +32,17 @@ func runRefreshUnit() {
 	yes := fs.Bool("yes", false, "apply without confirmation prompt")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		fmt.Fprintf(os.Stderr, "refresh-unit: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	installed, err := os.ReadFile(installedUnitPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "no unit found at %s; run 'senhub-agent install' first\n", installedUnitPath)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Fprintf(os.Stderr, "reading installed unit: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	serviceUser := installedServiceUser(string(installed))
@@ -55,7 +57,7 @@ func runRefreshUnit() {
 	if serviceUser != rootServiceUser {
 		if userErr := ensureServiceUser(serviceUser); userErr != nil {
 			fmt.Fprintf(os.Stderr, "ensuring service user %q exists: %v\n", serviceUser, userErr)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
@@ -97,17 +99,17 @@ func runRefreshUnit() {
 	if err := migrateLegacyBinary(string(installed)); err != nil {
 		fmt.Fprintf(os.Stderr, "migrating the binary to %s: %v\n", systemBinaryDir, err)
 		fmt.Fprintln(os.Stderr, "The unit was NOT changed; the service is untouched.")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	if err := os.WriteFile(installedUnitPath, []byte(refreshed), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "writing unit file: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "systemctl daemon-reload: %v (%s)\n", err, strings.TrimSpace(string(out)))
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	followCredentialStore(configPath)
