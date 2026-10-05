@@ -1906,6 +1906,18 @@ so, where an absent one would inherit the probe's.
 | `senhub.system.kernel.max_files` | `{file}` | Gauge | Linux | `/proc/sys/fs/file-max` |
 | `senhub.system.kernel.max_processes` | `{process}` | Gauge | Linux | `/proc/sys/kernel/pid_max` |
 | `senhub.system.users.count` | `{session}` | Gauge | Linux, Windows | The login accounting file (`/var/run/utmp`), `WTSEnumerateSessionsW` on Windows |
+| `senhub.system.kernel.open_files` | `{file}` | Gauge | Linux | First field of `/proc/sys/fs/file-nr` (allocated file handles) |
+| `senhub.system.passwd.checksum` | `1` | Gauge | Linux | CRC32 of `/etc/passwd`, as a number |
+| `senhub.system.passwd.modified_timestamp` | `s` | Gauge | Linux | Modification time of `/etc/passwd`, Unix seconds |
+
+`senhub.system.passwd.checksum` is a fingerprint, not a measure: only a
+change of its value means something. A CRC32 is exact in a float64 and
+is enough to see a file change; it is not a cryptographic hash. The
+definition marks it `alert_on_change: true`, from which the Zabbix
+template generator derives a `change(...)<>0` trigger. Neither has an
+OTel convention, hence `senhub.system.*`; the timestamp follows the
+`*_timestamp` gauge in seconds already used for last-success times.
+`senhub.system.kernel.max_processes` stays on `pid_max`, not `threads-max`.
 
 `senhub.system.users.count` counts sessions and not accounts: four
 terminals opened on one account count four, which is what `who` lists
