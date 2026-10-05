@@ -34,6 +34,8 @@ metrics:
       type: gauge
     tag_to_attribute:
       hardware.component: hw.id
+      hardware.entity: senhub.hardware.ipmi.entity
+      hardware.sensor_number: senhub.hardware.ipmi.sensor_number
 
   # ─────────────────────────────────────────────────────────────────────────
   # Fan speed (rotations per minute)
@@ -52,6 +54,8 @@ metrics:
       type: gauge
     tag_to_attribute:
       hardware.component: hw.id
+      hardware.entity: senhub.hardware.ipmi.entity
+      hardware.sensor_number: senhub.hardware.ipmi.sensor_number
 
   # ─────────────────────────────────────────────────────────────────────────
   # Voltage
@@ -70,6 +74,47 @@ metrics:
       type: gauge
     tag_to_attribute:
       hardware.component: hw.id
+      hardware.entity: senhub.hardware.ipmi.entity
+      hardware.sensor_number: senhub.hardware.ipmi.sensor_number
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Power draw (watts). OTel: hw.power (Gauge, W) with hw.id = sensor name
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "hardware.power"
+    channel: "hardware_power_{hardware.component}"
+    display_name: "Power {hardware.component}"
+    unit: "Watts"
+    multi_instance_labels: ["hardware.component"]
+    category: "hardware"
+    description: "Power reported by the BMC sensor (watts): a supply's output or input, or the machine's consumption"
+    otel:
+      name: hw.power
+      unit: W
+      type: gauge
+    tag_to_attribute:
+      hardware.component: hw.id
+      hardware.entity: senhub.hardware.ipmi.entity
+      hardware.sensor_number: senhub.hardware.ipmi.sensor_number
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Current (amperes). The OTel hardware namespace has no current metric,
+  # so this is a senhub extension.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "senhub.hardware.current"
+    channel: "hardware_current_{hardware.component}"
+    display_name: "Current {hardware.component}"
+    unit: "Amps"
+    multi_instance_labels: ["hardware.component"]
+    category: "hardware"
+    description: "Current reported by the BMC sensor (amperes), typically per power supply"
+    otel:
+      name: senhub.hardware.current
+      unit: A
+      type: gauge
+    tag_to_attribute:
+      hardware.component: hw.id
+      hardware.entity: senhub.hardware.ipmi.entity
+      hardware.sensor_number: senhub.hardware.ipmi.sensor_number
 
   # ─────────────────────────────────────────────────────────────────────────
   # Power supply status (discrete ok/fault)
@@ -81,7 +126,7 @@ metrics:
     unit: "#"
     multi_instance_labels: ["hardware.component"]
     category: "hardware"
-    description: "Power supply status: 1 = ok, 0 = fault. A supply the BMC has no reading for emits no value"
+    description: "Power supply status: 1 = ok (present, redundant, or a healthy reading), 0 = fault (critical status, redundancy lost or degraded). An absent supply or one the BMC has no reading for emits no value"
     otel:
       name: hw.status
       unit: "1"
@@ -91,6 +136,8 @@ metrics:
         hw.state: ok
     tag_to_attribute:
       hardware.component: hw.id
+      hardware.entity: senhub.hardware.ipmi.entity
+      hardware.sensor_number: senhub.hardware.ipmi.sensor_number
 
   # ─────────────────────────────────────────────────────────────────────────
   # Generic sensor status (ok / critical / non-recoverable)
@@ -111,6 +158,8 @@ metrics:
         hw.state: ok
     tag_to_attribute:
       hardware.component: hw.id
+      hardware.entity: senhub.hardware.ipmi.entity
+      hardware.sensor_number: senhub.hardware.ipmi.sensor_number
 
   # ─────────────────────────────────────────────────────────────────────────
   # Probe availability
@@ -131,6 +180,12 @@ tag_metadata:
   hardware.component:
     type: resource
     label: "Hardware Component"
+  hardware.entity:
+    type: resource
+    label: "IPMI Entity (id.instance)"
+  hardware.sensor_number:
+    type: resource
+    label: "IPMI Sensor Number"
   # System tags (injected by framework)
   host:
     type: resource

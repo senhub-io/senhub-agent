@@ -5,9 +5,29 @@ Changes land here as they are merged to `dev`.
 - **Redis**: the probe now reports the last RDB save, AOF rewrite and AOF write outcomes, the replication backlog (active, size, history), pub/sub channels and patterns, and, on a Sentinel, the status, replica count and sentinel count of each monitored master.
 - **Linux packages.** `.deb` and `.rpm` packages for amd64 and arm64 install the agent as a systemd service from the distribution's package manager, tested on Debian 12, Ubuntu 22.04 and 24.04, Rocky Linux 9 and openSUSE Leap 15.6; see [Install from packages](../installation.md#install-from-packages). Repositories are announced.
 
+- **IPMI**: sensors that share a name (a Dell lists every CPU temperature as `Temp`) are no longer merged into one series; they now read `Temp (CPU 1)`, `Temp (CPU 2)`. Power (`hw.power`, watts) and current (`senhub.hardware.current`, amperes) readings are reported, and a power supply's presence and redundancy ("Presence detected", "Fully Redundant", "Redundancy Lost") now give its status.
+
 <div class="rn-filter"></div>
 
 ## Features
+
+- **Redfish: the whole probe now reaches Prometheus and OTLP.** 100 of the
+  139 metrics the probe can emit had no definition and were dropped by
+  those outputs (processors, memory modules, network, power, firmware,
+  event-log counters, vendor storage readings). They are now declared with
+  OTel names, units and types, and a test fails when the probe starts to
+  emit a name that has none. PRTG channel names are unchanged. Memory
+  modules, adapters, ports and cache levels also become separate series on
+  the pull sinks instead of overwriting each other.
+- **Redfish: `collections` is validated and says what it turns off.** The
+  list still replaces the default set, but an unknown name or an empty list
+  now stops the probe at load with the accepted values, and the start-up
+  log names the default subsystems the list disabled. A configuration that
+  lists the six defaults is unchanged.
+- **Redfish: names keep the BMC's own text.** `hw.name` and the other
+  name attributes in OTLP, Prometheus and Zabbix are no longer stripped of
+  `, ; ( ) [ ] { } < > | \ " ' ` # & ? =`. PRTG channel names and URL
+  filters keep their cleaned form.
 
 - **Linux host security signals in the `process` probe.** Three new
   machine-wide metrics on Linux: `senhub.system.kernel.open_files` (file
@@ -83,3 +103,7 @@ Changes land here as they are merged to `dev`.
   `ORA-01017`, while SQL\*Plus accepted the same credentials. The driver does
   not announce long password support, which 23ai requires; the probe now does.
   Passwords of 30 characters or fewer were never affected.
+- **Zabbix links the host probes of each platform by default.** `zabbix setup` linked five templates whatever the platform, so a Windows host collecting its services or its event log counter got no item for them. The probes marked `universal` in their definition (on Windows, `winservices` and `windows_eventlog` join the five) are linked per platform, `--all-probes` links every template, and a guard fails the build if a registered probe emits metrics and no template declares them (ent#109).
+- **Zabbix templates ship graphs and dashboards.** The CPU, memory, logical disk and network templates carry graph prototypes (utilization, load, throughput, operations, queue, errors, per instance) declared in the probe definitions under `graphs:`, and a dashboard of their own graphs per template, listed under the host's Dashboards menu (7.0 export; the 6.0 export keeps the graphs only) (ent#110).
+- **Windows services are discovered in Zabbix, with an "automatic service not running" trigger.** The `winservices` probe now reports each service's start type (`windows.service.start_type`); the template creates the state, status and start type of every service by discovery and raises a problem when a service set to start automatically has not been running for `{$SENHUB.WINSERVICES.GRACE}` (5 minutes). Discovery is filtered by `{$SENHUB.WINSERVICES.MATCHES}` and `{$SENHUB.WINSERVICES.NOT_MATCHES}`. The probe's own heartbeat is no longer declared once per service (ent#114).
+- **Zabbix triggers cover more of a host.** Processor queue (Windows) and load (Linux), paging, disk queue and busy time, inodes, interface errors and discards, and a restart (new `system.uptime` from the `cpu` probe) join the usage and state triggers, each limit a `{$SENHUB.*}` macro with a documented default. Triggers are declared in the probe definitions under `triggers:` (ent#115).

@@ -837,3 +837,65 @@ sfs.syslog.severity:
     7:
       text: "Debug"
       severity: "ok"
+
+# ==============================================================================
+# WINDOWS SERVICES
+# ==============================================================================
+# Source: Win32 SERVICE_STATUS.dwCurrentState and QUERY_SERVICE_CONFIG.dwStartType
+# (Service Control Manager). Both describe a state rather than give a verdict:
+# whether a stopped service is a problem depends on how it is configured to
+# start, which is why no severity here is above "ok" and the Zabbix trigger
+# combines the two.
+
+windows.service.status:
+  description: "Windows service state (SCM dwCurrentState)"
+  type: status
+  source: "Win32 SERVICE_STATUS dwCurrentState"
+  mappings:
+    1:
+      text: "Stopped"
+      severity: "ok"
+    2:
+      text: "Start pending"
+      severity: "ok"
+    3:
+      text: "Stop pending"
+      severity: "ok"
+    4:
+      text: "Running"
+      severity: "ok"
+    5:
+      text: "Continue pending"
+      severity: "ok"
+    6:
+      text: "Pause pending"
+      severity: "ok"
+    7:
+      text: "Paused"
+      severity: "ok"
+  desired_value: 4
+
+windows.service.start_type:
+  description: "Windows service start type (SCM dwStartType)"
+  type: status
+  source: "Win32 QUERY_SERVICE_CONFIG dwStartType; 5 is automatic with the delayed-start flag"
+  mappings:
+    0:
+      text: "Boot"
+      severity: "ok"
+    1:
+      text: "System"
+      severity: "ok"
+    2:
+      text: "Automatic"
+      severity: "ok"
+    3:
+      text: "Manual"
+      severity: "ok"
+    4:
+      text: "Disabled"
+      severity: "ok"
+    5:
+      text: "Automatic (delayed start)"
+      severity: "ok"
+  desired_value: 2

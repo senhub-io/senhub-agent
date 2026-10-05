@@ -410,5 +410,6 @@ series' tags.
 | `system.cpu.load_15m` | `cpu_load15` | CPU Load Average 15min | # | Average number of processes in the run queue over the last 15 minutes |
 | `system.processes.count` | `cpu_processes_total` | Processes Total | # | Total number of processes on the host. |
 | `senhub.system.time` | `system_time` | Host Clock | s | Current time of the host clock, in seconds since the Unix epoch, sampled at collection |
+| `system.uptime` | `system_uptime` | Host Uptime | s | Time since the host booted, in seconds |
 
 <!-- schema:metrics:end -->
