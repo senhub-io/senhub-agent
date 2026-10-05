@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -22,13 +23,15 @@ type HTTPSyncStrategy struct {
 	// runCtx is the lifecycle context Start received, kept so a live
 	// reconfiguration restarts the server under the same cancellation
 	// root rather than an orphaned background one.
-	runCtx              context.Context
-	agentConfig         configuration.AgentConfiguration
-	params              map[string]interface{}
-	logger              *logger.ModuleLogger
-	server              *http.Server
-	cache               *MetricCache
-	agentKey            string
+	runCtx      context.Context
+	agentConfig configuration.AgentConfiguration
+	params      map[string]interface{}
+	logger      *logger.ModuleLogger
+	server      *http.Server
+	cache       *MetricCache
+	agentKey    string
+	// licenseValidatorFn overrides the embedded-key validator; tests only.
+	licenseValidatorFn  func() (*license.JWTValidator, error)
 	port                int
 	bindAddress         string // IP address to bind to
 	transformerRegistry *transformers.TransformerRegistry
@@ -885,4 +888,19 @@ func endpointSetSignature(endpoints map[string]bool) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
+}
+
+// licenseAgentKey is the identity a licence binds to: the agent's own
+// key, the one the sensor checks at boot. The key a console request
+// authenticated with is not it: the administration key opens the same
+// pages, and a licence issued for this agent would fail against it.
+func (h *HTTPSyncStrategy) licenseAgentKey() string {
+	return h.authManager.GetAgentKey()
+}
+
+func (h *HTTPSyncStrategy) newLicenseValidator() (*license.JWTValidator, error) {
+	if h.licenseValidatorFn != nil {
+		return h.licenseValidatorFn()
+	}
+	return license.GetDefaultValidator(7)
 }

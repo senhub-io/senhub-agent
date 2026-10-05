@@ -34,10 +34,10 @@ type catalogResponse struct {
 // handleCatalogProbes lists the probe types that declare a schema, each
 // with its tier and whether this agent's licence authorises it.
 func (h *HTTPSyncStrategy) handleCatalogProbes(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
-	if !ok {
+	if _, ok := h.authManager.AuthenticateAndExtract(w, r); !ok {
 		return
 	}
+	agentKey := h.licenseAgentKey()
 	lic := h.currentLicense()
 	view := h.currentLicenseView(agentKey)
 	var entries []catalogEntry
@@ -62,7 +62,7 @@ func (h *HTTPSyncStrategy) currentLicense() *license.License {
 	if err != nil || strings.TrimSpace(effective) == "" {
 		return nil
 	}
-	validator, err := license.GetDefaultValidator(7)
+	validator, err := h.newLicenseValidator()
 	if err != nil {
 		return nil
 	}
