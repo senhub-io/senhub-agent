@@ -5,6 +5,19 @@ and everything on that page holds under Podman: the variables, the state
 volume, the identities. This page covers what differs, and the Quadlet
 unit that runs the agent as a systemd service.
 
+## What the agent monitors
+
+An agent started in a plain container reports half a host. CPU and
+memory are the host's, because `/proc` is not isolated for those
+counters, but the disks are the container's overlay, the network is its
+single `eth0` and the process list is its own few processes.
+
+The unit shipped for Quadlet therefore monitors **the host** (host
+scope): the host's network and PID namespaces, and the host's `/`
+mounted read-only at `/host`. Disks, interfaces, processes, OS release
+and `machine-id` are the host's. A [container scope](#container-scope)
+is one edit away. The plain `podman run` below is a container scope.
+
 ## One command
 
 The `docker run` lines work as they are with `podman run`:
@@ -22,9 +35,14 @@ makes Podman search its configured registries, or ask which one to use.
 
 Three things behave differently from Docker.
 
-**Rootless ports.** Run as an ordinary user, Podman cannot publish a
-host port below 1024. Keep the default 8080, or lower the limit on the
-host with the `net.ipv4.ip_unprivileged_port_start` sysctl.
+**Rootless ports and networking.** Run as an ordinary user, Podman
+cannot publish a host port below 1024. Keep the default 8080, or lower
+the limit on the host with the `net.ipv4.ip_unprivileged_port_start`
+sysctl. A rootless container that publishes a port also needs a
+user-space network helper: `slirp4netns` on Podman 4.x, `passt` (which
+provides `pasta`) from Podman 5. Install the package before the first
+start, or `podman run -p` fails. Host networking (`--network host`)
+needs neither.
 
 **SELinux.** On Fedora, RHEL and their derivatives, a host directory
 mounted into the container is refused by SELinux until it carries a
@@ -64,12 +82,23 @@ on 4.4 and 4.5, replace its `AutoUpdate=registry` line with
 
 | File | What it holds |
 |---|---|
-| `senhub-agent.container` | The unit: image, volumes, published port, health check, restart policy, secrets |
+| `senhub-agent.container` | The unit: image, host scope, volumes, health check, restart policy, secrets |
 | `senhub-agent.env` | The `SENHUB_*` variables, all commented out. No secret goes there |
 
 ### Install
 
-Rootful, the files go in `/etc/containers/systemd/`:
+Create the bearer token as a Podman secret first (the unit names it, and
+refuses to start without it; to run without exporting to SenHub, delete
+the `Secret=senhub-otlp-token` line instead):
+
+```bash
+printf '%s' "$TOKEN" | sudo podman secret create senhub-otlp-token -
+```
+
+No licence is needed: the free tier collects everything but the Pro
+probes. Add one later, as shown under [Secrets](#secrets).
+
+Host scope is a **rootful** setup. Rootful, the files go in `/etc/containers/systemd/`:
 
 ```bash
 sudo cp senhub-agent.container senhub-agent.env /etc/containers/systemd/
@@ -77,8 +106,12 @@ sudo systemctl daemon-reload
 sudo systemctl start senhub-agent
 ```
 
-Rootless, in `~/.config/containers/systemd/`, and every `systemctl`
-takes `--user`:
+Rootless is the [container scope](#container-scope): the host block
+(`--pid=host`, `Network=host`, the read of `/`) has been exercised
+rootful only, and what an unprivileged user can see of the host through
+it is not established, so it is not a supported rootless setup. Rootless,
+delete the host block, then copy to
+`~/.config/containers/systemd/`, and every `systemctl` takes `--user`:
 
 ```bash
 mkdir -p ~/.config/containers/systemd
@@ -103,6 +136,29 @@ refused the file. It says why:
 /usr/lib/systemd/system-generators/podman-system-generator --dryrun         # rootful
 /usr/lib/systemd/system-generators/podman-system-generator --user --dryrun  # rootless
 ```
+
+### Container scope
+
+To monitor the container instead of the host, delete every line between
+`# >>> host scope` and `# <<< host scope` in the unit, and uncomment
+`PublishPort=8080:8080` (and `HostName=`, to keep a stable name). The
+agent then reports the container's overlay, its own interface and its
+own processes; CPU and memory are still the host's. This is what a
+rootless unit runs, and it needs no host access at all.
+
+What the host scope accepts, to know before choosing it:
+
+- The container shares the host's PID and network namespaces and can
+  read the whole host filesystem, read-only. It runs as the image's
+  uid 10001 and drops nothing from Podman's default capabilities, so it
+  reads what any user reads, not root-only files.
+- The HTTP output opens `SENHUB_HTTP_PORT` (8080) on the host's own
+  addresses. Free it, and close it in the firewall if it should not be
+  reachable.
+- The host identity is the host's own `machine-id`, read under
+  `/host/etc`; the agent key stays in the state volume.
+- On SELinux hosts, uncomment `SecurityLabelDisable=true`. Never put
+  `:Z` on the `/` volume: it would relabel the host's root.
 
 ### Configure
 
@@ -142,16 +198,21 @@ in it as one of its own.
 ### Secrets
 
 The bearer token, the licence and the Azure client secret belong in
-Podman's secret store rather than in the environment file. Create each
-one as the user that runs the unit (root for a rootful unit), reading
-the value from standard input so that it appears in no command line:
+Podman's secret store, and **not** in `Environment=` or the environment
+file: `podman inspect` prints the value of every variable set that way,
+in clear, to anyone who can run it (and `systemctl show` prints the
+unit's). A Podman secret is not part of the container's configuration that
+`podman inspect` prints. Create each one as the user that runs the unit
+(root for a rootful unit), reading the value from standard input so that
+it appears in no command line:
 
 ```bash
 printf '%s' "$TOKEN" | podman secret create senhub-otlp-token -
 printf '%s' "$LICENSE" | podman secret create senhub-license -
 ```
 
-Then uncomment the matching lines of the unit:
+The token's line is active in the unit; the licence, which only the Pro
+probes need, ships commented. Uncomment it once the secret exists:
 
 ```ini
 Secret=senhub-otlp-token,type=env,target=OTLP_BEARER_TOKEN
@@ -159,8 +220,8 @@ Secret=senhub-license,type=env,target=SENHUB_LICENSE
 ```
 
 and run `systemctl daemon-reload` before the next start. A unit naming a
-secret that does not exist fails to start, which is why these lines ship
-commented out.
+secret that does not exist fails to start, which is why the licence line
+ships commented out.
 
 The container sees each secret as the variable it targets, and the
 entrypoint treats it as any other. What becomes of it differs:
@@ -217,20 +278,26 @@ The agent's own auto-update is off in a container: it would replace a
 binary in a layer the next container discards. Updating means running a
 new image.
 
-The image tags are versions, and there is no moving tag such as
-`latest`. Moving to a new version therefore means editing the `Image=`
-line of the unit, then:
+Two ways to hold the image, and the unit uses the first:
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart senhub-agent
-```
+- **An exact version with `AutoUpdate=registry`.** The tags are exact
+  versions (`0.6.1`); there is no `latest` and no minor tag such as
+  `0.6`, so `podman auto-update` pulls the same tag again and restarts
+  the unit only when the registry serves another image under it, for
+  instance a republished build of that version. It never moves to a new
+  version: that is an edit of the `Image=` line, then
+  `systemctl daemon-reload` and `systemctl restart senhub-agent`.
+- **A digest, without auto-update.** `Image=ghcr.io/senhub-io/senhub-agent@sha256:<digest>`
+  runs exactly that image, whatever happens to the tag. Delete the
+  `AutoUpdate=` line: there is nothing for it to follow. Moving to a
+  new image is an edit of the digest. Choose this where the image must
+  be reviewed before it runs.
 
-The unit also carries `AutoUpdate=registry`, which lets
-`podman auto-update` pull the same tag again and restart the unit when
-the registry serves a different image under it, for instance a
-republished build of the same version. It never moves to another
-version. To run it daily:
+Following a minor line (`0.6`) with `AutoUpdate=registry` would give
+patch updates without an edit, but needs the registry to publish that
+tag; it does not today.
+
+To run auto-update daily (first way):
 
 ```bash
 sudo systemctl enable --now podman-auto-update.timer   # rootful

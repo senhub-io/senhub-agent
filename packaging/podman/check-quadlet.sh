@@ -87,18 +87,31 @@ run_case() {
   expect "$name" '--env-file'
   expect "$name" 'senhub-agent-state:/var/lib/senhub-agent'
   expect "$name" 'senhub-agent-config:/etc/senhub-agent'
-  expect "$name" '8080:8080'
   expect "$name" '--health-cmd'
   expect "$name" '--health-on-failure kill'
   expect "$name" 'ghcr.io/senhub-io/senhub-agent:'
   expect "$name" '^Restart=always'
   expect "$name" '^TimeoutStartSec=900'
+  case "$name" in
+    container-scope)
+      expect "$name" '8080:8080'
+      if grep -q -- '--network host\|--net=host\|--network=host\|--pid' "$work/out"; then
+        fail "$name: host namespaces are still there"
+      fi
+      ;;
+    *)
+      expect "$name" '--network[= ]host'
+      expect "$name" '--pid[= ]host'
+      expect "$name" ':/host:ro,rslave\|/:/host'
+      expect "$name" 'SENHUB_HOST_ROOT=/host'
+      expect "$name" 'type=env,target=OTLP_BEARER_TOKEN'
+      ;;
+  esac
   if [ "$name" = optional ]; then
-    expect "$name" 'type=env,target=OTLP_BEARER_TOKEN'
     expect "$name" 'type=env,target=SENHUB_LICENSE'
     expect "$name" 'type=env,target=SENHUB_AZURE_CLIENT_SECRET'
     expect "$name" '/etc/senhub-agent/probes.d:Z,U'
-    expect "$name" '--hostname'
+    expect "$name" 'label[= ]disable\|label=disable'
   fi
   echo "ok: $name ($mode)"
 }
@@ -114,10 +127,20 @@ done
 # Every commented Secret=, Volume= and HostName= line turned on.
 sed -e 's/^#\(Secret=\)/\1/' \
     -e 's/^#\(Volume=\)/\1/' \
-    -e 's/^#\(HostName=\)/\1/' \
+    -e 's/^#\(SecurityLabelDisable=\)/\1/' \
     "$here/senhub-agent.container" > "$work/units/senhub-agent.container"
 for mode in rootful rootless; do
   run_case optional "$mode"
+done
+
+# Container scope: the host block removed, the port published, the host
+# name set.
+sed -e '/^# >>> host scope/,/^# <<< host scope/d' \
+    -e 's/^#\(PublishPort=\)/\1/' \
+    -e 's/^#\(HostName=\)/\1/' \
+    "$here/senhub-agent.container" > "$work/units/senhub-agent.container"
+for mode in rootful rootless; do
+  run_case container-scope "$mode"
 done
 
 # Control: the same generator must refuse a key it does not know, or the
