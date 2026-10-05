@@ -63,6 +63,9 @@ func TestEveryTemplateImportsIntoALiveZabbix(t *testing.T) {
 		"items":           map[string]bool{"createMissing": true, "updateExisting": true},
 		"discoveryRules":  map[string]bool{"createMissing": true, "updateExisting": true},
 		"valueMaps":       map[string]bool{"createMissing": true, "updateExisting": true},
+		"graphs":          map[string]bool{"createMissing": true, "updateExisting": true},
+		// Named templateDashboards on every server line since 5.4.
+		"templateDashboards": map[string]bool{"createMissing": true, "updateExisting": true},
 	}
 	imported := 0
 	for _, probe := range names {

@@ -298,5 +298,15 @@
     "otel_name": "system.processes.count",
     "type": "gauge",
     "unit": "{process}"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "system_uptime",
+    "otel_name": "system.uptime",
+    "type": "gauge",
+    "unit": "s"
   }
 ]
