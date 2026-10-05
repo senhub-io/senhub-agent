@@ -114,6 +114,13 @@ Changes land here as they are merged to `dev`.
 
 ## Fixes
 
+- **A per-module debug level now writes debug lines.** Raising one module
+  (for example `probe.ibmi`) to `debug` through the log-level API or the
+  console answered `200` but wrote nothing, because the production logger
+  kept a global `info` floor. The module now logs at debug while every other
+  module stays at `info`. The setting is kept in memory: it survives a
+  configuration reload and is lost on an agent restart (see
+  [Troubleshooting](../troubleshooting.md)).
 - **Oracle 23ai: login with a password longer than 30 characters.** The
   `oracle` probe could not log in to Oracle Database 23ai with a password of
   more than 30 characters: every cycle reported `senhub.db.up = 0` with
