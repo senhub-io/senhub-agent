@@ -3,12 +3,14 @@ friendly_name: "Windows Services"
 version: "1.0.0"
 host_level: true
 universal: true
-multi_instance_labels: ["windows.service.name"]
 
 # Free host-local probe: Windows service state via the SCM API.
 # One instance per service name (windows.service.name tag).
 # windows.service.state is a binary running/not-running gauge (1/0).
 # windows.service.status carries the raw SCM numeric state (1-7).
+# windows.service.start_type carries how the service is configured to start.
+# The dimension is declared on the per-service metrics only: senhub.winservices.up
+# is the probe's own heartbeat and carries no service name.
 
 metrics:
   - name: "senhub.winservices.up"
@@ -28,6 +30,7 @@ metrics:
     channel: "windows_service_{windows.service.name}_state"
     display_name: "Service {windows.service.name} Running"
     unit: "#"
+    multi_instance_labels: ["windows.service.name"]
     category: "service"
     description: "1 when the service is in the Running state, 0 otherwise"
     otel:
@@ -42,7 +45,9 @@ metrics:
     channel: "windows_service_{windows.service.name}_status"
     display_name: "Service {windows.service.name} Status"
     unit: "#"
+    multi_instance_labels: ["windows.service.name"]
     category: "service"
+    lookup: "windows.service.status"
     description: "Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused"
     otel:
       name: windows.service.status
@@ -50,3 +55,41 @@ metrics:
       type: gauge
     tag_to_attribute:
       windows.service.name: windows.service.name
+
+  - name: "windows.service.start_type"
+    platforms: ["windows"]
+    channel: "windows_service_{windows.service.name}_start_type"
+    display_name: "Service {windows.service.name} Start Type"
+    unit: "#"
+    multi_instance_labels: ["windows.service.name"]
+    category: "service"
+    prtg_skip: true
+    lookup: "windows.service.start_type"
+    description: "How the service is configured to start: 0=boot 1=system 2=automatic 3=manual 4=disabled 5=automatic (delayed start)"
+    otel:
+      name: windows.service.start_type
+      unit: "{type}"
+      type: gauge
+    tag_to_attribute:
+      windows.service.name: windows.service.name
+
+# Windows runs some services only when something asks for them, and keeps
+# per-session copies of others whose names change at every logon; those
+# stay out of discovery by default.
+discovery_filters:
+  - label: "windows.service.name"
+    match_macro: "{$SENHUB.WINSERVICES.MATCHES}"
+    exclude_macro: "{$SENHUB.WINSERVICES.NOT_MATCHES}"
+    exclude_default: "^(sppsvc|clr_optimization_.*|gupdate|gupdatem|edgeupdate|edgeupdatem|MapsBroker|TrustedInstaller|RemoteRegistry|.*_[0-9a-f]{4,8})$"
+    description: "Service short names"
+
+triggers:
+  - name: "Service {#WINDOWS_SERVICE_NAME} is set to start automatically and is not running"
+    expression: "max({{windows.service.state}},{$SENHUB.WINSERVICES.GRACE})=0 and (last({{windows.service.start_type}})=2 or last({{windows.service.start_type}})=5)"
+    priority: AVERAGE
+    scope: availability
+    description: "Raised when a service configured to start automatically (delayed or not) has not been running for the whole grace period. Services Windows starts on demand, or per session, are kept out of discovery by {$SENHUB.WINSERVICES.NOT_MATCHES}."
+    macros:
+      - name: "{$SENHUB.WINSERVICES.GRACE}"
+        value: "5m"
+        description: "How long an automatic service must have been stopped before it raises a problem; covers a restart and the delayed start after a boot"

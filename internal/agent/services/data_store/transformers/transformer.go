@@ -216,6 +216,50 @@ type ProbeDefinition struct {
 	// metrics of one discovery rule, so the names list the ones to plot
 	// together; a name the platform does not produce is skipped.
 	Graphs []GraphDefinition `yaml:"graphs,omitempty"`
+
+	// Triggers declares the problems a sink that raises them (the Zabbix
+	// templates) derives from this probe's metrics, beyond the one
+	// threshold pair a single metric can carry.
+	Triggers []TriggerDefinition `yaml:"triggers,omitempty"`
+
+	// DiscoveryFilters lets an operator include or exclude the instances
+	// of a dimension from discovery, through user macros.
+	DiscoveryFilters []DiscoveryFilter `yaml:"discovery_filters,omitempty"`
+}
+
+// TriggerDefinition is a problem over one or more metrics of the same
+// instance. The expression is written in the Zabbix trigger language
+// with each item reference replaced by the metric's `name` in double
+// braces: `min({{cpu_queue_length}},5m)>{$SENHUB.CPU_QUEUE.MAX}`. The
+// metrics must all share one dimension set; a trigger whose metrics the
+// platform does not produce is left out.
+type TriggerDefinition struct {
+	Name        string            `yaml:"name"`
+	Expression  string            `yaml:"expression"`
+	Priority    string            `yaml:"priority,omitempty"` // INFO, WARNING, AVERAGE, HIGH, DISASTER; WARNING by default
+	Scope       string            `yaml:"scope,omitempty"`    // availability, performance, capacity, ...
+	Description string            `yaml:"description,omitempty"`
+	Macros      []MacroDefinition `yaml:"macros,omitempty"`
+}
+
+// MacroDefinition is a user macro with the value a template ships.
+type MacroDefinition struct {
+	Name        string `yaml:"name"` // {$SENHUB.X}
+	Value       string `yaml:"value"`
+	Description string `yaml:"description,omitempty"`
+}
+
+// DiscoveryFilter holds the instances of one dimension to a pattern:
+// those whose value matches Match and does not match Exclude. Both are
+// user macros holding regular expressions, so a site changes them per
+// host. Match defaults to everything, Exclude to what the definition
+// names.
+type DiscoveryFilter struct {
+	Label          string `yaml:"label"`
+	MatchMacro     string `yaml:"match_macro"`
+	ExcludeMacro   string `yaml:"exclude_macro"`
+	ExcludeDefault string `yaml:"exclude_default"`
+	Description    string `yaml:"description,omitempty"`
 }
 
 // GraphDefinition is one chart over metrics of a probe, by the metric's

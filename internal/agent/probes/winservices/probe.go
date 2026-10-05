@@ -48,10 +48,26 @@ const (
 	statePaused          = 7
 )
 
+// Start types as the Service Control Manager configures them, with one
+// addition: an automatic service that starts after the others is reported
+// as startAutomaticDelayed, since the delay is a separate flag in the SCM
+// and an operator reads "automatic, delayed" as one setting.
+const (
+	startBoot             = 0
+	startSystem           = 1
+	startAutomatic        = 2
+	startManual           = 3
+	startDisabled         = 4
+	startAutomaticDelayed = 5
+)
+
 // serviceState is one service's name and SCM state at a point in time.
+// startType is -1 when the configuration could not be read, which leaves
+// the start type unreported rather than guessed.
 type serviceState struct {
-	name  string
-	state int
+	name      string
+	state     int
+	startType int
 }
 
 // collectFunc returns the current state of the selected services. The real
@@ -208,10 +224,14 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time) 
 	if s.state == stateRunning {
 		running = 1
 	}
-	return []data_store.DataPoint{
+	points := []data_store.DataPoint{
 		{Name: "windows.service.state", Value: running, Timestamp: ts, Tags: serviceTags},
 		{Name: "windows.service.status", Value: float64(s.state), Timestamp: ts, Tags: serviceTags},
 	}
+	if s.startType >= 0 {
+		points = append(points, data_store.DataPoint{Name: "windows.service.start_type", Value: float64(s.startType), Timestamp: ts, Tags: serviceTags})
+	}
+	return points
 }
 
 func statusTags() []tags.Tag {
