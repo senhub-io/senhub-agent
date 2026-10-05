@@ -103,6 +103,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"psu_name", "psu_id",
 		"processor_id",
 		"memory_module_id",
+		// The probe tags a DIMM memory_id, not memory_module_id: without
+		// it every module of a machine landed on one slot. A cache level
+		// splits one processor's cache series; adapter and port names
+		// split a machine's network series; a chassis, a storage
+		// subsystem and an event-log service each carry their own
+		// readings, under a manager the log service belongs to.
+		"memory_id", "cache_level",
+		"adapter_name", "port_name",
+		"chassis_id", "storage_id",
+		"manager_id", "log_service_id",
 		"fan_name", "sensor_name",
 		// The machine a series came from. One agent polls several
 		// service processors, and every one of them numbers its drives
