@@ -6,7 +6,7 @@ config_version: 2
 
 # Agent configuration
 agent:
-  key: "test-agent-free-tier-12345"
+  key: "00000000-0000-4000-8000-000000000000"
   mode: offline
   generated: false
   # license: ""  # No license = free tier
@@ -14,7 +14,7 @@ agent:
 # Auto-update configuration
 auto_update:
   enabled: false
-  url: "https://eu-west-1.intake.senhub.io/releases"
+  url: "https://eu-west-1.intake.senhub.io"
 
 # Cache configuration
 cache:

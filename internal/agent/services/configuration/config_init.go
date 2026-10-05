@@ -198,14 +198,22 @@ func setTagsField(m *yaml.Node, key string, tags map[string]string) {
 // any other value is rejected so a typo fails the install rather than shipping
 // a config that only errors at first export.
 func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
+	_, err := EnsureOTLPStrategyFragment(configDir, endpoint, protocol)
+	return err
+}
+
+// EnsureOTLPStrategyFragment is WriteOTLPStrategyFragment reporting whether
+// it wrote the fragment: false when there was nothing to provision or the
+// operator's fragment is already there.
+func EnsureOTLPStrategyFragment(configDir, endpoint, protocol string) (written bool, err error) {
 	if endpoint == "" {
-		return nil
+		return false, nil
 	}
 	if protocol == "" {
 		protocol = "grpc"
 	}
 	if protocol != "grpc" && protocol != "http" {
-		return fmt.Errorf("otlp protocol must be grpc or http, got %q", protocol)
+		return false, fmt.Errorf("otlp protocol must be grpc or http, got %q", protocol)
 	}
 	// Defense-in-depth against YAML injection via the endpoint (audit M3):
 	// the endpoint is concatenated into the fragment, so reject whitespace,
@@ -215,15 +223,15 @@ func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
 	if strings.IndexFunc(endpoint, func(r rune) bool {
 		return r <= ' ' || r == '#' || r == '{' || r == '}' || r == '"' || r == '\''
 	}) >= 0 {
-		return fmt.Errorf("otlp endpoint %q contains whitespace or an invalid character; expected host:port", endpoint)
+		return false, fmt.Errorf("otlp endpoint %q contains whitespace or an invalid character; expected host:port", endpoint)
 	}
 	dir := filepath.Join(configDir, "strategies.d")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("creating %s: %w", dir, err)
+		return false, fmt.Errorf("creating %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, "10-otlp.yaml")
 	if _, err := os.Stat(path); err == nil {
-		return nil // already present, leave operator's fragment untouched
+		return false, nil // already present, leave operator's fragment untouched
 	}
 	body := "# SenHub Agent — OTLP export strategy (provisioned by 'config init').\n" +
 		"# Pushes metrics and logs to an OpenTelemetry collector (or an\n" +
@@ -232,9 +240,9 @@ func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
 		"  endpoint: " + endpoint + "\n" +
 		"  protocol: " + protocol + "\n"
 	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
+		return false, fmt.Errorf("writing %s: %w", path, err)
 	}
-	return nil
+	return true, nil
 }
 
 // badZabbixRune reports a character that has no place in a Zabbix server
@@ -276,19 +284,26 @@ func ValidateZabbixInstallArgs(server, metadata string) error {
 // separates installing the agent from the host appearing in Zabbix. It is
 // idempotent and never overwrites an existing fragment.
 func WriteZabbixStrategyFragment(configDir, server, metadata string) error {
+	_, err := EnsureZabbixStrategyFragment(configDir, server, metadata)
+	return err
+}
+
+// EnsureZabbixStrategyFragment is WriteZabbixStrategyFragment reporting
+// whether it wrote the fragment.
+func EnsureZabbixStrategyFragment(configDir, server, metadata string) (written bool, err error) {
 	if server == "" {
-		return nil
+		return false, nil
 	}
 	if err := ValidateZabbixInstallArgs(server, metadata); err != nil {
-		return err
+		return false, err
 	}
 	dir := filepath.Join(configDir, "strategies.d")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("creating %s: %w", dir, err)
+		return false, fmt.Errorf("creating %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, "20-zabbix.yaml")
 	if _, err := os.Stat(path); err == nil {
-		return nil
+		return false, nil
 	}
 	body := "# SenHub Agent — Zabbix output (provisioned by 'config init').\n" +
 		"# Registers this host by autoregistration and pushes its values as an\n" +
@@ -299,9 +314,9 @@ func WriteZabbixStrategyFragment(configDir, server, metadata string) error {
 		body += "  host_metadata: \"" + metadata + "\"\n"
 	}
 	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
+		return false, fmt.Errorf("writing %s: %w", path, err)
 	}
-	return nil
+	return true, nil
 }
 
 func marshalDocument(doc *yaml.Node) ([]byte, error) {

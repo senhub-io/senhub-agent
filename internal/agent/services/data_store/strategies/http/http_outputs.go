@@ -422,21 +422,7 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
-	var steps []otlp.ConnectionStep
-	switch req.Type {
-	case "otlp":
-		steps = otlp.ProbeConnection(ctx, req.Params, guardedDialer(timeout).DialContext)
-	case "prtg", "event":
-		steps = probeHTTPTarget(ctx, req.Type, req.Params, timeout)
-	case "senhub":
-		steps = probeSenhubIntake(ctx, cliArgs.ProductionURL, h.agentConfig.GetAuthenticationKey(), timeout)
-	case "zabbix":
-		steps = dialZabbixServers(ctx, req.Params, timeout)
-	case "http":
-		steps = []otlp.ConnectionStep{{Name: "listen", Passed: true, Detail: fmt.Sprintf("this console answers on port %d", h.configManager.GetPort())}}
-	default:
-		steps = []otlp.ConnectionStep{{Name: "test", Passed: false, Error: fmt.Sprintf("no connection test for output %q", req.Type)}}
-	}
+	steps := RunOutputConnectionTest(ctx, req.Type, req.Params, timeout, h.agentConfig.GetAuthenticationKey(), h.configManager.GetPort())
 	resp := outputTestResponse{Valid: true, Steps: steps, Duration: time.Since(start).Milliseconds()}
 	for _, s := range steps {
 		if !s.Passed {
@@ -445,6 +431,28 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// RunOutputConnectionTest reaches one output the way the console's test
+// does, saving and sending nothing, and returns the steps with the one
+// that failed. params must already be resolved (substitutions and
+// secrets); agentKey feeds the senhub intake check and consolePort the
+// answer for the http output. It needs no running agent.
+func RunOutputConnectionTest(ctx context.Context, outputType string, params map[string]interface{}, timeout time.Duration, agentKey string, consolePort int) []otlp.ConnectionStep {
+	switch outputType {
+	case "otlp":
+		return otlp.ProbeConnection(ctx, params, guardedDialer(timeout).DialContext)
+	case "prtg", "event":
+		return probeHTTPTarget(ctx, outputType, params, timeout)
+	case "senhub":
+		return probeSenhubIntake(ctx, cliArgs.ProductionURL, agentKey, timeout)
+	case "zabbix":
+		return dialZabbixServers(ctx, params, timeout)
+	case "http":
+		return []otlp.ConnectionStep{{Name: "listen", Passed: true, Detail: fmt.Sprintf("this console answers on port %d", consolePort)}}
+	default:
+		return []otlp.ConnectionStep{{Name: "test", Passed: false, Error: fmt.Sprintf("no connection test for output %q", outputType)}}
+	}
 }
 
 // probeHTTPTarget resolves and reaches the server_url of a push output

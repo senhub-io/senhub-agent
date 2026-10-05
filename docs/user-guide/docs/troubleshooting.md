@@ -1,5 +1,9 @@
 # Troubleshooting
 
+## Diagnosing in One Pass
+
+Before reading logs, run `senhub-agent doctor`. It checks the install, the configuration, the outputs, the probes and the host, and prints the command that fixes each problem it finds. It needs no root and works with the service stopped. See [Doctor](cli.md#doctor).
+
 ## Checking Agent Status
 
 Use the built-in status command to get a comprehensive overview of the agent:
