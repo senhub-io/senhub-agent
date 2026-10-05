@@ -522,6 +522,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// landed on one slot and every one but the last was dropped.
 		"user_class",
 		"sysval",
+		// special_auth is what user_profile.count_by_special_auth splits
+		// on; query_type separates the queries one job runs.
+		"special_auth", "query_type",
 		"library",
 		"product_id", "feature_id",
 		// Network (netstat_listener, netstat_interface,
