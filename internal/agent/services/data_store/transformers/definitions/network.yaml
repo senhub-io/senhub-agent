@@ -203,3 +203,23 @@ graphs:
     series: [errors_sent, errors_received]
   - name: "Network discards"
     series: [discards_sent, discards_received]
+
+triggers:
+  - name: "Interface errors are above {$SENHUB.NET_ERRORS.MAX} per second"
+    expression: "min({{errors_sent|errors_received}},5m)>{$SENHUB.NET_ERRORS.MAX}"
+    priority: WARNING
+    scope: performance
+    description: "Packets per second that failed on the interface, in either direction, over every value of the last 5 minutes."
+    macros:
+      - name: "{$SENHUB.NET_ERRORS.MAX}"
+        value: "2"
+        description: "Interface errors per second above which a problem is raised"
+  - name: "Interface discards are above {$SENHUB.NET_DISCARDS.MAX} per second"
+    expression: "min({{discards_sent|discards_received}},5m)>{$SENHUB.NET_DISCARDS.MAX}"
+    priority: WARNING
+    scope: performance
+    description: "Packets per second dropped without an error, in either direction, over every value of the last 5 minutes."
+    macros:
+      - name: "{$SENHUB.NET_DISCARDS.MAX}"
+        value: "10"
+        description: "Interface discards per second above which a problem is raised"

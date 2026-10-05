@@ -357,3 +357,14 @@ graphs:
     series: [memory_page_faults]
   - name: "Memory pages"
     series: [memory_pages_input, memory_pages_output]
+
+triggers:
+  - name: "Paging file usage is above {$SENHUB.PAGING_USED_PERCENT.WARN}%"
+    expression: "min({{swap_used_percent|pagefile_usage}},5m)>{$SENHUB.PAGING_USED_PERCENT.WARN}"
+    priority: WARNING
+    scope: capacity
+    description: "Swap (Linux) or pagefile (Windows) usage, over every value of the last 5 minutes."
+    macros:
+      - name: "{$SENHUB.PAGING_USED_PERCENT.WARN}"
+        value: "80"
+        description: "Swap or pagefile usage, in percent, above which a problem is raised"

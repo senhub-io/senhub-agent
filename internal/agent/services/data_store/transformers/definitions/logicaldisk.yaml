@@ -485,3 +485,32 @@ graphs:
     series: [diskio_busy_seconds]
   - name: "Disk queue length"
     series: [disk_queue_length]
+
+triggers:
+  - name: "Disk queue length is above {$SENHUB.DISK_QUEUE.MAX}"
+    expression: "min({{disk_queue_length}},5m)>{$SENHUB.DISK_QUEUE.MAX}"
+    priority: WARNING
+    scope: performance
+    description: "Requests waiting for the drive, over every value of the last 5 minutes (Windows)."
+    macros:
+      - name: "{$SENHUB.DISK_QUEUE.MAX}"
+        value: "5"
+        description: "Average disk queue length above which a problem is raised"
+  - name: "Disk is busy more than {$SENHUB.DISK_BUSY.MAX} of the time"
+    expression: "min({{diskio_busy_seconds}},5m)>{$SENHUB.DISK_BUSY.MAX}"
+    priority: WARNING
+    scope: performance
+    description: "Fraction of time the device had I/O in flight, over every value of the last 5 minutes (Linux)."
+    macros:
+      - name: "{$SENHUB.DISK_BUSY.MAX}"
+        value: "0.9"
+        description: "Fraction of time a device is busy (1 is always) above which a problem is raised"
+  - name: "Inodes used is above {$SENHUB.FS_INODES_USED_PERCENT.WARN}%"
+    expression: "min({{fs_inodes_used_percent}},5m)>{$SENHUB.FS_INODES_USED_PERCENT.WARN}"
+    priority: WARNING
+    scope: capacity
+    description: "A filesystem out of inodes refuses new files whatever space is free (Linux)."
+    macros:
+      - name: "{$SENHUB.FS_INODES_USED_PERCENT.WARN}"
+        value: "90"
+        description: "Inode usage, in percent, above which a problem is raised"

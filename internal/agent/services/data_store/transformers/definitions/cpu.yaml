@@ -430,6 +430,22 @@ metrics:
       unit: s
       type: gauge
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Time since boot (OTel system.uptime). A restart shows as the value
+  # dropping; the Zabbix template raises a problem while it is recent.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "system_uptime"
+    channel: "system_uptime"
+    display_name: "Host Uptime"
+    unit: "s"
+    category: "system"
+    prtg_skip: true
+    description: "Time since the host booted, in seconds"
+    otel:
+      name: system.uptime
+      unit: s
+      type: gauge
+
 tag_metadata:
   core:
     type: resource
@@ -464,3 +480,32 @@ graphs:
     series: [cpu_queue_length]
   - name: "CPU interrupts and context switches"
     series: [cpu_interrupts, cpu_context_switches]
+
+triggers:
+  - name: "CPU run queue is above {$SENHUB.CPU_QUEUE.PER_CORE} per processor"
+    expression: "min({{cpu_queue_length}},5m)>{$SENHUB.CPU_QUEUE.PER_CORE}*last({{cpu_count}})"
+    priority: WARNING
+    scope: performance
+    description: "Threads waiting for a processor, over every value of the last 5 minutes, relative to the number of logical processors."
+    macros:
+      - name: "{$SENHUB.CPU_QUEUE.PER_CORE}"
+        value: "3"
+        description: "Processor queue length per logical processor above which a problem is raised (Windows)"
+  - name: "CPU load average is above {$SENHUB.CPU_LOAD.PER_CORE} per processor"
+    expression: "min({{cpu_load5}},5m)>{$SENHUB.CPU_LOAD.PER_CORE}*last({{cpu_count}})"
+    priority: WARNING
+    scope: performance
+    description: "The 5 minute load average, over every value of the last 5 minutes, relative to the number of logical processors."
+    macros:
+      - name: "{$SENHUB.CPU_LOAD.PER_CORE}"
+        value: "1.5"
+        description: "Load average per logical processor above which a problem is raised (Linux)"
+  - name: "Host was restarted (uptime below {$SENHUB.UPTIME.RESTART_WINDOW})"
+    expression: "last({{system_uptime}})<{$SENHUB.UPTIME.RESTART_WINDOW}"
+    priority: WARNING
+    scope: availability
+    description: "Raised while the time since boot is shorter than the window, so a reboot is seen even when the host was back before the next poll missed it."
+    macros:
+      - name: "{$SENHUB.UPTIME.RESTART_WINDOW}"
+        value: "10m"
+        description: "How long after a boot the restart problem stays open"
