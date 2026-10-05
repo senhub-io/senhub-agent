@@ -229,7 +229,7 @@ metrics:
     description: "CRC32 of the content of /etc/passwd, as a number. It changes whenever the file changes, so a server that alerts on a change of value sees an account added, removed or edited; it is not a cryptographic hash and does not say what changed"
     otel:
       name: senhub.system.passwd.checksum
-      unit: "1"
+      unit: "{checksum}"
       type: gauge
 
   - name: "passwd_modified_time"
