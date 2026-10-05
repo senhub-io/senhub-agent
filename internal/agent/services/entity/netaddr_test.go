@@ -45,6 +45,9 @@ func TestIsContainerBridgeIface(t *testing.T) {
 		"cni0":            true,
 		"flannel.1":       true,
 		"lxcbr0":          true,
+		"veth3a9f1c2":     true,
+		"cilium_host":     true,
+		"vEthernet (WSL)": false, // Windows names are matched by the route table, not by prefix
 		// Real, routed interfaces must NOT match.
 		"eth0":    false,
 		"ens3":    false,

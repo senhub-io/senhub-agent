@@ -164,32 +164,98 @@ func TestObserve_InjectedReader(t *testing.T) {
 	}
 }
 
-// next_hop_via is decided by the gateway address alone: a gateway reached by a
-// Windows adapter, a Kubernetes node's CNI bridge or a user-defined bridge keeps
-// its edge, while the exclusion list (wildcard, loopback, link-local, 172.17/16)
-// never gets one, whatever the interface.
-func TestBuildObservation_NextHopViaDependsOnTheAddressAlone(t *testing.T) {
-	obs := buildObservation("h1", []hostRoute{
-		{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Iface: "Ethernet 2"},
-		{Destination: "10.1.0.0/16", NextHop: "10.244.1.1", Iface: "cni0"},
-		{Destination: "10.2.0.0/16", NextHop: "172.18.0.1", Iface: "br-02338442b035"},
-		{Destination: "10.3.0.0/16", NextHop: "172.17.0.1", Iface: "eth0"},
-		{Destination: "10.4.0.0/16", NextHop: "169.254.1.1", Iface: "eth0"},
-		{Destination: "10.5.0.0/16", NextHop: "127.0.0.2", Iface: "eth0"},
-	})
+func nextHopViaTargets(obs entity.Observation) map[string]bool {
 	got := map[string]bool{}
 	for _, r := range obs.Relations {
 		if r.Type == relNextHopVia {
 			got[r.ToID[idKeyNetworkAddress].(string)] = true
 		}
 	}
-	for _, want := range []string{"10.10.0.1", "10.244.1.1", "172.18.0.1"} {
-		if !got[want] {
-			t.Errorf("missing next_hop_via to %s (have %v)", want, got)
+	return got
+}
+
+// next_hop_via needs both rules: the gateway address is not in the exclusion
+// list AND the route does not leave by a container bridge. In doubt, no edge.
+func TestBuildObservation_NextHopViaNeedsAddressAndInterfaceToAgree(t *testing.T) {
+	obs := buildObservation("h1", []hostRoute{
+		{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Iface: "eth0"},
+		{Destination: "10.2.0.0/16", NextHop: "172.18.0.1", Iface: "br-02338442b035"},
+		{Destination: "10.3.0.0/16", NextHop: "172.17.0.1", Iface: "eth0"},
+		{Destination: "10.4.0.0/16", NextHop: "169.254.1.1", Iface: "eth0"},
+		{Destination: "10.5.0.0/16", NextHop: "127.0.0.2", Iface: "eth0"},
+		{Destination: "10.6.0.0/16", NextHop: "10.10.0.9", Iface: "veth3a9f1c2"},
+	})
+	got := nextHopViaTargets(obs)
+	if len(got) != 1 || !got["10.10.0.1"] {
+		t.Errorf("only the routed gateway keeps its edge, got %v", got)
+	}
+}
+
+// A k3s node as /proc/net/route shows it: the default route through the
+// physical NIC, flannel pod routes toward the other nodes, the node's own pod
+// network on cni0 (direct, no gateway) and a Calico-style 169.254.1.1 default.
+const k3sNodeRoutes = `Iface	Destination	Gateway	Flags	RefCnt	Use	Metric	Mask	MTU	Window	IRTT
+ens18	00000000	0101A8C0	0003	0	0	100	00000000	0	0	0
+ens18	0001A8C0	00000000	0001	0	0	100	00FFFFFF	0	0	0
+cni0	00002A0A	00000000	0001	0	0	0	00FFFFFF	0	0	0
+flannel.1	00012A0A	00012A0A	0003	0	0	0	00FFFFFF	0	0	0
+flannel.1	00022A0A	00022A0A	0003	0	0	0	00FFFFFF	0	0	0
+eth0	00000000	0101FEA9	0003	0	0	200	00000000	0	0	0
+`
+
+// The node's default route through its physical NIC was already given its
+// next_hop_via before the interface rule was touched: the edges that were
+// missing on a Kubernetes node are the pod and bridge routes, and their absence
+// is correct.
+func TestBuildObservation_K3sNodeKeepsItsDefaultRouteEdge(t *testing.T) {
+	routes := parseProcRoute([]byte(k3sNodeRoutes))
+	obs := buildObservation("node-1", routes)
+
+	got := nextHopViaTargets(obs)
+	if len(got) != 1 || !got["192.168.1.1"] {
+		t.Errorf("want next_hop_via to the LAN gateway only, got %v", got)
+	}
+	var def bool
+	for _, r := range obs.Relations {
+		if r.Type == relNextHopVia && r.FromID[idKeyRouteDestination] == "0.0.0.0/0" &&
+			r.FromID[idKeyNextHopIP] == "192.168.1.1" {
+			def = true
 		}
 	}
-	if len(got) != 3 {
-		t.Errorf("excluded gateways must carry no next_hop_via, got %v", got)
+	if !def {
+		t.Error("the default route through ens18 has no next_hop_via")
+	}
+	// The flannel pod routes and the 169.254.1.1 default are routes too, with
+	// their next hop as an attribute of the identity but no shared node.
+	routesEmitted := 0
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkRoute {
+			routesEmitted++
+		}
+	}
+	if routesEmitted != 4 {
+		t.Errorf("routes emitted = %d, want 4 (default, 2 flannel, calico default)", routesEmitted)
+	}
+}
+
+// A Windows table as GetIpForwardTable lists it: the default route and a LAN
+// route through "Ethernet", plus routes through the Hyper-V virtual switches.
+func TestBuildObservation_WindowsDefaultRouteKeepsItsEdge(t *testing.T) {
+	obs := buildObservation("win-1", []hostRoute{
+		{Destination: "0.0.0.0/0", NextHop: "10.10.0.1", Metric: 25, Iface: "Ethernet"},
+		{Destination: "10.20.0.0/16", NextHop: "10.10.0.254", Metric: 281, Iface: "Ethernet"},
+		{Destination: "172.28.0.0/20", NextHop: "172.28.0.1", Metric: 5256, Iface: "vEthernet (WSL)"},
+		{Destination: "172.29.0.0/20", NextHop: "172.29.0.1", Metric: 5256, Iface: "vEthernet (Default Switch)"},
+	})
+	got := nextHopViaTargets(obs)
+	if !got["10.10.0.1"] || !got["10.10.0.254"] {
+		t.Errorf("routes through Ethernet lose their edge: %v", got)
+	}
+	// vEthernet adapters are not container-bridge names by prefix, so their
+	// routes keep an edge to a routable gateway (172.17/16 stays excluded by
+	// address): the filter acts on Linux bridge names only.
+	if !got["172.28.0.1"] || !got["172.29.0.1"] {
+		t.Errorf("vEthernet gateways: %v", got)
 	}
 }
 
