@@ -33,7 +33,16 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if .Values.hostMonitoring.enabled }}
+      # The node's PID and network namespaces: processes, interfaces and
+      # their counters are the node's. The node's root filesystem is
+      # mounted below for the disks.
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- else }}
       hostname: {{ include "senhub-agent.hostname" . }}
+      {{- end }}
       serviceAccountName: {{ include "senhub-agent.serviceAccountName" . }}
       automountServiceAccountToken: {{ include "senhub-agent.automountToken" . }}
       # Service links would put <SERVICE>_PORT variables in the agent's
@@ -87,7 +96,15 @@ spec:
         - name: agent
           image: {{ include "senhub-agent.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["run"]
+          args:
+            - run
+            {{- if eq .Values.logLevel "debug" }}
+            - --verbose
+            {{- with .Values.logFilter }}
+            - --filter
+            - {{ . | quote }}
+            {{- end }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.http.port }}
@@ -105,6 +122,19 @@ spec:
                 secretKeyRef:
                   name: {{ include "senhub-agent.identitySecretName" . }}
                   key: agent-key
+            {{- if .Values.hostMonitoring.enabled }}
+            - name: SENHUB_HOST_ROOT
+              value: {{ .Values.hostMonitoring.hostRoot | quote }}
+            # gopsutil's own variables: the node's OS release, boot time
+            # and sessions are read under the host root. /proc and /sys
+            # are already the node's with hostPID and hostNetwork.
+            - name: HOST_ETC
+              value: {{ printf "%s/etc" .Values.hostMonitoring.hostRoot | quote }}
+            - name: HOST_VAR
+              value: {{ printf "%s/var" .Values.hostMonitoring.hostRoot | quote }}
+            - name: HOST_RUN
+              value: {{ printf "%s/run" .Values.hostMonitoring.hostRoot | quote }}
+            {{- end }}
             - name: SENHUB_HTTP_PORT
               value: {{ .Values.http.port | quote }}
             - name: SENHUB_HTTP_BIND
@@ -158,6 +188,15 @@ spec:
               mountPath: /etc/machine-id
               subPath: machine-id
               readOnly: true
+            {{- if .Values.hostMonitoring.enabled }}
+            # HostToContainer: the node's submounts (/var, /boot, data
+            # disks) appear under the host root, which is how the disk
+            # probe finds them.
+            - name: host-root
+              mountPath: {{ .Values.hostMonitoring.hostRoot }}
+              readOnly: true
+              mountPropagation: HostToContainer
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -187,6 +226,12 @@ spec:
             items:
               - key: host-id
                 path: machine-id
+        {{- if .Values.hostMonitoring.enabled }}
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
