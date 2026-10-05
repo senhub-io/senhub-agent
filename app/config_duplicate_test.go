@@ -1,6 +1,7 @@
 package app
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestFiletailOverlaps(t *testing.T) {
 		{Name: "not-filetail", Type: "linux_logs", Params: map[string]interface{}{
 			"paths": []interface{}{"/var/log/app.log"}}},
 	}
-	want := []pathOverlap{{path: "/var/log/nginx/access.log", probes: []string{`"nginx-logs"`, `"platform-logs"`}}}
+	want := []pathOverlap{{path: filepath.Clean("/var/log/nginx/access.log"), probes: []string{`"nginx-logs"`, `"platform-logs"`}}}
 	if got := filetailOverlaps(list); !reflect.DeepEqual(got, want) {
 		t.Errorf("filetailOverlaps = %v, want %v", got, want)
 	}
