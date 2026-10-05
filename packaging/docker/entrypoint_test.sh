@@ -230,6 +230,14 @@ otlp_fragment_extras "$frag" 2>/dev/null
 otlp_fragment_extras "$frag" 2>/dev/null
 check "SENHUB_OTLP_TLS=false turns TLS off" "$(grep -c 'enabled: false' "$frag")" "1"
 check "the bearer reference is written once" "$(grep -c 'Authorization' "$frag")" "1"
+# SENHUB_LICENSE_FILE reaches config init as the licence.
+printf 'lic.jwt.value\n' > "$work/licence"
+PATH="$work/bin:$PATH" SENHUB_LICENSE_FILE="$work/licence" init_config >/dev/null 2>&1 || true
+case "$(cat "$work/init-args" 2>/dev/null)" in
+  *"--license lic.jwt.value"*) check "SENHUB_LICENSE_FILE reaches config init" "yes" "yes" ;;
+  *) check "SENHUB_LICENSE_FILE reaches config init" "$(cat "$work/init-args" 2>/dev/null)" "--license lic.jwt.value" ;;
+esac
+
 # The token as a file is referenced, never copied, and read at every start.
 unset OTLP_BEARER_TOKEN
 printf 'abc\n' > "$work/otlp-token"
