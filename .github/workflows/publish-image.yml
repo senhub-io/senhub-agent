@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to package (for example 0.5.5-beta)"
+        description: "Release tag to package (for example 0.6.2-beta.1)"
         required: true
       variant:
         description: "Which build of the release: full (paid probes) or oss"

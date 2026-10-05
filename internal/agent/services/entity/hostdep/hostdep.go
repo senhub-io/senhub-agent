@@ -44,6 +44,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/instanceid"
 )
 
 const (
@@ -372,6 +373,14 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 		case name != "":
 			d.svcID = name + "@" + hostID
 			d.svcName = name
+			// Another agent on this host is the node it reports itself as,
+			// not a second <exe>@host one.
+			if c.Pid != self {
+				if id, ok := instanceid.ResolveForPID(c.Pid, name, agentID); ok {
+					d.svcID = id
+					d.svcName = instanceid.ServiceName
+				}
+			}
 		default:
 			// Cannot name the dependent: do not fabricate a service.instance.
 			// Counted, because the difference between "this host has no

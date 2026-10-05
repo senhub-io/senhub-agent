@@ -122,14 +122,23 @@ fact belongs on an entity.
    TOS and policy, also in the MIB index, are not read: routes differing
    only by them collapse.
    The route carries its egress interface as the descriptive
-   `network.interface.name`. No `network.address` / `next_hop_via` is
-   emitted for a host-local gateway (wildcard, loopback, link-local,
-   172.17/16) nor for a gateway reached through a container bridge
-   (`IsContainerBridgeIface`: `docker*`, `br-*`, `cni*`, `virbr*`, ...);
-   the egress interface is what explains that absence. Known limitation:
-   OpenWrt's routed bridges `br-lan` / `br-wan` match `br-` and lose a
-   legitimately shared gateway. The egress interface is descriptive, not
-   identity: the MIB defines it as a plain column that may be absent.
+   `network.interface.name`. The gateway is a `network.address` identified
+   by the address alone, and `next_hop_via` is emitted only when the
+   address rule and the interface rule both agree: the route must not leave
+   by a container bridge (`IsContainerBridgeIface`: `docker*`, `br-*`,
+   `cni*`, `veth*`, `flannel*`, `cali*`, `cilium*`, ...), whose gateway is
+   reused on every such host. `entity.AddressEdgeAllowed` is the single
+   address rule for every emitter of `next_hop_via` and `bound_to`: no
+   edge to a bare address in
+   0.0.0.0 / `::`, 127.0.0.0/8 / `::1`, 169.254.0.0/16 / `fe80::/10` or
+   172.17.0.0/16 (nor multicast or an unparseable value; a missing edge
+   beats a false one), and the next hop then stays only the host-scoped
+   `next_hop.ip` attribute. Known limitation: OpenWrt's routed bridges
+   `br-lan` / `br-wan` match `br-` and lose a legitimately shared gateway.
+   The egress interface is descriptive, not identity: the MIB defines it
+   as a plain column that may be absent.
+   The prefix is not a route attribute: it lives in the interface's
+   `network.interface.addresses` values (`10.10.0.60/24`).
 5. **SNMP topology MIBs** (with #156) → ports as `network.interface` entities
    (`has_interface`), link adjacency as port-to-port `connected_to`, routing as
    `network.route` + `has_route`, interface IPs as `network.address` entities

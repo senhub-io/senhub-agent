@@ -31,23 +31,13 @@ STATE_DIR="/var/lib/senhub-agent"
 LOG_READER_GROUP="adm"
 
 if ! getent group "${SENHUB_USER}" >/dev/null 2>&1; then
-    if command -v groupadd >/dev/null 2>&1; then
-        groupadd --system "${SENHUB_USER}"
-    else
-        addgroup --system "${SENHUB_USER}"
-    fi
+    groupadd --system "${SENHUB_USER}"
 fi
 
 if ! getent passwd "${SENHUB_USER}" >/dev/null 2>&1; then
-    if command -v useradd >/dev/null 2>&1; then
-        useradd --system --gid "${SENHUB_USER}" \
-            --home-dir "${STATE_DIR}" --no-create-home \
-            --shell /usr/sbin/nologin "${SENHUB_USER}"
-    else
-        adduser --system --ingroup "${SENHUB_USER}" \
-            --home "${STATE_DIR}" --no-create-home \
-            --shell /usr/sbin/nologin "${SENHUB_USER}"
-    fi
+    useradd --system --gid "${SENHUB_USER}" \
+        --home-dir "${STATE_DIR}" --no-create-home \
+        --shell /usr/sbin/nologin "${SENHUB_USER}"
 fi
 
 # System-log read access for the filetail probe (syslog:adm 0640 on
