@@ -798,7 +798,7 @@ Every probe is mapped. Phase 0.5 is complete.
 
 **Strategy:** no canonical OTel convention exists for IBM i — a proprietary OS, not covered by the `opentelemetry-collector-contrib` receivers. The probe therefore namespaces all of its metrics under `senhub.ibmi.*`, on the same model as batch 4 (veeam/citrix/netscaler).
 
-**Naming policy:** `senhub.ibmi.<family>.<measure>`. Families covered: `cpu`, `memory`, `asp`, `disk`, `job`, `jobs`, `job_queue`, `scheduled_job`, `subsystem`, `memory_pool`, `output_queue`, `spooled_file`, `user_storage`, `table`, `index_advisor`, `journal`, `journal_receiver`, `tcp`, `netstat`, `http_server`, `hardware`, `user_profile`, `sysval`, `library_list`, `license`, `ptf_group`, `watch`, `collector`. No unit suffix in the name (`.bytes`, `.seconds`, `.kb`, `.ms`, `.percent`) — the canonical OTel unit lives in `otel.unit`. No `.count` / `.total` suffix either — the `type` (counter vs gauge) carries that.
+**Naming policy:** `senhub.ibmi.<family>.<measure>`. Families covered: `cpu`, `memory`, `asp`, `disk`, `job`, `jobs`, `job_queue`, `scheduled_job`, `subsystem`, `memory_pool`, `output_queue`, `spooled_file`, `user_storage`, `table`, `index_advisor`, `journal`, `journal_receiver`, `tcp`, `netstat`, `http_server`, `hardware`, `user_profile`, `sysval`, `library_list`, `license`, `ptf_group`, `ptf`, `watch`, `jvm`, `media_library`, `authority_collection`, `query_supervisor`, `service_agent`, `collector`. No unit suffix in the name (`.bytes`, `.seconds`, `.kb`, `.ms`, `.percent`) — the canonical OTel unit lives in `otel.unit`. No `.count` / `.total` suffix either — the `type` (counter vs gauge) carries that.
 
 #### 4.14.1 Coverage (94 metrics: 90 OTel-mapped + 4 event-conduit skips)
 
@@ -955,6 +955,119 @@ Every probe is mapped. Phase 0.5 is complete.
 **Event-conduit (skip OTel, log export V2) — 4 metrics:**
 
 `ibmi.message_queue.event` (QSYSOPR), `ibmi.history_log.event` (QHST), `ibmi.audit_journal.event` (QAUDJRN), `ibmi.msgw_job.event` (job in message wait) all carry `otel.skip: true` with an explicit reason. Same policy as `syslog`/`event` (§4.8): these are relayed-event markers, not metrics that aggregate meaningfully on the Prom/OTLP channel. V2 target: OTLP log export.
+
+#### 4.14.1 Coverage completion (101 metrics)
+
+Every name the probe can emit has a definition: a guard in the probe's test suite fails when a name emitted by a collector is missing from `ibmi.yaml`, and when a declared name is emitted by none. The metrics below complete the families above. Notes that apply to the whole block:
+
+- **Configuration is not a measurement.** The system values (`QMAXSIGN`, `QPWD*`, `QLMT*`, ...) are one gauge per setting named `senhub.ibmi.sysval.<setting>`. The sample is the number when the setting is numeric and a small code for a symbolic one (`*YES`, `*NO`, `*NONE`); the exact setting is the `ibmi.sysval.raw_value` attribute, which is what an alert should match. Settings the operator configured (thresholds, maximum heap, maximum active jobs) say "as configured — not a measurement" in their description.
+- **Counters are cumulative** and monotonic since the source's own start (HTTP server requests, TCP stack counters, table operations, JVM garbage collection); rates are derived by the consumer.
+- **Elapsed statistics are per collection.** The `ELAPSED_*` columns of `ACTIVE_JOB_INFO` and `SYSDISKSTAT` report the activity since the calling job's previous read. The probe resets them on every collection, so the job and disk activity series describe the collection interval.
+- **Event and age timestamps follow the partition's zone.** IBM i renders timestamps as wall-clock text without an offset; the probe learns the partition's UTC offset from the server clock and never assumes it equals the agent's.
+
+| OTel name | Unit | Type | Attributes |
+|---|---|---|---|
+| `senhub.ibmi.asp.disk_units` | `{unit}` | gauge | `ibmi.asp.number` |
+| `senhub.ibmi.asp.available` | `By` | gauge | `ibmi.asp.number` |
+| `senhub.ibmi.asp.overflow` | `By` | gauge | `ibmi.asp.number` |
+| `senhub.ibmi.authority_collection.entries` | `{entry}` | gauge | — |
+| `senhub.ibmi.authority_collection.failed_checks` | `{check}` | gauge | — |
+| `senhub.ibmi.authority_collection.user_entries` | `{entry}` | gauge | `ibmi.user.name` |
+| `senhub.ibmi.authority_collection.user_failed_checks` | `{check}` | gauge | `ibmi.user.name` |
+| `senhub.ibmi.http_server.instances` | `{instance}` | gauge | — |
+| `senhub.ibmi.http_server.connections.normal` | `{connection}` | gauge | `ibmi.http.server_name` |
+| `senhub.ibmi.http_server.connections.ssl` | `{connection}` | gauge | `ibmi.http.server_name` |
+| `senhub.ibmi.http_server.requests` | `{request}` | counter | `ibmi.http.server_name` |
+| `senhub.ibmi.http_server.rejected` | `{request}` | counter | `ibmi.http.server_name` |
+| `senhub.ibmi.job_queues.depth` | `{job}` | gauge | — |
+| `senhub.ibmi.job_queues.active` | `{job}` | gauge | — |
+| `senhub.ibmi.job_queues.held` | `{job}` | gauge | — |
+| `senhub.ibmi.job_queues.released` | `{job}` | gauge | — |
+| `senhub.ibmi.job_queues.scheduled` | `{job}` | gauge | — |
+| `senhub.ibmi.journal.receivers` | `{receiver}` | gauge | `ibmi.journal.name`, `ibmi.journal.library` |
+| `senhub.ibmi.journal.remote_journals` | `{journal}` | gauge | `ibmi.journal.name`, `ibmi.journal.library` |
+| `senhub.ibmi.journal.remote_lag_maximum` | `s` | gauge | `ibmi.journal.name`, `ibmi.journal.library` |
+| `senhub.ibmi.journal.by_state` | `{journal}` | gauge | `ibmi.journal.state` |
+| `senhub.ibmi.journal.count` | `{journal}` | gauge | — |
+| `senhub.ibmi.journal_receiver.threshold` | `By` | gauge | `ibmi.receiver.name`, `ibmi.receiver.library` |
+| `senhub.ibmi.journal_receiver.entries` | `{entry}` | gauge | `ibmi.receiver.name`, `ibmi.receiver.library` |
+| `senhub.ibmi.journal_receiver.pending_transactions` | `{transaction}` | gauge | `ibmi.receiver.name`, `ibmi.receiver.library` |
+| `senhub.ibmi.jvm.instances` | `{instance}` | gauge | — |
+| `senhub.ibmi.jvm.threads` | `{thread}` | gauge | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.jvm.gc.cumulative_time` | `s` | counter | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.jvm.gc.cycles` | `{cycle}` | counter | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.jvm.heap.initial` | `By` | gauge | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.jvm.heap.current` | `By` | gauge | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.jvm.heap.used` | `By` | gauge | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.jvm.heap.max` | `By` | gauge | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.jvm.malloc` | `By` | gauge | `ibmi.job.name`, `ibmi.job.user` |
+| `senhub.ibmi.library_list.by_type` | `{library}` | gauge | `ibmi.library.type` |
+| `senhub.ibmi.library_list.count` | `{library}` | gauge | — |
+| `senhub.ibmi.license.usage` | `{license}` | gauge | `ibmi.license.product_id`, `ibmi.license.feature_id` |
+| `senhub.ibmi.license.peak_usage` | `{license}` | gauge | `ibmi.license.product_id`, `ibmi.license.feature_id` |
+| `senhub.ibmi.license.products` | `{product}` | gauge | — |
+| `senhub.ibmi.media_library.device.up` | `{status}` | gauge | `ibmi.device.name` |
+| `senhub.ibmi.media_library.devices` | `{device}` | gauge | — |
+| `senhub.ibmi.memory_pool.current_size` | `By` | gauge | `ibmi.pool.id`, `ibmi.pool.name` |
+| `senhub.ibmi.memory_pool.reserved_size` | `By` | gauge | `ibmi.pool.id`, `ibmi.pool.name` |
+| `senhub.ibmi.netstat.interface.by_status` | `{interface}` | gauge | `ibmi.net.interface_status` |
+| `senhub.ibmi.tcp.active_opens` | `{connection}` | counter | — |
+| `senhub.ibmi.tcp.passive_opens` | `{connection}` | counter | — |
+| `senhub.ibmi.tcp.failed_opens` | `{connection}` | counter | — |
+| `senhub.ibmi.tcp.established_resets` | `{connection}` | counter | — |
+| `senhub.ibmi.tcp.segments_sent` | `{segment}` | counter | — |
+| `senhub.ibmi.tcp.segments_received` | `{segment}` | counter | — |
+| `senhub.ibmi.tcp.segments_retransmitted` | `{segment}` | counter | — |
+| `senhub.ibmi.tcp.segments_reset` | `{segment}` | counter | — |
+| `senhub.ibmi.output_queue.nonempty` | `{queue}` | gauge | — |
+| `senhub.ibmi.output_queue.writers` | `{writer}` | gauge | `ibmi.queue.library`, `ibmi.queue.name` |
+| `senhub.ibmi.ptf.by_status` | `{ptf}` | gauge | `ibmi.ptf.status` |
+| `senhub.ibmi.ptf.count` | `{ptf}` | gauge | — |
+| `senhub.ibmi.ptf_group.by_status` | `{group}` | gauge | `ibmi.ptf.group_status` |
+| `senhub.ibmi.ptf_group.count` | `{group}` | gauge | — |
+| `senhub.ibmi.query_supervisor.active` | `{query}` | gauge | — |
+| `senhub.ibmi.query_supervisor.user_active` | `{query}` | gauge | `ibmi.user.name` |
+| `senhub.ibmi.query_supervisor.elapsed` | `s` | gauge | `ibmi.job.name`, `ibmi.user.name`, `ibmi.query.type` |
+| `senhub.ibmi.query_supervisor.rows_fetched` | `{row}` | gauge | `ibmi.job.name`, `ibmi.user.name`, `ibmi.query.type` |
+| `senhub.ibmi.query_supervisor.temp_storage` | `By` | gauge | `ibmi.job.name`, `ibmi.user.name`, `ibmi.query.type` |
+| `senhub.ibmi.scheduled_job.by_status` | `{job}` | gauge | `ibmi.scheduled_job.status` |
+| `senhub.ibmi.service_agent.activated` | `{status}` | gauge | — |
+| `senhub.ibmi.service_agent.last_inventory_age` | `s` | gauge | — |
+| `senhub.ibmi.service_agent.last_hw_problem_send_age` | `s` | gauge | — |
+| `senhub.ibmi.service_agent.last_sw_problem_send_age` | `s` | gauge | — |
+| `senhub.ibmi.spooled_file.by_status` | `{file}` | gauge | `ibmi.spooled_file.status` |
+| `senhub.ibmi.spooled_file.oldest_age_by_status` | `s` | gauge | `ibmi.spooled_file.status` |
+| `senhub.ibmi.subsystem.max_active_jobs` | `{job}` | gauge | `ibmi.subsystem` |
+| `senhub.ibmi.sysval.max_signon_attempts` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.password_expiration` | `s` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.password_min_length` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.password_max_length` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.password_level` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.password_required_difference` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.limit_security_officer` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.limit_device_sessions` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.auto_config` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.auto_virtual_devices` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.create_default_auth` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.display_signon_info` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.remote_signon` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.shared_memory_control` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.retain_server_security` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.sysval.audit_control` | `1` | gauge | `ibmi.sysval.raw_value` |
+| `senhub.ibmi.table.data_size` | `By` | gauge | `ibmi.table.schema`, `ibmi.table.name` |
+| `senhub.ibmi.table.inserts` | `{insert}` | counter | `ibmi.table.schema`, `ibmi.table.name` |
+| `senhub.ibmi.table.deletes` | `{delete}` | counter | `ibmi.table.schema`, `ibmi.table.name` |
+| `senhub.ibmi.table.sampled` | `{table}` | gauge | — |
+| `senhub.ibmi.table.sampled_data_size` | `By` | gauge | — |
+| `senhub.ibmi.user_profile.no_password` | `{user}` | gauge | — |
+| `senhub.ibmi.user_profile.password_expiring` | `{user}` | gauge | — |
+| `senhub.ibmi.user_profile.by_special_authority` | `{user}` | gauge | `ibmi.user.special_authority` |
+| `senhub.ibmi.user_profile.privileged` | `{status}` | gauge | `ibmi.user.name` |
+| `senhub.ibmi.user_storage.total_used` | `By` | gauge | — |
+| `senhub.ibmi.user_storage.users` | `{user}` | gauge | — |
+| `senhub.ibmi.user_storage.users_with_quota` | `{user}` | gauge | — |
+| `senhub.ibmi.watch.sessions` | `{session}` | gauge | — |
+| `senhub.ibmi.watch.session_age` | `s` | gauge | `ibmi.watch.session_id`, `ibmi.watch.program` |
 
 #### 4.14.2 Attribute conventions
 
