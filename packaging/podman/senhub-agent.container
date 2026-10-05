@@ -22,6 +22,11 @@ Wants=network-online.target
 After=network-online.target
 
 [Container]
+# Seconds Podman waits for the agent to stop before SIGKILL; its own
+# default is ten, and a stop with a collector that does not answer must
+# not end in exit 137. PodmanArgs= rather than StopTimeout=, which only
+# newer Quadlet versions know.
+PodmanArgs=--stop-timeout=30
 # Pin a released version, 0.6.1 or later: earlier images listen on the
 # container's loopback only, and the published port answers nothing.
 # Only exact version tags are published (no 0.6, no latest): moving to a
@@ -70,17 +75,23 @@ Environment=HOST_RUN=/host/run
 # to this file.
 EnvironmentFile=senhub-agent.env
 
-# Secrets, kept by Podman rather than written in the unit or the
-# environment file: `podman inspect` prints every Environment= and
-# EnvironmentFile= value in clear, and never a secret's. Create each one
-# first, as the same user that runs this unit (a unit naming a secret
-# that does not exist fails to start):
+# Secrets, kept by Podman and mounted as FILES under /run/secrets, owned
+# by the agent's uid 10001 and readable by it alone. `podman inspect`
+# prints every environment variable in clear, a type=env secret included,
+# and prints no file content. The agent reads each file at every start
+# (the entrypoint writes ${file:...} references, never the value).
+# Create each secret first, as the same user that runs this unit (a unit
+# naming a secret that does not exist fails to start):
 #   printf '%s' "<token>" | podman secret create senhub-otlp-token -
-# No token, no export to SenHub: delete the next line for a local-only
-# agent. The licence is optional (Pro probes only); create it, then
-# uncomment its line.
-Secret=senhub-otlp-token,type=env,target=OTLP_BEARER_TOKEN
-#Secret=senhub-license,type=env,target=SENHUB_LICENSE
+# No token, no export to SenHub: delete the next two lines for a
+# local-only agent. The licence is optional (Pro probes only); create it,
+# then uncomment its two lines.
+Secret=senhub-otlp-token,type=mount,target=/run/secrets/senhub-otlp-token,mode=0400,uid=10001
+Environment=OTLP_BEARER_TOKEN_FILE=/run/secrets/senhub-otlp-token
+#Secret=senhub-license,type=mount,target=/run/secrets/senhub-license,mode=0400,uid=10001
+#Environment=SENHUB_LICENSE_FILE=/run/secrets/senhub-license
+# The Azure client secret is still an environment variable (the Container
+# Apps shorthand reads ${env:...}), so `podman inspect` shows it.
 #Secret=senhub-azure-client-secret,type=env,target=SENHUB_AZURE_CLIENT_SECRET
 
 # Named volumes. Podman creates them on first use and copies the image's

@@ -87,6 +87,7 @@ run_case() {
   expect "$name" '--env-file'
   expect "$name" 'senhub-agent-state:/var/lib/senhub-agent'
   expect "$name" 'senhub-agent-config:/etc/senhub-agent'
+  expect "$name" '--stop-timeout[= ]30'
   expect "$name" '--health-cmd'
   expect "$name" '--health-on-failure kill'
   expect "$name" 'ghcr.io/senhub-io/senhub-agent:'
@@ -104,14 +105,19 @@ run_case() {
       expect "$name" '--pid[= ]host'
       expect "$name" ':/host:ro,rslave\|/:/host'
       expect "$name" 'SENHUB_HOST_ROOT=/host'
-      expect "$name" 'type=env,target=OTLP_BEARER_TOKEN'
+      expect "$name" 'senhub-otlp-token,type=mount,target=/run/secrets/senhub-otlp-token'
+      expect "$name" 'OTLP_BEARER_TOKEN_FILE=/run/secrets/senhub-otlp-token'
+      if grep -q -- 'type=env,target=OTLP_BEARER_TOKEN' "$work/out"; then
+        fail "$name: the OTLP token is an environment variable again"
+      fi
       ;;
   esac
   if [ "$name" = optional ]; then
-    expect "$name" 'type=env,target=SENHUB_LICENSE'
+    expect "$name" 'senhub-license,type=mount,target=/run/secrets/senhub-license'
+    expect "$name" 'SENHUB_LICENSE_FILE=/run/secrets/senhub-license'
     expect "$name" 'type=env,target=SENHUB_AZURE_CLIENT_SECRET'
     expect "$name" '/etc/senhub-agent/probes.d:Z,U'
-    expect "$name" 'label[= ]disable\|label=disable'
+    expect "$name" 'label[=: ]disable'
   fi
   echo "ok: $name ($mode)"
 }
@@ -128,6 +134,7 @@ done
 sed -e 's/^#\(Secret=\)/\1/' \
     -e 's/^#\(Volume=\)/\1/' \
     -e 's/^#\(SecurityLabelDisable=\)/\1/' \
+    -e 's/^#\(Environment=SENHUB_LICENSE_FILE\)/\1/' \
     "$here/senhub-agent.container" > "$work/units/senhub-agent.container"
 for mode in rootful rootless; do
   run_case optional "$mode"
