@@ -66,6 +66,7 @@ func crc32Hex(b []byte) string {
 // any stored bookmark entry, the current file's stable fingerprint and
 // size, and the operator's from_beginning setting.
 //
+//	stored.Offset > currentSize                -> truncated/replaced: 0
 //	stored, both fingerprints stable & equal   -> resume at stored.Offset
 //	stored, both fingerprints stable & differ  -> rotated/replaced: 0
 //	stored, fingerprint not stable (small file):
@@ -85,16 +86,19 @@ func crc32Hex(b []byte) string {
 // of sub-fingerprint-size files, matching mainstream log shippers.
 func resolveStartOffset(stored bookmarkEntry, hasStored bool, currentFingerprint string, currentSize int64, fromBeginning bool) int64 {
 	if hasStored {
+		// An offset beyond the file's end cannot belong to this file, whatever
+		// the fingerprints say: a rotated file's last offset paired with the
+		// new file's head hash used to park the tail past the new file's end.
+		if stored.Offset > currentSize {
+			return 0
+		}
 		if stored.Fingerprint != "" && currentFingerprint != "" {
 			if stored.Fingerprint == currentFingerprint {
 				return stored.Offset
 			}
 			return 0
 		}
-		if stored.Offset <= currentSize {
-			return stored.Offset
-		}
-		return 0
+		return stored.Offset
 	}
 	if fromBeginning {
 		return 0
