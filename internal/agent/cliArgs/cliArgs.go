@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	"github.com/alexflint/go-arg"
+
+	"senhub-agent.go/internal/cliexit"
 )
 
 // Build-injected variables (set via ldflags from the Makefile).
@@ -258,7 +260,7 @@ func GetAbsoluteConfigPath(configPath string) (string, error) {
 // convention — an "Error: ..." line rather than a timestamped log line.
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
-	os.Exit(1)
+	os.Exit(cliexit.Failure)
 }
 
 // ValidatePort accepts zero (unset, the default applies) or a TCP port
@@ -286,10 +288,10 @@ func ParseStartArgs(flags []string) *ParsedArgs {
 	if parseErr := p.Parse(flags); parseErr != nil {
 		if errors.Is(parseErr, arg.ErrHelp) {
 			p.WriteHelp(os.Stdout)
-			os.Exit(0)
+			os.Exit(cliexit.OK)
 		}
 		fmt.Fprintf(os.Stderr, "error parsing arguments: %v\n", parseErr)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 }
@@ -311,7 +313,7 @@ func MustParse() *ParsedArgs {
 		switch {
 		case errors.Is(err, arg.ErrHelp):
 			p.WriteHelp(os.Stdout)
-			os.Exit(0)
+			os.Exit(cliexit.OK)
 		case p.Subcommand() == nil:
 			// No subcommand was provided. Attempt to parse arguments
 			// as start command (all fields optional).
@@ -331,21 +333,21 @@ func MustParse() *ParsedArgs {
 			return parsedArgsFromStartArgs(&startArgs, parsedEnv)
 		default:
 			p.WriteUsage(os.Stdout)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
 	switch {
 	case args.Version != nil:
 		PrintVersion()
-		os.Exit(0)
+		os.Exit(cliexit.OK)
 	case args.Agent != nil:
 		return parsedArgsFromStartArgs(args.Agent, parsedEnv)
 	case args.Update != nil:
 		return parsedArgsFromUpdateArgs(args.Update, parsedEnv)
 	default:
 		p.Fail("Run with --help for usage information.")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	return nil
 }

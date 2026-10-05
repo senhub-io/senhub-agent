@@ -1,0 +1,400 @@
+// senhub-agent/internal/agent/services/data_store/http_nagios.go
+package http
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/gorilla/mux"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/logger"
+)
+
+// NagiosManager handles all Nagios-related endpoints and processing
+type NagiosManager struct {
+	logger   *logger.ModuleLogger
+	strategy *HTTPSyncStrategy // Reference to parent strategy for access to other modules
+}
+
+// NewNagiosManager creates a new Nagios endpoints and processing manager
+func NewNagiosManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *NagiosManager {
+	return &NagiosManager{
+		logger:   logger,
+		strategy: strategy,
+	}
+}
+
+// Note: Nagios types are defined in other modules (http_config.go, http_metrics.go)
+// This module focuses on HTTP handlers and processing logic
+
+// Nagios Endpoints
+
+// HandleNagiosMetricsGET handles GET requests for Nagios format metrics by probe
+func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := n.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	vars := mux.Vars(r)
+	probeName := vars["probe"]
+
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
+	n.logger.Info().Str("probe", probeNameLower).Msg("Nagios endpoint - Request received")
+
+	// Parse query parameters
+	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
+
+	// Get probe metrics from cache
+	metrics := n.strategy.cache.GetProbeMetrics(probeNameLower)
+	if len(metrics) == 0 {
+		status, body := relayProbeSummary(probeNameLower)
+		w.Header().Set("Content-Type", "text/plain")
+		if status >= 2 {
+			w.WriteHeader(500)
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			n.logger.Error().Err(err).Msg("Failed to write Nagios error response")
+		}
+		return
+	}
+
+	// Apply filters
+	filteredMetrics := n.strategy.metricsProcessor.ApplyMetricFilter(metrics, filter)
+
+	// Generate simple probe-based Nagios response
+	response := n.strategy.metricsProcessor.GenerateSimpleNagiosResponse(probeNameLower, filteredMetrics)
+
+	w.Header().Set("Content-Type", "text/plain")
+	if response.Status >= 2 {
+		w.WriteHeader(500)
+	}
+	if _, err := w.Write([]byte(fmt.Sprintf("%s - %s | %s", response.StatusText, response.Message, response.PerfData))); err != nil {
+		n.logger.Error().Err(err).Msg("Failed to write Nagios response")
+	}
+}
+
+// HandleNagiosCheckGET runs one configured check and answers in plugin
+// format, so a Nagios command can call it directly the way it calls the
+// per-probe endpoint. The HTTP status follows that endpoint: 500 from
+// CRITICAL upward, 404 for a check that is not configured.
+func (n *NagiosManager) HandleNagiosCheckGET(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := n.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	checkName := mux.Vars(r)["check"]
+	config := n.strategy.configManager.LoadNagiosConfig()
+	check := n.strategy.configManager.FindNagiosCheck(config, checkName)
+
+	w.Header().Set("Content-Type", "text/plain")
+	if check == nil {
+		w.WriteHeader(http.StatusNotFound)
+		if _, err := w.Write([]byte("UNKNOWN - No Nagios check named " + checkName)); err != nil {
+			n.logger.Error().Err(err).Msg("Failed to write Nagios check response")
+		}
+		return
+	}
+
+	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
+	overrides := n.strategy.configManager.ParseNagiosOverrides(r)
+	response := n.executeNagiosCheck(check, filter, overrides)
+
+	if response.Status >= 2 {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	if _, err := w.Write([]byte(fmt.Sprintf("%s - %s | %s", response.StatusText, response.Message, response.PerfData))); err != nil {
+		n.logger.Error().Err(err).Msg("Failed to write Nagios check response")
+	}
+}
+
+// HandleNagiosMetrics handles GET/POST requests for all Nagios metrics
+func (n *NagiosManager) HandleNagiosMetrics(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := n.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	n.logger.Info().Str("method", r.Method).Msg("Nagios metrics endpoint - Request received")
+
+	var nagiosRequest NagiosRequest
+
+	if r.Method == "POST" {
+		// Parse POST body for dynamic configuration
+		if err := json.NewDecoder(r.Body).Decode(&nagiosRequest); err != nil {
+			n.logger.Error().Err(err).Msg("Failed to parse Nagios request body")
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse query parameters
+	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
+	overrides := mergeNagiosOverrides(n.strategy.configManager.ParseNagiosOverrides(r), nagiosRequest.Overrides)
+
+	// Load configuration
+	config := n.strategy.configManager.LoadNagiosConfig()
+
+	// Execute all checks or specific check
+	var responses []NagiosResponse
+	if nagiosRequest.CheckName != "" {
+		check := n.strategy.configManager.FindNagiosCheck(config, nagiosRequest.CheckName)
+		if check != nil {
+			response := n.executeNagiosCheck(check, filter, overrides)
+			responses = append(responses, response)
+		}
+	} else {
+		// Execute all checks
+		for _, check := range config.Checks {
+			response := n.executeNagiosCheck(&check, filter, overrides)
+			responses = append(responses, response)
+		}
+	}
+
+	// Return JSON response for multiple checks
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"checks": responses,
+		"count":  len(responses),
+	}); err != nil {
+		n.logger.Error().Err(err).Msg("Failed to encode Nagios metrics response")
+	}
+}
+
+// HandleNagiosChecks lists all available Nagios checks
+func (n *NagiosManager) HandleNagiosChecks(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := n.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	n.logger.Info().Msg("Nagios checks discovery endpoint - Request received")
+
+	// Load Nagios configuration
+	config := n.strategy.configManager.LoadNagiosConfig()
+
+	// Build response with check information
+	var checks []NagiosCheckInfo
+	for _, check := range config.Checks {
+		checkInfo := NagiosCheckInfo{
+			Name:        check.Name,
+			Description: check.Description,
+			ProbeFilter: check.ProbeFilter,
+			MetricCount: len(check.Metrics),
+			TagFilters:  check.TagFilters,
+			Metrics:     make([]NagiosMetricInfo, len(check.Metrics)),
+		}
+
+		// Add metric information
+		for i, metric := range check.Metrics {
+			checkInfo.Metrics[i] = NagiosMetricInfo{
+				Channel:     metric.Channel,
+				Aggregation: metric.Aggregation,
+				Warning:     metric.Warning,
+				Critical:    metric.Critical,
+				Unit:        metric.Unit,
+				Invert:      metric.Invert,
+				TagContext:  metric.TagContext,
+			}
+		}
+
+		checks = append(checks, checkInfo)
+	}
+
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"version":     config.Version,
+		"description": config.Description,
+		"checks":      checks,
+		"count":       len(checks),
+	}); err != nil {
+		n.logger.Error().Err(err).Msg("Failed to encode Nagios checks response")
+	}
+}
+
+// Nagios Processing Methods
+
+// executeNagiosCheck executes a Nagios check with filtering and overrides
+func (n *NagiosManager) executeNagiosCheck(check *NagiosCheck, filter MetricFilter, overrides NagiosOverrides) NagiosResponse {
+	n.logger.Debug().
+		Str("check", check.Name).
+		Interface("filter", filter).
+		Interface("overrides", overrides).
+		Msg("Executing Nagios check")
+
+	metrics := n.strategy.cache.GetAllMetrics()
+	if check.ProbeFilter != "" {
+		metrics = matchProbe(metrics, check.ProbeFilter)
+	}
+
+	if len(metrics) == 0 {
+		return NagiosResponse{
+			Status:     3, // UNKNOWN
+			StatusText: "UNKNOWN",
+			Message:    fmt.Sprintf("No metrics available for check %s", check.Name),
+			PerfData:   "",
+		}
+	}
+
+	// Apply tag filters from check configuration
+	metrics = n.applyNagiosTagFilters(metrics, check.TagFilters)
+
+	// Apply additional filters from query parameters
+	metrics = n.strategy.metricsProcessor.ApplyMetricFilter(metrics, filter)
+	metrics = keepMatchingTags(metrics, overrides.TagFilters)
+
+	if len(metrics) == 0 {
+		return NagiosResponse{
+			Status:     3, // UNKNOWN
+			StatusText: "UNKNOWN",
+			Message:    fmt.Sprintf("No metrics match filters for check %s", check.Name),
+			PerfData:   "",
+		}
+	}
+
+	// Process each metric in the check
+	overallStatus := 0 // OK
+	var messages []string
+	var perfDataItems []string
+
+	for _, metricDef := range check.Metrics {
+		result := n.strategy.metricsProcessor.ProcessNagiosMetric(metricDef, metrics, overrides)
+
+		// Update overall status (worst case wins)
+		if result.Status > overallStatus {
+			overallStatus = result.Status
+		}
+
+		if result.Message != "" {
+			messages = append(messages, result.Message)
+		}
+
+		if result.PerfData != "" {
+			perfDataItems = append(perfDataItems, result.PerfData)
+		}
+	}
+
+	// Build response
+	statusText := n.getStatusText(overallStatus)
+
+	var message string
+	if len(messages) > 0 {
+		message = strings.Join(messages, ", ")
+	} else {
+		message = fmt.Sprintf("%s - %s", check.Description, statusText)
+	}
+
+	return NagiosResponse{
+		Status:     overallStatus,
+		StatusText: statusText,
+		Message:    message,
+		PerfData:   strings.Join(perfDataItems, " "),
+	}
+}
+
+// matchProbe keeps the metrics of the probes whose type or configured
+// name is filter. The shipped checks filter on a type (veeam, cpu); a
+// name-only match made them UNKNOWN on every probe an operator named
+// otherwise, which is every Veeam probe in practice.
+func matchProbe(metrics []CachedMetric, filter string) []CachedMetric {
+	kept := make([]CachedMetric, 0, len(metrics))
+	for _, metric := range metrics {
+		if strings.EqualFold(metric.Tags["probe_type"], filter) || strings.EqualFold(metric.ProbeName, filter) {
+			kept = append(kept, metric)
+		}
+	}
+	return kept
+}
+
+// mergeNagiosOverrides lays the query string over the POST body: a
+// value given in the URL wins, the body fills what the URL leaves out.
+func mergeNagiosOverrides(query, body NagiosOverrides) NagiosOverrides {
+	merged := body
+	if query.Warning != "" {
+		merged.Warning = query.Warning
+	}
+	if query.Critical != "" {
+		merged.Critical = query.Critical
+	}
+	merged.TagFilters = make(map[string]string, len(body.TagFilters)+len(query.TagFilters))
+	for k, v := range body.TagFilters {
+		merged.TagFilters[k] = v
+	}
+	for k, v := range query.TagFilters {
+		merged.TagFilters[k] = v
+	}
+	return merged
+}
+
+// keepMatchingTags keeps the series whose tags equal every requested
+// value (tag_<name>=<value> in the query, tag_filters in a POST body).
+func keepMatchingTags(metrics []CachedMetric, tagFilters map[string]string) []CachedMetric {
+	if len(tagFilters) == 0 {
+		return metrics
+	}
+	kept := make([]CachedMetric, 0, len(metrics))
+	for _, metric := range metrics {
+		matches := true
+		for key, value := range tagFilters {
+			if metric.Tags[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			kept = append(kept, metric)
+		}
+	}
+	return kept
+}
+
+// applyNagiosTagFilters applies tag filters from Nagios check configuration
+func (n *NagiosManager) applyNagiosTagFilters(metrics []CachedMetric, filters []NagiosTagFilter) []CachedMetric {
+	return n.strategy.metricsProcessor.ApplyNagiosTagFilters(metrics, filters)
+}
+
+// getStatusText converts numeric status to text
+func (n *NagiosManager) getStatusText(status int) string {
+	switch status {
+	case 0:
+		return "OK"
+	case 1:
+		return "WARNING"
+	case 2:
+		return "CRITICAL"
+	case 3:
+		return "UNKNOWN"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// Utility Methods for Nagios processing
+
+// relayProbeSummary answers for a probe that holds no metric. A syslog or
+// OTLP receiver relays records and measures nothing, so "no metrics" is
+// its normal state, and answering CRITICAL for it kept those services red
+// for ever. The probe's own state decides instead: running and healthy is
+// OK, a failed cycle or a listener that cannot receive is CRITICAL with
+// its cause, and an unknown name stays CRITICAL.
+func relayProbeSummary(name string) (int, string) {
+	state, known := agentstate.ProbeRunStateByName(name)
+	switch {
+	case !known:
+		return 2, "CRITICAL - No metrics available for probe " + name
+	case state.Health == "failed":
+		return 2, "CRITICAL - Probe " + name + " is failing: " + state.LastError
+	case state.Health == "ok":
+		return 0, "OK - Probe " + name + " is running, it relays records and holds no metric"
+	default:
+		return 3, "UNKNOWN - Probe " + name + " has not completed a cycle yet"
+	}
+}

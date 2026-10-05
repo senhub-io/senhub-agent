@@ -5,8 +5,8 @@ host_level: false
 
 # filetail is a log conduit: tailed lines ride the OTLP log rail
 # (agentstate.PublishLog) and are NOT mapped here. Collect() emits only
-# the conduit's own throughput self-metric (#701) so operators can see
-# how many records the tailer has shipped.
+# the conduit's own self-metrics: records emitted (#701) and, per tailed
+# file, the read offset and the file size.
 
 metrics:
   - name: "senhub.filetail.records_emitted"
@@ -19,3 +19,31 @@ metrics:
       name: senhub.filetail.records_emitted
       unit: "{record}"
       type: counter
+
+  - name: "senhub.filetail.read_offset"
+    channel: "filetail_read_offset_{log.file.path}"
+    display_name: "File Tail Read Offset {log.file.path}"
+    unit: "bytes"
+    category: "status"
+    multi_instance_labels: ["log.file.path"]
+    description: "Byte offset the tail of a followed file has read up to"
+    otel:
+      name: senhub.filetail.read_offset
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      log.file.path: log.file.path
+
+  - name: "senhub.filetail.file_size"
+    channel: "filetail_file_size_{log.file.path}"
+    display_name: "File Tail File Size {log.file.path}"
+    unit: "bytes"
+    category: "status"
+    multi_instance_labels: ["log.file.path"]
+    description: "Current size in bytes of a followed file; a healthy tail has a read offset equal to it"
+    otel:
+      name: senhub.filetail.file_size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      log.file.path: log.file.path
