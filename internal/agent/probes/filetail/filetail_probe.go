@@ -37,6 +37,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 // bookmarkFlushInterval bounds how often a per-file offset is persisted.
@@ -127,14 +128,50 @@ func (p *FileTailProbe) ShouldStart() bool { return true }
 // before it can reach the pull-cache eviction boundary (audit m8).
 func (p *FileTailProbe) GetInterval() time.Duration { return 1 * time.Minute }
 
-// Collect surfaces the conduit's own throughput self-metric: the tail
-// goroutines publish log records directly to the log rail, so the only
-// datapoint here is the cumulative count of records emitted (#701).
+// Collect surfaces the conduit's own self-metrics: the cumulative count of
+// records emitted (#701) and, for every file currently tailed, how far the
+// tail has read and how large the file is now. An offset below the size
+// that does not close is a tail that stopped following its file, which the
+// line count cannot show. The points are returned together with the
+// unreadable-paths error, so a bad path does not hide the healthy ones.
 func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) {
+	now := time.Now()
 	points := []data_store.DataPoint{
-		{Name: "senhub.filetail.records_emitted", Value: float64(p.emitted.Load()), Timestamp: time.Now()},
+		{Name: "senhub.filetail.records_emitted", Value: float64(p.emitted.Load()), Timestamp: now},
 	}
+	points = append(points, p.tailPositionPoints(now)...)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), p.unreadableError()
+}
+
+func (p *FileTailProbe) tailPositionPoints(now time.Time) []data_store.DataPoint {
+	type position struct {
+		path   string
+		offset int64
+	}
+	p.mu.Lock()
+	positions := make([]position, 0, len(p.tailing))
+	for path, ts := range p.tailing {
+		positions = append(positions, position{path: path, offset: ts.offset.Load()})
+	}
+	p.mu.Unlock()
+	sort.Slice(positions, func(i, j int) bool { return positions[i].path < positions[j].path })
+
+	points := make([]data_store.DataPoint, 0, 2*len(positions))
+	for _, pos := range positions {
+		pathTags := []tags.Tag{{Key: "log.file.path", Value: pos.path}}
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.filetail.read_offset", Value: float64(pos.offset), Timestamp: now, Tags: pathTags,
+		})
+		fi, err := os.Stat(pos.path)
+		if err != nil {
+			p.debug().Str("path", pos.path).Err(err).Msg("cannot stat tailed file, size not reported")
+			continue
+		}
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.filetail.file_size", Value: float64(fi.Size()), Timestamp: now, Tags: pathTags,
+		})
+	}
+	return points
 }
 
 // unreadableError reports the paths the last scan could not read, or nil.
