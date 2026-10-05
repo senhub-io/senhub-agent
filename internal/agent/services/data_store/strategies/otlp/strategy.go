@@ -745,8 +745,23 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 }
 
 // exporterShutdownBudget caps the final drain and the closing of the
-// exporters. Past it, whatever is still queued is lost either way.
-const exporterShutdownBudget = 10 * time.Second
+// exporters. Past it, whatever is still queued is lost either way. It
+// is a variable so a test can shorten it.
+//
+// Five seconds, because a container runtime kills the agent ten seconds
+// after the stop signal: measured, a collector that did not answer held
+// the stop for 10.6 s, and the kill turned a clean stop into a failed
+// unit.
+var exporterShutdownBudget = 5 * time.Second
+
+// boundFlushContext limits the final flush to exporterShutdownBudget,
+// whatever longer deadline the caller allows.
+func boundFlushContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > exporterShutdownBudget {
+		return context.WithTimeout(ctx, exporterShutdownBudget)
+	}
+	return ctx, func() {}
+}
 
 func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	s.startMu.Lock()
@@ -840,11 +855,9 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// seconds, not the whole stop budget: the caller's deadline is the
 	// time the service manager gives the entire agent, and spending it
 	// here is what made systemctl stop take the best part of a minute.
-	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > exporterShutdownBudget {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, exporterShutdownBudget)
-		defer cancel()
-	}
+	ctx, cancel := boundFlushContext(ctx)
+	defer cancel()
+	seriesBefore := s.store.size()
 
 	// Drain — final push of whatever sits in the store. Failures here
 	// are best-effort: we still want to close the exporters even if
@@ -872,7 +885,15 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	if err := s.exporters.shutdown(ctx); err != nil {
+	err := s.exporters.shutdown(ctx)
+	if ctx.Err() != nil {
+		s.logger.Warn().
+			Dur("flush_budget", exporterShutdownBudget).
+			Int("series_in_store_before_flush", seriesBefore).
+			Int("series_in_store_after_flush", s.store.size()).
+			Msg("OTLP final flush did not finish within its budget: the collector did not answer in time, and what was still queued was dropped")
+	}
+	if err != nil {
 		s.logger.Warn().Err(err).Msg("OTLP strategy shutdown encountered errors")
 		return err
 	}
