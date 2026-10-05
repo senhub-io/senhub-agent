@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -498,7 +499,7 @@ func TestDoctorHostSection(t *testing.T) {
 			return 50, nil
 		}
 		expectLevel(t, runDoctorChecks(d), "host.disk", levelOK)
-		if len(asked) != 2 || asked[1] != "/etc/senhub-agent" {
+		if len(asked) != 2 || asked[1] != filepath.Dir(d.configPath) {
 			t.Errorf("asked %v", asked)
 		}
 	})
