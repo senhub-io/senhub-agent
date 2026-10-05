@@ -46,6 +46,7 @@ than failing the whole collection.
 | `senhub.winservices.up` | 1 | 1 when the SCM is reachable and the probe completed its cycle |
 | `windows.service.state` | 1 | 1 when the service is in the Running state, 0 otherwise, tagged with `windows.service.name` |
 | `windows.service.status` | 1 | Raw SCM service status code (1=Stopped, 2=Start Pending, 3=Stop Pending, 4=Running, …) per service |
+| `windows.service.start_type` | 1 | How the service is configured to start: 0 boot, 1 system, 2 automatic, 3 manual, 4 disabled, 5 automatic with delayed start. Absent for a service whose configuration cannot be read. Not a PRTG channel |
 
 ## Operational notes
 
@@ -69,5 +70,6 @@ series' tags.
 | `senhub.winservices.up` | `senhub.winservices.up` | Windows Services SCM Up | # | 1 when the Service Control Manager is reachable and the probe completed its cycle |
 | `windows.service.state` | `windows.service.state` | Service {windows.service.name} Running | # | 1 when the service is in the Running state, 0 otherwise |
 | `windows.service.status` | `windows.service.status` | Service {windows.service.name} Status | # | Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused |
+| `windows.service.start_type` | `windows.service.start_type` | Service {windows.service.name} Start Type | # | How the service is configured to start: 0=boot 1=system 2=automatic 3=manual 4=disabled 5=automatic (delayed start) |
 
 <!-- schema:metrics:end -->

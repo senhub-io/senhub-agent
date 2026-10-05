@@ -168,7 +168,7 @@ func (h *HTTPSyncStrategy) currentLicenseView(agentKey string) licenseView {
 	if err != nil || strings.TrimSpace(effective) == "" {
 		return licenseView{Configured: false}
 	}
-	validator, err := license.GetDefaultValidator(7)
+	validator, err := h.newLicenseValidator()
 	if err != nil {
 		return licenseView{Configured: true, Detail: "validator unavailable"}
 	}
@@ -223,7 +223,7 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 	}
 	// A licence bound to one agent is bound to its agent key, not to the
 	// administration key in the URL.
-	agentKey := h.authManager.GetAgentKey()
+	agentKey := h.licenseAgentKey()
 	configPath := h.agentConfig.GetConfigPath()
 	if configPath == "" {
 		writeJSONError(w, http.StatusInternalServerError, "the agent config path is not known to this strategy")
@@ -281,7 +281,7 @@ func (h *HTTPSyncStrategy) handleConfigSettingsSet(w http.ResponseWriter, r *htt
 			writeJSONError(w, http.StatusBadRequest, "licence must not be empty")
 			return
 		}
-		validator, err := license.GetDefaultValidator(7)
+		validator, err := h.newLicenseValidator()
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "licence validator unavailable")
 			return

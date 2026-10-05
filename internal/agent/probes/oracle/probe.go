@@ -79,13 +79,12 @@ func (p *oracleProbe) GetTargetStrategies() []string {
 func (p *oracleProbe) ShouldStart() bool          { return true }
 func (p *oracleProbe) GetInterval() time.Duration { return p.cfg.Interval }
 
-// OnStart opens the database/sql handle (go-ora is registered under the
-// "oracle" driver name). sql.Open does not dial — the first ping happens
+// OnStart opens the database/sql handle through go-ora. Opening does not dial — the first ping happens
 // in Collect, so a database that is down at agent start does not block
 // the probe; it reports up=0 instead.
 func (p *oracleProbe) OnStart(_ chan struct{}) error {
 	dsn := go_ora.BuildUrl(p.cfg.Host, p.cfg.Port, p.cfg.ServiceName, p.cfg.Username, p.cfg.Password, nil)
-	db, err := sql.Open("oracle", dsn)
+	db, err := openDB(dsn)
 	if err != nil {
 		return fmt.Errorf("opening oracle connection to %s: %w", p.instance, err)
 	}
