@@ -47,7 +47,7 @@
         <div class="page-h">
             <div>
                 <h1>Outputs</h1>
-                <p class="sub">Where collected data goes. Pull outputs wait for a poller; push outputs send on their own.</p>
+                <p class="sub">Where collected data goes. Pull outputs (Prometheus, PRTG, Nagios) wait for a poller; push outputs send on their own.</p>
             </div>
             <a class="btn primary" href="#add">Add an output</a>
         </div>
@@ -63,7 +63,7 @@
         <div class="card" id="add">
             <div class="card-h"><h2>Add an output</h2><span class="small muted">Pick where the data should go</span></div>
             <div class="starters" id="cards" style="margin-top:0"></div>
-            <p class="small muted mt3">The HTTP output exists once per agent and cannot be added twice. Prometheus, PRTG pull and Nagios are endpoints of that one output.</p>
+            <p class="small muted mt3">The HTTP output exists once per agent and cannot be added twice. Prometheus, PRTG pull and Nagios are endpoints of that one output: switch them in the list above.</p>
         </div>
     </div>
 
@@ -125,6 +125,57 @@
                 '</div>' + testHtml;
         }
 
+        const DOCS = 'https://agent.senhub.io/docs/latest/';
+        const PULL = [
+            { id: 'prometheus', name: 'Prometheus', icon: 'PROM' },
+            { id: 'prtg', name: 'PRTG', icon: 'PRTG' },
+            { id: 'nagios', name: 'Nagios', icon: 'NAG' }
+        ];
+
+        // The three pull formats are endpoints of the one http output; each
+        // gets its own line here so it can be found, switched and set up
+        // without opening that output first.
+        function endpointOn(http, id) {
+            const p = http.params || {};
+            if (Array.isArray(p.endpoints)) return p.endpoints.indexOf(id) >= 0;
+            return (http.readers || []).some(r => r.endpoint === id && r.enabled);
+        }
+        function pullInfo(http, ep) {
+            const base = location.origin;
+            const key = '{{.ReadKey}}';
+            const dis = !http.enabled || http.state === 'disabled';
+            const on = !dis && endpointOn(http, ep.id);
+            let url, help, snippet = '';
+            if (ep.id === 'prometheus') {
+                url = base + '/metrics';
+                help = '<a href="' + DOCS + 'prometheus/" target="_blank" rel="noopener">Prometheus setup</a>';
+                snippet = 'scrape_configs:\n  - job_name: senhub-agent\n    metrics_path: /metrics\n    authorization:\n      type: Bearer\n      credentials: <agent key>\n    static_configs:\n      - targets: ["' + location.host + '"]';
+            } else if (ep.id === 'prtg') {
+                url = base + '/api/' + key + '/prtg/metrics/<probe>';
+                help = '<a href="' + O.webBase + 'outputs/http#urls">Build a sensor URL</a> &middot; <a href="/api/' + O.key + '/lookups/prtg" download="senhub-prtg-lookups.zip">PRTG lookups</a>';
+            } else {
+                url = base + '/api/' + key + '/nagios/checks';
+                help = '<a href="' + DOCS + 'nagios/" target="_blank" rel="noopener">Nagios setup</a> &middot; <a href="' + O.webBase + 'outputs/http#urls">Sensor URLs</a>';
+            }
+            const rd = (http.readers || []).find(r => r.endpoint === ep.id);
+            let life = '';
+            if (!on) life = 'Off. Switch it on to serve this format; the console and the other endpoints are not affected.';
+            else if (rd && rd.last) life = 'Last request ' + O.rel(rd.last) + (rd.from ? ' from ' + esc(rd.from) : '');
+            else life = '<span class="lifewarn">no request seen since start</span>';
+            return { on: on, dis: dis, url: url, help: help, snippet: snippet, life: life };
+        }
+        function pullRow(http, ep) {
+            const i = pullInfo(http, ep);
+            const act = i.dis ? '' : '<button class="btn sm" data-ep="' + ep.id + '" data-on="' + (i.on ? '0' : '1') + '">' + (i.on ? 'Disable' : 'Enable') + '</button>';
+            return '<div class="orow' + (i.on ? '' : ' dis') + '" data-pull="' + ep.id + '">' +
+                '<div class="oicon' + (i.on ? '' : ' off') + '">' + ep.icon + '</div>' +
+                '<div class="grow"><div class="t">' + esc(ep.name) + ' ' + O.statePill(i.on ? 'listening' : 'disabled') + ' <span class="pill acc">pull</span></div>' +
+                '<div class="d"><code>' + esc(i.url) + '</code></div>' +
+                '<div class="d">' + i.life + ' &middot; ' + i.help + '</div>' +
+                (i.snippet ? '<details class="mt2"><summary class="small">Scrape configuration</summary><pre class="yaml mt2">' + esc(i.snippet) + '</pre><p class="xs muted">Replace <code>&lt;agent key&gt;</code> with the agent key shown in Settings.</p></details>' : '') +
+                '</div><div class="acts">' + act + '</div></div>';
+        }
+
         function render() {
             countEl.textContent = outputs.length;
             if (!outputs.length) {
@@ -133,7 +184,25 @@
             }
             const order = { http: 0, otlp: 1, prtg: 2, senhub: 3, event: 4 };
             const sorted = outputs.slice().sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9) || a.name.localeCompare(b.name));
-            list.innerHTML = sorted.map(row).join('');
+            list.innerHTML = sorted.map(o => row(o) + (o.type === 'http' ? PULL.map(ep => pullRow(o, ep)).join('') : '')).join('');
+        }
+
+        async function setEndpoint(id, on) {
+            const http = outputs.find(o => o.type === 'http');
+            if (!http) return;
+            const { params } = O.stripRedacted(http.params);
+            const cur = Array.isArray(params.endpoints) ? params.endpoints.slice() : (http.readers || []).filter(r => r.enabled).map(r => r.endpoint);
+            const next = cur.filter(e => e !== id);
+            if (on) next.push(id);
+            if (next.indexOf('web') < 0) next.push('web');
+            params.endpoints = next;
+            try {
+                await O.api('config/outputs/' + encodeURIComponent(http.name), { method: 'PUT', body: { enabled: true, params } });
+                O.banner(bannerEl, 'ok', esc((PULL.find(e => e.id === id) || {}).name + ' endpoint ' + (on ? 'enabled' : 'disabled') + '.'));
+            } catch (e) {
+                O.banner(bannerEl, 'err', esc(e.message));
+            }
+            await load();
         }
 
         function renderCards(catalog) {
@@ -200,6 +269,8 @@
         }
 
         list.addEventListener('click', ev => {
+            const ep = ev.target.closest('[data-ep]');
+            if (ep) { setEndpoint(ep.dataset.ep, ep.dataset.on === '1'); return; }
             const btn = ev.target.closest('[data-act]');
             if (!btn) return;
             const rowEl = btn.closest('.orow');
