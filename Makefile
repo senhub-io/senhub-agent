@@ -233,7 +233,9 @@ package-linux: build-linux ## Create ZIP packages for Linux
 #                                                 <dir>/linux-arm64/senhub-agent)
 #
 # The editions install the same files and the same service: each declares
-# Conflicts/Replaces/Provides on the other, so switching is one install command.
+# Conflicts/Replaces/Provides on the other (.deb: switching is one install command;
+# .rpm: Conflicts/Provides only, switching is `dnf swap` or `zypper install
+# --force-resolution`).
 NFPM_IMAGE ?= goreleaser/nfpm:v2.41.1
 PACKAGE_ARCHES ?= amd64 arm64
 PACKAGES_DIR=$(DIST_DIR)/packages
@@ -277,8 +279,12 @@ packages: $(if $(filter oss,$(EDITION)),build-linux) ## Build the .deb and .rpm 
 	@printf -- '- semver: %s\n  date: %s\n  packager: Sensor Factory <support@senhub.io>\n  changes:\n    - note: "Release %s. Release notes: https://agent.senhub.io/"\n' \
 		"$(PKG_VERSION)-1" "$$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" "$(VERSION)" > $(PACKAGES_DIR)/stage/changelog.yaml
 	@# nFPM does not expand environment variables in the license and changelog fields.
-	@sed -e 's|$${PKG_LICENSE}|$(PKG_LICENSE)|' -e 's|$${STAGE}/changelog.yaml|$(PACKAGES_DIR)/stage/changelog.yaml|' packaging/nfpm/nfpm.yaml > $(PACKAGES_DIR)/stage/nfpm-rpm.yaml
-	@grep -v '^changelog:' $(PACKAGES_DIR)/stage/nfpm-rpm.yaml > $(PACKAGES_DIR)/stage/nfpm-deb.yaml
+	@sed -e 's|$${PKG_LICENSE}|$(PKG_LICENSE)|' -e 's|$${STAGE}/changelog.yaml|$(PACKAGES_DIR)/stage/changelog.yaml|' packaging/nfpm/nfpm.yaml > $(PACKAGES_DIR)/stage/nfpm-full.yaml
+	@grep -v '^changelog:' $(PACKAGES_DIR)/stage/nfpm-full.yaml > $(PACKAGES_DIR)/stage/nfpm-deb.yaml
+	@# rpm: Conflicts and Provides, no Obsoletes (the Fedora pattern for exclusive
+	@# alternatives). With Obsoletes, `dnf install senhub-agent-oss` installs the
+	@# obsoleting full edition; switching is an explicit swap instead.
+	@sed '/^replaces:/,+1d' $(PACKAGES_DIR)/stage/nfpm-full.yaml > $(PACKAGES_DIR)/stage/nfpm-rpm.yaml
 	@for arch in $(PACKAGE_ARCHES); do \
 		case $$arch in amd64) rpmarch=x86_64;; arm64) rpmarch=aarch64;; esac; \
 		bin=$(BINARY_DIR)/linux-$$arch/$(EXECUTABLE); \

@@ -122,6 +122,16 @@ upgrade_cmd() { # file
     esac
 }
 
+# Edition switch: one install command on deb; an explicit swap on rpm, where the
+# editions only Conflict (no Obsoletes, so asking for one name never installs the other).
+switch_cmd() { # file old-package
+    case "$DISTRO" in
+        rocky9) echo "dnf swap -y -q $2 /pkgs/$1" ;;
+        leap156) echo "zypper --non-interactive --no-gpg-checks -q install --allow-unsigned-rpm --force-resolution /pkgs/$1" ;;
+        *) install_cmd "$1" ;;
+    esac
+}
+
 remove_cmd() { # [package]
     case "$DISTRO" in
         debian12|ubuntu*) echo "dpkg -r ${1:-senhub-agent-oss}" ;;
@@ -197,7 +207,7 @@ run_switch() {
     check "agent key readable before" "[ -n '$key1' ]"
     pid1=$(x "systemctl show -p MainPID --value senhub-agent")
 
-    check "full installs over oss" "$(install_cmd "$full2")"
+    check "full replaces oss" "$(switch_cmd "$full2" senhub-agent-oss)"
     wait_active; check "service active" "systemctl is-active senhub-agent"
     check "full is installed" "$(installed_cmd senhub-agent)"
     check "oss is gone" "! $(installed_cmd senhub-agent-oss)"
@@ -215,7 +225,7 @@ run_switch() {
     fi
 
     pid1=$pid2
-    check "oss installs over full" "$(install_cmd "$oss2")"
+    check "oss replaces full" "$(switch_cmd "$oss2" senhub-agent)"
     wait_active; check "service active" "systemctl is-active senhub-agent"
     check "oss is installed" "$(installed_cmd senhub-agent-oss)"
     check "full is gone" "! $(installed_cmd senhub-agent)"
