@@ -183,3 +183,25 @@ func tagValue(ts []tags.Tag, key string) string {
 	}
 	return ""
 }
+
+// forgetProbes drops every series and the cadence of the named probes,
+// matched case-folded: the data store reports configured names in lower
+// case while the series carry the name as the probe stamped it.
+func (s *store) forgetProbes(probeNames []string) {
+	gone := make(map[string]bool, len(probeNames))
+	for _, n := range probeNames {
+		gone[strings.ToLower(n)] = true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, e := range s.entries {
+		if gone[strings.ToLower(e.metric.ProbeName)] {
+			delete(s.entries, key)
+		}
+	}
+	for name := range s.cadences {
+		if gone[strings.ToLower(name)] {
+			delete(s.cadences, name)
+		}
+	}
+}

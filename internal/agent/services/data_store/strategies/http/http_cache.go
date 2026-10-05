@@ -208,7 +208,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// discriminant tag — an empty set is the correct declaration here, not a
 	// gap. Declaring it also silences the "not in DiscriminantTagsRegistry"
 	// warning these probes raised on every push (#724).
-	"filetail":         {},
+	"filetail":         {"log.file.path"},
 	"linux_logs":       {},
 	"windows_eventlog": {},
 	"snmp_trap":        {},
