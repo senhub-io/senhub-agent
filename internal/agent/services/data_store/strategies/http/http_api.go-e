@@ -1,0 +1,929 @@
+// senhub-agent/internal/agent/services/data_store/http_api.go
+package http
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/gorilla/mux"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/license"
+	"senhub-agent.go/internal/agent/services/logger"
+)
+
+// APIManager handles all API endpoints (PRTG, SenHub, Info, Discovery)
+type APIManager struct {
+	logger   *logger.ModuleLogger
+	strategy *HTTPSyncStrategy // Reference to parent strategy for access to other modules
+}
+
+// NewAPIManager creates a new API endpoints manager
+func NewAPIManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *APIManager {
+	return &APIManager{
+		logger:   logger,
+		strategy: strategy,
+	}
+}
+
+// SenHub API Endpoints
+
+// PRTG API Endpoints
+
+// HandlePRTGMetricsGET handles GET requests for PRTG metrics
+func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	vars := mux.Vars(r)
+	probeName := vars["probe"]
+
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
+	// Parse query parameters
+	filter := a.strategy.metricsProcessor.ParseMetricFilter(r)
+
+	a.logger.Debug().
+		Str("probe", probeNameLower).
+		Interface("filter", filter).
+		Msg("PRTG metrics GET request received")
+
+	// Get metrics from cache for the specified probe with filters
+	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeNameLower, filter)
+
+	// Build PRTG response
+	response := PRTGResponse{
+		PRTG: PRTGResult{
+			Result: channels,
+		},
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.logger.Info().
+		Str("probe", probeName).
+		Int("channels", len(channels)).
+		Msg("PRTG GET response sent")
+}
+
+// HandlePRTGMetrics handles POST requests for PRTG metrics (legacy)
+func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	// Parse request body
+	var req PRTGRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to parse request body")
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	a.logger.Debug().
+		Str("probe", req.Probe).
+		Str("target", req.Target).
+		Msg("PRTG metrics request received")
+
+	// A config block in the body is not applied: the probe is configured
+	// on the agent, and this route only reads its cached metrics.
+	if len(req.Config) > 0 {
+		a.logger.Debug().Str("probe", req.Probe).Msg("PRTG request carried a config block; it is ignored")
+	}
+
+	// Get metrics from cache for the specified probe
+	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbe(req.Probe)
+
+	// Build PRTG response
+	response := PRTGResponse{
+		PRTG: PRTGResult{
+			Result: channels,
+		},
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.logger.Info().
+		Str("probe", req.Probe).
+		Int("channels", len(channels)).
+		Msg("PRTG response sent")
+}
+
+// HandleListProbes handles GET requests to list available probes
+func (a *APIManager) HandleListProbes(w http.ResponseWriter, r *http.Request) {
+	// Authenticate request
+	if _, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r); !authenticated {
+		return
+	}
+
+	a.logger.Debug().Msg("List probes request received")
+
+	// Get probe statistics from cache
+	probeStats := a.strategy.cache.GetProbeStatistics()
+
+	// Build response
+	probes := make([]ProbeInfo, 0, len(probeStats))
+	for _, stats := range probeStats {
+		lastUpdate := ""
+		if !stats.LastUpdate.IsZero() {
+			lastUpdate = stats.LastUpdate.Format(time.RFC3339)
+		}
+
+		probes = append(probes, ProbeInfo{
+			Name:         stats.Name,
+			MetricsCount: stats.MetricsCount,
+			LastUpdate:   lastUpdate,
+		})
+	}
+
+	response := ProbesListResponse{
+		Probes: probes,
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode probes list response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.logger.Info().
+		Int("probes_count", len(probes)).
+		Msg("Probes list response sent")
+}
+
+// Info API Endpoints
+
+// HandleInfoProbes lists all available probes
+func (a *APIManager) HandleInfoProbes(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	stats := a.strategy.cache.GetProbeStatistics()
+	running := agentstate.RunningProbeStates()
+
+	probeMetrics := make(map[string]int)
+	probes := []string{}
+	details := []ProbeDetail{}
+	totalMetrics := 0
+	seen := make(map[string]struct{})
+
+	for name, st := range stats {
+		seen[strings.ToLower(name)] = struct{}{}
+		d := ProbeDetail{Name: name, MetricsCount: st.MetricsCount}
+		if !st.LastUpdate.IsZero() {
+			d.LastUpdate = st.LastUpdate.UTC().Format(time.RFC3339)
+		}
+		if rs, ok := running[strings.ToLower(name)]; ok {
+			d.Running, d.Health, d.LastError = rs.Running, rs.Health, rs.LastError
+		}
+		probes = append(probes, name)
+		details = append(details, d)
+		probeMetrics[name] = st.MetricsCount
+		totalMetrics += st.MetricsCount
+	}
+	// A probe that runs but holds no metric (its input is missing, say)
+	// is exactly the one an operator needs to see.
+	for name, rs := range running {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		probes = append(probes, name)
+		details = append(details, ProbeDetail{Name: name, Running: rs.Running, Health: rs.Health, LastError: rs.LastError})
+		probeMetrics[name] = 0
+	}
+	sort.Strings(probes)
+	sort.Slice(details, func(i, j int) bool { return details[i].Name < details[j].Name })
+
+	response := ProbesInfoResponse{
+		Probes:       probes,
+		ProbeMetrics: probeMetrics,
+		TotalMetrics: totalMetrics,
+		Details:      details,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode JSON response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// HandleInfoEndpoints provides discovery of available endpoints
+func (a *APIManager) HandleInfoEndpoints(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	// Define all possible endpoints with their descriptions
+	allEndpoints := map[string]string{
+		"prtg":       "PRTG JSON format for monitoring integration",
+		"nagios":     "Nagios-compatible output format",
+		"prometheus": "Prometheus text exposition format",
+	}
+
+	var endpoints []EndpointInfoStatus
+	for name, description := range allEndpoints {
+		endpoints = append(endpoints, EndpointInfoStatus{
+			Name:        name,
+			Description: description,
+			Enabled:     a.strategy.configManager.IsEndpointEnabled(name),
+		})
+	}
+
+	response := EndpointsInfoResponse{
+		Endpoints: endpoints,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode JSON response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// HandleInfoSystem provides system status and resource information
+func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	// Get comprehensive health information from health manager
+	systemHealth := a.strategy.healthManager.BuildSystemHealth()
+
+	// Get cache stats for additional info
+	a.strategy.cache.mu.RLock()
+	totalMetrics := 0
+	for _, tsKeys := range a.strategy.cache.probeIndex {
+		totalMetrics += len(tsKeys)
+	}
+	probeCount := len(a.strategy.cache.probeIndex)
+	a.strategy.cache.mu.RUnlock()
+
+	// Build system info response
+	// Parse version and commit information
+	versionInfo := a.strategy.utilsManager.parseVersionInfo()
+	version := versionInfo.Version
+	commit := versionInfo.Commit
+
+	hostname, _ := os.Hostname()
+	response := SystemInfoResponse{
+		Status:           "running",
+		Hostname:         hostname,
+		Version:          version,
+		Commit:           commit,
+		InstanceID:       configuration.AgentInstanceID(a.strategy.agentConfig.GetAuthenticationKey()),
+		GoVersion:        runtime.Version(),
+		OS:               runtime.GOOS,
+		Arch:             runtime.GOARCH,
+		Port:             a.strategy.port,
+		Uptime:           systemHealth.Uptime,
+		Health:           systemHealth.Health,
+		StrategyFailures: strategyFailureList(),
+		OutputsFailing:   outputsFailing(),
+		ConfigPath:       filepath.Dir(a.strategy.agentConfig.GetConfigPath()),
+		ConfigWatch:      configWatchInfo(),
+		Cache: CacheInfoResponse{
+			TotalMetrics: totalMetrics,
+			TTL:          a.strategy.cache.ttl.String(),
+			ProbeCount:   probeCount,
+		},
+		Resources: systemHealth.Resources,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode JSON response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// HandleInfoTags provides tag discovery for a specific probe
+func (a *APIManager) HandleInfoTags(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	vars := mux.Vars(r)
+	probeName := vars["probe"]
+
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
+	a.strategy.cache.mu.RLock()
+	defer a.strategy.cache.mu.RUnlock()
+
+	// Get time series keys for the probe
+	tsKeys, exists := a.strategy.cache.probeIndex[probeNameLower]
+	if !exists {
+		http.Error(w, "Probe not found", http.StatusNotFound)
+		return
+	}
+
+	// Resolve probe type from cached tags (within the same RLock — no TOCTOU)
+	// Probe name can differ from type (e.g., "veeam-prod" → "veeam")
+	probeType := probeNameLower
+	for tsKey := range tsKeys {
+		if metric, exists := a.strategy.cache.timeSeries[tsKey]; exists {
+			if pt, ok := metric.Tags["probe_type"]; ok && pt != "" {
+				probeType = pt
+				break
+			}
+		}
+	}
+
+	// Load probe definition using the resolved type
+	probeDef := a.strategy.transformerRegistry.GetProbeDefinition(probeType)
+
+	// Analyze tags from all metrics of this probe
+	tagValues := make(map[string]map[string]int)
+	metrics := make(map[string]bool)
+
+	for tsKey := range tsKeys {
+		if metric, exists := a.strategy.cache.timeSeries[tsKey]; exists {
+			// Collect metric names
+			metrics[metric.MetricName] = true
+
+			// Collect tag values
+			for tagKey, tagValue := range metric.Tags {
+				if tagValues[tagKey] == nil {
+					tagValues[tagKey] = make(map[string]int)
+				}
+				tagValues[tagKey][tagValue]++
+			}
+		}
+	}
+
+	// Build tag metadata lookup from probe definition
+	tagMeta := make(map[string]transformers.TagMetadata)
+	if probeDef != nil && probeDef.TagMetadata != nil {
+		tagMeta = probeDef.TagMetadata
+	}
+
+	// Convert to response format — only expose tags that have metadata in the transformer
+	// (internal tags like endpoint, probe_name, probe_type are excluded)
+	tags := make(map[string]TagInfo)
+	for tagKey, values := range tagValues {
+		meta, hasMeta := tagMeta[tagKey]
+		if !hasMeta {
+			continue
+		}
+
+		var valueList []string
+		for value := range values {
+			valueList = append(valueList, value)
+		}
+
+		tags[tagKey] = TagInfo{
+			Values:           valueList,
+			Description:      a.strategy.utilsManager.getTagDescription(tagKey),
+			SampleCount:      len(valueList),
+			Type:             string(meta.Type),
+			Label:            meta.Label,
+			ValueLabels:      meta.ValueLabels,
+			LinkedCategories: meta.LinkedCategories,
+		}
+	}
+
+	var metricList []string
+	for metric := range metrics {
+		metricList = append(metricList, metric)
+	}
+
+	// Build categories from probe definition
+	var categories []CategoryInfo
+	if probeDef != nil {
+		categoryCounts := make(map[string]int)
+		for _, m := range probeDef.Metrics {
+			if m.Category != "" {
+				categoryCounts[m.Category]++
+			}
+		}
+		for cat, count := range categoryCounts {
+			label := cat // default: use raw key
+			// Try to find a human label from tag metadata value_labels
+			for _, meta := range tagMeta {
+				if meta.Type == transformers.TagTypeCategory && meta.ValueLabels != nil {
+					if humanLabel, exists := meta.ValueLabels[cat]; exists {
+						label = humanLabel
+						break
+					}
+				}
+			}
+			categories = append(categories, CategoryInfo{
+				Key:         cat,
+				Label:       label,
+				MetricCount: count,
+			})
+		}
+	}
+
+	response := TagInfoResponse{
+		Probe:        probeNameLower,
+		Tags:         tags,
+		Metrics:      metricList,
+		TotalMetrics: len(metricList),
+		Categories:   categories,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode JSON response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// HandleInfoSchema provides complete schema information with examples
+func (a *APIManager) HandleInfoSchema(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	vars := mux.Vars(r)
+	probeName := vars["probe"]
+
+	// Normalize probe name to lowercase for cache lookup
+	// (UI may send capitalized names like "Netscaler" but cache uses lowercase "netscaler")
+	probeNameLower := strings.ToLower(probeName)
+
+	// Reuse tag discovery logic
+	a.strategy.cache.mu.RLock()
+	tsKeys, exists := a.strategy.cache.probeIndex[probeNameLower]
+	if !exists {
+		a.strategy.cache.mu.RUnlock()
+		http.Error(w, "Probe not found", http.StatusNotFound)
+		return
+	}
+
+	tagValues := make(map[string]map[string]int)
+	metrics := make(map[string]bool)
+
+	for tsKey := range tsKeys {
+		if metric, exists := a.strategy.cache.timeSeries[tsKey]; exists {
+			metrics[metric.MetricName] = true
+			for tagKey, tagValue := range metric.Tags {
+				if tagValues[tagKey] == nil {
+					tagValues[tagKey] = make(map[string]int)
+				}
+				tagValues[tagKey][tagValue]++
+			}
+		}
+	}
+	a.strategy.cache.mu.RUnlock()
+
+	// Build tags info
+	tags := make(map[string]TagInfo)
+	for tagKey, values := range tagValues {
+		var valueList []string
+		for value := range values {
+			valueList = append(valueList, value)
+		}
+		tags[tagKey] = TagInfo{
+			Values:      valueList,
+			Description: a.strategy.utilsManager.getTagDescription(tagKey),
+			SampleCount: len(valueList),
+		}
+	}
+
+	var metricList []string
+	for metric := range metrics {
+		metricList = append(metricList, metric)
+	}
+
+	// Generate examples
+	examples := a.strategy.metricsProcessor.GenerateExamples(probeNameLower, tags, metricList)
+
+	response := SchemaInfoResponse{
+		Probe:        probeNameLower, // Use normalized name for consistency
+		Tags:         tags,
+		Metrics:      metricList,
+		TotalMetrics: len(metricList),
+		Examples:     examples,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode JSON response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// endpointDescriptions says what the main routes are for; a route not
+// named here is still listed, without a description.
+var endpointDescriptions = map[string]string{
+	"/health":                                "Health check endpoint",
+	"/api/{agentkey}/endpoints":              "List the endpoints this agent serves",
+	"/api/{agentkey}/info/probes":            "List the running probes",
+	"/api/{agentkey}/info/tags/{probe}":      "Tags of one probe's series",
+	"/api/{agentkey}/info/schema/{probe}":    "Schema of one probe",
+	"/api/{agentkey}/info/system":            "Version, host, resources and cache",
+	"/api/{agentkey}/info/endpoints":         "Which pull formats are enabled",
+	"/api/{agentkey}/admin/cache/clear":      "Clear the metric cache",
+	"/api/{agentkey}/debug/logs":             "View or set log levels",
+	"/api/{agentkey}/license/status":         "License status and tier",
+	"/api/{agentkey}/prtg/metrics/{probe}":   "Metrics of one probe in PRTG format",
+	"/api/{agentkey}/prtg/probes":            "List probes for PRTG",
+	"/api/{agentkey}/nagios/metrics/{probe}": "Metrics of one probe in Nagios format",
+	"/api/{agentkey}/nagios/check/{check}":   "Run one configured Nagios check",
+	"/api/{agentkey}/nagios/metrics":         "Aggregated metrics in Nagios format",
+	"/api/{agentkey}/nagios/checks":          "List the configured Nagios checks",
+	"/api/{agentkey}/prometheus/metrics":     "Metrics in Prometheus format",
+}
+
+// endpointCategory files a route template under the section the
+// console's API reference shows it in.
+func endpointCategory(tmpl string) string {
+	rest := strings.TrimPrefix(tmpl, "/api/{agentkey}/")
+	switch {
+	case tmpl == "/health":
+		return "health"
+	case strings.HasPrefix(rest, "prtg/"):
+		return "prtg"
+	case strings.HasPrefix(rest, "nagios/"):
+		return "nagios"
+	case strings.HasPrefix(rest, "prometheus/") || tmpl == "/metrics":
+		return "prometheus"
+	case strings.HasPrefix(rest, "info/") || strings.HasPrefix(rest, "catalog/") || rest == "endpoints" || strings.HasPrefix(rest, "lookups"):
+		return "discovery"
+	case strings.HasPrefix(rest, "admin/") || strings.HasPrefix(rest, "debug/") || strings.HasPrefix(rest, "config/") || strings.HasPrefix(rest, "license/") || strings.HasPrefix(rest, "stats/"):
+		return "admin"
+	}
+	return "other"
+}
+
+// registeredEndpoints walks the router this agent serves, so the list
+// can neither name a route that does not exist nor miss one that does.
+// Console pages (/web/...) and the profiler are left out.
+func registeredEndpoints(router *mux.Router) []EndpointInfo {
+	if router == nil {
+		return nil
+	}
+	byPath := map[string]*EndpointInfo{}
+	var order []string
+	_ = router.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
+		tmpl, err := route.GetPathTemplate()
+		if err != nil || strings.HasPrefix(tmpl, "/web/") || strings.Contains(tmpl, "/debug/pprof") {
+			return nil
+		}
+		methods, _ := route.GetMethods()
+		e, seen := byPath[tmpl]
+		if !seen {
+			e = &EndpointInfo{Path: tmpl, Description: endpointDescriptions[tmpl], Category: endpointCategory(tmpl)}
+			byPath[tmpl] = e
+			order = append(order, tmpl)
+		}
+		for _, m := range methods {
+			if !slices.Contains(e.Methods, m) {
+				e.Methods = append(e.Methods, m)
+			}
+		}
+		return nil
+	})
+	sort.Strings(order)
+	out := make([]EndpointInfo, 0, len(order))
+	for _, p := range order {
+		out = append(out, *byPath[p])
+	}
+	return out
+}
+
+// HandleListEndpoints lists the API endpoints this agent registered
+func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	endpoints := registeredEndpoints(a.strategy.router)
+	response := EndpointsListResponse{
+		Endpoints: endpoints,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode endpoints response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.logger.Info().Int("endpoints_count", len(endpoints)).Msg("Endpoints list response sent")
+}
+
+// Utility Methods for API Responses
+
+// License API Endpoints
+
+// HandleLicenseStatus returns the current license status
+func (a *APIManager) HandleLicenseStatus(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	// Prepare response structure
+	type LicenseStatusResponse struct {
+		Status           string   `json:"status"`         // "active", "expired", "grace_period", "none"
+		Tier             string   `json:"tier,omitempty"` // "free", "pro", "enterprise"
+		ExpiresAt        string   `json:"expires_at,omitempty"`
+		DaysRemaining    int      `json:"days_remaining,omitempty"`
+		AuthorizedProbes []string `json:"authorized_probes,omitempty"`
+		FreeTierProbes   []string `json:"free_tier_probes"`
+		Message          string   `json:"message,omitempty"`
+	}
+
+	response := LicenseStatusResponse{
+		FreeTierProbes: license.GetFreeTierProbes(),
+	}
+
+	// Get license token from configuration
+	licenseToken := a.getLicenseToken()
+
+	// Check if license is configured
+	if licenseToken == "" {
+		response.Status = "none"
+		response.Tier = "free"
+		response.Message = "No license configured - running in free tier mode"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Validate license token
+	validator, err := a.getLicenseValidator()
+	if err != nil {
+		a.logger.Error().Err(err).Msg("Failed to initialize license validator")
+		response.Status = "error"
+		response.Message = "Failed to validate license"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		}
+		return
+	}
+
+	license, err := validator.ValidateLicense(licenseToken)
+	if err != nil {
+		a.logger.Error().Err(err).Msg("Invalid license token")
+		response.Status = "invalid"
+		response.Tier = "free"
+		response.Message = "Invalid license token - running in free tier mode"
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		}
+		return
+	}
+
+	// Populate response with license info
+	response.Tier = string(license.Tier)
+	response.AuthorizedProbes = license.AuthorizedProbes
+	response.ExpiresAt = license.ExpiresAt.Format(time.RFC3339)
+
+	// Calculate days remaining
+	daysRemaining := int(time.Until(license.ExpiresAt).Hours() / 24)
+
+	if license.IsExpired {
+		if validator.IsInGracePeriod(license) {
+			response.Status = "grace_period"
+			gracePeriodEnd := license.ExpiresAt.Add(time.Duration(license.GracePeriodDays) * 24 * time.Hour)
+			graceDaysRemaining := int(time.Until(gracePeriodEnd).Hours() / 24)
+			response.DaysRemaining = graceDaysRemaining
+			response.Message = fmt.Sprintf("License expired but in grace period (%d days remaining)", graceDaysRemaining)
+		} else {
+			response.Status = "expired"
+			response.Message = "License expired and grace period ended - only free tier probes available"
+		}
+	} else {
+		response.Status = "active"
+		response.DaysRemaining = daysRemaining
+		response.Message = fmt.Sprintf("License active (%d days remaining)", daysRemaining)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode license status response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	a.logger.Debug().Str("status", response.Status).Str("tier", response.Tier).Msg("License status response sent")
+}
+
+// getLicenseToken retrieves the license token from configuration
+// Works with any AgentConfiguration that implements GetConfiguration()
+func (a *APIManager) getLicenseToken() string {
+	a.logger.Debug().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Getting license token from configuration")
+
+	// All AgentConfiguration implementations should have GetConfiguration()
+	// Try the interface method that all configurations support
+	if configProvider, ok := a.strategy.agentConfig.(interface {
+		GetConfiguration() configuration.ConfigurationData
+	}); ok {
+		a.logger.Debug().Msg("Configuration supports GetConfiguration interface")
+		config := configProvider.GetConfiguration()
+
+		licensePreview := ""
+		if len(config.Agent.License) > 20 {
+			licensePreview = config.Agent.License[:20] + "..."
+		} else if len(config.Agent.License) > 0 {
+			licensePreview = config.Agent.License
+		} else {
+			licensePreview = "(empty)"
+		}
+
+		a.logger.Debug().
+			Str("license_preview", licensePreview).
+			Bool("has_license", len(config.Agent.License) > 0).
+			Msg("Retrieved license from configuration")
+
+		return config.Agent.License
+	}
+
+	a.logger.Warn().
+		Str("config_type", fmt.Sprintf("%T", a.strategy.agentConfig)).
+		Msg("Could not retrieve license token - configuration doesn't support GetConfiguration()")
+	return ""
+}
+
+// getLicenseValidator creates a license validator instance
+func (a *APIManager) getLicenseValidator() (license.Validator, error) {
+	return license.GetDefaultValidator(7) // 7-day grace period
+}
+
+// HandleInfoOTLP snapshots the OTLP self-metric counters maintained in
+// the `agentstate` package and returns them as JSON. Designed for the
+// CLI `agent status --otlp` view and the dashboard's OTLP card so they
+// don't need to scrape Prometheus.
+//
+// Counter maps (`dropped_by_reason`, `checkpoint.errors_by_stage`) are
+// returned as empty objects when no event has occurred — easier for
+// frontends than distinguishing missing vs. zero.
+func (a *APIManager) HandleInfoOTLP(w http.ResponseWriter, r *http.Request) {
+	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
+	if !authenticated {
+		return
+	}
+
+	droppedByReason := agentstate.GetOTLPDroppedByReason()
+	if droppedByReason == nil {
+		droppedByReason = map[string]uint64{}
+	}
+	var droppedTotal uint64
+	for _, n := range droppedByReason {
+		droppedTotal += n
+	}
+
+	errorsByStage := agentstate.GetOTLPCheckpointErrorsByStage()
+	if errorsByStage == nil {
+		errorsByStage = map[string]uint64{}
+	}
+	var errorsTotal uint64
+	for _, n := range errorsByStage {
+		errorsTotal += n
+	}
+
+	resp := OTLPInfoResponse{
+		Pipeline: OTLPPipelineInfo{
+			MetricsPushedTotal:   agentstate.GetOTLPMetricsPushedTotal(),
+			LogsPushedTotal:      agentstate.GetOTLPLogsPushedTotal(),
+			SpansRelayedTotal:    agentstate.GetOTLPSpansRelayedTotal(),
+			LogsRelayedTotal:     agentstate.GetOTLPLogsRelayedTotal(),
+			MetricsRelayedTotal:  agentstate.GetOTLPMetricsRelayedTotal(),
+			ExportErrorsTotal:    agentstate.GetOTLPExportErrorsTotal(),
+			ExportErrorsBySignal: agentstate.GetOTLPExportErrorsBySignal(),
+			DroppedTotal:         droppedTotal,
+			DroppedByReason:      droppedByReason,
+		},
+		Store: OTLPStoreInfo{
+			Size:               agentstate.GetOTLPStoreSize(),
+			LogBufferFillRatio: agentstate.LogChannelFillRatio(),
+		},
+		ExportDuration: OTLPExportDurationInfo{
+			LastMs: float64(agentstate.GetOTLPLastExportDuration()) / float64(time.Millisecond),
+			MeanMs: float64(agentstate.GetOTLPMeanExportDuration()) / float64(time.Millisecond),
+		},
+		Checkpoint: OTLPCheckpointInfo{
+			SizeBytes:          agentstate.GetOTLPCheckpointSize(),
+			LastSaveAgeSeconds: agentstate.GetOTLPCheckpointLastSaveAge().Seconds(),
+			RestoredEntries:    agentstate.GetOTLPCheckpointRestoredCount(),
+			ErrorsTotal:        errorsTotal,
+			ErrorsByStage:      errorsByStage,
+		},
+		LogsQueue: OTLPLogsQueueInfo{
+			Records:       agentstate.GetOTLPLogsQueueRecords(),
+			Bytes:         agentstate.GetOTLPLogsQueueBytes(),
+			QueuedTotal:   agentstate.GetOTLPLogsQueuedTotal(),
+			ReplayedTotal: agentstate.GetOTLPLogsReplayedTotal(),
+		},
+		Failover: OTLPFailoverInfo{
+			ActiveEndpointIndex: agentstate.GetOTLPActiveEndpointIndex(),
+			SwitchesTotal:       agentstate.GetOTLPEndpointSwitchesTotal(),
+		},
+		Parallel: OTLPParallelInfo{
+			SubBatches: agentstate.GetOTLPSubBatchCount(),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode OTLP info response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+// configWatchInfo reports the configuration watch only when it is NOT
+// running: the nominal payload is unchanged.
+func configWatchInfo() *ConfigWatchInfo {
+	state := agentstate.GetConfigWatchDisabled()
+	if state == nil {
+		return nil
+	}
+	return &ConfigWatchInfo{Reason: state.Reason, Detail: state.Detail}
+}
+
+// strategyFailureList snapshots the configured outputs that are not
+// running, sorted by name so the payload is stable between scrapes.
+// outputsFailing merges start failures and export failures into one
+// sorted list of names, for the header pill of every console page.
+func outputsFailing() []string {
+	seen := map[string]bool{}
+	for name := range agentstate.GetStrategyFailures() {
+		seen[name] = true
+	}
+	for _, name := range agentstate.FailingExports() {
+		seen[name] = true
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func strategyFailureList() []StrategyFailureInfo {
+	failures := agentstate.GetStrategyFailures()
+	if len(failures) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(failures))
+	for name := range failures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]StrategyFailureInfo, 0, len(names))
+	for _, name := range names {
+		out = append(out, StrategyFailureInfo{
+			Strategy: name,
+			Reason:   failures[name].Reason,
+			Detail:   failures[name].Detail,
+		})
+	}
+	return out
+}

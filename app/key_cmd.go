@@ -7,6 +7,7 @@ import (
 	"golang.org/x/term"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // `agent key show` reveals the agent key — the bearer token an operator needs to
@@ -22,21 +23,21 @@ func runKeyCommand() {
 	args := os.Args[2:]
 	if len(args) == 0 || (args[0] != "show" && args[0] != "instance-id") {
 		fmt.Fprintln(os.Stderr, "Usage: agent key show|instance-id [--config-path <path>]")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	cfgPath, err := secretConfigFile(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	cfg, err := configuration.LoadFromDisk(cfgPath, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	if cfg.Agent.Key == "" {
 		fmt.Fprintln(os.Stderr, "Error: no agent key configured")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	// The instance id is what the agent's telemetry and its entity carry
 	// as service.instance.id. It is derived one way from the key and is
