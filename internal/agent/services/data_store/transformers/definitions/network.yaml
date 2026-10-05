@@ -192,3 +192,14 @@ tag_metadata:
   probe_type:
     type: resource
     label: "Probe Type"
+
+# Charts the Zabbix templates draw from these metrics (see GraphDefinition).
+graphs:
+  - name: "Network traffic"
+    series: [bytes_sent, bytes_received]
+  - name: "Network packets"
+    series: [packets_sent, packets_received]
+  - name: "Network errors"
+    series: [errors_sent, errors_received]
+  - name: "Network discards"
+    series: [discards_sent, discards_received]

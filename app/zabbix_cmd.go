@@ -163,7 +163,11 @@ func runZabbixCommand() {
 			os.Exit(cliexit.Failure)
 		}
 		if exp.DeclaresNothing() {
-			fmt.Fprintf(os.Stderr, "Note: %s relays records rather than metrics; it declares no Zabbix item, so no template was written for it.\n", p)
+			if opts.Platform != "" && len(def.Metrics) > 0 {
+				fmt.Fprintf(os.Stderr, "Note: %s has no metric on %s; it declares no Zabbix item there, so no template was written for it.\n", p, opts.Platform)
+			} else {
+				fmt.Fprintf(os.Stderr, "Note: %s relays records rather than metrics; it declares no Zabbix item, so no template was written for it.\n", p)
+			}
 			continue
 		}
 		body, err := template.Encode(exp)
@@ -272,6 +276,7 @@ func renderTemplates(probes []string, opts template.Options) (map[string][]byte,
 			names = append(names, t.Template)
 		}
 	}
+
 	return out, names, nil
 }
 

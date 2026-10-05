@@ -306,6 +306,41 @@ the agent's own items), and every trigger carries `scope`:
 `availability` for a state, `performance` for the processor, `capacity`
 for memory and disks. Filter problem views and actions on them.
 
+### Graphs and dashboards
+
+The host probes' templates draw their metrics. A graph prototype under
+the discovery rule of the metrics it plots gives every discovered
+instance its own graph, named with the rule's macros:
+
+| Template | Graphs (per instance) |
+|---|---|
+| CPU | utilization; load average (Linux); run queue (Windows); interrupts and context switches |
+| Memory | utilization; swap or pagefile utilization; page faults; pages in and out (Windows) |
+| Logical disk | filesystem or drive utilization (per mount point or drive); throughput and operations (per device or drive and direction); busy time (Linux); queue length (Windows) |
+| Network | traffic, packets, errors and discards (per interface and direction) |
+
+Each of these templates also carries a dashboard of its own graphs, two
+to a row, which Zabbix lists under the host's **Dashboards** menu, one
+entry per linked template. Zabbix resolves a dashboard widget against
+the graphs of the template that holds the dashboard and of no other, so
+there is no single combined page; the entries are the host overview.
+
+The charts are declared in the probe definition, under `graphs:`, as a
+name and the metrics to plot, by metric name:
+
+```yaml
+graphs:
+  - name: "Disk throughput"
+    series: [diskio_read_bytes, diskio_write_bytes, disk_read_bytes_sec, disk_write_bytes_sec]
+```
+
+A metric the platform does not produce is left out, so one declaration
+serves Linux and Windows, and a chart with no series on a platform is
+not written. Two metrics of different discovery rules (a Linux and a
+Windows variant of the same fact) give one chart per rule. The 6.0
+export carries the graphs but not the dashboards, whose widgets that
+format writes differently.
+
 ## Encryption
 
 The agent encrypts with **certificates** or with a **pre-shared key**,

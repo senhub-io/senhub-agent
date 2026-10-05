@@ -472,3 +472,16 @@ tag_metadata:
   probe_type:
     type: resource
     label: "Probe Type"
+
+# Charts the Zabbix templates draw from these metrics (see GraphDefinition).
+graphs:
+  - name: "Filesystem utilization"
+    series: [fs_used_percent, disk_used_percent]
+  - name: "Disk throughput"
+    series: [diskio_read_bytes, diskio_write_bytes, disk_read_bytes_sec, disk_write_bytes_sec]
+  - name: "Disk operations"
+    series: [diskio_read_ops, diskio_write_ops, disk_reads_sec, disk_writes_sec]
+  - name: "Disk busy time"
+    series: [diskio_busy_seconds]
+  - name: "Disk queue length"
+    series: [disk_queue_length]
