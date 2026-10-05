@@ -245,6 +245,22 @@ func GetProbeRunState(probeID string) ProbeRunState {
 	}
 }
 
+// RunningProbeStates reports the live state of every running probe,
+// keyed by its case-folded configured name.
+func RunningProbeStates() map[string]ProbeRunState {
+	probeStateMu.RLock()
+	ids := make(map[string]string, len(activeProbeByName))
+	for name, id := range activeProbeByName {
+		ids[name] = id
+	}
+	probeStateMu.RUnlock()
+	out := make(map[string]ProbeRunState, len(ids))
+	for name, id := range ids {
+		out[name] = GetProbeRunState(id)
+	}
+	return out
+}
+
 // GetProbeCounts returns (total, healthy) for the configured probes:
 // the running ones plus those that failed to start, which count in the
 // total and never as healthy. Probes that have not yet run a collect
