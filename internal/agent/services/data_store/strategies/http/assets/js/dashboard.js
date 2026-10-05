@@ -434,7 +434,7 @@
         const probes = (catalog && catalog.probes) || [];
         const available = probes.filter(x => x.authorized !== false).length;
         // A Pro type refused for its platform is not one a license would unlock.
-        const locked = probes.filter(x => x.tier === 'pro' && x.authorized === false && x.runs_here !== false).length;
+        const locked = probes.filter(x => x.licence_locked === true).length;
         let expires = '-';
         if (lic.expires_at) {
             expires = esc(dateOnly(lic.expires_at));
