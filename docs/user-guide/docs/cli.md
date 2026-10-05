@@ -28,9 +28,11 @@ Which commands use which codes:
 | `doctor` | at least one check is a warning | at least one check failed | |
 | `config init` | | invalid value, port in use, nothing written | configuration already present |
 | `config set` | | unknown key, invalid value | the key already holds the value |
-| `install` | | any error | service already installed, configuration present, binary current |
+| `install` | | any error | service installed and enabled, unit as `install` writes it, configuration present, binary current |
 
 Any other command exits `0` on success and `2` on failure. Before this contract, failures exited `1`; a script that tests only for a non-zero code is unaffected, one that compares with `1` must now compare with `2`.
+
+`install` also takes `--json` (`status`, `exit_code`, `changed`, `config_path`, `written`); its progress text then goes to stderr. A service that is installed but whose unit drifted, or that no longer starts at boot, is not "unchanged": `install` rewrites the unit and enables the service, exits `0`, and restarts nothing (restart the service to apply a changed unit). A unit owned by the `.deb`/`.rpm` package is never rewritten; the package manager updates it. On Windows the service registration and the single binary are the state.
 
 A command that exits `3` has written nothing: no file is rewritten, and its modification time is unchanged. A script that provisions a machine can run `config init`, `config set` and `install` again and treat `0` and `3` as success.
 
