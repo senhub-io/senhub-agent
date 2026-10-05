@@ -277,6 +277,94 @@ metrics:
       fs_type: system.filesystem.type
 
   # ═════════════════════════════════════════════════════════════════════════
+  # LINUX — Block device I/O (cumulative counters from /proc/diskstats)
+  # Whole devices only: partitions and loop/ram/zram/fd/sr are not reported.
+  # ═════════════════════════════════════════════════════════════════════════
+
+  - name: "diskio_read_bytes"
+    channel: "diskio_read_bytes"
+    display_name: "Disk I/O Read Bytes ({device})"
+    unit: "bytes"
+    multi_instance_labels: ["device"]
+    category: "performance"
+    platforms: ["linux"]
+    description: "Bytes transferred by the block device since boot, by direction"
+    otel:
+      name: system.disk.io
+      unit: By
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      device: system.device
+
+  - name: "diskio_write_bytes"
+    channel: "diskio_write_bytes"
+    display_name: "Disk I/O Write Bytes ({device})"
+    unit: "bytes"
+    multi_instance_labels: ["device"]
+    category: "performance"
+    platforms: ["linux"]
+    description: "Bytes transferred by the block device since boot, by direction"
+    otel:
+      name: system.disk.io
+      unit: By
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      device: system.device
+
+  - name: "diskio_read_ops"
+    channel: "diskio_read_ops"
+    display_name: "Disk Operations Read ({device})"
+    unit: "#"
+    multi_instance_labels: ["device"]
+    category: "performance"
+    platforms: ["linux"]
+    description: "Operations completed by the block device since boot, by direction"
+    otel:
+      name: system.disk.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      device: system.device
+
+  - name: "diskio_write_ops"
+    channel: "diskio_write_ops"
+    display_name: "Disk Operations Write ({device})"
+    unit: "#"
+    multi_instance_labels: ["device"]
+    category: "performance"
+    platforms: ["linux"]
+    description: "Operations completed by the block device since boot, by direction"
+    otel:
+      name: system.disk.operations
+      unit: "{operation}"
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      device: system.device
+
+  - name: "diskio_busy_seconds"
+    channel: "diskio_busy_seconds"
+    display_name: "Disk I/O Time ({device})"
+    unit: "s"
+    multi_instance_labels: ["device"]
+    category: "performance"
+    platforms: ["linux"]
+    description: "Time the block device spent with I/O in flight since boot"
+    otel:
+      name: system.disk.io_time
+      unit: s
+      type: counter
+    tag_to_attribute:
+      device: system.device
+
+  # ═════════════════════════════════════════════════════════════════════════
   # UNIX / LINUX — Inode metrics (senhub.* extensions — see semantic conventions §4.4.2)
   # ═════════════════════════════════════════════════════════════════════════
 

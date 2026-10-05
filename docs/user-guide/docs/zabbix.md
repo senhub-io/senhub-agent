@@ -273,7 +273,8 @@ without anyone writing an expression.
   and 95 % for the memory, the values the shipped Nagios checks use.
   The warning depends on the high one, so a value past both raises one
   problem. Each threshold is a template macro, overridden on a host or
-  a host group without editing the template:
+  a host group without editing the template (the table below also lists
+  the clock tolerance, which is not a usage threshold):
 
 | Macro | Default |
 |---|---|
@@ -281,6 +282,12 @@ without anyone writing an expression.
 | `{$SENHUB.MEMORY_USED_PERCENT.WARN}` / `.CRIT}` | 85 / 95 |
 | `{$SENHUB.FS_USED_PERCENT.WARN}` / `.CRIT}` (Linux) | 80 / 90 |
 | `{$SENHUB.DISK_USED_PERCENT.WARN}` / `.CRIT}` (Windows) | 80 / 90 |
+| `{$SENHUB.CLOCK.DRIFT.MAX}` | 60s |
+
+- **Clock drift.** The CPU template carries the host's clock as an item
+  shown as a date, and a *Warning* trigger, `fuzzytime()`, that fires when
+  the host's time is further from the server's than `{$SENHUB.CLOCK.DRIFT.MAX}`.
+  It works the same on Zabbix 6.0 and 7.0.
 
 Items and triggers are tagged the way the native templates are: every
 item carries `component` (the probe type, or `agent` and `inventory` on
