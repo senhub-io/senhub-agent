@@ -105,6 +105,22 @@ func stateTriggers(template string, proto ItemPrototype, bySeverity map[int]stri
 	return out
 }
 
+// changeTrigger raises a problem when the item's value differs from the
+// one before it. change() compares the last two values, so the problem
+// closes by itself at the next poll that repeats the new value; the
+// trigger is meant to be seen and acknowledged, not to stay open.
+func changeTrigger(template string, proto ItemPrototype) TriggerPrototype {
+	t := TriggerPrototype{
+		Expression:  fmt.Sprintf("change(/%s/%s)<>0", template, proto.Key),
+		Name:        proto.Name + " has changed",
+		Priority:    "WARNING",
+		Description: "Raised when the value differs from the previous one: the thing it fingerprints was modified.",
+		Tags:        []Tag{{Tag: "scope", Value: "security"}},
+	}
+	t.UUID = uid("trigger", template, t.Expression)
+	return t
+}
+
 // thresholdMacro names the user macro holding one threshold of a metric.
 func thresholdMacro(m transformers.MetricDefinition, level string) string {
 	var b strings.Builder

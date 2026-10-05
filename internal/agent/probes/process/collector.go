@@ -153,7 +153,29 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		log.Debug().Err(serr).Msg("Open login sessions not available")
 	}
 
+	// The handle table and the account database. Linux only; a fact
+	// that cannot be read is logged and left out.
+	signals, serrs := hostSecuritySignals()
+	for _, sig := range signals {
+		points = append(points, data_store.DataPoint{
+			Name:      sig.name,
+			Timestamp: ts,
+			Value:     sig.value,
+			Tags:      baseTags,
+		})
+	}
+	for _, e := range serrs {
+		log.Debug().Err(e).Msg("Host security signal not available")
+	}
+
 	return points, snaps, nil
+}
+
+// hostSignal is one machine-wide reading, sent under the internal name
+// its definition declares.
+type hostSignal struct {
+	name  string
+	value float64
 }
 
 // rollUpName is the stable name a process is reported under. Linux kernel
