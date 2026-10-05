@@ -1,6 +1,7 @@
 package template
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -168,5 +169,106 @@ func TestTheWindowsServicesTemplateRaisesAnAutomaticServiceNotRunning(t *testing
 	}
 	if !linux.DeclaresNothing() {
 		t.Error("the services template must be empty on Linux")
+	}
+}
+
+func TestAnAlternativeReferenceTakesTheMetricThePlatformProduces(t *testing.T) {
+	def := declaredDefinition()
+	def.Triggers = []transformers.TriggerDefinition{{Name: "Either", Expression: "last({{winonly|state}})=0"}}
+	linux, err := Generate(def, Options{Platform: "linux"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, ok := findTrigger(linux.ZabbixExport.Templates[0], "Either")
+	if !ok || !strings.Contains(tp.Expression, "svc.state[") {
+		t.Fatalf("on Linux the second alternative must be used: %+v", tp)
+	}
+	win, err := Generate(def, Options{Platform: "windows"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, ok = findTrigger(win.ZabbixExport.Templates[0], "Either")
+	if !ok || !strings.Contains(tp.Expression, "svc.win[") {
+		t.Fatalf("on Windows the first alternative must be used: %+v", tp)
+	}
+}
+
+var senhubMacro = regexp.MustCompile(`\{\$SENHUB\.[A-Z0-9_.]+\}`)
+
+// Every tunable a trigger names must ship with the template: an unknown
+// macro in a trigger is not refused at import, it is a trigger that never
+// evaluates.
+func TestEveryMacroATriggerReadsIsShipped(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, def := range defs {
+		for _, platform := range []string{"linux", "windows"} {
+			exp, err := Generate(def, Options{Platform: platform})
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			tpl := exp.ZabbixExport.Templates[0]
+			shipped := map[string]bool{}
+			for _, m := range tpl.Macros {
+				shipped[m.Macro] = true
+			}
+			for _, r := range tpl.DiscoveryRules {
+				for _, p := range r.ItemPrototypes {
+					for _, tp := range p.TriggerPrototypes {
+						for _, m := range senhubMacro.FindAllString(tp.Expression+" "+tp.Name, -1) {
+							if !shipped[m] {
+								t.Errorf("%s on %s: trigger %q reads %s, which the template does not ship", name, platform, tp.Name, m)
+							}
+						}
+					}
+				}
+				if r.Filter != nil {
+					for _, c := range r.Filter.Conditions {
+						if !shipped[c.Value] {
+							t.Errorf("%s on %s: the filter of %s reads %s, which the template does not ship", name, platform, r.Key, c.Value)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// The Windows host templates cover what an operator expects to be told
+// about: the processor, memory and paging, disk space and queue, network
+// errors, services and a restart.
+func TestTheWindowsHostTemplatesCoverTheUsualProblems(t *testing.T) {
+	defs, err := transformers.Definitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"cpu":         {"CPU Total Usage is above", "run queue", "host clock", "restarted"},
+		"memory":      {"Memory Usage is above", "Paging file usage"},
+		"logicaldisk": {"Disk Used Percent", "Disk queue length"},
+		"network":     {"Interface errors", "Interface discards"},
+		"winservices": {"start automatically and is not running"},
+	}
+	for probe, subjects := range want {
+		exp, err := Generate(defs[probe], Options{Platform: "windows"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, r := range exp.ZabbixExport.Templates[0].DiscoveryRules {
+			for _, p := range r.ItemPrototypes {
+				for _, tp := range p.TriggerPrototypes {
+					names = append(names, tp.Name)
+				}
+			}
+		}
+		all := strings.Join(names, "\n")
+		for _, s := range subjects {
+			if !strings.Contains(all, s) {
+				t.Errorf("%s: no trigger about %q on Windows; has:\n%s", probe, s, all)
+			}
+		}
 	}
 }

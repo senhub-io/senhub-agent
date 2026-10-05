@@ -230,9 +230,10 @@ type ProbeDefinition struct {
 // TriggerDefinition is a problem over one or more metrics of the same
 // instance. The expression is written in the Zabbix trigger language
 // with each item reference replaced by the metric's `name` in double
-// braces: `min({{cpu_queue_length}},5m)>{$SENHUB.CPU_QUEUE.MAX}`. The
-// metrics must all share one dimension set; a trigger whose metrics the
-// platform does not produce is left out.
+// braces: `min({{cpu_queue_length}},5m)>{$SENHUB.CPU_QUEUE.MAX}`;
+// `{{a|b}}` takes the first of the two the platform produces. The metrics
+// must all share one dimension set; a trigger whose metrics the platform
+// does not produce is left out.
 type TriggerDefinition struct {
 	Name        string            `yaml:"name"`
 	Expression  string            `yaml:"expression"`

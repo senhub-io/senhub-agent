@@ -295,10 +295,39 @@ without anyone writing an expression.
 | `{$SENHUB.DISK_USED_PERCENT.WARN}` / `.CRIT}` (Windows) | 80 / 90 |
 | `{$SENHUB.CLOCK.DRIFT.MAX}` | 60s |
 
+- **More thresholds.** The processor queue or load, paging, disk queue
+  or busy time, inodes, interface errors and discards, and a recent
+  restart raise a *Warning* when every value over the last five minutes
+  is past the limit (the restart one while the uptime is under its
+  window). They are declared in the probe definitions under `triggers:`
+  and carry the macros below; a trigger over a metric a platform does not
+  produce is left out of that platform's template.
+
+| Macro | Default | Watches |
+|---|---|---|
+| `{$SENHUB.CPU_QUEUE.PER_CORE}` | 3 | Processor queue length per logical processor (Windows) |
+| `{$SENHUB.CPU_LOAD.PER_CORE}` | 1.5 | 5 minute load average per logical processor (Linux) |
+| `{$SENHUB.PAGING_USED_PERCENT.WARN}` | 80 | Swap or pagefile usage, in percent |
+| `{$SENHUB.DISK_QUEUE.MAX}` | 5 | Disk queue length per drive (Windows) |
+| `{$SENHUB.DISK_BUSY.MAX}` | 0.9 | Fraction of time a device has I/O in flight (Linux) |
+| `{$SENHUB.FS_INODES_USED_PERCENT.WARN}` | 90 | Inode usage, in percent (Linux) |
+| `{$SENHUB.NET_ERRORS.MAX}` | 2 | Interface errors per second, either direction |
+| `{$SENHUB.NET_DISCARDS.MAX}` | 10 | Interface discards per second, either direction |
+| `{$SENHUB.UPTIME.RESTART_WINDOW}` | 10m | How long after a boot the restart problem stays open |
+
+  The host's uptime comes from `system.uptime`, sent by the `cpu` probe
+  (not a PRTG channel). The Windows services trigger and its macros are
+  [below](#windows-services). No disk latency trigger exists: no probe
+  reports a latency yet, only throughput, operations, queue and busy time.
+
 - **Clock drift.** The CPU template carries the host's clock as an item
   shown as a date, and a *Warning* trigger, `fuzzytime()`, that fires when
   the host's time is further from the server's than `{$SENHUB.CLOCK.DRIFT.MAX}`.
   It works the same on Zabbix 6.0 and 7.0.
+
+Taken together, a Windows host linked to the generated templates is
+watched for processor, memory and paging use, disk space, disk queue,
+interface errors, services and restarts, each limit a macro.
 
 Items and triggers are tagged the way the native templates are: every
 item carries `component` (the probe type, or `agent` and `inventory` on

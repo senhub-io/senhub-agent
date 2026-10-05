@@ -34,7 +34,15 @@ func declaredTriggers(template string, def transformers.ProbeDefinition, placed 
 		available := true
 		expression := d.Expression
 		for i, r := range refs {
-			pl, ok := placed[r[1]]
+			// {{a|b}} takes the first metric the platform produces,
+			// for a fact one platform calls by another name.
+			var pl placement
+			ok := false
+			for _, alt := range strings.Split(r[1], "|") {
+				if pl, ok = placed[strings.TrimSpace(alt)]; ok {
+					break
+				}
+			}
 			if !ok {
 				available = false
 				break
