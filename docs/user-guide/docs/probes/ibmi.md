@@ -590,5 +590,10 @@ series' tags.
 | `senhub.ibmi.collector.failure` | `ibmi.collector.failure_total` | Collector Failure — {collector} | # | Failed runs of this collector; a collector failing alone leaves its metrics absent while the rest keep reporting |
 | `senhub.ibmi.collector.last_duration` | `ibmi.collector.last_duration_ms` | Collector Duration — {collector} | ms | How long this collector's last run took |
 | `senhub.ibmi.collector.last_success_timestamp` | `ibmi.collector.last_success_timestamp` | Collector Last Success — {collector} | s | Unix time of this collector's last successful run |
+| `senhub.ibmi.collector.window_lag` | `ibmi.collector.window_lag` | Collector Window Lag — {collector} | s | How far the collector's read position trails the partition's clock at the end of the cycle; it grows while the collector cannot keep up |
+| `senhub.ibmi.collector.read_duration` | `ibmi.collector.read_duration` | Collector Read Span — {collector} | s | Seconds of log this cycle covered, from the start of the first window read to the read position at the end of the cycle |
+| `senhub.ibmi.collector.lost` | `ibmi.collector.lost` | Collector Lost — {collector} | s | Seconds of backlog skipped because the collector fell more than its maximum window behind the partition's clock; the events logged in them are not collected |
+| `senhub.ibmi.collector.slices` | `ibmi.collector.slices` | Collector Queries — {collector} | # | Queries issued by this collector during the last cycle |
+| `senhub.ibmi.collector.clock_offset` | `ibmi.collector.clock_offset` | Collector Clock Offset — {collector} | s | Agent clock minus the partition's clock, after the partition's UTC offset is removed; a clock skew between the two machines, not a time zone |
 
 <!-- schema:metrics:end -->

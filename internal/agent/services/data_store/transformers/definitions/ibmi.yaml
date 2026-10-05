@@ -2825,6 +2825,76 @@ metrics:
     tag_to_attribute:
       collector: ibmi.collector
 
+  - name: "ibmi.collector.window_lag"
+    channel: "ibmi_collector_window_lag"
+    display_name: "Collector Window Lag — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "How far the collector's read position trails the partition's clock at the end of the cycle; it grows while the collector cannot keep up"
+    otel:
+      name: senhub.ibmi.collector.window_lag
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.read_duration"
+    channel: "ibmi_collector_read_duration"
+    display_name: "Collector Read Span — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Seconds of log this cycle covered, from the start of the first window read to the read position at the end of the cycle"
+    otel:
+      name: senhub.ibmi.collector.read_duration
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.lost"
+    channel: "ibmi_collector_lost"
+    display_name: "Collector Lost — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Seconds of backlog skipped because the collector fell more than its maximum window behind the partition's clock; the events logged in them are not collected"
+    otel:
+      name: senhub.ibmi.collector.lost
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.slices"
+    channel: "ibmi_collector_slices"
+    display_name: "Collector Queries — {collector}"
+    unit: "#"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Queries issued by this collector during the last cycle"
+    otel:
+      name: senhub.ibmi.collector.slices
+      unit: "{query}"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.clock_offset"
+    channel: "ibmi_collector_clock_offset"
+    display_name: "Collector Clock Offset — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Agent clock minus the partition's clock, after the partition's UTC offset is removed; a clock skew between the two machines, not a time zone"
+    otel:
+      name: senhub.ibmi.collector.clock_offset
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
 tag_metadata:
   # Resource identifiers
   asp_number:
