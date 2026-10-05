@@ -87,8 +87,8 @@ func TestCollect_EmitsUpAndPerServiceMetrics(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{})
 	p.collect = func(_ []string) ([]serviceState, error) {
 		return []serviceState{
-			{name: "Spooler", state: stateRunning},
-			{name: "wuauserv", state: stateStopped},
+			{name: "Spooler", state: stateRunning, startType: startAutomatic},
+			{name: "wuauserv", state: stateStopped, startType: -1},
 		}, nil
 	}
 
@@ -155,7 +155,7 @@ func TestCollect_EnrichesProbeName(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{})
 	p.SetName("Windows Services")
 	p.collect = func(_ []string) ([]serviceState, error) {
-		return []serviceState{{name: "Spooler", state: stateRunning}}, nil
+		return []serviceState{{name: "Spooler", state: stateRunning, startType: startAutomatic}}, nil
 	}
 
 	points, err := p.Collect()
@@ -280,7 +280,7 @@ func TestEntitySource_AnnouncesTheRetiredIdentity(t *testing.T) {
 func TestCollect_ReportsASelectedServiceItCannotFind(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{"services": []interface{}{"spooler", "Spooler, W32Time"}})
 	p.collect = func(_ []string) ([]serviceState, error) {
-		return []serviceState{{name: "Spooler", state: stateRunning}}, nil
+		return []serviceState{{name: "Spooler", state: stateRunning, startType: startAutomatic}}, nil
 	}
 	for i := 0; i < 2; i++ {
 		if _, err := p.Collect(); err != nil {
@@ -295,5 +295,32 @@ func TestCollect_ReportsASelectedServiceItCannotFind(t *testing.T) {
 	}
 	if len(p.reportedMissing) != 1 {
 		t.Errorf("reportedMissing = %v, want one entry", p.reportedMissing)
+	}
+}
+
+// The Zabbix trigger for an automatic service that is not running needs
+// the start type next to the state. A service whose configuration cannot
+// be read reports the state alone, never a guessed start type.
+func TestCollect_EmitsTheStartTypeWhenItIsKnown(t *testing.T) {
+	p := newTestProbe(t, map[string]interface{}{})
+	p.collect = func(_ []string) ([]serviceState, error) {
+		return []serviceState{
+			{name: "Spooler", state: stateStopped, startType: startAutomaticDelayed},
+			{name: "locked", state: stateRunning, startType: -1},
+		}, nil
+	}
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	st, ok := findPoint(points, "windows.service.start_type", "Spooler")
+	if !ok || st.Value != float64(startAutomaticDelayed) {
+		t.Errorf("Spooler start type = %v (found %v), want %d", st.Value, ok, startAutomaticDelayed)
+	}
+	if _, ok := findPoint(points, "windows.service.start_type", "locked"); ok {
+		t.Error("a start type was emitted for a service whose configuration could not be read")
+	}
+	if _, ok := findPoint(points, "windows.service.state", "locked"); !ok {
+		t.Error("the state of that service must still be reported")
 	}
 }

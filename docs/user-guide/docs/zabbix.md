@@ -295,16 +295,100 @@ without anyone writing an expression.
 | `{$SENHUB.DISK_USED_PERCENT.WARN}` / `.CRIT}` (Windows) | 80 / 90 |
 | `{$SENHUB.CLOCK.DRIFT.MAX}` | 60s |
 
+- **More thresholds.** The processor queue or load, paging, disk queue
+  or busy time, inodes, interface errors and discards, and a recent
+  restart raise a *Warning* when every value over the last five minutes
+  is past the limit (the restart one while the uptime is under its
+  window). They are declared in the probe definitions under `triggers:`
+  and carry the macros below; a trigger over a metric a platform does not
+  produce is left out of that platform's template.
+
+| Macro | Default | Watches |
+|---|---|---|
+| `{$SENHUB.CPU_QUEUE.PER_CORE}` | 3 | Processor queue length per logical processor (Windows) |
+| `{$SENHUB.CPU_LOAD.PER_CORE}` | 1.5 | 5 minute load average per logical processor (Linux) |
+| `{$SENHUB.PAGING_USED_PERCENT.WARN}` | 80 | Swap or pagefile usage, in percent |
+| `{$SENHUB.DISK_QUEUE.MAX}` | 5 | Disk queue length per drive (Windows) |
+| `{$SENHUB.DISK_BUSY.MAX}` | 0.9 | Fraction of time a device has I/O in flight (Linux) |
+| `{$SENHUB.FS_INODES_USED_PERCENT.WARN}` | 90 | Inode usage, in percent (Linux) |
+| `{$SENHUB.NET_ERRORS.MAX}` | 2 | Interface errors per second, either direction |
+| `{$SENHUB.NET_DISCARDS.MAX}` | 10 | Interface discards per second, either direction |
+| `{$SENHUB.UPTIME.RESTART_WINDOW}` | 10m | How long after a boot the restart problem stays open |
+
+  The host's uptime comes from `system.uptime`, sent by the `cpu` probe
+  (not a PRTG channel). The Windows services trigger and its macros are
+  [below](#windows-services). No disk latency trigger exists: no probe
+  reports a latency yet, only throughput, operations, queue and busy time.
+
 - **Clock drift.** The CPU template carries the host's clock as an item
   shown as a date, and a *Warning* trigger, `fuzzytime()`, that fires when
   the host's time is further from the server's than `{$SENHUB.CLOCK.DRIFT.MAX}`.
   It works the same on Zabbix 6.0 and 7.0.
+
+Taken together, a Windows host linked to the generated templates is
+watched for processor, memory and paging use, disk space, disk queue,
+interface errors, services and restarts, each limit a macro.
 
 Items and triggers are tagged the way the native templates are: every
 item carries `component` (the probe type, or `agent` and `inventory` on
 the agent's own items), and every trigger carries `scope`:
 `availability` for a state, `performance` for the processor, `capacity`
 for memory and disks. Filter problem views and actions on them.
+
+### Windows services
+
+The `winservices` template discovers every service the agent reports,
+one set of items per service name (`{#WINDOWS_SERVICE_NAME}`): whether it
+runs, its Service Control Manager state, and its start type, each with a
+value map. One trigger, *Service ... is set to start automatically and
+is not running* (Average), fires when a service configured to start
+automatically, delayed or not, has not been running for the whole grace
+period. A manual or disabled service that is stopped raises nothing.
+
+| Macro | Default | Effect |
+|---|---|---|
+| `{$SENHUB.WINSERVICES.GRACE}` | `5m` | How long the service must have been stopped, which covers a restart and the delayed start after a boot |
+| `{$SENHUB.WINSERVICES.MATCHES}` | `.*` | A service is discovered only if its short name matches |
+| `{$SENHUB.WINSERVICES.NOT_MATCHES}` | `^(sppsvc\|clr_optimization_.*\|gupdate\|gupdatem\|edgeupdate\|edgeupdatem\|MapsBroker\|TrustedInstaller\|RemoteRegistry\|.*_[0-9a-f]{4,8})$` | A service whose short name matches is not discovered: services Windows starts on demand, and the per-session copies whose name changes at every logon |
+
+Override the macros on a host or a host group. The probe's `services`
+parameter narrows what the agent reports at the source; the macros narrow
+what the server creates.
+
+### Graphs and dashboards
+
+The host probes' templates draw their metrics. A graph prototype under
+the discovery rule of the metrics it plots gives every discovered
+instance its own graph, named with the rule's macros:
+
+| Template | Graphs (per instance) |
+|---|---|
+| CPU | utilization; load average (Linux); run queue (Windows); interrupts and context switches |
+| Memory | utilization; swap or pagefile utilization; page faults; pages in and out (Windows) |
+| Logical disk | filesystem or drive utilization (per mount point or drive); throughput and operations (per device or drive and direction); busy time (Linux); queue length (Windows) |
+| Network | traffic, packets, errors and discards (per interface and direction) |
+
+Each of these templates also carries a dashboard of its own graphs, two
+to a row, which Zabbix lists under the host's **Dashboards** menu, one
+entry per linked template. Zabbix resolves a dashboard widget against
+the graphs of the template that holds the dashboard and of no other, so
+there is no single combined page; the entries are the host overview.
+
+The charts are declared in the probe definition, under `graphs:`, as a
+name and the metrics to plot, by metric name:
+
+```yaml
+graphs:
+  - name: "Disk throughput"
+    series: [diskio_read_bytes, diskio_write_bytes, disk_read_bytes_sec, disk_write_bytes_sec]
+```
+
+A metric the platform does not produce is left out, so one declaration
+serves Linux and Windows, and a chart with no series on a platform is
+not written. Two metrics of different discovery rules (a Linux and a
+Windows variant of the same fact) give one chart per rule. The 6.0
+export carries the graphs but not the dashboards, whose widgets that
+format writes differently.
 
 ## Encryption
 
@@ -524,6 +608,23 @@ creates one autoregistration action per platform matching on it, so a
 Linux host is linked to the Linux templates and a Windows host to the
 Windows ones by itself.
 
+### Which probes are linked without being named
+
+A probe is linked by default when its definition marks it `universal`
+and it has an item on the platform: the processor, memory, network,
+disks and processes everywhere, and on Windows the services
+(`winservices`) and the event log counter (`windows_eventlog`). The
+other probes depend on what the host runs (`hyperv` on a Hyper-V host,
+`mssql` beside an SQL Server, any vendor probe), so you name them with
+`--probe`, or link everything with `--all-probes`. A template with
+nothing to send on a platform, such as `winservices` on Linux, is not
+imported for it.
+
+`windows_eventlog` sends its records on the log rail, which the Zabbix
+output does not carry, so what a Zabbix host gets from it is its
+throughput counter, `senhub.windows_eventlog.records_emitted`, as a
+rate. The records themselves go to an OTLP output.
+
 Only the published platforms have an action. An agent built for macOS,
 which is a development target and not a release, registers as
 `... darwin`, matches nothing and waits for an autoregistration that
@@ -631,7 +732,7 @@ are; `--version 8.0` is not needed and does not exist.
 ```
 senhub-agent zabbix setup --url <frontend> [--token-file <path>]
                           [--group <name>] [--metadata <string>]
-                          [--action-name <name>] [--probe <type> ...]
+                          [--action-name <name>] [--probe <type> ...] [--all-probes]
                           [--discovery-delay <interval> | --no-discovery-delay]
                           [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
 ```
@@ -643,7 +744,8 @@ senhub-agent zabbix setup --url <frontend> [--token-file <path>]
 | `--group` | `SenHub Agents` | Host group new hosts are put in |
 | `--metadata` | `senhub-agent` | Host metadata the autoregistration action matches; must match the output's `host_metadata` |
 | `--action-name` | `Autoregistration — SenHub Agent` | Name of the autoregistration action |
-| `--probe` | the probes every machine runs | Also import and link the template of this probe type; repeat for several |
+| `--probe` | the probes every machine runs | Also import and link the template of this probe type; repeat for several. `hyperv` and `mssql` are linked this way, since only some hosts run them |
+| `--all-probes` | | Import and link every template that carries an item on the platform |
 | `--discovery-delay` | `5m` | Interval set on the discovery rules of the imported templates |
 | `--no-discovery-delay` | | Leave the discovery rules at the template's interval (1 hour) |
 | `--prefix` | `senhub` | Key prefix; must match the output's `key_prefix` |
