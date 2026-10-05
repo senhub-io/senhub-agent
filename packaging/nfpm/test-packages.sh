@@ -33,6 +33,7 @@ PKGDIR="$ROOT/dist/packages"
 LEGACY_BIN="$PKGDIR/stage/legacy-senhub-agent-$ARCH"
 CFG=/etc/senhub-agent/agent.yaml
 MARK="# edited-by-test-packages"
+EDIT_VALUE=7
 
 # name|image|format|prepare command (installs systemd and what the test needs)
 ALL_DISTROS="debian12 ubuntu2204 ubuntu2404 rocky9 leap156"
@@ -76,6 +77,19 @@ wait_active() {
         sleep 1
     done
     return 1
+}
+
+# The agent seals its key into agent.yaml ~50 ms after its first start, with a
+# read-modify-write that does not lock: an edit landing inside that window is
+# lost (config_seal.go sealAgentKeyInFile). Wait for it to settle, as an
+# operator editing a running host would.
+wait_sealed() {
+    local i
+    for i in $(seq 1 50); do
+        x "grep -q 'secret:agent.key' $CFG" && break
+        sleep 0.2
+    done
+    check "first-start sealing settled" "grep -q 'secret:agent.key' $CFG"
 }
 
 pkg_file() { # version
@@ -132,7 +146,9 @@ run_migration() {
     check "legacy install" "chmod +x /root/senhub-agent && /root/senhub-agent install && systemctl start senhub-agent"
     wait_active; check "legacy service active" "systemctl is-active senhub-agent"
     check "legacy layout in place" "[ -x /usr/local/bin/senhub-agent ] && [ -f /etc/systemd/system/senhub-agent.service ]"
-    x "echo '$MARK' >> $CFG"
+    wait_sealed
+    # A value the agent never rewrites, plus a comment: both must survive.
+    x "sed -i 's/retention_minutes: 5/retention_minutes: $EDIT_VALUE/' $CFG; echo '$MARK' >> $CFG"
     local key1 key2
     key1=$(x "/usr/local/bin/senhub-agent license key" 2>/dev/null | tail -1)
     check "agent key readable before" "[ -n '$key1' ]"
@@ -146,7 +162,8 @@ run_migration() {
     check "systemd loads the packaged unit" "[ \"\$(systemctl show -p FragmentPath --value senhub-agent)\" != /etc/systemd/system/senhub-agent.service ] && [ ! -e /etc/systemd/system/senhub-agent.service ]"
     check "legacy binary removed, backup kept" "[ ! -e /usr/local/bin/senhub-agent ] && [ -f /var/lib/senhub-agent/senhub-agent.pre-package ]"
     check "version is $V2" "[ \"\$(senhub-agent version | grep -o '$V2' | head -1)\" = '$V2' ]"
-    check "configuration kept" "grep -qx '$MARK' $CFG"
+    check "configuration value edit kept" "grep -q 'retention_minutes: $EDIT_VALUE' $CFG"
+    check "configuration comment kept" "grep -qx '$MARK' $CFG"
     key2=$(x "/usr/bin/senhub-agent license key" 2>/dev/null | tail -1)
     check "same agent key" "[ '$key1' = '$key2' ]"
     cleanup
@@ -204,6 +221,7 @@ run_distro() {
     check "doctor --json exit code is not 2" "senhub-agent doctor --json >/dev/null; rc=\$?; echo exit=\$rc; [ \$rc -ne 2 ]"
 
     # --- upgrade
+    wait_sealed
     x "echo '$MARK' >> $CFG; echo data > /var/lib/senhub-agent/marker; chown senhub /var/lib/senhub-agent/marker"
     local pid1
     pid1=$(x "systemctl show -p MainPID --value senhub-agent")
