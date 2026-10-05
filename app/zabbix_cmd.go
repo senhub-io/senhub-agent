@@ -12,6 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/template"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/cliexit"
 )
 
 func init() {
@@ -52,7 +53,7 @@ func runZabbixCommand() {
 	args := os.Args[2:]
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, zabbixUsage)
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	switch args[0] {
 	case "template":
@@ -64,7 +65,7 @@ func runZabbixCommand() {
 		return
 	default:
 		fmt.Fprintf(os.Stderr, "Error: unknown subcommand %q\n%s\n", args[0], zabbixUsage)
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	opts := template.Options{}
 	var probes []string
@@ -75,7 +76,7 @@ func runZabbixCommand() {
 		value := func() string {
 			if i+1 >= len(rest) {
 				fmt.Fprintf(os.Stderr, "Error: %s needs a value\n", flag)
-				os.Exit(2)
+				os.Exit(cliexit.Failure)
 			}
 			i++
 			return rest[i]
@@ -98,22 +99,22 @@ func runZabbixCommand() {
 			return
 		default:
 			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", flag, zabbixUsage)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 	}
 	if opts.Platform != "" && opts.Platform != "linux" && opts.Platform != "windows" {
 		fmt.Fprintln(os.Stderr, "Error: --platform must be linux or windows")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	if opts.Version != "" && opts.Version != "6.0" && opts.Version != "7.0" {
 		fmt.Fprintln(os.Stderr, "Error: --version must be 6.0 or 7.0")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	defs, err := transformers.Definitions()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	if len(probes) == 0 {
 		for name := range defs {
@@ -132,19 +133,19 @@ func runZabbixCommand() {
 	if out != "" {
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 	if out != "" {
 		body, err := template.Encode(template.Base(opts))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		path := filepath.Join(out, fmt.Sprintf("senhub-agent-%s.yaml", firstNonEmptyVersion(opts.Version)))
 		if err := os.WriteFile(path, body, 0o644); err != nil { // #nosec G306 - a template to import, not a secret
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Println(path)
 	}
@@ -153,12 +154,12 @@ func runZabbixCommand() {
 		def, ok := defs[p]
 		if !ok {
 			fmt.Fprintf(os.Stderr, "Error: no definition for probe type %q\n", p)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		exp, err := template.Generate(def, opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", p, err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		if exp.DeclaresNothing() {
 			fmt.Fprintf(os.Stderr, "Note: %s relays records rather than metrics; it declares no Zabbix item, so no template was written for it.\n", p)
@@ -167,7 +168,7 @@ func runZabbixCommand() {
 		body, err := template.Encode(exp)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", p, err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		if out == "" {
 			os.Stdout.Write(body)
@@ -176,7 +177,7 @@ func runZabbixCommand() {
 		path := filepath.Join(out, fmt.Sprintf("senhub-%s%s-%s.yaml", p, platformSuffix(opts.Platform), exp.ZabbixExport.Version))
 		if err := os.WriteFile(path, body, 0o644); err != nil { // #nosec G306 - a template to import, not a secret
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Println(path)
 	}

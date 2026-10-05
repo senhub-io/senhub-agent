@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/template"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // zabbixAPI is the JSON-RPC client the setup command talks to. It is
@@ -380,7 +381,7 @@ func runZabbixSetup(args []string) {
 		value := func() string {
 			if i+1 >= len(args) {
 				fmt.Fprintf(os.Stderr, "Error: %s needs a value\n", flag)
-				os.Exit(2)
+				os.Exit(cliexit.Failure)
 			}
 			i++
 			return args[i]
@@ -415,22 +416,22 @@ func runZabbixSetup(args []string) {
 			return
 		default:
 			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", flag, zabbixUsage)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 	}
 	if rawURL == "" {
 		fmt.Fprintln(os.Stderr, "Error: --url is required (the Zabbix frontend, for example https://zabbix.example.com)")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	if opts.Version != "" && opts.Version != "6.0" && opts.Version != "7.0" {
 		fmt.Fprintln(os.Stderr, "Error: --version must be 6.0 or 7.0")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	if resolved, err := tokenFrom(token, tokenFile); err == nil {
 		token = resolved
 	} else if !dryRun {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	// Without --probe the command used to link every template it could
@@ -456,7 +457,7 @@ func runZabbixSetup(args []string) {
 	version, err := s.version()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	s.say("Zabbix %s answered", version)
 	if zabbixBefore(version, 6, 4) {
@@ -470,14 +471,14 @@ func runZabbixSetup(args []string) {
 			s.say("exporting the templates in the 6.0 format this server reads")
 		case "7.0":
 			fmt.Fprintf(os.Stderr, "Error: Zabbix %s cannot import the 7.0 export format; drop --version or pass --version 6.0\n", version)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
 	groupID, err := s.ensureGroup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	// One set of templates per platform, and one autoregistration action
@@ -492,42 +493,42 @@ func runZabbixSetup(args []string) {
 		rendered, names, rerr := renderTemplates(probes, platOpts)
 		if rerr != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", rerr)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		s.templates = rendered
 		fmt.Printf("  for %s:\n", platform)
 		if err := s.importTemplates(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		var ids []string
 		if !dryRun {
 			if ids, err = s.templateIDs(names); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 			if len(ids) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: the templates were imported but cannot be read back; check the account's permissions")
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 		}
 		if err := s.ensureAction(actionName+" ("+platform+")", metadata+" "+platform, groupID, ids); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		if err := s.quickenDiscovery(ids); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
 	if err := s.reportCollidingActions(actionName, metadata); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	if err := s.retireUnsplitAction(actionName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	fmt.Println()
