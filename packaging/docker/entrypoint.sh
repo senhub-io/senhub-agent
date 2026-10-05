@@ -124,8 +124,18 @@ init_config() {
   if [ -n "$endpoint" ]; then
     set -- "$@" --otlp-endpoint "$endpoint" --otlp-protocol "${SENHUB_OTLP_PROTOCOL:-grpc}"
   fi
-  if [ -n "${SENHUB_LICENSE:-}" ]; then
-    set -- "$@" --license "$SENHUB_LICENSE"
+  # The licence as a file (a mounted secret) stays out of the container's
+  # environment, which `podman inspect` prints.
+  license="${SENHUB_LICENSE:-}"
+  if [ -z "$license" ] && [ -n "${SENHUB_LICENSE_FILE:-}" ]; then
+    if [ -r "$SENHUB_LICENSE_FILE" ]; then
+      license=$(tr -d '\n' < "$SENHUB_LICENSE_FILE")
+    else
+      log "SENHUB_LICENSE_FILE names $SENHUB_LICENSE_FILE, which is not readable: the agent runs on the free tier"
+    fi
+  fi
+  if [ -n "$license" ]; then
+    set -- "$@" --license "$license"
   fi
   if [ -n "${SENHUB_TAGS:-}" ]; then
     set -- "$@" --tags "$SENHUB_TAGS"
