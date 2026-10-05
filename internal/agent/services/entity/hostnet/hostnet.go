@@ -120,7 +120,8 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		if r.Metric > 0 {
 			attrs[attrMetric] = r.Metric
 		}
-		// The egress interface tells two routes to one destination
+		// The egress interface explains an absent next_hop_via (a
+		// container bridge) and tells two routes to one destination
 		// apart when a host has two paths.
 		if r.Iface != "" {
 			attrs[attrEgressInterface] = r.Iface
@@ -140,13 +141,13 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		})
 
 		// The gateway IP as a shared network.address node + next_hop_via edge,
-		// identified by the address alone: the egress interface does not decide
-		// (a Windows or Kubernetes-node route leaves by an interface whose name
-		// says nothing about the gateway). A gateway in the exclusion list is
-		// the same value on every host, so a shared node would falsely join
-		// unrelated hosts; the next hop still rides as the host-scoped
+		// only when both rules agree: the address is not in the exclusion list
+		// (the same value on every host, so a shared node would falsely join
+		// unrelated hosts) AND the route does not leave by a container bridge,
+		// whose gateway is reused on every such host (br-<id> on 172.18+, cni0,
+		// ...). In doubt, no edge: the next hop still rides as the host-scoped
 		// next_hop.ip attribute above.
-		if !entity.AddressEdgeAllowed(nextHop) {
+		if !entity.AddressEdgeAllowed(nextHop) || entity.IsContainerBridgeIface(r.Iface) {
 			continue
 		}
 		addrID := map[string]any{idKeyNetworkAddress: nextHop}

@@ -56,7 +56,7 @@ func AddressEdgeAllowed(addr string) bool {
 // routed bridges br-lan / br-wan, which match "br-" and lose a gateway
 // that is legitimately shared.
 var containerBridgePrefixes = []string{
-	"docker", "br-", "virbr", "cni", "cbr", "flannel", "lxcbr", "kube", "cali", "antrea", "weave", "ovs-system",
+	"docker", "br-", "virbr", "cni", "cbr", "flannel", "lxcbr", "kube", "cali", "antrea", "weave", "ovs-system", "veth", "cilium",
 }
 
 // IsContainerBridgeIface reports whether an interface name is a host-local
