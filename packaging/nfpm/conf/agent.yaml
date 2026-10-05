@@ -1,0 +1,19 @@
+# SenHub Agent: global configuration of the Linux package.
+# Globals only; probes in probes.d/, strategies in strategies.d/.
+# agent.key is filled in with a generated UUID when the package is first
+# installed. auto_update stays disabled: the package manager owns the version
+# (apt upgrade / dnf upgrade / zypper update).
+
+config_version: 3
+
+agent:
+  key: ""
+  # Paid-tier probes: drop the license.jwt file (from Sensor Factory) next to this config — no file = free tier. See agent.senhub.io/docs. (An inline 'license:' JWT still works and is auto-migrated to license.jwt on next start.)
+
+auto_update:
+  enabled: false
+  include_beta: false
+  url: "https://eu-west-1.intake.senhub.io"
+
+cache:
+  retention_minutes: 5

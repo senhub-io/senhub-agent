@@ -13,7 +13,7 @@ import (
 // service, when that service runs the configuration being checked. Values
 // from EnvironmentFile= override Environment=, as systemd applies them.
 func serviceEnvironment(configPath string) (map[string]string, error) {
-	unit, err := os.ReadFile(installedUnitPath)
+	unit, err := os.ReadFile(loadedUnitPath())
 	if err != nil {
 		return nil, nil
 	}
