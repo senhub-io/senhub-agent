@@ -336,6 +336,7 @@ func TestEntitySource_BeforeFirstCycle(t *testing.T) {
 
 func TestEntitySource_AfterMarkReachable(t *testing.T) {
 	src := newEntitySource("https://192.0.2.1:8443")
+	src.setControllerID("5e1c7a3e-0000-4000-8000-000000000001")
 	src.markReachable(true)
 	obs, ok := src.Observe()
 	if !ok {
@@ -348,11 +349,86 @@ func TestEntitySource_AfterMarkReachable(t *testing.T) {
 	if ent.Type != entityTypeServiceInstance {
 		t.Errorf("entity type = %q; want %q", ent.Type, entityTypeServiceInstance)
 	}
-	if v, ok := ent.ID[idKeyServiceInstanceID]; !ok || v != "unifi://https://192.0.2.1:8443" {
-		t.Errorf("entity id = %v; want {%q: \"unifi://https://192.0.2.1:8443\"}", ent.ID, idKeyServiceInstanceID)
+	if v := ent.ID[idKeyServiceInstanceID]; v != "5e1c7a3e-0000-4000-8000-000000000001" {
+		t.Errorf("entity id = %v; want the controller UUID", ent.ID)
 	}
 	if v := ent.Attributes["unifi.reachable"]; v != true {
 		t.Errorf("unifi.reachable = %v; want true", v)
+	}
+}
+
+func TestEntitySource_Identity(t *testing.T) {
+	cases := []struct {
+		name, endpoint, uuid, hostID, want string
+	}{
+		{"uuid wins on a remote controller", "https://192.0.2.1:8443", "uuid-1", "h-1", "uuid-1"},
+		{"uuid wins on a local controller", "https://localhost:8443", "uuid-1", "h-1", "uuid-1"},
+		{"local controller without uuid", "https://127.0.0.1:8443", "", "h-1", "unifi@h-1"},
+		{"local controller without uuid or host id", "https://localhost:8443", "", "", ""},
+		{"remote controller without uuid", "https://192.0.2.1:8443", "", "h-1", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := newEntitySource(tc.endpoint)
+			src.hostID = func() string { return tc.hostID }
+			src.setControllerID(tc.uuid)
+			src.markReachable(true)
+			obs, ok := src.Observe()
+			if !ok {
+				t.Fatal("Observe() ok=false")
+			}
+			if tc.want == "" {
+				if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
+					t.Fatalf("no identifiable key must yield no entity, got %+v", obs)
+				}
+				return
+			}
+			if len(obs.Entities) != 1 || obs.Entities[0].ID[idKeyServiceInstanceID] != tc.want {
+				t.Fatalf("entities = %+v, want id %q", obs.Entities, tc.want)
+			}
+		})
+	}
+}
+
+func TestCollect_ReadsControllerUUID(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/login", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	for _, path := range []string{"health", "device", "sta"} {
+		mux.HandleFunc("/api/s/default/stat/"+path, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		})
+	}
+	mux.HandleFunc("/api/s/default/stat/sysinfo", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"anonymous_controller_id":"c0ffee00-0000-4000-8000-000000000002"}]}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	p := newTestProbe(t, srv)
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	obs, ok := p.entitySource.Observe()
+	if !ok || len(obs.Entities) != 1 {
+		t.Fatalf("Observe() = %+v, %v", obs, ok)
+	}
+	if got := obs.Entities[0].ID[idKeyServiceInstanceID]; got != "c0ffee00-0000-4000-8000-000000000002" {
+		t.Errorf("id = %v, want the sysinfo UUID", got)
+	}
+}
+
+func TestCollect_UnreadableUUIDOnLoopbackFallsBackToHost(t *testing.T) {
+	srv := stubController(t, map[string]any{"data": []any{}}, map[string]any{"data": []any{}}, map[string]any{"data": []any{}})
+	defer srv.Close()
+
+	p := newTestProbe(t, srv)
+	p.entitySource.hostID = func() string { return "h-9" }
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	obs, _ := p.entitySource.Observe()
+	if len(obs.Entities) != 1 || obs.Entities[0].ID[idKeyServiceInstanceID] != "unifi@h-9" {
+		t.Errorf("entities = %+v, want unifi@h-9", obs.Entities)
 	}
 }
 

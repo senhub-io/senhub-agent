@@ -281,6 +281,52 @@ func TestAListeningProcessExistsWhateverItConnectsTo(t *testing.T) {
 // The agent's own service.instance is the foundation's, keyed on the agent
 // instance id. Minting <exe>@<host> for the agent's own listening console
 // would put a second node beside it for the same running thing (#494).
+// Two agents on one host: each sees the other as a listening process. The
+// instance each reports for the other is the one that other agent's own
+// foundation emits, so the host ends with exactly one service.instance per
+// agent rather than two each.
+func TestTwoAgentsOnOneHostDescribeEachOtherOnce(t *testing.T) {
+	const idA, idB = "11111111-2222-5333-8444-555555555555", "66666666-7777-5888-8999-aaaaaaaaaaaa"
+	const pidA, pidB = int32(4242), int32(4343)
+
+	// What each agent's own foundation emits.
+	all := map[string]bool{idA: true, idB: true}
+
+	// Agent A: itself pid 4242, sees B as pid 4343 and resolved B's id.
+	viewA := buildObservation("h-1", []listener{
+		{Pid: pidA, Proc: "senhub-agent", Address: "127.0.0.1", Port: 8080, Transport: "tcp"},
+		{Pid: pidB, Proc: "senhub-agent", Address: "127.0.0.1", Port: 8081, Transport: "tcp", AgentID: idB},
+	}, nil, pidA)
+	// Agent B: the mirror image.
+	viewB := buildObservation("h-1", []listener{
+		{Pid: pidA, Proc: "senhub-agent", Address: "127.0.0.1", Port: 8080, Transport: "tcp", AgentID: idA},
+		{Pid: pidB, Proc: "senhub-agent", Address: "127.0.0.1", Port: 8081, Transport: "tcp"},
+	}, nil, pidB)
+
+	for _, obs := range []entity.Observation{viewA, viewB} {
+		for _, e := range instancesOf(obs) {
+			all[e.ID[idKeyServiceInstanceID].(string)] = true
+		}
+	}
+	if len(all) != 2 {
+		t.Errorf("want exactly one service.instance per agent, got %v", all)
+	}
+	if all["senhub-agent@h-1"] {
+		t.Error("a second <exe>@host instance was minted for an agent")
+	}
+}
+
+// An agent whose id cannot be read keeps today's behaviour.
+func TestAnotherAgentWithoutReadableIDKeepsTheExeAtHostForm(t *testing.T) {
+	obs := buildObservation("h-1", []listener{
+		{Pid: 4343, Proc: "senhub-agent", Address: "0.0.0.0", Port: 8081, Transport: "tcp"},
+	}, nil, 4242)
+	ins := instancesOf(obs)
+	if len(ins) != 1 || ins[0].ID[idKeyServiceInstanceID] != "senhub-agent@h-1" {
+		t.Errorf("instances = %+v", ins)
+	}
+}
+
 func TestTheAgentsOwnListenerMintsNoParallelInstance(t *testing.T) {
 	obs := buildObservation("h-1", []listener{
 		{Pid: 4242, Proc: "senhub-agent", Address: "127.0.0.1", Port: 18058, Transport: "tcp"},

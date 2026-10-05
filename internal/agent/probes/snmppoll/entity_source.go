@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -28,6 +29,8 @@ const (
 	entityTypeNetworkInterface = "network.interface"
 	entityTypeNetworkAddress   = "network.address"
 	entityTypeHost             = "host"
+	entityTypeServiceInstance  = "service.instance"
+	idKeyServiceInstanceID     = "service.instance.id"
 	idKeyNetworkDevice         = "network.device.id"
 	idKeyHost                  = "host.id"
 	idKeyRouteDestination      = "route.destination"
@@ -48,6 +51,7 @@ const (
 	relHasRoute     = "has_route"
 	relHasInterface = "has_interface"
 	relBoundTo      = "bound_to"
+	relMonitors     = "monitors"
 	relRunsOn       = "runs_on"
 
 	// Retired relation types — pre-ADR-0022 device-to-device edges that carried
@@ -574,6 +578,19 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	}
 	addEntity(selfID, selfAttrs(self), entity.ScopeSNMPIFMIB)
 
+	// monitors edge: agent → polled device. A configured target is anchored to
+	// the agent's monitoring subgraph even when it exposes no named interface,
+	// route or address, which would otherwise leave it with no relation and
+	// have the anti-orphan guard drop it. Skipped without an agent id: the
+	// consumer would buffer an unresolvable From, then drop it.
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relMonitors,
+			FromType: entityTypeServiceInstance, FromID: map[string]any{idKeyServiceInstanceID: agentID},
+			ToType: entityTypeNetworkDevice, ToID: deviceKey(selfID),
+		})
+	}
+
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
 	// duplicate network.interface.name keeps the first (identity is {device, name}).
@@ -676,7 +693,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
 		if ifName == "" || addrSeen[a.IP] ||
-			entity.IsHostLocalAddressStr(a.IP) || entity.IsContainerBridgeIface(ifName) {
+			!entity.AddressEdgeAllowed(a.IP) || entity.IsContainerBridgeIface(ifName) {
 			continue
 		}
 		addrSeen[a.IP] = true
