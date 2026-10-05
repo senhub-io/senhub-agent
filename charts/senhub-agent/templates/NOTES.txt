@@ -32,6 +32,25 @@ refused. Set rbac.kubernetesProbe.enabled=true, or give the probe a kubeconfig.
 No SENHUB_LICENSE in secrets.values: the licensed probes stay off (Free tier),
 unless the Secret given as secrets.existingSecret carries one.
 {{- end }}
+{{- if .Values.hostMonitoring.enabled }}
+
+hostMonitoring.enabled: this pod runs in the node's PID and network namespaces
+and mounts the node's root filesystem read-only at {{ .Values.hostMonitoring.hostRoot }}. It watches the node
+it was scheduled on (use nodeSelector to choose it), and the namespace must allow
+the `privileged` Pod Security level:
+  kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=privileged
+Port {{ .Values.http.port }} is opened on the node itself.
+{{- else }}
+
+hostMonitoring.enabled is false: disks, the network interface and processes are
+the pod's own; CPU and memory are still the node's (/proc is not isolated).
+{{- end }}
+{{- if .Values.persistence.enabled }}
+
+The state volume {{ include "senhub-agent.fullname" . }}-state and the Secret {{ include "senhub-agent.identitySecretName" . }} are kept by
+helm uninstall. Delete them to start over:
+  kubectl -n {{ .Release.Namespace }} delete pvc {{ include "senhub-agent.fullname" . }}-state
+{{- end }}
 {{- if .Values.config.agent }}
 
 config.agent is set: the configuration is yours, and every `env` value is ignored.

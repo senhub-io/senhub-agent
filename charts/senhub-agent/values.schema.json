@@ -34,6 +34,16 @@
     "imagePullSecrets": { "type": "array" },
     "nameOverride": { "type": "string" },
     "fullnameOverride": { "type": "string" },
+    "hostMonitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hostRoot": { "type": "string", "pattern": "^/[^/].*[^/]$|^/[^/]$" }
+      }
+    },
+    "logLevel": { "type": "string", "enum": ["info", "debug"] },
+    "logFilter": { "type": "string" },
     "hostname": {
       "type": "string",
       "pattern": "^$|^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"

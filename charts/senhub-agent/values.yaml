@@ -17,8 +17,9 @@
 # identity.
 
 # -- Which build of the agent to run: `full` carries the licensed probes
-# and reads the licence from SENHUB_LICENSE, `oss` carries the free ones
-# and needs no licence. Selects the image repository unless
+# and reads an optional licence from SENHUB_LICENSE, `oss` carries the free ones
+# and needs no licence. `full` without a licence runs the free tier.
+# Selects the image repository unless
 # image.repository is set.
 edition: full
 
@@ -26,7 +27,7 @@ image:
   # -- Image repository. Empty picks ghcr.io/senhub-io/senhub-agent
   # (edition full) or ghcr.io/senhub-io/senhub-agent-oss (edition oss).
   repository: ""
-  # -- Image tag. Empty uses the chart appVersion. There is no `latest`.
+  # -- Image tag. Empty uses the chart appVersion (0.6.1). There is no `latest`.
   tag: ""
   pullPolicy: IfNotPresent
 
@@ -34,10 +35,35 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# Monitoring of the node the pod runs on. The agent's host probes (CPU,
+# memory, disks, network, processes) measure the machine they run on; in
+# a plain container only CPU and memory show the node (/proc is not
+# isolated for them), while disks show the container's overlay, the
+# network its single interface and the processes its own.
+hostMonitoring:
+  # -- Run the pod in the node's PID and network namespaces and mount the
+  # node's root filesystem read-only at `hostRoot`, so that disks, network
+  # interfaces and processes are the node's. This is a privileged-looking
+  # pod: it needs a namespace that enforces the `privileged` Pod Security
+  # level (see the documentation). `false` = container scope: disks, the
+  # interface and the processes are the pod's own, and CPU and memory are
+  # still the node's.
+  enabled: true
+  # -- Where the node's root filesystem is mounted in the pod.
+  hostRoot: /host
+
+# -- `info` or `debug`. `debug` starts the agent with --verbose.
+logLevel: info
+# -- With `debug`, limits debug lines to the modules whose name starts
+# with this prefix (`probe`, `probe.postgresql`, `strategy.otlp`).
+# Passed as --filter.
+logFilter: ""
+
 # -- Host name of the pod. The agent reports it as the host's name; a
 # Deployment otherwise names each new pod differently, so the host would
 # change name at every rollout while keeping its identity. Empty uses
 # the release full name. Must be a DNS label (63 characters at most).
+# Ignored with hostMonitoring.enabled: the host name is the node's.
 hostname: ""
 
 # Identity of the agent, kept stable across restarts and rescheduling.

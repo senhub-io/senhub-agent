@@ -14,28 +14,87 @@ OCI registry is a later step.
 ```bash
 git clone https://github.com/senhub-io/senhub-agent.git
 kubectl create namespace senhub
+# Host monitoring (the default) needs the privileged Pod Security level.
+kubectl label namespace senhub pod-security.kubernetes.io/enforce=privileged
 kubectl -n senhub create secret generic senhub-agent-credentials \
-  --from-literal=OTLP_BEARER_TOKEN='<token>' \
-  --from-literal=SENHUB_LICENSE='<licence JWT>'
+  --from-literal=OTLP_BEARER_TOKEN='<token>'
 helm install senhub-agent ./senhub-agent/charts/senhub-agent -n senhub \
   --set secrets.existingSecret=senhub-agent-credentials \
   --set kubernetesProbe.enabled=true \
   --set rbac.kubernetesProbe.enabled=true
 ```
 
+No licence is needed: the free tier collects everything but the Pro
+probes. For those, add `SENHUB_LICENSE` to the Secret (a step you take
+later, with `kubectl -n senhub patch secret` or by recreating it) and
+restart the pod.
+
+## Host monitoring
+
+`hostMonitoring.enabled` (default `true`) makes the agent monitor the
+node it runs on, not the container:
+
+- `hostPID: true`, `hostNetwork: true`, `dnsPolicy: ClusterFirstWithHostNet`:
+  processes, network interfaces and their counters are the node's;
+- the node's `/` is mounted read-only at `/host`, with `HostToContainer`
+  propagation so the node's submounts appear beneath it, and the disk
+  probe lists them (`SENHUB_HOST_ROOT=/host`, mount points reported
+  without the prefix, container-runtime and kubelet bind mounts left out);
+- `HOST_ETC`, `HOST_VAR` and `HOST_RUN` (gopsutil's variables) point
+  under `/host`, so the OS release, boot time and sessions are the
+  node's.
+
+Without it, a pod already reports the node's CPU and memory (`/proc` is
+not isolated), but disks show the container's overlay, the network a
+single `eth0` and the process list the pod's few processes: half a node.
+`hostMonitoring.enabled=false` is the container scope; CPU and memory
+stay node-wide, and the rest is the pod's.
+
+Trade-offs, to be accepted knowingly:
+
+- The pod shares the node's PID and network namespaces and can read the
+  whole node filesystem (read-only). It still runs as uid 10001 with no
+  capability and no privilege escalation, so it reads what is
+  world-readable, not root-only files. The namespace must allow the
+  `privileged` Pod Security level (the `baseline` level forbids hostPath
+  and host namespaces).
+- The HTTP output listens on the node's address: `http.port` must be
+  free on that node.
+- It is one pod: it monitors the node it is scheduled on. Choose it with
+  `nodeSelector`, or install the chart once per node to watch several.
+- The host identity is the node's own `machine-id` (read under
+  `/host/etc`), not the one in the identity Secret; the agent key still
+  comes from the Secret.
+
 ## What it creates
 
 | Object | When | Why |
 |---|---|---|
 | Deployment, 1 replica, `Recreate` | always | The agent. Not horizontally scalable (see `values.yaml`) |
-| Secret `<release>-identity` | unless `identity.existingSecret` | Host identity and agent key, kept across restarts and after `helm uninstall` |
+| Secret `<release>-identity` | unless `identity.existingSecret` | Host identity and agent key. Kept after `helm uninstall` (`helm.sh/resource-policy: keep`) |
 | ConfigMap | always | Probe and output fragments, copied into `probes.d/` and `strategies.d/` by an init container |
 | Secret `<release>-env` | `secrets.values` set | Variables for `${env:NAME}` references |
 | ServiceAccount | `serviceAccount.create` | Token mounted only when the Kubernetes probe needs it |
 | ClusterRole + ClusterRoleBinding | `rbac.kubernetesProbe.enabled` | Read-only access for the `kubernetes` probe |
 | Service | `service.enabled` | The HTTP output: console, PRTG, Nagios, Prometheus |
 | ServiceMonitor | `serviceMonitor.enabled` and the CRD present | Prometheus Operator scrape of `/metrics` |
-| PersistentVolumeClaim | `persistence.enabled` | State directory: log probe bookmarks |
+| PersistentVolumeClaim `<release>-state` | `persistence.enabled` | State directory: log probe bookmarks. Kept after `helm uninstall` |
+
+## Uninstall
+
+`helm uninstall` leaves two objects on purpose: the identity Secret, so a
+reinstall under the same name brings the same agent back, and the
+`<release>-state` claim, so the log bookmarks are not lost. To remove
+them as well:
+
+```bash
+helm uninstall senhub-agent -n senhub
+kubectl -n senhub delete secret senhub-agent-identity
+kubectl -n senhub delete pvc senhub-agent-state
+```
+
+(The names are `<release>-identity` and `<release>-state`; with a
+`fullnameOverride`, `<fullname>-identity` and `<fullname>-state`.)
 
 ## Identity
 
@@ -104,11 +163,15 @@ No `watch`, no Secrets, no ConfigMaps, no write.
 |---|---|---|
 | `edition` | `full` | `full` (licensed probes, `ghcr.io/senhub-io/senhub-agent`) or `oss` (`ghcr.io/senhub-io/senhub-agent-oss`) |
 | `image.repository` | `""` | Overrides the repository `edition` picks |
-| `image.tag` | `""` | Image tag; empty uses the chart `appVersion`. There is no `latest` |
+| `image.tag` | `""` | Image tag; empty uses the chart `appVersion` (0.6.1). There is no `latest` |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | |
 | `nameOverride`, `fullnameOverride` | `""` | |
-| `hostname` | `""` | Pod host name, reported as the host's name; empty uses the release full name |
+| `hostname` | `""` | Pod host name, reported as the host's name; empty uses the release full name. Ignored with `hostMonitoring.enabled` (the node's name) |
+| `hostMonitoring.enabled` | `true` | Node scope: host PID and network namespaces, node `/` read-only at `hostMonitoring.hostRoot`. `false` = container scope |
+| `hostMonitoring.hostRoot` | `/host` | Where the node's root filesystem is mounted |
+| `logLevel` | `info` | `debug` starts the agent with `--verbose` |
+| `logFilter` | `""` | With `debug`, `--filter` (module name prefix, e.g. `probe`) |
 | `identity.existingSecret` | `""` | Secret holding `host-id` and `agent-key` |
 | `identity.hostId` | `""` | 32 hexadecimal characters, dashes optional; generated when empty |
 | `identity.agentKey` | `""` | A UUID; generated when empty |
