@@ -19,8 +19,8 @@ type k8sEntitySource struct {
 	clusterEndpoint string
 	// clusterUID is the kube-system namespace UID — the cluster's stable,
 	// self-reported identity. Empty until OnStart resolves it, and empty for
-	// good when RBAC denies the read, in which case the address-derived
-	// fallback applies.
+	// good when RBAC denies the read, in which case no cluster entity is
+	// emitted.
 	clusterUID string
 	// inventory is the last observed set of nodes and containers, refreshed by
 	// the metric cycle. The entity source is polled independently of Collect,
@@ -55,15 +55,17 @@ func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
-	// The UID is what the cluster says about itself and survives every change
-	// of address. The address-derived form is a degraded fallback, kept so a
-	// cluster whose RBAC denies reading kube-system still appears in the graph
-	// — with the instability warned about at start.
-	clusterID := s.clusterUID
-	if clusterID == "" {
-		clusterID = "kubernetes://" + s.clusterEndpoint
+	// Without the kube-system UID there is no identifiable key, hence no
+	// cluster entity: an address-derived id re-keys on any endpoint change
+	// and collides between clusters sharing an address. The inventory of
+	// nodes and containers is independent of it and still reported.
+	if s.clusterUID == "" {
+		obs := entity.Observation{}
+		obs.Entities = append(obs.Entities, s.inventory.entities...)
+		obs.Relations = append(obs.Relations, s.inventory.relations...)
+		return obs, true
 	}
-	svcID := map[string]any{"service.instance.id": clusterID}
+	svcID := map[string]any{"service.instance.id": s.clusterUID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{

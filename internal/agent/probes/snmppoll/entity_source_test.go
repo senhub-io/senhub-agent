@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/governance"
 )
@@ -615,4 +616,37 @@ func TestBuildObservation_InterfaceCarriesItsSubnet(t *testing.T) {
 		}
 	}
 	t.Fatal("no interface entity")
+}
+
+// A target that exposes no named interface, route or address carried no
+// relation, so the anti-orphan guard dropped it on every cycle. The agent's
+// monitors edge anchors it.
+func TestBuildObservation_TargetWithoutIfTableIsAnchoredByMonitors(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-1")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	self := deviceIdentity{Serial: "SN-BARE", VendorPEN: "9", MgmtIP: "10.0.12.5"}
+	selfID := resolveDeviceID(self)
+	obs := buildObservation(self, lldpTopology{}, nil, nil, nil, resolveDeviceID)
+
+	if len(obs.Entities) != 1 || obs.Entities[0].Type != entityTypeNetworkDevice {
+		t.Fatalf("entities = %+v, want only the polled device", obs.Entities)
+	}
+	if len(obs.Relations) != 1 {
+		t.Fatalf("relations = %+v, want exactly the monitors edge", obs.Relations)
+	}
+	r := obs.Relations[0]
+	if r.Type != "monitors" || r.FromType != "service.instance" || r.FromID["service.instance.id"] != "agent-1" ||
+		r.ToType != entityTypeNetworkDevice || r.ToID[idKeyNetworkDevice] != selfID {
+		t.Errorf("monitors edge = %+v", r)
+	}
+}
+
+func TestBuildObservation_NoMonitorsWithoutAgentID(t *testing.T) {
+	agentstate.SetAgentInstanceID("")
+	self := deviceIdentity{Serial: "SN-BARE", VendorPEN: "9", MgmtIP: "10.0.12.5"}
+	obs := buildObservation(self, lldpTopology{}, nil, nil, nil, resolveDeviceID)
+	if len(obs.Relations) != 0 {
+		t.Errorf("relations = %+v, want none without an agent id", obs.Relations)
+	}
 }

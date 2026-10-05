@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/entitydetect"
+	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/cliexit"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
@@ -21,6 +22,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/sensor"
+	"senhub-agent.go/internal/agent/services/statuschan"
 
 	// Blank import: the strategy implementations register themselves with
 	// the data store, so an agent that builds a data store must pull them
@@ -41,6 +43,7 @@ type Agent interface {
 }
 
 type agent struct {
+	statusChan         *statuschan.Service
 	supervisor         *lifecycle.Supervisor
 	logger             *logger.Logger
 	agentConfiguration configuration.AgentConfiguration
@@ -114,6 +117,15 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		logger,
 	)
 
+	// Another agent on this host reads this file to recognise this one as
+	// the node it reports itself as, instead of minting a second.
+	if key := localConfiguration.GetAuthenticationKey(); key != "" {
+		dir := instanceid.OwnStateDir()
+		if err := instanceid.Write(dir, configuration.AgentInstanceID(key), key); err != nil {
+			logger.Warn().Err(err).Str("dir", dir).Msg("Could not publish the agent instance id for other agents on this host; they will describe this agent under a second identity")
+		}
+	}
+
 	// The console applies an output change on save, entities included:
 	// follow the configuration rather than the state it had at start.
 	localConfiguration.OnConfigChanged(func(string) {
@@ -152,6 +164,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	}
 
 	return agent{
+		statusChan:         statuschan.New(logger, localConfiguration.GetConfigPath(), agentCliArgs.Version, agentCliArgs.CommitHash),
 		supervisor:         lifecycle.NewSupervisor(logger),
 		entityDetector:     entityDetector,
 		logger:             logger,
@@ -173,6 +186,9 @@ func (a agent) services() []Service {
 		a.localConfiguration,
 		a.store,
 		a.sensors,
+	}
+	if a.statusChan != nil {
+		servicesToStart = append(servicesToStart, a.statusChan)
 	}
 	if a.entityDetector != nil {
 		servicesToStart = append(servicesToStart, a.entityDetector)
