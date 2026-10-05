@@ -368,7 +368,39 @@ The package creates the `senhub` service user, installs the binary at `/usr/bin/
 
 - **Host already installed with `senhub-agent install`**: installing the package takes over. It stops the service, removes the unit in `/etc/systemd/system` and the binary in `/usr/local/bin` (a copy is kept as `/var/lib/senhub-agent/senhub-agent.pre-package`), and starts the packaged service. Your configuration, agent key, secrets and data are not touched. The reverse (going back from a package to `install`) is not supported: remove the package first, then install from the ZIP.
 
-Package repositories, with signed packages, are announced and not yet available: for now, install from the downloaded file.
+#### Install from the package repositories
+
+Signed APT and YUM/DNF/Zypper repositories are served at `https://packages.senhub.io`. They go live with the first published beta: until then, install from the downloaded file as above. Two channels exist, `stable` (final releases) and `beta` (pre-releases, `X.Y.Z~beta.N`); pick one per machine, and replace `beta` by `stable` in the commands below to follow final releases. The same page, <https://packages.senhub.io>, carries these commands for both channels. The package names are the ones of the table above: `senhub-agent-oss` (open source edition) and `senhub-agent` (full edition).
+
+The signing key is served at `https://packages.senhub.io/gpg.key`; its fingerprint is printed on the repository page. The repository metadata and every package are signed with it, and the clients check both.
+
+Debian, Ubuntu:
+
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://packages.senhub.io/gpg.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/senhub.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/senhub.gpg] https://packages.senhub.io/apt beta main" | sudo tee /etc/apt/sources.list.d/senhub.list
+sudo apt update
+sudo apt install senhub-agent-oss
+```
+
+RHEL, Rocky Linux, AlmaLinux, Fedora:
+
+```bash
+sudo curl -fsSLo /etc/yum.repos.d/senhub.repo https://packages.senhub.io/rpm/beta/senhub.repo
+sudo dnf install --exclude=senhub-agent senhub-agent-oss
+```
+
+openSUSE, SLES:
+
+```bash
+sudo rpm --import https://packages.senhub.io/gpg.key
+sudo curl -fsSLo /etc/zypp/repos.d/senhub.repo https://packages.senhub.io/rpm/beta/senhub-zypper.repo
+sudo zypper refresh
+sudo zypper install senhub-agent-oss
+```
+
+The `--exclude` is needed on dnf: each edition obsoletes the other, and without it dnf installs the obsoleting package (the full edition) when asked for the open source one. For the full edition, install `senhub-agent` the same way, with `--exclude=senhub-agent-oss`. Updates then arrive with the system's own updates (`apt upgrade`, `dnf upgrade`, `zypper update`).
 
 ## Installation Options
 
