@@ -7,11 +7,14 @@
 // strategy the operator adds later.
 //
 // Idempotent: if a configuration already exists at the target path it is left
-// untouched, so a repair/reinstall never clobbers operator config.
+// untouched, so a repair/reinstall never clobbers operator config, and the
+// command then exits with the Unchanged code.
 package app
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -21,6 +24,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	licensepkg "senhub-agent.go/internal/agent/services/license"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // initConfigArgs holds the provisionable fields `config init` accepts.
@@ -38,6 +42,12 @@ type initConfigArgs struct {
 	httpBind       string
 	licenseFile    string
 	licenseDir     string
+	// jsonMode prints one JSON object instead of the text report.
+	jsonMode bool
+	// okIfUnchanged turns the Unchanged exit into OK, for a caller that
+	// runs config init on every start or repair and only wants a failure
+	// to stop it (the MSI custom action, the container entrypoint).
+	okIfUnchanged bool
 }
 
 // parseInitConfigArgs parses the flags after `config init`. A value-taking
@@ -81,6 +91,10 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.zabbixServer, err = value(&i)
 		case "--zabbix-host-metadata":
 			out.zabbixMetadata, err = value(&i)
+		case jsonFlag:
+			out.jsonMode = true
+		case "--ok-if-unchanged":
+			out.okIfUnchanged = true
 		case "--http-bind":
 			var raw string
 			if raw, err = value(&i); err == nil {
@@ -168,11 +182,58 @@ func badEndpointRune(r rune) bool {
 	return r <= ' ' || r == '#' || r == '{' || r == '}' || r == '"' || r == '\''
 }
 
+// initEnv is what `config init` needs from the machine, injected so the
+// command is testable in a temp directory without binding a real port or
+// touching the system log directory.
+type initEnv struct {
+	generate  func(*cliArgs.ParsedArgs) error
+	checkPort func(bindAddress string, port int) error
+}
+
+func defaultInitEnv() initEnv {
+	return initEnv{generate: generateConfiguration, checkPort: checkHTTPPortFree}
+}
+
+type configInitReport struct {
+	jsonHeader
+	ConfigPath string   `json:"config_path"`
+	Changed    bool     `json:"changed"`
+	Created    bool     `json:"created"`
+	Written    []string `json:"written"`
+}
+
 func initConfig(argv []string) {
+	if code := runConfigInit(argv, os.Stdout, defaultInitEnv()); code != cliexit.OK {
+		os.Exit(code)
+	}
+}
+
+// runConfigInit implements `config init` and returns the exit code: OK
+// when it wrote something, Unchanged when the configuration was already
+// there and nothing needed writing, Failure otherwise.
+//
+// A kept configuration is not re-seeded (the agent owns its config, the
+// installer does not rewrite it). Only a missing OTLP or Zabbix fragment
+// the run was asked for counts as a change on that path.
+func runConfigInit(argv []string, out io.Writer, env initEnv) int {
+	jsonMode := false
+	for _, a := range argv {
+		if a == jsonFlag {
+			jsonMode = true
+		}
+	}
 	opts, err := parseInitConfigArgs(argv)
 	if err != nil {
-		fatalf("config init: %v", err)
+		return reportFailure("config.init", jsonMode, out, fmt.Errorf("config init: %w", err))
 	}
+	text := out
+	if jsonMode {
+		text = io.Discard
+	}
+	fail := func(err error) int {
+		return reportFailure("config.init", jsonMode, out, err)
+	}
+
 	configPath := opts.configPath
 	otlpEndpoint := opts.otlpEndpoint
 	otlpProtocol := opts.otlpProtocol
@@ -182,13 +243,41 @@ func initConfig(argv []string) {
 		configPath = resolved
 	}
 	if configPath == "" {
-		fatalf("config init: could not resolve a config path")
+		return fail(errors.New("config init: could not resolve a config path"))
+	}
+	configDir := filepath.Dir(configPath)
+
+	finish := func(created bool, written []string) int {
+		changed := created || len(written) > 0
+		code := cliexit.OK
+		if !changed {
+			code = cliexit.Unchanged
+			if opts.okIfUnchanged {
+				code = cliexit.OK
+			}
+		}
+		if jsonMode {
+			if written == nil {
+				written = []string{}
+			}
+			report := configInitReport{
+				jsonHeader: newJSONHeader("config.init", code),
+				ConfigPath: configPath,
+				Changed:    changed,
+				Created:    created,
+				Written:    written,
+			}
+			if err := writeJSON(out, report); err != nil {
+				return reportFailure("config.init", false, out, err)
+			}
+		}
+		return code
 	}
 
 	// Idempotent: an existing config (multi-file agent.yaml or a legacy
 	// monolithic file) is preserved verbatim.
 	if _, err := os.Stat(configPath); err == nil {
-		fmt.Printf("Configuration already present at %s — leaving it unchanged.\n", configPath)
+		fmt.Fprintf(text, "Configuration already present at %s — leaving it unchanged.\n", configPath)
 		// A kept configuration is not re-seeded (the agent owns its config,
 		// the installer does not rewrite it). Two things still deserve a
 		// word, because the installer runs before the service starts and
@@ -197,27 +286,36 @@ func initConfig(argv []string) {
 		//     which is exactly the reinstall-over-kept-config surprise;
 		//   - a kept port that is already taken.
 		if opts.httpBind != "" {
-			fmt.Printf("Warning: --http-bind %s was ignored; an existing configuration keeps its address. Change it with 'senhub-agent config set http.bind_address %s'.\n", opts.httpBind, opts.httpBind)
+			fmt.Fprintf(text, "Warning: --http-bind %s was ignored; an existing configuration keeps its address. Change it with 'senhub-agent config set http.bind_address %s'.\n", opts.httpBind, opts.httpBind)
 		}
 		if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
 			if opts.httpPort != 0 && opts.httpPort != port {
-				fmt.Printf("Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d'.\n", opts.httpPort, port, opts.httpPort)
+				fmt.Fprintf(text, "Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d'.\n", opts.httpPort, port, opts.httpPort)
 			}
-			if portErr := checkHTTPPortFree(defaultHTTPBindAddress, port); portErr != nil {
-				fmt.Printf("Warning: %v\n", portErr)
+			if portErr := env.checkPort(defaultHTTPBindAddress, port); portErr != nil {
+				fmt.Fprintf(text, "Warning: %v\n", portErr)
 			}
 		}
 		// Still ensure the OTLP fragment on an existing config: a prior run
 		// could have generated the config but not yet written the fragment.
-		// Idempotent — WriteOTLPStrategyFragment no-ops when 10-otlp.yaml
-		// already exists (audit M4).
-		if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint, otlpProtocol); err != nil {
-			fatalf("config init: writing OTLP strategy: %v", err)
+		// Idempotent — the writer no-ops when 10-otlp.yaml already exists
+		// (audit M4).
+		var written []string
+		wroteOTLP, err := configuration.EnsureOTLPStrategyFragment(configDir, otlpEndpoint, otlpProtocol)
+		if err != nil {
+			return fail(fmt.Errorf("config init: writing OTLP strategy: %w", err))
 		}
-		if err := configuration.WriteZabbixStrategyFragment(filepath.Dir(configPath), opts.zabbixServer, opts.zabbixMetadata); err != nil {
-			fatalf("config init: writing Zabbix strategy: %v", err)
+		if wroteOTLP {
+			written = append(written, filepath.Join(configDir, "strategies.d", "10-otlp.yaml"))
 		}
-		return
+		wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata)
+		if err != nil {
+			return fail(fmt.Errorf("config init: writing Zabbix strategy: %w", err))
+		}
+		if wroteZabbix {
+			written = append(written, filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
+		}
+		return finish(false, written)
 	}
 
 	// Read the licence file before anything is written: an unreadable path
@@ -228,7 +326,7 @@ func initConfig(argv []string) {
 	if licenseFile == "" && opts.licenseDir != "" {
 		found, findErr := findLicenseInDir(opts.licenseDir)
 		if findErr != nil {
-			fatalf("config init: %v", findErr)
+			return fail(fmt.Errorf("config init: %w", findErr))
 		}
 		if found == "" {
 			fmt.Fprintf(os.Stderr, "Note: no licence file (*.jwt) in %s; installing on the Free tier. A licence can be added later from the web console.\n", opts.licenseDir)
@@ -237,7 +335,7 @@ func initConfig(argv []string) {
 	}
 	license, err := resolveLicenseInput(opts.license, licenseFile)
 	if err != nil {
-		fatalf("config init: %v", err)
+		return fail(fmt.Errorf("config init: %w", err))
 	}
 
 	// Refuse a port the strategy cannot bind before anything is written.
@@ -251,17 +349,17 @@ func initConfig(argv []string) {
 	if opts.httpBind != "" {
 		bind = opts.httpBind
 	}
-	if err := checkHTTPPortFree(bind, httpPort); err != nil {
-		fatalf("config init: %v", err)
+	if err := env.checkPort(bind, httpPort); err != nil {
+		return fail(fmt.Errorf("config init: %w", err))
 	}
 
 	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: opts.httpPort, HttpBindAddress: opts.httpBind}
-	if err := generateConfiguration(args); err != nil {
-		fatalf("config init: %v", err)
+	if err := env.generate(args); err != nil {
+		return fail(fmt.Errorf("config init: %w", err))
 	}
 
 	if err := configuration.ApplyInstallOverrides(configPath, license, tags); err != nil {
-		fatalf("config init: applying provisioned fields: %v", err)
+		return fail(fmt.Errorf("config init: applying provisioned fields: %w", err))
 	}
 
 	// A licence is bound to this machine's agent key. At install the key
@@ -274,28 +372,38 @@ func initConfig(argv []string) {
 		warnLicenseBinding(configPath, license)
 	}
 
-	if err := configuration.WriteOTLPStrategyFragment(filepath.Dir(configPath), otlpEndpoint, otlpProtocol); err != nil {
-		fatalf("config init: writing OTLP strategy: %v", err)
+	written := []string{configPath}
+	wroteOTLP, err := configuration.EnsureOTLPStrategyFragment(configDir, otlpEndpoint, otlpProtocol)
+	if err != nil {
+		return fail(fmt.Errorf("config init: writing OTLP strategy: %w", err))
 	}
-	if err := configuration.WriteZabbixStrategyFragment(filepath.Dir(configPath), opts.zabbixServer, opts.zabbixMetadata); err != nil {
-		fatalf("config init: writing Zabbix strategy: %v", err)
+	if wroteOTLP {
+		written = append(written, filepath.Join(configDir, "strategies.d", "10-otlp.yaml"))
+	}
+	wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata)
+	if err != nil {
+		return fail(fmt.Errorf("config init: writing Zabbix strategy: %w", err))
+	}
+	if wroteZabbix {
+		written = append(written, filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
 	}
 
-	fmt.Printf("Configuration created at %s\n", configPath)
-	fmt.Printf("  http: %s\n", net.JoinHostPort(bind, strconv.Itoa(httpPort)))
+	fmt.Fprintf(text, "Configuration created at %s\n", configPath)
+	fmt.Fprintf(text, "  http: %s\n", net.JoinHostPort(bind, strconv.Itoa(httpPort)))
 	if license != "" {
-		fmt.Println("  license: set")
+		fmt.Fprintln(text, "  license: set")
 	}
 	if len(tags) > 0 {
-		fmt.Printf("  global_tags: %d\n", len(tags))
+		fmt.Fprintf(text, "  global_tags: %d\n", len(tags))
 	}
 	if otlpEndpoint != "" {
-		fmt.Printf("  otlp endpoint: %s\n", otlpEndpoint)
+		fmt.Fprintf(text, "  otlp endpoint: %s\n", otlpEndpoint)
 	}
 	if opts.zabbixServer != "" {
-		fmt.Printf("  zabbix server: %s\n", opts.zabbixServer)
+		fmt.Fprintf(text, "  zabbix server: %s\n", opts.zabbixServer)
 	}
-	fmt.Printf("  probes: %s\n", filepath.Join(filepath.Dir(configPath), "probes.d"))
+	fmt.Fprintf(text, "  probes: %s\n", filepath.Join(configDir, "probes.d"))
+	return finish(true, written)
 }
 
 // findLicenseInDir returns the licence file to use from a folder the

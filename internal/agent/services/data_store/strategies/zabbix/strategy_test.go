@@ -204,3 +204,20 @@ func TestStoreIgnoresAPointWithoutItsProbeIdentity(t *testing.T) {
 		t.Error("tagValue")
 	}
 }
+
+func TestNoteWaiting_LogsOncePerReason(t *testing.T) {
+	s := &Strategy{logger: logger.NewModuleLogger(testLogger(), "strategy.zabbix")}
+
+	s.noteWaiting("host unknown")
+	if s.waiting != "host unknown" {
+		t.Fatalf("waiting = %q, want the first reason recorded", s.waiting)
+	}
+	s.noteWaiting("host unknown")
+	if s.waiting != "host unknown" {
+		t.Fatalf("waiting = %q after a repeat", s.waiting)
+	}
+	s.noteWaiting("no item")
+	if s.waiting != "no item" {
+		t.Fatalf("waiting = %q, want the new reason recorded", s.waiting)
+	}
+}
