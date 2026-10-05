@@ -230,7 +230,16 @@ otlp_fragment_extras "$frag" 2>/dev/null
 otlp_fragment_extras "$frag" 2>/dev/null
 check "SENHUB_OTLP_TLS=false turns TLS off" "$(grep -c 'enabled: false' "$frag")" "1"
 check "the bearer reference is written once" "$(grep -c 'Authorization' "$frag")" "1"
+# The token as a file is referenced, never copied, and read at every start.
+unset OTLP_BEARER_TOKEN
+printf 'abc\n' > "$work/otlp-token"
+printf 'otlp:\n  endpoint: localhost:4317\n' > "$frag"
+OTLP_BEARER_TOKEN_FILE="$work/otlp-token" otlp_fragment_extras "$frag" 2>/dev/null
+check "OTLP_BEARER_TOKEN_FILE is written as a file reference" \
+  "$(grep -c "Authorization: \"Bearer \${file:$work/otlp-token}\"" "$frag")" "1"
+check "the file's content is not copied into the fragment" "$(grep -c abc "$frag")" "0"
 printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+OTLP_BEARER_TOKEN=t
 unset SENHUB_OTLP_TLS
 otlp_fragment_extras "$frag" 2>/dev/null
 check "TLS stays on by default" "$(grep -c 'tls:' "$frag")" "0"
