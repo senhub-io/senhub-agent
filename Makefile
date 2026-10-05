@@ -309,6 +309,8 @@ helm-lint: ## Lint and render the Helm chart with its default and ci/ values
 		$(HELM) template senhub-agent $(CHART_DIR) -f $$f \
 			--api-versions monitoring.coreos.com/v1/ServiceMonitor >/dev/null || exit 1; \
 	done
+	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/daemonset-values.yaml | grep -q 'add: \["CHOWN", "FOWNER"\]' \
+		|| { echo "helm chart: the state-owner init container must hold CAP_CHOWN and CAP_FOWNER" >&2; exit 1; }
 	@echo "helm chart: lint and render OK"
 
 # The commercial probes register their schemas in senhub-agent-enterprise,
