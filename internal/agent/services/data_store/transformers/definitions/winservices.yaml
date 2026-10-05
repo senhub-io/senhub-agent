@@ -2,6 +2,7 @@ probe_name: "winservices"
 friendly_name: "Windows Services"
 version: "1.0.0"
 host_level: true
+universal: true
 multi_instance_labels: ["windows.service.name"]
 
 # Free host-local probe: Windows service state via the SCM API.
@@ -11,6 +12,7 @@ multi_instance_labels: ["windows.service.name"]
 
 metrics:
   - name: "senhub.winservices.up"
+    platforms: ["windows"]
     channel: "winservices_up"
     display_name: "Windows Services SCM Up"
     unit: "#"
@@ -22,6 +24,7 @@ metrics:
       type: gauge
 
   - name: "windows.service.state"
+    platforms: ["windows"]
     channel: "windows_service_{windows.service.name}_state"
     display_name: "Service {windows.service.name} Running"
     unit: "#"
@@ -35,6 +38,7 @@ metrics:
       windows.service.name: windows.service.name
 
   - name: "windows.service.status"
+    platforms: ["windows"]
     channel: "windows_service_{windows.service.name}_status"
     display_name: "Service {windows.service.name} Status"
     unit: "#"
