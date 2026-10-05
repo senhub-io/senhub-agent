@@ -74,8 +74,24 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 | `senhub.system.kernel.max_files` | {file} | Ceiling the kernel puts on open file descriptors for the whole machine, which the per-process counts are measured against (Linux only) |
 | `senhub.system.kernel.max_processes` | {process} | Highest process id the kernel will assign, which is the ceiling on how many processes can exist at once (Linux only) |
 | `senhub.system.users.count` | {session} | Open login sessions, one per login rather than per account: four terminals on the same account count four |
+| `senhub.system.kernel.open_files` | {file} | File handles the kernel has allocated for the whole machine, read from `/proc/sys/fs/file-nr` (Linux only) |
+| `senhub.system.passwd.checksum` | 1 | CRC32 of `/etc/passwd`, as a number that changes whenever the file changes (Linux only) |
+| `senhub.system.passwd.modified_timestamp` | s | Unix time of the last modification of `/etc/passwd` (Linux only) |
 
 ## Operational notes
+
+- **Detecting a change of `/etc/passwd`.** The checksum is a CRC32 of
+  the file content, sent as a number so that every output carries it as
+  a plain gauge. It is not a cryptographic hash and does not say what
+  changed; it says that something did. The Zabbix template generated for
+  this probe on Linux carries a warning trigger, `Passwd Checksum has
+  changed`, with the expression `change(/<template>/<item key>)<>0`: it
+  raises when the value differs from the previous one and closes by
+  itself at the next poll that repeats the new value. On other outputs,
+  alert on a change of the value.
+- `senhub.system.kernel.max_processes` is read from
+  `/proc/sys/kernel/pid_max`, the highest process id the kernel assigns,
+  not from `threads-max`.
 
 - On Linux, the probe reads from `/proc`. Root privilege is required only if monitoring processes owned by other users.
 - `process.open_file_descriptors` is Linux-only; not emitted on Windows.
@@ -124,6 +140,9 @@ series' tags.
 | `senhub.system.kernel.max_files` | `kernel_max_files` | Kernel Max Open Files | # | Ceiling the kernel puts on open file descriptors for the whole machine; the per-process counts above are measured against it |
 | `senhub.system.kernel.max_processes` | `kernel_max_processes` | Kernel Max Processes | # | Highest process id the kernel will assign, which is the ceiling on how many processes can exist at once |
 | `senhub.system.users.count` | `users_logged_in` | Logged-in Users | # | Open login sessions on the machine, one per login rather than per account: four terminals opened on the same account count four. Read from the login accounting file on Linux and from the terminal services sessions on Windows, where a session whose client is detached still counts |
+| `senhub.system.kernel.open_files` | `kernel_open_files` | Kernel Open Files | # | File handles the kernel has allocated for the whole machine, the first field of /proc/sys/fs/file-nr; compare with the ceiling in Kernel Max Open Files |
+| `senhub.system.passwd.checksum` | `passwd_checksum` | Passwd Checksum | # | CRC32 of the content of /etc/passwd, as a number. It changes whenever the file changes, so a server that alerts on a change of value sees an account added, removed or edited; it is not a cryptographic hash and does not say what changed |
+| `senhub.system.passwd.modified_timestamp` | `passwd_modified_time` | Passwd Modified Time | s | Unix time of the last modification of /etc/passwd |
 | `process.count` | `process.count` | Process {process.name} Count | # | Number of running instances of this process name |
 
 <!-- schema:metrics:end -->

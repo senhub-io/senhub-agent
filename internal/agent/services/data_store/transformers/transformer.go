@@ -63,6 +63,11 @@ type MetricDefinition struct {
 	AlertThresholdWarning  int               `yaml:"alert_threshold_warning"`
 	AlertThresholdCritical int               `yaml:"alert_threshold_critical"`
 	Lookup                 string            `yaml:"lookup"`
+	// AlertOnChange asks the Zabbix template for a trigger that fires
+	// when the value differs from the previous one. It is for a value
+	// that is an identity rather than a measure, such as the checksum of
+	// a file.
+	AlertOnChange bool `yaml:"alert_on_change,omitempty"`
 	// Platforms restricts the metric to the operating systems that can
 	// produce it. Empty means every platform, which is the case for all
 	// but a handful. It exists because a template generated from the
