@@ -306,6 +306,26 @@ the agent's own items), and every trigger carries `scope`:
 `availability` for a state, `performance` for the processor, `capacity`
 for memory and disks. Filter problem views and actions on them.
 
+### Windows services
+
+The `winservices` template discovers every service the agent reports,
+one set of items per service name (`{#WINDOWS_SERVICE_NAME}`): whether it
+runs, its Service Control Manager state, and its start type, each with a
+value map. One trigger, *Service ... is set to start automatically and
+is not running* (Average), fires when a service configured to start
+automatically, delayed or not, has not been running for the whole grace
+period. A manual or disabled service that is stopped raises nothing.
+
+| Macro | Default | Effect |
+|---|---|---|
+| `{$SENHUB.WINSERVICES.GRACE}` | `5m` | How long the service must have been stopped, which covers a restart and the delayed start after a boot |
+| `{$SENHUB.WINSERVICES.MATCHES}` | `.*` | A service is discovered only if its short name matches |
+| `{$SENHUB.WINSERVICES.NOT_MATCHES}` | `^(sppsvc\|clr_optimization_.*\|gupdate\|gupdatem\|edgeupdate\|edgeupdatem\|MapsBroker\|TrustedInstaller\|RemoteRegistry\|.*_[0-9a-f]{4,8})$` | A service whose short name matches is not discovered: services Windows starts on demand, and the per-session copies whose name changes at every logon |
+
+Override the macros on a host or a host group. The probe's `services`
+parameter narrows what the agent reports at the source; the macros narrow
+what the server creates.
+
 ### Graphs and dashboards
 
 The host probes' templates draw their metrics. A graph prototype under

@@ -150,6 +150,20 @@ type DiscoveryRule struct {
 	// graph only over items of the rule that creates it.
 	GraphPrototypes []GraphPrototype `yaml:"graph_prototypes,omitempty"`
 	Overrides       []Override       `yaml:"overrides,omitempty"`
+	Filter          *RuleFilter      `yaml:"filter,omitempty"`
+}
+
+// RuleFilter keeps the discovered rows its conditions accept.
+type RuleFilter struct {
+	EvalType   string            `yaml:"evaltype"`
+	Conditions []FilterCondition `yaml:"conditions"`
+}
+
+type FilterCondition struct {
+	Macro     string `yaml:"macro"`
+	Value     string `yaml:"value"`
+	Operator  string `yaml:"operator,omitempty"`
+	FormulaID string `yaml:"formulaid"`
 }
 
 type ItemPrototype struct {
@@ -410,6 +424,12 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	tpl.Macros = append(macros, clockTriggers(name, def, opts, rules)...)
 
 	graphPrototypes(name, def, placed, rules)
+	declared, err := declaredTriggers(name, def, placed, rules)
+	if err != nil {
+		return Export{}, err
+	}
+	tpl.Macros = append(tpl.Macros, declared...)
+	tpl.Macros = append(tpl.Macros, discoveryFilters(def, placed, rules)...)
 
 	for _, k := range order {
 		rule := rules[k]
