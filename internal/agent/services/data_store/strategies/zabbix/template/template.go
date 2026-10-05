@@ -382,6 +382,9 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				}
 			}
 		}
+		if m.AlertOnChange {
+			proto.TriggerPrototypes = append(proto.TriggerPrototypes, changeTrigger(name, proto))
+		}
 		rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 	}
 

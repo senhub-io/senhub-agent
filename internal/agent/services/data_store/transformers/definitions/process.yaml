@@ -205,6 +205,46 @@ metrics:
       unit: "{session}"
       type: gauge
 
+  - name: "kernel_open_files"
+    channel: "kernel_open_files"
+    display_name: "Kernel Open Files"
+    unit: "#"
+    category: "limits"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux"]
+    description: "File handles the kernel has allocated for the whole machine, the first field of /proc/sys/fs/file-nr; compare with the ceiling in Kernel Max Open Files"
+    otel:
+      name: senhub.system.kernel.open_files
+      unit: "{file}"
+      type: gauge
+
+  - name: "passwd_checksum"
+    channel: "passwd_checksum"
+    display_name: "Passwd Checksum"
+    unit: "#"
+    category: "security"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux"]
+    alert_on_change: true
+    description: "CRC32 of the content of /etc/passwd, as a number. It changes whenever the file changes, so a server that alerts on a change of value sees an account added, removed or edited; it is not a cryptographic hash and does not say what changed"
+    otel:
+      name: senhub.system.passwd.checksum
+      unit: "1"
+      type: gauge
+
+  - name: "passwd_modified_time"
+    channel: "passwd_modified_time"
+    display_name: "Passwd Modified Time"
+    unit: "s"
+    category: "security"
+    multi_instance_labels: []   # machine-wide, not per process
+    platforms: ["linux"]
+    description: "Unix time of the last modification of /etc/passwd"
+    otel:
+      name: senhub.system.passwd.modified_timestamp
+      unit: "s"
+      type: gauge
+
   - name: "process.count"
     channel: "process_count_{process.name}"
     display_name: "Process {process.name} Count"
