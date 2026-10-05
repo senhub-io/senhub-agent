@@ -2,6 +2,8 @@ package unifi
 
 import (
 	"net/url"
+	"os"
+	"strings"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -10,10 +12,15 @@ import (
 )
 
 // Entity rail (#185): the monitored UniFi Controller as a service.instance
-// entity, identified by its endpoint URL. The probe is the observer; the
-// controller is the observed service. Identity is exact and immutable
-// (the endpoint the operator configured), so a backend joins the unifi
-// metrics to this entity via the same service.instance.id.
+// entity. The probe is the observer; the controller is the observed service.
+// The identity is never the endpoint the operator configured (an address is
+// a path to the controller, not the controller):
+//
+//   - the UUID the controller reports about itself, when the account can
+//     read it;
+//   - else, for a controller running on this host, "unifi@<host.id>";
+//   - else (remote controller, nothing readable) there is no identifiable
+//     key and therefore no entity.
 const (
 	entityTypeServiceInstance = "service.instance"
 	idKeyServiceInstanceID    = "service.instance.id"
@@ -27,23 +34,54 @@ type unifiEntitySource struct {
 	id string
 
 	// serverAddr is the host parsed from the endpoint; runs_on→host is emitted
-	// only when it is loopback. The id is endpoint-derived (it embeds this host),
-	// so the collapse guard suppresses the runs_on even on loopback — wired for
-	// correctness, the gate alone decides.
+	// only when it is loopback.
 	serverAddr string
 	hostID     func() string // agent host id resolver, overridable in tests
 
 	mu        sync.Mutex
 	observed  bool
 	reachable bool
+	// controllerID is the UUID the controller reports about itself, empty
+	// until read (or for good when the account cannot read it).
+	controllerID string
 }
 
 func newEntitySource(endpoint string) *unifiEntitySource {
 	return &unifiEntitySource{
-		id:         "unifi://" + endpoint,
 		serverAddr: hostFromEndpoint(endpoint),
 		hostID:     unifiHostID,
 	}
+}
+
+// setControllerID records the controller's self-reported UUID.
+func (s *unifiEntitySource) setControllerID(id string) {
+	s.mu.Lock()
+	s.controllerID = id
+	s.mu.Unlock()
+}
+
+// isLocalController reports whether the endpoint designates the host the agent
+// runs on: a loopback name or address, or this machine's own hostname.
+func (s *unifiEntitySource) isLocalController() bool {
+	if entity.IsLoopbackHost(s.serverAddr) {
+		return true
+	}
+	hn, err := os.Hostname()
+	return err == nil && hn != "" && strings.EqualFold(hn, s.serverAddr)
+}
+
+// identity returns the service.instance.id, or "" when the controller has no
+// identifiable key.
+func (s *unifiEntitySource) identity(controllerID string) string {
+	if controllerID != "" {
+		return controllerID
+	}
+	if s.isLocalController() {
+		if hid := s.hostID(); hid != "" {
+			return "unifi@" + hid
+		}
+	}
+	return ""
 }
 
 // hostFromEndpoint extracts the host from an endpoint URL (e.g.
@@ -81,13 +119,18 @@ func (s *unifiEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
 	observed := s.observed
 	reachable := s.reachable
+	controllerID := s.controllerID
 	s.mu.Unlock()
 
 	if !observed {
 		return entity.Observation{}, false
 	}
 
-	svcID := map[string]any{idKeyServiceInstanceID: s.id}
+	id := s.identity(controllerID)
+	if id == "" {
+		return entity.Observation{}, true
+	}
+	svcID := map[string]any{idKeyServiceInstanceID: id}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
 			{
@@ -110,9 +153,7 @@ func (s *unifiEntitySource) Observe() (entity.Observation, bool) {
 		})
 	}
 
-	// runs_on edge: controller → host when the endpoint is local (loopback). The
-	// id is endpoint-derived, so the collapse guard refuses it on loopback (the
-	// id is identical on every host); wired anyway so the gate decides.
+	// runs_on edge: controller → host when the endpoint is loopback.
 	if rel, ok := entity.LocalRunsOn(entityTypeServiceInstance, svcID, s.serverAddr, s.hostID()); ok {
 		obs.Relations = append(obs.Relations, rel)
 	}
