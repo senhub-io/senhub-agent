@@ -343,3 +343,33 @@ func TestObserve_InterfaceCarriesItsSubnet(t *testing.T) {
 		t.Errorf("attributes = %v", eth0.Attributes)
 	}
 }
+
+// Windows and Kubernetes-node interfaces report the same "ip/prefix" form as
+// Linux, so the interface carries the prefix wherever the agent runs; the
+// link-local IPv6 address that Windows lists beside it is left out.
+func TestObserve_WindowsStyleInterfaceCarriesItsPrefix(t *testing.T) {
+	s := New(func() string { return "h-1" })
+	s.interfaces = func() (gnet.InterfaceStatList, error) {
+		return gnet.InterfaceStatList{
+			{Name: "Ethernet 2", Flags: []string{"up"}, Addrs: gnet.InterfaceAddrList{
+				{Addr: "fe80::1c2b:3d4e:5f60:7182/64"},
+				{Addr: "10.10.0.60/24"},
+			}},
+			{Name: "cni0", Flags: []string{"up"}, Addrs: gnet.InterfaceAddrList{{Addr: "10.244.1.1/24"}}},
+		}, nil
+	}
+	ias, err := s.enumerate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs := buildObservation("h-1", ias)
+	for name, want := range map[string]string{"Ethernet 2": "10.10.0.60/24", "cni0": "10.244.1.1/24"} {
+		ifc, ok := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, name)
+		if !ok {
+			t.Fatalf("%s not emitted", name)
+		}
+		if !reflect.DeepEqual(ifc.Attributes[entity.AttrInterfaceAddresses], []string{want}) {
+			t.Errorf("%s addresses = %v, want [%s]", name, ifc.Attributes[entity.AttrInterfaceAddresses], want)
+		}
+	}
+}
