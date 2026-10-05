@@ -72,8 +72,12 @@
                         <dt>Tier</dt><dd class="v" id="lic-tier">...</dd>
                         <dt>Scope</dt><dd id="lic-scope">...</dd>
                         <dt>Expires</dt><dd class="v" id="lic-exp">...</dd>
-                        <dt>Pro probe types</dt><dd id="lic-locked" class="locked">...</dd>
+                        <dt>Covered</dt><dd id="lic-locked" class="locked">...</dd>
                     </dl>
+                    <div class="field">
+                        <span class="lbl">Pro probes configured on this agent</span>
+                        <div id="lic-probes" class="locked">...</div>
+                    </div>
                     <div class="field">
                         <span class="lbl">Activate a license</span>
                         <!-- The native file control draws its own labels in the
@@ -99,7 +103,7 @@
             <div class="card">
                 <div class="card-h"><h2>Connection</h2><span class="pill acc">HTTP output</span></div>
                 <p class="lead">The port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there.</p>
-                <div class="stack">
+                <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:var(--s3)" id="ep-summary"></div>                <div class="stack">
                     <div class="field">
                         <label class="lbl" for="port">HTTP port</label>
                         <input class="in" type="number" id="port" min="1" max="65535" />
@@ -136,6 +140,7 @@
         window.AGENT_KEY = '{{.AgentKey}}';
         const api = '/api/' + window.AGENT_KEY + '/config/settings';
         const catalogApi = '/api/' + window.AGENT_KEY + '/catalog/probes';
+        const probesApi = '/api/' + window.AGENT_KEY + '/config/probes';        let licenseState = {};
         const $ = (id) => document.getElementById(id);
 
         function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -167,6 +172,7 @@
                 }
                 $('tls-exp').innerHTML = t.not_after ? (t.expired ? pill('err', 'expired') + ' ' : '') + esc(t.not_after) : '-';
                 const lic = d.license || {};
+                licenseState = lic;
                 if (!lic.configured) {
                     $('lic-status').innerHTML = pill('off', 'Free tier');
                     $('lic-tier').textContent = 'Free';
@@ -187,18 +193,29 @@
         async function loadLocked() {
             const el = $('lic-locked');
             try {
-                const r = await fetch(catalogApi);
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const d = await r.json();
-                const probes = d.probes || [];
-                const locked = probes.filter(p => p.tier === 'pro' && p.authorized === false && p.runs_here !== false).length;
-                const pro = probes.filter(p => p.tier === 'pro').length;
-                const link = ' <a href="/web/' + window.AGENT_KEY + '/probes?new=1#picker">See the catalogue</a>';
-                if (locked) el.innerHTML = esc(locked + ' Pro probe type' + (locked === 1 ? ' is' : 's are') + ' locked.') + link;
-                else if (pro) el.innerHTML = esc('All ' + pro + ' Pro probe types are unlocked.') + link;
-                else el.innerHTML = esc('None locked.') + link;
+                const [rc, rp] = await Promise.all([fetch(catalogApi), fetch(probesApi)]);
+                if (!rc.ok) throw new Error('HTTP ' + rc.status);
+                const d = await rc.json();
+                const configured = rp.ok ? ((await rp.json()).probes || []) : [];
+                const sum = LicenceView.summarise(d.probes || [], configured);
+                const link = ' <a href="/web/' + window.AGENT_KEY + '/probes?new=1&cat=pro#picker">See the Pro types</a>';
+                const licensed = !!licenseState.configured && !licenseState.expired && licenseState.bound;
+                if (licensed) el.innerHTML = esc(sum.covered.length + ' of ' + sum.proTotal + ' Pro probe types.') + link;
+                else el.innerHTML = esc('Free tier: ' + sum.freeCount + ' probe types.') + link;
+                const box = $('lic-probes');
+                if (!sum.inUse.length) {
+                    box.innerHTML = '<span class="muted">No Pro probe is configured on this agent.</span>';
+                } else {
+                    box.innerHTML = '<table class="lic-cover">' + sum.inUse.map(u => {
+                        const verdict = u.covered ? pill('ok', 'covered') : pill('err', 'not covered');
+                        const why = u.covered ? (u.state === 'running' ? '' : 'Probe is ' + u.state + '.') : (u.reason || 'not covered by this licence');
+                        return '<tr><td><code>' + esc(u.type) + '</code> ' + (u.name !== u.type ? '<span class="muted">' + esc(u.name) + '</span>' : '') +
+                            (why ? '<span class="why">' + esc(why) + '</span>' : '') + '</td><td style="text-align:right">' + verdict + '</td></tr>';
+                    }).join('') + '</table>';
+                }
             } catch (e) {
                 el.textContent = '-';
+                $('lic-probes').textContent = '-';
             }
         }
 
@@ -232,8 +249,7 @@
                 const d = await post({ license: jwt });
                 banner('ok', (d.applied || ['License activated.']).join('; '));
                 $('license').value = '';
-                load();
-                loadLocked();
+                load().then(loadLocked);
             } catch (e) {
                 banner('err', e.message);
             }
@@ -304,8 +320,26 @@
             setTimeout(() => c.classList.add('hide'), 1500);
         });
 
-        load();
-        loadLocked();
+        async function loadEndpoints() {
+            const el = $('ep-summary');
+            const link = '<a class="small" href="/web/' + window.AGENT_KEY + '/outputs">Manage in Outputs</a>';
+            try {
+                const r = await fetch('/api/' + window.AGENT_KEY + '/config/outputs');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const http = ((await r.json()).outputs || []).find(o => o.type === 'http');
+                const p = (http && http.params) || {};
+                const on = Array.isArray(p.endpoints)
+                    ? new Set(p.endpoints.map(String))
+                    : new Set(((http && http.readers) || []).filter(x => x.enabled).map(x => x.endpoint));
+                const names = [['prometheus', 'Prometheus'], ['prtg', 'PRTG'], ['nagios', 'Nagios']];
+                el.innerHTML = names.map(n => '<span class="small">' + esc(n[1]) + ' ' + (on.has(n[0]) ? pill('ok', 'on') : pill('off', 'off')) + '</span>').join(' ') + link;
+            } catch (e) {
+                el.innerHTML = '<a class="small" href="/web/' + window.AGENT_KEY + '/outputs">Prometheus, PRTG and Nagios endpoints: see Outputs</a>';
+            }
+        }
+
+        load().then(loadLocked);
+        loadEndpoints();
     </script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
 </body>

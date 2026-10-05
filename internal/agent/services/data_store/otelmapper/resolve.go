@@ -2,6 +2,7 @@ package otelmapper
 
 import (
 	"fmt"
+	"strings"
 
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
@@ -67,7 +68,7 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 		baseAttrs[k] = v
 	}
 	for tagName, attrName := range mdef.TagToAttribute {
-		if val, ok := m.Tags[tagName]; ok && val != "" {
+		if val, ok := exactTagValue(m.Tags, tagName); ok {
 			baseAttrs[attrName] = val
 		}
 	}
@@ -88,8 +89,11 @@ func Resolve(def *transformers.ProbeDefinition, m CacheMetric, opts ResolveOptio
 			if tagVal == "" {
 				continue
 			}
-			if isSystemTag(tagName) {
+			if isSystemTag(tagName) || strings.HasSuffix(tagName, ExactTagSuffix) {
 				continue
+			}
+			if exact := m.Tags[tagName+ExactTagSuffix]; exact != "" {
+				tagVal = exact
 			}
 			if _, alreadyMapped := mdef.TagToAttribute[tagName]; alreadyMapped {
 				continue
@@ -331,4 +335,23 @@ func isSystemTag(tag string) bool {
 		return true
 	}
 	return false
+}
+
+// ExactTagSuffix names the companion tag carrying the verbatim value of the
+// tag it is suffixed to ("drive_name_exact" for "drive_name"). A probe
+// sanitises a tag value where a sink needs it (channel names, URL filters,
+// cache and Zabbix keys) and ships the original alongside; attributes are
+// built from the original so hw.name and friends equal what the source
+// reported. The companion is never emitted as an attribute of its own.
+const ExactTagSuffix = "_exact"
+
+// exactTagValue returns the value to use for tag name: its verbatim
+// companion when present, the tag itself otherwise. ok is false when neither
+// holds a value.
+func exactTagValue(tags map[string]string, name string) (string, bool) {
+	if v := tags[name+ExactTagSuffix]; v != "" {
+		return v, true
+	}
+	v, ok := tags[name]
+	return v, ok && v != ""
 }
