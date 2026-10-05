@@ -47,7 +47,8 @@ func TestIsContainerBridgeIface(t *testing.T) {
 		"lxcbr0":          true,
 		"veth3a9f1c2":     true,
 		"cilium_host":     true,
-		"vEthernet (WSL)": false, // Windows names are matched by the route table, not by prefix
+		"vEthernet (WSL)": true, // Hyper-V / WSL virtual switch, matched case-insensitively
+		"DOCKER0":         true,
 		// Real, routed interfaces must NOT match.
 		"eth0":    false,
 		"ens3":    false,
