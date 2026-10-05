@@ -35,6 +35,24 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# -- `DaemonSet` (one agent per node, each with its own key and state on
+# the node) or `Deployment` (one agent for the release). Empty picks a
+# DaemonSet when hostMonitoring.enabled, a Deployment otherwise. Keep a
+# Deployment for container scope, a single node or an agent that only
+# watches remote targets: it is the one that carries the identity Secret,
+# the state volume, the Service, the ServiceMonitor and the Kubernetes
+# probe.
+kind: ""
+
+# DaemonSet mode only.
+daemonSet:
+  # -- Where each node keeps the agent's state (agent key, bookmarks), as
+  # a hostPath created if missing and handed to uid 10001 by an init
+  # container. It outlives the pod, the upgrade and `helm uninstall`.
+  # Another agent installed on the node as a service uses
+  # /var/lib/senhub-agent too: change this path then.
+  stateHostPath: /var/lib/senhub-agent
+
 # Monitoring of the node the pod runs on. The agent's host probes (CPU,
 # memory, disks, network, processes) measure the machine they run on; in
 # a plain container only CPU and memory show the node (/proc is not
@@ -45,7 +63,8 @@ hostMonitoring:
   # node's root filesystem read-only at `hostRoot`, so that disks, network
   # interfaces and processes are the node's. This is a privileged-looking
   # pod: it needs a namespace that enforces the `privileged` Pod Security
-  # level (see the documentation). `false` = container scope: disks, the
+  # level (see the documentation). With it the workload is a DaemonSet
+  # unless `kind` says otherwise. `false` = container scope: disks, the
   # interface and the processes are the pod's own, and CPU and memory are
   # still the node's.
   enabled: true
@@ -308,6 +327,11 @@ extraVolumeMounts: []
 podAnnotations: {}
 podLabels: {}
 nodeSelector: {}
+# -- A DaemonSet runs on the nodes it tolerates: by default not the
+# control-plane nodes, which carry a NoSchedule taint. To monitor them:
+#   - key: node-role.kubernetes.io/control-plane
+#     operator: Exists
+#     effect: NoSchedule
 tolerations: []
 affinity: {}
 priorityClassName: ""

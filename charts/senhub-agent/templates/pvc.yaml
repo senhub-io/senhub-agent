@@ -1,4 +1,4 @@
-{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) (ne (include "senhub-agent.kind" .) "DaemonSet") }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

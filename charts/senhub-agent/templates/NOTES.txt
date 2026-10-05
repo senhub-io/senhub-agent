@@ -1,9 +1,18 @@
+{{- $ds := eq (include "senhub-agent.kind" .) "DaemonSet" }}
 SenHub Agent {{ include "senhub-agent.imageTag" . }} ({{ .Values.edition }} edition) is deployed as
-{{ .Release.Namespace }}/{{ include "senhub-agent.fullname" . }}, one pod.
+{{ .Release.Namespace }}/{{ include "senhub-agent.fullname" . }}, {{ if $ds }}a DaemonSet: one agent per node{{ else }}one pod{{ end }}.
 
 Watch it start (the entrypoint says which configuration it wrote):
-  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "senhub-agent.fullname" . }} -c agent -f
+  kubectl -n {{ .Release.Namespace }} logs {{ include "senhub-agent.kind" . | lower | replace "daemonset" "ds" | replace "deployment" "deploy" }}/{{ include "senhub-agent.fullname" . }} -c agent -f
 
+{{- if $ds }}
+Each node's agent has its own identity: the agent key is generated at its first
+start and kept in {{ .Values.daemonSet.stateHostPath }} on that node (agent.key), and the host id is the
+node's machine-id. Read a node's key, for PRTG or Nagios, through its pod:
+  kubectl -n {{ .Release.Namespace }} exec ds/{{ include "senhub-agent.fullname" . }} -c agent -- cat /var/lib/senhub-agent/agent.key
+(ds/ picks one pod; use `kubectl get pods -o wide` and `exec <pod>` for a given node.)
+Each agent's HTTP output is on its node: http://<node address>:{{ .Values.http.port }}. There is no Service.
+{{- else }}
 Its identity lives in the Secret {{ include "senhub-agent.identitySecretName" . }}
 (host-id, agent-key){{ if not .Values.identity.existingSecret }}, kept after helm uninstall{{ end }}. Read the agent key,
 which PRTG, Nagios and a Prometheus scrape authenticate with:
@@ -21,6 +30,7 @@ Reach the HTTP output (console, PRTG, Nagios, Prometheus):
   curl http://127.0.0.1:{{ .Values.service.port }}/health
 Inside the cluster: http://{{ include "senhub-agent.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
 {{- end }}
+{{- end }}
 {{- if and .Values.kubernetesProbe.enabled (not .Values.rbac.kubernetesProbe.enabled) (not (get .Values.kubernetesProbe.params "kubeconfig")) }}
 
 WARNING: kubernetesProbe.enabled reads this cluster through the pod's service
@@ -32,11 +42,18 @@ refused. Set rbac.kubernetesProbe.enabled=true, or give the probe a kubeconfig.
 No SENHUB_LICENSE in secrets.values: the licensed probes stay off (Free tier),
 unless the Secret given as secrets.existingSecret carries one.
 {{- end }}
+{{- if $ds }}
+
+The state stays on each node after helm uninstall. Remove it on every node to start over:
+  sudo rm -rf {{ .Values.daemonSet.stateHostPath }}
+The agents run on the nodes the tolerations and nodeSelector allow: by default not the
+control-plane nodes (their NoSchedule taint); see `tolerations`.
+{{- end }}
 {{- if .Values.hostMonitoring.enabled }}
 
-hostMonitoring.enabled: this pod runs in the node's PID and network namespaces
-and mounts the node's root filesystem read-only at {{ .Values.hostMonitoring.hostRoot }}. It watches the node
-it was scheduled on (use nodeSelector to choose it), and the namespace must allow
+hostMonitoring.enabled: the pods run in the node's PID and network namespaces
+and mount the node's root filesystem read-only at {{ .Values.hostMonitoring.hostRoot }}. Each watches its node
+(with a Deployment, the node it was scheduled on: use nodeSelector), and the namespace must allow
 the `privileged` Pod Security level:
   kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=privileged
 Port {{ .Values.http.port }} is opened on the node itself.
@@ -45,7 +62,7 @@ Port {{ .Values.http.port }} is opened on the node itself.
 hostMonitoring.enabled is false: disks, the network interface and processes are
 the pod's own; CPU and memory are still the node's (/proc is not isolated).
 {{- end }}
-{{- if .Values.persistence.enabled }}
+{{- if and .Values.persistence.enabled (not $ds) }}
 
 The state volume {{ include "senhub-agent.fullname" . }}-state and the Secret {{ include "senhub-agent.identitySecretName" . }} are kept by
 helm uninstall. Delete them to start over:

@@ -1,4 +1,4 @@
-{{- if .Values.service.enabled }}
+{{- if and .Values.service.enabled (ne (include "senhub-agent.kind" .) "DaemonSet") }}
 apiVersion: v1
 kind: Service
 metadata:
