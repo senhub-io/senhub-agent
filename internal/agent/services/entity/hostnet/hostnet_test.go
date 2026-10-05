@@ -248,14 +248,10 @@ func TestBuildObservation_WindowsDefaultRouteKeepsItsEdge(t *testing.T) {
 		{Destination: "172.29.0.0/20", NextHop: "172.29.0.1", Metric: 5256, Iface: "vEthernet (Default Switch)"},
 	})
 	got := nextHopViaTargets(obs)
-	if !got["10.10.0.1"] || !got["10.10.0.254"] {
-		t.Errorf("routes through Ethernet lose their edge: %v", got)
-	}
-	// vEthernet adapters are not container-bridge names by prefix, so their
-	// routes keep an edge to a routable gateway (172.17/16 stays excluded by
-	// address): the filter acts on Linux bridge names only.
-	if !got["172.28.0.1"] || !got["172.29.0.1"] {
-		t.Errorf("vEthernet gateways: %v", got)
+	// Hyper-V / WSL virtual switch gateways are host-local NAT addresses,
+	// often identical across machines: only the Ethernet routes get edges.
+	if len(got) != 2 || !got["10.10.0.1"] || !got["10.10.0.254"] {
+		t.Errorf("only the Ethernet routes keep an edge, got %v", got)
 	}
 }
 
