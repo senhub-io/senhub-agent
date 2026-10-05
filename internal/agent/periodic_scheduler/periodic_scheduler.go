@@ -217,7 +217,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 					continue
 				}
 				tickStarted := time.Now()
-				l.logger.Info().
+				l.logger.Debug().
 					Int("error_count", errorCount).
 					Msg("scheduler tick → calling doCall")
 				err := l.doCall()
@@ -247,7 +247,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 							Msg("doCall returned error (will retry)")
 					}
 				} else {
-					l.logger.Info().
+					l.logger.Debug().
 						Dur("duration", time.Since(tickStarted)).
 						Msg("doCall ok")
 					if errorCount > 0 {
