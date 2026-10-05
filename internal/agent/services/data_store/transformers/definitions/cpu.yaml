@@ -412,6 +412,23 @@ metrics:
       unit: "{process}"
       type: gauge
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Host clock — lets a monitoring server compare the host's time with its
+  # own. OTel defines no such metric; SenHub extension, see semantic
+  # conventions §4.1.4. The epoch value has no meaning as a PRTG channel.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "system_time"
+    channel: "system_time"
+    display_name: "Host Clock"
+    unit: "s"
+    category: "system"
+    prtg_skip: true
+    description: "Current time of the host clock, in seconds since the Unix epoch, sampled at collection"
+    otel:
+      name: senhub.system.time
+      unit: s
+      type: gauge
+
 tag_metadata:
   core:
     type: resource

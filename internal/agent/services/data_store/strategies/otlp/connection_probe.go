@@ -25,10 +25,13 @@ import (
 // operator debugs a dead sink: name resolution, TCP, TLS, then one real
 // export the receiver has to accept.
 type ConnectionStep struct {
-	Name     string `json:"name"`
-	Passed   bool   `json:"passed"`
-	Detail   string `json:"detail,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Name   string `json:"name"`
+	Passed bool   `json:"passed"`
+	Detail string `json:"detail,omitempty"`
+	Error  string `json:"error,omitempty"`
+	// Warning marks a passed step the operator should still read: the
+	// destination answered, but not with what a working setup returns.
+	Warning  string `json:"warning,omitempty"`
 	Duration int64  `json:"duration_ms"`
 }
 
