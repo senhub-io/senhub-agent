@@ -80,7 +80,7 @@ func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	a.logger.Info().
+	a.logger.Debug().
 		Str("probe", probeName).
 		Int("channels", len(channels)).
 		Msg("PRTG GET response sent")
@@ -130,7 +130,7 @@ func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.logger.Info().
+	a.logger.Debug().
 		Str("probe", req.Probe).
 		Int("channels", len(channels)).
 		Msg("PRTG response sent")
@@ -175,7 +175,7 @@ func (a *APIManager) HandleListProbes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.logger.Info().
+	a.logger.Debug().
 		Int("probes_count", len(probes)).
 		Msg("Probes list response sent")
 }
@@ -618,7 +618,7 @@ func (a *APIManager) HandleListEndpoints(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	a.logger.Info().Int("endpoints_count", len(endpoints)).Msg("Endpoints list response sent")
+	a.logger.Debug().Int("endpoints_count", len(endpoints)).Msg("Endpoints list response sent")
 }
 
 // Utility Methods for API Responses
