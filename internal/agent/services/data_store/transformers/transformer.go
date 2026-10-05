@@ -202,6 +202,14 @@ type ProbeDefinition struct {
 	// separate node_exporter on the same host avoids duplicate series.
 	// Set to true in cpu/memory/network/logicaldisk YAMLs.
 	HostLevel bool `yaml:"host_level,omitempty"`
+
+	// Universal marks a probe every machine of the platforms its metrics
+	// support runs, with no operator choice: host inventory of the
+	// machine itself. A sink that links templates by default (the
+	// Zabbix setup) links the universal probes and leaves the others to
+	// be named, because a template whose probe is absent only adds
+	// empty rules.
+	Universal bool `yaml:"universal,omitempty"`
 }
 
 // UnitDefinition represents a unit mapping definition

@@ -524,6 +524,23 @@ creates one autoregistration action per platform matching on it, so a
 Linux host is linked to the Linux templates and a Windows host to the
 Windows ones by itself.
 
+### Which probes are linked without being named
+
+A probe is linked by default when its definition marks it `universal`
+and it has an item on the platform: the processor, memory, network,
+disks and processes everywhere, and on Windows the services
+(`winservices`) and the event log counter (`windows_eventlog`). The
+other probes depend on what the host runs (`hyperv` on a Hyper-V host,
+`mssql` beside an SQL Server, any vendor probe), so you name them with
+`--probe`, or link everything with `--all-probes`. A template with
+nothing to send on a platform, such as `winservices` on Linux, is not
+imported for it.
+
+`windows_eventlog` sends its records on the log rail, which the Zabbix
+output does not carry, so what a Zabbix host gets from it is its
+throughput counter, `senhub.windows_eventlog.records_emitted`, as a
+rate. The records themselves go to an OTLP output.
+
 Only the published platforms have an action. An agent built for macOS,
 which is a development target and not a release, registers as
 `... darwin`, matches nothing and waits for an autoregistration that
@@ -631,7 +648,7 @@ are; `--version 8.0` is not needed and does not exist.
 ```
 senhub-agent zabbix setup --url <frontend> [--token-file <path>]
                           [--group <name>] [--metadata <string>]
-                          [--action-name <name>] [--probe <type> ...]
+                          [--action-name <name>] [--probe <type> ...] [--all-probes]
                           [--discovery-delay <interval> | --no-discovery-delay]
                           [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
 ```
@@ -643,7 +660,8 @@ senhub-agent zabbix setup --url <frontend> [--token-file <path>]
 | `--group` | `SenHub Agents` | Host group new hosts are put in |
 | `--metadata` | `senhub-agent` | Host metadata the autoregistration action matches; must match the output's `host_metadata` |
 | `--action-name` | `Autoregistration — SenHub Agent` | Name of the autoregistration action |
-| `--probe` | the probes every machine runs | Also import and link the template of this probe type; repeat for several |
+| `--probe` | the probes every machine runs | Also import and link the template of this probe type; repeat for several. `hyperv` and `mssql` are linked this way, since only some hosts run them |
+| `--all-probes` | | Import and link every template that carries an item on the platform |
 | `--discovery-delay` | `5m` | Interval set on the discovery rules of the imported templates |
 | `--no-discovery-delay` | | Leave the discovery rules at the template's interval (1 hour) |
 | `--prefix` | `senhub` | Key prefix; must match the output's `key_prefix` |

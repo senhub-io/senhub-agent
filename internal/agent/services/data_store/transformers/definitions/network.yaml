@@ -2,6 +2,7 @@ probe_name: "network"
 friendly_name: "Network Interface"
 version: "3.0.0"
 host_level: true
+universal: true
 multi_instance_labels: ["interface"]
 
 # Format v3 — OTel-first source of truth:
