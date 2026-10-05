@@ -3,7 +3,7 @@
 Changes land here as they are merged to `dev`.
 
 - **Redis**: the probe now reports the last RDB save, AOF rewrite and AOF write outcomes, the replication backlog (active, size, history), pub/sub channels and patterns, and, on a Sentinel, the status, replica count and sentinel count of each monitored master.
-- **Linux packages.** `.deb` and `.rpm` packages for amd64 and arm64 install the agent as a systemd service from the distribution's package manager, tested on Debian 12, Ubuntu 22.04 and 24.04, Rocky Linux 9 and openSUSE Leap 15.6; see [Install from packages](../installation.md#install-from-packages). Repositories are announced.
+- **Linux packages.** `.deb` and `.rpm` packages for amd64 and arm64, in two editions (`senhub-agent-oss` and `senhub-agent`, which replace each other in one install command), install the agent as a systemd service from the distribution's package manager, tested on Debian 12, Ubuntu 22.04 and 24.04, Rocky Linux 9 and openSUSE Leap 15.6; see [Install from packages](../installation.md#install-from-packages). Repositories are announced.
 
 <div class="rn-filter"></div>
 
