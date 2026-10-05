@@ -25,7 +25,7 @@ const zabbixUsage = `Usage: senhub-agent zabbix template [--probe <type> ...] [-
 
        senhub-agent zabbix setup --url <frontend> [--token-file <path>]
                                  [--group <name>] [--metadata <string>]
-                                 [--action-name <name>] [--probe <type> ...]
+                                 [--action-name <name>] [--probe <type> ...] [--all-probes]
                                  [--discovery-delay <interval> | --no-discovery-delay]
                                  [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
 
@@ -37,8 +37,9 @@ Without --probe, every definition is written. With one --probe and no
 setup does the whole server side in one call: it imports those same
 templates, creates the host group, and creates the autoregistration
 action that turns an agent's first contact into a host carrying them.
-Without --probe it links the probes every machine runs; naming others
-adds them, and a template whose probe an agent does not run only
+Without --probe it links the probes every machine runs (the ones their
+definition marks universal); naming others adds them, --all-probes
+links every template of the platform, and a template whose probe an agent does not run only
 contributes discovery rules that never answer.
 After it, a machine needs nothing but the agent and two lines naming the
 server. Run it once, as an administrator; a deployed agent never holds
@@ -162,7 +163,11 @@ func runZabbixCommand() {
 			os.Exit(cliexit.Failure)
 		}
 		if exp.DeclaresNothing() {
-			fmt.Fprintf(os.Stderr, "Note: %s relays records rather than metrics; it declares no Zabbix item, so no template was written for it.\n", p)
+			if opts.Platform != "" && len(def.Metrics) > 0 {
+				fmt.Fprintf(os.Stderr, "Note: %s has no metric on %s; it declares no Zabbix item there, so no template was written for it.\n", p, opts.Platform)
+			} else {
+				fmt.Fprintf(os.Stderr, "Note: %s relays records rather than metrics; it declares no Zabbix item, so no template was written for it.\n", p)
+			}
 			continue
 		}
 		body, err := template.Encode(exp)
@@ -256,6 +261,12 @@ func renderTemplates(probes []string, opts template.Options) (map[string][]byte,
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", p, err)
 		}
+		if exp.DeclaresNothing() {
+			// A probe with nothing to send on this platform (a Windows
+			// counter set asked for on Linux, a log conduit) has no
+			// template to link.
+			continue
+		}
 		body, err := template.Encode(exp)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", p, err)
@@ -265,6 +276,7 @@ func renderTemplates(probes []string, opts template.Options) (map[string][]byte,
 			names = append(names, t.Template)
 		}
 	}
+
 	return out, names, nil
 }
 

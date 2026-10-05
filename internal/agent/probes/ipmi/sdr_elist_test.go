@@ -18,7 +18,7 @@ Fan6B            | 3Dh | ns  |  7.1 | No Reading
 Voltage 1        | 6Ah | ok  | 10.1 | 232 Volts
 Current 1        | 6Eh | ok  | 10.1 | 0.80 Amps
 Pwr Consumption  | 76h | ok  |  7.1 | 168 Watts
-Temp             | 0Fh | cr  |  3.2 | 97 degrees C
+Temp             | 0Fh | cr  |  3.1 | 97 degrees C
 `
 
 func collectOutput(t *testing.T, output string) []data_store.DataPoint {
@@ -64,7 +64,8 @@ func TestCollect_ElistFullCarriesTheReadings(t *testing.T) {
 		{"Fan1A", "hardware.fan.speed", 5040},
 		{"Voltage 1", "hardware.voltage", 232},
 		{"Inlet Temp", "hardware.sensor.status", 1},
-		{"Pwr Consumption", "hardware.power_supply.status", 1},
+		{"Pwr Consumption", "hardware.power", 168},
+		{"Current 1", "senhub.hardware.current", 0.8},
 	}
 	for _, tc := range cases {
 		got, ok := pointsOf(points, tc.component)[tc.metric]
@@ -79,7 +80,7 @@ func TestParseSdrOutput_ElistLayout(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("got %d rows, want 1", len(rows))
 	}
-	want := sensorRow{name: "Fan1A", value: "5040 RPM", status: "ok"}
+	want := sensorRow{name: "Fan1A", value: "5040 RPM", status: "ok", sensorNumber: "30h", entity: "7.1"}
 	if rows[0] != want {
 		t.Errorf("row = %+v, want %+v", rows[0], want)
 	}
