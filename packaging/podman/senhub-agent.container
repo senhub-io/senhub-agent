@@ -9,6 +9,12 @@
 # Requires Podman 4.6 or later (AutoUpdate=). On 4.4 and 4.5, replace
 # AutoUpdate=registry with Label=io.containers.autoupdate=registry.
 # Full walk-through: docs/user-guide/docs/podman.md.
+#
+# This unit monitors THE HOST by default (host scope): host network and PID
+# namespaces and a read-only view of / at /host. It is meant for a ROOTFUL
+# unit. For a container scope, delete the block between the ">>> host
+# scope" markers and uncomment PublishPort=: see "Container scope" in the
+# walk-through.
 
 [Unit]
 Description=SenHub Agent (container)
@@ -18,8 +24,10 @@ After=network-online.target
 [Container]
 # Pin a released version, 0.6.1 or later: earlier images listen on the
 # container's loopback only, and the published port answers nothing.
-# There is no moving tag: moving to a new version means editing this
-# line, see "Updates" below. The -oss image needs no licence.
+# Only exact version tags are published (no 0.6, no latest): moving to a
+# new version means editing this line, or pinning a digest, see "Updates"
+# below. The -oss image carries no licensed probe; the full image runs
+# the free tier without a licence.
 Image=ghcr.io/senhub-io/senhub-agent:0.6.1
 ContainerName=senhub-agent
 
@@ -27,19 +35,51 @@ ContainerName=senhub-agent
 # replace a binary inside a layer that the next container discards.
 # `podman auto-update` pulls the reference above again and restarts the
 # unit when the registry serves a different digest for it, so it picks
-# up a republished image of this version, not a new version.
+# up a republished image of this version, not a new version. To pin an
+# image digest instead (Image=...@sha256:<digest>), delete this line:
+# auto-update has nothing to follow on a digest.
 AutoUpdate=registry
+
+# >>> host scope: the agent monitors the host, not the container.
+# Processes, network interfaces and their counters are the host's with
+# the host's PID and network namespaces. The host's / is mounted
+# read-only at /host; rslave carries the host's submounts (/var, /boot,
+# data disks) into it, which is how the disk probe finds them. The agent
+# still runs as the image's uid 10001 with the container's default
+# capabilities: it reads what any user can read, not root-only files.
+#
+# Network=host opens the HTTP port directly on the host's addresses
+# (SENHUB_HTTP_PORT, 8080 by default); PublishPort= does not apply.
+Network=host
+PodmanArgs=--pid=host
+Volume=/:/host:ro,rslave
+# On an SELinux host, the read of / is denied until the container runs
+# unconfined for labels. Never add :Z to this volume: it would relabel
+# the host's whole root.
+#SecurityLabelDisable=true
+Environment=SENHUB_HOST_ROOT=/host
+# gopsutil's own variables: OS release, boot time and sessions are read
+# under /host. /proc and /sys are already the host's.
+Environment=HOST_ETC=/host/etc
+Environment=HOST_VAR=/host/var
+Environment=HOST_RUN=/host/run
+# <<< host scope
 
 # Plain settings. The entrypoint reads them on the FIRST start only, when
 # the configuration volume holds no agent.yaml yet. The path is relative
 # to this file.
 EnvironmentFile=senhub-agent.env
 
-# Secrets, kept by Podman rather than written in the environment file.
-# Create each one first, as the same user that runs this unit, then
-# uncomment its line:
+# Secrets, kept by Podman rather than written in the unit or the
+# environment file: `podman inspect` prints every Environment= and
+# EnvironmentFile= value in clear, and never a secret's. Create each one
+# first, as the same user that runs this unit (a unit naming a secret
+# that does not exist fails to start):
 #   printf '%s' "<token>" | podman secret create senhub-otlp-token -
-#Secret=senhub-otlp-token,type=env,target=OTLP_BEARER_TOKEN
+# No token, no export to SenHub: delete the next line for a local-only
+# agent. The licence is optional (Pro probes only); create it, then
+# uncomment its line.
+Secret=senhub-otlp-token,type=env,target=OTLP_BEARER_TOKEN
 #Secret=senhub-license,type=env,target=SENHUB_LICENSE
 #Secret=senhub-azure-client-secret,type=env,target=SENHUB_AZURE_CLIENT_SECRET
 
@@ -64,13 +104,15 @@ Volume=senhub-agent-config:/etc/senhub-agent
 # your sub-uid range when rootless).
 #Volume=/srv/senhub-agent/probes.d:/etc/senhub-agent/probes.d:Z,U
 
-# HTTP output: console, PRTG, Nagios, Prometheus. Keep both sides equal
-# to SENHUB_HTTP_PORT. Rootless Podman cannot publish a host port below
+# HTTP output: console, PRTG, Nagios, Prometheus. Container scope only
+# (host scope has Network=host above): keep both sides equal to
+# SENHUB_HTTP_PORT. Rootless Podman cannot publish a host port below
 # 1024 unless net.ipv4.ip_unprivileged_port_start allows it.
-PublishPort=8080:8080
+#PublishPort=8080:8080
 
-# The host name the agent reports. Without it the container id is used,
-# and every new container shows up under a new name.
+# The host name the agent reports, container scope only (host scope
+# reports the host's own name). Without it the container id is used, and
+# every new container shows up under a new name.
 #HostName=senhub-agent-%H
 
 # The image's own health check, restated so it applies whatever manifest
