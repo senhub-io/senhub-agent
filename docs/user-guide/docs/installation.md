@@ -353,12 +353,16 @@ For the full edition, use the `senhub-agent` file in the same commands. A beta c
 
 #### Switching edition
 
-Install the other edition's file with the same command. The package manager replaces the installed edition with it in one step, restarts the service, and keeps your configuration, agent key, secrets and data. Switching in either direction works the same way.
+Install the other edition in place of the installed one. The service restarts on the new package, and your configuration, agent key, secrets and data are kept. Switching in either direction works the same way. On Debian and Ubuntu one install command does it; on the rpm distributions the two editions conflict, so the switch is an explicit swap.
 
 ```bash
-# from the open source edition to the full edition, on Debian or Ubuntu
-sudo apt install ./senhub-agent_<version>-1_amd64.deb
+# from the open source edition to the full edition
+sudo apt install ./senhub-agent_<version>-1_amd64.deb                          # Debian, Ubuntu
+sudo dnf swap senhub-agent-oss ./senhub-agent-<version>-1.x86_64.rpm            # RHEL, Rocky Linux, AlmaLinux
+sudo zypper install --force-resolution ./senhub-agent-<version>-1.x86_64.rpm    # openSUSE, SLES
 ```
+
+From the package repositories, use the package name instead of the file: `sudo dnf swap senhub-agent-oss senhub-agent` or `sudo zypper install --force-resolution senhub-agent`. Going back uses the same commands with the names exchanged.
 
 The package creates the `senhub` service user, installs the binary at `/usr/bin/senhub-agent` and the hardened `senhub-agent.service` unit, writes the default configuration to `/etc/senhub-agent/` with a key of its own for this host, and starts the service. It does not run `senhub-agent install`; do not run both.
 
@@ -388,7 +392,7 @@ RHEL, Rocky Linux, AlmaLinux, Fedora:
 
 ```bash
 sudo curl -fsSLo /etc/yum.repos.d/senhub.repo https://packages.senhub.io/rpm/beta/senhub.repo
-sudo dnf install --exclude=senhub-agent senhub-agent-oss
+sudo dnf install senhub-agent-oss
 ```
 
 openSUSE, SLES:
@@ -400,7 +404,7 @@ sudo zypper refresh
 sudo zypper install senhub-agent-oss
 ```
 
-The `--exclude` is needed on dnf: each edition obsoletes the other, and without it dnf installs the obsoleting package (the full edition) when asked for the open source one. For the full edition, install `senhub-agent` the same way, with `--exclude=senhub-agent-oss`. Updates then arrive with the system's own updates (`apt upgrade`, `dnf upgrade`, `zypper update`).
+For the full edition, install `senhub-agent` instead. Updates then arrive with the system's own updates (`apt upgrade`, `dnf upgrade`, `zypper update`).
 
 ## Installation Options
 
