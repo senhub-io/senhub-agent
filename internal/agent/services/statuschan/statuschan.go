@@ -117,6 +117,29 @@ func (s *Service) answer(conn net.Conn) {
 	_ = conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 	if err := json.NewEncoder(conn).Encode(s.build()); err != nil {
 		s.logger.Debug().Err(err).Msg("Local status client went away before reading the answer")
+		return
+	}
+	waitUntilRead(conn, writeTimeout)
+}
+
+// waitUntilRead holds the connection open until the client has read the
+// answer. Closing a Windows named pipe server end discards what the
+// client has not read yet; FlushFileBuffers blocks until it has. The
+// flush cannot be cancelled, so it runs aside and the loop moves on after
+// the timeout; that goroutine ends when the client reads or disconnects.
+func waitUntilRead(conn net.Conn, timeout time.Duration) {
+	f, ok := conn.(interface{ Flush() error })
+	if !ok {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = f.Flush()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
 	}
 }
 
