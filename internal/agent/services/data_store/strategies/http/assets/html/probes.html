@@ -238,7 +238,7 @@
     return d;
   }
   // A Pro type refused because it does not run on this OS is not one a
-  // licence would unlock; the server flags licence_locked once and every page reads it.
+  // licence would unlock; the server flags licence_locked once per catalogue entry.
   function platformOnly(t) { return t.runs_here === false; }
   function licenceLocked(t) { return t.licence_locked === true; }
 
