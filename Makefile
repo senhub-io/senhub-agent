@@ -247,11 +247,15 @@ PKG_NAME=senhub-agent-oss
 PKG_OTHER=senhub-agent
 PKG_LICENSE=Apache-2.0
 PKG_EDITION_LABEL=open-source edition
+PKG_COPYRIGHT_FILE=packaging/nfpm/legal/copyright-oss
+PKG_LICENSE_FILE=LICENSE
 else ifeq ($(EDITION),full)
 PKG_NAME=senhub-agent
 PKG_OTHER=senhub-agent-oss
 PKG_LICENSE=LicenseRef-SenHub-Commercial
 PKG_EDITION_LABEL=full edition
+PKG_COPYRIGHT_FILE=packaging/nfpm/legal/copyright-full
+PKG_LICENSE_FILE=packaging/nfpm/legal/LICENSE-full
 endif
 
 package-version: ## Print the package form of VERSION (0.6.2-beta.1 -> 0.6.2~beta.1)
@@ -265,8 +269,16 @@ packages: $(if $(filter oss,$(EDITION)),build-linux) ## Build the .deb and .rpm 
 	@# a distro package must not write under /usr/local (see app/managed_binary.go).
 	@sed 's|^ExecStart=/usr/local/bin/|ExecStart=/usr/bin/|' packaging/systemd/senhub-agent.service > $(PACKAGES_DIR)/stage/senhub-agent.service
 	@grep -q '^ExecStart=/usr/bin/senhub-agent ' $(PACKAGES_DIR)/stage/senhub-agent.service || { echo "$(RED)unit ExecStart rewrite failed$(NC)"; exit 1; }
-	@# nFPM does not expand environment variables in the license field.
-	@sed 's|$${PKG_LICENSE}|$(PKG_LICENSE)|' packaging/nfpm/nfpm.yaml > $(PACKAGES_DIR)/stage/nfpm.yaml
+	@# Generated per build, from the commit (not the clock): the man page and the
+	@# changelog nFPM turns into /usr/share/doc/.../changelog and the rpm changelog.
+	@gzip -9n < packaging/nfpm/senhub-agent.1 > $(PACKAGES_DIR)/stage/senhub-agent.1.gz
+	@printf '%s (%s-1) unstable; urgency=medium\n\n  * Release %s. Release notes: https://agent.senhub.io/\n\n -- Sensor Factory <support@senhub.io>  %s\n' \
+		"$(PKG_NAME)" "$(PKG_VERSION)" "$(VERSION)" "$$(git log -1 --format=%cD)" | gzip -9n > $(PACKAGES_DIR)/stage/changelog.Debian.gz
+	@printf -- '- semver: %s\n  date: %s\n  packager: Sensor Factory <support@senhub.io>\n  changes:\n    - note: "Release %s. Release notes: https://agent.senhub.io/"\n' \
+		"$(PKG_VERSION)-1" "$$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" "$(VERSION)" > $(PACKAGES_DIR)/stage/changelog.yaml
+	@# nFPM does not expand environment variables in the license and changelog fields.
+	@sed -e 's|$${PKG_LICENSE}|$(PKG_LICENSE)|' -e 's|$${STAGE}/changelog.yaml|$(PACKAGES_DIR)/stage/changelog.yaml|' packaging/nfpm/nfpm.yaml > $(PACKAGES_DIR)/stage/nfpm-rpm.yaml
+	@grep -v '^changelog:' $(PACKAGES_DIR)/stage/nfpm-rpm.yaml > $(PACKAGES_DIR)/stage/nfpm-deb.yaml
 	@for arch in $(PACKAGE_ARCHES); do \
 		case $$arch in amd64) rpmarch=x86_64;; arm64) rpmarch=aarch64;; esac; \
 		bin=$(BINARY_DIR)/linux-$$arch/$(EXECUTABLE); \
@@ -279,9 +291,11 @@ packages: $(if $(filter oss,$(EDITION)),build-linux) ## Build the .deb and .rpm 
 				-e SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
 				-e PKG_NAME=$(PKG_NAME) -e PKG_OTHER=$(PKG_OTHER) \
 				-e PKG_EDITION_LABEL="$(PKG_EDITION_LABEL)" \
+				-e PKG_COPYRIGHT_FILE=$(PKG_COPYRIGHT_FILE) -e PKG_LICENSE_FILE=$(PKG_LICENSE_FILE) \
+				-e STAGE=$(PACKAGES_DIR)/stage \
 				-e BIN=/binaries/linux-$$arch/$(EXECUTABLE) \
 				-e UNIT=$(PACKAGES_DIR)/stage/senhub-agent.service \
-				$(NFPM_IMAGE) package -f $(PACKAGES_DIR)/stage/nfpm.yaml -p $$fmt -t $$out || exit 1; \
+				$(NFPM_IMAGE) package -f $(PACKAGES_DIR)/stage/nfpm-$$fmt.yaml -p $$fmt -t $$out || exit 1; \
 		done; \
 	done
 	@ls -la $(PACKAGES_DIR)/$(PKG_NAME)[_-]*

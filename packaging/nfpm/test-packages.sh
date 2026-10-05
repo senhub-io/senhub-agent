@@ -228,6 +228,30 @@ run_switch() {
     cleanup
 }
 
+# lintian on the .deb and rpmlint on the .rpm of both editions. Any warning
+# or error fails; the exceptions are the reasoned overrides in
+# packaging/nfpm/lintian-overrides and packaging/nfpm/rpmlint.toml.
+run_lint() {
+    echo "== lint"
+    local rc=0 f out pv
+    pv=$(pkg_version "$V2")
+    if ! docker image inspect senhub-pkglint-deb >/dev/null 2>&1; then
+        printf 'FROM debian:12\nRUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq lintian\n' | docker build -q -t senhub-pkglint-deb - >/dev/null || rc=1
+    fi
+    if ! docker image inspect senhub-pkglint-rpm >/dev/null 2>&1; then
+        printf 'FROM fedora:41\nRUN dnf install -y -q rpmlint\n' | docker build -q -t senhub-pkglint-rpm - >/dev/null || rc=1
+    fi
+    for f in "senhub-agent-oss_${pv}-1_${ARCH}.deb" "senhub-agent_${pv}-1_${ARCH}.deb"; do
+        out=$(docker run --rm -v "$PKGDIR":/pkgs:ro senhub-pkglint-deb lintian --pedantic --tag-display-limit 0 --fail-on error,warning "/pkgs/$f" 2>&1 | grep -v 'setlocale\|running with root')
+        if [ -z "$out" ]; then echo "    ok   lintian $f"; else echo "    FAIL lintian $f"; echo "$out" | sed 's/^/         | /'; rc=1; fi
+    done
+    for f in "senhub-agent-oss-${pv}-1.${RPMARCH}.rpm" "senhub-agent-${pv}-1.${RPMARCH}.rpm"; do
+        out=$(docker run --rm -v "$PKGDIR":/pkgs:ro -v "$ROOT/packaging/nfpm/rpmlint.toml":/rpmlint.toml:ro senhub-pkglint-rpm rpmlint -c /rpmlint.toml "/pkgs/$f" 2>&1 | grep ': [EW]: ')
+        if [ -z "$out" ]; then echo "    ok   rpmlint $f"; else echo "    FAIL rpmlint $f"; echo "$out" | sed 's/^/         | /'; rc=1; fi
+    done
+    if [ $rc = 0 ]; then RESULTS+=("lint PASS"); else RESULTS+=("lint FAIL"); FAILED=1; fi
+}
+
 # Prerelease ordering as the package managers see it. The versions go through
 # the Makefile's own conversion, then dpkg and rpm compare them.
 run_versions() {
@@ -350,10 +374,11 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
     make packages EDITION=full BINARY_DIR="$ROOT/dist" VERSION="$V2" PACKAGE_ARCHES="$ARCH" || { echo "package build failed" >&2; exit 2; }
 fi
 
-STEPS=${*:-"versions $ALL_DISTROS"}
+STEPS=${*:-"lint versions $ALL_DISTROS"}
 for d in $STEPS; do
     case "$d" in
         versions) run_versions ;;
+        lint) run_lint ;;
         *) run_distro "$d" ;;
     esac
 done
