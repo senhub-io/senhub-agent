@@ -27,7 +27,8 @@
 # Event-conduit metrics (message_queue, history_log, audit_journal,
 # msgw_job) carry otel.skip:true with reason — same pattern as
 # syslog/event probes, since the relayed event isn't a meaningful
-# Prometheus/OTLP metric.
+# Prometheus/OTLP metric. message_queue, history_log and audit_journal
+# events are shipped as OTel log records instead (see the probe page).
 
 probe_name: "ibmi"
 friendly_name: "IBM i / Power Systems"
@@ -619,7 +620,7 @@ metrics:
     description: "Job in message wait; value = seconds stuck"
     otel:
       skip: true
-      reason: "Event conduit — relayed message-wait condition, not a meaningful Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed message-wait condition, not a meaningful Prometheus metric."
 
   # ============================================================
   # Subsystems
@@ -2742,7 +2743,7 @@ metrics:
     description: "A message reached QSYSOPR; carries the message identifier and text as attributes"
     otel:
       skip: true
-      reason: "Event conduit — relayed QSYSOPR message. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed QSYSOPR message. Not meaningful as a Prometheus metric. Each event is also published as an OTel log record on the log rail (message text as body, partition time as timestamp, IBM i severity mapped to SeverityNumber)."
 
   - name: "ibmi.history_log.event"
     channel: "ibmi_history_event"
@@ -2753,7 +2754,7 @@ metrics:
     description: "An entry was written to the history log QHST"
     otel:
       skip: true
-      reason: "Event conduit — relayed QHST history event. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed QHST history event. Not meaningful as a Prometheus metric. Each event is also published as an OTel log record on the log rail (message text as body, partition time as timestamp, IBM i severity mapped to SeverityNumber)."
 
   - name: "ibmi.audit_journal.event"
     channel: "ibmi_audit_event"
@@ -2764,7 +2765,7 @@ metrics:
     description: "An entry was written to the audit journal"
     otel:
       skip: true
-      reason: "Event conduit — relayed QAUDJRN entry. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed QAUDJRN entry. Not meaningful as a Prometheus metric. Each event is also published as an OTel log record on the log rail (message text as body, partition time as timestamp, IBM i severity mapped to SeverityNumber)."
 
   # ============================================================
   # Probe self-observability
