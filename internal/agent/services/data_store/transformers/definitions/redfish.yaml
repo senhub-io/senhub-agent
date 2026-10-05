@@ -941,6 +941,1846 @@ metrics:
       redundancy_group: senhub.hardware.redundancy.set
       redundancy_mode: senhub.hardware.redundancy.mode
 
+  # ═════════════════════════════════════════════════════════════════════════
+  # Everything below was emitted by the probe without a definition, so the
+  # Prometheus and OTLP outputs dropped it. A guard in the enterprise repo
+  # (TestEveryEmittedMetricHasADefinition) keeps the two in step.
+  # display_name keeps the name the PRTG channel already carried, so
+  # declaring a metric here renames nothing on the pull sinks.
+  # ═════════════════════════════════════════════════════════════════════════
+
+  - name: "hardware.cpu.health"
+    channel: "cpu_health"
+    display_name: "CPU Health"
+    unit: "#"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor health status"
+    category: "processor"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: cpu
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.cores"
+    channel: "cpu_cores"
+    display_name: "CPU Cores"
+    unit: "#"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Physical cores of the processor"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.cores
+      unit: "{core}"
+      type: gauge
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.threads"
+    channel: "cpu_threads"
+    display_name: "CPU Threads"
+    unit: "#"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Hardware threads of the processor"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.threads
+      unit: "{thread}"
+      type: gauge
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.max_speed"
+    channel: "cpu_max_speed"
+    display_name: "CPU Max Speed"
+    unit: "MHz"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Maximum processor speed"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.speed
+      unit: Hz
+      type: gauge
+      value_scale: 1000000.0
+      attributes:
+        senhub.hardware.cpu.speed.kind: max
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.current_speed"
+    channel: "cpu_current_speed"
+    display_name: "CPU Current Speed"
+    unit: "MHz"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Current processor speed"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.speed
+      unit: Hz
+      type: gauge
+      value_scale: 1000000.0
+      attributes:
+        senhub.hardware.cpu.speed.kind: current
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.average_frequency"
+    channel: "cpu_average_frequency"
+    display_name: "CPU Average Frequency"
+    unit: "MHz"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Average processor frequency"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.speed
+      unit: Hz
+      type: gauge
+      value_scale: 1000000.0
+      attributes:
+        senhub.hardware.cpu.speed.kind: average
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.temperature"
+    channel: "cpu_temperature"
+    display_name: "CPU Temperature"
+    unit: "°C"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor temperature"
+    category: "processor"
+    otel:
+      name: hw.temperature
+      unit: Cel
+      type: gauge
+      attributes:
+        hw.type: cpu
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.throttling_temperature"
+    channel: "cpu_throttling_temperature"
+    display_name: "CPU Throttling Temperature"
+    unit: "°C"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Temperature at which the processor throttles"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.throttling_temperature
+      unit: Cel
+      type: gauge
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.thermal_margin"
+    channel: "cpu_thermal_margin"
+    display_name: "CPU Thermal Margin"
+    unit: "°C"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Margin between the processor temperature and its throttling temperature"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.thermal_margin
+      unit: Cel
+      type: gauge
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.power_consumption"
+    channel: "cpu_power_consumption"
+    display_name: "CPU Power Consumption"
+    unit: "W"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Power drawn by the processor"
+    category: "processor"
+    otel:
+      name: hw.power
+      unit: W
+      type: gauge
+      attributes:
+        hw.type: cpu
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.power_limit"
+    channel: "cpu_power_limit"
+    display_name: "CPU Power Limit"
+    unit: "W"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Power cap applied to the processor"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.power_limit
+      unit: W
+      type: gauge
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.utilization"
+    channel: "cpu_utilization"
+    display_name: "CPU Utilization"
+    unit: "%"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor utilization reported by the BMC"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.cpu.state: total
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.user_percent"
+    channel: "cpu_user_percent"
+    display_name: "CPU User Percent"
+    unit: "%"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor time spent in user mode"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.cpu.state: user
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.kernel_percent"
+    channel: "cpu_kernel_percent"
+    display_name: "CPU Kernel Percent"
+    unit: "%"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor time spent in kernel mode"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.cpu.state: system
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.io_wait_percent"
+    channel: "cpu_io_wait_percent"
+    display_name: "CPU IO Wait Percent"
+    unit: "%"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor time spent waiting for I/O"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.cpu.state: iowait
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.utilization.dell"
+    channel: "cpu_utilization_dell"
+    display_name: "CPU Utilization Dell"
+    unit: "%"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor utilization from the Dell OEM metrics"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.cpu.state: total
+        senhub.hardware.source: dell_oem
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.utilization.hpe"
+    channel: "cpu_utilization_hpe"
+    display_name: "CPU Utilization Hpe"
+    unit: "%"
+    multi_instance_labels: ["processor_id", "host"]
+    description: "Processor utilization from the HPE OEM metrics"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.cpu.state: total
+        senhub.hardware.source: hpe_oem
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+
+  - name: "hardware.cpu.cache.occupancy"
+    channel: "cpu_cache_occupancy"
+    display_name: "CPU Cache Occupancy"
+    unit: "Bytes"
+    multi_instance_labels: ["processor_id", "host", "cache_level"]
+    description: "Bytes held in the processor cache"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.cache.usage
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+      cache_level: senhub.hardware.cpu.cache.level
+
+  - name: "hardware.cpu.cache.hit_ratio"
+    channel: "cpu_cache_hit_ratio"
+    display_name: "CPU Cache Hit Ratio"
+    unit: "ratio"
+    multi_instance_labels: ["processor_id", "host", "cache_level"]
+    description: "Processor cache hit ratio"
+    category: "processor"
+    otel:
+      name: senhub.hardware.cpu.cache.hit_ratio
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      processor_id: hw.id
+      processor_name: hw.name
+      model: hw.model
+      socket: senhub.hardware.cpu.socket
+      cache_level: senhub.hardware.cpu.cache.level
+
+  - name: "hardware.memory.health"
+    channel: "memory_health"
+    display_name: "Memory Health"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Memory module health status"
+    category: "memory"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: memory
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.capacity"
+    channel: "memory_capacity"
+    display_name: "Memory Capacity"
+    unit: "MiB"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Memory module capacity"
+    category: "memory"
+    otel:
+      name: hw.memory.size
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.logical_size"
+    channel: "memory_logical_size"
+    display_name: "Memory Logical Size"
+    unit: "MiB"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Memory module logical size"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.logical_size
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.cache_size"
+    channel: "memory_cache_size"
+    display_name: "Memory Cache Size"
+    unit: "MiB"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Cache size of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.cache_size
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.speed"
+    channel: "memory_speed"
+    display_name: "Memory Speed"
+    unit: "MHz"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Operating speed of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.speed
+      unit: Hz
+      type: gauge
+      value_scale: 1000000.0
+      attributes:
+        senhub.hardware.memory.speed.kind: operating
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.configured_speed"
+    channel: "memory_configured_speed"
+    display_name: "Memory Configured Speed"
+    unit: "MHz"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Configured speed of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.speed
+      unit: Hz
+      type: gauge
+      value_scale: 1000000.0
+      attributes:
+        senhub.hardware.memory.speed.kind: configured
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.bus_width"
+    channel: "memory_bus_width"
+    display_name: "Memory Bus Width"
+    unit: "bits"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Total bus width of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.width
+      unit: "{bit}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.width.kind: bus
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.data_width"
+    channel: "memory_data_width"
+    display_name: "Memory Data Width"
+    unit: "bits"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Data width of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.width
+      unit: "{bit}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.width.kind: data
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.rank_count"
+    channel: "memory_rank_count"
+    display_name: "Memory Rank Count"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Ranks of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.ranks
+      unit: "{rank}"
+      type: gauge
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.max_tdp"
+    channel: "memory_max_tdp"
+    display_name: "Memory Max Tdp"
+    unit: "mW"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Maximum thermal design power of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.max_tdp
+      unit: W
+      type: gauge
+      value_scale: 0.001
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.power_consumption"
+    channel: "memory_power_consumption"
+    display_name: "Memory Power Consumption"
+    unit: "W"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Power drawn by the memory module"
+    category: "memory"
+    otel:
+      name: hw.power
+      unit: W
+      type: gauge
+      attributes:
+        hw.type: memory
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.temperature"
+    channel: "memory_temperature"
+    display_name: "Memory Temperature"
+    unit: "°C"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Memory module temperature"
+    category: "memory"
+    otel:
+      name: hw.temperature
+      unit: Cel
+      type: gauge
+      attributes:
+        hw.type: memory
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.thermal_margin"
+    channel: "memory_thermal_margin"
+    display_name: "Memory Thermal Margin"
+    unit: "°C"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Margin between the memory module temperature and its limit"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.thermal_margin
+      unit: Cel
+      type: gauge
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.bandwidth_utilization"
+    channel: "memory_bandwidth_utilization"
+    display_name: "Memory Bandwidth Utilization"
+    unit: "%"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Memory bandwidth utilization"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.bandwidth.utilization
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.block_size"
+    channel: "memory_block_size"
+    display_name: "Memory Block Size"
+    unit: "Bytes"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Block size of the memory module"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.block_size
+      unit: By
+      type: gauge
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.correctable_ecc_errors"
+    channel: "memory_correctable_ecc_errors"
+    display_name: "Memory Correctable Ecc Errors"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Correctable ECC errors since the module was installed"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.errors
+      unit: "{error}"
+      type: counter
+      attributes:
+        senhub.hardware.memory.error.type: correctable
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.uncorrectable_ecc_errors"
+    channel: "memory_uncorrectable_ecc_errors"
+    display_name: "Memory Uncorrectable Ecc Errors"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Uncorrectable ECC errors since the module was installed"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.errors
+      unit: "{error}"
+      type: counter
+      attributes:
+        senhub.hardware.memory.error.type: uncorrectable
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.throttled_cycles"
+    channel: "memory_throttled_cycles"
+    display_name: "Memory Throttled Cycles"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Cycles the memory module spent throttled"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.throttled_cycles
+      unit: "{cycle}"
+      type: counter
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.alarm.temperature"
+    channel: "memory_alarm_temperature"
+    display_name: "Memory Alarm Temperature"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Memory temperature alarm raised"
+    category: "memory"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.memory.alarm
+      unit: "{status}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.alarm.type: temperature
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.alarm.spares"
+    channel: "memory_alarm_spares"
+    display_name: "Memory Alarm Spares"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Memory spares alarm raised"
+    category: "memory"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.memory.alarm
+      unit: "{status}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.alarm.type: spares
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.alarm.correctable_ecc"
+    channel: "memory_alarm_correctable_ecc"
+    display_name: "Memory Alarm Correctable Ecc"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Correctable ECC alarm raised"
+    category: "memory"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.memory.alarm
+      unit: "{status}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.alarm.type: correctable_ecc
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.alarm.uncorrectable"
+    channel: "memory_alarm_uncorrectable"
+    display_name: "Memory Alarm Uncorrectable"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Uncorrectable ECC alarm raised"
+    category: "memory"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.memory.alarm
+      unit: "{status}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.alarm.type: uncorrectable_ecc
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.current_period.blocks_read"
+    channel: "memory_current_period_blocks_read"
+    display_name: "Memory Current Period Blocks Read"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Blocks read in the current period"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.period.blocks
+      unit: "{block}"
+      type: gauge
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.current_period.blocks_written"
+    channel: "memory_current_period_blocks_written"
+    display_name: "Memory Current Period Blocks Written"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Blocks written in the current period"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.period.blocks
+      unit: "{block}"
+      type: gauge
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.lifetime.blocks_read"
+    channel: "memory_lifetime_blocks_read"
+    display_name: "Memory Lifetime Blocks Read"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Blocks read over the module lifetime"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.blocks
+      unit: "{block}"
+      type: counter
+      attributes:
+        disk.io.direction: read
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.lifetime.blocks_written"
+    channel: "memory_lifetime_blocks_written"
+    display_name: "Memory Lifetime Blocks Written"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Blocks written over the module lifetime"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.blocks
+      unit: "{block}"
+      type: counter
+      attributes:
+        disk.io.direction: write
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.dell.remaining_spares"
+    channel: "memory_dell_remaining_spares"
+    display_name: "Memory Dell Remaining Spares"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Dell OEM: spare memory still available"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.spares
+      unit: "{spare}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.spares.state: remaining
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.dell.used_spares"
+    channel: "memory_dell_used_spares"
+    display_name: "Memory Dell Used Spares"
+    unit: "#"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "Dell OEM: spare memory already used"
+    category: "memory"
+    otel:
+      name: senhub.hardware.memory.spares
+      unit: "{spare}"
+      type: gauge
+      attributes:
+        senhub.hardware.memory.spares.state: used
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.hpe.current_voltage"
+    channel: "memory_hpe_current_voltage"
+    display_name: "Memory Hpe Current Voltage"
+    unit: "mV"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "HPE OEM: current operating voltage of the memory module"
+    category: "memory"
+    otel:
+      name: hw.voltage
+      unit: V
+      type: gauge
+      value_scale: 0.001
+      attributes:
+        hw.type: memory
+        senhub.hardware.voltage.kind: current
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.hpe.min_voltage"
+    channel: "memory_hpe_min_voltage"
+    display_name: "Memory Hpe Min Voltage"
+    unit: "mV"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "HPE OEM: min operating voltage of the memory module"
+    category: "memory"
+    otel:
+      name: hw.voltage
+      unit: V
+      type: gauge
+      value_scale: 0.001
+      attributes:
+        hw.type: memory
+        senhub.hardware.voltage.kind: min
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.memory.hpe.max_voltage"
+    channel: "memory_hpe_max_voltage"
+    display_name: "Memory Hpe Max Voltage"
+    unit: "mV"
+    multi_instance_labels: ["memory_id", "host"]
+    description: "HPE OEM: max operating voltage of the memory module"
+    category: "memory"
+    otel:
+      name: hw.voltage
+      unit: V
+      type: gauge
+      value_scale: 0.001
+      attributes:
+        hw.type: memory
+        senhub.hardware.voltage.kind: max
+    tag_to_attribute:
+      memory_id: hw.id
+      memory_name: hw.name
+
+  - name: "hardware.network.health"
+    channel: "network_health"
+    display_name: "Network Health"
+    unit: "#"
+    multi_instance_labels: ["adapter_name", "host"]
+    description: "Network adapter health status"
+    category: "network"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: network
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      adapter_id: hw.id
+      adapter_name: hw.name
+
+  - name: "hardware.network.link_up"
+    channel: "network_link_up"
+    display_name: "Network Link Up"
+    unit: "#"
+    multi_instance_labels: ["adapter_name", "host"]
+    description: "Network adapter link state (1 up, 0 down)"
+    category: "network"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: hw.network.up
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.type: network
+    tag_to_attribute:
+      adapter_id: hw.id
+      adapter_name: hw.name
+
+  - name: "hardware.network.speed_mbps"
+    channel: "network_speed_mbps"
+    display_name: "Network Speed Mbps"
+    unit: "Mbps"
+    multi_instance_labels: ["adapter_name", "host"]
+    description: "Negotiated link speed of the network adapter"
+    category: "network"
+    otel:
+      name: hw.network.bandwidth.limit
+      unit: "By/s"
+      type: gauge
+    tag_to_attribute:
+      adapter_id: hw.id
+      adapter_name: hw.name
+
+  - name: "network.adapter.health"
+    channel: "network_adapter_health"
+    display_name: "Network Adapter Health"
+    unit: "#"
+    multi_instance_labels: ["adapter_name", "host"]
+    description: "Network adapter health status"
+    category: "network"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: network
+        senhub.hardware.source: vendor
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      adapter_id: hw.id
+      adapter_name: hw.name
+
+  - name: "network.port.health"
+    channel: "network_port_health"
+    display_name: "Network Port Health"
+    unit: "#"
+    multi_instance_labels: ["adapter_name", "port_name", "host"]
+    description: "Network port health status"
+    category: "network"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: network
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      port_id: hw.id
+      port_name: hw.name
+      adapter_name: hw.parent
+
+  - name: "network.port.link_up"
+    channel: "network_port_link_up"
+    display_name: "Network Port Link Up"
+    unit: "#"
+    multi_instance_labels: ["adapter_name", "port_name", "host"]
+    description: "Network port link state (1 up, 0 down)"
+    category: "network"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: hw.network.up
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.type: network
+    tag_to_attribute:
+      port_id: hw.id
+      port_name: hw.name
+      adapter_name: hw.parent
+
+  - name: "network.port.speed_gbps"
+    channel: "network_port_speed_gbps"
+    display_name: "Network Port Speed Gbps"
+    unit: "Gbps"
+    multi_instance_labels: ["adapter_name", "port_name", "host"]
+    description: "Negotiated link speed of the network port"
+    category: "network"
+    otel:
+      name: hw.network.bandwidth.limit
+      unit: "By/s"
+      type: gauge
+    tag_to_attribute:
+      port_id: hw.id
+      port_name: hw.name
+      adapter_name: hw.parent
+
+  - name: "hardware.power.usage"
+    channel: "power_usage"
+    display_name: "Usage"
+    unit: "W"
+    multi_instance_labels: ["psu_name", "controller", "enclosure_id", "psu_location", "host"]
+    description: "Power delivered by the power supply"
+    category: "power"
+    otel:
+      name: hw.power
+      unit: W
+      type: gauge
+      attributes:
+        hw.type: power_supply
+    tag_to_attribute:
+      psu_name: hw.id
+      psu_location: hw.name
+      controller: hw.parent
+      enclosure_id: senhub.hardware.enclosure.id
+
+  - name: "hardware.power.limit"
+    channel: "power_limit"
+    display_name: "Limit"
+    unit: "W"
+    multi_instance_labels: ["psu_name", "controller", "enclosure_id", "psu_location", "host"]
+    description: "Rated output of the power supply"
+    category: "power"
+    otel:
+      name: senhub.hardware.power_supply.limit
+      unit: W
+      type: gauge
+    tag_to_attribute:
+      psu_name: hw.id
+      psu_location: hw.name
+      controller: hw.parent
+      enclosure_id: senhub.hardware.enclosure.id
+
+  - name: "hardware.power.input_voltage"
+    channel: "power_input_voltage"
+    display_name: "Input Voltage"
+    unit: "Volts"
+    multi_instance_labels: ["psu_name", "controller", "enclosure_id", "psu_location", "host"]
+    description: "Line input voltage of the power supply"
+    category: "power"
+    otel:
+      name: hw.voltage
+      unit: V
+      type: gauge
+      attributes:
+        hw.type: power_supply
+        senhub.hardware.voltage.kind: input
+    tag_to_attribute:
+      psu_name: hw.id
+      psu_location: hw.name
+      controller: hw.parent
+      enclosure_id: senhub.hardware.enclosure.id
+
+  - name: "hardware.power.consumption"
+    channel: "power_consumption"
+    display_name: "Consumption"
+    unit: "W"
+    multi_instance_labels: ["chassis_id", "host"]
+    description: "Power drawn by the chassis"
+    category: "power"
+    otel:
+      name: hw.power
+      unit: W
+      type: gauge
+      attributes:
+        hw.type: enclosure
+    tag_to_attribute:
+      chassis_id: hw.id
+      chassis_name: hw.name
+
+  - name: "hardware.power.capacity"
+    channel: "power_capacity"
+    display_name: "Capacity"
+    unit: "W"
+    multi_instance_labels: ["chassis_id", "host"]
+    description: "Power the chassis can draw"
+    category: "power"
+    otel:
+      name: senhub.hardware.enclosure.power.capacity
+      unit: W
+      type: gauge
+    tag_to_attribute:
+      chassis_id: hw.id
+      chassis_name: hw.name
+
+  - name: "thermal.temperature"
+    channel: "thermal_temperature"
+    display_name: "Temperature"
+    unit: "°C"
+    multi_instance_labels: ["sensor_name", "host"]
+    description: "Temperature sensor reading"
+    category: "thermal"
+    otel:
+      name: hw.temperature
+      unit: Cel
+      type: gauge
+      attributes:
+        hw.type: temperature
+    tag_to_attribute:
+      sensor_name: hw.id
+
+  - name: "thermal.fan_speed_percent"
+    channel: "thermal_fan_speed_percent"
+    display_name: "Fan Speed Percent"
+    unit: "%"
+    multi_instance_labels: ["fan_name", "host"]
+    description: "Fan speed as a share of its maximum"
+    category: "thermal"
+    otel:
+      name: hw.fan.speed_ratio
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      fan_name: hw.id
+
+  - name: "hardware.system.cpu.count"
+    channel: "system_cpu_count"
+    display_name: "System CPU Count"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Processors installed in the system"
+    category: "system"
+    otel:
+      name: senhub.hardware.system.cpu.count
+      unit: "{cpu}"
+      type: gauge
+    tag_to_attribute:
+      system_name: hw.name
+
+  - name: "hardware.system.cpu.health"
+    channel: "system_cpu_health"
+    display_name: "System CPU Health"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Health of the system's processors as a whole"
+    category: "system"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: senhub.hardware.system.cpu.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.hardware.system.cpu.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      system_name: hw.name
+
+  - name: "hardware.system.memory.size"
+    channel: "system_memory_size"
+    display_name: "System Memory Size"
+    unit: "GiB"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Total system memory"
+    category: "system"
+    otel:
+      name: senhub.hardware.system.memory.size
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      system_name: hw.name
+
+  - name: "hardware.system.memory.health"
+    channel: "system_memory_health"
+    display_name: "System Memory Health"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Health of the system's memory as a whole"
+    category: "system"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: senhub.hardware.system.memory.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.hardware.system.memory.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      system_name: hw.name
+
+  - name: "system.idrac_firmware"
+    channel: "system_idrac_firmware"
+    display_name: "System Idrac Firmware"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Presence marker (always 1) carrying the idrac firmware version as an attribute"
+    category: "system"
+    otel:
+      name: senhub.hardware.firmware.info
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.firmware.component: idrac
+    tag_to_attribute:
+      system_name: hw.name
+      idrac_version: senhub.hardware.firmware.version
+
+  - name: "system.lifecycle_controller"
+    channel: "system_lifecycle_controller"
+    display_name: "System Lifecycle Controller"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Presence marker (always 1) carrying the lifecycle_controller firmware version as an attribute"
+    category: "system"
+    otel:
+      name: senhub.hardware.firmware.info
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.firmware.component: lifecycle_controller
+    tag_to_attribute:
+      system_name: hw.name
+      lifecycle_version: senhub.hardware.firmware.version
+
+  - name: "system.ilo_firmware"
+    channel: "system_ilo_firmware"
+    display_name: "System Ilo Firmware"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Presence marker (always 1) carrying the ilo firmware version as an attribute"
+    category: "system"
+    otel:
+      name: senhub.hardware.firmware.info
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.firmware.component: ilo
+    tag_to_attribute:
+      system_name: hw.name
+      ilo_version: senhub.hardware.firmware.version
+
+  - name: "system.cimc_firmware"
+    channel: "system_cimc_firmware"
+    display_name: "System Cimc Firmware"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Presence marker (always 1) carrying the cimc firmware version as an attribute"
+    category: "system"
+    otel:
+      name: senhub.hardware.firmware.info
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.firmware.component: cimc
+    tag_to_attribute:
+      system_name: hw.name
+      cimc_version: senhub.hardware.firmware.version
+
+  - name: "system.xcc_firmware"
+    channel: "system_xcc_firmware"
+    display_name: "System Xcc Firmware"
+    unit: "#"
+    multi_instance_labels: ["host", "system_name"]
+    description: "Presence marker (always 1) carrying the xcc firmware version as an attribute"
+    category: "system"
+    otel:
+      name: senhub.hardware.firmware.info
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.firmware.component: xcc
+    tag_to_attribute:
+      system_name: hw.name
+      xcc_version: senhub.hardware.firmware.version
+
+  - name: "hardware.eventservice.subscriptions"
+    channel: "eventservice_subscriptions"
+    display_name: "Eventservice Subscriptions"
+    unit: "#"
+    multi_instance_labels: ["host"]
+    description: "Event subscriptions registered on the BMC"
+    category: "events"
+    otel:
+      name: senhub.hardware.eventservice.subscriptions
+      unit: "{subscription}"
+      type: gauge
+
+  - name: "hardware.logs.entries.total"
+    channel: "logs_entries_total"
+    display_name: "Logs Entries Total"
+    unit: "#"
+    multi_instance_labels: ["manager_id", "log_service_id", "host"]
+    description: "Entries in the BMC event log"
+    category: "events"
+    otel:
+      name: senhub.hardware.log.entries
+      unit: "{entry}"
+      type: gauge
+      attributes:
+        senhub.hardware.log.severity: total
+    tag_to_attribute:
+      manager_id: hw.parent
+      log_service_id: hw.id
+      log_service_name: hw.name
+
+  - name: "hardware.logs.entries.critical"
+    channel: "logs_entries_critical"
+    display_name: "Logs Entries Critical"
+    unit: "#"
+    multi_instance_labels: ["manager_id", "log_service_id", "host"]
+    description: "Critical entries in the BMC event log"
+    category: "events"
+    otel:
+      name: senhub.hardware.log.entries
+      unit: "{entry}"
+      type: gauge
+      attributes:
+        senhub.hardware.log.severity: critical
+    tag_to_attribute:
+      manager_id: hw.parent
+      log_service_id: hw.id
+      log_service_name: hw.name
+
+  - name: "hardware.logs.entries.warning"
+    channel: "logs_entries_warning"
+    display_name: "Logs Entries Warning"
+    unit: "#"
+    multi_instance_labels: ["manager_id", "log_service_id", "host"]
+    description: "Warning entries in the BMC event log"
+    category: "events"
+    otel:
+      name: senhub.hardware.log.entries
+      unit: "{entry}"
+      type: gauge
+      attributes:
+        senhub.hardware.log.severity: warning
+    tag_to_attribute:
+      manager_id: hw.parent
+      log_service_id: hw.id
+      log_service_name: hw.name
+
+  - name: "hardware.logs.entries.info"
+    channel: "logs_entries_info"
+    display_name: "Logs Entries Info"
+    unit: "#"
+    multi_instance_labels: ["manager_id", "log_service_id", "host"]
+    description: "Informational entries in the BMC event log"
+    category: "events"
+    otel:
+      name: senhub.hardware.log.entries
+      unit: "{entry}"
+      type: gauge
+      attributes:
+        senhub.hardware.log.severity: info
+    tag_to_attribute:
+      manager_id: hw.parent
+      log_service_id: hw.id
+      log_service_name: hw.name
+
+  - name: "hardware.logs.entries.last_24h"
+    channel: "logs_entries_last_24h"
+    display_name: "Logs Entries Last 24h"
+    unit: "#"
+    multi_instance_labels: ["manager_id", "log_service_id", "host"]
+    description: "Entries logged in the last 24 hours"
+    category: "events"
+    otel:
+      name: senhub.hardware.log.entries
+      unit: "{entry}"
+      type: gauge
+      attributes:
+        senhub.hardware.log.window: 24h
+    tag_to_attribute:
+      manager_id: hw.parent
+      log_service_id: hw.id
+      log_service_name: hw.name
+
+  - name: "hardware.logs.entries.last_7d"
+    channel: "logs_entries_last_7d"
+    display_name: "Logs Entries Last 7d"
+    unit: "#"
+    multi_instance_labels: ["manager_id", "log_service_id", "host"]
+    description: "Entries logged in the last 7 days"
+    category: "events"
+    otel:
+      name: senhub.hardware.log.entries
+      unit: "{entry}"
+      type: gauge
+      attributes:
+        senhub.hardware.log.window: 7d
+    tag_to_attribute:
+      manager_id: hw.parent
+      log_service_id: hw.id
+      log_service_name: hw.name
+
+  - name: "hardware.storage.health"
+    channel: "storage_health"
+    display_name: "Health"
+    unit: "#"
+    multi_instance_labels: ["storage_id", "host"]
+    description: "Health of the storage subsystem"
+    category: "storage"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: senhub.hardware.storage.status
+      unit: "1"
+      type: updowncounter
+      expand:
+        attribute: senhub.hardware.storage.state
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+          unknown: 3
+    tag_to_attribute:
+      storage_id: hw.id
+      storage_name: hw.name
+
+  - name: "hardware.storage.controller.health"
+    channel: "storage_controller_health"
+    display_name: "Controller Health"
+    unit: "#"
+    multi_instance_labels: ["controller_id", "controller_name", "host"]
+    description: "Storage controller health status"
+    category: "storage"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: disk_controller
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      controller_id: hw.id
+      controller_name: hw.name
+
+  - name: "storage.controller.health"
+    channel: "storage_controller_health"
+    display_name: "Controller Health"
+    unit: "#"
+    multi_instance_labels: ["controller_id", "controller_name", "host"]
+    description: "Storage controller health status"
+    category: "storage"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: disk_controller
+        senhub.hardware.source: vendor
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      controller_id: hw.id
+      controller_name: hw.name
+
+  - name: "hardware.storage.controller.speed_gbps"
+    channel: "storage_controller_speed_gbps"
+    display_name: "Controller Speed Gbps"
+    unit: "Gbps"
+    multi_instance_labels: ["controller_id", "controller_name", "host"]
+    description: "Link speed of the storage controller"
+    category: "storage"
+    otel:
+      name: senhub.hardware.disk_controller.link_speed
+      unit: "By/s"
+      type: gauge
+    tag_to_attribute:
+      controller_id: hw.id
+      controller_name: hw.name
+
+  - name: "storage.drive.health"
+    channel: "storage_drive_health"
+    display_name: "Drive Health"
+    unit: "#"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Drive health status"
+    category: "drives"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: physical_disk
+        senhub.hardware.source: vendor
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "hardware.storage.drive.capacity_bytes"
+    channel: "storage_drive_capacity_bytes"
+    display_name: "Drive Capacity Bytes"
+    unit: "Bytes"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Total drive capacity"
+    category: "drives"
+    otel:
+      name: hw.physical_disk.size
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "storage.drive.capacity_gb"
+    channel: "storage_drive_capacity_gb"
+    display_name: "Drive Capacity Gb"
+    unit: "GB"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Total drive capacity"
+    category: "drives"
+    otel:
+      name: hw.physical_disk.size
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.source: vendor
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "hardware.storage.drive.hotspare"
+    channel: "storage_drive_hotspare"
+    display_name: "Drive Hotspare"
+    unit: "#"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Drive configured as a hot spare (1) or not (0)"
+    category: "drives"
+    lookup: "sfs.generic.boolean"
+    otel:
+      name: senhub.hardware.physical_disk.hotspare
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "storage.drive.media_life_percent"
+    channel: "storage_drive_media_life_percent"
+    display_name: "Drive Media Life Percent"
+    unit: "%"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Predicted media life left on the drive"
+    category: "drives"
+    otel:
+      name: senhub.hardware.physical_disk.media_life_remaining
+      unit: "1"
+      type: gauge
+      attributes:
+        senhub.hardware.source: vendor
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "storage.drive.rotation_rpm"
+    channel: "storage_drive_rotation_rpm"
+    display_name: "Drive Rotation Rpm"
+    unit: "RPM"
+    multi_instance_labels: ["drive_name", "drive_id", "controller_id", "enclosure_id", "slot", "drive_type", "drive_interface", "host"]
+    description: "Rotation speed of the drive"
+    category: "drives"
+    otel:
+      name: senhub.hardware.physical_disk.rotation_speed
+      unit: "{rotation}/min"
+      type: gauge
+      attributes:
+        senhub.hardware.source: vendor
+    tag_to_attribute:
+      drive_id: hw.id
+      drive_name: hw.name
+      controller_id: hw.parent
+      drive_type: hw.physical_disk.type
+      drive_interface: senhub.hardware.physical_disk.interface
+      slot: senhub.hardware.physical_disk.slot
+
+  - name: "storage.volume.health"
+    channel: "storage_volume_health"
+    display_name: "Volume Health"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Volume health status"
+    category: "volumes"
+    lookup: "sfs.redfish.health"
+    otel:
+      name: hw.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: logical_disk
+        senhub.hardware.source: vendor
+      expand:
+        attribute: hw.state
+        closed: true
+        mapping:
+          ok: 0
+          degraded: 1
+          failed: 2
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
+
+  - name: "storage.volume.capacity_gb"
+    channel: "storage_volume_capacity_gb"
+    display_name: "Volume Capacity Gb"
+    unit: "GB"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Total volume capacity"
+    category: "volumes"
+    otel:
+      name: hw.logical_disk.limit
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.source: vendor
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
+
+  - name: "hardware.storage.volume.capacity.reserved"
+    channel: "storage_volume_capacity_reserved"
+    display_name: "Volume Capacity Reserved"
+    unit: "Bytes"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Capacity reserved on the volume"
+    category: "volumes"
+    otel:
+      name: senhub.hardware.logical_disk.reserved
+      unit: By
+      type: updowncounter
+    tag_to_attribute:
+      volume_id: hw.id
+      volume_name: hw.name
+      controller_id: hw.parent
+      raid_type: hw.logical_disk.raid_level
+      pool_name: senhub.hardware.storage.pool.name
+
+  - name: "hardware.storage.volume.io.read.latency"
+    channel: "storage_volume_io_read_latency"
+    display_name: "Volume IO Read Latency"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Volume read latency"
+    category: "volumes"
+    otel:
+      skip: true
+      reason: "The BMC states no unit for this value (Dell PowerVault returns a bare number, the Redfish schema a duration string), so a conversion to seconds could be off by orders of magnitude. Still reaches PRTG unconverted; export once a real array has fixed the unit."
+
+  - name: "hardware.storage.volume.io.write.latency"
+    channel: "storage_volume_io_write_latency"
+    display_name: "Volume IO Write Latency"
+    unit: "#"
+    multi_instance_labels: ["volume_name", "volume_id", "controller_id", "pool_name", "raid_type", "host"]
+    description: "Volume write latency"
+    category: "volumes"
+    otel:
+      skip: true
+      reason: "The BMC states no unit for this value (Dell PowerVault returns a bare number, the Redfish schema a duration string), so a conversion to seconds could be off by orders of magnitude. Still reaches PRTG unconverted; export once a real array has fixed the unit."
+
+  - name: "hardware.storage.pool.capacity.free"
+    channel: "storage_pool_capacity_free"
+    display_name: "Pool Capacity Free"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
+    description: "Free pool capacity"
+    category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: free
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
+
+  - name: "hardware.storage.pool.capacity.committed"
+    channel: "storage_pool_capacity_committed"
+    display_name: "Pool Capacity Committed"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
+    description: "Capacity committed on the pool"
+    category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: committed
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
+
+  - name: "hardware.storage.pool.capacity.overcommit"
+    channel: "storage_pool_capacity_overcommit"
+    display_name: "Pool Capacity Overcommit"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
+    description: "Capacity over-committed on the pool"
+    category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: overcommit
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
+
+  - name: "hardware.storage.pool.capacity.snapshots"
+    channel: "storage_pool_capacity_snapshots"
+    display_name: "Pool Capacity Snapshots"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
+    description: "Pool capacity taken by snapshots"
+    category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: snapshots
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
+
+  - name: "hardware.storage.pool.capacity.volumes"
+    channel: "storage_pool_capacity_volumes"
+    display_name: "Pool Capacity Volumes"
+    unit: "Bytes"
+    multi_instance_labels: ["pool_name", "controller_id", "raid_type", "host"]
+    description: "Pool capacity taken by volumes"
+    category: "pools"
+    otel:
+      name: senhub.hardware.storage.pool.usage
+      unit: By
+      type: updowncounter
+      attributes:
+        senhub.hardware.storage.pool.state: volumes
+    tag_to_attribute:
+      pool_name: senhub.hardware.storage.pool.name
+      controller_id: hw.parent
+      raid_type: senhub.hardware.storage.pool.raid_level
+
 tag_metadata:
   psu_name:
     type: resource

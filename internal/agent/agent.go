@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/entitydetect"
+	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/cliexit"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
@@ -115,6 +116,15 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		),
 		logger,
 	)
+
+	// Another agent on this host reads this file to recognise this one as
+	// the node it reports itself as, instead of minting a second.
+	if key := localConfiguration.GetAuthenticationKey(); key != "" {
+		dir := instanceid.OwnStateDir()
+		if err := instanceid.Write(dir, configuration.AgentInstanceID(key), key); err != nil {
+			logger.Warn().Err(err).Str("dir", dir).Msg("Could not publish the agent instance id for other agents on this host; they will describe this agent under a second identity")
+		}
+	}
 
 	// The console applies an output change on save, entities included:
 	// follow the configuration rather than the state it had at start.

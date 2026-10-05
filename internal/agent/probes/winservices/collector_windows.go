@@ -39,11 +39,18 @@ func collectServices(selected []string) ([]serviceState, error) {
 			continue
 		}
 		status, qerr := s.Query()
+		startType := -1
+		if cfg, cerr := s.Config(); cerr == nil {
+			startType = int(cfg.StartType)
+			if startType == int(mgr.StartAutomatic) && cfg.DelayedAutoStart {
+				startType = startAutomaticDelayed
+			}
+		}
 		_ = s.Close()
 		if qerr != nil {
 			continue
 		}
-		out = append(out, serviceState{name: name, state: int(status.State)})
+		out = append(out, serviceState{name: name, state: int(status.State), startType: startType})
 	}
 	return out, nil
 }
