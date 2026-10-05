@@ -62,6 +62,18 @@ Set `instance_name` to keep the entity identity stable when the address changes.
 | `redis.evicted_keys` | {key} | Keys evicted due to `maxmemory` policy |
 | `redis.replication.lag` | s | Replica lag in seconds (replica instances only) |
 | `redis.rdb.last_bgsave.duration` | s | Duration of the last RDB background save |
+| `redis.rdb.last_bgsave.status` | {status} | Last RDB save outcome (1 ok, 0 err) |
+| `redis.aof.last_bgrewrite.status` | {status} | Last AOF rewrite outcome (1 ok, 0 err) |
+| `redis.aof.last_write.status` | {status} | Last AOF write outcome (1 ok, 0 err) |
+| `redis.aof.last_rewrite.duration` | s | Duration of the last AOF rewrite, -1 when none has run |
+| `redis.replication.backlog_active` | {status} | 1 when the replication backlog is allocated |
+| `redis.replication.backlog_size` | By | Configured replication backlog size |
+| `redis.replication.backlog_histlen` | By | History held in the replication backlog |
+| `redis.pubsub.channels` | {channel} | Active pub/sub channels |
+| `redis.pubsub.patterns` | {pattern} | Active pub/sub pattern subscriptions |
+| `redis.sentinel.master.status` | {status} | Sentinel mode only: one series per monitored master (attribute `redis.sentinel.master.name`), 1 ok, 0 sdown/odown |
+| `redis.sentinel.master.slaves` | {replica} | Sentinel mode only: replicas known per master |
+| `redis.sentinel.master.sentinels` | {sentinel} | Sentinel mode only: sentinels watching each master |
 
 ## Operational notes
 
@@ -110,6 +122,10 @@ series' tags.
 | `redis.aof.enabled` | `redis.aof.enabled` | AOF Enabled | # | 1 when AOF persistence is enabled (aof_enabled) |
 | `redis.rdb.last_bgsave.duration` | `redis.rdb.last_bgsave.duration` | RDB Last BGSave Duration | s | Duration of the last RDB background save in seconds (rdb_last_bgsave_time_sec) |
 | `redis.rdb.last_save.age` | `redis.rdb.last_save.age` | RDB Last Save Age | s | Seconds elapsed since the last successful RDB save (now − rdb_last_save_time) |
+| `redis.rdb.last_bgsave.status` | `redis.rdb.last_bgsave.status` | RDB Last BGSave Status | # | Outcome of the last RDB background save: 1=ok, 0=err (rdb_last_bgsave_status) |
+| `redis.aof.last_bgrewrite.status` | `redis.aof.last_bgrewrite.status` | AOF Last Rewrite Status | # | Outcome of the last AOF background rewrite: 1=ok, 0=err (aof_last_bgrewrite_status) |
+| `redis.aof.last_write.status` | `redis.aof.last_write.status` | AOF Last Write Status | # | Outcome of the last write to the AOF: 1=ok, 0=err (aof_last_write_status) |
+| `redis.aof.last_rewrite.duration` | `redis.aof.last_rewrite.duration` | AOF Last Rewrite Duration | s | Duration of the last AOF rewrite in seconds, -1 when none has run yet (aof_last_rewrite_time_sec) |
 | `redis.latest.fork` | `redis.latest.fork` | Latest Fork Duration | μs | Duration of the latest fork operation in microseconds (latest_fork_usec) |
 | `redis.cpu.time` | `redis.cpu.time` | CPU Time ({state}) | s | Cumulative CPU time consumed by the Redis server in the given state (used_cpu_sys / used_cpu_user / used_cpu_sys_children / used_cpu_user_children) |
 | `redis.memory.lua` | `redis.memory.lua` | Memory Lua | B | Memory used by the Lua scripting engine (used_memory_lua) |
@@ -117,6 +133,11 @@ series' tags.
 | `redis.clients.max_output_buffer` | `redis.clients.max_output_buffer` | Client Max Output Buffer | B | Largest output buffer across all current client connections (client_recent_max_output_buffer) |
 | `redis.db.avg_ttl` | `redis.db.avg_ttl` | DB {db} Average TTL | ms | Average TTL in milliseconds of keys with an expiry in logical database (keyspace section: dbN:avg_ttl=T) |
 | `redis.replication.backlog_first_byte_offset` | `redis.replication.backlog_first_byte_offset` | Replication Backlog First Byte Offset | B | Replication backlog first byte offset (repl_backlog_first_byte_offset) |
+| `redis.replication.backlog_active` | `redis.replication.backlog_active` | Replication Backlog Active | # | 1 when the replication backlog is allocated (repl_backlog_active) |
+| `redis.replication.backlog_size` | `redis.replication.backlog_size` | Replication Backlog Size | B | Configured size of the replication backlog (repl_backlog_size) |
+| `redis.replication.backlog_histlen` | `redis.replication.backlog_histlen` | Replication Backlog Used | B | Bytes of history currently held in the replication backlog (repl_backlog_histlen) |
+| `redis.pubsub.channels` | `redis.pubsub.channels` | Pub/Sub Channels | # | Number of active pub/sub channels (pubsub_channels) |
+| `redis.pubsub.patterns` | `redis.pubsub.patterns` | Pub/Sub Patterns | # | Number of active pub/sub pattern subscriptions (pubsub_patterns) |
 | `redis.evicted_keys` | `redis.evicted_keys` | Evicted Keys | # | Cumulative keys evicted due to maxmemory policy (evicted_keys) |
 | `redis.expired_keys` | `redis.expired_keys` | Expired Keys | # | Cumulative keys expired by the TTL mechanism (expired_keys) |
 | `redis.cmd.calls` | `redis.cmd.calls` | Cmd {cmd} Calls | # | Cumulative call count for the given Redis command (INFO commandstats: cmdstat_X:calls=N) |
@@ -134,6 +155,9 @@ series' tags.
 | `redis.sentinel.sentinels` | `redis.sentinel.sentinels` | Sentinel Sentinels (total) | # | Total number of Sentinel peers across all monitored masters (aggregated from per-master lines) |
 | `redis.sentinel.ok_sentinels` | `redis.sentinel.ok_sentinels` | Sentinel Sentinels OK | # | Sentinel peers belonging to masters whose status=ok (aggregated from per-master lines) |
 | `redis.sentinel.scripts_queue_length` | `redis.sentinel.scripts_queue_length` | Sentinel Scripts Queue | # | Number of scripts in the Sentinel notification-scripts queue (sentinel_running_scripts) |
+| `redis.sentinel.master.status` | `redis.sentinel.master.status` | Sentinel Master {master} Status | # | Status of a monitored master: 1=ok, 0=odown/sdown or any other state (INFO sentinel masterN status; one series per master, attribute redis.sentinel.master.name) |
+| `redis.sentinel.master.slaves` | `redis.sentinel.master.slaves` | Sentinel Master {master} Replicas | # | Replicas known for a monitored master (INFO sentinel masterN slaves) |
+| `redis.sentinel.master.sentinels` | `redis.sentinel.master.sentinels` | Sentinel Master {master} Sentinels | # | Sentinels monitoring a master, this one included (INFO sentinel masterN sentinels) |
 | `redis.tracking.clients` | `redis.tracking.clients` | Tracking Clients | # | Number of clients using RESP3 client-side caching tracking (tracking_clients; 0 when absent) |
 | `redis.tracking.keys` | `redis.tracking.keys` | Tracking Keys | # | Number of keys in the client-side tracking invalidation table (tracking_table_used_keys; 0 when absent) |
 

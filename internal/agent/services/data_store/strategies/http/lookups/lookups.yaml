@@ -546,6 +546,36 @@ redis.replication.role:
       description: "Instance is a master accepting writes"
   desired_value: 1
 
+redis.persistence.status:
+  description: "Redis Persistence Status"
+  type: status
+  source: "senhub-agent probes/redis (rdb_last_bgsave_status, aof_last_bgrewrite_status, aof_last_write_status: ok=1, err=0)"
+  mappings:
+    0:
+      text: "ERR"
+      severity: "error"
+      description: "The last background save, rewrite or AOF write failed"
+    1:
+      text: "OK"
+      severity: "ok"
+      description: "The last background save, rewrite or AOF write succeeded"
+  desired_value: 1
+
+redis.sentinel.master.status:
+  description: "Redis Sentinel Master Status"
+  type: status
+  source: "senhub-agent probes/redis (INFO sentinel masterN status: ok=1, odown/sdown/other=0)"
+  mappings:
+    0:
+      text: "DOWN"
+      severity: "error"
+      description: "The master is flagged sdown or odown, or in any state other than ok"
+    1:
+      text: "OK"
+      severity: "ok"
+      description: "The master is reachable and agreed upon by the sentinels"
+  desired_value: 1
+
 # ==============================================================================
 # SEARCH / DB / DISK HEALTH ENUMS (audit follow-up)
 # ==============================================================================
