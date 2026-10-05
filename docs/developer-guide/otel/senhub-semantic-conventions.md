@@ -378,6 +378,13 @@ These would require reworking the probe code to maintain internal counters. Sepa
 | `hw.logical_disk.limit` | `By` | UpDownCounter | Total volume capacity |
 | `hw.logical_disk.usage` | `By` | UpDownCounter | Volume in use (allocated/free), with `hw.logical_disk.state` |
 | `hw.logical_disk.utilization` | `1` | Gauge | Volume occupancy ratio |
+| `hw.temperature` | `Cel` | Gauge | Processor, memory and sensor temperatures, with `hw.type` |
+| `hw.power` | `W` | Gauge | Power drawn by a processor, a memory module, a power supply or the chassis, with `hw.type` |
+| `hw.voltage` | `V` | Gauge | Memory and power-supply voltages, with `hw.type` and `senhub.hardware.voltage.kind` |
+| `hw.memory.size` | `By` | UpDownCounter | Memory module capacity |
+| `hw.fan.speed_ratio` | `1` | Gauge | Fan speed as a share of its maximum |
+| `hw.network.up` | `1` | Gauge | Adapter or port link state |
+| `hw.network.bandwidth.limit` | `By/s` | Gauge | Negotiated link speed |
 
 **The `hw.state` attribute** takes only the convention's values: `ok`,
 `degraded`, `failed`, `needs_cleaning`, `predicted_failure`. The expansion
@@ -418,6 +425,20 @@ Extensions created for concepts the official OTel hardware namespace does not co
 | `senhub.hardware.eventservice.status` | UpDownCounter | Redfish-specific |
 | `senhub.hardware.redundancy.status` | UpDownCounter | Controller redundancy group |
 | `senhub.hardware.redundancy.controllers.count` | UpDownCounter | Count, with `senhub.hardware.redundancy.bound` ∈ {active, min, max} |
+| `senhub.hardware.cpu.cores`, `.threads` | Gauge | Processor topology |
+| `senhub.hardware.cpu.speed` | Gauge `Hz` | Current, max and average speed, collapsed on `senhub.hardware.cpu.speed.kind`; the BMC reports MHz, `value_scale` 1e6 |
+| `senhub.hardware.cpu.utilization` | Gauge `1` | Total, user, kernel and I/O wait, collapsed on `senhub.hardware.cpu.state`; the Dell and HPE OEM readings carry `senhub.hardware.source` ∈ {dell_oem, hpe_oem} |
+| `senhub.hardware.cpu.cache.usage`, `.hit_ratio` | Gauge | Per cache level (`senhub.hardware.cpu.cache.level`) |
+| `senhub.hardware.cpu.throttling_temperature`, `.thermal_margin`, `.power_limit` | Gauge | Processor thermal and power limits |
+| `senhub.hardware.memory.*` | (multiple) | Speed, width, ranks, ECC `errors` (counter, `senhub.hardware.memory.error.type`), `alarm` (`senhub.hardware.memory.alarm.type`), `blocks` (lifetime counter) and `period.blocks` (current period), `spares` (Dell OEM) |
+| `senhub.hardware.system.cpu.*`, `senhub.hardware.system.memory.*` | (multiple) | Processor and memory summaries of the system resource (count, size, status) |
+| `senhub.hardware.firmware.info` | Gauge `1` | Presence marker for the management firmware; `senhub.hardware.firmware.component` ∈ {idrac, lifecycle_controller, ilo, cimc, xcc}, version in `senhub.hardware.firmware.version` |
+| `senhub.hardware.log.entries` | Gauge `{entry}` | BMC event-log entries, by `senhub.hardware.log.severity` or `senhub.hardware.log.window` |
+| `senhub.hardware.storage.status` | UpDownCounter | Storage subsystem health |
+| `senhub.hardware.disk_controller.link_speed` | Gauge `By/s` | Controller link speed |
+| `senhub.hardware.physical_disk.hotspare`, `.media_life_remaining`, `.rotation_speed` | Gauge | Drive details |
+| `senhub.hardware.logical_disk.reserved` | UpDownCounter `By` | Reserved volume capacity |
+| `senhub.hardware.power_supply.limit`, `senhub.hardware.enclosure.power.capacity` | Gauge `W` | Rated and available power |
 
 #### 4.9.3 Attributes introduced
 
@@ -430,9 +451,14 @@ Aligned with OTel where possible (`hw.id`, `hw.name`, `hw.parent`, `hw.model`, `
 - `senhub.hardware.storage.pool.name` / `.id` / `.state` / `.raid_level`
 - `senhub.hardware.redundancy.set` / `.state` / `.mode` / `.scope` / `.bound`
 
+Vendor-specific collectors (Dell, HPE, Cisco, Lenovo) emit the same facts under `storage.*` and `network.adapter.*` names; those definitions add `senhub.hardware.source: vendor` so a device reported by both paths is two series, not one overwritten value.
+
+**Verbatim values.** A probe may sanitise a tag for the sinks that build names or keys from it (PRTG channel names, URL filters, cache and Zabbix keys) and ship the original in a `<tag>_exact` companion tag. `tag_to_attribute` and the unmapped-tag passthrough use the companion when present and never emit it as an attribute: `hw.name` equals what the BMC reported (`Lab drive 1 (failure predicted)`) while the PRTG channel keeps the cleaned name.
+
 #### 4.9.4 Skipped metrics
 
 - `hardware.storage.volume.io.total_ops` and `hardware.storage.volume.io.total_bytes` — redundant with reads+writes; skipped with a justification, since they are derivable in PromQL via `sum without(disk_io_direction)`.
+- `hardware.storage.volume.io.read.latency` and `.write.latency` — the BMC states no unit (Dell PowerVault returns a bare number, the Redfish schema a duration string), so a conversion to seconds is not safe until a real array fixes it. They still reach PRTG unconverted.
 
 ### 4.10 `veeam` probe (backup & replication)
 
