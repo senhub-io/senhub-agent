@@ -1142,3 +1142,167 @@ func TestBaseTags_OmitTheIdentityUntilItIsKnown(t *testing.T) {
 		}
 	}
 }
+
+// infoRedis7Persistence is the persistence + replication + stats excerpt of
+// INFO all from a Redis 7/8 master whose last RDB save succeeded and whose
+// AOF is failing.
+const infoRedis7Persistence = `# Persistence
+loading:0
+rdb_changes_since_last_save:0
+rdb_bgsave_in_progress:0
+rdb_last_save_time:1700000000
+rdb_last_bgsave_status:ok
+rdb_last_bgsave_time_sec:0
+aof_enabled:1
+aof_rewrite_in_progress:0
+aof_last_rewrite_time_sec:-1
+aof_last_bgrewrite_status:err
+aof_last_write_status:err
+
+# Replication
+role:master
+connected_slaves:1
+master_repl_offset:4242
+repl_backlog_active:1
+repl_backlog_size:1048576
+repl_backlog_first_byte_offset:1
+repl_backlog_histlen:4242
+
+# Stats
+pubsub_channels:3
+pubsub_patterns:2
+`
+
+func TestBuildDatapoints_PersistenceStatuses(t *testing.T) {
+	p := newTestProbe(t)
+	idx := indexDatapoints(p.buildDatapoints(parseInfoBlob(infoRedis7Persistence), nil, nil, nil, time.Now(), 1))
+
+	want := map[string]float64{
+		"redis.rdb.last_bgsave.status":      1,
+		"redis.aof.last_bgrewrite.status":   0,
+		"redis.aof.last_write.status":       0,
+		"redis.aof.last_rewrite.duration":   -1,
+		"redis.replication.backlog_active":  1,
+		"redis.replication.backlog_size":    1048576,
+		"redis.replication.backlog_histlen": 4242,
+		"redis.pubsub.channels":             3,
+		"redis.pubsub.patterns":             2,
+	}
+	for name, v := range want {
+		got := idx[name]
+		if len(got) != 1 || got[0].Value != v {
+			t.Errorf("%s: want %v, got %v", name, v, got)
+		}
+	}
+}
+
+func TestBuildDatapoints_PersistenceStatusOk(t *testing.T) {
+	p := newTestProbe(t)
+	info := map[string]string{
+		"rdb_last_bgsave_status":    "ok",
+		"aof_last_bgrewrite_status": "ok",
+		"aof_last_write_status":     "ok",
+		"aof_last_rewrite_time_sec": "3",
+	}
+	idx := indexDatapoints(p.buildDatapoints(info, nil, nil, nil, time.Now(), 1))
+	for _, name := range []string{"redis.rdb.last_bgsave.status", "redis.aof.last_bgrewrite.status", "redis.aof.last_write.status"} {
+		if v := idx[name]; len(v) != 1 || v[0].Value != 1 {
+			t.Errorf("%s: want 1, got %v", name, v)
+		}
+	}
+	if v := idx["redis.aof.last_rewrite.duration"]; len(v) != 1 || v[0].Value != 3 {
+		t.Errorf("redis.aof.last_rewrite.duration: want 3, got %v", v)
+	}
+}
+
+func TestBuildDatapoints_NewFieldsAbsent(t *testing.T) {
+	p := newTestProbe(t)
+	idx := indexDatapoints(p.buildDatapoints(map[string]string{"role": "master"}, nil, nil, nil, time.Now(), 1))
+	for _, name := range []string{
+		"redis.rdb.last_bgsave.status", "redis.aof.last_bgrewrite.status",
+		"redis.aof.last_write.status", "redis.aof.last_rewrite.duration",
+		"redis.replication.backlog_active", "redis.replication.backlog_size",
+		"redis.replication.backlog_histlen", "redis.pubsub.channels",
+		"redis.pubsub.patterns", "redis.sentinel.master.status",
+	} {
+		if v := idx[name]; len(v) != 0 {
+			t.Errorf("%s: want no datapoint when the field is absent, got %v", name, v)
+		}
+	}
+}
+
+func TestBuildDatapoints_BacklogInactive(t *testing.T) {
+	p := newTestProbe(t)
+	info := map[string]string{"role": "master", "repl_backlog_active": "0", "repl_backlog_size": "1048576", "repl_backlog_histlen": "0"}
+	idx := indexDatapoints(p.buildDatapoints(info, nil, nil, nil, time.Now(), 1))
+	if v := idx["redis.replication.backlog_active"]; len(v) != 1 || v[0].Value != 0 {
+		t.Errorf("backlog_active: want 0, got %v", v)
+	}
+	if v := idx["redis.replication.backlog_histlen"]; len(v) != 1 || v[0].Value != 0 {
+		t.Errorf("backlog_histlen: want 0, got %v", v)
+	}
+}
+
+const infoSentinelTwoMasters = `# Sentinel
+sentinel_masters:2
+sentinel_tilt:0
+sentinel_tilt_since_seconds:-1
+sentinel_running_scripts:0
+sentinel_scripts_queue_length:0
+sentinel_simulate_failure_flags:0
+master0:name=mymaster,status=ok,address=10.0.0.1:6379,slaves=2,sentinels=3
+master1:name=cache2,status=odown,address=10.0.0.2:6379,slaves=1,sentinels=3
+`
+
+func TestBuildDatapoints_SentinelPerMaster(t *testing.T) {
+	p := newTestProbe(t)
+	sentinelInfo := parseInfoBlob(infoSentinelTwoMasters)
+	idx := indexDatapoints(p.buildDatapoints(map[string]string{"role": "sentinel"}, nil, nil, sentinelInfo, time.Now(), 1))
+
+	check := func(metric, master string, want float64) {
+		t.Helper()
+		var found []data_store.DataPoint
+		for _, dp := range idx[metric] {
+			if hasTag(dp, "master", master) {
+				found = append(found, dp)
+			}
+		}
+		if len(found) != 1 || found[0].Value != want {
+			t.Errorf("%s{master=%s}: want %v, got %v", metric, master, want, found)
+		}
+	}
+	check("redis.sentinel.master.status", "mymaster", 1)
+	check("redis.sentinel.master.status", "cache2", 0)
+	check("redis.sentinel.master.slaves", "mymaster", 2)
+	check("redis.sentinel.master.slaves", "cache2", 1)
+	check("redis.sentinel.master.sentinels", "mymaster", 3)
+	check("redis.sentinel.master.sentinels", "cache2", 3)
+
+	if v := idx["redis.sentinel.slaves"]; len(v) != 1 || v[0].Value != 3 {
+		t.Errorf("aggregate redis.sentinel.slaves must stay 3, got %v", v)
+	}
+	if v := idx["redis.sentinel.ok_slaves"]; len(v) != 1 || v[0].Value != 2 {
+		t.Errorf("aggregate redis.sentinel.ok_slaves must stay 2, got %v", v)
+	}
+}
+
+func TestBuildDatapoints_SentinelPerMasterAbsentOutsideSentinelMode(t *testing.T) {
+	p := newTestProbe(t)
+	idx := indexDatapoints(p.buildDatapoints(map[string]string{"role": "master"}, nil, nil, nil, time.Now(), 1))
+	if v := idx["redis.sentinel.master.status"]; len(v) != 0 {
+		t.Errorf("want no per-master series outside sentinel mode, got %v", v)
+	}
+}
+
+func TestParseSentinelMasters(t *testing.T) {
+	got := parseSentinelMasters(parseInfoBlob(infoSentinelTwoMasters + "master2:status=ok,slaves=1,sentinels=1\nmaster_x:name=bad,status=ok\n"))
+	if len(got) != 2 {
+		t.Fatalf("want 2 masters (nameless and non-numeric lines skipped), got %+v", got)
+	}
+	if got[0].name != "mymaster" || got[0].status != "ok" || got[0].slaves != 2 || got[0].sentinels != 3 {
+		t.Errorf("master0: %+v", got[0])
+	}
+	if got[1].name != "cache2" || got[1].status != "odown" || got[1].statusValue() != 0 {
+		t.Errorf("master1: %+v", got[1])
+	}
+}

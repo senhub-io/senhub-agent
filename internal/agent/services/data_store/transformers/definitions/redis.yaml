@@ -323,6 +323,53 @@ metrics:
       unit: "s"
       type: gauge
 
+  - name: "redis.rdb.last_bgsave.status"
+    channel: "redis_rdb_last_bgsave_status"
+    display_name: "RDB Last BGSave Status"
+    unit: "#"
+    category: "persistence"
+    description: "Outcome of the last RDB background save: 1=ok, 0=err (rdb_last_bgsave_status)"
+    lookup: "redis.persistence.status"
+    otel:
+      name: redis.rdb.last_bgsave.status
+      unit: "{status}"
+      type: gauge
+
+  - name: "redis.aof.last_bgrewrite.status"
+    channel: "redis_aof_last_bgrewrite_status"
+    display_name: "AOF Last Rewrite Status"
+    unit: "#"
+    category: "persistence"
+    description: "Outcome of the last AOF background rewrite: 1=ok, 0=err (aof_last_bgrewrite_status)"
+    lookup: "redis.persistence.status"
+    otel:
+      name: redis.aof.last_bgrewrite.status
+      unit: "{status}"
+      type: gauge
+
+  - name: "redis.aof.last_write.status"
+    channel: "redis_aof_last_write_status"
+    display_name: "AOF Last Write Status"
+    unit: "#"
+    category: "persistence"
+    description: "Outcome of the last write to the AOF: 1=ok, 0=err (aof_last_write_status)"
+    lookup: "redis.persistence.status"
+    otel:
+      name: redis.aof.last_write.status
+      unit: "{status}"
+      type: gauge
+
+  - name: "redis.aof.last_rewrite.duration"
+    channel: "redis_aof_last_rewrite_duration"
+    display_name: "AOF Last Rewrite Duration"
+    unit: "s"
+    category: "persistence"
+    description: "Duration of the last AOF rewrite in seconds, -1 when none has run yet (aof_last_rewrite_time_sec)"
+    otel:
+      name: redis.aof.last_rewrite.duration
+      unit: "s"
+      type: gauge
+
   - name: "redis.latest.fork"
     channel: "redis_latest_fork"
     display_name: "Latest Fork Duration"
@@ -404,6 +451,61 @@ metrics:
     otel:
       name: redis.replication.backlog_first_byte_offset
       unit: "By"
+      type: gauge
+
+  - name: "redis.replication.backlog_active"
+    channel: "redis_replication_backlog_active"
+    display_name: "Replication Backlog Active"
+    unit: "#"
+    category: "replication"
+    description: "1 when the replication backlog is allocated (repl_backlog_active)"
+    otel:
+      name: redis.replication.backlog_active
+      unit: "{status}"
+      type: gauge
+
+  - name: "redis.replication.backlog_size"
+    channel: "redis_replication_backlog_size"
+    display_name: "Replication Backlog Size"
+    unit: "B"
+    category: "replication"
+    description: "Configured size of the replication backlog (repl_backlog_size)"
+    otel:
+      name: redis.replication.backlog_size
+      unit: "By"
+      type: gauge
+
+  - name: "redis.replication.backlog_histlen"
+    channel: "redis_replication_backlog_histlen"
+    display_name: "Replication Backlog Used"
+    unit: "B"
+    category: "replication"
+    description: "Bytes of history currently held in the replication backlog (repl_backlog_histlen)"
+    otel:
+      name: redis.replication.backlog_histlen
+      unit: "By"
+      type: gauge
+
+  - name: "redis.pubsub.channels"
+    channel: "redis_pubsub_channels"
+    display_name: "Pub/Sub Channels"
+    unit: "#"
+    category: "pubsub"
+    description: "Number of active pub/sub channels (pubsub_channels)"
+    otel:
+      name: redis.pubsub.channels
+      unit: "{channel}"
+      type: gauge
+
+  - name: "redis.pubsub.patterns"
+    channel: "redis_pubsub_patterns"
+    display_name: "Pub/Sub Patterns"
+    unit: "#"
+    category: "pubsub"
+    description: "Number of active pub/sub pattern subscriptions (pubsub_patterns)"
+    otel:
+      name: redis.pubsub.patterns
+      unit: "{pattern}"
       type: gauge
 
   - name: "redis.evicted_keys"
@@ -600,6 +702,49 @@ metrics:
       unit: "{script}"
       type: gauge
 
+  - name: "redis.sentinel.master.status"
+    channel: "redis_sentinel_master_{master}_status"
+    display_name: "Sentinel Master {master} Status"
+    unit: "#"
+    multi_instance_labels: ["master"]
+    category: "sentinel"
+    description: "Status of a monitored master: 1=ok, 0=odown/sdown or any other state (INFO sentinel masterN status; one series per master, attribute redis.sentinel.master.name)"
+    lookup: "redis.sentinel.master.status"
+    otel:
+      name: redis.sentinel.master.status
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      master: redis.sentinel.master.name
+
+  - name: "redis.sentinel.master.slaves"
+    channel: "redis_sentinel_master_{master}_slaves"
+    display_name: "Sentinel Master {master} Replicas"
+    unit: "#"
+    multi_instance_labels: ["master"]
+    category: "sentinel"
+    description: "Replicas known for a monitored master (INFO sentinel masterN slaves)"
+    otel:
+      name: redis.sentinel.master.slaves
+      unit: "{replica}"
+      type: gauge
+    tag_to_attribute:
+      master: redis.sentinel.master.name
+
+  - name: "redis.sentinel.master.sentinels"
+    channel: "redis_sentinel_master_{master}_sentinels"
+    display_name: "Sentinel Master {master} Sentinels"
+    unit: "#"
+    multi_instance_labels: ["master"]
+    category: "sentinel"
+    description: "Sentinels monitoring a master, this one included (INFO sentinel masterN sentinels)"
+    otel:
+      name: redis.sentinel.master.sentinels
+      unit: "{sentinel}"
+      type: gauge
+    tag_to_attribute:
+      master: redis.sentinel.master.name
+
   - name: "redis.tracking.clients"
     channel: "redis_tracking_clients"
     display_name: "Tracking Clients"
@@ -632,6 +777,9 @@ tag_metadata:
   cmd:
     type: resource
     label: "Command"
+  master:
+    type: resource
+    label: "Sentinel Master"
   state:
     type: category
     label: "CPU State"
