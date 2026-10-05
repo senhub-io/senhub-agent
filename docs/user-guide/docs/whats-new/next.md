@@ -74,3 +74,12 @@ Changes land here as they are merged to `dev`.
   nothing and exit `3`. `config init --ok-if-unchanged` exits `0` in that
   case, for installers that treat any other code as a failure.
 - **filetail reports where each tail stands.** For every file followed, `senhub.filetail.read_offset` and `senhub.filetail.file_size` (Prometheus `senhub_filetail_read_offset_bytes` and `senhub_filetail_file_size_bytes`, attribute `log.file.path`) let a rule detect a frozen tail: the file grew and the offset did not move.
+
+## Fixes
+
+- **Oracle 23ai: login with a password longer than 30 characters.** The
+  `oracle` probe could not log in to Oracle Database 23ai with a password of
+  more than 30 characters: every cycle reported `senhub.db.up = 0` with
+  `ORA-01017`, while SQL\*Plus accepted the same credentials. The driver does
+  not announce long password support, which 23ai requires; the probe now does.
+  Passwords of 30 characters or fewer were never affected.
