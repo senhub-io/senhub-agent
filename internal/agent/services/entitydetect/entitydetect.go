@@ -135,7 +135,10 @@ func (s *Service) Reconfigure(cfg Config) error {
 }
 
 func (s *Service) startLocked(ctx context.Context) error {
-	if !s.cfg.Enabled {
+	// The detector goroutine outlives a Reconfigure that swaps s.cfg under
+	// the lock, so its closures read this snapshot, never s.cfg.
+	cfg := s.cfg
+	if !cfg.Enabled {
 		return nil
 	}
 
@@ -185,21 +188,21 @@ func (s *Service) startLocked(ctx context.Context) error {
 			HostType:              hi.HostType,
 			ContainerRuntime:      hi.ContainerRuntime,
 			K8sNodeName:           hi.K8sNodeName,
-			Environment:           s.cfg.Environment,
-			Governance:            s.cfg.Governance.Attributes(),
+			Environment:           cfg.Environment,
+			Governance:            cfg.Governance.Attributes(),
 		}, nil
 	}
 	agentFn := func() entity.AgentIdentity {
 		return entity.AgentIdentity{
-			InstanceID:     s.cfg.AgentInstanceID,
-			ServiceName:    s.cfg.AgentService,
-			ServiceVersion: s.cfg.AgentVersion,
+			InstanceID:     cfg.AgentInstanceID,
+			ServiceName:    cfg.AgentService,
+			ServiceVersion: cfg.AgentVersion,
 		}
 	}
 
 	// Probe entity sources stamp the From endpoint of their `monitors`
 	// edge with this, so it must be set before the detector polls them.
-	agentstate.SetAgentInstanceID(s.cfg.AgentInstanceID)
+	agentstate.SetAgentInstanceID(cfg.AgentInstanceID)
 
 	hostIDFn := func() string {
 		hi, err := common.GetHostIdentity()
@@ -213,8 +216,8 @@ func (s *Service) startLocked(ctx context.Context) error {
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
 		entity.RegisterSource(hostiface.New(hostIDFn)))
 
-	if s.cfg.DependsOnEnabled {
-		dep := hostdep.New(hostIDFn, s.cfg.DependsOnDebounce, s.cfg.DependsOnExcludeCIDRs)
+	if cfg.DependsOnEnabled {
+		dep := hostdep.New(hostIDFn, cfg.DependsOnDebounce, cfg.DependsOnExcludeCIDRs)
 		// Mapping a socket to its owning process reads /proc/<pid>/fd,
 		// which is owner-only: a non-root daemon sees every other
 		// service's connections with no owner and can emit nothing for
@@ -229,7 +232,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 		s.unregisters = append(s.unregisters, entity.RegisterSource(dep))
 	}
 
-	det := entity.NewDetector(hostFn, agentFn, s.cfg.Interval)
+	det := entity.NewDetector(hostFn, agentFn, cfg.Interval)
 	det.OnOrphanRelations(func(orphans []entity.Relation) {
 		for _, r := range orphans {
 			s.logger.Warn().
@@ -291,8 +294,8 @@ func (s *Service) startLocked(ctx context.Context) error {
 	go det.Run(runCtx)
 
 	s.logger.Info().
-		Dur("interval", s.cfg.Interval).
-		Bool("depends_on", s.cfg.DependsOnEnabled).
+		Dur("interval", cfg.Interval).
+		Bool("depends_on", cfg.DependsOnEnabled).
 		Msg("entity detection started")
 	return nil
 }
