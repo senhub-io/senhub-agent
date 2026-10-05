@@ -346,3 +346,14 @@ tag_metadata:
   probe_type:
     type: resource
     label: "Probe Type"
+
+# Charts the Zabbix templates draw from these metrics (see GraphDefinition).
+graphs:
+  - name: "Memory utilization"
+    series: [memory_used_percent]
+  - name: "Swap and pagefile utilization"
+    series: [swap_used_percent, pagefile_usage]
+  - name: "Page faults"
+    series: [memory_page_faults]
+  - name: "Memory pages"
+    series: [memory_pages_input, memory_pages_output]

@@ -453,3 +453,14 @@ tag_metadata:
   probe_type:
     type: resource
     label: "Probe Type"
+
+# Charts the Zabbix templates draw from these metrics (see GraphDefinition).
+graphs:
+  - name: "CPU utilization"
+    series: [cpu_usage_total]
+  - name: "CPU load average"
+    series: [cpu_load1, cpu_load5, cpu_load15]
+  - name: "CPU run queue"
+    series: [cpu_queue_length]
+  - name: "CPU interrupts and context switches"
+    series: [cpu_interrupts, cpu_context_switches]

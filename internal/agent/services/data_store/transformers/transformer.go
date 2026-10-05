@@ -210,6 +210,19 @@ type ProbeDefinition struct {
 	// be named, because a template whose probe is absent only adds
 	// empty rules.
 	Universal bool `yaml:"universal,omitempty"`
+
+	// Graphs declares the charts a sink that draws them (the Zabbix
+	// templates) builds from this probe's metrics. A chart holds the
+	// metrics of one discovery rule, so the names list the ones to plot
+	// together; a name the platform does not produce is skipped.
+	Graphs []GraphDefinition `yaml:"graphs,omitempty"`
+}
+
+// GraphDefinition is one chart over metrics of a probe, by the metric's
+// `name`.
+type GraphDefinition struct {
+	Name   string   `yaml:"name"`
+	Series []string `yaml:"series"`
 }
 
 // UnitDefinition represents a unit mapping definition

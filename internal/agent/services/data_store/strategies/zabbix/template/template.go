@@ -104,6 +104,13 @@ type Template struct {
 	DiscoveryRules []DiscoveryRule `yaml:"discovery_rules,omitempty"`
 	Macros         []Macro         `yaml:"macros,omitempty"`
 	ValueMaps      []ValueMap      `yaml:"valuemaps,omitempty"`
+	// Templates are the templates this one is linked to.
+	Templates  []TemplateRef `yaml:"templates,omitempty"`
+	Dashboards []Dashboard   `yaml:"dashboards,omitempty"`
+}
+
+type TemplateRef struct {
+	Name string `yaml:"name"`
 }
 
 // Item is a plain item, not discovered: the agent's own three, which
@@ -139,7 +146,10 @@ type DiscoveryRule struct {
 	Delay          string          `yaml:"delay"`
 	Description    string          `yaml:"description,omitempty"`
 	ItemPrototypes []ItemPrototype `yaml:"item_prototypes"`
-	Overrides      []Override      `yaml:"overrides,omitempty"`
+	// GraphPrototypes draw the prototypes of this rule; Zabbix accepts a
+	// graph only over items of the rule that creates it.
+	GraphPrototypes []GraphPrototype `yaml:"graph_prototypes,omitempty"`
+	Overrides       []Override       `yaml:"overrides,omitempty"`
 }
 
 type ItemPrototype struct {
@@ -270,6 +280,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	seenKeys := map[string]bool{}
 	fedOf := map[string]string{} // prototype key -> FedID
 	_, familyOf := variantFamilies(def)
+	placed := map[string]placement{} // metric name -> where its item prototype lives
 
 	ensureRule := func(ruleKey, ruleTitle string) *DiscoveryRule {
 		rule, ok := rules[ruleKey]
@@ -299,11 +310,12 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		// host actually feeds.
 		if f := familyOf[m.Name]; f != nil {
 			key := variantPrototypeKey(opts.Prefix, def.ProbeName, f)
+			ruleKey := variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
+			placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: append(labelMacros(labels), attrMacros(f.labels, f.attrKeys)...)}
 			if seenKeys[key] {
 				continue
 			}
 			seenKeys[key] = true
-			ruleKey := variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
 			rule := ensureRule(ruleKey, variantRuleName(def.ProbeName, f))
 			proto := ItemPrototype{
 				Name:        variantPrototypeName(f),
@@ -352,11 +364,12 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		}
 
 		key := prototypeKey(opts.Prefix, def.ProbeName, m, labels)
+		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
+		placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: labelMacros(labels)}
 		if seenKeys[key] {
 			continue
 		}
 		seenKeys[key] = true
-		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
 		rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
 		proto := ItemPrototype{
 			Name:        prototypeName(m, labels),
@@ -396,6 +409,8 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	}
 	tpl.Macros = append(macros, clockTriggers(name, def, opts, rules)...)
 
+	graphPrototypes(name, def, placed, rules)
+
 	for _, k := range order {
 		rule := rules[k]
 		fedOverrides(rule, fedOf)
@@ -404,6 +419,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		}
 		tpl.DiscoveryRules = append(tpl.DiscoveryRules, *rule)
 	}
+	tpl.Dashboards = dashboardOf(tpl, firstNonEmpty(def.FriendlyName, def.ProbeName), opts)
 	vmNames := make([]string, 0, len(valueMaps))
 	for n := range valueMaps {
 		vmNames = append(vmNames, n)
