@@ -142,7 +142,10 @@ func TestBootSmoke_UnknownArgRejected(t *testing.T) {
 	}
 }
 
-const binaryExposureWarning = "can be modified by a non-root account"
+// binaryExposureWarnings are environment-dependent auto-update preflight
+// findings: Linux (binary not root-owned) and Windows (binary not
+// writable by the process).
+var binaryExposureWarnings = []string{"can be modified by a non-root account", "is not writable by this process"}
 
 // onlyBinaryExposureWarning reports whether err is the warning exit code
 // of a `config check` whose single warning is the binary-ownership one.
@@ -152,7 +155,7 @@ func onlyBinaryExposureWarning(err error, out string) bool {
 		return false
 	}
 	return strings.Contains(out, "Configuration is valid with 1 warning(s)") &&
-		strings.Contains(out, binaryExposureWarning)
+		containsAny(out, binaryExposureWarnings)
 }
 
 // TestBootSmoke_ConfigCheckFreeTier exercises `agent config check` on
@@ -238,11 +241,20 @@ func TestBootSmoke_DoctorJSON(t *testing.T) {
 		// `go build` leaves the binary owned by the invoking user, which
 		// `config check` reports as a warning on Linux: a property of where
 		// this test ran, not of the example.
-		if c.ID == "config.check" && c.Level == "warn" && strings.Contains(c.Message, binaryExposureWarning) {
+		if c.ID == "config.check" && c.Level == "warn" && containsAny(c.Message, binaryExposureWarnings) {
 			continue
 		}
 		if c.ID == "config.check" && c.Level != "ok" {
 			t.Errorf("the free-tier example is not reported valid: %+v", c)
 		}
 	}
+}
+
+func containsAny(s string, subs []string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }
