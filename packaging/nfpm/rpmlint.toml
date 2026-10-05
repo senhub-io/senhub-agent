@@ -6,11 +6,6 @@ Filters = [
     "statically-linked-binary",
     "position-independent-executable-suggested",
 
-    # senhub-agent-oss and senhub-agent replace each other: each provides and
-    # obsoletes the other's name, the standard way to swap one package for
-    # another (a package never matches itself, obsoletes compare names).
-    "self-obsoletion",
-
     # The full edition is proprietary: a LicenseRef-* identifier is the SPDX
     # form for a license that is not on the SPDX list, which the Fedora list
     # does not know. Any other unknown license still fails.
