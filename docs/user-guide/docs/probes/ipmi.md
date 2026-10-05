@@ -72,6 +72,8 @@ and give the BMC under the `remote` block. Sensor filters live under the
 | `hardware.temperature` | Cel | Temperature per BMC sensor, tagged with `hardware.component` |
 | `hardware.fan.speed` | RPM | Fan speed per sensor |
 | `hardware.voltage` | V | Voltage per sensor |
+| `hw.power` | W | Power per sensor (a supply, or the machine's consumption) |
+| `senhub.hardware.current` | A | Current per sensor, typically per power supply |
 | `hw.status` | # | Sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable |
 
 ## Operational notes
@@ -79,6 +81,8 @@ and give the BMC under the `remote` block. Sensor filters live under the
 - The agent must run as `root` on Linux for `ipmitool` to access the `/dev/ipmi0` device.
 - Load the OpenIPMI driver before starting the agent: `modprobe ipmi_si && modprobe ipmi_devintf`.
 - Sensor names (the `hardware.component` tag) come directly from `ipmitool sdr` output and vary by hardware vendor.
+- Sensors that share a name (Dell calls every CPU temperature `Temp`) are told apart by their IPMI entity: `Temp (CPU 1)`, `Temp (CPU 2)`. These series also carry the `hardware.entity` and `hardware.sensor_number` tags. A sensor whose name is unique keeps it unchanged.
+- A power supply reports 1 when present and redundant, 0 on a critical status, "Redundancy Lost" or a failure; an absent supply ("Device Absent") emits nothing.
 
 ## Metric reference
 
@@ -96,7 +100,9 @@ series' tags.
 | `hw.temperature` | `hardware.temperature` | Temp {hardware.component} | Degrees Celsius | Temperature reported by the BMC sensor (degrees Celsius) |
 | `hw.fan.speed` | `hardware.fan.speed` | Fan Speed {hardware.component} | RPM | Fan speed in rotations per minute as reported by the BMC |
 | `hw.voltage` | `hardware.voltage` | Voltage {hardware.component} | Volts | Voltage reported by the BMC sensor (volts) |
-| `hw.status` | `hardware.power_supply.status` | PSU Status {hardware.component} | # | Power supply status: 1 = ok, 0 = fault. A supply the BMC has no reading for emits no value |
+| `hw.power` | `hardware.power` | Power {hardware.component} | Watts | Power reported by the BMC sensor (watts): a supply's output or input, or the machine's consumption |
+| `senhub.hardware.current` | `senhub.hardware.current` | Current {hardware.component} | Amps | Current reported by the BMC sensor (amperes), typically per power supply |
+| `hw.status` | `hardware.power_supply.status` | PSU Status {hardware.component} | # | Power supply status: 1 = ok (present, redundant, or a healthy reading), 0 = fault (critical status, redundancy lost or degraded). An absent supply or one the BMC has no reading for emits no value |
 | `hw.status` | `hardware.sensor.status` | Sensor {hardware.component} | # | Generic BMC sensor status: 1 = ok or non-critical, 0 = critical or non-recoverable. A sensor with no reading (ns) emits no value |
 | `senhub.ipmi.up` | `senhub.ipmi.up` | IPMI Reachable | # | 1 when ipmitool ran successfully and the BMC responded, 0 otherwise |
 

@@ -138,6 +138,7 @@ var allowedOtelBaseUnits = map[string]bool{
 	"cs":  true,
 	"Cel": true, // degrees Celsius (UCUM)
 	"W":   true,
+	"A":   true, // amperes (UCUM)
 	"V":   true,
 	"dBm": true,
 	"d":   true,

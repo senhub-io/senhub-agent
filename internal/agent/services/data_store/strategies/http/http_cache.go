@@ -90,7 +90,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Hardware sensor probes — one series per sensor instance (hardware.component
 	// carries the sensor name: "CPU Temp", "FAN1", "12V", …).
-	"ipmi": {"hardware.component"},
+	// Sensors sharing a name (Dell: every CPU is "Temp") carry the entity and
+	// sensor number as well, so no output collapses them.
+	"ipmi": {"hardware.component", "hardware.entity", "hardware.sensor_number"},
 
 	// Infrastructure probes
 	"redfish": {

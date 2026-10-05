@@ -58,6 +58,16 @@ type sensorRow struct {
 	name   string
 	value  string // raw value text (e.g. "45 degrees C", "3000 RPM", "12.06 Volts")
 	status string // "ok", "cr", "nc", "nr", "ns", "na", etc.
+
+	// sensorNumber ("0Fh") and entity ("3.1", entity id.instance) come
+	// from the `sdr elist` layout only; both are empty in the plain one.
+	sensorNumber string
+	entity       string
+
+	// displayName is name made unique among the sensors of one listing.
+	// Set by disambiguateNames; equal to name when the name is already
+	// unique, so a series that never collided keeps its identity.
+	displayName string
 }
 
 // ipmiProbe is the IPMI hardware monitoring probe.
@@ -216,7 +226,7 @@ func (p *ipmiProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
 	}
 
-	rows := parseSdrOutput(out)
+	rows := disambiguateNames(parseSdrOutput(out))
 	var points []data_store.DataPoint
 	for _, row := range rows {
 		pts := p.rowToDataPoints(row, now, hostTags)
@@ -243,10 +253,22 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 		return nil
 	}
 
+	component := row.displayName
+	if component == "" {
+		component = row.name
+	}
 	baseTags := append(append([]tags.Tag{}, hostTags...),
-		tags.Tag{Key: "hardware.component", Value: row.name},
+		tags.Tag{Key: "hardware.component", Value: component},
 		tags.Tag{Key: "metric_type", Value: metricTypeHardware},
 	)
+	if component != row.name {
+		if row.entity != "" {
+			baseTags = append(baseTags, tags.Tag{Key: "hardware.entity", Value: row.entity})
+		}
+		if row.sensorNumber != "" {
+			baseTags = append(baseTags, tags.Tag{Key: "hardware.sensor_number", Value: row.sensorNumber})
+		}
+	}
 
 	statusOk := isStatusOk(row.status)
 	var points []data_store.DataPoint
@@ -264,7 +286,7 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 	})
 
 	// Type-specific metrics.
-	val, unit, sensorType := parseValueUnit(row.value)
+	val, _, sensorType := parseValueUnit(row.value)
 	switch sensorType {
 	case "temperature":
 		if val != nil {
@@ -296,9 +318,34 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 			})
 		}
 
-	case "power_supply":
+	case "power":
+		if val != nil {
+			points = append(points, data_store.DataPoint{
+				Name:      "hardware.power",
+				Value:     *val,
+				Timestamp: now,
+				Tags:      baseTags,
+			})
+		}
+
+	case "current":
+		if val != nil {
+			points = append(points, data_store.DataPoint{
+				Name:      "senhub.hardware.current",
+				Value:     *val,
+				Timestamp: now,
+				Tags:      baseTags,
+			})
+		}
+	}
+
+	if isPowerSupplyRow(row) {
+		psOk := statusOk
+		if state, known := discreteState(row.value); known && state == stateBad {
+			psOk = false
+		}
 		psStatus := float64(0)
-		if statusOk {
+		if psOk {
 			psStatus = 1
 		}
 		points = append(points, data_store.DataPoint{
@@ -309,7 +356,6 @@ func (p *ipmiProbe) rowToDataPoints(row sensorRow, now time.Time, hostTags []tag
 		})
 	}
 
-	_ = unit
 	return points
 }
 
@@ -326,12 +372,16 @@ func (p *ipmiProbe) shouldInclude(row sensorRow) bool {
 	_, _, sensorType := parseValueUnit(row.value)
 	// Map our internal type names to the operator-facing type labels.
 	typeMap := map[string][]string{
-		"temperature":  {"Temperature"},
-		"fan":          {"Fan"},
-		"voltage":      {"Voltage"},
-		"power_supply": {"Power Supply"},
+		"temperature": {"Temperature"},
+		"fan":         {"Fan"},
+		"voltage":     {"Voltage"},
+		"power":       {"Power"},
+		"current":     {"Current"},
 	}
 	for _, want := range p.cfg.IncludeTypes {
+		if strings.EqualFold(want, "Power Supply") && isPowerSupplyRow(row) {
+			return true
+		}
 		for internalType, labels := range typeMap {
 			for _, label := range labels {
 				if strings.EqualFold(want, label) && sensorType == internalType {
@@ -374,7 +424,10 @@ func parseSdrOutput(output string) []sensorRow {
 		var row sensorRow
 		switch {
 		case len(parts) >= 5 && sensorNumber.MatchString(parts[1]):
-			row = sensorRow{name: parts[0], value: parts[4], status: strings.ToLower(parts[2])}
+			row = sensorRow{name: parts[0], value: parts[4], status: strings.ToLower(parts[2]), sensorNumber: parts[1]}
+			if entityID.MatchString(parts[3]) {
+				row.entity = parts[3]
+			}
 		case len(parts) >= 3:
 			row = sensorRow{name: parts[0], value: parts[1], status: strings.ToLower(parts[2])}
 		default:
@@ -388,14 +441,17 @@ func parseSdrOutput(output string) []sensorRow {
 	return rows
 }
 
+// entityID is the fourth field of an elist line, "entity id.instance".
+var entityID = regexp.MustCompile(`^\d+\.\d+$`)
+
 // sensorNumber is the second field of an elist line, the sensor number
 // in hexadecimal ("30h").
 var sensorNumber = regexp.MustCompile(`^[0-9A-Fa-f]{1,2}h$`)
 
 // parseValueUnit classifies a sensor reading by unit and returns the
 // numeric value (nil when not a number or "no reading"), the raw unit
-// string, and the sensor type ("temperature", "fan", "voltage",
-// "power_supply", or "").
+// string, and the sensor type ("temperature", "fan", "voltage", "power",
+// "current", or "").
 //
 // ipmitool sdr format examples:
 //
@@ -438,8 +494,10 @@ func classifyUnit(unit string) string {
 		return "fan"
 	case strings.Contains(u, "volt"):
 		return "voltage"
-	case strings.Contains(u, "watt") || strings.Contains(u, "amp"):
-		return "power_supply"
+	case strings.Contains(u, "watt"):
+		return "power"
+	case strings.Contains(u, "amp"):
+		return "current"
 	default:
 		return ""
 	}
@@ -454,7 +512,56 @@ func hasNoReading(row sensorRow) bool {
 	case "ns", "na":
 		return true
 	}
-	return strings.EqualFold(row.value, "no reading")
+	if strings.EqualFold(row.value, "no reading") {
+		return true
+	}
+	state, known := discreteState(row.value)
+	return known && state == stateAbsent
+}
+
+type discreteKind int
+
+const (
+	stateGood discreteKind = iota
+	stateBad
+	stateAbsent
+)
+
+// discreteState classifies the text a discrete sensor prints in place of
+// a number. Presence and redundancy are the readings that matter on a
+// power supply; known is false for any other text.
+func discreteState(raw string) (discreteKind, bool) {
+	r := strings.ToLower(strings.TrimSpace(raw))
+	switch {
+	case r == "":
+		return 0, false
+	case strings.Contains(r, "absent"), strings.Contains(r, "not present"):
+		return stateAbsent, true
+	case strings.Contains(r, "lost"), strings.Contains(r, "degraded"),
+		strings.Contains(r, "non-redundant"), strings.Contains(r, "failure"),
+		strings.Contains(r, "predictive"), strings.Contains(r, "configuration error"):
+		return stateBad, true
+	case strings.Contains(r, "presence detected"), strings.Contains(r, "device present"),
+		strings.Contains(r, "redundant"), strings.Contains(r, "redundancy regained"):
+		return stateGood, true
+	}
+	return 0, false
+}
+
+var powerSupplyName = regexp.MustCompile(`(?i)\b(ps\d*|psu\d*|power supply|pwr supply)\b|redundancy`)
+
+// isPowerSupplyRow reports whether a sensor belongs to a power supply:
+// by entity when the elist layout gives one (10 power supply, 19 power
+// unit, 20 power module), by name otherwise (the plain layout has no
+// entity, and redundancy sensors sit on a board). A reading of the whole
+// machine ("Pwr Consumption") is not a supply.
+func isPowerSupplyRow(row sensorRow) bool {
+	id, _, _ := strings.Cut(row.entity, ".")
+	switch id {
+	case "10", "19", "20":
+		return true
+	}
+	return powerSupplyName.MatchString(row.name)
 }
 
 // isStatusOk returns true for "ok" and "nc" (non-critical).
@@ -466,4 +573,71 @@ func isStatusOk(status string) bool {
 	default:
 		return false
 	}
+}
+
+// entityLabels names the IPMI entity ids that tell sensors of the same
+// name apart (Dell calls every CPU temperature "Temp"). An id not listed
+// is printed as its raw "id.instance".
+var entityLabels = map[string]string{
+	"3": "CPU", "66": "CPU", "8": "Memory", "32": "Memory", "10": "PSU",
+	"19": "Power Unit", "20": "Power Module", "29": "Fan", "30": "Cooling Unit",
+	"4": "Disk", "26": "Disk Bay", "40": "Battery", "7": "Board", "55": "Air Inlet",
+}
+
+func entityLabel(entity string) string {
+	id, instance, ok := strings.Cut(entity, ".")
+	if !ok {
+		return ""
+	}
+	if label, known := entityLabels[id]; known {
+		return label + " " + instance
+	}
+	return entity
+}
+
+// disambiguateNames gives every sensor a displayName unique within the
+// listing. Sensors whose name is already unique keep it untouched. A
+// duplicated name gets its entity ("Temp (CPU 1)"); if that still
+// collides, the sensor number, then the position, is appended.
+func disambiguateNames(rows []sensorRow) []sensorRow {
+	counts := map[string]int{}
+	for _, r := range rows {
+		counts[r.name]++
+	}
+	taken := map[string]bool{}
+	for name, n := range counts {
+		if n == 1 {
+			taken[name] = true
+		}
+	}
+	seen := map[string]int{}
+	for i := range rows {
+		r := &rows[i]
+		r.displayName = r.name
+		if counts[r.name] == 1 {
+			continue
+		}
+		seen[r.name]++
+		qualifier := entityLabel(r.entity)
+		candidate := r.name
+		if qualifier != "" {
+			candidate = r.name + " (" + qualifier + ")"
+		}
+		if taken[candidate] || candidate == r.name {
+			switch {
+			case r.sensorNumber != "" && qualifier != "":
+				candidate = r.name + " (" + qualifier + " " + r.sensorNumber + ")"
+			case r.sensorNumber != "":
+				candidate = r.name + " (" + r.sensorNumber + ")"
+			default:
+				candidate = r.name + " (" + strconv.Itoa(seen[r.name]) + ")"
+			}
+		}
+		for n := 2; taken[candidate]; n++ {
+			candidate = r.name + " (" + strconv.Itoa(n) + ")"
+		}
+		taken[candidate] = true
+		r.displayName = candidate
+	}
+	return rows
 }
