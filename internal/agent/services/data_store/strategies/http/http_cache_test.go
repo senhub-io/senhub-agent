@@ -658,8 +658,12 @@ func TestDiscriminantTags_ConduitProbesAreDeclared(t *testing.T) {
 			if !declared {
 				t.Fatalf("%q is not in DiscriminantTagsRegistry — every push warns for it", probeType)
 			}
-			if len(tags) != 0 {
-				t.Fatalf("%q declares %v; the self-metrics carry no per-instance tag", probeType, tags)
+			want := 0
+			if probeType == "filetail" {
+				want = 1 // log.file.path: one series per followed file
+			}
+			if len(tags) != want {
+				t.Fatalf("%q declares %v; want %d discriminant tag(s)", probeType, tags, want)
 			}
 		})
 	}

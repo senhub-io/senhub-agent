@@ -5,6 +5,18 @@ import (
 	"testing"
 )
 
+func TestFiletailPositionGaugesPrometheusNames(t *testing.T) {
+	cases := map[string]string{
+		"senhub.filetail.read_offset": "senhub_filetail_read_offset_bytes",
+		"senhub.filetail.file_size":   "senhub_filetail_file_size_bytes",
+	}
+	for otel, want := range cases {
+		if got := OTelNameToPromName(otel, "By", "gauge"); got != want {
+			t.Errorf("%s: got %s, want %s", otel, got, want)
+		}
+	}
+}
+
 func floatApprox(a, b float64) bool {
 	if a == b {
 		return true

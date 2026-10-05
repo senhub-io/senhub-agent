@@ -570,6 +570,11 @@ func checkConfig(configPath string) {
 			warnings += w
 			errorCount += reportGovernanceProblems(p)
 		}
+		for _, o := range filetailOverlaps(config.Probes) {
+			fmt.Printf("  [WARN] %s is read by filetail probes %s: each line is sent once per probe and the probes share one rotation notice; declare the file in a single probe\n",
+				o.path, strings.Join(o.probes, " and "))
+			warnings++
+		}
 	}
 
 	// Storage
@@ -847,6 +852,58 @@ func duplicateProbeIndexes(list []configuration.ProbeConfig) map[int]bool {
 		seen[p.Name] = true
 	}
 	return dup
+}
+
+type pathOverlap struct {
+	path   string
+	probes []string
+}
+
+// filetailOverlaps lists every path pattern declared by more than one
+// enabled filetail probe. nxadm/tail delivers a path's change events to
+// a single tail per process, so two tails on one file both miss its
+// rotation.
+func filetailOverlaps(list []configuration.ProbeConfig) []pathOverlap {
+	owners := map[string][]string{}
+	var order []string
+	for _, p := range list {
+		if p.Type != "filetail" || !p.IsEnabled() {
+			continue
+		}
+		var paths []string
+		switch v := p.Params["paths"].(type) {
+		case []string:
+			paths = v
+		case []interface{}:
+			for _, raw := range v {
+				if s, ok := raw.(string); ok {
+					paths = append(paths, s)
+				}
+			}
+		}
+		seen := map[string]bool{}
+		for _, s := range paths {
+			if s == "" {
+				continue
+			}
+			clean := filepath.Clean(s)
+			if seen[clean] {
+				continue
+			}
+			seen[clean] = true
+			if len(owners[clean]) == 0 {
+				order = append(order, clean)
+			}
+			owners[clean] = append(owners[clean], fmt.Sprintf("%q", p.Name))
+		}
+	}
+	var out []pathOverlap
+	for _, path := range order {
+		if len(owners[path]) > 1 {
+			out = append(out, pathOverlap{path: path, probes: owners[path]})
+		}
+	}
+	return out
 }
 
 func validateProbeParams(name, probeType string, params map[string]interface{}) (errors, warnings int) {
