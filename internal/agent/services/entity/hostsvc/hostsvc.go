@@ -27,7 +27,9 @@ import (
 	gnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/instanceid"
 )
 
 const (
@@ -61,6 +63,10 @@ type listener struct {
 	Address   string
 	Port      uint32
 	Transport string
+	// AgentID is the service.instance.id another SenHub agent on this host
+	// publishes for itself; empty for every other process, and for an agent
+	// whose id could not be read.
+	AgentID string
 }
 
 // Source implements entity.Source for host listening services.
@@ -155,14 +161,21 @@ func buildObservation(hostID string, ls []listener, ipToIface map[string]string,
 		// The agent's own listeners are skipped: the foundation detector
 		// owns the agent's service.instance, and minting <exe>@<host>
 		// beside it would duplicate the node (#494).
+		//
+		// Another agent on this host is the node it reports itself as: its
+		// own foundation emits it, and minting <exe>@<host> beside it would
+		// make each of the two agents describe the other twice.
 		if l.Proc != "" && l.Pid != selfPID {
-			id := l.Proc + "@" + hostID
+			id, svcName := l.Proc+"@"+hostID, l.Proc
+			if l.AgentID != "" {
+				id, svcName = l.AgentID, instanceid.ServiceName
+			}
 			if !instances[id] {
 				instances[id] = true
 				instanceKey := map[string]any{idKeyServiceInstanceID: id}
 				obs.Entities = append(obs.Entities, entity.Entity{
 					Type: entityTypeServiceInstance, ID: instanceKey,
-					Attributes: map[string]any{attrServiceName: l.Proc},
+					Attributes: map[string]any{attrServiceName: svcName},
 				})
 				obs.Relations = append(obs.Relations, entity.Relation{
 					Type:     relRunsOn,
@@ -292,6 +305,11 @@ func (s *Source) enumerateListeners() ([]listener, error) {
 	if err != nil {
 		return nil, err
 	}
+	self := int32(os.Getpid())
+	if s.selfPID != nil {
+		self = s.selfPID()
+	}
+	ownID := agentstate.GetAgentInstanceID()
 	out := make([]listener, 0, len(conns))
 	seen := map[uint32]bool{}
 	for _, c := range conns {
@@ -307,10 +325,16 @@ func (s *Source) enumerateListeners() ([]listener, error) {
 				}
 			}
 		}
-		out = append(out, listener{
+		l := listener{
 			Pid: c.Pid, Proc: proc,
 			Address: c.Laddr.IP, Port: c.Laddr.Port, Transport: "tcp",
-		})
+		}
+		if proc != "" && c.Pid != self {
+			if id, ok := instanceid.ResolveForPID(c.Pid, proc, ownID); ok {
+				l.AgentID = id
+			}
+		}
+		out = append(out, l)
 	}
 	return out, nil
 }

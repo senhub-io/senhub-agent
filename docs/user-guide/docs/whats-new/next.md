@@ -9,6 +9,13 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Two agents on one host no longer describe each other twice.** Each agent
+  writes its own `service.instance.id` to `instance.id` in its state
+  directory (`/var/lib/senhub-agent`, `C:\ProgramData\SenHub`), readable by
+  other accounts only when the agent key is a random UUID, and by its owner
+  alone otherwise. An agent that finds another agent's process listening on
+  the host reuses that id instead of creating a second `service.instance`.
+  When the file cannot be read, the previous behaviour applies.
 - **Linux host security signals in the `process` probe.** Three new
   machine-wide metrics on Linux: `senhub.system.kernel.open_files` (file
   handles allocated, from `/proc/sys/fs/file-nr`, to read against the
