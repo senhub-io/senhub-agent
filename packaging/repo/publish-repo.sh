@@ -306,7 +306,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace}
 <li><code>senhub-agent-oss</code>: the open-source edition (Apache-2.0).</li>
 <li><code>senhub-agent</code>: the full edition, under the SenHub commercial licence; a licence key enables its paid probes.</li>
 </ul>
-<p>The two editions install the same files and the same service: install one or the other, and installing the second replaces the first.</p>
+<p>The two editions install the same files and the same service: install one or the other. To switch, use <code>sudo apt install senhub-agent</code> on Debian and Ubuntu, <code>sudo dnf swap senhub-agent-oss senhub-agent</code> on RHEL and derivatives, or <code>sudo zypper install --force-resolution senhub-agent</code> on openSUSE and SLES (names exchanged to go back).</p>
 
 <h2>Channels</h2>
 <ul>
@@ -327,8 +327,8 @@ for ch in stable beta; do
     block "install-apt-full-$ch" "sudo apt install senhub-agent"
     echo "<h3>RHEL, Rocky Linux, AlmaLinux, Fedora (dnf)</h3>"
     block "dnf-$ch" "sudo curl -fsSLo /etc/yum.repos.d/senhub.repo $BASE_URL/rpm/$ch/senhub.repo"
-    block "install-dnf-oss-$ch" "sudo dnf install --exclude=senhub-agent senhub-agent-oss"
-    block "install-dnf-full-$ch" "sudo dnf install --exclude=senhub-agent-oss senhub-agent"
+    block "install-dnf-oss-$ch" "sudo dnf install senhub-agent-oss"
+    block "install-dnf-full-$ch" "sudo dnf install senhub-agent"
     echo "<h3>openSUSE, SLES (zypper)</h3>"
     block "zypper-$ch" \
         "sudo rpm --import $BASE_URL/gpg.key" \
