@@ -3,7 +3,7 @@
 Changes land here as they are merged to `dev`.
 
 - **Redis**: the probe now reports the last RDB save, AOF rewrite and AOF write outcomes, the replication backlog (active, size, history), pub/sub channels and patterns, and, on a Sentinel, the status, replica count and sentinel count of each monitored master.
-- **Linux packages.** `.deb` and `.rpm` packages for amd64 and arm64 install the agent as a systemd service from the distribution's package manager, tested on Debian 12, Ubuntu 22.04 and 24.04, Rocky Linux 9 and openSUSE Leap 15.6; see [Install from packages](../installation.md#install-from-packages). Repositories are announced.
+- **Linux packages.** `.deb` and `.rpm` packages for amd64 and arm64, in two editions (`senhub-agent-oss` and `senhub-agent`, which replace each other in one install command), install the agent as a systemd service from the distribution's package manager, tested on Debian 12, Ubuntu 22.04 and 24.04, Rocky Linux 9 and openSUSE Leap 15.6; see [Install from packages](../installation.md#install-from-packages). Signed APT and YUM/DNF/Zypper repositories at `packages.senhub.io` go live with the first published beta; see [Install from the package repositories](../installation.md#install-from-the-package-repositories).
 
 - **IPMI**: sensors that share a name (a Dell lists every CPU temperature as `Temp`) are no longer merged into one series; they now read `Temp (CPU 1)`, `Temp (CPU 2)`. Power (`hw.power`, watts) and current (`senhub.hardware.current`, amperes) readings are reported, and a power supply's presence and redundancy ("Presence detected", "Fully Redundant", "Redundancy Lost") now give its status.
 
