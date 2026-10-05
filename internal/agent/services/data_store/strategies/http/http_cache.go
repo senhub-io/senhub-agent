@@ -349,6 +349,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"db",          // redis.db.keys{db=0|1|...} / redis.db.expires / redis.db.avg_ttl — per-logical-db
 		"state",       // redis.cpu.time{state=sys|user|sys_children|user_children}
 		"cmd",         // redis.cmd.calls{cmd=get|set|...} / redis.cmd.usec — per-command
+		"master",      // redis.sentinel.master.{status,slaves,sentinels}{master=<name>} — per monitored master
 		"metric_type", // separates overview / connections / memory / throughput / cache / keyspace / replication / persistence / cpu / commands families
 	},
 	"mssql": {

@@ -1380,6 +1380,18 @@ exposed yet (tracked in #394).
 | `redis.replication.lag` | `s` | gauge | `master_last_io_seconds_ago` (replica uniquement) |
 | `redis.rdb.changes` | `{change}` | gauge | `rdb_changes_since_last_save` |
 | `redis.aof.enabled` | `1` | gauge | `aof_enabled` |
+| `redis.rdb.last_bgsave.status` | `{status}` | gauge | `rdb_last_bgsave_status` — ok=1, err=0 |
+| `redis.aof.last_bgrewrite.status` | `{status}` | gauge | `aof_last_bgrewrite_status` — ok=1, err=0 |
+| `redis.aof.last_write.status` | `{status}` | gauge | `aof_last_write_status` — ok=1, err=0 |
+| `redis.aof.last_rewrite.duration` | `s` | gauge | `aof_last_rewrite_time_sec` (-1 when never) |
+| `redis.replication.backlog_active` | `{status}` | gauge | `repl_backlog_active` |
+| `redis.replication.backlog_size` | `By` | gauge | `repl_backlog_size` |
+| `redis.replication.backlog_histlen` | `By` | gauge | `repl_backlog_histlen` |
+| `redis.pubsub.channels` | `{channel}` | gauge | `pubsub_channels` |
+| `redis.pubsub.patterns` | `{pattern}` | gauge | `pubsub_patterns` |
+| `redis.sentinel.master.status` | `{status}` | gauge | INFO sentinel `masterN:status` (ok=1, else 0) — tag `master`, attr `redis.sentinel.master.name` |
+| `redis.sentinel.master.slaves` | `{replica}` | gauge | INFO sentinel `masterN:slaves` — tag `master` |
+| `redis.sentinel.master.sentinels` | `{sentinel}` | gauge | INFO sentinel `masterN:sentinels` — tag `master` |
 
 **Entity emitted** (the entity rail; the source is registered at startup):
 
