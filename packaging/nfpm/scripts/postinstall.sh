@@ -61,7 +61,9 @@ systemctl daemon-reload || true
 
 if [ "${fresh}" = 1 ] || [ "${migrated}" = 1 ]; then
     systemctl enable senhub-agent.service || true
-    systemctl start senhub-agent.service || true
+    # restart, not start: an edition switch on rpm leaves the replaced
+    # edition running (its stop is skipped, see preremove.sh).
+    systemctl restart senhub-agent.service || true
 else
     # Upgrade: pick up the new binary. A stopped service stays as the
     # operator left it.
