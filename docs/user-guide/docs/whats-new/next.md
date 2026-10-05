@@ -9,6 +9,7 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **`status` works on every install.** The agent now answers `senhub-agent status` on a local channel (a Unix socket in its state directory, readable by the service account and root only; a named pipe restricted to administrators on Windows), whether or not the HTTP output is enabled. Hosts installed before the HTTP output was on by default used to get a degraded view computed by the command itself. `status` asks the local channel first and falls back to the HTTP output. The channel is read-only: it sends the status and reads nothing. It reports probe health and failed outputs but not the per-probe metric counts, which only the HTTP cache holds.
 - **Linux host security signals in the `process` probe.** Three new
   machine-wide metrics on Linux: `senhub.system.kernel.open_files` (file
   handles allocated, from `/proc/sys/fs/file-nr`, to read against the
