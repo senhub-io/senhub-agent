@@ -87,25 +87,44 @@ func TestVersionJSON(t *testing.T) {
 	}
 }
 
+// binaryExposureWarning is the one finding that depends on where the test
+// binary sits rather than on the configuration: on Linux `config check`
+// warns when the running executable is not root-owned, and `go test`
+// builds it as the invoking user.
+const binaryExposureWarning = "can be modified by a non-root account"
+
 func TestConfigCheckJSONFreeTierIsClean(t *testing.T) {
 	path := copyExampleConfig(t, "example-config-free-tier.yaml")
 	var out bytes.Buffer
 	code := runConfigCheck([]string{"--json", path}, &out)
-	if code != cliexit.OK {
-		t.Fatalf("exit code = %d, want %d: the free tier is a supported setup, not a warning\n%s", code, cliexit.OK, out.String())
-	}
 	doc := decodeJSONDocument(t, out.String())
-	requireHeader(t, doc, "senhub.cli.config.check/v1", cliexit.OK)
+
 	found := false
+	environmental := 0
 	for _, f := range doc["findings"].([]any) {
 		m := f.(map[string]any)
-		if m["level"] == "info" && strings.Contains(m["message"].(string), "free tier") {
+		msg := m["message"].(string)
+		switch {
+		case m["level"] == "info" && strings.Contains(msg, "free tier"):
 			found = true
+		case m["level"] == "warn" && strings.Contains(msg, binaryExposureWarning):
+			environmental++
+		case m["level"] == "warn" || m["level"] == "error":
+			t.Errorf("the free tier is a supported setup, not a %s: %s", m["level"], msg)
 		}
 	}
 	if !found {
 		t.Errorf("the free-tier line is missing from findings: %v", doc["findings"])
 	}
+
+	wantCode := cliexit.OK
+	if environmental > 0 {
+		wantCode = cliexit.Warning
+	}
+	if code != wantCode {
+		t.Fatalf("exit code = %d, want %d\n%s", code, wantCode, out.String())
+	}
+	requireHeader(t, doc, "senhub.cli.config.check/v1", wantCode)
 }
 
 func TestConfigCheckJSONWarning(t *testing.T) {
