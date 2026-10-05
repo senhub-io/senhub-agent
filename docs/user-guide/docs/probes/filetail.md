@@ -169,6 +169,13 @@ silent; a real freeze lasts hours and is caught on the next window. Do
 not alert on `file_size - read_offset > 0`: that gap is rarely zero on a
 busy file.
 
+Give the rule a `for: 15m`. The two gauges go stale together, but a
+restart can leave one a sample behind the other for a moment; the hold
+absorbs that, and a real freeze lasts far longer. The rule also stays
+quiet across an agent upgrade, even where version labels are attached to
+every series: the old series stops with both its gauges frozen, so
+`delta(size)` is zero and the `and` keeps it silent.
+
 ## Metric reference
 
 Every metric this probe can emit. **Metric** is the OpenTelemetry name the
