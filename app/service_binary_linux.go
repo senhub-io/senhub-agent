@@ -10,7 +10,7 @@ import "os"
 // missing or unreadable unit means there is no managed service to skew
 // against, and `--version` must stay silent rather than guess.
 func installedServiceBinary() string {
-	unit, err := os.ReadFile(installedUnitPath)
+	unit, err := os.ReadFile(loadedUnitPath())
 	if err != nil {
 		return ""
 	}
@@ -37,7 +37,7 @@ func installedServiceBinary() string {
 // failure mode, silently reintroduced by the very command meant to fix
 // the skew.
 func syncServiceBinary(newBinary string) (string, error) {
-	unit, err := os.ReadFile(installedUnitPath)
+	unit, err := os.ReadFile(loadedUnitPath())
 	if err != nil {
 		return "", nil
 	}

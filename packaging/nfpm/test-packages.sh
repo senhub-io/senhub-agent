@@ -199,6 +199,8 @@ run_distro() {
     check "host agent key set (UUID, or sealed by the agent)" "grep -Eq '^  key: \"([0-9a-f-]{36}|\\\${secret:agent.key})\"' $CFG"
     check "auto_update disabled in packaged config" "grep -A1 '^auto_update:' $CFG | grep -q 'enabled: false'"
     check "senhub in adm (where the group exists)" "! getent group adm >/dev/null || id -nG senhub | tr ' ' '\\n' | grep -qx adm"
+    check "doctor reads the packaged unit" "senhub-agent doctor --json | tr -d '\\n ' | grep -q '\"id\":\"install.unit\",\"level\":\"ok\"'"
+    check "refresh-unit finds the packaged unit" "senhub-agent refresh-unit --yes 2>&1 | grep -q 'up to date'"
     check "doctor --json exit code is not 2" "senhub-agent doctor --json >/dev/null; rc=\$?; echo exit=\$rc; [ \$rc -ne 2 ]"
 
     # --- upgrade
