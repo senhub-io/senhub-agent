@@ -327,6 +327,31 @@ If this directory is not writable, logs fall back to the binary directory.
 
 Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
 
+### Install from packages
+
+The agent is also available as a `.deb` (Debian, Ubuntu) and an `.rpm` (RHEL, Rocky Linux, openSUSE) for amd64 and arm64. Download the file for your distribution and architecture, then install it with your package manager:
+
+```bash
+# Debian, Ubuntu
+sudo apt install ./senhub-agent_<version>_amd64.deb
+
+# RHEL, Rocky Linux, AlmaLinux
+sudo dnf install ./senhub-agent-<version>.x86_64.rpm
+
+# openSUSE, SLES
+sudo zypper install --allow-unsigned-rpm ./senhub-agent-<version>.x86_64.rpm
+```
+
+The package creates the `senhub` service user, installs the binary at `/usr/bin/senhub-agent` and the hardened `senhub-agent.service` unit, writes the default configuration to `/etc/senhub-agent/` with a key of its own for this host, and starts the service. It does not run `senhub-agent install`; do not run both.
+
+- **Upgrade**: install the newer file the same way. Your edits to the configuration are kept and the service restarts on the new binary.
+- **Version**: the package manager owns it. `auto_update` is `false` in the packaged configuration, so the agent never replaces itself; leave it that way.
+- **Removal**: `sudo apt remove senhub-agent` (or `dnf remove`, `zypper remove`) stops and disables the service and keeps `/etc/senhub-agent`, `/var/lib/senhub-agent` and the logs. `sudo apt purge senhub-agent` also deletes them, and the `senhub` user.
+
+- **Host already installed with `senhub-agent install`**: installing the package takes over. It stops the service, removes the unit in `/etc/systemd/system` and the binary in `/usr/local/bin` (a copy is kept as `/var/lib/senhub-agent/senhub-agent.pre-package`), and starts the packaged service. Your configuration, agent key, secrets and data are not touched. The reverse (going back from a package to `install`) is not supported: remove the package first, then install from the ZIP.
+
+Package repositories, with signed packages, are announced and not yet available: for now, install from the downloaded file.
+
 ## Installation Options
 
 The `install` command accepts the following options:

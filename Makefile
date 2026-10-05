@@ -218,6 +218,33 @@ package-linux: build-linux ## Create ZIP packages for Linux
 	@cd $(LINUX_ARM64_DIR) && zip -9 ../$(EXECUTABLE)-linux-arm64.zip $(EXECUTABLE)
 	@echo "$(GREEN)✅ Linux ZIP packages created$(NC)"
 
+# Linux .deb / .rpm packages (nFPM, pinned image). Local build only: no
+# signing, no repository. Output: dist/packages/.
+NFPM_IMAGE ?= goreleaser/nfpm:v2.41.1
+PACKAGE_ARCHES ?= amd64 arm64
+PACKAGES_DIR=$(DIST_DIR)/packages
+
+packages: build-linux ## Build .deb and .rpm for amd64 and arm64 into dist/packages/
+	@echo "$(GREEN)📦 Building Linux .deb/.rpm packages (version $(VERSION))...$(NC)"
+	@mkdir -p $(PACKAGES_DIR)/stage
+	@# The packaged unit is the canonical one with ExecStart pointing at /usr/bin:
+	@# a distro package must not write under /usr/local (see app/managed_binary.go).
+	@sed 's|^ExecStart=/usr/local/bin/|ExecStart=/usr/bin/|' packaging/systemd/senhub-agent.service > $(PACKAGES_DIR)/stage/senhub-agent.service
+	@grep -q '^ExecStart=/usr/bin/senhub-agent ' $(PACKAGES_DIR)/stage/senhub-agent.service || { echo "$(RED)unit ExecStart rewrite failed$(NC)"; exit 1; }
+	@for arch in $(PACKAGE_ARCHES); do \
+		case $$arch in amd64) rpmarch=x86_64;; arm64) rpmarch=aarch64;; esac; \
+		for fmt in deb rpm; do \
+			if [ $$fmt = deb ]; then out=$(PACKAGES_DIR)/$(EXECUTABLE)_$(VERSION)_$$arch.deb; \
+			else out=$(PACKAGES_DIR)/$(EXECUTABLE)-$(VERSION).$$rpmarch.rpm; fi; \
+			docker run --rm -v "$(CURDIR)":/work -w /work \
+				-e VERSION="$(VERSION)" -e ARCH=$$arch \
+				-e BIN=$(DIST_DIR)/linux-$$arch/$(EXECUTABLE) \
+				-e UNIT=$(PACKAGES_DIR)/stage/senhub-agent.service \
+				$(NFPM_IMAGE) package -f packaging/nfpm/nfpm.yaml -p $$fmt -t $$out || exit 1; \
+		done; \
+	done
+	@ls -la $(PACKAGES_DIR)/*.deb $(PACKAGES_DIR)/*.rpm
+
 package-darwin: build-darwin ## Create ZIP package for macOS
 	@echo "$(GREEN)📦 Creating macOS ZIP packages...$(NC)"
 	@cd $(DARWIN_AMD64_DIR) && zip -9 ../$(EXECUTABLE)-darwin-amd64.zip $(EXECUTABLE)
@@ -424,4 +451,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help
+.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help
