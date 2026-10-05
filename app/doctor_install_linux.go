@@ -14,9 +14,9 @@ import (
 func platformInstallProbe() installProbe {
 	return installProbe{
 		unit: func() (string, error) {
-			data, err := os.ReadFile(installedUnitPath)
+			data, err := os.ReadFile(loadedUnitPath())
 			if err != nil {
-				return "", fmt.Errorf("reading %s: %w", installedUnitPath, err)
+				return "", fmt.Errorf("reading %s: %w", loadedUnitPath(), err)
 			}
 			return string(data), nil
 		},
