@@ -87,11 +87,23 @@ func TestVersionJSON(t *testing.T) {
 	}
 }
 
-// binaryExposureWarning is the one finding that depends on where the test
-// binary sits rather than on the configuration: on Linux `config check`
-// warns when the running executable is not root-owned, and `go test`
-// builds it as the invoking user.
-const binaryExposureWarning = "can be modified by a non-root account"
+// environmentalWarnings are the auto-update preflight findings that depend
+// on where the test binary sits rather than on the configuration: on
+// Linux the executable `go test` builds is not root-owned, on Windows it is
+// not writable by the process that runs it.
+var environmentalWarnings = []string{
+	"can be modified by a non-root account",
+	"is not writable by this process",
+}
+
+func isEnvironmentalWarning(msg string) bool {
+	for _, w := range environmentalWarnings {
+		if strings.Contains(msg, w) {
+			return true
+		}
+	}
+	return false
+}
 
 func TestConfigCheckJSONFreeTierIsClean(t *testing.T) {
 	path := copyExampleConfig(t, "example-config-free-tier.yaml")
@@ -107,7 +119,7 @@ func TestConfigCheckJSONFreeTierIsClean(t *testing.T) {
 		switch {
 		case m["level"] == "info" && strings.Contains(msg, "free tier"):
 			found = true
-		case m["level"] == "warn" && strings.Contains(msg, binaryExposureWarning):
+		case m["level"] == "warn" && isEnvironmentalWarning(msg):
 			environmental++
 		case m["level"] == "warn" || m["level"] == "error":
 			t.Errorf("the free tier is a supported setup, not a %s: %s", m["level"], msg)
