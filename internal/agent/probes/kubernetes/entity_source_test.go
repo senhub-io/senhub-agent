@@ -9,7 +9,8 @@ import (
 
 func TestK8sEntitySource_MonitorsEdge(t *testing.T) {
 	src := newK8sEntitySource("https://api.cluster.local:6443")
-	wantID := "kubernetes://https://api.cluster.local:6443"
+	src.setClusterIdentity("https://api.cluster.local:6443", "uid-kube-system")
+	wantID := "uid-kube-system"
 
 	t.Run("emitted with agent id, ToID matches identity", func(t *testing.T) {
 		agentstate.SetAgentInstanceID("agent-key")
@@ -49,34 +50,46 @@ func TestK8sEntitySource_MonitorsEdge(t *testing.T) {
 	})
 }
 
-// TestK8sEntitySource_LocalRunsOn exercises the runs_on wiring. The cluster id is
-// "kubernetes://<endpoint>", which embeds the API server host, so the LocalRunsOn
-// collapse guard refuses the edge even for a loopback API server — a
-// loopback-derived id is not host-unique and must not anchor a host. A remote
-// API server yields no edge either. The probe is wired for consistency; the gate
-// guarantees correctness.
+// TestK8sEntitySource_LocalRunsOn: the cluster id is the kube-system UID, not
+// an address, so a loopback API server anchors the cluster to this host; a
+// remote API server yields no edge.
 func TestK8sEntitySource_LocalRunsOn(t *testing.T) {
 	agentstate.SetAgentInstanceID("agent-key")
 	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
 
-	// Loopback API server, but the id embeds "127.0.0.1" — the guard refuses runs_on.
-	local := newK8sEntitySource("127.0.0.1:6443")
-	local.hostID = "H"
-	obs, _ := local.Observe()
-	for _, ty := range k8sRelTypes(obs) {
-		if ty == "runs_on" {
-			t.Errorf("loopback-embedding id must NOT emit runs_on (collapse guard); relations=%v", k8sRelTypes(obs))
+	hasRunsOn := func(endpoint string) bool {
+		src := newK8sEntitySource(endpoint)
+		src.setClusterIdentity(endpoint, "uid-1")
+		src.hostID = "H"
+		obs, _ := src.Observe()
+		for _, ty := range k8sRelTypes(obs) {
+			if ty == "runs_on" {
+				return true
+			}
 		}
+		return false
 	}
+	if !hasRunsOn("127.0.0.1:6443") {
+		t.Error("loopback API server must anchor the cluster to this host")
+	}
+	if hasRunsOn("api.cluster.local:6443") {
+		t.Error("remote cluster must NOT emit runs_on")
+	}
+}
 
-	// Remote API server — no runs_on.
-	remote := newK8sEntitySource("api.cluster.local:6443")
-	remote.hostID = "H"
-	robs, _ := remote.Observe()
-	for _, ty := range k8sRelTypes(robs) {
-		if ty == "runs_on" {
-			t.Errorf("remote cluster must NOT emit runs_on; relations=%v", k8sRelTypes(robs))
-		}
+// TestK8sEntitySource_NoUIDNoClusterEntity: an unreadable kube-system UID
+// means no cluster entity and no edge: the address is never an identity.
+func TestK8sEntitySource_NoUIDNoClusterEntity(t *testing.T) {
+	agentstate.SetAgentInstanceID("agent-key")
+	t.Cleanup(func() { agentstate.SetAgentInstanceID("") })
+
+	src := newK8sEntitySource("api.cluster.local:6443")
+	obs, ok := src.Observe()
+	if !ok {
+		t.Fatal("Observe() ok=false")
+	}
+	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
+		t.Errorf("no UID must yield no cluster entity or edge, got %+v", obs)
 	}
 }
 

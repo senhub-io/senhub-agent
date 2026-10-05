@@ -483,7 +483,45 @@ func (p *FileTailProbe) startTail(file string) error {
 	}
 
 	go p.consume(file, ts, offset, fp, reopened)
+	p.verifyStartedTail(file, ts)
 	return nil
+}
+
+// startupVerifyDelay spaces the two looks verifyStartedTail takes at a new
+// tail. It is short against the stall grace on purpose: the case it covers
+// is a line written while the library has not yet registered its change
+// watch, which the rescan-based check would only repair a minute later.
+const startupVerifyDelay = time.Second
+
+// verifyStartedTail covers the window in which nxadm/tail cannot see a
+// write: it registers its change watch only after its first read reaches
+// the end of the file, and a line appended in between raises no event, so
+// on a quiet log it waits for the next write however far away. The tail is
+// looked at twice, startupVerifyDelay apart; a file that grew while the
+// tail read nothing over both looks is restarted at the offset already
+// read, so nothing is replayed and nothing is lost. One timer per tail
+// start, none while the tail runs.
+func (p *FileTailProbe) verifyStartedTail(file string, ts *tailState) {
+	time.AfterFunc(startupVerifyDelay, func() {
+		if p.isStopped() {
+			return
+		}
+		ts.divergence(file)
+		time.AfterFunc(startupVerifyDelay, func() {
+			if p.isStopped() {
+				return
+			}
+			if reason, resume := ts.divergence(file); reason != "" && resume {
+				p.restartStalledTail(file, ts, reason, resume)
+			}
+		})
+	})
+}
+
+func (p *FileTailProbe) isStopped() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stopped
 }
 
 // tailState is what the probe knows about one running tail beyond the

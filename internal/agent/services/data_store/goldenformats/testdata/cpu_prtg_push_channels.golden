@@ -26,5 +26,6 @@
   "cpu_system",
   "cpu_usage_total",
   "cpu_user",
-  "system_time"
+  "system_time",
+  "system_uptime"
 ]

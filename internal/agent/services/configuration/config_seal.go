@@ -1,6 +1,8 @@
 package configuration
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +27,10 @@ import (
 type sealState struct {
 	prov secret.Provider
 	seen map[string]sealSeen
+	// written holds, per file, the exact bytes this seal committed, so a
+	// rollback can tell an untouched file (restore the backup byte for
+	// byte) from one an operator edited since (undo only the seal).
+	written map[string][]byte
 }
 
 type sealSeen struct {
@@ -32,7 +38,51 @@ type sealSeen struct {
 	where string
 }
 
-func newSealState() *sealState { return &sealState{seen: map[string]sealSeen{}} }
+func newSealState() *sealState {
+	return &sealState{seen: map[string]sealSeen{}, written: map[string][]byte{}}
+}
+
+// rollbackEdit returns the edit that undoes this seal in one file. A file
+// still holding exactly what the seal wrote goes back to its pre-seal
+// backup. A file changed since (an operator saved it meanwhile) keeps
+// that change: only the references this seal created are put back to
+// their plaintext, so restoring never overwrites a hand edit with the
+// whole pre-edit backup.
+func (st *sealState) rollbackEdit(path, backupPath string) func([]byte) ([]byte, error) {
+	return func(data []byte) ([]byte, error) {
+		if w, ok := st.written[path]; ok && bytes.Equal(data, w) {
+			return os.ReadFile(backupPath) // #nosec G304 - the seal's own backup
+		}
+		var doc yaml.Node
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("parsing YAML: %w", err)
+		}
+		if st.unsealNodes(&doc) == 0 {
+			return nil, nil
+		}
+		return marshalNode(&doc)
+	}
+}
+
+// unsealNodes puts back the plaintext of every reference this seal wrote
+// and returns how many it replaced.
+func (st *sealState) unsealNodes(n *yaml.Node) int {
+	count := 0
+	if n.Kind == yaml.ScalarNode {
+		for key, seen := range st.seen {
+			if n.Value == "${secret:"+key+"}" {
+				n.SetString(seen.value)
+				count++
+				break
+			}
+		}
+		return count
+	}
+	for _, c := range n.Content {
+		count += st.unsealNodes(c)
+	}
+	return count
+}
 
 // provider lazily resolves the write backend on first use, so a config with no
 // inline secret never initialises a store.
@@ -147,12 +197,11 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	restore := func() []string {
 		var failures []string
 		for _, b := range backups {
-			data, e := os.ReadFile(b.backupPath)
-			if e != nil {
+			if _, e := os.Stat(b.backupPath); e != nil {
 				failures = append(failures, fmt.Sprintf("%s (reading backup %s: %v)", b.path, b.backupPath, e))
 				continue
 			}
-			if e := atomicWriteFile(b.path, data, fileModeOr(b.path, 0o600)); e != nil {
+			if _, e := rewriteFile(b.path, st.rollbackEdit(b.path, b.backupPath)); e != nil {
 				failures = append(failures, fmt.Sprintf("%s (restoring: %v)", b.path, e))
 				continue
 			}
@@ -165,6 +214,9 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	// only claims "backups restored" when every backup wrote back; otherwise it
 	// names the files left half-sealed and logs at Error.
 	finalizeRestore := func(base error) error {
+		if log != nil && errors.Is(base, ErrConfigChangedConcurrently) {
+			log.Warn().Err(base).Msg("Configuration file kept changing during the seal; nothing was written for it, the seal is retried at the next start")
+		}
 		failures := restore()
 		if len(failures) == 0 {
 			return fmt.Errorf("%w (backups restored)", base)
@@ -304,40 +356,41 @@ func sealTargets(configPath, baseDir string) ([]string, error) {
 // something was sealed) backs the file up and writes it. Returns the count and
 // the backup path (empty when nothing changed).
 func sealOneFile(path string, st *sealState) (int, string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, "", err
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return 0, "", fmt.Errorf("parsing YAML: %w", err)
-	}
-	if len(doc.Content) == 0 {
-		return 0, "", nil
-	}
+	var sealed int
+	var backupPath string
+	_, err := rewriteFile(path, func(data []byte) ([]byte, error) {
+		sealed, backupPath = 0, ""
+		var doc yaml.Node
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("parsing YAML: %w", err)
+		}
+		if len(doc.Content) == 0 {
+			return nil, nil
+		}
+		n, err := sealDocument(&doc, st)
+		sealed = n
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, nil
+		}
 
-	sealed, err := sealDocument(&doc, st)
-	if err != nil {
-		return sealed, "", err
-	}
-	if sealed == 0 {
-		return 0, "", nil
-	}
+		// Backup BEFORE writing.
+		bp := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102-150405"))
+		if err := os.WriteFile(bp, data, 0o600); err != nil {
+			return nil, fmt.Errorf("writing backup: %w", err)
+		}
+		backupPath = bp
 
-	// Backup BEFORE writing.
-	backupPath := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102-150405"))
-	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
-		return sealed, "", fmt.Errorf("writing backup: %w", err)
-	}
-
-	out, err := marshalNode(&doc)
-	if err != nil {
-		return sealed, backupPath, fmt.Errorf("marshalling sealed YAML: %w", err)
-	}
-	if err := atomicWriteFile(path, out, fileModeOr(path, 0o600)); err != nil {
-		return sealed, backupPath, fmt.Errorf("writing sealed file: %w", err)
-	}
-	return sealed, backupPath, nil
+		out, err := marshalNode(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("marshalling sealed YAML: %w", err)
+		}
+		st.written[path] = out
+		return out, nil
+	})
+	return sealed, backupPath, err
 }
 
 // sealDocument routes by layout: a probes.d sequence, a monolithic map (with a
@@ -530,42 +583,44 @@ func marshalNode(doc *yaml.Node) ([]byte, error) {
 // the license lives in clear in the license.jwt sidecar (config_license.go),
 // not in this file. Returns the count (0 or 1) and the backup path.
 func sealAgentKeyInFile(path string, st *sealState) (int, string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, "", err
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return 0, "", fmt.Errorf("parsing YAML: %w", err)
-	}
-	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return 0, "", nil
-	}
-	agent := mapValue(doc.Content[0], "agent")
-	if agent == nil || agent.Kind != yaml.MappingNode {
-		return 0, "", nil
-	}
-	keyNode := mapValue(agent, "key")
-	if keyNode == nil || keyNode.Kind != yaml.ScalarNode || !isPlaintextScalar(keyNode.Value) {
-		return 0, "", nil
-	}
-	ref, err := st.sealValue("agent.key", keyNode.Value, "agent.key")
-	if err != nil {
-		return 0, "", err
-	}
-	backupPath := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102-150405"))
-	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
-		return 1, "", fmt.Errorf("writing backup: %w", err)
-	}
-	keyNode.SetString(ref)
-	out, err := marshalNode(&doc)
-	if err != nil {
-		return 1, backupPath, fmt.Errorf("marshalling: %w", err)
-	}
-	if err := atomicWriteFile(path, out, fileModeOr(path, 0o600)); err != nil {
-		return 1, backupPath, fmt.Errorf("writing file: %w", err)
-	}
-	return 1, backupPath, nil
+	var count int
+	var backupPath string
+	_, err := rewriteFile(path, func(data []byte) ([]byte, error) {
+		count, backupPath = 0, ""
+		var doc yaml.Node
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("parsing YAML: %w", err)
+		}
+		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+			return nil, nil
+		}
+		agent := mapValue(doc.Content[0], "agent")
+		if agent == nil || agent.Kind != yaml.MappingNode {
+			return nil, nil
+		}
+		keyNode := mapValue(agent, "key")
+		if keyNode == nil || keyNode.Kind != yaml.ScalarNode || !isPlaintextScalar(keyNode.Value) {
+			return nil, nil
+		}
+		ref, err := st.sealValue("agent.key", keyNode.Value, "agent.key")
+		if err != nil {
+			return nil, err
+		}
+		count = 1
+		bp := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102-150405"))
+		if err := os.WriteFile(bp, data, 0o600); err != nil {
+			return nil, fmt.Errorf("writing backup: %w", err)
+		}
+		backupPath = bp
+		keyNode.SetString(ref)
+		out, err := marshalNode(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("marshalling: %w", err)
+		}
+		st.written[path] = out
+		return out, nil
+	})
+	return count, backupPath, err
 }
 
 // setRootConfigVersion sets (or adds) the top-level config_version scalar in the
@@ -573,35 +628,30 @@ func sealAgentKeyInFile(path string, st *sealState) (int, string, error) {
 // NEVER lowers an existing value — a config already stamped newer than v is left
 // untouched, so the seal cannot downgrade a rolled-back install's version.
 func setRootConfigVersion(path string, v int) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return err
-	}
-	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return nil // not a mapping root: nothing to stamp
-	}
-	root := doc.Content[0]
-	if cv := mapValue(root, "config_version"); cv != nil {
-		if existing, aerr := strconv.Atoi(strings.TrimSpace(cv.Value)); aerr == nil && existing > v {
-			return nil // never downgrade a newer config
+	_, err := rewriteFile(path, func(data []byte) ([]byte, error) {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, err
 		}
-		cv.Kind = yaml.ScalarNode
-		cv.Tag = "!!int"
-		cv.Style = 0
-		cv.Value = strconv.Itoa(v)
-	} else {
-		root.Content = append(root.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "config_version"},
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)},
-		)
-	}
-	out, err := marshalNode(&doc)
-	if err != nil {
-		return err
-	}
-	return atomicWriteFile(path, out, fileModeOr(path, 0o600))
+		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+			return nil, nil // not a mapping root: nothing to stamp
+		}
+		root := doc.Content[0]
+		if cv := mapValue(root, "config_version"); cv != nil {
+			if existing, aerr := strconv.Atoi(strings.TrimSpace(cv.Value)); aerr == nil && existing > v {
+				return nil, nil // never downgrade a newer config
+			}
+			cv.Kind = yaml.ScalarNode
+			cv.Tag = "!!int"
+			cv.Style = 0
+			cv.Value = strconv.Itoa(v)
+		} else {
+			root.Content = append(root.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "config_version"},
+				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)},
+			)
+		}
+		return marshalNode(&doc)
+	})
+	return err
 }

@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -61,6 +62,8 @@ type unifiProbe struct {
 	client       *http.Client
 
 	entitySource *unifiEntitySource
+
+	identityOnce sync.Once
 }
 
 // NewUnifiProbe builds a unifi probe from its raw params block.
@@ -200,12 +203,45 @@ func (p *unifiProbe) Collect() ([]data_store.DataPoint, error) {
 		return emitUp(0), nil
 	}
 
+	p.resolveControllerIdentity()
 	p.entitySource.markReachable(true)
 	points = append(points, p.buildNetworkPoints(health, baseTags, now)...)
 	points = append(points, p.buildDevicePoints(devices, now)...)
 	points = append(points, p.buildClientPoints(clients, baseTags, now)...)
 
 	return emitUp(1), nil
+}
+
+// sysinfoEnvelope is the subset of stat/sysinfo that identifies the
+// controller. anonymous_controller_id is the UUID the controller generates for
+// itself; it is readable by a read-only administrator.
+type sysinfoEnvelope struct {
+	Data []struct {
+		ControllerID string `json:"anonymous_controller_id"`
+	} `json:"data"`
+}
+
+// resolveControllerIdentity reads the controller's own UUID until it succeeds.
+// A failure is not an error of the cycle: the entity then falls back to the
+// host-scoped form for a local controller, or is not emitted for a remote one,
+// and that is explained once.
+func (p *unifiProbe) resolveControllerIdentity() {
+	var env sysinfoEnvelope
+	err := p.getJSON(p.sitePath("/stat/sysinfo"), &env)
+	if err == nil && len(env.Data) > 0 && env.Data[0].ControllerID != "" {
+		p.entitySource.setControllerID(env.Data[0].ControllerID)
+		return
+	}
+	if err != nil {
+		p.moduleLogger.Debug().Err(err).Msg("unifi controller UUID not readable")
+	}
+	p.identityOnce.Do(func() {
+		if p.entitySource.isLocalController() {
+			p.moduleLogger.Info().Msg("unifi: the controller UUID is not readable by this account; the controller entity is keyed on this host (unifi@<host.id>)")
+			return
+		}
+		p.moduleLogger.Info().Str("endpoint", p.cfg.Endpoint).Msg("unifi: the controller is remote and its UUID is not readable by this account; no controller entity is emitted because there is no identifiable key (use an account that can read stat/sysinfo)")
+	})
 }
 
 // login posts credentials and lets the cookie jar capture the session.

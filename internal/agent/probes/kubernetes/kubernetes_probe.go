@@ -245,7 +245,7 @@ func (p *KubernetesProbe) OnStart(_ chan struct{}) error {
 	// cluster reports about itself, not on the address we happened to dial.
 	if uid, err := resolveClusterIdentity(cs, 10*time.Second); err != nil {
 		p.moduleLogger.Warn().Err(err).
-			Msg("kubernetes: could not read the kube-system namespace UID; the cluster entity falls back to an address-derived identity, which re-keys on any API endpoint change and collides between clusters sharing an address. Grant get on namespaces/kube-system to fix it")
+			Msg("kubernetes: could not read the kube-system namespace UID; no cluster entity is emitted (an address-derived identity would re-key on any API endpoint change and collide between clusters sharing an address). Grant get on namespaces/kube-system to fix it")
 	} else {
 		p.clusterUID = uid
 		p.moduleLogger.Info().Str("k8s.cluster.uid", uid).Msg("kubernetes: cluster identity resolved")

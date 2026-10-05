@@ -42,7 +42,7 @@ type probeWriteResponse struct {
 // that is invalid or taken, a params map the schema or the constructor
 // rejects, and the legacy layout.
 func (h *HTTPSyncStrategy) handleProbeCreate(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
+	_, ok := h.authManager.AuthenticateAndExtract(w, r)
 	if !ok {
 		return
 	}
@@ -50,7 +50,7 @@ func (h *HTTPSyncStrategy) handleProbeCreate(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	ps, warnings, ok := h.checkProbeWrite(w, agentKey, req, nil)
+	ps, warnings, ok := h.checkProbeWrite(w, req, nil)
 	if !ok {
 		return
 	}
@@ -72,7 +72,7 @@ func (h *HTTPSyncStrategy) handleProbeCreate(w http.ResponseWriter, r *http.Requ
 // handleProbeUpdate rewrites a managed fragment. The name in the path is
 // the identity; the body may carry it too and must then match.
 func (h *HTTPSyncStrategy) handleProbeUpdate(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
+	_, ok := h.authManager.AuthenticateAndExtract(w, r)
 	if !ok {
 		return
 	}
@@ -97,7 +97,7 @@ func (h *HTTPSyncStrategy) handleProbeUpdate(w http.ResponseWriter, r *http.Requ
 	if req.Enabled == nil && found {
 		req.Enabled = existing.Enabled
 	}
-	ps, warnings, ok := h.checkProbeWrite(w, agentKey, req, stored)
+	ps, warnings, ok := h.checkProbeWrite(w, req, stored)
 	if !ok {
 		return
 	}
@@ -151,13 +151,13 @@ func (h *HTTPSyncStrategy) decodeProbeWrite(w http.ResponseWriter, r *http.Reque
 // the form left out are taken back from the file: a required secret
 // already in the store is not missing because the form did not resend
 // the reference it only ever displayed as "Stored".
-func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, agentKey string, req probeWriteRequest, stored map[string]interface{}) (spec.Probe, []string, bool) {
+func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, req probeWriteRequest, stored map[string]interface{}) (spec.Probe, []string, bool) {
 	ps, has := spec.For(req.Type)
 	if !has {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("probe type %q is not in the catalogue of this agent", req.Type))
 		return ps, nil, false
 	}
-	if verdict := annotateCatalogEntry(ps, h.currentLicense(), agentKey); !verdict.Authorized {
+	if verdict := annotateCatalogEntry(ps, h.currentLicense(), h.licenseAgentKey()); !verdict.Authorized {
 		writeJSONError(w, http.StatusForbidden, fmt.Sprintf("probe type %q: %s", req.Type, verdict.Reason))
 		return ps, nil, false
 	}

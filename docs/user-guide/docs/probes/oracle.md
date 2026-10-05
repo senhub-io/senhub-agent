@@ -86,6 +86,14 @@ deadlock counts. Metric set targets parity with the community `oracledb_exporter
 - When the database is unreachable or refuses the login, the probe
   publishes `senhub.db.up = 0` and logs the reason (`ORA-01017` for a
   wrong password, `ORA-12514` for a service the listener does not know).
+- Oracle Database 23ai accepts passwords of up to 1024 characters, where
+  earlier releases stop at 30. The probe logs in with either: `go-ora`
+  does not announce long password support on its own, and the probe adds
+  that announcement, so a 23ai user with a generated 40 character
+  password connects like any other. No server setting is needed.
+  Before this was handled, such a login failed with `ORA-01017` while
+  SQL\*Plus accepted the same credentials. Tested against Oracle
+  Database 23ai Free (service `FREEPDB1`).
 - No Oracle client (OCI) installation is needed — `go-ora` speaks the Oracle wire protocol directly.
 - The probe connects using the service name, not the SID.
 
