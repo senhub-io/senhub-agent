@@ -11,6 +11,13 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Two agents on one host no longer describe each other twice.** Each agent
+  writes its own `service.instance.id` to `instance.id` in its state
+  directory (`/var/lib/senhub-agent`, `C:\ProgramData\SenHub`), readable by
+  other accounts only when the agent key is a random UUID, and by its owner
+  alone otherwise. An agent that finds another agent's process listening on
+  the host reuses that id instead of creating a second `service.instance`.
+  When the file cannot be read, the previous behaviour applies.
 - **Redfish: the whole probe now reaches Prometheus and OTLP.** 100 of the
   139 metrics the probe can emit had no definition and were dropped by
   those outputs (processors, memory modules, network, power, firmware,
@@ -41,6 +48,15 @@ Changes land here as they are merged to `dev`.
   new.
 ## Before you upgrade
 
+- **Three entity identities change once.** The `unifi`, `kubernetes` and
+  `systemd` probes no longer key their entities on an address or a hostname.
+  A UniFi controller is identified by the UUID it reports about itself (or
+  `unifi@<host.id>` when it runs on the agent's host); a controller that is
+  remote and whose UUID the account cannot read has no entity. A Kubernetes
+  cluster is identified by its `kube-system` namespace UID alone, so a
+  cluster whose UID is unreadable has no cluster entity. A systemd unit is
+  `systemd://<host.id>/<unit>`. The old entities are retired once: a
+  consumer sees one disappearance, then the new identity.
 - **Zabbix counter items become rates.** In the generated templates, every
   item built from a cumulative counter (network bytes and packets, disk
   I/O, CPU time, request totals) now carries the Change per second
