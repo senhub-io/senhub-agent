@@ -59,8 +59,12 @@ Trade-offs, to be accepted knowingly:
   world-readable, not root-only files. The namespace must allow the
   `privileged` Pod Security level (the `baseline` level forbids hostPath
   and host namespaces).
-- The HTTP output listens on the node's address: `http.port` must be
-  free on that node.
+- The pods use the node's network. In a DaemonSet the HTTP output
+  listens on the node's loopback (`http.bind` empty) so that the agent
+  API is not served in clear on every node address; the kubelet probes
+  follow it. To open it, and turn TLS on, set `config.strategies.http`
+  (`bind_address`, `tls.enabled: true`), see the user documentation.
+  `http.port` must be free on the node.
 - With host monitoring the workload is a **DaemonSet**: one agent per
   node, on the nodes it tolerates (not the control plane by default; see
   `tolerations`), updated one node at a time. `kind: Deployment` keeps
@@ -207,7 +211,7 @@ No `watch`, no Secrets, no ConfigMaps, no write.
 | `config.strategies` | `{}` | Output fragments, `strategies.d/60-<key>.yaml` |
 | `config.agent` | `{}` | A whole `agent.yaml`; disables the `env` path |
 | `http.port` | `8080` | Port of the HTTP output |
-| `http.bind` | `0.0.0.0` | Address it listens on |
+| `http.bind` | `""` | Address it listens on. Empty: `127.0.0.1` for a DaemonSet, `0.0.0.0` for a Deployment |
 | `kubernetesProbe.enabled` | `false` | Adds a `kubernetes` probe for this cluster |
 | `kubernetesProbe.name` | `cluster` | Its name |
 | `kubernetesProbe.params` | `{}` | Its parameters (interval, namespaces, collect) |

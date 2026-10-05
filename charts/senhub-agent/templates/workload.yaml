@@ -180,7 +180,7 @@ spec:
             - name: SENHUB_HTTP_PORT
               value: {{ .Values.http.port | quote }}
             - name: SENHUB_HTTP_BIND
-              value: {{ .Values.http.bind | quote }}
+              value: {{ include "senhub-agent.httpBind" . | quote }}
             {{- with (include "senhub-agent.entrypointEnv" . | fromYamlArray) }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -204,15 +204,15 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.startupProbe }}
           startupProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $)) | nindent 12 }}
           {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $)) | nindent 12 }}
           {{- end }}
           {{- with .Values.readinessProbe }}
           readinessProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $)) | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: config
