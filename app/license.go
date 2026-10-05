@@ -11,9 +11,11 @@ import (
 	"github.com/alexflint/go-arg"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v2"
+
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/license"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // handleLicenseCommand handles the license subcommand
@@ -37,14 +39,14 @@ func handleLicenseCommand() {
 	if err != nil {
 		if errors.Is(err, arg.ErrHelp) {
 			parser.WriteHelp(os.Stdout)
-			os.Exit(0)
+			os.Exit(cliexit.OK)
 		}
 		// A parse error is a diagnostic, not data: route the cause and the
 		// usage to stderr with the unified "Error:" prefix so piped callers
 		// see the failure rather than receiving usage text on stdout.
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		parser.WriteUsage(os.Stderr)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	// Handle subcommands
@@ -59,7 +61,7 @@ func handleLicenseCommand() {
 		handleLicenseRemove(cmd.Remove)
 	default:
 		parser.WriteHelp(os.Stdout)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 }
 
@@ -104,7 +106,7 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	validatedLicense, err := validator.ValidateLicense(args.LicenseCode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Invalid license code: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	// Show license information
@@ -137,7 +139,7 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 		// for a different agent; a customer or unbound licence is accepted.
 		fmt.Fprintf(os.Stderr, "Error: this licence is issued for another agent (%q); this agent is %q.\n", validatedLicense.Subject, agentKey)
 		fmt.Fprintf(os.Stderr, "Use your customer licence, or one issued for this agent.\n")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	} else {
 		switch {
 		case validatedLicense.Subject == "":
@@ -209,7 +211,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	validatedLicense, err := validator.ValidateLicense(effectiveLicense)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Invalid license in config: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	fmt.Println("Current License Information")
