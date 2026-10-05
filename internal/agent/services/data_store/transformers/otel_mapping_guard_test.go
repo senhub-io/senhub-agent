@@ -140,6 +140,7 @@ var allowedOtelBaseUnits = map[string]bool{
 	"W":   true,
 	"A":   true, // amperes (UCUM)
 	"V":   true,
+	"Hz":  true, // frequency (UCUM)
 	"dBm": true,
 	"d":   true,
 	"h":   true,

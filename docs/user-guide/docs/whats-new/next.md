@@ -11,6 +11,24 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Redfish: the whole probe now reaches Prometheus and OTLP.** 100 of the
+  139 metrics the probe can emit had no definition and were dropped by
+  those outputs (processors, memory modules, network, power, firmware,
+  event-log counters, vendor storage readings). They are now declared with
+  OTel names, units and types, and a test fails when the probe starts to
+  emit a name that has none. PRTG channel names are unchanged. Memory
+  modules, adapters, ports and cache levels also become separate series on
+  the pull sinks instead of overwriting each other.
+- **Redfish: `collections` is validated and says what it turns off.** The
+  list still replaces the default set, but an unknown name or an empty list
+  now stops the probe at load with the accepted values, and the start-up
+  log names the default subsystems the list disabled. A configuration that
+  lists the six defaults is unchanged.
+- **Redfish: names keep the BMC's own text.** `hw.name` and the other
+  name attributes in OTLP, Prometheus and Zabbix are no longer stripped of
+  `, ; ( ) [ ] { } < > | \ " ' ` # & ? =`. PRTG channel names and URL
+  filters keep their cleaned form.
+
 - **Linux host security signals in the `process` probe.** Three new
   machine-wide metrics on Linux: `senhub.system.kernel.open_files` (file
   handles allocated, from `/proc/sys/fs/file-nr`, to read against the

@@ -55,7 +55,7 @@ type configuredProbesResponse struct {
 // the metric cache, which could only name probes that had emitted
 // something and knew nothing about a probe that failed to start.
 func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http.Request) {
-	agentKey, ok := h.authManager.AuthenticateAndExtract(w, r)
+	_, ok := h.authManager.AuthenticateAndExtract(w, r)
 	if !ok {
 		return
 	}
@@ -121,7 +121,7 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 		}
 		entry.HasSchema = hasSpec
 		entry.Interval = intervalOf(p.Params, known.DefaultInterval)
-		verdict := annotateCatalogEntry(known, lic, agentKey)
+		verdict := annotateCatalogEntry(known, lic, h.licenseAgentKey())
 		entry.Tier, entry.Authorized, entry.Reason = verdict.Tier, verdict.Authorized, verdict.Reason
 		out = append(out, entry)
 	}
