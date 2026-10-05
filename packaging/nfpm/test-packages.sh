@@ -2,14 +2,19 @@
 # Install / upgrade / removal proof for the .deb and .rpm packages, on real
 # distributions, with systemd as PID 1 in a privileged container.
 #
-# Usage: packaging/nfpm/test-packages.sh [distro...]
-#   distro: debian12 ubuntu2204 ubuntu2404 rocky9 leap156 (default: all)
+# Usage: packaging/nfpm/test-packages.sh [step...]
+#   step: lint versions debian12 ubuntu2204 ubuntu2404 rocky9 leap156
+#         (default: all). `lint` runs lintian and rpmlint, `versions` proves
+#         the prerelease ordering with dpkg and rpm.
 # Env:
 #   ARCH  amd64 | arm64 (default: the docker host architecture, so that the
 #         containers run natively)
 #   V1/V2 versions of the first and the upgraded build (default 0.6.2 / 0.6.3)
 #
-# Builds both versions with `make packages` first (needs docker for nFPM).
+# Builds with `make packages` first (needs docker for nFPM): the oss edition
+# at V1 and V2, then the full edition at V2. The full edition is packaged
+# from the same binary as the oss one here (what the enterprise build
+# supplies in production): it is the switch logic that is under test.
 set -u
 
 cd "$(dirname "$0")/../.."
@@ -92,9 +97,13 @@ wait_sealed() {
     check "first-start sealing settled" "grep -q 'secret:agent.key' $CFG"
 }
 
-pkg_file() { # version
-    if [ "$FMT" = deb ]; then echo "senhub-agent_$1_${ARCH}.deb"
-    else echo "senhub-agent-$1.${RPMARCH}.rpm"; fi
+# Package form of a version: the first hyphen becomes a tilde.
+pkg_version() { echo "$1" | sed 's/-/~/'; }
+
+pkg_file() { # version [name]
+    local pv; pv=$(pkg_version "$1")
+    if [ "$FMT" = deb ]; then echo "${2:-senhub-agent-oss}_${pv}-1_${ARCH}.deb"
+    else echo "${2:-senhub-agent-oss}-${pv}-1.${RPMARCH}.rpm"; fi
 }
 
 install_cmd() { # file
@@ -113,11 +122,11 @@ upgrade_cmd() { # file
     esac
 }
 
-remove_cmd() {
+remove_cmd() { # [package]
     case "$DISTRO" in
-        debian12|ubuntu*) echo "dpkg -r senhub-agent" ;;
-        rocky9) echo "dnf remove -y -q senhub-agent" ;;
-        leap156) echo "zypper --non-interactive -q remove senhub-agent" ;;
+        debian12|ubuntu*) echo "dpkg -r ${1:-senhub-agent-oss}" ;;
+        rocky9) echo "dnf remove -y -q ${1:-senhub-agent-oss}" ;;
+        leap156) echo "zypper --non-interactive -q remove ${1:-senhub-agent-oss}" ;;
     esac
 }
 
@@ -167,6 +176,75 @@ run_migration() {
     key2=$(x "/usr/bin/senhub-agent license key" 2>/dev/null | tail -1)
     check "same agent key" "[ '$key1' = '$key2' ]"
     cleanup
+}
+
+installed_cmd() { # package
+    if [ "$FMT" = deb ]; then echo "dpkg-query -W -f='\${db:Status-Abbrev}' $1 2>/dev/null | grep -q '^ii'"
+    else echo "rpm -q $1 >/dev/null 2>&1"; fi
+}
+
+# oss -> full -> oss, in place: configuration, agent key and data stay, the
+# service comes back on the new package.
+run_switch() {
+    local tag=$1 oss1 oss2 full2 key1 key2 pid1 pid2
+    oss1=$(pkg_file "$V1"); oss2=$(pkg_file "$V2"); full2=$(pkg_file "$V2" senhub-agent)
+    echo "  edition switch oss -> full -> oss"
+    start_container "$tag"
+    check "oss installs" "$(install_cmd "$oss1")"
+    wait_active; wait_sealed
+    x "echo '$MARK' >> $CFG; echo data > /var/lib/senhub-agent/marker; chown senhub /var/lib/senhub-agent/marker"
+    key1=$(x "/usr/bin/senhub-agent license key" 2>/dev/null | tail -1)
+    check "agent key readable before" "[ -n '$key1' ]"
+    pid1=$(x "systemctl show -p MainPID --value senhub-agent")
+
+    check "full installs over oss" "$(install_cmd "$full2")"
+    wait_active; check "service active" "systemctl is-active senhub-agent"
+    check "full is installed" "$(installed_cmd senhub-agent)"
+    check "oss is gone" "! $(installed_cmd senhub-agent-oss)"
+    check "service enabled" "systemctl is-enabled senhub-agent"
+    pid2=$(x "systemctl show -p MainPID --value senhub-agent")
+    check "service restarted (new PID)" "[ '$pid1' != '$pid2' ] && [ '$pid2' != 0 ]"
+    check "version is $V2" "[ \"\$(senhub-agent version | grep -o '$V2' | head -1)\" = '$V2' ]"
+    check "configuration edit kept" "grep -qx '$MARK' $CFG"
+    key2=$(x "/usr/bin/senhub-agent license key" 2>/dev/null | tail -1)
+    check "same agent key" "[ '$key1' = '$key2' ]"
+    check "data kept" "[ -f /var/lib/senhub-agent/marker ]"
+    check "config senhub:senhub 0600" "[ \"\$(stat -c '%U:%G:%a' $CFG)\" = senhub:senhub:600 ]"
+    if [ "$FMT" = deb ]; then
+        check "purging the replaced oss keeps config, data and user" "dpkg -P senhub-agent-oss; grep -qx '$MARK' $CFG && [ -f /var/lib/senhub-agent/marker ] && getent passwd senhub >/dev/null"
+    fi
+
+    pid1=$pid2
+    check "oss installs over full" "$(install_cmd "$oss2")"
+    wait_active; check "service active" "systemctl is-active senhub-agent"
+    check "oss is installed" "$(installed_cmd senhub-agent-oss)"
+    check "full is gone" "! $(installed_cmd senhub-agent)"
+    pid2=$(x "systemctl show -p MainPID --value senhub-agent")
+    check "service restarted (new PID)" "[ '$pid1' != '$pid2' ] && [ '$pid2' != 0 ]"
+    check "configuration edit kept" "grep -qx '$MARK' $CFG"
+    key2=$(x "/usr/bin/senhub-agent license key" 2>/dev/null | tail -1)
+    check "same agent key" "[ '$key1' = '$key2' ]"
+    check "data kept" "[ -f /var/lib/senhub-agent/marker ]"
+    cleanup
+}
+
+# Prerelease ordering as the package managers see it. The versions go through
+# the Makefile's own conversion, then dpkg and rpm compare them.
+run_versions() {
+    echo "== versions"
+    local v list="" pv rc=0 img dev devlist
+    for v in 0.6.2-beta.1 0.6.2-beta.2 0.6.2-beta.10 0.6.2 0.6.3-beta.1; do
+        pv=$(make --no-print-directory package-version VERSION="$v")
+        list="$list $pv-1"
+    done
+    dev=$(make --no-print-directory package-version VERSION=0.6.2-dev.57.g1a2b3c4d)
+    devlist="0.6.1-1 $dev-1 $(make --no-print-directory package-version VERSION=0.6.2)-1"
+    for img in debian:12 fedora:41; do
+        echo "  $img"
+        docker run --rm -v "$ROOT/packaging/nfpm/vercmp-check.sh":/vercmp-check.sh:ro "$img" sh /vercmp-check.sh $list || rc=1
+        docker run --rm -v "$ROOT/packaging/nfpm/vercmp-check.sh":/vercmp-check.sh:ro "$img" sh /vercmp-check.sh $devlist || rc=1
+    done
+    if [ $rc = 0 ]; then RESULTS+=("versions PASS"); else RESULTS+=("versions FAIL"); FAILED=1; fi
 }
 
 run_distro() {
@@ -244,7 +322,7 @@ run_distro() {
 
     if [ "$FMT" = deb ]; then
         echo "  purge"
-        check "purge" "dpkg -P senhub-agent"
+        check "purge" "dpkg -P senhub-agent-oss"
         check "config, data and logs gone" "[ ! -e /etc/senhub-agent ] && [ ! -e /var/lib/senhub-agent ] && [ ! -e /var/log/senhub-agent ]"
         check "service user removed" "! getent passwd senhub >/dev/null"
     else
@@ -257,19 +335,28 @@ run_distro() {
     cleanup
     run_migration "$f2" "$tag"
     cleanup
+    run_switch "$tag"
     if [ $DISTRO_FAIL = 0 ]; then RESULTS+=("$DISTRO $ARCH PASS"); else RESULTS+=("$DISTRO $ARCH FAIL"); FAILED=1; fi
 }
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
     for v in "$V1" "$V2"; do
-        make packages VERSION="$v" PACKAGE_ARCHES="$ARCH" || { echo "package build failed" >&2; exit 2; }
+        make packages EDITION=oss VERSION="$v" PACKAGE_ARCHES="$ARCH" || { echo "package build failed" >&2; exit 2; }
         # The first build plays the binary an operator installed earlier.
         [ "$v" = "$V1" ] && cp "dist/linux-$ARCH/senhub-agent" "$LEGACY_BIN"
     done
+    # The full edition comes from the enterprise build in production; here it
+    # is the same binary as the oss edition, so what is tested is the switch.
+    make packages EDITION=full BINARY_DIR="$ROOT/dist" VERSION="$V2" PACKAGE_ARCHES="$ARCH" || { echo "package build failed" >&2; exit 2; }
 fi
 
-DISTROS=${*:-$ALL_DISTROS}
-for d in $DISTROS; do run_distro "$d"; done
+STEPS=${*:-"versions $ALL_DISTROS"}
+for d in $STEPS; do
+    case "$d" in
+        versions) run_versions ;;
+        *) run_distro "$d" ;;
+    esac
+done
 
 echo
 echo "== summary"

@@ -56,7 +56,11 @@ DEVELOPMENT_URL="https://eu-west-1.intake-dev.senhub.io"
 # Package to set version variable
 PACKAGE="senhub-agent.go/internal/agent/cliArgs"
 
-BUILD_TIME=$(shell date +%FT%T%z)
+# Derived from the last commit, not the wall clock: two builds of one commit
+# stamp the same time (reproducible binaries and packages). SOURCE_DATE_EPOCH
+# is the reproducible-builds.org variable nFPM reads for file mtimes.
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || echo 0)
+BUILD_TIME=$(shell TZ=UTC git log -1 --format=%cd --date=format-local:%FT%T%z 2>/dev/null || echo unknown)
 GO_VERSION=$(shell go version | cut -d' ' -f3)
 COVERAGE_FILE=coverage.out
 
@@ -220,30 +224,67 @@ package-linux: build-linux ## Create ZIP packages for Linux
 
 # Linux .deb / .rpm packages (nFPM, pinned image). Local build only: no
 # signing, no repository. Output: dist/packages/.
+#
+#   make packages EDITION=oss                    senhub-agent-oss, built from
+#                                                this repository's binaries
+#   make packages EDITION=full BINARY_DIR=<dir>  senhub-agent, from the binaries
+#                                                the enterprise build supplies
+#                                                (<dir>/linux-amd64/senhub-agent,
+#                                                 <dir>/linux-arm64/senhub-agent)
+#
+# The editions install the same files and the same service: each declares
+# Conflicts/Replaces/Provides on the other, so switching is one install command.
 NFPM_IMAGE ?= goreleaser/nfpm:v2.41.1
 PACKAGE_ARCHES ?= amd64 arm64
 PACKAGES_DIR=$(DIST_DIR)/packages
+EDITION ?= oss
+# Package form of VERSION: the first hyphen becomes a tilde (0.6.2-beta.1 ->
+# 0.6.2~beta.1) so a prerelease sorts before its release in dpkg and rpm.
+PKG_VERSION=$(shell echo "$(VERSION)" | sed "s/-/~/")
+BINARY_DIR ?= $(DIST_DIR)
+ifeq ($(EDITION),oss)
+PKG_NAME=senhub-agent-oss
+PKG_OTHER=senhub-agent
+PKG_LICENSE=Apache-2.0
+PKG_EDITION_LABEL=open-source edition
+else ifeq ($(EDITION),full)
+PKG_NAME=senhub-agent
+PKG_OTHER=senhub-agent-oss
+PKG_LICENSE=LicenseRef-SenHub-Commercial
+PKG_EDITION_LABEL=full edition
+endif
 
-packages: build-linux ## Build .deb and .rpm for amd64 and arm64 into dist/packages/
-	@echo "$(GREEN)📦 Building Linux .deb/.rpm packages (version $(VERSION))...$(NC)"
+package-version: ## Print the package form of VERSION (0.6.2-beta.1 -> 0.6.2~beta.1)
+	@echo $(PKG_VERSION)
+
+packages: $(if $(filter oss,$(EDITION)),build-linux) ## Build the .deb and .rpm of one EDITION (oss|full), amd64 and arm64, into dist/packages/
+	@test -n "$(PKG_NAME)" || { echo "$(RED)EDITION must be oss or full$(NC)"; exit 1; }
+	@echo "$(GREEN)📦 Building $(PKG_NAME) .deb/.rpm packages (version $(VERSION), SOURCE_DATE_EPOCH $(SOURCE_DATE_EPOCH))...$(NC)"
 	@mkdir -p $(PACKAGES_DIR)/stage
 	@# The packaged unit is the canonical one with ExecStart pointing at /usr/bin:
 	@# a distro package must not write under /usr/local (see app/managed_binary.go).
 	@sed 's|^ExecStart=/usr/local/bin/|ExecStart=/usr/bin/|' packaging/systemd/senhub-agent.service > $(PACKAGES_DIR)/stage/senhub-agent.service
 	@grep -q '^ExecStart=/usr/bin/senhub-agent ' $(PACKAGES_DIR)/stage/senhub-agent.service || { echo "$(RED)unit ExecStart rewrite failed$(NC)"; exit 1; }
+	@# nFPM does not expand environment variables in the license field.
+	@sed 's|$${PKG_LICENSE}|$(PKG_LICENSE)|' packaging/nfpm/nfpm.yaml > $(PACKAGES_DIR)/stage/nfpm.yaml
 	@for arch in $(PACKAGE_ARCHES); do \
 		case $$arch in amd64) rpmarch=x86_64;; arm64) rpmarch=aarch64;; esac; \
+		bin=$(BINARY_DIR)/linux-$$arch/$(EXECUTABLE); \
+		test -f $$bin || { echo "$(RED)missing $$bin$(NC)"; exit 1; }; \
 		for fmt in deb rpm; do \
-			if [ $$fmt = deb ]; then out=$(PACKAGES_DIR)/$(EXECUTABLE)_$(VERSION)_$$arch.deb; \
-			else out=$(PACKAGES_DIR)/$(EXECUTABLE)-$(VERSION).$$rpmarch.rpm; fi; \
-			docker run --rm -v "$(CURDIR)":/work -w /work \
+			if [ $$fmt = deb ]; then out=$(PACKAGES_DIR)/$(PKG_NAME)_$(PKG_VERSION)-1_$$arch.deb; \
+			else out=$(PACKAGES_DIR)/$(PKG_NAME)-$(PKG_VERSION)-1.$$rpmarch.rpm; fi; \
+			docker run --rm --hostname senhub-packages -v "$(CURDIR)":/work -v "$(abspath $(BINARY_DIR))":/binaries:ro -w /work \
 				-e VERSION="$(VERSION)" -e ARCH=$$arch \
-				-e BIN=$(DIST_DIR)/linux-$$arch/$(EXECUTABLE) \
+				-e SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
+				-e PKG_NAME=$(PKG_NAME) -e PKG_OTHER=$(PKG_OTHER) \
+				-e PKG_EDITION_LABEL="$(PKG_EDITION_LABEL)" \
+				-e BIN=/binaries/linux-$$arch/$(EXECUTABLE) \
 				-e UNIT=$(PACKAGES_DIR)/stage/senhub-agent.service \
-				$(NFPM_IMAGE) package -f packaging/nfpm/nfpm.yaml -p $$fmt -t $$out || exit 1; \
+				$(NFPM_IMAGE) package -f $(PACKAGES_DIR)/stage/nfpm.yaml -p $$fmt -t $$out || exit 1; \
 		done; \
 	done
-	@ls -la $(PACKAGES_DIR)/*.deb $(PACKAGES_DIR)/*.rpm
+	@ls -la $(PACKAGES_DIR)/$(PKG_NAME)[_-]*
 
 package-darwin: build-darwin ## Create ZIP package for macOS
 	@echo "$(GREEN)📦 Creating macOS ZIP packages...$(NC)"
@@ -451,4 +492,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help
+.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-version package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-zabbix-import help

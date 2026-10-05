@@ -1,25 +1,36 @@
 # nFPM definition (paths are relative to the repository root) for the Linux .deb / .rpm packages (`make packages`).
 #
 # Driven by environment variables so one file serves both architectures:
-#   VERSION  package version (e.g. 0.6.2)
+#   VERSION  package version (e.g. 0.6.2, 0.6.2-beta.1)
 #   ARCH     amd64 | arm64
-#   BIN      path to the matching `make build-linux` binary
+#   BIN      path to the matching linux binary
 #   UNIT     path to the staged systemd unit (see the Makefile)
-name: senhub-agent
+#   PKG_NAME, PKG_OTHER, PKG_LICENSE, PKG_EDITION_LABEL  the edition (see the Makefile)
+name: ${PKG_NAME}
 arch: ${ARCH}
 platform: linux
 version: ${VERSION}
 version_schema: semver
+release: 1
 section: net
 priority: optional
 maintainer: Sensor Factory <support@senhub.io>
 vendor: Sensor Factory
-homepage: https://github.com/senhub-io/senhub-agent
-license: proprietary
+homepage: https://agent.senhub.io
+license: ${PKG_LICENSE}
 description: |
-  SenHub Agent, infrastructure monitoring agent.
+  SenHub Agent (${PKG_EDITION_LABEL}), infrastructure monitoring agent.
   Single static binary that ships metrics to PRTG, Nagios, Prometheus,
   OTLP, Zabbix and the SenHub cloud.
+
+# One edition at a time: same files, same service. Installing the other
+# edition replaces this one and keeps configuration, agent key and data.
+conflicts:
+  - ${PKG_OTHER}
+replaces:
+  - ${PKG_OTHER}
+provides:
+  - ${PKG_OTHER}
 
 contents:
   - src: ${BIN}
