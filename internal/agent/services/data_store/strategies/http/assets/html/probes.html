@@ -238,9 +238,9 @@
     return d;
   }
   // A Pro type refused because it does not run on this OS is not one a
-  // licence would unlock: the Overview and Settings count it the same way.
+  // licence would unlock; the server flags licence_locked once per catalogue entry.
   function platformOnly(t) { return t.runs_here === false; }
-  function licenceLocked(t) { return t.tier === 'pro' && !t.authorized && !platformOnly(t); }
+  function licenceLocked(t) { return t.licence_locked === true; }
 
   function hhmmss(t) {
     if (!t) return '';
