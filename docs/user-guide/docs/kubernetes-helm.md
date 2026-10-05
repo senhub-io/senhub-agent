@@ -1,8 +1,9 @@
 # Kubernetes (Helm)
 
-A Helm chart runs the agent in a Kubernetes cluster: one pod, the
-[container image](container.md), a stable identity, and, when you ask
-for it, read-only monitoring of the cluster itself through the
+A Helm chart runs the agent in a Kubernetes cluster: by default one agent
+on every node (a DaemonSet), the [container image](container.md), an
+identity of its own on each node, and, when you ask for it, read-only
+monitoring of the cluster itself through the
 [`kubernetes` probe](probes/kubernetes.md).
 
 The chart lives in the agent's repository under `charts/senhub-agent`
@@ -56,8 +57,10 @@ curl http://127.0.0.1:8080/health
 
 ## Monitoring the node
 
-`hostMonitoring.enabled` is `true` by default: the agent monitors the
-node its pod runs on.
+`hostMonitoring.enabled` is `true` by default, and the chart then
+installs a **DaemonSet**: one agent on each node, monitoring that node.
+(`kind: Deployment` keeps a single agent for the release, for container
+scope, a single node or remote targets only.)
 
 The pod runs in the node's PID and network namespaces
 (`hostPID`, `hostNetwork`) and mounts the node's `/` read-only at
@@ -83,20 +86,40 @@ a node, which is why the default is the node.
       host namespaces and hostPath: label the namespace
       `pod-security.kubernetes.io/enforce=privileged`.
     - The HTTP output opens `http.port` on the node's address.
-    - One release is one pod, so it watches the node it lands on. Pin it
-      with `nodeSelector`, and install the chart again under another
-      release name for another node.
-    - The host identity is the node's `machine-id`; the agent key is the
-      one in the identity Secret.
+    - The DaemonSet runs on the nodes it tolerates: not the control-plane
+      nodes by default, since they carry a `NoSchedule` taint. Add the
+      toleration to monitor them:
+
+        ```yaml
+        tolerations:
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+        ```
+
+      `nodeSelector` narrows it to some nodes. Updates roll one node at
+      a time (`maxUnavailable: 1`).
+    - Each agent keeps its identity on its node, see [Identity](#identity).
+      The host identity is the node's `machine-id`, and the agent key is
+      generated at the node's first start.
+
+The cluster probe runs once for the whole cluster, not once per node, so
+it is not available in the DaemonSet (the chart refuses to render the
+two together). Install a second release for it:
+`--set hostMonitoring.enabled=false --set kubernetesProbe.enabled=true --set rbac.kubernetesProbe.enabled=true`
+(a Deployment). The same goes for a `ServiceMonitor` and for a whole
+`config.agent`, which carry one key for every agent.
 
 ## Monitoring the cluster
 
 Two values turn it on: one adds the probe, the other the read-only
-permissions it needs.
+permissions it needs. It lives in its own release, a Deployment, next to
+the node agents:
 
 ```bash
-helm upgrade senhub-agent ./senhub-agent/charts/senhub-agent -n senhub \
-  --reuse-values \
+helm install senhub-cluster ./senhub-agent/charts/senhub-agent -n senhub \
+  --set secrets.existingSecret=senhub-agent-credentials \
+  --set hostMonitoring.enabled=false \
   --set kubernetesProbe.enabled=true \
   --set rbac.kubernetesProbe.enabled=true
 ```
@@ -196,6 +219,25 @@ administration key you then provide in `config.strategies.http`.
 
 ## Identity
 
+**DaemonSet.** Each node has its own identity, kept in the state
+directory of that node, `/var/lib/senhub-agent` (`daemonSet.stateHostPath`),
+a hostPath created if missing and handed to uid 10001 by an init
+container with `CAP_CHOWN` (`fsGroup` does not apply to a hostPath).
+The agent key is generated at the node's first start and restored at
+every later one, so it survives pod restarts and upgrades. The host
+identity is the node's own `machine-id`. There is no shared Secret and
+no volume claim: one identity for all nodes would make them one agent.
+Read a node's key, for PRTG or Nagios, from its pod:
+
+```bash
+kubectl -n senhub exec <pod> -c agent -- cat /var/lib/senhub-agent/agent.key
+```
+
+If another agent runs on the node as a service, it uses the same default
+directory: change `daemonSet.stateHostPath`.
+
+**Deployment.** One identity for the release, as follows.
+
 The agent key (what PRTG, Nagios and a Prometheus scrape read with, and
 what tells two agents apart downstream) and the host identity are
 generated at first install and kept in the Secret
@@ -238,7 +280,11 @@ rollout (`hostname` sets another).
 
 ## Reading the agent
 
-The Service `<release>` exposes the HTTP output on port 8080: PRTG,
+In the DaemonSet there is no Service: each agent answers on its node,
+`http://<node address>:8080` (the pods use the host network), with that
+node's key. Point PRTG or Nagios at the node.
+
+With a Deployment, the Service `<release>` exposes the HTTP output on port 8080: PRTG,
 Nagios, Prometheus and the console, at the same paths as on any host
 ([HTTP / HTTPS](http-https.md)). PRTG and Nagios outside the cluster
 reach it through whatever you already use to expose a Service: a
@@ -254,7 +300,16 @@ a cluster without the ServiceMonitor CRD; with `helm template`, pass
 
 ## State
 
-`/var/lib/senhub-agent` holds the bookmarks of the log probes. By
+With a DaemonSet the state is on each node (see [Identity](#identity)),
+and `persistence` does not apply. It stays on the nodes after
+`helm uninstall`, so a reinstall brings each node's agent back. To start
+over, delete the directory on every node:
+
+```bash
+sudo rm -rf /var/lib/senhub-agent
+```
+
+With a Deployment, `/var/lib/senhub-agent` holds the bookmarks of the log probes. By
 default it is an `emptyDir`: when the pod is replaced, a file probe
 starts again at the end of each file and a Container Apps stream
 re-sends its recent lines. `persistence.enabled=true` puts it on a
@@ -283,7 +338,7 @@ default seccomp profile. Host monitoring adds host namespaces and a
 read-only mount of the node's root, described [above](#monitoring-the-node). The directories the entrypoint and the agent
 write to (configuration, state, logs, `/tmp`) are volumes.
 
-## Why one replica
+## Why one replica (Deployment)
 
 `replicas` is not a value. Each replica would carry the same identity
 and run the same probes against the same targets: every measurement,
@@ -295,11 +350,8 @@ pod stops before the new one starts.
 
 ## What the chart does not do
 
-- **No DaemonSet.** One release is one pod, on one node. With
-  `hostMonitoring.enabled` it monitors that node; to watch every node,
-  install the chart once per node (`nodeSelector`, one release name
-  each). A DaemonSet with a per-node identity is not shipped by this
-  version.
+- **No cluster probe in the DaemonSet.** It would collect the whole
+  cluster once per node. Use a second, Deployment release.
 - **No registry.** The chart is installed from the repository for now.
 - **No auto-update.** A new version is a new image tag: `image.tag`, or
   the chart's `appVersion`.

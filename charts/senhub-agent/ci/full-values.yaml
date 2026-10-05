@@ -2,6 +2,8 @@
 # secrets from both sources, the Kubernetes probe with its RBAC, a state
 # volume and a ServiceMonitor. Used by `make helm-lint`; the values are
 # examples, not credentials.
+# One agent for the release, with the shared identity: a Deployment.
+kind: Deployment
 edition: full
 
 identity:

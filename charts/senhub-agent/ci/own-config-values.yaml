@@ -1,6 +1,8 @@
 # The configuration is the operator's own: agent.yaml from config.agent,
 # no entrypoint-written file, the edition without licence. Used by
 # `make helm-lint`.
+# One agent for the release, with the shared identity: a Deployment.
+kind: Deployment
 edition: oss
 
 identity:

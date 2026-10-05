@@ -34,6 +34,14 @@
     "imagePullSecrets": { "type": "array" },
     "nameOverride": { "type": "string" },
     "fullnameOverride": { "type": "string" },
+    "kind": { "type": "string", "enum": ["", "Deployment", "DaemonSet"] },
+    "daemonSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stateHostPath": { "type": "string", "pattern": "^/.+[^/]$" }
+      }
+    },
     "hostMonitoring": {
       "type": "object",
       "additionalProperties": false,

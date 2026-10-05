@@ -1,6 +1,7 @@
 # senhub-agent Helm chart
 
-Runs the SenHub Agent in a Kubernetes cluster as one Deployment: probes to
+Runs the SenHub Agent in a Kubernetes cluster, as a DaemonSet (one agent
+per node, the default) or one Deployment: probes to
 PRTG, Nagios, Prometheus, Zabbix and OTLP, with optional read-only
 monitoring of the cluster itself through the `kubernetes` probe.
 
@@ -60,17 +61,27 @@ Trade-offs, to be accepted knowingly:
   and host namespaces).
 - The HTTP output listens on the node's address: `http.port` must be
   free on that node.
-- It is one pod: it monitors the node it is scheduled on. Choose it with
-  `nodeSelector`, or install the chart once per node to watch several.
+- With host monitoring the workload is a **DaemonSet**: one agent per
+  node, on the nodes it tolerates (not the control plane by default; see
+  `tolerations`), updated one node at a time. `kind: Deployment` keeps
+  one agent for the release (container scope, one node, remote targets).
 - The host identity is the node's own `machine-id` (read under
-  `/host/etc`), not the one in the identity Secret; the agent key still
-  comes from the Secret.
+  `/host/etc`). In a DaemonSet each node generates its own agent key at
+  its first start and keeps it in a hostPath state directory
+  (`daemonSet.stateHostPath`, default `/var/lib/senhub-agent`, chowned
+  to uid 10001 by an init container); no identity Secret, no PVC, no
+  Service, because a shared identity would merge the nodes into one
+  agent. Each agent answers on `<node address>:http.port`.
+- Not combinable with a DaemonSet (the chart refuses): the Kubernetes
+  probe (it would run once per node: install a second, Deployment
+  release), a ServiceMonitor, a whole `config.agent`, `identity.existingSecret`.
 
 ## What it creates
 
 | Object | When | Why |
 |---|---|---|
-| Deployment, 1 replica, `Recreate` | always | The agent. Not horizontally scalable (see `values.yaml`) |
+| DaemonSet, `RollingUpdate` (1 unavailable) | `kind` empty with host monitoring, or `DaemonSet` | One agent per node, own identity in the node's state directory |
+| Deployment, 1 replica, `Recreate` | otherwise | The agent. Not horizontally scalable (see `values.yaml`) |
 | Secret `<release>-identity` | unless `identity.existingSecret` | Host identity and agent key. Kept after `helm uninstall` (`helm.sh/resource-policy: keep`) |
 | ConfigMap | always | Probe and output fragments, copied into `probes.d/` and `strategies.d/` by an init container |
 | Secret `<release>-env` | `secrets.values` set | Variables for `${env:NAME}` references |
@@ -82,7 +93,11 @@ Trade-offs, to be accepted knowingly:
 
 ## Uninstall
 
-`helm uninstall` leaves two objects on purpose: the identity Secret, so a
+DaemonSet: the per-node state (agent key, bookmarks) stays on each node
+in `daemonSet.stateHostPath`. Remove it on every node to start over:
+`sudo rm -rf /var/lib/senhub-agent`.
+
+Deployment: `helm uninstall` leaves two objects on purpose: the identity Secret, so a
 reinstall under the same name brings the same agent back, and the
 `<release>-state` claim, so the log bookmarks are not lost. To remove
 them as well:
@@ -168,6 +183,8 @@ No `watch`, no Secrets, no ConfigMaps, no write.
 | `imagePullSecrets` | `[]` | |
 | `nameOverride`, `fullnameOverride` | `""` | |
 | `hostname` | `""` | Pod host name, reported as the host's name; empty uses the release full name. Ignored with `hostMonitoring.enabled` (the node's name) |
+| `kind` | `""` | `DaemonSet` or `Deployment`; empty = DaemonSet with host monitoring, else Deployment |
+| `daemonSet.stateHostPath` | `/var/lib/senhub-agent` | Per-node state directory (hostPath, DaemonSet only) |
 | `hostMonitoring.enabled` | `true` | Node scope: host PID and network namespaces, node `/` read-only at `hostMonitoring.hostRoot`. `false` = container scope |
 | `hostMonitoring.hostRoot` | `/host` | Where the node's root filesystem is mounted |
 | `logLevel` | `info` | `debug` starts the agent with `--verbose` |

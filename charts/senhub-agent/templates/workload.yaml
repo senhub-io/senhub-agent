@@ -1,17 +1,28 @@
+{{- include "senhub-agent.checkDaemonSet" . }}
+{{- $ds := eq (include "senhub-agent.kind" .) "DaemonSet" }}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ include "senhub-agent.kind" . }}
 metadata:
   name: {{ include "senhub-agent.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "senhub-agent.labels" . | nindent 4 }}
 spec:
+  {{- if $ds }}
+  # One agent per node, each with its own identity kept in the node's
+  # state directory.
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  {{- else }}
   # One agent per release, never more: see the head of values.yaml.
   replicas: 1
   # The old pod stops before the new one starts, so two pods never run
   # with one identity, and a ReadWriteOnce state volume can move.
   strategy:
     type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "senhub-agent.selectorLabels" . | nindent 6 }}
@@ -59,6 +70,31 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
+        {{- if $ds }}
+        # The state directory is a hostPath, created root-owned: hand it
+        # to the agent's uid. fsGroup does not apply to a hostPath. The
+        # only privilege is CAP_CHOWN, for this container alone.
+        - name: state-owner
+          image: {{ include "senhub-agent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+            - chown {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.runAsGroup }} /var/lib/senhub-agent && chmod 0700 /var/lib/senhub-agent
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/senhub-agent
+        {{- end }}
         # Copies the chart's fragments into the configuration directory.
         # The directory is an emptyDir, not the ConfigMap itself, because
         # the entrypoint and the agent write there: agent.yaml, the
@@ -110,8 +146,12 @@ spec:
               containerPort: {{ .Values.http.port }}
               protocol: TCP
           env:
+            {{- if not $ds }}
             # The identity, from the Secret: SENHUB_HOST_ID is also read by
-            # the agent to mark the host identity as configured.
+            # the agent to mark the host identity as configured. A
+            # DaemonSet sets neither: each node's key is generated at its
+            # first start and kept in the node's state directory, and the
+            # host id is the node's machine-id.
             - name: SENHUB_HOST_ID
               valueFrom:
                 secretKeyRef:
@@ -122,6 +162,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "senhub-agent.identitySecretName" . }}
                   key: agent-key
+            {{- end }}
             {{- if .Values.hostMonitoring.enabled }}
             - name: SENHUB_HOST_ROOT
               value: {{ .Values.hostMonitoring.hostRoot | quote }}
@@ -181,6 +222,7 @@ spec:
               mountPath: /var/log/senhub-agent
             - name: tmp
               mountPath: /tmp
+            {{- if not $ds }}
             # host.id is read from /etc/machine-id. Mounted from the
             # identity Secret, it is the same on every pod of the release
             # and needs no writable root filesystem.
@@ -188,6 +230,7 @@ spec:
               mountPath: /etc/machine-id
               subPath: machine-id
               readOnly: true
+            {{- end }}
             {{- if .Values.hostMonitoring.enabled }}
             # HostToContainer: the node's submounts (/var, /boot, data
             # disks) appear under the host root, which is how the disk
@@ -207,7 +250,11 @@ spec:
         - name: config
           emptyDir: {}
         - name: state
-          {{- if .Values.persistence.enabled }}
+          {{- if $ds }}
+          hostPath:
+            path: {{ .Values.daemonSet.stateHostPath }}
+            type: DirectoryOrCreate
+          {{- else if .Values.persistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ default (printf "%s-state" (include "senhub-agent.fullname" .)) .Values.persistence.existingClaim }}
           {{- else }}
@@ -219,6 +266,7 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        {{- if not $ds }}
         - name: identity
           secret:
             secretName: {{ include "senhub-agent.identitySecretName" . }}
@@ -226,6 +274,7 @@ spec:
             items:
               - key: host-id
                 path: machine-id
+        {{- end }}
         {{- if .Values.hostMonitoring.enabled }}
         - name: host-root
           hostPath:

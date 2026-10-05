@@ -138,3 +138,40 @@ an empty string is not.
 {{- end }}
 {{- toYaml $cfg }}
 {{- end }}
+
+{{/*
+Deployment or DaemonSet. Empty `kind` picks a DaemonSet when the node is
+monitored (one agent per node, each with its own identity) and a
+Deployment otherwise.
+*/}}
+{{- define "senhub-agent.kind" -}}
+{{- $k := default "" .Values.kind }}
+{{- if eq $k "" }}
+{{- if .Values.hostMonitoring.enabled }}DaemonSet{{ else }}Deployment{{ end }}
+{{- else if or (eq $k "Deployment") (eq $k "DaemonSet") }}{{ $k }}
+{{- else }}
+{{- fail (printf "kind must be empty, Deployment or DaemonSet, not %q" $k) }}
+{{- end }}
+{{- end }}
+
+{{/*
+Refuses what makes no sense with one agent per node: a cluster-wide
+setting would run on every node, and a shared identity would merge every
+node into one agent.
+*/}}
+{{- define "senhub-agent.checkDaemonSet" -}}
+{{- if eq (include "senhub-agent.kind" .) "DaemonSet" }}
+{{- if .Values.kubernetesProbe.enabled }}
+{{- fail "kubernetesProbe.enabled with a DaemonSet would collect the whole cluster once per node. Install a second release with kind=Deployment and hostMonitoring.enabled=false for the cluster probe" }}
+{{- end }}
+{{- if .Values.config.agent }}
+{{- fail "config.agent carries one agent key, and a DaemonSet runs one agent per node: leave it empty (use env and config.probes/strategies), or use kind=Deployment" }}
+{{- end }}
+{{- if .Values.serviceMonitor.enabled }}
+{{- fail "serviceMonitor.enabled needs one shared agent key and one Service; a DaemonSet has one key per node. Scrape the nodes' addresses, or use kind=Deployment" }}
+{{- end }}
+{{- if .Values.identity.existingSecret }}
+{{- fail "identity.* does not apply to a DaemonSet: each node keeps its own identity in its state directory" }}
+{{- end }}
+{{- end }}
+{{- end }}
