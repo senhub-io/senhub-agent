@@ -197,38 +197,46 @@ in it as one of its own.
 
 ### Secrets
 
-The bearer token, the licence and the Azure client secret belong in
-Podman's secret store, and **not** in `Environment=` or the environment
-file: `podman inspect` prints the value of every variable set that way,
-in clear, to anyone who can run it (and `systemctl show` prints the
-unit's). A Podman secret is not part of the container's configuration that
-`podman inspect` prints. Create each one as the user that runs the unit
-(root for a rootful unit), reading the value from standard input so that
-it appears in no command line:
+The bearer token and the licence belong in Podman's secret store, and
+**not** in `Environment=` or the environment file. `podman inspect`
+prints the value of every environment variable in clear, to anyone who
+can run it, and that includes a secret handed over as an environment
+variable (`type=env`): it ends up in `Config.Env` like any other. The
+unit therefore mounts each secret as a **file** under `/run/secrets`,
+owned by the agent's uid 10001 and readable by it alone. `podman
+inspect` shows the mount, not its content.
+
+Create each secret as the user that runs the unit (root for a rootful
+unit), reading the value from standard input so that it appears in no
+command line:
 
 ```bash
 printf '%s' "$TOKEN" | podman secret create senhub-otlp-token -
 printf '%s' "$LICENSE" | podman secret create senhub-license -
 ```
 
-The token's line is active in the unit; the licence, which only the Pro
-probes need, ships commented. Uncomment it once the secret exists:
+The token's lines are active in the unit; the licence, which only the
+Pro probes need, ships commented. Uncomment its two lines once the
+secret exists:
 
 ```ini
-Secret=senhub-otlp-token,type=env,target=OTLP_BEARER_TOKEN
-Secret=senhub-license,type=env,target=SENHUB_LICENSE
+Secret=senhub-otlp-token,type=mount,target=/run/secrets/senhub-otlp-token,mode=0400,uid=10001
+Environment=OTLP_BEARER_TOKEN_FILE=/run/secrets/senhub-otlp-token
+Secret=senhub-license,type=mount,target=/run/secrets/senhub-license,mode=0400,uid=10001
+Environment=SENHUB_LICENSE_FILE=/run/secrets/senhub-license
 ```
 
 and run `systemctl daemon-reload` before the next start. A unit naming a
-secret that does not exist fails to start, which is why the licence line
-ships commented out.
+secret that does not exist fails to start, which is why the licence
+lines ship commented out. The variables name a path, not a value, so
+`Environment=` is the right place for them.
 
-The container sees each secret as the variable it targets, and the
-entrypoint treats it as any other. What becomes of it differs:
+What becomes of each:
 
-- `OTLP_BEARER_TOKEN` and `SENHUB_AZURE_CLIENT_SECRET` stay references.
-  The configuration holds `${env:...}` and the agent reads the value at
-  every start, so replacing the secret and restarting is enough:
+- The token stays a reference. The OTLP output holds
+  `Authorization: "Bearer ${file:/run/secrets/senhub-otlp-token}"` and
+  the agent reads the file at every start (a trailing newline is
+  trimmed), so replacing the secret and restarting is enough:
 
   ```bash
   podman secret rm senhub-otlp-token
@@ -236,17 +244,31 @@ entrypoint treats it as any other. What becomes of it differs:
   systemctl restart senhub-agent
   ```
 
-- `SENHUB_LICENSE` is read once. On first start the agent keeps the
-  licence in `license.jwt`, in the configuration volume, like any
-  installation does. A later licence is activated inside the running
-  container, then the unit restarted, or the configuration volume is
-  rebuilt as shown above:
+- The licence is read once. On first start the agent keeps it in
+  `license.jwt`, in the configuration volume, like any installation
+  does. A later licence is activated inside the running container, then
+  the unit restarted, or the configuration volume is rebuilt as shown
+  above:
 
   ```bash
   printf '%s' "$NEW_LICENSE" | podman exec -i senhub-agent \
     senhub-agent license activate --config-path /etc/senhub-agent/agent.yaml -
   systemctl restart senhub-agent
   ```
+
+- The Azure client secret of the Container Apps shorthand is the
+  exception: it is read as an environment variable
+  (`SENHUB_AZURE_CLIENT_SECRET`), so a `type=env` secret keeps it out of
+  the unit but not out of `podman inspect`. Use a `probes.d` file with a
+  `${file:...}` reference where that matters.
+
+### Stopping
+
+The unit gives the agent thirty seconds to stop (`--stop-timeout=30`;
+Podman's default is ten, after which it sends SIGKILL and the unit ends
+as failed with exit 137). The agent itself bounds its final flush to a
+few seconds when the collector does not answer, and logs what it
+dropped.
 
 ### Health
 
