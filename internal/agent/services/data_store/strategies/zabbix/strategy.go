@@ -442,3 +442,9 @@ func (s *Strategy) nameplateItems() []item {
 	}
 	return out
 }
+
+// ForgetProbes drops the stored values of probes that stopped running,
+// so the server no longer receives or discovers them.
+func (s *Strategy) ForgetProbes(probeNames []string) {
+	s.store.forgetProbes(probeNames)
+}

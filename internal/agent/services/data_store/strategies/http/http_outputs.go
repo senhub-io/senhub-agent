@@ -585,20 +585,24 @@ func probeSenhubIntake(ctx context.Context, base, agentKey string, timeout time.
 	return steps
 }
 
-// dialZabbixServers opens a TCP connection to each address the 'server'
-// parameter names (several name a proxy group), without sending the
-// agent protocol: it proves the server or proxy is reachable, not that
-// it will accept this host.
+// dialZabbixServers tests each address the 'server' parameter names
+// (several name a proxy group): TCP, then the encryption handshake when
+// a PSK or certificate is configured, then an active-checks request for
+// the configured host name. A port that merely accepts connections no
+// longer passes; the server must answer the Zabbix protocol. An unknown
+// host name is a warning, not a failure: it is what a new host looks
+// like before autoregistration has run.
 func dialZabbixServers(ctx context.Context, params map[string]interface{}, timeout time.Duration) []otlp.ConnectionStep {
 	addrs, err := zabbix.ServerAddresses(params)
 	if err != nil {
 		return []otlp.ConnectionStep{{Name: "config", Error: err.Error()}}
 	}
 	steps := []otlp.ConnectionStep{{Name: "config", Passed: true, Detail: strings.Join(addrs, ", ")}}
+	dialer := guardedDialer(timeout)
 	for _, addr := range addrs {
 		t := time.Now()
 		step := otlp.ConnectionStep{Name: "tcp " + addr}
-		conn, dialErr := guardedDialer(timeout).DialContext(ctx, "tcp", addr)
+		conn, dialErr := dialer.DialContext(ctx, "tcp", addr)
 		if dialErr == nil {
 			_ = conn.Close()
 			step.Passed = true
@@ -608,8 +612,59 @@ func dialZabbixServers(ctx context.Context, params map[string]interface{}, timeo
 		}
 		step.Duration = time.Since(t).Milliseconds()
 		steps = append(steps, step)
+		if !step.Passed {
+			continue
+		}
+		steps = append(steps, zabbixProtocolSteps(ctx, params, addr, dialer.DialContext)...)
 	}
 	return steps
+}
+
+// zabbixProtocolSteps sends the request the agent sends at startup, which
+// on a server with an autoregistration action registers the host exactly
+// as starting the agent would.
+func zabbixProtocolSteps(ctx context.Context, params map[string]interface{}, addr string, dial func(context.Context, string, string) (net.Conn, error)) []otlp.ConnectionStep {
+	t := time.Now()
+	res, err := zabbix.CheckProtocol(ctx, params, addr, dial)
+	if err != nil {
+		return []otlp.ConnectionStep{{Name: "protocol " + addr, Error: err.Error(), Duration: time.Since(t).Milliseconds()}}
+	}
+	var steps []otlp.ConnectionStep
+	if res.Encryption != "" {
+		step := otlp.ConnectionStep{Name: strings.ToLower(res.Encryption) + " " + addr}
+		if res.HandshakeErr != nil {
+			step.Error = res.Encryption + " refused or failed: " + res.HandshakeErr.Error()
+		} else {
+			step.Passed = true
+			step.Detail = res.Encryption + " accepted"
+		}
+		steps = append(steps, step)
+		if res.HandshakeErr != nil {
+			return steps
+		}
+	}
+	proto := otlp.ConnectionStep{Name: "protocol " + addr, Duration: time.Since(t).Milliseconds()}
+	if res.Answered {
+		proto.Passed = true
+		proto.Detail = "answered the Zabbix protocol; an active checks request was sent, as the agent does at startup, and may trigger autoregistration"
+	} else {
+		proto.Error = "not a Zabbix server or proxy: " + res.ProtocolErr.Error()
+		return append(steps, proto)
+	}
+	steps = append(steps, proto)
+
+	host := otlp.ConnectionStep{Name: "host " + res.Hostname}
+	switch res.Host {
+	case zabbix.HostKnown:
+		host.Passed = true
+		host.Detail = "known to the server"
+	case zabbix.HostUnknown:
+		host.Passed = true
+		host.Warning = "not known yet: " + res.HostInfo + " (autoregistration may create it)"
+	default:
+		host.Error = res.HostInfo
+	}
+	return append(steps, host)
 }
 
 // guardedDialer dials with the SSRF guard the connectivity client uses.
