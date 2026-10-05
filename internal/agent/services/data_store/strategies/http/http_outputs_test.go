@@ -226,9 +226,9 @@ func TestOutputTest_EveryPushOutputIsReallyTested(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", map[string]interface{}{"type": "zabbix", "params": map[string]interface{}{"server": ln.Addr().String()}, "timeout": 3})
-	if code != 200 || resp["valid"] != true {
-		t.Errorf("a listening Zabbix address must pass, got %d %v", code, resp)
+	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", map[string]interface{}{"type": "zabbix", "params": map[string]interface{}{"server": ln.Addr().String()}, "timeout": 1})
+	if code != 200 || resp["valid"] != false {
+		t.Errorf("a port that is not a Zabbix server must fail the protocol step, got %d %v", code, resp)
 	}
 	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", map[string]interface{}{"type": "zabbix", "params": map[string]interface{}{"server": "127.0.0.1:1"}, "timeout": 3})
 	if code != 200 || resp["valid"] != false {

@@ -1078,7 +1078,7 @@ As with `linux_logs`: no `definitions/windows_eventlog.yaml`, no DataPoint. It n
 - [OTel Logs Data Model §4.2](https://opentelemetry.io/docs/specs/otel/logs/data-model/) (SeverityNumber + SeverityText)
 - [OTel `log.file.*` attributes](https://opentelemetry.io/docs/specs/semconv/attributes-registry/log/) (`log.file.path`)
 
-**Strategy:** generic and cross-platform, the flat-file counterpart of `linux_logs`/`windows_eventlog`. **Exclusively a producer on the logs signal** (`Collect()` → `nil, nil`, no YAML transformer). Mapping in `internal/agent/probes/logparse/parser.go::ParseLine` (shared by every line conduit; `log.file.path` is added by filetail). Flow: `github.com/nxadm/tail (rotation/reopen) → assemblage multiline → parser (regex/json/logfmt/raw) → LogRecord → agentstate.LogChannel → OTLP logs`.
+**Strategy:** generic and cross-platform, the flat-file counterpart of `linux_logs`/`windows_eventlog`. **A producer on the logs signal, plus three self-metrics (§4.17.5).** Mapping in `internal/agent/probes/logparse/parser.go::ParseLine` (shared by every line conduit; `log.file.path` is added by filetail). Flow: `github.com/nxadm/tail (rotation/reopen) → assemblage multiline → parser (regex/json/logfmt/raw) → LogRecord → agentstate.LogChannel → OTLP logs`.
 
 #### 4.17.1 Attributes produced
 
@@ -1102,9 +1102,17 @@ As with `linux_logs`: no `definitions/windows_eventlog.yaml`, no DataPoint. It n
 
 Rotation is handled by nxadm/tail (reopen). `bookmark_path` persists the per-file offset (atomically, every ~2 s and on shutdown), so a restart resumes without loss or duplication. Identity uses a fingerprint (CRC32 of the first 1000 bytes) that is **only stable from 1000 bytes onwards**; below that the fingerprint is "" — unstable, because the head changes as the file grows — and identity falls back to an offset/size comparison. Otherwise a small file that grows would be re-read from 0 on restart, duplicating its content.
 
-#### 4.17.5 No metric signal, by design
+#### 4.17.5 Self-metrics
 
-As with `linux_logs`/`windows_eventlog`: no `definitions/filetail.yaml`, no DataPoint. Requires `storage[otlp].signals.logs: true`.
+The tailed lines ride the logs signal only (requires `storage[otlp].signals.logs: true`); `definitions/filetail.yaml` declares the conduit's own self-metrics, emitted by `Collect()`:
+
+| Metric | Type | Unit | Attributes | Notes |
+|---|---|---|---|---|
+| `senhub.filetail.records_emitted` | counter | `{record}` | — | cumulative records published to the log rail (Prometheus `senhub_filetail_records_emitted_total`) |
+| `senhub.filetail.read_offset` | gauge | `By` | `log.file.path` | byte offset the tail has read up to (Prometheus `senhub_filetail_read_offset_bytes`) |
+| `senhub.filetail.file_size` | gauge | `By` | `log.file.path` | file size from `os.Stat` at collection time; omitted when the stat fails (Prometheus `senhub_filetail_file_size_bytes`) |
+
+`read_offset` and `file_size` are emitted only for files currently tailed, so a path that is awaited or unreadable has none. A healthy tail has `read_offset` close to `file_size`; on a busy file the gap is rarely zero (the tail reads while the writer writes), so the freeze signal is "the file grew and the offset did not move": `changes(senhub_filetail_read_offset_bytes[15m]) == 0 and delta(senhub_filetail_file_size_bytes[15m]) > 0`. `log.file.path` is declared in `DiscriminantTagsRegistry["filetail"]` so each file keeps its own series.
 
 ### 4.18 Probe `otlp_receiver` (an inbound edge OTLP collector → sinks)
 
