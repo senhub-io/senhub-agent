@@ -14,16 +14,28 @@ import (
 )
 
 // installState is what `install` finds on the machine before it touches
-// anything. When all three hold, running install again has nothing to do.
+// anything. When all five hold, running install again has nothing to do.
 type installState struct {
 	serviceInstalled bool
 	configPresent    bool
 	binaryCurrent    bool
+	unitCurrent      bool
+	serviceEnabled   bool
 }
 
 func (s installState) alreadyDone() bool {
-	return s.serviceInstalled && s.configPresent && s.binaryCurrent
+	return s.serviceInstalled && s.configPresent && s.binaryCurrent && s.unitCurrent && s.serviceEnabled
 }
+
+// installProbes are the host questions behind installState that need more
+// than a file stat. A nil probe answers "yes, current".
+type installProbes struct {
+	binaryCurrent  func() bool
+	unitCurrent    func() bool
+	serviceEnabled func() bool
+}
+
+func probeOrTrue(f func() bool) bool { return f == nil || f() }
 
 // serviceStatuser is the one method of the service manager the install
 // check needs.
@@ -35,7 +47,7 @@ type serviceStatuser interface {
 // manager that cannot say (an error other than "installed and answering")
 // counts as not installed, so install proceeds exactly as it did before
 // this check existed.
-func detectInstallState(svc serviceStatuser, configPath string, binaryCurrent func() bool) installState {
+func detectInstallState(svc serviceStatuser, configPath string, probes installProbes) installState {
 	var state installState
 	if _, err := svc.Status(); err == nil {
 		state.serviceInstalled = true
@@ -43,7 +55,11 @@ func detectInstallState(svc serviceStatuser, configPath string, binaryCurrent fu
 	if _, err := os.Stat(configPath); err == nil {
 		state.configPresent = true
 	}
-	state.binaryCurrent = binaryCurrent()
+	state.binaryCurrent = probeOrTrue(probes.binaryCurrent)
+	if state.serviceInstalled {
+		state.unitCurrent = probeOrTrue(probes.unitCurrent)
+		state.serviceEnabled = probeOrTrue(probes.serviceEnabled)
+	}
 	return state
 }
 
