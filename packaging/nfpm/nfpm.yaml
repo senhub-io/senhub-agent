@@ -5,7 +5,9 @@
 #   ARCH     amd64 | arm64
 #   BIN      path to the matching linux binary
 #   UNIT     path to the staged systemd unit (see the Makefile)
-#   PKG_NAME, PKG_OTHER, PKG_LICENSE, PKG_EDITION_LABEL  the edition (see the Makefile)
+#   PKG_NAME, PKG_OTHER, PKG_LICENSE, PKG_EDITION_LABEL, PKG_COPYRIGHT_FILE,
+#   PKG_LICENSE_FILE  the edition (see the Makefile)
+#   STAGE    directory of the files generated per build (changelog, man page)
 name: ${PKG_NAME}
 arch: ${ARCH}
 platform: linux
@@ -18,10 +20,13 @@ maintainer: Sensor Factory <support@senhub.io>
 vendor: Sensor Factory
 homepage: https://agent.senhub.io
 license: ${PKG_LICENSE}
+# rpm only: the Makefile drops this line for the deb, which carries its own
+# changelog.Debian.gz (nFPM writes a Debian changelog lintian rejects).
+changelog: ${STAGE}/changelog.yaml
 description: |
-  SenHub Agent (${PKG_EDITION_LABEL}), infrastructure monitoring agent.
-  Single static binary that ships metrics to PRTG, Nagios, Prometheus,
-  OTLP, Zabbix and the SenHub cloud.
+  Infrastructure monitoring agent (${PKG_EDITION_LABEL})
+  The SenHub Agent is a single static binary that ships metrics to
+  PRTG, Nagios, Prometheus, OTLP, Zabbix and the SenHub cloud.
 
 # One edition at a time: same files, same service. Installing the other
 # edition replaces this one and keeps configuration, agent key and data.
@@ -41,6 +46,45 @@ contents:
   - src: ${UNIT}
     expand: true
     dst: /usr/lib/systemd/system/senhub-agent.service
+    file_info:
+      mode: 0644
+  # nFPM only honours type: doc for the rpm, hence two entries.
+  - src: ${STAGE}/senhub-agent.1.gz
+    expand: true
+    dst: /usr/share/man/man1/senhub-agent.1.gz
+    type: doc
+    packager: rpm
+    file_info:
+      mode: 0644
+  - src: ${STAGE}/senhub-agent.1.gz
+    expand: true
+    dst: /usr/share/man/man1/senhub-agent.1.gz
+    packager: deb
+    file_info:
+      mode: 0644
+  - src: ${PKG_COPYRIGHT_FILE}
+    expand: true
+    dst: /usr/share/doc/${PKG_NAME}/copyright
+    packager: deb
+    file_info:
+      mode: 0644
+  - src: ${PKG_LICENSE_FILE}
+    expand: true
+    dst: /usr/share/licenses/${PKG_NAME}/LICENSE
+    type: license
+    packager: rpm
+    file_info:
+      mode: 0644
+  - src: ${STAGE}/changelog.Debian.gz
+    expand: true
+    dst: /usr/share/doc/${PKG_NAME}/changelog.Debian.gz
+    packager: deb
+    file_info:
+      mode: 0644
+  - src: packaging/nfpm/lintian-overrides
+    expand: true
+    dst: /usr/share/lintian/overrides/${PKG_NAME}
+    packager: deb
     file_info:
       mode: 0644
   # The operator's files. type: config is a dpkg conffile and an
@@ -116,6 +160,3 @@ overrides:
 
 rpm:
   group: Applications/System
-deb:
-  fields:
-    Bugs: https://github.com/senhub-io/senhub-agent/issues

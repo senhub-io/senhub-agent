@@ -1,0 +1,37 @@
+# Each filter states why the check does not apply. Every other finding fails
+# the lint step of packaging/nfpm/test-packages.sh.
+Filters = [
+    # The agent is a static Go binary on purpose (CGO_ENABLED=0): it runs on
+    # any distribution and in scratch or musl containers.
+    "statically-linked-binary",
+    "position-independent-executable-suggested",
+
+    # senhub-agent-oss and senhub-agent replace each other: each provides and
+    # obsoletes the other's name, the standard way to swap one package for
+    # another (a package never matches itself, obsoletes compare names).
+    "self-obsoletion",
+
+    # The full edition is proprietary: a LicenseRef-* identifier is the SPDX
+    # form for a license that is not on the SPDX list, which the Fedora list
+    # does not know. Any other unknown license still fails.
+    "invalid-license LicenseRef-SenHub-Commercial",
+
+    # The service runs as the dedicated senhub user, created by the package.
+    "non-standard-uid",
+    "non-standard-gid",
+
+    # Deliberate: the configuration holds the agent key and credentials, so it
+    # is readable by the senhub service user only (0600 files, 0750 directories).
+    "non-standard-dir-perm",
+    "non-readable",
+
+    # The agent rotates and prunes its own log files.
+    "log-files-without-logrotate",
+
+    # The scriptlets move an operator's configuration aside before an install
+    # over an existing one and put it back after, and purge nothing else: a
+    # fixed list of paths, not user input.
+    "dangerous-command-in-%pre",
+    "dangerous-command-in-%post",
+    "dangerous-command-in-%postun",
+]
