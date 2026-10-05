@@ -315,6 +315,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				Description: m.Description,
 			}
 			asPercent(&proto, m)
+			asRate(&proto, m)
 			proto.UUID = uid("item", name, proto.Key)
 			rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 			continue
@@ -367,6 +368,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 			Description: m.Description,
 		}
 		asPercent(&proto, m)
+		asRate(&proto, m)
 		proto.UUID = uid("item", name, proto.Key)
 		fedOf[proto.Key] = FedID(m)
 		if m.Lookup != "" && opts.Lookups != nil {
@@ -392,7 +394,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	if err != nil {
 		return Export{}, err
 	}
-	tpl.Macros = macros
+	tpl.Macros = append(macros, clockTriggers(name, def, opts, rules)...)
 
 	for _, k := range order {
 		rule := rules[k]
@@ -603,11 +605,48 @@ func asPercent(p *ItemPrototype, m transformers.MetricDefinition) {
 	p.Preprocessing = []Preprocessing{{Type: "MULTIPLIER", Parameters: []string{"100"}}}
 }
 
+// isMonotonicSum reports a cumulative monotonic sum: an OTel counter,
+// whose value only grows between restarts. A histogram's count and sum
+// are cumulative too but are declared under their own keys and stay as
+// sent.
+func isMonotonicSum(m transformers.MetricDefinition) bool {
+	return m.Otel != nil && m.Otel.Name != "" && !m.Otel.Skip && !m.Otel.Distribution && m.Otel.Type == "counter"
+}
+
+// asRate makes the server store and show a cumulative monotonic sum as a
+// per-second rate. The agent keeps sending the running total under the
+// same key as on every other output; a graph of an ever-growing total
+// says nothing, so Zabbix does the differentiation.
+func asRate(p *ItemPrototype, m transformers.MetricDefinition) {
+	if !isMonotonicSum(m) {
+		return
+	}
+	p.Units = rateUnits(p.Units)
+	p.Preprocessing = append(p.Preprocessing, Preprocessing{Type: "CHANGE_PER_SECOND", Parameters: []string{""}})
+}
+
+// rateUnits gives the per-second form of a unit as Zabbix displays it:
+// B becomes Bps, a bare count becomes /s, and any other unit gets /s
+// appended (cpu time in s is shown as s/s, a busy ratio).
+func rateUnits(u string) string {
+	switch u {
+	case "B":
+		return "Bps"
+	case "":
+		return "/s"
+	default:
+		return u + "/s"
+	}
+}
+
 // units maps the OTel unit to what Zabbix displays; Zabbix applies its
 // own multipliers to B and bps, and shows the rest verbatim.
 func units(m transformers.MetricDefinition) string {
 	if m.Otel == nil || m.Otel.Name == "" {
 		return m.Unit
+	}
+	if m.Otel.Name == ClockMetric {
+		return "unixtime"
 	}
 	switch m.Otel.Unit {
 	case "By":
