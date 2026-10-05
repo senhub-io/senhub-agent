@@ -19,7 +19,14 @@ const pipeSecurity = "D:P(A;;GA;;;SY)(A;;GA;;;BA)"
 func candidatePaths(string) []string { return []string{pipeName} }
 
 func listen(paths []string) (net.Listener, string, error) {
-	ln, err := winio.ListenPipe(paths[0], &winio.PipeConfig{SecurityDescriptor: pipeSecurity})
+	// With zero-sized buffers a pipe write completes only once the other
+	// side reads, so a client that writes before reading and a server that
+	// never reads wait on each other until the write deadline.
+	ln, err := winio.ListenPipe(paths[0], &winio.PipeConfig{
+		SecurityDescriptor: pipeSecurity,
+		InputBufferSize:    4096,
+		OutputBufferSize:   65536,
+	})
 	if err != nil {
 		return nil, "", err
 	}
