@@ -311,6 +311,10 @@ helm-lint: ## Lint and render the Helm chart with its default and ci/ values
 	done
 	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/daemonset-values.yaml | grep -q 'add: \["CHOWN", "FOWNER"\]' \
 		|| { echo "helm chart: the state-owner init container must hold CAP_CHOWN and CAP_FOWNER" >&2; exit 1; }
+	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/daemonset-values.yaml | grep -q 'value: "127.0.0.1"' \
+		|| { echo "helm chart: a DaemonSet must listen on the loopback by default" >&2; exit 1; }
+	@$(HELM) template senhub-agent $(CHART_DIR) --set hostMonitoring.enabled=false | grep -q 'value: "0.0.0.0"' \
+		|| { echo "helm chart: a Deployment must keep listening on every address" >&2; exit 1; }
 	@echo "helm chart: lint and render OK"
 
 # The commercial probes register their schemas in senhub-agent-enterprise,

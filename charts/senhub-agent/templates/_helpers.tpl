@@ -175,3 +175,29 @@ node into one agent.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Address the HTTP output listens on. Empty `http.bind` is the loopback of
+the node for a DaemonSet (host network, no TLS by default: the node's
+addresses would carry the agent API in clear) and every address for a
+Deployment, whose pod network is the isolation.
+*/}}
+{{- define "senhub-agent.httpBind" -}}
+{{- if .Values.http.bind }}{{ .Values.http.bind }}
+{{- else if eq (include "senhub-agent.kind" .) "DaemonSet" }}127.0.0.1
+{{- else }}0.0.0.0
+{{- end }}
+{{- end }}
+
+{{/*
+A probe as configured. With a loopback bind the kubelet must call the
+loopback of the node, which only a host-network pod shares: set the host
+of httpGet probes to it.
+*/}}
+{{- define "senhub-agent.probe" -}}
+{{- $p := deepCopy .probe }}
+{{- if and (has .bind (list "127.0.0.1" "::1" "localhost")) (hasKey $p "httpGet") (not (get $p.httpGet "host")) }}
+{{- $_ := set $p.httpGet "host" (ternary "::1" "127.0.0.1" (eq .bind "::1")) }}
+{{- end }}
+{{- toYaml $p }}
+{{- end }}

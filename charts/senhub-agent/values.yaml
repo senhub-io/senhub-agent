@@ -201,10 +201,15 @@ config:
 # /health, which the probes below poll.
 http:
   port: 8080
-  # -- Address the output listens on. The pod's loopback is reachable by
-  # no one, so the default is every address; every route but /health
-  # needs the agent key.
-  bind: 0.0.0.0
+  # -- Address the output listens on. Empty picks 127.0.0.1 for a
+  # DaemonSet and 0.0.0.0 for a Deployment. A DaemonSet shares the node's
+  # network, where every address of the node would carry the agent API
+  # (every route but /health needs the agent key) in clear text: it stays
+  # on the loopback until you open it, see the documentation (set bind to
+  # 0.0.0.0 and turn TLS on). A Deployment's pod network is the
+  # isolation, and the pod's loopback reaches no one, so it listens on
+  # every address. The kubelet probes follow the loopback.
+  bind: ""
 
 # Monitoring of the cluster the agent runs in, through the API server.
 kubernetesProbe:

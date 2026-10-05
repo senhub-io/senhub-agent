@@ -23,7 +23,7 @@ data:
   strategies.d__00-http.yaml: |
     http:
       port: {{ .Values.http.port }}
-      bind_address: {{ .Values.http.bind | quote }}
+      bind_address: {{ include "senhub-agent.httpBind" . | quote }}
       endpoints: ["prtg", "nagios", "prometheus"]
   {{- end }}
   {{- end }}

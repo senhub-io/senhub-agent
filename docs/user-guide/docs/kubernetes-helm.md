@@ -85,7 +85,11 @@ a node, which is why the default is the node.
       can, not root-only files. Kubernetes' `baseline` level forbids
       host namespaces and hostPath: label the namespace
       `pod-security.kubernetes.io/enforce=privileged`.
-    - The HTTP output opens `http.port` on the node's address.
+    - The pods share the node's network, so the HTTP output would be
+      reachable on every address of the node, without TLS. In the
+      DaemonSet it therefore listens on the node's loopback
+      (`127.0.0.1`) until you open it, and the kubelet probes follow it.
+      See [Opening the HTTP output](#opening-the-http-output).
     - The DaemonSet runs on the nodes it tolerates: not the control-plane
       nodes by default, since they carry a `NoSchedule` taint. Add the
       toleration to monitor them:
@@ -236,7 +240,11 @@ kubectl -n senhub exec <pod> -c agent -- cat /var/lib/senhub-agent/agent.key
 If another agent runs on the node as a service, it uses the same default
 directory: change `daemonSet.stateHostPath`.
 
-**Deployment.** One identity for the release, as follows.
+**Deployment.** One identity for the release, as follows. It is kept in
+the Secret `<release>-identity`, which `helm uninstall` leaves in place
+(`helm.sh/resource-policy: keep`); the state claim `<release>-state`,
+when `persistence` is on, is kept the same way. Delete both to start
+over (see [State](#state)).
 
 The agent key (what PRTG, Nagios and a Prometheus scrape read with, and
 what tells two agents apart downstream) and the host identity are
@@ -277,6 +285,31 @@ kubectl -n senhub get secret senhub-agent-identity \
 The host *name* is the node's with host monitoring; otherwise the pod's
 host name, set to the release name so it does not change at every
 rollout (`hostname` sets another).
+
+## Opening the HTTP output
+
+PRTG, Nagios and a Prometheus scrape reach a node's agent on
+`<node address>:8080`, which needs the output to listen beyond the
+loopback. Open it deliberately, and turn TLS on, since the agent key
+travels in every request:
+
+```yaml
+config:
+  strategies:
+    http:
+      port: 8080
+      bind_address: 0.0.0.0     # or the node address your monitoring reaches
+      endpoints: ["prtg", "nagios", "prometheus"]
+      tls:
+        enabled: true           # self-signed pair generated at first start,
+                                # see HTTP / HTTPS to bring your own
+```
+
+Restrict who may connect with the node's firewall or a network policy of
+your CNI (host-network pods are often outside `NetworkPolicy`, so the
+firewall is the reliable place). `http.bind: 0.0.0.0` alone opens it
+without TLS: do that only on a trusted network. A Deployment, whose pod
+network is the isolation, listens on every address by default.
 
 ## Reading the agent
 
