@@ -19,6 +19,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // migrateConfig is the CLI wrapper around
@@ -27,7 +28,7 @@ import (
 func migrateConfig(configPath string) {
 	if configPath == "" {
 		fmt.Fprintln(os.Stderr, "config migrate: no config path provided")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	if abs, err := filepath.Abs(configPath); err == nil {
@@ -38,7 +39,7 @@ func migrateConfig(configPath string) {
 	result, err := configuration.MigrateToMultiFile(configPath, newCheckLogger("configuration.migrate"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config migrate: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	if result.AlreadyMultiFile {

@@ -24,6 +24,23 @@ import "regexp"
 // secret rather than collapsing the whole subtree.
 var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community|authorization|bearer|license|jwt)`)
 
+// uriUserinfoPattern matches the password of scheme://user:password@host.
+// The password runs to the last @ of the authority, so one holding an
+// unescaped @ is masked whole.
+var uriUserinfoPattern = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://[^/\s?#:@]*:)[^/\s?#]*@`)
+
+// dsnPasswordPattern matches password=..., pwd=... and passwd=... pairs in
+// key=value connection strings (libpq, ODBC, query strings), quoted or not.
+var dsnPasswordPattern = regexp.MustCompile(`(?i)(password|passwd|pwd)(\s*=\s*)('[^']*'|"[^"]*"|[^\s;&'"]+)`)
+
+// redactSecretsInString masks credentials embedded in a free-form value
+// whatever its key: the password of a URI and DSN-style password pairs.
+// Scheme, user and host stay for diagnosis.
+func redactSecretsInString(s string) string {
+	s = uriUserinfoPattern.ReplaceAllString(s, "${1}***@")
+	return dsnPasswordPattern.ReplaceAllString(s, "${1}${2}***")
+}
+
 // SanitizeParamsForLog returns a deep copy of params with the value of any key
 // matching logSensitiveKeyPattern replaced by "***". The original map is never
 // mutated — the caller's runtime config stays intact, only the log-bound view
@@ -105,6 +122,14 @@ func sanitizeValueForLog(key string, v interface{}) interface{} {
 		s := make([]interface{}, len(t))
 		for i, vv := range t {
 			s[i] = sanitizeValueForLog("", vv)
+		}
+		return s
+	case string:
+		return redactSecretsInString(t)
+	case []string:
+		s := make([]string, len(t))
+		for i, vv := range t {
+			s[i] = redactSecretsInString(vv)
 		}
 		return s
 	default:
