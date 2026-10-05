@@ -30,6 +30,7 @@ case "$ARCH" in
 esac
 
 PKGDIR="$ROOT/dist/packages"
+LEGACY_BIN="$PKGDIR/stage/legacy-senhub-agent-$ARCH"
 CFG=/etc/senhub-agent/agent.yaml
 MARK="# edited-by-test-packages"
 
@@ -104,6 +105,51 @@ remove_cmd() {
         rocky9) echo "dnf remove -y -q senhub-agent" ;;
         leap156) echo "zypper --non-interactive -q remove senhub-agent" ;;
     esac
+}
+
+start_container() {
+    CID=$(docker run -d --privileged --cgroupns=host \
+        -v /sys/fs/cgroup:/sys/fs/cgroup:rw -v "$PKGDIR":/pkgs:ro \
+        --tmpfs /run --tmpfs /run/lock "$1" /usr/lib/systemd/systemd)
+    local i
+    for i in $(seq 1 30); do
+        x "systemctl is-system-running" 2>/dev/null | grep -qE 'running|degraded' && break
+        sleep 1
+    done
+}
+
+# A host set up with `senhub-agent install` (old binary in /usr/local/bin,
+# unit in /etc/systemd/system) must be taken over by the package.
+run_migration() {
+    local f2=$1 tag=$2
+    echo "  migration from 'senhub-agent install'"
+    if [ ! -f "$LEGACY_BIN" ]; then
+        echo "    FAIL no legacy binary at $LEGACY_BIN (run without SKIP_BUILD once)"
+        DISTRO_FAIL=1; return
+    fi
+    start_container "$tag"
+    docker cp "$LEGACY_BIN" "$CID:/root/senhub-agent" >/dev/null
+    check "legacy install" "chmod +x /root/senhub-agent && /root/senhub-agent install && systemctl start senhub-agent"
+    wait_active; check "legacy service active" "systemctl is-active senhub-agent"
+    check "legacy layout in place" "[ -x /usr/local/bin/senhub-agent ] && [ -f /etc/systemd/system/senhub-agent.service ]"
+    x "echo '$MARK' >> $CFG"
+    local key1 key2
+    key1=$(x "/usr/local/bin/senhub-agent license key" 2>/dev/null | tail -1)
+    check "agent key readable before" "[ -n '$key1' ]"
+    # No -o force-confold here: the existing config must survive a plain install.
+    case "$FMT" in
+        deb) check "package installs over it" "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq /pkgs/$f2" ;;
+        *) check "package installs over it" "$(install_cmd "$f2")" ;;
+    esac
+    wait_active; check "service active" "systemctl is-active senhub-agent"
+    check "runs /usr/bin/senhub-agent" "[ \"\$(readlink /proc/\$(systemctl show -p MainPID --value senhub-agent)/exe)\" = /usr/bin/senhub-agent ]"
+    check "systemd loads the packaged unit" "[ \"\$(systemctl show -p FragmentPath --value senhub-agent)\" != /etc/systemd/system/senhub-agent.service ] && [ ! -e /etc/systemd/system/senhub-agent.service ]"
+    check "legacy binary removed, backup kept" "[ ! -e /usr/local/bin/senhub-agent ] && [ -f /var/lib/senhub-agent/senhub-agent.pre-package ]"
+    check "version is $V2" "[ \"\$(senhub-agent version | grep -o '$V2' | head -1)\" = '$V2' ]"
+    check "configuration kept" "grep -qx '$MARK' $CFG"
+    key2=$(x "/usr/bin/senhub-agent license key" 2>/dev/null | tail -1)
+    check "same agent key" "[ '$key1' = '$key2' ]"
+    cleanup
 }
 
 run_distro() {
@@ -189,12 +235,16 @@ run_distro() {
     fi
 
     cleanup
+    run_migration "$f2" "$tag"
+    cleanup
     if [ $DISTRO_FAIL = 0 ]; then RESULTS+=("$DISTRO $ARCH PASS"); else RESULTS+=("$DISTRO $ARCH FAIL"); FAILED=1; fi
 }
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
     for v in "$V1" "$V2"; do
         make packages VERSION="$v" PACKAGE_ARCHES="$ARCH" || { echo "package build failed" >&2; exit 2; }
+        # The first build plays the binary an operator installed earlier.
+        [ "$v" = "$V1" ] && cp "dist/linux-$ARCH/senhub-agent" "$LEGACY_BIN"
     done
 fi
 

@@ -348,6 +348,8 @@ The package creates the `senhub` service user, installs the binary at `/usr/bin/
 - **Version**: the package manager owns it. `auto_update` is `false` in the packaged configuration, so the agent never replaces itself; leave it that way.
 - **Removal**: `sudo apt remove senhub-agent` (or `dnf remove`, `zypper remove`) stops and disables the service and keeps `/etc/senhub-agent`, `/var/lib/senhub-agent` and the logs. `sudo apt purge senhub-agent` also deletes them, and the `senhub` user.
 
+- **Host already installed with `senhub-agent install`**: installing the package takes over. It stops the service, removes the unit in `/etc/systemd/system` and the binary in `/usr/local/bin` (a copy is kept as `/var/lib/senhub-agent/senhub-agent.pre-package`), and starts the packaged service. Your configuration, agent key, secrets and data are not touched. The reverse (going back from a package to `install`) is not supported: remove the package first, then install from the ZIP.
+
 Package repositories, with signed packages, are announced and not yet available: for now, install from the downloaded file.
 
 ## Installation Options

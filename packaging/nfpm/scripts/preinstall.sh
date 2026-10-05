@@ -4,6 +4,28 @@
 # Mirrors ensureServiceUser in app/service_user_linux.go.
 set -e
 
+# A host set up with `senhub-agent install` runs the old binary from a unit
+# in /etc/systemd/system. Stop it before the package unpacks; postinstall
+# removes that layout and starts the packaged service.
+if [ -f /etc/systemd/system/senhub-agent.service ] && [ -d /run/systemd/system ]; then
+    systemctl stop senhub-agent.service || true
+fi
+
+# On a first install over a configuration that already exists (left by
+# `senhub-agent install`, or kept by an earlier removal), dpkg would stop at
+# a conffile prompt and rpm would write the packaged file beside it. Move
+# the operator's files aside; postinstall puts them back over the packaged
+# defaults.
+case "$1" in
+    install|1)
+        for f in agent.yaml probes.d/00-host.yaml strategies.d/00-http.yaml; do
+            if [ -f "/etc/senhub-agent/$f" ]; then
+                mv -f "/etc/senhub-agent/$f" "/etc/senhub-agent/$f.pre-package"
+            fi
+        done
+        ;;
+esac
+
 SENHUB_USER="senhub"
 STATE_DIR="/var/lib/senhub-agent"
 LOG_READER_GROUP="adm"
