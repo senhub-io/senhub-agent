@@ -174,7 +174,8 @@ func TestReadForProcess_NeverReturnsTheCallersOwnID(t *testing.T) {
 }
 
 func TestOwnStateDir_HonoursSystemd(t *testing.T) {
-	t.Setenv("STATE_DIRECTORY", "/var/lib/senhub-agent-b:/var/lib/other")
+	t.Setenv("SENHUB_STATE_DIR", "")
+	t.Setenv("STATE_DIRECTORY", "/var/lib/senhub-agent-b"+string(os.PathListSeparator)+"/var/lib/other")
 	if got := OwnStateDir(); got != "/var/lib/senhub-agent-b" {
 		t.Errorf("OwnStateDir = %q", got)
 	}
