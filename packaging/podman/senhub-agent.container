@@ -90,9 +90,9 @@ Secret=senhub-otlp-token,type=mount,target=/run/secrets/senhub-otlp-token,mode=0
 Environment=OTLP_BEARER_TOKEN_FILE=/run/secrets/senhub-otlp-token
 #Secret=senhub-license,type=mount,target=/run/secrets/senhub-license,mode=0400,uid=10001
 #Environment=SENHUB_LICENSE_FILE=/run/secrets/senhub-license
-# The Azure client secret is still an environment variable (the Container
-# Apps shorthand reads ${env:...}), so `podman inspect` shows it.
-#Secret=senhub-azure-client-secret,type=env,target=SENHUB_AZURE_CLIENT_SECRET
+# The Azure client secret of a SENHUB_PROBE_ACA_* probe, read from a file.
+#Secret=senhub-aca-client-secret,type=mount,target=/run/secrets/senhub-aca-client-secret,mode=0400,uid=10001
+#Environment=SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/senhub-aca-client-secret
 
 # Named volumes. Podman creates them on first use and copies the image's
 # directories into them, ownership included, so they belong to the
