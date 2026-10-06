@@ -10,8 +10,15 @@ Changes land here as they are merged to `dev`.
 
 <div class="rn-filter"></div>
 
+## Fixes
+
+- **`config check` and the loader now agree on a configuration with no storage strategy.** `config check` reported "No storage strategies configured" as a warning (exit `1`) while the agent refuses to load such a file ("at least one storage strategy is required"). It is now an error (exit `2`), as is a storage entry with no name. A script that applies a configuration after `config check` (Ansible, the MSI) no longer lets one through that the agent then rejects.
+
 ## Features
 
+- **A manifest per release, at a stable address.** `packages.senhub.io/releases/stable/latest.json` (and `beta/latest.json`) name the newest release of a channel; `releases/<version>/manifest.json` lists every file with its checksum, size, signature and the container images, so a script finds and verifies the right build without reading the GitHub page. A stable image is now also tagged with its minor line (`ghcr.io/senhub-io/senhub-agent:0.6`). See [Downloading and verifying releases](../releases.md).
+
+- **SNMP: a polled device's routes now link to their gateway.** Routes read from a device's routing table reach the gateway's address with `next_hop_via`, as host routes already do, when the gateway is a public address, so a router's default route resolves to the same address node as a host's. Private (RFC1918, CGNAT, ULA), loopback, link-local and multicast gateways stay unlinked, because unrelated switches behind one private gateway would otherwise merge.
 - **Failed log batches are kept on disk by default.** The OTLP output's
   on-disk queue for event logs the collector could not take used to run
   only when `persistence.path` was set. It is now on for every install

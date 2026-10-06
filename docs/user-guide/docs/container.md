@@ -13,6 +13,11 @@ docker run -d --name senhub-agent \
 
 That is the whole of it for a first run: one variable, one mount.
 
+Pin the exact version for a reproducible deployment. A stable release
+is also tagged with its minor line (`:0.6`), which follows the patch
+releases of that line; betas are never tagged that way, and there is no
+`latest`. See [container image tags](releases.md#container-image-tags).
+
 ## The one mount that matters
 
 `/var/lib/senhub-agent` holds everything that makes this agent *this*
