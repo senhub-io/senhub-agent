@@ -136,8 +136,7 @@ set `identity.hostId` and `identity.agentKey`, or `identity.existingSecret`.
 Two ways, which combine:
 
 - **`env`**: the `SENHUB_*` variables the image entrypoint turns into a
-  configuration (OTLP endpoint, Zabbix server, tags, Azure Container
-  Apps). The entrypoint writes `agent.yaml`, the host probes and the HTTP
+  configuration (OTLP endpoint, Zabbix server, tags). The entrypoint writes `agent.yaml`, the host probes and the HTTP
   output, and checks the result before the agent starts.
 - **`config.probes` / `config.strategies`**: fragments written as
   `probes.d/60-<key>.yaml` and `strategies.d/60-<key>.yaml`. A probe
@@ -203,7 +202,6 @@ No `watch`, no Secrets, no ConfigMaps, no write.
 | `env.tags` | `{}` | `SENHUB_TAGS`, a map written as `k=v,k2=v2` |
 | `env.zabbixServer` | `""` | `SENHUB_ZABBIX_SERVER`, host:port |
 | `env.zabbixHostMetadata` | `""` | `SENHUB_ZABBIX_HOST_METADATA` |
-| `env.azure.app`, `.tenantId`, `.clientId`, `.subscriptionId`, `.resourceGroup` | `""` | `SENHUB_AZURE_*`; the client secret goes in `secrets` |
 | `env.timezone` | `""` | `TZ` |
 | `secrets.existingSecret` | `""` | Secret whose keys become environment variables |
 | `secrets.values` | `{}` | Keys and values of a chart-managed Secret, same use |
@@ -239,7 +237,7 @@ No `watch`, no Secrets, no ConfigMaps, no write.
 | `podSecurityContext` | uid/gid 10001, non-root, RuntimeDefault seccomp | |
 | `securityContext` | read-only root, no privilege escalation, all capabilities dropped | |
 | `startupProbe`, `livenessProbe`, `readinessProbe` | `GET /health` | `null` disables one |
-| `extraEnv`, `extraVolumes`, `extraVolumeMounts` | `[]` | |
+| `extraEnv`, `extraVolumes`, `extraVolumeMounts` | `[]` | `extraEnv` can declare a probe with `SENHUB_PROBE_<NAME>_*`; a secret goes in `secrets` |
 | `podAnnotations`, `podLabels`, `nodeSelector`, `tolerations`, `affinity` | empty | |
 | `priorityClassName` | `""` | |
 | `terminationGracePeriodSeconds` | `30` | |

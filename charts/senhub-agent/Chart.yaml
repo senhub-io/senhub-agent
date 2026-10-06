@@ -8,7 +8,7 @@ type: application
 version: 0.1.0
 # The image tag used when image.tag is empty. Bump it with each release
 # whose image is published on ghcr.io.
-appVersion: "0.6.1"
+appVersion: "0.6.2"
 kubeVersion: ">=1.23.0-0"
 home: https://agent.senhub.io
 sources:
