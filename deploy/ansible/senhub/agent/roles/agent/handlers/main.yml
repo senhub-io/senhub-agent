@@ -1,0 +1,32 @@
+---
+- name: Restart senhub-agent
+  ansible.builtin.service:
+    name: "{{ senhub_agent_service_name }}"
+    state: restarted
+  when: ansible_facts['os_family'] != 'Windows'
+  listen: senhub_agent restart
+
+- name: Restart senhub-agent (windows)
+  ansible.windows.win_service:
+    name: "{{ senhub_agent_windows_service_name }}"
+    state: restarted
+  when: ansible_facts['os_family'] == 'Windows'
+  listen: senhub_agent restart
+
+- name: Restart senhub-agent after a configuration change
+  ansible.builtin.service:
+    name: "{{ senhub_agent_service_name }}"
+    state: restarted
+  when:
+    - senhub_agent_restart_on_config_change | bool
+    - ansible_facts['os_family'] != 'Windows'
+  listen: senhub_agent config changed
+
+- name: Restart senhub-agent after a configuration change (windows)
+  ansible.windows.win_service:
+    name: "{{ senhub_agent_windows_service_name }}"
+    state: restarted
+  when:
+    - senhub_agent_restart_on_config_change | bool
+    - ansible_facts['os_family'] == 'Windows'
+  listen: senhub_agent config changed

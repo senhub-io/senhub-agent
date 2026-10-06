@@ -1,0 +1,24 @@
+---
+- name: Tool for the repository key
+  community.general.zypper:
+    name: gpg2
+    state: present
+
+- name: Repository key, imported only if its fingerprint matches
+  ansible.builtin.rpm_key:
+    key: "{{ senhub_agent_repo_key_url }}"
+    fingerprint: "{{ senhub_agent_repo_key_fingerprint | replace(' ', '') | upper }}"
+    state: present
+
+- name: Repository definition
+  ansible.builtin.get_url:
+    url: "{{ senhub_agent_repo_url }}/rpm/{{ senhub_agent_channel }}/senhub-zypper.repo"
+    dest: /etc/zypp/repos.d/senhub.repo
+    mode: "0644"
+    force: true
+  register: _senhub_agent_repo
+
+- name: Refresh the repository
+  ansible.builtin.command: zypper --non-interactive --gpg-auto-import-keys refresh
+  when: _senhub_agent_repo is changed
+  changed_when: false
