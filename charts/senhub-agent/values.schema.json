@@ -82,17 +82,6 @@
         "tags": { "$ref": "#/definitions/stringMap" },
         "zabbixServer": { "type": "string" },
         "zabbixHostMetadata": { "type": "string" },
-        "azure": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "app": { "type": "string" },
-            "tenantId": { "type": "string" },
-            "clientId": { "type": "string" },
-            "subscriptionId": { "type": "string" },
-            "resourceGroup": { "type": "string" }
-          }
-        },
         "timezone": { "type": "string" }
       }
     },
