@@ -78,6 +78,30 @@ func EnvProbeVariables() []string {
 	return out
 }
 
+// EnvProbeSources maps each of the named probes to the SENHUB_PROBE_*
+// variables that declare it or set one of its parameters, for the console
+// to treat it as read-only. A probe no variable reaches is absent. Names
+// only, never values.
+func EnvProbeSources(probeNames []string) map[string][]string {
+	groups, err := parseEnvProbes(os.Environ())
+	if err != nil {
+		return nil
+	}
+	out := map[string][]string{}
+	for _, g := range groups {
+		for _, name := range probeNames {
+			if nameKey(name) != g.name {
+				continue
+			}
+			for _, s := range g.settings {
+				out[name] = append(out[name], s.variable)
+			}
+			sort.Strings(out[name])
+		}
+	}
+	return out
+}
+
 // applyEnvProbes merges the probes the process environment declares into
 // data. It is a pure function of environ and of the files it is asked to
 // read (_FILE variables), so the raw and the resolved view of `config show`
