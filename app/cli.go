@@ -22,8 +22,11 @@ import (
 // whatever the services ask for. Windows' SCM kills a service that
 // takes too long to acknowledge a stop, and systemd's TimeoutStopSec
 // then SIGKILLs — a budget past either of those buys nothing and turns
-// a clean stop into a kill.
-const maxStopBudget = 20 * time.Second
+// a clean stop into a kill. Podman and Docker give a container ten
+// seconds by default before SIGKILL, so the whole stop, flush included,
+// has to end under that: a collector that does not answer is not worth
+// a kill.
+const maxStopBudget = 8 * time.Second
 
 type program struct {
 	agent agent.Agent
