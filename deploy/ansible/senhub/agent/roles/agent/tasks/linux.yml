@@ -1,0 +1,59 @@
+---
+- name: Repository
+  ansible.builtin.include_tasks: "repo_{{ ansible_facts['os_family'] | lower }}.yml"
+  when: senhub_agent_manage_repository | bool
+
+- name: Packages installed
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Edition currently installed
+  ansible.builtin.set_fact:
+    _senhub_agent_swap: "{{ _senhub_agent_other_package in ansible_facts['packages'] and _senhub_agent_package not in ansible_facts['packages'] }}"
+
+- name: Switch edition (RHEL family)
+  ansible.builtin.command: "dnf -y swap {{ _senhub_agent_other_package }} {{ _senhub_agent_package }}"
+  when: _senhub_agent_swap | bool and ansible_facts['os_family'] == 'RedHat'
+  changed_when: true
+  notify: senhub_agent restart
+
+- name: Switch edition (SUSE)
+  ansible.builtin.command: "zypper --non-interactive install --force-resolution {{ _senhub_agent_package }}"
+  when: _senhub_agent_swap | bool and ansible_facts['os_family'] == 'Suse'
+  changed_when: true
+  notify: senhub_agent restart
+
+- name: Install the agent (apt)
+  ansible.builtin.apt:
+    name: "{{ _senhub_agent_package }}{{ ('=' ~ _senhub_agent_pkg_version ~ '*') if _senhub_agent_pinned | bool else '' }}"
+    state: "{{ 'latest' if _senhub_agent_follow_latest | bool else 'present' }}"
+    allow_downgrade: "{{ _senhub_agent_pinned | bool }}"
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Install the agent (dnf)
+  ansible.builtin.dnf:
+    name: "{{ _senhub_agent_package }}{{ ('-' ~ _senhub_agent_pkg_version) if _senhub_agent_pinned | bool else '' }}"
+    state: "{{ 'latest' if _senhub_agent_follow_latest | bool else 'present' }}"
+    allow_downgrade: "{{ _senhub_agent_pinned | bool }}"
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Install the agent (zypper)
+  community.general.zypper:
+    name: "{{ _senhub_agent_package }}{{ ('=' ~ _senhub_agent_pkg_version) if _senhub_agent_pinned | bool else '' }}"
+    state: "{{ 'latest' if _senhub_agent_follow_latest | bool else 'present' }}"
+    force_resolution: "{{ _senhub_agent_pinned | bool }}"
+  when: ansible_facts['os_family'] == 'Suse'
+
+- name: Configuration
+  ansible.builtin.include_tasks: configure_linux.yml
+
+- name: Apply pending restarts before the final state
+  ansible.builtin.meta: flush_handlers
+
+- name: Service enabled and running
+  ansible.builtin.service:
+    name: "{{ senhub_agent_service_name }}"
+    enabled: "{{ senhub_agent_service_enabled | bool }}"
+    state: "{{ senhub_agent_service_state }}"

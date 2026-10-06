@@ -1,0 +1,29 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: true
+  vars:
+    senhub_agent_edition: "{{ lookup('ansible.builtin.env', 'SENHUB_TEST_EDITION') | default('oss', true) }}"
+    senhub_agent_channel: "{{ lookup('ansible.builtin.env', 'SENHUB_TEST_CHANNEL') | default('beta', true) }}"
+    senhub_agent_version: "{{ lookup('ansible.builtin.env', 'SENHUB_TEST_VERSION') | default('', true) }}"
+    senhub_agent_global_tags:
+      env: test
+    senhub_agent_probes:
+      - name: ansible-cpu
+        type: cpu
+        params:
+          interval: 30
+    senhub_agent_strategies:
+      http:
+        port: 8080
+        bind_address: 127.0.0.1
+        endpoints: [prtg, web, nagios, prometheus]
+      otlp:
+        endpoint: "127.0.0.1:4317"
+        tls:
+          enabled: false
+      zabbix:
+        server: "127.0.0.1:10051"
+        host_metadata: ansible-test
+  roles:
+    - role: senhub.agent.agent
