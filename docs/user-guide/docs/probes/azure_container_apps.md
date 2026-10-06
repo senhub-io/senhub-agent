@@ -122,7 +122,7 @@ Each instance keeps its own `bookmark_path`, under the agent's state directory, 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:0793f58f58ca103fa6feb5e2f021313c1c72186d7a49728bc40385184778d6e5 -->
+<!-- sha256:061d51983d3979e26288ba278b1cdf157c64fb706358f8e629cdd501f1976335 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -141,7 +141,7 @@ Each instance keeps its own `bookmark_path`, under the agent's state directory, 
 | `containers` | No | - | Container names to read; empty reads every container |
 | `tail_lines` | No | `100` | Lines re-read when a stream is (re)attached, 0 to 300; already published lines are dropped |
 | `interval` | No | `60` | Seconds between replica scans |
-| `bookmark_path` | No | - | File keeping the last published timestamp per stream, so a restart does not publish the re-read tail twice |
+| `bookmark_path` | No | - | File keeping the last published timestamp per stream, so a restart does not publish the re-read tail twice. Defaults to <probe name>.bookmark in the agent state directory; a bookmark kept elsewhere before (for example <app>.bookmark) must be named here, otherwise the first start replays up to tail_lines per container once |
 | `parser` | No | - | How each line is read |
 | `parser.type` | No | `raw` | Shape of a line; raw keeps it whole. One of `raw`, `regex`, `json`, `logfmt` |
 | `parser.pattern` | No | - | Regular expression with named groups (type regex) |
