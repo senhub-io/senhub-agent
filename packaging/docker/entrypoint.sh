@@ -7,7 +7,8 @@
 #   1. Set OTLP_BEARER_TOKEN and nothing else. The agent generates its
 #      own key, watches the host it runs on, and pushes to SenHub.
 #   2. Add the variables your deployment needs: another collector, a
-#      Zabbix server, a licence, tags, a Container Apps log stream.
+#      Zabbix server, a licence, tags, probes (SENHUB_PROBE_<NAME>_*, read
+#      by the agent itself).
 #   3. Mount your own /etc/senhub-agent. Nothing is written then and
 #      every variable is ignored: your files win.
 #
@@ -283,90 +284,17 @@ keep_agent_key() {
   fi
 }
 
-# trim removes the spaces around a value, so a list written with them
-# ("a, b") names the same applications as one written without.
-trim() {
-  printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
-}
-
-write_azure_probe() {
-  missing=""
-  for name in SENHUB_AZURE_TENANT_ID SENHUB_AZURE_CLIENT_ID SENHUB_AZURE_CLIENT_SECRET \
-              SENHUB_AZURE_SUBSCRIPTION_ID SENHUB_AZURE_RESOURCE_GROUP; do
-    eval "value=\${$name:-}"
-    if [ -z "$value" ]; then
-      missing="$missing $name"
-    fi
-  done
-  if [ -n "$missing" ]; then
-    log "SENHUB_AZURE_APP is set but these are not:$missing"
-    log "the Container Apps probe needs all of them; nothing else is affected, the agent stops here rather than start half configured"
+# refuse_removed_variables stops the container on a variable this image no
+# longer reads. SENHUB_AZURE_APP and its SENHUB_AZURE_* companions were
+# replaced by SENHUB_PROBE_<NAME>_*, which the agent reads itself. Ignoring
+# the old one would leave a collector that starts, reports healthy and
+# reads no log.
+refuse_removed_variables() {
+  if [ -n "${SENHUB_AZURE_APP:-}" ]; then
+    log "SENHUB_AZURE_APP is no longer read: declare the probe with SENHUB_PROBE_<NAME>_TYPE=azure_container_apps and SENHUB_PROBE_<NAME>_APP, _TENANT_ID, _CLIENT_ID, _CLIENT_SECRET (or _CLIENT_SECRET_FILE), _SUBSCRIPTION_ID, _RESOURCE_GROUP"
+    log "see https://agent.senhub.io/docs/probes/azure_container_apps/#from-environment-variables"
     exit 1
   fi
-  mkdir -p "$CONFIG_DIR/probes.d"
-  fragment="$CONFIG_DIR/probes.d/50-azure-container-apps.yaml"
-  : > "$fragment"
-
-  # One probe instance follows one application, so a comma-separated
-  # list writes one entry per name, each with its own bookmark. A
-  # collector that watches an environment holding several applications
-  # is the ordinary case, and it must not require hand-written YAML in
-  # SENHUB_PROBES.
-  old_ifs=$IFS
-  IFS=,
-  # The function takes no arguments, so the positional parameters are
-  # free to carry the split.
-  # shellcheck disable=SC2086
-  set -- $SENHUB_AZURE_APP
-  IFS=$old_ifs
-
-  written=""
-  for raw in "$@"; do
-    app=$(trim "$raw")
-    if [ -z "$app" ]; then
-      continue
-    fi
-    # The name becomes a probe name and a bookmark file name. A
-    # separator or a space in it would place that file somewhere else,
-    # and no Container App is named that way.
-    case "$app" in
-      */*|*' '*|*'	'*)
-        log "SENHUB_AZURE_APP names \"$app\", which is not a Container App name"
-        exit 1
-        ;;
-    esac
-    for already in $written; do
-      if [ "$already" = "$app" ]; then
-        log "SENHUB_AZURE_APP names \"$app\" twice; the second one is ignored"
-        app=""
-        break
-      fi
-    done
-    if [ -z "$app" ]; then
-      continue
-    fi
-    written="$written $app"
-    # Every credential stays a reference: the secret is read from the
-    # environment at each start and never written to the file.
-    cat >> "$fragment" <<YAML
-- name: ${app}
-  type: azure_container_apps
-  params:
-    tenant_id: "\${env:SENHUB_AZURE_TENANT_ID}"
-    client_id: "\${env:SENHUB_AZURE_CLIENT_ID}"
-    client_secret: "\${env:SENHUB_AZURE_CLIENT_SECRET}"
-    subscription_id: "\${env:SENHUB_AZURE_SUBSCRIPTION_ID}"
-    resource_group: "\${env:SENHUB_AZURE_RESOURCE_GROUP}"
-    app: "${app}"
-    bookmark_path: ${STATE_DIR}/${app}.bookmark
-YAML
-  done
-
-  if [ -z "$written" ]; then
-    log "SENHUB_AZURE_APP is set but names no application"
-    exit 1
-  fi
-  log "reading the console log stream of the Container Apps:$written"
 }
 
 # unmounted_state_warning says what a container without a volume on the
@@ -411,18 +339,7 @@ else
     log "output read from SENHUB_OUTPUT"
   fi
 
-  # A shorthand for the one probe this image is most often asked for.
-  # It writes the same kind of fragment SENHUB_PROBES would carry.
-  if [ -n "${SENHUB_AZURE_APP:-}" ]; then
-    # The two doors write two different files, so an application named
-    # in both is declared twice and its lines leave twice. Nothing in
-    # the configuration says so, hence the warning.
-    if [ -n "${SENHUB_PROBES:-}" ]; then
-      log "SENHUB_AZURE_APP and SENHUB_PROBES are both set; they write separate files and are not merged"
-      log "an application named in both is declared twice and its logs are collected twice — name each one in one place only"
-    fi
-    write_azure_probe
-  fi
+  refuse_removed_variables
 
   # config check exits 0 clean, 1 with warnings, 2 on an error: only an
   # error stops the container.

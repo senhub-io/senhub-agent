@@ -264,6 +264,12 @@ A parameter that IS read needs no entry, even if it is an alias: a
 warning about something that works as written is noise. Document it in
 the page's parameter table instead.
 
+## Where a probe keeps state
+
+A probe that persists something (bookmark, offset, cursor) takes its default path from
+`probesdk/state` (`state.Path(name + ".bookmark")`), never from the working directory: a
+service does not control it, and a container loses it. The path stays overridable by a param.
+
 ## Tests
 
 - Unit tests use synthetic input maps (stub `SHOW GLOBAL STATUS` etc.) — no real connection required for the per-family build* helpers.

@@ -820,6 +820,121 @@ probes:
 
 A missing required reference (file not found, no default) **aborts agent boot** with the offending reference in the error message. An unset environment variable without a default substitutes to an empty string and does **not** abort — match POSIX shell behaviour.
 
+## Configuring probes from environment variables
+
+A probe can be declared, and any probe of the files adjusted, from environment variables, with one rule that holds for a container, a systemd unit, a Helm chart or Podman alike. Nothing to place on the disk; the agent reads the variables at every start, whatever it was started from.
+
+```
+SENHUB_PROBE_<NAME>_TYPE=<probe type>      declares a probe named <name>
+SENHUB_PROBE_<NAME>_<PARAM>=value          sets one of its parameters
+SENHUB_PROBE_<NAME>_<BLOCK>__<PARAM>=value sets a parameter inside a block
+SENHUB_PROBE_<NAME>_<PARAM>_FILE=/path     reads the value from a file
+```
+
+### How a name is read
+
+- After `SENHUB_PROBE_`, the **first underscore ends the name**. The name holds letters and digits only and is lowercased: `SENHUB_PROBE_PG_HOST` is the parameter `host` of the probe `pg`. A name with a hyphen cannot be written in a variable; to tune a probe called `smtp-prod` from the environment, write `SENHUB_PROBE_SMTPPROD_...`: hyphens and underscores are ignored when the name is matched against the probes of the files. A probe declared only by the environment takes the name as written, lowercased.
+- Everything after the name is the field. A **double underscore nests**, a single underscore stays part of the key: `SENHUB_PROBE_PG_MAX_REPLICATION_LAG_SECONDS` is `max_replication_lag_seconds`, and `SENHUB_PROBE_ACA_DISCOVERY__MAX_APPS` is `discovery.max_apps`.
+- Parameter names are matched to the probe's schema without regard to case, and an alternative spelling the probe accepts resolves to its canonical key.
+- A variable that is empty counts as unset.
+
+### Fields of the probe entry
+
+Five keys of a probe entry sit beside `params`. They are reached by their own name, ahead of any parameter:
+
+| Variable | Sets |
+|---|---|
+| `SENHUB_PROBE_<NAME>_TYPE` | `type`; required to declare a probe that no file defines |
+| `SENHUB_PROBE_<NAME>_ENABLED` | `enabled` (`true` or `false`) |
+| `SENHUB_PROBE_<NAME>_LOG_STRATEGIES` | `log_strategies`, comma-separated (`otlp,event`) |
+| `SENHUB_PROBE_<NAME>_CUSTOM_TAGS__<KEY>` | one entry of `custom_tags` |
+| `SENHUB_PROBE_<NAME>_GOVERNANCE__<KEY>` | `governance`, for example `GOVERNANCE__CRITICALITY` or `GOVERNANCE__LABELS__APPLICATION` |
+
+Everything else is a parameter. `interval` is a parameter of each probe, so `SENHUB_PROBE_PG_INTERVAL=5m` sets it. In the rare case a parameter carries one of the names above, prefix it with `PARAMS__`: `SENHUB_PROBE_<NAME>_PARAMS__<KEY>`. `snmp_poll`, whose device block is also called `governance`, is reached that way (`PARAMS__GOVERNANCE__...`).
+
+### Typed from the probe's schema
+
+The value is read according to the type the probe declares for the parameter:
+
+| Declared type | Written as |
+|---|---|
+| string | as is |
+| integer, number | `5433`, `0.5` |
+| boolean | `true`, `false` (also `1`, `0`, `yes`, `no`, `on`, `off`) |
+| duration | seconds (`90`) or a duration (`30s`, `5m`) |
+| list of strings | comma-separated, spaces around items ignored: `a, b, c`. A JSON array (`["a,b","c"]`) when an item holds a comma |
+| mapping (headers, labels) | one entry per variable, `SENHUB_PROBE_<NAME>_HEADERS__X_REQUEST_NAME=v` (the entry name is lowercased), or the whole mapping as a JSON object, which keeps the case |
+| block | one variable per field with `__`, or the whole block as a JSON object |
+| list of blocks | a JSON array of objects |
+
+A probe type unknown to this build, a parameter its schema does not declare, a value that does not fit its type or its list of accepted values, or a required parameter left out, **stops the agent at load** and the message names the variable. A probe type that has no schema (a few commercial probes) accepts string values only, with a warning in the log, and nothing is checked.
+
+### Secrets
+
+A parameter the schema marks secret, or whose name looks like one (`password`, `token`, `secret`, `api_key`, `dsn`, `community`), is never written into the loaded configuration: it holds a reference to the variable, and `config show` prints that reference with `--raw` and `***` by default. For a secret that lives in a file, which is how Docker, Kubernetes and Podman deliver them, add `_FILE`:
+
+```
+SENHUB_PROBE_PG_PASSWORD_FILE=/run/secrets/pg_password
+```
+
+The file is read at every start and its content trimmed. Giving both `SENHUB_PROBE_PG_PASSWORD` and `SENHUB_PROBE_PG_PASSWORD_FILE` is refused. When the schema owns a key that itself ends in `_file` (`tls.ca_file`), the exact name wins: `SENHUB_PROBE_PG_TLS__CA_FILE` is that key, and reading it from a file takes `SENHUB_PROBE_PG_TLS__CA_FILE_FILE`.
+
+### Precedence
+
+The variables are applied on top of the files (`agent.yaml`, `probes.d/`, and in a container the fragment of `SENHUB_PROBES`), once they are merged:
+
+- A probe of the same name in a file keeps what the file says, **except for the parameters the environment sets, which win** (as in Grafana). Blocks are merged key by key; a list is replaced whole.
+- A name found in no file creates the probe, and `SENHUB_PROBE_<NAME>_TYPE` is then required.
+- A `TYPE` that differs from the type of the probe in the file is refused.
+
+`agent config show` prints the merged result, and a first line names the `SENHUB_PROBE_*` variables the probes were read from (names, never values). `--raw` shows a secret as its `${env:...}` or `${file:...}` reference.
+
+### Examples
+
+A PostgreSQL probe, from nothing but the environment:
+
+```bash
+SENHUB_PROBE_PG_TYPE=postgresql
+SENHUB_PROBE_PG_HOST=db.internal
+SENHUB_PROBE_PG_USERNAME=monitor
+SENHUB_PROBE_PG_PASSWORD_FILE=/run/secrets/pg_password
+SENHUB_PROBE_PG_INTERVAL=30
+SENHUB_PROBE_PG_TLS__CA_FILE=/etc/ssl/pg-ca.pem
+SENHUB_PROBE_PG_GOVERNANCE__LABELS__APPLICATION=billing
+```
+
+The probe `web` of a file keeps its targets and has its interval and its state changed:
+
+```bash
+SENHUB_PROBE_WEB_INTERVAL=15
+SENHUB_PROBE_WEB_ENABLED=false
+```
+
+Azure Container Apps, [list mode](probes/azure_container_apps.md), one probe per application, sharing the credentials (the probe name is yours, the application name goes in `APP`):
+
+```bash
+SENHUB_PROBE_OLTP_TYPE=azure_container_apps
+SENHUB_PROBE_OLTP_APP=oltp
+SENHUB_PROBE_OLTP_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_OLTP_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_OLTP_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
+SENHUB_PROBE_OLTP_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_OLTP_RESOURCE_GROUP=rg-squash
+# the same eight lines under SENHUB_PROBE_BILLING_ for a second application
+```
+
+Azure Container Apps, discovery mode, one probe for the whole subscription:
+
+```bash
+SENHUB_PROBE_ACA_TYPE=azure_container_apps
+SENHUB_PROBE_ACA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_ACA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
+SENHUB_PROBE_ACA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_ACA_DISCOVERY__INTERVAL=300
+SENHUB_PROBE_ACA_DISCOVERY__EXCLUDE=*-preview
+```
+
 ## Inspecting the merged configuration
 
 The `agent config show` command prints the final, merged configuration as YAML with map keys sorted alphabetically:

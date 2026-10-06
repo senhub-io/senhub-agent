@@ -2,6 +2,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -19,6 +20,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
+	"senhub-agent.go/internal/agent/services/statuschan"
 	"senhub-agent.go/internal/cliexit"
 )
 
@@ -105,6 +107,10 @@ func anyProbeInError(probes []status.ProbeStatus) bool {
 	return false
 }
 
+// askStatusChannel is a variable so tests can pin the order in which
+// the sources are tried.
+var askStatusChannel = statuschan.Query
+
 // collectStatus gathers the status without printing anything.
 func collectStatus(svc service.Service, args *cliArgs.ParsedArgs) statusResult {
 	return collectStatusWith(svc, args, agentLogger.NewLogger(&cliArgs.ParsedArgs{Verbose: false}))
@@ -160,7 +166,28 @@ func collectStatusWith(svc service.Service, args *cliArgs.ParsedArgs, logger *ag
 		}
 	}
 
-	// Try HTTP endpoint first (for running agent with HTTP strategy)
+	// The local channel comes first: it answers whether or not the agent
+	// has an HTTP output, which is what an install from before that
+	// output was on by default lacks. Failing to answer is not a problem
+	// to report: the HTTP endpoint is asked next.
+	if chanStatus, chanErr := askStatusChannel(configPath); chanErr == nil {
+		if configPath != "" {
+			chanStatus.Connection.DashboardURL = consoleHint()
+		}
+		res.source = "daemon"
+		res.system = *chanStatus
+		if args != nil && args.ShowOTLP {
+			res.otlpErr = errors.New("the OTLP view needs the HTTP output, which is not enabled on this agent")
+			if agentKey != "" {
+				scheme, bind, httpPort := resolveHTTPStrategyListen(configPath)
+				statusHelper.SetEndpoint(scheme, localHostFor(bind))
+				res.otlp, res.otlpErr = statusHelper.GetOTLPInfoFromHTTP(agentKey, httpPort)
+			}
+		}
+		return res
+	}
+
+	// Try HTTP endpoint (for running agent with HTTP strategy)
 	if agentKey != "" {
 		scheme, bind, httpPort := resolveHTTPStrategyListen(configPath)
 		host := localHostFor(bind)

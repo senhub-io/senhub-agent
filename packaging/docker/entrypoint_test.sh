@@ -2,7 +2,7 @@
 # Exercises entrypoint.sh without a container: the identity resolution,
 # whose answer decides whether a redeployed agent keeps being the same host
 # and the same agent and stays invisible until weeks later in the graph, and
-# the Container Apps shorthand, which turns a variable into the probe list.
+# the refusal of the variables the image no longer reads.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -156,52 +156,25 @@ for bad in not-a-key 01234567-89ab-cdef-0123-456789abcdef; do
 done
 unset SENHUB_AGENT_KEY
 
-# 6. The Container Apps shorthand writes one entry per name of the list,
-#    each with its own bookmark, so a collector follows several
-#    applications without hand-written YAML.
-SENHUB_AZURE_TENANT_ID=t
-SENHUB_AZURE_CLIENT_ID=c
-SENHUB_AZURE_CLIENT_SECRET=s
-SENHUB_AZURE_SUBSCRIPTION_ID=sub
-SENHUB_AZURE_RESOURCE_GROUP=rg
-export SENHUB_AZURE_TENANT_ID SENHUB_AZURE_CLIENT_ID SENHUB_AZURE_CLIENT_SECRET \
-       SENHUB_AZURE_SUBSCRIPTION_ID SENHUB_AZURE_RESOURCE_GROUP
-fragment="$CONFIG_DIR/probes.d/50-azure-container-apps.yaml"
-
-SENHUB_AZURE_APP="oltp, billing ,web"
-export SENHUB_AZURE_APP
-write_azure_probe 2>/dev/null
-check "one entry per application of the list" "$(grep -c '^- name: ' "$fragment")" "3"
-check "the spaces around a name are absorbed" "$(sed -n 's/^- name: //p' "$fragment" | tr '\n' ',')" "oltp,billing,web,"
-check "each application gets its own bookmark" \
-  "$(sed -n 's/.*bookmark_path: //p' "$fragment" | tr '\n' ',')" \
-  "$STATE_DIR/oltp.bookmark,$STATE_DIR/billing.bookmark,$STATE_DIR/web.bookmark,"
-check "the credentials stay references, never values" "$(grep -c 'env:SENHUB_AZURE_CLIENT_SECRET' "$fragment")" "3"
-check "no secret is written into the fragment" "$(grep -c 'client_secret: "s"' "$fragment")" "0"
-
-# 7. A single name keeps writing exactly what it wrote before the list.
+# 6. SENHUB_AZURE_APP was replaced by SENHUB_PROBE_<NAME>_*. A container
+#    still carrying it stops, naming the replacement: ignoring it would
+#    start a collector that reads no log.
 SENHUB_AZURE_APP=oltp
-write_azure_probe 2>/dev/null
-check "a single name writes a single entry" "$(grep -c '^- name: ' "$fragment")" "1"
-check "the fragment is rewritten, not appended to" "$(grep -c 'billing' "$fragment")" "0"
-
-# 8. A name repeated in the list is declared once: two entries of the same
-#    application would read the same stream twice into the same bookmark.
-SENHUB_AZURE_APP="oltp,billing,oltp"
-write_azure_probe 2>/dev/null
-check "a repeated name is declared once" "$(grep -c '^- name: ' "$fragment")" "2"
-
-# 9. A name that would place the bookmark elsewhere is refused rather than
-#    written through.
-SENHUB_AZURE_APP="oltp,../../etc/cron.d/x"
-if (write_azure_probe >/dev/null 2>&1); then
-  check "a name carrying a path separator is refused" "accepted" "refused"
+export SENHUB_AZURE_APP
+if refused=$( (refuse_removed_variables) 2>&1 ); then
+  check "SENHUB_AZURE_APP is refused" "accepted" "refused"
 else
-  check "a name carrying a path separator is refused" "refused" "refused"
+  check "SENHUB_AZURE_APP is refused" "refused" "refused"
 fi
+check "the refusal names the replacement" "$(printf '%s' "$refused" | grep -c 'SENHUB_PROBE_<NAME>_TYPE=azure_container_apps')" "1"
 unset SENHUB_AZURE_APP
+if (refuse_removed_variables >/dev/null 2>&1); then
+  check "a container without it starts" "accepted" "accepted"
+else
+  check "a container without it starts" "refused" "accepted"
+fi
 
-# 10. Without a volume, the warning names only what is actually lost: with
+# 7. Without a volume, the warning names only what is actually lost: with
 #     SENHUB_HOST_ID and SENHUB_AGENT_KEY set, the identity and the key
 #     survive a new container, and only the log bookmarks do not.
 unset SENHUB_HOST_ID SENHUB_AGENT_KEY
@@ -219,7 +192,7 @@ check "a named container is told what losing its place costs" \
   "$(printf '%s' "$named" | grep -c 're-sends its recent lines, a file probe skips')" "1"
 unset SENHUB_HOST_ID SENHUB_AGENT_KEY
 
-# 11. A collector in plain text is reachable from the variables alone:
+# 8. A collector in plain text is reachable from the variables alone:
 #     SENHUB_OTLP_TLS=false turns TLS off in the written output, once, and
 #     the default leaves it on. A value that is neither is refused.
 frag="$work/10-otlp.yaml"

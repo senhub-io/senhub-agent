@@ -83,6 +83,23 @@ Two rules, both load-bearing:
 never sets its own. A log producer stamps it on the records it
 publishes: `rec.TargetStrategies = p.LogTargets()`.
 
+## Probes from environment variables (`env_probes.go`)
+
+`SENHUB_PROBE_<NAME>_TYPE` declares a probe, `SENHUB_PROBE_<NAME>_<PARAM>` sets a
+parameter (`__` nests, `_FILE` reads a file). One rule in the loader, applied
+after the multi-file merge and BEFORE substitution, by `LoadFromDisk` and by
+`loadMerged` (so `config show` sees the same probes). Contract:
+
+- Typed from the probe's `spec` (`probes/spec`); a type with no schema takes strings and warns.
+  Every failure names the variable. The registry lookup (`SetProbeTypeLookup`) is wired by `app`.
+- The first segment `type|enabled|log_strategies|custom_tags|governance` is a probe-entry
+  field, anything else a param; `PARAMS__` escapes. `TestProbeSpecs_NoParamShadowsAProbeEntryField`
+  stops a new schema from colliding with it.
+- Env wins over a same-named file probe, key by key (blocks merged, lists replaced).
+- A secret never lands in the loaded tree as a value before substitution: it is a `${env:VAR}` or
+  `${file:path}` reference (so `--raw` and `--redact` stay safe). Other string values have `$` doubled
+  so substitution leaves them as written.
+
 ## config_version bumps
 
 The schema version is in `config_version:` at the top of `agent.yaml`. Current version: **3**.

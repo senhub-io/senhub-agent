@@ -268,6 +268,39 @@ curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
   -d '{"module_levels": [{"module": "probe.citrix", "level": "info"}]}'
 ```
 
+### Raising One Module to Debug and Reading It
+
+A module raised to `debug` writes its debug lines to the normal agent log
+while every other module stays at `info`. Take IBM i as the example:
+
+```bash
+curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
+  -H "Content-Type: application/json" \
+  -d '{"module_levels": [{"module": "probe.ibmi", "level": "debug"}]}'
+```
+
+Then read only that module's debug lines from the log file (see
+[Viewing Logs](#viewing-logs) for its location):
+
+```bash
+grep '"level":"debug"' /var/log/senhub-agent/senhubagent.log | grep 'probe.ibmi'
+```
+
+Each line carries `module=probe.ibmi` (`"module":"probe.ibmi"` in JSON). The
+debug lines appear from the next collection cycle; nothing needs restarting.
+
+The setting lives in the agent's memory only:
+
+- It survives a configuration reload and a probe restart.
+- It does **not** survive a restart of the agent or of the service: the module
+  is back at `info`. Raise it again afterwards.
+- Set the module back to `info` when you are done, as shown above: debug
+  output is verbose and grows the log quickly.
+
+Before this was fixed (0.6.2), the call answered `200` and the level showed
+as `debug` in the `GET` response, but the agent still wrote no debug line
+for that module.
+
 ### Available Debug Modules
 
 The agent prints its own list, one line per probe type it carries plus the

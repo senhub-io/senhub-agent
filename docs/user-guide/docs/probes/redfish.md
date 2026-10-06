@@ -167,7 +167,7 @@ Monitor multiple hardware targets with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:cd14851f2179f7e50edb5c0c83fe127d1815ecc5ff01a653b1ec7ba422706b47 -->
+<!-- sha256:a265d48a598e505a23cc4610a41815b23a79a739e8e513aa03916bff9068cc7d -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -176,7 +176,7 @@ Monitor multiple hardware targets with separate probe instances:
 | `password` | Yes | - | Password of the BMC user. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `verify_ssl` | No | `true` | Validate the BMC's TLS certificate; false for the self-signed certificate most BMCs ship with |
 | `interval` | No | `300` | Seconds between collections |
-| `collections` | No | - | Subsystems to collect; replaces the default set (system, thermal, power, processor, memory, storage) rather than filtering it. One of `system`, `thermal`, `power`, `processor`, `memory`, `storage`, `drives`, `network`, `networkadapter` |
+| `collections` | No | - | Subsystems to collect; replaces the default set (system, thermal, power, processor, memory, storage) rather than filtering it; unknown names are rejected. One of `system`, `thermal`, `power`, `processor`, `memory`, `storage`, `drives`, `network`, `networkadapter` |
 
 <!-- schema:params:end -->
 
