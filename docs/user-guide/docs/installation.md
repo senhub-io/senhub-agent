@@ -160,7 +160,7 @@ msiexec /i senhub-agent-<version>-amd64.msi /qn
 !!! warning "The license key is a secret"
     A verbose install log (`/l*v`) records property values and custom-action command lines, so a `LICENSE_KEY` passed on the `msiexec` line can appear in that log. When provisioning a license silently, use a non-verbose log level (`/l*`) or omit logging entirely for the install that carries `LICENSE_KEY`; if you must capture a verbose log for troubleshooting, treat it as sensitive and delete it once the install is confirmed. The token equally lands in the deployment tool's job output — scrub it the same way.
 
-For GPO, SCCM and Intune deployment (including the MST transform GPO needs to pass properties), see the [Windows MSI deployment guide](https://github.com/senhub-io/senhub-agent/blob/dev/docs/deployment/windows-msi.md).
+For GPO, SCCM and Intune deployment (including the MST transform GPO needs to pass properties), see [Windows: Intune, GPO and SCCM](deploying/windows-intune-gpo.md). Other tools (Ansible, cloud-init, Docker Compose, Helm, Podman) are in [Deploying at scale](deploying/index.md).
 
 #### Adopting an existing agent
 
