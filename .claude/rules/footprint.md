@@ -18,6 +18,18 @@ paths:
 3. **No ticker or goroutine for an inactive function.** A timer exists
    only while the thing it drives is enabled, and stops when it is
    disabled or reconfigured away.
+4. **Embedded data is parsed when a configured thing needs it.** The
+   85 probe definitions are parsed by the first lookup of their probe
+   type (`TransformerRegistry.GetProbeDefinition`), a console page by its
+   first render. Code that needs an index over every definition walks them
+   with `transformers.RangeDefinitions`, one file at a time, and keeps
+   the index, not the definitions. `transformers.Definitions()` holds
+   them all at once and is for tools and tests.
+5. **A goroutine that waits for work waits on a channel, not a timer.**
+   The probe start retry arms its timer only while a probe is waiting.
+6. **A file is written when something changed.** A continuous disk writer
+   other than the agent's own log file is a defect: the OTLP logs queue
+   writes only on a failed export (`TestLogsQueue_HealthyEndpointWritesNothing`).
 
 ## Checking a change
 
