@@ -11,6 +11,9 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Probes from environment variables.** `SENHUB_PROBE_<NAME>_TYPE=<type>` declares a probe and `SENHUB_PROBE_<NAME>_<PARAM>=value` sets its parameters, typed from the probe's schema, with `__` for nested keys and `_FILE` to read a secret from a file. The agent reads them itself, so containers, systemd units, Helm and Podman share one rule, and they adjust the probes of a mounted configuration too (the environment wins, key by key). A mistake stops the load and names the variable. `config show` lists the variables the probes were read from, and never prints a secret read from the environment. See [Configuring probes from environment variables](../configuration.md#configuring-probes-from-environment-variables).
+- **Probe SDK: the state directory.** `probesdk/state` gives a probe the directory where the agent keeps what must survive a restart (`state.Dir()`, `state.Path(name)`), so a probe that keeps a bookmark can default it beside the agent's identity.
+
 - **IBM i: QHST, QSYSOPR and audit events reach the logs backend.** The history log, message queue and audit journal collectors read their events but sent none of them on: each event is now an OpenTelemetry log record (message text as body, the partition's own time as timestamp, IBM i severity 0-99 mapped to `INFO`, `WARN`, `ERROR`, `ERROR3` or `FATAL`, attributes under `ibmi.*`). `history_log_min_severity` is the volume lever. The scheduled-job and other age gauges no longer read below zero when the partition clock runs ahead of the reference.
 - **`status` works on every install.** The agent now answers `senhub-agent status` on a local channel (a Unix socket in its state directory, readable by the service account and root only; a named pipe restricted to administrators on Windows), whether or not the HTTP output is enabled. Hosts installed before the HTTP output was on by default used to get a degraded view computed by the command itself. `status` asks the local channel first and falls back to the HTTP output. The channel is read-only: it sends the status and reads nothing. It reports probe health and failed outputs but not the per-probe metric counts, which only the HTTP cache holds.
 - **Two agents on one host no longer describe each other twice.** Each agent
@@ -49,6 +52,48 @@ Changes land here as they are merged to `dev`.
   `zabbix setup` to refresh the templates. Other platforms emit nothing
   new.
 ## Before you upgrade
+
+- **`SENHUB_AZURE_APP` is removed from the container image.** The image no longer reads `SENHUB_AZURE_APP` or the `SENHUB_AZURE_*` variables that went with it, and a container that still sets `SENHUB_AZURE_APP` on its first start **stops** with a message naming the replacement, rather than starting a collector that reads no log. A container that already has its configuration on a volume keeps running on the file the old variable wrote, until that file is removed.
+
+  Declare the probe with the agent's own `SENHUB_PROBE_<NAME>_*` variables instead. The probe name is yours (letters and digits only); the application name goes in `APP`, so a name with a hyphen is a value, not a variable. The credentials, one value each before, are repeated for each probe.
+
+  | Before | After |
+  |---|---|
+  | `SENHUB_AZURE_APP=oltp,billing` | one probe per application, `SENHUB_PROBE_OLTP_TYPE=azure_container_apps` and `SENHUB_PROBE_OLTP_APP=oltp`, then the same for `BILLING` |
+  | `SENHUB_AZURE_TENANT_ID` | `SENHUB_PROBE_<NAME>_TENANT_ID` |
+  | `SENHUB_AZURE_CLIENT_ID` | `SENHUB_PROBE_<NAME>_CLIENT_ID` |
+  | `SENHUB_AZURE_CLIENT_SECRET` | `SENHUB_PROBE_<NAME>_CLIENT_SECRET`, or `SENHUB_PROBE_<NAME>_CLIENT_SECRET_FILE=/run/secrets/...` |
+  | `SENHUB_AZURE_SUBSCRIPTION_ID` | `SENHUB_PROBE_<NAME>_SUBSCRIPTION_ID` |
+  | `SENHUB_AZURE_RESOURCE_GROUP` | `SENHUB_PROBE_<NAME>_RESOURCE_GROUP` |
+  | bookmark in the state directory, written for you | `SENHUB_PROBE_<NAME>_BOOKMARK_PATH=/var/lib/senhub-agent/<app>.bookmark`, one distinct file per probe |
+
+  List mode, `SENHUB_AZURE_APP=oltp,billing` becomes:
+
+  ```bash
+  SENHUB_PROBE_OLTP_TYPE=azure_container_apps
+  SENHUB_PROBE_OLTP_APP=oltp
+  SENHUB_PROBE_OLTP_TENANT_ID=...
+  SENHUB_PROBE_OLTP_CLIENT_ID=...
+  SENHUB_PROBE_OLTP_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
+  SENHUB_PROBE_OLTP_SUBSCRIPTION_ID=...
+  SENHUB_PROBE_OLTP_RESOURCE_GROUP=rg-squash
+  SENHUB_PROBE_OLTP_BOOKMARK_PATH=/var/lib/senhub-agent/oltp.bookmark
+  # and the same eight lines with BILLING, APP=billing and billing.bookmark
+  ```
+
+  Discovery mode, which the old variable could not express (one probe for the whole subscription, no `APP` and no `RESOURCE_GROUP`):
+
+  ```bash
+  SENHUB_PROBE_ACA_TYPE=azure_container_apps
+  SENHUB_PROBE_ACA_TENANT_ID=...
+  SENHUB_PROBE_ACA_CLIENT_ID=...
+  SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
+  SENHUB_PROBE_ACA_SUBSCRIPTION_ID=...
+  SENHUB_PROBE_ACA_DISCOVERY__INTERVAL=300
+  SENHUB_PROBE_ACA_BOOKMARK_PATH=/var/lib/senhub-agent/aca.bookmark
+  ```
+
+  The old variable named the bookmark `<application>.bookmark` in the state directory: give `BOOKMARK_PATH` the same file and the probe resumes where it stopped instead of re-reading its recent lines. The old probe was named after the application; a name with a hyphen cannot be written in a variable, so such a probe changes name (`squash-tm` becomes, say, `squashtm`) and its series change `probe_name` with it. `SENHUB_PROBES` is unchanged.
 
 - **Three entity identities change once.** The `unifi`, `kubernetes` and
   `systemd` probes no longer key their entities on an address or a hostname.
