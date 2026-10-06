@@ -11,6 +11,7 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Deploying at scale.** A new documentation section with one page per tool, each with a runnable example and the same points: version pinning, licence, secrets, validation before apply, upgrade and removal. Pages for Intune, GPO and SCCM, cloud-init, Docker Compose, Helm and Podman, and an overview that maps each estate to a tool. See [Deploying at scale](../deploying/index.md).
 - **Failed log batches are kept on disk by default.** The OTLP output's
   on-disk queue for event logs the collector could not take used to run
   only when `persistence.path` was set. It is now on for every install
