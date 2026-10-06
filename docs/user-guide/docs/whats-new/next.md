@@ -11,6 +11,8 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **A manifest per release, at a stable address.** `packages.senhub.io/releases/stable/latest.json` (and `beta/latest.json`) name the newest release of a channel; `releases/<version>/manifest.json` lists every file with its checksum, size, signature and the container images, so a script finds and verifies the right build without reading the GitHub page. A stable image is now also tagged with its minor line (`ghcr.io/senhub-io/senhub-agent:0.6`). See [Downloading and verifying releases](../releases.md).
+
 - **Failed log batches are kept on disk by default.** The OTLP output's
   on-disk queue for event logs the collector could not take used to run
   only when `persistence.path` was set. It is now on for every install
