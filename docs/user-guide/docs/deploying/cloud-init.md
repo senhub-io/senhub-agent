@@ -152,7 +152,8 @@ sudo dnf --showduplicates list senhub-agent-oss   # RHEL family
 
 A beta is spelled `0.6.2~beta.1` in the packages and `0.6.2-beta.1` as a
 release tag. The example defaults to the beta channel because the stable
-channel carries no 0.6.2 yet; it comes with the 0.6.2 release, and then
+channel is not published yet (its repository answers 404 until the
+0.6.2 release); it comes with the 0.6.2 release, and then
 `SENHUB_CHANNEL=stable` and `SENHUB_VERSION=0.6.2` apply.
 
 ## Licence
@@ -270,11 +271,13 @@ curl -fsS http://127.0.0.1:8080/health
 test ! -e /var/lib/cloud/senhub && echo "staging directory removed"
 ```
 
-On the RHEL family, replace the two package lines by:
+On the RHEL family, replace the two package lines by the first one below,
+and add the second only if you installed the versionlock plugin (see
+Pinning); without it, dnf answers "No such command: versionlock":
 
 ```bash
 rpm -q senhub-agent-oss
-sudo dnf versionlock list
+sudo dnf versionlock list    # only with python3-dnf-plugin-versionlock
 ```
 
 Expected: `status: done`, the service `active`, the pinned version, the hold
