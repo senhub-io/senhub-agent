@@ -248,7 +248,7 @@ func NewOTLPSyncStrategy(
 		psReporter:    newPartialSuccessReporter(moduleLogger, "export"),
 	}
 
-	if cfg.Persistence.Path != "" {
+	if cfg.Persistence.Enabled && cfg.Persistence.Path != "" {
 		s.chkpt = newCheckpointer(checkpointConfig{
 			Path:     cfg.Persistence.Path,
 			Interval: cfg.Persistence.Interval,
@@ -376,14 +376,20 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 
 	// Durable dead-letter queue for the logs signal (#217): wrap the log
 	// exporter so a failed export persists event-log records to disk for
-	// replay at boot and on backend recovery. Only when persistence is on
-	// and raw logs are emitted; entity events are a re-emitted state
-	// stream and are not queued.
+	// replay at boot and on backend recovery. On by default, in the
+	// state directory, whenever raw logs are emitted; entity events are a
+	// re-emitted state stream and are not queued.
 	var logExp *persistentLogExporter
-	if s.cfg.Persistence.Path != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
-		s.logsQueue = newLogsQueue(s.cfg.Persistence.Path, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
-		logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
-		s.exporters.log = logExp
+	if queuePath := s.cfg.Persistence.logsQueuePath(); queuePath != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
+		if err := prepareQueueDir(queuePath); err != nil {
+			s.logger.Warn().Err(err).Str("path", queuePath).
+				Msg("OTLP logs queue disabled: the directory is not writable; failed log batches are not kept across an outage")
+		} else {
+			s.logsQueue = newLogsQueue(queuePath, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
+			s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
+			logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
+			s.exporters.log = logExp
+		}
 	}
 
 	// Entity events ride the log signal, so the pipeline (provider + both

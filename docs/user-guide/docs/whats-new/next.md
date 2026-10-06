@@ -11,6 +11,21 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Failed log batches are kept on disk by default.** The OTLP output's
+  on-disk queue for event logs the collector could not take used to run
+  only when `persistence.path` was set. It is now on for every install
+  (package, MSI, container), in the state directory (`otlp-queue/`), and
+  replays at boot and when the collector answers again. Behaviour change:
+  during an outage the agent can now use up to 128 MiB of disk in the
+  state directory (`logs_queue_max_bytes`). New `logs_queue_max_age`
+  (24 hours) drops older batches at boot and every 10 minutes, counted as
+  `dropped_by_age`. `persistence.enabled: false` or `SENHUB_LOG_QUEUE=false`
+  turns it off; `SENHUB_LOG_QUEUE_RETENTION` and
+  `SENHUB_LOG_QUEUE_MAX_BYTES` tune it. An unwritable state directory logs
+  one warning and the agent runs without the queue. In a container, mount
+  a persistent volume on the state directory for the queue to outlive a
+  restart. An explicit `persistence.path` keeps working unchanged. See
+  [Logs survive an outage](../otlp.md#logs-survive-an-outage).
 - **Probes from environment variables.** `SENHUB_PROBE_<NAME>_TYPE=<type>` declares a probe and `SENHUB_PROBE_<NAME>_<PARAM>=value` sets its parameters, typed from the probe's schema, with `__` for nested keys and `_FILE` to read a secret from a file. The agent reads them itself, so containers, systemd units, Helm and Podman share one rule, and they adjust the probes of a mounted configuration too (the environment wins, key by key). A mistake stops the load and names the variable. `config show` lists the variables the probes were read from, and never prints a secret read from the environment. See [Configuring probes from environment variables](../configuration.md#configuring-probes-from-environment-variables).
 - **Probe SDK: the state directory.** `probesdk/state` gives a probe the directory where the agent keeps what must survive a restart (`state.Dir()`, `state.Path(name)`), so a probe that keeps a bookmark can default it beside the agent's identity.
 
