@@ -20,6 +20,7 @@ TAG=<tag that carries packaging/podman>
 BASE=https://raw.githubusercontent.com/senhub-io/senhub-agent/$TAG/packaging/podman
 curl -fsSLO "$BASE/senhub-agent.container"
 curl -fsSLO "$BASE/senhub-agent.env"
+curl -fsSLO "$BASE/check-quadlet.sh"
 
 # The bearer token, as a Podman secret read from standard input.
 printf '%s' "$OTLP_TOKEN" | sudo podman secret create senhub-otlp-token -
