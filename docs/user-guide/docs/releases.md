@@ -79,6 +79,7 @@ out" reads both and picks the higher `version`.
 | `artifacts[].sha256`, `size` | Checksum and size in bytes, as GitHub computed them at upload. |
 | `artifacts[].minisig_url` | The detached signature, or `null`. |
 | `images[]` | The container images of this exact version, with the digest to pull by. |
+| `charts[]` | The Helm chart of this exact version (`repo`, `version`, `digest`), published as an OCI artifact; empty when it is not published yet. |
 
 Three things worth knowing:
 
@@ -99,15 +100,16 @@ The schema may gain fields without a version change: ignore the ones you
 do not know. A rename, a removal or a change of meaning raises
 `schema_version`.
 
-The images list is filled by the release itself: the release publishes
-both images, waits for them, then builds the manifest.
+The images and charts lists are filled by the release itself: the release
+publishes both images and the Helm chart, waits for them, then builds the
+manifest.
 
 ## What is published, and when
 
 Cutting a release publishes everything, in this order, with no step to
 remember: the ZIPs and their signatures, the `.deb` and `.rpm` packages and
 repositories, the container images of both editions (and the minor tag of
-a stable release), then the manifest. The only manual step left is the
+a stable release), the Helm chart, then the manifest. The only manual step left is the
 Authenticode signing of the Windows files; the manifest is rebuilt after
 the Windows ZIPs are signed and again after the MSIs, and says
 `"complete": false` until then.
@@ -174,3 +176,10 @@ and `ghcr.io/senhub-io/senhub-agent-oss` (open source edition).
 There is no `latest` tag: it would cross minor lines without notice.
 For a deployment that must be immune even to a moved tag, pull by the
 digest that the manifest lists under `images`.
+
+## Helm chart
+
+The chart is published to `oci://ghcr.io/senhub-io/charts/senhub-agent`
+by the release, with the release version as its version (`0.6.2`,
+`0.6.2-beta.1`). A beta is only installed with an explicit `--version`.
+See [Kubernetes (Helm)](kubernetes-helm.md).

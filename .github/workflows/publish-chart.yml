@@ -1,0 +1,94 @@
+name: Publish Helm chart
+run-name: Publish chart ${{ inputs.tag }}
+
+# Packages charts/senhub-agent as an OCI artifact and pushes it to the
+# GitHub container registry:
+#
+#   helm install senhub-agent oci://ghcr.io/senhub-io/charts/senhub-agent --version <tag>
+#
+# The chart version is the release version, so a chart and the agent it
+# deploys carry the same number; appVersion (the default image tag) is
+# the same release. A beta tag (0.6.2-beta.1) is a valid semver
+# prerelease and is only installable with an explicit --version.
+#
+# Started by the release workflows of the enterprise repository once the
+# release exists (publish-chart.yml there), on the release tag, and found
+# again by the run name above. It can still be dispatched by hand.
+#
+# It must exist at the tag it is dispatched on: a tag cut before this
+# file landed has no chart workflow, and the dispatcher says so.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package (for example 0.6.2 or 0.6.2-beta.1)"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Validate the tag
+        run: |
+          set -euo pipefail
+          printf '%s' "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$' \
+            || { echo "::error::Tag '$TAG' is neither X.Y.Z nor X.Y.Z-beta.N"; exit 1; }
+          [ "${GITHUB_REF_NAME}" = "$TAG" ] \
+            || { echo "::error::Dispatched on '${GITHUB_REF_NAME}', not on the tag $TAG: the chart must be built from the release's own commit"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Set the chart version from the tag
+        run: |
+          set -euo pipefail
+          sed -i -E "s/^version: .*/version: ${TAG}/; s/^appVersion: .*/appVersion: \"${TAG}\"/" charts/senhub-agent/Chart.yaml
+          grep -E '^(version|appVersion):' charts/senhub-agent/Chart.yaml
+
+      - name: Lint and render with every CI values file
+        run: |
+          set -euo pipefail
+          helm lint charts/senhub-agent
+          for f in charts/senhub-agent/ci/*-values.yaml; do
+            echo "== $f"
+            helm lint charts/senhub-agent -f "$f"
+            helm template senhub-agent charts/senhub-agent -f "$f" \
+              --api-versions monitoring.coreos.com/v1/ServiceMonitor > /dev/null
+          done
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          helm package charts/senhub-agent --destination dist
+          test -f "dist/senhub-agent-${TAG}.tgz"
+
+      - name: Push to ghcr.io
+        id: push
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          out=$(helm push "dist/senhub-agent-${TAG}.tgz" oci://ghcr.io/senhub-io/charts 2>&1)
+          echo "$out"
+          digest=$(printf '%s\n' "$out" | sed -n 's/^Digest: //p' | head -n 1)
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::helm push printed no digest"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Say how to install it
+        run: |
+          {
+            echo "### Chart published"
+            echo '```'
+            echo "helm install senhub-agent oci://ghcr.io/senhub-io/charts/senhub-agent --version ${TAG} -n senhub"
+            echo '```'
+            echo "Digest: \`${{ steps.push.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
