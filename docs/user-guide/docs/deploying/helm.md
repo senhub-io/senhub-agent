@@ -58,6 +58,12 @@ helm install senhub-agent ./senhub-agent/charts/senhub-agent -n senhub \
   --set secrets.existingSecret=senhub-agent-credentials
 ```
 
+!!! note "Not yet verified on a cluster"
+    The recette ran the install with `--set` values and the chart's own
+    values files. This exact form, a values file combined with
+    `secrets.existingSecret`, is expected to behave the same and has not
+    been run as written.
+
 The `privileged` label is needed because the default is to watch the node
 (host namespaces and a read-only mount of its filesystem). To watch only the
 pod, set `hostMonitoring.enabled=false`: the workload becomes a Deployment
@@ -92,8 +98,9 @@ kubectl -n senhub create secret generic senhub-agent-credentials \
 kubectl -n senhub rollout restart daemonset/senhub-agent
 ```
 
-(`deployment/senhub-agent` with a Deployment.) The licence is read at the
-pod's start, hence the restart. A licence is the same token for every agent
+(`deployment/senhub-agent` with a Deployment.) This licence step has not
+been verified on a cluster yet. The licence is read at the pod's start,
+hence the restart. A licence is the same token for every agent
 of a customer, so one Secret serves every cluster you own.
 
 ## Secrets
@@ -114,17 +121,17 @@ Changing an existing Secret does not roll the pods. Restart them.
 
 ## Validation
 
-Four steps, from the cheapest, before and after the apply.
+From the cheapest, before and after the apply.
 
 ```bash
 helm lint ./senhub-agent/charts/senhub-agent -f values-paris.yaml
 helm template senhub-agent ./senhub-agent/charts/senhub-agent -n senhub \
   -f values-paris.yaml --set secrets.existingSecret=senhub-agent-credentials \
   | kubectl apply --dry-run=server -f -
-helm upgrade --install senhub-agent ./senhub-agent/charts/senhub-agent -n senhub \
-  -f values-paris.yaml --set secrets.existingSecret=senhub-agent-credentials \
-  --dry-run=server
 ```
+
+The server-side dry run of `helm upgrade --install --dry-run=server` has not
+been verified yet and is left out.
 
 The chart ships a `values.schema.json`, so a value of the wrong type or an
 unknown edition fails at `helm lint` with its name. It also refuses
@@ -156,7 +163,8 @@ A DaemonSet rolls one node at a time. Each node keeps its identity in its
 state directory, so an agent comes back as the same agent. The agent's own
 auto-update is off in a container.
 
-To go back: `helm rollback senhub-agent -n senhub`.
+`helm rollback` has not been verified on a cluster yet; to go back, set the
+previous `image.tag` and upgrade again.
 
 ## Removal
 

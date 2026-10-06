@@ -236,10 +236,11 @@ Get-Service senhub-agent | Format-List Status, StartType
 & "C:\Program Files\SenHub Agent\senhub-agent.exe" status
 & "C:\Program Files\SenHub Agent\senhub-agent.exe" config check
 & "C:\Program Files\SenHub Agent\senhub-agent.exe" license show
+# only present when OTLP_ENDPOINT was given
 Get-Content "C:\ProgramData\SenHub\strategies.d\10-otlp.yaml"
 Invoke-RestMethod http://localhost:8080/health
 ```
 
 Expected: the service `Running` and `Automatic`, the version you pinned,
 `status` healthy, `config check` exit `0`, the licence tier you provisioned,
-the OTLP endpoint of the property, and `/health` answering.
+the OTLP endpoint of the property (the file `strategies.d\10-otlp.yaml` exists only when `OTLP_ENDPOINT` was given), and `/health` answering.

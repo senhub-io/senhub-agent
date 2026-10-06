@@ -18,6 +18,7 @@ ones to change.
 
 ```yaml
 #cloud-config
+packages: [curl, gnupg]
 write_files:
   - path: /var/lib/cloud/senhub/50-cloud-init.probes.yaml
     permissions: "0600"
@@ -32,7 +33,8 @@ write_files:
   - path: /var/lib/cloud/senhub/50-cloud-init.otlp.yaml
     permissions: "0600"
     content: |
-      endpoint: collector.example.com:4317
+      otlp:
+        endpoint: collector.example.com:4317
   - path: /var/lib/cloud/senhub/pg_password
     permissions: "0600"
     content: "<database password>"
@@ -45,12 +47,13 @@ write_files:
       #!/bin/sh
       set -eu
 
-      SENHUB_VERSION="${SENHUB_VERSION:-0.6.1}"      # exact version: the pin
+      SENHUB_VERSION="${SENHUB_VERSION:-0.6.2~beta.1}"  # exact package version: the pin
       SENHUB_EDITION="${SENHUB_EDITION:-senhub-agent-oss}"  # or senhub-agent
-      SENHUB_CHANNEL="${SENHUB_CHANNEL:-stable}"     # or beta
+      SENHUB_CHANNEL="${SENHUB_CHANNEL:-beta}"       # stable once 0.6.2 is published
       FINGERPRINT="B9987A2D4623796E19D3B185CA56F750354530AF"
       SRC=/var/lib/cloud/senhub
       CFG=/etc/senhub-agent
+      trap 'rm -rf "$SRC"' EXIT      # the staged secrets never outlive the script
 
       # 1. The repository key is trusted only if it carries the published
       #    fingerprint (compare it with https://packages.senhub.io).
@@ -79,7 +82,11 @@ write_files:
       fi
       rm -f "$key"
 
-      # 3. Build the configuration in a scratch copy and check it there.
+      # 3. The secret must exist where the probe points before the check.
+      install -d -o senhub -g senhub -m 0750 "$CFG/secrets"
+      install -o senhub -g senhub -m 0600 "$SRC/pg_password" "$CFG/secrets/pg_password"
+
+      # 4. Build the configuration in a scratch copy and check it there.
       stage=$(mktemp -d)
       cp -a "$CFG/." "$stage/"
       cp "$SRC/50-cloud-init.probes.yaml" "$stage/probes.d/"
@@ -93,15 +100,13 @@ write_files:
         exit 1
       fi
 
-      # 4. Apply: files first, then the service picks them up.
-      install -d -o senhub -g senhub -m 0750 "$CFG/secrets"
-      install -o senhub -g senhub -m 0600 "$SRC/pg_password" "$CFG/secrets/pg_password"
+      # 5. Apply: files first, then the service picks them up.
       install -o senhub -g senhub -m 0640 "$SRC/50-cloud-init.probes.yaml" "$CFG/probes.d/"
       install -o senhub -g senhub -m 0640 "$SRC/50-cloud-init.otlp.yaml" "$CFG/strategies.d/"
       if [ -f "$SRC/license.jwt" ]; then
         install -o senhub -g senhub -m 0640 "$SRC/license.jwt" "$CFG/license.jwt"
       fi
-      rm -rf "$stage" "$SRC"
+      rm -rf "$stage"
       systemctl enable senhub-agent
       systemctl restart senhub-agent
 runcmd:
@@ -129,7 +134,7 @@ ever runs.
 
 ## Pinning
 
-`SENHUB_VERSION` is the pin. The script installs `0.6.1` exactly and holds
+`SENHUB_VERSION` is the pin, in the package's spelling. The script installs `0.6.2~beta.1` exactly and holds
 the package (`apt-mark hold`), so `apt upgrade` and unattended upgrades do
 not move it. On RHEL, add the versionlock plugin to get the same effect:
 
@@ -142,11 +147,13 @@ To see which versions the repository offers:
 
 ```bash
 apt-cache madison senhub-agent-oss     # Debian, Ubuntu
-dnf --showduplicates list senhub-agent-oss   # RHEL family
+sudo dnf --showduplicates list senhub-agent-oss   # RHEL family
 ```
 
-A beta is spelled `0.6.2~beta.1` in the packages and `0.6.2-beta` as a
-release tag; set `SENHUB_CHANNEL=beta` to use the beta repository.
+A beta is spelled `0.6.2~beta.1` in the packages and `0.6.2-beta.1` as a
+release tag. The example defaults to the beta channel because the stable
+channel carries no 0.6.2 yet; it comes with the 0.6.2 release, and then
+`SENHUB_CHANNEL=stable` and `SENHUB_VERSION=0.6.2` apply.
 
 ## Licence
 
@@ -159,7 +166,7 @@ options:
 - Keep the entry above and accept that exposure, which suits a private
   network and a licence you can rotate.
 - Remove the entry and fetch the token from your secret store in the script,
-  before step 3, for example a pre-signed URL or the provider's secrets
+  before step 4, for example a pre-signed URL or the provider's secrets
   CLI, writing to `$SRC/license.jwt`:
 
   ```sh
@@ -203,11 +210,11 @@ that has cloud-init 22.2 or later.
 cloud-init schema --config-file user-data.yaml --annotate
 ```
 
-On the machine: the script's step 3 is the gate, and you can run it again by
+On the machine: the script's step 4 is the gate, and you can run it again by
 hand on a running host, which changes nothing:
 
 ```bash
-senhub-agent config check --json
+sudo senhub-agent config check --json
 echo "exit $?"
 ```
 
@@ -222,11 +229,11 @@ the package manager, on purpose:
 
 ```bash
 sudo apt-mark unhold senhub-agent-oss
-sudo apt-get install -y --allow-downgrades senhub-agent-oss=0.6.2*
+sudo apt-get install -y --allow-downgrades "senhub-agent-oss=0.6.2*"
 sudo apt-mark hold senhub-agent-oss
 ```
 
-or `sudo dnf install -y senhub-agent-oss-0.6.2` after
+or `sudo dnf install -y senhub-agent-oss-0.6.2` (for a beta, the tilde form, `senhub-agent-oss-0.6.2~beta.2`) after
 `dnf versionlock delete senhub-agent-oss`. The package keeps
 `/etc/senhub-agent`, the agent key and the licence, and restarts the
 service. For a fleet, drive this with Ansible (the
@@ -256,11 +263,18 @@ systemctl is-active senhub-agent
 senhub-agent --version
 dpkg -l senhub-agent-oss | tail -1        # or: rpm -q senhub-agent-oss
 apt-mark showhold                          # lists senhub-agent-oss
-senhub-agent config check; echo "exit $?"
-senhub-agent license show
-ls -l /etc/senhub-agent/probes.d/ /etc/senhub-agent/strategies.d/
+sudo senhub-agent config check; echo "exit $?"
+sudo senhub-agent license show
+sudo ls -l /etc/senhub-agent/probes.d/ /etc/senhub-agent/strategies.d/
 curl -fsS http://127.0.0.1:8080/health
 test ! -e /var/lib/cloud/senhub && echo "staging directory removed"
+```
+
+On the RHEL family, replace the two package lines by:
+
+```bash
+rpm -q senhub-agent-oss
+sudo dnf versionlock list
 ```
 
 Expected: `status: done`, the service `active`, the pinned version, the hold
