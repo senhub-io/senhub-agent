@@ -204,15 +204,15 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.startupProbe }}
           startupProbe:
-            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $)) | nindent 12 }}
+            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $) "tls" (eq (include "senhub-agent.httpTLS" $) "true")) | nindent 12 }}
           {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
-            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $)) | nindent 12 }}
+            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $) "tls" (eq (include "senhub-agent.httpTLS" $) "true")) | nindent 12 }}
           {{- end }}
           {{- with .Values.readinessProbe }}
           readinessProbe:
-            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $)) | nindent 12 }}
+            {{- include "senhub-agent.probe" (dict "probe" . "bind" (include "senhub-agent.httpBind" $) "tls" (eq (include "senhub-agent.httpTLS" $) "true")) | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: config
