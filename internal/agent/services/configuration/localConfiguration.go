@@ -17,6 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -142,6 +143,7 @@ func (lc *LocalConfiguration) snapshot() *LocalConfigurationData {
 // storeData publishes d as the new current snapshot.
 func (lc *LocalConfiguration) storeData(d LocalConfigurationData) {
 	lc.dataPo.Store(&d)
+	common.SetHostNameOverride(d.Agent.GlobalTags[common.HostNameKey])
 }
 
 // NewLocalConfiguration creates a new LocalConfiguration instance

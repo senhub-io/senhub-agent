@@ -15,6 +15,7 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 )
 
 var testHost = hostStamp{id: "6a6d1121-4a85-4e64-a222-746f7bc9c04c", name: "sha901"}
@@ -131,5 +132,26 @@ func TestAUnixSocketRefusesAnAddressFilter(t *testing.T) {
 		"address": "unix:/run/x.sock", "allowed_cidrs": []interface{}{"10.0.0.0/8"},
 	}); err == nil {
 		t.Error("allowed_cidrs was accepted on a unix socket, where no source address exists")
+	}
+}
+
+// A local sender is stamped with the operator's host.name override, a remote
+// one keeps its own identity whatever the override says.
+func TestTheStampFollowsTheHostNameOverride(t *testing.T) {
+	common.SetHostNameOverride("preprod.example.shop")
+	t.Cleanup(func() { common.SetHostNameOverride("") })
+
+	own := currentOwnHost()
+	if own.name != "preprod.example.shop" {
+		t.Fatalf("own host name = %q, want the override", own.name)
+	}
+	local, remote := resourceWith("service.name", "intake"), resourceWith("host.name", "other-host")
+	stampResource(local, originUDS, hostStamp{id: "id-1", name: own.name})
+	stampResource(remote, originRemote, hostStamp{id: "id-1", name: own.name})
+	if _, name := hostAttrs(local); name != "preprod.example.shop" {
+		t.Errorf("local host.name = %q, want the override", name)
+	}
+	if _, name := hostAttrs(remote); name != "other-host" {
+		t.Errorf("remote host.name = %q, want the sender's own", name)
 	}
 }
