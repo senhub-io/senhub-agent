@@ -383,6 +383,8 @@ var knownTopLevelArgs = map[string]struct{}{
 }
 
 func Main() {
+	wireProbeTypeLookup()
+
 	// `--version` short-circuit: print version + exit, BEFORE any
 	// subcommand dispatch or privilege gate. The pre-0.2.x agent had
 	// no such handling — `senhub-agent --version` fell through to

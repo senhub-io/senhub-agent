@@ -351,7 +351,7 @@
       tb.innerHTML = '';
       if (!rows.length) tb.innerHTML = '<tr><td colspan="7" class="muted small">No probe matches.</td></tr>';
       for (const p of rows) tb.appendChild(List.row(p));
-      const files = all.filter(p => !p.managed).length;
+      const files = all.filter(p => !p.managed && !(p.env_variables && p.env_variables.length)).length;
       $('list-foot').innerHTML = '<span>' + (files ? files + (files > 1 ? ' probes come' : ' probe comes') + ' from files written by hand. They are listed, not editable here.' : 'Every probe here was written from the console.') + '</span><span>The <b>&#8230;</b> menu holds Disable and Delete.</span>';
     },
     row(p) {
@@ -361,7 +361,10 @@
       const spec = List.types[p.type];
       const sub = firstEssentialValue(spec, p.params);
       let name = '<span class="name">' + esc(p.name) + '</span>';
-      if (!p.managed) name += ' <span class="pill file" title="Declared in a file written by hand; edit the file">file</span>';
+      const envLocked = !!(p.env_variables && p.env_variables.length);
+      const envWhy = 'Set by environment variables: ' + (p.env_variables || []).join(', ') + '. Change them where the agent is started.';
+      if (envLocked) name += ' <span class="pill file" title="' + esc(envWhy) + '">Set by environment variables</span>';
+      else if (!p.managed) name += ' <span class="pill file" title="Declared in a file written by hand; edit the file">file</span>';
       if (sub) name += '<span class="sub">' + esc(sub) + '</span>';
       let state = '';
       if (s === 'running') state = '<span class="pill ok"><span class="dot ok"></span>running</span>';
@@ -371,12 +374,13 @@
       else if (s === 'disabled') state = '<span class="pill off">disabled</span>';
       else if (p.tier !== 'pro') state = '<span class="pill off" title="' + esc(p.reason || '') + '">not on this platform</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
       else state = '<span class="pill lock" title="' + esc(p.reason || '') + '">&#128274; not licensed</span> <span class="pill pro">Pro</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
-      const editable = p.managed && p.has_schema;
+      const editable = p.managed && p.has_schema && !envLocked;
       let acts = '';
       if ((s === 'failing' || s === 'target-down') && editable) acts += '<a class="btn sm primary" href="?edit=' + encodeURIComponent(p.name) + '">Fix</a> ';
       if (editable && s !== 'failing' && s !== 'target-down') acts += '<a class="btn sm" href="?edit=' + encodeURIComponent(p.name) + '">Edit</a> ';
       if (s !== 'disabled') acts += '<a class="btn sm" href="' + WEB + '/outputs/http#urls&probe=' + encodeURIComponent(p.name) + '">Sensor URL</a> ';
-      if (p.managed) acts += '<span class="menu-wrap"><button type="button" class="btn sm ghost" data-menu title="More">&#8230;</button></span>';
+      if (envLocked) acts += '<button type="button" class="btn sm ghost" disabled title="' + esc(envWhy) + '">Edit, disable, delete</button>';
+      else if (p.managed) acts += '<span class="menu-wrap"><button type="button" class="btn sm ghost" data-menu title="More">&#8230;</button></span>';
       const cat = (List.types[p.type] && List.types[p.type].category) || 'other';
       tr.innerHTML = '<td>' + name + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state + '</td>' +
         '<td class="num">' + (p.interval ? esc(p.interval) + ' s' : '&ndash;') + '</td>' +
@@ -485,7 +489,8 @@
         Ed.writeGov(Ed.probe.governance || {});
         Ed.writeTags(Ed.probe.custom_tags || {});
         Ed.selectType(Ed.probe.type, Ed.probe.params || {});
-        if (!Ed.probe.managed) setBanner($('banner-slot'), 'warn', 'This probe comes from a file written by hand.', 'The console cannot save it; edit the file instead.');
+        if (Ed.probe.env_variables && Ed.probe.env_variables.length) setBanner($('banner-slot'), 'warn', 'Set by environment variables.', Ed.probe.env_variables.join(', ') + ' declare or override this probe. Change them where the agent is started; the console cannot save it.');
+        else if (!Ed.probe.managed) setBanner($('banner-slot'), 'warn', 'This probe comes from a file written by hand.', 'The console cannot save it; edit the file instead.');
       } else {
         const t = q.get('type');
         if (t && Ed.types[t]) Ed.selectType(t, {});
@@ -688,11 +693,13 @@
       else if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) missing.push('a valid name');
       if (Ed.form) for (const m of Ed.form.missing()) missing.push(m.label);
       const locked = Ed.spec && !Ed.spec.authorized;
-      const file = Ed.probe && !Ed.probe.managed;
+      const envLocked = !!(Ed.probe && Ed.probe.env_variables && Ed.probe.env_variables.length);
+      const file = Ed.probe && (!Ed.probe.managed || envLocked);
       const ok = !missing.length && !locked && !file;
       $('btn-save').disabled = !ok;
       let state;
-      if (file) state = '<span class="dot off"></span>Edited by hand, not from here';
+      if (envLocked) state = '<span class="dot off"></span>Set by environment variables';
+      else if (file) state = '<span class="dot off"></span>Edited by hand, not from here';
       else if (locked) state = '<span class="dot warn"></span>' + (Ed.spec.tier === 'pro' ? 'License needed' : esc(Ed.spec.reason || 'Not on this platform'));
       else if (ok) state = '<span class="dot ok"></span>Ready to save';
       else state = '<span class="dot warn"></span>' + esc(missing.join(', ')) + ' still needed';
