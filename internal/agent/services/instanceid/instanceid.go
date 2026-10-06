@@ -81,6 +81,9 @@ func OwnStateDir() string {
 	if v := os.Getenv("STATE_DIRECTORY"); v != "" {
 		return strings.Split(v, ":")[0]
 	}
+	if v := os.Getenv("SENHUB_STATE_DIR"); v != "" {
+		return v
+	}
 	return DefaultStateDir()
 }
 

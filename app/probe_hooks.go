@@ -9,6 +9,7 @@ import (
 
 	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/configuration"
 	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
@@ -20,6 +21,15 @@ import (
 func wireProbeHooks() {
 	httpstrategy.ProbeChecker = checkProbeConfig
 	httpstrategy.ProbeCollector = collectProbeOnce
+}
+
+// wireProbeTypeLookup tells the configuration loader which probe types this
+// binary carries, so a type declared through SENHUB_PROBE_<NAME>_TYPE that
+// no schema describes is still refused when it does not exist.
+func wireProbeTypeLookup() {
+	configuration.SetProbeTypeLookup(func(probeType string) bool {
+		return probes.GetRegisteredProbeTypes()[probeType]
+	})
 }
 
 // quietProbeLogger keeps a probe built for a check from writing into the
