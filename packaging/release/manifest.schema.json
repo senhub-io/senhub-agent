@@ -37,6 +37,11 @@
       "description": "Container images published for this exact version. Empty until the image workflow has run; the manifest is regenerated afterwards.",
       "type": "array",
       "items": { "$ref": "#/$defs/image" }
+    },
+    "charts": {
+      "description": "Helm charts published as OCI artifacts for this exact version. Not required: a manifest generated before the chart was published has none.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/chart" }
     }
   },
   "$defs": {
@@ -61,6 +66,16 @@
           "type": ["string", "null"],
           "format": "uri"
         }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["repo", "version", "digest"],
+      "properties": {
+        "repo": { "description": "OCI repository: helm install <name> oci://<repo> --version <version>.", "type": "string", "examples": ["ghcr.io/senhub-io/charts/senhub-agent"] },
+        "version": { "description": "The exact version tag; equal to the release version.", "type": "string" },
+        "digest": { "description": "Manifest digest: pull by repo@digest to be immune to a moved tag.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       }
     },
     "image": {
