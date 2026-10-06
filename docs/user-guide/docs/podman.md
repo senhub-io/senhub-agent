@@ -256,11 +256,11 @@ What becomes of each:
   systemctl restart senhub-agent
   ```
 
-- The Azure client secret of the Container Apps shorthand is the
-  exception: it is read as an environment variable
-  (`SENHUB_AZURE_CLIENT_SECRET`), so a `type=env` secret keeps it out of
-  the unit but not out of `podman inspect`. Use a `probes.d` file with a
-  `${file:...}` reference where that matters.
+- The Azure client secret of a Container Apps probe declared from
+  environment variables (`SENHUB_PROBE_<NAME>_CLIENT_SECRET`) is the
+  exception: it is read as an environment variable, so a `type=env` secret
+  keeps it out of the unit but not out of `podman inspect`. Use a
+  `probes.d` file with a `${file:...}` reference where that matters.
 
 ### Stopping
 
