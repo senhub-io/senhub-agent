@@ -1,0 +1,111 @@
+---
+# Written against the documented MSI and release manifest; not yet run on a
+# Windows host.
+- name: Manifest address
+  ansible.builtin.set_fact:
+    _senhub_agent_manifest_url: >-
+      {{ senhub_agent_manifest_base_url }}/{{ (senhub_agent_channel ~ '/latest.json')
+         if (not (_senhub_agent_pinned | bool)) or (_senhub_agent_follow_latest | bool)
+         else (_senhub_agent_tag ~ '/manifest.json') }}
+
+- name: Read the release manifest
+  ansible.windows.win_uri:
+    url: "{{ _senhub_agent_manifest_url }}"
+    return_content: true
+  register: _senhub_agent_manifest_raw
+  changed_when: false
+
+- name: Pick the MSI of this edition
+  ansible.builtin.set_fact:
+    _senhub_agent_manifest: "{{ _senhub_agent_manifest_raw.content | from_json }}"
+    _senhub_agent_msi: >-
+      {{ (_senhub_agent_manifest_raw.content | from_json).artifacts
+         | selectattr('kind', 'eq', 'msi')
+         | selectattr('os', 'eq', 'windows')
+         | selectattr('arch', 'eq', 'amd64')
+         | selectattr('edition', 'eq', 'full' if senhub_agent_edition == 'full' else 'oss')
+         | list }}
+
+- name: Check the release is installable
+  ansible.builtin.assert:
+    that:
+      - _senhub_agent_msi | length == 1
+      - _senhub_agent_manifest.complete | bool or senhub_agent_allow_incomplete_release | bool
+    fail_msg: >-
+      {{ _senhub_agent_manifest_url }} lists {{ _senhub_agent_msi | length }} {{ senhub_agent_edition }} MSI
+      for windows/amd64 and complete={{ _senhub_agent_manifest.complete }}. A release that is not complete
+      has Windows files that are not signed yet; wait for the signing round.
+    quiet: true
+
+- name: Installed version
+  ansible.windows.win_command: '"{{ senhub_agent_windows_bin }}" version --json'
+  register: _senhub_agent_installed
+  changed_when: false
+  failed_when: false
+
+- name: Version installed now
+  ansible.builtin.set_fact:
+    _senhub_agent_installed_version: "{{ ((_senhub_agent_installed.stdout | from_json).version | default('')) if _senhub_agent_installed.rc | default(1) == 0 else '' }}"
+
+- name: Is the MSI needed
+  ansible.builtin.set_fact:
+    _senhub_agent_msi_needed: >-
+      {{ _senhub_agent_installed_version == ''
+         or ((_senhub_agent_pinned | bool or _senhub_agent_follow_latest | bool)
+             and _senhub_agent_installed_version != _senhub_agent_manifest.version) }}
+
+- name: Download, verify and install the MSI
+  when: _senhub_agent_msi_needed | bool
+  block:
+    - name: Download the MSI
+      ansible.windows.win_get_url:
+        url: "{{ _senhub_agent_msi[0].url }}"
+        dest: "{{ senhub_agent_windows_download_dir }}\\{{ _senhub_agent_msi[0].name }}"
+        force: true
+
+    - name: Checksum of the file
+      ansible.windows.win_stat:
+        path: "{{ senhub_agent_windows_download_dir }}\\{{ _senhub_agent_msi[0].name }}"
+        checksum_algorithm: sha256
+        get_checksum: true
+      register: _senhub_agent_msi_stat
+
+    - name: Refuse a file that does not match the manifest
+      ansible.builtin.assert:
+        that: _senhub_agent_msi_stat.stat.checksum | lower == _senhub_agent_msi[0].sha256 | lower
+        fail_msg: "{{ _senhub_agent_msi[0].name }} does not match the SHA-256 of the manifest; it was not installed."
+        quiet: true
+
+    - name: Install the MSI
+      ansible.windows.win_package:
+        path: "{{ senhub_agent_windows_download_dir }}\\{{ _senhub_agent_msi[0].name }}"
+        state: present
+        arguments: >-
+          {{ ['/norestart']
+             + (['HTTP_PORT=' ~ senhub_agent_msi_http_port] if senhub_agent_msi_http_port | string | length > 0 else [])
+             + (['TAGS=' ~ senhub_agent_msi_tags] if senhub_agent_msi_tags | length > 0 else [])
+             + (['OTLP_ENDPOINT=' ~ senhub_agent_msi_otlp_endpoint] if senhub_agent_msi_otlp_endpoint | length > 0 else [])
+             + (['ZABBIX_SERVER=' ~ senhub_agent_msi_zabbix_server] if senhub_agent_msi_zabbix_server | length > 0 else [])
+             + (['ZABBIX_HOST_METADATA=' ~ senhub_agent_msi_zabbix_host_metadata] if senhub_agent_msi_zabbix_host_metadata | length > 0 else [])
+             + ['DESKTOP_SHORTCUT=' ~ senhub_agent_msi_desktop_shortcut]
+             + (['INSTALLFOLDER=' ~ senhub_agent_msi_install_folder] if senhub_agent_msi_install_folder | length > 0 else [])
+             + (['ADOPT=1'] if senhub_agent_msi_adopt | bool else []) }}
+      notify: senhub_agent restart
+  always:
+    - name: Remove the downloaded MSI
+      ansible.windows.win_file:
+        path: "{{ senhub_agent_windows_download_dir }}\\{{ _senhub_agent_msi[0].name }}"
+        state: absent
+      changed_when: false
+
+- name: Configuration
+  ansible.builtin.include_tasks: configure_windows.yml
+
+- name: Apply pending restarts before the final state
+  ansible.builtin.meta: flush_handlers
+
+- name: Service enabled and running
+  ansible.windows.win_service:
+    name: "{{ senhub_agent_windows_service_name }}"
+    start_mode: "{{ 'auto' if senhub_agent_service_enabled | bool else 'disabled' }}"
+    state: "{{ senhub_agent_service_state }}"

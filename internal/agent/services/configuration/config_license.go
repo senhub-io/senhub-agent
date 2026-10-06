@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -108,10 +107,10 @@ func readInlineLicense(configPath string) (string, error) {
 //
 // It is a no-op when the inline field is empty (free tier or already migrated)
 // or is a ${...} reference (the operator deliberately points elsewhere — do not
-// second-guess it). The move is backed by a timestamped backup of agent.yaml
-// and verified by reloading: on any mismatch the backup is restored and the
-// freshly written sidecar removed, so a fault never changes the effective
-// license.
+// second-guess it). The move is verified by reloading: on any mismatch the
+// inline field is put back by a guarded node-level edit and the freshly
+// written sidecar removed, so a fault never changes the effective license
+// and never overwrites an operator's concurrent edit.
 func MigrateLicenseToSidecar(configPath string, log *logger.ModuleLogger) error {
 	inline, err := readInlineLicense(configPath)
 	if err != nil {
@@ -121,41 +120,38 @@ func MigrateLicenseToSidecar(configPath string, log *logger.ModuleLogger) error 
 		return nil
 	}
 
-	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", configPath, err)
-	}
-	backupPath := fmt.Sprintf("%s.backup.%s", configPath, time.Now().Format("20060102-150405"))
-	if err := os.WriteFile(backupPath, raw, 0o600); err != nil {
-		return fmt.Errorf("backing up %s before license migration: %w", configPath, err)
-	}
-
-	restore := func() {
-		if data, e := os.ReadFile(backupPath); e == nil {
-			_ = atomicWriteFile(configPath, data, fileModeOr(configPath, 0o600))
+	// Undoing puts back only what this migration changed: the inline
+	// license field (through the same guarded node-level edit that
+	// cleared it) and the sidecar. Restoring a whole pre-migration copy of
+	// agent.yaml would overwrite whatever an operator saved in between.
+	restore := func(cause error) error {
+		var failures []string
+		if err := SetLicenseField(configPath, inline); err != nil {
+			failures = append(failures, fmt.Sprintf("putting the inline license back: %v", err))
 		}
-		_ = os.Remove(LicenseSidecarPath(configPath))
+		if err := os.Remove(LicenseSidecarPath(configPath)); err != nil && !os.IsNotExist(err) {
+			failures = append(failures, fmt.Sprintf("removing the sidecar: %v", err))
+		}
+		if len(failures) > 0 {
+			return fmt.Errorf("%w; rolling back ALSO failed: %s", cause, strings.Join(failures, "; "))
+		}
+		return cause
 	}
 
 	// WriteLicenseSidecar writes the sidecar (0600) and clears the inline field.
 	if err := WriteLicenseSidecar(configPath, inline); err != nil {
-		restore()
-		_ = os.Remove(backupPath)
-		return fmt.Errorf("migrating inline license to sidecar: %w", err)
+		return restore(fmt.Errorf("migrating inline license to sidecar: %w", err))
 	}
 
 	// Verify: the effective license after the move must be unchanged.
 	after, err := LoadFromDisk(configPath, nil)
-	if err != nil || after.Agent.License != inline {
-		restore()
-		_ = os.Remove(backupPath)
-		if err != nil {
-			return fmt.Errorf("verifying license migration (reload failed): %w", err)
-		}
-		return fmt.Errorf("verifying license migration: effective license changed after move")
+	if err != nil {
+		return restore(fmt.Errorf("verifying license migration (reload failed): %w", err))
+	}
+	if after.Agent.License != inline {
+		return restore(fmt.Errorf("verifying license migration: effective license changed after move"))
 	}
 
-	_ = os.Remove(backupPath)
 	if log != nil {
 		log.Info().Str("sidecar", LicenseSidecarPath(configPath)).
 			Msg("Migrated inline license to the license.jwt sidecar")

@@ -66,6 +66,11 @@ var fileRefPattern = regexp.MustCompile(`\$\{file:[^}]+\}`)
 // not look like a secret.
 var secretRefPattern = regexp.MustCompile(`\$\{secret:[^}]+\}`)
 
+// envProbeRefPattern recognises the reference the environment rule leaves in
+// place of a secret value it was given: the variable's value is masked in
+// the redacted view whatever the key is called.
+var envProbeRefPattern = regexp.MustCompile(`\$\{env:SENHUB_PROBE_[^}]+\}`)
+
 // LoadForShow returns the merged configuration tree for `agent config
 // show` rendering. The mode parameter selects raw / resolved /
 // redacted; see ShowMode constants for the contract of each.
@@ -183,6 +188,10 @@ func loadMerged(configPath string, log *logger.ModuleLogger) (LocalConfiguration
 	secret.SetConfigDir(baseDir)
 
 	if legacy {
+		data = normalizeYAMLTypes(data)
+		if err := applyEnvProbes(&data, os.Environ(), log); err != nil {
+			return LocalConfigurationData{}, fmt.Errorf("probes from the environment: %w", err)
+		}
 		return data, nil
 	}
 	probes, err := loadProbesD(filepath.Join(baseDir, "probes.d"))
@@ -193,7 +202,11 @@ func loadMerged(configPath string, log *logger.ModuleLogger) (LocalConfiguration
 	if err != nil {
 		return LocalConfigurationData{}, err
 	}
-	return mergeConfigs(data, probes, strategies), nil
+	merged := normalizeYAMLTypes(mergeConfigs(data, probes, strategies))
+	if err := applyEnvProbes(&merged, os.Environ(), log); err != nil {
+		return LocalConfigurationData{}, fmt.Errorf("probes from the environment: %w", err)
+	}
+	return merged, nil
 }
 
 // redactInPlace traverses the resolved tree and replaces leaf string
@@ -279,7 +292,7 @@ func redactInPlace(rawV, resV reflect.Value, currentName string) {
 		// regardless of whether the resolved value happens to be
 		// empty — an empty secret is still a secret slot.
 		hasFileRef := fileRefPattern.MatchString(raw)
-		hasSecretRef := secretRefPattern.MatchString(raw)
+		hasSecretRef := secretRefPattern.MatchString(raw) || envProbeRefPattern.MatchString(raw)
 		nameLooksSecret := currentName != "" && secretFieldPattern.MatchString(currentName)
 		if !hasFileRef && !hasSecretRef && !nameLooksSecret {
 			return

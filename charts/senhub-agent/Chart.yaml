@@ -1,0 +1,25 @@
+apiVersion: v2
+name: senhub-agent
+description: >-
+  SenHub Agent: infrastructure monitoring agent (probes to PRTG, Nagios,
+  Prometheus, Zabbix and OTLP), with optional read-only monitoring of the
+  cluster it runs in.
+type: application
+version: 0.1.0
+# The image tag used when image.tag is empty. Bump it with each release
+# whose image is published on ghcr.io.
+appVersion: "0.6.1"
+kubeVersion: ">=1.23.0-0"
+home: https://agent.senhub.io
+sources:
+  - https://github.com/senhub-io/senhub-agent
+keywords:
+  - monitoring
+  - opentelemetry
+  - prtg
+  - nagios
+  - zabbix
+  - prometheus
+maintainers:
+  - name: Sensor Factory
+    url: https://agent.senhub.io
