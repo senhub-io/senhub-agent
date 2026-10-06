@@ -4,9 +4,10 @@
 # sha256 digest. Nothing is downloaded.
 #
 #   gen-manifest.sh --release-json <file|-> [--image repo,edition,tag,digest]...
+#                    [--chart repo,version,digest]...
 #
 # The release JSON is what `gh api repos/senhub-io/senhub-agent/releases/tags/<tag>`
-# returns. The manifest goes to stdout. --image can be repeated.
+# returns. The manifest goes to stdout. --image and --chart can be repeated.
 #
 # Assets that are not an installable file (metadata.json, releases.json,
 # jt400runner-*, the .minisig files themselves) are not listed.
@@ -14,7 +15,7 @@ set -euo pipefail
 
 die() { echo "gen-manifest: $*" >&2; exit 1; }
 
-RELEASE_JSON="" IMAGES='[]'
+RELEASE_JSON="" IMAGES='[]' CHARTS='[]'
 while [ $# -gt 0 ]; do
     case "$1" in
         --release-json) RELEASE_JSON=${2:-}; shift 2 ;;
@@ -24,6 +25,12 @@ while [ $# -gt 0 ]; do
             IMAGES=$(jq -c --arg r "$repo" --arg e "$edition" --arg t "$tag" --arg d "$digest" \
                 '. + [{repo:$r, edition:$e, tag:$t, digest:$d}]' <<<"$IMAGES")
             shift 2 ;;
+        --chart)
+            IFS=, read -r repo version digest extra <<<"${2:-}"
+            [ -n "${digest:-}" ] && [ -z "${extra:-}" ] || die "--chart wants repo,version,digest"
+            CHARTS=$(jq -c --arg r "$repo" --arg v "$version" --arg d "$digest" \
+                '. + [{repo:$r, version:$v, digest:$d}]' <<<"$CHARTS")
+            shift 2 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
@@ -32,7 +39,7 @@ command -v jq >/dev/null || die "jq is required"
 if [ "$RELEASE_JSON" = "-" ]; then RELEASE_JSON=/dev/stdin; fi
 [ -r "$RELEASE_JSON" ] || die "cannot read $RELEASE_JSON"
 
-jq --argjson images "$IMAGES" '
+jq --argjson images "$IMAGES" --argjson charts "$CHARTS" '
 def edition($n): if ($n | startswith("senhub-agent-oss")) then "oss" else "full" end;
 
 def classify:
@@ -83,6 +90,7 @@ if .draft == true then error("release is a draft") else . end
     complete: (($pending | length) == 0 and ($channel == "beta" or $msis == 2)),
     signing_pending: $pending,
     artifacts: $artifacts,
-    images: ($images | sort_by(.repo))
+    images: ($images | sort_by(.repo)),
+    charts: ($charts | sort_by(.repo))
   }
 ' "$RELEASE_JSON"
