@@ -11,6 +11,7 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **SNMP: a polled device's routes now link to their gateway.** Routes read from a device's routing table reach the gateway's address with `next_hop_via`, as host routes already do, when the gateway is a public address, so a router's default route resolves to the same address node as a host's. Private (RFC1918, CGNAT, ULA), loopback, link-local and multicast gateways stay unlinked, because unrelated switches behind one private gateway would otherwise merge.
 - **Failed log batches are kept on disk by default.** The OTLP output's
   on-disk queue for event logs the collector could not take used to run
   only when `persistence.path` was set. It is now on for every install

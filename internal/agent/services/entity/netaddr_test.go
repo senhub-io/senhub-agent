@@ -117,3 +117,30 @@ func TestAddressEdgeAllowed(t *testing.T) {
 		}
 	}
 }
+
+func TestAddressIsGloballyUnique(t *testing.T) {
+	cases := map[string]bool{
+		"51.255.48.1":   true,
+		"8.8.8.8":       true,
+		"2001:4860::1":  true,
+		"10.0.0.1":      false,
+		"192.168.1.1":   false,
+		"172.20.0.1":    false,
+		"172.17.0.1":    false,
+		"100.64.0.1":    false,
+		"100.127.255.1": false,
+		"fd00::1":       false,
+		"127.0.0.1":     false,
+		"169.254.1.1":   false,
+		"fe80::1":       false,
+		"224.0.0.1":     false,
+		"0.0.0.0":       false,
+		"":              false,
+		"not-an-ip":     false,
+	}
+	for in, want := range cases {
+		if got := AddressIsGloballyUnique(in); got != want {
+			t.Errorf("AddressIsGloballyUnique(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
