@@ -143,7 +143,7 @@ func withPreservedDirectives(refreshed, installed string) string {
 		// next section header (typically [Install]).
 		if !inserted && strings.HasPrefix(strings.TrimSpace(line), "[") &&
 			strings.TrimSpace(line) != "[Service]" && len(out) > 0 {
-			out = append(out, "# Preserved from the previously installed unit:")
+			out = append(out, preservedDirectivesComment)
 			out = append(out, extra...)
 			out = append(out, "")
 			inserted = true
@@ -151,7 +151,7 @@ func withPreservedDirectives(refreshed, installed string) string {
 		out = append(out, line)
 	}
 	if !inserted {
-		out = append(out, "# Preserved from the previously installed unit:")
+		out = append(out, preservedDirectivesComment)
 		out = append(out, extra...)
 	}
 	return strings.Join(out, "\n")

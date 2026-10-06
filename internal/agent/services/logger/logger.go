@@ -368,15 +368,23 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 		bootstrapLog().Info().Msg("Debug log shipping enabled in production mode")
 	}
 
-	// Set default production log level to info
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	// zerolog's global level is a hard floor: should() drops any event below
+	// it before a logger's own level is consulted. Pinning it to Info (as
+	// this used to) made a per-module debug override, set at runtime through
+	// the log-level endpoint, accepted with HTTP 200 and never written.
+	//
+	// The floor therefore stays at Debug and the quiet default moves onto the
+	// base logger's own level. Every logger derived from it inherits Info, so
+	// a disabled Debug() still costs one integer comparison and builds no
+	// event; ModuleLogger.Debug() lifts its own copy only for a module whose
+	// override asks for debug.
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-	// Create the multi-writer with all outputs
 	logWriter := zerolog.MultiLevelWriter(writers...)
 
-	// Create and configure the logger with timestamp
 	logger := zerolog.
 		New(logWriter).
+		Level(zerolog.InfoLevel).
 		With().
 		Timestamp().
 		Logger()

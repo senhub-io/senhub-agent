@@ -1,0 +1,214 @@
+---
+# The configuration is built in a scratch copy of the live directory,
+# checked there with `config check --json`, and only then copied over the
+# live files. A configuration the agent would refuse never reaches it.
+
+- name: Current agent.yaml
+  ansible.builtin.slurp:
+    src: "{{ senhub_agent_config_dir }}/agent.yaml"
+  register: _senhub_agent_yaml
+  no_log: "{{ senhub_agent_no_log }}"
+
+- name: Settings agent.yaml should carry
+  ansible.builtin.set_fact:
+    _senhub_agent_yaml_current: "{{ _senhub_agent_yaml.content | b64decode | from_yaml }}"
+    senhub_agent_merged_settings: "{{ (_senhub_agent_yaml.content | b64decode | from_yaml) | combine(_senhub_agent_extra_settings, recursive=True) }}"
+  no_log: "{{ senhub_agent_no_log }}"
+
+- name: Stale fragments this role wrote earlier
+  when: senhub_agent_purge_stale | bool
+  block:
+    - name: Find probes fragments with the marker
+      ansible.builtin.find:
+        paths: "{{ senhub_agent_config_dir }}/probes.d"
+        patterns: "*.yaml"
+        contains: "{{ _senhub_agent_marker_regex }}"
+      register: _senhub_agent_found_probes
+
+    - name: Find strategy fragments with the marker
+      ansible.builtin.find:
+        paths: "{{ senhub_agent_config_dir }}/strategies.d"
+        patterns: "*.yaml"
+        contains: "{{ _senhub_agent_marker_regex }}"
+      register: _senhub_agent_found_strategies
+
+    - name: Stale fragments
+      ansible.builtin.set_fact:
+        _senhub_agent_stale: >-
+          {{ (_senhub_agent_found_probes.files | map(attribute='path')
+              | reject('in', _senhub_agent_probe_files | map('regex_replace', '^', senhub_agent_config_dir ~ '/probes.d/') | list) | list)
+           + (_senhub_agent_found_strategies.files | map(attribute='path')
+              | reject('in', _senhub_agent_strategy_files | map('regex_replace', '^', senhub_agent_config_dir ~ '/strategies.d/') | list) | list) }}
+
+- name: Stale list when purging is off
+  ansible.builtin.set_fact:
+    _senhub_agent_stale: []
+  when: not (senhub_agent_purge_stale | bool)
+
+- name: Build, check and apply the configuration
+  block:
+    - name: Scratch directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: senhub-agent-stage.
+      register: _senhub_agent_stage
+      changed_when: false
+
+    - name: Copy of the live configuration
+      ansible.builtin.command: "cp -a {{ senhub_agent_config_dir }}/. {{ _senhub_agent_stage.path }}/"
+      changed_when: false
+
+    - name: Probes fragment
+      ansible.builtin.template:
+        src: probes.yaml.j2
+        dest: "{{ _senhub_agent_stage.path }}/probes.d/{{ senhub_agent_probes_file }}"
+        mode: "0600"
+      when: senhub_agent_probes | length > 0
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Strategy fragments
+      ansible.builtin.template:
+        src: strategy.yaml.j2
+        dest: "{{ _senhub_agent_stage.path }}/strategies.d/{{ '00-http.yaml' if item.key == 'http' else senhub_agent_strategies_prefix ~ item.key ~ '.yaml' }}"
+        mode: "0600"
+      loop: "{{ senhub_agent_strategies | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: agent.yaml
+      ansible.builtin.template:
+        src: agent.yaml.j2
+        dest: "{{ _senhub_agent_stage.path }}/agent.yaml"
+        mode: "0600"
+      when: _senhub_agent_extra_settings | length > 0 and senhub_agent_merged_settings != _senhub_agent_yaml_current
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Licence
+      ansible.builtin.copy:
+        content: "{{ (senhub_agent_license if senhub_agent_license | length > 0 else lookup('ansible.builtin.file', senhub_agent_license_src)) | trim }}\n"
+        dest: "{{ _senhub_agent_stage.path }}/license.jwt"
+        mode: "0600"
+      when: senhub_agent_license | length > 0 or senhub_agent_license_src | length > 0
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Remove stale fragments from the copy
+      ansible.builtin.file:
+        path: "{{ _senhub_agent_stage.path }}/{{ item | regex_replace('^' ~ (senhub_agent_config_dir | regex_escape) ~ '/', '') }}"
+        state: absent
+      loop: "{{ _senhub_agent_stale }}"
+      changed_when: false
+
+    - name: Remove the packaged probes from the copy
+      ansible.builtin.file:
+        path: "{{ _senhub_agent_stage.path }}/probes.d/00-host.yaml"
+        state: absent
+      when: senhub_agent_remove_default_probes | bool
+      changed_when: false
+
+    - name: Check the configuration
+      ansible.builtin.command: "{{ senhub_agent_bin }} config check --json {{ _senhub_agent_stage.path }}/agent.yaml"
+      register: _senhub_agent_check
+      changed_when: false
+      failed_when: false
+
+    - name: Read the verdict
+      ansible.builtin.set_fact:
+        _senhub_agent_verdict: "{{ _senhub_agent_check.stdout | from_json }}"
+      when: _senhub_agent_check.stdout is match('(?s)^\\s*\\{')
+
+    - name: Refuse a configuration the agent would not load
+      ansible.builtin.fail:
+        msg: >-
+          senhub-agent config check exited {{ _senhub_agent_check.rc }}; nothing was changed on the host.
+          {{ (_senhub_agent_verdict.findings | selectattr('level', 'in', ['error', 'warn']) | map(attribute='message') | list | to_nice_yaml)
+             if _senhub_agent_verdict is defined and _senhub_agent_verdict.findings is defined
+             else (_senhub_agent_check.stdout ~ _senhub_agent_check.stderr) }}
+      when: >-
+        _senhub_agent_check.rc == 2 or
+        _senhub_agent_check.rc not in [0, 1] or
+        (_senhub_agent_check.rc == 1 and not (senhub_agent_check_allow_warnings | bool))
+      no_log: false
+
+    - name: Probes fragment in place
+      ansible.builtin.copy:
+        src: "{{ _senhub_agent_stage.path }}/probes.d/{{ senhub_agent_probes_file }}"
+        dest: "{{ senhub_agent_config_dir }}/probes.d/{{ senhub_agent_probes_file }}"
+        remote_src: true
+        owner: "{{ senhub_agent_user }}"
+        group: "{{ senhub_agent_group }}"
+        mode: "0600"
+      when: senhub_agent_probes | length > 0
+      diff: false
+      notify: senhub_agent config changed
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Strategy fragments in place
+      ansible.builtin.copy:
+        src: "{{ _senhub_agent_stage.path }}/strategies.d/{{ '00-http.yaml' if item.key == 'http' else senhub_agent_strategies_prefix ~ item.key ~ '.yaml' }}"
+        dest: "{{ senhub_agent_config_dir }}/strategies.d/{{ '00-http.yaml' if item.key == 'http' else senhub_agent_strategies_prefix ~ item.key ~ '.yaml' }}"
+        remote_src: true
+        owner: "{{ senhub_agent_user }}"
+        group: "{{ senhub_agent_group }}"
+        mode: "0600"
+      loop: "{{ senhub_agent_strategies | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      diff: false
+      notify: senhub_agent config changed
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: agent.yaml in place
+      ansible.builtin.copy:
+        src: "{{ _senhub_agent_stage.path }}/agent.yaml"
+        dest: "{{ senhub_agent_config_dir }}/agent.yaml"
+        remote_src: true
+        owner: "{{ senhub_agent_user }}"
+        group: "{{ senhub_agent_group }}"
+        mode: "0600"
+      when: _senhub_agent_extra_settings | length > 0 and senhub_agent_merged_settings != _senhub_agent_yaml_current
+      diff: false
+      notify: senhub_agent config changed
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Licence in place
+      ansible.builtin.copy:
+        src: "{{ _senhub_agent_stage.path }}/license.jwt"
+        dest: "{{ senhub_agent_config_dir }}/license.jwt"
+        remote_src: true
+        owner: "{{ senhub_agent_user }}"
+        group: "{{ senhub_agent_group }}"
+        mode: "0600"
+      when: senhub_agent_license | length > 0 or senhub_agent_license_src | length > 0
+      diff: false
+      notify: senhub_agent restart
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Delete stale fragments
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ _senhub_agent_stale }}"
+      notify: senhub_agent config changed
+
+    - name: Delete the packaged probes
+      ansible.builtin.file:
+        path: "{{ senhub_agent_config_dir }}/probes.d/00-host.yaml"
+        state: absent
+      when: senhub_agent_remove_default_probes | bool
+      notify: senhub_agent config changed
+  always:
+    - name: Remove the scratch directory
+      ansible.builtin.file:
+        path: "{{ _senhub_agent_stage.path }}"
+        state: absent
+      when: _senhub_agent_stage.path is defined
+      changed_when: false

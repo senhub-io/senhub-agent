@@ -294,8 +294,10 @@ func (d *dataStore) GetCallback() AddCallback {
 
 // StopBudget gives the strategies longer than the default: the senhub
 // and otlp sinks flush a buffer over the network on shutdown, and a
-// timed-out flush is a batch of metrics silently lost.
-func (d *dataStore) StopBudget() time.Duration { return 10 * time.Second }
+// timed-out flush is a batch of metrics silently lost. The flush itself
+// is capped lower (the otlp strategy's exporterShutdownBudget), so the
+// whole agent stops under the ten seconds a container runtime allows.
+func (d *dataStore) StopBudget() time.Duration { return 7 * time.Second }
 
 func (d *dataStore) Start(ctx context.Context) error {
 	d.logger.Debug().Msg("Starting DataStore service")
