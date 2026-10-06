@@ -201,6 +201,13 @@ same device derive byte-identical ids.
   is one route per next hop) that the device **owns** via `has_route`
   (mirror of `has_interface`), with `metric` descriptive. Only remote routes
   with a usable next hop are emitted, which keeps the identity complete.
+  Each route also reaches its gateway through `next_hop_via` to the
+  `network.address {ip}` node, but only when the next hop is a public,
+  globally routable unicast address (`entity.AddressIsGloballyUnique`:
+  not RFC1918, CGNAT or ULA, nor anything `AddressEdgeAllowed` refuses).
+  A switch has no interface-class filter, so in doubt nothing is emitted: a
+  private gateway shared by unrelated switches would merge them. Private
+  next hops keep only the `next_hop.ip` identity key.
   Rows are keyed on the full table index (destination, mask, TOS or
   policy, next hop), so no distinct next hop is dropped; the only
   de-duplication is an exact (destination, next hop) repeat, typically one

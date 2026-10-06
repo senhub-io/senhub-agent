@@ -6,7 +6,6 @@
 package state
 
 import (
-	"os"
 	"path/filepath"
 
 	"senhub-agent.go/internal/agent/services/instanceid"
@@ -20,9 +19,6 @@ const EnvDir = "SENHUB_STATE_DIR"
 // directory the service manager hands the unit (STATE_DIRECTORY), else the
 // platform default (/var/lib/senhub-agent, C:\ProgramData\SenHub).
 func Dir() string {
-	if v := os.Getenv(EnvDir); v != "" {
-		return v
-	}
 	return instanceid.OwnStateDir()
 }
 
