@@ -22,6 +22,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/sensor"
+	"senhub-agent.go/internal/agent/services/statuschan"
 
 	// Blank import: the strategy implementations register themselves with
 	// the data store, so an agent that builds a data store must pull them
@@ -42,6 +43,7 @@ type Agent interface {
 }
 
 type agent struct {
+	statusChan         *statuschan.Service
 	supervisor         *lifecycle.Supervisor
 	logger             *logger.Logger
 	agentConfiguration configuration.AgentConfiguration
@@ -162,6 +164,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	}
 
 	return agent{
+		statusChan:         statuschan.New(logger, localConfiguration.GetConfigPath(), agentCliArgs.Version, agentCliArgs.CommitHash),
 		supervisor:         lifecycle.NewSupervisor(logger),
 		entityDetector:     entityDetector,
 		logger:             logger,
@@ -183,6 +186,9 @@ func (a agent) services() []Service {
 		a.localConfiguration,
 		a.store,
 		a.sensors,
+	}
+	if a.statusChan != nil {
+		servicesToStart = append(servicesToStart, a.statusChan)
 	}
 	if a.entityDetector != nil {
 		servicesToStart = append(servicesToStart, a.entityDetector)

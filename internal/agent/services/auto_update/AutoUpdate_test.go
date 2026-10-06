@@ -330,6 +330,36 @@ func TestIsBetaVersion(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "Numbered beta",
+			version:  "0.6.2-beta.3",
+			expected: true,
+		},
+		{
+			name:     "Numbered beta, two digits",
+			version:  "0.6.2-beta.12",
+			expected: true,
+		},
+		{
+			name:     "Earlier betaN form",
+			version:  "0.6.1-beta2",
+			expected: true,
+		},
+		{
+			name:     "Beta with a dangling dot",
+			version:  "0.6.2-beta.",
+			expected: false,
+		},
+		{
+			name:     "Beta number is not numeric",
+			version:  "0.6.2-beta.x",
+			expected: false,
+		},
+		{
+			name:     "Dev build",
+			version:  "0.6.2-dev.57.g1a2b3c4d",
+			expected: false,
+		},
+		{
 			name:     "Short version",
 			version:  "1.0",
 			expected: false,

@@ -18,12 +18,16 @@ package otlp
 import (
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/governance"
+	"senhub-agent.go/internal/agent/services/instanceid"
 )
 
 // Default values mirror the OTel SDK defaults wherever one exists, so an
@@ -98,12 +102,19 @@ const (
 	DefaultMemoryLimitHardMiB     = 400
 	DefaultMemoryLimitCheckPeriod = 5 * time.Second
 
-	// Persistence defaults. When `persistence.enabled: true`, the LWW
-	// store is checkpointed to disk every CheckpointInterval. Restores
-	// at boot so dashboards see continuity across agent restarts (the
-	// motivating use case: upgrade, OOM kill, OS reboot). Default OFF
-	// for back-compat — operators opt in by setting the path.
+	// Persistence defaults. The LWW store is checkpointed to disk every
+	// CheckpointInterval when `persistence.path` is set (opt-in, for
+	// back-compat). The logs dead-letter queue is on by default, in the
+	// agent state directory.
 	DefaultPersistenceInterval = 30 * time.Second
+
+	// DefaultLogsQueueMaxAge is how long a failed log batch waits on disk
+	// before the sweep drops it.
+	DefaultLogsQueueMaxAge = 24 * time.Hour
+
+	// defaultLogsQueueSubdir is the directory, under the state directory,
+	// that holds the queue when persistence.path is not set.
+	defaultLogsQueueSubdir = "otlp-queue"
 
 	// DefaultMaxConcurrentExports controls how many OTLP gRPC Export
 	// calls can fire in parallel during one push cycle when the
@@ -404,8 +415,16 @@ type Config struct {
 // upgrades, OOM kills, and OS reboots — at the cost of one disk
 // write per Interval. Atomic write via .tmp + rename.
 type PersistenceConfig struct {
-	Path     string        // empty = disabled (no checkpoint)
+	// Enabled turns the logs dead-letter queue (and the checkpoint, when
+	// Path is set) on or off. Default true.
+	Enabled bool
+	// Path is an explicit directory. Empty = no checkpoint, and the logs
+	// queue lives under the agent state directory.
+	Path     string
 	Interval time.Duration // save cadence; falls back to default if 0
+	// LogsQueueMaxAge drops queued batches older than this. 0 = no age
+	// limit (only the byte cap applies).
+	LogsQueueMaxAge time.Duration
 	// LogsQueueMaxBytes caps the on-disk dead-letter queue for the logs
 	// signal (#217). 0 = built-in default (128 MiB). Beyond it the oldest
 	// batches are evicted (reason="logs_queue_full").
@@ -548,10 +567,10 @@ func defaultConfig() Config {
 			CheckInterval: DefaultMemoryLimitCheckPeriod,
 		},
 		Persistence: PersistenceConfig{
-			// Path empty by default = disabled. Operators opt in by
-			// setting otlp.persistence.path in YAML.
-			Path:     "",
-			Interval: DefaultPersistenceInterval,
+			Enabled:         true,
+			Path:            "",
+			Interval:        DefaultPersistenceInterval,
+			LogsQueueMaxAge: DefaultLogsQueueMaxAge,
 		},
 		MaxConcurrentExports: DefaultMaxConcurrentExports,
 	}
@@ -675,6 +694,9 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 
 	if err := parsePersistence(params["persistence"], &cfg.Persistence); err != nil {
 		return cfg, fmt.Errorf("persistence: %w", err)
+	}
+	if err := applyLogQueueEnv(&cfg.Persistence); err != nil {
+		return cfg, err
 	}
 
 	if v, ok := readInt(params["max_concurrent_exports"]); ok {
@@ -901,15 +923,11 @@ func parsePersistence(raw interface{}, out *PersistenceConfig) error {
 	}
 	// The "enabled" key is convenience sugar: enabled:false clears the
 	// path even if set, enabled:true requires a path to be meaningful.
-	enabled := true
 	if v, ok := m["enabled"].(bool); ok {
-		enabled = v
+		out.Enabled = v
 	}
 	if v, ok := m["path"].(string); ok {
 		out.Path = v
-	}
-	if !enabled {
-		out.Path = ""
 	}
 	if v, ok := m["interval"].(string); ok && v != "" {
 		d, err := time.ParseDuration(v)
@@ -927,7 +945,79 @@ func parsePersistence(raw interface{}, out *PersistenceConfig) error {
 		}
 		out.LogsQueueMaxBytes = int64(v)
 	}
+	if v, ok := m["logs_queue_max_age"].(string); ok && v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("logs_queue_max_age: %w", err)
+		}
+		if d < 0 {
+			return fmt.Errorf("logs_queue_max_age must be >= 0 (0 = no age limit), got %v", d)
+		}
+		out.LogsQueueMaxAge = d
+	}
 	return nil
+}
+
+// applyLogQueueEnv lets the environment override the file, as the other
+// SENHUB_* output variables do.
+func applyLogQueueEnv(out *PersistenceConfig) error {
+	if v := strings.TrimSpace(os.Getenv("SENHUB_LOG_QUEUE")); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("SENHUB_LOG_QUEUE must be true or false, got %q", v)
+		}
+		out.Enabled = b
+	}
+	if v := strings.TrimSpace(os.Getenv("SENHUB_LOG_QUEUE_RETENTION")); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			return fmt.Errorf("SENHUB_LOG_QUEUE_RETENTION must be a duration such as 24h, got %q", v)
+		}
+		out.LogsQueueMaxAge = d
+	}
+	if v := strings.TrimSpace(os.Getenv("SENHUB_LOG_QUEUE_MAX_BYTES")); v != "" {
+		n, err := parseByteSize(v)
+		if err != nil {
+			return fmt.Errorf("SENHUB_LOG_QUEUE_MAX_BYTES: %w", err)
+		}
+		out.LogsQueueMaxBytes = n
+	}
+	return nil
+}
+
+// parseByteSize reads a byte count: a plain number or one followed by
+// K, M or G (optionally KB/KiB, ...), all binary multiples.
+func parseByteSize(raw string) (int64, error) {
+	s := strings.ToUpper(strings.TrimSpace(raw))
+	s = strings.TrimSuffix(s, "IB")
+	s = strings.TrimSuffix(s, "B")
+	mult := int64(1)
+	switch {
+	case strings.HasSuffix(s, "K"):
+		mult, s = 1<<10, strings.TrimSuffix(s, "K")
+	case strings.HasSuffix(s, "M"):
+		mult, s = 1<<20, strings.TrimSuffix(s, "M")
+	case strings.HasSuffix(s, "G"):
+		mult, s = 1<<30, strings.TrimSuffix(s, "G")
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("%q is not a size (e.g. 134217728 or 128MiB)", raw)
+	}
+	return n * mult, nil
+}
+
+// logsQueuePath is where the logs dead-letter queue lives: the explicit
+// persistence.path when set, else under the agent state directory.
+// Empty means the queue is off.
+func (p PersistenceConfig) logsQueuePath() string {
+	if !p.Enabled {
+		return ""
+	}
+	if p.Path != "" {
+		return p.Path
+	}
+	return filepath.Join(instanceid.OwnStateDir(), defaultLogsQueueSubdir)
 }
 
 func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {

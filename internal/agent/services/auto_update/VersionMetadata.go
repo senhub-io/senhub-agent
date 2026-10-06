@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/go-version"
 
@@ -52,9 +53,26 @@ func fetchVersionMetadata(
 	return &versionMetadata, nil
 }
 
-// IsBetaVersion checks if the version string contains the beta suffix
+// IsBetaVersion reports whether versionStr is a beta pre-release: the numbered
+// "X.Y.Z-beta.N", or the earlier "X.Y.Z-beta" and "X.Y.Z-betaN". Other
+// pre-releases (alpha, dev builds) are not betas.
 func IsBetaVersion(versionStr string) bool {
-	return len(versionStr) >= 5 && versionStr[len(versionStr)-5:] == "-beta"
+	core, _, _ := strings.Cut(versionStr, "+")
+	_, pre, found := strings.Cut(core, "-")
+	rest, ok := strings.CutPrefix(pre, "beta")
+	if !found || !ok || rest == "" {
+		return found && ok
+	}
+	rest = strings.TrimPrefix(rest, ".")
+	if rest == "" {
+		return false
+	}
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func FormatVersionForUrl(versionStr string) string {

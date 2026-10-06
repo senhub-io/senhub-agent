@@ -21,6 +21,10 @@ type catalogEntry struct {
 	// RunsHere is false for a type this operating system cannot run, which
 	// no licence unlocks; pages count licence locks without those.
 	RunsHere bool `json:"runs_here"`
+	// LicenceLocked is the one definition of "a Pro type this agent
+	// would run if a licence allowed it": the Overview, Settings and
+	// Probes pages all count it from here instead of each deriving it.
+	LicenceLocked bool `json:"licence_locked"`
 }
 
 type catalogResponse struct {
@@ -77,6 +81,12 @@ func (h *HTTPSyncStrategy) currentLicense() *license.License {
 // start: free-tier probes always run; a paid probe needs a licence that
 // is valid, bound to this agent, not expired, and that authorises it.
 func annotateCatalogEntry(ps spec.Probe, lic *license.License, agentKey string) catalogEntry {
+	e := annotateCatalogVerdict(ps, lic, agentKey)
+	e.LicenceLocked = e.Tier == "pro" && !e.Authorized && e.RunsHere
+	return e
+}
+
+func annotateCatalogVerdict(ps spec.Probe, lic *license.License, agentKey string) catalogEntry {
 	e := catalogEntry{Probe: ps, Tier: "free", Authorized: true, RunsHere: true}
 	if !ps.RunsOn(runtime.GOOS) {
 		e.Authorized = false
