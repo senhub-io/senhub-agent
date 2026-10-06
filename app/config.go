@@ -580,14 +580,19 @@ func checkConfig(configPath string) checkOutcome {
 
 	// Storage
 	if len(config.Storage) == 0 {
-		fmt.Println("  [WARN] No storage strategies configured")
-		warnings++
+		fmt.Println("  [ERROR] at least one storage strategy is required (the agent refuses to load a configuration without one)")
+		errorCount++
 	} else {
 		validStrategies := map[string]bool{}
 		for _, name := range data_store.RegisteredStrategyNames() {
 			validStrategies[name] = true
 		}
 		for _, s := range config.Storage {
+			if s.Name == "" {
+				fmt.Println("  [ERROR] storage strategy name cannot be empty")
+				errorCount++
+				continue
+			}
 			if !validStrategies[s.Name] {
 				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
 				warnings++

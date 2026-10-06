@@ -77,7 +77,7 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 	config = lc.fixYAMLTypes(config)
 
 	// Validate configuration
-	if err := lc.validateConfiguration(&config); err != nil {
+	if err := ValidateConfiguration(&config); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
@@ -417,8 +417,11 @@ func convertMapTypes(input interface{}) interface{} {
 	}
 }
 
-// validateConfiguration validates the local configuration
-func (lc *LocalConfiguration) validateConfiguration(config *LocalConfigurationData) error {
+// ValidateConfiguration is the set of conditions under which the agent
+// refuses to load a configuration. It is exported so that `config check`
+// can be held to it: a validator that passes what the loader refuses is
+// wrong.
+func ValidateConfiguration(config *LocalConfigurationData) error {
 	if config == nil {
 		return fmt.Errorf("configuration cannot be nil")
 	}

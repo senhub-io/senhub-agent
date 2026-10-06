@@ -9,6 +9,10 @@ Changes land here as they are merged to `dev`.
 
 <div class="rn-filter"></div>
 
+## Fixes
+
+- **`config check` and the loader now agree on a configuration with no storage strategy.** `config check` reported "No storage strategies configured" as a warning (exit `1`) while the agent refuses to load such a file ("at least one storage strategy is required"). It is now an error (exit `2`), as is a storage entry with no name. A script that applies a configuration after `config check` (Ansible, the MSI) no longer lets one through that the agent then rejects.
+
 ## Features
 
 - **Failed log batches are kept on disk by default.** The OTLP output's
