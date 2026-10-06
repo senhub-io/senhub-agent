@@ -27,20 +27,20 @@ After=network-online.target
 # not end in exit 137. PodmanArgs= rather than StopTimeout=, which only
 # newer Quadlet versions know.
 PodmanArgs=--stop-timeout=30
-# Pin a released version, 0.6.1 or later: earlier images listen on the
-# container's loopback only, and the published port answers nothing.
-# Only exact version tags are published (no 0.6, no latest): moving to a
-# new version means editing this line, or pinning a digest, see "Updates"
-# below. The -oss image carries no licensed probe; the full image runs
-# the free tier without a licence.
-Image=ghcr.io/senhub-io/senhub-agent:0.6.1
+# The minor line tag (0.6) follows the stable patch releases of that line
+# (published from 0.6.2 on; never a beta, no latest), so AutoUpdate below
+# delivers 0.6.x updates without editing this file. For an exact version
+# use :0.6.2, or a digest, see "Updates" below. The -oss image carries no
+# licensed probe; the full image runs the free tier without a licence.
+Image=ghcr.io/senhub-io/senhub-agent:0.6
 ContainerName=senhub-agent
 
 # Updates. The agent's own auto-update is off in a container: it would
 # replace a binary inside a layer that the next container discards.
 # `podman auto-update` pulls the reference above again and restarts the
-# unit when the registry serves a different digest for it, so it picks
-# up a republished image of this version, not a new version. To pin an
+# unit when the registry serves a different digest for it: on the 0.6
+# tag, that is each new 0.6.x stable release. On an exact version tag it
+# only picks up a republished build of that version. To pin an
 # image digest instead (Image=...@sha256:<digest>), delete this line:
 # auto-update has nothing to follow on a digest.
 AutoUpdate=registry
