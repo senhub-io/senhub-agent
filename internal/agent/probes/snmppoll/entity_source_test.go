@@ -174,7 +174,8 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 	}
 	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, resolveDeviceID)
 
-	// self device + 3 routes: 10.20.0.0/16 via .254 and via .2, 0.0.0.0/0
+	// self device + 3 routes (10.20.0.0/16 via .254 and via .2, 0.0.0.0/0);
+	// private gateways get no address node
 	if len(obs.Entities) != 4 {
 		t.Fatalf("entities = %d (%+v)", len(obs.Entities), obs.Entities)
 	}
@@ -219,6 +220,56 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 // forwards_to) are never emitted — their facts ride entities — and every
 // emitted relation is bare (Toise's relationship descriptor drops edge
 // attributes, so a fact on an edge would be silently lost).
+func TestBuildObservation_RouteNextHopVia(t *testing.T) {
+	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
+	routes := []routeRow{
+		{Destination: "0.0.0.0/0", NextHop: "51.255.48.1", Type: routeTypeRemote},
+		{Destination: "198.51.100.7/32", NextHop: "51.255.48.1", Type: routeTypeRemote},
+		{Destination: "10.7.0.0/16", NextHop: "172.17.0.1", Type: routeTypeRemote},
+		{Destination: "10.8.0.0/16", NextHop: "169.254.1.1", Type: routeTypeRemote},
+		{Destination: "10.9.0.0/16", NextHop: "127.0.0.2", Type: routeTypeRemote},
+		{Destination: "10.10.0.0/16", NextHop: "10.0.0.254", Type: routeTypeRemote},
+		{Destination: "10.11.0.0/16", NextHop: "192.168.1.1", Type: routeTypeRemote},
+		{Destination: "10.12.0.0/16", NextHop: "172.20.0.1", Type: routeTypeRemote},
+		{Destination: "10.13.0.0/16", NextHop: "100.64.0.1", Type: routeTypeRemote},
+	}
+	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, resolveDeviceID)
+
+	wantAddr := map[string]any{"network.address": "51.255.48.1"}
+	var via int
+	for _, r := range obs.Relations {
+		if r.Type != "next_hop_via" {
+			continue
+		}
+		via++
+		if r.FromType != entityTypeNetworkRoute || r.ToType != entityTypeNetworkAddress ||
+			!reflect.DeepEqual(r.ToID, wantAddr) {
+			t.Errorf("next_hop_via wrong: %+v", r)
+		}
+	}
+	if via != 2 {
+		t.Errorf("next_hop_via edges = %d, want 2 (public gateway only)", via)
+	}
+
+	var addrs int
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkAddress {
+			addrs++
+			if !reflect.DeepEqual(e.ID, wantAddr) {
+				t.Errorf("unexpected address entity %+v", e)
+			}
+		}
+	}
+	if addrs != 1 {
+		t.Errorf("address entities = %d, want 1 shared node", addrs)
+	}
+
+	// The address is the target of an edge, so the anti-orphan guard keeps it.
+	if via == 0 {
+		t.Error("address entity emitted without an incoming edge")
+	}
+}
+
 func TestBuildObservation_NoRetiredEdgeRelations(t *testing.T) {
 	self := deviceIdentity{Serial: "S1", VendorPEN: "9", MgmtIP: "10.0.0.1"}
 	ifaces := []ifaceRow{{Index: "1", Name: "Gi0/1", OperStatus: ifOperUp}}
