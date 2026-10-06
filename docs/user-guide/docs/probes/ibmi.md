@@ -88,7 +88,7 @@ Monitor several LPARs with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:c135d3f529a8a8e5aecab8ba3574d9dd0015e9a8fc323ad8c2d67477fdd0719e -->
+<!-- sha256:85e1f2ed9c1fa43afa288c48e61b9ecb7fce1a63d18c9ccd521d75ce33f5501d -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -107,6 +107,7 @@ Monitor several LPARs with separate probe instances:
 | `message_queues[].name` | Yes | - | Queue name. Example: `QSYSOPR` |
 | `message_queues[].library` | No | `QSYS` | Library of the queue |
 | `message_queues[].min_severity` | No | `0` | Messages below this severity are not relayed |
+| `history_log_min_severity` | No | `0` | History log (QHST) messages below this severity (0-99) are not collected; 0 keeps all, and a busy partition logs thousands of messages a minute |
 | `environment` | No | - | Deployment environment name carried by the partition entity. Example: `production` |
 | `db_instance_name` | No | - | Identity override of the Db2 for i entity; empty derives it from the relational database name |
 
