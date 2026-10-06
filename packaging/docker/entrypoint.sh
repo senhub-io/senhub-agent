@@ -67,6 +67,16 @@ degenerate_machine_id() {
 resolve_machine_id() {
   kept="$STATE_DIR/machine-id"
 
+  # A host's own machine-id, mounted where HOST_ETC points (a node agent
+  # reading /host/etc), is the host identity: the agent reads it there
+  # itself, and inventing one here would only be ignored.
+  if [ -n "${HOST_ETC:-}" ] && [ -z "${SENHUB_HOST_ID:-}" ] \
+     && [ -r "$HOST_ETC/machine-id" ] \
+     && valid_machine_id "$(tr -d '\n' < "$HOST_ETC/machine-id" | tr -d '-')"; then
+    log "host identity is the host's own machine-id ($HOST_ETC/machine-id)"
+    return 0
+  fi
+
   if [ -n "${SENHUB_HOST_ID:-}" ]; then
     wanted=$(printf '%s' "$SENHUB_HOST_ID" | tr -d '-' | tr 'ABCDEF' 'abcdef')
     if ! valid_machine_id "$wanted"; then

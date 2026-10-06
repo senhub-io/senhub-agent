@@ -71,6 +71,16 @@ rm -rf "$SENHUB_CONFIG_DIR" && mkdir -p "$SENHUB_CONFIG_DIR"
 kept_id=0123456789abcdef0123456789abcdef
 kept_key=11111111-2222-3333-4444-555555555555
 
+# 0c. With HOST_ETC pointing at a host's /etc, the host's machine-id is
+#    the identity: nothing is written, and an explicit SENHUB_HOST_ID
+#    still wins.
+mkdir -p "$work/hostetc"
+printf '%s\n' "fedcba9876543210fedcba9876543210" > "$work/hostetc/machine-id"
+printf '%s\n' "keepme" > "$MACHINE_ID_PATH"
+(HOST_ETC="$work/hostetc" resolve_machine_id) 2>/dev/null
+check "the host's own machine-id is left alone" "$(cat "$MACHINE_ID_PATH")" "keepme"
+: > "$MACHINE_ID_PATH"
+
 # 1. A machine-id kept in the state directory is restored verbatim.
 printf '%s\n' "$kept_id" > "$STATE_DIR/machine-id"
 resolve_machine_id 2>/dev/null
