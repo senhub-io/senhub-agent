@@ -33,11 +33,16 @@ func newEntitySource(hostname string) *systemdEntitySource {
 // setUnits is called by Collect() after each successful D-Bus query.
 // hostID is the stable host identity (machine-id / UUID) used to
 // attach each service.instance to its host via a runs_on relation.
-func (s *systemdEntitySource) setUnits(names []string, hostID string) {
+// hostName is the agent's canonical host name (operator override
+// included), so a unit's host.name matches the host entity's.
+func (s *systemdEntitySource) setUnits(names []string, hostID, hostName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.units = names
 	s.hostID = hostID
+	if hostName != "" {
+		s.hostname = hostName
+	}
 	s.ready = true
 }
 

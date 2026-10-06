@@ -48,7 +48,8 @@ CONFORMS='
         and (.size | type == "number" and . >= 0 and . == floor)
         and (.minisig_url == null or (.minisig_url | startswith("https://")))
         and (.name | length > 0)))
-  and (.images | all(.repo and (.edition | IN("full","oss")) and .tag and (.digest | test("^sha256:[0-9a-f]{64}$"))))'
+  and (.images | all(.repo and (.edition | IN("full","oss")) and .tag and (.digest | test("^sha256:[0-9a-f]{64}$"))))
+  and (.charts | all(.repo and .version and (.digest | test("^sha256:[0-9a-f]{64}$"))))'
 
 "$GEN" --release-json "$BETA" > "$WORK/beta.json" || bad "generate beta"
 "$GEN" --release-json "$STABLE" > "$WORK/stable.json" || bad "generate stable"
@@ -105,6 +106,11 @@ check "stable missing an MSI is incomplete" '.complete == false' "$WORK/nomsi.ou
   --image "ghcr.io/senhub-io/senhub-agent-oss,oss,0.6.1,sha256:$(printf 'b%.0s' {1..64})" \
   --image "ghcr.io/senhub-io/senhub-agent,full,0.6.1,sha256:$(printf 'a%.0s' {1..64})" > "$WORK/img.json"
 check "images are listed and conform" "$CONFORMS"' and (.images | length) == 2 and .images[0].repo == "ghcr.io/senhub-io/senhub-agent"' "$WORK/img.json"
+"$GEN" --release-json "$STABLE" \
+  --chart "ghcr.io/senhub-io/charts/senhub-agent,0.6.1,sha256:$(printf 'c%.0s' {1..64})" > "$WORK/chart.json"
+check "a chart is listed and conforms" "$CONFORMS"' and (.charts | length) == 1 and .charts[0].version == "0.6.1"' "$WORK/chart.json"
+check "no chart gives an empty list" '.charts == []' "$WORK/img.json"
+refused "a malformed --chart is refused" "$GEN" --release-json "$STABLE" --chart "only,two"
 refused "a malformed --image is refused" "$GEN" --release-json "$STABLE" --image "only,three,fields"
 
 # Refusals.
