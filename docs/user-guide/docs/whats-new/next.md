@@ -11,6 +11,22 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Failed log batches are kept on disk by default.** The OTLP output's
+  on-disk queue for event logs the collector could not take used to run
+  only when `persistence.path` was set. It is now on for every install
+  (package, MSI, container), in the state directory (`otlp-queue/`), and
+  replays at boot and when the collector answers again. Behaviour change:
+  during an outage the agent can now use up to 128 MiB of disk in the
+  state directory (`logs_queue_max_bytes`). New `logs_queue_max_age`
+  (24 hours) drops older batches at boot and every 10 minutes, counted as
+  `dropped_by_age`. `persistence.enabled: false` or `SENHUB_LOG_QUEUE=false`
+  turns it off; `SENHUB_LOG_QUEUE_RETENTION` and
+  `SENHUB_LOG_QUEUE_MAX_BYTES` tune it. An unwritable state directory logs
+  one warning and the agent runs without the queue. In a container, mount
+  a persistent volume on the state directory for the queue to outlive a
+  restart. An explicit `persistence.path` keeps working unchanged. See
+  [Logs survive an outage](../otlp.md#logs-survive-an-outage).
+
 - **IBM i: QHST, QSYSOPR and audit events reach the logs backend.** The history log, message queue and audit journal collectors read their events but sent none of them on: each event is now an OpenTelemetry log record (message text as body, the partition's own time as timestamp, IBM i severity 0-99 mapped to `INFO`, `WARN`, `ERROR`, `ERROR3` or `FATAL`, attributes under `ibmi.*`). `history_log_min_severity` is the volume lever. The scheduled-job and other age gauges no longer read below zero when the partition clock runs ahead of the reference.
 - **`status` works on every install.** The agent now answers `senhub-agent status` on a local channel (a Unix socket in its state directory, readable by the service account and root only; a named pipe restricted to administrators on Windows), whether or not the HTTP output is enabled. Hosts installed before the HTTP output was on by default used to get a degraded view computed by the command itself. `status` asks the local channel first and falls back to the HTTP output. The channel is read-only: it sends the status and reads nothing. It reports probe health and failed outputs but not the per-probe metric counts, which only the HTTP cache holds.
 - **Two agents on one host no longer describe each other twice.** Each agent
