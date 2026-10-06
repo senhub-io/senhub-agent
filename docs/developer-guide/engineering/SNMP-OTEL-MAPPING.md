@@ -202,12 +202,11 @@ same device derive byte-identical ids.
   (mirror of `has_interface`), with `metric` descriptive. Only remote routes
   with a usable next hop are emitted, which keeps the identity complete.
   Each route also reaches its gateway through `next_hop_via` to the
-  `network.address {ip}` node, but only when the next hop is a public,
-  globally routable unicast address (`entity.AddressIsGloballyUnique`:
-  not RFC1918, CGNAT or ULA, nor anything `AddressEdgeAllowed` refuses).
-  A switch has no interface-class filter, so in doubt nothing is emitted: a
-  private gateway shared by unrelated switches would merge them. Private
-  next hops keep only the `next_hop.ip` identity key.
+  `network.address {ip}` node: public routable next hop only; see the Toise
+  entity contract, routes section, which owns the rule
+  (`entity.AddressIsGloballyUnique` applies it here). A private gateway
+  shared by unrelated switches would otherwise merge them. A next hop
+  without the edge keeps only the `next_hop.ip` identity key.
   Rows are keyed on the full table index (destination, mask, TOS or
   policy, next hop), so no distinct next hop is dropped; the only
   de-duplication is an exact (destination, next hop) repeat, typically one
