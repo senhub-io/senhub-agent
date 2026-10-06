@@ -190,14 +190,29 @@ Deployment, whose pod network is the isolation.
 {{- end }}
 
 {{/*
+Whether the HTTP output has TLS on (config.strategies.http.tls.enabled).
+*/}}
+{{- define "senhub-agent.httpTLS" -}}
+{{- $s := ((.Values.config).strategies) | default dict }}
+{{- $h := (get $s "http") | default dict }}
+{{- if ((get $h "tls") | default dict).enabled }}true{{- end }}
+{{- end }}
+
+{{/*
 A probe as configured. With a loopback bind the kubelet must call the
 loopback of the node, which only a host-network pod shares: set the host
-of httpGet probes to it.
+of httpGet probes to it, and their scheme to HTTPS when the HTTP output
+has TLS on.
 */}}
 {{- define "senhub-agent.probe" -}}
 {{- $p := deepCopy .probe }}
 {{- if and (has .bind (list "127.0.0.1" "::1" "localhost")) (hasKey $p "httpGet") (not (get $p.httpGet "host")) }}
 {{- $_ := set $p.httpGet "host" (ternary "::1" "127.0.0.1" (eq .bind "::1")) }}
+{{- end }}
+{{- /* With TLS on, the listener answers plain HTTP with 400: probe it in
+HTTPS (the kubelet does not verify the certificate). */}}
+{{- if and .tls (hasKey $p "httpGet") (not (get $p.httpGet "scheme")) }}
+{{- $_ := set $p.httpGet "scheme" "HTTPS" }}
 {{- end }}
 {{- toYaml $p }}
 {{- end }}

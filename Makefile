@@ -311,6 +311,10 @@ helm-lint: ## Lint and render the Helm chart with its default and ci/ values
 	done
 	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/daemonset-values.yaml | grep -q 'add: \["CHOWN", "FOWNER"\]' \
 		|| { echo "helm chart: the state-owner init container must hold CAP_CHOWN and CAP_FOWNER" >&2; exit 1; }
+	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/tls-values.yaml | grep -q 'scheme: HTTPS' \
+		|| { echo "helm chart: with TLS on the HTTP output the kubelet probes must use HTTPS" >&2; exit 1; }
+	@! $(HELM) template senhub-agent $(CHART_DIR) | grep -q 'scheme: HTTPS' \
+		|| { echo "helm chart: without TLS the kubelet probes must stay HTTP" >&2; exit 1; }
 	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/daemonset-values.yaml | grep -q 'value: "127.0.0.1"' \
 		|| { echo "helm chart: a DaemonSet must listen on the loopback by default" >&2; exit 1; }
 	@$(HELM) template senhub-agent $(CHART_DIR) --set hostMonitoring.enabled=false | grep -q 'value: "0.0.0.0"' \
