@@ -6,14 +6,14 @@ identity of its own on each node, and, when you ask for it, read-only
 monitoring of the cluster itself through the
 [`kubernetes` probe](probes/kubernetes.md).
 
-The chart lives in the agent's repository under `charts/senhub-agent`
-and is installed from there for now. Publishing it to an OCI registry,
-so that `helm install oci://...` works without a clone, is a later step.
+The chart is published with each release as an OCI artifact on
+`ghcr.io`, with the release version as its version, so it installs
+without a clone (Helm 3.8 or later). Its source is in the agent's
+repository under `charts/senhub-agent`.
 
 ## Install
 
 ```bash
-git clone https://github.com/senhub-io/senhub-agent.git
 kubectl create namespace senhub
 
 # The agent monitors the node it runs on (host namespaces, see below):
@@ -24,9 +24,16 @@ kubectl label namespace senhub pod-security.kubernetes.io/enforce=privileged
 kubectl -n senhub create secret generic senhub-agent-credentials \
   --from-literal=OTLP_BEARER_TOKEN='<your token>'
 
-helm install senhub-agent ./senhub-agent/charts/senhub-agent -n senhub \
+helm install senhub-agent oci://ghcr.io/senhub-io/charts/senhub-agent \
+  --version <version> -n senhub \
   --set secrets.existingSecret=senhub-agent-credentials
 ```
+
+`<version>` is a release, for example `0.6.2`; a beta (`0.6.2-beta.1`) is
+installed the same way, with its own version. The chart installs the
+image of the same release unless `image.tag` says otherwise. To install
+from a clone instead, replace the `oci://` address with
+`./senhub-agent/charts/senhub-agent`.
 
 That is a first run: the agent watches the node it runs on and pushes to
 SenHub. It needs no licence: the free tier collects everything except the
@@ -121,7 +128,8 @@ permissions it needs. It lives in its own release, a Deployment, next to
 the node agents:
 
 ```bash
-helm install senhub-cluster ./senhub-agent/charts/senhub-agent -n senhub \
+helm install senhub-cluster oci://ghcr.io/senhub-io/charts/senhub-agent \
+  --version <version> -n senhub \
   --set secrets.existingSecret=senhub-agent-credentials \
   --set hostMonitoring.enabled=false \
   --set kubernetesProbe.enabled=true \

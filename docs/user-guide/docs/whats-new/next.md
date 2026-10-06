@@ -30,6 +30,7 @@ Breaking Changes or Changes below.
    directory.
 
 ## Breaking Changes
+- **The host's name is now one value everywhere.** A host whose `global_tags` set `host.name` already carried it on its metrics and logs, but its host entity (the node in the topology graph), the entities of its systemd units and the records the OTLP receiver stamps with the host kept the machine's own name. All of them now use the override, so on such a host the graph node's `host.name` changes once, to the value its logs already carry (a dashed `preprod-...-shop` becomes `preprod.sensorfactory.shop`). The `host.id` is unchanged, so the node is the same node. A host with no override keeps its name, except the `host.name` on its systemd unit entities, which was the raw OS name and is now the lower-case name the host entity carries. A record about another machine (a syslog sender, a relayed OTLP stream) keeps its own origin name; it is never replaced.
 
 - **`SENHUB_AZURE_APP` is removed from the container image.** The image no longer reads `SENHUB_AZURE_APP` or the `SENHUB_AZURE_*` variables that went with it, and a container that still sets `SENHUB_AZURE_APP` on its first start **stops** with a message naming the replacement, rather than starting a collector that reads no log. A container that already has its configuration on a volume keeps running on the file the old variable wrote, until that file is removed.
 
