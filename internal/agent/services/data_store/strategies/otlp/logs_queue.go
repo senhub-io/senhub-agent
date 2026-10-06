@@ -109,6 +109,11 @@ type logsQueue struct {
 	maxBytes int64
 	logger   *logger.ModuleLogger
 
+	// maxAge drops batches that waited longer than this; 0 keeps them
+	// until the byte cap evicts them. now is injectable for tests.
+	maxAge time.Duration
+	now    func() time.Time
+
 	mu        sync.Mutex
 	seq       uint64 // monotonic file sequence
 	sizeBytes int64
@@ -137,6 +142,7 @@ func newLogsQueue(path string, maxBytes int64, log *logger.ModuleLogger) *logsQu
 		dir:      filepath.Join(path, logsQueueDirName),
 		maxBytes: maxBytes,
 		logger:   log,
+		now:      time.Now,
 	}
 	q.recover()
 	return q
@@ -182,6 +188,80 @@ func (q *logsQueue) recover() {
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
 }
 
+// setMaxAge arms the age-based retention and sweeps once, so what a
+// previous run left behind past the limit is gone before the boot replay.
+func (q *logsQueue) setMaxAge(d time.Duration) {
+	q.mu.Lock()
+	q.maxAge = d
+	q.mu.Unlock()
+	q.sweepAged()
+}
+
+// sweepAged drops every batch saved longer ago than maxAge and reports
+// the count once. Returns the number of records dropped.
+func (q *logsQueue) sweepAged() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.maxAge <= 0 {
+		return 0
+	}
+	cutoff := q.now().Add(-q.maxAge)
+	droppedRecords, droppedFiles := 0, 0
+	for _, name := range q.listLocked() {
+		path := filepath.Join(q.dir, name)
+		b, err := q.readBatchFile(path)
+		if err != nil || !b.SavedAt.Before(cutoff) {
+			continue
+		}
+		info, _ := os.Stat(path)
+		if rmErr := os.Remove(path); rmErr != nil {
+			continue
+		}
+		if info != nil {
+			q.sizeBytes -= info.Size()
+		}
+		q.records -= len(b.Records)
+		droppedRecords += len(b.Records)
+		droppedFiles++
+		for i := 0; i < len(b.Records); i++ {
+			agentstate.IncrementOTLPDropped("dropped_by_age")
+		}
+	}
+	if droppedFiles == 0 {
+		return 0
+	}
+	if q.sizeBytes < 0 {
+		q.sizeBytes = 0
+	}
+	if q.records <= 0 {
+		q.records = 0
+		q.oldestAt = time.Time{}
+	}
+	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
+	if q.logger != nil {
+		q.logger.Warn().Int("dropped", droppedRecords).Int("batches", droppedFiles).
+			Dur("max_age", q.maxAge).
+			Msg("OTLP logs queue: dropped records older than the retention")
+	}
+	return droppedRecords
+}
+
+// prepareQueueDir creates dir and proves it accepts a write, so a state
+// directory the service account cannot use is found at start rather
+// than at the first outage.
+func prepareQueueDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".probe-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	_ = f.Close()
+	return os.Remove(name)
+}
+
 // enqueue persists one batch of records as a single file (atomic
 // tmp+rename), then evicts oldest files if the size cap is exceeded.
 func (q *logsQueue) enqueue(records []persistedLogRecord) error {
@@ -196,7 +276,7 @@ func (q *logsQueue) enqueue(records []persistedLogRecord) error {
 	}
 	q.seq++
 	name := fmt.Sprintf("log-%020d.json", q.seq)
-	batch := logBatch{Version: logsQueueFileVersion, SavedAt: time.Now(), Records: records}
+	batch := logBatch{Version: logsQueueFileVersion, SavedAt: q.now(), Records: records}
 	data, err := json.Marshal(&batch)
 	if err != nil {
 		return fmt.Errorf("marshal log batch: %w", err)
@@ -527,8 +607,26 @@ func newLogsReplayer(q *logsQueue, p *logsPipeline, log *logger.ModuleLogger) *l
 // start runs the retry loop: a queued batch is tried again on its own,
 // on a doubling delay, until it leaves or the agent stops.
 func (r *logsReplayer) start() {
-	r.wg.Add(1)
+	r.wg.Add(2)
 	go r.loop()
+	go r.sweepLoop()
+}
+
+// logsQueueSweepInterval spaces the age sweeps.
+const logsQueueSweepInterval = 10 * time.Minute
+
+func (r *logsReplayer) sweepLoop() {
+	defer r.wg.Done()
+	t := time.NewTicker(logsQueueSweepInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-r.quit:
+			return
+		case <-t.C:
+			r.queue.sweepAged()
+		}
+	}
 }
 
 // stop ends the retry loop. Safe to call once.
@@ -592,6 +690,7 @@ func (r *logsReplayer) replay() {
 	}
 	defer r.running.Store(false)
 
+	r.queue.sweepAged()
 	n := r.queue.drain(func(records []persistedLogRecord) {
 		ctx := context.Background()
 		for _, pr := range records {
