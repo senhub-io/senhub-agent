@@ -109,11 +109,6 @@ an empty string is not.
   (list "SENHUB_TAGS" (join "," $tags))
   (list "SENHUB_ZABBIX_SERVER" $e.zabbixServer)
   (list "SENHUB_ZABBIX_HOST_METADATA" $e.zabbixHostMetadata)
-  (list "SENHUB_AZURE_APP" $e.azure.app)
-  (list "SENHUB_AZURE_TENANT_ID" $e.azure.tenantId)
-  (list "SENHUB_AZURE_CLIENT_ID" $e.azure.clientId)
-  (list "SENHUB_AZURE_SUBSCRIPTION_ID" $e.azure.subscriptionId)
-  (list "SENHUB_AZURE_RESOURCE_GROUP" $e.azure.resourceGroup)
   (list "TZ" $e.timezone) }}
 {{- $out := list }}
 {{- range $pairs }}

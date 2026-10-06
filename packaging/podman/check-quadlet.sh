@@ -115,7 +115,8 @@ run_case() {
   if [ "$name" = optional ]; then
     expect "$name" 'senhub-license,type=mount,target=/run/secrets/senhub-license'
     expect "$name" 'SENHUB_LICENSE_FILE=/run/secrets/senhub-license'
-    expect "$name" 'type=env,target=SENHUB_AZURE_CLIENT_SECRET'
+    expect "$name" 'senhub-aca-client-secret,type=mount,target=/run/secrets/senhub-aca-client-secret'
+    expect "$name" 'SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/senhub-aca-client-secret'
     expect "$name" '/etc/senhub-agent/probes.d:Z,U'
     expect "$name" 'label[=: ]disable'
   fi
@@ -135,6 +136,7 @@ sed -e 's/^#\(Secret=\)/\1/' \
     -e 's/^#\(Volume=\)/\1/' \
     -e 's/^#\(SecurityLabelDisable=\)/\1/' \
     -e 's/^#\(Environment=SENHUB_LICENSE_FILE\)/\1/' \
+    -e 's/^#\(Environment=SENHUB_PROBE_ACA_CLIENT_SECRET_FILE\)/\1/' \
     "$here/senhub-agent.container" > "$work/units/senhub-agent.container"
 for mode in rootful rootless; do
   run_case optional "$mode"

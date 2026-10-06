@@ -18,7 +18,7 @@ Keep everything but the secrets in a file under version control.
 ```yaml
 edition: oss
 image:
-  tag: "0.6.1"
+  tag: "0.6.2"
 
 env:
   otlpEndpoint: collector.observability.svc:4317
@@ -75,7 +75,7 @@ is listed under
 
 Two things move, and both are pinned:
 
-- **The image**: `image.tag` is an exact version (`0.6.1`). Left empty it
+- **The image**: `image.tag` is an exact version (`0.6.2`). Left empty it
   follows the chart's `appVersion`, which is the version of the checkout. There
   is no `latest`.
 - **The chart**: the clone is the chart. Check out a release tag, not

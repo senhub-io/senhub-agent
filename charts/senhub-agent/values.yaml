@@ -139,15 +139,6 @@ env:
   # -- Host metadata the Zabbix autoregistration action matches.
   # SENHUB_ZABBIX_HOST_METADATA.
   zabbixHostMetadata: ""
-  # Azure Container Apps log stream shorthand (SENHUB_AZURE_*). The
-  # client secret goes in `secrets` as SENHUB_AZURE_CLIENT_SECRET.
-  azure:
-    # -- Container Apps to read, comma-separated. SENHUB_AZURE_APP.
-    app: ""
-    tenantId: ""
-    clientId: ""
-    subscriptionId: ""
-    resourceGroup: ""
   # -- Time zone of the timestamps the agent writes, such as Europe/Paris.
   # TZ.
   timezone: ""
@@ -155,7 +146,7 @@ env:
 # Secrets, exposed to the agent as environment variables (envFrom) and
 # referenced from the configuration with ${env:NAME}. Nothing secret is
 # ever written into the ConfigMap. Usual names: OTLP_BEARER_TOKEN,
-# SENHUB_LICENSE, SENHUB_AZURE_CLIENT_SECRET, and whatever your probes
+# SENHUB_LICENSE, SENHUB_PROBE_<NAME>_CLIENT_SECRET, and whatever your probes
 # reference (DB_PASSWORD for `password: "${env:DB_PASSWORD}"`).
 secrets:
   # -- An existing Secret whose keys become environment variables. Keys
@@ -322,7 +313,11 @@ readinessProbe:
   timeoutSeconds: 5
   failureThreshold: 3
 
-# -- Extra environment variables, as in a container spec.
+# -- Extra environment variables, as in a container spec. A probe can be
+# declared here with the agent's own rule, one probe per name:
+#   - {name: SENHUB_PROBE_ACA_TYPE, value: azure_container_apps}
+#   - {name: SENHUB_PROBE_ACA_TENANT_ID, value: "..."}
+# with the client secret taken from `secrets` as SENHUB_PROBE_ACA_CLIENT_SECRET.
 extraEnv: []
 # -- Extra volumes and mounts, for instance a kubeconfig of another
 # cluster or files read with ${file:/path}.
