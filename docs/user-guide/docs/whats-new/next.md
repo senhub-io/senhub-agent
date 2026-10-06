@@ -4,14 +4,22 @@ Changes land here as they are merged to `dev`.
 
 - **Redis**: the probe now reports the last RDB save, AOF rewrite and AOF write outcomes, the replication backlog (active, size, history), pub/sub channels and patterns, and, on a Sentinel, the status, replica count and sentinel count of each monitored master.
 - **Linux packages.** `.deb` and `.rpm` packages for amd64 and arm64, in two editions (`senhub-agent-oss` and `senhub-agent`, which replace each other in one install command), install the agent as a systemd service from the distribution's package manager, tested on Debian 12, Ubuntu 22.04 and 24.04, Rocky Linux 9 and openSUSE Leap 15.6; see [Install from packages](../installation.md#install-from-packages). Signed APT and YUM/DNF/Zypper repositories at `packages.senhub.io` go live with the first published beta; see [Install from the package repositories](../installation.md#install-from-the-package-repositories).
+- **Ansible collection.** `senhub.agent` is an Ansible collection with one role, `senhub.agent.agent`, that installs the agent from the signed package repositories (Linux) or the release MSI checked against its manifest (Windows), writes `probes.d` and `strategies.d` from variables, and runs `config check --json` on the result before it replaces the live files; a second run changes nothing. See [Deploying with Ansible](../ansible.md).
 
 - **IPMI**: sensors that share a name (a Dell lists every CPU temperature as `Temp`) are no longer merged into one series; they now read `Temp (CPU 1)`, `Temp (CPU 2)`. Power (`hw.power`, watts) and current (`senhub.hardware.current`, amperes) readings are reported, and a power supply's presence and redundancy ("Presence detected", "Fully Redundant", "Redundancy Lost") now give its status.
 
 <div class="rn-filter"></div>
 
+## Fixes
+
+- **`config check` and the loader now agree on a configuration with no storage strategy.** `config check` reported "No storage strategies configured" as a warning (exit `1`) while the agent refuses to load such a file ("at least one storage strategy is required"). It is now an error (exit `2`), as is a storage entry with no name. A script that applies a configuration after `config check` (Ansible, the MSI) no longer lets one through that the agent then rejects.
+
 ## Features
 
 - **Deploying at scale.** A new documentation section with one page per tool, each with a runnable example and the same points: version pinning, licence, secrets, validation before apply, upgrade and removal. Pages for Intune, GPO and SCCM, cloud-init, Docker Compose, Helm and Podman, and an overview that maps each estate to a tool. See [Deploying at scale](../deploying/index.md).
+- **A manifest per release, at a stable address.** `packages.senhub.io/releases/stable/latest.json` (and `beta/latest.json`) name the newest release of a channel; `releases/<version>/manifest.json` lists every file with its checksum, size, signature and the container images, so a script finds and verifies the right build without reading the GitHub page. A stable image is now also tagged with its minor line (`ghcr.io/senhub-io/senhub-agent:0.6`). See [Downloading and verifying releases](../releases.md).
+
+- **SNMP: a polled device's routes now link to their gateway.** Routes read from a device's routing table reach the gateway's address with `next_hop_via`, as host routes already do, when the gateway is a public address, so a router's default route resolves to the same address node as a host's. Private (RFC1918, CGNAT, ULA), loopback, link-local and multicast gateways stay unlinked, because unrelated switches behind one private gateway would otherwise merge.
 - **Failed log batches are kept on disk by default.** The OTLP output's
   on-disk queue for event logs the collector could not take used to run
   only when `persistence.path` was set. It is now on for every install

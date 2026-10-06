@@ -223,7 +223,7 @@
       started on its defaults with nothing the operator asked for. The
       idempotency guard makes a rerun on an existing config a no-op, so
       repair and reinstall are unaffected. A kept config makes config init
-      exit 3 ("unchanged"); --ok-if-unchanged turns that into 0, which is
+      exit 3 ("unchanged"); the ok-if-unchanged flag turns that into 0, which is
       what Return="check" needs.
     -->
     <SetProperty Id="SeedConfig"

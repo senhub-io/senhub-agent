@@ -80,8 +80,11 @@ minisign -Vm senhub-agent-linux-amd64.zip \
 ```
 
 That public key is the one the agent itself embeds to verify its own
-auto-updates. There is no `SHA256SUMS` file — minisign is the
-verification path.
+auto-updates. There is no `SHA256SUMS` file: minisign is the
+verification path. Each release also publishes a manifest with the
+checksum, size and signature address of every file, and a stable address
+for the newest release of each channel; see
+[Downloading and verifying releases](releases.md).
 
 ### Release Artifact Naming
 

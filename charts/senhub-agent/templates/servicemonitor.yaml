@@ -1,0 +1,44 @@
+{{- if .Values.serviceMonitor.enabled }}
+{{- if not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") }}
+{{- fail "serviceMonitor.enabled: the cluster has no monitoring.coreos.com/v1 ServiceMonitor (Prometheus Operator). Install the operator first, or with helm template pass --api-versions monitoring.coreos.com/v1/ServiceMonitor" }}
+{{- end }}
+{{- if not .Values.service.enabled }}
+{{- fail "serviceMonitor.enabled needs service.enabled: a ServiceMonitor selects a Service" }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "senhub-agent.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "senhub-agent.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "senhub-agent.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      # /metrics answers the agent key as a Bearer token.
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ include "senhub-agent.identitySecretName" . }}
+          key: agent-key
+      {{- with .Values.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

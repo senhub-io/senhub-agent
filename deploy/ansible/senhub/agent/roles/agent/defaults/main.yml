@@ -1,0 +1,102 @@
+---
+# present installs and configures the agent, absent removes it.
+senhub_agent_state: present
+
+# oss: package senhub-agent-oss (Apache-2.0, free probes).
+# full: package senhub-agent (paid probes with a licence).
+senhub_agent_edition: oss
+
+# stable: final releases. beta: pre-releases (X.Y.Z~beta.N).
+senhub_agent_channel: stable
+
+# Empty: install if missing, never upgrade. latest: follow the channel.
+# Anything else pins that version, written 0.6.2 or 0.6.2-beta.1 (the
+# packages spell the beta 0.6.2~beta.1; both forms are accepted).
+senhub_agent_version: ""
+
+# Licence token (a JWT). Keep it in an Ansible Vault variable. Written to
+# license.jwt next to agent.yaml; the agent restarts when it changes.
+senhub_agent_license: ""
+# Alternative: a file on the controller holding the token.
+senhub_agent_license_src: ""
+
+# Probes, as they appear in a probes.d fragment.
+#   - {name: cpu, type: cpu, params: {interval: 30}}
+senhub_agent_probes: []
+
+# Outputs, one key per strategy; each becomes strategies.d/<prefix><name>.yaml.
+# The key http replaces the packaged strategies.d/00-http.yaml.
+#   senhub_agent_strategies:
+#     otlp: {endpoint: "collector.example.com:4317"}
+senhub_agent_strategies: {}
+
+# Host-level tags, merged into agent.global_tags of agent.yaml.
+senhub_agent_global_tags: {}
+# Any other agent.yaml keys to set, merged into the existing file (the
+# agent key the package generated is kept). Setting one rewrites agent.yaml
+# without its comments.
+senhub_agent_agent_settings: {}
+
+# Name of the generated probes fragment.
+senhub_agent_probes_file: 50-ansible.yaml
+# Prefix of the generated strategy fragments.
+senhub_agent_strategies_prefix: "50-"
+# Remove probes.d/00-host.yaml, the four probes the package ships (cpu,
+# memory, network, logicaldisk), for a fleet that declares its own.
+senhub_agent_remove_default_probes: false
+# Delete fragments this role wrote earlier and no longer declares. Only
+# files carrying the role's marker are ever deleted.
+senhub_agent_purge_stale: true
+
+# config check exits 1 on warnings (for example "No storage strategies
+# configured", which the agent itself refuses to load). false stops the
+# run on a warning, true applies the configuration anyway.
+senhub_agent_check_allow_warnings: false
+# The agent loads probes.d, strategies.d and agent.yaml changes by itself,
+# so these never need a restart. true restarts the service anyway.
+senhub_agent_restart_on_config_change: false
+
+# Linux service and paths of the packages.
+senhub_agent_service_name: senhub-agent
+senhub_agent_service_enabled: true
+senhub_agent_service_state: started
+senhub_agent_user: senhub
+senhub_agent_group: senhub
+senhub_agent_config_dir: /etc/senhub-agent
+senhub_agent_bin: /usr/bin/senhub-agent
+
+# Repositories (Linux). Set manage_repository to false for a mirror or an
+# air-gapped host that already carries the repository definition.
+senhub_agent_manage_repository: true
+senhub_agent_repo_url: https://packages.senhub.io
+senhub_agent_repo_key_url: https://packages.senhub.io/gpg.key
+senhub_agent_repo_key_fingerprint: B9987A2D4623796E19D3B185CA56F750354530AF
+
+# absent: also delete the configuration, the state and the service user
+# (apt purge) and the repository.
+senhub_agent_purge_data: false
+
+# Hide values that may hold secrets from the task output.
+senhub_agent_no_log: true
+
+# Windows.
+senhub_agent_windows_config_dir: C:\ProgramData\SenHub
+senhub_agent_windows_bin: C:\Program Files\SenHub Agent\senhub-agent.exe
+senhub_agent_windows_service_name: senhub-agent
+# Where the manifests are read: <base>/<channel>/latest.json or
+# <base>/<version>/manifest.json.
+senhub_agent_manifest_base_url: https://packages.senhub.io/releases
+# Install a release whose manifest says complete: false (signatures still
+# pending). Leave it false.
+senhub_agent_allow_incomplete_release: false
+senhub_agent_windows_download_dir: C:\Windows\Temp
+# MSI properties, consumed at first install only.
+senhub_agent_msi_http_port: ""
+senhub_agent_msi_tags: ""
+senhub_agent_msi_otlp_endpoint: ""
+senhub_agent_msi_zabbix_server: ""
+senhub_agent_msi_zabbix_host_metadata: ""
+senhub_agent_msi_desktop_shortcut: 0
+senhub_agent_msi_install_folder: ""
+# Take over an agent installed outside the MSI (ADOPT=1).
+senhub_agent_msi_adopt: false
