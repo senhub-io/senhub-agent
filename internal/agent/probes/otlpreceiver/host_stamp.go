@@ -60,6 +60,16 @@ var ownHost = sync.OnceValue(func() hostStamp {
 	return hostStamp{id: hi.ID, name: hi.Name}
 })
 
+// currentOwnHost is ownHost with the operator's host.name override applied at
+// call time, so a configuration reload reaches the stamp without a restart.
+func currentOwnHost() hostStamp {
+	own := ownHost()
+	if o := common.HostNameOverride(); o != "" {
+		own.name = o
+	}
+	return own
+}
+
 // origin classifies a request by where it came from.
 func (p *OTLPReceiverProbe) origin(remoteAddr string) string {
 	if p.config.UnixPath != "" {
@@ -119,7 +129,7 @@ func account(signal, origin string, res *resourcepb.Resource, records int, own h
 }
 
 func (p *OTLPReceiverProbe) stampMetrics(remoteAddr string, rms []*metricpb.ResourceMetrics) {
-	origin, own := p.origin(remoteAddr), ownHost()
+	origin, own := p.origin(remoteAddr), currentOwnHost()
 	for _, rm := range rms {
 		if rm.Resource == nil {
 			rm.Resource = &resourcepb.Resource{}
@@ -129,7 +139,7 @@ func (p *OTLPReceiverProbe) stampMetrics(remoteAddr string, rms []*metricpb.Reso
 }
 
 func (p *OTLPReceiverProbe) stampLogs(remoteAddr string, rls []*logspb.ResourceLogs) {
-	origin, own := p.origin(remoteAddr), ownHost()
+	origin, own := p.origin(remoteAddr), currentOwnHost()
 	for _, rl := range rls {
 		if rl.Resource == nil {
 			rl.Resource = &resourcepb.Resource{}
@@ -143,7 +153,7 @@ func (p *OTLPReceiverProbe) stampLogs(remoteAddr string, rls []*logspb.ResourceL
 }
 
 func (p *OTLPReceiverProbe) stampSpans(remoteAddr string, rss []*tracepb.ResourceSpans) {
-	origin, own := p.origin(remoteAddr), ownHost()
+	origin, own := p.origin(remoteAddr), currentOwnHost()
 	for _, rs := range rss {
 		if rs.Resource == nil {
 			rs.Resource = &resourcepb.Resource{}
