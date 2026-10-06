@@ -13,6 +13,11 @@ docker run -d --name senhub-agent \
 
 That is the whole of it for a first run: one variable, one mount.
 
+Pin the exact version for a reproducible deployment. A stable release
+is also tagged with its minor line (`:0.6`), which follows the patch
+releases of that line; betas are never tagged that way, and there is no
+`latest`. See [container image tags](releases.md#container-image-tags).
+
 ## The one mount that matters
 
 `/var/lib/senhub-agent` holds everything that makes this agent *this*
@@ -71,6 +76,9 @@ needs to export to SenHub; the rest have defaults or are only read when
 the feature they configure is wanted. These variables are read only when
 the entrypoint writes the configuration, that is when no `agent.yaml` is
 present (see [Bringing your own configuration](#bringing-your-own-configuration)).
+The `SENHUB_PROBE_<NAME>_*` variables are the exception: the agent itself
+reads them, so they apply with a configuration of your own too (see
+[Probes from variables](#probes-from-variables)).
 
 | Variable | Required | Default | What it does |
 |---|---|---|---|
@@ -86,10 +94,13 @@ present (see [Bringing your own configuration](#bringing-your-own-configuration)
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
 | `SENHUB_HTTP_BIND` | No | `0.0.0.0` | Address the console and the PRTG, Nagios and Prometheus endpoints listen on. The container's own loopback is reachable by no one, so the image listens on every address and relies on the container network; `127.0.0.1` keeps them inside the container |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
-| `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key and the bookmarks live |
+| `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key, the bookmarks and the logs queue (`otlp-queue/`) live |
+| `SENHUB_LOG_QUEUE` | No | `true` | `false` stops the agent keeping failed log batches on disk during an OTLP outage |
+| `SENHUB_LOG_QUEUE_RETENTION` | No | `24h` | Age after which a queued log batch is dropped; `0` = no limit |
+| `SENHUB_LOG_QUEUE_MAX_BYTES` | No | `134217728` (128 MiB) | Disk cap of the logs queue, in bytes or with a suffix (`64MiB`). The queue lives in the state directory: put it on a persistent volume (a File Share on Container Apps) for logs to survive a restart; see [Logs survive an outage](otlp.md#logs-survive-an-outage) |
 | `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |
 | `SENHUB_AGENT_KEY` | No | kept in the state directory | Agent identity, a UUID. One value per instance; with `SENHUB_HOST_ID` it lets a container without a volume keep one identity |
-| `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. Not merged with `SENHUB_AZURE_APP`, see [Reading Azure Container Apps](#reading-azure-container-apps) |
+| `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. For one probe at a time, the `SENHUB_PROBE_<NAME>_*` variables are shorter, see [Probes from variables](#probes-from-variables) |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
 
 Without `SENHUB_AGENT_KEY` the agent generates its own key on first
@@ -104,7 +115,7 @@ belongs to all of its instances at once.
 
 The variables above configure the agent. The probes are configuration of
 their own, and there are sixty-six types of them, so they are not each
-given a variable. Three ways in, from the least to the most work:
+given a variable each. Three ways in, from the least to the most work, and a fourth that adds to any of them:
 
 ### A variable carrying the fragment
 
@@ -148,56 +159,27 @@ Whichever you choose, the configuration is checked before the agent
 starts: a container whose variables produce a file the agent would
 refuse stops with the reason rather than restarting in a loop.
 
-### Reading Azure Container Apps
+### Probes from variables
 
-This is a shorthand for the fragment `SENHUB_PROBES` would carry, kept
-because it is the probe this image is most often asked for. Set the
-applications and their credentials, and the agent reads the console log
-stream of each one. Setting `SENHUB_AZURE_APP` without the rest stops
-the container with the list of what is missing, rather than starting
-half configured.
-
-| Variable | What it does |
-|---|---|
-| `SENHUB_AZURE_APP` | Names of the Container Apps to read, comma-separated |
-| `SENHUB_AZURE_TENANT_ID` | Entra tenant of the app registration |
-| `SENHUB_AZURE_CLIENT_ID` | Application (client) ID |
-| `SENHUB_AZURE_CLIENT_SECRET` | Client secret |
-| `SENHUB_AZURE_SUBSCRIPTION_ID` | Subscription holding the Container App |
-| `SENHUB_AZURE_RESOURCE_GROUP` | Its resource group |
-
-None of these credentials is written to a file: the configuration holds
-a reference and the agent reads the value from the environment at every
-start.
-
-One probe instance follows one application, so `SENHUB_AZURE_APP` takes
-a list and writes one instance per name, each with its own bookmark:
+`SENHUB_PROBE_<NAME>_TYPE` declares a probe and `SENHUB_PROBE_<NAME>_<PARAM>` sets
+its parameters, one variable each, typed from the probe's schema. It is a
+rule of the agent, not of the image: it applies the same way under systemd,
+Helm or Podman, and it applies **even when you mount your own
+configuration**, where it adjusts the probes of your files instead of being
+ignored. A secret is read from a file with the `_FILE` suffix, as Docker
+and Kubernetes deliver them.
 
 ```yaml
-SENHUB_AZURE_APP: "oltp,billing,web"
+SENHUB_PROBE_DB_TYPE: mysql
+SENHUB_PROBE_DB_HOST: db.internal
+SENHUB_PROBE_DB_USERNAME: monitor
+SENHUB_PROBE_DB_PASSWORD_FILE: /run/secrets/db_password
 ```
 
-The applications must share the credentials, the subscription and the
-resource group, since those are one variable each. An application in
-another subscription or another resource group belongs to another
-collector. Spaces around a name are absorbed, a name given twice is
-declared once, and a name that is not a Container App name stops the
-container.
-
-The credentials, and so the collector, are what this list is bounded
-by, not a limit of the probe. How many applications one agent can
-follow before the Azure control plane refuses its scans is measured
-under [Requirements](probes/azure_container_apps.md#requirements).
-
-`SENHUB_AZURE_APP` and `SENHUB_PROBES` write two different files and
-are **not merged**. An application named in both is declared twice, and
-every line of it is read twice, counted twice by whatever ingests it.
-The entrypoint says so on
-startup when both variables are set; name each application in one place
-only.
-
-The role behind the app registration needs four actions, and `Reader`
-is not enough. See [Azure Container Apps](probes/azure_container_apps.md).
+The whole rule, with the precedence over `SENHUB_PROBES` and the files, is
+on [Configuration](configuration.md#configuring-probes-from-environment-variables).
+Reading Azure Container Apps takes the same form, see
+[Azure Container Apps](probes/azure_container_apps.md#from-environment-variables).
 
 ## Bringing your own configuration
 

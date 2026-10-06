@@ -5,14 +5,15 @@ This document describes the development workflow for SenHub Agent, including ver
 ## Version Management
 
 ### Version Scheme
-- **Production version**: Always tagged without `-beta` suffix (e.g., `0.1.64`)
-- **Development version**: Next version with `-beta` suffix (e.g., `0.1.70-beta`)
+- **Production version**: Always tagged without a `-beta.N` suffix (e.g., `0.1.64`)
+- **Development version**: Next version with a numbered `-beta.N` suffix (e.g., `0.1.70-beta.1`)
 - **Current prod**: `0.1.64`
-- **Next dev**: `0.1.70-beta`
+- **Next dev**: `0.1.70-beta.1`
 
 ### Version Tag Format
-- **IMPORTANT**: All version tags must follow the format `X.Y.Z-beta` (WITHOUT the "v" prefix)
-- Example: `0.1.70-beta` (correct) vs `v0.1.70-beta` (incorrect)
+- **IMPORTANT**: Beta tags must follow the format `X.Y.Z-beta.N` (WITHOUT the "v" prefix), N counting from 1 for each X.Y.Z
+- Example: `0.1.70-beta.1` (correct) vs `v0.1.70-beta.1` (incorrect) vs `0.1.70-beta` (the earlier, unnumbered form)
+- The Linux packages carry the version as `X.Y.Z~beta.N`, so a beta sorts before its release in dpkg and rpm
 - Beta releases are automatically generated from dev branch pushes
 - Workflow uses `git describe --tags --abbrev=0` to find latest tag
 
@@ -221,14 +222,14 @@ git commit -m "refactor(http): modularize HTTP strategy with managers"
 3. GitHub Actions automatically:
    - Runs tests
    - Builds binaries for all platforms
-   - Creates beta release with tag `X.Y.Z-beta`
+   - Creates beta release with tag `X.Y.Z-beta.N`
    - Generates release notes
 
 ### Production Releases
 1. Beta tested thoroughly in production environments
 2. User approves promotion to production
 3. Merge `dev` to `master`
-4. Tag with production version (without `-beta`)
+4. Tag with production version (without `-beta.N`)
 5. GitHub Actions creates production release
 
 ## Configuration Management

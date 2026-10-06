@@ -307,7 +307,7 @@ func TestInstallStateDecidesNothingToDo(t *testing.T) {
 		{"binary differs", installFakeService{state: service.StatusRunning}, cfg, stale, false},
 	}
 	for _, c := range cases {
-		got := detectInstallState(c.svc, c.path, c.bin).alreadyDone()
+		got := detectInstallState(c.svc, c.path, installProbes{binaryCurrent: c.bin}).alreadyDone()
 		if got != c.want {
 			t.Errorf("%s: alreadyDone = %v, want %v", c.name, got, c.want)
 		}

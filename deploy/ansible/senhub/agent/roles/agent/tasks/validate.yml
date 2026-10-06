@@ -1,0 +1,28 @@
+---
+- name: Check the role variables
+  ansible.builtin.assert:
+    that:
+      - senhub_agent_state in ['present', 'absent']
+      - senhub_agent_edition in ['oss', 'full']
+      - senhub_agent_channel in ['stable', 'beta']
+      - senhub_agent_probes is sequence
+      - senhub_agent_probes is not string
+      - senhub_agent_strategies is mapping
+      - senhub_agent_global_tags is mapping
+      - senhub_agent_agent_settings is mapping
+      - senhub_agent_probes | selectattr('name', 'defined') | list | length == senhub_agent_probes | length
+      - senhub_agent_probes | selectattr('type', 'defined') | list | length == senhub_agent_probes | length
+      - senhub_agent_license | length == 0 or senhub_agent_license_src | length == 0
+    fail_msg: >-
+      Invalid senhub_agent_* variables: state is present or absent, edition
+      oss or full, channel stable or beta, probes a list of {name, type,
+      params}, strategies a mapping, and the licence given inline or as a
+      file, not both.
+    quiet: true
+  no_log: "{{ senhub_agent_no_log }}"
+
+- name: Check that the target is supported
+  ansible.builtin.assert:
+    that: ansible_facts['os_family'] in ['Debian', 'RedHat', 'Suse', 'Windows']
+    fail_msg: "{{ ansible_facts['os_family'] }} is not supported: Debian, Ubuntu, RHEL family, SUSE and Windows are."
+    quiet: true

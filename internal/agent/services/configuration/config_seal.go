@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -26,6 +27,10 @@ import (
 type sealState struct {
 	prov secret.Provider
 	seen map[string]sealSeen
+	// written holds, per file, the exact bytes this seal committed, so a
+	// rollback can tell an untouched file (restore the backup byte for
+	// byte) from one an operator edited since (undo only the seal).
+	written map[string][]byte
 }
 
 type sealSeen struct {
@@ -33,7 +38,51 @@ type sealSeen struct {
 	where string
 }
 
-func newSealState() *sealState { return &sealState{seen: map[string]sealSeen{}} }
+func newSealState() *sealState {
+	return &sealState{seen: map[string]sealSeen{}, written: map[string][]byte{}}
+}
+
+// rollbackEdit returns the edit that undoes this seal in one file. A file
+// still holding exactly what the seal wrote goes back to its pre-seal
+// backup. A file changed since (an operator saved it meanwhile) keeps
+// that change: only the references this seal created are put back to
+// their plaintext, so restoring never overwrites a hand edit with the
+// whole pre-edit backup.
+func (st *sealState) rollbackEdit(path, backupPath string) func([]byte) ([]byte, error) {
+	return func(data []byte) ([]byte, error) {
+		if w, ok := st.written[path]; ok && bytes.Equal(data, w) {
+			return os.ReadFile(backupPath) // #nosec G304 - the seal's own backup
+		}
+		var doc yaml.Node
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("parsing YAML: %w", err)
+		}
+		if st.unsealNodes(&doc) == 0 {
+			return nil, nil
+		}
+		return marshalNode(&doc)
+	}
+}
+
+// unsealNodes puts back the plaintext of every reference this seal wrote
+// and returns how many it replaced.
+func (st *sealState) unsealNodes(n *yaml.Node) int {
+	count := 0
+	if n.Kind == yaml.ScalarNode {
+		for key, seen := range st.seen {
+			if n.Value == "${secret:"+key+"}" {
+				n.SetString(seen.value)
+				count++
+				break
+			}
+		}
+		return count
+	}
+	for _, c := range n.Content {
+		count += st.unsealNodes(c)
+	}
+	return count
+}
 
 // provider lazily resolves the write backend on first use, so a config with no
 // inline secret never initialises a store.
@@ -148,12 +197,11 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	restore := func() []string {
 		var failures []string
 		for _, b := range backups {
-			data, e := os.ReadFile(b.backupPath)
-			if e != nil {
+			if _, e := os.Stat(b.backupPath); e != nil {
 				failures = append(failures, fmt.Sprintf("%s (reading backup %s: %v)", b.path, b.backupPath, e))
 				continue
 			}
-			if e := atomicWriteFile(b.path, data, fileModeOr(b.path, 0o600)); e != nil {
+			if _, e := rewriteFile(b.path, st.rollbackEdit(b.path, b.backupPath)); e != nil {
 				failures = append(failures, fmt.Sprintf("%s (restoring: %v)", b.path, e))
 				continue
 			}
@@ -339,6 +387,7 @@ func sealOneFile(path string, st *sealState) (int, string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("marshalling sealed YAML: %w", err)
 		}
+		st.written[path] = out
 		return out, nil
 	})
 	return sealed, backupPath, err
@@ -568,6 +617,7 @@ func sealAgentKeyInFile(path string, st *sealState) (int, string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("marshalling: %w", err)
 		}
+		st.written[path] = out
 		return out, nil
 	})
 	return count, backupPath, err

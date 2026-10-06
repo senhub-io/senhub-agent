@@ -22,8 +22,11 @@ import (
 // whatever the services ask for. Windows' SCM kills a service that
 // takes too long to acknowledge a stop, and systemd's TimeoutStopSec
 // then SIGKILLs — a budget past either of those buys nothing and turns
-// a clean stop into a kill.
-const maxStopBudget = 20 * time.Second
+// a clean stop into a kill. Podman and Docker give a container ten
+// seconds by default before SIGKILL, so the whole stop, flush included,
+// has to end under that: a collector that does not answer is not worth
+// a kill.
+const maxStopBudget = 8 * time.Second
 
 type program struct {
 	agent agent.Agent
@@ -380,6 +383,8 @@ var knownTopLevelArgs = map[string]struct{}{
 }
 
 func Main() {
+	wireProbeTypeLookup()
+
 	// `--version` short-circuit: print version + exit, BEFORE any
 	// subcommand dispatch or privilege gate. The pre-0.2.x agent had
 	// no such handling — `senhub-agent --version` fell through to
@@ -600,6 +605,10 @@ func Main() {
 		if len(os.Args) > 2 {
 			serviceArgs = os.Args[2:]
 		}
+		if command == "install" {
+			// --json is a view flag of install, like of status.
+			serviceArgs = stripFlags(serviceArgs, jsonFlag)
+		}
 		args := cliArgs.ParseStartArgs(serviceArgs)
 		handleServiceCommand(command, args)
 		return
@@ -636,6 +645,8 @@ Service Commands:
                          On Linux the service runs as the dedicated 'senhub' user
                          under a hardened systemd unit. Exits 3 and changes
                          nothing when the service is already installed.
+    install --json       Print the outcome as one JSON object (status, exit_code,
+                         changed, written)
     install --user USER  Service user for the Linux unit (default: senhub;
                          use 'root' to keep the legacy root unit)
     uninstall            Remove the system service (prompts before deleting

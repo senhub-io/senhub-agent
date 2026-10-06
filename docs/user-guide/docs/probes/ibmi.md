@@ -88,7 +88,7 @@ Monitor several LPARs with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:c135d3f529a8a8e5aecab8ba3574d9dd0015e9a8fc323ad8c2d67477fdd0719e -->
+<!-- sha256:85e1f2ed9c1fa43afa288c48e61b9ecb7fce1a63d18c9ccd521d75ce33f5501d -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -107,6 +107,7 @@ Monitor several LPARs with separate probe instances:
 | `message_queues[].name` | Yes | - | Queue name. Example: `QSYSOPR` |
 | `message_queues[].library` | No | `QSYS` | Library of the queue |
 | `message_queues[].min_severity` | No | `0` | Messages below this severity are not relayed |
+| `history_log_min_severity` | No | `0` | History log (QHST) messages below this severity (0-99) are not collected; 0 keeps all, and a busy partition logs thousands of messages a minute |
 | `environment` | No | - | Deployment environment name carried by the partition entity. Example: `production` |
 | `db_instance_name` | No | - | Identity override of the Db2 for i entity; empty derives it from the relational database name |
 
@@ -291,13 +292,49 @@ message remains visible there through the jobs-by-status count.
 | `senhub.ibmi.collector.last_duration` | `s` | `ibmi.collector` | Duration of the last collection |
 | `senhub.ibmi.collector.last_success_timestamp` | `s` | `ibmi.collector` | Unix timestamp of the last successful collection |
 
-!!! note "Event conduits"
-    The `message_queue` (QSYSOPR), `history_log` (QHST), `audit_journal` (QAUDJRN)
-    and `msgw_job` (message-wait jobs) collectors relay operational events rather
-    than numeric metrics. They are not exported to OTLP/Prometheus; a future
-    release will export them as OTLP logs. Their timestamps are the
-    partition's own: the probe reads the partition's clock and zone, so an
-    agent and a partition in different zones report the same instants.
+!!! note "Events as logs"
+    The `message_queue` (QSYSOPR), `history_log` (QHST) and `audit_journal`
+    (QAUDJRN) collectors relay operational events rather than numeric metrics.
+    They are not exported as OTLP or Prometheus metrics; each event is sent as
+    an OpenTelemetry log record on the agent's log rail, the same path as the
+    `filetail`, `syslog` and `windows_eventlog` probes, so it reaches the logs
+    backend of the OTLP output (and honours the probe's `log_strategies`). The
+    `msgw_job` collector (jobs in message wait) stays a metric-side
+    condition: it re-reports the same job every cycle, which is a state, not a
+    log. A collector that is not enabled sends nothing.
+
+    A log record carries:
+
+    - **Body**: the message text (for the audit journal, `QAUDJRN <type>: user=... object=lib/name/type`).
+    - **Timestamp**: the event's own time on the partition, converted to UTC
+      with the partition's clock and zone, so an agent and a partition in
+      different zones report the same instants.
+    - **Severity**: the IBM i severity (0-99) mapped to an OTel severity, with
+      the original number kept in `ibmi.severity`.
+    - **Attributes**: `ibmi.event.source` (`history_log`, `message_queue` or
+      `audit_journal`), `server.address` (the partition's host), `ibmi.severity`,
+      `ibmi.message.id`, `ibmi.message.type`, `ibmi.from.user`, `ibmi.from.job`
+      and `ibmi.from.program` (history log and message queue; no program for the
+      queue), `ibmi.queue.name` and `ibmi.queue.library` (message queue),
+      `ibmi.audit.entry_type`, `ibmi.object.name`, `ibmi.object.library`,
+      `ibmi.object.type`, `ibmi.job.name` and `ibmi.user.name` (audit journal),
+      plus `senhub.probe.name` and `senhub.probe.type`.
+
+    | IBM i severity | OTel severity |
+    |----------------|---------------|
+    | 0-29 (information, notification) | `INFO` (9) |
+    | 30-39 (warning) | `WARN` (13) |
+    | 40-59 (error) | `ERROR` (17) |
+    | 60-79 (severe error) | `ERROR3` (19) |
+    | 80-99 (abnormal end of job or system) | `FATAL` (21) |
+
+    The volume lever is the `history_log_min_severity` parameter (0-99, default 0): a partition such as PUB400
+    logs thousands of QHST messages a minute, and the floor is applied on the
+    server, so messages below it neither cross the bridge nor reach the log
+    rail. For a message queue the equivalent is `message_queues[].min_severity`.
+    The audit journal reads the entry types AF, CA, CO, CP, DO, OR, OW, PA, PW,
+    SV and ZC only, with the severity 60 for AF and PW, 50 for SV, CA and OW, and
+    30 otherwise.
 
 # Requirements
 
@@ -590,5 +627,10 @@ series' tags.
 | `senhub.ibmi.collector.failure` | `ibmi.collector.failure_total` | Collector Failure — {collector} | # | Failed runs of this collector; a collector failing alone leaves its metrics absent while the rest keep reporting |
 | `senhub.ibmi.collector.last_duration` | `ibmi.collector.last_duration_ms` | Collector Duration — {collector} | ms | How long this collector's last run took |
 | `senhub.ibmi.collector.last_success_timestamp` | `ibmi.collector.last_success_timestamp` | Collector Last Success — {collector} | s | Unix time of this collector's last successful run |
+| `senhub.ibmi.collector.window_lag` | `ibmi.collector.window_lag` | Collector Window Lag — {collector} | s | How far the collector's read position trails the partition's clock at the end of the cycle; it grows while the collector cannot keep up |
+| `senhub.ibmi.collector.read_duration` | `ibmi.collector.read_duration` | Collector Read Span — {collector} | s | Seconds of log this cycle covered, from the start of the first window read to the read position at the end of the cycle |
+| `senhub.ibmi.collector.lost` | `ibmi.collector.lost` | Collector Lost — {collector} | s | Seconds of backlog skipped because the collector fell more than its maximum window behind the partition's clock; the events logged in them are not collected |
+| `senhub.ibmi.collector.slices` | `ibmi.collector.slices` | Collector Queries — {collector} | # | Queries issued by this collector during the last cycle |
+| `senhub.ibmi.collector.clock_offset` | `ibmi.collector.clock_offset` | Collector Clock Offset — {collector} | s | Agent clock minus the partition's clock, after the partition's UTC offset is removed; a clock skew between the two machines, not a time zone |
 
 <!-- schema:metrics:end -->

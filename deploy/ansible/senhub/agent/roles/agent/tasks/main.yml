@@ -1,0 +1,13 @@
+---
+- name: Check the role variables
+  ansible.builtin.include_tasks: validate.yml
+
+- name: Install and configure the agent
+  ansible.builtin.include_tasks:
+    file: "{{ 'windows.yml' if ansible_facts['os_family'] == 'Windows' else 'linux.yml' }}"
+  when: senhub_agent_state == 'present'
+
+- name: Remove the agent
+  ansible.builtin.include_tasks:
+    file: "{{ 'windows_absent.yml' if ansible_facts['os_family'] == 'Windows' else 'linux_absent.yml' }}"
+  when: senhub_agent_state == 'absent'
