@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -63,11 +64,41 @@ func normalizeHostname(raw string) string {
 	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(raw), "."))
 }
 
-// canonicalHostname is the single hostname the agent emits everywhere: the
-// machine's fully-qualified DNS name when the platform provides one
-// (Windows — see resolveHostFQDN), else the OS-reported hostname, both
-// normalized to lower-case.
+// HostNameKey is the global_tags key that overrides the host's name.
+const HostNameKey = "host.name"
+
+var hostNameOverride atomic.Pointer[string]
+
+// SetHostNameOverride records the operator's global_tags["host.name"], or
+// clears it when empty. The configuration loader calls it on every snapshot,
+// so every emitter reads the override from one place.
+func SetHostNameOverride(name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		hostNameOverride.Store(nil)
+		return
+	}
+	hostNameOverride.Store(&name)
+}
+
+// HostNameOverride returns the operator's host.name override, or "".
+func HostNameOverride() string {
+	if o := hostNameOverride.Load(); o != nil {
+		return *o
+	}
+	return ""
+}
+
+// canonicalHostname is the single hostname the agent emits everywhere for its
+// own host: the operator override when one is set, else the machine's
+// fully-qualified DNS name when the platform provides one (Windows — see
+// resolveHostFQDN), else the OS-reported hostname, both normalized to
+// lower-case. Records that describe another host (syslog sender, relayed
+// OTLP) never go through it.
 func canonicalHostname(raw string) string {
+	if o := hostNameOverride.Load(); o != nil {
+		return *o
+	}
 	if fqdn := resolveHostFQDN(); fqdn != "" {
 		return normalizeHostname(fqdn)
 	}
