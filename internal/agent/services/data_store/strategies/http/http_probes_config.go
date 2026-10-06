@@ -20,8 +20,12 @@ type configuredProbe struct {
 	Governance map[string]interface{} `json:"governance,omitempty"`
 	CustomTags map[string]string      `json:"custom_tags,omitempty"`
 	Managed    bool                   `json:"managed"`
-	Running    bool                   `json:"running"`
-	Health     string                 `json:"health,omitempty"`
+	// EnvVariables names the SENHUB_PROBE_* variables that declare this
+	// probe or set one of its parameters. Such a probe is read-only here:
+	// a change saved to a file would be overridden at the next start.
+	EnvVariables []string `json:"env_variables,omitempty"`
+	Running      bool     `json:"running"`
+	Health       string   `json:"health,omitempty"`
 	// LastError says why the last cycle failed while Health is "failed".
 	LastError  string `json:"last_error,omitempty"`
 	Tier       string `json:"tier"`
@@ -74,6 +78,11 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 	if h.cache != nil {
 		stats = h.cache.GetProbeStatistics()
 	}
+	names := make([]string, 0, len(cfg.Probes))
+	for _, p := range cfg.Probes {
+		names = append(names, p.Name)
+	}
+	envSources := configuration.EnvProbeSources(names)
 	out := make([]configuredProbe, 0, len(cfg.Probes))
 	for _, p := range cfg.Probes {
 		state := agentstate.GetProbeRunState(p.ID())
@@ -100,11 +109,13 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 			Governance: p.Governance,
 			CustomTags: p.CustomTags,
 			Managed:    managed,
-			Running:    state.Running,
-			Health:     state.Health,
-			LastError:  state.LastError,
-			Tier:       "free",
-			Authorized: true,
+
+			EnvVariables: envSources[p.Name],
+			Running:      state.Running,
+			Health:       state.Health,
+			LastError:    state.LastError,
+			Tier:         "free",
+			Authorized:   true,
 		}
 		if st, seen := stats[p.Name]; seen {
 			entry.MetricsCount = st.MetricsCount

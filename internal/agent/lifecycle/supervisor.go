@@ -99,7 +99,7 @@ func (s *Supervisor) Shutdown(ctx context.Context) []error {
 
 		started := time.Now()
 		svcCtx, svcCancel := context.WithTimeout(ctx, budget)
-		err := svc.Shutdown(svcCtx)
+		err := shutdownBounded(svcCtx, svc, s.logger, budget)
 		svcCancel()
 
 		if err != nil {
@@ -144,4 +144,34 @@ func TotalStopBudget(services ...Service) time.Duration {
 		total += stopBudget(svc)
 	}
 	return total
+}
+
+// shutdownGrace is how long past its deadline a service may take to
+// notice it. A Shutdown that ignores its context would otherwise hold the
+// whole stop past what the service manager allows, and the process would
+// be killed with nothing flushed.
+const shutdownGrace = 250 * time.Millisecond
+
+// shutdownBounded runs svc.Shutdown and stops waiting for it shortly
+// after ctx is done. The abandoned call keeps running; the process is
+// about to exit.
+func shutdownBounded(ctx context.Context, svc Service, log *logger.ModuleLogger, budget time.Duration) error {
+	done := make(chan error, 1)
+	go func() { done <- svc.Shutdown(ctx) }()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+	}
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(shutdownGrace):
+		log.Warn().
+			Str("service", svc.GetName()).
+			Dur("budget", budget).
+			Msg("Service did not stop within its budget and was abandoned: what it still held is lost")
+		return context.DeadlineExceeded
+	}
 }

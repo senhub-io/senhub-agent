@@ -75,11 +75,19 @@ func IsRandomKey(agentKey string) bool {
 	return randomUUID.MatchString(agentKey)
 }
 
-// OwnStateDir is the state directory of this process: the one systemd hands to
-// the unit when it set it, else the platform default.
+// OwnStateDir is the state directory of this process: SENHUB_STATE_DIR when
+// the operator set it, else the first directory systemd hands the unit, else
+// the platform default. STATE_DIRECTORY is a list in the platform's path-list
+// form, so it is split with filepath.SplitList: a ':' split cut "C:\..." in
+// two on Windows.
 func OwnStateDir() string {
+	if v := os.Getenv("SENHUB_STATE_DIR"); v != "" {
+		return v
+	}
 	if v := os.Getenv("STATE_DIRECTORY"); v != "" {
-		return strings.Split(v, ":")[0]
+		if dirs := filepath.SplitList(v); len(dirs) > 0 && dirs[0] != "" {
+			return dirs[0]
+		}
 	}
 	return DefaultStateDir()
 }

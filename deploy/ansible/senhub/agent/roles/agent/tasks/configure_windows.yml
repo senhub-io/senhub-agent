@@ -1,0 +1,197 @@
+---
+# Same sequence as configure_linux.yml: build in a scratch copy, check it
+# with `config check --json`, then copy it over the live files.
+
+- name: Current agent.yaml
+  ansible.windows.win_slurp:
+    src: "{{ senhub_agent_windows_config_dir }}\\agent.yaml"
+  register: _senhub_agent_yaml
+  no_log: "{{ senhub_agent_no_log }}"
+
+- name: Settings agent.yaml should carry
+  ansible.builtin.set_fact:
+    _senhub_agent_yaml_current: "{{ _senhub_agent_yaml.content | b64decode | from_yaml }}"
+    senhub_agent_merged_settings: "{{ (_senhub_agent_yaml.content | b64decode | from_yaml) | combine(_senhub_agent_extra_settings, recursive=True) }}"
+  no_log: "{{ senhub_agent_no_log }}"
+
+- name: Fragments this role wrote earlier
+  when: senhub_agent_purge_stale | bool
+  block:
+    - name: Find probes fragments with the marker
+      ansible.windows.win_find:
+        paths: "{{ senhub_agent_windows_config_dir }}\\probes.d"
+        patterns: "*.yaml"
+        contains: "{{ _senhub_agent_marker_regex }}"
+        use_regex: false
+      register: _senhub_agent_found_probes
+
+    - name: Find strategy fragments with the marker
+      ansible.windows.win_find:
+        paths: "{{ senhub_agent_windows_config_dir }}\\strategies.d"
+        patterns: "*.yaml"
+        contains: "{{ _senhub_agent_marker_regex }}"
+        use_regex: false
+      register: _senhub_agent_found_strategies
+
+    - name: Stale fragments
+      ansible.builtin.set_fact:
+        _senhub_agent_stale: >-
+          {{ (_senhub_agent_found_probes.files | rejectattr('filename', 'in', _senhub_agent_probe_files) | map(attribute='path') | list)
+           + (_senhub_agent_found_strategies.files | rejectattr('filename', 'in', _senhub_agent_strategy_files) | map(attribute='path') | list) }}
+
+- name: Stale list when purging is off
+  ansible.builtin.set_fact:
+    _senhub_agent_stale: []
+  when: not (senhub_agent_purge_stale | bool)
+
+- name: Build, check and apply the configuration
+  block:
+    - name: Scratch directory
+      ansible.windows.win_tempfile:
+        state: directory
+        prefix: senhub-agent-stage.
+      register: _senhub_agent_stage
+      changed_when: false
+
+    - name: Copy of the live configuration
+      ansible.windows.win_shell: >-
+        Copy-Item -Path '{{ senhub_agent_windows_config_dir }}\*' -Destination '{{ _senhub_agent_stage.path }}' -Recurse -Force
+      changed_when: false
+
+    - name: Probes fragment
+      ansible.windows.win_template:
+        src: probes.yaml.j2
+        dest: "{{ _senhub_agent_stage.path }}\\probes.d\\{{ senhub_agent_probes_file }}"
+      when: senhub_agent_probes | length > 0
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Strategy fragments
+      ansible.windows.win_template:
+        src: strategy.yaml.j2
+        dest: "{{ _senhub_agent_stage.path }}\\strategies.d\\{{ '00-http.yaml' if item.key == 'http' else senhub_agent_strategies_prefix ~ item.key ~ '.yaml' }}"
+      loop: "{{ senhub_agent_strategies | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: agent.yaml
+      ansible.windows.win_template:
+        src: agent.yaml.j2
+        dest: "{{ _senhub_agent_stage.path }}\\agent.yaml"
+      when: _senhub_agent_extra_settings | length > 0 and senhub_agent_merged_settings != _senhub_agent_yaml_current
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Licence
+      ansible.windows.win_copy:
+        content: "{{ (senhub_agent_license if senhub_agent_license | length > 0 else lookup('ansible.builtin.file', senhub_agent_license_src)) | trim }}\n"
+        dest: "{{ _senhub_agent_stage.path }}\\license.jwt"
+      when: senhub_agent_license | length > 0 or senhub_agent_license_src | length > 0
+      changed_when: false
+      diff: false
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Remove stale fragments from the copy
+      ansible.windows.win_file:
+        path: "{{ _senhub_agent_stage.path }}\\{{ item | regex_replace('^' ~ (senhub_agent_windows_config_dir | regex_escape) ~ '\\\\', '') }}"
+        state: absent
+      loop: "{{ _senhub_agent_stale }}"
+      changed_when: false
+
+    - name: Remove the packaged probes from the copy
+      ansible.windows.win_file:
+        path: "{{ _senhub_agent_stage.path }}\\probes.d\\00-host.yaml"
+        state: absent
+      when: senhub_agent_remove_default_probes | bool
+      changed_when: false
+
+    - name: Check the configuration
+      ansible.windows.win_command: '"{{ senhub_agent_windows_bin }}" config check --json "{{ _senhub_agent_stage.path }}\agent.yaml"'
+      register: _senhub_agent_check
+      changed_when: false
+      failed_when: false
+
+    - name: Read the verdict
+      ansible.builtin.set_fact:
+        _senhub_agent_verdict: "{{ _senhub_agent_check.stdout | from_json }}"
+      when: _senhub_agent_check.stdout is match('(?s)^\\s*\\{')
+
+    - name: Refuse a configuration the agent would not load
+      ansible.builtin.fail:
+        msg: >-
+          senhub-agent config check exited {{ _senhub_agent_check.rc }}; nothing was changed on the host.
+          {{ (_senhub_agent_verdict.findings | selectattr('level', 'in', ['error', 'warn']) | map(attribute='message') | list | to_nice_yaml)
+             if _senhub_agent_verdict is defined and _senhub_agent_verdict.findings is defined
+             else (_senhub_agent_check.stdout ~ _senhub_agent_check.stderr) }}
+      when: >-
+        _senhub_agent_check.rc == 2 or
+        _senhub_agent_check.rc not in [0, 1] or
+        (_senhub_agent_check.rc == 1 and not (senhub_agent_check_allow_warnings | bool))
+
+    - name: Probes fragment in place
+      ansible.windows.win_copy:
+        src: "{{ _senhub_agent_stage.path }}\\probes.d\\{{ senhub_agent_probes_file }}"
+        dest: "{{ senhub_agent_windows_config_dir }}\\probes.d\\{{ senhub_agent_probes_file }}"
+        remote_src: true
+      when: senhub_agent_probes | length > 0
+      diff: false
+      notify: senhub_agent config changed
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Strategy fragments in place
+      ansible.windows.win_copy:
+        src: "{{ _senhub_agent_stage.path }}\\strategies.d\\{{ '00-http.yaml' if item.key == 'http' else senhub_agent_strategies_prefix ~ item.key ~ '.yaml' }}"
+        dest: "{{ senhub_agent_windows_config_dir }}\\strategies.d\\{{ '00-http.yaml' if item.key == 'http' else senhub_agent_strategies_prefix ~ item.key ~ '.yaml' }}"
+        remote_src: true
+      loop: "{{ senhub_agent_strategies | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      diff: false
+      notify: senhub_agent config changed
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: agent.yaml in place
+      ansible.windows.win_copy:
+        src: "{{ _senhub_agent_stage.path }}\\agent.yaml"
+        dest: "{{ senhub_agent_windows_config_dir }}\\agent.yaml"
+        remote_src: true
+      when: _senhub_agent_extra_settings | length > 0 and senhub_agent_merged_settings != _senhub_agent_yaml_current
+      diff: false
+      notify: senhub_agent config changed
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Licence in place
+      ansible.windows.win_copy:
+        src: "{{ _senhub_agent_stage.path }}\\license.jwt"
+        dest: "{{ senhub_agent_windows_config_dir }}\\license.jwt"
+        remote_src: true
+      when: senhub_agent_license | length > 0 or senhub_agent_license_src | length > 0
+      diff: false
+      notify: senhub_agent restart
+      no_log: "{{ senhub_agent_no_log }}"
+
+    - name: Delete stale fragments
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ _senhub_agent_stale }}"
+      notify: senhub_agent config changed
+
+    - name: Delete the packaged probes
+      ansible.windows.win_file:
+        path: "{{ senhub_agent_windows_config_dir }}\\probes.d\\00-host.yaml"
+        state: absent
+      when: senhub_agent_remove_default_probes | bool
+      notify: senhub_agent config changed
+  always:
+    - name: Remove the scratch directory
+      ansible.windows.win_file:
+        path: "{{ _senhub_agent_stage.path }}"
+        state: absent
+      when: _senhub_agent_stage.path is defined
+      changed_when: false

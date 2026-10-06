@@ -174,12 +174,31 @@ func TestReadForProcess_NeverReturnsTheCallersOwnID(t *testing.T) {
 }
 
 func TestOwnStateDir_HonoursSystemd(t *testing.T) {
-	t.Setenv("STATE_DIRECTORY", "/var/lib/senhub-agent-b:/var/lib/other")
+	t.Setenv("SENHUB_STATE_DIR", "")
+	t.Setenv("STATE_DIRECTORY", "/var/lib/senhub-agent-b"+string(os.PathListSeparator)+"/var/lib/other")
 	if got := OwnStateDir(); got != "/var/lib/senhub-agent-b" {
 		t.Errorf("OwnStateDir = %q", got)
 	}
 	t.Setenv("STATE_DIRECTORY", "")
 	if got := OwnStateDir(); got != DefaultStateDir() {
 		t.Errorf("OwnStateDir = %q, want default", got)
+	}
+}
+
+func TestOwnStateDir_SplitsTheSystemdListWithThePlatformSeparator(t *testing.T) {
+	t.Setenv("SENHUB_STATE_DIR", "")
+	first := filepath.Join(t.TempDir(), "a")
+	t.Setenv("STATE_DIRECTORY", first+string(os.PathListSeparator)+filepath.Join(t.TempDir(), "b"))
+	if got := OwnStateDir(); got != first {
+		t.Errorf("OwnStateDir() = %q, want %q", got, first)
+	}
+}
+
+func TestOwnStateDir_OperatorOverrideWins(t *testing.T) {
+	t.Setenv("STATE_DIRECTORY", t.TempDir())
+	want := t.TempDir()
+	t.Setenv("SENHUB_STATE_DIR", want)
+	if got := OwnStateDir(); got != want {
+		t.Errorf("OwnStateDir() = %q, want %q", got, want)
 	}
 }

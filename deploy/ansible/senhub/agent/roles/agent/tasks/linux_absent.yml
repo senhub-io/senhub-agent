@@ -1,0 +1,51 @@
+---
+- name: Packages installed
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Stop and disable the service
+  ansible.builtin.service:
+    name: "{{ senhub_agent_service_name }}"
+    state: stopped
+    enabled: false
+  when: ansible_facts['packages'] | intersect(['senhub-agent', 'senhub-agent-oss']) | length > 0
+
+- name: Remove the packages (apt)
+  ansible.builtin.apt:
+    name: [senhub-agent, senhub-agent-oss]
+    state: absent
+    purge: "{{ senhub_agent_purge_data | bool }}"
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Remove the packages (dnf)
+  ansible.builtin.dnf:
+    name: [senhub-agent, senhub-agent-oss]
+    state: absent
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Remove the packages (zypper)
+  community.general.zypper:
+    name: [senhub-agent, senhub-agent-oss]
+    state: absent
+  when: ansible_facts['os_family'] == 'Suse'
+
+- name: Remove the configuration and the state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ senhub_agent_config_dir }}"
+    - /var/lib/senhub-agent
+    - /var/log/senhub-agent
+  when: senhub_agent_purge_data | bool
+
+- name: Remove the repository definition
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/senhub.list
+    - /etc/apt/keyrings/senhub.asc
+    - /etc/yum.repos.d/senhub.repo
+    - /etc/zypp/repos.d/senhub.repo
+  when: senhub_agent_manage_repository | bool

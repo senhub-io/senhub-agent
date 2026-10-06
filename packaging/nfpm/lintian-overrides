@@ -1,0 +1,27 @@
+# Each override states why the tag does not apply. Every other tag fails
+# the lint step of packaging/nfpm/test-packages.sh.
+
+# The agent is a static Go binary on purpose (CGO_ENABLED=0): it runs on any
+# distribution and in scratch or musl containers, with no shared libraries.
+statically-linked-binary [usr/bin/senhub-agent]
+
+# The scripts call systemctl directly, each time guarded by the presence of a
+# running systemd (/run/systemd/system). The packages are built with nFPM, not
+# debhelper, so there is no deb-systemd-helper to delegate to.
+maintainer-script-calls-systemctl *
+
+# Deliberate: the configuration holds the agent key and credentials, so it is
+# readable by the senhub service user only (0600 files, 0750 directories).
+non-standard-file-perm *
+non-standard-dir-perm *
+
+# Migration of a host set up with `senhub-agent install`, whose files are
+# root-owned and unreadable by the senhub user. Fixed paths, not user input.
+recursive-privilege-change *
+
+# nFPM writes the License field into every control file.
+unknown-field *
+
+# The packages are published by Sensor Factory, not uploaded to the Debian
+# archive: there is no ITP bug to close.
+initial-upload-closes-no-bugs *

@@ -158,15 +158,21 @@ otlp:
   # disk and restored at boot, so cumulative counters continue
   # instead of resetting.
   persistence:
-    enabled: true                 # default true, but the checkpoint stays
-                                  # off until `path` is set; enabled: false
-                                  # turns it off even with a path
-    path: /var/lib/senhub-agent/otlp   # empty means no checkpoint
+    enabled: true                 # default true: the logs queue is on in the
+                                  # state directory; the checkpoint stays off
+                                  # until `path` is set; enabled: false turns
+                                  # both off
+    path: /var/lib/senhub-agent/otlp   # checkpoint and logs queue directory;
+                                  # empty = no checkpoint, queue in the state
+                                  # directory (see "Logs survive an outage")
     interval: 30s                 # default 30s
     # Disk cap for the logs dead-letter queue, which holds batches
     # the receiver could not take during an outage. Past it the
     # oldest batches are evicted. 0 keeps the default.
     logs_queue_max_bytes: 134217728   # default 128 MiB
+    # Batches that waited longer than this are dropped, at boot and
+    # every 10 minutes. 0 = no age limit.
+    logs_queue_max_age: 24h       # default 24h
 
   # Resource attributes attached to every emitted batch. Defaults
   # are derived from agent identity if omitted.
@@ -545,6 +551,49 @@ The OTLP strategy ships logs from these probe sources:
 
 Probes still emit DataPoints to the existing PRTG/Nagios/event
 strategies; the logs path is **additive**.
+
+### Logs survive an outage
+
+When the collector cannot take a batch of event logs, the agent keeps it
+on disk and sends it again: at boot, when the collector answers again, and
+on its own retry clock while it waits. This is on by default on every
+install; nothing to set.
+
+| Situation | Event logs | Entity events | Metrics |
+|---|---|---|---|
+| Collector down, agent running | Kept on disk, sent on recovery | Re-sent at the next heartbeat | Last value of each series kept in memory |
+| Collector down, agent restarted | Kept on disk, sent at boot | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
+| Agent killed while records sit in its memory batch | Those records are lost | Re-sent | Same as above |
+
+Where the queue lives:
+
+| Install | Directory |
+|---|---|
+| Linux package (systemd) | `/var/lib/senhub-agent/otlp-queue` (`STATE_DIRECTORY`) |
+| Windows (MSI) | `C:\ProgramData\SenHub\otlp-queue` |
+| Container | `$SENHUB_STATE_DIR/otlp-queue` (default `/var/lib/senhub-agent/otlp-queue`) |
+| `persistence.path` set | `<path>/logqueue` |
+
+The queue is bounded two ways: `logs_queue_max_bytes` (128 MiB, oldest
+batches evicted first) and `logs_queue_max_age` (24 hours). Each sweep that
+drops aged batches logs one warning with the count, and the records are
+counted in `senhub.agent.otlp.dropped` with `reason="dropped_by_age"`
+(`logs_queue_full` for the size cap). During an outage the queue can use up
+to 128 MiB of the state directory. If the directory is not writable the
+agent logs one warning and runs without the queue.
+
+Environment variables, which win over the file:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SENHUB_LOG_QUEUE` | `true` | `false` turns the queue off |
+| `SENHUB_LOG_QUEUE_RETENTION` | `24h` | Maximum age of a queued batch, a duration such as `6h`; `0` = no limit |
+| `SENHUB_LOG_QUEUE_MAX_BYTES` | `134217728` | Disk cap, in bytes or with a suffix (`64MiB`) |
+
+In a container the state directory must be on a persistent volume (a
+mounted volume, or an Azure Files share on Container Apps); without it the
+queue disappears with the container and only survives an outage, not a
+restart.
 
 ## Severity mapping
 

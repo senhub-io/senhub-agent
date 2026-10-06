@@ -79,9 +79,10 @@ func init() {
 			}},
 			{Key: "persistence", Kind: spec.KindBlock, Group: "memory", Description: "On-disk checkpoint of the store and dead-letter queue of the logs", Fields: []spec.ParamSpec{
 				{Key: "enabled", Kind: spec.KindBool, Default: true},
-				{Key: "path", Kind: spec.KindString, Description: "Directory; empty disables the checkpoint", Example: "/var/lib/senhub-agent/otlp"},
+				{Key: "path", Kind: spec.KindString, Description: "Directory of the checkpoint and the logs queue; empty = no checkpoint, logs queue in the agent state directory", Example: "/var/lib/senhub-agent/otlp"},
 				{Key: "interval", Kind: spec.KindDuration, Default: "30s"},
 				{Key: "logs_queue_max_bytes", Kind: spec.KindInt, Default: 134217728},
+				{Key: "logs_queue_max_age", Kind: spec.KindDuration, Default: "24h", Description: "Queued log batches older than this are dropped; 0 = no age limit"},
 			}},
 		},
 	})
