@@ -345,13 +345,17 @@ watch: clean
 # ========================================
 
 # Test the application (original)
-test: test-entrypoint
+test: test-entrypoint test-release-manifest
 	@echo "Testing..."
 	@go test ./... -v
 
 test-entrypoint: ## Check the container entrypoint's identity resolution (no daemon needed)
 	@echo "Testing the container entrypoint..."
 	@sh packaging/docker/entrypoint_test.sh
+
+test-release-manifest: ## Check the release manifest generator against the real 0.6.2-beta.1 and 0.6.1 release JSON (needs jq)
+	@echo "Testing the release manifest generator..."
+	@bash packaging/release/test-manifest.sh
 
 # The commercial probes register their schemas in senhub-agent-enterprise,
 # which this module never links, so this target regenerates the pages of the
@@ -515,4 +519,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-version package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help
+.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-version package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import test-release-manifest help
