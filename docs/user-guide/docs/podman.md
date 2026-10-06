@@ -27,7 +27,7 @@ podman run -d --name senhub-agent \
   -e OTLP_BEARER_TOKEN=<your token> \
   -v senhub-state:/var/lib/senhub-agent \
   -p 8080:8080 \
-  ghcr.io/senhub-io/senhub-agent:0.6.1
+  ghcr.io/senhub-io/senhub-agent:0.6
 ```
 
 Use the full image name. A short name such as `senhub-agent:0.6.1`
@@ -300,24 +300,25 @@ The agent's own auto-update is off in a container: it would replace a
 binary in a layer the next container discards. Updating means running a
 new image.
 
-Two ways to hold the image, and the unit uses the first:
+Three ways to hold the image; the unit uses the first:
 
-- **An exact version with `AutoUpdate=registry`.** The tags are exact
-  versions (`0.6.1`); there is no `latest` and no minor tag such as
-  `0.6`, so `podman auto-update` pulls the same tag again and restarts
-  the unit only when the registry serves another image under it, for
-  instance a republished build of that version. It never moves to a new
-  version: that is an edit of the `Image=` line, then
+- **The minor line tag with `AutoUpdate=registry`.** `:0.6` follows the
+  stable patch releases of the 0.6 line (published from 0.6.2 on; betas
+  never carry it, and there is no `latest`). `podman auto-update` pulls
+  it again and restarts the unit when a new 0.6.x is published, with the
+  agent key and data kept on the state volume. Moving to 0.7 is an edit
+  of the `Image=` line.
+- **An exact version with `AutoUpdate=registry`.** `:0.6.2` never moves
+  to another version: auto-update only picks up a republished build of
+  that same version. Moving on is an edit of the `Image=` line, then
   `systemctl daemon-reload` and `systemctl restart senhub-agent`.
 - **A digest, without auto-update.** `Image=ghcr.io/senhub-io/senhub-agent@sha256:<digest>`
-  runs exactly that image, whatever happens to the tag. Delete the
-  `AutoUpdate=` line: there is nothing for it to follow. Moving to a
-  new image is an edit of the digest. Choose this where the image must
-  be reviewed before it runs.
+  runs exactly that image, whatever happens to the tags. Delete the
+  `AutoUpdate=` line: there is nothing for it to follow. Choose this
+  where the image must be reviewed before it runs.
 
-Following a minor line (`0.6`) with `AutoUpdate=registry` would give
-patch updates without an edit, but needs the registry to publish that
-tag; it does not today.
+To try a beta, use its exact tag (`:0.6.2-beta.1`): betas are not on the
+minor line tag.
 
 To run auto-update daily (first way):
 
