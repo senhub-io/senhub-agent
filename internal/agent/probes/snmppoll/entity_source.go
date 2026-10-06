@@ -51,6 +51,7 @@ const (
 	relHasRoute     = "has_route"
 	relHasInterface = "has_interface"
 	relBoundTo      = "bound_to"
+	relNextHopVia   = "next_hop_via"
 	relMonitors     = "monitors"
 	relRunsOn       = "runs_on"
 
@@ -740,6 +741,29 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			Type:     relHasRoute,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
 			ToType: entityTypeNetworkRoute, ToID: routeID,
+		})
+
+		// The gateway as the same network.address node a host route reaches
+		// via next_hop_via, but only for a globally unique address: a switch
+		// has no interface-class filter, and a private gateway shared by
+		// unrelated switches would merge them. next_hop.ip stays on the
+		// route either way.
+		gw := r.NextHop
+		if c, ok := entity.CanonicalIP(gw); ok {
+			gw = c
+		}
+		if !entity.AddressIsGloballyUnique(gw) {
+			continue
+		}
+		gwID := map[string]any{idKeyNetworkAddress: gw}
+		if !addrSeen[gw] {
+			addrSeen[gw] = true
+			obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: gwID, Scope: entity.ScopeSNMPRoute})
+		}
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relNextHopVia,
+			FromType: entityTypeNetworkRoute, FromID: routeID,
+			ToType: entityTypeNetworkAddress, ToID: gwID,
 		})
 	}
 
