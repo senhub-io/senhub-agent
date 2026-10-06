@@ -1,6 +1,7 @@
 package state
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -15,7 +16,7 @@ func TestDir_EnvOverrideWins(t *testing.T) {
 
 func TestDir_ServiceManagerThenDefault(t *testing.T) {
 	t.Setenv(EnvDir, "")
-	t.Setenv("STATE_DIRECTORY", "/var/lib/unit-state:/var/lib/other")
+	t.Setenv("STATE_DIRECTORY", "/var/lib/unit-state"+string(os.PathListSeparator)+"/var/lib/other")
 	if got := Dir(); got != "/var/lib/unit-state" {
 		t.Fatalf("Dir() = %q", got)
 	}

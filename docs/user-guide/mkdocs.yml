@@ -89,6 +89,7 @@ nav:
   - Home: index.md
   - Presentation: presentation.md
   - Installation: installation.md
+  - Downloading and verifying releases: releases.md
   - Container: container.md
   - Configuration: configuration.md
   - Secret store: secret-store.md
