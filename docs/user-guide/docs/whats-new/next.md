@@ -16,6 +16,7 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **Deploying at scale.** A new documentation section with one page per tool, each with a runnable example and the same points: version pinning, licence, secrets, validation before apply, upgrade and removal. Pages for Intune, GPO and SCCM, cloud-init, Docker Compose, Helm and Podman, and an overview that maps each estate to a tool. See [Deploying at scale](../deploying/index.md).
 - **A manifest per release, at a stable address.** `packages.senhub.io/releases/stable/latest.json` (and `beta/latest.json`) name the newest release of a channel; `releases/<version>/manifest.json` lists every file with its checksum, size, signature and the container images, so a script finds and verifies the right build without reading the GitHub page. A stable image is now also tagged with its minor line (`ghcr.io/senhub-io/senhub-agent:0.6`). See [Downloading and verifying releases](../releases.md).
 
 - **SNMP: a polled device's routes now link to their gateway.** Routes read from a device's routing table reach the gateway's address with `next_hop_via`, as host routes already do, when the gateway is a public address, so a router's default route resolves to the same address node as a host's. Private (RFC1918, CGNAT, ULA), loopback, link-local and multicast gateways stay unlinked, because unrelated switches behind one private gateway would otherwise merge.

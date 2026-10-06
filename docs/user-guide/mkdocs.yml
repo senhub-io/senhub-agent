@@ -91,9 +91,16 @@ nav:
   - Installation: installation.md
   - Downloading and verifying releases: releases.md
   - Container: container.md
-  - Podman: podman.md
-  - Kubernetes (Helm): kubernetes-helm.md
-  - Ansible: ansible.md
+  - Deploying at scale:
+      - Overview: deploying/index.md
+      - Ansible: ansible.md
+      - "Windows: Intune, GPO, SCCM": deploying/windows-intune-gpo.md
+      - cloud-init: deploying/cloud-init.md
+      - Docker Compose: deploying/docker-compose.md
+      - Kubernetes (Helm) reference: kubernetes-helm.md
+      - Helm runbook: deploying/helm.md
+      - Podman reference: podman.md
+      - Podman runbook: deploying/podman.md
   - Configuration: configuration.md
   - Secret store: secret-store.md
   - HTTP / HTTPS: http-https.md

@@ -63,6 +63,11 @@ sudo ./senhub-agent install     # registers the service and writes a default con
 sudo ./senhub-agent start
 ```
 
+**Linux packages**: signed `.deb` and `.rpm` packages (editions
+`senhub-agent-oss` and `senhub-agent`) from the repositories at
+`packages.senhub.io`, see
+[Install from the package repositories](docs/user-guide/docs/installation.md#install-from-the-package-repositories).
+
 **Windows**: run the signed MSI from the same page
 (`senhub-agent-<version>-amd64.msi`). The installer takes the Zabbix
 server and the HTTP port as properties.
@@ -70,6 +75,11 @@ server and the HTTP port as properties.
 **Container**: `ghcr.io/senhub-io/senhub-agent:<version>` (or
 `senhub-agent-oss`), configured from environment variables. See
 [Running the agent in a container](docs/user-guide/docs/container.md).
+
+**A fleet**: Ansible, Intune, GPO and SCCM, cloud-init, Docker Compose,
+Helm and Podman each have a page with a runnable example, covering version
+pinning, the licence, secrets and validation before apply. Start from
+[Deploying at scale](docs/user-guide/docs/deploying/index.md).
 
 The agent runs from local YAML configuration: no account or SaaS
 required. Open the console with:
@@ -93,6 +103,7 @@ Documentation: [agent.senhub.io/docs](https://agent.senhub.io/docs), or
 in this repository:
 
 - [Installation](docs/user-guide/docs/installation.md)
+- [Deploying at scale](docs/user-guide/docs/deploying/index.md)
 - [Configuration](docs/user-guide/docs/configuration.md)
 - [Zabbix](docs/user-guide/docs/zabbix.md) ·
   [Prometheus](docs/user-guide/docs/prometheus/index.md) ·
