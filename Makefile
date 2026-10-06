@@ -345,13 +345,46 @@ watch: clean
 # ========================================
 
 # Test the application (original)
-test: test-entrypoint
+test: test-entrypoint test-release-manifest
 	@echo "Testing..."
 	@go test ./... -v
 
 test-entrypoint: ## Check the container entrypoint's identity resolution (no daemon needed)
 	@echo "Testing the container entrypoint..."
 	@sh packaging/docker/entrypoint_test.sh
+
+# The chart is checked with helm alone: lint, then a render of every
+# values file under ci/ (the ServiceMonitor CRD is declared so its
+# template renders). Nothing is installed and no cluster is contacted:
+# `helm template` never reads one. Not part of `test`, since helm is not
+# a build dependency of the agent.
+HELM ?= helm
+CHART_DIR = charts/senhub-agent
+helm-lint: ## Lint and render the Helm chart with its default and ci/ values
+	@command -v $(HELM) >/dev/null 2>&1 || { echo "helm not found: install Helm 3.8+ or set HELM=/path/to/helm" >&2; exit 1; }
+	@$(HELM) lint --strict $(CHART_DIR)
+	@$(HELM) template senhub-agent $(CHART_DIR) >/dev/null
+	@for f in $(CHART_DIR)/ci/*.yaml; do \
+		echo "==> $$f"; \
+		$(HELM) lint --strict --quiet $(CHART_DIR) -f $$f || exit 1; \
+		$(HELM) template senhub-agent $(CHART_DIR) -f $$f \
+			--api-versions monitoring.coreos.com/v1/ServiceMonitor >/dev/null || exit 1; \
+	done
+	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/daemonset-values.yaml | grep -q 'add: \["CHOWN", "FOWNER"\]' \
+		|| { echo "helm chart: the state-owner init container must hold CAP_CHOWN and CAP_FOWNER" >&2; exit 1; }
+	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/tls-values.yaml | grep -q 'scheme: HTTPS' \
+		|| { echo "helm chart: with TLS on the HTTP output the kubelet probes must use HTTPS" >&2; exit 1; }
+	@! $(HELM) template senhub-agent $(CHART_DIR) | grep -q 'scheme: HTTPS' \
+		|| { echo "helm chart: without TLS the kubelet probes must stay HTTP" >&2; exit 1; }
+	@$(HELM) template senhub-agent $(CHART_DIR) -f $(CHART_DIR)/ci/daemonset-values.yaml | grep -q 'value: "127.0.0.1"' \
+		|| { echo "helm chart: a DaemonSet must listen on the loopback by default" >&2; exit 1; }
+	@$(HELM) template senhub-agent $(CHART_DIR) --set hostMonitoring.enabled=false | grep -q 'value: "0.0.0.0"' \
+		|| { echo "helm chart: a Deployment must keep listening on every address" >&2; exit 1; }
+	@echo "helm chart: lint and render OK"
+
+test-release-manifest: ## Check the release manifest generator against the real 0.6.2-beta.1 and 0.6.1 release JSON (needs jq)
+	@echo "Testing the release manifest generator..."
+	@bash packaging/release/test-manifest.sh
 
 # The commercial probes register their schemas in senhub-agent-enterprise,
 # which this module never links, so this target regenerates the pages of the
@@ -515,4 +548,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build build-windows verify-windows-version build-linux build-darwin package package-version package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help package-version test-release-manifest

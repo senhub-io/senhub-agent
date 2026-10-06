@@ -1,0 +1,148 @@
+# SenHub Agent as a Podman Quadlet unit.
+#
+# Quadlet turns this file into senhub-agent.service at the next
+# `systemctl daemon-reload`. Place it, with senhub-agent.env beside it, in:
+#
+#   rootful   /etc/containers/systemd/
+#   rootless  ~/.config/containers/systemd/   (use `systemctl --user`)
+#
+# Requires Podman 4.6 or later (AutoUpdate=). On 4.4 and 4.5, replace
+# AutoUpdate=registry with Label=io.containers.autoupdate=registry.
+# Full walk-through: docs/user-guide/docs/podman.md.
+#
+# This unit monitors THE HOST by default (host scope): host network and PID
+# namespaces and a read-only view of / at /host. It is meant for a ROOTFUL
+# unit. For a container scope, delete the block between the ">>> host
+# scope" markers and uncomment PublishPort=: see "Container scope" in the
+# walk-through.
+
+[Unit]
+Description=SenHub Agent (container)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+# Seconds Podman waits for the agent to stop before SIGKILL; its own
+# default is ten, and a stop with a collector that does not answer must
+# not end in exit 137. PodmanArgs= rather than StopTimeout=, which only
+# newer Quadlet versions know.
+PodmanArgs=--stop-timeout=30
+# The minor line tag (0.6) follows the stable patch releases of that line
+# (published from 0.6.2 on; never a beta, no latest), so AutoUpdate below
+# delivers 0.6.x updates without editing this file. For an exact version
+# use :0.6.2, or a digest, see "Updates" below. The -oss image carries no
+# licensed probe; the full image runs the free tier without a licence.
+Image=ghcr.io/senhub-io/senhub-agent:0.6
+ContainerName=senhub-agent
+
+# Updates. The agent's own auto-update is off in a container: it would
+# replace a binary inside a layer that the next container discards.
+# `podman auto-update` pulls the reference above again and restarts the
+# unit when the registry serves a different digest for it: on the 0.6
+# tag, that is each new 0.6.x stable release. On an exact version tag it
+# only picks up a republished build of that version. To pin an
+# image digest instead (Image=...@sha256:<digest>), delete this line:
+# auto-update has nothing to follow on a digest.
+AutoUpdate=registry
+
+# >>> host scope: the agent monitors the host, not the container.
+# Processes, network interfaces and their counters are the host's with
+# the host's PID and network namespaces. The host's / is mounted
+# read-only at /host; rslave carries the host's submounts (/var, /boot,
+# data disks) into it, which is how the disk probe finds them. The agent
+# still runs as the image's uid 10001 with the container's default
+# capabilities: it reads what any user can read, not root-only files.
+#
+# Network=host opens the HTTP port directly on the host's addresses
+# (SENHUB_HTTP_PORT, 8080 by default); PublishPort= does not apply.
+Network=host
+PodmanArgs=--pid=host
+Volume=/:/host:ro,rslave
+# On an SELinux host, the read of / is denied until the container runs
+# unconfined for labels. Never add :Z to this volume: it would relabel
+# the host's whole root.
+#SecurityLabelDisable=true
+Environment=SENHUB_HOST_ROOT=/host
+# gopsutil's own variables: OS release, boot time and sessions are read
+# under /host. /proc and /sys are already the host's.
+Environment=HOST_ETC=/host/etc
+Environment=HOST_VAR=/host/var
+Environment=HOST_RUN=/host/run
+# <<< host scope
+
+# Plain settings. The entrypoint reads them on the FIRST start only, when
+# the configuration volume holds no agent.yaml yet. The path is relative
+# to this file.
+EnvironmentFile=senhub-agent.env
+
+# Secrets, kept by Podman and mounted as FILES under /run/secrets, owned
+# by the agent's uid 10001 and readable by it alone. `podman inspect`
+# prints every environment variable in clear, a type=env secret included,
+# and prints no file content. The agent reads each file at every start
+# (the entrypoint writes ${file:...} references, never the value).
+# Create each secret first, as the same user that runs this unit (a unit
+# naming a secret that does not exist fails to start):
+#   printf '%s' "<token>" | podman secret create senhub-otlp-token -
+# No token, no export to SenHub: delete the next two lines for a
+# local-only agent. The licence is optional (Pro probes only); create it,
+# then uncomment its two lines.
+Secret=senhub-otlp-token,type=mount,target=/run/secrets/senhub-otlp-token,mode=0400,uid=10001
+Environment=OTLP_BEARER_TOKEN_FILE=/run/secrets/senhub-otlp-token
+#Secret=senhub-license,type=mount,target=/run/secrets/senhub-license,mode=0400,uid=10001
+#Environment=SENHUB_LICENSE_FILE=/run/secrets/senhub-license
+# The Azure client secret is still an environment variable (the Container
+# Apps shorthand reads ${env:...}), so `podman inspect` shows it.
+#Secret=senhub-azure-client-secret,type=env,target=SENHUB_AZURE_CLIENT_SECRET
+
+# Named volumes. Podman creates them on first use and copies the image's
+# directories into them, ownership included, so they belong to the
+# agent's uid 10001 whether the unit runs rootful or rootless.
+# UserNS=keep-id brings nothing here: it maps your own uid into the
+# container, and the agent runs as the image's fixed uid 10001, not as
+# yours. A host directory still needs `U`, below.
+#
+# State: host identity, agent key, log bookmarks. Losing it makes the
+# agent arrive as a new host.
+Volume=senhub-agent-state:/var/lib/senhub-agent
+# Configuration: written from the environment on first start, then kept,
+# console edits included. To rebuild it from a changed environment file,
+# stop the unit and `podman volume rm senhub-agent-config`; the identity
+# lives in the state volume and survives.
+Volume=senhub-agent-config:/etc/senhub-agent
+
+# A host directory instead of a named volume: `Z` gives it a private
+# SELinux label, `U` hands it to the container's uid 10001 (mapped into
+# your sub-uid range when rootless).
+#Volume=/srv/senhub-agent/probes.d:/etc/senhub-agent/probes.d:Z,U
+
+# HTTP output: console, PRTG, Nagios, Prometheus. Container scope only
+# (host scope has Network=host above): keep both sides equal to
+# SENHUB_HTTP_PORT. Rootless Podman cannot publish a host port below
+# 1024 unless net.ipv4.ip_unprivileged_port_start allows it.
+#PublishPort=8080:8080
+
+# The host name the agent reports, container scope only (host scope
+# reports the host's own name). Without it the container id is used, and
+# every new container shows up under a new name.
+#HostName=senhub-agent-%H
+
+# The image's own health check, restated so it applies whatever manifest
+# format the image was pulled in. `kill` hands an unhealthy agent to
+# systemd, which restarts it (Restart= below). The port is literal:
+# systemd would expand a ${...} variable here itself.
+HealthCmd=wget -q -O /dev/null http://127.0.0.1:8080/health
+HealthInterval=30s
+HealthTimeout=5s
+HealthStartPeriod=20s
+HealthRetries=3
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+# The first start pulls the image, which can outlast systemd's 90 s.
+TimeoutStartSec=900
+
+[Install]
+# Quadlet units are not `systemctl enable`d: this line starts it at boot.
+# Rootless, it starts at login, or at boot with `loginctl enable-linger`.
+WantedBy=default.target

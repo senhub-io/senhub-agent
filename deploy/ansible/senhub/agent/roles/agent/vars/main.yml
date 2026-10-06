@@ -1,0 +1,21 @@
+---
+_senhub_agent_marker: Managed by Ansible (senhub.agent)
+_senhub_agent_marker_regex: "# Managed by Ansible \\(senhub\\.agent\\)"
+
+_senhub_agent_package: "{{ 'senhub-agent-oss' if senhub_agent_edition == 'oss' else 'senhub-agent' }}"
+_senhub_agent_other_package: "{{ 'senhub-agent' if senhub_agent_edition == 'oss' else 'senhub-agent-oss' }}"
+
+_senhub_agent_follow_latest: "{{ senhub_agent_version | string == 'latest' }}"
+_senhub_agent_pinned: "{{ (senhub_agent_version | string) not in ['', 'latest'] }}"
+_senhub_agent_pkg_version: "{{ senhub_agent_version | string | replace('-beta', '~beta') }}"
+_senhub_agent_tag: "{{ senhub_agent_version | string | replace('~beta', '-beta') }}"
+
+senhub_agent_deb_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] | default(ansible_facts['architecture']) }}"
+
+_senhub_agent_extra_settings: >-
+  {{ senhub_agent_agent_settings
+     | combine({'agent': {'global_tags': senhub_agent_global_tags}} if senhub_agent_global_tags | length > 0 else {}, recursive=True) }}
+
+_senhub_agent_probe_files: "{{ [senhub_agent_probes_file] if senhub_agent_probes | length > 0 else [] }}"
+_senhub_agent_strategy_files: >-
+  {% set out = [] %}{% for k in senhub_agent_strategies %}{% if k == 'http' %}{% set _ = out.append('00-http.yaml') %}{% else %}{% set _ = out.append(senhub_agent_strategies_prefix ~ k ~ '.yaml') %}{% endif %}{% endfor %}{{ out }}
