@@ -73,11 +73,12 @@ type FileTailProbe struct {
 	// polling lists files whose tail was restarted after a stall: they are
 	// followed by polling, which does not go through the inotify tracker
 	// that every tail of the process shares.
-	polling    map[string]bool
-	stallGrace time.Duration
-	wg         sync.WaitGroup
-	quit       chan struct{}
-	stopped    bool
+	polling     map[string]bool
+	stallGrace  time.Duration
+	verifyDelay time.Duration
+	wg          sync.WaitGroup
+	quit        chan struct{}
+	stopped     bool
 
 	// emitted counts log records this probe instance has published to the
 	// log rail — the conduit's own throughput self-metric, surfaced through
@@ -103,6 +104,7 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		tailing:      map[string]*tailState{},
 		polling:      map[string]bool{},
 		stallGrace:   2 * globRescanInterval,
+		verifyDelay:  startupVerifyDelay,
 		awaiting:     map[string]bool{},
 		issues:       map[string]string{},
 		quit:         make(chan struct{}),
@@ -494,21 +496,26 @@ func (p *FileTailProbe) startTail(file string) error {
 const startupVerifyDelay = time.Second
 
 // verifyStartedTail covers the window in which nxadm/tail cannot see a
-// write: it registers its change watch only after its first read reaches
-// the end of the file, and a line appended in between raises no event, so
-// on a quiet log it waits for the next write however far away. The tail is
-// looked at twice, startupVerifyDelay apart; a file that grew while the
+// write: it registers its change watch only after a read reaches the end
+// of the file, and a line appended in between raises no event, so on a
+// quiet log it waits for the next write however far away. The window opens
+// each time the library opens a file, at the start of a tail and again at
+// every reopen after a rotation or truncation, so both call this. The tail
+// is looked at twice, one verify delay apart; a file that grew while the
 // tail read nothing over both looks is restarted at the offset already
-// read, so nothing is replayed and nothing is lost. One timer per tail
-// start, none while the tail runs.
+// read, so nothing is replayed and nothing is lost. One timer per start or
+// reopen, none while the tail runs.
 func (p *FileTailProbe) verifyStartedTail(file string, ts *tailState) {
-	time.AfterFunc(startupVerifyDelay, func() {
-		if p.isStopped() {
+	p.mu.Lock()
+	delay := p.verifyDelay
+	p.mu.Unlock()
+	time.AfterFunc(delay, func() {
+		if p.isStopped() || ts.superseded.Load() {
 			return
 		}
 		ts.divergence(file)
-		time.AfterFunc(startupVerifyDelay, func() {
-			if p.isStopped() {
+		time.AfterFunc(delay, func() {
+			if p.isStopped() || ts.superseded.Load() {
 				return
 			}
 			if reason, resume := ts.divergence(file); reason != "" && resume {
@@ -550,6 +557,32 @@ func (ts *tailState) markOpened(path string) {
 	ts.mu.Unlock()
 }
 
+// restartedAtStart records that the tail now reads the file at path from its
+// first byte. The offset and the file are replaced together: a look taken
+// between the two would pair the new file with the offset reached in the
+// old one, and a resume at that offset skips the start of the new file.
+func (ts *tailState) restartedAtStart(path string) {
+	fi, err := os.Stat(path)
+	ts.mu.Lock()
+	ts.offset.Store(0)
+	if err == nil {
+		ts.opened = fi
+	}
+	ts.checkedOffset = -1
+	ts.mu.Unlock()
+}
+
+// stillOnPath reports whether the file the tail reads is the one at path.
+func (ts *tailState) stillOnPath(path string) bool {
+	cur, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.opened != nil && os.SameFile(ts.opened, cur)
+}
+
 // divergence says why the tail no longer follows the file at path, or "".
 // resume is true when the tail is still on the right file, so a restart
 // can continue at the offset already read instead of from the first byte.
@@ -560,8 +593,8 @@ func (ts *tailState) divergence(path string) (reason string, resume bool) {
 	if err != nil {
 		return "", false
 	}
-	offset := ts.offset.Load()
 	ts.mu.Lock()
+	offset := ts.offset.Load()
 	opened := ts.opened
 	unchanged := ts.checkedOffset == offset
 	ts.checkedOffset = offset
@@ -615,6 +648,12 @@ func (p *FileTailProbe) restartStalledTails() {
 }
 
 func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason string, resume bool) {
+	// A rotation can land between the look that asked for a resume and
+	// here; the offset belongs to the file that was read, not to the one
+	// now at the path.
+	if resume && !ts.stillOnPath(file) {
+		resume = false
+	}
 	p.mu.Lock()
 	if p.stopped || p.tailing[file] != ts {
 		p.mu.Unlock()
@@ -718,12 +757,12 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
-			ts.offset.Store(0)
-			ts.markOpened(file)
+			ts.restartedAtStart(file)
 			fp = fingerprint(file, DefaultFingerprintLength)
 			persist()
 			lastFlush = time.Now()
 			dirty = false
+			p.verifyStartedTail(file, ts)
 			continue
 		case <-ticker.C:
 			if dirty {
