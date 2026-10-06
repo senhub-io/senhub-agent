@@ -99,8 +99,22 @@ The schema may gain fields without a version change: ignore the ones you
 do not know. A rename, a removal or a change of meaning raises
 `schema_version`.
 
-The images list is empty until the container image of the release has been
-published, and the manifest is rebuilt after that.
+The images list is filled by the release itself: the release publishes
+both images, waits for them, then builds the manifest.
+
+## What is published, and when
+
+Cutting a release publishes everything, in this order, with no step to
+remember: the ZIPs and their signatures, the `.deb` and `.rpm` packages and
+repositories, the container images of both editions (and the minor tag of
+a stable release), then the manifest. The only manual step left is the
+Authenticode signing of the Windows files; the manifest is rebuilt after
+the Windows ZIPs are signed and again after the MSIs, and says
+`"complete": false` until then.
+
+If a step fails (a package build, an image scan), the run fails and names
+it, and the manifest still lists what exists. Running the "Publish
+release manifest" workflow again for the tag completes it.
 
 ## Finding and verifying the right file
 

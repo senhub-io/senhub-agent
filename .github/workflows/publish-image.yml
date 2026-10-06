@@ -1,4 +1,5 @@
 name: Publish container image
+run-name: Publish image ${{ inputs.variant }} ${{ inputs.tag }}
 
 # Builds the container image for a published release tag and pushes it
 # to the GitHub container registry.
@@ -8,8 +9,9 @@ name: Publish container image
 # byte what runs on a host, and the build stays reproducible from a tag.
 # That also means this workflow can only run AFTER the release exists.
 #
-# Manual on purpose for now: a first image is a promise to keep the base
-# rebuilt, and that promise is made deliberately, not by a tag push.
+# Started by the release workflows of the enterprise repository once the
+# release exists (publish-images.yml there), one run per edition, found
+# again by the run name above. It can still be dispatched by hand.
 #
 # The image is built once for amd64 and scanned before anything is
 # pushed. A customer's registry scans what we deliver — Harbor ships
