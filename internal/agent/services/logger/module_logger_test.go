@@ -3,6 +3,7 @@ package logger
 import (
 	"bytes"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 
@@ -382,10 +383,13 @@ func TestNewLogger_QuietByDefault(t *testing.T) {
 	_ = NewLogger(&cliArgs.ParsedArgs{Env: "development"})
 	// buildDevelopmentLogger raises the floor for local work; the production
 	// path is the one that must stay quiet.
-	_ = NewLogger(&cliArgs.ParsedArgs{Env: "production"})
+	l := NewLogger(&cliArgs.ParsedArgs{Env: "production"})
 
-	if zerolog.GlobalLevel() < zerolog.InfoLevel {
-		t.Errorf("global level is %v with no verbose flag, want Info or higher", zerolog.GlobalLevel())
+	if l.GetLevel() != zerolog.InfoLevel {
+		t.Errorf("production base logger level is %v with no verbose flag, want Info", l.GetLevel())
+	}
+	if l.Debug().Enabled() {
+		t.Error("a plain Debug() on the production logger is enabled")
 	}
 }
 
@@ -415,5 +419,47 @@ func TestModuleOverride_BeatsAQuieterBaseLogger(t *testing.T) {
 	NewModuleLogger(&base, "probe.veeam").Debug().Msg("should be silenced")
 	if buf.Len() != 0 {
 		t.Errorf("an error-level override still emitted debug: %q", buf.String())
+	}
+}
+
+// Production keeps debug off by default; a module raised to debug at runtime
+// must still reach the writer while every other module stays at info.
+// Regression: the global floor vetoed the override behind an HTTP 200.
+func TestProductionLogger_RuntimeModuleDebugReachesTheWriter(t *testing.T) {
+	withRestoredLogState(t)
+
+	built := buildProductionLogger(&cliArgs.ParsedArgs{}, &LoggerConfig{})
+	var buf bytes.Buffer
+	base := built.Output(&buf)
+
+	if err := SetModuleLogLevels([]ModuleLogConfig{{Module: "probe.ibmi", Level: "debug"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	NewModuleLogger(&base, "probe.ibmi").Debug().Msg("raised")
+	if !strings.Contains(buf.String(), `"message":"raised"`) {
+		t.Fatalf("raised module wrote nothing, got %q", buf.String())
+	}
+
+	buf.Reset()
+	NewModuleLogger(&base, "probe.veeam").Debug().Msg("other")
+	NewModuleLogger(&base, "probe.veeam").Info().Msg("info-still-works")
+	base.Debug().Msg("plain")
+	out := buf.String()
+	if strings.Contains(out, "other") || strings.Contains(out, "plain") {
+		t.Errorf("a module that was not raised wrote debug: %q", out)
+	}
+	if !strings.Contains(out, "info-still-works") {
+		t.Errorf("info was lost: %q", out)
+	}
+
+	// The override is process state, not logger state: rebuilding the logger,
+	// as a reload would, keeps it.
+	rebuilt := buildProductionLogger(&cliArgs.ParsedArgs{}, &LoggerConfig{})
+	buf.Reset()
+	base2 := rebuilt.Output(&buf)
+	NewModuleLogger(&base2, "probe.ibmi").Debug().Msg("still raised")
+	if buf.Len() == 0 {
+		t.Error("the override did not survive rebuilding the logger")
 	}
 }

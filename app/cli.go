@@ -600,6 +600,10 @@ func Main() {
 		if len(os.Args) > 2 {
 			serviceArgs = os.Args[2:]
 		}
+		if command == "install" {
+			// --json is a view flag of install, like of status.
+			serviceArgs = stripFlags(serviceArgs, jsonFlag)
+		}
 		args := cliArgs.ParseStartArgs(serviceArgs)
 		handleServiceCommand(command, args)
 		return
@@ -636,6 +640,8 @@ Service Commands:
                          On Linux the service runs as the dedicated 'senhub' user
                          under a hardened systemd unit. Exits 3 and changes
                          nothing when the service is already installed.
+    install --json       Print the outcome as one JSON object (status, exit_code,
+                         changed, written)
     install --user USER  Service user for the Linux unit (default: senhub;
                          use 'root' to keep the legacy root unit)
     uninstall            Remove the system service (prompts before deleting
