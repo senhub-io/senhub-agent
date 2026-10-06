@@ -13,6 +13,10 @@ docker run -d --name senhub-agent \
 
 That is the whole of it for a first run: one variable, one mount.
 
+On Kubernetes, the [Helm chart](kubernetes-helm.md) runs this image with
+its identity kept in a Secret, the configuration built from values, and
+optional read-only monitoring of the cluster.
+
 Pin the exact version for a reproducible deployment. A stable release
 is also tagged with its minor line (`:0.6`), which follows the patch
 releases of that line; betas are never tagged that way, and there is no
