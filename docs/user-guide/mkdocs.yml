@@ -91,6 +91,7 @@ nav:
   - Installation: installation.md
   - Downloading and verifying releases: releases.md
   - Container: container.md
+  - Podman: podman.md
   - Kubernetes (Helm): kubernetes-helm.md
   - Ansible: ansible.md
   - Configuration: configuration.md

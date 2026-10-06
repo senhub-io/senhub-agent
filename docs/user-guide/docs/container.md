@@ -13,6 +13,10 @@ docker run -d --name senhub-agent \
 
 That is the whole of it for a first run: one variable, one mount.
 
+Podman runs the same image with the same command; see
+[Running the agent with Podman](podman.md) for what differs and for a
+Quadlet unit that runs it as a systemd service.
+
 On Kubernetes, the [Helm chart](kubernetes-helm.md) runs this image with
 its identity kept in a Secret, the configuration built from values, and
 optional read-only monitoring of the cluster.
@@ -233,7 +237,8 @@ the container stops at start.
   dependency discovery cannot attribute sockets to processes without
   the host's process namespace, and the hardware serial is not readable
   from inside a container.
-- **No auto-update.** Updating means pulling a new image tag.
+- **No auto-update.** Updating means pulling a new image tag. Under
+  Podman, see [Updates](podman.md#updates).
 
 ## Health
 
