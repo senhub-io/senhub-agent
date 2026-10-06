@@ -119,14 +119,24 @@ init_config() {
   set -- --config-path "$CONFIG" --http-port "${SENHUB_HTTP_PORT:-8080}" --http-bind "${SENHUB_HTTP_BIND:-0.0.0.0}"
 
   endpoint="${SENHUB_OTLP_ENDPOINT:-}"
-  if [ -z "$endpoint" ] && [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
+  if [ -z "$endpoint" ] && { [ -n "${OTLP_BEARER_TOKEN:-}" ] || [ -n "${OTLP_BEARER_TOKEN_FILE:-}" ]; }; then
     endpoint="eu-west-1.intake.senhub.io:443"
   fi
   if [ -n "$endpoint" ]; then
     set -- "$@" --otlp-endpoint "$endpoint" --otlp-protocol "${SENHUB_OTLP_PROTOCOL:-grpc}"
   fi
-  if [ -n "${SENHUB_LICENSE:-}" ]; then
-    set -- "$@" --license "$SENHUB_LICENSE"
+  # The licence as a file (a mounted secret) stays out of the container's
+  # environment, which `podman inspect` prints.
+  license="${SENHUB_LICENSE:-}"
+  if [ -z "$license" ] && [ -n "${SENHUB_LICENSE_FILE:-}" ]; then
+    if [ -r "$SENHUB_LICENSE_FILE" ]; then
+      license=$(tr -d '\n' < "$SENHUB_LICENSE_FILE")
+    else
+      log "SENHUB_LICENSE_FILE names $SENHUB_LICENSE_FILE, which is not readable: the agent runs on the free tier"
+    fi
+  fi
+  if [ -n "$license" ]; then
+    set -- "$@" --license "$license"
   fi
   if [ -n "${SENHUB_TAGS:-}" ]; then
     set -- "$@" --tags "$SENHUB_TAGS"
@@ -149,7 +159,7 @@ init_config() {
     exit "$init_rc"
   fi
 
-  if [ -z "${OTLP_BEARER_TOKEN:-}" ]; then
+  if [ -z "${OTLP_BEARER_TOKEN:-}" ] && [ -z "${OTLP_BEARER_TOKEN_FILE:-}" ]; then
     log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"
   fi
   otlp_fragment_extras "$CONFIG_DIR/strategies.d/10-otlp.yaml"
@@ -169,6 +179,18 @@ otlp_fragment_extras() {
     # shellcheck disable=SC2016 # ${env:...} must reach the file literally
     printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
     log "OTLP export authenticates with OTLP_BEARER_TOKEN"
+  elif [ -n "${OTLP_BEARER_TOKEN_FILE:-}" ] && ! grep -q 'Authorization' "$fragment"; then
+    # The token as a file (a Podman or Docker secret mounted under
+    # /run/secrets): unlike an environment variable it is not part of what
+    # `podman inspect` or `docker inspect` prints. The agent reads the
+    # file at every start and trims its trailing newline.
+    if [ -r "$OTLP_BEARER_TOKEN_FILE" ]; then
+      # shellcheck disable=SC2016 # ${file:...} must reach the file literally
+      printf '  headers:\n    Authorization: "Bearer ${file:%s}"\n' "$OTLP_BEARER_TOKEN_FILE" >> "$fragment"
+      log "OTLP export authenticates with the token in $OTLP_BEARER_TOKEN_FILE"
+    else
+      log "OTLP_BEARER_TOKEN_FILE names $OTLP_BEARER_TOKEN_FILE, which is not readable: nothing authenticates the export"
+    fi
   fi
   # Entities (the host, the agent, what its probes watch) are what a
   # topology backend builds its map from; without them a container agent
