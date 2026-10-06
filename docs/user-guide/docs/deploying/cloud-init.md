@@ -277,7 +277,7 @@ Pinning); without it, dnf answers "No such command: versionlock":
 
 ```bash
 rpm -q senhub-agent-oss
-sudo dnf versionlock list    # only with python3-dnf-plugin-versionlock
+rpm -q python3-dnf-plugin-versionlock >/dev/null && sudo dnf versionlock list
 ```
 
 Expected: `status: done`, the service `active`, the pinned version, the hold
