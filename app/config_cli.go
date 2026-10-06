@@ -118,6 +118,9 @@ type configShowReport struct {
 	ConfigPath string `json:"config_path"`
 	Mode       string `json:"mode"`
 	Config     any    `json:"config"`
+	// EnvProbeVariables names, never valued, the SENHUB_PROBE_* variables
+	// the merged probes were read from.
+	EnvProbeVariables []string `json:"env_probe_variables,omitempty"`
 }
 
 // showModeName is the label of a show mode as the flags spell it.
@@ -195,7 +198,13 @@ func runConfigShow(args []string, out io.Writer) int {
 		return reportFailure("config.show", jsonMode, out, fmt.Errorf("config show: marshaling output: %w", err))
 	}
 
+	envVars := configuration.EnvProbeVariables()
 	if !jsonMode {
+		if len(envVars) > 0 {
+			// A comment, so the document stays valid YAML for a diff or a
+			// re-read. Values are in the document, never in this line.
+			fmt.Fprintf(out, "# Probes read from the environment (overriding or completing the files): %s\n", strings.Join(envVars, ", "))
+		}
 		if _, err := out.Write(yamlOut); err != nil {
 			return reportFailure("config.show", false, out, fmt.Errorf("config show: write: %w", err))
 		}
@@ -211,6 +220,8 @@ func runConfigShow(args []string, out io.Writer) int {
 		ConfigPath: configPath,
 		Mode:       showModeName(mode),
 		Config:     jsonSafeTree(tree),
+
+		EnvProbeVariables: envVars,
 	}
 	if err := writeJSON(out, report); err != nil {
 		return reportFailure("config.show", false, out, err)
