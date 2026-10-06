@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://packages.senhub.io/releases/manifest.schema.json",
+  "title": "SenHub Agent release manifest",
+  "description": "One manifest per release, at https://packages.senhub.io/releases/<version>/manifest.json. A new field may be added within schema_version 1; a rename, a removal or a change of meaning bumps schema_version.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "version", "channel", "date", "commit", "complete", "signing_pending", "artifacts", "images"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "version": {
+      "description": "Release tag, without a v prefix.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-beta\\.[0-9]+)?$"
+    },
+    "channel": { "enum": ["stable", "beta"] },
+    "date": { "description": "When the release was published (UTC).", "type": "string", "format": "date-time" },
+    "commit": {
+      "description": "Commit of senhub-io/senhub-agent the release is tagged at (the open-source core the build came from).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "complete": {
+      "description": "True when every zip and MSI carries its minisign signature and, on stable, both MSIs are present. False while the Windows signing round is unfinished: do not install the Windows files of an incomplete manifest.",
+      "type": "boolean"
+    },
+    "signing_pending": {
+      "description": "Names of the zip and MSI artifacts that have no minisign signature yet.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "images": {
+      "description": "Container images published for this exact version. Empty until the image workflow has run; the manifest is regenerated afterwards.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/image" }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "os", "arch", "edition", "kind", "url", "sha256", "size", "minisig_url"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "os": { "enum": ["linux", "windows"] },
+        "arch": { "enum": ["amd64", "arm64"] },
+        "edition": { "enum": ["full", "oss"] },
+        "kind": {
+          "description": "zip: the binary archive the auto-updater reads; msi: Windows installer; deb and rpm: Linux packages (also served by the apt and rpm repositories).",
+          "enum": ["zip", "msi", "deb", "rpm"]
+        },
+        "url": { "description": "GitHub release asset URL.", "type": "string", "format": "uri" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "description": "Bytes.", "type": "integer", "minimum": 0 },
+        "minisig_url": {
+          "description": "Detached minisign signature of the file, or null: deb and rpm are signed through the repository GPG key, a Windows file has none until the signing round has run.",
+          "type": ["string", "null"],
+          "format": "uri"
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["repo", "edition", "tag", "digest"],
+      "properties": {
+        "repo": { "type": "string", "examples": ["ghcr.io/senhub-io/senhub-agent"] },
+        "edition": { "enum": ["full", "oss"] },
+        "tag": { "description": "The exact version tag.", "type": "string" },
+        "digest": { "description": "Manifest-list digest: pull by repo@digest to be immune to a moved tag.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
