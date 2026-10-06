@@ -935,7 +935,7 @@ func reportProbeParamProblems(name, probeType string, params map[string]interfac
 	// The probe's own logger goes nowhere: `config check` speaks in
 	// [OK]/[WARN]/[ERROR] lines, and a probe logging its construction
 	// would interleave with them.
-	discard := zerolog.New(io.Discard)
+	discard := zerolog.New(io.Discard).Level(zerolog.Disabled)
 	probeLogger := (*agentLogger.Logger)(&discard)
 
 	var ctorErr error

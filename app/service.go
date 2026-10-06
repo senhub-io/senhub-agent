@@ -142,14 +142,20 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	// A second install on a machine that already is in the requested state
 	// changes nothing: no binary copy, no unit write, no configuration
 	// touch. It says so and exits with the Unchanged code.
+	var state installState
+	run := newInstallRun(command == "install" && hasArg(jsonFlag), configPath)
 	if command == "install" {
 		probe, probeErr := service.New(&program{done: make(chan bool, 1), args: args}, svcConfig)
 		if probeErr == nil {
-			state := detectInstallState(probe, configPath, func() bool { return installBinaryCurrent(executablePath, serviceUser) })
+			state = detectInstallState(probe, configPath, installProbes{
+				binaryCurrent:  func() bool { return installBinaryCurrent(executablePath, serviceUser) },
+				unitCurrent:    func() bool { return installUnitCurrent(serviceUser, serviceArgs) },
+				serviceEnabled: serviceEnabledOnHost,
+			})
 			if state.alreadyDone() {
 				fmt.Printf("The service is already installed and the configuration is present at %s; nothing to do.\n", configPath)
 				fmt.Println("To change the installed unit use 'refresh-unit' (Linux); to change the binary use 'update'.")
-				os.Exit(cliexit.Unchanged)
+				os.Exit(run.finish(cliexit.Unchanged, nil))
 			}
 		}
 	}
@@ -172,7 +178,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			if userErr := ensureServiceUser(serviceUser); userErr != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
 				fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
-				os.Exit(cliexit.Failure)
+				os.Exit(run.finish(cliexit.Failure, userErr))
 			}
 
 			// ExecStart MUST point at the installed system binary, never
@@ -181,11 +187,15 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			// for the root unit as well. An install failure here is fatal:
 			// a unit written with the temp path would crash-loop, which is
 			// worse than aborting the install.
+			binaryWasCurrent := installBinaryCurrent(executablePath, serviceUser)
 			installed, err := installSystemBinary(executablePath)
+			if err == nil && !binaryWasCurrent {
+				run.add(installed)
+			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: could not install the agent binary to %s: %v\n", systemBinaryDir, err)
 				fmt.Fprintln(os.Stderr, "The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
-				os.Exit(cliexit.Failure)
+				os.Exit(run.finish(cliexit.Failure, err))
 			}
 			svcConfig.Executable = installed
 			svcConfig.WorkingDirectory = systemBinaryDir
@@ -219,9 +229,28 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	switch command {
 	case "install":
-		err = s.Install()
+		// A service already registered is reconciled, not re-installed:
+		// the service manager refuses to install over an existing unit,
+		// and what is wrong (a drifted unit, a disabled service) is
+		// fixed in place. Nothing is restarted either way.
+		if state.serviceInstalled && runtime.GOOS == "linux" {
+			var reconciled []string
+			reconciled, err = reconcileInstalledServiceOnHost(serviceUser, serviceArgs)
+			run.add(reconciled...)
+			if err == nil {
+				fmt.Println("Service already installed; its unit and boot enablement now match this install.")
+				if len(reconciled) > 0 {
+					fmt.Println("Restart the service to apply a changed unit: senhub-agent restart")
+				}
+			}
+		} else {
+			err = s.Install()
+			if err == nil {
+				run.add("service " + installServiceName)
+				fmt.Println("Service installed successfully")
+			}
+		}
 		if err == nil {
-			fmt.Println("Service installed successfully")
 			printLicenseNotice()
 
 			// A fresh configuration is about to be written: say now if
@@ -242,10 +271,11 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			}
 
 			// Always generate the local configuration at install time
-			if changed, err := generateConfigurationReport(args, configPath, generateConfiguration); err != nil {
+			if written, err := generateConfigurationWritten(args, configPath, generateConfiguration); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate configuration: %v\n", err)
 			} else {
-				if changed {
+				run.add(written...)
+				if len(written) > 0 {
 					fmt.Printf("Configuration generated: %s\n", configPath)
 				} else {
 					fmt.Printf("Configuration already present, unchanged: %s\n", configPath)
@@ -415,7 +445,10 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(cliexit.Failure)
+		os.Exit(run.finish(cliexit.Failure, err))
+	}
+	if command == "install" {
+		run.finish(cliexit.OK, nil)
 	}
 }
 

@@ -11,6 +11,7 @@ Changes land here as they are merged to `dev`.
 
 ## Features
 
+- **IBM i: QHST, QSYSOPR and audit events reach the logs backend.** The history log, message queue and audit journal collectors read their events but sent none of them on: each event is now an OpenTelemetry log record (message text as body, the partition's own time as timestamp, IBM i severity 0-99 mapped to `INFO`, `WARN`, `ERROR`, `ERROR3` or `FATAL`, attributes under `ibmi.*`). `history_log_min_severity` is the volume lever. The scheduled-job and other age gauges no longer read below zero when the partition clock runs ahead of the reference.
 - **`status` works on every install.** The agent now answers `senhub-agent status` on a local channel (a Unix socket in its state directory, readable by the service account and root only; a named pipe restricted to administrators on Windows), whether or not the HTTP output is enabled. Hosts installed before the HTTP output was on by default used to get a degraded view computed by the command itself. `status` asks the local channel first and falls back to the HTTP output. The channel is read-only: it sends the status and reads nothing. It reports probe health and failed outputs but not the per-probe metric counts, which only the HTTP cache holds.
 - **Two agents on one host no longer describe each other twice.** Each agent
   writes its own `service.instance.id` to `instance.id` in its state
@@ -109,11 +110,20 @@ Changes land here as they are merged to `dev`.
 - **Idempotent provisioning commands.** `config init`, `config set` and
   `install` run again on a machine already in the requested state write
   nothing and exit `3`. `config init --ok-if-unchanged` exits `0` in that
-  case, for installers that treat any other code as a failure.
+  case, for installers that treat any other code as a failure. `install`
+  also repairs a drifted unit or a disabled service in place (exit `0`, no
+  restart) and takes `--json` with a `changed` field.
 - **filetail reports where each tail stands.** For every file followed, `senhub.filetail.read_offset` and `senhub.filetail.file_size` (Prometheus `senhub_filetail_read_offset_bytes` and `senhub_filetail_file_size_bytes`, attribute `log.file.path`) let a rule detect a frozen tail: the file grew and the offset did not move.
 
 ## Fixes
 
+- **A per-module debug level now writes debug lines.** Raising one module
+  (for example `probe.ibmi`) to `debug` through the log-level API or the
+  console answered `200` but wrote nothing, because the production logger
+  kept a global `info` floor. The module now logs at debug while every other
+  module stays at `info`. The setting is kept in memory: it survives a
+  configuration reload and is lost on an agent restart (see
+  [Troubleshooting](../troubleshooting.md)).
 - **Oracle 23ai: login with a password longer than 30 characters.** The
   `oracle` probe could not log in to Oracle Database 23ai with a password of
   more than 30 characters: every cycle reported `senhub.db.up = 0` with

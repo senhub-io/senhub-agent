@@ -27,7 +27,8 @@
 # Event-conduit metrics (message_queue, history_log, audit_journal,
 # msgw_job) carry otel.skip:true with reason — same pattern as
 # syslog/event probes, since the relayed event isn't a meaningful
-# Prometheus/OTLP metric.
+# Prometheus/OTLP metric. message_queue, history_log and audit_journal
+# events are shipped as OTel log records instead (see the probe page).
 
 probe_name: "ibmi"
 friendly_name: "IBM i / Power Systems"
@@ -619,7 +620,7 @@ metrics:
     description: "Job in message wait; value = seconds stuck"
     otel:
       skip: true
-      reason: "Event conduit — relayed message-wait condition, not a meaningful Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed message-wait condition, not a meaningful Prometheus metric."
 
   # ============================================================
   # Subsystems
@@ -2742,7 +2743,7 @@ metrics:
     description: "A message reached QSYSOPR; carries the message identifier and text as attributes"
     otel:
       skip: true
-      reason: "Event conduit — relayed QSYSOPR message. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed QSYSOPR message. Not meaningful as a Prometheus metric. Each event is also published as an OTel log record on the log rail (message text as body, partition time as timestamp, IBM i severity mapped to SeverityNumber)."
 
   - name: "ibmi.history_log.event"
     channel: "ibmi_history_event"
@@ -2753,7 +2754,7 @@ metrics:
     description: "An entry was written to the history log QHST"
     otel:
       skip: true
-      reason: "Event conduit — relayed QHST history event. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed QHST history event. Not meaningful as a Prometheus metric. Each event is also published as an OTel log record on the log rail (message text as body, partition time as timestamp, IBM i severity mapped to SeverityNumber)."
 
   - name: "ibmi.audit_journal.event"
     channel: "ibmi_audit_event"
@@ -2764,7 +2765,7 @@ metrics:
     description: "An entry was written to the audit journal"
     otel:
       skip: true
-      reason: "Event conduit — relayed QAUDJRN entry. Not meaningful as a Prometheus metric. Future: OTLP log export in V2."
+      reason: "Event conduit — relayed QAUDJRN entry. Not meaningful as a Prometheus metric. Each event is also published as an OTel log record on the log rail (message text as body, partition time as timestamp, IBM i severity mapped to SeverityNumber)."
 
   # ============================================================
   # Probe self-observability
@@ -2820,6 +2821,76 @@ metrics:
     description: "Unix time of this collector's last successful run"
     otel:
       name: senhub.ibmi.collector.last_success_timestamp
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.window_lag"
+    channel: "ibmi_collector_window_lag"
+    display_name: "Collector Window Lag — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "How far the collector's read position trails the partition's clock at the end of the cycle; it grows while the collector cannot keep up"
+    otel:
+      name: senhub.ibmi.collector.window_lag
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.read_duration"
+    channel: "ibmi_collector_read_duration"
+    display_name: "Collector Read Span — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Seconds of log this cycle covered, from the start of the first window read to the read position at the end of the cycle"
+    otel:
+      name: senhub.ibmi.collector.read_duration
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.lost"
+    channel: "ibmi_collector_lost"
+    display_name: "Collector Lost — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Seconds of backlog skipped because the collector fell more than its maximum window behind the partition's clock; the events logged in them are not collected"
+    otel:
+      name: senhub.ibmi.collector.lost
+      unit: "s"
+      type: counter
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.slices"
+    channel: "ibmi_collector_slices"
+    display_name: "Collector Queries — {collector}"
+    unit: "#"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Queries issued by this collector during the last cycle"
+    otel:
+      name: senhub.ibmi.collector.slices
+      unit: "{query}"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
+  - name: "ibmi.collector.clock_offset"
+    channel: "ibmi_collector_clock_offset"
+    display_name: "Collector Clock Offset — {collector}"
+    unit: "s"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Agent clock minus the partition's clock, after the partition's UTC offset is removed; a clock skew between the two machines, not a time zone"
+    otel:
+      name: senhub.ibmi.collector.clock_offset
       unit: "s"
       type: gauge
     tag_to_attribute:
