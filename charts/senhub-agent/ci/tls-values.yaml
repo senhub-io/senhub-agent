@@ -1,0 +1,8 @@
+config:
+  strategies:
+    http:
+      bind_address: 0.0.0.0
+      tls:
+        enabled: true
+http:
+  bind: 0.0.0.0

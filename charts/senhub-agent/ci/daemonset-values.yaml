@@ -1,0 +1,29 @@
+# One agent per node: host monitoring on (the default) makes a DaemonSet,
+# with a hostPath state directory and no shared identity. Used by
+# `make helm-lint`.
+edition: full
+
+env:
+  otlpEndpoint: otel-collector.observability.svc:4317
+  otlpTLS: false
+  tags:
+    cluster: k3s-lab
+
+secrets:
+  existingSecret: senhub-agent-credentials
+
+config:
+  probes:
+    web:
+      name: shop-front
+      type: http_check
+      params:
+        targets: ["http://shop-front.shop.svc/health"]
+
+daemonSet:
+  stateHostPath: /var/lib/senhub-agent
+
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
