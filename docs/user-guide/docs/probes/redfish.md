@@ -1,4 +1,4 @@
-<img src="../../assets/probe-logos/redfish.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/redfish.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
