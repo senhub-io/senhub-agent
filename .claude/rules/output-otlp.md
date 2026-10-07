@@ -191,6 +191,13 @@ record is only persisted to disk when EVERY endpoint is down. State is on
 / `endpoint_switches` self-metrics. This is the agent-side complement to a
 DNS/LB-fronted ingress — not a replacement for it.
 
+## Logs dead-letter queue contract (`logs_queue.go`)
+
+- A queued file is deleted only after an **acknowledged** export: `logsReplayer` rebuilds the records (`rebuildEventLogs`) and calls the exporter directly (`exportDirect`), never the batching pipeline. Do not reintroduce "emit then remove".
+- While the backend is known down (`persistentLogExporter.backendDown`), live batches go to disk without a network attempt; one live probe per `logsProbeInterval`, replay probes on a 5 s to 5 min backoff. `kick()` never replays at once.
+- At shutdown `beginShutdown` bounds export attempts so the SDK's in-memory batch reaches the disk inside `exporterShutdownBudget`.
+- Guarantee is at-least-once with no ordering across replay and live traffic; keep it documented in `otlp.md`.
+
 ## Common pitfalls
 
 - **gRPC connect failures** show as `OTLP metrics export failed: context deadline exceeded` — usually firewall or wrong port. Use a local mock receiver (Python grpcio + opentelemetry-proto) for end-to-end validation.
