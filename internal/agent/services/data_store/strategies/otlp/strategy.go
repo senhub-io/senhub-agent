@@ -88,6 +88,9 @@ type OTLPSyncStrategy struct {
 	// logsQueue is the on-disk dead-letter queue for the logs signal,
 	// set when persistence is enabled and logs are emitted (#217).
 	logsQueue *logsQueue
+	// logExporter is the persistent decorator under the logs pipeline;
+	// Shutdown tells it to stop trying a down backend.
+	logExporter *persistentLogExporter
 
 	// entityPump emits entity/relation events on the OTLP log signal; the
 	// entity Detector goroutine produces them. Both nil/zero unless
@@ -389,6 +392,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 			s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
 			logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
 			s.exporters.log = logExp
+			s.logExporter = logExp
 		}
 	}
 
@@ -401,12 +405,12 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// Wire queue replay to the pipeline: drain at boot and whenever the
 	// backend recovers from a failed export.
 	if logExp != nil && s.logs != nil {
-		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
-		logExp.setOnRecovered(rp.replay)
+		rp := newLogsReplayer(s.logsQueue, s.logs, logExp, s.logger)
+		logExp.setOnRecovered(func() { _, _ = rp.replay() })
 		logExp.setOnQueued(rp.kick)
 		s.logsReplayer = rp
 		rp.start()
-		go rp.replay()
+		go func() { _, _ = rp.replay() }()
 	}
 
 	if s.cfg.Logs.Enabled && s.logs != nil {
@@ -870,6 +874,14 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// the last push fails (collector down, etc.).
 	if s.exporters.metric != nil && s.cfg.Metrics.Enabled {
 		s.pushDrain(ctx)
+	}
+
+	// A backend that is down must not eat the whole budget: the log
+	// exporter writes a known-down batch straight to disk and bounds an
+	// attempt to half the budget, so the SDK's in-memory batch lands in
+	// the queue and replays at the next boot.
+	if s.logExporter != nil {
+		s.logExporter.beginShutdown(exporterShutdownBudget / 2)
 	}
 
 	// Drain the log pipeline before shutting down the gRPC exporter.

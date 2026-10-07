@@ -555,15 +555,29 @@ strategies; the logs path is **additive**.
 ### Logs survive an outage
 
 When the collector cannot take a batch of event logs, the agent keeps it
-on disk and sends it again: at boot, when the collector answers again, and
-on its own retry clock while it waits. This is on by default on every
-install; nothing to set.
+on disk and sends it again. A batch is deleted from disk only after the
+collector has acknowledged it, so a failed or interrupted attempt never
+removes anything. This is on by default on every install; nothing to set.
+
+While the collector is known to be down, new batches go straight to disk
+and the agent does not try the network for each one. It probes the
+collector on a retry clock that starts at 5 seconds and doubles up to 5
+minutes, and as soon as one export succeeds it sends the backlog, oldest
+first, stopping at the first batch the collector does not acknowledge.
 
 | Situation | Event logs | Entity events | Metrics |
 |---|---|---|---|
-| Collector down, agent running | Kept on disk, sent on recovery | Re-sent at the next heartbeat | Last value of each series kept in memory |
-| Collector down, agent restarted | Kept on disk, sent at boot | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
-| Agent killed while records sit in its memory batch | Those records are lost | Re-sent | Same as above |
+| Collector down, agent running | Kept on disk, sent in order once the collector answers | Re-sent at the next heartbeat | Last value of each series kept in memory |
+| Agent stopped normally (restart, upgrade) during an outage | The records still in memory are written to disk during the stop, then sent at the next boot with the rest | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
+| Agent restarted, collector still down | Kept on disk, probed on the retry clock | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
+| Agent killed or host crashed (kill -9, power cut) | Batches already on disk are kept; records still in the memory batch (a few seconds' worth) are lost | Re-sent | Same as above |
+| Outage longer than 24 hours or past 128 MiB | The oldest batches are dropped and counted | Re-sent | Same as above |
+
+Delivery is at-least-once: if the collector received a batch but its
+acknowledgement was lost, the batch is sent again, so a record can arrive
+twice. Records replayed after an outage can also arrive after newer ones;
+they keep their original timestamp, so order by the record timestamp and
+deduplicate on timestamp, body and attributes if duplicates matter.
 
 Where the queue lives:
 
