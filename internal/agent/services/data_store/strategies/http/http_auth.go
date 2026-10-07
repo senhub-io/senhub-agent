@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -28,6 +29,7 @@ import (
 type AuthenticationManager struct {
 	logger      *logger.ModuleLogger
 	agentKey    string
+	adminMu     sync.RWMutex
 	adminKey    string
 	agentConfig configuration.AgentConfiguration
 }
@@ -58,17 +60,33 @@ func (a *AuthenticationManager) ValidateAgentKey(providedKey string) bool {
 // does not. An unset administration key matches nothing — an empty
 // configured key must never turn an empty request into a valid one.
 func (a *AuthenticationManager) ValidateAdminKey(providedKey string) bool {
-	if a.adminKey == "" {
+	current := a.currentAdminKey()
+	if current == "" {
 		return false
 	}
-	return constantTimeEqual(providedKey, a.adminKey)
+	return constantTimeEqual(providedKey, current)
+}
+
+func (a *AuthenticationManager) currentAdminKey() string {
+	a.adminMu.RLock()
+	defer a.adminMu.RUnlock()
+	return a.adminKey
+}
+
+// SetAdminKey replaces the administration key on a live output, so a key
+// added or rotated by a configuration reload is the one requests are
+// checked against.
+func (a *AuthenticationManager) SetAdminKey(key string) {
+	a.adminMu.Lock()
+	defer a.adminMu.Unlock()
+	a.adminKey = key
 }
 
 // AdminEnabled reports whether an administration key is configured. The
 // caller does not register the administration routes without one: a
 // surface nobody can authenticate to is better absent than answering
 // Unauthorized, and its absence is what a PRTG-only installation wants.
-func (a *AuthenticationManager) AdminEnabled() bool { return a.adminKey != "" }
+func (a *AuthenticationManager) AdminEnabled() bool { return a.currentAdminKey() != "" }
 
 // AuthenticateAdmin is AuthenticateAndExtract for the administration
 // surface: it answers 401 unless the administration key was given.

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,5 +82,26 @@ func TestConsoleURLSaysSoWhenNoAdministrationKeyExists(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "administration key") {
 		t.Errorf("the error must name what is missing, got: %v", err)
+	}
+}
+
+func TestConsoleNotServedDetectsAnAgentWithoutTheAdminRoutes(t *testing.T) {
+	missing := httptest.NewServer(http.NotFoundHandler())
+	defer missing.Close()
+	if !consoleNotServed(missing.URL + "/web/key/") {
+		t.Error("a 404 on the console address must be reported as not served")
+	}
+
+	ok := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer ok.Close()
+	if consoleNotServed(ok.URL + "/web/key/") {
+		t.Error("a 200 must not be reported as not served")
+	}
+
+	down := httptest.NewServer(http.NotFoundHandler())
+	url := down.URL
+	down.Close()
+	if consoleNotServed(url) {
+		t.Error("an agent that does not answer is not the not-served case")
 	}
 }

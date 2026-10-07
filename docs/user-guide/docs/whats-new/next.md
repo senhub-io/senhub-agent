@@ -131,6 +131,10 @@ Breaking Changes or Changes below.
 
 ## Fixes
 
+- **Loopback connections on OS dynamic ports no longer create `depends_on` endpoints.** A host talking to itself through a port the OS picks per request (for example `127.0.0.1:497xx` on Windows) produced one one-shot endpoint per connection. A loopback peer whose port is in the OS dynamic range (49152-65535 on Windows and macOS, the kernel `ip_local_port_range` on Linux, 32768-60999 by default) is now ignored; loopback services on fixed ports and all non-loopback peers are unchanged.
+
+- **A monolithic install gets its administration key on the first start, and a key added while the agent runs is served.** The key was minted before the monolithic `storage:` list was split into `strategies.d/`, so the http output came out without one; and the console routes were registered only at start, so a key added by a reload answered 404 until a restart. The split now runs first, a reload that adds the key rebuilds the routes, and `senhub-agent console` tells you to restart the service once when the running agent does not serve the console.
+
 - **OTLP event logs are no longer lost when the collector is down and the agent restarts.** The on-disk queue handed a queued batch back to the in-memory log pipeline and deleted its file at once, without waiting for the collector's answer: with the collector down a batch went from disk to memory and back in milliseconds, and what was in memory at shutdown was lost (1575 of 3833 lines in a measured outage with a restart). A queued batch is now sent directly and its file is removed only after the collector acknowledged it; while the collector is down new batches go straight to disk and the agent probes it on a retry clock of 5 seconds doubling to 5 minutes; and a normal stop writes the records still held in memory to the queue. Delivery is at-least-once (a record can arrive twice, and replayed records can arrive after newer ones). See [Logs survive an outage](../otlp.md#logs-survive-an-outage).
 
 - **A per-module debug level now writes debug lines.** Raising one module

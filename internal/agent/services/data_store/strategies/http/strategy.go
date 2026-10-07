@@ -774,6 +774,18 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 	// Update internal parameters
 	h.params = newParams
 
+	// The administration routes are registered only while a key exists, so
+	// a key appearing or disappearing needs the rebuild an endpoint change
+	// gets; a rotated key needs none, requests read the live one.
+	wasAdmin := h.authManager.AdminEnabled()
+	h.authManager.SetAdminKey(adminKeyFrom(newParams))
+	if h.authManager.AdminEnabled() != wasAdmin {
+		h.logger.Info().
+			Bool("admin_enabled", !wasAdmin).
+			Msg("Administration key presence changed, restarting HTTP server to rebuild the routes")
+		return h.restartServer()
+	}
+
 	// The route table is built at server start, so an endpoint set change
 	// needs the same restart a port change gets.
 	if current := endpointSetSignature(h.configManager.GetEnabledEndpoints()); current != previousEndpoints {
