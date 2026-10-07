@@ -483,10 +483,10 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">Glob-based log tailing with rotation + structured parsing</span>
   </a>
 
-  <a href="event/" class="probe-card" data-family="collection" data-tier="pro">
+  <a href="event/" class="probe-card" data-family="collection" data-tier="free">
     <img class="probe-logo probe-logo-mdi" src="../assets/probe-logos/event.svg" alt="" loading="lazy">
     <span class="probe-name">Event</span>
-    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">HTTP receiver for custom JSON events → OTLP logs</span>
   </a>
 

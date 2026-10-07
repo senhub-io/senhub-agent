@@ -44,13 +44,8 @@
   sealed secret store, license) so it is never lost across versions. A
   genuine uninstall removes the whole tree, so removing the product
   leaves the machine clean and a later fresh install starts from the
-  installer's inputs rather than a stale kept config. The transient
-  subfolders logs\ and update\ (rotated logs and staged auto-update
-  MSIs — both regenerated on next run) are
-  removed on a plain uninstall so it leaves a clean tree. A full data
-  purge, including config and secrets, is opt-in:
-
-      msiexec /x senhub-agent.msi /qn PURGE_DATA=1
+  installer's inputs rather than a stale kept config. PURGE_DATA is
+  accepted for backward compatibility and changes nothing.
 
   See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
 -->
@@ -151,17 +146,6 @@
     <!-- Open the web console when the wizard finishes (guided install
          only: the launch is wired to the finish page's button). -->
     <Property Id="OPEN_CONSOLE" Value="1" Secure="yes" />
-    <!--
-      PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
-      on uninstall (config, sealed secret store, license, logs, staged
-      updates). Deliberately OPT-IN: the default uninstall preserves the
-      operator state (config, secrets, license) so a reinstall or upgrade
-      never loses it. Note that the default uninstall still removes the
-      transient logs\ and update\ subfolders (see PurgeLogsFolder /
-      PurgeUpdateFolder on the DataFolderMarker component below); PURGE_DATA=1
-      additionally removes the preserved state. See the PurgeDataFolder
-      authoring on the DataFolderMarker component below.
-    -->
     <!-- PURGE_DATA is retained for backward compatibility only: a genuine
          uninstall now removes %ProgramData%\SenHub in full regardless, so
          this property no longer changes anything. -->
@@ -282,7 +266,7 @@
       conditional override then repoints the property at the real folder
       only when it should be removed:
 
-        - PURGEDATAFOLDER   → whole tree, only on PURGE_DATA=1 full uninstall.
+        - PURGEDATAFOLDER   → whole tree, on any genuine full uninstall.
         - PURGELOGSFOLDER   → logs\,   on any genuine full uninstall.
         - PURGEUPDATEFOLDER → update\, on any genuine full uninstall.
 
@@ -590,19 +574,6 @@
         action below. This keeps "clean uninstall" and "preserve config on
         upgrade" both true: the MSI removes only what it created.
 
-        We register the directory as a component (with an empty keypath
-        registry value) so the install is well-formed, but we do NOT mark
-        the directory for removal — leftover operator config is preferred
-        over data loss on uninstall (acceptance criterion: no orphan files
-        OUTSIDE user preference; config is user preference).
-
-        Default uninstall still leaves a clean tree: the transient logs\
-        and update\ subfolders (rotated logs, staged auto-update MSIs) are
-        removed by PurgeLogsFolder / PurgeUpdateFolder below, gated on a
-        genuine full uninstall (not an upgrade) — see the set-property
-        authoring above. Only config, the sealed secret store and the
-        license are preserved.
-
         A genuine uninstall removes the whole tree — config, the sealed
         secret store, the license and staged MSIs — so removing the product
         leaves nothing behind. RemoveFolderEx reads PURGEDATAFOLDER, set to
@@ -629,7 +600,7 @@
           the real folder when it should be purged, else a never-existing
           sentinel (SenHub\__no_purge__) that no-ops. Never leave a property
           empty — an empty one aborts the whole custom action (#707).
-            - PURGEDATAFOLDER   : whole tree, only on PURGE_DATA=1 uninstall (#626).
+            - PURGEDATAFOLDER   : whole tree, on any genuine full uninstall (#626, #707).
             - PURGELOGSFOLDER   : logs\,   on any genuine full uninstall (#648).
             - PURGEUPDATEFOLDER : update\, on any genuine full uninstall (#648).
         -->

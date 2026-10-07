@@ -73,7 +73,7 @@ func TestCatalogEntryOffPlatform(t *testing.T) {
 	if e.RunsHere {
 		t.Error("a probe for another platform must say it does not run here, so no page counts it as a licence lock")
 	}
-	if e := annotateCatalogEntry(spec.Probe{Type: "event"}, nil, "k"); !e.RunsHere || e.Authorized || e.Tier != "pro" {
+	if e := annotateCatalogEntry(spec.Probe{Type: "ping_gateway"}, nil, "k"); !e.RunsHere || e.Authorized || e.Tier != "pro" {
 		t.Errorf("a Pro type without a licence runs here and is locked by the licence alone, got %+v", e)
 	}
 	if e := annotateCatalogEntry(spec.Probe{Type: "cpu"}, nil, "k"); !e.Authorized {
