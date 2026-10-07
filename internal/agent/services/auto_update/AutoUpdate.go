@@ -227,7 +227,7 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 
 	currentVersionStr := cliArgs.Version
 	if expectedVersion == "" || expectedVersion == cliArgs.Version {
-		a.logger.Info().Msg("No update required")
+		a.logger.Debug().Msg("No update required")
 		return false, nil
 	}
 
@@ -246,7 +246,7 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 		return false, nil
 	}
 	if !ok {
-		a.logger.Info().
+		a.logger.Debug().
 			Str("current_version", currentVersionStr).
 			Str("expected_version", expectedVersion).
 			Msg("Auto-update skipped: expected version is not newer than current")
