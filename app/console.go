@@ -1,9 +1,11 @@
 package app
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -60,7 +62,7 @@ func consoleURL(configPath string) (string, error) {
 		return "", fmt.Errorf("reading the administration key from %s: %w", configPath, err)
 	}
 	if key == "" {
-		return "", fmt.Errorf("no administration key in %s: the console is not served until the agent has started once to generate one, or until admin_key is set on the http output", configPath)
+		return "", fmt.Errorf("no administration key in %s: restart the agent service once so it generates one, or set admin_key on the http output", configPath)
 	}
 	url := buildDashboardURL(configPath, key)
 	if url == "" {
@@ -123,10 +125,13 @@ func runConsole(argv []string) {
 
 	fmt.Println(url)
 	if opts.print {
+		warnIfConsoleNotServed(url)
 		return
 	}
 	if !waitForEndpoint(configPath, 15*time.Second) {
 		fmt.Fprintln(os.Stderr, "Warning: the agent does not answer on this address yet; check the service with: senhub-agent status")
+	} else {
+		warnIfConsoleNotServed(url)
 	}
 	if err := openBrowser(url); err != nil {
 		fatalf("console: opening the browser: %v", err)
@@ -134,3 +139,31 @@ func runConsole(argv []string) {
 }
 
 var errNoElevation = errors.New("the administration key is readable by administrators only; run this command as root or administrator")
+
+// consoleNotServed reports whether a running agent answers 404 on the
+// console address: it is up, but started before the administration key
+// existed and never registered the console routes. An agent that does not
+// answer at all is not this case.
+func consoleNotServed(url string) bool {
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+		Transport: &http.Transport{
+			// The probe talks to the local agent, whose certificate is
+			// commonly self-signed; only the status code is read.
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusNotFound
+}
+
+func warnIfConsoleNotServed(url string) {
+	if consoleNotServed(url) {
+		fmt.Fprintln(os.Stderr, "Warning: the running agent does not serve the console yet. It started before its administration key existed: restart the agent service once.")
+	}
+}

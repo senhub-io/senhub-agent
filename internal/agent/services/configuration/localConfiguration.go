@@ -341,6 +341,13 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	// made a clean install report two warnings naming a missing file, which
 	// is the first thing an operator sees on a machine that is in fact fine.
 	if _, statErr := os.Stat(lc.configPath); statErr == nil {
+		// Split a monolithic file first: the administration key lives in the
+		// http output, which only has a mapping to receive it once the
+		// strategies are fragments. Minted before the split, the key found
+		// no http entry in a `storage:` sequence and the fragment came out
+		// without one. The seal below finds the layout already split.
+		splitBackup := harmoniseLayout(lc.configPath, lc.logger)
+
 		// Give an installation made before the read and administration
 		// surfaces were told apart the key the second one now needs —
 		// before the seal below, so the fresh plaintext key is moved
@@ -354,7 +361,13 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
 		// on any error, and we continue with the existing config rather than
 		// refusing to start — a sealing fault must never brick the agent.
-		if err := SealInlineSecrets(lc.configPath, lc.logger); errors.Is(err, secret.ErrSealNeedsRoot) {
+		sealErr := SealInlineSecrets(lc.configPath, lc.logger)
+		if sealErr == nil && splitBackup != "" {
+			if err := os.Remove(splitBackup); err != nil && !os.IsNotExist(err) {
+				lc.logger.Warn().Err(err).Str("file", splitBackup).Msg("Could not remove harmonise backup (plaintext may linger)")
+			}
+		}
+		if err := sealErr; errors.Is(err, secret.ErrSealNeedsRoot) {
 			lc.logger.Info().
 				Str("seal_with", "sudo senhub-agent secret migrate --wire-unit").
 				Msg("Inline secrets left in place: the secret store seals only as root")
