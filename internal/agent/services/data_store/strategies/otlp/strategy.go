@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -796,11 +797,35 @@ func (s *OTLPSyncStrategy) flushLogsToQueue() {
 		s.logsPump.stop(ctx)
 		s.logsPump = nil
 	}
+	before, _ := s.logsQueue.pending()
+	lostBefore := s.logExporter.lostRecords.Load()
 	s.logExporter.beginShutdown(logsShutdownFlushBudget)
-	if err := s.logs.shutdown(ctx); err != nil {
-		s.logger.Warn().Err(err).Msg("OTLP logs hand-off to the disk queue did not finish within its budget")
-	}
+	err := s.logs.shutdown(ctx)
+	after, _ := s.logsQueue.pending()
+	reportLogsHandoff(s.logger, after-before, s.logExporter.lostRecords.Load()-lostBefore, err)
 	s.logs = nil
+}
+
+// reportLogsHandoff says what became of the logs held in memory at stop.
+// The SDK reports its own deadline when the stop budget ends even though the
+// exporter already wrote everything to the queue, so that error alone is not
+// a loss: only records that could not be written are.
+func reportLogsHandoff(log *logger.ModuleLogger, kept int, lost int64, err error) {
+	if log == nil {
+		return
+	}
+	if lost > 0 {
+		log.Warn().Err(err).Int64("records_lost", lost).Int("records_kept", kept).
+			Msg("OTLP logs hand-off to the disk queue failed; some log records are lost")
+		return
+	}
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		log.Warn().Err(err).Int("records_kept", kept).Msg("OTLP logs pipeline shutdown failed")
+		return
+	}
+	if kept > 0 {
+		log.Info().Int("records", kept).Msgf("%d log records kept on disk for the next start", kept)
+	}
 }
 
 func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
