@@ -386,7 +386,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="activemq/" class="probe-card" data-family="messaging" data-tier="free">
-    <img class="probe-logo probe-logo-mdi" src="../assets/probe-logos/activemq.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/activemq.svg" alt="" loading="lazy">
     <span class="probe-name">ActiveMQ</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Broker resources, queue/topic throughput via Jolokia</span>
@@ -505,7 +505,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="zookeeper/" class="probe-card" data-family="devops" data-tier="free">
-    <img class="probe-logo probe-logo-mdi" src="../assets/probe-logos/zookeeper.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/zookeeper.svg" alt="" loading="lazy">
     <span class="probe-name">ZooKeeper</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Latency, connections, znodes via mntr four-letter command</span>
@@ -621,6 +621,8 @@ Each probe targets one class of system and turns its state into typed metrics an
 <p class="catalog-empty" id="catalog-empty" style="display:none">No probes match your search.</p>
 
 </div>
+
+<p class="catalog-note"><small>Product names and logos are trademarks of their respective owners. They appear here only to identify the system a probe reads, and imply no partnership, endorsement or certification. Sources are listed in <code>assets/probe-logos/SOURCES.md</code>.</small></p>
 
 <style>
 .probe-catalog { margin-top: 1rem; }
