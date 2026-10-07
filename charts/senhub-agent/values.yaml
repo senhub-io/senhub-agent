@@ -1,0 +1,338 @@
+# Default values for the senhub-agent chart.
+#
+# The chart runs ONE agent. It is not horizontally scalable, and
+# replicas are fixed at 1 on purpose:
+#   - every replica would carry the same agent key and host identity
+#     (see `identity`), so downstream they would be one agent whose
+#     series land on the same keys with different values, silently;
+#   - every replica would run the same probes against the same targets,
+#     so each measurement, log line and Kubernetes event would be
+#     collected and sent once per replica;
+#   - PRTG, Nagios and a Prometheus scrape read one agent at one
+#     address, and the optional state volume is ReadWriteOnce.
+# To watch more targets, install the chart again under another release
+# name: each release gets its own identity.
+# For the same reason the Deployment uses the Recreate strategy: a
+# rolling update would run the old and the new pod side by side with one
+# identity.
+
+# -- Which build of the agent to run: `full` carries the licensed probes
+# and reads an optional licence from SENHUB_LICENSE, `oss` carries the free ones
+# and needs no licence. `full` without a licence runs the free tier.
+# Selects the image repository unless
+# image.repository is set.
+edition: full
+
+image:
+  # -- Image repository. Empty picks ghcr.io/senhub-io/senhub-agent
+  # (edition full) or ghcr.io/senhub-io/senhub-agent-oss (edition oss).
+  repository: ""
+  # -- Image tag. Empty uses the chart appVersion (0.6.1). There is no `latest`.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# -- `DaemonSet` (one agent per node, each with its own key and state on
+# the node) or `Deployment` (one agent for the release). Empty picks a
+# DaemonSet when hostMonitoring.enabled, a Deployment otherwise. Keep a
+# Deployment for container scope, a single node or an agent that only
+# watches remote targets: it is the one that carries the identity Secret,
+# the state volume, the Service, the ServiceMonitor and the Kubernetes
+# probe.
+kind: ""
+
+# DaemonSet mode only.
+daemonSet:
+  # -- Where each node keeps the agent's state (agent key, bookmarks), as
+  # a hostPath created if missing and handed to uid 10001 by an init
+  # container. It outlives the pod, the upgrade and `helm uninstall`.
+  # Another agent installed on the node as a service uses
+  # /var/lib/senhub-agent too: change this path then.
+  stateHostPath: /var/lib/senhub-agent
+
+# Monitoring of the node the pod runs on. The agent's host probes (CPU,
+# memory, disks, network, processes) measure the machine they run on; in
+# a plain container only CPU and memory show the node (/proc is not
+# isolated for them), while disks show the container's overlay, the
+# network its single interface and the processes its own.
+hostMonitoring:
+  # -- Run the pod in the node's PID and network namespaces and mount the
+  # node's root filesystem read-only at `hostRoot`, so that disks, network
+  # interfaces and processes are the node's. This is a privileged-looking
+  # pod: it needs a namespace that enforces the `privileged` Pod Security
+  # level (see the documentation). With it the workload is a DaemonSet
+  # unless `kind` says otherwise. `false` = container scope: disks, the
+  # interface and the processes are the pod's own, and CPU and memory are
+  # still the node's.
+  enabled: true
+  # -- Where the node's root filesystem is mounted in the pod.
+  hostRoot: /host
+
+# -- `info` or `debug`. `debug` starts the agent with --verbose.
+logLevel: info
+# -- With `debug`, limits debug lines to the modules whose name starts
+# with this prefix (`probe`, `probe.postgresql`, `strategy.otlp`).
+# Passed as --filter.
+logFilter: ""
+
+# -- Host name of the pod. The agent reports it as the host's name; a
+# Deployment otherwise names each new pod differently, so the host would
+# change name at every rollout while keeping its identity. Empty uses
+# the release full name. Must be a DNS label (63 characters at most).
+# Ignored with hostMonitoring.enabled: the host name is the node's.
+hostname: ""
+
+# Identity of the agent, kept stable across restarts and rescheduling.
+#
+# Two identifiers make this agent *this* agent: the host identity
+# (host.id, read from /etc/machine-id) and the agent key (what PRTG,
+# Nagios and a Prometheus scrape authenticate with, and what tells two
+# agents apart downstream). A container has neither: without them every
+# new pod arrives as a new host and a new agent, and the PRTG sensors
+# built on the old key stop answering.
+#
+# The chart keeps both in a Secret, not on a volume: a Secret lives in
+# the cluster state, follows the pod to any node and any zone, needs no
+# StorageClass, and survives a `helm uninstall` (it is annotated
+# helm.sh/resource-policy: keep). A ReadWriteOnce volume ties the pod to
+# one zone, and is lost with the namespace or the claim.
+identity:
+  # -- Use this existing Secret instead of a chart-managed one. It must
+  # hold `host-id` (32 hexadecimal characters) and `agent-key` (a UUID).
+  existingSecret: ""
+  # -- Host identity, 32 hexadecimal characters, dashes optional. Empty
+  # generates one at first install and keeps it in the Secret.
+  hostId: ""
+  # -- Agent key, a UUID. Empty generates one at first install and keeps
+  # it in the Secret.
+  agentKey: ""
+  # Generation reads the Secret already in the cluster to keep its
+  # values. `helm template` cannot read the cluster, so a GitOps tool
+  # that renders with it (Argo CD) would mint a new identity at each
+  # sync: with such a tool, set hostId and agentKey, or existingSecret.
+
+# Settings written into the configuration by the image entrypoint, as the
+# SENHUB_* variables it reads (docs: container.md). Empty values are not
+# set. Ignored when config.agent is provided: the configuration is then
+# yours entirely.
+env:
+  # -- OTLP collector, host:port. Defaults to SenHub
+  # (eu-west-1.intake.senhub.io:443) when OTLP_BEARER_TOKEN is in the
+  # secrets. SENHUB_OTLP_ENDPOINT.
+  otlpEndpoint: ""
+  # -- `grpc` or `http`. SENHUB_OTLP_PROTOCOL.
+  otlpProtocol: ""
+  # -- `false` for a collector that listens in plain text.
+  # SENHUB_OTLP_TLS.
+  otlpTLS: ""
+  # -- `false` to export measurements and logs without entities.
+  # SENHUB_ENTITIES.
+  entities: ""
+  # -- Tags on every metric. A map, written as key=value,key2=value2.
+  # SENHUB_TAGS.
+  tags: {}
+  # -- Zabbix server or proxy, host:port. SENHUB_ZABBIX_SERVER.
+  zabbixServer: ""
+  # -- Host metadata the Zabbix autoregistration action matches.
+  # SENHUB_ZABBIX_HOST_METADATA.
+  zabbixHostMetadata: ""
+  # -- Time zone of the timestamps the agent writes, such as Europe/Paris.
+  # TZ.
+  timezone: ""
+
+# Secrets, exposed to the agent as environment variables (envFrom) and
+# referenced from the configuration with ${env:NAME}. Nothing secret is
+# ever written into the ConfigMap. Usual names: OTLP_BEARER_TOKEN,
+# SENHUB_LICENSE, SENHUB_PROBE_<NAME>_CLIENT_SECRET, and whatever your probes
+# reference (DB_PASSWORD for `password: "${env:DB_PASSWORD}"`).
+secrets:
+  # -- An existing Secret whose keys become environment variables. Keys
+  # must be valid variable names. A change to it is not seen until the
+  # pod restarts: `kubectl rollout restart deployment/<name>`.
+  existingSecret: ""
+  # -- Values for a Secret the chart creates. Prefer existingSecret, or
+  # --set-file / a values file kept out of version control.
+  values: {}
+
+# Configuration fragments, rendered into a ConfigMap and copied into the
+# multi-file layout (probes.d/, strategies.d/) before the agent starts.
+# Credentials stay references: `password: "${env:DB_PASSWORD}"`.
+config:
+  # -- Probe fragments. Key = fragment name (probes.d/60-<key>.yaml),
+  # value = a list of probes (or one probe, or a YAML string).
+  probes: {}
+  #  databases:
+  #    - name: orders-db
+  #      type: postgresql
+  #      params:
+  #        host: orders-db.shop.svc
+  #        username: monitor
+  #        password: "${env:ORDERS_DB_PASSWORD}"
+  # -- Output fragments. Key = output name (otlp, http, zabbix, ...),
+  # value = its settings; written to strategies.d/60-<key>.yaml. A key
+  # the entrypoint also writes (otlp from env.otlpEndpoint, http) is
+  # replaced by this one, and the agent logs it.
+  strategies: {}
+  #  otlp:
+  #    endpoint: otel-collector.observability.svc:4317
+  #    protocol: grpc
+  #    tls:
+  #      enabled: false
+  # -- A whole agent.yaml (globals: agent, cache, entities, log, ...).
+  # When set, the entrypoint writes nothing and every `env` value above
+  # is ignored: the configuration is yours. The chart still sets
+  # agent.key to ${env:SENHUB_AGENT_KEY} unless you set it, and adds
+  # the http output from `http` unless config.strategies has one.
+  agent: {}
+
+# The HTTP output: console, PRTG, Nagios and Prometheus endpoints, and
+# /health, which the probes below poll.
+http:
+  port: 8080
+  # -- Address the output listens on. Empty picks 127.0.0.1 for a
+  # DaemonSet and 0.0.0.0 for a Deployment. A DaemonSet shares the node's
+  # network, where every address of the node would carry the agent API
+  # (every route but /health needs the agent key) in clear text: it stays
+  # on the loopback until you open it, see the documentation (set bind to
+  # 0.0.0.0 and turn TLS on). A Deployment's pod network is the
+  # isolation, and the pod's loopback reaches no one, so it listens on
+  # every address. The kubelet probes follow the loopback.
+  bind: ""
+
+# Monitoring of the cluster the agent runs in, through the API server.
+kubernetesProbe:
+  # -- Adds a `kubernetes` probe (probes.d/55-kubernetes-cluster.yaml).
+  # It needs rbac.kubernetesProbe.enabled to read the cluster.
+  enabled: false
+  name: cluster
+  # -- Probe parameters (docs: probes/kubernetes.md). Empty kubeconfig =
+  # the pod's service account.
+  params: {}
+  #  interval: 30
+  #  namespaces:
+  #    exclude: [kube-system]
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # -- Mount the service account token. Forced on when
+  # rbac.kubernetesProbe.enabled is true; off otherwise, since nothing
+  # else in the agent talks to the API server.
+  automountToken: false
+
+rbac:
+  kubernetesProbe:
+    # -- Creates a read-only ClusterRole (list on the kinds the probe
+    # collects, get on namespaces) and binds it to the service account.
+    enabled: false
+
+# -- State directory (/var/lib/senhub-agent): log probe bookmarks, the
+# OTLP retry checkpoint when configured. The identity does not depend on
+# it (see `identity`). Without a volume it is an emptyDir: bookmarks are
+# lost when the pod is replaced, so a file or Container Apps log probe
+# re-reads or skips what was written in between.
+persistence:
+  enabled: false
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+
+service:
+  # -- A ClusterIP Service in front of the HTTP output, for PRTG, Nagios,
+  # a Prometheus scrape or the console.
+  enabled: true
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# Prometheus Operator scrape of /metrics. Authenticates with the agent
+# key from the identity Secret, as a Bearer token.
+serviceMonitor:
+  # -- Requires the monitoring.coreos.com/v1 ServiceMonitor CRD; the
+  # chart refuses to render one on a cluster without it. With
+  # `helm template`, pass --api-versions monitoring.coreos.com/v1/ServiceMonitor.
+  enabled: false
+  interval: 60s
+  scrapeTimeout: 30s
+  labels: {}
+  metricRelabelings: []
+  relabelings: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    # The Kubernetes probe lists every pod of the cluster at each
+    # interval: raise this on a large cluster.
+    memory: 384Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# The entrypoint writes only under /etc/senhub-agent, /var/lib/senhub-agent
+# and /var/log/senhub-agent, which are volumes, and /etc/machine-id, which
+# the chart mounts from the identity Secret. The root filesystem can stay
+# read-only.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 5
+  failureThreshold: 30
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# -- Extra environment variables, as in a container spec. A probe can be
+# declared here with the agent's own rule, one probe per name:
+#   - {name: SENHUB_PROBE_ACA_TYPE, value: azure_container_apps}
+#   - {name: SENHUB_PROBE_ACA_TENANT_ID, value: "..."}
+# with the client secret taken from `secrets` as SENHUB_PROBE_ACA_CLIENT_SECRET.
+extraEnv: []
+# -- Extra volumes and mounts, for instance a kubeconfig of another
+# cluster or files read with ${file:/path}.
+extraVolumes: []
+extraVolumeMounts: []
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+# -- A DaemonSet runs on the nodes it tolerates: by default not the
+# control-plane nodes, which carry a NoSchedule taint. To monitor them:
+#   - key: node-role.kubernetes.io/control-plane
+#     operator: Exists
+#     effect: NoSchedule
+tolerations: []
+affinity: {}
+priorityClassName: ""
+terminationGracePeriodSeconds: 30

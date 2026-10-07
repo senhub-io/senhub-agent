@@ -44,6 +44,26 @@ func AddressEdgeAllowed(addr string) bool {
 	return !IsHostLocalAddressStr(addr)
 }
 
+var cgnatRange = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// AddressIsGloballyUnique is the stricter rule for emitters that cannot tell
+// which interface a next hop sits behind (an SNMP device's routing table has
+// no interface-class filter): only a public, globally routable unicast address
+// qualifies. RFC1918, CGNAT (100.64/10) and ULA (fc00::/7) addresses are
+// reused by unrelated networks, so a shared node would merge unrelated
+// switches behind the same private gateway. In doubt, do not emit. Everything
+// AddressEdgeAllowed refuses is refused here too; hosts keep the looser rule.
+func AddressIsGloballyUnique(addr string) bool {
+	if !AddressEdgeAllowed(addr) {
+		return false
+	}
+	ip := net.ParseIP(addr)
+	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	return !cgnatRange.Contains(ip)
+}
+
 // containerBridgePrefixes name host-local virtualization bridges (Docker,
 // libvirt, CNI, LXC, …). Their gateway address (172.17.0.1 on docker0, but also
 // user-defined bridges on br-<hex> using 172.18+/custom ranges) is reused

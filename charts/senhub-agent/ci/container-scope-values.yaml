@@ -1,0 +1,9 @@
+# Host monitoring off: the pod stays in its own namespaces and mounts
+# nothing from the node. Used by `make helm-lint`.
+edition: oss
+
+hostMonitoring:
+  enabled: false
+
+logLevel: debug
+logFilter: probe

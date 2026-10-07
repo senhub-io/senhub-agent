@@ -576,18 +576,32 @@ func checkConfig(configPath string) checkOutcome {
 				o.path, strings.Join(o.probes, " and "))
 			warnings++
 		}
+		for _, o := range configuration.SNMPPollTargetOverlaps(config.Probes) {
+			quoted := make([]string, len(o.Probes))
+			for i, name := range o.Probes {
+				quoted[i] = fmt.Sprintf("%q", name)
+			}
+			fmt.Printf("  [WARN] %s is polled by snmp_poll probes %s with the same credential: the device is read once per probe and its metrics are duplicated; poll it from a single probe\n",
+				o.Target, strings.Join(quoted, " and "))
+			warnings++
+		}
 	}
 
 	// Storage
 	if len(config.Storage) == 0 {
-		fmt.Println("  [WARN] No storage strategies configured")
-		warnings++
+		fmt.Println("  [ERROR] at least one storage strategy is required (the agent refuses to load a configuration without one)")
+		errorCount++
 	} else {
 		validStrategies := map[string]bool{}
 		for _, name := range data_store.RegisteredStrategyNames() {
 			validStrategies[name] = true
 		}
 		for _, s := range config.Storage {
+			if s.Name == "" {
+				fmt.Println("  [ERROR] storage strategy name cannot be empty")
+				errorCount++
+				continue
+			}
 			if !validStrategies[s.Name] {
 				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
 				warnings++

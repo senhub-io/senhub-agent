@@ -71,6 +71,16 @@ rm -rf "$SENHUB_CONFIG_DIR" && mkdir -p "$SENHUB_CONFIG_DIR"
 kept_id=0123456789abcdef0123456789abcdef
 kept_key=11111111-2222-3333-4444-555555555555
 
+# 0c. With HOST_ETC pointing at a host's /etc, the host's machine-id is
+#    the identity: nothing is written, and an explicit SENHUB_HOST_ID
+#    still wins.
+mkdir -p "$work/hostetc"
+printf '%s\n' "fedcba9876543210fedcba9876543210" > "$work/hostetc/machine-id"
+printf '%s\n' "keepme" > "$MACHINE_ID_PATH"
+(HOST_ETC="$work/hostetc" resolve_machine_id) 2>/dev/null
+check "the host's own machine-id is left alone" "$(cat "$MACHINE_ID_PATH")" "keepme"
+: > "$MACHINE_ID_PATH"
+
 # 1. A machine-id kept in the state directory is restored verbatim.
 printf '%s\n' "$kept_id" > "$STATE_DIR/machine-id"
 resolve_machine_id 2>/dev/null
@@ -193,7 +203,24 @@ otlp_fragment_extras "$frag" 2>/dev/null
 otlp_fragment_extras "$frag" 2>/dev/null
 check "SENHUB_OTLP_TLS=false turns TLS off" "$(grep -c 'enabled: false' "$frag")" "1"
 check "the bearer reference is written once" "$(grep -c 'Authorization' "$frag")" "1"
+# SENHUB_LICENSE_FILE reaches config init as the licence.
+printf 'lic.jwt.value\n' > "$work/licence"
+PATH="$work/bin:$PATH" SENHUB_LICENSE_FILE="$work/licence" init_config >/dev/null 2>&1 || true
+case "$(cat "$work/init-args" 2>/dev/null)" in
+  *"--license lic.jwt.value"*) check "SENHUB_LICENSE_FILE reaches config init" "yes" "yes" ;;
+  *) check "SENHUB_LICENSE_FILE reaches config init" "$(cat "$work/init-args" 2>/dev/null)" "--license lic.jwt.value" ;;
+esac
+
+# The token as a file is referenced, never copied, and read at every start.
+unset OTLP_BEARER_TOKEN
+printf 'abc\n' > "$work/otlp-token"
+printf 'otlp:\n  endpoint: localhost:4317\n' > "$frag"
+OTLP_BEARER_TOKEN_FILE="$work/otlp-token" otlp_fragment_extras "$frag" 2>/dev/null
+check "OTLP_BEARER_TOKEN_FILE is written as a file reference" \
+  "$(grep -c "Authorization: \"Bearer \${file:$work/otlp-token}\"" "$frag")" "1"
+check "the file's content is not copied into the fragment" "$(grep -c abc "$frag")" "0"
 printf 'otlp:\n  endpoint: collector:4317\n' > "$frag"
+OTLP_BEARER_TOKEN=t
 unset SENHUB_OTLP_TLS
 otlp_fragment_extras "$frag" 2>/dev/null
 check "TLS stays on by default" "$(grep -c 'tls:' "$frag")" "0"

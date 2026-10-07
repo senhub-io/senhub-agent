@@ -88,7 +88,7 @@ Monitor several LPARs with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:85e1f2ed9c1fa43afa288c48e61b9ecb7fce1a63d18c9ccd521d75ce33f5501d -->
+<!-- sha256:731b1690e06be61fdba19265a4f5f0c8fe4230584dab5d0fd1da8e5157b6ad47 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -107,7 +107,7 @@ Monitor several LPARs with separate probe instances:
 | `message_queues[].name` | Yes | - | Queue name. Example: `QSYSOPR` |
 | `message_queues[].library` | No | `QSYS` | Library of the queue |
 | `message_queues[].min_severity` | No | `0` | Messages below this severity are not relayed |
-| `history_log_min_severity` | No | `0` | History log (QHST) messages below this severity (0-99) are not collected; 0 keeps all, and a busy partition logs thousands of messages a minute |
+| `history_log_min_severity` | No | `30` | History log (QHST) messages below this severity (0-99) are not collected; the default 30 keeps warnings and above (OTel WARN), 0 keeps every message for a full audit, and a busy partition logs thousands of messages a minute |
 | `environment` | No | - | Deployment environment name carried by the partition entity. Example: `production` |
 | `db_instance_name` | No | - | Identity override of the Db2 for i entity; empty derives it from the relational database name |
 
@@ -328,8 +328,9 @@ message remains visible there through the jobs-by-status count.
     | 60-79 (severe error) | `ERROR3` (19) |
     | 80-99 (abnormal end of job or system) | `FATAL` (21) |
 
-    The volume lever is the `history_log_min_severity` parameter (0-99, default 0): a partition such as PUB400
-    logs thousands of QHST messages a minute, and the floor is applied on the
+    The volume lever is the `history_log_min_severity` parameter (0-99, default 30, warnings and above;
+    0 keeps every message for a full audit): a partition such as PUB400 logs thousands of QHST
+    messages a minute (about 13 800 records an hour at 0, about 250 at 30), and the floor is applied on the
     server, so messages below it neither cross the bridge nor reach the log
     rail. For a message queue the equivalent is `message_queues[].min_severity`.
     The audit journal reads the entry types AF, CA, CO, CP, DO, OR, OW, PA, PW,
@@ -425,7 +426,7 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
-| `senhub.ibmi.cpu.utilization` | `ibmi.cpu.elapsed_used_percent` | CPU Used | % | Percentage of CPU used over the elapsed interval |
+| `senhub.ibmi.cpu.utilization` | `ibmi.cpu.elapsed_used_percent` | CPU Used | % | Percentage of the partition's CPU used since the previous collection of this probe; absent on the first cycle after the agent or the bridge starts |
 | `senhub.ibmi.cpu.configured` | `ibmi.cpu.configured_count` | CPU Configured Count | # | Number of configured virtual CPUs |
 | `senhub.ibmi.cpu.capacity` | `ibmi.cpu.current_capacity` | CPU Current Capacity | # | Current processing capacity |
 | `senhub.ibmi.memory.main_storage` | `ibmi.memory.main_storage_kb` | Main Storage | KB | Main storage configured on the partition (MAIN_STORAGE_SIZE) |
