@@ -115,6 +115,7 @@ type versionReport struct {
 	jsonHeader
 	Version       string                `json:"version"`
 	Commit        string                `json:"commit"`
+	CoreCommit    string                `json:"core_commit,omitempty"`
 	BuildTime     string                `json:"build_time,omitempty"`
 	GoVersion     string                `json:"go_version,omitempty"`
 	Environment   string                `json:"environment,omitempty"`
@@ -150,6 +151,7 @@ func runVersion(jsonMode bool, out io.Writer) int {
 		jsonHeader:  newJSONHeader("version", code),
 		Version:     cliArgs.Version,
 		Commit:      cliArgs.CommitHash,
+		CoreCommit:  cliArgs.CoreCommit,
 		BuildTime:   cliArgs.BuildTime,
 		GoVersion:   cliArgs.GoVersion,
 		Environment: cliArgs.Env,

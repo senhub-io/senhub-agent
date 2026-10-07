@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"time"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -100,6 +101,7 @@ type PerformanceInfo struct {
 type AgentInfo struct {
 	Version    string `json:"version"`
 	Commit     string `json:"commit"`
+	CoreCommit string `json:"core_commit,omitempty"`
 	InstanceID string `json:"instance_id,omitempty"`
 	GoVersion  string `json:"go_version"`
 	OS         string `json:"os"`
@@ -287,11 +289,12 @@ func (s *StatusService) calculatePerformanceInfo() PerformanceInfo {
 // calculateAgentInfo returns agent build and version information
 func (s *StatusService) calculateAgentInfo() AgentInfo {
 	return AgentInfo{
-		Version:   s.formatVersion(s.version),
-		Commit:    s.formatCommitHash(s.commit),
-		GoVersion: runtime.Version(),
-		OS:        runtime.GOOS,
-		Arch:      runtime.GOARCH,
+		Version:    s.formatVersion(s.version),
+		Commit:     s.formatCommitHash(s.commit),
+		CoreCommit: cliArgs.CoreCommit,
+		GoVersion:  runtime.Version(),
+		OS:         runtime.GOOS,
+		Arch:       runtime.GOARCH,
 	}
 }
 

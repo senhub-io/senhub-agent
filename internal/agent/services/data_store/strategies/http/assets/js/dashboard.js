@@ -388,6 +388,7 @@
         const cache = d.cache || {};
         const rows = [
             ['Version', esc((d.version || '?') + commit)],
+            ['Core commit', d.core_commit ? esc(String(d.core_commit).slice(0, 12)) : '-'],
             ['Host', esc(d.hostname || '?') + (d.os ? ', ' + esc(d.os + (d.arch ? '/' + d.arch : '')) : '')],
             ['Instance ID', d.instance_id ? '<span title="service.instance.id of this agent in its telemetry and in a topology graph">' + esc(d.instance_id) + '</span>' : '-'],
             ['Uptime', esc(uptime(d.uptime))],

@@ -23,8 +23,12 @@ import (
 
 // Build-injected variables (set via ldflags from the Makefile).
 var (
-	Version        string
-	CommitHash     string
+	Version    string
+	CommitHash string
+	// CoreCommit is the commit of the open-core source the binary was built
+	// from. A build that compiles the core from another checkout (the
+	// enterprise edition) passes the commit of that checkout.
+	CoreCommit     string
 	BuildTime      string
 	GoVersion      string
 	Env            string
@@ -173,6 +177,7 @@ func GetVersionInfo() map[string]string {
 	return map[string]string{
 		"version":    Version,
 		"commitHash": CommitHash,
+		"coreCommit": CoreCommit,
 		"buildTime":  BuildTime,
 		"goVersion":  GoVersion,
 		"env":        Env,
@@ -199,6 +204,10 @@ func PrintVersion() {
 		fmt.Printf("Development version (commit: %s)\n", CommitHash)
 	default:
 		fmt.Println("Version information not available")
+	}
+
+	if CoreCommit != "" {
+		fmt.Printf("Core commit: %s\n", CoreCommit)
 	}
 
 	if Env == "development" {

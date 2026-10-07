@@ -15,6 +15,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
@@ -304,6 +305,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 		Hostname:         hostname,
 		Version:          version,
 		Commit:           commit,
+		CoreCommit:       cliArgs.CoreCommit,
 		InstanceID:       configuration.AgentInstanceID(a.strategy.agentConfig.GetAuthenticationKey()),
 		GoVersion:        runtime.Version(),
 		OS:               runtime.GOOS,
