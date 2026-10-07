@@ -3,6 +3,7 @@ package otlp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,11 +40,19 @@ import (
 // serialisation. Event logs carry only string attributes, so the
 // on-disk shape stays simple.
 //
-// Guarantee: at-least-once. A record may be exported twice if the
-// backend received it but the ack was lost; OTLP consumers dedupe by
-// (timestamp, body, attributes). The residual loss window is a hard
-// crash while records sit in the SDK's in-memory batch (never handed to
-// Export) — covered by the graceful-shutdown flush, not by a kill -9.
+// Guarantee: at-least-once. A queued batch leaves the disk only after the
+// backend acknowledged an export of exactly that batch: replay calls the
+// exporter directly and learns the outcome, instead of handing records
+// back to the batching pipeline and deleting the file at once. A record
+// may therefore be delivered twice (the backend took it but the ack was
+// lost), and replayed batches can arrive after newer live ones; consumers
+// order by the record timestamp and dedupe by (timestamp, body,
+// attributes). While the backend is known down, new batches go straight
+// to disk and only a backoff probe touches the network. On a graceful
+// stop with the backend down the records still in the SDK batch are
+// persisted too. The residual loss window is a hard crash (kill -9, power
+// cut) while records sit in the SDK's in-memory batch, bounded by the
+// batch interval, and any outage longer than the retention or the size cap.
 
 const (
 	logsQueueDirName = "logqueue"
@@ -374,13 +383,16 @@ func (q *logsQueue) readBatchFile(path string) (logBatch, error) {
 	return b, nil
 }
 
-// drain replays every queued batch through emit, removing each file once
-// its records have been re-emitted. emit hands records to the pipeline
-// (async via the BatchProcessor); if the backend is still down the
-// decorator re-persists them as a fresh file — so removing the source
-// file right after emit never loses data. Returns the number of records
-// replayed.
-func (q *logsQueue) drain(emit func([]persistedLogRecord)) int {
+// errBatchDiscarded is returned by a send function to say the batch will
+// never be accepted (the receiver refused the payload on its merits): the
+// file is removed without being counted as replayed.
+var errBatchDiscarded = errors.New("batch discarded")
+
+// drainAcked sends every queued batch in FIFO order and removes a file only
+// once send returned nil, which is the backend's acknowledgement. The first
+// failure stops the drain and leaves that file and every later one on disk.
+// Returns the number of records acknowledged.
+func (q *logsQueue) drainAcked(send func([]persistedLogRecord) error) (int, error) {
 	q.mu.Lock()
 	files := q.listLocked()
 	q.mu.Unlock()
@@ -390,6 +402,9 @@ func (q *logsQueue) drain(emit func([]persistedLogRecord)) int {
 		path := filepath.Join(q.dir, name)
 		b, err := q.readBatchFile(path)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue // evicted by the size cap or the age sweep meanwhile
+			}
 			// Corrupt or too-new file: drop it so it can't wedge the queue.
 			q.removeFile(name)
 			if q.logger != nil {
@@ -397,12 +412,18 @@ func (q *logsQueue) drain(emit func([]persistedLogRecord)) int {
 			}
 			continue
 		}
-		emit(b.Records)
-		replayed += len(b.Records)
-		agentstate.IncrementOTLPLogsReplayed(len(b.Records))
-		q.removeFile(name)
+		switch sendErr := send(b.Records); {
+		case sendErr == nil:
+			replayed += len(b.Records)
+			agentstate.IncrementOTLPLogsReplayed(len(b.Records))
+			q.removeFile(name)
+		case errors.Is(sendErr, errBatchDiscarded):
+			q.removeFile(name)
+		default:
+			return replayed, sendErr
+		}
 	}
-	return replayed
+	return replayed, nil
 }
 
 func (q *logsQueue) removeFile(name string) {
@@ -431,13 +452,17 @@ func (q *logsQueue) removeFile(name string) {
 }
 
 // persistentLogExporter decorates an sdklog.Exporter: on a failed
-// export it persists the event-log records to the dead-letter queue,
-// and it fires onRecovered the first time an export succeeds after a
-// failure (so the strategy can drain the queue).
+// export it persists the event-log records to the dead-letter queue.
+// It also tracks whether the backend is answering: while it is known down,
+// live batches go straight to disk without a network attempt (one probe per
+// probeInterval), so a batch is written once and stays there until the
+// replayer gets an acknowledged export for it. onRecovered fires the first
+// time an export succeeds after a failure.
 type persistentLogExporter struct {
 	wrapped sdklog.Exporter
 	queue   *logsQueue
 	logger  *logger.ModuleLogger
+	now     func() time.Time
 
 	// reporter takes the consumer's partial rejections out of the export
 	// error before it is classified. Without it a delivered batch the
@@ -451,6 +476,17 @@ type persistentLogExporter struct {
 	// starts its clock then rather than at the next record.
 	onQueued atomic.Pointer[func()]
 
+	lastSuccessNs atomic.Int64
+	lastFailureNs atomic.Int64
+	// probeInterval spaces the live exports attempted while the backend is
+	// known down.
+	probeInterval time.Duration
+	// stopping is set at shutdown: a known-down backend is not tried again
+	// and an attempt is bounded by drainTimeout, so the in-memory batch
+	// reaches the disk inside the shutdown budget.
+	stopping     atomic.Bool
+	drainTimeout atomic.Int64
+
 	// lastFailWarnNs throttles the export-failure warning. Log batches
 	// can flush every few seconds; one warning per interval is enough to
 	// surface a dying pipeline without flooding the journal (#821).
@@ -460,12 +496,18 @@ type persistentLogExporter struct {
 // logExportWarnInterval spaces the "OTLP logs export failed" warnings.
 const logExportWarnInterval = 30 * time.Second
 
+// logsProbeInterval is how often a live export is attempted while the
+// backend is known down.
+const logsProbeInterval = 5 * time.Second
+
 func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *logger.ModuleLogger) *persistentLogExporter {
 	e := &persistentLogExporter{
-		wrapped:  wrapped,
-		queue:    queue,
-		logger:   log,
-		reporter: newPartialSuccessReporter(log, "export"),
+		wrapped:       wrapped,
+		queue:         queue,
+		logger:        log,
+		now:           time.Now,
+		probeInterval: logsProbeInterval,
+		reporter:      newPartialSuccessReporter(log, "export"),
 	}
 	e.healthy.Store(true)
 	return e
@@ -479,23 +521,79 @@ func (e *persistentLogExporter) setOnQueued(fn func()) {
 	e.onQueued.Store(&fn)
 }
 
+// backendDown reports whether the last export failed and none succeeded since.
+func (e *persistentLogExporter) backendDown() bool { return !e.healthy.Load() }
+
+// beginShutdown makes every further export bounded by attempt and keeps a
+// known-down backend from being tried at all.
+func (e *persistentLogExporter) beginShutdown(attempt time.Duration) {
+	e.drainTimeout.Store(int64(attempt))
+	e.stopping.Store(true)
+}
+
+// claimAttempt lets one live export through per probeInterval after a failure.
+func (e *persistentLogExporter) claimAttempt() bool {
+	if e.stopping.Load() {
+		return false
+	}
+	now := e.now().UnixNano()
+	last := e.lastFailureNs.Load()
+	if now-last < int64(e.probeInterval) {
+		return false
+	}
+	return e.lastFailureNs.CompareAndSwap(last, now)
+}
+
+func (e *persistentLogExporter) markSuccess() {
+	agentstate.RecordExportSuccess("otlp/logs")
+	e.lastSuccessNs.Store(e.now().UnixNano())
+	// Export succeeded: if we were unhealthy, the backend just recovered.
+	if e.healthy.CompareAndSwap(false, true) {
+		if p := e.onRecovered.Load(); p != nil && *p != nil {
+			go (*p)()
+		}
+	}
+}
+
+func (e *persistentLogExporter) markFailure() {
+	e.lastFailureNs.Store(e.now().UnixNano())
+	e.healthy.Store(false)
+}
+
+// recordFailure counts a failed export and returns the classified error.
+func (e *persistentLogExporter) recordFailure(err error) error {
+	// Count BEFORE persisting: a rejected batch that lands in the
+	// dead-letter queue is still a failed export. In production a
+	// receiver rejecting every logs batch with 400 never moved any
+	// counter — the pipeline died silently behind queue/replay churn
+	// (#820, tracked as #821).
+	agentstate.IncrementOTLPExportErrors("logs")
+	classified := classifyExportError(err)
+	agentstate.IncrementExportSendFailed("otlp", exporterrors.Reason(classified))
+	agentstate.RecordExportFailure("otlp/logs", redactSensitive(err.Error()))
+	return classified
+}
+
 func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
+	if e.backendDown() && !e.claimAttempt() {
+		if !e.persist(records) {
+			return errLogsBackendDown
+		}
+		return nil
+	}
+	if d := time.Duration(e.drainTimeout.Load()); d > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, d)
+		defer cancel()
+	}
+
 	// A partial success is not a failed export: what came back with it is.
 	// Counting the refused records here and dropping them from the error
 	// is what keeps a delivered batch out of the dead-letter queue.
 	err := e.reporter.reportRejections(e.wrapped.Export(ctx, records))
 	if err != nil {
-		// Count BEFORE persisting: a rejected batch that lands in the
-		// dead-letter queue is still a failed export. In production a
-		// receiver rejecting every logs batch with 400 never moved any
-		// counter — the pipeline died silently behind queue/replay churn
-		// (#820, tracked as #821).
-		agentstate.IncrementOTLPExportErrors("logs")
-
-		classified := classifyExportError(err)
-		agentstate.IncrementExportSendFailed("otlp", exporterrors.Reason(classified))
-		agentstate.RecordExportFailure("otlp/logs", redactSensitive(err.Error()))
-		e.healthy.Store(false)
+		classified := e.recordFailure(err)
+		e.markFailure()
 
 		if !exporterrors.IsRetryable(classified) {
 			// The receiver refused the payload on its merits. Persisting
@@ -515,9 +613,6 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		}
 
 		e.persist(records)
-		if p := e.onQueued.Load(); p != nil && *p != nil {
-			(*p)()
-		}
 		e.warnThrottled(func(ev *zerolog.Event) {
 			ev.Str("error", redactSensitive(err.Error())).
 				Int("records", len(records)).
@@ -525,14 +620,30 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		})
 		return err
 	}
-	agentstate.RecordExportSuccess("otlp/logs")
-	// Export succeeded: if we were unhealthy, the backend just recovered.
-	if e.healthy.CompareAndSwap(false, true) {
-		if p := e.onRecovered.Load(); p != nil && *p != nil {
-			go (*p)()
-		}
-	}
+	e.markSuccess()
 	return nil
+}
+
+// errLogsBackendDown is returned when a batch could not be exported (the
+// backend is known down) and could not be written to disk either.
+var errLogsBackendDown = errors.New("otlp logs backend down and the queue did not take the batch")
+
+// exportDirect sends records to the backend and reports the outcome; the
+// queue replay uses it, so a failure is never persisted a second time. A
+// cancelled ctx (the agent is stopping) is not a verdict on the backend.
+func (e *persistentLogExporter) exportDirect(ctx context.Context, records []sdklog.Record) error {
+	err := e.reporter.reportRejections(e.wrapped.Export(ctx, records))
+	if err == nil {
+		e.markSuccess()
+		return nil
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return err
+	}
+	if classified := e.recordFailure(err); exporterrors.IsRetryable(classified) {
+		e.markFailure()
+	}
+	return err
 }
 
 // warnThrottled emits at most one warning per logExportWarnInterval, so
@@ -551,7 +662,8 @@ func (e *persistentLogExporter) warnThrottled(emit func(*zerolog.Event)) {
 
 // persist serialises the event-log records of a failed batch to the
 // queue. Entity events are skipped (serializeEventLog returns ok=false).
-func (e *persistentLogExporter) persist(records []sdklog.Record) {
+// Returns false when event logs were left unwritten.
+func (e *persistentLogExporter) persist(records []sdklog.Record) bool {
 	batch := make([]persistedLogRecord, 0, len(records))
 	for _, r := range records {
 		if pr, ok := serializeEventLog(r); ok {
@@ -559,11 +671,18 @@ func (e *persistentLogExporter) persist(records []sdklog.Record) {
 		}
 	}
 	if len(batch) == 0 {
-		return
+		return true
 	}
-	if err := e.queue.enqueue(batch); err != nil && e.logger != nil {
-		e.logger.Warn().Err(err).Int("records", len(batch)).Msg("OTLP logs queue: enqueue failed; records lost")
+	if err := e.queue.enqueue(batch); err != nil {
+		if e.logger != nil {
+			e.logger.Warn().Err(err).Int("records", len(batch)).Msg("OTLP logs queue: enqueue failed; records lost")
+		}
+		return false
 	}
+	if p := e.onQueued.Load(); p != nil && *p != nil {
+		(*p)()
+	}
+	return true
 }
 
 func (e *persistentLogExporter) ForceFlush(ctx context.Context) error {
@@ -574,31 +693,48 @@ func (e *persistentLogExporter) Shutdown(ctx context.Context) error {
 	return e.wrapped.Shutdown(ctx)
 }
 
-// logsReplayer drains the dead-letter queue back through the pipeline,
-// guarding against concurrent drains (boot replay vs recovery replay).
+// logsReplayer drains the dead-letter queue to the backend, one batch at a
+// time, deleting a file only after the export was acknowledged. Concurrent
+// drains (boot replay, recovery, retry loop) collapse to one.
 type logsReplayer struct {
 	queue    *logsQueue
 	pipeline *logsPipeline
+	exporter *persistentLogExporter
 	logger   *logger.ModuleLogger
 	running  atomic.Bool
+	// probing is true while the loop owns the retry clock for a non-empty
+	// queue; a batch queued meanwhile does not restart it.
+	probing atomic.Bool
 
-	wake chan struct{}
-	quit chan struct{}
-	wg   sync.WaitGroup
+	firstDelay    time.Duration
+	maxDelay      time.Duration
+	exportTimeout time.Duration
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wake   chan struct{}
+	quit   chan struct{}
+	wg     sync.WaitGroup
 }
 
 // The logs rail is the sparse one, and a queued batch used to wait for
 // the next record on that same rail to be retried: on a quiet host that
 // is minutes, long enough for a consumer to expire the whole host. These
-// bound the wait instead.
+// bound the wait instead: the first probe comes after replayFirstDelay and
+// the gap doubles up to replayMaxDelay for as long as the backend stays down.
 const (
-	replayFirstDelay = 15 * time.Second
+	replayFirstDelay = 5 * time.Second
 	replayMaxDelay   = 5 * time.Minute
+	// replayExportTimeout bounds one replayed batch.
+	replayExportTimeout = 10 * time.Second
 )
 
-func newLogsReplayer(q *logsQueue, p *logsPipeline, log *logger.ModuleLogger) *logsReplayer {
+func newLogsReplayer(q *logsQueue, p *logsPipeline, exp *persistentLogExporter, log *logger.ModuleLogger) *logsReplayer {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &logsReplayer{
-		queue: q, pipeline: p, logger: log,
+		queue: q, pipeline: p, exporter: exp, logger: log,
+		firstDelay: replayFirstDelay, maxDelay: replayMaxDelay, exportTimeout: replayExportTimeout,
+		ctx: ctx, cancel: cancel,
 		wake: make(chan struct{}, 1),
 		quit: make(chan struct{}),
 	}
@@ -629,14 +765,20 @@ func (r *logsReplayer) sweepLoop() {
 	}
 }
 
-// stop ends the retry loop. Safe to call once.
+// stop ends the retry loop and aborts a replay in flight. Safe to call once.
 func (r *logsReplayer) stop() {
+	r.cancel()
 	close(r.quit)
 	r.wg.Wait()
 }
 
-// kick asks for an early retry: something was just queued.
+// kick tells the loop a batch was just queued. It starts the retry clock if
+// it is idle; it never replays on the spot (the backend just failed) and it
+// never shortens a backoff already running.
 func (r *logsReplayer) kick() {
+	if r.probing.Load() {
+		return
+	}
 	select {
 	case r.wake <- struct{}{}:
 	default:
@@ -645,7 +787,12 @@ func (r *logsReplayer) kick() {
 
 func (r *logsReplayer) loop() {
 	defer r.wg.Done()
-	delay := replayFirstDelay
+	delay := r.firstDelay
+	if n, _ := r.queue.pending(); n > 0 {
+		r.probing.Store(true)
+	} else {
+		delay = r.maxDelay
+	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	for {
@@ -653,51 +800,90 @@ func (r *logsReplayer) loop() {
 		case <-r.quit:
 			return
 		case <-r.wake:
-			delay = replayFirstDelay
+			if !r.probing.CompareAndSwap(false, true) {
+				continue
+			}
+			delay = r.firstDelay
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(delay)
+			continue
 		case <-timer.C:
 		}
 
-		if n, waited := r.queue.pending(); n > 0 {
-			if r.logger != nil {
-				r.logger.Info().Int("records", n).Dur("waiting", waited).Msg("OTLP logs queue: retrying the queued records")
-			}
-			r.replay()
+		if n, waited := r.queue.pending(); n > 0 && r.logger != nil {
+			r.logger.Info().Int("records", n).Dur("waiting", waited).Msg("OTLP logs queue: retrying the queued records")
 		}
+		_, err := r.replay()
 
 		if n, _ := r.queue.pending(); n > 0 {
-			delay *= 2
-			if delay > replayMaxDelay {
-				delay = replayMaxDelay
+			r.probing.Store(true)
+			if err != nil {
+				delay *= 2
+				if delay > r.maxDelay {
+					delay = r.maxDelay
+				}
+			} else {
+				delay = r.firstDelay
 			}
 		} else {
-			delay = replayMaxDelay
-		}
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
+			r.probing.Store(false)
+			delay = r.maxDelay
 		}
 		timer.Reset(delay)
 	}
 }
 
-// replay drains the queue once. Concurrent calls collapse to one (the
-// recovery callback and the boot replay can race).
-func (r *logsReplayer) replay() {
+// replay drains the queue once and returns the records acknowledged by the
+// backend. On the first failed export it stops and returns the error: that
+// file and the ones after it stay on disk. Concurrent calls collapse to one
+// (the recovery callback and the boot replay can race).
+func (r *logsReplayer) replay() (int, error) {
 	if !r.running.CompareAndSwap(false, true) {
-		return
+		return 0, nil
 	}
 	defer r.running.Store(false)
 
 	r.queue.sweepAged()
-	n := r.queue.drain(func(records []persistedLogRecord) {
-		ctx := context.Background()
-		for _, pr := range records {
-			r.pipeline.replayEventLog(ctx, pr)
-		}
-	})
+	n, err := r.queue.drainAcked(r.sendBatch)
 	if n > 0 && r.logger != nil {
 		r.logger.Info().Int("records", n).Msg("OTLP logs queue: replayed records")
 	}
+	if err != nil && r.logger != nil && r.ctx.Err() == nil {
+		r.logger.Warn().Err(err).Int("replayed", n).
+			Msg("OTLP logs queue: replay stopped, the backend did not acknowledge; remaining batches stay on disk")
+	}
+	return n, err
+}
+
+// sendBatch exports one queued batch and returns nil only on acknowledgement.
+func (r *logsReplayer) sendBatch(prs []persistedLogRecord) error {
+	if err := r.ctx.Err(); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(r.ctx, r.exportTimeout)
+	defer cancel()
+	records := r.pipeline.rebuildEventLogs(ctx, prs)
+	if len(records) == 0 {
+		return nil
+	}
+	err := r.exporter.exportDirect(ctx, records)
+	if err == nil {
+		return nil
+	}
+	if r.ctx.Err() == nil && !exporterrors.IsRetryable(classifyExportError(err)) {
+		for range prs {
+			agentstate.IncrementOTLPDropped("receiver_rejected")
+		}
+		if r.logger != nil {
+			r.logger.Warn().Str("error", redactSensitive(err.Error())).Int("records", len(prs)).
+				Msg("OTLP logs queue: the receiver refused a queued batch; discarded")
+		}
+		return errBatchDiscarded
+	}
+	return err
 }
