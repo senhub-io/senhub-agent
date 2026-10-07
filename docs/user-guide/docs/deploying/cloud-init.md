@@ -234,7 +234,7 @@ sudo apt-get install -y --allow-downgrades "senhub-agent-oss=0.6.2*"
 sudo apt-mark hold senhub-agent-oss
 ```
 
-or `sudo dnf install -y senhub-agent-oss-0.6.2` (for a beta, the tilde form, `senhub-agent-oss-0.6.2~beta.2`) after
+or `sudo dnf install -y senhub-agent-oss-0.6.2` (for a beta, the tilde form, `senhub-agent-oss-0.6.2~beta.3`) after
 `dnf versionlock delete senhub-agent-oss`. The package keeps
 `/etc/senhub-agent`, the agent key and the licence, and restarts the
 service. For a fleet, drive this with Ansible (the
