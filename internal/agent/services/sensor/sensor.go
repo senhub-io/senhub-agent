@@ -281,6 +281,7 @@ func (s *sensor) SyncConfiguration() error {
 		for _, startedProbe := range s.startedProbes {
 			if startedProbe.ProbeId == probeId {
 				probeExists = true
+				startedProbe.ApplyGovernance(probeConfig)
 				break
 			}
 		}

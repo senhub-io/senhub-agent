@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,6 +42,10 @@ type ProbePoller struct {
 	// detector registry. Set in Start, invoked in Shutdown; nil while the
 	// probe is not started or when the probe exposes the NoOp fallback.
 	unregisterEntitySource func()
+	// governanceAttrs is read by the entity source at every Observe, so a
+	// governance-only change on reload reaches the next emission without
+	// restarting the probe.
+	governanceAttrs atomic.Pointer[map[string]any]
 }
 
 // defaultStrategyRouter provides default routing for probes that don't
@@ -156,6 +161,8 @@ func NewProbePoller(
 		moduleLogger: moduleLogger,
 	}
 
+	probePoller.ApplyGovernance(config)
+
 	// Two probes of one type share the module logger; the scheduler's retry
 	// and error lines must say which of them failed.
 	schedulerLogger := moduleLogger.With().Str("probe", probe.GetName()).Logger()
@@ -252,15 +259,36 @@ func (p *ProbePoller) registerEntitySource() {
 	if _, isNoOp := src.(types.NoOpEntitySource); isNoOp {
 		return
 	}
-	// The instance's governance rides on every entity it observes. A block
-	// that does not parse is reported by `config check`; here it is only
-	// skipped, so a typo in a label never stops a probe from collecting.
-	if gov, err := p.config.ParseGovernance(); err != nil {
+	p.unregisterEntitySource = entity.RegisterSource(entity.WithAttributesFunc(src, p.GovernanceAttributes))
+}
+
+// ApplyGovernance sets the governance attributes the probe's entities carry
+// from cfg. The sensor calls it on every reload for a probe whose identity
+// did not change, because governance is not part of that identity. A block
+// that does not parse is reported by `config check`; here it is only
+// dropped, so a typo in a label never stops a probe from collecting.
+func (p *ProbePoller) ApplyGovernance(cfg configuration.ProbeConfig) {
+	gov, err := cfg.ParseGovernance()
+	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("governance block ignored")
-	} else if !gov.IsZero() {
-		src = entity.WithAttributes(src, gov.Attributes())
+		p.governanceAttrs.Store(nil)
+		return
 	}
-	p.unregisterEntitySource = entity.RegisterSource(src)
+	attrs := gov.Attributes()
+	if len(attrs) == 0 {
+		p.governanceAttrs.Store(nil)
+		return
+	}
+	p.governanceAttrs.Store(&attrs)
+}
+
+// GovernanceAttributes returns the governance attributes currently stamped
+// on the probe's entities, nil when none are declared.
+func (p *ProbePoller) GovernanceAttributes() map[string]any {
+	if m := p.governanceAttrs.Load(); m != nil {
+		return *m
+	}
+	return nil
 }
 
 // collect gathers metrics from the probe and routes them to the appropriate

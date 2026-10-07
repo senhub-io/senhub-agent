@@ -10,17 +10,31 @@ func WithAttributes(src Source, attrs map[string]any) Source {
 	if src == nil || len(attrs) == 0 {
 		return src
 	}
+	return attributedSource{src: src, attrs: func() map[string]any { return attrs }}
+}
+
+// WithAttributesFunc is WithAttributes for attributes that change while the
+// source stays registered: attrs is read at every Observe, so a governance
+// edit reaches the next emission without replacing the source.
+func WithAttributesFunc(src Source, attrs func() map[string]any) Source {
+	if src == nil || attrs == nil {
+		return src
+	}
 	return attributedSource{src: src, attrs: attrs}
 }
 
 type attributedSource struct {
 	src   Source
-	attrs map[string]any
+	attrs func() map[string]any
 }
 
 func (a attributedSource) Observe() (Observation, bool) {
 	o, ok := a.src.Observe()
 	if !ok || len(o.Entities) == 0 {
+		return o, ok
+	}
+	attrs := a.attrs()
+	if len(attrs) == 0 {
 		return o, ok
 	}
 	entities := make([]Entity, len(o.Entities))
@@ -29,11 +43,11 @@ func (a attributedSource) Observe() (Observation, bool) {
 		if entities[i].Type == "host" {
 			continue
 		}
-		merged := make(map[string]any, len(entities[i].Attributes)+len(a.attrs))
+		merged := make(map[string]any, len(entities[i].Attributes)+len(attrs))
 		for k, v := range entities[i].Attributes {
 			merged[k] = v
 		}
-		for k, v := range a.attrs {
+		for k, v := range attrs {
 			if _, set := merged[k]; !set {
 				merged[k] = v
 			}
