@@ -23,7 +23,7 @@ func TestLogsQueue_HealthyEndpointWritesNothing(t *testing.T) {
 
 	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
 	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
-	replayer := newLogsReplayer(q, pipe, testModuleLogger(t))
+	replayer := newLogsReplayer(q, pipe, ple, testModuleLogger(t))
 
 	ctx := context.Background()
 	for i := 0; i < 20; i++ {
