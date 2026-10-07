@@ -476,6 +476,8 @@ type persistentLogExporter struct {
 	// starts its clock then rather than at the next record.
 	onQueued atomic.Pointer[func()]
 
+	// lostRecords counts event logs that could not be written to the queue.
+	lostRecords   atomic.Int64
 	lastSuccessNs atomic.Int64
 	lastFailureNs atomic.Int64
 	// probeInterval spaces the live exports attempted while the backend is
@@ -712,6 +714,7 @@ func (e *persistentLogExporter) persist(records []sdklog.Record) bool {
 		if e.logger != nil {
 			e.logger.Warn().Err(err).Int("records", len(batch)).Msg("OTLP logs queue: enqueue failed; records lost")
 		}
+		e.lostRecords.Add(int64(len(batch)))
 		return false
 	}
 	if p := e.onQueued.Load(); p != nil && *p != nil {
