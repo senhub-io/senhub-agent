@@ -239,7 +239,28 @@ func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporte
 
 // ── Logs ─────────────────────────────────────────────────────────────
 
+// logsQueueExportTimeout bounds one live logs export when the dead-letter
+// queue is on: a failed or timed-out batch must reach the disk within
+// seconds, not after the SDK's retry chain, since the batch is in memory
+// only until then (kill -9 loses at most the batch interval, 5 s by default, plus this timeout).
+const logsQueueExportTimeout = 4 * time.Second
+
+// logsExportConfig returns cfg adjusted for the logs exporter. With the
+// dead-letter queue on, the queue is the retry mechanism, so the SDK retry
+// is off and one export is capped at logsQueueExportTimeout.
+func logsExportConfig(cfg Config) Config {
+	if !cfg.Logs.Enabled || cfg.Persistence.logsQueuePath() == "" {
+		return cfg
+	}
+	cfg.Retry.Enabled = false
+	if cfg.Timeout <= 0 || cfg.Timeout > logsQueueExportTimeout {
+		cfg.Timeout = logsQueueExportTimeout
+	}
+	return cfg
+}
+
 func buildLogExporter(ctx context.Context, cfg Config) (sdklog.Exporter, error) {
+	cfg = logsExportConfig(cfg)
 	if cfg.Protocol == "http" {
 		return buildLogExporterHTTP(ctx, cfg)
 	}

@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -88,6 +89,9 @@ type OTLPSyncStrategy struct {
 	// logsQueue is the on-disk dead-letter queue for the logs signal,
 	// set when persistence is enabled and logs are emitted (#217).
 	logsQueue *logsQueue
+	// logExporter is the persistent decorator under the logs pipeline;
+	// Shutdown tells it to stop trying a down backend.
+	logExporter *persistentLogExporter
 
 	// entityPump emits entity/relation events on the OTLP log signal; the
 	// entity Detector goroutine produces them. Both nil/zero unless
@@ -389,6 +393,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 			s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
 			logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
 			s.exporters.log = logExp
+			s.logExporter = logExp
 		}
 	}
 
@@ -401,12 +406,12 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// Wire queue replay to the pipeline: drain at boot and whenever the
 	// backend recovers from a failed export.
 	if logExp != nil && s.logs != nil {
-		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
-		logExp.setOnRecovered(rp.replay)
+		rp := newLogsReplayer(s.logsQueue, s.logs, logExp, s.logger)
+		logExp.setOnRecovered(func() { _, _ = rp.replay() })
 		logExp.setOnQueued(rp.kick)
 		s.logsReplayer = rp
 		rp.start()
-		go rp.replay()
+		go func() { _, _ = rp.replay() }()
 	}
 
 	if s.cfg.Logs.Enabled && s.logs != nil {
@@ -769,6 +774,60 @@ func boundFlushContext(ctx context.Context) (context.Context, context.CancelFunc
 	return ctx, func() {}
 }
 
+// logsShutdownFlushBudget is the fixed share of the stop budget the logs
+// hand-off to the disk queue may use.
+const logsShutdownFlushBudget = time.Second
+
+// flushLogsToQueue stops what feeds and replays the logs pipeline, then
+// shuts the pipeline down with the exporter in stopping mode: a backend that
+// is down or unproven is not tried, so the SDK's pending batch is written to
+// the queue and replayed at the next boot. A no-op without the queue; the
+// ordinary drain below then handles the pipeline.
+func (s *OTLPSyncStrategy) flushLogsToQueue() {
+	if s.logs == nil || s.logExporter == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), logsShutdownFlushBudget)
+	defer cancel()
+	if s.logsReplayer != nil {
+		s.logsReplayer.stop()
+		s.logsReplayer = nil
+	}
+	if s.logsPump != nil {
+		s.logsPump.stop(ctx)
+		s.logsPump = nil
+	}
+	before, _ := s.logsQueue.pending()
+	lostBefore := s.logExporter.lostRecords.Load()
+	s.logExporter.beginShutdown(logsShutdownFlushBudget)
+	err := s.logs.shutdown(ctx)
+	after, _ := s.logsQueue.pending()
+	reportLogsHandoff(s.logger, after-before, s.logExporter.lostRecords.Load()-lostBefore, err)
+	s.logs = nil
+}
+
+// reportLogsHandoff says what became of the logs held in memory at stop.
+// The SDK reports its own deadline when the stop budget ends even though the
+// exporter already wrote everything to the queue, so that error alone is not
+// a loss: only records that could not be written are.
+func reportLogsHandoff(log *logger.ModuleLogger, kept int, lost int64, err error) {
+	if log == nil {
+		return
+	}
+	if lost > 0 {
+		log.Warn().Err(err).Int64("records_lost", lost).Int("records_kept", kept).
+			Msg("OTLP logs hand-off to the disk queue failed; some log records are lost")
+		return
+	}
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		log.Warn().Err(err).Int("records_kept", kept).Msg("OTLP logs pipeline shutdown failed")
+		return
+	}
+	if kept > 0 {
+		log.Info().Int("records", kept).Msgf("%d log records kept on disk for the next start", kept)
+	}
+}
+
 func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
@@ -778,6 +837,10 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	}
 	s.shutdown = true
 	s.started = false
+
+	// First of all, before anything slower can spend the stop budget: hand
+	// the log records still held in memory to the disk queue.
+	s.flushLogsToQueue()
 
 	// Stop the periodic ticker and wait for the goroutine to exit. We
 	// do this BEFORE the final push to avoid a race where both the
