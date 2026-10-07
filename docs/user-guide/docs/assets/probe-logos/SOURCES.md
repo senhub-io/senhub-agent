@@ -8,7 +8,7 @@ Simple Icons entries are CC0 paths of brand marks.
 | File | Probe page(s) | Mark of | Owner | Source | URL |
 |---|---|---|---|---|---|
 | `activemq.svg` | activemq | Apache ActiveMQ | Apache Software Foundation | Project site, official icon artwork (activemq_logo_icon.svg) | https://activemq.apache.org/assets/img/activemq_logo_icon.svg |
-| `ad_hybrid.svg` | ad_hybrid | Microsoft Azure | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
+| `ad_hybrid.svg` | ad_hybrid | Microsoft Entra Connect | Microsoft | Azure Architecture Icons pack V24 (02854-icon-service-Entra-Connect.svg) | https://learn.microsoft.com/en-us/azure/architecture/icons/ |
 | `apache.svg` | apache | Apache HTTP Server | Apache Software Foundation | Simple Icons (CC0) | https://cdn.simpleicons.org/apache |
 | `azure_container_apps.svg` | azure_container_apps, azure_container_app_jobs | Microsoft Azure | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
 | `cassandra.svg` | cassandra | Apache Cassandra | Apache Software Foundation | Project artwork as redistributed on Wikimedia Commons (Inkscape export; original upload not recorded) | n/a |
@@ -22,7 +22,7 @@ Simple Icons entries are CC0 paths of brand marks.
 | `envoy.svg` | envoy | Envoy | Cloud Native Computing Foundation | Project artwork as redistributed on Wikimedia Commons (Inkscape export; original upload not recorded) | n/a |
 | `exchange_online.svg` | exchange_online | Microsoft (corporate mark) | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
 | `haproxy.svg` | haproxy | HAProxy | HAProxy Technologies | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
-| `hyperv.svg` | hyperv, hyperv_ha | Microsoft Hyper-V | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
+| `hyperv.svg`, `hyperv_ha.svg` | hyperv, hyperv_ha | Windows (the Azure Architecture Icons pack V24 has no Hyper-V icon) | Microsoft | Same file as `windows-eventlog.svg`, Iconify collection | https://icon-sets.iconify.design/ |
 | `ibmi.svg` | ibmi | IBM | IBM | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
 | `influxdb.svg` | influxdb | InfluxDB | InfluxData | Simple Icons (CC0) | https://cdn.simpleicons.org/influxdb |
 | `jenkins.svg` | jenkins | Jenkins | Continuous Delivery Foundation | Simple Icons (CC0) | https://cdn.simpleicons.org/jenkins |
@@ -59,6 +59,8 @@ Simple Icons entries are CC0 paths of brand marks.
 | `windows-eventlog.svg` | windows-eventlog | Windows | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
 | `windows-services.svg` | windows-services | Windows | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
 | `zookeeper.svg` | zookeeper | Apache ZooKeeper | Apache Software Foundation | Project site logo (logo.svg) | https://zookeeper.apache.org/images/logo.svg |
+| `redfish.svg` | redfish | Redfish (DMTF) | DMTF | Official JPEG from redfish.dmtf.org (DMTF_Redfish_logo_R.75.jpg), downscaled and embedded in an SVG wrapper | https://redfish.dmtf.org/ |
+| `modbus.svg` | modbus | Modbus | Modbus Organization | Official PNG published by modbus.org (mb2009logo-1.png), downscaled and embedded in an SVG wrapper | https://www.modbus.org/ |
 
 ## Generic glyphs (no vendor mark)
 
@@ -91,6 +93,4 @@ Icons glyph (Apache-2.0, https://pictogrammers.com/library/mdi/).
 | `filetail.svg` | SenHub feature |
 | `event.svg` | SenHub feature |
 | `chrony.svg` | the chrony project publishes no logo |
-| `ntp.svg` | NTP.org publishes its logo only as a raster image |
-| `redfish.svg` | DMTF publishes the Redfish logo only as a JPEG |
-| `modbus.svg` | Modbus Organization publishes its logo only as a PNG |
+| `ntp.svg` | the only logo on ntp.org is the Network Time Foundation's 121x88 raster, too small and unreadable on a dark theme |

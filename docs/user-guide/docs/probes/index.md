@@ -190,7 +190,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="modbus/" class="probe-card" data-family="network" data-tier="free">
-    <img class="probe-logo probe-logo-mdi" src="../assets/probe-logos/modbus.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/modbus.svg" alt="" loading="lazy">
     <span class="probe-name">Modbus TCP</span>
     <span class="probe-tier-badge free">Free</span>
     <span class="probe-desc">Poll Modbus TCP Holding Registers on PLCs/sensors</span>
@@ -540,7 +540,7 @@ Each probe targets one class of system and turns its state into typed metrics an
   </a>
 
   <a href="redfish/" class="probe-card" data-family="hardware" data-tier="pro">
-    <img class="probe-logo probe-logo-mdi" src="../assets/probe-logos/redfish.svg" alt="" loading="lazy">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/redfish.svg" alt="" loading="lazy">
     <span class="probe-name">Redfish</span>
     <span class="probe-tier-badge pro">Pro</span>
     <span class="probe-desc">Power, thermal, fans, disks, network adapters via BMC</span>

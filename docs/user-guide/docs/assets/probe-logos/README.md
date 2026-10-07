@@ -28,7 +28,9 @@ generic ones.
 
 Where a project or vendor publishes its own SVG (ActiveMQ, ZooKeeper,
 NetScaler, Varnish), that file is used in preference to an icon set.
-`SOURCES.md` lists the source, the owner and the origin of every logo, and
+Two logos (`redfish.svg`, `modbus.svg`) exist only as official rasters; they are
+downscaled to 128 px high and embedded in an SVG wrapper, so the one-SVG-per-page
+convention holds. `SOURCES.md` lists the source, the owner and the origin of every logo, and
 names the probes that keep a generic glyph because no vector mark exists.
 
 Two are worth knowing about. `exchange_online.svg` carries the Microsoft
