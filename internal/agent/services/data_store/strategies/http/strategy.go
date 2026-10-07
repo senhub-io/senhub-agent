@@ -351,6 +351,8 @@ type SystemInfoResponse struct {
 	Hostname string `json:"hostname"`
 	Version  string `json:"version"`
 	Commit   string `json:"commit"`
+	// CoreCommit is the open-core commit the binary was built from.
+	CoreCommit string `json:"core_commit,omitempty"`
 	// InstanceID is the agent's service.instance.id, as its telemetry and
 	// its entity carry it. Not a credential: shown so an operator can find
 	// this agent in a metrics store or a topology graph.

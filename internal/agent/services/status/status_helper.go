@@ -149,6 +149,7 @@ type HTTPSystemInfoResponse struct {
 	Status     string `json:"status"`
 	Version    string `json:"version"`
 	Commit     string `json:"commit"`
+	CoreCommit string `json:"core_commit"`
 	InstanceID string `json:"instance_id"`
 	GoVersion  string `json:"go_version"`
 	OS         string `json:"os"`
@@ -203,6 +204,7 @@ func (h *StatusHelper) convertHTTPResponseToSystemStatus(httpResp HTTPSystemInfo
 		Agent: AgentInfo{
 			Version:    httpResp.Version,
 			Commit:     httpResp.Commit,
+			CoreCommit: httpResp.CoreCommit,
 			InstanceID: httpResp.InstanceID,
 			GoVersion:  httpResp.GoVersion,
 			OS:         httpResp.OS,
