@@ -561,9 +561,9 @@ removes anything. This is on by default on every install; nothing to set.
 
 While the collector is known to be down, new batches go straight to disk
 and the agent does not try the network for each one. It probes the
-collector on a retry clock that starts at 5 seconds and doubles up to 5
-minutes, and as soon as one export succeeds it sends the backlog, oldest
-first, stopping at the first batch the collector does not acknowledge.
+collector on a retry clock of 5, 10, 20, 40, 80 and 160 seconds, then every 5
+minutes; the clock starts again at 5 seconds after the next outage. As soon as
+one export succeeds it sends the backlog, oldest first, stopping at the first batch the collector does not acknowledge.
 
 | Situation | Event logs | Entity events | Metrics |
 |---|---|---|---|
