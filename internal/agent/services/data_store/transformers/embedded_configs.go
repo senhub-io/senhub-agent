@@ -16,32 +16,46 @@ func DefaultNagiosConfigYAML() ([]byte, error) {
 	return definitionFiles.ReadFile("definitions/nagios.yaml")
 }
 
-// Definitions returns every probe definition shipped in the embedded
-// definitions/ directory, keyed by probe name. Files that are not
-// probe definitions (nagios.yaml, lookups.yaml, shared/) are skipped.
-func Definitions() (map[string]ProbeDefinition, error) {
+// RangeDefinitions parses the embedded probe definitions one file at a
+// time and hands each to fn, so a caller that only distils an index out of
+// them never holds more than one parsed definition at once. Files that are
+// not probe definitions (nagios.yaml, lookups.yaml, shared/) are skipped.
+func RangeDefinitions(fn func(def ProbeDefinition)) error {
 	entries, err := fs.ReadDir(definitionFiles, "definitions")
 	if err != nil {
-		return nil, fmt.Errorf("listing embedded definitions: %w", err)
+		return fmt.Errorf("listing embedded definitions: %w", err)
 	}
 
-	defs := make(map[string]ProbeDefinition)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
 			continue
 		}
 		data, err := definitionFiles.ReadFile("definitions/" + entry.Name())
 		if err != nil {
-			return nil, fmt.Errorf("reading embedded definition %s: %w", entry.Name(), err)
+			return fmt.Errorf("reading embedded definition %s: %w", entry.Name(), err)
 		}
 		var def ProbeDefinition
 		if err := yaml.Unmarshal(data, &def); err != nil {
-			return nil, fmt.Errorf("parsing embedded definition %s: %w", entry.Name(), err)
+			return fmt.Errorf("parsing embedded definition %s: %w", entry.Name(), err)
 		}
 		if def.ProbeName == "" || len(def.Metrics) == 0 {
 			continue
 		}
+		fn(def)
+	}
+	return nil
+}
+
+// Definitions returns every probe definition shipped in the embedded
+// definitions/ directory, keyed by probe name. It holds them all at once;
+// a caller on the agent's running path uses RangeDefinitions instead.
+func Definitions() (map[string]ProbeDefinition, error) {
+	defs := make(map[string]ProbeDefinition)
+	err := RangeDefinitions(func(def ProbeDefinition) {
 		defs[def.ProbeName] = def
+	})
+	if err != nil {
+		return nil, err
 	}
 	return defs, nil
 }

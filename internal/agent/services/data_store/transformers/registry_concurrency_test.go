@@ -59,15 +59,15 @@ func TestTransformerRegistry_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-// TestTransformerRegistry_EagerDefinitions pins the #259 performance
-// contract: embedded definitions are parsed once at construction and
-// every GetProbeDefinition afterwards is an index hit — the OTLP
-// export path must never re-parse YAML per series.
-func TestTransformerRegistry_EagerDefinitions(t *testing.T) {
+// TestTransformerRegistry_LazyDefinitions pins the footprint contract:
+// nothing is parsed at construction, a definition is parsed by the first
+// lookup of its probe type only, and every later lookup is an index hit,
+// so the OTLP export path never re-parses YAML per series.
+func TestTransformerRegistry_LazyDefinitions(t *testing.T) {
 	registry := NewTransformerRegistry(logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
 
-	if len(registry.read().definitions) == 0 {
-		t.Fatal("registry constructed with no eager definitions")
+	if n := len(registry.read().definitions); n != 0 {
+		t.Fatalf("registry parsed %d definitions at construction, want 0", n)
 	}
 	first := registry.GetProbeDefinition("cpu")
 	second := registry.GetProbeDefinition("cpu")
@@ -75,7 +75,10 @@ func TestTransformerRegistry_EagerDefinitions(t *testing.T) {
 		t.Fatal("embedded cpu definition not found")
 	}
 	if first != second {
-		t.Error("GetProbeDefinition returned distinct instances — definition is re-parsed instead of served from the index")
+		t.Error("GetProbeDefinition returned distinct instances; definition is re-parsed instead of served from the index")
+	}
+	if n := len(registry.read().definitions); n != 1 {
+		t.Errorf("looking up one probe type left %d definitions parsed, want 1", n)
 	}
 
 	// Negative lookups are memoized too.
@@ -86,4 +89,38 @@ func TestTransformerRegistry_EagerDefinitions(t *testing.T) {
 	if !memoized {
 		t.Error("negative lookup was not memoized")
 	}
+}
+
+// TestTransformerRegistry_LazyServesEveryEmbeddedProbe guards the move
+// from eager to lazy loading: every shipped definition must still be
+// reachable by its probe name, through both the definition lookup and the
+// transformer built from it.
+func TestTransformerRegistry_LazyServesEveryEmbeddedProbe(t *testing.T) {
+	registry := NewTransformerRegistry(logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
+	defs, err := Definitions()
+	if err != nil {
+		t.Fatalf("Definitions(): %v", err)
+	}
+	for name, want := range defs {
+		got := registry.GetProbeDefinition(name)
+		if got == nil {
+			t.Errorf("GetProbeDefinition(%s) = nil for an embedded probe", name)
+			continue
+		}
+		if got.ProbeName != want.ProbeName || len(got.Metrics) != len(want.Metrics) {
+			t.Errorf("%s: lazily loaded definition differs from the embedded one", name)
+		}
+		if _, ok := mustTransformer(t, registry, name).(*DefinitionBasedTransformer); !ok {
+			t.Errorf("%s: LoadTransformer did not build a definition-based transformer", name)
+		}
+	}
+}
+
+func mustTransformer(t *testing.T, registry *TransformerRegistry, name string) MetricTransformer {
+	t.Helper()
+	tr, err := registry.LoadTransformer(name, "friendly")
+	if err != nil {
+		t.Fatalf("LoadTransformer(%s): %v", name, err)
+	}
+	return tr
 }

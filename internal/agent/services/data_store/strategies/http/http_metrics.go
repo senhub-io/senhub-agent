@@ -803,21 +803,20 @@ func (m *MetricsProcessor) GenerateExamples(probeName string, tags map[string]Ta
 // definitionLookups maps probe → metric name → lookup id for every
 // shipped definition. Parsed once: the definitions are embedded.
 var definitionLookups = sync.OnceValues(func() (map[string]map[string]string, error) {
-	defs, err := transformers.DefinitionMetrics()
-	if err != nil {
-		return nil, fmt.Errorf("reading probe definitions: %w", err)
-	}
-	out := make(map[string]map[string]string, len(defs))
-	for probe, metrics := range defs {
-		for _, d := range metrics {
+	out := make(map[string]map[string]string)
+	err := transformers.RangeDefinitions(func(def transformers.ProbeDefinition) {
+		for _, d := range def.Metrics {
 			if d.Lookup == "" {
 				continue
 			}
-			if out[probe] == nil {
-				out[probe] = make(map[string]string)
+			if out[def.ProbeName] == nil {
+				out[def.ProbeName] = make(map[string]string)
 			}
-			out[probe][d.Name] = d.Lookup
+			out[def.ProbeName][d.Name] = d.Lookup
 		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading probe definitions: %w", err)
 	}
 	return out, nil
 })
