@@ -93,6 +93,10 @@ type OTLPSyncStrategy struct {
 	// Shutdown tells it to stop trying a down backend.
 	logExporter *persistentLogExporter
 
+	// metricsHealth tracks the outcome of the metric pushes; Shutdown reads
+	// it to decide whether a last export is worth attempting.
+	metricsHealth metricsHealth
+
 	// entityPump emits entity/relation events on the OTLP log signal; the
 	// entity Detector goroutine produces them. Both nil/zero unless
 	// Entities.Enabled. entityDetectorCancel stops the detector,
@@ -643,9 +647,16 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		s.logger.Warn().Str("error", redacted).Dur("duration", exportDuration).Msg("OTLP metrics export failed")
 		agentstate.IncrementOTLPExportErrors("metrics")
 		agentstate.RecordExportFailure("otlp", redacted)
+		// A push aborted by Shutdown says nothing about the collector.
+		if parent.Err() == nil {
+			s.metricsHealth.markFailure()
+		}
 		return
 	}
 	span.SetStatus(codes.Ok, "")
+	if count > 0 {
+		s.metricsHealth.markSuccess()
+	}
 	if count > 0 {
 		agentstate.RecordExportSuccess("otlp")
 		s.logger.Debug().Int("records_pushed", count).Dur("duration", exportDuration).Msg("OTLP metrics exported")
@@ -924,14 +935,22 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// seconds, not the whole stop budget: the caller's deadline is the
 	// time the service manager gives the entire agent, and spending it
 	// here is what made systemctl stop take the best part of a minute.
+	backendDown := s.metricsHealth.backendDown(s.cfg.Metrics.Interval)
 	ctx, cancel := boundFlushContext(ctx)
 	defer cancel()
+	if backendDown {
+		// A collector known to be down is not tried again: closing the
+		// exporters gets the same short bound the logs hand-off uses.
+		var cancelShort context.CancelFunc
+		ctx, cancelShort = context.WithTimeout(ctx, logsShutdownFlushBudget)
+		defer cancelShort()
+	}
 	seriesBefore := s.store.size()
 
 	// Drain — final push of whatever sits in the store. Failures here
 	// are best-effort: we still want to close the exporters even if
 	// the last push fails (collector down, etc.).
-	if s.exporters.metric != nil && s.cfg.Metrics.Enabled {
+	if s.exporters.metric != nil && s.cfg.Metrics.Enabled && !backendDown {
 		s.pushDrain(ctx)
 	}
 
@@ -955,16 +974,11 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	}
 
 	err := s.exporters.shutdown(ctx)
-	if ctx.Err() != nil {
-		s.logger.Warn().
-			Dur("flush_budget", exporterShutdownBudget).
-			Int("series_in_store_before_flush", seriesBefore).
-			Int("series_in_store_after_flush", s.store.size()).
-			Msg("OTLP final flush did not finish within its budget: the collector did not answer in time, and what was still queued was dropped")
-	}
-	if err != nil {
-		s.logger.Warn().Err(err).Msg("OTLP strategy shutdown encountered errors")
+	if err = reportMetricsFinalFlush(s.logger, backendDown, seriesBefore, s.store.size(), exporterShutdownBudget, ctx.Err(), err); err != nil {
 		return err
+	}
+	if backendDown {
+		return nil
 	}
 
 	s.logger.Info().Int("series_in_store", s.store.size()).Msg("OTLP strategy shut down cleanly")

@@ -46,6 +46,10 @@ VERSION_EXACT=$(shell git describe --tags --exact-match --match '[0-9]*.[0-9]*.[
 VERSION_DEV=$(VERSION_LINE)-dev.$(shell git rev-list --count HEAD 2>/dev/null || echo 0).g$(shell git rev-parse --short=8 HEAD 2>/dev/null || echo unknown)
 VERSION=$(strip $(or $(VERSION_EXACT),$(and $(VERSION_LINE),$(VERSION_DEV)),$(shell git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null),0.0.0-dev))
 COMMIT_HASH=$(shell git describe --tags --always --long --dirty)
+# Commit of the open-core source being compiled. A build that checks the core
+# out elsewhere (the enterprise edition) passes that checkout's commit:
+# make build CORE_COMMIT=<short sha of the core checkout>
+CORE_COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 # Fourth field of the Windows file version (see build-windows): the commit
 # count, so a later build of the same X.Y.Z carries a higher file version.
 WINDOWS_BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
@@ -80,6 +84,7 @@ UPDATE_SIGNING_PUBKEY ?=
 LDFLAGS=-s -w \
     -X '${PACKAGE}.Version=$(VERSION)' \
     -X '${PACKAGE}.CommitHash=$(COMMIT_HASH)' \
+    -X '${PACKAGE}.CoreCommit=$(CORE_COMMIT)' \
     -X '${PACKAGE}.BuildTime=$(BUILD_TIME)' \
     -X '${PACKAGE}.GoVersion=$(GO_VERSION)' \
     -X '${PACKAGE}.Env=${ENV}' \
@@ -94,6 +99,7 @@ LDFLAGS=-s -w \
 version-info:
 		@echo "Version:    $(VERSION)"
 		@echo "Commit:     $(COMMIT_HASH)"
+		@echo "Core:       $(CORE_COMMIT)"
 		@echo "Build time: $(BUILD_TIME)"
 		@echo "Go version: $(GO_VERSION)"
 		@echo "Env:        $(ENV)"

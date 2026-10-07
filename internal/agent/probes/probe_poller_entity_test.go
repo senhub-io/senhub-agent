@@ -113,3 +113,48 @@ func TestProbePollerSkipsNoOpEntitySource(t *testing.T) {
 			"the poller must skip the NoOp fallback", got, before)
 	}
 }
+
+type oneEntitySource struct{}
+
+func (oneEntitySource) Observe() (entity.Observation, bool) {
+	return entity.Observation{Entities: []entity.Entity{
+		{Type: "db", ID: map[string]any{"db.instance.id": "a"}},
+	}}, true
+}
+
+// A governance-only edit must reach the next emission of the same running
+// probe: the registered source reads the poller's attributes at Observe time.
+func TestProbePollerGovernanceUpdateReachesNextObservation(t *testing.T) {
+	poller := newEntityWirePoller(t, oneEntitySource{})
+	withGov := func(crit string) configuration.ProbeConfig {
+		cfg := poller.config
+		cfg.Governance = map[string]interface{}{"criticality": crit}
+		return cfg
+	}
+	poller.ApplyGovernance(withGov("low"))
+	src := entity.WithAttributesFunc(poller.Probe.EntitySource(), poller.GovernanceAttributes)
+
+	first, _ := src.Observe()
+	before := first.Entities[0].Attributes
+	if len(before) == 0 {
+		t.Fatal("governance attributes missing on the first observation")
+	}
+
+	poller.ApplyGovernance(withGov("critical"))
+	second, _ := src.Observe()
+	after := second.Entities[0].Attributes
+	if len(after) != len(before) {
+		t.Fatalf("attribute set changed shape: before=%v after=%v", before, after)
+	}
+	for k, v := range after {
+		if before[k] == v {
+			t.Errorf("attribute %s unchanged after the reload: %v", k, v)
+		}
+	}
+
+	poller.ApplyGovernance(configuration.ProbeConfig{})
+	third, _ := src.Observe()
+	if len(third.Entities[0].Attributes) != 0 {
+		t.Errorf("removing governance must clear the attributes, got %v", third.Entities[0].Attributes)
+	}
+}
