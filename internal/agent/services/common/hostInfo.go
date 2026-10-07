@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -64,6 +65,48 @@ func normalizeHostname(raw string) string {
 	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(raw), "."))
 }
 
+// hostInfoTTL bounds how stale the cached host.Info() can be: a hostname
+// change is picked up within this window.
+const hostInfoTTL = 60 * time.Second
+
+// hostInfoCache memoizes host.Info(), which enumerates every process on
+// Windows and was called on each collection and entity reconcile.
+type hostInfoCache struct {
+	mu      sync.Mutex
+	fetch   func() (*host.InfoStat, error)
+	now     func() time.Time
+	ttl     time.Duration
+	value   *host.InfoStat
+	fetched time.Time
+}
+
+func (c *hostInfoCache) get() (*host.InfoStat, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.value != nil && c.now().Sub(c.fetched) < c.ttl {
+		cp := *c.value
+		return &cp, nil
+	}
+	info, err := c.fetch()
+	if err != nil {
+		return nil, err
+	}
+	c.value = info
+	c.fetched = c.now()
+	cp := *info
+	return &cp, nil
+}
+
+var sharedHostInfo = &hostInfoCache{
+	fetch: host.Info,
+	now:   time.Now,
+	ttl:   hostInfoTTL,
+}
+
+func cachedHostInfo() (*host.InfoStat, error) {
+	return sharedHostInfo.get()
+}
+
 // HostNameKey is the global_tags key that overrides the host's name.
 const HostNameKey = "host.name"
 
@@ -112,7 +155,7 @@ func canonicalHostname(raw string) string {
 // a hostname change is picked up; the static CPU/hardware nameplate is cached
 // (see getHostNameplate) so the per-heartbeat reconcile stays cheap.
 func GetHostIdentity() (HostIdentity, error) {
-	hostInfo, err := host.Info()
+	hostInfo, err := cachedHostInfo()
 	if err != nil {
 		return HostIdentity{}, fmt.Errorf("error getting host info: %w", err)
 	}
@@ -333,7 +376,7 @@ func chassisName(code int, virt string) string {
 // Only non-empty values are returned; host.id is authoritative (same gopsutil
 // HostID as the host entity identity).
 func GetHostResourceAttributes() (map[string]string, error) {
-	hostInfo, err := host.Info()
+	hostInfo, err := cachedHostInfo()
 	if err != nil {
 		return nil, fmt.Errorf("error getting host info: %w", err)
 	}
@@ -357,7 +400,7 @@ func GetHostResourceAttributes() (map[string]string, error) {
 
 // GetHostTags returns common tags based on host information
 func GetHostTags() ([]tags.Tag, error) {
-	hostInfo, err := host.Info()
+	hostInfo, err := cachedHostInfo()
 	if err != nil {
 		return nil, fmt.Errorf("error getting host info: %w", err)
 	}
@@ -373,7 +416,7 @@ func GetHostTags() ([]tags.Tag, error) {
 
 // IsWindows returns true if the OS is Windows
 func IsWindows() (bool, error) {
-	hostInfo, err := host.Info()
+	hostInfo, err := cachedHostInfo()
 	if err != nil {
 		return false, fmt.Errorf("error getting host info: %w", err)
 	}
@@ -382,7 +425,7 @@ func IsWindows() (bool, error) {
 
 // IsLinux returns true if the OS is Linux
 func IsLinux() (bool, error) {
-	hostInfo, err := host.Info()
+	hostInfo, err := cachedHostInfo()
 	if err != nil {
 		return false, fmt.Errorf("error getting host info: %w", err)
 	}
