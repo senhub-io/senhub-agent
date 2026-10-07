@@ -655,3 +655,32 @@ func setRootConfigVersion(path string, v int) error {
 	})
 	return err
 }
+
+// harmoniseLayout splits a monolithic configuration into the multi-file
+// layout and returns the path of the pre-split backup ("" when nothing was
+// split). A config newer than this agent understands is left alone, and a
+// failure is logged and non-fatal: the seal repeats the attempt and reports it.
+func harmoniseLayout(configPath string, log *logger.ModuleLogger) string {
+	if v, err := readRootConfigVersion(configPath); err == nil && v > CurrentConfigVersion {
+		return ""
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil || !HasMonolithicMarkers(raw) {
+		return ""
+	}
+	res, err := MigrateToMultiFile(configPath, log)
+	if err != nil {
+		if log != nil {
+			log.Warn().Err(err).Msg("Splitting the monolithic config failed; continuing with the current layout")
+		}
+		return ""
+	}
+	if res.AlreadyMultiFile {
+		return ""
+	}
+	if log != nil {
+		log.Info().Str("backup", res.BackupPath).Int("strategies", res.StrategyCount).
+			Msg("Harmonised monolithic config to multi-file layout")
+	}
+	return res.BackupPath
+}
