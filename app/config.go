@@ -576,6 +576,15 @@ func checkConfig(configPath string) checkOutcome {
 				o.path, strings.Join(o.probes, " and "))
 			warnings++
 		}
+		for _, o := range configuration.SNMPPollTargetOverlaps(config.Probes) {
+			quoted := make([]string, len(o.Probes))
+			for i, name := range o.Probes {
+				quoted[i] = fmt.Sprintf("%q", name)
+			}
+			fmt.Printf("  [WARN] %s is polled by snmp_poll probes %s with the same credential: the device is read once per probe and its metrics are duplicated; poll it from a single probe\n",
+				o.Target, strings.Join(quoted, " and "))
+			warnings++
+		}
 	}
 
 	// Storage
