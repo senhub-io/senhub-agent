@@ -80,8 +80,12 @@ The two are now separate.
 http:
   port: 8080
   endpoints: ["prtg", "web"]
-  admin_key: "${secret:agent.admin_key}"
+  admin_key: "${secret:http.admin_key}"
 ```
+
+The agent mints this key itself at first start and stores it as the
+secret `http.admin_key`. If you set your own, any secret name works
+(`secret set http.admin_key`, then reference it as above).
 
 | Surface | Opened by | What it serves |
 |---|---|---|
