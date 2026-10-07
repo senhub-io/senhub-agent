@@ -409,6 +409,13 @@ semantic-convention vocabulary. An annotation a consumer adds beside them is a
 comment, never a correction: once the agent asserts an owner, the way to change
 it is this configuration.
 
+!!! note "These keys are a fallback"
+
+    The `depends_on_*` keys and `interval` below are read only when the
+    configuration has no top-level `entities:` block. When that block
+    exists, even with `enabled: false`, it wins and these keys are ignored.
+    See [Entities Section](configuration.md#entities-section).
+
 `depends_on_enabled` turns on outbound dependency discovery — the edges that
 say "this service talks to that endpoint". It is off by default because mapping
 a host's connections can be privacy-sensitive.
@@ -429,7 +436,7 @@ a host's connections can be privacy-sensitive.
 before it appears as a `depends_on` edge: a peer endpoint must be seen on
 this many emission scrapes before its edge is emitted, which keeps a
 single stray socket out of the graph. The scrapes need not run
-consecutively. A peer keeps its progress across up to fifteen scrapes
+consecutively: a peer that is seen, missed, then seen again keeps its hits. A peer keeps its progress across up to fifteen scrapes
 without being seen, because a short-lived flow is precisely one that is
 missing from most samples: a reverse proxy that opens a request to a
 backend and closes it may appear in four samples out of fifteen and
@@ -438,13 +445,14 @@ soonest a dependency can surface is `depends_on_debounce x interval` (so
 the default `3 x 60s` is about three minutes); lower it for a more
 responsive graph, raise it to demand more evidence.
 
-The tolerance is symmetric once the edge exists: an edge that took
-`depends_on_debounce` scrapes to appear survives the same number of missed
-ones before it is given up. The wider memory above applies only while a
-peer is still earning its edge. A
+The same window applies once the edge exists: an edge survives up to fifteen
+consecutive scrapes without the peer being seen (or `depends_on_debounce`, if
+larger) before it is given up, and then has to earn its way back. A
 long-lived connection the socket table happens to miss once is not a dependency
 that ended, and retracting it on a single miss would reach a topology consumer
 as an edge flapping in and out.
+
+Loopback peers on an OS dynamic port, the client side of a one-shot local exchange, are ignored whatever these settings say (since 0.6.2).
 
 `redact_attributes` lists descriptive attribute keys the agent removes
 from every entity event before export — useful when the entity stream
