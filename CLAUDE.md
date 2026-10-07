@@ -26,28 +26,6 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 
 ALWAYS use the `release-manager` agent + PR merge to `master`. Direct push to `master` does NOT trigger `master-release.yml`. See memory `feedback_release_workflow.md`.
 
-## Architecture in one diagram
-
-```
-Probes (internal/agent/probes/*)
-   │
-   ▼
-DataStore (internal/agent/services/data_store/)
-   │  ├── buffer.go (cloud batching)
-   │  ├── otelmapper/ (neutral OTel mapper, shared by Prom + OTLP)
-   │  └── transformers/ (per-probe YAML, format v3)
-   ▼
-Strategies (internal/agent/services/data_store/strategies/)
-   ├── senhub/     → cloud push (intake.senhub.io)
-   ├── otlp/       → OTLP gRPC push
-   ├── http/       → pull formats (Prometheus, Nagios, PRTG, Web UI)
-   ├── zabbix/     → native Zabbix active agent (push 10051, passive 10050)
-   ├── prtg/       → PRTG cache format converter
-   └── event/      → syslog / winevents flows
-```
-
-OTel-first design principle: every internal metric name follows OTel semantic conventions; sink-specific formats are derived in the mapper, not in probe code. Full principle in memory `feedback_otel_first.md`.
-
 ## Configuration
 
 Two layouts supported, auto-detected:
@@ -58,16 +36,6 @@ Two layouts supported, auto-detected:
 Value substitution: `${env:VAR}`, `${env:VAR:-default}`, `${file:/path}`, `${file:/path:-default}`, `$$` → literal `$`.
 
 `config show` CLI: `agent config show [--raw|--resolved|--redact]`.
-
-## Current development
-
-Active areas:
-
-- Sprint A — Multi-file config + env/file substitution (branch `feat/conf-multifile-envsubst`).
-- Zabbix output — native active agent, shipping and advertised in 0.6.0.
-- Prometheus integration — Phase 2 in progress on `feat/prometheus-otel-mapping`.
-
-See `docs/developer-guide/current-development.md` for the live roadmap.
 
 ## License system
 
@@ -86,25 +54,3 @@ Full reference: `docs/LICENSE-SYSTEM.md`.
 | Editing documentation | `.claude/rules/docs.md` |
 
 Rules under `.claude/rules/` auto-load when their `paths:` glob matches the files you're touching.
-
-
-## Producing branded documents (PDF, decks, client-facing docs)
-
-Message from the ADV session (2026-08-19), on Matthieu's request. If you are
-asked to produce **any client-facing or branded document** (documentation
-handout, proposal, one-pager, A4 PDF, presentation export), do NOT improvise a
-design. The complete Sensor Factory document identity lives in:
-
-- **`~/Documents/GitHub/adv-commerce/design/CHARTE-DOCUMENTS.md`** — read it
-  FIRST; every rule in it was paid for by a correction from Matthieu (no
-  dashes, registre soutenu, funnel structure, minimum font sizes, schema
-  conventions, page variety, no invented references).
-- `~/Documents/GitHub/adv-commerce/design/assets/` — executable templates:
-  `gabarit-css.html` (full CSS, colors #00102e/#fcbe36/#a9781a, embedded
-  Roboto + Roboto Slab), `logo.svg`, `build.py` (assembles + enforces the
-  writing rules), `verifier.sh` (page-height measurement, headless-Chrome PDF,
-  PNG renders to REVIEW visually), and three example SVG schemas.
-
-Reference renders: the ATMB proposal and the Interparking RFI response
-(`Sensor Factory - Reponse RFI-DSI-2025-001 - Interparking France.pdf` on the
-Desktop, artifact https://claude.ai/code/artifact/94924710-4ced-4c71-93b6-5837d135ade6).
