@@ -1,0 +1,55 @@
+---
+- name: Tools for the repository key
+  ansible.builtin.apt:
+    name: [ca-certificates, gnupg]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Repository key, trusted only once its fingerprint matches
+  block:
+    - name: Download the key
+      ansible.builtin.get_url:
+        url: "{{ senhub_agent_repo_key_url }}"
+        dest: /etc/apt/keyrings/senhub.asc
+        mode: "0644"
+
+    - name: Read the key fingerprint
+      ansible.builtin.command: gpg --show-keys --with-colons --with-fingerprint /etc/apt/keyrings/senhub.asc
+      register: _senhub_agent_key
+      changed_when: false
+
+    - name: Compare with the expected fingerprint
+      ansible.builtin.assert:
+        that: >-
+          ('fpr:::::::::' ~ (senhub_agent_repo_key_fingerprint | replace(' ', '') | upper) ~ ':')
+          in _senhub_agent_key.stdout_lines
+        fail_msg: "The key at {{ senhub_agent_repo_key_url }} does not carry the fingerprint {{ senhub_agent_repo_key_fingerprint }}."
+        quiet: true
+  rescue:
+    - name: Drop the key that did not match
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/senhub.asc
+        state: absent
+
+    - name: Stop
+      ansible.builtin.fail:
+        msg: "The repository key was refused: its fingerprint is not {{ senhub_agent_repo_key_fingerprint }}."
+
+- name: Repository definition
+  ansible.builtin.template:
+    src: senhub.list.j2
+    dest: /etc/apt/sources.list.d/senhub.list
+    mode: "0644"
+  register: _senhub_agent_list
+
+- name: Refresh the package index
+  ansible.builtin.apt:
+    update_cache: true
+  when: _senhub_agent_list is changed

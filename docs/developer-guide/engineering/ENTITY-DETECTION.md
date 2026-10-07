@@ -141,7 +141,10 @@ fact belongs on an entity.
    `network.interface.addresses` values (`10.10.0.60/24`).
 5. **SNMP topology MIBs** (with #156) → ports as `network.interface` entities
    (`has_interface`), link adjacency as port-to-port `connected_to`, routing as
-   `network.route` + `has_route`, interface IPs as `network.address` entities
+   `network.route` + `has_route` (and `next_hop_via` to the gateway's
+   `network.address`: public routable next hop only, see the Toise entity
+   contract, routes section; a private gateway shared by unrelated switches
+   would merge them), interface IPs as `network.address` entities
    (`bound_to`). **Host↔device join:** the host's `next_hop_via` and the
    device's `bound_to` reference the **same** `network.address {ip}` node, so a
    host's gateway resolves to the polled device's interface — the two topology

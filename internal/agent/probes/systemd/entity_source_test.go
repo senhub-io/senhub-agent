@@ -6,7 +6,7 @@ import "testing"
 
 func TestEntitySource_IdentityIsHostIDBased(t *testing.T) {
 	src := newEntitySource("web-01")
-	src.setUnits([]string{"nginx.service"}, "machine-abc")
+	src.setUnits([]string{"nginx.service"}, "machine-abc", "")
 
 	obs, ok := src.Observe()
 	if !ok {
@@ -25,7 +25,7 @@ func TestEntitySource_IdentityIsHostIDBased(t *testing.T) {
 
 func TestEntitySource_NoHostIDNoEntity(t *testing.T) {
 	src := newEntitySource("web-01")
-	src.setUnits([]string{"nginx.service"}, "")
+	src.setUnits([]string{"nginx.service"}, "", "")
 
 	obs, ok := src.Observe()
 	if !ok {

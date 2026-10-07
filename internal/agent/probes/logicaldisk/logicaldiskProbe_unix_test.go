@@ -68,3 +68,25 @@ func TestShouldCollectMount_Blocklist(t *testing.T) {
 		})
 	}
 }
+
+func TestRebaseToHostRoot(t *testing.T) {
+	in := []mountInfo{
+		{device: "overlay", mountpoint: "/", fstype: "overlay"},
+		{device: "/dev/sda1", mountpoint: "/host", fstype: "ext4"},
+		{device: "/dev/sdb1", mountpoint: "/host/var/lib", fstype: "xfs"},
+		{device: "/dev/sda1", mountpoint: "/etc/hosts", fstype: "ext4"},
+		{device: "x", mountpoint: "/hostile", fstype: "ext4"},
+		{device: "/dev/sda1", mountpoint: "/host/var/lib/kubelet/pods/a/volume-subpaths/b", fstype: "ext4"},
+		{device: "/dev/sda1", mountpoint: "/host/run/k3s/containerd/x", fstype: "ext4"},
+	}
+	got := rebaseToHostRoot(in, "/host")
+	if len(got) != 2 {
+		t.Fatalf("want 2 mounts, got %d: %+v", len(got), got)
+	}
+	if got[0].mountpoint != "/" || got[0].statPath != "/host" {
+		t.Errorf("root mount = %+v", got[0])
+	}
+	if got[1].mountpoint != "/var/lib" || got[1].statPath != "/host/var/lib" || got[1].device != "/dev/sdb1" {
+		t.Errorf("submount = %+v", got[1])
+	}
+}
