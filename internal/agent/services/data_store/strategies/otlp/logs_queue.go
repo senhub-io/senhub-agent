@@ -709,6 +709,8 @@ type logsReplayer struct {
 	firstDelay    time.Duration
 	maxDelay      time.Duration
 	exportTimeout time.Duration
+	// after is the retry clock; tests replace it.
+	after func(time.Duration) <-chan time.Time
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -734,7 +736,8 @@ func newLogsReplayer(q *logsQueue, p *logsPipeline, exp *persistentLogExporter, 
 	return &logsReplayer{
 		queue: q, pipeline: p, exporter: exp, logger: log,
 		firstDelay: replayFirstDelay, maxDelay: replayMaxDelay, exportTimeout: replayExportTimeout,
-		ctx: ctx, cancel: cancel,
+		after: time.After,
+		ctx:   ctx, cancel: cancel,
 		wake: make(chan struct{}, 1),
 		quit: make(chan struct{}),
 	}
@@ -785,6 +788,19 @@ func (r *logsReplayer) kick() {
 	}
 }
 
+// nextReplayDelay is the retry gap after an attempt that left batches on
+// disk: doubled after a failure up to max, back to first otherwise.
+func nextReplayDelay(cur, first, max time.Duration, failed bool) time.Duration {
+	if !failed {
+		return first
+	}
+	cur *= 2
+	if cur > max {
+		return max
+	}
+	return cur
+}
+
 func (r *logsReplayer) loop() {
 	defer r.wg.Done()
 	delay := r.firstDelay
@@ -793,8 +809,9 @@ func (r *logsReplayer) loop() {
 	} else {
 		delay = r.maxDelay
 	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
+	// tick is armed once per state change, so a stray wake never pushes
+	// the pending probe back.
+	tick := r.after(delay)
 	for {
 		select {
 		case <-r.quit:
@@ -804,15 +821,9 @@ func (r *logsReplayer) loop() {
 				continue
 			}
 			delay = r.firstDelay
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			timer.Reset(delay)
+			tick = r.after(delay)
 			continue
-		case <-timer.C:
+		case <-tick:
 		}
 
 		if n, waited := r.queue.pending(); n > 0 && r.logger != nil {
@@ -822,19 +833,12 @@ func (r *logsReplayer) loop() {
 
 		if n, _ := r.queue.pending(); n > 0 {
 			r.probing.Store(true)
-			if err != nil {
-				delay *= 2
-				if delay > r.maxDelay {
-					delay = r.maxDelay
-				}
-			} else {
-				delay = r.firstDelay
-			}
+			delay = nextReplayDelay(delay, r.firstDelay, r.maxDelay, err != nil)
 		} else {
 			r.probing.Store(false)
 			delay = r.maxDelay
 		}
-		timer.Reset(delay)
+		tick = r.after(delay)
 	}
 }
 
