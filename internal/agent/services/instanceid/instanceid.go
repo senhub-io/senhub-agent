@@ -121,6 +121,12 @@ func Write(dir, instanceID, agentKey string) error {
 	if IsRandomKey(agentKey) {
 		mode = modeShared
 	}
+	target := filepath.Join(dir, FileName)
+	if current, err := os.ReadFile(target); err == nil && string(current) == instanceID+"\n" {
+		if info, statErr := os.Stat(target); statErr == nil && info.Mode().Perm() == mode {
+			return nil
+		}
+	}
 	tmp, err := os.CreateTemp(dir, FileName+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("creating temporary instance id file in %s: %w", dir, err)
@@ -140,7 +146,6 @@ func Write(dir, instanceID, agentKey string) error {
 		cleanup()
 		return fmt.Errorf("setting mode %v on instance id file: %w", mode, err)
 	}
-	target := filepath.Join(dir, FileName)
 	if err := os.Rename(tmpName, target); err != nil {
 		cleanup()
 		return fmt.Errorf("publishing %s: %w", target, err)

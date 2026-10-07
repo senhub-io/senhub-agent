@@ -424,7 +424,7 @@ collect:
 		return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
 	}
 
-	s.logger.Info().
+	s.logger.Debug().
 		Int("events_sent", len(events)).
 		Int64("batch_size_bytes", currentBatchSize).
 		Msg("Successfully synced events")
@@ -477,7 +477,7 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 		return exporterrors.Transport("intake did not accept the batch", statusErr)
 	}
 
-	s.logger.Info().
+	s.logger.Debug().
 		Int("status_code", response.StatusCode).
 		Int("event_count", len(events)).
 		Msg("Server confirmed receipt of events")
