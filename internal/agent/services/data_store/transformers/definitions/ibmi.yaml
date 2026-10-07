@@ -43,7 +43,7 @@ metrics:
     display_name: "CPU Used"
     unit: "%"
     category: "cpu"
-    description: "Percentage of CPU used over the elapsed interval"
+    description: "Percentage of the partition's CPU used since the previous collection of this probe; absent on the first cycle after the agent or the bridge starts"
     otel:
       name: senhub.ibmi.cpu.utilization
       unit: "1"
