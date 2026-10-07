@@ -203,6 +203,21 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 		return true
 	}
 
+	if !reflect.DeepEqual(old.Governance, new.Governance) {
+		lc.logger.Debug().Msg("Governance configuration changed")
+		return true
+	}
+
+	if !reflect.DeepEqual(old.Entities, new.Entities) {
+		lc.logger.Debug().Msg("Entities configuration changed")
+		return true
+	}
+
+	if !reflect.DeepEqual(old.Agent.GlobalTags, new.Agent.GlobalTags) {
+		lc.logger.Debug().Msg("Global tags changed")
+		return true
+	}
+
 	// Auto-update config changes don't require reload of probes/storage
 	// but we could handle them separately if needed
 
