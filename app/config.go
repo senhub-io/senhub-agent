@@ -23,6 +23,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/entitydetect"
+	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
@@ -656,6 +657,8 @@ func checkConfig(configPath string) checkOutcome {
 		reportEntityEmission(config.Entities, config.Storage)
 	}
 
+	errorCount += reportAgentGovernanceProblems(config.Governance)
+
 	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
 
 	// Binary writability. What is correct differs per platform: on Linux the
@@ -929,6 +932,26 @@ func reportGovernanceProblems(p configuration.ProbeConfig) (errors int) {
 	}
 	if _, err := p.ParseGovernance(); err != nil {
 		fmt.Printf("         [ERROR] Probe %q: governance: %v\n", p.Name, err)
+		errors++
+	}
+	return errors
+}
+
+// reportAgentGovernanceProblems applies to the agent-level governance
+// block the same two checks a probe's block gets.
+func reportAgentGovernanceProblems(block map[string]interface{}) (errors int) {
+	if block == nil {
+		return 0
+	}
+	for _, problem := range probes.CheckGovernance(block) {
+		fmt.Printf("  [ERROR] Agent governance: %s: %s\n", problem.Key, problem.Message)
+		errors++
+	}
+	if errors > 0 {
+		return errors
+	}
+	if _, err := governance.Parse(block); err != nil {
+		fmt.Printf("  [ERROR] Agent governance: %v\n", err)
 		errors++
 	}
 	return errors

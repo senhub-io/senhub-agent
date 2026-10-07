@@ -113,7 +113,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 			localConfiguration.GetEntitiesConfig(),
 			localConfiguration.GetConfiguration().StorageConfig,
 			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
-		),
+		).WithAgentGovernance(localConfiguration.GetGovernance()),
 		logger,
 	)
 
@@ -133,7 +133,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 			localConfiguration.GetEntitiesConfig(),
 			localConfiguration.GetConfiguration().StorageConfig,
 			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
-		)); err != nil {
+		).WithAgentGovernance(localConfiguration.GetGovernance())); err != nil {
 			logger.Warn().Err(err).Msg("Entity detection could not follow the configuration change")
 		}
 	})

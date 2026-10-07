@@ -96,6 +96,7 @@ Breaking Changes or Changes below.
 ### Configuration
 
 - **Probes from environment variables.** `SENHUB_PROBE_<NAME>_TYPE=<type>` declares a probe and `SENHUB_PROBE_<NAME>_<PARAM>=value` sets its parameters, typed from the probe's schema, with `__` for nested keys and `_FILE` to read a secret from a file. The agent reads them itself, so containers, systemd units, Helm and Podman share one rule, and they adjust the probes of a mounted configuration too (the environment wins, key by key). A mistake stops the load and names the variable. `config show` lists the variables the probes were read from, and never prints a secret read from the environment. See [Configuring probes from environment variables](../configuration.md#configuring-probes-from-environment-variables).
+- **Agent governance in the console.** The Settings page edits the governance of the host (owner, criticality, lifecycle, location, labels) with the same fields as a probe, and writes it to the top-level `governance:` block of `agent.yaml`; the running agent follows the change without a restart, and `config check` validates the block. A block set from `${env:}` or `${file:}` references is shown read-only. See [Settings](../web-interface.md#settings).
 - **Probe SDK: the state directory.** `probesdk/state` gives a probe the directory where the agent keeps what must survive a restart (`state.Dir()`, `state.Path(name)`), so a probe that keeps a bookmark can default it beside the agent's identity.
 
 ### Command line and status
