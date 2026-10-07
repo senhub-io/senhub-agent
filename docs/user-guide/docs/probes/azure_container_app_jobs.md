@@ -1,4 +1,4 @@
-<img src="../../assets/probe-logos/azure_container_apps.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
+<img src="../../assets/probe-logos/azure_container_apps.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
 # Azure Container App Jobs
 
