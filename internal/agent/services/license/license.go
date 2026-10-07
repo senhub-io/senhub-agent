@@ -254,6 +254,10 @@ var freeTierProbes = map[string]bool{
 	"snmp_trap":        true,
 	"tcp_dial":         true,
 	"otlp_receiver":    true,
+	// event: HTTP receiver for custom JSON events, forwarded as OTLP
+	// logs. Its code lives in the open core and is registered in the OSS
+	// build, so it is universal collection like otlp_receiver.
+	"event": true,
 	// prometheus_scrape: pull-side twin of otlp_receiver — scraping
 	// exporters and appliances is universal collection, not a vendor
 	// integration.

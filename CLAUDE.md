@@ -39,7 +39,7 @@ Value substitution: `${env:VAR}`, `${env:VAR:-default}`, `${file:/path}`, `${fil
 
 ## License system
 
-Tiers: **Free** (the universal collection tier — OS/host, logs, network checks, and the application/database/broker probes; everything except the paid set), **Pro** (17 deep vendor / HA / cloud / active-check probes: `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `azure_container_apps`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`), **Enterprise** (wildcard). The authoritative split is `freeTierProbes` / `paidProbes` in `internal/agent/services/license/` (`license.go` + `probe_catalog.go`).
+Tiers: **Free** (the universal collection tier — OS/host, logs, network checks, and the application/database/broker probes; everything except the paid set), **Pro** (17 deep vendor / HA / cloud / active-check probes: `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `azure_container_apps`, `azure_container_app_jobs`, `ping_gateway`, `ping_webapp`, `load_webapp`), **Enterprise** (wildcard). The authoritative split is `freeTierProbes` / `paidProbes` in `internal/agent/services/license/` (`license.go` + `probe_catalog.go`).
 Full reference: `docs/LICENSE-SYSTEM.md`.
 
 ## Where to look for what
