@@ -1,7 +1,7 @@
 <img src="../../assets/probe-logos/event.svg" alt="" class="probe-page-logo probe-page-logo-mdi">
 
-!!! warning
-    **License: Pro** - Requires a Pro or Enterprise license.
+!!! info
+    **License: Free** — part of the universal collection tier.
 
 # Event Probe
 
