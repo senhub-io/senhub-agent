@@ -371,6 +371,11 @@ func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalC
 // nests maps the same way. It runs in the loader so every reader of a
 // configuration gets the same shapes, not only the running agent.
 func normalizeYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
+	if config.Governance != nil {
+		if converted, ok := convertMapTypes(config.Governance).(map[string]interface{}); ok {
+			config.Governance = converted
+		}
+	}
 	for i, storage := range config.Storage {
 		if converted, ok := convertMapTypes(storage.Params).(map[string]interface{}); ok {
 			config.Storage[i].Params = converted
