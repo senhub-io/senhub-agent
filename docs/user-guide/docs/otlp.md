@@ -568,7 +568,7 @@ one export succeeds it sends the backlog, oldest first, stopping at the first ba
 | Situation | Event logs | Entity events | Metrics |
 |---|---|---|---|
 | Collector down, agent running | Kept on disk, sent in order once the collector answers | Re-sent at the next heartbeat | Last value of each series kept in memory |
-| Agent stopped normally (restart, upgrade) during an outage | The records still in memory are written to disk during the stop, then sent at the next boot with the rest | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
+| Agent stopped normally (restart, upgrade) during an outage | The records still in memory are written to disk in the first second of the stop, without trying a collector that is down, then sent at the next boot with the rest | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
 | Agent restarted, collector still down | Kept on disk, probed on the retry clock | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
 | Agent killed or host crashed (kill -9, power cut) | Batches already on disk are kept; records not yet on disk are lost: at most the batch interval (5 s by default) plus one export timeout (4 s), so under 10 s of logs | Re-sent | Same as above |
 | Outage longer than 24 hours or past 128 MiB | The oldest batches are dropped and counted | Re-sent | Same as above |

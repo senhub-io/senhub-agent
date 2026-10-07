@@ -773,6 +773,36 @@ func boundFlushContext(ctx context.Context) (context.Context, context.CancelFunc
 	return ctx, func() {}
 }
 
+// logsShutdownFlushBudget is the fixed share of the stop budget the logs
+// hand-off to the disk queue may use.
+const logsShutdownFlushBudget = time.Second
+
+// flushLogsToQueue stops what feeds and replays the logs pipeline, then
+// shuts the pipeline down with the exporter in stopping mode: a backend that
+// is down or unproven is not tried, so the SDK's pending batch is written to
+// the queue and replayed at the next boot. A no-op without the queue; the
+// ordinary drain below then handles the pipeline.
+func (s *OTLPSyncStrategy) flushLogsToQueue() {
+	if s.logs == nil || s.logExporter == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), logsShutdownFlushBudget)
+	defer cancel()
+	if s.logsReplayer != nil {
+		s.logsReplayer.stop()
+		s.logsReplayer = nil
+	}
+	if s.logsPump != nil {
+		s.logsPump.stop(ctx)
+		s.logsPump = nil
+	}
+	s.logExporter.beginShutdown(logsShutdownFlushBudget)
+	if err := s.logs.shutdown(ctx); err != nil {
+		s.logger.Warn().Err(err).Msg("OTLP logs hand-off to the disk queue did not finish within its budget")
+	}
+	s.logs = nil
+}
+
 func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
@@ -782,6 +812,10 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	}
 	s.shutdown = true
 	s.started = false
+
+	// First of all, before anything slower can spend the stop budget: hand
+	// the log records still held in memory to the disk queue.
+	s.flushLogsToQueue()
 
 	// Stop the periodic ticker and wait for the goroutine to exit. We
 	// do this BEFORE the final push to avoid a race where both the
@@ -874,14 +908,6 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// the last push fails (collector down, etc.).
 	if s.exporters.metric != nil && s.cfg.Metrics.Enabled {
 		s.pushDrain(ctx)
-	}
-
-	// A backend that is down must not eat the whole budget: the log
-	// exporter writes a known-down batch straight to disk and bounds an
-	// attempt to half the budget, so the SDK's in-memory batch lands in
-	// the queue and replays at the next boot.
-	if s.logExporter != nil {
-		s.logExporter.beginShutdown(exporterShutdownBudget / 2)
 	}
 
 	// Drain the log pipeline before shutting down the gRPC exporter.
