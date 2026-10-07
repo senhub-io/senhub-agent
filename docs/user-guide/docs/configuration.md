@@ -109,6 +109,8 @@ entities:
 | `depends_on.debounce` | `3` | How many consecutive scrapes a peer must persist before it counts as a dependency rather than a passing connection. The delay before one appears is `debounce × interval` |
 | `depends_on.exclude_cidrs` | none | Peer ranges to leave out entirely |
 
+A loopback peer on an OS dynamic port (the client side of a one-shot local exchange) is never mapped as a dependency, whatever these settings say.
+
 **Why this is not under an output.** What a host *is* does not depend on
 where the description is shipped. The detector feeds a channel that
 several outputs can read at once, so the decision to describe the host
