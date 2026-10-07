@@ -37,6 +37,10 @@ type LocalConfigurationData struct {
 	// falls back to whatever an OTLP output declares, which is where
 	// this used to live (#932).
 	Entities *EntitiesConfig `yaml:"entities,omitempty"`
+	// Governance is the operator-asserted ownership, criticality,
+	// location and lifecycle of the host this agent runs on. It is kept
+	// raw: the governance package owns the shape and the closed sets.
+	Governance map[string]interface{} `yaml:"governance,omitempty"`
 }
 
 // EntitiesConfig is the operator's control over entity detection.
@@ -280,6 +284,16 @@ func (lc *LocalConfiguration) GetEntitiesConfig() *EntitiesConfig {
 		return nil
 	}
 	return d.Entities
+}
+
+// GetGovernance returns the agent-level governance block as loaded
+// (references substituted), or nil when the configuration has none.
+func (lc *LocalConfiguration) GetGovernance() map[string]interface{} {
+	d := lc.snapshot()
+	if d == nil {
+		return nil
+	}
+	return d.Governance
 }
 
 // GetConfiguration returns the configuration data in ConfigurationData format
