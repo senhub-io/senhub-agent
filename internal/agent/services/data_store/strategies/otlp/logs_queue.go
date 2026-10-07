@@ -481,11 +481,14 @@ type persistentLogExporter struct {
 	// probeInterval spaces the live exports attempted while the backend is
 	// known down.
 	probeInterval time.Duration
-	// stopping is set at shutdown: a known-down backend is not tried again
-	// and an attempt is bounded by drainTimeout, so the in-memory batch
-	// reaches the disk inside the shutdown budget.
+	// stopping is set at shutdown: unless the backend answered recently it
+	// is not tried at all, the batch goes to disk, and an attempt that is
+	// made is bounded by drainTimeout. An export already in flight is
+	// cancelled through stopCh and persisted.
 	stopping     atomic.Bool
 	drainTimeout atomic.Int64
+	stopCh       chan struct{}
+	stopOnce     sync.Once
 
 	// lastFailWarnNs throttles the export-failure warning. Log batches
 	// can flush every few seconds; one warning per interval is enough to
@@ -506,6 +509,7 @@ func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *lo
 		queue:         queue,
 		logger:        log,
 		now:           time.Now,
+		stopCh:        make(chan struct{}),
 		probeInterval: logsProbeInterval,
 		reporter:      newPartialSuccessReporter(log, "export"),
 	}
@@ -529,6 +533,20 @@ func (e *persistentLogExporter) backendDown() bool { return !e.healthy.Load() }
 func (e *persistentLogExporter) beginShutdown(attempt time.Duration) {
 	e.drainTimeout.Store(int64(attempt))
 	e.stopping.Store(true)
+	e.stopOnce.Do(func() { close(e.stopCh) })
+}
+
+// logsRecentSuccess is how recent the last acknowledged export must be for
+// the backend to count as known-up at shutdown.
+const logsRecentSuccess = 30 * time.Second
+
+// knownUp reports whether the backend answered recently.
+func (e *persistentLogExporter) knownUp() bool {
+	if !e.healthy.Load() {
+		return false
+	}
+	last := e.lastSuccessNs.Load()
+	return last != 0 && e.now().UnixNano()-last <= int64(logsRecentSuccess)
 }
 
 // claimAttempt lets one live export through per probeInterval after a failure.
@@ -575,16 +593,33 @@ func (e *persistentLogExporter) recordFailure(err error) error {
 }
 
 func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
-	if e.backendDown() && !e.claimAttempt() {
-		if !e.persist(records) {
-			return errLogsBackendDown
+	if e.stopping.Load() {
+		if !e.knownUp() {
+			if !e.persist(records) {
+				return errLogsBackendDown
+			}
+			return nil
 		}
-		return nil
-	}
-	if d := time.Duration(e.drainTimeout.Load()); d > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, d)
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(e.drainTimeout.Load()))
 		defer cancel()
+	} else {
+		if e.backendDown() && !e.claimAttempt() {
+			if !e.persist(records) {
+				return errLogsBackendDown
+			}
+			return nil
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		go func() {
+			select {
+			case <-e.stopCh:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
 	}
 
 	// A partial success is not a failed export: what came back with it is.
