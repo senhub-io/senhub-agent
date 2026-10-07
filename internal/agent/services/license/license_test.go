@@ -50,7 +50,7 @@ func TestFreeTierProbes(t *testing.T) {
 		{"MSSQL probe is free tier", "mssql", true},
 		{"MongoDB probe is free tier", "mongodb", true},
 		{"Kafka probe is free tier", "kafka", true},
-		{"Event probe is NOT free tier", "event", false},
+		{"Event probe is free tier", "event", true},
 		{"NATS probe is free tier", "nats", true},
 		{"ZooKeeper probe is free tier", "zookeeper", true},
 		{"MySQL probe IS free tier", "mysql", true},
@@ -148,6 +148,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"os_updates":           false,
 		"swarm":                false,
 		"ntp":                  false,
+		"event":                false,
 	}
 
 	for _, probe := range probes {
@@ -756,7 +757,7 @@ func TestJWTValidator_IsProbeAuthorized(t *testing.T) {
 		{"Free tier: cpu", "cpu", true},
 		{"Free tier: memory", "memory", true},
 		{"Free tier (#298): syslog", "syslog", true},
-		{"Unauthorized: event", "event", false},
+		{"Unauthorized: ping_gateway", "ping_gateway", false},
 		{"Unauthorized: veeam", "veeam", false},
 	}
 

@@ -44,8 +44,6 @@ var paidProbes = map[string]bool{
 	// The same subscription's jobs: the verdict, the duration and the
 	// output of each execution, read once it has finished.
 	"azure_container_app_jobs": true,
-	// Bespoke commercial collector: third-party apps push events over HTTP.
-	"event": true,
 	// Active / synthetic checks.
 	"ping_gateway": true,
 	"ping_webapp":  true,

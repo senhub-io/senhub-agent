@@ -556,7 +556,7 @@ Without a license the agent runs every Free-tier probe: the whole universal coll
 
 Contact SenHub support (support@senhub.io) to request a license token. Specify the probe types you need:
 
-- **Pro license**: adds the deep vendor, HA, cloud and active-check integrations — `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `azure_container_apps`, `event`, `ping_gateway`, `ping_webapp`, `load_webapp`
+- **Pro license**: adds the deep vendor, HA, cloud and active-check integrations — `citrix`, `netscaler`, `veeam`, `redfish`, `ibmi`, `powerstore`, `mssql_ha`, `oracle_enterprise`, `hyperv_ha`, `vsphere_ha`, `ad_hybrid`, `exchange_online`, `azure_container_apps`, `ping_gateway`, `ping_webapp`, `load_webapp`
 - **Enterprise license**: all current and future probe types
 
 ### Where the license is stored
@@ -642,7 +642,7 @@ Free tier — the whole universal collection tier, abbreviated above; see the
 | Tier | Available Probes |
 |------|-----------------|
 | **Free** | The universal collection tier — OS/host, logs, network checks, application, database and broker probes. See the [probe catalog](probes/index.md) for the tier badge on each probe. |
-| **Pro** | All free + citrix, netscaler, veeam, redfish, ibmi, powerstore, mssql_ha, oracle_enterprise, hyperv_ha, vsphere_ha, ad_hybrid, exchange_online, azure_container_apps, event, ping_gateway, ping_webapp, load_webapp |
+| **Pro** | All free + citrix, netscaler, veeam, redfish, ibmi, powerstore, mssql_ha, oracle_enterprise, hyperv_ha, vsphere_ha, ad_hybrid, exchange_online, azure_container_apps, ping_gateway, ping_webapp, load_webapp |
 | **Enterprise** | All probes (including future additions) |
 
 ### Grace Period
