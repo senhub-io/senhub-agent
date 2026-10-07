@@ -106,10 +106,10 @@ entities:
 | `enabled` | see below | Runs the detector. Off means nothing is produced and nothing is polled |
 | `interval` | `5m` | Heartbeat: everything is re-described each interval, and the interval travels with each event as the consumer's staleness hint |
 | `depends_on.enabled` | `false` | Also map this host's outbound dependencies. Off by default because which peers a host talks to can be sensitive |
-| `depends_on.debounce` | `3` | How many consecutive scrapes a peer must persist before it counts as a dependency rather than a passing connection. The delay before one appears is `debounce × interval` |
+| `depends_on.debounce` | `3` | How many scrapes must have seen a peer before it counts as a dependency rather than a passing connection. The scrapes need not be consecutive: a peer keeps its progress across up to 15 scrapes without being seen (or `debounce`, if larger). The delay before one appears is at least `debounce × interval` |
 | `depends_on.exclude_cidrs` | none | Peer ranges to leave out entirely |
 
-A loopback peer on an OS dynamic port (the client side of a one-shot local exchange) is never mapped as a dependency, whatever these settings say.
+A loopback peer on an OS dynamic port (the client side of a one-shot local exchange) is never mapped as a dependency, whatever these settings say (since 0.6.2).
 
 **Why this is not under an output.** What a host *is* does not depend on
 where the description is shipped. The detector feeds a channel that
@@ -120,6 +120,8 @@ is made once, here, rather than inherited from one output's settings.
 to whatever an OTLP output declares under `signals.entities`, which is
 where this setting used to live — so an existing install keeps behaving
 exactly as it did. An agent with neither produces nothing.
+
+**Precedence of the `depends_on` settings.** `enabled`, `debounce`, `exclude_cidrs` and the interval are read from this block whenever it exists, and only from it. The OTLP keys `signals.entities.depends_on_enabled`, `depends_on_debounce`, `depends_on_exclude_cidrs` and `interval` are a fallback, read only when there is no `entities:` block at all. A block that is present masks them, even with `enabled: false`: the OTLP keys are then ignored. The interval is `5m` unless the block names one.
 
 **It has a cost**, which is why it is not on for everyone: every source
 is polled each interval, and the dependency scanner reads the host's
