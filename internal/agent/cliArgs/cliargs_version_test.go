@@ -47,3 +47,21 @@ func captureVersion(t *testing.T, buildTime string) string {
 	_ = r.Close()
 	return string(buf[:n])
 }
+
+// A build that compiles the core from another checkout names that
+// checkout's commit; the open-core build without one prints no extra line.
+func TestPrintVersionCarriesTheCoreCommit(t *testing.T) {
+	saveV, saveC, saveCore := Version, CommitHash, CoreCommit
+	t.Cleanup(func() { Version, CommitHash, CoreCommit = saveV, saveC, saveCore })
+	Version, CommitHash = "0.6.2", "deadbee"
+
+	CoreCommit = "0123456789ab"
+	if out := captureVersion(t, ""); !strings.Contains(out, "Core commit: 0123456789ab") {
+		t.Errorf("version output %q lacks the core commit", out)
+	}
+
+	CoreCommit = ""
+	if out := captureVersion(t, ""); strings.Contains(out, "Core commit") {
+		t.Errorf("version output %q must not print an empty core commit", out)
+	}
+}
