@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -117,5 +119,54 @@ func TestAnUnsetAdministrationKeyMatchesNothing(t *testing.T) {
 		if a.ValidateAdminKey(provided) {
 			t.Errorf("%q was accepted as an administration key", provided)
 		}
+	}
+}
+
+// A key added by a configuration reload while the agent runs must open the
+// console without a service restart, and a rotated key replaces the old one.
+func TestAnAdminKeyAddedByAReloadIsServed(t *testing.T) {
+	port := reservePort(t)
+	strategy := newServerTestStrategy(t, port)
+	params := func(key string) map[string]interface{} {
+		p := map[string]interface{}{
+			"port": port, "bind_address": "127.0.0.1",
+			"endpoints": []interface{}{"prtg", "web"},
+		}
+		if key != "" {
+			p["admin_key"] = key
+		}
+		return p
+	}
+	// Enabling the endpoints restarts the server, which is what brings it up.
+	if err := strategy.UpdateConfiguration(params("")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = strategy.Shutdown(context.Background()) })
+
+	get := func(key string) int {
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/web/%s/dashboard", port, key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := get("new-key"); code != http.StatusNotFound {
+		t.Fatalf("before the key: %d, want 404", code)
+	}
+	if err := strategy.UpdateConfiguration(params("new-key")); err != nil {
+		t.Fatalf("reload with a key: %v", err)
+	}
+	if code := get("new-key"); code != http.StatusOK {
+		t.Fatalf("after the reload: %d, want 200", code)
+	}
+	if err := strategy.UpdateConfiguration(params("rotated")); err != nil {
+		t.Fatal(err)
+	}
+	if code := get("new-key"); code != http.StatusUnauthorized {
+		t.Errorf("old key after rotation: %d, want 401", code)
+	}
+	if code := get("rotated"); code != http.StatusOK {
+		t.Errorf("rotated key: %d, want 200", code)
 	}
 }
