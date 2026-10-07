@@ -22,8 +22,14 @@ http:
   port: 8080
   bind_address: "127.0.0.1"
   endpoints: ["prtg", "web", "nagios", "prometheus"]
-  admin_key: "${secret:agent.admin_key}"
+  admin_key: "${secret:http.admin_key}"
 ```
+
+The agent mints the key at first start and seals it in the operating
+system's secret store under the name `http.admin_key`; the `http`
+fragment holds only the reference shown above. If you set your own key,
+any secret name works. For instance, `senhub-agent secret set
+http.admin_key`, then `admin_key: "${secret:http.admin_key}"`.
 
 ## The key that reads and the key that changes
 
@@ -50,6 +56,8 @@ carries the old key. Take a fresh one from the shortcut or from
 404 rather than asking for a key nobody has. An agent installed to feed
 PRTG or Nagios therefore exposes nothing that can change it. Your
 pollers are unaffected either way. If the key is added while the agent runs, the agent serves the console from the next configuration reload.
+
+**Rotating or removing the key.** After a configuration reload, the new key is served at once, with no restart: the old key now answers 401. If you remove `admin_key` and reload, the administration routes are no longer served and answer 404, exactly as on an agent that never had a key. Readers holding the agent key are unaffected in both cases.
 
 The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{admin-key}/docs`.
 
