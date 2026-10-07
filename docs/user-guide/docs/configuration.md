@@ -666,7 +666,7 @@ The agent can check for new versions and optionally install them automatically.
 auto_update:
   enabled: false          # Automatic installation of new versions
   include_beta: false     # Include beta versions in update checks
-  url: "https://eu-west-1.intake.senhub.io/releases"
+  url: "https://eu-west-1.intake.senhub.io/"
 ```
 
 | Parameter | Default | Description |
