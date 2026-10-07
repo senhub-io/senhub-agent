@@ -26,10 +26,17 @@ redistribute brand marks for identification: Simple Icons, the Iconify
 `logos` and `devicon` collections, and Material Design Icons for the
 generic ones.
 
+Where a project or vendor publishes its own SVG (ActiveMQ, ZooKeeper,
+NetScaler, Varnish), that file is used in preference to an icon set.
+Two logos (`redfish.svg`, `modbus.svg`) exist only as official rasters; they are
+downscaled to 128 px high and embedded in an SVG wrapper, so the one-SVG-per-page
+convention holds. `SOURCES.md` lists the source, the owner and the origin of every logo, and
+names the probes that keep a generic glyph because no vector mark exists.
+
 Two are worth knowing about. `exchange_online.svg` carries the Microsoft
 corporate mark because no Exchange product mark exists in any of those
-sets. `swarm.svg` exists for the catalogue card on the probes index; the
-Swarm page itself carries no header logo.
+sets. `swarm.svg` is the Docker mark, shown on the Swarm page and on its
+catalogue card.
 
 ## Replacing one
 
