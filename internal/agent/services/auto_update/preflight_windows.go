@@ -2,11 +2,19 @@
 
 package auto_update
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+)
 
 // pathWritable reports whether path is writable. The Windows service runs
 // as LocalSystem so this is a best-effort guard against a read-only
-// install location rather than a non-root-service check.
+// install location rather than a non-root-service check. For a file it
+// probes the directory: Windows refuses to open a running executable for
+// writing, yet the self-update renames it and writes the new binary beside
+// it (selfupdate.CommitBinary), which only needs the directory to be
+// writable. Opening the file made config check warn on every ZIP install
+// whose service was running.
 func pathWritable(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -22,10 +30,5 @@ func pathWritable(path string) bool {
 		_ = os.Remove(name)
 		return true
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
-	if err != nil {
-		return false
-	}
-	_ = f.Close()
-	return true
+	return pathWritable(filepath.Dir(path))
 }
