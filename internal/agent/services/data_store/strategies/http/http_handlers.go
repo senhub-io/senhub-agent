@@ -129,6 +129,8 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/web/{agentkey}/outputs/{name}", h.adminOnly(h.HandleWebOutputEditor)).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.adminOnly(h.HandleConfigSettingsGet)).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.adminOnly(h.HandleConfigSettingsSet)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/governance", h.adminOnly(h.HandleConfigGovernanceGet)).Methods("GET")
+		router.HandleFunc("/api/{agentkey}/config/governance", h.adminOnly(h.HandleConfigGovernanceSet)).Methods("PUT")
 		router.HandleFunc("/api/{agentkey}/catalog/probes", h.adminOnly(h.HandleCatalogProbes)).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/probes", h.adminOnly(h.HandleProbeCreate)).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.adminOnly(h.HandleProbeUpdate)).Methods("PUT")
@@ -264,6 +266,14 @@ func (h *HTTPHandlers) HandleConfigSettingsGet(w http.ResponseWriter, r *http.Re
 
 func (h *HTTPHandlers) HandleConfigSettingsSet(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleConfigSettingsSet(w, r)
+}
+
+func (h *HTTPHandlers) HandleConfigGovernanceGet(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleConfigGovernanceGet(w, r)
+}
+
+func (h *HTTPHandlers) HandleConfigGovernanceSet(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleConfigGovernanceSet(w, r)
 }
 
 func (h *HTTPHandlers) HandleCatalogProbes(w http.ResponseWriter, r *http.Request) {

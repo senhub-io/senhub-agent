@@ -51,6 +51,8 @@ func TestTheReadKeyDoesNotOpenTheAdministrationSurface(t *testing.T) {
 		{"GET", "/api/read-key/debug/logs"},
 		{"POST", "/api/read-key/config/test"},
 		{"GET", "/api/read-key/config/probes"},
+		{"GET", "/api/read-key/config/governance"},
+		{"PUT", "/api/read-key/config/governance"},
 		{"GET", "/web/read-key/dashboard"},
 	} {
 		if code := surfaceStatus(t, router, route.method, route.path); code != http.StatusUnauthorized {
