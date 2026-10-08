@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -80,6 +81,9 @@ func collectBodies(t *testing.T, records <-chan agentstate.LogRecord, file strin
 // The writer appends to the old inode after the rename and before the tail
 // looks again: those lines are read once, ahead of the new file's.
 func TestFileTail_RotationDrainsLinesWrittenToTheOldFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the rotated file is not drained on Windows: holding it would refuse the application's own rotation")
+	}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "app.log")
 	writeFile(t, file, "")
@@ -123,6 +127,9 @@ func TestFileTail_RotationDrainsLinesWrittenToTheOldFile(t *testing.T) {
 // A writer that keeps its descriptor past the tail's switch to the new file
 // (logrotate signals it afterwards) still has its lines read, once.
 func TestFileTail_RotationReadsLateWritesToTheOldFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the rotated file is not drained on Windows: holding it would refuse the application's own rotation")
+	}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "app.log")
 	writeFile(t, file, "")
