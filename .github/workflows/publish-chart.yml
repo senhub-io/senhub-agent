@@ -43,9 +43,9 @@ jobs:
           [ "${GITHUB_REF_NAME}" = "$TAG" ] \
             || { echo "::error::Dispatched on '${GITHUB_REF_NAME}', not on the tag $TAG: the chart must be built from the release's own commit"; exit 1; }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
 
       - name: Set the chart version from the tag
         run: |
