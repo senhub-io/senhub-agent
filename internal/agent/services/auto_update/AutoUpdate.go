@@ -158,12 +158,6 @@ func (a *autoUpdate) Start(ctx context.Context) error {
 	a.runCtx = ctx
 	a.configSource.OnConfigChanged(a.onConfigChange)
 
-	if target, err := a.targetBinaryPath(); err == nil {
-		for _, path := range removeUpdateLeftovers(target) {
-			a.logger.Info().Str("path", path).Msg("removed a file left by the previous update")
-		}
-	}
-
 	a.createScheduler()
 	if err := (*a.scheduler).Start(ctx); err != nil {
 		a.logger.Error().
