@@ -3,17 +3,13 @@
     "channel": "Network tinterface Bytes Received",
     "value": 76.5,
     "float": 1,
-    "unit": "SpeedNet",
-    "speedsize": "Byte",
-    "speedtime": "Second"
+    "unit": "SpeedNet"
   },
   {
     "channel": "Network tinterface Bytes Sent",
     "value": 65,
     "float": 1,
-    "unit": "SpeedNet",
-    "speedsize": "Byte",
-    "speedtime": "Second"
+    "unit": "SpeedNet"
   },
   {
     "channel": "Network tinterface Operational State",
@@ -67,8 +63,7 @@
     "channel": "Network tinterface Speed",
     "value": 42,
     "float": 1,
-    "unit": "SpeedNet",
-    "speedsize": "Bit",
-    "speedtime": "Second"
+    "unit": "Custom",
+    "customunit": "bit/s"
   }
 ]
