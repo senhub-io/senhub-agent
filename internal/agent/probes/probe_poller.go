@@ -317,6 +317,9 @@ func (p *ProbePoller) collect() error {
 		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
 		p.recordHealth(err)
+		if partial, ok := p.Probe.(types.PartialResultsProbe); ok && partial.KeepsPartialResults() && len(data) > 0 {
+			p.routePartial(ctx, data)
+		}
 		return fmt.Errorf("collect failed: %w", err)
 	}
 	span.SetAttributes(attribute.Int("probe.datapoints_emitted", len(data)))
@@ -332,6 +335,20 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// routePartial routes the datapoints of a failed cycle for a probe that
+// declared them valid on their own. A routing failure is logged, not
+// returned: the cycle already reports the collect error.
+func (p *ProbePoller) routePartial(ctx context.Context, data []datapoint.DataPoint) {
+	data = p.withIdentityTags(data)
+	var router data_store.StrategyRouter = &defaultStrategyRouter{}
+	if r, ok := p.Probe.(data_store.StrategyRouter); ok {
+		router = r
+	}
+	if err := p.addDataPointCtx(ctx, data, router); err != nil {
+		p.moduleLogger.Warn().Err(err).Msg("routing the datapoints of a failed cycle failed")
+	}
 }
 
 // recordHealth publishes the probe's health for this cycle.
