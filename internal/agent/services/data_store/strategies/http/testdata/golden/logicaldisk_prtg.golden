@@ -58,9 +58,7 @@
     "channel": "Disk Read Bytes Sec (tdrive)",
     "value": 99.5,
     "float": 1,
-    "unit": "SpeedDisk",
-    "speedsize": "Byte",
-    "speedtime": "Second"
+    "unit": "SpeedDisk"
   },
   {
     "channel": "Disk Reads Sec (tdrive)",
@@ -79,9 +77,7 @@
     "channel": "Disk Write Bytes Sec (tdrive)",
     "value": 111,
     "float": 1,
-    "unit": "SpeedDisk",
-    "speedsize": "Byte",
-    "speedtime": "Second"
+    "unit": "SpeedDisk"
   },
   {
     "channel": "Disk Writes Sec (tdrive)",

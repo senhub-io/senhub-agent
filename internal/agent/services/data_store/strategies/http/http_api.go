@@ -114,7 +114,7 @@ func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get metrics from cache for the specified probe
-	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbe(req.Probe)
+	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(req.Probe, MetricFilter{ShowTags: true, NativeSpeed: NativeSpeedRequested(r)})
 
 	// Build PRTG response
 	response := PRTGResponse{
