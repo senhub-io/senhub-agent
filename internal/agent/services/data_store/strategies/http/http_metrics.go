@@ -40,6 +40,7 @@ type MetricFilter struct {
 	Limit       int                 // max number of results
 	Offset      int                 // pagination offset
 	ShowTags    bool                // whether to include tags in channel/service names (default: true)
+	NativeSpeed bool                // PRTG: send bit rates as SpeedNet in bytes per second (speed=native)
 }
 
 // MetricExample represents an example API call for documentation
@@ -160,7 +161,15 @@ func (m *MetricsProcessor) ParseMetricFilter(r *http.Request) MetricFilter {
 		}
 	}
 
+	filter.NativeSpeed = NativeSpeedRequested(r)
+
 	return filter
+}
+
+// NativeSpeedRequested reports whether the request asks for bit rates as
+// native PRTG speeds (speed=native). Any other value keeps the default.
+func NativeSpeedRequested(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("speed")), "native")
 }
 
 // parseTagFilter parses tag filter string like "core:0,1,2" or "interface:en0"

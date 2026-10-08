@@ -365,6 +365,34 @@ curl "http://localhost:8080/api/{key}/prtg/metrics/NetScaler%20LB?tags=vserver_n
 
 This returns metrics only for the specified virtual servers.
 
+### PRTG Speed Units
+
+PRTG fixes a channel's unit when the sensor creates the channel and does not change it afterwards. The HTTP Data Advanced sensor also ignores `speedsize` and `speedtime`: it reads every `SpeedNet` and `SpeedDisk` value as bytes per second. The agent therefore never sends those two fields, and offers two modes for rates expressed in bits.
+
+| Mode | Request | Bit-based rate channel | Value |
+|---|---|---|---|
+| Default | `.../prtg/metrics/{probe}` | `"unit": "Custom"`, `"customunit": "Mbit/s"` (or `kbit/s`, `bit/s`, `Gbit/s`, matching the value's scale) | unchanged |
+| Native | `.../prtg/metrics/{probe}?speed=native` | `"unit": "SpeedNet"` | converted to bytes per second (Mbit/s x 125000, kbit/s x 125, bit/s / 8), so PRTG scales it (kbit/s, Mbit/s, Gbit/s) on its own |
+
+Byte-based rates (`SpeedNet`, or `SpeedDisk` for disks) carry the byte value in both modes. Any other `speed` value is ignored and gives the default mode. The parameter is accepted on the GET and POST PRTG metrics routes.
+
+Default mode keeps the raw value, which is what channels created by agents 0.1.x expect. Native mode suits a new sensor where you want PRTG's automatic scaling; choose it before the sensor is created, since changing the URL of an existing sensor does not change its channels' units.
+
+Example, a NetScaler interface receiving 1588 Mbit/s:
+
+```json
+{"channel": "Interface RX Rate (1/1)", "value": 1588, "float": 1, "unit": "Custom", "customunit": "Mbit/s"}
+```
+
+and with `?speed=native`:
+
+```json
+{"channel": "Interface RX Rate (1/1)", "value": 198500000, "float": 1, "unit": "SpeedNet"}
+```
+
+!!! warning "Upgrading from 0.4.0 to 0.6.1"
+    Agents 0.4.0 to 0.6.1 sent bit rates as `SpeedNet`, so PRTG created those channels with a wrong scale (for example 1588 Mbit/s shown as 0.01 Mbit/s). After upgrading, delete and recreate the affected channels, or the whole sensor, in either mode: the unit of an existing channel is not updated.
+
 ### Nagios Response
 
 ```bash
