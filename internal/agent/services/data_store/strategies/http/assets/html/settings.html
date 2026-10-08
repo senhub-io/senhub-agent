@@ -160,6 +160,7 @@
             <div class="actions">
                 <button class="btn primary" id="save-gov" type="button">Save governance</button>
                 <span class="small muted" id="gov-applies"></span>
+                <span class="small" id="gov-status" role="status" aria-live="polite"></span>
             </div>
         </div>
     </div>
@@ -389,12 +390,30 @@
             write(g) {
                 g = g || {};
                 $('g-team').value = (g.owner && g.owner.team) || ''; $('g-contact').value = (g.owner && g.owner.contact) || '';
-                $('g-crit').value = g.criticality || ''; $('g-life').value = g.lifecycle || '';
+                Gov.setSelect('g-crit', g.criticality); Gov.setSelect('g-life', g.lifecycle);
                 const loc = g.location || {};
                 $('g-site').value = loc.site || ''; $('g-dc').value = loc.datacenter || ''; $('g-room').value = loc.room || ''; $('g-rack').value = loc.rack || '';
                 const labels = g.labels || {};
                 Gov.labelRows = Object.keys(labels).map(k => [k, String(labels[k])]);
                 Gov.renderLabels();
+            },
+            // A value outside the listed options (a ${env:...} reference, or an
+            // open-vocabulary lifecycle) is kept visible as its own option.
+            setSelect(id, value) {
+                const sel = $(id);
+                sel.querySelectorAll('option[data-raw]').forEach(o => o.remove());
+                value = value || '';
+                if (value && ![...sel.options].some(o => o.value === value)) {
+                    const o = document.createElement('option');
+                    o.value = value; o.textContent = value; o.dataset.raw = '1';
+                    sel.appendChild(o);
+                }
+                sel.value = value;
+            },
+            status(kind, msg) {
+                const e = $('gov-status');
+                e.textContent = msg || '';
+                e.style.color = kind === 'err' ? 'var(--err)' : kind === 'ok' ? 'var(--ok)' : '';
             },
             renderLabels() {
                 const tb = $('label-rows'); tb.innerHTML = '';
@@ -453,12 +472,15 @@
             },
             async save() {
                 Gov.clearErrors();
+                Gov.status('', '');
                 try {
                     const r = await fetch(govApi, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ governance: Gov.read() }) });
                     const d = await r.json().catch(() => ({}));
                     if (!r.ok) { Gov.showErrors(d.fields); throw new Error(d.error || ('HTTP ' + r.status)); }
+                    Gov.status('ok', 'Saved');
                     banner('ok', d.applied || 'Governance saved.');
                 } catch (e) {
+                    Gov.status('err', e.message);
                     banner('err', e.message);
                 }
             },
