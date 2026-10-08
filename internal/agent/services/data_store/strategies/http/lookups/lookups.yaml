@@ -546,6 +546,36 @@ redis.replication.role:
       description: "Instance is a master accepting writes"
   desired_value: 1
 
+redis.persistence.status:
+  description: "Redis Persistence Status"
+  type: status
+  source: "senhub-agent probes/redis (rdb_last_bgsave_status, aof_last_bgrewrite_status, aof_last_write_status: ok=1, err=0)"
+  mappings:
+    0:
+      text: "ERR"
+      severity: "error"
+      description: "The last background save, rewrite or AOF write failed"
+    1:
+      text: "OK"
+      severity: "ok"
+      description: "The last background save, rewrite or AOF write succeeded"
+  desired_value: 1
+
+redis.sentinel.master.status:
+  description: "Redis Sentinel Master Status"
+  type: status
+  source: "senhub-agent probes/redis (INFO sentinel masterN status: ok=1, odown/sdown/other=0)"
+  mappings:
+    0:
+      text: "DOWN"
+      severity: "error"
+      description: "The master is flagged sdown or odown, or in any state other than ok"
+    1:
+      text: "OK"
+      severity: "ok"
+      description: "The master is reachable and agreed upon by the sentinels"
+  desired_value: 1
+
 # ==============================================================================
 # SEARCH / DB / DISK HEALTH ENUMS (audit follow-up)
 # ==============================================================================
@@ -807,3 +837,65 @@ sfs.syslog.severity:
     7:
       text: "Debug"
       severity: "ok"
+
+# ==============================================================================
+# WINDOWS SERVICES
+# ==============================================================================
+# Source: Win32 SERVICE_STATUS.dwCurrentState and QUERY_SERVICE_CONFIG.dwStartType
+# (Service Control Manager). Both describe a state rather than give a verdict:
+# whether a stopped service is a problem depends on how it is configured to
+# start, which is why no severity here is above "ok" and the Zabbix trigger
+# combines the two.
+
+windows.service.status:
+  description: "Windows service state (SCM dwCurrentState)"
+  type: status
+  source: "Win32 SERVICE_STATUS dwCurrentState"
+  mappings:
+    1:
+      text: "Stopped"
+      severity: "ok"
+    2:
+      text: "Start pending"
+      severity: "ok"
+    3:
+      text: "Stop pending"
+      severity: "ok"
+    4:
+      text: "Running"
+      severity: "ok"
+    5:
+      text: "Continue pending"
+      severity: "ok"
+    6:
+      text: "Pause pending"
+      severity: "ok"
+    7:
+      text: "Paused"
+      severity: "ok"
+  desired_value: 4
+
+windows.service.start_type:
+  description: "Windows service start type (SCM dwStartType)"
+  type: status
+  source: "Win32 QUERY_SERVICE_CONFIG dwStartType; 5 is automatic with the delayed-start flag"
+  mappings:
+    0:
+      text: "Boot"
+      severity: "ok"
+    1:
+      text: "System"
+      severity: "ok"
+    2:
+      text: "Automatic"
+      severity: "ok"
+    3:
+      text: "Manual"
+      severity: "ok"
+    4:
+      text: "Disabled"
+      severity: "ok"
+    5:
+      text: "Automatic (delayed start)"
+      severity: "ok"
+  desired_value: 2

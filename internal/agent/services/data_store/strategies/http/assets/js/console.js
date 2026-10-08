@@ -120,3 +120,25 @@ function glyphFor(category) {
 }
 
 window.glyphFor = glyphFor;
+
+// LicenceView reads what a licence covers out of the two lists the console
+// already fetches: the catalogue (every type, with tier and verdict) and the
+// configured probes (each with the same verdict and its run state). Pages
+// differ in how they draw it, not in how they count.
+window.LicenceView = {
+  summarise(catalog, probes) {
+    const types = catalog || [];
+    const pro = types.filter(t => t.tier === 'pro' && t.runs_here !== false);
+    const covered = pro.filter(t => t.authorized !== false).map(t => t.type).sort();
+    const free = types.filter(t => t.tier !== 'pro' && t.authorized !== false).length;
+    const inUse = (probes || []).filter(p => p.tier === 'pro').map(p => {
+      let state = 'stopped';
+      if (p.authorized === false) state = 'not covered';
+      else if (!p.enabled) state = 'disabled';
+      else if (p.health === 'failed') state = 'failing';
+      else if (p.running) state = 'running';
+      return { name: p.name, type: p.type, state: state, covered: p.authorized !== false, reason: p.reason || '' };
+    });
+    return { covered: covered, proTotal: pro.length, freeCount: free, inUse: inUse };
+  }
+};

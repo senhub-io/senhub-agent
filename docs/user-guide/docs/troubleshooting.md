@@ -1,5 +1,9 @@
 # Troubleshooting
 
+## Diagnosing in One Pass
+
+Before reading logs, run `senhub-agent doctor`. It checks the install, the configuration, the outputs, the probes and the host, and prints the command that fixes each problem it finds. It needs no root and works with the service stopped. See [Doctor](cli.md#doctor).
+
 ## Checking Agent Status
 
 Use the built-in status command to get a comprehensive overview of the agent:
@@ -214,6 +218,41 @@ grep 'module=probe.citrix' /var/log/senhub-agent/senhubagent.log | tail -20
 
 ## Enabling Debug Logging
 
+### Where Debug Lines Go
+
+Debug lines go to the same places as every other line. Neither `--verbose`,
+`--filter` nor the runtime per-module level opens a separate channel; they
+only decide which lines are let through. What changes with how the agent is
+started is where you read them.
+
+| How the agent runs | Where the lines are written |
+|---|---|
+| Linux service (systemd) | The log file `/var/log/senhub-agent/senhubagent.log`, and the journal (`journalctl -u senhub-agent`) |
+| Windows service | The log file `C:\ProgramData\SenHub\logs\senhubagent.log` only |
+| Interactive `run` (Linux, Windows) | The console (standard error) and a log file of its own, `senhubagent-console.log`, in the same directory as the service file |
+| Container (`run`, the image default) | The container's standard error (`docker logs`, `kubectl logs`), and the `-console` log file when the log directory is writable by the container user |
+
+Details worth knowing:
+
+- An interactive run never shares the service's file, so reading
+  `senhubagent.log` while you run `senhub-agent run --filter ...` in a
+  terminal shows nothing new. Read the console, or `senhubagent-console.log`.
+- An agent started with another `--config-path` than the installed one
+  writes to its own file, `senhubagent-<8 hex digits>.log`, in the same
+  directory.
+- If the log directory cannot be written, the file is created next to the
+  agent binary instead (the agent says which path it uses when it starts).
+- `--verbose` without `--filter` lets every module's debug lines through;
+  `--filter probe.citrix` lets through only the modules whose name starts
+  with that prefix. Both apply from the start of the process. The runtime
+  per-module level (next section) needs no restart and applies to the
+  running agent, whichever way it was started.
+- To make a service write debug lines from its start, install it with the
+  flag (`senhub-agent install --filter probe.citrix`); otherwise raise the level
+  at runtime.
+- The file is text by default, and debug lines read `DBG`. With
+  `--log-format json` they carry `"level":"debug"` instead.
+
 ### Runtime Debug (No Restart Required)
 
 You can enable debug logging for specific modules at runtime via the API. This is the recommended approach as it does not require restarting the service.
@@ -263,6 +302,41 @@ curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
   -H "Content-Type: application/json" \
   -d '{"module_levels": [{"module": "probe.citrix", "level": "info"}]}'
 ```
+
+### Raising One Module to Debug and Reading It
+
+A module raised to `debug` writes its debug lines to the normal agent log
+while every other module stays at `info`. Take IBM i as the example:
+
+```bash
+curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
+  -H "Content-Type: application/json" \
+  -d '{"module_levels": [{"module": "probe.ibmi", "level": "debug"}]}'
+```
+
+Then read only that module's debug lines from the log file (see
+[Viewing Logs](#viewing-logs) for its location):
+
+```bash
+grep ' DBG ' /var/log/senhub-agent/senhubagent.log | grep 'module=probe.ibmi'
+```
+
+Each line carries `module=probe.ibmi` (`"module":"probe.ibmi"` in JSON, where
+the level is `"level":"debug"` instead of `DBG`). Where the lines land
+depends on how the agent runs: see [Where Debug Lines Go](#where-debug-lines-go). The
+debug lines appear from the next collection cycle; nothing needs restarting.
+
+The setting lives in the agent's memory only:
+
+- It survives a configuration reload and a probe restart.
+- It does **not** survive a restart of the agent or of the service: the module
+  is back at `info`. Raise it again afterwards.
+- Set the module back to `info` when you are done, as shown above: debug
+  output is verbose and grows the log quickly.
+
+Before this was fixed (0.6.2), the call answered `200` and the level showed
+as `debug` in the `GET` response, but the agent still wrote no debug line
+for that module.
 
 ### Available Debug Modules
 

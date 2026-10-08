@@ -18,7 +18,7 @@ runtime counters these mechanisms expose, see
 | Per-probe cardinality budget | One probe (e.g. multi-instance Citrix/NetScaler) exploding series | `probe_cardinality` |
 | Memory limiter | Heap blow-up during a prolonged backend outage | `memory_soft_limit`, `memory_hard_limit` |
 | Persistent checkpoint (metrics) | Losing the **metric** store across an agent restart while the backend is down | — (no loss) |
-| Logs dead-letter queue | Losing **event logs** during a backend outage (queued to disk, replayed at boot and on recovery) | `logs_queue_full` (only when the disk cap is hit) |
+| Logs dead-letter queue | Losing **event logs** during a backend outage (queued to disk, replayed at boot and on recovery) | `logs_queue_full` (disk cap hit), `dropped_by_age` (older than `logs_queue_max_age`, 24h) |
 | Entity event hand-off | Losing **entity events** when a cycle publishes more than the exporter's buffer holds (`signals.entities.buffer_size`, 256): the publish waits up to 1 s for room instead of dropping | not a reason of `senhub.agent.otlp.dropped`: counted as `otel.sdk.processor.log.processed{error.type="queue_full"}`, with `otel.sdk.processor.log.queue.size` and `.capacity` (only when the exporter stops draining) |
 | Endpoint failover | The primary ingress being down (switch to a standby ingress, return to primary on recovery) | — (no loss; switch is logged + counted) |
 
@@ -57,15 +57,18 @@ storage:
       max_concurrent_exports: 4   # parallel per-probe export fan-out (1..64)
 ```
 
-When `persistence.path` is set and the logs signal is enabled, event-log
-records that fail to export (backend down past the SDK retry) are written
-to a dead-letter queue under `<path>/logqueue/` and replayed automatically
+When the logs signal is enabled (the queue is on by default; see
+`persistence.enabled`), event-log records that fail to export (backend
+down past the SDK retry) are written to a dead-letter queue under
+`<state dir>/otlp-queue/logqueue/`, or `<persistence.path>/logqueue/`
+when a path is set, and replayed automatically
 at boot and the moment the backend recovers — so a backend outage no
 longer loses event logs (linux_logs / syslog / snmp_trap / filetail /
 windows_eventlog). Entity events are NOT queued: they are a state stream
 re-emitted in full at every heartbeat, so an outage is caught up on the
 next sweep. Past `logs_queue_max_bytes` the oldest batches are evicted
-(`logs_queue_full`). Residual loss window: a hard crash (`kill -9`) while
+(`logs_queue_full`); batches older than `logs_queue_max_age` are dropped
+(`dropped_by_age`). Residual loss window: a hard crash (`kill -9`) while
 records sit in the in-memory batch never handed to the exporter — the
 graceful shutdown flush covers normal stops.
 

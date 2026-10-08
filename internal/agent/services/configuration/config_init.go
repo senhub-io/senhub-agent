@@ -42,38 +42,37 @@ func ApplyInstallOverrides(configPath, license string, tags map[string]string) e
 // applyTagOverrides writes agent.global_tags into configPath in place with a
 // node-level edit, preserving the template comments.
 func applyTagOverrides(configPath string, tags map[string]string) error {
-	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	_, err := rewriteFile(configPath, func(raw []byte) ([]byte, error) {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", configPath, err)
+		}
+		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: unexpected top-level shape", configPath)
+		}
+		root := doc.Content[0]
+
+		agent := mappingChild(root, "agent")
+		if agent == nil {
+			// The generated agent.yaml always carries an agent block; if it is
+			// missing, add one rather than fail the install.
+			agent = &yaml.Node{Kind: yaml.MappingNode}
+			appendPair(root, "agent", agent)
+		}
+		if agent.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: agent block is not a mapping", configPath)
+		}
+
+		setTagsField(agent, "global_tags", tags)
+
+		out, err := marshalDocument(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("re-encoding %s: %w", configPath, err)
+		}
+		return out, nil
+	})
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", configPath, err)
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("parsing %s: %w", configPath, err)
-	}
-	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: unexpected top-level shape", configPath)
-	}
-	root := doc.Content[0]
-
-	agent := mappingChild(root, "agent")
-	if agent == nil {
-		// The generated agent.yaml always carries an agent block; if it is
-		// missing, add one rather than fail the install.
-		agent = &yaml.Node{Kind: yaml.MappingNode}
-		appendPair(root, "agent", agent)
-	}
-	if agent.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: agent block is not a mapping", configPath)
-	}
-
-	setTagsField(agent, "global_tags", tags)
-
-	out, err := marshalDocument(&doc)
-	if err != nil {
-		return fmt.Errorf("re-encoding %s: %w", configPath, err)
-	}
-	if err := atomicWriteFile(configPath, out, fileModeOr(configPath, 0o600)); err != nil {
-		return fmt.Errorf("writing %s: %w", configPath, err)
+		return fmt.Errorf("applying tags to %s: %w", configPath, err)
 	}
 	return nil
 }
@@ -86,45 +85,44 @@ func applyTagOverrides(configPath string, tags map[string]string) error {
 // ignore probes.d/ + strategies.d/. An empty license clears the field (free
 // tier). This backs `license activate` and `license remove`.
 func SetLicenseField(configPath, license string) error {
-	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	_, err := rewriteFile(configPath, func(raw []byte) ([]byte, error) {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", configPath, err)
+		}
+
+		var root *yaml.Node
+		switch {
+		case len(doc.Content) == 0:
+			// Empty or comment-only file: start a fresh mapping document.
+			root = &yaml.Node{Kind: yaml.MappingNode}
+			doc.Kind = yaml.DocumentNode
+			doc.Content = []*yaml.Node{root}
+		case doc.Content[0].Kind == yaml.MappingNode:
+			root = doc.Content[0]
+		default:
+			return nil, fmt.Errorf("%s: unexpected top-level shape", configPath)
+		}
+
+		agent := mappingChild(root, "agent")
+		if agent == nil {
+			agent = &yaml.Node{Kind: yaml.MappingNode}
+			appendPair(root, "agent", agent)
+		}
+		if agent.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: agent block is not a mapping", configPath)
+		}
+
+		setScalarField(agent, "license", license)
+
+		out, err := marshalDocument(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("re-encoding %s: %w", configPath, err)
+		}
+		return out, nil
+	})
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", configPath, err)
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("parsing %s: %w", configPath, err)
-	}
-
-	var root *yaml.Node
-	switch {
-	case len(doc.Content) == 0:
-		// Empty or comment-only file: start a fresh mapping document.
-		root = &yaml.Node{Kind: yaml.MappingNode}
-		doc.Kind = yaml.DocumentNode
-		doc.Content = []*yaml.Node{root}
-	case doc.Content[0].Kind == yaml.MappingNode:
-		root = doc.Content[0]
-	default:
-		return fmt.Errorf("%s: unexpected top-level shape", configPath)
-	}
-
-	agent := mappingChild(root, "agent")
-	if agent == nil {
-		agent = &yaml.Node{Kind: yaml.MappingNode}
-		appendPair(root, "agent", agent)
-	}
-	if agent.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: agent block is not a mapping", configPath)
-	}
-
-	setScalarField(agent, "license", license)
-
-	out, err := marshalDocument(&doc)
-	if err != nil {
-		return fmt.Errorf("re-encoding %s: %w", configPath, err)
-	}
-	if err := atomicWriteFile(configPath, out, fileModeOr(configPath, 0o600)); err != nil {
-		return fmt.Errorf("writing %s: %w", configPath, err)
+		return fmt.Errorf("setting license in %s: %w", configPath, err)
 	}
 	return nil
 }
@@ -198,14 +196,22 @@ func setTagsField(m *yaml.Node, key string, tags map[string]string) {
 // any other value is rejected so a typo fails the install rather than shipping
 // a config that only errors at first export.
 func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
+	_, err := EnsureOTLPStrategyFragment(configDir, endpoint, protocol)
+	return err
+}
+
+// EnsureOTLPStrategyFragment is WriteOTLPStrategyFragment reporting whether
+// it wrote the fragment: false when there was nothing to provision or the
+// operator's fragment is already there.
+func EnsureOTLPStrategyFragment(configDir, endpoint, protocol string) (written bool, err error) {
 	if endpoint == "" {
-		return nil
+		return false, nil
 	}
 	if protocol == "" {
 		protocol = "grpc"
 	}
 	if protocol != "grpc" && protocol != "http" {
-		return fmt.Errorf("otlp protocol must be grpc or http, got %q", protocol)
+		return false, fmt.Errorf("otlp protocol must be grpc or http, got %q", protocol)
 	}
 	// Defense-in-depth against YAML injection via the endpoint (audit M3):
 	// the endpoint is concatenated into the fragment, so reject whitespace,
@@ -215,15 +221,15 @@ func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
 	if strings.IndexFunc(endpoint, func(r rune) bool {
 		return r <= ' ' || r == '#' || r == '{' || r == '}' || r == '"' || r == '\''
 	}) >= 0 {
-		return fmt.Errorf("otlp endpoint %q contains whitespace or an invalid character; expected host:port", endpoint)
+		return false, fmt.Errorf("otlp endpoint %q contains whitespace or an invalid character; expected host:port", endpoint)
 	}
 	dir := filepath.Join(configDir, "strategies.d")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("creating %s: %w", dir, err)
+		return false, fmt.Errorf("creating %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, "10-otlp.yaml")
 	if _, err := os.Stat(path); err == nil {
-		return nil // already present, leave operator's fragment untouched
+		return false, nil // already present, leave operator's fragment untouched
 	}
 	body := "# SenHub Agent — OTLP export strategy (provisioned by 'config init').\n" +
 		"# Pushes metrics and logs to an OpenTelemetry collector (or an\n" +
@@ -232,9 +238,9 @@ func WriteOTLPStrategyFragment(configDir, endpoint, protocol string) error {
 		"  endpoint: " + endpoint + "\n" +
 		"  protocol: " + protocol + "\n"
 	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
+		return false, fmt.Errorf("writing %s: %w", path, err)
 	}
-	return nil
+	return true, nil
 }
 
 // badZabbixRune reports a character that has no place in a Zabbix server
@@ -276,19 +282,26 @@ func ValidateZabbixInstallArgs(server, metadata string) error {
 // separates installing the agent from the host appearing in Zabbix. It is
 // idempotent and never overwrites an existing fragment.
 func WriteZabbixStrategyFragment(configDir, server, metadata string) error {
+	_, err := EnsureZabbixStrategyFragment(configDir, server, metadata)
+	return err
+}
+
+// EnsureZabbixStrategyFragment is WriteZabbixStrategyFragment reporting
+// whether it wrote the fragment.
+func EnsureZabbixStrategyFragment(configDir, server, metadata string) (written bool, err error) {
 	if server == "" {
-		return nil
+		return false, nil
 	}
 	if err := ValidateZabbixInstallArgs(server, metadata); err != nil {
-		return err
+		return false, err
 	}
 	dir := filepath.Join(configDir, "strategies.d")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("creating %s: %w", dir, err)
+		return false, fmt.Errorf("creating %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, "20-zabbix.yaml")
 	if _, err := os.Stat(path); err == nil {
-		return nil
+		return false, nil
 	}
 	body := "# SenHub Agent — Zabbix output (provisioned by 'config init').\n" +
 		"# Registers this host by autoregistration and pushes its values as an\n" +
@@ -299,9 +312,9 @@ func WriteZabbixStrategyFragment(configDir, server, metadata string) error {
 		body += "  host_metadata: \"" + metadata + "\"\n"
 	}
 	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
+		return false, fmt.Errorf("writing %s: %w", path, err)
 	}
-	return nil
+	return true, nil
 }
 
 func marshalDocument(doc *yaml.Node) ([]byte, error) {

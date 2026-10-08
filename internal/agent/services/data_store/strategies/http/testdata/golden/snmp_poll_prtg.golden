@@ -51,9 +51,8 @@
     "channel": "SNMP tinstance IFtif_index Speed",
     "value": 65,
     "float": 1,
-    "unit": "SpeedNet",
-    "speedsize": "Bit",
-    "speedtime": "Second"
+    "unit": "Custom",
+    "customunit": "bit/s"
   },
   {
     "channel": "SNMP tinstance Poll Duration",

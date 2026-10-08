@@ -44,6 +44,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/instanceid"
 )
 
 const (
@@ -125,6 +126,7 @@ type Source struct {
 	procCreated func(int32) (int64, bool)                   // nil → gopsutil CreateTime
 	agentID     func() string                               // nil → agentstate.GetAgentInstanceID
 	selfPID     func() int32                                // nil → os.Getpid
+	ephemeral   func() (uint32, uint32)                     // nil → the OS dynamic port range
 	threshold   int
 	exclude     []*net.IPNet // peer endpoints in these ranges are dropped (privacy)
 	// onBlind is called once, the first time the source finds it cannot
@@ -338,6 +340,11 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 	if createdFn == nil {
 		createdFn = processCreateTime
 	}
+	ephemeralFn := s.ephemeral
+	if ephemeralFn == nil {
+		ephemeralFn = osEphemeralRange
+	}
+	ephLow, ephHigh := ephemeralFn()
 	self := selfPIDFn()
 	agentID := agentIDFn()
 	nameCache := map[int32]string{}
@@ -349,6 +356,12 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 			continue // not established, or inbound (local port is one of ours)
 		}
 		if !resolvablePeer(c.Raddr.IP) || c.Raddr.Port == 0 || s.excluded(c.Raddr.IP) {
+			continue
+		}
+		// A loopback peer on an OS dynamic port is the client side of a
+		// one-shot local exchange (a port taken per request), not a service
+		// anyone depends on: it would mint an endpoint per connection.
+		if loopbackPeer(c.Raddr.IP) && c.Raddr.Port >= ephLow && c.Raddr.Port <= ephHigh {
 			continue
 		}
 		name, ok := nameCache[c.Pid]
@@ -372,6 +385,14 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 		case name != "":
 			d.svcID = name + "@" + hostID
 			d.svcName = name
+			// Another agent on this host is the node it reports itself as,
+			// not a second <exe>@host one.
+			if c.Pid != self {
+				if id, ok := instanceid.ResolveForPID(c.Pid, name, agentID); ok {
+					d.svcID = id
+					d.svcName = instanceid.ServiceName
+				}
+			}
 		default:
 			// Cannot name the dependent: do not fabricate a service.instance.
 			// Counted, because the difference between "this host has no

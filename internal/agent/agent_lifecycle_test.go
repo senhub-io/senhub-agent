@@ -12,6 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // fakeService implements Service with configurable start/shutdown behaviour.
@@ -77,7 +78,7 @@ func TestShutdown_ReverseOrder(t *testing.T) {
 }
 
 // TestStart_PartialFailure_PropagatesExitCode verifies that when one service
-// fails to start the injected exitFn is called with code 1, and that the
+// fails to start the injected exitFn is called with cliexit.Failure, and that the
 // failing service is NOT shut down afterwards — only the ones that came up.
 func TestStart_PartialFailure_PropagatesExitCode(t *testing.T) {
 	order := &[]string{}
@@ -98,8 +99,8 @@ func TestStart_PartialFailure_PropagatesExitCode(t *testing.T) {
 		a.handleStartError()
 	}
 
-	if exitCode != 1 {
-		t.Errorf("expected exit code 1 on start failure, got %d", exitCode)
+	if exitCode != cliexit.Failure {
+		t.Errorf("expected exit code %d on start failure, got %d", cliexit.Failure, exitCode)
 	}
 
 	// A failing Start does not abort the sequence: C still comes up, and
@@ -313,4 +314,19 @@ func (stubUpdater) Update(string, ...string) (bool, error) {
 func (stubUpdater) CheckForNewVersion(bool) (*auto_update.VersionMetadata, error) { return nil, nil }
 func (stubUpdater) ListAvailableVersions(bool) ([]auto_update.VersionMetadata, error) {
 	return nil, nil
+}
+
+func TestStartCleansUpPreviousUpdateWithAutoUpdateDisabled(t *testing.T) {
+	calls := 0
+	a := agent{
+		logger:          noopLogger(),
+		removeLeftovers: func() { calls++ },
+	}
+	if a.updater != nil {
+		t.Fatal("test needs auto-update disabled")
+	}
+	a.cleanUpPreviousUpdate()
+	if calls != 1 {
+		t.Errorf("leftover cleanup ran %d times, want 1", calls)
+	}
 }

@@ -129,3 +129,18 @@ func readInt(v interface{}) (int, bool) {
 	}
 	return 0, false
 }
+
+// WithAgentGovernance lays the agent-level governance block of the main
+// configuration over the resolved settings. The block is the operator
+// describing the host and is independent of where entity detection was
+// switched on, so it wins over the one an OTLP output may still carry.
+// An absent or unreadable block leaves the settings as they were.
+func (c Config) WithAgentGovernance(block map[string]interface{}) Config {
+	if len(block) == 0 {
+		return c
+	}
+	if gov, err := governance.Parse(block); err == nil {
+		c.Governance = gov
+	}
+	return c
+}

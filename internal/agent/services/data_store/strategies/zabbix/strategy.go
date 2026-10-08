@@ -46,6 +46,9 @@ type Strategy struct {
 	// heartbeatOff is set once the server refused the heartbeat request
 	// (servers before 6.2), so the loop stops sending it.
 	heartbeatOff bool
+	// waiting is the reason the server sends nothing yet, as last logged;
+	// the run loop alone touches it, so the notice prints once per state.
+	waiting string
 }
 
 // New builds the strategy; the configuration is parsed by
@@ -180,6 +183,7 @@ func (s *Strategy) Shutdown(ctx context.Context) error {
 
 func (s *Strategy) run(ctx context.Context) {
 	defer close(s.done)
+	s.waiting = ""
 
 	s.refresh(ctx)
 
@@ -213,9 +217,7 @@ func (s *Strategy) refresh(ctx context.Context) {
 		// The reply a server gives on first contact: the request itself
 		// fired the autoregistration event, and the host exists on the
 		// next refresh once the action has run.
-		s.logger.Info().
-			Str("hostname", s.cfg.Hostname).
-			Msg("Host not known to the server yet; waiting for its autoregistration")
+		s.noteWaiting("Host not known to the server yet; waiting for its autoregistration")
 		return
 	}
 	if err != nil {
@@ -239,10 +241,23 @@ func (s *Strategy) refresh(ctx context.Context) {
 	s.mu.Unlock()
 	s.logger.Debug().Int("items", len(items)).Msg("Check list refreshed")
 	if len(items) == 0 {
-		s.logger.Info().
-			Str("hostname", s.cfg.Hostname).
-			Msg("The server asks for no item yet: the host may still be waiting for its autoregistration action or a template")
+		s.noteWaiting("The server asks for no item yet: the host may still be waiting for its autoregistration action or a template")
+		return
 	}
+	if s.waiting != "" {
+		s.logger.Info().Str("hostname", s.cfg.Hostname).Int("items", len(items)).Msg("The server now asks for items")
+		s.waiting = ""
+	}
+}
+
+// noteWaiting logs why nothing is pushed, once per change of reason
+// rather than on every refresh.
+func (s *Strategy) noteWaiting(reason string) {
+	if s.waiting == reason {
+		return
+	}
+	s.waiting = reason
+	s.logger.Info().Str("hostname", s.cfg.Hostname).Msg(reason)
 }
 
 // push sends the latest value of every requested item.
@@ -426,4 +441,10 @@ func (s *Strategy) nameplateItems() []item {
 		out = append(out, item{Key: buildKey(s.cfg.KeyPrefix, f.Key, nil), Value: v})
 	}
 	return out
+}
+
+// ForgetProbes drops the stored values of probes that stopped running,
+// so the server no longer receives or discovers them.
+func (s *Strategy) ForgetProbes(probeNames []string) {
+	s.store.forgetProbes(probeNames)
 }

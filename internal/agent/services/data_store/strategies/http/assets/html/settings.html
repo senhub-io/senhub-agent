@@ -17,6 +17,9 @@
         .in[type="file"] { padding: 5px 10px; line-height: 22px; }
         #banner { margin-bottom: var(--s4); }
         .locked { font-size: var(--fs-sm); color: var(--ink-2); }
+        .field .lbl .opt { margin-left: 2px; }
+        .loc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        @media (max-width: 720px) { .loc { grid-template-columns: 1fr 1fr; } }
     </style>
 </head>
 <body>
@@ -72,8 +75,12 @@
                         <dt>Tier</dt><dd class="v" id="lic-tier">...</dd>
                         <dt>Scope</dt><dd id="lic-scope">...</dd>
                         <dt>Expires</dt><dd class="v" id="lic-exp">...</dd>
-                        <dt>Pro probe types</dt><dd id="lic-locked" class="locked">...</dd>
+                        <dt>Covered</dt><dd id="lic-locked" class="locked">...</dd>
                     </dl>
+                    <div class="field">
+                        <span class="lbl">Pro probes configured on this agent</span>
+                        <div id="lic-probes" class="locked">...</div>
+                    </div>
                     <div class="field">
                         <span class="lbl">Activate a license</span>
                         <!-- The native file control draws its own labels in the
@@ -99,7 +106,7 @@
             <div class="card">
                 <div class="card-h"><h2>Connection</h2><span class="pill acc">HTTP output</span></div>
                 <p class="lead">The port and address of this console and of the PRTG, Nagios and Prometheus endpoints. Changing the port moves the interface to the new address; this page will point you there.</p>
-                <div class="stack">
+                <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:var(--s3)" id="ep-summary"></div>                <div class="stack">
                     <div class="field">
                         <label class="lbl" for="port">HTTP port</label>
                         <input class="in" type="number" id="port" min="1" max="65535" />
@@ -130,12 +137,39 @@
                 </div>
             </div>
         </div>
+
+        <div class="card mt4" id="gov">
+            <div class="card-h"><h2>Governance</h2><span id="gov-state"></span></div>
+            <p class="lead">Who owns the host this agent runs on, how critical it is, where it is. Stamped on the entities this agent reports and inherited by what runs on the host. A probe's own governance, set on the Probes page, wins over this one.</p>
+            <div id="gov-ro" class="banner warn hide" style="margin-bottom:var(--s3)"></div>
+            <div class="fgrid">
+                <div class="field" data-path="governance.owner.team"><span class="lbl">Owning team</span><input class="in gov" id="g-team" placeholder="sre" autocomplete="off"><span class="ferr" hidden></span></div>
+                <div class="field" data-path="governance.owner.contact"><span class="lbl">Contact</span><input class="in gov" id="g-contact" placeholder="sre@corp.local" autocomplete="off"><span class="ferr" hidden></span></div>
+                <div class="field" data-path="governance.criticality"><span class="lbl">Criticality</span><select class="sel gov" id="g-crit"><option value="">Not set</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select><span class="ferr" hidden></span></div>
+                <div class="field" data-path="governance.lifecycle"><span class="lbl">Lifecycle</span><select class="sel gov" id="g-life"><option value="">Not set</option><option>active</option><option>maintenance</option><option>decommissioning</option><option>retired</option></select><span class="ferr" hidden></span></div>
+                <div class="field span" data-path="governance.location"><span class="lbl">Location <span class="opt">site, datacenter, room, rack</span></span>
+                    <div class="loc"><input class="in gov" id="g-site" placeholder="site" autocomplete="off"><input class="in gov" id="g-dc" placeholder="datacenter" autocomplete="off"><input class="in gov" id="g-room" placeholder="room" autocomplete="off"><input class="in gov" id="g-rack" placeholder="rack" autocomplete="off"></div>
+                    <span class="ferr" hidden></span>
+                </div>
+                <div class="field span" data-path="governance.labels"><span class="lbl">Labels <span class="opt">key = value</span></span>
+                    <table class="rows"><tbody id="label-rows"></tbody></table>
+                    <div><button type="button" class="btn sm" id="btn-add-label">Add a label</button></div>
+                    <span class="ferr" hidden></span>
+                </div>
+            </div>
+            <div class="actions">
+                <button class="btn primary" id="save-gov" type="button">Save governance</button>
+                <span class="small muted" id="gov-applies"></span>
+                <span class="small" id="gov-status" role="status" aria-live="polite"></span>
+            </div>
+        </div>
     </div>
 
     <script>
         window.AGENT_KEY = '{{.AgentKey}}';
         const api = '/api/' + window.AGENT_KEY + '/config/settings';
         const catalogApi = '/api/' + window.AGENT_KEY + '/catalog/probes';
+        const probesApi = '/api/' + window.AGENT_KEY + '/config/probes';        let licenseState = {};
         const $ = (id) => document.getElementById(id);
 
         function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -167,6 +201,7 @@
                 }
                 $('tls-exp').innerHTML = t.not_after ? (t.expired ? pill('err', 'expired') + ' ' : '') + esc(t.not_after) : '-';
                 const lic = d.license || {};
+                licenseState = lic;
                 if (!lic.configured) {
                     $('lic-status').innerHTML = pill('off', 'Free tier');
                     $('lic-tier').textContent = 'Free';
@@ -187,18 +222,29 @@
         async function loadLocked() {
             const el = $('lic-locked');
             try {
-                const r = await fetch(catalogApi);
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const d = await r.json();
-                const probes = d.probes || [];
-                const locked = probes.filter(p => p.tier === 'pro' && p.authorized === false && p.runs_here !== false).length;
-                const pro = probes.filter(p => p.tier === 'pro').length;
-                const link = ' <a href="/web/' + window.AGENT_KEY + '/probes?new=1#picker">See the catalogue</a>';
-                if (locked) el.innerHTML = esc(locked + ' Pro probe type' + (locked === 1 ? ' is' : 's are') + ' locked.') + link;
-                else if (pro) el.innerHTML = esc('All ' + pro + ' Pro probe types are unlocked.') + link;
-                else el.innerHTML = esc('None locked.') + link;
+                const [rc, rp] = await Promise.all([fetch(catalogApi), fetch(probesApi)]);
+                if (!rc.ok) throw new Error('HTTP ' + rc.status);
+                const d = await rc.json();
+                const configured = rp.ok ? ((await rp.json()).probes || []) : [];
+                const sum = LicenceView.summarise(d.probes || [], configured);
+                const link = ' <a href="/web/' + window.AGENT_KEY + '/probes?new=1&cat=pro#picker">See the Pro types</a>';
+                const licensed = !!licenseState.configured && !licenseState.expired && licenseState.bound;
+                if (licensed) el.innerHTML = esc(sum.covered.length + ' of ' + sum.proTotal + ' Pro probe types.') + link;
+                else el.innerHTML = esc('Free tier: ' + sum.freeCount + ' probe types.') + link;
+                const box = $('lic-probes');
+                if (!sum.inUse.length) {
+                    box.innerHTML = '<span class="muted">No Pro probe is configured on this agent.</span>';
+                } else {
+                    box.innerHTML = '<table class="lic-cover">' + sum.inUse.map(u => {
+                        const verdict = u.covered ? pill('ok', 'covered') : pill('err', 'not covered');
+                        const why = u.covered ? (u.state === 'running' ? '' : 'Probe is ' + u.state + '.') : (u.reason || 'not covered by this licence');
+                        return '<tr><td><code>' + esc(u.type) + '</code> ' + (u.name !== u.type ? '<span class="muted">' + esc(u.name) + '</span>' : '') +
+                            (why ? '<span class="why">' + esc(why) + '</span>' : '') + '</td><td style="text-align:right">' + verdict + '</td></tr>';
+                    }).join('') + '</table>';
+                }
             } catch (e) {
                 el.textContent = '-';
+                $('lic-probes').textContent = '-';
             }
         }
 
@@ -232,8 +278,7 @@
                 const d = await post({ license: jwt });
                 banner('ok', (d.applied || ['License activated.']).join('; '));
                 $('license').value = '';
-                load();
-                loadLocked();
+                load().then(loadLocked);
             } catch (e) {
                 banner('err', e.message);
             }
@@ -304,8 +349,148 @@
             setTimeout(() => c.classList.add('hide'), 1500);
         });
 
-        load();
-        loadLocked();
+        async function loadEndpoints() {
+            const el = $('ep-summary');
+            const link = '<a class="small" href="/web/' + window.AGENT_KEY + '/outputs">Manage in Outputs</a>';
+            try {
+                const r = await fetch('/api/' + window.AGENT_KEY + '/config/outputs');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const http = ((await r.json()).outputs || []).find(o => o.type === 'http');
+                const p = (http && http.params) || {};
+                const on = Array.isArray(p.endpoints)
+                    ? new Set(p.endpoints.map(String))
+                    : new Set(((http && http.readers) || []).filter(x => x.enabled).map(x => x.endpoint));
+                const names = [['prometheus', 'Prometheus'], ['prtg', 'PRTG'], ['nagios', 'Nagios']];
+                el.innerHTML = names.map(n => '<span class="small">' + esc(n[1]) + ' ' + (on.has(n[0]) ? pill('ok', 'on') : pill('off', 'off')) + '</span>').join(' ') + link;
+            } catch (e) {
+                el.innerHTML = '<a class="small" href="/web/' + window.AGENT_KEY + '/outputs">Prometheus, PRTG and Nagios endpoints: see Outputs</a>';
+            }
+        }
+
+        // ---- governance: same fields, vocabulary and label editor as the
+        // probe form's "Governance and tags" section.
+        const govApi = '/api/' + window.AGENT_KEY + '/config/governance';
+        const Gov = {
+            labelRows: [],
+            readOnly: false,
+            read() {
+                const g = {};
+                const v = (id) => $(id).value.trim();
+                const owner = {}; if (v('g-team')) owner.team = v('g-team'); if (v('g-contact')) owner.contact = v('g-contact');
+                if (Object.keys(owner).length) g.owner = owner;
+                if (v('g-crit')) g.criticality = v('g-crit');
+                if (v('g-life')) g.lifecycle = v('g-life');
+                const loc = {}; for (const [id, k] of [['g-site', 'site'], ['g-dc', 'datacenter'], ['g-room', 'room'], ['g-rack', 'rack']]) if (v(id)) loc[k] = v(id);
+                if (Object.keys(loc).length) g.location = loc;
+                const labels = {};
+                for (const [k, val] of Gov.labelRows) if (k.trim()) labels[k.trim()] = val;
+                if (Object.keys(labels).length) g.labels = labels;
+                return g;
+            },
+            write(g) {
+                g = g || {};
+                $('g-team').value = (g.owner && g.owner.team) || ''; $('g-contact').value = (g.owner && g.owner.contact) || '';
+                Gov.setSelect('g-crit', g.criticality); Gov.setSelect('g-life', g.lifecycle);
+                const loc = g.location || {};
+                $('g-site').value = loc.site || ''; $('g-dc').value = loc.datacenter || ''; $('g-room').value = loc.room || ''; $('g-rack').value = loc.rack || '';
+                const labels = g.labels || {};
+                Gov.labelRows = Object.keys(labels).map(k => [k, String(labels[k])]);
+                Gov.renderLabels();
+            },
+            // A value outside the listed options (a ${env:...} reference, or an
+            // open-vocabulary lifecycle) is kept visible as its own option.
+            setSelect(id, value) {
+                const sel = $(id);
+                sel.querySelectorAll('option[data-raw]').forEach(o => o.remove());
+                value = value || '';
+                if (value && ![...sel.options].some(o => o.value === value)) {
+                    const o = document.createElement('option');
+                    o.value = value; o.textContent = value; o.dataset.raw = '1';
+                    sel.appendChild(o);
+                }
+                sel.value = value;
+            },
+            status(kind, msg) {
+                const e = $('gov-status');
+                e.textContent = msg || '';
+                e.style.color = kind === 'err' ? 'var(--err)' : kind === 'ok' ? 'var(--ok)' : '';
+            },
+            renderLabels() {
+                const tb = $('label-rows'); tb.innerHTML = '';
+                if (!Gov.labelRows.length) { tb.innerHTML = '<tr><td class="hint" style="padding:4px">None.</td></tr>'; return; }
+                Gov.labelRows.forEach((r, i) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = '<td><input class="in" placeholder="key" autocomplete="off"></td><td><input class="in" placeholder="value" autocomplete="off"></td><td style="width:32px"><button type="button" class="btn sm ghost" title="Remove">&times;</button></td>';
+                    const [k, v] = tr.querySelectorAll('input');
+                    k.value = r[0]; v.value = r[1];
+                    k.disabled = v.disabled = Gov.readOnly;
+                    k.oninput = (e) => { Gov.labelRows[i][0] = e.target.value; };
+                    v.oninput = (e) => { Gov.labelRows[i][1] = e.target.value; };
+                    const rm = tr.querySelector('button');
+                    rm.disabled = Gov.readOnly;
+                    rm.onclick = () => { Gov.labelRows.splice(i, 1); Gov.renderLabels(); };
+                    tb.appendChild(tr);
+                });
+            },
+            clearErrors() {
+                document.querySelectorAll('#gov .ferr').forEach(e => { e.hidden = true; e.textContent = ''; });
+            },
+            showErrors(fields) {
+                // A refusal names a dotted path; the field whose path is the
+                // longest prefix of it carries the message.
+                for (const [path, msg] of Object.entries(fields || {})) {
+                    let best = null;
+                    document.querySelectorAll('#gov .field[data-path]').forEach(f => {
+                        const p = f.dataset.path;
+                        if ((path === p || path.startsWith(p + '.')) && (!best || p.length > best.dataset.path.length)) best = f;
+                    });
+                    const e = best && best.querySelector('.ferr');
+                    if (e) { e.textContent = msg; e.hidden = false; }
+                }
+            },
+            lock(on, reason) {
+                Gov.readOnly = on;
+                document.querySelectorAll('#gov .gov').forEach(i => i.disabled = on);
+                $('btn-add-label').disabled = on;
+                $('save-gov').disabled = on;
+                const ro = $('gov-ro');
+                ro.className = 'banner warn' + (on ? '' : ' hide');
+                ro.textContent = on ? 'Read only: ' + reason : '';
+                $('gov-state').innerHTML = on ? pill('off', 'read only') : '';
+            },
+            async load() {
+                try {
+                    const r = await fetch(govApi);
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    const d = await r.json();
+                    Gov.lock(!!d.read_only, d.reason || '');
+                    Gov.write(d.governance);
+                    $('gov-applies').textContent = d.applies ? 'Saving: ' + d.applies + '.' : '';
+                } catch (e) {
+                    banner('err', 'Could not load governance: ' + e.message);
+                }
+            },
+            async save() {
+                Gov.clearErrors();
+                Gov.status('', '');
+                try {
+                    const r = await fetch(govApi, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ governance: Gov.read() }) });
+                    const d = await r.json().catch(() => ({}));
+                    if (!r.ok) { Gov.showErrors(d.fields); throw new Error(d.error || ('HTTP ' + r.status)); }
+                    Gov.status('ok', 'Saved');
+                    banner('ok', d.applied || 'Governance saved.');
+                } catch (e) {
+                    Gov.status('err', e.message);
+                    banner('err', e.message);
+                }
+            },
+        };
+        $('btn-add-label').onclick = () => { Gov.labelRows.push(['', '']); Gov.renderLabels(); };
+        $('save-gov').addEventListener('click', Gov.save);
+
+        load().then(loadLocked);
+        loadEndpoints();
+        Gov.load();
     </script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
 </body>

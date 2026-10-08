@@ -80,8 +80,11 @@ minisign -Vm senhub-agent-linux-amd64.zip \
 ```
 
 That public key is the one the agent itself embeds to verify its own
-auto-updates. There is no `SHA256SUMS` file — minisign is the
-verification path.
+auto-updates. There is no `SHA256SUMS` file: minisign is the
+verification path. Each release also publishes a manifest with the
+checksum, size and signature address of every file, and a stable address
+for the newest release of each channel; see
+[Downloading and verifying releases](releases.md).
 
 ### Release Artifact Naming
 
@@ -157,7 +160,7 @@ msiexec /i senhub-agent-<version>-amd64.msi /qn
 !!! warning "The license key is a secret"
     A verbose install log (`/l*v`) records property values and custom-action command lines, so a `LICENSE_KEY` passed on the `msiexec` line can appear in that log. When provisioning a license silently, use a non-verbose log level (`/l*`) or omit logging entirely for the install that carries `LICENSE_KEY`; if you must capture a verbose log for troubleshooting, treat it as sensitive and delete it once the install is confirmed. The token equally lands in the deployment tool's job output — scrub it the same way.
 
-For GPO, SCCM and Intune deployment (including the MST transform GPO needs to pass properties), see the [Windows MSI deployment guide](https://github.com/senhub-io/senhub-agent/blob/dev/docs/deployment/windows-msi.md).
+For GPO, SCCM and Intune deployment (including the MST transform GPO needs to pass properties), see [Windows: Intune, GPO and SCCM](deploying/windows-intune-gpo.md). Other tools (Ansible, cloud-init, Docker Compose, Helm, Podman) are in [Deploying at scale](deploying/index.md).
 
 #### Adopting an existing agent
 
@@ -326,6 +329,85 @@ Linux logs are stored at:
 If this directory is not writable, logs fall back to the binary directory.
 
 Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
+
+### Install from packages
+
+The agent is also available as a `.deb` (Debian, Ubuntu) and an `.rpm` (RHEL, Rocky Linux, openSUSE) for amd64 and arm64, in two editions. Download the file for your edition, distribution and architecture, then install it with your package manager:
+
+| Edition | Package name | Choose it when |
+|---------|--------------|----------------|
+| Open source | `senhub-agent-oss` | You use the free probes (OS and host, logs, network checks, applications, databases and brokers). Licensed under Apache-2.0. |
+| Full | `senhub-agent` | You use the paid probes (Citrix, NetScaler, Veeam, Redfish and the other deep vendor probes), with a license token. |
+
+Both editions install the same files and the same service, so only one can be installed at a time.
+
+```bash
+# Debian, Ubuntu
+sudo apt install ./senhub-agent-oss_<version>-1_amd64.deb
+
+# RHEL, Rocky Linux, AlmaLinux
+sudo dnf install ./senhub-agent-oss-<version>-1.x86_64.rpm
+
+# openSUSE, SLES
+sudo zypper install --allow-unsigned-rpm ./senhub-agent-oss-<version>-1.x86_64.rpm
+```
+
+For the full edition, use the `senhub-agent` file in the same commands. A beta carries its number after a tilde, for example `senhub-agent-oss_0.6.2~beta.1-1_amd64.deb`: the package manager sorts `0.6.2~beta.1` and `0.6.2~beta.2` before the final `0.6.2`, so the release replaces its betas as an ordinary upgrade.
+
+#### Switching edition
+
+Install the other edition in place of the installed one. The service restarts on the new package, and your configuration, agent key, secrets and data are kept. Switching in either direction works the same way. On Debian and Ubuntu one install command does it; on the rpm distributions the two editions conflict, so the switch is an explicit swap.
+
+```bash
+# from the open source edition to the full edition
+sudo apt install ./senhub-agent_<version>-1_amd64.deb                          # Debian, Ubuntu
+sudo dnf swap senhub-agent-oss ./senhub-agent-<version>-1.x86_64.rpm            # RHEL, Rocky Linux, AlmaLinux
+sudo zypper install --force-resolution ./senhub-agent-<version>-1.x86_64.rpm    # openSUSE, SLES
+```
+
+From the package repositories, use the package name instead of the file: `sudo dnf swap senhub-agent-oss senhub-agent` or `sudo zypper install --force-resolution senhub-agent`. Going back uses the same commands with the names exchanged.
+
+The package creates the `senhub` service user, installs the binary at `/usr/bin/senhub-agent` and the hardened `senhub-agent.service` unit, writes the default configuration to `/etc/senhub-agent/` with a key of its own for this host, and starts the service. It does not run `senhub-agent install`; do not run both.
+
+- **Upgrade**: install the newer file the same way. Your edits to the configuration are kept and the service restarts on the new binary.
+- **Version**: the package manager owns it. `auto_update` is `false` in the packaged configuration, so the agent never replaces itself; leave it that way.
+- **Removal**: `sudo apt remove senhub-agent-oss` (or `dnf remove`, `zypper remove`; use the package name of your edition) stops and disables the service and keeps `/etc/senhub-agent`, `/var/lib/senhub-agent` and the logs. `sudo apt purge senhub-agent-oss` also deletes them, and the `senhub` user.
+
+- **Host already installed with `senhub-agent install`**: installing the package takes over. It stops the service, removes the unit in `/etc/systemd/system` and the binary in `/usr/local/bin` (a copy is kept as `/var/lib/senhub-agent/senhub-agent.pre-package`), and starts the packaged service. Your configuration, agent key, secrets and data are not touched. The reverse (going back from a package to `install`) is not supported: remove the package first, then install from the ZIP.
+
+#### Install from the package repositories
+
+Signed APT and YUM/DNF/Zypper repositories are served at `https://packages.senhub.io`. They go live with the first published beta: until then, install from the downloaded file as above. Two channels exist, `stable` (final releases) and `beta` (pre-releases, `X.Y.Z~beta.N`); pick one per machine, and replace `beta` by `stable` in the commands below to follow final releases. The same page, <https://packages.senhub.io>, carries these commands for both channels. The package names are the ones of the table above: `senhub-agent-oss` (open source edition) and `senhub-agent` (full edition).
+
+The signing key is served at `https://packages.senhub.io/gpg.key`; its fingerprint is printed on the repository page. The repository metadata and every package are signed with it, and the clients check both.
+
+Debian, Ubuntu:
+
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://packages.senhub.io/gpg.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/senhub.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/senhub.gpg] https://packages.senhub.io/apt beta main" | sudo tee /etc/apt/sources.list.d/senhub.list
+sudo apt update
+sudo apt install senhub-agent-oss
+```
+
+RHEL, Rocky Linux, AlmaLinux, Fedora:
+
+```bash
+sudo curl -fsSLo /etc/yum.repos.d/senhub.repo https://packages.senhub.io/rpm/beta/senhub.repo
+sudo dnf install senhub-agent-oss
+```
+
+openSUSE, SLES:
+
+```bash
+sudo rpm --import https://packages.senhub.io/gpg.key
+sudo curl -fsSLo /etc/zypp/repos.d/senhub.repo https://packages.senhub.io/rpm/beta/senhub-zypper.repo
+sudo zypper refresh
+sudo zypper install senhub-agent-oss
+```
+
+For the full edition, install `senhub-agent` instead. Updates then arrive with the system's own updates (`apt upgrade`, `dnf upgrade`, `zypper update`).
 
 ## Installation Options
 

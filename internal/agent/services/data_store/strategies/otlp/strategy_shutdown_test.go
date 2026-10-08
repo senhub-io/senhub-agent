@@ -53,3 +53,35 @@ func TestShutdownAbortsAPushInFlight(t *testing.T) {
 		t.Fatal("shutdown did not return promptly: a push in flight still holds it")
 	}
 }
+
+// The final flush is capped at exporterShutdownBudget whatever the caller
+// allows: a collector that does not answer held the whole stop for 10.6 s
+// when the cap was ten seconds, and the container runtime killed the
+// agent at ten.
+func TestBoundFlushContextCapsALongDeadline(t *testing.T) {
+	long, cancelLong := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelLong()
+	ctx, cancel := boundFlushContext(long)
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) > exporterShutdownBudget {
+		t.Fatalf("flush deadline %v is past the %s budget", time.Until(deadline), exporterShutdownBudget)
+	}
+
+	none, cancelNone := boundFlushContext(context.Background())
+	defer cancelNone()
+	if _, ok := none.Deadline(); !ok {
+		t.Error("a caller without a deadline must still get one")
+	}
+
+	short, cancelShort := context.WithTimeout(context.Background(), time.Second)
+	defer cancelShort()
+	kept, cancelKept := boundFlushContext(short)
+	defer cancelKept()
+	if d, _ := kept.Deadline(); time.Until(d) > time.Second {
+		t.Error("a shorter caller deadline must be kept")
+	}
+	if exporterShutdownBudget > 5*time.Second {
+		t.Errorf("exporterShutdownBudget = %s: the stop must end well under the ten seconds a container runtime allows", exporterShutdownBudget)
+	}
+}

@@ -104,6 +104,13 @@ type Template struct {
 	DiscoveryRules []DiscoveryRule `yaml:"discovery_rules,omitempty"`
 	Macros         []Macro         `yaml:"macros,omitempty"`
 	ValueMaps      []ValueMap      `yaml:"valuemaps,omitempty"`
+	// Templates are the templates this one is linked to.
+	Templates  []TemplateRef `yaml:"templates,omitempty"`
+	Dashboards []Dashboard   `yaml:"dashboards,omitempty"`
+}
+
+type TemplateRef struct {
+	Name string `yaml:"name"`
 }
 
 // Item is a plain item, not discovered: the agent's own three, which
@@ -139,7 +146,24 @@ type DiscoveryRule struct {
 	Delay          string          `yaml:"delay"`
 	Description    string          `yaml:"description,omitempty"`
 	ItemPrototypes []ItemPrototype `yaml:"item_prototypes"`
-	Overrides      []Override      `yaml:"overrides,omitempty"`
+	// GraphPrototypes draw the prototypes of this rule; Zabbix accepts a
+	// graph only over items of the rule that creates it.
+	GraphPrototypes []GraphPrototype `yaml:"graph_prototypes,omitempty"`
+	Overrides       []Override       `yaml:"overrides,omitempty"`
+	Filter          *RuleFilter      `yaml:"filter,omitempty"`
+}
+
+// RuleFilter keeps the discovered rows its conditions accept.
+type RuleFilter struct {
+	EvalType   string            `yaml:"evaltype"`
+	Conditions []FilterCondition `yaml:"conditions"`
+}
+
+type FilterCondition struct {
+	Macro     string `yaml:"macro"`
+	Value     string `yaml:"value"`
+	Operator  string `yaml:"operator,omitempty"`
+	FormulaID string `yaml:"formulaid"`
 }
 
 type ItemPrototype struct {
@@ -270,6 +294,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	seenKeys := map[string]bool{}
 	fedOf := map[string]string{} // prototype key -> FedID
 	_, familyOf := variantFamilies(def)
+	placed := map[string]placement{} // metric name -> where its item prototype lives
 
 	ensureRule := func(ruleKey, ruleTitle string) *DiscoveryRule {
 		rule, ok := rules[ruleKey]
@@ -299,11 +324,12 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		// host actually feeds.
 		if f := familyOf[m.Name]; f != nil {
 			key := variantPrototypeKey(opts.Prefix, def.ProbeName, f)
+			ruleKey := variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
+			placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: append(labelMacros(labels), attrMacros(f.labels, f.attrKeys)...)}
 			if seenKeys[key] {
 				continue
 			}
 			seenKeys[key] = true
-			ruleKey := variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
 			rule := ensureRule(ruleKey, variantRuleName(def.ProbeName, f))
 			proto := ItemPrototype{
 				Name:        variantPrototypeName(f),
@@ -315,6 +341,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				Description: m.Description,
 			}
 			asPercent(&proto, m)
+			asRate(&proto, m)
 			proto.UUID = uid("item", name, proto.Key)
 			rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 			continue
@@ -351,11 +378,12 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		}
 
 		key := prototypeKey(opts.Prefix, def.ProbeName, m, labels)
+		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
+		placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: labelMacros(labels)}
 		if seenKeys[key] {
 			continue
 		}
 		seenKeys[key] = true
-		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
 		rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
 		proto := ItemPrototype{
 			Name:        prototypeName(m, labels),
@@ -367,6 +395,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 			Description: m.Description,
 		}
 		asPercent(&proto, m)
+		asRate(&proto, m)
 		proto.UUID = uid("item", name, proto.Key)
 		fedOf[proto.Key] = FedID(m)
 		if m.Lookup != "" && opts.Lookups != nil {
@@ -382,6 +411,9 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 				}
 			}
 		}
+		if m.AlertOnChange {
+			proto.TriggerPrototypes = append(proto.TriggerPrototypes, changeTrigger(name, proto))
+		}
 		rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 	}
 
@@ -389,7 +421,15 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	if err != nil {
 		return Export{}, err
 	}
-	tpl.Macros = macros
+	tpl.Macros = append(macros, clockTriggers(name, def, opts, rules)...)
+
+	graphPrototypes(name, def, placed, rules)
+	declared, err := declaredTriggers(name, def, placed, rules)
+	if err != nil {
+		return Export{}, err
+	}
+	tpl.Macros = append(tpl.Macros, declared...)
+	tpl.Macros = append(tpl.Macros, discoveryFilters(def, placed, rules)...)
 
 	for _, k := range order {
 		rule := rules[k]
@@ -399,6 +439,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		}
 		tpl.DiscoveryRules = append(tpl.DiscoveryRules, *rule)
 	}
+	tpl.Dashboards = dashboardOf(tpl, firstNonEmpty(def.FriendlyName, def.ProbeName), opts)
 	vmNames := make([]string, 0, len(valueMaps))
 	for n := range valueMaps {
 		vmNames = append(vmNames, n)
@@ -600,11 +641,48 @@ func asPercent(p *ItemPrototype, m transformers.MetricDefinition) {
 	p.Preprocessing = []Preprocessing{{Type: "MULTIPLIER", Parameters: []string{"100"}}}
 }
 
+// isMonotonicSum reports a cumulative monotonic sum: an OTel counter,
+// whose value only grows between restarts. A histogram's count and sum
+// are cumulative too but are declared under their own keys and stay as
+// sent.
+func isMonotonicSum(m transformers.MetricDefinition) bool {
+	return m.Otel != nil && m.Otel.Name != "" && !m.Otel.Skip && !m.Otel.Distribution && m.Otel.Type == "counter"
+}
+
+// asRate makes the server store and show a cumulative monotonic sum as a
+// per-second rate. The agent keeps sending the running total under the
+// same key as on every other output; a graph of an ever-growing total
+// says nothing, so Zabbix does the differentiation.
+func asRate(p *ItemPrototype, m transformers.MetricDefinition) {
+	if !isMonotonicSum(m) {
+		return
+	}
+	p.Units = rateUnits(p.Units)
+	p.Preprocessing = append(p.Preprocessing, Preprocessing{Type: "CHANGE_PER_SECOND", Parameters: []string{""}})
+}
+
+// rateUnits gives the per-second form of a unit as Zabbix displays it:
+// B becomes Bps, a bare count becomes /s, and any other unit gets /s
+// appended (cpu time in s is shown as s/s, a busy ratio).
+func rateUnits(u string) string {
+	switch u {
+	case "B":
+		return "Bps"
+	case "":
+		return "/s"
+	default:
+		return u + "/s"
+	}
+}
+
 // units maps the OTel unit to what Zabbix displays; Zabbix applies its
 // own multipliers to B and bps, and shows the rest verbatim.
 func units(m transformers.MetricDefinition) string {
 	if m.Otel == nil || m.Otel.Name == "" {
 		return m.Unit
+	}
+	if m.Otel.Name == ClockMetric {
+		return "unixtime"
 	}
 	switch m.Otel.Unit {
 	case "By":

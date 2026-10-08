@@ -25,9 +25,8 @@ servers and Citrix VDA hosts using the MSI installer — interactively
 - Interactive install shows a **guided wizard** (Welcome → license →
   install directory → ready → progress → finish). A silent install (`/qn`)
   skips the UI and drives the same properties from the command line.
-- Clean major-upgrade and clean uninstall. Data under
-  `%ProgramData%\SenHub\` is intentionally preserved on uninstall unless
-  you opt into a purge with `PURGE_DATA=1` (see
+- Clean major-upgrade and clean uninstall. A major upgrade preserves
+  `%ProgramData%\SenHub\`; an uninstall always removes it (see
   [Uninstall and data purge](#uninstall-and-data-purge)).
 
 ## MSI properties (parametric configuration)
@@ -45,7 +44,7 @@ agent installs in the offline Free-tier default.
 | `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
 | `DESKTOP_SHORTCUT` | `1` (default) places a "SenHub Agent Console" shortcut on the desktop; `DESKTOP_SHORTCUT=0` skips it |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
-| `PURGE_DATA` | Uninstall only — `PURGE_DATA=1` on `msiexec /x` deletes `%ProgramData%\SenHub\` in full (see [Uninstall and data purge](#uninstall-and-data-purge)) |
+| `PURGE_DATA` | Accepted for backward compatibility, no effect: an uninstall always deletes `%ProgramData%\SenHub\` in full (see [Uninstall and data purge](#uninstall-and-data-purge)) |
 
 Install-time properties are consumed only on first install; they do not
 overwrite an existing `agent.yaml`.

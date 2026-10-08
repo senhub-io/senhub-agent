@@ -113,6 +113,9 @@ func (f *CLIFormatter) formatAgentInfo(agent AgentInfo) string {
 	output.WriteString(strings.Repeat("-", 30) + "\n")
 	output.WriteString(fmt.Sprintf("Version:    %s\n", agent.Version))
 	output.WriteString(fmt.Sprintf("Commit:     %s\n", agent.Commit))
+	if agent.CoreCommit != "" {
+		output.WriteString(fmt.Sprintf("Core:       %s\n", agent.CoreCommit))
+	}
 	if agent.InstanceID != "" {
 		output.WriteString(fmt.Sprintf("Instance:   %s\n", agent.InstanceID))
 	}

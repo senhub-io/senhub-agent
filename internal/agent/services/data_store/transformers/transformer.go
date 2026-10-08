@@ -63,6 +63,11 @@ type MetricDefinition struct {
 	AlertThresholdWarning  int               `yaml:"alert_threshold_warning"`
 	AlertThresholdCritical int               `yaml:"alert_threshold_critical"`
 	Lookup                 string            `yaml:"lookup"`
+	// AlertOnChange asks the Zabbix template for a trigger that fires
+	// when the value differs from the previous one. It is for a value
+	// that is an identity rather than a measure, such as the checksum of
+	// a file.
+	AlertOnChange bool `yaml:"alert_on_change,omitempty"`
 	// Platforms restricts the metric to the operating systems that can
 	// produce it. Empty means every platform, which is the case for all
 	// but a handful. It exists because a template generated from the
@@ -197,6 +202,72 @@ type ProbeDefinition struct {
 	// separate node_exporter on the same host avoids duplicate series.
 	// Set to true in cpu/memory/network/logicaldisk YAMLs.
 	HostLevel bool `yaml:"host_level,omitempty"`
+
+	// Universal marks a probe every machine of the platforms its metrics
+	// support runs, with no operator choice: host inventory of the
+	// machine itself. A sink that links templates by default (the
+	// Zabbix setup) links the universal probes and leaves the others to
+	// be named, because a template whose probe is absent only adds
+	// empty rules.
+	Universal bool `yaml:"universal,omitempty"`
+
+	// Graphs declares the charts a sink that draws them (the Zabbix
+	// templates) builds from this probe's metrics. A chart holds the
+	// metrics of one discovery rule, so the names list the ones to plot
+	// together; a name the platform does not produce is skipped.
+	Graphs []GraphDefinition `yaml:"graphs,omitempty"`
+
+	// Triggers declares the problems a sink that raises them (the Zabbix
+	// templates) derives from this probe's metrics, beyond the one
+	// threshold pair a single metric can carry.
+	Triggers []TriggerDefinition `yaml:"triggers,omitempty"`
+
+	// DiscoveryFilters lets an operator include or exclude the instances
+	// of a dimension from discovery, through user macros.
+	DiscoveryFilters []DiscoveryFilter `yaml:"discovery_filters,omitempty"`
+}
+
+// TriggerDefinition is a problem over one or more metrics of the same
+// instance. The expression is written in the Zabbix trigger language
+// with each item reference replaced by the metric's `name` in double
+// braces: `min({{cpu_queue_length}},5m)>{$SENHUB.CPU_QUEUE.MAX}`;
+// `{{a|b}}` takes the first of the two the platform produces. The metrics
+// must all share one dimension set; a trigger whose metrics the platform
+// does not produce is left out.
+type TriggerDefinition struct {
+	Name        string            `yaml:"name"`
+	Expression  string            `yaml:"expression"`
+	Priority    string            `yaml:"priority,omitempty"` // INFO, WARNING, AVERAGE, HIGH, DISASTER; WARNING by default
+	Scope       string            `yaml:"scope,omitempty"`    // availability, performance, capacity, ...
+	Description string            `yaml:"description,omitempty"`
+	Macros      []MacroDefinition `yaml:"macros,omitempty"`
+}
+
+// MacroDefinition is a user macro with the value a template ships.
+type MacroDefinition struct {
+	Name        string `yaml:"name"` // {$SENHUB.X}
+	Value       string `yaml:"value"`
+	Description string `yaml:"description,omitempty"`
+}
+
+// DiscoveryFilter holds the instances of one dimension to a pattern:
+// those whose value matches Match and does not match Exclude. Both are
+// user macros holding regular expressions, so a site changes them per
+// host. Match defaults to everything, Exclude to what the definition
+// names.
+type DiscoveryFilter struct {
+	Label          string `yaml:"label"`
+	MatchMacro     string `yaml:"match_macro"`
+	ExcludeMacro   string `yaml:"exclude_macro"`
+	ExcludeDefault string `yaml:"exclude_default"`
+	Description    string `yaml:"description,omitempty"`
+}
+
+// GraphDefinition is one chart over metrics of a probe, by the metric's
+// `name`.
+type GraphDefinition struct {
+	Name   string   `yaml:"name"`
+	Series []string `yaml:"series"`
 }
 
 // UnitDefinition represents a unit mapping definition
@@ -242,15 +313,15 @@ type DefinitionBasedTransformer struct {
 // Concurrency contract (#259): the registry is read from probe
 // scheduler goroutines (unit corrections), HTTP scrape handlers
 // (Prometheus exposition) and the OTLP export loop, while first-loads
-// write the cache. All map access goes through tr.mu; the probe
-// definitions are eager-loaded once at construction so steady-state
-// lookups are lock-protected map hits — never a YAML parse.
+// write the cache. Readers use a lock-free snapshot; a probe definition
+// is parsed once, on the first lookup of its probe type, under writeMu,
+// so steady-state lookups are map hits — never a YAML parse.
 // registrySnapshot is the registry's whole readable state. Readers take
 // the pointer and read the maps without a lock; a writer builds a new
 // snapshot and swaps it, so no map is ever read and written at once.
 type registrySnapshot struct {
 	transformers map[string]MetricTransformer // key: "probe_name:style"
-	definitions  map[string]*ProbeDefinition  // eager; nil value = known-absent
+	definitions  map[string]*ProbeDefinition  // lazy; nil value = known-absent
 }
 
 type TransformerRegistry struct {
@@ -300,33 +371,24 @@ func (tr *TransformerRegistry) withEntry(transformerKey string, transformer Metr
 	tr.snapshot.Store(next)
 }
 
-// NewTransformerRegistry creates a new transformer registry with every
-// embedded probe definition parsed once, up front.
+// NewTransformerRegistry creates a transformer registry. A probe
+// definition is parsed the first time its probe type is looked up and kept
+// from then on, so an agent that runs four probe types holds four parsed
+// definitions rather than all of the embedded ones.
 func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
-	// Create module-specific logger for transformer registry
 	moduleLogger := logger.NewModuleLogger(baseLogger, "transformer")
-
-	definitions := make(map[string]*ProbeDefinition)
-	if defs, err := Definitions(); err != nil {
-		moduleLogger.Error().Err(err).Msg("eager-loading embedded probe definitions failed; falling back to lazy lookups")
-	} else {
-		for name := range defs {
-			def := defs[name]
-			definitions[name] = &def
-		}
-	}
 
 	registry := &TransformerRegistry{moduleLogger: moduleLogger}
 	registry.snapshot.Store(&registrySnapshot{
 		transformers: make(map[string]MetricTransformer),
-		definitions:  definitions,
+		definitions:  make(map[string]*ProbeDefinition),
 	})
 	return registry
 }
 
 // GetProbeDefinition returns the parsed ProbeDefinition for a probe, or nil if not found.
 // Used by the web UI, the Prometheus exposition and the OTLP exporter.
-// Served from the eager-loaded index; negative lookups are memoized so
+// Parsed on first use and memoized; negative lookups are memoized too so
 // unknown probe names never re-read the embedded FS.
 func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefinition {
 	def, known := tr.read().definitions[probeName]
@@ -334,15 +396,19 @@ func (tr *TransformerRegistry) GetProbeDefinition(probeName string) *ProbeDefini
 		return def // may be nil: memoized negative
 	}
 
-	// Unknown name (custom probe type, eager load failed): one lazy
-	// attempt, then memoize the outcome — including the negative.
+	// First lookup of this name: one parse under the writer lock so
+	// concurrent first lookups share one instance, then memoize the
+	// outcome, including the negative.
+	tr.writeMu.Lock()
+	defer tr.writeMu.Unlock()
+	if def, known := tr.read().definitions[probeName]; known {
+		return def
+	}
 	loaded, err := tr.loadProbeDefinitionFromEmbed(fmt.Sprintf("definitions/%s.yaml", probeName))
 	if err != nil {
 		loaded = nil
 	}
-	tr.writeMu.Lock()
 	tr.withEntry("", nil, probeName, loaded, true)
-	tr.writeMu.Unlock()
 	return loaded
 }
 
@@ -571,8 +637,7 @@ var passThroughProbes = map[string]bool{
 func (tr *TransformerRegistry) loadDefinitionBasedTransformer(probeName string) (MetricTransformer, error) {
 	definition := tr.read().definitions[probeName]
 	if definition == nil {
-		// Not in the eager index (custom probe type or eager load
-		// failure): one lazy attempt against the embedded FS.
+		// First use of this probe type: parse it from the embedded FS.
 		probeFilePath := fmt.Sprintf("definitions/%s.yaml", probeName)
 		loaded, err := tr.loadProbeDefinitionFromEmbed(probeFilePath)
 		if err != nil {

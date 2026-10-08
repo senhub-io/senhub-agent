@@ -51,6 +51,7 @@ Host-local observability — probes that watch the machine the agent runs on, no
 - **linux_logs** - Local systemd journal log shipping (Linux only)
 - **windows_eventlog** - Local Windows Event Log shipping (Windows only) — the host-local OS log rail counterpart to linux_logs
 - **filetail** - Generic flat-file log tailing (regex/JSON/logfmt parsing, rotation-aware), cross-platform — feeds VictoriaLogs alongside linux_logs/windows_eventlog
+- **event** - HTTP receiver for custom JSON events, forwarded as OTLP logs (universal collection)
 - **otlp_receiver** - Embedded OTLP gRPC/HTTP receiver; the agent acts as an edge collector ingesting OTLP metric streams from other instrumented sources (universal collection wedge)
 - **prometheus_scrape** - Pull-side twin of otlp_receiver: scrapes Prometheus /metrics endpoints (exporters, appliances) into the same pipeline (universal collection wedge)
 - **exec** - Custom checks: runs operator-supplied Nagios plugins or JSON-emitting scripts on interval (custom-sensor long tail)
@@ -127,7 +128,6 @@ Source of truth: the `paidProbes` map in `internal/agent/services/license/probe_
 - **ad_hybrid** - Active Directory hybrid-identity monitoring
 - **exchange_online** - Microsoft Exchange Online / Microsoft 365 mail monitoring
 - **azure_container_apps** - Azure Container Apps console log stream (stdout/stderr of every replica), read through ARM without touching the container
-- **event** - Custom HTTP event ingestion
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability
 - **load_webapp** - Web application performance phase timing

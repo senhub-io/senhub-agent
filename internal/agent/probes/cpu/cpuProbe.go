@@ -2,6 +2,10 @@
 package cpu
 
 import (
+	"time"
+
+	"github.com/shirou/gopsutil/v3/host"
+
 	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -16,7 +20,18 @@ func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 		Subject:  "CPU",
 		TypeName: "CPUProbe",
 		NewCollector: func(cfg map[string]interface{}, _ *logger.Logger, moduleLogger *logger.ModuleLogger) (hostpoll.Collector, error) {
-			return newCPUCollector(cfg, moduleLogger.Logger)
+			collector, err := newCPUCollector(cfg, moduleLogger.Logger)
+			if err != nil {
+				return nil, err
+			}
+			return withClock{
+				Collector: collector,
+				now:       time.Now,
+				uptime:    host.Uptime,
+				onUptimeError: func(err error) {
+					moduleLogger.Warn().Err(err).Msg("reading the host uptime failed; the uptime point is left out of this cycle")
+				},
+			}, nil
 		},
 	})
 	if err != nil {

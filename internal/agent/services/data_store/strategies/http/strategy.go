@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -22,13 +23,15 @@ type HTTPSyncStrategy struct {
 	// runCtx is the lifecycle context Start received, kept so a live
 	// reconfiguration restarts the server under the same cancellation
 	// root rather than an orphaned background one.
-	runCtx              context.Context
-	agentConfig         configuration.AgentConfiguration
-	params              map[string]interface{}
-	logger              *logger.ModuleLogger
-	server              *http.Server
-	cache               *MetricCache
-	agentKey            string
+	runCtx      context.Context
+	agentConfig configuration.AgentConfiguration
+	params      map[string]interface{}
+	logger      *logger.ModuleLogger
+	server      *http.Server
+	cache       *MetricCache
+	agentKey    string
+	// licenseValidatorFn overrides the embedded-key validator; tests only.
+	licenseValidatorFn  func() (*license.JWTValidator, error)
 	port                int
 	bindAddress         string // IP address to bind to
 	transformerRegistry *transformers.TransformerRegistry
@@ -95,8 +98,6 @@ type PRTGChannel struct {
 	Float           *int    `json:"float,omitempty"` // Pointer to make optional for lookup metrics
 	Unit            string  `json:"unit,omitempty"`
 	CustomUnit      string  `json:"customunit,omitempty"`
-	SpeedSize       string  `json:"speedsize,omitempty"` // Input scale for Speed* units (Byte, Bit, MegaBit, ...)
-	SpeedTime       string  `json:"speedtime,omitempty"` // Input period for Speed* units (Second, Minute, ...)
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
@@ -261,14 +262,14 @@ func (h *HTTPSyncStrategy) Start(ctx context.Context) error {
 
 // AddDataPoints stores the received datapoints in cache
 func (h *HTTPSyncStrategy) AddDataPoints(datapoints []datapoint.DataPoint) error {
-	h.logger.Info().Int("count", len(datapoints)).Msg("HTTP Strategy - Received datapoints")
+	h.logger.Debug().Int("count", len(datapoints)).Msg("HTTP Strategy - Received datapoints")
 
 	// Use the cache's method to add data points
 	h.cache.AddDataPointsWithTransformer(datapoints, h.transformerRegistry)
 
 	// Get cache info for logging
 	cacheInfo := h.cache.GetCacheInfo()
-	h.logger.Info().
+	h.logger.Debug().
 		Int("count", len(datapoints)).
 		Int("total_time_series", cacheInfo.TotalMetrics).
 		Int("active_probes", cacheInfo.ProbeCount).
@@ -348,6 +349,8 @@ type SystemInfoResponse struct {
 	Hostname string `json:"hostname"`
 	Version  string `json:"version"`
 	Commit   string `json:"commit"`
+	// CoreCommit is the open-core commit the binary was built from.
+	CoreCommit string `json:"core_commit,omitempty"`
 	// InstanceID is the agent's service.instance.id, as its telemetry and
 	// its entity carry it. Not a credential: shown so an operator can find
 	// this agent in a metrics store or a topology graph.
@@ -459,6 +462,19 @@ type ProbesInfoResponse struct {
 	Probes       []string       `json:"probes"`
 	ProbeMetrics map[string]int `json:"probe_metrics"`
 	TotalMetrics int            `json:"total_metrics"`
+	// Details carries each probe's state next to its name. Probes stays a
+	// list of names because the web console reads it as one.
+	Details []ProbeDetail `json:"details"`
+}
+
+// ProbeDetail is one probe's state in /info/probes.
+type ProbeDetail struct {
+	Name         string `json:"name"`
+	MetricsCount int    `json:"metrics_count"`
+	LastUpdate   string `json:"last_update,omitempty"`
+	Running      bool   `json:"running"`
+	Health       string `json:"health,omitempty"`
+	LastError    string `json:"last_error,omitempty"`
 }
 
 // TagInfoResponse represents the response for /info/tags/{probe}
@@ -758,6 +774,18 @@ func (h *HTTPSyncStrategy) UpdateConfiguration(newParams map[string]interface{})
 	// Update internal parameters
 	h.params = newParams
 
+	// The administration routes are registered only while a key exists, so
+	// a key appearing or disappearing needs the rebuild an endpoint change
+	// gets; a rotated key needs none, requests read the live one.
+	wasAdmin := h.authManager.AdminEnabled()
+	h.authManager.SetAdminKey(adminKeyFrom(newParams))
+	if h.authManager.AdminEnabled() != wasAdmin {
+		h.logger.Info().
+			Bool("admin_enabled", !wasAdmin).
+			Msg("Administration key presence changed, restarting HTTP server to rebuild the routes")
+		return h.restartServer()
+	}
+
 	// The route table is built at server start, so an endpoint set change
 	// needs the same restart a port change gets.
 	if current := endpointSetSignature(h.configManager.GetEnabledEndpoints()); current != previousEndpoints {
@@ -872,4 +900,19 @@ func endpointSetSignature(endpoints map[string]bool) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
+}
+
+// licenseAgentKey is the identity a licence binds to: the agent's own
+// key, the one the sensor checks at boot. The key a console request
+// authenticated with is not it: the administration key opens the same
+// pages, and a licence issued for this agent would fail against it.
+func (h *HTTPSyncStrategy) licenseAgentKey() string {
+	return h.authManager.GetAgentKey()
+}
+
+func (h *HTTPSyncStrategy) newLicenseValidator() (*license.JWTValidator, error) {
+	if h.licenseValidatorFn != nil {
+		return h.licenseValidatorFn()
+	}
+	return license.GetDefaultValidator(7)
 }

@@ -39,3 +39,46 @@ func TestCanonicalHostname_NonWindowsNormalizesRaw(t *testing.T) {
 		t.Errorf("canonicalHostname = %q, want dash01.example.com", got)
 	}
 }
+
+// TestHostNameOverride_AppliesToEveryOwnHostEmitter pins the one source of
+// truth: metrics tags, the OTLP resource and the host entity all read the
+// operator's host.name override, and all fall back to the same canonical
+// name without one.
+func TestHostNameOverride_AppliesToEveryOwnHostEmitter(t *testing.T) {
+	t.Cleanup(func() { SetHostNameOverride("") })
+
+	SetHostNameOverride("")
+	base, err := GetHostIdentity()
+	if err != nil {
+		t.Skipf("host info unavailable: %v", err)
+	}
+
+	SetHostNameOverride("  preprod.example.shop ")
+	id, err := GetHostIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attrs, err := GetHostResourceAttributes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tg, err := GetHostTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.Name != "preprod.example.shop" || attrs["host.name"] != id.Name {
+		t.Errorf("entity %q / resource %q, want the override", id.Name, attrs["host.name"])
+	}
+	for _, tag := range tg {
+		if tag.Key == "host" && tag.Value != id.Name {
+			t.Errorf("host tag = %q, want %q", tag.Value, id.Name)
+		}
+	}
+
+	SetHostNameOverride("")
+	again, _ := GetHostIdentity()
+	attrs, _ = GetHostResourceAttributes()
+	if again.Name != base.Name || attrs["host.name"] != base.Name {
+		t.Errorf("without override: entity %q resource %q, want %q", again.Name, attrs["host.name"], base.Name)
+	}
+}

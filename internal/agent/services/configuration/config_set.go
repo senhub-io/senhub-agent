@@ -56,39 +56,50 @@ func FindStrategyFragment(configPath, strategyName string) (string, error) {
 // no restart is needed. It backs both `config set` and the web-UI settings
 // page.
 func SetStrategyScalar(configPath, strategyName, param, value, tag string) error {
-	fragPath, err := FindStrategyFragment(configPath, strategyName)
+	_, _, err := SetStrategyScalarReport(configPath, strategyName, param, value, tag)
+	return err
+}
+
+// SetStrategyScalarReport is SetStrategyScalar returning the fragment it
+// edited and whether it changed anything. A param that already holds
+// value is left alone: the file is not rewritten, so its modification time
+// and its formatting stay as they were.
+func SetStrategyScalarReport(configPath, strategyName, param, value, tag string) (fragPath string, changed bool, err error) {
+	fragPath, err = FindStrategyFragment(configPath, strategyName)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	if fragPath == "" {
-		return fmt.Errorf("no %q strategy fragment found under strategies.d/", strategyName)
+		return "", false, fmt.Errorf("no %q strategy fragment found under strategies.d/", strategyName)
 	}
-	raw, err := os.ReadFile(fragPath) // #nosec G304 - path resolved from strategies.d/
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", fragPath, err)
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("parsing %s: %w", fragPath, err)
-	}
-	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: unexpected shape, expected a single %q mapping", fragPath, strategyName)
-	}
-	root := doc.Content[0]
-	block := mappingChild(root, strategyName)
-	if block == nil || block.Kind != yaml.MappingNode {
-		return fmt.Errorf("%s: no %q mapping to edit", fragPath, strategyName)
-	}
-	setTypedScalarField(block, param, value, tag)
+	wrote, err := rewriteFile(fragPath, func(raw []byte) ([]byte, error) {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", fragPath, err)
+		}
+		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: unexpected shape, expected a single %q mapping", fragPath, strategyName)
+		}
+		root := doc.Content[0]
+		block := mappingChild(root, strategyName)
+		if block == nil || block.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%s: no %q mapping to edit", fragPath, strategyName)
+		}
+		if current := mappingChild(block, param); current != nil && current.Kind == yaml.ScalarNode && current.Value == value {
+			return nil, nil
+		}
+		setTypedScalarField(block, param, value, tag)
 
-	out, err := marshalDocument(&doc)
+		out, err := marshalDocument(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("re-encoding %s: %w", fragPath, err)
+		}
+		return out, nil
+	})
 	if err != nil {
-		return fmt.Errorf("re-encoding %s: %w", fragPath, err)
+		return fragPath, false, fmt.Errorf("editing %s: %w", fragPath, err)
 	}
-	if err := atomicWriteFile(fragPath, out, fileModeOr(fragPath, 0o600)); err != nil {
-		return fmt.Errorf("writing %s: %w", fragPath, err)
-	}
-	return nil
+	return fragPath, wrote, nil
 }
 
 // setTypedScalarField sets (or adds) key=value as a scalar with the given tag

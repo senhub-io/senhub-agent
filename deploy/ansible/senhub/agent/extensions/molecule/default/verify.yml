@@ -1,0 +1,68 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    config_dir: /etc/senhub-agent
+  tasks:
+    - name: Service facts
+      ansible.builtin.service_facts:
+
+    - name: The service is active
+      ansible.builtin.assert:
+        that: ansible_facts['services']['senhub-agent.service']['state'] == 'running'
+        fail_msg: "senhub-agent.service is {{ ansible_facts['services']['senhub-agent.service']['state'] | default('missing') }}"
+
+    - name: The live configuration passes config check
+      ansible.builtin.command: /usr/bin/senhub-agent config check --json
+      register: check
+      changed_when: false
+      failed_when: false
+
+    - name: The verdict is ok
+      ansible.builtin.assert:
+        that:
+          - check.rc == 0
+          - (check.stdout | from_json).errors == 0
+          - (check.stdout | from_json).warnings == 0
+        fail_msg: "{{ check.stdout }}"
+
+    - name: The declared probe and strategies were seen by the check
+      ansible.builtin.assert:
+        that:
+          - "'Probe \"ansible-cpu\" (type: cpu)' in (check.stdout | from_json).findings | map(attribute='message') | list"
+          - "'Storage: otlp' in (check.stdout | from_json).findings | map(attribute='message') | list"
+          - "'Storage: zabbix' in (check.stdout | from_json).findings | map(attribute='message') | list"
+
+    - name: The fragments carry the role's marker
+      ansible.builtin.command: "grep -l 'Managed by Ansible (senhub.agent)' {{ config_dir }}/probes.d/50-ansible.yaml {{ config_dir }}/strategies.d/00-http.yaml {{ config_dir }}/strategies.d/50-otlp.yaml {{ config_dir }}/strategies.d/50-zabbix.yaml"
+      changed_when: false
+
+    - name: The global tag reached agent.yaml and the agent key was kept
+      ansible.builtin.slurp:
+        src: "{{ config_dir }}/agent.yaml"
+      register: agent_yaml
+
+    - name: Check agent.yaml
+      ansible.builtin.assert:
+        that:
+          - (agent_yaml.content | b64decode | from_yaml).agent.global_tags.env == 'test'
+          - (agent_yaml.content | b64decode | from_yaml).agent.key | length > 0
+
+    - name: The health endpoint answers
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/health
+        return_content: true
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+
+    - name: The version
+      ansible.builtin.command: /usr/bin/senhub-agent version --json
+      register: version
+      changed_when: false
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "senhub-agent {{ (version.stdout | from_json).version }}, health: {{ health.content }}"

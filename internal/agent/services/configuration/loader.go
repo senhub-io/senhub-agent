@@ -102,12 +102,16 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 			}
 		}
 		data = normalizeYAMLTypes(data)
+		if err := applyEnvProbes(&data, os.Environ(), log); err != nil {
+			return LocalConfigurationData{}, fmt.Errorf("probes from the environment: %w", err)
+		}
 		if err := Substitute(&data); err != nil {
 			return LocalConfigurationData{}, fmt.Errorf("substituting variables in %s: %w", configPath, err)
 		}
 		if err := applyLicenseSidecar(&data, configPath); err != nil {
 			return LocalConfigurationData{}, err
 		}
+		warnSNMPPollOverlaps(log, data.Probes)
 		return data, nil
 	}
 
@@ -123,12 +127,16 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	}
 
 	merged := normalizeYAMLTypes(mergeConfigs(data, extraProbes, extraStrategies))
+	if err := applyEnvProbes(&merged, os.Environ(), log); err != nil {
+		return LocalConfigurationData{}, fmt.Errorf("probes from the environment: %w", err)
+	}
 	if err := Substitute(&merged); err != nil {
 		return LocalConfigurationData{}, fmt.Errorf("substituting variables: %w", err)
 	}
 	if err := applyLicenseSidecar(&merged, configPath); err != nil {
 		return LocalConfigurationData{}, err
 	}
+	warnSNMPPollOverlaps(log, merged.Probes)
 	return merged, nil
 }
 

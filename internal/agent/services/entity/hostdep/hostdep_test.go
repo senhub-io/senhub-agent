@@ -648,3 +648,43 @@ func TestAnEndedDependencyLeavesWithinTheWindow(t *testing.T) {
 		t.Errorf("the edge outlived the window: %+v", obs.Entities)
 	}
 }
+
+func TestLoopbackPeerOnDynamicPortIsNotADependency(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusEstablished, "127.0.0.1", 51000, "127.0.0.1", 49731, 100),
+		conn(statusEstablished, "127.0.0.1", 51001, "127.0.0.1", 5432, 100),
+		conn(statusEstablished, "::1", 51002, "::1", 55000, 100),
+		conn(statusEstablished, "10.0.0.5", 51003, "10.0.0.5", 49731, 100),
+		conn(statusEstablished, "10.0.0.5", 51004, "10.0.0.6", 443, 100),
+	}
+	s := newTestSource(rows)
+	s.threshold = 1
+	s.ephemeral = func() (uint32, uint32) { return 49152, 65535 }
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false")
+	}
+	if hasEndpoint(obs, "127.0.0.1", "49731") {
+		t.Errorf("loopback dynamic-port peer must not be an endpoint: %+v", obs.Entities)
+	}
+	if hasEndpoint(obs, "::1", "55000") {
+		t.Errorf("IPv6 loopback dynamic-port peer must not be an endpoint: %+v", obs.Entities)
+	}
+	for _, want := range [][2]string{{"127.0.0.1", "5432"}, {"10.0.0.5", "49731"}, {"10.0.0.6", "443"}} {
+		if !hasEndpoint(obs, want[0], want[1]) {
+			t.Errorf("endpoint %s:%s must be emitted: %+v", want[0], want[1], obs.Entities)
+		}
+	}
+}
+
+func TestParsePortRange(t *testing.T) {
+	if lo, hi, ok := parsePortRange("32768\t60999\n"); !ok || lo != 32768 || hi != 60999 {
+		t.Errorf("got %d %d %v", lo, hi, ok)
+	}
+	for _, bad := range []string{"", "1", "70000 80000", "5 3", "a b"} {
+		if _, _, ok := parsePortRange(bad); ok {
+			t.Errorf("%q must be rejected", bad)
+		}
+	}
+}

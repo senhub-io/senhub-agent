@@ -7,10 +7,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/data_store/strategies/zabbix/template"
+	"senhub-agent.go/internal/agent/services/data_store/transformers"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // zabbixAPI is the JSON-RPC client the setup command talks to. It is
@@ -373,6 +376,7 @@ func runZabbixSetup(args []string) {
 		discoveryDelay           = "5m"
 		dryRun                   bool
 		probes                   []string
+		allProbes                bool
 		opts                     = template.Options{}
 	)
 	for i := 0; i < len(args); i++ {
@@ -380,7 +384,7 @@ func runZabbixSetup(args []string) {
 		value := func() string {
 			if i+1 >= len(args) {
 				fmt.Fprintf(os.Stderr, "Error: %s needs a value\n", flag)
-				os.Exit(2)
+				os.Exit(cliexit.Failure)
 			}
 			i++
 			return args[i]
@@ -404,6 +408,8 @@ func runZabbixSetup(args []string) {
 			discoveryDelay = ""
 		case "--probe":
 			probes = append(probes, value())
+		case "--all-probes":
+			allProbes = true
 		case "--prefix":
 			opts.Prefix = value()
 		case "--version":
@@ -415,22 +421,22 @@ func runZabbixSetup(args []string) {
 			return
 		default:
 			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", flag, zabbixUsage)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 	}
 	if rawURL == "" {
 		fmt.Fprintln(os.Stderr, "Error: --url is required (the Zabbix frontend, for example https://zabbix.example.com)")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	if opts.Version != "" && opts.Version != "6.0" && opts.Version != "7.0" {
 		fmt.Fprintln(os.Stderr, "Error: --version must be 6.0 or 7.0")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 	if resolved, err := tokenFrom(token, tokenFile); err == nil {
 		token = resolved
 	} else if !dryRun {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	// Without --probe the command used to link every template it could
@@ -444,8 +450,7 @@ func runZabbixSetup(args []string) {
 	// commercial template with --probe silently unlinked the processor,
 	// the memory, the network and the disks from the action, and every
 	// host registering afterwards came up with none of them.
-	linkedByDefault := len(probes) == 0
-	probes = withDefaultProbes(probes)
+	linkedByDefault := len(probes) == 0 && !allProbes
 
 	s := &zabbixSetup{
 		api: newZabbixAPI(rawURL, token), group: group, metadata: metadata,
@@ -456,7 +461,7 @@ func runZabbixSetup(args []string) {
 	version, err := s.version()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	s.say("Zabbix %s answered", version)
 	if zabbixBefore(version, 6, 4) {
@@ -470,14 +475,14 @@ func runZabbixSetup(args []string) {
 			s.say("exporting the templates in the 6.0 format this server reads")
 		case "7.0":
 			fmt.Fprintf(os.Stderr, "Error: Zabbix %s cannot import the 7.0 export format; drop --version or pass --version 6.0\n", version)
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
 	groupID, err := s.ensureGroup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	// One set of templates per platform, and one autoregistration action
@@ -489,53 +494,70 @@ func runZabbixSetup(args []string) {
 	for _, platform := range supportedPlatforms {
 		platOpts := opts
 		platOpts.Platform = platform
-		rendered, names, rerr := renderTemplates(probes, platOpts)
+		defs, derr := transformers.Definitions()
+		if derr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", derr)
+			os.Exit(cliexit.Failure)
+		}
+		linked := withDefaultProbes(defs, platform, probes)
+		if allProbes {
+			linked = linked[:0]
+			for name := range defs {
+				linked = append(linked, name)
+			}
+			sort.Strings(linked)
+		}
+		rendered, names, rerr := renderTemplates(linked, platOpts)
 		if rerr != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", rerr)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		s.templates = rendered
 		fmt.Printf("  for %s:\n", platform)
 		if err := s.importTemplates(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		var ids []string
 		if !dryRun {
 			if ids, err = s.templateIDs(names); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 			if len(ids) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: the templates were imported but cannot be read back; check the account's permissions")
-				os.Exit(1)
+				os.Exit(cliexit.Failure)
 			}
 		}
 		if err := s.ensureAction(actionName+" ("+platform+")", metadata+" "+platform, groupID, ids); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 		if err := s.quickenDiscovery(ids); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
 	if err := s.reportCollidingActions(actionName, metadata); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 	if err := s.retireUnsplitAction(actionName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	fmt.Println()
 	if linkedByDefault {
-		fmt.Printf("Linked the probes every machine runs: %s.\n", strings.Join(defaultSetupProbes, ", "))
-		fmt.Println("Name others with --probe to have them linked as well; a template")
-		fmt.Println("linked to a host whose agent does not run that probe only adds")
-		fmt.Println("discovery rules that stay empty.")
+		fmt.Println("Linked the probes every machine runs (the host's processor, memory,")
+		fmt.Println("network, disks, processes, and on Windows the services and the event")
+		fmt.Println("log counter). Name others with --probe (hyperv, mssql, ...) to have")
+		fmt.Println("them linked as well, or pass --all-probes; a template linked to a")
+		fmt.Println("host whose agent does not run that probe only adds discovery rules")
+		fmt.Println("that stay empty.")
+	} else if allProbes {
+		fmt.Println("Linked every probe template of each platform.")
 	} else {
 		fmt.Printf("Linked the probes every machine runs, plus what you named: %s.\n", strings.Join(probes, ", "))
 	}
@@ -619,13 +641,6 @@ func (s *zabbixSetup) retireUnsplitAction(name string) error {
 	return nil
 }
 
-// defaultSetupProbes are the probes every machine runs, and therefore
-// the templates it is safe to link to every host that registers. A
-// commercial or vendor probe is linked only when the administrator names
-// it, because a template whose probe is absent contributes nothing but
-// discovery rules that never answer.
-var defaultSetupProbes = []string{"cpu", "memory", "network", "logicaldisk", "process"}
-
 // reportCollidingActions names any other enabled autoregistration
 // action a registering agent would also match.
 //
@@ -689,10 +704,29 @@ func (s *zabbixSetup) reportCollidingActions(ownName, metadata string) error {
 	return nil
 }
 
-// withDefaultProbes returns the probes to link: the ones every machine
-// runs, plus whatever was named, each once and in a stable order.
-func withDefaultProbes(named []string) []string {
-	out := append([]string{}, defaultSetupProbes...)
+// withDefaultProbes returns the probes to link on one platform: the
+// universal ones whose template carries something there, plus whatever
+// was named, each once and in a stable order. The universal flag lives
+// in the definitions, so a new host probe is linked by declaring it
+// rather than by editing this command.
+func withDefaultProbes(defs map[string]transformers.ProbeDefinition, platform string, named []string) []string {
+	var out []string
+	for name, def := range defs {
+		if !def.Universal {
+			continue
+		}
+		hasMetric := false
+		for _, m := range def.Metrics {
+			if m.RunsOn(platform) && (m.Otel == nil || !m.Otel.Skip) {
+				hasMetric = true
+				break
+			}
+		}
+		if hasMetric {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
 	seen := map[string]bool{}
 	for _, p := range out {
 		seen[p] = true

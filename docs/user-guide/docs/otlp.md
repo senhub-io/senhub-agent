@@ -158,15 +158,21 @@ otlp:
   # disk and restored at boot, so cumulative counters continue
   # instead of resetting.
   persistence:
-    enabled: true                 # default true, but the checkpoint stays
-                                  # off until `path` is set; enabled: false
-                                  # turns it off even with a path
-    path: /var/lib/senhub-agent/otlp   # empty means no checkpoint
+    enabled: true                 # default true: the logs queue is on in the
+                                  # state directory; the checkpoint stays off
+                                  # until `path` is set; enabled: false turns
+                                  # both off
+    path: /var/lib/senhub-agent/otlp   # checkpoint and logs queue directory;
+                                  # empty = no checkpoint, queue in the state
+                                  # directory (see "Logs survive an outage")
     interval: 30s                 # default 30s
     # Disk cap for the logs dead-letter queue, which holds batches
     # the receiver could not take during an outage. Past it the
     # oldest batches are evicted. 0 keeps the default.
     logs_queue_max_bytes: 134217728   # default 128 MiB
+    # Batches that waited longer than this are dropped, at boot and
+    # every 10 minutes. 0 = no age limit.
+    logs_queue_max_age: 24h       # default 24h
 
   # Resource attributes attached to every emitted batch. Defaults
   # are derived from agent identity if omitted.
@@ -403,6 +409,13 @@ semantic-convention vocabulary. An annotation a consumer adds beside them is a
 comment, never a correction: once the agent asserts an owner, the way to change
 it is this configuration.
 
+!!! note "These keys are a fallback"
+
+    The `depends_on_*` keys and `interval` below are read only when the
+    configuration has no top-level `entities:` block. When that block
+    exists, even with `enabled: false`, it wins and these keys are ignored.
+    See [Entities Section](configuration.md#entities-section).
+
 `depends_on_enabled` turns on outbound dependency discovery — the edges that
 say "this service talks to that endpoint". It is off by default because mapping
 a host's connections can be privacy-sensitive.
@@ -423,7 +436,7 @@ a host's connections can be privacy-sensitive.
 before it appears as a `depends_on` edge: a peer endpoint must be seen on
 this many emission scrapes before its edge is emitted, which keeps a
 single stray socket out of the graph. The scrapes need not run
-consecutively. A peer keeps its progress across up to fifteen scrapes
+consecutively: a peer that is seen, missed, then seen again keeps its hits. A peer keeps its progress across up to fifteen scrapes
 without being seen, because a short-lived flow is precisely one that is
 missing from most samples: a reverse proxy that opens a request to a
 backend and closes it may appear in four samples out of fifteen and
@@ -432,13 +445,14 @@ soonest a dependency can surface is `depends_on_debounce x interval` (so
 the default `3 x 60s` is about three minutes); lower it for a more
 responsive graph, raise it to demand more evidence.
 
-The tolerance is symmetric once the edge exists: an edge that took
-`depends_on_debounce` scrapes to appear survives the same number of missed
-ones before it is given up. The wider memory above applies only while a
-peer is still earning its edge. A
+The same window applies once the edge exists: an edge survives up to fifteen
+consecutive scrapes without the peer being seen (or `depends_on_debounce`, if
+larger) before it is given up, and then has to earn its way back. A
 long-lived connection the socket table happens to miss once is not a dependency
 that ended, and retracting it on a single miss would reach a topology consumer
 as an edge flapping in and out.
+
+Loopback peers on an OS dynamic port, the client side of a one-shot local exchange, are ignored whatever these settings say (since 0.6.2).
 
 `redact_attributes` lists descriptive attribute keys the agent removes
 from every entity event before export — useful when the entity stream
@@ -545,6 +559,63 @@ The OTLP strategy ships logs from these probe sources:
 
 Probes still emit DataPoints to the existing PRTG/Nagios/event
 strategies; the logs path is **additive**.
+
+### Logs survive an outage
+
+When the collector cannot take a batch of event logs, the agent keeps it
+on disk and sends it again. A batch is deleted from disk only after the
+collector has acknowledged it, so a failed or interrupted attempt never
+removes anything. This is on by default on every install; nothing to set.
+
+While the collector is known to be down, new batches go straight to disk
+and the agent does not try the network for each one. It probes the
+collector on a retry clock of 5, 10, 20, 40, 80 and 160 seconds, then every 5
+minutes; the clock starts again at 5 seconds after the next outage. As soon as
+one export succeeds it sends the backlog, oldest first, stopping at the first batch the collector does not acknowledge.
+
+| Situation | Event logs | Entity events | Metrics |
+|---|---|---|---|
+| Collector down, agent running | Kept on disk, sent in order once the collector answers | Re-sent at the next heartbeat | Last value of each series kept in memory |
+| Agent stopped normally (restart, upgrade) during an outage | The records still in memory are written to disk in the first second of the stop, without trying a collector that is down, then sent at the next boot with the rest | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
+| Agent restarted, collector still down | Kept on disk, probed on the retry clock | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
+| Agent killed or host crashed (kill -9, power cut) | Batches already on disk are kept; records not yet on disk are lost: at most the batch interval (5 s by default) plus one export timeout (4 s), so under 10 s of logs | Re-sent | Same as above |
+| Outage longer than 24 hours or past 128 MiB | The oldest batches are dropped and counted | Re-sent | Same as above |
+
+Delivery is at-least-once: if the collector received a batch but its
+acknowledgement was lost, the batch is sent again, so a record can arrive
+twice. Records replayed after an outage can also arrive after newer ones;
+they keep their original timestamp, so order by the record timestamp and
+deduplicate on timestamp, body and attributes if duplicates matter.
+
+Where the queue lives:
+
+| Install | Directory |
+|---|---|
+| Linux package (systemd) | `/var/lib/senhub-agent/otlp-queue` (`STATE_DIRECTORY`) |
+| Windows (MSI) | `C:\ProgramData\SenHub\otlp-queue` |
+| Container | `$SENHUB_STATE_DIR/otlp-queue` (default `/var/lib/senhub-agent/otlp-queue`) |
+| `persistence.path` set | `<path>/logqueue` |
+
+The queue is bounded two ways: `logs_queue_max_bytes` (128 MiB, oldest
+batches evicted first) and `logs_queue_max_age` (24 hours). Each sweep that
+drops aged batches logs one warning with the count, and the records are
+counted in `senhub.agent.otlp.dropped` with `reason="dropped_by_age"`
+(`logs_queue_full` for the size cap). During an outage the queue can use up
+to 128 MiB of the state directory. If the directory is not writable the
+agent logs one warning and runs without the queue.
+
+Environment variables, which win over the file:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SENHUB_LOG_QUEUE` | `true` | `false` turns the queue off |
+| `SENHUB_LOG_QUEUE_RETENTION` | `24h` | Maximum age of a queued batch, a duration such as `6h`; `0` = no limit |
+| `SENHUB_LOG_QUEUE_MAX_BYTES` | `134217728` | Disk cap, in bytes or with a suffix (`64MiB`) |
+
+In a container the state directory must be on a persistent volume (a
+mounted volume, or an Azure Files share on Container Apps); without it the
+queue disappears with the container and only survives an outage, not a
+restart.
 
 ## Severity mapping
 

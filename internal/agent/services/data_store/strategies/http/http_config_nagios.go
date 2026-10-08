@@ -101,15 +101,11 @@ type undeclaredNagiosChannel struct {
 // report UNKNOWN on goos, unless a probe with dynamic names (exec,
 // prometheus_scrape, snmp_poll, otlp_receiver) happens to emit them.
 func undeclaredNagiosChannels(config *NagiosConfig, goos string) ([]undeclaredNagiosChannel, error) {
-	defs, err := transformers.DefinitionMetrics()
-	if err != nil {
-		return nil, fmt.Errorf("reading probe definitions: %w", err)
-	}
 	runsHere := make(map[string]bool)
 	elsewhere := make(map[string][]string)
 	byLabel := make(map[string]string)
-	for _, metrics := range defs {
-		for _, m := range metrics {
+	err := transformers.RangeDefinitions(func(def transformers.ProbeDefinition) {
+		for _, m := range def.Metrics {
 			if m.RunsOn(goos) {
 				runsHere[m.Name] = true
 			} else {
@@ -121,6 +117,9 @@ func undeclaredNagiosChannels(config *NagiosConfig, goos string) ([]undeclaredNa
 				}
 			}
 		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading probe definitions: %w", err)
 	}
 
 	var out []undeclaredNagiosChannel

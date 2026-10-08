@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -28,6 +29,8 @@ const (
 	entityTypeNetworkInterface = "network.interface"
 	entityTypeNetworkAddress   = "network.address"
 	entityTypeHost             = "host"
+	entityTypeServiceInstance  = "service.instance"
+	idKeyServiceInstanceID     = "service.instance.id"
 	idKeyNetworkDevice         = "network.device.id"
 	idKeyHost                  = "host.id"
 	idKeyRouteDestination      = "route.destination"
@@ -48,6 +51,8 @@ const (
 	relHasRoute     = "has_route"
 	relHasInterface = "has_interface"
 	relBoundTo      = "bound_to"
+	relNextHopVia   = "next_hop_via"
+	relMonitors     = "monitors"
 	relRunsOn       = "runs_on"
 
 	// Retired relation types — pre-ADR-0022 device-to-device edges that carried
@@ -574,6 +579,19 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	}
 	addEntity(selfID, selfAttrs(self), entity.ScopeSNMPIFMIB)
 
+	// monitors edge: agent → polled device. A configured target is anchored to
+	// the agent's monitoring subgraph even when it exposes no named interface,
+	// route or address, which would otherwise leave it with no relation and
+	// have the anti-orphan guard drop it. Skipped without an agent id: the
+	// consumer would buffer an unresolvable From, then drop it.
+	if agentID := agentstate.GetAgentInstanceID(); agentID != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relMonitors,
+			FromType: entityTypeServiceInstance, FromID: map[string]any{idKeyServiceInstanceID: agentID},
+			ToType: entityTypeNetworkDevice, ToID: deviceKey(selfID),
+		})
+	}
+
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
 	// duplicate network.interface.name keeps the first (identity is {device, name}).
@@ -676,7 +694,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
 		if ifName == "" || addrSeen[a.IP] ||
-			entity.IsHostLocalAddressStr(a.IP) || entity.IsContainerBridgeIface(ifName) {
+			!entity.AddressEdgeAllowed(a.IP) || entity.IsContainerBridgeIface(ifName) {
 			continue
 		}
 		addrSeen[a.IP] = true
@@ -723,6 +741,29 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 			Type:     relHasRoute,
 			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
 			ToType: entityTypeNetworkRoute, ToID: routeID,
+		})
+
+		// The gateway as the same network.address node a host route reaches
+		// via next_hop_via, but only for a globally unique address: a switch
+		// has no interface-class filter, and a private gateway shared by
+		// unrelated switches would merge them. next_hop.ip stays on the
+		// route either way.
+		gw := r.NextHop
+		if c, ok := entity.CanonicalIP(gw); ok {
+			gw = c
+		}
+		if !entity.AddressIsGloballyUnique(gw) {
+			continue
+		}
+		gwID := map[string]any{idKeyNetworkAddress: gw}
+		if !addrSeen[gw] {
+			addrSeen[gw] = true
+			obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: gwID, Scope: entity.ScopeSNMPRoute})
+		}
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     relNextHopVia,
+			FromType: entityTypeNetworkRoute, FromID: routeID,
+			ToType: entityTypeNetworkAddress, ToID: gwID,
 		})
 	}
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,6 +42,10 @@ type ProbePoller struct {
 	// detector registry. Set in Start, invoked in Shutdown; nil while the
 	// probe is not started or when the probe exposes the NoOp fallback.
 	unregisterEntitySource func()
+	// governanceAttrs is read by the entity source at every Observe, so a
+	// governance-only change on reload reaches the next emission without
+	// restarting the probe.
+	governanceAttrs atomic.Pointer[map[string]any]
 }
 
 // defaultStrategyRouter provides default routing for probes that don't
@@ -156,6 +161,11 @@ func NewProbePoller(
 		moduleLogger: moduleLogger,
 	}
 
+	probePoller.ApplyGovernance(config)
+
+	// Two probes of one type share the module logger; the scheduler's retry
+	// and error lines must say which of them failed.
+	schedulerLogger := moduleLogger.With().Str("probe", probe.GetName()).Logger()
 	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
 		Interval:          probe.GetInterval(),
 		MaxRetries:        3,
@@ -164,7 +174,7 @@ func NewProbePoller(
 		Execute:           probePoller.collect,
 		OnStart:           probe.OnStart,
 		OnShutdown:        probe.OnShutdown,
-	}, moduleLogger.Logger)
+	}, &schedulerLogger)
 	probePoller.scheduler = scheduler
 
 	if probeWithCallback, ok := probe.(types.ProbeWithCallback); ok {
@@ -249,15 +259,36 @@ func (p *ProbePoller) registerEntitySource() {
 	if _, isNoOp := src.(types.NoOpEntitySource); isNoOp {
 		return
 	}
-	// The instance's governance rides on every entity it observes. A block
-	// that does not parse is reported by `config check`; here it is only
-	// skipped, so a typo in a label never stops a probe from collecting.
-	if gov, err := p.config.ParseGovernance(); err != nil {
+	p.unregisterEntitySource = entity.RegisterSource(entity.WithAttributesFunc(src, p.GovernanceAttributes))
+}
+
+// ApplyGovernance sets the governance attributes the probe's entities carry
+// from cfg. The sensor calls it on every reload for a probe whose identity
+// did not change, because governance is not part of that identity. A block
+// that does not parse is reported by `config check`; here it is only
+// dropped, so a typo in a label never stops a probe from collecting.
+func (p *ProbePoller) ApplyGovernance(cfg configuration.ProbeConfig) {
+	gov, err := cfg.ParseGovernance()
+	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("governance block ignored")
-	} else if !gov.IsZero() {
-		src = entity.WithAttributes(src, gov.Attributes())
+		p.governanceAttrs.Store(nil)
+		return
 	}
-	p.unregisterEntitySource = entity.RegisterSource(src)
+	attrs := gov.Attributes()
+	if len(attrs) == 0 {
+		p.governanceAttrs.Store(nil)
+		return
+	}
+	p.governanceAttrs.Store(&attrs)
+}
+
+// GovernanceAttributes returns the governance attributes currently stamped
+// on the probe's entities, nil when none are declared.
+func (p *ProbePoller) GovernanceAttributes() map[string]any {
+	if m := p.governanceAttrs.Load(); m != nil {
+		return *m
+	}
+	return nil
 }
 
 // collect gathers metrics from the probe and routes them to the appropriate
@@ -286,11 +317,16 @@ func (p *ProbePoller) collect() error {
 		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
 		p.recordHealth(err)
+		if partial, ok := p.Probe.(types.PartialResultsProbe); ok && partial.KeepsPartialResults() && len(data) > 0 {
+			p.routePartial(ctx, data)
+			agentstate.RecordProbeCycle(p.ProbeId, len(data))
+		}
 		return fmt.Errorf("collect failed: %w", err)
 	}
 	span.SetAttributes(attribute.Int("probe.datapoints_emitted", len(data)))
 	span.SetStatus(codes.Ok, "")
 	p.recordHealth(nil)
+	p.recordDelivery(len(data))
 
 	data = p.withIdentityTags(data)
 
@@ -301,6 +337,36 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// recordDelivery tells the status channel what the cycle delivered. A
+// probe whose data arrives through a callback or a listener has an empty
+// Collect, and that empty cycle must not erase what the callback last
+// delivered.
+func (p *ProbePoller) recordDelivery(points int) {
+	if points == 0 {
+		if _, ok := p.Probe.(types.ProbeWithCallback); ok {
+			return
+		}
+		if _, ok := p.Probe.(types.ListenerProbe); ok {
+			return
+		}
+	}
+	agentstate.RecordProbeCycle(p.ProbeId, points)
+}
+
+// routePartial routes the datapoints of a failed cycle for a probe that
+// declared them valid on their own. A routing failure is logged, not
+// returned: the cycle already reports the collect error.
+func (p *ProbePoller) routePartial(ctx context.Context, data []datapoint.DataPoint) {
+	data = p.withIdentityTags(data)
+	var router data_store.StrategyRouter = &defaultStrategyRouter{}
+	if r, ok := p.Probe.(data_store.StrategyRouter); ok {
+		router = r
+	}
+	if err := p.addDataPointCtx(ctx, data, router); err != nil {
+		p.moduleLogger.Warn().Err(err).Msg("routing the datapoints of a failed cycle failed")
+	}
 }
 
 // recordHealth publishes the probe's health for this cycle.
@@ -455,6 +521,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 		p.moduleLogger.Debug().Int("datapoints_count", len(data)).Msg("Callback triggered")
 
 		data = p.withIdentityTags(data)
+		p.recordDelivery(len(data))
 
 		var err error
 		if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {

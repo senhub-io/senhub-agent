@@ -9,11 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"senhub-agent.go/internal/cliexit"
 )
 
-// installedUnitPath is where kardianos/service and the .deb/.rpm packages
-// both place the systemd unit for a system (non-user) service named
-// "senhub-agent". Writing here requires root.
+// installedUnitPath is where kardianos/service places the systemd unit for a
+// system (non-user) service named "senhub-agent". Writing here requires root.
+// The .deb/.rpm packages ship theirs under /usr/lib/systemd/system instead;
+// loadedUnitPath finds whichever systemd actually loads.
 const installedUnitPath = "/etc/systemd/system/senhub-agent.service"
 
 // runRefreshUnit compares the refreshed unit (see refreshedUnit) with the
@@ -30,17 +33,18 @@ func runRefreshUnit() {
 	yes := fs.Bool("yes", false, "apply without confirmation prompt")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		fmt.Fprintf(os.Stderr, "refresh-unit: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
-	installed, err := os.ReadFile(installedUnitPath)
+	unitPath := loadedUnitPath()
+	installed, err := os.ReadFile(unitPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "no unit found at %s; run 'senhub-agent install' first\n", installedUnitPath)
-			os.Exit(1)
+			fmt.Fprintf(os.Stderr, "no unit found at %s; run 'senhub-agent install' first\n", unitPath)
+			os.Exit(cliexit.Failure)
 		}
 		fmt.Fprintf(os.Stderr, "reading installed unit: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	serviceUser := installedServiceUser(string(installed))
@@ -55,7 +59,7 @@ func runRefreshUnit() {
 	if serviceUser != rootServiceUser {
 		if userErr := ensureServiceUser(serviceUser); userErr != nil {
 			fmt.Fprintf(os.Stderr, "ensuring service user %q exists: %v\n", serviceUser, userErr)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
@@ -75,6 +79,11 @@ func runRefreshUnit() {
 		fmt.Println(l)
 	}
 	fmt.Println()
+
+	if unitOwnedByPackage(unitPath) {
+		fmt.Fprintf(os.Stderr, "%s belongs to the senhub-agent package; upgrade the package (apt, dnf or zypper) to update it instead of rewriting it here.\n", unitPath)
+		os.Exit(cliexit.Failure)
+	}
 
 	if !*yes {
 		fmt.Print("Apply changes? [y/N] ")
@@ -97,17 +106,17 @@ func runRefreshUnit() {
 	if err := migrateLegacyBinary(string(installed)); err != nil {
 		fmt.Fprintf(os.Stderr, "migrating the binary to %s: %v\n", systemBinaryDir, err)
 		fmt.Fprintln(os.Stderr, "The unit was NOT changed; the service is untouched.")
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
-	if err := os.WriteFile(installedUnitPath, []byte(refreshed), 0644); err != nil {
+	if err := os.WriteFile(unitPath, []byte(refreshed), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "writing unit file: %v\n", err)
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "systemctl daemon-reload: %v (%s)\n", err, strings.TrimSpace(string(out)))
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 
 	followCredentialStore(configPath)

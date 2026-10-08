@@ -54,7 +54,7 @@ ok()      { printf '  ok    %s\n' "$1"; }
 
 # A beta carries no installer: the MSI round runs on production tags only.
 EXPECT_MSI=1
-case "$TAG" in *-beta) EXPECT_MSI=0 ;; esac
+case "$TAG" in *-beta|*-beta.*) EXPECT_MSI=0 ;; esac
 
 echo "Verifying $REPO@$TAG"
 echo

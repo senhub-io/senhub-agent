@@ -44,13 +44,8 @@
   sealed secret store, license) so it is never lost across versions. A
   genuine uninstall removes the whole tree, so removing the product
   leaves the machine clean and a later fresh install starts from the
-  installer's inputs rather than a stale kept config. The transient
-  subfolders logs\ and update\ (rotated logs and staged auto-update
-  MSIs — both regenerated on next run) are
-  removed on a plain uninstall so it leaves a clean tree. A full data
-  purge, including config and secrets, is opt-in:
-
-      msiexec /x senhub-agent.msi /qn PURGE_DATA=1
+  installer's inputs rather than a stale kept config. PURGE_DATA is
+  accepted for backward compatibility and changes nothing.
 
   See docs/deployment/windows-msi.md for GPO / SCCM / Intune deployment.
 -->
@@ -151,17 +146,6 @@
     <!-- Open the web console when the wizard finishes (guided install
          only: the launch is wired to the finish page's button). -->
     <Property Id="OPEN_CONSOLE" Value="1" Secure="yes" />
-    <!--
-      PURGE_DATA=1 on `msiexec /x` deletes %ProgramData%\SenHub in full
-      on uninstall (config, sealed secret store, license, logs, staged
-      updates). Deliberately OPT-IN: the default uninstall preserves the
-      operator state (config, secrets, license) so a reinstall or upgrade
-      never loses it. Note that the default uninstall still removes the
-      transient logs\ and update\ subfolders (see PurgeLogsFolder /
-      PurgeUpdateFolder on the DataFolderMarker component below); PURGE_DATA=1
-      additionally removes the preserved state. See the PurgeDataFolder
-      authoring on the DataFolderMarker component below.
-    -->
     <!-- PURGE_DATA is retained for backward compatibility only: a genuine
          uninstall now removes %ProgramData%\SenHub in full regardless, so
          this property no longer changes anything. -->
@@ -198,6 +182,17 @@
                       Key="SOFTWARE\Sensor Factory\SenHub Agent"
                       Name="Version" Type="raw" />
     </Property>
+    <!--
+      Where the product was installed, as recorded by the DataFolderMarker
+      component. [INSTALLFOLDER] is not resolved yet when the purge
+      properties are set (it costs later), so the uninstall reads it back
+      from here. It ends with a backslash.
+    -->
+    <Property Id="INSTALLFOLDER_SAVED" Secure="yes">
+      <RegistrySearch Id="FindInstallFolder" Root="HKLM"
+                      Key="SOFTWARE\Sensor Factory\SenHub Agent"
+                      Name="InstallFolder" Type="raw" />
+    </Property>
     <!-- ADOPT=1 takes over a foreign install: stop + delete its service
          before installing ours, preserving %ProgramData%\SenHub config. -->
     <Property Id="ADOPT" Secure="yes" />
@@ -222,10 +217,12 @@
       already in use; both used to be swallowed, leaving a service that
       started on its defaults with nothing the operator asked for. The
       idempotency guard makes a rerun on an existing config a no-op, so
-      repair and reinstall are unaffected.
+      repair and reinstall are unaffected. A kept config makes config init
+      exit 3 ("unchanged"); the ok-if-unchanged flag turns that into 0, which is
+      what Return="check" needs.
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --zabbix-server &quot;[ZABBIX_SERVER]&quot; --zabbix-host-metadata &quot;[ZABBIX_HOST_METADATA]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot;"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --zabbix-server &quot;[ZABBIX_SERVER]&quot; --zabbix-host-metadata &quot;[ZABBIX_HOST_METADATA]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot; --ok-if-unchanged"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />
@@ -280,7 +277,7 @@
       conditional override then repoints the property at the real folder
       only when it should be removed:
 
-        - PURGEDATAFOLDER   → whole tree, only on PURGE_DATA=1 full uninstall.
+        - PURGEDATAFOLDER   → whole tree, on any genuine full uninstall.
         - PURGELOGSFOLDER   → logs\,   on any genuine full uninstall.
         - PURGEUPDATEFOLDER → update\, on any genuine full uninstall.
 
@@ -305,6 +302,20 @@
     <CustomAction Id="SetPurgeLogsReal"      Property="PURGELOGSFOLDER"   Value="[CommonAppDataFolder]SenHub\logs" />
     <CustomAction Id="SetPurgeUpdateReal"    Property="PURGEUPDATEFOLDER" Value="[CommonAppDataFolder]SenHub\update" />
 
+    <!--
+      The install folder. Windows Installer removes a directory only when it
+      is empty, and the agent writes into it after the MSI has laid its
+      files: on Windows a self-update sets the previous executable aside as
+      a hidden ".senhub-agent.exe.old" it cannot delete while it runs, and
+      a log written beside the executable when the log directory is not
+      writable. Either keeps the folder after an uninstall. Same sentinel
+      pattern as above. The real path is used only when it was recorded and
+      names a SenHub folder, so an install placed by hand in a shared
+      directory does not have that directory removed with it.
+    -->
+    <CustomAction Id="SetPurgeInstallDefault" Property="PURGEINSTALLFOLDER" Value="[ProgramFiles64Folder]SenHub Agent\__no_purge__" />
+    <CustomAction Id="SetPurgeInstallReal"    Property="PURGEINSTALLFOLDER" Value="[INSTALLFOLDER_SAVED]" />
+
     <InstallExecuteSequence>
       <!-- #707: assign every RemoveFolderEx property before Wix4RemoveFoldersEx
            snapshots the tree. Defaults (a never-existing sentinel path) run
@@ -319,6 +330,9 @@
               Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="SetPurgeUpdateReal"    After="SetPurgeLogsReal"
               Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED" />
+      <Custom Action="SetPurgeInstallDefault" After="SetPurgeUpdateReal" />
+      <Custom Action="SetPurgeInstallReal"    After="SetPurgeInstallDefault"
+              Condition="Installed AND (REMOVE~=&quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE AND NOT WIX_UPGRADE_DETECTED AND INSTALLFOLDER_SAVED &lt;&gt; &quot;&quot; AND INSTALLFOLDER_SAVED &gt;&lt; &quot;SenHub&quot;" />
       <!-- Take over a foreign service before InstallServices creates ours. -->
       <Custom Action="AdoptExisting" Before="InstallServices"
               Condition="ADOPT AND EXISTING_SERVICE AND NOT MSI_MARKER AND NOT Installed" />
@@ -588,19 +602,6 @@
         action below. This keeps "clean uninstall" and "preserve config on
         upgrade" both true: the MSI removes only what it created.
 
-        We register the directory as a component (with an empty keypath
-        registry value) so the install is well-formed, but we do NOT mark
-        the directory for removal — leftover operator config is preferred
-        over data loss on uninstall (acceptance criterion: no orphan files
-        OUTSIDE user preference; config is user preference).
-
-        Default uninstall still leaves a clean tree: the transient logs\
-        and update\ subfolders (rotated logs, staged auto-update MSIs) are
-        removed by PurgeLogsFolder / PurgeUpdateFolder below, gated on a
-        genuine full uninstall (not an upgrade) — see the set-property
-        authoring above. Only config, the sealed secret store and the
-        license are preserved.
-
         A genuine uninstall removes the whole tree — config, the sealed
         secret store, the license and staged MSIs — so removing the product
         leaves nothing behind. RemoveFolderEx reads PURGEDATAFOLDER, set to
@@ -627,7 +628,7 @@
           the real folder when it should be purged, else a never-existing
           sentinel (SenHub\__no_purge__) that no-ops. Never leave a property
           empty — an empty one aborts the whole custom action (#707).
-            - PURGEDATAFOLDER   : whole tree, only on PURGE_DATA=1 uninstall (#626).
+            - PURGEDATAFOLDER   : whole tree, on any genuine full uninstall (#626, #707).
             - PURGELOGSFOLDER   : logs\,   on any genuine full uninstall (#648).
             - PURGEUPDATEFOLDER : update\, on any genuine full uninstall (#648).
         -->
@@ -640,6 +641,11 @@
         <util:RemoveFolderEx Id="PurgeUpdateFolder"
                              On="uninstall"
                              Property="PURGEUPDATEFOLDER" />
+        <!-- The install folder itself: whatever the agent wrote there at
+             run time (see SetPurgeInstallReal). -->
+        <util:RemoveFolderEx Id="PurgeInstallFolder"
+                             On="uninstall"
+                             Property="PURGEINSTALLFOLDER" />
       </Component>
 
     </ComponentGroup>

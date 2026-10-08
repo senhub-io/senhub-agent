@@ -22,8 +22,14 @@ http:
   port: 8080
   bind_address: "127.0.0.1"
   endpoints: ["prtg", "web", "nagios", "prometheus"]
-  admin_key: "${secret:agent.admin_key}"
+  admin_key: "${secret:http.admin_key}"
 ```
+
+The agent mints the key at first start and seals it in the operating
+system's secret store under the name `http.admin_key`; the `http`
+fragment holds only the reference shown above. If you set your own key,
+any secret name works. For instance, `senhub-agent secret set
+http.admin_key`, then `admin_key: "${secret:http.admin_key}"`.
 
 ## The key that reads and the key that changes
 
@@ -49,7 +55,9 @@ carries the old key. Take a fresh one from the shortcut or from
 **Without `admin_key`, the console is not served** — its addresses answer
 404 rather than asking for a key nobody has. An agent installed to feed
 PRTG or Nagios therefore exposes nothing that can change it. Your
-pollers are unaffected either way.
+pollers are unaffected either way. If the key is added while the agent runs, the agent serves the console from the next configuration reload.
+
+**Rotating or removing the key.** After a configuration reload, the new key is served at once, with no restart: the old key now answers 401. If you remove `admin_key` and reload, the administration routes are no longer served and answer 404, exactly as on an agent that never had a key. Readers holding the agent key are unaffected in both cases.
 
 The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{admin-key}/docs`.
 
@@ -171,6 +179,7 @@ The Settings page changes the agent's own configuration from the browser, so a W
 - **Licence** shows the tier, the scope and the expiry of the active licence, uploads the licence file you received, or takes the pasted token. A customer licence is valid across the whole fleet, so the same file activates every agent; a licence issued for one specific agent is checked against that agent's key. The card shows how many Pro probe types are locked and links to the catalogue.
 - **Connection** changes the port and bind address of the HTTP output, the same values the Outputs page edits. Changing the port moves the console to the new address; the page tells you where to reconnect. The change is applied live, with no restart.
 - **HTTPS** shows whether the console and the endpoints are served over TLS, the certificate and key files, the certificate's subject and expiry read from the file, and the minimum TLS version. **Configure HTTPS** opens the TLS section of the HTTP output, where TLS is switched on and the files are set.
+- **Governance** describes the host the agent runs on: owning team and contact, criticality, lifecycle, location and free labels, with the same fields and values as the "Governance and tags" section of a probe. It is written to the top-level `governance:` block of `agent.yaml`, stamped on the entities the agent reports and inherited by what runs on the host; a probe's own governance wins over it. A refused value (a criticality outside `critical`, `high`, `medium`, `low`, an unknown key) is marked on its field and nothing is written. The running agent follows a saved change without a restart. When a value is a `${env:...}` or `${file:...}` reference the card is read-only and says so: change the variable where the agent is started. The block can also be read and written with `GET` and `PUT /api/{key}/config/governance`.
 
 These changes are written to the multi-file configuration and picked up by the running agent, exactly as the `senhub-agent config set` command does.
 
@@ -313,6 +322,7 @@ The routes marked **admin** answer the administration key alone and exist only w
 | `POST /api/{key}/config/outputs`, `PUT` and `DELETE` on `.../{name}` | admin | Create (with `enabled: false` to write the file as `.disabled`), update, delete an output file |
 | `POST /api/{key}/config/outputs/validate`, `POST /api/{key}/config/outputs/test` | admin | Check values; test the connection step by step |
 | `GET /api/{key}/config/settings`, `POST` | admin | Port, bind address, licence; the GET also returns the instance ID and the TLS state (certificate subject and expiry) |
+| `GET /api/{key}/config/governance`, `PUT` | admin | The agent-level governance block; the PUT refuses an invalid value with the field named (400) and a block set from references with 409 |
 | `POST /api/{key}/admin/cache/clear` | admin | Empty the metric cache |
 | `GET /api/{key}/debug/logs`, `POST` | admin | Read the agent's recent logs; change log levels |
 | `GET /api/{key}/debug/pprof/...` | admin | Go runtime profiler |

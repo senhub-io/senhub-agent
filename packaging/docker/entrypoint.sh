@@ -7,7 +7,8 @@
 #   1. Set OTLP_BEARER_TOKEN and nothing else. The agent generates its
 #      own key, watches the host it runs on, and pushes to SenHub.
 #   2. Add the variables your deployment needs: another collector, a
-#      Zabbix server, a licence, tags, a Container Apps log stream.
+#      Zabbix server, a licence, tags, probes (SENHUB_PROBE_<NAME>_*, read
+#      by the agent itself).
 #   3. Mount your own /etc/senhub-agent. Nothing is written then and
 #      every variable is ignored: your files win.
 #
@@ -66,6 +67,16 @@ degenerate_machine_id() {
 resolve_machine_id() {
   kept="$STATE_DIR/machine-id"
 
+  # A host's own machine-id, mounted where HOST_ETC points (a node agent
+  # reading /host/etc), is the host identity: the agent reads it there
+  # itself, and inventing one here would only be ignored.
+  if [ -n "${HOST_ETC:-}" ] && [ -z "${SENHUB_HOST_ID:-}" ] \
+     && [ -r "$HOST_ETC/machine-id" ] \
+     && valid_machine_id "$(tr -d '\n' < "$HOST_ETC/machine-id" | tr -d '-')"; then
+    log "host identity is the host's own machine-id ($HOST_ETC/machine-id)"
+    return 0
+  fi
+
   if [ -n "${SENHUB_HOST_ID:-}" ]; then
     wanted=$(printf '%s' "$SENHUB_HOST_ID" | tr -d '-' | tr 'ABCDEF' 'abcdef')
     if ! valid_machine_id "$wanted"; then
@@ -108,14 +119,24 @@ init_config() {
   set -- --config-path "$CONFIG" --http-port "${SENHUB_HTTP_PORT:-8080}" --http-bind "${SENHUB_HTTP_BIND:-0.0.0.0}"
 
   endpoint="${SENHUB_OTLP_ENDPOINT:-}"
-  if [ -z "$endpoint" ] && [ -n "${OTLP_BEARER_TOKEN:-}" ]; then
+  if [ -z "$endpoint" ] && { [ -n "${OTLP_BEARER_TOKEN:-}" ] || [ -n "${OTLP_BEARER_TOKEN_FILE:-}" ]; }; then
     endpoint="eu-west-1.intake.senhub.io:443"
   fi
   if [ -n "$endpoint" ]; then
     set -- "$@" --otlp-endpoint "$endpoint" --otlp-protocol "${SENHUB_OTLP_PROTOCOL:-grpc}"
   fi
-  if [ -n "${SENHUB_LICENSE:-}" ]; then
-    set -- "$@" --license "$SENHUB_LICENSE"
+  # The licence as a file (a mounted secret) stays out of the container's
+  # environment, which `podman inspect` prints.
+  license="${SENHUB_LICENSE:-}"
+  if [ -z "$license" ] && [ -n "${SENHUB_LICENSE_FILE:-}" ]; then
+    if [ -r "$SENHUB_LICENSE_FILE" ]; then
+      license=$(tr -d '\n' < "$SENHUB_LICENSE_FILE")
+    else
+      log "SENHUB_LICENSE_FILE names $SENHUB_LICENSE_FILE, which is not readable: the agent runs on the free tier"
+    fi
+  fi
+  if [ -n "$license" ]; then
+    set -- "$@" --license "$license"
   fi
   if [ -n "${SENHUB_TAGS:-}" ]; then
     set -- "$@" --tags "$SENHUB_TAGS"
@@ -130,9 +151,15 @@ init_config() {
     fi
   fi
 
-  senhub-agent config init "$@"
+  # Exit 3 means the configuration was already there and nothing was
+  # written: a restart over a persisted volume, which is the normal case.
+  init_rc=0
+  senhub-agent config init "$@" || init_rc=$?
+  if [ "$init_rc" -ne 0 ] && [ "$init_rc" -ne 3 ]; then
+    exit "$init_rc"
+  fi
 
-  if [ -z "${OTLP_BEARER_TOKEN:-}" ]; then
+  if [ -z "${OTLP_BEARER_TOKEN:-}" ] && [ -z "${OTLP_BEARER_TOKEN_FILE:-}" ]; then
     log "OTLP_BEARER_TOKEN is not set: the agent collects, and exports nothing to SenHub"
   fi
   otlp_fragment_extras "$CONFIG_DIR/strategies.d/10-otlp.yaml"
@@ -152,6 +179,18 @@ otlp_fragment_extras() {
     # shellcheck disable=SC2016 # ${env:...} must reach the file literally
     printf '  headers:\n    Authorization: "Bearer ${env:OTLP_BEARER_TOKEN}"\n' >> "$fragment"
     log "OTLP export authenticates with OTLP_BEARER_TOKEN"
+  elif [ -n "${OTLP_BEARER_TOKEN_FILE:-}" ] && ! grep -q 'Authorization' "$fragment"; then
+    # The token as a file (a Podman or Docker secret mounted under
+    # /run/secrets): unlike an environment variable it is not part of what
+    # `podman inspect` or `docker inspect` prints. The agent reads the
+    # file at every start and trims its trailing newline.
+    if [ -r "$OTLP_BEARER_TOKEN_FILE" ]; then
+      # shellcheck disable=SC2016 # ${file:...} must reach the file literally
+      printf '  headers:\n    Authorization: "Bearer ${file:%s}"\n' "$OTLP_BEARER_TOKEN_FILE" >> "$fragment"
+      log "OTLP export authenticates with the token in $OTLP_BEARER_TOKEN_FILE"
+    else
+      log "OTLP_BEARER_TOKEN_FILE names $OTLP_BEARER_TOKEN_FILE, which is not readable: nothing authenticates the export"
+    fi
   fi
   # Entities (the host, the agent, what its probes watch) are what a
   # topology backend builds its map from; without them a container agent
@@ -245,90 +284,17 @@ keep_agent_key() {
   fi
 }
 
-# trim removes the spaces around a value, so a list written with them
-# ("a, b") names the same applications as one written without.
-trim() {
-  printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
-}
-
-write_azure_probe() {
-  missing=""
-  for name in SENHUB_AZURE_TENANT_ID SENHUB_AZURE_CLIENT_ID SENHUB_AZURE_CLIENT_SECRET \
-              SENHUB_AZURE_SUBSCRIPTION_ID SENHUB_AZURE_RESOURCE_GROUP; do
-    eval "value=\${$name:-}"
-    if [ -z "$value" ]; then
-      missing="$missing $name"
-    fi
-  done
-  if [ -n "$missing" ]; then
-    log "SENHUB_AZURE_APP is set but these are not:$missing"
-    log "the Container Apps probe needs all of them; nothing else is affected, the agent stops here rather than start half configured"
+# refuse_removed_variables stops the container on a variable this image no
+# longer reads. SENHUB_AZURE_APP and its SENHUB_AZURE_* companions were
+# replaced by SENHUB_PROBE_<NAME>_*, which the agent reads itself. Ignoring
+# the old one would leave a collector that starts, reports healthy and
+# reads no log.
+refuse_removed_variables() {
+  if [ -n "${SENHUB_AZURE_APP:-}" ]; then
+    log "SENHUB_AZURE_APP is no longer read: declare the probe with SENHUB_PROBE_<NAME>_TYPE=azure_container_apps and SENHUB_PROBE_<NAME>_APP, _TENANT_ID, _CLIENT_ID, _CLIENT_SECRET (or _CLIENT_SECRET_FILE), _SUBSCRIPTION_ID, _RESOURCE_GROUP"
+    log "see https://agent.senhub.io/docs/probes/azure_container_apps/#from-environment-variables"
     exit 1
   fi
-  mkdir -p "$CONFIG_DIR/probes.d"
-  fragment="$CONFIG_DIR/probes.d/50-azure-container-apps.yaml"
-  : > "$fragment"
-
-  # One probe instance follows one application, so a comma-separated
-  # list writes one entry per name, each with its own bookmark. A
-  # collector that watches an environment holding several applications
-  # is the ordinary case, and it must not require hand-written YAML in
-  # SENHUB_PROBES.
-  old_ifs=$IFS
-  IFS=,
-  # The function takes no arguments, so the positional parameters are
-  # free to carry the split.
-  # shellcheck disable=SC2086
-  set -- $SENHUB_AZURE_APP
-  IFS=$old_ifs
-
-  written=""
-  for raw in "$@"; do
-    app=$(trim "$raw")
-    if [ -z "$app" ]; then
-      continue
-    fi
-    # The name becomes a probe name and a bookmark file name. A
-    # separator or a space in it would place that file somewhere else,
-    # and no Container App is named that way.
-    case "$app" in
-      */*|*' '*|*'	'*)
-        log "SENHUB_AZURE_APP names \"$app\", which is not a Container App name"
-        exit 1
-        ;;
-    esac
-    for already in $written; do
-      if [ "$already" = "$app" ]; then
-        log "SENHUB_AZURE_APP names \"$app\" twice; the second one is ignored"
-        app=""
-        break
-      fi
-    done
-    if [ -z "$app" ]; then
-      continue
-    fi
-    written="$written $app"
-    # Every credential stays a reference: the secret is read from the
-    # environment at each start and never written to the file.
-    cat >> "$fragment" <<YAML
-- name: ${app}
-  type: azure_container_apps
-  params:
-    tenant_id: "\${env:SENHUB_AZURE_TENANT_ID}"
-    client_id: "\${env:SENHUB_AZURE_CLIENT_ID}"
-    client_secret: "\${env:SENHUB_AZURE_CLIENT_SECRET}"
-    subscription_id: "\${env:SENHUB_AZURE_SUBSCRIPTION_ID}"
-    resource_group: "\${env:SENHUB_AZURE_RESOURCE_GROUP}"
-    app: "${app}"
-    bookmark_path: ${STATE_DIR}/${app}.bookmark
-YAML
-  done
-
-  if [ -z "$written" ]; then
-    log "SENHUB_AZURE_APP is set but names no application"
-    exit 1
-  fi
-  log "reading the console log stream of the Container Apps:$written"
 }
 
 # unmounted_state_warning says what a container without a volume on the
@@ -373,20 +339,13 @@ else
     log "output read from SENHUB_OUTPUT"
   fi
 
-  # A shorthand for the one probe this image is most often asked for.
-  # It writes the same kind of fragment SENHUB_PROBES would carry.
-  if [ -n "${SENHUB_AZURE_APP:-}" ]; then
-    # The two doors write two different files, so an application named
-    # in both is declared twice and its lines leave twice. Nothing in
-    # the configuration says so, hence the warning.
-    if [ -n "${SENHUB_PROBES:-}" ]; then
-      log "SENHUB_AZURE_APP and SENHUB_PROBES are both set; they write separate files and are not merged"
-      log "an application named in both is declared twice and its logs are collected twice — name each one in one place only"
-    fi
-    write_azure_probe
-  fi
+  refuse_removed_variables
 
-  if senhub-agent config check --config-path "$CONFIG" >/dev/null 2>&1; then
+  # config check exits 0 clean, 1 with warnings, 2 on an error: only an
+  # error stops the container.
+  check_rc=0
+  senhub-agent config check --config-path "$CONFIG" >/dev/null 2>&1 || check_rc=$?
+  if [ "$check_rc" -le 1 ]; then
     log "configuration written and checked"
   else
     log "the configuration that was written does not pass config check:"

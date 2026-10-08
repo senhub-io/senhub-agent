@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"text/template"
 )
 
@@ -45,7 +47,11 @@ type AssetHandler struct {
 	agentKey    string
 	readKey     string
 	prtgEnabled bool
-	templates   map[string]*template.Template
+	// templates holds the pages parsed so far: a page is parsed the first
+	// time it is rendered, so an agent whose console is never opened keeps
+	// no parsed page.
+	mu        sync.Mutex
+	templates map[string]*template.Template
 }
 
 // NewAssetHandler creates a new asset handler
@@ -55,9 +61,6 @@ func NewAssetHandler(agentKey string) *AssetHandler {
 		prtgEnabled: false, // Default to false, will be set by caller if needed
 		templates:   make(map[string]*template.Template),
 	}
-
-	// Parse all HTML templates
-	handler.parseTemplates()
 
 	return handler
 }
@@ -70,27 +73,33 @@ func NewAssetHandlerWithPRTG(agentKey string, prtgEnabled bool) *AssetHandler {
 		templates:   make(map[string]*template.Template),
 	}
 
-	// Parse all HTML templates
-	handler.parseTemplates()
-
 	return handler
 }
 
-// parseTemplates loads and parses all HTML templates
 // consolePages lists the embedded pages, by template name; each is
 // assets/html/<name>.html.
 var consolePages = []string{"dashboard", "probes", "outputs", "output-editor", "output-http", "settings", "docs"}
 
-func (ah *AssetHandler) parseTemplates() {
-	for _, name := range consolePages {
-		content, err := htmlFiles.ReadFile("assets/html/" + name + ".html")
-		if err != nil {
-			continue
-		}
-		if tmpl, err := template.New(name).Parse(string(content)); err == nil {
-			ah.templates[name] = tmpl
-		}
+// template returns the parsed page, parsing it on first use.
+func (ah *AssetHandler) template(name string) (*template.Template, bool) {
+	ah.mu.Lock()
+	defer ah.mu.Unlock()
+	if tmpl, ok := ah.templates[name]; ok {
+		return tmpl, true
 	}
+	if !slices.Contains(consolePages, name) {
+		return nil, false
+	}
+	content, err := htmlFiles.ReadFile("assets/html/" + name + ".html")
+	if err != nil {
+		return nil, false
+	}
+	tmpl, err := template.New(name).Parse(string(content))
+	if err != nil {
+		return nil, false
+	}
+	ah.templates[name] = tmpl
+	return tmpl, true
 }
 
 // WithReadKey sets the agent key the pages show as the agent's own.
@@ -101,7 +110,7 @@ func (ah *AssetHandler) WithReadKey(key string) *AssetHandler {
 
 // RenderTemplate renders an HTML template with data
 func (ah *AssetHandler) RenderTemplate(name string) (string, error) {
-	tmpl, exists := ah.templates[name]
+	tmpl, exists := ah.template(name)
 	if !exists {
 		return "", fmt.Errorf("template not found: %s", name)
 	}

@@ -9,7 +9,7 @@ The Azure Container Apps probe reads the console log stream of an application ho
 
 Lines ride the agent's log rail exactly like lines read by `filetail`: the same parsers (raw, regex, json, logfmt), the same multiline folding for stack traces, and the same outputs (OTLP logs first). Each record carries the application, revision, replica and container it came from, so one stream never blends into another.
 
-One probe instance follows one application, or every application of a subscription when a `discovery` block is set (see [Following a whole subscription](#following-a-whole-subscription)). To follow a chosen few, declare one instance per application, each with its own `name` and its own `bookmark_path`. Two instances sharing a bookmark would overwrite each other's position and replay or skip lines after a restart. In the container image the `SENHUB_AZURE_APP` variable takes a comma-separated list and writes those instances for you, see [Container image](../container.md#reading-azure-container-apps).
+One probe instance follows one application, or every application of a subscription when a `discovery` block is set (see [Following a whole subscription](#following-a-whole-subscription)). To follow a chosen few, declare one instance per application, each with its own `name` and its own `bookmark_path`. Two instances sharing a bookmark would overwrite each other's position and replay or skip lines after a restart. With the environment variables of the agent, each instance is a few `SENHUB_PROBE_<NAME>_*` variables, see [From environment variables](#from-environment-variables).
 
 Replicas that appear with a scale-out or a new revision are attached on the next scan; replicas that disappear are released.
 
@@ -86,11 +86,43 @@ An application that appears is picked up at the next discovery; one that disappe
 
 When several applications are followed, what describes an application is published per application, carrying its name and its resource group, while the collector's own counters stay whole: an operator watching the collector should not have to sum, and a series about an application must be readable back to it.
 
+# From environment variables
+
+Where placing a file is harder than setting a variable (a container platform, a Helm chart), the probe is declared by the agent's [environment rule](../configuration.md#configuring-probes-from-environment-variables). The probe name is yours; the application name goes in `APP`, and a name with a hyphen (`squash-tm`) is a value there, not part of a variable.
+
+One probe per application (list mode), the credentials repeated for each:
+
+```bash
+SENHUB_PROBE_OLTP_TYPE=azure_container_apps
+SENHUB_PROBE_OLTP_APP=oltp
+SENHUB_PROBE_OLTP_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_OLTP_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_OLTP_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
+SENHUB_PROBE_OLTP_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_OLTP_RESOURCE_GROUP=rg-squash
+SENHUB_PROBE_OLTP_BOOKMARK_PATH=/var/lib/senhub-agent/oltp.bookmark
+```
+
+The whole subscription (discovery mode), one probe:
+
+```bash
+SENHUB_PROBE_ACA_TYPE=azure_container_apps
+SENHUB_PROBE_ACA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_ACA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
+SENHUB_PROBE_ACA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_ACA_DISCOVERY__INTERVAL=300
+SENHUB_PROBE_ACA_DISCOVERY__EXCLUDE=*-preview
+SENHUB_PROBE_ACA_BOOKMARK_PATH=/var/lib/senhub-agent/aca.bookmark
+```
+
+Each instance keeps its own `bookmark_path`, under the agent's state directory, which should be a volume.
+
 # Configuration Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:0793f58f58ca103fa6feb5e2f021313c1c72186d7a49728bc40385184778d6e5 -->
+<!-- sha256:061d51983d3979e26288ba278b1cdf157c64fb706358f8e629cdd501f1976335 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -109,7 +141,7 @@ When several applications are followed, what describes an application is publish
 | `containers` | No | - | Container names to read; empty reads every container |
 | `tail_lines` | No | `100` | Lines re-read when a stream is (re)attached, 0 to 300; already published lines are dropped |
 | `interval` | No | `60` | Seconds between replica scans |
-| `bookmark_path` | No | - | File keeping the last published timestamp per stream, so a restart does not publish the re-read tail twice |
+| `bookmark_path` | No | - | File keeping the last published timestamp per stream, so a restart does not publish the re-read tail twice. Defaults to <probe name>.bookmark in the agent state directory; a bookmark kept elsewhere before (for example <app>.bookmark) must be named here, otherwise the first start replays up to tail_lines per container once |
 | `parser` | No | - | How each line is read |
 | `parser.type` | No | `raw` | Shape of a line; raw keeps it whole. One of `raw`, `regex`, `json`, `logfmt` |
 | `parser.pattern` | No | - | Regular expression with named groups (type regex) |
