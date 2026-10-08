@@ -1,6 +1,7 @@
 package filetail
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,7 +80,10 @@ func TestFileTail_CreateModeRotationKeepsCollecting(t *testing.T) {
 	for round := 0; round < 2; round++ {
 		time.Sleep(300 * time.Millisecond)
 		before := p.emitted.Load()
-		if err := os.Rename(file, file+".1"); err != nil {
+		// Each round moves the file to a name of its own: Windows refuses a
+		// rename onto a file another handle still has open, and the probe
+		// keeps the rotated file open for a while to read its last lines.
+		if err := os.Rename(file, fmt.Sprintf("%s.%d", file, round+1)); err != nil {
 			t.Fatal(err)
 		}
 		writeFile(t, file, "")
