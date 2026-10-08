@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // The per-(probe,reason) collect-error counter lives in collect_errors.go.
@@ -97,6 +98,24 @@ var probeHealth = map[string]probeHealthState{}
 // so the listing can say why a probe is failing, not only that it is.
 var probeLastError = map[string]string{}
 
+// probeCycle is what a probe's latest delivery to the outputs held, keyed
+// by probe ID. It lets the status channel say whether a probe produced
+// data without an output that stores metrics being configured.
+type probeCycle struct {
+	at     time.Time
+	points int
+}
+
+var probeCycles = map[string]probeCycle{}
+
+// RecordProbeCycle notes that the probe handed points datapoints to the
+// outputs just now. Called by ProbePoller for each delivery.
+func RecordProbeCycle(probeID string, points int) {
+	probeStateMu.Lock()
+	probeCycles[probeID] = probeCycle{at: time.Now(), points: points}
+	probeStateMu.Unlock()
+}
+
 // probeStartFailed holds the configured probes that could not be started,
 // with the reason. They are not running, so they are not in
 // activeProbeIDs, and without this set a probe whose constructor failed
@@ -164,6 +183,7 @@ func SetActiveProbes(probeIDs []string) {
 		if _, alive := newSet[id]; !alive {
 			delete(probeHealth, id)
 			delete(probeLastError, id)
+			delete(probeCycles, id)
 		}
 	}
 }
@@ -222,6 +242,10 @@ type ProbeRunState struct {
 	// LastError is the message of the last failed cycle while Health is
 	// "failed"; empty otherwise.
 	LastError string
+	// LastCycle is when the probe last handed datapoints to the outputs
+	// and LastPoints how many; zero until it has.
+	LastCycle  time.Time
+	LastPoints int
 }
 
 // GetProbeRunState reports the live state of a probe by its ID (from
@@ -235,14 +259,16 @@ func GetProbeRunState(probeID string) ProbeRunState {
 		}
 		return ProbeRunState{}
 	}
+	state := ProbeRunState{Running: true, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points}
 	switch probeHealth[probeID] {
 	case probeHealthOK:
-		return ProbeRunState{Running: true, Health: "ok"}
+		state.Health = "ok"
 	case probeHealthFailed:
-		return ProbeRunState{Running: true, Health: "failed", LastError: probeLastError[probeID]}
+		state.Health, state.LastError = "failed", probeLastError[probeID]
 	default:
-		return ProbeRunState{Running: true, Health: "unknown"}
+		state.Health = "unknown"
 	}
+	return state
 }
 
 // RunningProbeStates reports the live state of every running probe,
