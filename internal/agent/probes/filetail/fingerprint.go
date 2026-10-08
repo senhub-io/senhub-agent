@@ -3,7 +3,6 @@ package filetail
 import (
 	"hash/crc32"
 	"io"
-	"os"
 )
 
 // DefaultFingerprintLength is the number of leading bytes hashed to
@@ -35,7 +34,7 @@ func fingerprint(path string, n int) string {
 	if n <= 0 {
 		n = DefaultFingerprintLength
 	}
-	f, err := os.Open(path)
+	f, err := openShared(path)
 	if err != nil {
 		return ""
 	}
