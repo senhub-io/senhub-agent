@@ -73,3 +73,12 @@ type ListenerProbe interface {
 	// already holds.
 	ListenerHealth() error
 }
+
+// PartialResultsProbe is implemented by a probe whose Collect returns
+// datapoints together with an error, the datapoints being valid on their
+// own: the throughput self-metrics of a conduit whose one path cannot be
+// read. ProbePoller routes them although the cycle is reported as failed,
+// where it drops the datapoints of every other probe that errors.
+type PartialResultsProbe interface {
+	KeepsPartialResults() bool
+}

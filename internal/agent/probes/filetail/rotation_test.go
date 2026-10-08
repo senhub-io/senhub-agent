@@ -166,7 +166,7 @@ func TestFileTail_PersistedFingerprintBelongsToTheFileTheOffsetWasReadFrom(t *te
 	ts := &tailState{t: tl}
 	p.tailing[file] = ts
 	p.wg.Add(1)
-	go p.consume(file, ts, 0, oldFP, make(chan struct{}))
+	go p.consume(file, ts, 0, oldFP, make(chan reopenEvent))
 
 	if got := waitEmitted(p, 40, 5*time.Second); got != 40 {
 		t.Fatalf("emitted %d of 40 lines", got)
