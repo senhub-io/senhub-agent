@@ -16,9 +16,11 @@
 package filetail
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -428,7 +430,7 @@ func (p *FileTailProbe) startTail(file string) error {
 	}
 	size := fi.Size()
 	opened := fi
-	readable, err := os.Open(file)
+	handle, err := tail.OpenFile(file)
 	if err != nil {
 		p.mu.Unlock()
 		if os.IsNotExist(err) {
@@ -436,15 +438,12 @@ func (p *FileTailProbe) startTail(file string) error {
 		}
 		return fmt.Errorf("%s: %w", describePathError(err), err)
 	}
-	if err := readable.Close(); err != nil {
-		p.debug().Err(err).Str("file", file).Msg("closing readability check failed")
-	}
 	fp := fingerprint(file, DefaultFingerprintLength)
 	stored, hasStored := p.bookmarks.Get(file)
 	offset := resolveStartOffset(stored, hasStored, fp, size, p.config.FromBeginning || p.awaiting[file])
 	delete(p.awaiting, file)
 
-	reopened := make(chan struct{})
+	reopened := make(chan reopenEvent)
 	cfg := tail.Config{
 		ReOpen:        true,
 		Follow:        true,
@@ -468,10 +467,11 @@ func (p *FileTailProbe) startTail(file string) error {
 	t, err := tail.TailFile(file, cfg)
 	if err != nil {
 		p.mu.Unlock()
+		closeQuietly(handle)
 		p.warn().Err(err).Str("file", file).Msg("failed to start tail")
 		return fmt.Errorf("failed to start tail: %w", err)
 	}
-	ts := &tailState{t: t, opened: opened}
+	ts := &tailState{t: t, opened: opened, handle: handle, headFP: fp}
 	ts.offset.Store(offset)
 	p.tailing[file] = ts
 	p.wg.Add(1)
@@ -544,6 +544,67 @@ type tailState struct {
 	checkedOffset int64
 
 	superseded atomic.Bool
+
+	// handle is this probe's own read handle on the file the tail reads,
+	// opened with the sharing mode the tail uses so it never blocks a
+	// rotation. When the library moves to the file that replaced it, the
+	// handle is the only way left to read what the writer appended to the
+	// old one in between. Only the consume goroutine touches it after start.
+	handle *os.File
+
+	// headFP is the fingerprint of the first bytes of the file as read, or
+	// "" while the file is shorter than the fingerprint window.
+	headFP string
+}
+
+func (ts *tailState) setHead(fp string) {
+	ts.mu.Lock()
+	ts.headFP = fp
+	ts.mu.Unlock()
+}
+
+func closeQuietly(f *os.File) {
+	if f != nil {
+		_ = f.Close()
+	}
+}
+
+// retiredGrace is how long the handle on a rotated file stays open after
+// the library has moved on. A writer keeps its old descriptor until it is
+// told to reopen (logrotate's postrotate signal), which comes after the
+// library has already left the file.
+const retiredGrace = 30 * time.Second
+
+// retiredPollInterval spaces the looks at rotated files still in their grace.
+const retiredPollInterval = 250 * time.Millisecond
+
+// retiredFile is a rotated file whose end is still being read.
+type retiredFile struct {
+	f      *os.File
+	offset int64
+	until  time.Time
+}
+
+// drainFrom returns the complete lines of f from offset to its current end,
+// and the offset after them. A trailing fragment without a newline is left
+// out, as the library leaves it out of a file it follows.
+func drainFrom(f *os.File, offset int64) ([]string, int64, error) {
+	if f == nil {
+		return nil, offset, nil
+	}
+	r := bufio.NewReader(io.NewSectionReader(f, offset, 1<<62))
+	var lines []string
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				return lines, offset, nil
+			}
+			return lines, offset, err
+		}
+		offset += int64(len(line))
+		lines = append(lines, strings.TrimSuffix(line, "\n"))
+	}
 }
 
 // markOpened records the file now at path as the one the tail reads.
@@ -604,6 +665,17 @@ func (ts *tailState) divergence(path string) (reason string, resume bool) {
 	}
 	if cur.Size() < offset {
 		return "the file is shorter than the offset already read", false
+	}
+	// A file emptied and refilled past the offset between two looks is the
+	// same inode, longer than the offset, and indistinguishable by size
+	// from an append. Its first bytes are not the ones it had.
+	ts.mu.Lock()
+	head := ts.headFP
+	ts.mu.Unlock()
+	if head != "" && cur.Size() >= DefaultFingerprintLength {
+		if now := fingerprint(path, DefaultFingerprintLength); now != "" && now != head {
+			return "the start of the file changed since it was opened", false
+		}
 	}
 	if cur.Size() > offset && unchanged {
 		return "the file grew and the tail read nothing of it", true
@@ -689,18 +761,35 @@ func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason st
 // sends none of the new one until the event is taken: consume sees the
 // reopen exactly between the two files.
 type reopenSignal struct {
-	reopened chan<- struct{}
+	reopened chan<- reopenEvent
 	quit     <-chan struct{}
 }
 
+type reopenEvent int
+
+const (
+	// eventDraining precedes the library's switch away from a file that
+	// was moved or deleted: its handle is still open and at the end of what
+	// the library read.
+	eventDraining reopenEvent = iota
+	eventReopened
+)
+
 func (r *reopenSignal) Write(b []byte) (int, error) {
-	if bytes.HasPrefix(b, []byte("Successfully reopened")) {
-		select {
-		case r.reopened <- struct{}{}:
-		case <-r.quit:
-		}
+	switch {
+	case bytes.HasPrefix(b, []byte("Re-opening moved/deleted file")):
+		r.send(eventDraining)
+	case bytes.HasPrefix(b, []byte("Successfully reopened")):
+		r.send(eventReopened)
 	}
 	return len(b), nil
+}
+
+func (r *reopenSignal) send(ev reopenEvent) {
+	select {
+	case r.reopened <- ev:
+	case <-r.quit:
+	}
 }
 
 // consume drains one file's tail channel, folds multiline records,
@@ -711,9 +800,16 @@ func (r *reopenSignal) Write(b []byte) (int, error) {
 // at persist time: by then the path may name a newer file, and pairing the
 // old file's offset with the new file's head hash is what let a restart
 // resume past the end of the file that replaced it.
-func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, fp string, reopened <-chan struct{}) {
+func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, fp string, reopened <-chan reopenEvent) {
 	t := ts.t
 	defer p.wg.Done()
+	var retired []*retiredFile
+	defer func() {
+		closeQuietly(ts.handle)
+		for _, r := range retired {
+			closeQuietly(r.f)
+		}
+	}()
 
 	asm := logparse.NewAssembler(p.config.Multiline, p.config.MaxBytesPerLine)
 	probeName := p.GetName()
@@ -728,12 +824,44 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 		if fp == "" && lastOffset >= DefaultFingerprintLength {
 			if fi, err := os.Stat(file); err == nil && fi.Size() >= lastOffset {
 				fp = fingerprint(file, DefaultFingerprintLength)
+				ts.setHead(fp)
 			}
 		}
 		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: lastOffset, Fingerprint: fp}); err != nil {
 			p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 		}
 	}
+
+	feed := func(text string, readTime time.Time) {
+		for _, logical := range asm.Append(strings.TrimSuffix(text, "\r")) {
+			p.publish(p.config.Parser, logical, readTime, probeName, file)
+		}
+	}
+
+	// pollRetired reads what writers still holding a rotated file appended
+	// since the last look, and lets go of files past their grace.
+	pollRetired := func() {
+		kept := retired[:0]
+		for _, r := range retired {
+			lines, off, err := drainFrom(r.f, r.offset)
+			if err != nil {
+				p.warn().Err(err).Str("file", file).Msg("reading the rotated file failed; its last lines may be lost")
+			}
+			r.offset = off
+			now := time.Now()
+			for _, l := range lines {
+				feed(l, now)
+			}
+			if now.After(r.until) || err != nil {
+				closeQuietly(r.f)
+				continue
+			}
+			kept = append(kept, r)
+		}
+		retired = kept
+	}
+	retiredTicker := time.NewTicker(retiredPollInterval)
+	defer retiredTicker.Stop()
 
 	// A burst of lines inside one flush interval used to leave the
 	// bookmark at its first line until the next line arrived: a crash
@@ -746,7 +874,29 @@ read:
 	for {
 		var line *tail.Line
 		select {
-		case <-reopened:
+		case ev := <-reopened:
+			if ev == eventDraining {
+				// The library is about to leave the old file. What the
+				// writer appended after the library's last read is still in
+				// it and nowhere else, so it is read to the end here, before
+				// the library hands over the first line of the new file.
+				lines, off, err := drainFrom(ts.handle, lastOffset)
+				if err != nil {
+					p.warn().Err(err).Str("file", file).Msg("draining the rotated file failed; its last lines may be lost")
+				}
+				now := time.Now()
+				for _, l := range lines {
+					feed(l, now)
+				}
+				if len(lines) > 0 {
+					p.debug().Str("file", file).Int("lines", len(lines)).Msg("drained lines written to the rotated file")
+				}
+				if ts.handle != nil {
+					retired = append(retired, &retiredFile{f: ts.handle, offset: off, until: time.Now().Add(retiredGrace)})
+					ts.handle = nil
+				}
+				continue
+			}
 			// The file was rotated or truncated and the tail now reads the
 			// new one from its start. Bookmark that at once: until the next
 			// line the entry held the previous file's offset, which the
@@ -757,12 +907,22 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
+			if h, err := tail.OpenFile(file); err == nil {
+				closeQuietly(ts.handle)
+				ts.handle = h
+			} else {
+				p.debug().Err(err).Str("file", file).Msg("cannot open a drain handle on the new file")
+			}
 			ts.restartedAtStart(file)
 			fp = fingerprint(file, DefaultFingerprintLength)
+			ts.setHead(fp)
 			persist()
 			lastFlush = time.Now()
 			dirty = false
 			p.verifyStartedTail(file, ts)
+			continue
+		case <-retiredTicker.C:
+			pollRetired()
 			continue
 		case <-ticker.C:
 			if dirty {
@@ -796,10 +956,7 @@ read:
 		// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
 		// CRLF files; strip it so bodies/attributes are clean and parsers
 		// behave identically across platforms.
-		text := strings.TrimSuffix(line.Text, "\r")
-		for _, logical := range asm.Append(text) {
-			p.publish(p.config.Parser, logical, readTime, probeName, file)
-		}
+		feed(line.Text, readTime)
 
 		if time.Since(lastFlush) >= bookmarkFlushInterval {
 			persist()
@@ -867,3 +1024,7 @@ func hasGlobMeta(p string) bool {
 func (p *FileTailProbe) String() string {
 	return fmt.Sprintf("FileTailProbe{paths=%v, parser=%s}", p.config.Paths, p.config.Parser.Type)
 }
+
+// KeepsPartialResults marks the self-metrics returned with an unreadable-path
+// error as valid: one bad path must not hide the conduit's own throughput.
+func (p *FileTailProbe) KeepsPartialResults() bool { return true }
