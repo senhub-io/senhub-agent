@@ -220,7 +220,7 @@ func (f *FormatConverter) applyPRTGUnit(channel *PRTGChannel, displayUnit string
 	otel := f.otelMappingFor(metric)
 
 	if otel != nil && strings.HasSuffix(otel.Unit, "/s") {
-		f.applyPRTGRateUnit(channel, otel.Unit, metric)
+		f.applyPRTGRateUnit(channel, otel.Unit, displayUnit, metric)
 		// PRTG receives the raw value, in the probe's display unit; the
 		// OTel unit only says it is a rate. The input scale therefore
 		// follows the display unit when it names one: a NetScaler value
@@ -261,7 +261,7 @@ func (f *FormatConverter) applyPRTGUnit(channel *PRTGChannel, displayUnit string
 // Byte/bit rates use the native Speed* units with the input scale
 // declared (the raw value stays per-second in the declared size);
 // other rates use a Custom unit carrying the "/s" suffix.
-func (f *FormatConverter) applyPRTGRateUnit(channel *PRTGChannel, otelUnit string, metric CachedMetric) {
+func (f *FormatConverter) applyPRTGRateUnit(channel *PRTGChannel, otelUnit, displayUnit string, metric CachedMetric) {
 	switch strings.ToLower(otelUnit) {
 	case "by/s", "byte/s", "bytes/s":
 		if f.isDiskContext(f.otelMappingFor(metric), metric) {
@@ -281,8 +281,27 @@ func (f *FormatConverter) applyPRTGRateUnit(channel *PRTGChannel, otelUnit strin
 		channel.SpeedTime = "Second"
 	default:
 		channel.Unit = "Custom"
-		channel.CustomUnit = humanizeRateUnit(otelUnit)
+		channel.CustomUnit = customRateUnit(otelUnit, displayUnit)
 	}
+}
+
+// customRateUnit labels a per-second metric that has no native PRTG speed
+// unit, keeping the noun of what is counted: the OTel annotation when it
+// names one ({request}/s), else the probe definition's display unit
+// ("req/s"), else a bare "/s". An OTel unit of "1/s" says only that the
+// metric is a rate, so the label would otherwise lose the noun.
+func customRateUnit(otelUnit, displayUnit string) string {
+	if label := humanizeRateUnit(otelUnit); label != "/s" {
+		return label
+	}
+	display := strings.TrimSpace(displayUnit)
+	if strings.EqualFold(display, "pps") {
+		return "pkt/s"
+	}
+	if strings.HasSuffix(display, "/s") && len(display) > len("/s") {
+		return display
+	}
+	return "/s"
 }
 
 // prtgSpeedSize maps a probe's display unit for a bit or byte rate to
@@ -318,6 +337,10 @@ func humanizeRateUnit(otelUnit string) string {
 		return "ops/s"
 	case "request":
 		return "req/s"
+	case "response":
+		return "resp/s"
+	case "transaction":
+		return "tx/s"
 	default:
 		return base + "/s"
 	}
