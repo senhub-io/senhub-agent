@@ -438,6 +438,10 @@ func (p *FileTailProbe) startTail(file string) error {
 		}
 		return fmt.Errorf("%s: %w", describePathError(err), err)
 	}
+	if !drainsRotatedFile {
+		closeQuietly(handle)
+		handle = nil
+	}
 	fp := fingerprint(file, DefaultFingerprintLength)
 	stored, hasStored := p.bookmarks.Get(file)
 	offset := resolveStartOffset(stored, hasStored, fp, size, p.config.FromBeginning || p.awaiting[file])
@@ -568,6 +572,11 @@ func closeQuietly(f *os.File) {
 		_ = f.Close()
 	}
 }
+
+// drainsRotatedFile is false on Windows: refusing a rename onto a file the
+// probe still holds open would stop the application from rotating its own
+// log, which the probe must never do. There a rotated file is left at once.
+var drainsRotatedFile = runtime.GOOS != "windows"
 
 // retiredGrace is how long the handle on a rotated file stays open after
 // the library has moved on. A writer keeps its old descriptor until it is
@@ -880,6 +889,9 @@ read:
 				// writer appended after the library's last read is still in
 				// it and nowhere else, so it is read to the end here, before
 				// the library hands over the first line of the new file.
+				if ts.handle == nil {
+					continue
+				}
 				lines, off, err := drainFrom(ts.handle, lastOffset)
 				if err != nil {
 					p.warn().Err(err).Str("file", file).Msg("draining the rotated file failed; its last lines may be lost")
@@ -907,7 +919,9 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
-			if h, err := tail.OpenFile(file); err == nil {
+			if !drainsRotatedFile {
+				// No drain handle to renew.
+			} else if h, err := tail.OpenFile(file); err == nil {
 				closeQuietly(ts.handle)
 				ts.handle = h
 			} else {
