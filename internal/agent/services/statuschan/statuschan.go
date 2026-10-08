@@ -161,7 +161,7 @@ func Snapshot(svc *status.StatusService) status.SystemStatus {
 	failed := 0
 	for _, name := range names {
 		rs := running[name]
-		p := status.ProbeStatus{Name: name, Status: "active", LastError: rs.LastError}
+		p := status.ProbeStatus{Name: name, Status: "active", LastError: rs.LastError, MetricsCount: rs.LastPoints, LastUpdate: rs.LastCycle}
 		switch {
 		case rs.Health == "failed":
 			p.Status = "error"
