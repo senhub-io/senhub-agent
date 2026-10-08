@@ -1,0 +1,22 @@
+# Default host probes. Add more via new files here (e.g. 10-mysql.yaml);
+# they load alphabetically. Rename to *.disabled to turn one off.
+
+- name: cpu
+  type: cpu
+  params:
+    interval: 30
+
+- name: memory
+  type: memory
+  params:
+    interval: 30
+
+- name: network
+  type: network
+  params:
+    interval: 60
+
+- name: logicaldisk
+  type: logicaldisk
+  params:
+    interval: 30

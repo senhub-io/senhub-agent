@@ -177,7 +177,7 @@ When adding a probe, register it in the **six** places below in the **same PR**.
    entitySrc.SetUp(false, nil)
    ```
 
-   **Governance is not the probe's business.** The operator's per-instance `governance` block (owner / criticality / location / lifecycle / labels) is stamped by the `ProbePoller` on every entity the source reports (`entity.WithAttributes`, absent keys only) and by the data store on the instance's metrics and logs. A probe never parses or stamps it; the one exception is `snmp_poll`, whose discovery rules stamp a more specific block per device and therefore win. The detector also lets the host's location (and only that) descend to every entity a `runs_on` relation places on this host, so a probe that reports a local target with `entity.LocalRunsOn` gets it for free.
+   **Governance is not the probe's business.** The operator's per-instance `governance` block (owner / criticality / location / lifecycle / labels) is stamped by the `ProbePoller` on every entity the source reports (`entity.WithAttributesFunc`, absent keys only; the poller holds the attributes and the sensor refreshes them on every reload, because governance is not part of the probe identity, so a governance-only edit reaches the next emission without a restart) and by the data store on the instance's metrics and logs. A probe never parses or stamps it; the one exception is `snmp_poll`, whose discovery rules stamp a more specific block per device and therefore win. The detector also lets the host's location (and only that) descend to every entity a `runs_on` relation places on this host, so a probe that reports a local target with `entity.LocalRunsOn` gets it for free.
 
    **Host-level probes and log conduits** (cpu, memory, network, logicaldisk, linux_logs, syslog, filetail, windowseventlog, event): do NOT call `SetEntitySource()`. They inherit the `NoOpEntitySource` fallback from `BaseProbe`, which satisfies the invariant without emitting extra entity events — the host entity is already reported by the entity detector.
 
@@ -263,6 +263,12 @@ When you rename a parameter, or stop reading one:
 A parameter that IS read needs no entry, even if it is an alias: a
 warning about something that works as written is noise. Document it in
 the page's parameter table instead.
+
+## Where a probe keeps state
+
+A probe that persists something (bookmark, offset, cursor) takes its default path from
+`probesdk/state` (`state.Path(name + ".bookmark")`), never from the working directory: a
+service does not control it, and a container loses it. The path stays overridable by a param.
 
 ## Tests
 

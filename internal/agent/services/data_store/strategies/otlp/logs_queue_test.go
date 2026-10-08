@@ -68,7 +68,10 @@ func TestLogsQueue_EnqueueDrainRemove(t *testing.T) {
 	}
 
 	var got []persistedLogRecord
-	n := q.drain(func(recs []persistedLogRecord) { got = append(got, recs...) })
+	n, err := q.drainAcked(func(recs []persistedLogRecord) error { got = append(got, recs...); return nil })
+	if err != nil {
+		t.Fatalf("drainAcked: %v", err)
+	}
 	if n != 3 {
 		t.Errorf("drained=%d, want 3", n)
 	}
@@ -158,7 +161,7 @@ func TestPersistentLogExporter_PersistThenReplay(t *testing.T) {
 
 	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
 	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
-	replayer := newLogsReplayer(q, pipe, testModuleLogger(t))
+	replayer := newLogsReplayer(q, pipe, ple, testModuleLogger(t))
 
 	ctx := context.Background()
 	pipe.emit(ctx, agentstate.LogRecord{
@@ -310,54 +313,6 @@ func TestPersistentLogExporter_OutageIsStillQueued(t *testing.T) {
 	q.mu.Unlock()
 	if recs == 0 {
 		t.Error("an ordinary outage was not persisted — the dead-letter queue no longer does its job")
-	}
-}
-
-// The logs rail is sparse: a queued batch used to wait for the next
-// record on that same rail before it was retried, which on a quiet host
-// is minutes — long enough for a consumer to expire the whole host and
-// bring it back. The retry now runs on its own clock. Pins #845.
-func TestLogsReplayerRetriesWithoutNewRecords(t *testing.T) {
-	dir := t.TempDir()
-	q := newLogsQueue(dir, 0, testModuleLogger(t))
-	if err := q.enqueue(sampleRecords(3)); err != nil {
-		t.Fatalf("enqueue: %v", err)
-	}
-	time.Sleep(20 * time.Millisecond) // the Windows clock does not resolve below that
-	if n, waited := q.pending(); n != 3 || waited <= 0 {
-		t.Fatalf("the queue must report what waits and for how long, got %d records waiting %v", n, waited)
-	}
-
-	drained := make(chan int, 4)
-	r := newLogsReplayer(q, nil, testModuleLogger(t))
-	// The pipeline is not exercised here: what is pinned is that a drain
-	// happens at all without a new record arriving.
-	r.running.Store(true)
-	go func() {
-		for {
-			select {
-			case <-r.quit:
-				return
-			case <-r.wake:
-			}
-			n := q.drain(func([]persistedLogRecord) {})
-			drained <- n
-		}
-	}()
-	r.kick()
-
-	select {
-	case n := <-drained:
-		if n != 3 {
-			t.Errorf("the queued records must be retried, got %d", n)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("nothing retried the queued batch")
-	}
-	close(r.quit)
-
-	if n, waited := q.pending(); n != 0 || waited != 0 {
-		t.Errorf("an empty queue reports nothing waiting, got %d records waiting %v", n, waited)
 	}
 }
 

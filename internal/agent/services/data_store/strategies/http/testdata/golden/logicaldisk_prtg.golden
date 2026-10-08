@@ -19,6 +19,36 @@
     "unit": "Percent"
   },
   {
+    "channel": "Disk I/O Read Bytes (tdevice)",
+    "value": 111,
+    "float": 1,
+    "unit": "BytesDisk"
+  },
+  {
+    "channel": "Disk I/O Time (tdevice)",
+    "value": 76.5,
+    "float": 1,
+    "unit": "TimeSeconds"
+  },
+  {
+    "channel": "Disk I/O Write Bytes (tdevice)",
+    "value": 42,
+    "float": 1,
+    "unit": "BytesDisk"
+  },
+  {
+    "channel": "Disk Operations Read (tdevice)",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "Disk Operations Write (tdevice)",
+    "value": 65,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
     "channel": "Disk Queue Length (tdrive)",
     "value": 42,
     "float": 1,
@@ -28,9 +58,7 @@
     "channel": "Disk Read Bytes Sec (tdrive)",
     "value": 99.5,
     "float": 1,
-    "unit": "SpeedDisk",
-    "speedsize": "Byte",
-    "speedtime": "Second"
+    "unit": "SpeedDisk"
   },
   {
     "channel": "Disk Reads Sec (tdrive)",
@@ -49,9 +77,7 @@
     "channel": "Disk Write Bytes Sec (tdrive)",
     "value": 111,
     "float": 1,
-    "unit": "SpeedDisk",
-    "speedsize": "Byte",
-    "speedtime": "Second"
+    "unit": "SpeedDisk"
   },
   {
     "channel": "Disk Writes Sec (tdrive)",
@@ -68,25 +94,25 @@
   },
   {
     "channel": "Inodes Free (tmount_point)",
-    "value": 42,
+    "value": 99.5,
     "float": 1,
     "unit": "Count"
   },
   {
     "channel": "Inodes Total (tmount_point)",
-    "value": 111,
+    "value": 88,
     "float": 1,
     "unit": "Count"
   },
   {
     "channel": "Inodes Used (tmount_point)",
-    "value": 53.5,
+    "value": 111,
     "float": 1,
     "unit": "Count"
   },
   {
     "channel": "Inodes Used Percent (tmount_point)",
-    "value": 65,
+    "value": 42,
     "float": 1,
     "unit": "Percent"
   },

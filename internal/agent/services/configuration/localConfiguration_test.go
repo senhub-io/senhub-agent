@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -485,5 +486,20 @@ func TestGenerateSelfSignedCert_ValidityAndFields(t *testing.T) {
 		if keyInfo.Size() == 0 {
 			t.Error("Private key file is empty")
 		}
+	}
+}
+
+func TestStoreDataPublishesTheHostNameOverride(t *testing.T) {
+	t.Cleanup(func() { common.SetHostNameOverride("") })
+	lc := &LocalConfiguration{}
+
+	lc.storeData(LocalConfigurationData{Agent: LocalAgentConfig{GlobalTags: map[string]string{"host.name": "preprod.example.shop"}}})
+	if got := common.HostNameOverride(); got != "preprod.example.shop" {
+		t.Errorf("override = %q, want preprod.example.shop", got)
+	}
+
+	lc.storeData(LocalConfigurationData{})
+	if got := common.HostNameOverride(); got != "" {
+		t.Errorf("override after removal = %q, want empty", got)
 	}
 }

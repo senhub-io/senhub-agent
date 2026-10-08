@@ -27,6 +27,7 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 | Version | Date | Headline |
 |---|---|---|
 | [**Next (unreleased)**](next.md) | in progress | — |
+| [**0.6.2**](0.6.2.md) | 2026-10-08 | Signed Linux packages and repositories, Ansible, Helm and Podman deployment, probes from environment variables, credentials masked in the log, PRTG bit rates at the right scale |
 | [**0.6.1**](0.6.1.md) | 2026-09-30 | Metric names and units follow the Prometheus and OpenTelemetry rules, Zabbix server set at install, versioned Windows executables |
 | [**0.6.0**](0.6.0.md) | 2026-09-29 | Native Zabbix output, separate console/API administration key, `service.instance.id` as a UUID |
 | [**0.5.6**](0.5.6.md) | 2026-09-19 | `SENHUB_AZURE_APP` follows several Container Apps from one collector |

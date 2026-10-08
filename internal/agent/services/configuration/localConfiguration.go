@@ -17,6 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -36,6 +37,10 @@ type LocalConfigurationData struct {
 	// falls back to whatever an OTLP output declares, which is where
 	// this used to live (#932).
 	Entities *EntitiesConfig `yaml:"entities,omitempty"`
+	// Governance is the operator-asserted ownership, criticality,
+	// location and lifecycle of the host this agent runs on. It is kept
+	// raw: the governance package owns the shape and the closed sets.
+	Governance map[string]interface{} `yaml:"governance,omitempty"`
 }
 
 // EntitiesConfig is the operator's control over entity detection.
@@ -142,6 +147,7 @@ func (lc *LocalConfiguration) snapshot() *LocalConfigurationData {
 // storeData publishes d as the new current snapshot.
 func (lc *LocalConfiguration) storeData(d LocalConfigurationData) {
 	lc.dataPo.Store(&d)
+	common.SetHostNameOverride(d.Agent.GlobalTags[common.HostNameKey])
 }
 
 // NewLocalConfiguration creates a new LocalConfiguration instance
@@ -280,6 +286,16 @@ func (lc *LocalConfiguration) GetEntitiesConfig() *EntitiesConfig {
 	return d.Entities
 }
 
+// GetGovernance returns the agent-level governance block as loaded
+// (references substituted), or nil when the configuration has none.
+func (lc *LocalConfiguration) GetGovernance() map[string]interface{} {
+	d := lc.snapshot()
+	if d == nil {
+		return nil
+	}
+	return d.Governance
+}
+
 // GetConfiguration returns the configuration data in ConfigurationData format
 func (lc *LocalConfiguration) GetConfiguration() ConfigurationData {
 	// Get auto-update configuration
@@ -339,6 +355,13 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	// made a clean install report two warnings naming a missing file, which
 	// is the first thing an operator sees on a machine that is in fact fine.
 	if _, statErr := os.Stat(lc.configPath); statErr == nil {
+		// Split a monolithic file first: the administration key lives in the
+		// http output, which only has a mapping to receive it once the
+		// strategies are fragments. Minted before the split, the key found
+		// no http entry in a `storage:` sequence and the fragment came out
+		// without one. The seal below finds the layout already split.
+		splitBackup := harmoniseLayout(lc.configPath, lc.logger)
+
 		// Give an installation made before the read and administration
 		// surfaces were told apart the key the second one now needs —
 		// before the seal below, so the fresh plaintext key is moved
@@ -352,7 +375,13 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
 		// on any error, and we continue with the existing config rather than
 		// refusing to start — a sealing fault must never brick the agent.
-		if err := SealInlineSecrets(lc.configPath, lc.logger); errors.Is(err, secret.ErrSealNeedsRoot) {
+		sealErr := SealInlineSecrets(lc.configPath, lc.logger)
+		if sealErr == nil && splitBackup != "" {
+			if err := os.Remove(splitBackup); err != nil && !os.IsNotExist(err) {
+				lc.logger.Warn().Err(err).Str("file", splitBackup).Msg("Could not remove harmonise backup (plaintext may linger)")
+			}
+		}
+		if err := sealErr; errors.Is(err, secret.ErrSealNeedsRoot) {
 			lc.logger.Info().
 				Str("seal_with", "sudo senhub-agent secret migrate --wire-unit").
 				Msg("Inline secrets left in place: the secret store seals only as root")

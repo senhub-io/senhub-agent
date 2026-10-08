@@ -1,3 +1,5 @@
+<img src="../../assets/probe-logos/swarm.svg" alt="" class="probe-page-logo probe-page-logo-si">
+
 # Docker Swarm
 
 **Tier: Free** · Probe type: `swarm`

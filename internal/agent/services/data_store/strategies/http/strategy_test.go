@@ -480,7 +480,6 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 		wantNil        bool
 		wantUnit       string
 		wantCustomUnit string
-		wantSpeedSize  string
 	}{
 		{
 			name: "Valid float64 value",
@@ -522,9 +521,8 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 				ProbeName:  "network",
 				Tags:       map[string]string{"interface": "eth0"},
 			},
-			wantNil:       false,
-			wantUnit:      "SpeedNet",
-			wantSpeedSize: "Byte",
+			wantNil:  false,
+			wantUnit: "SpeedNet",
 		},
 		{
 			// The value PRTG receives stays in the probe's display
@@ -539,8 +537,8 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 				ProbeName:  "netscaler",
 				Tags:       map[string]string{"interface": "1/1"},
 			},
-			wantUnit:      "SpeedNet",
-			wantSpeedSize: "MegaBit",
+			wantUnit:       "Custom",
+			wantCustomUnit: "Mbit/s",
 		},
 		{
 			name: "Link speed in bits",
@@ -552,8 +550,8 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 				ProbeName:  "network",
 				Tags:       map[string]string{"interface": "eth0"},
 			},
-			wantUnit:      "SpeedNet",
-			wantSpeedSize: "Bit",
+			wantUnit:       "Custom",
+			wantCustomUnit: "bit/s",
 		},
 		{
 			name: "Invalid string value",
@@ -586,9 +584,6 @@ func TestHTTPSyncStrategy_TransformToPRTGChannel(t *testing.T) {
 				}
 				if tt.wantCustomUnit != "" && channel.CustomUnit != tt.wantCustomUnit {
 					t.Errorf("Expected custom unit %q, got %q", tt.wantCustomUnit, channel.CustomUnit)
-				}
-				if tt.wantSpeedSize != "" && channel.SpeedSize != tt.wantSpeedSize {
-					t.Errorf("Expected speed size %q, got %q", tt.wantSpeedSize, channel.SpeedSize)
 				}
 				// Check Float field based on lookup presence
 				if channel.ValueLookup == "" {

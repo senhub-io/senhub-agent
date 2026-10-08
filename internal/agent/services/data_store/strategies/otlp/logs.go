@@ -36,6 +36,7 @@ const scopeAttrEntityEvent = "otel.entity.entity_event"
 //
 // Constructed by buildLogsPipeline when Logs.Enabled; otherwise nil.
 type logsPipeline struct {
+	res      *resource.Resource
 	provider *sdklog.LoggerProvider
 	logger   log.Logger
 	// scopeVersion is the build version every Logger's instrumentation scope
@@ -96,6 +97,7 @@ func buildLogsPipeline(
 	)
 
 	return &logsPipeline{
+		res:          res,
 		provider:     provider,
 		logger:       provider.Logger(logsScopeName, log.WithInstrumentationVersion(scopeVersion)),
 		scopeVersion: scopeVersion,
@@ -184,35 +186,54 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 	agentstate.IncrementOTLPLogsPushed()
 }
 
-// replayEventLog rebuilds an API log.Record from a persisted event log
-// and re-emits it through the ordinary-logs Logger (logsScopeName), which
-// re-attaches scope + resource — neither is settable on a raw record, so
-// replay must go through the pipeline rather than the exporter (#217).
-func (p *logsPipeline) replayEventLog(ctx context.Context, pr persistedLogRecord) {
-	if p == nil || p.logger == nil {
-		return
+// collectProcessor is a synchronous sdklog.Processor that keeps what is
+// emitted instead of exporting it.
+type collectProcessor struct{ records []sdklog.Record }
+
+func (c *collectProcessor) OnEmit(_ context.Context, r *sdklog.Record) error {
+	c.records = append(c.records, r.Clone())
+	return nil
+}
+func (*collectProcessor) Enabled(context.Context, sdklog.EnabledParameters) bool { return true }
+func (*collectProcessor) Shutdown(context.Context) error                         { return nil }
+func (*collectProcessor) ForceFlush(context.Context) error                       { return nil }
+
+// rebuildEventLogs turns persisted event logs back into SDK records ready
+// for a direct Export. Scope and resource are not settable on a raw
+// record, so they are re-attached by emitting through a throwaway provider
+// that has the same resource and the ordinary-logs scope but keeps the
+// records instead of batching them: the caller exports them itself and so
+// learns the outcome (#217).
+func (p *logsPipeline) rebuildEventLogs(ctx context.Context, prs []persistedLogRecord) []sdklog.Record {
+	if p == nil {
+		return nil
 	}
-	var apiRec log.Record
-	apiRec.SetTimestamp(time.Unix(0, pr.TimestampUnixNano))
-	if pr.ObservedTimestampUnixNano != 0 {
-		apiRec.SetObservedTimestamp(time.Unix(0, pr.ObservedTimestampUnixNano))
-	} else {
-		apiRec.SetObservedTimestamp(time.Unix(0, pr.TimestampUnixNano))
-	}
-	apiRec.SetSeverity(log.Severity(pr.SeverityNumber))
-	if pr.SeverityText != "" {
-		apiRec.SetSeverityText(pr.SeverityText)
-	}
-	apiRec.SetBody(attribute.StringValue(pr.Body))
-	if len(pr.Attributes) > 0 {
-		attrs := make([]attribute.KeyValue, 0, len(pr.Attributes))
-		for k, v := range pr.Attributes {
-			attrs = append(attrs, attribute.String(k, v))
+	collector := &collectProcessor{records: make([]sdklog.Record, 0, len(prs))}
+	provider := sdklog.NewLoggerProvider(sdklog.WithResource(p.res), sdklog.WithProcessor(collector))
+	lg := provider.Logger(logsScopeName, log.WithInstrumentationVersion(p.scopeVersion))
+	for _, pr := range prs {
+		var apiRec log.Record
+		apiRec.SetTimestamp(time.Unix(0, pr.TimestampUnixNano))
+		if pr.ObservedTimestampUnixNano != 0 {
+			apiRec.SetObservedTimestamp(time.Unix(0, pr.ObservedTimestampUnixNano))
+		} else {
+			apiRec.SetObservedTimestamp(time.Unix(0, pr.TimestampUnixNano))
 		}
-		apiRec.AddAttributes(attrs...)
+		apiRec.SetSeverity(log.Severity(pr.SeverityNumber))
+		if pr.SeverityText != "" {
+			apiRec.SetSeverityText(pr.SeverityText)
+		}
+		apiRec.SetBody(attribute.StringValue(pr.Body))
+		if len(pr.Attributes) > 0 {
+			attrs := make([]attribute.KeyValue, 0, len(pr.Attributes))
+			for k, v := range pr.Attributes {
+				attrs = append(attrs, attribute.String(k, v))
+			}
+			apiRec.AddAttributes(attrs...)
+		}
+		lg.Emit(ctx, apiRec)
 	}
-	p.logger.Emit(ctx, apiRec)
-	agentstate.IncrementOTLPLogsPushed()
+	return collector.records
 }
 
 // shutdown drains the BatchProcessor and shuts the provider down,

@@ -42,6 +42,9 @@ type sensor struct {
 	// by ID, retried on a timer so a credential fixed after the fact is
 	// picked up without restarting the agent.
 	failedProbes map[string]failedProbe
+	// retryWake tells the retry goroutine a probe has just failed to
+	// start, so it holds a timer only while there is something to retry.
+	retryWake chan struct{}
 	// runCtx is the lifecycle context the sensor was started with. It is
 	// the cancellation root every probe started here inherits — including
 	// the ones a config reload starts long after Start returned, which
@@ -150,6 +153,7 @@ func NewSensor(
 	return &sensor{
 		startedProbes:    []*probes.ProbePoller{},
 		failedProbes:     map[string]failedProbe{},
+		retryWake:        make(chan struct{}, 1),
 		addDataPoint:     addDataPoint,
 		configProvider:   configProvider,
 		moduleLogger:     moduleLogger,
@@ -277,6 +281,7 @@ func (s *sensor) SyncConfiguration() error {
 		for _, startedProbe := range s.startedProbes {
 			if startedProbe.ProbeId == probeId {
 				probeExists = true
+				startedProbe.ApplyGovernance(probeConfig)
 				break
 			}
 		}
@@ -356,6 +361,12 @@ func (s *sensor) SyncConfiguration() error {
 					Msg("Error starting probe")
 			}
 			s.failedProbes[p.id] = failedProbe{config: p.config, reason: err.Error(), noRetry: noRetry}
+			if !noRetry {
+				select {
+				case s.retryWake <- struct{}{}:
+				default:
+				}
+			}
 		} else {
 			delete(s.failedProbes, p.id)
 			startedCount++
@@ -526,18 +537,38 @@ func (s *sensor) publishFailedProbes() {
 }
 
 // retryFailedProbes tries the probes that failed to start again, until
-// ctx ends.
+// ctx ends. It sleeps on a channel while no probe is waiting for a retry
+// and runs a timer only while one is.
 func (s *sensor) retryFailedProbes(ctx context.Context) {
-	ticker := time.NewTicker(probeStartRetryInterval)
-	defer ticker.Stop()
 	for {
+		if !s.hasRetryableFailedProbes() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-s.retryWake:
+				continue
+			}
+		}
+		timer := time.NewTimer(probeStartRetryInterval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			s.retryFailedProbesOnce()
 		}
 	}
+}
+
+func (s *sensor) hasRetryableFailedProbes() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, f := range s.failedProbes {
+		if !f.noRetry {
+			return true
+		}
+	}
+	return false
 }
 
 // retryFailedProbesOnce is one retry round. A retry failing the same way

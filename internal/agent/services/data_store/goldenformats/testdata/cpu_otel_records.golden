@@ -54,6 +54,16 @@
       "probe_name": "cpu",
       "probe_type": "cpu"
     },
+    "metric": "system_time",
+    "otel_name": "senhub.system.time",
+    "type": "gauge",
+    "unit": "s"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
     "metric": "cpu_load15",
     "otel_name": "system.cpu.load_15m",
     "type": "gauge",
@@ -288,5 +298,15 @@
     "otel_name": "system.processes.count",
     "type": "gauge",
     "unit": "{process}"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "system_uptime",
+    "otel_name": "system.uptime",
+    "type": "gauge",
+    "unit": "s"
   }
 ]

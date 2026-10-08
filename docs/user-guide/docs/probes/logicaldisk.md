@@ -61,6 +61,15 @@ Platform-specific metrics are automatically detected and collected based on the 
 | `disk_read_bytes_sec` | Disk read throughput (bytes/sec) | Windows |
 | `disk_write_bytes_sec` | Disk write throughput (bytes/sec) | Windows |
 | `disk_queue_length` | Current disk queue length | Windows |
+| `diskio_read_bytes`, `diskio_write_bytes` | Bytes read and written since boot (cumulative, OTel `system.disk.io`, `disk.io.direction`) | Linux |
+| `diskio_read_ops`, `diskio_write_ops` | Read and write operations since boot (cumulative, OTel `system.disk.operations`) | Linux |
+| `diskio_busy_seconds` | Time the device had I/O in flight since boot (cumulative, OTel `system.disk.io_time`) | Linux |
+
+On Linux the I/O counters are read from `/proc/diskstats`, one series per
+whole block device (`sda`, `nvme0n1`, `vda`, `dm-0`, `md0`). Partitions
+(`sda1`, `nvme0n1p1`) and `loop`, `ram`, `zram`, `fd` and `sr` devices are
+not reported. The values only grow: Prometheus reads a throughput with
+`rate()`. They are on by default, with no parameter to set.
 
 ### Unix/Linux/macOS Specific
 
@@ -616,6 +625,11 @@ series' tags.
 | `system.filesystem.usage` | `fs_used_bytes` | Used Bytes ({mount_point}) | bytes | Space currently consumed on the filesystem in bytes |
 | `system.filesystem.usage` | `fs_available_bytes` | Available Bytes ({mount_point}) | bytes | Space available to non-root users on the filesystem in bytes |
 | `system.filesystem.utilization` | `fs_used_percent` | Used Percent ({mount_point}) | % | Percentage of filesystem capacity currently in use |
+| `system.disk.io` | `diskio_read_bytes` | Disk I/O Read Bytes ({device}) | bytes | Bytes transferred by the block device since boot, by direction |
+| `system.disk.io` | `diskio_write_bytes` | Disk I/O Write Bytes ({device}) | bytes | Bytes transferred by the block device since boot, by direction |
+| `system.disk.operations` | `diskio_read_ops` | Disk Operations Read ({device}) | # | Operations completed by the block device since boot, by direction |
+| `system.disk.operations` | `diskio_write_ops` | Disk Operations Write ({device}) | # | Operations completed by the block device since boot, by direction |
+| `system.disk.io_time` | `diskio_busy_seconds` | Disk I/O Time ({device}) | s | Time the block device spent with I/O in flight since boot |
 | `senhub.system.filesystem.inode.limit` | `fs_inodes_total` | Inodes Total ({mount_point}) | # | Total number of inodes available on the filesystem |
 | `senhub.system.filesystem.inode.usage` | `fs_inodes_free` | Inodes Free ({mount_point}) | # | Number of unused inodes available on the filesystem |
 | `senhub.system.filesystem.inode.usage` | `fs_inodes_used` | Inodes Used ({mount_point}) | # | Number of inodes currently allocated on the filesystem |

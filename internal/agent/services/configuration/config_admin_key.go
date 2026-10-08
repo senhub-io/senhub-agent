@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -34,7 +33,7 @@ import (
 // until an operator sets the key by hand, which is recoverable; a
 // refusal to start is not.
 func EnsureAdminKey(configPath string, log *logger.ModuleLogger) error {
-	path, doc, httpNode, err := findHTTPOutput(configPath)
+	path, _, httpNode, err := findHTTPOutput(configPath)
 	if err != nil || httpNode == nil {
 		return err
 	}
@@ -47,38 +46,39 @@ func EnsureAdminKey(configPath string, log *logger.ModuleLogger) error {
 		return err
 	}
 
-	raw, err := os.ReadFile(path) // #nosec G304 - the agent's own configuration
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", path, err)
-	}
-	backup := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102-150405"))
-	if err := os.WriteFile(backup, raw, 0o600); err != nil {
-		return fmt.Errorf("backing up %s before adding the administration key: %w", path, err)
-	}
-
-	httpNode.Content = append(httpNode.Content,
-		&yaml.Node{
-			Kind: yaml.ScalarNode, Tag: "!!str", Value: "admin_key",
-			HeadComment: "Opens the console, the configuration API, the log levels and\n" +
-				"the cache. The agent key reads; this one changes. Generated\n" +
-				"when this agent first needed it.",
-		},
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key, Style: yaml.DoubleQuotedStyle},
-	)
-
-	out, err := yaml.Marshal(doc)
-	if err != nil {
-		return fmt.Errorf("rendering %s with the administration key: %w", path, err)
-	}
-	if err := atomicWriteFile(path, out, fileModeOr(path, 0o600)); err != nil {
-		// Put back exactly what was there rather than leave a half-written
-		// output fragment: the agent still starts on the old file.
-		if data, e := os.ReadFile(backup); e == nil {
-			_ = atomicWriteFile(path, data, fileModeOr(path, 0o600))
+	// The edit is derived from the bytes it is given: if an operator saves
+	// the fragment while the key is being added, it runs again on their
+	// version, and after bounded retries nothing is written at all. The
+	// atomic write leaves the old file in place on failure, so no backup
+	// is needed to undo a half-written output fragment.
+	wrote, err := rewriteFile(path, func(raw []byte) ([]byte, error) {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
 		}
+		node := httpMappingIn(&doc)
+		if node == nil || mappingHas(node, "admin_key") {
+			return nil, nil
+		}
+		node.Content = append(node.Content,
+			&yaml.Node{
+				Kind: yaml.ScalarNode, Tag: "!!str", Value: "admin_key",
+				HeadComment: "Opens the console, the configuration API, the log levels and\n" +
+					"the cache. The agent key reads; this one changes. Generated\n" +
+					"when this agent first needed it.",
+			},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key, Style: yaml.DoubleQuotedStyle},
+		)
+		out, err := yaml.Marshal(&doc)
+		if err != nil {
+			return nil, fmt.Errorf("rendering %s with the administration key: %w", path, err)
+		}
+		return out, nil
+	})
+	if err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
-	if log != nil {
+	if wrote && log != nil {
 		log.Info().
 			Str("file", filepath.Base(path)).
 			Msg("Administration key generated: the console and the configuration API answer it, the agent key no longer opens them")

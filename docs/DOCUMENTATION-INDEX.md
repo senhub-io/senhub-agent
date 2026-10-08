@@ -31,6 +31,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 |----------|-------------|----------|
 | **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** | Probe configuration guide | Custom monitoring |
 | **[HTTP-STRATEGY.md](admin-guide/HTTP-STRATEGY.md)** | HTTP strategy configuration | API integration |
+| **[deploying/index.md](user-guide/docs/deploying/index.md)** | Deploying at scale: Ansible, Intune/GPO/SCCM, cloud-init, Docker Compose, Helm, Podman | Fleet rollout |
 | **[nagios.md](user-guide/docs/nagios.md)** | Nagios output: probe summary, shipped checks, custom `nagios.yaml`, Nagios command | Nagios integration |
 | **[HTTP-BIND-ADDRESS.md](admin-guide/HTTP-BIND-ADDRESS.md)** | Network binding configuration | Network setup |
 | **[UNIVERSAL-CONFIGURATION.md](admin-guide/UNIVERSAL-CONFIGURATION.md)** | Configuration validation API | Config testing |

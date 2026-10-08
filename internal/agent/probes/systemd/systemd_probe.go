@@ -101,9 +101,9 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	// Resolve host identity for the runs_on relation. Best-effort: an
 	// empty hostID silently omits the relation rather than failing the
 	// collect cycle.
-	hostID := ""
+	hostID, hostName := "", ""
 	if hi, err := common.GetHostIdentity(); err == nil {
-		hostID = hi.ID
+		hostID, hostName = hi.ID, hi.Name
 	}
 
 	// Feed entity rail with unit names from this cycle.
@@ -111,7 +111,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	for _, u := range selected {
 		names = append(names, u.Name)
 	}
-	p.entitySource.setUnits(names, hostID)
+	p.entitySource.setUnits(names, hostID, hostName)
 
 	now := time.Now()
 	var points []data_store.DataPoint

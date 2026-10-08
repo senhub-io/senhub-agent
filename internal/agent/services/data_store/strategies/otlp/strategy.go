@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -88,6 +89,13 @@ type OTLPSyncStrategy struct {
 	// logsQueue is the on-disk dead-letter queue for the logs signal,
 	// set when persistence is enabled and logs are emitted (#217).
 	logsQueue *logsQueue
+	// logExporter is the persistent decorator under the logs pipeline;
+	// Shutdown tells it to stop trying a down backend.
+	logExporter *persistentLogExporter
+
+	// metricsHealth tracks the outcome of the metric pushes; Shutdown reads
+	// it to decide whether a last export is worth attempting.
+	metricsHealth metricsHealth
 
 	// entityPump emits entity/relation events on the OTLP log signal; the
 	// entity Detector goroutine produces them. Both nil/zero unless
@@ -248,7 +256,7 @@ func NewOTLPSyncStrategy(
 		psReporter:    newPartialSuccessReporter(moduleLogger, "export"),
 	}
 
-	if cfg.Persistence.Path != "" {
+	if cfg.Persistence.Enabled && cfg.Persistence.Path != "" {
 		s.chkpt = newCheckpointer(checkpointConfig{
 			Path:     cfg.Persistence.Path,
 			Interval: cfg.Persistence.Interval,
@@ -376,14 +384,21 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 
 	// Durable dead-letter queue for the logs signal (#217): wrap the log
 	// exporter so a failed export persists event-log records to disk for
-	// replay at boot and on backend recovery. Only when persistence is on
-	// and raw logs are emitted; entity events are a re-emitted state
-	// stream and are not queued.
+	// replay at boot and on backend recovery. On by default, in the
+	// state directory, whenever raw logs are emitted; entity events are a
+	// re-emitted state stream and are not queued.
 	var logExp *persistentLogExporter
-	if s.cfg.Persistence.Path != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
-		s.logsQueue = newLogsQueue(s.cfg.Persistence.Path, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
-		logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
-		s.exporters.log = logExp
+	if queuePath := s.cfg.Persistence.logsQueuePath(); queuePath != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
+		if err := prepareQueueDir(queuePath); err != nil {
+			s.logger.Warn().Err(err).Str("path", queuePath).
+				Msg("OTLP logs queue disabled: the directory is not writable; failed log batches are not kept across an outage")
+		} else {
+			s.logsQueue = newLogsQueue(queuePath, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
+			s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
+			logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
+			s.exporters.log = logExp
+			s.logExporter = logExp
+		}
 	}
 
 	// Entity events ride the log signal, so the pipeline (provider + both
@@ -395,12 +410,12 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// Wire queue replay to the pipeline: drain at boot and whenever the
 	// backend recovers from a failed export.
 	if logExp != nil && s.logs != nil {
-		rp := newLogsReplayer(s.logsQueue, s.logs, s.logger)
-		logExp.setOnRecovered(rp.replay)
+		rp := newLogsReplayer(s.logsQueue, s.logs, logExp, s.logger)
+		logExp.setOnRecovered(func() { _, _ = rp.replay() })
 		logExp.setOnQueued(rp.kick)
 		s.logsReplayer = rp
 		rp.start()
-		go rp.replay()
+		go func() { _, _ = rp.replay() }()
 	}
 
 	if s.cfg.Logs.Enabled && s.logs != nil {
@@ -632,9 +647,16 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		s.logger.Warn().Str("error", redacted).Dur("duration", exportDuration).Msg("OTLP metrics export failed")
 		agentstate.IncrementOTLPExportErrors("metrics")
 		agentstate.RecordExportFailure("otlp", redacted)
+		// A push aborted by Shutdown says nothing about the collector.
+		if parent.Err() == nil {
+			s.metricsHealth.markFailure()
+		}
 		return
 	}
 	span.SetStatus(codes.Ok, "")
+	if count > 0 {
+		s.metricsHealth.markSuccess()
+	}
 	if count > 0 {
 		agentstate.RecordExportSuccess("otlp")
 		s.logger.Debug().Int("records_pushed", count).Dur("duration", exportDuration).Msg("OTLP metrics exported")
@@ -745,8 +767,77 @@ func (s *OTLPSyncStrategy) startEntityEmission() {
 }
 
 // exporterShutdownBudget caps the final drain and the closing of the
-// exporters. Past it, whatever is still queued is lost either way.
-const exporterShutdownBudget = 10 * time.Second
+// exporters. Past it, whatever is still queued is lost either way. It
+// is a variable so a test can shorten it.
+//
+// Five seconds, because a container runtime kills the agent ten seconds
+// after the stop signal: measured, a collector that did not answer held
+// the stop for 10.6 s, and the kill turned a clean stop into a failed
+// unit.
+var exporterShutdownBudget = 5 * time.Second
+
+// boundFlushContext limits the final flush to exporterShutdownBudget,
+// whatever longer deadline the caller allows.
+func boundFlushContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > exporterShutdownBudget {
+		return context.WithTimeout(ctx, exporterShutdownBudget)
+	}
+	return ctx, func() {}
+}
+
+// logsShutdownFlushBudget is the fixed share of the stop budget the logs
+// hand-off to the disk queue may use.
+const logsShutdownFlushBudget = time.Second
+
+// flushLogsToQueue stops what feeds and replays the logs pipeline, then
+// shuts the pipeline down with the exporter in stopping mode: a backend that
+// is down or unproven is not tried, so the SDK's pending batch is written to
+// the queue and replayed at the next boot. A no-op without the queue; the
+// ordinary drain below then handles the pipeline.
+func (s *OTLPSyncStrategy) flushLogsToQueue() {
+	if s.logs == nil || s.logExporter == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), logsShutdownFlushBudget)
+	defer cancel()
+	if s.logsReplayer != nil {
+		s.logsReplayer.stop()
+		s.logsReplayer = nil
+	}
+	if s.logsPump != nil {
+		s.logsPump.stop(ctx)
+		s.logsPump = nil
+	}
+	before, _ := s.logsQueue.pending()
+	lostBefore := s.logExporter.lostRecords.Load()
+	s.logExporter.beginShutdown(logsShutdownFlushBudget)
+	err := s.logs.shutdown(ctx)
+	after, _ := s.logsQueue.pending()
+	reportLogsHandoff(s.logger, after-before, s.logExporter.lostRecords.Load()-lostBefore, err)
+	s.logs = nil
+}
+
+// reportLogsHandoff says what became of the logs held in memory at stop.
+// The SDK reports its own deadline when the stop budget ends even though the
+// exporter already wrote everything to the queue, so that error alone is not
+// a loss: only records that could not be written are.
+func reportLogsHandoff(log *logger.ModuleLogger, kept int, lost int64, err error) {
+	if log == nil {
+		return
+	}
+	if lost > 0 {
+		log.Warn().Err(err).Int64("records_lost", lost).Int("records_kept", kept).
+			Msg("OTLP logs hand-off to the disk queue failed; some log records are lost")
+		return
+	}
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		log.Warn().Err(err).Int("records_kept", kept).Msg("OTLP logs pipeline shutdown failed")
+		return
+	}
+	if kept > 0 {
+		log.Info().Int("records", kept).Msgf("%d log records kept on disk for the next start", kept)
+	}
+}
 
 func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	s.startMu.Lock()
@@ -757,6 +848,10 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	}
 	s.shutdown = true
 	s.started = false
+
+	// First of all, before anything slower can spend the stop budget: hand
+	// the log records still held in memory to the disk queue.
+	s.flushLogsToQueue()
 
 	// Stop the periodic ticker and wait for the goroutine to exit. We
 	// do this BEFORE the final push to avoid a race where both the
@@ -840,16 +935,22 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// seconds, not the whole stop budget: the caller's deadline is the
 	// time the service manager gives the entire agent, and spending it
 	// here is what made systemctl stop take the best part of a minute.
-	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > exporterShutdownBudget {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, exporterShutdownBudget)
-		defer cancel()
+	backendDown := s.metricsHealth.backendDown(s.cfg.Metrics.Interval)
+	ctx, cancel := boundFlushContext(ctx)
+	defer cancel()
+	if backendDown {
+		// A collector known to be down is not tried again: closing the
+		// exporters gets the same short bound the logs hand-off uses.
+		var cancelShort context.CancelFunc
+		ctx, cancelShort = context.WithTimeout(ctx, logsShutdownFlushBudget)
+		defer cancelShort()
 	}
+	seriesBefore := s.store.size()
 
 	// Drain — final push of whatever sits in the store. Failures here
 	// are best-effort: we still want to close the exporters even if
 	// the last push fails (collector down, etc.).
-	if s.exporters.metric != nil && s.cfg.Metrics.Enabled {
+	if s.exporters.metric != nil && s.cfg.Metrics.Enabled && !backendDown {
 		s.pushDrain(ctx)
 	}
 
@@ -872,9 +973,12 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	if err := s.exporters.shutdown(ctx); err != nil {
-		s.logger.Warn().Err(err).Msg("OTLP strategy shutdown encountered errors")
+	err := s.exporters.shutdown(ctx)
+	if err = reportMetricsFinalFlush(s.logger, backendDown, seriesBefore, s.store.size(), exporterShutdownBudget, ctx.Err(), err); err != nil {
 		return err
+	}
+	if backendDown {
+		return nil
 	}
 
 	s.logger.Info().Int("series_in_store", s.store.size()).Msg("OTLP strategy shut down cleanly")
@@ -949,4 +1053,10 @@ func processUsername() string {
 		return u.Username
 	}
 	return strconv.Itoa(os.Getuid())
+}
+
+// ForgetProbes drops the stored values of probes that stopped running,
+// so the next push no longer exports them.
+func (s *OTLPSyncStrategy) ForgetProbes(probeNames []string) {
+	s.store.forgetProbes(probeNames)
 }

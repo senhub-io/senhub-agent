@@ -218,6 +218,7 @@
     }
     function stepValue(step) {
         if (!step.passed) return step.error || 'failed';
+        if (step.warning) return step.warning;
         if (step.name === 'tcp' || step.name === 'export') return (step.detail ? step.detail + ', ' : '') + (step.duration_ms || 0) + ' ms';
         return step.detail || 'OK';
     }

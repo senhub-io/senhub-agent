@@ -12,16 +12,21 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"github.com/kardianos/service"
+
 	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // maxStopBudget caps the wall-clock the daemon spends stopping,
 // whatever the services ask for. Windows' SCM kills a service that
 // takes too long to acknowledge a stop, and systemd's TimeoutStopSec
 // then SIGKILLs — a budget past either of those buys nothing and turns
-// a clean stop into a kill.
-const maxStopBudget = 20 * time.Second
+// a clean stop into a kill. Podman and Docker give a container ten
+// seconds by default before SIGKILL, so the whole stop, flush included,
+// has to end under that: a collector that does not answer is not worth
+// a kill.
+const maxStopBudget = 8 * time.Second
 
 type program struct {
 	agent agent.Agent
@@ -75,7 +80,7 @@ func (p *program) Stop(s service.Service) error {
 
 func (p *program) run(ctx context.Context) {
 	if err := p.agent.Start(ctx); err != nil {
-		// handleStartError already calls os.Exit(1) before Start returns
+		// handleStartError already exits non-zero before Start returns
 		// an error on misconfiguration. This path is a defence-in-depth
 		// fallback for callers that override exitFn (tests) or for future
 		// code that makes handleStartError non-fatal.
@@ -153,7 +158,7 @@ func checkPrivileges(command string) error {
 // rather than with a timestamped log line.
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
-	os.Exit(1)
+	os.Exit(cliexit.Failure)
 }
 
 // readYesConfirmation reads a single interactive answer from stdin and
@@ -319,6 +324,8 @@ func readOnlyCommand(args []string) bool {
 	switch args[1] {
 	case "--help", "-h", "help", "--version", "version", "debug-modules-list":
 		return true
+	case "doctor":
+		return true
 	case "console":
 		// Reads the configuration only; when the sealed key needs more
 		// rights than the caller has, it asks for them itself.
@@ -372,9 +379,12 @@ var knownTopLevelArgs = map[string]struct{}{
 	"status": {}, "run": {},
 	"refresh-unit": {},
 	"console":      {},
+	"doctor":       {},
 }
 
 func Main() {
+	wireProbeTypeLookup()
+
 	// `--version` short-circuit: print version + exit, BEFORE any
 	// subcommand dispatch or privilege gate. The pre-0.2.x agent had
 	// no such handling — `senhub-agent --version` fell through to
@@ -387,10 +397,9 @@ func Main() {
 	// a different build than this one, and the parser lives in cliArgs,
 	// below the layer that knows about units (#723).
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
-		cliArgs.PrintVersion()
-		serviceBinary := installedServiceBinary()
-		if note := serviceBinarySkewNote(cliArgs.Version, binaryVersion(serviceBinary), serviceBinary); note != "" {
-			fmt.Print(note)
+		_, jsonMode := extractJSONFlag(os.Args[2:])
+		if code := runVersion(jsonMode, os.Stdout); code != cliexit.OK {
+			os.Exit(code)
 		}
 		return
 	}
@@ -417,7 +426,7 @@ func Main() {
 	if !known && !registered {
 		fmt.Fprintf(os.Stderr, "Error: unknown command or flag %q\n", os.Args[1])
 		fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
-		os.Exit(2)
+		os.Exit(cliexit.Failure)
 	}
 
 	// If first argument is a service command
@@ -440,7 +449,7 @@ func Main() {
 	if !readOnlyCommand(os.Args) {
 		if err := checkPrivileges(command); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			os.Exit(cliexit.Failure)
 		}
 	}
 
@@ -458,19 +467,16 @@ func Main() {
 		return
 	case "config":
 		if len(os.Args) > 2 && os.Args[2] == "check" {
-			configPath, err := parseConfigPathArgs(os.Args[3:])
-			if err != nil {
-				fatalf("config check: %v", err)
+			if code := runConfigCheck(os.Args[3:], os.Stdout); code != cliexit.OK {
+				os.Exit(code)
 			}
-			if resolved, resErr := cliArgs.GetAbsoluteConfigPath(configPath); resErr == nil {
-				configPath = resolved
-			}
-			checkConfig(configPath)
 			return
 		}
 		if len(os.Args) > 2 && os.Args[2] == "show" {
-			// agent config show [--raw|--resolved|--redact] [path]
-			showConfig(os.Args[3:])
+			// agent config show [--raw|--resolved|--redact] [--json] [path]
+			if code := runConfigShow(os.Args[3:], os.Stdout); code != cliexit.OK {
+				os.Exit(code)
+			}
 			return
 		}
 		if len(os.Args) > 2 && os.Args[2] == "migrate" {
@@ -495,7 +501,9 @@ func Main() {
 			// agent config set <key> <value> [--config-path <path>]
 			// Change one setting in the multi-file layout without
 			// hand-editing YAML. The running agent reloads the change.
-			runConfigSet(os.Args[3:])
+			if code := runConfigSet(os.Args[3:], os.Stdout); code != cliexit.OK {
+				os.Exit(code)
+			}
 			return
 		}
 		if len(os.Args) > 2 && os.Args[2] == "init" {
@@ -515,7 +523,7 @@ func Main() {
 		if len(os.Args) > 2 {
 			fmt.Fprintf(os.Stderr, "Error: unknown config subcommand %q\n", os.Args[2])
 			fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
-			os.Exit(2)
+			os.Exit(cliexit.Failure)
 		}
 		showHelp()
 		return
@@ -551,6 +559,11 @@ func Main() {
 	case "console":
 		runConsole(os.Args[2:])
 		return
+	case "doctor":
+		if code := runDoctor(os.Args[2:], os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
+		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
 		// Commands that take no positional args: dispatched directly.
 		// `status` carries the optional --otlp view flag; `uninstall` the
@@ -559,10 +572,14 @@ func Main() {
 		// against the right file (otherwise cleanupFiles resolves the
 		// DEFAULT path and leaves the custom config/certs behind).
 		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
-			// --otlp / --yes are view/confirm flags the start parser does
+			// --otlp / --yes / --json are view/confirm flags the start parser does
 			// not know; strip them before parsing so it does not reject
 			// them, then set the corresponding fields explicitly.
-			args := cliArgs.ParseStartArgs(stripFlags(os.Args[2:], "--otlp", "--yes"))
+			viewFlags := []string{"--otlp", "--yes"}
+			if command == "status" {
+				viewFlags = append(viewFlags, jsonFlag)
+			}
+			args := cliArgs.ParseStartArgs(stripFlags(os.Args[2:], viewFlags...))
 			if command == "status" {
 				args.ShowOTLP = hasArg("--otlp")
 			}
@@ -587,6 +604,10 @@ func Main() {
 		serviceArgs := []string{}
 		if len(os.Args) > 2 {
 			serviceArgs = os.Args[2:]
+		}
+		if command == "install" {
+			// --json is a view flag of install, like of status.
+			serviceArgs = stripFlags(serviceArgs, jsonFlag)
 		}
 		args := cliArgs.ParseStartArgs(serviceArgs)
 		handleServiceCommand(command, args)
@@ -622,7 +643,10 @@ func showHelp() {
 Service Commands:
     install              Install as system service (auto-generates a UUID agent key).
                          On Linux the service runs as the dedicated 'senhub' user
-                         under a hardened systemd unit.
+                         under a hardened systemd unit. Exits 3 and changes
+                         nothing when the service is already installed.
+    install --json       Print the outcome as one JSON object (status, exit_code,
+                         changed, written)
     install --user USER  Service user for the Linux unit (default: senhub;
                          use 'root' to keep the legacy root unit)
     uninstall            Remove the system service (prompts before deleting
@@ -633,6 +657,7 @@ Service Commands:
     restart              Restart the service
     status               Show service and probe status
     status --otlp        Also show OTLP pipeline self-metrics
+    status --json        Print the status as one JSON object
     run                  Run interactively in console mode
     refresh-unit         Refresh the installed systemd unit to the version
                          embedded in this binary (Linux only; requires root)
@@ -643,8 +668,12 @@ License Commands:
     license remove       Remove current license (revert to free tier)
 
 Other Commands:
-    version              Show agent version
+    version              Show agent version (--json for a JSON object)
     license key          Print this agent's key (order a licence for it)
+    doctor               Diagnose the install, configuration, outputs, probes
+                         and host in one pass (--json for a JSON object;
+                         --config-path <path>; exits 1 on a warning, 2 on a
+                         failure)
     console              Open the web console in the browser (--print to
                           show the address only; asks for elevation when
                           the sealed agent key requires it)
@@ -655,14 +684,19 @@ Other Commands:
                           exists (idempotent). Accepts --config-path,
                           --http-port <n>, --license <jwt>, --tags k=v,...,
                           --otlp-endpoint, --zabbix-server host:port,
-                          --zabbix-host-metadata; refuses a port already
-                          in use
+                          --zabbix-host-metadata, --json, --ok-if-unchanged;
+                          refuses a port already in use; exits 3 when the
+                          configuration was already there
+    config set <key> <v>  Change one setting (http.port, http.bind_address);
+                          exits 3 when it already holds the value
     config check [path]   Validate configuration (covers fragments under
-                          probes.d/ and strategies.d/ if present)
+                          probes.d/ and strategies.d/ if present);
+                          --json prints the result as one JSON object
     config show [opts]    Print merged + resolved configuration as YAML
                             --resolved            env/file references substituted, secrets in cleartext
                             --raw                 references preserved as written
                             --redact              substituted but secrets masked (default)
+                            --json                wrap the output in one JSON object
                             [path]                config file path
     config migrate [path] Convert a legacy monolithic agent-config.yaml
                           into the 0.2.x multi-file layout
@@ -679,11 +713,18 @@ Secret Store Commands:
     secret migrate       Move inline plaintext secrets from config into the store
     secret wire-unit     (Linux/systemd-creds) regenerate the unit credential drop-in
     secret status        Show the active backend and store location
+                         (--json for a JSON object)
     key show             Print the configured agent key
 
 Database Helper Commands:
     db-monitoring init   Generate least-privilege SQL to provision a
                          monitoring user (--engine mysql|postgresql --user NAME)
+
+Exit codes:
+    0  ok
+    1  warning (the command ran, something needs attention)
+    2  failure (including a malformed command line)
+    3  unchanged (already in the requested state, nothing written)
 
 Agent Options:
     --config-path PATH                     Path to the agent configuration file.

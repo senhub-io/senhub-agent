@@ -5,9 +5,11 @@ package logicaldisk
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -28,14 +30,24 @@ import (
 // trade-off versus a stalled probe).
 const statfsTimeout = 5 * time.Second
 
+// hostRootEnv names the directory where the host's root filesystem is
+// mounted inside a container (read-only, with rslave/HostToContainer
+// propagation so the host's submounts appear beneath it). When set, the
+// probe lists the mounts under it and reports them with the prefix
+// removed: /host/var becomes /var.
+const hostRootEnv = "SENHUB_HOST_ROOT"
+
 type unixLogicalDiskCollector struct {
-	logger *logger.ModuleLogger
+	logger         *logger.ModuleLogger
+	mountinfoWarns sync.Once
+	hostRoot       string
 }
 
 // newLogicalDiskCollector creates a new collector instance
 func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.Logger) (hostpoll.Collector, error) {
 	return &unixLogicalDiskCollector{
-		logger: logger.NewModuleLogger(baseLogger, "probe.logicaldisk"),
+		logger:   logger.NewModuleLogger(baseLogger, "probe.logicaldisk"),
+		hostRoot: strings.TrimRight(os.Getenv(hostRootEnv), "/"),
 	}, nil
 }
 
@@ -179,12 +191,24 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		return nil, fmt.Errorf("error getting mount points: %w", err)
 	}
 
-	for _, mount := range mounts {
-		if !c.shouldCollectMount(mount.fstype, mount.mountpoint, mount.device) {
-			continue
-		}
+	if c.hostRoot != "" {
+		mounts = rebaseToHostRoot(mounts, c.hostRoot)
+	}
 
-		stat, err := statfsWithTimeout(mount.mountpoint)
+	var candidates []mountInfo
+	for _, mount := range mounts {
+		if c.shouldCollectMount(mount.fstype, mount.mountpoint, mount.device) {
+			candidates = append(candidates, mount)
+		}
+	}
+
+	for _, mount := range dedupeMountsByDevice(candidates) {
+
+		statPath := mount.mountpoint
+		if mount.statPath != "" {
+			statPath = mount.statPath
+		}
+		stat, err := statfsWithTimeout(statPath)
 		if err != nil {
 			c.logger.Warn().
 				Str("mount_point", mount.mountpoint).
@@ -252,6 +276,12 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		}
 	}
 
+	ioPoints, err := c.collectDiskIO(timestamp, baseTags)
+	if err != nil {
+		c.logger.Warn().Err(err).Msg("cannot read block device I/O counters; skipping")
+	}
+	dataPoints = append(dataPoints, ioPoints...)
+
 	return dataPoints, nil
 }
 
@@ -259,6 +289,59 @@ type mountInfo struct {
 	device     string
 	mountpoint string
 	fstype     string
+	// majMin and root come from /proc/self/mountinfo; both are empty when the
+	// mount list was built from another source.
+	majMin string
+	root   string
+	// statPath is where the mount is reachable from this process when it
+	// differs from mountpoint (the host root is mounted under a prefix).
+	statPath string
+}
+
+// containerRuntimeMountPrefixes are where a container runtime or kubelet
+// bind-mounts the volumes and snapshots of the pods it runs. On a node
+// they are dozens of mounts of the same disks, readable by root only; the
+// disk they live on is already reported once under its own mount point.
+var containerRuntimeMountPrefixes = []string{
+	"/var/lib/kubelet/",
+	"/var/lib/containerd/",
+	"/var/lib/docker/",
+	"/var/lib/containers/",
+	"/var/lib/rancher/",
+	"/run/containerd/",
+	"/run/k3s/",
+	"/run/containers/",
+}
+
+func isContainerRuntimeMount(mountpoint string) bool {
+	for _, p := range containerRuntimeMountPrefixes {
+		if strings.HasPrefix(mountpoint, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// rebaseToHostRoot keeps the mounts that live under root and reports them
+// as the host sees them. Mounts outside root belong to the container
+// itself (its overlay, its config volumes) and are dropped.
+func rebaseToHostRoot(mounts []mountInfo, root string) []mountInfo {
+	out := make([]mountInfo, 0, len(mounts))
+	for _, m := range mounts {
+		switch {
+		case m.mountpoint == root:
+			m.statPath, m.mountpoint = m.mountpoint, "/"
+		case strings.HasPrefix(m.mountpoint, root+"/"):
+			m.statPath, m.mountpoint = m.mountpoint, strings.TrimPrefix(m.mountpoint, root)
+		default:
+			continue
+		}
+		if isContainerRuntimeMount(m.mountpoint) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
@@ -274,6 +357,17 @@ func (c *unixLogicalDiskCollector) getMountPoints() ([]mountInfo, error) {
 }
 
 func (c *unixLogicalDiskCollector) getMountPointsLinux() ([]mountInfo, error) {
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err == nil {
+		return parseMountInfo(string(data)), nil
+	}
+	c.mountinfoWarns.Do(func() {
+		c.logger.Warn().Err(err).Msg("cannot read /proc/self/mountinfo; falling back to /proc/mounts without bind-mount deduplication")
+	})
+	return c.getMountPointsProcMounts()
+}
+
+func (c *unixLogicalDiskCollector) getMountPointsProcMounts() ([]mountInfo, error) {
 	var mounts []mountInfo
 
 	// Read /proc/mounts

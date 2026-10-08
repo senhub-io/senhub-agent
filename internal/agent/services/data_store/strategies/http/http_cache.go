@@ -90,7 +90,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Hardware sensor probes — one series per sensor instance (hardware.component
 	// carries the sensor name: "CPU Temp", "FAN1", "12V", …).
-	"ipmi": {"hardware.component"},
+	// Sensors sharing a name (Dell: every CPU is "Temp") carry the entity and
+	// sensor number as well, so no output collapses them.
+	"ipmi": {"hardware.component", "hardware.entity", "hardware.sensor_number"},
 
 	// Infrastructure probes
 	"redfish": {
@@ -103,6 +105,16 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"psu_name", "psu_id",
 		"processor_id",
 		"memory_module_id",
+		// The probe tags a DIMM memory_id, not memory_module_id: without
+		// it every module of a machine landed on one slot. A cache level
+		// splits one processor's cache series; adapter and port names
+		// split a machine's network series; a chassis, a storage
+		// subsystem and an event-log service each carry their own
+		// readings, under a manager the log service belongs to.
+		"memory_id", "cache_level",
+		"adapter_name", "port_name",
+		"chassis_id", "storage_id",
+		"manager_id", "log_service_id",
 		"fan_name", "sensor_name",
 		// The machine a series came from. One agent polls several
 		// service processors, and every one of them numbers its drives
@@ -208,7 +220,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// discriminant tag — an empty set is the correct declaration here, not a
 	// gap. Declaring it also silences the "not in DiscriminantTagsRegistry"
 	// warning these probes raised on every push (#724).
-	"filetail":         {},
+	"filetail":         {"log.file.path"},
 	"linux_logs":       {},
 	"windows_eventlog": {},
 	"snmp_trap":        {},
@@ -349,6 +361,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"db",          // redis.db.keys{db=0|1|...} / redis.db.expires / redis.db.avg_ttl — per-logical-db
 		"state",       // redis.cpu.time{state=sys|user|sys_children|user_children}
 		"cmd",         // redis.cmd.calls{cmd=get|set|...} / redis.cmd.usec — per-command
+		"master",      // redis.sentinel.master.{status,slaves,sentinels}{master=<name>} — per monitored master
 		"metric_type", // separates overview / connections / memory / throughput / cache / keyspace / replication / persistence / cpu / commands families
 	},
 	"mssql": {
@@ -511,6 +524,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 		// landed on one slot and every one but the last was dropped.
 		"user_class",
 		"sysval",
+		// special_auth is what user_profile.count_by_special_auth splits
+		// on; query_type separates the queries one job runs.
+		"special_auth", "query_type",
 		"library",
 		"product_id", "feature_id",
 		// Network (netstat_listener, netstat_interface,

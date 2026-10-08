@@ -163,7 +163,7 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 			// descriptive concern of the interface, not a shared identity. The IP
 			// filter catches Docker's default bridge; the interface-name filter
 			// also catches user-defined bridges (br-<hex> on 172.18+/custom).
-			if entity.IsHostLocalAddressStr(ip) || entity.IsContainerBridgeIface(ia.Name) {
+			if !entity.AddressEdgeAllowed(ip) || entity.IsContainerBridgeIface(ia.Name) {
 				continue
 			}
 			addrKey := map[string]any{idKeyNetworkAddress: ip}

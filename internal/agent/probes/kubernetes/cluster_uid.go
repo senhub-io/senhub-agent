@@ -50,29 +50,21 @@ func clusterUID(ctx context.Context, cs kubernetes.Interface) (string, error) {
 // resolveClusterIdentity fetches the UID with a short timeout of its own.
 //
 // A failure here is not fatal to the probe: metrics are still worth
-// collecting, and the caller falls back to the address-derived identity with a
-// warning rather than emitting nothing. But the fallback is explicitly a
-// degraded mode — an operator whose RBAC denies reading kube-system should see
-// why their cluster entity is unstable, instead of discovering it months later
-// as unexplained churn in the graph.
+// collecting. The cluster entity is simply not emitted, and the caller logs
+// once why, so an operator whose RBAC denies reading kube-system sees the
+// reason instead of an unexplained absence in the graph.
 func resolveClusterIdentity(cs kubernetes.Interface, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return clusterUID(ctx, cs)
 }
 
-// clusterIdentity is the value the cluster entity is keyed on — the
-// kube-system UID, or the address-derived fallback when it could not be read.
+// clusterIdentity is the value the cluster entity is keyed on: the
+// kube-system UID, or "" when it could not be read (no cluster entity then).
 //
 // Exposed so the pod anchor uses the SAME string the cluster entity carries.
 // Deriving it twice is how a relation ends up pointing at an entity that does
 // not exist, which the consumer buffers and then drops.
 func (p *KubernetesProbe) clusterIdentity() string {
-	if p.clusterUID != "" {
-		return p.clusterUID
-	}
-	if p.clusterEndpoint == "" {
-		return ""
-	}
-	return "kubernetes://" + p.clusterEndpoint
+	return p.clusterUID
 }

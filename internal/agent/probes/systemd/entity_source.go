@@ -33,11 +33,16 @@ func newEntitySource(hostname string) *systemdEntitySource {
 // setUnits is called by Collect() after each successful D-Bus query.
 // hostID is the stable host identity (machine-id / UUID) used to
 // attach each service.instance to its host via a runs_on relation.
-func (s *systemdEntitySource) setUnits(names []string, hostID string) {
+// hostName is the agent's canonical host name (operator override
+// included), so a unit's host.name matches the host entity's.
+func (s *systemdEntitySource) setUnits(names []string, hostID, hostName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.units = names
 	s.hostID = hostID
+	if hostName != "" {
+		s.hostname = hostName
+	}
 	s.ready = true
 }
 
@@ -50,8 +55,14 @@ func (s *systemdEntitySource) Observe() (entity.Observation, bool) {
 	}
 
 	obs := entity.Observation{}
+	// The id embeds host.id, so without it there is no identifiable key and
+	// no entity: a hostname form would collide between hosts and re-key on
+	// a rename.
+	if s.hostID == "" {
+		return obs, true
+	}
 	for _, name := range s.units {
-		id := fmt.Sprintf("systemd://%s/%s", s.hostname, name)
+		id := fmt.Sprintf("systemd://%s/%s", s.hostID, name)
 		entityID := map[string]any{"service.instance.id": id}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type: "service.instance",
@@ -62,15 +73,13 @@ func (s *systemdEntitySource) Observe() (entity.Observation, bool) {
 				"host.name":         s.hostname,
 			},
 		})
-		if s.hostID != "" {
-			obs.Relations = append(obs.Relations, entity.Relation{
-				Type:     "runs_on",
-				FromType: "service.instance",
-				FromID:   entityID,
-				ToType:   "host",
-				ToID:     map[string]any{"host.id": s.hostID},
-			})
-		}
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     "runs_on",
+			FromType: "service.instance",
+			FromID:   entityID,
+			ToType:   "host",
+			ToID:     map[string]any{"host.id": s.hostID},
+		})
 	}
 	return obs, true
 }

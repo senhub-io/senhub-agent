@@ -13,6 +13,8 @@ import (
 
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/entitydetect"
+	"senhub-agent.go/internal/agent/services/instanceid"
+	"senhub-agent.go/internal/cliexit"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
@@ -20,6 +22,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/sensor"
+	"senhub-agent.go/internal/agent/services/statuschan"
 
 	// Blank import: the strategy implementations register themselves with
 	// the data store, so an agent that builds a data store must pull them
@@ -40,6 +43,7 @@ type Agent interface {
 }
 
 type agent struct {
+	statusChan         *statuschan.Service
 	supervisor         *lifecycle.Supervisor
 	logger             *logger.Logger
 	agentConfiguration configuration.AgentConfiguration
@@ -48,7 +52,8 @@ type agent struct {
 	sensors            sensor.Sensor
 	entityDetector     *entitydetect.Service
 	updater            auto_update.AutoUpdate
-	// exitFn is called by handleStartError with exit code 1. It defaults to
+	removeLeftovers    func()
+	// exitFn is called by handleStartError with cliexit.Failure. It defaults to
 	// os.Exit; tests inject a no-op to capture the call without aborting.
 	exitFn func(int)
 }
@@ -109,9 +114,18 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 			localConfiguration.GetEntitiesConfig(),
 			localConfiguration.GetConfiguration().StorageConfig,
 			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
-		),
+		).WithAgentGovernance(localConfiguration.GetGovernance()),
 		logger,
 	)
+
+	// Another agent on this host reads this file to recognise this one as
+	// the node it reports itself as, instead of minting a second.
+	if key := localConfiguration.GetAuthenticationKey(); key != "" {
+		dir := instanceid.OwnStateDir()
+		if err := instanceid.Write(dir, configuration.AgentInstanceID(key), key); err != nil {
+			logger.Warn().Err(err).Str("dir", dir).Msg("Could not publish the agent instance id for other agents on this host; they will describe this agent under a second identity")
+		}
+	}
 
 	// The console applies an output change on save, entities included:
 	// follow the configuration rather than the state it had at start.
@@ -120,7 +134,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 			localConfiguration.GetEntitiesConfig(),
 			localConfiguration.GetConfiguration().StorageConfig,
 			configuration.AgentInstanceID(localConfiguration.GetAuthenticationKey()),
-		)); err != nil {
+		).WithAgentGovernance(localConfiguration.GetGovernance())); err != nil {
 			logger.Warn().Err(err).Msg("Entity detection could not follow the configuration change")
 		}
 	})
@@ -151,6 +165,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 	}
 
 	return agent{
+		statusChan:         statuschan.New(logger, localConfiguration.GetConfigPath(), agentCliArgs.Version, agentCliArgs.CommitHash),
 		supervisor:         lifecycle.NewSupervisor(logger),
 		entityDetector:     entityDetector,
 		logger:             logger,
@@ -159,6 +174,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		store:              store,
 		sensors:            sensors,
 		updater:            updater,
+		removeLeftovers:    func() { auto_update.RemoveUpdateLeftovers(logger) },
 		exitFn:             os.Exit,
 	}
 }
@@ -172,6 +188,9 @@ func (a agent) services() []Service {
 		a.localConfiguration,
 		a.store,
 		a.sensors,
+	}
+	if a.statusChan != nil {
+		servicesToStart = append(servicesToStart, a.statusChan)
 	}
 	if a.entityDetector != nil {
 		servicesToStart = append(servicesToStart, a.entityDetector)
@@ -189,7 +208,17 @@ func (a agent) StopBudget() time.Duration {
 	return lifecycle.TotalStopBudget(a.services()...)
 }
 
+// cleanUpPreviousUpdate runs whether or not auto-update is enabled: a manual
+// "update" leaves the same files behind.
+func (a agent) cleanUpPreviousUpdate() {
+	if a.removeLeftovers != nil {
+		a.removeLeftovers()
+	}
+}
+
 func (a agent) Start(ctx context.Context) error {
+	a.cleanUpPreviousUpdate()
+
 	if errors := a.supervisor.Start(ctx, a.services()...); len(errors) > 0 {
 		a.handleStartError()
 	}
@@ -256,8 +285,8 @@ func (a agent) handleStartError() {
 	// defeats Restart=always and StartLimitBurst protection.
 	a.logger.Error().Msg("One or more services failed to start; exiting with error")
 	if a.exitFn != nil {
-		a.exitFn(1)
+		a.exitFn(cliexit.Failure)
 	} else {
-		os.Exit(1)
+		os.Exit(cliexit.Failure)
 	}
 }

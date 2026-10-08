@@ -45,6 +45,10 @@ func TestIsContainerBridgeIface(t *testing.T) {
 		"cni0":            true,
 		"flannel.1":       true,
 		"lxcbr0":          true,
+		"veth3a9f1c2":     true,
+		"cilium_host":     true,
+		"vEthernet (WSL)": true, // Hyper-V / WSL virtual switch, matched case-insensitively
+		"DOCKER0":         true,
 		// Real, routed interfaces must NOT match.
 		"eth0":    false,
 		"ens3":    false,
@@ -74,5 +78,69 @@ func TestInterfaceNetworkAttributes(t *testing.T) {
 	}
 	if InterfaceNetworkAttributes([]string{"10.0.0.1"}, map[string]int{"10.0.0.1": 0}) != nil {
 		t.Error("an unknown (zero) prefix gives no attribute")
+	}
+}
+
+func TestAddressEdgeAllowed(t *testing.T) {
+	cases := []struct {
+		addr string
+		want bool
+	}{
+		{"10.10.0.1", true},
+		{"192.168.1.1", true},
+		{"172.16.0.1", true},
+		{"172.18.0.1", true},
+		{"172.31.255.254", true},
+		{"8.8.8.8", true},
+		{"2001:db8::1", true},
+		{"0.0.0.0", false},
+		{"::", false},
+		{"127.0.0.1", false},
+		{"127.255.255.254", false},
+		{"::1", false},
+		{"169.254.0.1", false},
+		{"169.254.169.254", false},
+		{"fe80::1", false},
+		{"febf::1", false},
+		{"172.17.0.1", false},
+		{"172.17.255.254", false},
+		{"::ffff:127.0.0.1", false},
+		{"::ffff:172.17.0.1", false},
+		{"fe80::1%eth0", false},
+		{"224.0.0.1", false},
+		{"not-an-ip", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := AddressEdgeAllowed(c.addr); got != c.want {
+			t.Errorf("AddressEdgeAllowed(%q) = %v, want %v", c.addr, got, c.want)
+		}
+	}
+}
+
+func TestAddressIsGloballyUnique(t *testing.T) {
+	cases := map[string]bool{
+		"51.255.48.1":   true,
+		"8.8.8.8":       true,
+		"2001:4860::1":  true,
+		"10.0.0.1":      false,
+		"192.168.1.1":   false,
+		"172.20.0.1":    false,
+		"172.17.0.1":    false,
+		"100.64.0.1":    false,
+		"100.127.255.1": false,
+		"fd00::1":       false,
+		"127.0.0.1":     false,
+		"169.254.1.1":   false,
+		"fe80::1":       false,
+		"224.0.0.1":     false,
+		"0.0.0.0":       false,
+		"":              false,
+		"not-an-ip":     false,
+	}
+	for in, want := range cases {
+		if got := AddressIsGloballyUnique(in); got != want {
+			t.Errorf("AddressIsGloballyUnique(%q) = %v, want %v", in, got, want)
+		}
 	}
 }
