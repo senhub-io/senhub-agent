@@ -319,12 +319,14 @@ func (p *ProbePoller) collect() error {
 		p.recordHealth(err)
 		if partial, ok := p.Probe.(types.PartialResultsProbe); ok && partial.KeepsPartialResults() && len(data) > 0 {
 			p.routePartial(ctx, data)
+			agentstate.RecordProbeCycle(p.ProbeId, len(data))
 		}
 		return fmt.Errorf("collect failed: %w", err)
 	}
 	span.SetAttributes(attribute.Int("probe.datapoints_emitted", len(data)))
 	span.SetStatus(codes.Ok, "")
 	p.recordHealth(nil)
+	p.recordDelivery(len(data))
 
 	data = p.withIdentityTags(data)
 
@@ -335,6 +337,22 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// recordDelivery tells the status channel what the cycle delivered. A
+// probe whose data arrives through a callback or a listener has an empty
+// Collect, and that empty cycle must not erase what the callback last
+// delivered.
+func (p *ProbePoller) recordDelivery(points int) {
+	if points == 0 {
+		if _, ok := p.Probe.(types.ProbeWithCallback); ok {
+			return
+		}
+		if _, ok := p.Probe.(types.ListenerProbe); ok {
+			return
+		}
+	}
+	agentstate.RecordProbeCycle(p.ProbeId, points)
 }
 
 // routePartial routes the datapoints of a failed cycle for a probe that
@@ -503,6 +521,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 		p.moduleLogger.Debug().Int("datapoints_count", len(data)).Msg("Callback triggered")
 
 		data = p.withIdentityTags(data)
+		p.recordDelivery(len(data))
 
 		var err error
 		if strategyRouter, ok := p.Probe.(data_store.StrategyRouter); ok {
