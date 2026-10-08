@@ -52,6 +52,7 @@ type agent struct {
 	sensors            sensor.Sensor
 	entityDetector     *entitydetect.Service
 	updater            auto_update.AutoUpdate
+	removeLeftovers    func()
 	// exitFn is called by handleStartError with cliexit.Failure. It defaults to
 	// os.Exit; tests inject a no-op to capture the call without aborting.
 	exitFn func(int)
@@ -173,6 +174,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		store:              store,
 		sensors:            sensors,
 		updater:            updater,
+		removeLeftovers:    func() { auto_update.RemoveUpdateLeftovers(logger) },
 		exitFn:             os.Exit,
 	}
 }
@@ -206,7 +208,17 @@ func (a agent) StopBudget() time.Duration {
 	return lifecycle.TotalStopBudget(a.services()...)
 }
 
+// cleanUpPreviousUpdate runs whether or not auto-update is enabled: a manual
+// "update" leaves the same files behind.
+func (a agent) cleanUpPreviousUpdate() {
+	if a.removeLeftovers != nil {
+		a.removeLeftovers()
+	}
+}
+
 func (a agent) Start(ctx context.Context) error {
+	a.cleanUpPreviousUpdate()
+
 	if errors := a.supervisor.Start(ctx, a.services()...); len(errors) > 0 {
 		a.handleStartError()
 	}

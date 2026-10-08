@@ -315,3 +315,18 @@ func (stubUpdater) CheckForNewVersion(bool) (*auto_update.VersionMetadata, error
 func (stubUpdater) ListAvailableVersions(bool) ([]auto_update.VersionMetadata, error) {
 	return nil, nil
 }
+
+func TestStartCleansUpPreviousUpdateWithAutoUpdateDisabled(t *testing.T) {
+	calls := 0
+	a := agent{
+		logger:          noopLogger(),
+		removeLeftovers: func() { calls++ },
+	}
+	if a.updater != nil {
+		t.Fatal("test needs auto-update disabled")
+	}
+	a.cleanUpPreviousUpdate()
+	if calls != 1 {
+		t.Errorf("leftover cleanup ran %d times, want 1", calls)
+	}
+}
