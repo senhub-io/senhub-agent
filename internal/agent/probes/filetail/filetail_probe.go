@@ -471,7 +471,7 @@ func (p *FileTailProbe) startTail(file string) error {
 		p.warn().Err(err).Str("file", file).Msg("failed to start tail")
 		return fmt.Errorf("failed to start tail: %w", err)
 	}
-	ts := &tailState{t: t, opened: opened, handle: handle}
+	ts := &tailState{t: t, opened: opened, handle: handle, headFP: fp}
 	ts.offset.Store(offset)
 	p.tailing[file] = ts
 	p.wg.Add(1)
@@ -551,6 +551,16 @@ type tailState struct {
 	// handle is the only way left to read what the writer appended to the
 	// old one in between. Only the consume goroutine touches it after start.
 	handle *os.File
+
+	// headFP is the fingerprint of the first bytes of the file as read, or
+	// "" while the file is shorter than the fingerprint window.
+	headFP string
+}
+
+func (ts *tailState) setHead(fp string) {
+	ts.mu.Lock()
+	ts.headFP = fp
+	ts.mu.Unlock()
 }
 
 func closeQuietly(f *os.File) {
@@ -655,6 +665,17 @@ func (ts *tailState) divergence(path string) (reason string, resume bool) {
 	}
 	if cur.Size() < offset {
 		return "the file is shorter than the offset already read", false
+	}
+	// A file emptied and refilled past the offset between two looks is the
+	// same inode, longer than the offset, and indistinguishable by size
+	// from an append. Its first bytes are not the ones it had.
+	ts.mu.Lock()
+	head := ts.headFP
+	ts.mu.Unlock()
+	if head != "" && cur.Size() >= DefaultFingerprintLength {
+		if now := fingerprint(path, DefaultFingerprintLength); now != "" && now != head {
+			return "the start of the file changed since it was opened", false
+		}
 	}
 	if cur.Size() > offset && unchanged {
 		return "the file grew and the tail read nothing of it", true
@@ -803,6 +824,7 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 		if fp == "" && lastOffset >= DefaultFingerprintLength {
 			if fi, err := os.Stat(file); err == nil && fi.Size() >= lastOffset {
 				fp = fingerprint(file, DefaultFingerprintLength)
+				ts.setHead(fp)
 			}
 		}
 		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: lastOffset, Fingerprint: fp}); err != nil {
@@ -893,6 +915,7 @@ read:
 			}
 			ts.restartedAtStart(file)
 			fp = fingerprint(file, DefaultFingerprintLength)
+			ts.setHead(fp)
 			persist()
 			lastFlush = time.Now()
 			dirty = false
