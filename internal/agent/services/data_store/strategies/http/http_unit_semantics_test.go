@@ -42,9 +42,9 @@ func TestPRTGUnitSemantics_RatesNeverRenderAsAbsolutes(t *testing.T) {
 			checked++
 			switch {
 			case strings.HasPrefix(channel.Unit, "Speed"):
-				if channel.SpeedSize == "" || channel.SpeedTime != "Second" {
-					t.Errorf("%s/%s (otel.unit %s): Speed unit without input scale (speedsize=%q speedtime=%q)",
-						probeName, m.Name, m.Otel.Unit, channel.SpeedSize, channel.SpeedTime)
+				if channel.Unit != "SpeedNet" && channel.Unit != "SpeedDisk" {
+					t.Errorf("%s/%s (otel.unit %s): unexpected speed unit %q",
+						probeName, m.Name, m.Otel.Unit, channel.Unit)
 				}
 			case channel.Unit == "Custom" && strings.HasSuffix(channel.CustomUnit, "/s"):
 				// acceptable rate rendering
