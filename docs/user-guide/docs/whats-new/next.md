@@ -132,6 +132,8 @@ Breaking Changes or Changes below.
 
 ## Fixes
 
+- **Files left by a manual update are removed at the next start, with auto-update off too.** The hidden `.<exe>.old` and `.<exe>.new` files that `senhub-agent update` leaves next to the binary on Windows were cleaned only when auto-update was enabled; the agent now removes them at every start.
+
 - **Loopback connections on OS dynamic ports no longer create `depends_on` endpoints.** A host talking to itself through a port the OS picks per request (for example `127.0.0.1:497xx` on Windows) produced one one-shot endpoint per connection. A loopback peer whose port is in the OS dynamic range (49152-65535 on Windows and macOS, the kernel `ip_local_port_range` on Linux, 32768-60999 by default) is now ignored; loopback services on fixed ports and all non-loopback peers are unchanged.
 
 - **A monolithic install gets its administration key on the first start, and a key added while the agent runs is served.** The key was minted before the monolithic `storage:` list was split into `strategies.d/`, so the http output came out without one; and the console routes were registered only at start, so a key added by a reload answered 404 until a restart. The split now runs first, a reload that adds the key rebuilds the routes, and `senhub-agent console` tells you to restart the service once when the running agent does not serve the console.

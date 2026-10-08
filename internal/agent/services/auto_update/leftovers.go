@@ -5,7 +5,23 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"senhub-agent.go/internal/agent/services/logger"
 )
+
+// RemoveUpdateLeftovers cleans up after a previous update of the running
+// executable. It runs at agent start whether or not auto-update is enabled,
+// since a manual "update" leaves the same files.
+func RemoveUpdateLeftovers(base *logger.Logger) {
+	target, err := os.Executable()
+	if err != nil {
+		return
+	}
+	log := logger.NewModuleLogger(base, "service.auto_update")
+	for _, path := range removeUpdateLeftovers(target) {
+		log.Info().Str("path", path).Msg("removed a file left by the previous update")
+	}
+}
 
 // removeUpdateLeftovers deletes the files a binary replacement leaves next
 // to the executable: the previous binary set aside as ".<name>.old" and a
