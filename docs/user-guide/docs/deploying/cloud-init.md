@@ -47,9 +47,9 @@ write_files:
       #!/bin/sh
       set -eu
 
-      SENHUB_VERSION="${SENHUB_VERSION:-0.6.2~beta.3}"  # exact package version: the pin; latest on https://packages.senhub.io/releases/beta/latest.json
+      SENHUB_VERSION="${SENHUB_VERSION:-0.6.2}"  # exact package version: the pin; latest on https://packages.senhub.io/releases/stable/latest.json
       SENHUB_EDITION="${SENHUB_EDITION:-senhub-agent-oss}"  # or senhub-agent
-      SENHUB_CHANNEL="${SENHUB_CHANNEL:-beta}"       # stable once 0.6.2 is published
+      SENHUB_CHANNEL="${SENHUB_CHANNEL:-stable}"     # or beta
       FINGERPRINT="B9987A2D4623796E19D3B185CA56F750354530AF"
       SRC=/var/lib/cloud/senhub
       CFG=/etc/senhub-agent
@@ -134,7 +134,7 @@ ever runs.
 
 ## Pinning
 
-`SENHUB_VERSION` is the pin, in the package's spelling. The script installs the version you set (`0.6.2~beta.3` in the example) exactly and holds
+`SENHUB_VERSION` is the pin, in the package's spelling. The script installs the version you set (`0.6.2` in the example) exactly and holds
 the package (`apt-mark hold`), so `apt upgrade` and unattended upgrades do
 not move it. On RHEL, add the versionlock plugin to get the same effect:
 
@@ -151,10 +151,8 @@ sudo dnf --showduplicates list senhub-agent-oss   # RHEL family
 ```
 
 A beta is spelled `0.6.2~beta.3` in the packages and `0.6.2-beta.3` as a
-release tag. The example defaults to the beta channel because the stable
-channel is not published yet (its repository answers 404 until the
-0.6.2 release); it comes with the 0.6.2 release, and then
-`SENHUB_CHANNEL=stable` and `SENHUB_VERSION=0.6.2` apply.
+release tag. The example uses the `stable` channel; set
+`SENHUB_CHANNEL=beta` and a beta version to try a beta.
 
 ## Licence
 
