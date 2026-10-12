@@ -48,9 +48,12 @@ type RekeyAnnouncer struct {
 	// because the consumer's delete is idempotent by contract — written that way
 	// for a producer that restarts.
 	announced atomic.Int32
-	// checked gates the one-time look for the marker of an earlier start;
-	// suppressed is set when that earlier start already announced this re-key.
-	checked    sync.Once
+	// checked records that the marker of an earlier start was looked for; it
+	// only latches once a marker store is active, so a look made before
+	// EnableRekeyMarkers does not hide a marker that exists. suppressed is set
+	// when that earlier start already announced this re-key.
+	checkMu    sync.Mutex
+	checked    bool
 	suppressed atomic.Bool
 }
 
@@ -85,13 +88,19 @@ func (r *RekeyAnnouncer) markerPath(m *markerStore) string {
 }
 
 func (r *RekeyAnnouncer) checkMarker() {
-	r.checked.Do(func() {
-		if m := markers.Load(); m != nil {
-			if _, err := os.Stat(r.markerPath(m)); err == nil {
-				r.suppressed.Store(true)
-			}
-		}
-	})
+	r.checkMu.Lock()
+	defer r.checkMu.Unlock()
+	if r.checked {
+		return
+	}
+	m := markers.Load()
+	if m == nil {
+		return
+	}
+	r.checked = true
+	if _, err := os.Stat(r.markerPath(m)); err == nil {
+		r.suppressed.Store(true)
+	}
 }
 
 func (r *RekeyAnnouncer) writeMarker() {

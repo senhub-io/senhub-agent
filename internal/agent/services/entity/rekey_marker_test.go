@@ -80,3 +80,29 @@ func TestRekeyMarker_DisabledKeepsStatelessBehaviour(t *testing.T) {
 		}
 	}
 }
+
+func TestRekeyMarker_LookBeforeEnableDoesNotHideMarker(t *testing.T) {
+	dir := t.TempDir()
+	EnableRekeyMarkers(dir, nil)
+	if got := countRekeyDeletes(t, announceCycles("old", "new")); got != RekeyAnnounceCycles {
+		t.Fatalf("first start: %d deletes, want %d", got, RekeyAnnounceCycles)
+	}
+	EnableRekeyMarkers("", nil)
+	t.Cleanup(func() { EnableRekeyMarkers("", nil) })
+
+	// Second start: a probe consults its announcer before the marker store is
+	// active, then the store is enabled; the earlier look must not latch.
+	a := NewRekeyAnnouncer("service.instance", "service.instance.id", "old", "new")
+	a.checkMarker()
+	EnableRekeyMarkers(dir, nil)
+	ResetForTest()
+	ch := SubscribeEvents(64)
+	for i := 0; i < RekeyAnnounceCycles; i++ {
+		a.Announce()
+	}
+	select {
+	case <-ch:
+		t.Fatal("second start must emit no retirement")
+	default:
+	}
+}

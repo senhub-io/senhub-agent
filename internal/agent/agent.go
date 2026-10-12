@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/lifecycle"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/cliexit"
@@ -117,6 +118,15 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		).WithAgentGovernance(localConfiguration.GetGovernance()),
 		logger,
 	)
+
+	// A re-key is announced once per state directory, not at every start.
+	// Probes publish their first entity events as soon as they start, so the
+	// marker store must be active before the supervisor starts any service.
+	rekeyStateDir := instanceid.OwnStateDir()
+	entity.EnableRekeyMarkers(rekeyStateDir, func(err error) {
+		logger.Warn().Err(err).Str("state_dir", rekeyStateDir).
+			Msg("cannot record that identity re-keys were announced; they will be announced again at the next start")
+	})
 
 	// Another agent on this host reads this file to recognise this one as
 	// the node it reports itself as, instead of minting a second.
