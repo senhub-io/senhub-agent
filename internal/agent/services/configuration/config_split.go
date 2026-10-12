@@ -118,8 +118,10 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 		}
 	}
 
-	// Snapshot the merged view BEFORE we touch anything.
-	before, err := LoadFromDisk(configPath, log)
+	// Snapshot the merged view BEFORE we touch anything. The legacy-layout
+	// warning is withheld: the split about to run is the migration it asks
+	// the operator to do.
+	before, err := LoadFromDisk(configPath, nil)
 	if err != nil {
 		return result, fmt.Errorf("failed to load current configuration: %w", err)
 	}
