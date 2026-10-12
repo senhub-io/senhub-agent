@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -99,6 +100,9 @@ func newJournalReader(cfg LinuxLogsProbeConfig, log *logger.ModuleLogger, probeN
 	go func() {
 		r.wg.Wait()
 		err := r.cmd.Wait()
+		if expectedAtShutdown(err, agentstate.ShuttingDown, shutdownGrace) {
+			r.tracker.markStopping()
+		}
 		r.tracker.recordExit(err)
 		if r.tracker.exitedUnexpectedly() {
 			log.Error().Err(err).Msg("journalctl subprocess died unexpectedly; linux_logs probe is no longer collecting")
