@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -14,9 +15,28 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
+// lockedBuffer is a log sink safe for the watcher goroutine that keeps
+// writing while the test reads.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func startCapturingLog(t *testing.T, cfg string) string {
 	t.Helper()
-	var buf bytes.Buffer
+	var buf lockedBuffer
 	zl := zerolog.New(&buf)
 	lc := NewLocalConfiguration(&cliArgs.ParsedArgs{ConfigPath: cfg}, (*logger.Logger)(&zl))
 	if err := lc.Start(context.Background()); err != nil {
