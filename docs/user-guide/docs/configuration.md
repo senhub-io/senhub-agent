@@ -838,7 +838,7 @@ SENHUB_PROBE_<NAME>_<PARAM>_FILE=/path     reads the value from a file
 ### How a name is read
 
 - After `SENHUB_PROBE_`, the **first underscore ends the name**. The name holds letters and digits only and is lowercased: `SENHUB_PROBE_PG_HOST` is the parameter `host` of the probe `pg`. A name with a hyphen cannot be written in a variable; to tune a probe called `smtp-prod` from the environment, write `SENHUB_PROBE_SMTPPROD_...`: hyphens and underscores are ignored when the name is matched against the probes of the files. A probe declared only by the environment takes the name as written, lowercased.
-- Everything after the name is the field. A **double underscore nests**, a single underscore stays part of the key: `SENHUB_PROBE_PG_MAX_REPLICATION_LAG_SECONDS` is `max_replication_lag_seconds`, and `SENHUB_PROBE_ACA_DISCOVERY__MAX_APPS` is `discovery.max_apps`.
+- Everything after the name is the field. A **double underscore nests**, a single underscore stays part of the key: `SENHUB_PROBE_PG_MAX_REPLICATION_LAG_SECONDS` is `max_replication_lag_seconds`, and `SENHUB_PROBE_CA_DISCOVERY__MAX_APPS` is `discovery.max_apps`.
 - Parameter names are matched to the probe's schema without regard to case, and an alternative spelling the probe accepts resolves to its canonical key.
 - A variable that is empty counts as unset.
 
@@ -873,6 +873,10 @@ The value is read according to the type the probe declares for the parameter:
 
 A probe type unknown to this build, a parameter its schema does not declare, a value that does not fit its type or its list of accepted values, or a required parameter left out, **stops the agent at load** and the message names the variable. A probe type that has no schema (a few commercial probes) accepts string values only, with a warning in the log, and nothing is checked.
 
+### No `${env:}` inside a value
+
+A value taken from a `SENHUB_PROBE_*` variable is used as written: a `${env:OTHER}` inside it is **not** expanded, and the text reaches the probe as is. A secret is the only value that is turned into a reference, and only to its own variable or file. To give several probes the same credential, point each one's `_FILE` variable at the same mounted secret (`SENHUB_PROBE_CAJ_CLIENT_SECRET_FILE=/run/secrets/az_secret`, repeated for each probe), or declare the probes in `SENHUB_PROBES` (or a `probes.d` file), where `"${env:AZ_CLIENT_SECRET}"` is resolved at every start.
+
 ### Secrets
 
 A parameter the schema marks secret, or whose name looks like one (`password`, `token`, `secret`, `api_key`, `dsn`, `community`), is never written into the loaded configuration: it holds a reference to the variable, and `config show` prints that reference with `--raw` and `***` by default. For a secret that lives in a file, which is how Docker, Kubernetes and Podman deliver them, add `_FILE`:
@@ -885,9 +889,9 @@ The file is read at every start and its content trimmed. Giving both `SENHUB_PRO
 
 ### Precedence
 
-The variables are applied on top of the files (`agent.yaml`, `probes.d/`, and in a container the fragment of `SENHUB_PROBES`), once they are merged:
+`SENHUB_PROBE_*` overlays the files (`agent.yaml`, `probes.d/`) and, in a container, the fragment written from `SENHUB_PROBES`, once they are merged. It is applied key by key, and **the environment wins**:
 
-- A probe of the same name in a file keeps what the file says, **except for the parameters the environment sets, which win** (as in Grafana). Blocks are merged key by key; a list is replaced whole.
+- A probe of the same name in a file or in `SENHUB_PROBES` keeps what it says, **except for the parameters the environment sets, which win** (as in Grafana). Blocks are merged key by key; a list is replaced whole.
 - A name found in no file creates the probe, and `SENHUB_PROBE_<NAME>_TYPE` is then required.
 - A `TYPE` that differs from the type of the probe in the file is refused.
 
@@ -917,26 +921,26 @@ SENHUB_PROBE_WEB_ENABLED=false
 Azure Container Apps, [list mode](probes/azure_container_apps.md), one probe per application, sharing the credentials (the probe name is yours, the application name goes in `APP`):
 
 ```bash
-SENHUB_PROBE_OLTP_TYPE=azure_container_apps
-SENHUB_PROBE_OLTP_APP=oltp
-SENHUB_PROBE_OLTP_TENANT_ID=00000000-0000-0000-0000-000000000000
-SENHUB_PROBE_OLTP_CLIENT_ID=11111111-1111-1111-1111-111111111111
-SENHUB_PROBE_OLTP_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
-SENHUB_PROBE_OLTP_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
-SENHUB_PROBE_OLTP_RESOURCE_GROUP=rg-squash
-# the same eight lines under SENHUB_PROBE_BILLING_ for a second application
+SENHUB_PROBE_CA_TYPE=azure_container_apps
+SENHUB_PROBE_CA_APP=oltp
+SENHUB_PROBE_CA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CA_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CA_RESOURCE_GROUP=rg-squash
+# the same seven lines under SENHUB_PROBE_CA2_ for a second application
 ```
 
 Azure Container Apps, discovery mode, one probe for the whole subscription:
 
 ```bash
-SENHUB_PROBE_ACA_TYPE=azure_container_apps
-SENHUB_PROBE_ACA_TENANT_ID=00000000-0000-0000-0000-000000000000
-SENHUB_PROBE_ACA_CLIENT_ID=11111111-1111-1111-1111-111111111111
-SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
-SENHUB_PROBE_ACA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
-SENHUB_PROBE_ACA_DISCOVERY__INTERVAL=300
-SENHUB_PROBE_ACA_DISCOVERY__EXCLUDE=*-preview
+SENHUB_PROBE_CA_TYPE=azure_container_apps
+SENHUB_PROBE_CA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CA_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CA_DISCOVERY__INTERVAL=300
+SENHUB_PROBE_CA_DISCOVERY__EXCLUDE=*-preview
 ```
 
 ## Inspecting the merged configuration

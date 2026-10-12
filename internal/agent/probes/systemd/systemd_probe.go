@@ -16,7 +16,6 @@ package systemd
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	dbus "github.com/coreos/go-systemd/v22/dbus"
@@ -50,7 +49,7 @@ func NewSystemdProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		return nil, err
 	}
 
-	hostname, _ := os.Hostname()
+	hostname := common.CanonicalHostName()
 
 	probe := &SystemdProbe{
 		BaseProbe:    &types.BaseProbe{},

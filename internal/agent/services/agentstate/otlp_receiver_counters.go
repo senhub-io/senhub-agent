@@ -163,6 +163,33 @@ func RecordOTLPReceiverCoverage(signal, origin, service string, records int, has
 	otlpReceiverCoverage.m[key] = c
 }
 
+// SeedOTLPReceiverCoverage creates a zero coverage series for each signal
+// and origin, so a receiver that has taken nothing yet reads as zero
+// instead of as absent: absence cannot tell "nothing received" from "the
+// receiver is dead". Existing counts are never lowered.
+func SeedOTLPReceiverCoverage(signals, origins []string) {
+	otlpReceiverCoverage.mu.Lock()
+	defer otlpReceiverCoverage.mu.Unlock()
+	for _, s := range signals {
+		for _, o := range origins {
+			if s == "" || o == "" {
+				continue
+			}
+			key := OTLPReceiverCoverageKey{Signal: s, Origin: o, Service: "unknown"}
+			if _, ok := otlpReceiverCoverage.m[key]; !ok {
+				otlpReceiverCoverage.m[key] = OTLPReceiverCoverage{}
+			}
+		}
+	}
+}
+
+// ResetOTLPReceiverCoverageForTest clears the coverage counters. Test-only.
+func ResetOTLPReceiverCoverageForTest() {
+	otlpReceiverCoverage.mu.Lock()
+	otlpReceiverCoverage.m = map[OTLPReceiverCoverageKey]OTLPReceiverCoverage{}
+	otlpReceiverCoverage.mu.Unlock()
+}
+
 // coverageServiceCount counts the distinct services held. Callers hold mu.
 func coverageServiceCount() int {
 	seen := map[string]bool{}
