@@ -148,6 +148,17 @@ func canonicalHostname(raw string) string {
 	return normalizeHostname(raw)
 }
 
+// CanonicalHostName is canonicalHostname for callers outside this package
+// (an entity source, an info endpoint): the same single name the metric
+// tags, the OTLP resource and the host entity carry.
+func CanonicalHostName() string {
+	hostInfo, err := cachedHostInfo()
+	if err != nil {
+		return canonicalHostname("")
+	}
+	return canonicalHostname(hostInfo.Hostname)
+}
+
 // GetHostIdentity returns the host's stable identity plus descriptive nameplate
 // facts for entity detection. ID comes from gopsutil's HostID (the OS
 // machine-id), which — unlike the hostname — does not change on rename, so it is

@@ -197,6 +197,22 @@ func (q *logsQueue) recover() {
 	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
 }
 
+// announce states once, at start, that failed log batches are kept on
+// disk. A queue that stays silent while healthy leaves an operator unable
+// to tell it from a queue that is off.
+func (q *logsQueue) announce() {
+	q.mu.Lock()
+	maxBytes, maxAge := q.maxBytes, q.maxAge
+	q.mu.Unlock()
+	ev := q.logger.Info().Str("path", q.dir).Int64("max_bytes", maxBytes)
+	if maxAge > 0 {
+		ev = ev.Dur("retention", maxAge)
+	} else {
+		ev = ev.Str("retention", "unlimited")
+	}
+	ev.Msg("OTLP logs queue active: failed log batches are kept on disk and replayed when the collector answers")
+}
+
 // setMaxAge arms the age-based retention and sweeps once, so what a
 // previous run left behind past the limit is gone before the boot replay.
 func (q *logsQueue) setMaxAge(d time.Duration) {
