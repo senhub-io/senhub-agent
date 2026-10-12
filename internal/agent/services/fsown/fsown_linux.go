@@ -33,7 +33,12 @@ func AlignToDir(path string) error {
 	if !ok {
 		return nil
 	}
-	if err := os.Lchown(path, int(st.Uid), int(st.Gid)); err != nil {
+	if fi, err := os.Lstat(path); err == nil {
+		if fst, ok := fi.Sys().(*syscall.Stat_t); ok && fst.Uid == st.Uid && fst.Gid == st.Gid {
+			return nil
+		}
+	}
+	if err := os.Lchown(path, int(st.Uid), int(st.Gid)); err != nil && !Refused(err) {
 		return fmt.Errorf("giving %s the owner of its directory: %w", path, err)
 	}
 	return nil
