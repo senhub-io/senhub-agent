@@ -77,6 +77,18 @@ Nothing else needs a mount. The configuration lives inside the container
 unless you choose otherwise, and the log file is written to
 `/var/log/senhub-agent` inside it.
 
+### Azure Files: SMB or NFS
+
+From 0.6.3 the agent is tested with the state directory (`/var/lib/senhub-agent`) and the configuration directory (`/etc/senhub-agent`) on an Azure Files SMB share mounted by Container Apps. An SMB share sets file modes and owners from its mount options and refuses `chmod` and `chown`; the agent skips a refused `chmod`/`chown`, seals secrets, keeps its identity (agent key, instance id), the logs queue, and the probe bookmarks in the state directory, and places its local status socket in a private directory under the temp directory because SMB has no Unix sockets.
+
+Use SMB. It is the default Azure Files protocol on Container Apps and the tested one. NFS shares on Azure Files require a premium storage account and a virtual network; they are not tested with the agent.
+
+Size the share from the logs queue: it is capped by `SENHUB_LOG_QUEUE_MAX_BYTES` (default 128 MiB) with a 24 h retention. Plan the share accordingly, a few hundred MiB per collector.
+
+Use one collector per share directory. Two agents must not share the same state directory.
+
+Setting `uid`/`gid` in the share mount options so files belong to the agent's account is not tested yet.
+
 ## Variables
 
 None is strictly required. `OTLP_BEARER_TOKEN` is what a first run
@@ -252,6 +264,22 @@ the container stops at start.
   from inside a container.
 - **No auto-update.** Updating means pulling a new image tag. Under
   Podman, see [Updates](podman.md#updates).
+
+## Network flows
+
+| Destination | Port / protocol | Purpose |
+|---|---|---|
+| `SENHUB_OTLP_ENDPOINT` | `SENHUB_OTLP_PROTOCOL` (`grpc` or `http`), usually 4317 for gRPC or 4318 for HTTP, HTTPS/TLS as configured | OTLP export |
+| `login.microsoftonline.com` (or the `authority_host` parameter) | 443/HTTPS | Entra ID token for Azure Container Apps and jobs probes |
+| `management.azure.com` (or the `management_host` parameter) | 443/HTTPS | Azure Resource Manager for Azure Container Apps and jobs probes |
+| `*.azurecontainerapps.dev` | 443/HTTPS | Log stream endpoint of each Container Apps environment |
+| `eu-west-1.intake.senhub.io` | 443/HTTPS | Release check when auto-update is enabled. Normal container updates change the image tag; the platform pulls the new image from `ghcr.io` |
+
+All hostnames above require DNS resolution.
+
+Permissions for the Azure probes are documented in [Azure Container Apps](probes/azure_container_apps.md) and [Azure Container Apps jobs](probes/azure_container_app_jobs.md).
+
+Nothing listens inbound except the optional console/HTTP port and the OTLP receiver when enabled.
 
 ## Health
 
