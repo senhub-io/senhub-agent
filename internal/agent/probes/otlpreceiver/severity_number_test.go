@@ -21,3 +21,27 @@ func TestLogRecordToInternal_KeepsTheSendersSeverity(t *testing.T) {
 		t.Errorf("text %q, want the sender's", text.SeverityText)
 	}
 }
+
+func TestFillSeverityNumbers_AddsOnlyWhatIsAbsent(t *testing.T) {
+	recs := []*logspb.LogRecord{
+		{SeverityText: "WARNING"},
+		{SeverityText: "CRITICAL"},
+		{SeverityText: "warn", SeverityNumber: logspb.SeverityNumber(17)},
+		{SeverityText: "whatever"},
+		{},
+	}
+	rls := []*logspb.ResourceLogs{{ScopeLogs: []*logspb.ScopeLogs{{LogRecords: recs}}}}
+	fillSeverityNumbers(rls)
+
+	want := []logspb.SeverityNumber{
+		logspb.SeverityNumber(agentstate.LogSeverityWarn),
+		logspb.SeverityNumber(agentstate.LogSeverityFatal),
+		17, 0, 0,
+	}
+	wantText := []string{"WARNING", "CRITICAL", "warn", "whatever", ""}
+	for i, r := range recs {
+		if r.SeverityNumber != want[i] || r.SeverityText != wantText[i] {
+			t.Errorf("record %d: %d %q, want %d %q", i, r.SeverityNumber, r.SeverityText, want[i], wantText[i])
+		}
+	}
+}
