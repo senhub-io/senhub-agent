@@ -7,6 +7,8 @@ Changes land here as they are merged. The 0.6.3 corrective release collects them
 ## Features
 
 - **Official Grafana dashboards for Azure Container Apps and Container App Jobs.** `azure-container-apps.json` (coverage, per-application health, scan failures by reason, volume, logs) and `azure-container-app-jobs.json` (executions by status, duration, last run, logs) in `docs/grafana/`. They read the per-application metrics, not log counts.
+- **`senhub-agent check azure`.** A read-only command that checks, with the credentials of the configured Azure probes, the token, the subscription, the applications and jobs found, and each permission the probes need, one verdict per line; it exits non-zero when a required item fails.
+- **Container Apps discovery reports its coverage.** `discovery.found`, `discovery.followed` and `discovery.left_out` (by `filter` or `max_apps`) read "26 of 26" from metrics; `discovery.last_age` and `discovery.failures` show a listing that stopped working. Under discovery, the volume counters and scan failures are given per application, and an application never read no longer reports zero replicas.
 
 ## Fixes
 

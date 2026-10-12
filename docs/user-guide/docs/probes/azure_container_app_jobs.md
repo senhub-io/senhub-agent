@@ -165,6 +165,29 @@ was already collecting, the job reads were refused with
 share a credential only if its role covers both; a credential already
 carrying the four application actions needs these three added to it.
 
+## Checking the setup
+
+`senhub-agent check azure` verifies, without changing anything, that the credentials of the configured Azure probes (`azure_container_apps` and `azure_container_app_jobs`) can do what the probes need. It prints one verdict per line and never prints a secret.
+
+```bash
+senhub-agent check azure               # every enabled Azure probe in the installed configuration
+senhub-agent check azure --probe caj   # one probe, by name
+senhub-agent check azure /path/to/agent.yaml
+```
+
+For each probe it checks, in order:
+
+| Line | What it verifies |
+|---|---|
+| `token` | Entra ID issues a token for the tenant, client ID and secret of the probe |
+| `subscription` | The subscription can be read. A `WARN` here is normal when the role is scoped to a resource group |
+| `apps` / `jobs` | The application (or, with `discovery`, every application) and the job are found, grouped by resource group |
+| `permission` | Each action the probe needs is granted at its scope, from the effective permissions Azure reports for the credential |
+
+The actions checked are `Microsoft.App/containerApps/read`, `.../revisions/read`, `.../revisions/replicas/read` and `.../getAuthtoken/action` for applications, and `Microsoft.App/jobs/read`, `Microsoft.App/jobs/*/read` and `Microsoft.App/jobs/getAuthtoken/action` for jobs. A role that only grants `jobs/executions/read` is reported as missing `jobs/*/read`: the verdicts would look right while no log line ever arrived.
+
+The command exits with `0` when every required item passes and `1` when one fails (or when no Azure probe is configured), so it can gate a deployment script. Like the other commands, it runs as root or administrator.
+
 ## Dashboards
 
 A ready-made Grafana dashboard for this probe, `azure-container-app-jobs.json`, is provided in [`docs/grafana/`](https://github.com/senhub-io/senhub-agent/tree/master/docs/grafana) (see its README for the data path it expects). It covers executions by status per job, duration, time since last success, failures and logs filtered by job and severity.
