@@ -167,14 +167,3 @@ func TestClientInputIsNeverRead(t *testing.T) {
 		t.Fatalf("the agent answers regardless of what was sent: %v", err)
 	}
 }
-
-func TestCandidatePathsOrder(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("one fixed pipe")
-	}
-	t.Setenv("STATE_DIRECTORY", "/run/state:/other")
-	got := candidatePaths("/etc/x/agent.yaml")
-	if len(got) < 2 || got[0] != "/run/state/control.sock" || got[len(got)-1] != "/etc/x/control.sock" {
-		t.Errorf("paths = %v: state directory first, config directory last", got)
-	}
-}

@@ -143,3 +143,19 @@ metrics:
       name: senhub.azure_container_app_jobs.arm.reads_remaining
       unit: "{read}"
       type: gauge
+
+  - name: "azure_container_app_jobs_read_failures"
+    channel: "read_failures_{reason}"
+    display_name: "Read Failures {reason}"
+    unit: "#"
+    category: "collection"
+    description: "Cumulative reads of the job's executions, replicas or output Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable, no_replica. denied is almost always a role without Microsoft.App/jobs/*/read"
+    multi_instance_labels:
+      - "azure_job"
+      - "reason"
+    otel:
+      name: senhub.azure_container_app_jobs.read.failures
+      unit: "{read}"
+      type: counter
+    tag_to_attribute:
+      reason: reason
