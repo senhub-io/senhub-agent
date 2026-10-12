@@ -291,7 +291,8 @@ func listYAMLFiles(dir string) ([]string, error) {
 
 // ignoredFragments lists the files of dir that the loader leaves out
 // without being told to: not a dotfile, not *.disabled, and not ending in
-// .yaml or .yml. A copy taken before an edit, otlp.yaml.bak-20260908,
+// .yaml or .yml, nor set aside by the agent's own split (*.install-default).
+// A copy taken before an edit, otlp.yaml.bak-20260908,
 // is the usual one. It is not loaded, which is right, and it is said, so
 // an operator who meant it as a fragment learns it does not count.
 func ignoredFragments(dir string) []string {
@@ -302,7 +303,7 @@ func ignoredFragments(dir string) []string {
 	var out []string
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".disabled") {
+		if e.IsDir() || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".disabled") || strings.HasSuffix(name, installDefaultSuffix) {
 			continue
 		}
 		if ext := strings.ToLower(filepath.Ext(name)); ext != ".yaml" && ext != ".yml" {
@@ -318,7 +319,7 @@ func reportIgnoredFragments(log *logger.ModuleLogger, dirs ...string) {
 		return
 	}
 	for _, dir := range dirs {
-		if names := ignoredFragments(dir); len(names) > 0 {
+		if names := ignoredFragments(dir); len(names) > 0 && firstIgnoredReport(dir, names) {
 			log.Info().
 				Str("dir", dir).
 				Strs("files", names).
@@ -358,5 +359,15 @@ var legacyWarned sync.Map
 
 func firstLegacyWarning(configPath string) bool {
 	_, seen := legacyWarned.LoadOrStore(configPath, struct{}{})
+	return !seen
+}
+
+// ignoredReported records the (directory, file set) pairs already reported, so
+// the same unknown files are named once per process rather than at every
+// configuration reload.
+var ignoredReported sync.Map
+
+func firstIgnoredReport(dir string, names []string) bool {
+	_, seen := ignoredReported.LoadOrStore(dir+"\x00"+strings.Join(names, "\x00"), struct{}{})
 	return !seen
 }

@@ -283,6 +283,7 @@ func (p *OTLPReceiverProbe) ingestLogs(resourceLogs []*logspb.ResourceLogs) {
 	if len(resourceLogs) == 0 {
 		return
 	}
+	fillSeverityNumbers(resourceLogs)
 	records := flattenResourceLogs(resourceLogs, p.GetName())
 	if len(records) == 0 {
 		return
@@ -388,4 +389,23 @@ func replacePort(addr string, port int) string {
 		host = strings.TrimSpace(addr)
 	}
 	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+// fillSeverityNumbers sets the SeverityNumber of a record that carries only a
+// SeverityText ("WARNING", "CRITICAL"), so the verbatim relay does not export
+// it as unspecified. Additive only: a number the sender set is kept, a text
+// that maps to nothing is left alone, and the text is never rewritten.
+func fillSeverityNumbers(resourceLogs []*logspb.ResourceLogs) {
+	for _, rl := range resourceLogs {
+		for _, sl := range rl.GetScopeLogs() {
+			for _, lr := range sl.GetLogRecords() {
+				if lr.GetSeverityNumber() != logspb.SeverityNumber_SEVERITY_NUMBER_UNSPECIFIED {
+					continue
+				}
+				if sev := agentstate.SeverityFromText(lr.GetSeverityText()); sev != agentstate.LogSeverityUnspecified {
+					lr.SeverityNumber = logspb.SeverityNumber(sev)
+				}
+			}
+		}
+	}
 }

@@ -1,13 +1,17 @@
 package configuration
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v2"
+
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // writeMonolithicFixture stages a minimal-but-realistic monolithic
@@ -331,5 +335,27 @@ func TestMigrateToMultiFile_FailureLeavesNothingBehind(t *testing.T) {
 	owned, foreign := classifyFragments(dir)
 	if len(owned)+len(foreign) != 0 {
 		t.Errorf("fragments left behind: %v %v", owned, foreign)
+	}
+}
+
+// The split is the migration the legacy-layout warning asks for: it must not
+// be logged just before the split runs on install defaults.
+func TestMigrateToMultiFile_NoLegacyWarningBeforeTheSplit(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMonolithicFixture(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, "probes.d"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "probes.d", "00-host.yaml"), []byte("# nothing yet\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf)
+	log := logger.NewModuleLogger((*logger.Logger)(&zl), "configuration.split.test")
+	if _, err := MigrateToMultiFile(path, log); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "Legacy monolithic") {
+		t.Errorf("legacy warning logged before the split: %s", buf.String())
 	}
 }

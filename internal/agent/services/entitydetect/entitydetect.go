@@ -30,7 +30,6 @@ import (
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
 	"senhub-agent.go/internal/agent/services/entity/hostsvc"
 	"senhub-agent.go/internal/agent/services/governance"
-	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -204,13 +203,6 @@ func (s *Service) startLocked(ctx context.Context) error {
 	// Probe entity sources stamp the From endpoint of their `monitors`
 	// edge with this, so it must be set before the detector polls them.
 	agentstate.SetAgentInstanceID(cfg.AgentInstanceID)
-
-	// A re-key is announced once per state directory, not at every start.
-	stateDir := instanceid.OwnStateDir()
-	entity.EnableRekeyMarkers(stateDir, func(err error) {
-		s.logger.Warn().Err(err).Str("state_dir", stateDir).
-			Msg("cannot record that identity re-keys were announced; they will be announced again at the next start")
-	})
 
 	hostIDFn := func() string {
 		hi, err := common.GetHostIdentity()
