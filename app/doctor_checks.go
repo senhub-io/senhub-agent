@@ -24,11 +24,46 @@ const (
 type doctorConfig struct {
 	data configuration.LocalConfigurationData
 	err  error
+	// unsetEnv names the ${env:} variables that stay unset after the
+	// service environment was applied: what doctor cannot resolve here
+	// but the service may.
+	unsetEnv []string
 }
 
 func loadDoctorConfig(d doctorDeps) doctorConfig {
+	if d.serviceEnv != nil {
+		d.serviceEnv()
+	}
 	data, err := d.loadConfig(d.configPath)
-	return doctorConfig{data: data, err: err}
+	cfg := doctorConfig{data: data, err: err}
+	if d.unsetEnv != nil {
+		seen := map[string]bool{}
+		for _, ref := range d.unsetEnv(d.configPath) {
+			if !seen[ref.Name] {
+				seen[ref.Name] = true
+				cfg.unsetEnv = append(cfg.unsetEnv, ref.Name)
+			}
+		}
+	}
+	return cfg
+}
+
+// outsideServiceContext turns a failure caused by an unresolvable
+// ${env:} reference into a warning that names the variables: the
+// service may well resolve them, so doctor cannot call the
+// configuration broken.
+func outsideServiceContext(cfg doctorConfig, section, id, msg string) (doctorCheck, bool) {
+	if len(cfg.unsetEnv) == 0 || !mentionsEmptyValue(msg) {
+		return doctorCheck{}, false
+	}
+	return warnCheck(section, id,
+		fmt.Sprintf("not resolvable outside the service context: %s not set here (%s)", strings.Join(cfg.unsetEnv, ", "), msg),
+		"run doctor as root so it can read the service unit's Environment=/EnvironmentFile=, or export the variable first"), true
+}
+
+func mentionsEmptyValue(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "empty") || strings.Contains(m, "no credential") || strings.Contains(m, "unresolved")
 }
 
 func daemonAnswered(st statusResult) bool {
@@ -55,6 +90,9 @@ func checkInstall(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck
 		out = append(out, *bin)
 	}
 	out = append(out, skewCheck(d))
+	if c := pathBinaryCheck(d, unit, unitErr, st); c != nil {
+		out = append(out, *c)
+	}
 
 	if c := logGroupCheck(d, cfg, serviceUser); c != nil {
 		out = append(out, *c)
@@ -255,7 +293,7 @@ func ownerOrDefault(user string) string {
 }
 
 func checkConfiguration(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck {
-	out := configCheckChecks(d)
+	out := configCheckChecks(d, cfg)
 	out = append(out, secretsCheck(d))
 	if c := licenseCheck(d, cfg); c != nil {
 		out = append(out, *c)
@@ -264,7 +302,7 @@ func checkConfiguration(d doctorDeps, cfg doctorConfig, st statusResult) []docto
 	return out
 }
 
-func configCheckChecks(d doctorDeps) []doctorCheck {
+func configCheckChecks(d doctorDeps, cfg doctorConfig) []doctorCheck {
 	fix := fmt.Sprintf("%s --config-path %s", doctorConfigHint, d.configPath)
 	text, outcome, err := d.configCheck(d.configPath)
 	if err != nil {
@@ -280,6 +318,10 @@ func configCheckChecks(d doctorDeps) []doctorCheck {
 		switch f.Level {
 		case "error":
 			errorsFound++
+			if w, ok := outsideServiceContext(cfg, sectionConfiguration, "config.check", f.Message); ok {
+				out = append(out, w)
+				continue
+			}
 			out = append(out, failCheck(sectionConfiguration, "config.check", f.Message, fix))
 		case "warn":
 			out = append(out, warnCheck(sectionConfiguration, "config.check", f.Message, fix))
@@ -388,7 +430,7 @@ func checkOutputs(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck
 		ctx, cancel := context.WithTimeout(context.Background(), doctorOutputTimeout)
 		steps := d.outputTest(ctx, s.Name, params, cfg.data.Agent.Key, 0)
 		cancel()
-		out = append(out, outputResult(id, s.Name, steps))
+		out = append(out, outputResult(cfg, id, s.Name, steps))
 	}
 	if daemonAnswered(st) {
 		for _, f := range st.system.StrategyFailures {
@@ -402,10 +444,13 @@ func checkOutputs(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck
 	return out
 }
 
-func outputResult(id, name string, steps []otlp.ConnectionStep) doctorCheck {
+func outputResult(cfg doctorConfig, id, name string, steps []otlp.ConnectionStep) doctorCheck {
 	var passed []string
 	for _, s := range steps {
 		if !s.Passed {
+			if w, ok := outsideServiceContext(cfg, sectionOutputs, id, fmt.Sprintf("%s: step %q failed: %s", name, s.Name, s.Error)); ok {
+				return w
+			}
 			return failCheck(sectionOutputs, id, fmt.Sprintf("%s: step %q failed: %s", name, s.Name, s.Error),
 				"check the output parameters in the configuration and the network path to the target")
 		}

@@ -160,6 +160,7 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 	// receiver is visible on the pull endpoints from the moment it starts,
 	// rather than exposing no receiver telemetry until its first datapoint (#688).
 	agentstate.SeedOTLPReceiverIngested(p.config.Signals.names()...)
+	agentstate.SeedOTLPReceiverCoverage(p.config.Signals.names(), p.coverageOrigins())
 
 	if netbind.IsWildcard(p.config.Address) {
 		p.moduleLogger.Warn().

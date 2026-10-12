@@ -1,6 +1,47 @@
 package linuxlogs
 
-import "sync"
+import (
+	"errors"
+	"os/exec"
+	"sync"
+	"syscall"
+	"time"
+)
+
+// shutdownGrace is how long a SIGTERM exit waits for the agent's own stop
+// request. The service manager signals the whole control group at once, so
+// journalctl can be gone a few milliseconds before the agent's handler runs.
+const shutdownGrace = 2 * time.Second
+
+// diedOfSIGTERM reports whether err is a process killed by SIGTERM.
+func diedOfSIGTERM(err error) bool {
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		return false
+	}
+	ws, ok := ee.Sys().(syscall.WaitStatus)
+	return ok && ws.Signaled() && ws.Signal() == syscall.SIGTERM
+}
+
+// expectedAtShutdown reports whether an exit is the one the service manager
+// causes when it stops the agent: a SIGTERM death while the agent is, or
+// within the grace period becomes, shutting down. A SIGTERM from anyone else
+// at any other time stays an unexpected death.
+func expectedAtShutdown(err error, shuttingDown func() bool, grace time.Duration) bool {
+	if !diedOfSIGTERM(err) {
+		return false
+	}
+	deadline := time.Now().Add(grace)
+	for {
+		if shuttingDown() {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
 
 // exitTracker records the exit of the journalctl subprocess and tells an
 // expected shutdown (we asked for it) apart from an unexpected death (journald

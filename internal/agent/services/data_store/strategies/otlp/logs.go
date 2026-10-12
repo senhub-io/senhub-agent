@@ -162,7 +162,13 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 	var apiRec log.Record
 	apiRec.SetTimestamp(rec.Timestamp)
 	apiRec.SetObservedTimestamp(rec.Timestamp)
-	apiRec.SetSeverity(log.Severity(rec.Severity))
+	// Whatever its source wrote as text, the record leaves with an OTel
+	// number; a number the source set is never overridden.
+	severity := rec.Severity
+	if severity == agentstate.LogSeverityUnspecified {
+		severity = agentstate.SeverityFromText(rec.SeverityText)
+	}
+	apiRec.SetSeverity(log.Severity(severity))
 	if rec.SeverityText != "" {
 		apiRec.SetSeverityText(rec.SeverityText)
 	}
