@@ -124,14 +124,15 @@ A `${env:...}` written inside one of these values is not expanded, and `SENHUB_P
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:061d51983d3979e26288ba278b1cdf157c64fb706358f8e629cdd501f1976335 -->
+<!-- sha256:594aa2781c62f1c4a058e376decf87f8d97bd1fa6b3ba1921b42a0a1ea40c2cb -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `tenant_id` | Yes | - | Entra ID tenant (directory) ID |
-| `client_id` | Yes | - | Application (client) ID of the app registration |
-| `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `subscription_id` | Yes | - | Subscription that holds the Container App |
+| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless SENHUB_AZURE_TENANT_ID is set for every Azure probe of the agent |
+| `client_id` | In practice | - | Application (client) ID of the app registration; required unless SENHUB_AZURE_CLIENT_ID is set for every Azure probe of the agent |
+| `client_secret` | In practice | - | Client secret of the app registration; one of client_secret, client_secret_file, SENHUB_AZURE_CLIENT_SECRET or SENHUB_AZURE_CLIENT_SECRET_FILE is required, in that order of precedence. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `client_secret_file` | No | - | File holding the client secret (a mounted secret, for example); read when the probe is configured. Used when client_secret is not set |
+| `subscription_id` | In practice | - | Subscription that holds the Container App; required unless SENHUB_AZURE_SUBSCRIPTION_ID is set for every Azure probe of the agent |
 | `resource_group` | No | - | Resource group of the Container App; required unless 'discovery' is set, which finds it |
 | `app` | No | - | Name of the Container App; required unless 'discovery' is set, which finds them |
 | `discovery` | No | - | Follow every application the subscription holds instead of naming one; exclusive with 'app' and 'resource_group' |
@@ -260,6 +261,30 @@ Log records are delivered to the outputs that consume logs, OTLP first; restrict
 ```bash
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ca"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ca"
+```
+
+## Shared credentials
+
+To avoid repeating the identity of the app registration in every entry, set it once in the agent's environment. It serves both Azure probes (`azure_container_apps` and `azure_container_app_jobs`). A probe that sets a key itself keeps its own value for that key.
+
+| Variable | Replaces |
+|---|---|
+| `SENHUB_AZURE_TENANT_ID` | `tenant_id` |
+| `SENHUB_AZURE_CLIENT_ID` | `client_id` |
+| `SENHUB_AZURE_CLIENT_SECRET` | `client_secret` |
+| `SENHUB_AZURE_CLIENT_SECRET_FILE` | path of a file holding the secret (a mounted secret, for example) |
+| `SENHUB_AZURE_SUBSCRIPTION_ID` | `subscription_id` |
+
+The secret is taken from the first of these that is set: `client_secret`, `client_secret_file` (a probe key naming a file), `SENHUB_AZURE_CLIENT_SECRET`, `SENHUB_AZURE_CLIENT_SECRET_FILE`. A secret file that cannot be read is an error, not a fallback. The variables are read when the probe is configured, so changing them needs a restart.
+
+```yaml
+probes:
+  ca:
+    type: azure_container_apps
+    discovery: {}
+  caj:
+    type: azure_container_app_jobs
+    discovery: {}
 ```
 
 ## Checking the setup
