@@ -11,6 +11,7 @@ Changes land here as they are merged. The 0.6.3 corrective release collects them
 - **Container Apps discovery reports its coverage.** `discovery.found`, `discovery.followed` and `discovery.left_out` (by `filter` or `max_apps`) read "26 of 26" from metrics; `discovery.last_age` and `discovery.failures` show a listing that stopped working. Under discovery, the volume counters and scan failures are given per application, and an application never read no longer reports zero replicas.
 - **Container App Jobs discovery.** A `discovery:` block on `azure_container_app_jobs` follows every job of a subscription (resource groups, include and exclude patterns, cap), each with its own executions file; jobs that appear or disappear are picked up at the next enumeration. When executions come back without replicas, the log names the missing `Microsoft.App/jobs/*/read` permission once per job.
 - **Shared Azure credentials.** `SENHUB_AZURE_TENANT_ID`, `SENHUB_AZURE_CLIENT_ID`, `SENHUB_AZURE_CLIENT_SECRET` (or `_FILE`) and `SENHUB_AZURE_SUBSCRIPTION_ID` give the identity once for every Azure probe; a probe's own value still wins key by key.
+- **Log volume per Container App.** `senhub.azure_container_apps.records.volume` counts the bytes of published log bodies per application, so the volume compares with what Log Analytics bills; the official dashboard shows it per second and over the range.
 
 ## Fixes
 
