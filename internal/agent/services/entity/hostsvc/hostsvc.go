@@ -49,6 +49,9 @@ const (
 	attrPort                   = "port"
 	relRunsOn                  = "runs_on"
 	relListensOn               = "listens_on"
+	relBoundTo                 = "bound_to"
+	entityTypeNetworkAddress   = "network.address"
+	idKeyNetworkAddress        = "network.address"
 
 	// Listeners change rarely; re-enumerate on a slow cadence (walking sockets
 	// + per-pid process lookups is not free on a busy host) and serve the cache
@@ -224,6 +227,16 @@ func buildObservation(hostID string, ls []listener, ipToIface map[string]string,
 				ToType: entityTypeNetworkInterface,
 				ToID:   map[string]any{idKeyHost: hostID, idKeyInterfaceName: ifname},
 			})
+			// The listener also depends on the address it binds, an entity the
+			// interface source emits under the same exclusions.
+			if boundIP := bindableIP(l.Address); entity.AddressEdgeAllowed(boundIP) && !entity.IsContainerBridgeIface(ifname) {
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relBoundTo,
+					FromType: entityTypeServiceListener, FromID: listenerID,
+					ToType: entityTypeNetworkAddress,
+					ToID:   map[string]any{idKeyNetworkAddress: boundIP},
+				})
+			}
 		} else {
 			// Interim: no single interface to point at → attach to the host.
 			obs.Relations = append(obs.Relations, entity.Relation{
