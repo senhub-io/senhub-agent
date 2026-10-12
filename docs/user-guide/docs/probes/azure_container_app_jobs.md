@@ -52,7 +52,10 @@ SENHUB_PROBE_CAJ_BOOKMARK_PATH=/var/lib/senhub-agent/caj.executions
 
 A second job is a second probe with its own name (`CAJ2`) and its own `APP`, credentials repeated.
 
-- **One bookmark per job.** The file holds the names of the executions already published; two jobs sharing one overwrite each other and republish runs after a restart. Keep it under the agent's state directory, which should be a volume. Where your build defaults `bookmark_path` to a file named after the probe in the state directory (see the parameter table), naming it explicitly is still the way to keep a bookmark you had before.
+!!! note "One entry per job"
+    This probe has no discovery. An entry with a `discovery:` block, or without `app`, is refused with `azure_container_app_jobs has no discovery; declare one entry per job with app`.
+
+- **One bookmark per job.** The file holds the names of the executions already published; two jobs sharing one overwrite each other and republish runs after a restart. `bookmark_path` defaults to `<probe name>.executions` in the agent's state directory, which should be a volume, so each probe name gets its own file without setting anything. Name it explicitly only to keep a bookmark you had before.
 - **`${env:}` inside a value is not expanded.** `SENHUB_PROBE_CAJ_CLIENT_SECRET=${env:AZ_SECRET}` would reach the probe as that literal text. To share the credential between several jobs, point each probe's `CLIENT_SECRET_FILE` at the same mounted secret (`/run/secrets/az_client_secret` above, repeated for `CAJ2`), or declare the probes in `SENHUB_PROBES` (or a `probes.d` file), where `"${env:AZ_CLIENT_SECRET}"` is resolved at every start. See [the environment rule](../configuration.md#no-env-inside-a-value).
 - **Precedence.** The variables overlay the probes of the files and of `SENHUB_PROBES`, key by key, and the variable wins.
 
