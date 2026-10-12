@@ -138,6 +138,10 @@ func TestLoadFromDisk_LegacyWarningOncePerFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "probes.d"), 0o750); err != nil {
 		t.Fatal(err)
 	}
+	// A fragment of the operator: the split will not run, so the notice is due.
+	if err := os.WriteFile(filepath.Join(dir, "probes.d", "50-mine.yaml"), []byte(operatorFragment), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf)
 	log := logger.NewModuleLogger((*logger.Logger)(&zl), "configuration.loader.test")
