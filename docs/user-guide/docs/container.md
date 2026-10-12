@@ -8,7 +8,7 @@ else is a parameter.
 docker run -d --name senhub-agent \
   -e OTLP_BEARER_TOKEN=<your token> \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.6.0
+  ghcr.io/senhub-io/senhub-agent:0.6.3
 ```
 
 That is the whole of it for a first run: one variable, one mount.
@@ -106,10 +106,20 @@ reads them, so they apply with a configuration of your own too (see
 | `SENHUB_LOG_QUEUE` | No | `true` | `false` stops the agent keeping failed log batches on disk during an OTLP outage |
 | `SENHUB_LOG_QUEUE_RETENTION` | No | `24h` | Age after which a queued log batch is dropped; `0` = no limit |
 | `SENHUB_LOG_QUEUE_MAX_BYTES` | No | `134217728` (128 MiB) | Disk cap of the logs queue, in bytes or with a suffix (`64MiB`). The queue lives in the state directory: put it on a persistent volume (a File Share on Container Apps) for logs to survive a restart; see [Logs survive an outage](otlp.md#logs-survive-an-outage) |
-| `SENHUB_HOST_ID` | No | kept in the state directory | Host identity, 32 hexadecimal characters, dashes optional. One value per instance: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |
+| `SENHUB_HOST_ID` | No | kept in the state directory | Gives the host a stable identity across the re-creation of its container, so a new container is the same host in the graph and not a new one. 32 hexadecimal characters, dashes optional. One value per host: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |
 | `SENHUB_AGENT_KEY` | No | kept in the state directory | Agent identity, a UUID. One value per instance; with `SENHUB_HOST_ID` it lets a container without a volume keep one identity |
 | `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. For one probe at a time, the `SENHUB_PROBE_<NAME>_*` variables are shorter, see [Probes from variables](#probes-from-variables) |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
+
+!!! warning "Upgrading: an `agent.yaml` that is already there wins"
+    The variables above are read only when no `agent.yaml` exists in
+    `SENHUB_CONFIG_DIR`. A configuration directory kept on a volume since an
+    earlier run holds one, so a new container started with other values
+    (another token, endpoint or tag) ignores every `SENHUB_*` variable of the
+    table and keeps the old file; the entrypoint says so on startup. To apply
+    them, remove `agent.yaml` from the volume before the new container
+    starts, or edit it. `SENHUB_PROBE_<NAME>_*` is the exception: the agent
+    reads it itself at every start.
 
 Without `SENHUB_AGENT_KEY` the agent generates its own key on first
 start, and the entrypoint keeps it in the state directory so the next
@@ -158,8 +168,9 @@ mount.
 
 ### A whole mounted configuration
 
-Mount `/etc/senhub-agent` whole. Nothing is written and every variable
-is ignored, which the entrypoint says on startup. This door has a trap
+Mount `/etc/senhub-agent` whole. Nothing is written and the variables of
+the table are ignored, which the entrypoint says on startup;
+`SENHUB_PROBE_<NAME>_*` still applies, the agent reading it itself. This door has a trap
 of its own when the same directory serves several instances: see
 [Bringing your own configuration](#bringing-your-own-configuration).
 
@@ -184,7 +195,8 @@ SENHUB_PROBE_DB_USERNAME: monitor
 SENHUB_PROBE_DB_PASSWORD_FILE: /run/secrets/db_password
 ```
 
-The whole rule, with the precedence over `SENHUB_PROBES` and the files, is
+`SENHUB_PROBE_<NAME>_*` overlays the probes of the files and of `SENHUB_PROBES`,
+key by key, and the variable wins. The whole rule is
 on [Configuration](configuration.md#configuring-probes-from-environment-variables).
 Reading Azure Container Apps takes the same form, see
 [Azure Container Apps](probes/azure_container_apps.md#from-environment-variables).
@@ -192,15 +204,16 @@ Reading Azure Container Apps takes the same form, see
 ## Bringing your own configuration
 
 Mount a directory on `/etc/senhub-agent` and the entrypoint writes
-nothing: your files win and every `SENHUB_*` variable is ignored. The
-entrypoint says which of the two it did on startup, so a container that
-ignores your variables tells you why.
+nothing: your files win and the `SENHUB_*` variables of the table are
+ignored (`SENHUB_PROBE_<NAME>_*` is not: the agent reads it itself and it
+overlays your probes). The entrypoint says which of the two it did on
+startup, so a container that ignores your variables tells you why.
 
 ```bash
 docker run -d --name senhub-agent \
   -v /srv/senhub/conf:/etc/senhub-agent \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.6.0
+  ghcr.io/senhub-io/senhub-agent:0.6.3
 ```
 
 Your configuration wins completely, and that includes the agent key

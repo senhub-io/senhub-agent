@@ -22,16 +22,16 @@ Replicas that appear with a scale-out or a new revision are attached on the next
 
 ```yaml
 # probes.d/40-azure-container-apps.yaml — each file under probes.d/ is a YAML array of probes
-- name: squash-logs
+- name: ca
   type: azure_container_apps
   params:
     tenant_id: "00000000-0000-0000-0000-000000000000"
     client_id: "11111111-1111-1111-1111-111111111111"
-    client_secret: "${secret:squash-logs.client_secret}"   # OS secret store; inline plaintext is auto-sealed on install
+    client_secret: "${secret:ca.client_secret}"   # OS secret store; inline plaintext is auto-sealed on install
     subscription_id: "22222222-2222-2222-2222-222222222222"
     resource_group: rg-squash
     app: squash-tm
-    bookmark_path: /var/lib/senhub-agent/squash-logs.bookmark
+    bookmark_path: /var/lib/senhub-agent/ca.bookmark
     min_severity: warn                 # INFO and below never leave the agent
     exclude:
       - 'GET /health '                 # the platform's own probes
@@ -52,12 +52,12 @@ The `governance` block is the agent's per-probe governance (see [Configuration](
 Naming applications one by one stops working at the scale of a tenant: the list has to be maintained, and an application created last week is collected only once somebody remembers it. A `discovery` block replaces the list with a question asked of Azure.
 
 ```yaml
-- name: aca-subscription
+- name: ca
   type: azure_container_apps
   params:
     tenant_id: "${env:AZ_TENANT}"
     client_id: "${env:AZ_CLIENT}"
-    client_secret: "${secret:aca.client_secret}"
+    client_secret: "${secret:ca.client_secret}"
     subscription_id: "00000000-0000-0000-0000-000000000000"
     discovery:
       interval: 300                  # how often the subscription is asked
@@ -66,16 +66,16 @@ Naming applications one by one stops working at the scale of a tenant: the list 
       exclude: ["*-preview"]
 ```
 
-`discovery` and `app` are exclusive. A list you wrote and a list Azure answers would fight over the same bookmarks, so the configuration refuses the pair and says which to remove.
+`discovery` is exclusive with `app` **and** with `resource_group`: discovery finds the applications and their resource groups itself. A list you wrote and a list Azure answers would fight over the same bookmarks, so the configuration refuses the combination and says which key to remove. `subscription_id` and the credentials stay at the probe level.
 
 | Key | Default | What it does |
 |---|---|---|
-| `interval` | `300` | Seconds between two enumerations of the subscription. The replica scan keeps its own, faster, cadence. |
-| `max_apps` | `100` | Hard cap. Applications beyond it are left out and the log says how many, rather than the list being silently truncated. |
-| `resource_groups` | every group | Bounds the search. |
+| `interval` | `300` | Seconds between two enumerations of the subscription, 60 to 86400. The replica scan keeps its own, faster, cadence. |
+| `max_apps` | `100` | Hard cap, 1 to 500. Applications beyond it are left out and the log says how many, rather than the list being silently truncated. |
+| `resource_groups` | every group | Bounds the search. Not to be confused with the probe-level `resource_group`, which is refused here. |
 | `include` / `exclude` | every name | Filter on the application name; `*` is the only wildcard and `exclude` wins. |
 
-Three things are worth knowing before turning it on.
+Four things are worth knowing before turning it on.
 
 - **The role does not have to be granted on the whole subscription.** Azure returns, from a subscription-wide listing, only the resources the credential is allowed to read. Grant the role on one resource group and discovery finds exactly the applications of that group; grant it on the subscription and it finds them all. Measured on a real tenant: a role assigned on a single resource group returned its six applications from the subscription-wide call, and nothing else. So a security team that will not widen a read grant can still use discovery, bounded by the assignment rather than by a list.
 - **What bounds an instance is the credential, not the probe.** Every application of one discovery shares the credentials and the subscription, because each of those is a single value. An application in another subscription belongs to another instance.
@@ -88,35 +88,37 @@ When several applications are followed, what describes an application is publish
 
 # From environment variables
 
-Where placing a file is harder than setting a variable (a container platform, a Helm chart), the probe is declared by the agent's [environment rule](../configuration.md#configuring-probes-from-environment-variables). The probe name is yours; the application name goes in `APP`, and a name with a hyphen (`squash-tm`) is a value there, not part of a variable.
+Where placing a file is harder than setting a variable (a container platform, a Helm chart), the probe is declared by the agent's [environment rule](../configuration.md#configuring-probes-from-environment-variables). The probe name is yours; the examples call it `CA` (Container App), and its jobs counterpart `CAJ` (Container App Job). The application name goes in `APP`, and a name with a hyphen (`squash-tm`) is a value there, not part of a variable.
 
-One probe per application (list mode), the credentials repeated for each:
+One probe per application (list mode), the credentials repeated for each. A second application is a second probe with its own name (`CA2`):
 
 ```bash
-SENHUB_PROBE_OLTP_TYPE=azure_container_apps
-SENHUB_PROBE_OLTP_APP=oltp
-SENHUB_PROBE_OLTP_TENANT_ID=00000000-0000-0000-0000-000000000000
-SENHUB_PROBE_OLTP_CLIENT_ID=11111111-1111-1111-1111-111111111111
-SENHUB_PROBE_OLTP_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
-SENHUB_PROBE_OLTP_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
-SENHUB_PROBE_OLTP_RESOURCE_GROUP=rg-squash
-SENHUB_PROBE_OLTP_BOOKMARK_PATH=/var/lib/senhub-agent/oltp.bookmark
+SENHUB_PROBE_CA_TYPE=azure_container_apps
+SENHUB_PROBE_CA_APP=oltp
+SENHUB_PROBE_CA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CA_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CA_RESOURCE_GROUP=rg-squash
+SENHUB_PROBE_CA_BOOKMARK_PATH=/var/lib/senhub-agent/ca.bookmark
 ```
 
 The whole subscription (discovery mode), one probe:
 
 ```bash
-SENHUB_PROBE_ACA_TYPE=azure_container_apps
-SENHUB_PROBE_ACA_TENANT_ID=00000000-0000-0000-0000-000000000000
-SENHUB_PROBE_ACA_CLIENT_ID=11111111-1111-1111-1111-111111111111
-SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
-SENHUB_PROBE_ACA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
-SENHUB_PROBE_ACA_DISCOVERY__INTERVAL=300
-SENHUB_PROBE_ACA_DISCOVERY__EXCLUDE=*-preview
-SENHUB_PROBE_ACA_BOOKMARK_PATH=/var/lib/senhub-agent/aca.bookmark
+SENHUB_PROBE_CA_TYPE=azure_container_apps
+SENHUB_PROBE_CA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CA_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CA_DISCOVERY__INTERVAL=300
+SENHUB_PROBE_CA_DISCOVERY__EXCLUDE=*-preview
+SENHUB_PROBE_CA_BOOKMARK_PATH=/var/lib/senhub-agent/ca.bookmark
 ```
 
 Each instance keeps its own `bookmark_path`, under the agent's state directory, which should be a volume.
+
+A `${env:...}` written inside one of these values is not expanded, and `SENHUB_PROBE_CA_CLIENT_SECRET=${env:AZ_SECRET}` would reach the probe as that literal text. To share one credential between probes, give each the same `..._CLIENT_SECRET_FILE`, or declare the probes in `SENHUB_PROBES`, where `${env:AZ_SECRET}` is resolved; see [the environment rule](../configuration.md#no-env-inside-a-value). The variables overlay the probes of the files and of `SENHUB_PROBES`, key by key, and win.
 
 # Configuration Parameters
 
@@ -256,8 +258,8 @@ Four of them answer a question the others cannot:
 Log records are delivered to the outputs that consume logs, OTLP first; restrict them with the per-probe `log_strategies` key if needed. The state metrics are available through every configured output; for PRTG and Nagios, query the probe by its configured `name`:
 
 ```bash
-curl "http://localhost:8080/api/{agentkey}/prtg/metrics/squash-logs"
-curl "http://localhost:8080/api/{agentkey}/nagios/metrics/squash-logs"
+curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ca"
+curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ca"
 ```
 
 ## Metric reference
