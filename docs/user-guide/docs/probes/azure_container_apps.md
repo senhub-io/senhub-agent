@@ -262,6 +262,10 @@ curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ca"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ca"
 ```
 
+## Dashboards
+
+A ready-made Grafana dashboard for this probe, `azure-container-apps.json`, is provided in [`docs/grafana/`](https://github.com/senhub-io/senhub-agent/tree/master/docs/grafana) (see its README for the data path it expects). It covers coverage (applications followed out of found), per-application health, scan failures by reason, record volume and logs filtered by application and severity.
+
 ## Metric reference
 
 Every metric this probe can emit. **Metric** is the OpenTelemetry name the

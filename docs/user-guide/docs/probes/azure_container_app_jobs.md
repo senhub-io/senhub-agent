@@ -165,6 +165,10 @@ was already collecting, the job reads were refused with
 share a credential only if its role covers both; a credential already
 carrying the four application actions needs these three added to it.
 
+## Dashboards
+
+A ready-made Grafana dashboard for this probe, `azure-container-app-jobs.json`, is provided in [`docs/grafana/`](https://github.com/senhub-io/senhub-agent/tree/master/docs/grafana) (see its README for the data path it expects). It covers executions by status per job, duration, time since last success, failures and logs filtered by job and severity.
+
 ## Metric reference
 
 Every metric this probe can emit. **Metric** is the OpenTelemetry name the
