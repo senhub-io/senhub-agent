@@ -7,12 +7,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // hostNeighbor is one host neighbour entry (ARP for IPv4, NDP for IPv6).
 type hostNeighbor struct {
 	IP    string // canonical textual IP
-	MAC   string // lower-case colon form "aa:bb:cc:dd:ee:ff"
+	MAC   string // canonical OTel form "AA-BB-CC-DD-EE-FF" once returned by platformNeighbors
 	Iface string // interface name when known
 	State string // "reachable", "stale", "permanent", "incomplete", "failed", "delay", "probe" or "" when unknown
 }
@@ -48,9 +50,15 @@ func keepNeighbor(n hostNeighbor) bool {
 func dedupeAndSortNeighbors(ns []hostNeighbor) []hostNeighbor {
 	out := make([]hostNeighbor, 0, len(ns))
 	for _, n := range ns {
-		if keepNeighbor(n) {
-			out = append(out, n)
+		if !keepNeighbor(n) {
+			continue
 		}
+		// Every observer renders a MAC byte-identically, so a neighbour seen
+		// here and on a switch port carries the same value.
+		if mac, ok := entity.CanonicalMACString(n.MAC); ok {
+			n.MAC = mac
+		}
+		out = append(out, n)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Iface != out[j].Iface {

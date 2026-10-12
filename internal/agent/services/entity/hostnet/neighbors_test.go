@@ -143,3 +143,10 @@ func TestParseIpNetTable2Truncated(t *testing.T) {
 		t.Fatalf("missing row returned %+v", got)
 	}
 }
+
+func TestDedupeRendersTheCanonicalMAC(t *testing.T) {
+	got := dedupeAndSortNeighbors([]hostNeighbor{{IP: "192.0.2.1", MAC: "00:0c:29:aa:bb:cc", Iface: "eth0", State: "reachable"}})
+	if len(got) != 1 || got[0].MAC != "00-0C-29-AA-BB-CC" {
+		t.Fatalf("got %+v, want the OTel MAC form", got)
+	}
+}
