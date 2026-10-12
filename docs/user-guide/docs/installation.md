@@ -564,7 +564,11 @@ This is not recoverable. To move a host to a newer version while keeping its lic
 ```powershell
 .\senhub-agent.exe stop
 .\senhub-agent.exe uninstall
+cd \
+Remove-Item -Recurse -Force C:\SenHub
 ```
+
+`uninstall` does not delete the folder the ZIP was extracted to: the running binary cannot remove itself. Delete it by hand once the service is gone, as above.
 
 **Linux:**
 ```bash
