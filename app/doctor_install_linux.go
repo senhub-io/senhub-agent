@@ -66,3 +66,10 @@ func serviceUserInGroup(name string) (member, groupExists bool, err error) {
 	}
 	return isGroupMember(gids, group.Gid), true, nil
 }
+
+// platformServiceEnv loads the systemd unit's environment into this
+// process. Run unprivileged, the files stay unreadable and the report
+// says so.
+func platformServiceEnv(string) func() serviceEnvReport {
+	return func() serviceEnvReport { return applyServiceEnvironment(loadedUnitPath()) }
+}
