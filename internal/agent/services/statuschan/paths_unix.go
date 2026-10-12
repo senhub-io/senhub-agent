@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -31,6 +32,7 @@ func candidatePaths(configPath string) []string {
 	if configPath != "" {
 		dirs = append(dirs, filepath.Dir(configPath))
 	}
+	dirs = append(dirs, fallbackDir())
 	seen := map[string]bool{}
 	var out []string
 	for _, d := range dirs {
@@ -43,9 +45,39 @@ func candidatePaths(configPath string) []string {
 	return out
 }
 
+// fallbackDir holds the socket when no other directory can: a state and
+// configuration directory both on an SMB share (Azure Files), which has
+// no Unix sockets. Created private on first use.
+func fallbackDir() string {
+	return filepath.Join(os.TempDir(), "senhub-agent")
+}
+
+// ensurePrivateDir creates dir 0700, or accepts it only when it is a real
+// directory owned by this process and closed to others, so a directory
+// another user prepared in the shared temp directory is never used.
+func ensurePrivateDir(dir string) error {
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() || fi.Mode().Perm()&0o077 != 0 || !ownedByMe(fi) {
+		return fmt.Errorf("%s is not a private directory of this user", dir)
+	}
+	return nil
+}
+
 func listen(paths []string) (net.Listener, string, error) {
 	var lastErr error
 	for _, p := range paths {
+		if filepath.Dir(p) == fallbackDir() {
+			if err := ensurePrivateDir(filepath.Dir(p)); err != nil {
+				lastErr = err
+				continue
+			}
+		}
 		if !dirExists(filepath.Dir(p)) {
 			continue
 		}
@@ -98,4 +130,9 @@ func cleanup(path string) {
 	if path != "" {
 		_ = os.Remove(path)
 	}
+}
+
+func ownedByMe(fi os.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == os.Geteuid()
 }
