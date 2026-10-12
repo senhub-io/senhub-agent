@@ -15,7 +15,7 @@ func TestLogsQueueAnnounce_StatesPathCapAndRetention(t *testing.T) {
 	q.announce()
 
 	out := buf.String()
-	for _, want := range []string{`"level":"info"`, "OTLP logs queue active", dir, `"max_bytes":67108864`, `"retention":43200000`} {
+	for _, want := range []string{`"level":"info"`, "OTLP logs queue active", strings.ReplaceAll(dir, `\`, `\\`), `"max_bytes":67108864`, `"retention":43200000`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("announcement lacks %q: %s", want, out)
 		}
