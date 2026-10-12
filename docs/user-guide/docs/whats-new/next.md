@@ -12,3 +12,4 @@ Changes land here as they are merged. The 0.6.3 corrective release collects them
 - **A cut update download is retried.** When the stream breaks midway, the whole request is repeated up to three more times with a growing pause, with a `senhub-agent/<version>` User-Agent and no transparent compression of the archive.
 - **The OTLP receiver coverage counters start at zero.** `senhub.agent.otlp_receiver.received` and `.received.without_host_id` exist from the start for each enabled signal, so "nothing received yet" is no longer indistinguishable from a dead receiver.
 - **No error when the journal reader is stopped with the agent.** `linux_logs` no longer logs `journalctl subprocess died unexpectedly` when systemd terminates journalctl as part of stopping the service.
+- **`logicaldisk` stops warning about `/run/user/*` every cycle.** A per-user runtime directory the service account cannot read is skipped quietly; any other mount it cannot read is named once.
