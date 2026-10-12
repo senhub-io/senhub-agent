@@ -42,6 +42,10 @@ type redisProbe struct {
 
 	// dialFn is overridable in tests; defaults to net.DialTimeout.
 	dialFn func(network, address string, timeout time.Duration) (net.Conn, error)
+
+	// sentinelMastersFailed is true while SENTINEL MASTERS has been failing,
+	// so the warning is logged only when the failure state changes.
+	sentinelMastersFailed bool
 }
 
 // NewRedisProbe constructs the probe from its raw params block.
@@ -108,6 +112,19 @@ func (p *redisProbe) handshake(conn net.Conn) (net.Conn, error) {
 	return tlsConn, nil
 }
 
+// authCommandArgs returns the RESP AUTH command parts for the active config.
+// With no password there is no AUTH command; with a username Redis expects
+// AUTH <username> <password>, while legacy password-only auth is unchanged.
+func authCommandArgs(cfg probeConfig) []string {
+	if cfg.Password == "" {
+		return nil
+	}
+	if cfg.Username != "" {
+		return []string{"AUTH", cfg.Username, cfg.Password}
+	}
+	return []string{"AUTH", cfg.Password}
+}
+
 // Collect dials the Redis server, authenticates if configured, issues
 // INFO all, INFO commandstats, and conditionally INFO cluster / INFO sentinel,
 // parses the results and emits OTel-canonical datapoints. A connection or
@@ -135,8 +152,8 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 		conn = tlsConn
 	}
 
-	if p.cfg.Password != "" {
-		if err := sendCommand(conn, p.cfg.Timeout, "AUTH", p.cfg.Password); err != nil {
+	if parts := authCommandArgs(p.cfg); len(parts) > 0 {
+		if err := sendCommand(conn, p.cfg.Timeout, parts...); err != nil {
 			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis AUTH send failed")
 			return p.BaseProbe.EnrichDataPointsWithProbeName(
 				[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
@@ -197,8 +214,10 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
-	// INFO sentinel — only when redis_mode=sentinel in INFO server section.
+	// INFO sentinel and SENTINEL MASTERS — only when redis_mode=sentinel in
+	// INFO server section.
 	var sentinelInfo map[string]string
+	var sentinelMasters []sentinelMasterDetails
 	if info["redis_mode"] == "sentinel" {
 		if err := sendCommand(conn, p.cfg.Timeout, "INFO", "sentinel"); err == nil {
 			if sBlob, err := readInfo(conn, p.cfg.Timeout); err == nil {
@@ -209,12 +228,40 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 		} else {
 			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO sentinel send failed")
 		}
+
+		if err := sendCommand(conn, p.cfg.Timeout, "SENTINEL", "MASTERS"); err != nil {
+			p.logSentinelMastersFailure(err)
+		} else {
+			reply, err := readRESPValue(conn, p.cfg.Timeout)
+			if err != nil {
+				p.logSentinelMastersFailure(err)
+			} else {
+				sentinelMasters, err = parseSentinelMastersReply(reply)
+				if err != nil {
+					p.logSentinelMastersFailure(err)
+					sentinelMasters = nil
+				} else {
+					p.sentinelMastersFailed = false
+				}
+			}
+		}
 	}
 
 	points := p.buildDatapoints(info, cmdStats, clusterInfo, sentinelInfo, now, 1)
+	if len(sentinelMasters) > 0 {
+		p.addSentinelMasterDetailPoints(&points, sentinelMasters, now)
+	}
 	p.entityObs.update(p.cfg, info)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+func (p *redisProbe) logSentinelMastersFailure(err error) {
+	if p.sentinelMastersFailed {
+		return
+	}
+	p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis SENTINEL MASTERS failed")
+	p.sentinelMastersFailed = true
 }
 
 // baseTags returns the common tags emitted on every datapoint.
@@ -594,6 +641,31 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 	return pts
 }
 
+// sentinelMasterDetails is one master from SENTINEL MASTERS.
+type sentinelMasterDetails struct {
+	name               string
+	address            string
+	quorum             int
+	otherSentinels     int
+	failoverInProgress bool
+}
+
+// addSentinelMasterDetailPoints emits the SENTINEL MASTERS-only gauges for
+// each monitored master.
+func (p *redisProbe) addSentinelMasterDetailPoints(pts *[]data_store.DataPoint, masters []sentinelMasterDetails, ts time.Time) {
+	for _, m := range masters {
+		masterTag := tags.Tag{Key: "master", Value: m.name}
+		addressTag := tags.Tag{Key: "sentinel_master_address", Value: m.address}
+		p.addGauge(pts, "redis.sentinel.master.quorum", float64(m.quorum), ts, "sentinel", masterTag, addressTag)
+		failoverVal := float64(0)
+		if m.failoverInProgress {
+			failoverVal = 1
+		}
+		p.addGauge(pts, "redis.sentinel.master.failover_in_progress", failoverVal, ts, "sentinel", masterTag, addressTag)
+		p.addGauge(pts, "redis.sentinel.master.other_sentinels", float64(m.otherSentinels), ts, "sentinel", masterTag, addressTag)
+	}
+}
+
 // statusValue maps a Redis "ok"/"err" status field to 1/0.
 func statusValue(raw string) float64 {
 	if strings.TrimSpace(raw) == "ok" {
@@ -838,6 +910,160 @@ func readInfo(conn net.Conn, timeout time.Duration) (string, error) {
 		return "", fmt.Errorf("reading INFO trailing CRLF: %w", err)
 	}
 	return string(body), nil
+}
+
+// respValue is a small RESP value container used for nested replies such
+// as SENTINEL MASTERS.
+type respValue struct {
+	typ byte
+	str string
+	arr []respValue
+}
+
+// readRESPValue reads one RESP value from the connection.
+func readRESPValue(conn net.Conn, timeout time.Duration) (respValue, error) {
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return respValue{}, fmt.Errorf("setting RESP deadline: %w", err)
+	}
+	v, err := readRESP(bufio.NewReader(conn))
+	if err != nil {
+		return respValue{}, err
+	}
+	return v, nil
+}
+
+// readRESP reads one RESP value from a buffered reader. It supports simple
+// strings, errors, integers, bulk strings and nested arrays.
+func readRESP(r *bufio.Reader) (respValue, error) {
+	line, err := r.ReadString('\n')
+	if err != nil {
+		return respValue{}, fmt.Errorf("reading RESP line: %w", err)
+	}
+	line = strings.TrimRight(line, "\r\n")
+	if line == "" {
+		return respValue{}, fmt.Errorf("empty RESP response")
+	}
+
+	switch line[0] {
+	case '+':
+		return respValue{typ: '+', str: line[1:]}, nil
+	case '-':
+		return respValue{typ: '-', str: line[1:]}, nil
+	case ':':
+		if _, err := strconv.ParseInt(line[1:], 10, 64); err != nil {
+			return respValue{}, fmt.Errorf("invalid RESP integer %q: %w", line, err)
+		}
+		return respValue{typ: ':', str: line[1:]}, nil
+	case '$':
+		n, err := strconv.Atoi(line[1:])
+		if err != nil {
+			return respValue{}, fmt.Errorf("invalid RESP bulk length %q: %w", line, err)
+		}
+		if n < 0 {
+			return respValue{typ: '$'}, nil
+		}
+		body := make([]byte, n)
+		if _, err := readFull(r, body); err != nil {
+			return respValue{}, fmt.Errorf("reading RESP bulk body: %w", err)
+		}
+		if _, err := r.ReadString('\n'); err != nil {
+			return respValue{}, fmt.Errorf("reading RESP bulk trailing CRLF: %w", err)
+		}
+		return respValue{typ: '$', str: string(body)}, nil
+	case '*':
+		count, err := strconv.Atoi(line[1:])
+		if err != nil {
+			return respValue{}, fmt.Errorf("invalid RESP array length %q: %w", line, err)
+		}
+		if count < 0 {
+			return respValue{typ: '*'}, nil
+		}
+		arr := make([]respValue, 0, count)
+		for i := 0; i < count; i++ {
+			v, err := readRESP(r)
+			if err != nil {
+				return respValue{}, err
+			}
+			arr = append(arr, v)
+		}
+		return respValue{typ: '*', arr: arr}, nil
+	default:
+		return respValue{}, fmt.Errorf("unknown RESP type %q", line)
+	}
+}
+
+// parseSentinelMastersReply parses the nested RESP array returned by
+// SENTINEL MASTERS into sentinelMasterDetails values.
+func parseSentinelMastersReply(v respValue) ([]sentinelMasterDetails, error) {
+	if v.typ == '-' {
+		return nil, fmt.Errorf("SENTINEL MASTERS reply error: %s", v.str)
+	}
+	if v.typ != '*' {
+		return nil, fmt.Errorf("SENTINEL MASTERS reply must be an array, got RESP type %q", v.typ)
+	}
+
+	out := make([]sentinelMasterDetails, 0, len(v.arr))
+	for _, entry := range v.arr {
+		m, ok, err := parseSentinelMasterDetail(entry)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+func parseSentinelMasterDetail(v respValue) (sentinelMasterDetails, bool, error) {
+	if v.typ != '*' {
+		return sentinelMasterDetails{}, false, fmt.Errorf("SENTINEL MASTERS master entry must be an array, got RESP type %q", v.typ)
+	}
+	if len(v.arr)%2 != 0 {
+		return sentinelMasterDetails{}, false, fmt.Errorf("SENTINEL MASTERS master entry has odd field/value count %d", len(v.arr))
+	}
+
+	var m sentinelMasterDetails
+	var ip, port, flags, failoverState string
+	for i := 0; i < len(v.arr); i += 2 {
+		key := v.arr[i].str
+		val := v.arr[i+1].str
+		switch key {
+		case "name":
+			m.name = val
+		case "ip":
+			ip = val
+		case "port":
+			port = val
+		case "flags":
+			flags = val
+		case "quorum":
+			m.quorum, _ = strconv.Atoi(val)
+		case "num-other-sentinels":
+			m.otherSentinels, _ = strconv.Atoi(val)
+		case "failover-state":
+			failoverState = val
+		}
+	}
+
+	if m.name == "" {
+		return sentinelMasterDetails{}, false, nil
+	}
+	if ip != "" && port != "" {
+		m.address = net.JoinHostPort(ip, port)
+	}
+	m.failoverInProgress = flagsContain(flags, "failover_in_progress") || (failoverState != "" && failoverState != "none")
+	return m, true, nil
+}
+
+func flagsContain(flags, flag string) bool {
+	for _, f := range strings.Split(flags, ",") {
+		if strings.TrimSpace(f) == flag {
+			return true
+		}
+	}
+	return false
 }
 
 // readFull reads exactly len(buf) bytes from r.
