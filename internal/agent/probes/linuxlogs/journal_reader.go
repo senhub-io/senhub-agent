@@ -41,7 +41,12 @@ type journalEntry struct {
 // LogRecord. Severity is taken from PRIORITY (RFC 5424 0..7) using
 // the canonical OTel mapping table.
 func parseEntry(e journalEntry, probeName string) agentstate.LogRecord {
-	pri, _ := strconv.Atoi(e.Priority)
+	// An entry with no (or a malformed) PRIORITY is informational: Atoi
+	// would read it as 0, which is emergency.
+	pri, err := strconv.Atoi(e.Priority)
+	if err != nil {
+		pri = 6
+	}
 	ts := parseRealtime(e.RealtimeUS)
 
 	attrs := map[string]string{}
