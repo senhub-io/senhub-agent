@@ -38,6 +38,7 @@ type installProbe struct {
 	logDirAccess func(dir, serviceUser string) (logDirState, error)
 	serviceBin   func() string
 	binVersion   func(path string) string
+	pathBinaries func() []string
 }
 
 type logDirState struct {

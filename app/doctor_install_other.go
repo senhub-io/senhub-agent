@@ -9,6 +9,7 @@ func platformInstallProbe() installProbe {
 		logDirAccess: hostLogDirAccess,
 		serviceBin:   installedServiceBinary,
 		binVersion:   binaryVersion,
+		pathBinaries: binariesOnPath,
 	}
 }
 

@@ -90,6 +90,9 @@ func checkInstall(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck
 		out = append(out, *bin)
 	}
 	out = append(out, skewCheck(d))
+	if c := pathBinaryCheck(d, unit, unitErr, st); c != nil {
+		out = append(out, *c)
+	}
 
 	if c := logGroupCheck(d, cfg, serviceUser); c != nil {
 		out = append(out, *c)
