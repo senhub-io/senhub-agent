@@ -63,6 +63,8 @@ type doctorDeps struct {
 	outputTest    func(ctx context.Context, outputType string, params map[string]interface{}, agentKey string, port int) []otlp.ConnectionStep
 	freePercent   func(path string) (float64, error)
 	install       installProbe
+	serviceEnv    func() serviceEnvReport
+	unsetEnv      func(configPath string) []configuration.EnvReference
 }
 
 // secretReport is what `secret status` says, or that no store exists.
@@ -111,6 +113,8 @@ func newDoctorDeps(configPath string) doctorDeps {
 		},
 		freePercent: diskFreePercent,
 		install:     platformInstallProbe(),
+		serviceEnv:  platformServiceEnv(configPath),
+		unsetEnv:    configuration.UnsetEnvReferences,
 	}
 }
 
