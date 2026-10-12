@@ -112,6 +112,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		if err := applyLicenseSidecar(&data, configPath); err != nil {
 			return LocalConfigurationData{}, err
 		}
+		resolveRelativePaths(&data, configPath)
 		warnSNMPPollOverlaps(log, data.Probes)
 		return data, nil
 	}
@@ -137,6 +138,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	if err := applyLicenseSidecar(&merged, configPath); err != nil {
 		return LocalConfigurationData{}, err
 	}
+	resolveRelativePaths(&merged, configPath)
 	warnSNMPPollOverlaps(log, merged.Probes)
 	return merged, nil
 }

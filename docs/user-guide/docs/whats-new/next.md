@@ -18,3 +18,4 @@ Changes land here as they are merged. The 0.6.3 corrective release collects them
 - **Jobs probe docs.** `bookmark_path` defaults to `<probe name>.executions` in the state directory, and an entry without `app` or with `discovery:` is refused.
 - **One `host.name` on every signal.** Metrics, the OTLP resource, the host entity, the systemd unit entities and the info endpoint all use the same canonical host name.
 - **Every log record carries an OTel severity number.** Whatever level word a source writes, the number is derived (the text stays as written); a journald entry without a priority is informational instead of an emergency.
+- **Relative paths follow the configuration directory.** `bookmark_path` and the `*_file` parameters (CA, certificate, key, password files), and `config/nagios.yaml`, are resolved against the directory of the configuration, not the working directory; `config check` from another directory no longer reports a false permission error.
