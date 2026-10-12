@@ -20,9 +20,11 @@ import (
 // itself, otelcol). Operators recognize the names instantly.
 type ProcessSnapshot struct {
 	// CPUSecondsTotal is the cumulative CPU time the process has
-	// consumed since startup, in seconds. Cross-OS via runtime/metrics
-	// `/cpu/classes/total:cpu-seconds` which sums user + system time.
-	// Always non-decreasing — a Prometheus counter.
+	// consumed since startup, in seconds: user + system from the OS
+	// (getrusage, GetProcessTimes). runtime/metrics'
+	// /cpu/classes/total:cpu-seconds is GOMAXPROCS integrated over wall
+	// time, the CPU available, not used: it read as 2 vCPU busy on an
+	// idle 2-CPU container.
 	CPUSecondsTotal float64
 
 	// ResidentMemoryBytes is the OS-reported resident set size for
@@ -61,7 +63,6 @@ type ProcessSnapshot struct {
 // avoid heap allocation on every scrape. The package documents that
 // the Sample slice can be reused as long as Names are unchanged.
 var processMetricSamples = []metrics.Sample{
-	{Name: "/cpu/classes/total:cpu-seconds"},
 	{Name: "/memory/classes/heap/objects:bytes"},
 	{Name: "/gc/cycles/total:gc-cycles"},
 }
@@ -83,12 +84,11 @@ func GetProcessSnapshot() ProcessSnapshot {
 	// right field per known metric Name. If a metric is unsupported
 	// on this Go version (KindBad), the field stays at its zero
 	// value — graceful degradation.
+	if cpu, ok := processCPUSeconds(); ok {
+		snap.CPUSecondsTotal = cpu
+	}
 	for _, s := range processMetricSamples {
 		switch s.Name {
-		case "/cpu/classes/total:cpu-seconds":
-			if s.Value.Kind() == metrics.KindFloat64 {
-				snap.CPUSecondsTotal = s.Value.Float64()
-			}
 		case "/memory/classes/heap/objects:bytes":
 			if s.Value.Kind() == metrics.KindUint64 {
 				snap.HeapBytes = s.Value.Uint64()
