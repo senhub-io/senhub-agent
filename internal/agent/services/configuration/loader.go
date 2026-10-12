@@ -94,7 +94,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		if log != nil {
 			probesDirExists := dirExists(probesDir)
 			strategiesDirExists := dirExists(strategiesDir)
-			if (probesDirExists || strategiesDirExists) && firstLegacyWarning(configPath) {
+			if (probesDirExists || strategiesDirExists) && !splitWillHarmonise(baseDir) && firstLegacyWarning(configPath) {
 				log.Warn().
 					Str("config_path", configPath).
 					Bool("probes_d_present", probesDirExists).
@@ -370,4 +370,19 @@ var ignoredReported sync.Map
 func firstIgnoredReport(dir string, names []string) bool {
 	_, seen := ignoredReported.LoadOrStore(dir+"\x00"+strings.Join(names, "\x00"), struct{}{})
 	return !seen
+}
+
+// splitWillHarmonise reports that the boot-time split will migrate this
+// legacy file on its own: the .d directories hold only what install
+// created or an earlier attempt left. Warning that they are ignored would
+// then announce, at the start that creates them, a state that ends a
+// moment later.
+func splitWillHarmonise(baseDir string) bool {
+	_, foreign := classifyFragments(baseDir)
+	for _, p := range foreign {
+		if !isInstallDefaultFragment(p) {
+			return false
+		}
+	}
+	return true
 }
