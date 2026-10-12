@@ -19,6 +19,9 @@ func TestSniffSeverityReadsTheLevelWordAtTheHead(t *testing.T) {
 		"":                                                                agentstate.LogSeverityUnspecified,
 		"level=notice msg=hello":                                          agentstate.LogSeverityInfo,
 		`ts=2026-10-12T14:00:00Z lvl="error" msg="boom"`:                  agentstate.LogSeverityError,
+		"2026-10-12T14:00:00Z warn simulated warning":                     agentstate.LogSeverityWarn,
+		"2026-10-12 14:00:00 error simulated error":                       agentstate.LogSeverityError,
+		"error: connection refused":                                       agentstate.LogSeverityError,
 		"request levelled=error by the user":                              agentstate.LogSeverityUnspecified,
 	}
 	for line, want := range cases {
