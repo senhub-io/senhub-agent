@@ -4,6 +4,10 @@ Changes land here as they are merged. The 0.6.3 corrective release collects them
 
 <div class="rn-filter"></div>
 
+## Features
+
+- **Official Grafana dashboards for Azure Container Apps and Container App Jobs.** `azure-container-apps.json` (coverage, per-application health, scan failures by reason, volume, logs) and `azure-container-app-jobs.json` (executions by status, duration, last run, logs) in `docs/grafana/`. They read the per-application metrics, not log counts.
+
 ## Fixes
 
 - **doctor resolves `${env:}` with the service's environment.** It reads `Environment=` and `EnvironmentFile=` from the systemd unit and its drop-ins (as root). A reference it cannot resolve outside the service is a warning that names the variable, never a failure.

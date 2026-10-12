@@ -47,6 +47,19 @@ Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 | `citrix-sessions-logons.json`  | SenHub Citrix VDI — Sessions & Logons | `senhub-citrix-sessions-logons` |
 | `citrix-capacity-health.json`  | SenHub Citrix VDI — Capacity & Health | `senhub-citrix-capacity-health` |
 
+### Azure (2)
+
+| File | Dashboard | UID |
+|---|---|---|
+| `azure-container-apps.json`     | SenHub Azure CA — Container Apps     | `senhub-azure-container-apps` |
+| `azure-container-app-jobs.json` | SenHub Azure CAJ — Container App Jobs | `senhub-azure-container-app-jobs` |
+
+Both read the per-application (`azure_app`) and per-job (`azure_job`)
+metrics and the OTLP logs in VictoriaLogs. The coverage row of the
+Container Apps dashboard (`senhub_azure_container_apps_discovery_*`)
+needs the discovery metrics added in 0.6.3; it stays empty on older
+agents.
+
 All vendor dashboards carry "**(awaiting live data)**" in their title
 until a customer pilot lights up the corresponding probe. Schema is
 validated, queries are cross-checked against
