@@ -76,11 +76,23 @@ func (cm *ConfigurationManager) LoadNagiosConfig() *NagiosConfig {
 // install folder on Windows, so the historical path alone could not be
 // documented as a place an operator should write to.
 func (cm *ConfigurationManager) nagiosConfigCandidates() []string {
-	var candidates []string
+	configPath := ""
 	if cm.agentConfig != nil {
-		if path := cm.agentConfig.GetConfigPath(); path != "" {
-			candidates = append(candidates, filepath.Join(filepath.Dir(path), "nagios.yaml"))
-		}
+		configPath = cm.agentConfig.GetConfigPath()
+	}
+	return nagiosCandidatesFor(configPath)
+}
+
+// nagiosCandidatesFor lists the nagios.yaml locations for a configuration
+// file: next to it, then config/nagios.yaml under the configuration
+// directory, then the historical one under the working directory. The
+// directory is the configuration's, never the shell's: `config check` run
+// from another directory must look where the service does.
+func nagiosCandidatesFor(configPath string) []string {
+	var candidates []string
+	if configPath != "" {
+		dir := filepath.Dir(configPath)
+		candidates = append(candidates, filepath.Join(dir, "nagios.yaml"), filepath.Join(dir, "config", "nagios.yaml"))
 	}
 	return append(candidates, filepath.Join("config", "nagios.yaml"))
 }
@@ -385,10 +397,16 @@ type NagiosFileReport struct {
 // no such file, which is not a problem: the shipped checks are served.
 func CheckNagiosFile(agentConfigPath string) (report NagiosFileReport, found bool) {
 	cm := &ConfigurationManager{}
-	candidates := []string{filepath.Join(filepath.Dir(agentConfigPath), "nagios.yaml"), filepath.Join("config", "nagios.yaml")}
-	for _, path := range candidates {
+	candidates := nagiosCandidatesFor(agentConfigPath)
+	for i, path := range candidates {
 		config, err := cm.loadNagiosConfigFromFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		// The last candidate is relative to the working directory of
+		// whoever runs the check; a directory they cannot read is no
+		// finding about the agent's configuration.
+		if errors.Is(err, fs.ErrPermission) && i == len(candidates)-1 {
 			continue
 		}
 		report.Path = path
