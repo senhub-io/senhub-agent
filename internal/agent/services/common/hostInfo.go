@@ -167,7 +167,7 @@ func GetHostIdentity() (HostIdentity, error) {
 	}
 	np := getHostNameplate(virt)
 	return HostIdentity{
-		ID:                    hostInfo.HostID,
+		ID:                    lowerHostID(hostInfo.HostID),
 		Name:                  canonicalHostname(hostInfo.Hostname),
 		OSType:                hostInfo.OS,
 		Arch:                  hostInfo.KernelArch,
@@ -387,7 +387,7 @@ func GetHostResourceAttributes() (map[string]string, error) {
 			attrs[k] = v
 		}
 	}
-	set("host.id", hostInfo.HostID)
+	set("host.id", lowerHostID(hostInfo.HostID))
 	set("host.name", canonicalHostname(hostInfo.Hostname))
 	set("host.arch", hostInfo.KernelArch)
 	set("os.type", hostInfo.OS)
@@ -430,4 +430,11 @@ func IsLinux() (bool, error) {
 		return false, fmt.Errorf("error getting host info: %w", err)
 	}
 	return hostInfo.OS == "linux", nil
+}
+
+// lowerHostID keeps host.id in the contract's lowercase form. gopsutil
+// lowercases product_uuid but not the /etc/machine-id fallback, and the
+// same id in two cases is two entities downstream.
+func lowerHostID(id string) string {
+	return strings.ToLower(strings.TrimSpace(id))
 }
