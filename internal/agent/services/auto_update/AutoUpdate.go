@@ -83,6 +83,9 @@ type autoUpdate struct {
 	// downloadWait is the first pause between archive download attempts;
 	// nil means the default. Tests set it to zero.
 	downloadWait *time.Duration
+	// downloadIdle is how long the archive body may stay silent before the
+	// attempt is abandoned; nil means archiveDownloadIdle.
+	downloadIdle *time.Duration
 	// operatorDriven is true for the root-run `senhub-agent update` CLI and
 	// false for the daemon's periodic checker. See selfApplyRefusal.
 	operatorDriven bool
@@ -529,6 +532,10 @@ const (
 	maxArchiveSize       = 200 * 1024 * 1024
 	archiveDownloadTries = 4
 	archiveDownloadWait  = 2 * time.Second
+	// archiveDownloadIdle bounds the silence on an open archive body. A cut
+	// stream is retried, but a stalled one (connection open, no byte) would
+	// otherwise be waited on forever.
+	archiveDownloadIdle = 60 * time.Second
 )
 
 // downloadArchive fetches the release archive into file and returns the
@@ -575,7 +582,9 @@ func (a *autoUpdate) downloadArchive(downloadURL string, file *os.File) (*minisi
 // ended early or broke: a refusal (status, content type, size) is the
 // same on the next attempt.
 func (a *autoUpdate) downloadArchiveOnce(downloadURL string, file *os.File) (digest *minisign.Reader, size int64, retryable bool, err error) {
-	req, err := http.NewRequest(http.MethodGet, downloadURL, nil) // #nosec G107 - URL is validated for HTTPS scheme by the caller
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil) // #nosec G107 - URL is validated for HTTPS scheme by the caller
 	if err != nil {
 		return nil, 0, false, fmt.Errorf("failed to download update: %w", err)
 	}
@@ -603,9 +612,18 @@ func (a *autoUpdate) downloadArchiveOnce(downloadURL string, file *os.File) (dig
 			contentType, downloadURL)
 	}
 
-	digest = minisign.NewReader(io.LimitReader(resp.Body, maxArchiveSize+1))
+	idle := archiveDownloadIdle
+	if a.downloadIdle != nil {
+		idle = *a.downloadIdle
+	}
+	watched := newIdleReader(resp.Body, idle, cancel)
+	defer watched.stop()
+	digest = minisign.NewReader(io.LimitReader(watched, maxArchiveSize+1))
 	size, err = io.Copy(file, digest)
 	if err != nil {
+		if watched.stalled.Load() {
+			err = fmt.Errorf("no data received for %s: %w", idle, err)
+		}
 		return nil, size, true, err
 	}
 	if resp.ContentLength > 0 && size < resp.ContentLength {
@@ -920,3 +938,32 @@ func (a *autoUpdate) ListAvailableVersions(includeBeta bool) ([]VersionMetadata,
 	registryUrl := a.GetRegistryUrl("")
 	return FetchAllVersions(a.httpClient, registryUrl, includeBeta, a.logger)
 }
+
+// idleReader abandons a body that stays silent: when no read returns a byte
+// for the idle duration, onStall cancels the request, which turns the blocked
+// Read into an error the retry loop treats like a cut stream.
+type idleReader struct {
+	r       io.Reader
+	idle    time.Duration
+	timer   *time.Timer
+	stalled atomic.Bool
+}
+
+func newIdleReader(r io.Reader, idle time.Duration, onStall func()) *idleReader {
+	ir := &idleReader{r: r, idle: idle}
+	ir.timer = time.AfterFunc(idle, func() {
+		ir.stalled.Store(true)
+		onStall()
+	})
+	return ir
+}
+
+func (ir *idleReader) Read(p []byte) (int, error) {
+	n, err := ir.r.Read(p)
+	if n > 0 {
+		ir.timer.Reset(ir.idle)
+	}
+	return n, err
+}
+
+func (ir *idleReader) stop() { ir.timer.Stop() }
