@@ -293,5 +293,10 @@ series' tags.
 | `senhub.azure_container_apps.stream.reconnects` | `azure_container_apps_stream_reconnects` | Stream Reconnects | # | Cumulative count of console log streams re-attached after a drop |
 | `senhub.azure_container_apps.stream.attach_throttled` | `azure_container_apps_attach_throttled` | Attaches Throttled | # | Cumulative attaches the stream endpoint refused for rate; counted apart from the reconnects, which climb on their own since Azure cuts every stream about every ten minutes |
 | `senhub.azure_container_apps.scan.failures` | `azure_container_apps_scan_failures` | Scan Failures {reason} | # | Cumulative replica scans Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable. Reachability alone reads the same for a wrong secret, a deleted application and a control plane pushing back |
+| `senhub.azure_container_apps.discovery.found` | `azure_container_apps_discovery_found` | Applications Found | # | Applications the last successful subscription listing returned; found = followed + left out |
+| `senhub.azure_container_apps.discovery.followed` | `azure_container_apps_discovery_followed` | Applications Followed | # | Applications this instance follows after the filters and the max_apps cap |
+| `senhub.azure_container_apps.discovery.left_out` | `azure_container_apps_discovery_left_out` | Applications Left Out {reason} | # | Applications found but not followed, by cause: filter (include, exclude, resource_groups) or max_apps |
+| `senhub.azure_container_apps.discovery.last_age` | `azure_container_apps_discovery_last_age` | Since Last Discovery | s | Seconds since the last successful subscription listing; climbs while discovery fails |
+| `senhub.azure_container_apps.discovery.failures` | `azure_container_apps_discovery_failures` | Discovery Failures {reason} | # | Cumulative subscription listings Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable |
 
 <!-- schema:metrics:end -->
