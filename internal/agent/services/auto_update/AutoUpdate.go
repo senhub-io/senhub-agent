@@ -80,6 +80,9 @@ type autoUpdate struct {
 	// targetPath is the executable to replace; empty means the running
 	// one. Set by tests so an update never lands on the test binary.
 	targetPath string
+	// downloadWait is the first pause between archive download attempts;
+	// nil means the default. Tests set it to zero.
+	downloadWait *time.Duration
 	// operatorDriven is true for the root-run `senhub-agent update` CLI and
 	// false for the daemon's periodic checker. See selfApplyRefusal.
 	operatorDriven bool
@@ -378,27 +381,6 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 	// connection but never sends bytes would hang this goroutine
 	// forever — and since the caller os.Exit(0)s on success, a hung
 	// download silently stalls the hourly update check with no log.
-	resp, err := a.httpClient.Get(downloadURL) // #nosec G107 - URL is validated for HTTPS scheme above
-	if err != nil {
-		return fmt.Errorf("failed to download update: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download update: HTTP %d %s from %s",
-			resp.StatusCode, resp.Status, downloadURL)
-	}
-
-	// The release pipeline serves ZIPs as application/zip; some CDNs
-	// (GitHub's release storage in particular) report
-	// application/octet-stream. Reject html / json which would
-	// indicate we landed on an error page rather than the archive.
-	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {
-		return fmt.Errorf("invalid content type for archive download: %s (expected zip/octet-stream, got %s)",
-			contentType, downloadURL)
-	}
-
 	// The archive goes to disk, next to the binary it will replace, and
 	// the minisign digest is computed on the way through. Buffering it in
 	// memory, then the decompressed binary again, cost about 250 MB on a
@@ -416,9 +398,7 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 	archivePath := archive.Name()
 	defer os.Remove(archivePath)
 
-	const maxArchiveSize = 200 * 1024 * 1024
-	digest := minisign.NewReader(io.LimitReader(resp.Body, maxArchiveSize+1))
-	size, err := io.Copy(archive, digest)
+	digest, size, err := a.downloadArchive(downloadURL, archive)
 	if closeErr := archive.Close(); err == nil {
 		err = closeErr
 	}
@@ -474,7 +454,6 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 	}
 
 	a.logger.Info().
-		Str("content_type", contentType).
 		Int64("archive_size", size).
 		Uint64("binary_size", entry.UncompressedSize64).
 		Msg("Update archive download validation passed, applying update")
@@ -544,6 +523,95 @@ func applyBinary(binary io.Reader, target string) error {
 		return err
 	}
 	return nil
+}
+
+const (
+	maxArchiveSize       = 200 * 1024 * 1024
+	archiveDownloadTries = 4
+	archiveDownloadWait  = 2 * time.Second
+)
+
+// downloadArchive fetches the release archive into file and returns the
+// digest computed on the way through. The retry of the HTTP client covers
+// the connection only; a stream cut halfway through the body (a CDN that
+// resets about half of the large downloads) is final for it. The whole
+// request is therefore repeated here, from an emptied file, with a growing
+// pause.
+//
+// The archive is asked for as it is stored: a transparent gzip layer
+// would hash the decompressed stream, and the signature covers the zip.
+func (a *autoUpdate) downloadArchive(downloadURL string, file *os.File) (*minisign.Reader, int64, error) {
+	var lastErr error
+	wait := archiveDownloadWait
+	if a.downloadWait != nil {
+		wait = *a.downloadWait
+	}
+	for attempt := 1; attempt <= archiveDownloadTries; attempt++ {
+		if attempt > 1 {
+			a.logger.Warn().Err(lastErr).Int("attempt", attempt).Int("of", archiveDownloadTries).
+				Msg("Update download interrupted; retrying the whole request")
+			time.Sleep(wait)
+			wait *= 2
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
+				return nil, 0, fmt.Errorf("rewinding the update archive: %w", err)
+			}
+			if err := file.Truncate(0); err != nil {
+				return nil, 0, fmt.Errorf("emptying the update archive: %w", err)
+			}
+		}
+		digest, size, retryable, err := a.downloadArchiveOnce(downloadURL, file)
+		if err == nil {
+			return digest, size, nil
+		}
+		if !retryable {
+			return nil, 0, err
+		}
+		lastErr = err
+	}
+	return nil, 0, fmt.Errorf("download failed after %d attempts: %w", archiveDownloadTries, lastErr)
+}
+
+// downloadArchiveOnce is one GET. retryable is true only for a body that
+// ended early or broke: a refusal (status, content type, size) is the
+// same on the next attempt.
+func (a *autoUpdate) downloadArchiveOnce(downloadURL string, file *os.File) (digest *minisign.Reader, size int64, retryable bool, err error) {
+	req, err := http.NewRequest(http.MethodGet, downloadURL, nil) // #nosec G107 - URL is validated for HTTPS scheme by the caller
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("failed to download update: %w", err)
+	}
+	req.Header.Set("User-Agent", "senhub-agent/"+cliArgs.Version)
+	req.Header.Set("Accept-Encoding", "identity")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("failed to download update: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, 0, false, fmt.Errorf("failed to download update: HTTP %d %s from %s",
+			resp.StatusCode, resp.Status, downloadURL)
+	}
+
+	// The release pipeline serves ZIPs as application/zip; some CDNs
+	// (GitHub's release storage in particular) report
+	// application/octet-stream. Reject html / json which would
+	// indicate we landed on an error page rather than the archive.
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {
+		return nil, 0, false, fmt.Errorf("invalid content type for archive download: %s (expected zip/octet-stream, got %s)",
+			contentType, downloadURL)
+	}
+
+	digest = minisign.NewReader(io.LimitReader(resp.Body, maxArchiveSize+1))
+	size, err = io.Copy(file, digest)
+	if err != nil {
+		return nil, size, true, err
+	}
+	if resp.ContentLength > 0 && size < resp.ContentLength {
+		return nil, size, true, fmt.Errorf("body ended after %d of %d bytes", size, resp.ContentLength)
+	}
+	return digest, size, false, nil
 }
 
 // fetchSignature downloads the detached minisign signature published

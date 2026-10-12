@@ -4,6 +4,7 @@
 package logicaldisk
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -41,6 +42,33 @@ type unixLogicalDiskCollector struct {
 	logger         *logger.ModuleLogger
 	mountinfoWarns sync.Once
 	hostRoot       string
+	// unstatable holds the mount points already reported, so a mount the
+	// service cannot read is named once rather than every cycle.
+	unstatable sync.Map
+}
+
+// userRuntimeDirPrefix is where systemd mounts a per-user tmpfs, readable
+// by that user alone: a service account is expected to be refused there.
+const userRuntimeDirPrefix = "/run/user/"
+
+// reportUnstatable says why a mount is skipped. A refused per-user runtime
+// directory is routine and stays at Debug; any other failure is a Warn the
+// first time it is seen for that mount and a Debug after, until the mount
+// answers again.
+func (c *unixLogicalDiskCollector) reportUnstatable(mount mountInfo, err error) {
+	if strings.HasPrefix(mount.mountpoint, userRuntimeDirPrefix) && errors.Is(err, syscall.EACCES) {
+		c.logger.Debug().Str("mount_point", mount.mountpoint).Err(err).
+			Msg("per-user runtime directory is not readable by this account; skipping")
+		return
+	}
+	ev := c.logger.Warn()
+	if _, seen := c.unstatable.LoadOrStore(mount.mountpoint, struct{}{}); seen {
+		ev = c.logger.Debug()
+	}
+	ev.Str("mount_point", mount.mountpoint).
+		Str("fs_type", mount.fstype).
+		Err(err).
+		Msg("cannot stat mount point; skipping")
 }
 
 // newLogicalDiskCollector creates a new collector instance
@@ -210,13 +238,10 @@ func (c *unixLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.Da
 		}
 		stat, err := statfsWithTimeout(statPath)
 		if err != nil {
-			c.logger.Warn().
-				Str("mount_point", mount.mountpoint).
-				Str("fs_type", mount.fstype).
-				Err(err).
-				Msg("cannot stat mount point; skipping")
+			c.reportUnstatable(mount, err)
 			continue
 		}
+		c.unstatable.Delete(mount.mountpoint)
 
 		// Calculate metrics
 		totalBytes := uint64(stat.Blocks) * uint64(stat.Bsize)

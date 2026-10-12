@@ -175,6 +175,11 @@ func liftFields(pc ParserConfig, fields map[string]string, rec *agentstate.LogRe
 		if sev, text := severityFromText(lvl); sev != agentstate.LogSeverityUnspecified {
 			rec.Severity = sev
 			rec.SeverityText = text
+		} else if sev := agentstate.SeverityFromText(lvl); sev != agentstate.LogSeverityUnspecified {
+			// A spelling outside the short table: the number is derived,
+			// the text stays what the source wrote.
+			rec.Severity = sev
+			rec.SeverityText = strings.TrimSpace(lvl)
 		}
 	}
 

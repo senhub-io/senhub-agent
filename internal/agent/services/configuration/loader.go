@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 
@@ -93,7 +94,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		if log != nil {
 			probesDirExists := dirExists(probesDir)
 			strategiesDirExists := dirExists(strategiesDir)
-			if probesDirExists || strategiesDirExists {
+			if (probesDirExists || strategiesDirExists) && firstLegacyWarning(configPath) {
 				log.Warn().
 					Str("config_path", configPath).
 					Bool("probes_d_present", probesDirExists).
@@ -111,6 +112,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		if err := applyLicenseSidecar(&data, configPath); err != nil {
 			return LocalConfigurationData{}, err
 		}
+		resolveRelativePaths(&data, configPath)
 		warnSNMPPollOverlaps(log, data.Probes)
 		return data, nil
 	}
@@ -136,6 +138,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	if err := applyLicenseSidecar(&merged, configPath); err != nil {
 		return LocalConfigurationData{}, err
 	}
+	resolveRelativePaths(&merged, configPath)
 	warnSNMPPollOverlaps(log, merged.Probes)
 	return merged, nil
 }
@@ -346,4 +349,14 @@ func mergeConfigs(base LocalConfigurationData, probes []ProbeConfig, strategies 
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// legacyWarned records the configuration files already reported as legacy
+// in this process: the loader runs several times per start, and the
+// warning said the same thing each time.
+var legacyWarned sync.Map
+
+func firstLegacyWarning(configPath string) bool {
+	_, seen := legacyWarned.LoadOrStore(configPath, struct{}{})
+	return !seen
 }

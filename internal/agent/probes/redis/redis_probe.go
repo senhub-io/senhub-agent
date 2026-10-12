@@ -90,6 +90,24 @@ func (p *redisProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// handshake runs the TLS handshake now. crypto/tls otherwise performs it on
+// the first write, so a certificate the agent does not trust, or a server
+// that speaks plain Redis, surfaced as a failure of the first command
+// ("AUTH send failed") that names nothing about TLS.
+func (p *redisProbe) handshake(conn net.Conn) (net.Conn, error) {
+	tlsConn := tls.Client(conn, p.tlsConfig)
+	if err := tlsConn.SetDeadline(time.Now().Add(p.cfg.Timeout)); err != nil {
+		return nil, fmt.Errorf("TLS handshake with %s failed: %w", p.instance, err)
+	}
+	if err := tlsConn.Handshake(); err != nil {
+		return nil, fmt.Errorf("TLS handshake with %s failed: %w", p.instance, err)
+	}
+	if err := tlsConn.SetDeadline(time.Time{}); err != nil {
+		return nil, fmt.Errorf("TLS handshake with %s failed: %w", p.instance, err)
+	}
+	return tlsConn, nil
+}
+
 // Collect dials the Redis server, authenticates if configured, issues
 // INFO all, INFO commandstats, and conditionally INFO cluster / INFO sentinel,
 // parses the results and emits OTel-canonical datapoints. A connection or
@@ -107,7 +125,14 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	defer conn.Close()
 
 	if p.cfg.TLS {
-		conn = tls.Client(conn, p.tlsConfig)
+		tlsConn, err := p.handshake(conn)
+		if err != nil {
+			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis TLS handshake failed")
+			return p.BaseProbe.EnrichDataPointsWithProbeName(
+				[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
+				p.GetName()), nil
+		}
+		conn = tlsConn
 	}
 
 	if p.cfg.Password != "" {

@@ -20,7 +20,7 @@ Both probes share the same credential, the same Azure Resource Manager access an
 
 ```yaml
 # probes.d/41-azure-container-app-jobs.yaml
-- name: nightly-import
+- name: caj
   type: azure_container_app_jobs
   params:
     tenant_id: "00000000-0000-0000-0000-000000000000"
@@ -29,11 +29,35 @@ Both probes share the same credential, the same Azure Resource Manager access an
     subscription_id: "00000000-0000-0000-0000-000000000000"
     resource_group: "rg-production"
     app: "nightly-import"
-    bookmark_path: "/var/lib/senhub/nightly-import.executions"
+    bookmark_path: "/var/lib/senhub-agent/caj.executions"
     interval: 60
 ```
 
 `app` is the name of the job. It is called `app` because the two probes share their configuration shape; a job goes in the same field an application would.
+
+## From environment variables
+
+Where placing a file is harder than setting a variable (a container platform, a Helm chart), the probe is declared by the agent's [environment rule](../configuration.md#configuring-probes-from-environment-variables). The probe name is yours; the examples call it `CAJ` (Container App Job), as the applications page calls its probe `CA`. The job name goes in `APP`, one probe per job, and a name with a hyphen (`nightly-import`) is a value there, not part of a variable:
+
+```bash
+SENHUB_PROBE_CAJ_TYPE=azure_container_app_jobs
+SENHUB_PROBE_CAJ_APP=nightly-import
+SENHUB_PROBE_CAJ_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CAJ_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CAJ_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CAJ_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CAJ_RESOURCE_GROUP=rg-production
+SENHUB_PROBE_CAJ_BOOKMARK_PATH=/var/lib/senhub-agent/caj.executions
+```
+
+A second job is a second probe with its own name (`CAJ2`) and its own `APP`, credentials repeated.
+
+!!! note "One entry per job"
+    This probe has no discovery. An entry with a `discovery:` block, or without `app`, is refused with `azure_container_app_jobs has no discovery; declare one entry per job with app`.
+
+- **One bookmark per job.** The file holds the names of the executions already published; two jobs sharing one overwrite each other and republish runs after a restart. `bookmark_path` defaults to `<probe name>.executions` in the agent's state directory, which should be a volume, so each probe name gets its own file without setting anything. Name it explicitly only to keep a bookmark you had before.
+- **`${env:}` inside a value is not expanded.** `SENHUB_PROBE_CAJ_CLIENT_SECRET=${env:AZ_SECRET}` would reach the probe as that literal text. To share the credential between several jobs, point each probe's `CLIENT_SECRET_FILE` at the same mounted secret (`/run/secrets/az_client_secret` above, repeated for `CAJ2`), or declare the probes in `SENHUB_PROBES` (or a `probes.d` file), where `"${env:AZ_CLIENT_SECRET}"` is resolved at every start. See [the environment rule](../configuration.md#no-env-inside-a-value).
+- **Precedence.** The variables overlay the probes of the files and of `SENHUB_PROBES`, key by key, and the variable wins.
 
 ## Parameters
 
