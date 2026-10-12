@@ -395,6 +395,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 		} else {
 			s.logsQueue = newLogsQueue(queuePath, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
 			s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
+			s.logsQueue.announce()
 			logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
 			s.exporters.log = logExp
 			s.logExporter = logExp
