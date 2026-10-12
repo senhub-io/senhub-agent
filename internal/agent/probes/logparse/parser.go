@@ -88,9 +88,10 @@ func ParseLine(pc ParserConfig, line string, readTime time.Time, probeName, prob
 // levelToken is a level word as logging libraries write it at the head
 // of a line: upper case on its own ("2026-09-07 10:00:00 INFO ...",
 // "SquashTM - 13 ERROR [main]", "WARNING: ...") or any case in brackets
-// ("[error] 9#9: ...", "[INFO] Starting gunicorn"). Prose is not a level:
-// "the user reported an error" names none.
-var levelToken = regexp.MustCompile(`(?:^|\s)(TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|ERR|FATAL|CRITICAL|CRIT|PANIC)(?:[\s:]|$)|\[(?i:(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))\]`)
+// ("[error] 9#9: ...", "[INFO] Starting gunicorn"), or as a key=value
+// pair a logfmt library writes ("level=notice msg=..."). Prose is not a
+// level: "the user reported an error" names none.
+var levelToken = regexp.MustCompile(`(?:^|\s)(TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|ERR|FATAL|CRITICAL|CRIT|PANIC)(?:[\s:]|$)|\[(?i:(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))\]|(?:^|\s)(?i:level|lvl|severity)="?(?i:(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))(?:"|\s|$)`)
 
 const sniffHead = 160
 
@@ -107,8 +108,10 @@ func SniffSeverity(line string) (agentstate.LogSeverity, string) {
 		return agentstate.LogSeverityUnspecified, ""
 	}
 	word := m[1]
-	if word == "" {
-		word = m[2]
+	for _, alt := range m[2:] {
+		if word == "" {
+			word = alt
+		}
 	}
 	return severityFromText(word)
 }

@@ -276,5 +276,6 @@ series' tags.
 | `senhub.azure_container_app_jobs.executions.without_logs` | `azure_container_app_jobs_executions_without_logs` | Executions Without Logs | # | Executions whose verdict was read but whose output was gone: Azure had already cleaned up the replica. The run is still counted; only its lines are lost |
 | `senhub.azure_container_app_jobs.records.emitted` | `azure_container_app_jobs_records_emitted` | Records Emitted | # | Log records published from execution output |
 | `senhub.azure_container_app_jobs.arm.reads_remaining` | `azure_container_app_jobs_arm_reads_remaining` | ARM Reads Remaining | # | Reads left in the subscription's Azure Resource Manager budget, as ARM reports it; a fleet of instances shows here how close it is to being throttled |
+| `senhub.azure_container_app_jobs.read.failures` | `azure_container_app_jobs_read_failures` | Read Failures {reason} | # | Cumulative reads of the job's executions, replicas or output Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable, no_replica. denied is almost always a role without Microsoft.App/jobs/*/read |
 
 <!-- schema:metrics:end -->
