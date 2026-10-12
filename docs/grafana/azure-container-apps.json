@@ -114,7 +114,8 @@
         {
           "refId": "A",
           "expr": "max(senhub_azure_container_apps_discovery_followed)",
-          "instant": true
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -160,7 +161,8 @@
         {
           "refId": "A",
           "expr": "max(senhub_azure_container_apps_discovery_found)",
-          "instant": true
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -205,8 +207,9 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(max by (reason) (senhub_azure_container_apps_discovery_left_out{reason=\"filter\"}))",
-          "instant": true
+          "expr": "sum(max by (reason) (last_over_time(senhub_azure_container_apps_discovery_left_out{reason=\"filter\"}[5m]))) or vector(0)",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -250,8 +253,9 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(max by (reason) (senhub_azure_container_apps_discovery_left_out{reason=\"max_apps\"}))",
-          "instant": true
+          "expr": "sum(max by (reason) (last_over_time(senhub_azure_container_apps_discovery_left_out{reason=\"max_apps\"}[5m]))) or vector(0)",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -301,7 +305,8 @@
         {
           "refId": "A",
           "expr": "min(senhub_azure_container_apps_discovery_last_age_seconds)",
-          "instant": true
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -405,7 +410,8 @@
         {
           "refId": "A",
           "expr": "max(senhub_azure_container_apps_discovery_followed) / max(senhub_azure_container_apps_discovery_found)",
-          "instant": true
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -688,6 +694,17 @@
               "reason": "Reason"
             }
           }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Application"
+              }
+            ]
+          }
         }
       ],
       "fieldConfig": {
@@ -839,12 +856,18 @@
         "showHeader": true,
         "footer": {
           "show": false
-        }
+        },
+        "sortBy": [
+          {
+            "displayName": "Application",
+            "desc": false
+          }
+        ]
       },
       "description": "One row per application. Records/s is the average over the range. Dropped counts lines removed at the source by exclude patterns or min_severity.",
       "id": 13,
       "gridPos": {
-        "h": 9,
+        "h": 22,
         "w": 24,
         "x": 0,
         "y": 10
@@ -859,7 +882,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 32
       },
       "panels": []
     },
@@ -930,7 +953,7 @@
         "h": 8,
         "w": 10,
         "x": 0,
-        "y": 20
+        "y": 33
       }
     },
     {
@@ -975,7 +998,7 @@
         "h": 8,
         "w": 14,
         "x": 10,
-        "y": 20
+        "y": 33
       }
     },
     {
@@ -987,7 +1010,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 41
       },
       "panels": []
     },
@@ -1031,7 +1054,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 42
       }
     },
     {
@@ -1074,7 +1097,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 42
       }
     },
     {
@@ -1121,7 +1144,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 37
+        "y": 50
       }
     },
     {
@@ -1164,7 +1187,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 37
+        "y": 50
       }
     },
     {
@@ -1177,8 +1200,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "min by (azure_app) (senhub_azure_container_apps_arm_reads_remaining{azure_app=~\"$app\",azure_app!=\"\"})",
-          "legendFormat": "{{azure_app}}"
+          "expr": "min(senhub_azure_container_apps_arm_reads_remaining)",
+          "legendFormat": "Azure read budget"
         }
       ],
       "fieldConfig": {
@@ -1206,7 +1229,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 58
       }
     },
     {
@@ -1219,8 +1242,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (azure_app) (senhub_azure_container_apps_records_last_age_seconds{azure_app=~\"$app\",azure_app!=\"\"})",
-          "legendFormat": "{{azure_app}}"
+          "expr": "max(senhub_azure_container_apps_records_last_age_seconds)",
+          "legendFormat": "Since last record"
         }
       ],
       "fieldConfig": {
@@ -1249,7 +1272,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 45
+        "y": 58
       }
     },
     {
@@ -1261,7 +1284,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 66
       },
       "panels": []
     },
@@ -1279,8 +1302,8 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "defqbr545b18gf"
           },
-          "expr": "\"senhub.azure_container_apps.app\":~\"${app:regex}\" | stats count() as lines",
-          "queryType": "instant"
+          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" | stats count() as lines",
+          "queryType": "stats"
         }
       ],
       "fieldConfig": {
@@ -1311,7 +1334,7 @@
         "h": 4,
         "w": 8,
         "x": 0,
-        "y": 54
+        "y": 67
       }
     },
     {
@@ -1328,8 +1351,8 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "defqbr545b18gf"
           },
-          "expr": "\"senhub.azure_container_apps.app\":~\"${app:regex}\" severity:~\"ERROR|FATAL\" | stats count() as lines",
-          "queryType": "instant"
+          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND severity:~\"^(ERROR|FATAL)$\" | stats count() as lines",
+          "queryType": "stats"
         }
       ],
       "fieldConfig": {
@@ -1360,7 +1383,7 @@
         "h": 4,
         "w": 8,
         "x": 8,
-        "y": 54
+        "y": 67
       }
     },
     {
@@ -1377,8 +1400,8 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "defqbr545b18gf"
           },
-          "expr": "\"senhub.azure_container_apps.app\":~\"${app:regex}\" severity:=WARN | stats count() as lines",
-          "queryType": "instant"
+          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND severity:=\"WARN\" | stats count() as lines",
+          "queryType": "stats"
         }
       ],
       "fieldConfig": {
@@ -1409,7 +1432,7 @@
         "h": 4,
         "w": 8,
         "x": 16,
-        "y": 54
+        "y": 67
       }
     },
     {
@@ -1426,7 +1449,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "defqbr545b18gf"
           },
-          "expr": "\"senhub.azure_container_apps.app\":~\"${app:regex}\" severity:~\"$severity\" | sort by (_time desc) | limit 500",
+          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND (severity:~\"^(${severity:pipe})$\" OR severity:\"\") | sort by (_time desc) | limit 500",
           "editorMode": "code",
           "queryType": "instant",
           "maxLines": 500
@@ -1447,7 +1470,7 @@
         "h": 18,
         "w": 24,
         "x": 0,
-        "y": 58
+        "y": 71
       }
     }
   ]
