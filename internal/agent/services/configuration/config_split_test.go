@@ -359,3 +359,36 @@ func TestMigrateToMultiFile_NoLegacyWarningBeforeTheSplit(t *testing.T) {
 		t.Errorf("legacy warning logged before the split: %s", buf.String())
 	}
 }
+
+func TestLoadWarnsOfLegacyOnlyWhenTheSplitWillNotRun(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		fragment string
+		body     string
+		warn     bool
+	}{
+		{"install defaults only", "00-host.yaml", "# nothing yet\n", false},
+		{"a fragment of the operator", "50-mine.yaml", operatorFragment, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeMonolithicFixture(t, dir)
+			if err := os.MkdirAll(filepath.Join(dir, "probes.d"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "probes.d", tc.fragment), []byte(tc.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf)
+			if _, err := LoadFromDisk(path, logger.NewModuleLogger((*logger.Logger)(&zl), "configuration.test")); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(buf.String(), "Legacy monolithic"); got != tc.warn {
+				t.Errorf("legacy warning = %v, want %v: %s", got, tc.warn, buf.String())
+			}
+		})
+	}
+}
+
+const operatorFragment = "- name: mine\n  type: cpu\n"
