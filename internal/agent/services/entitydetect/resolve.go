@@ -50,6 +50,9 @@ func Resolve(global *configuration.EntitiesConfig, storage []configuration.Stora
 			}
 			cfg.DependsOnExcludeCIDRs = parseCIDRs(d.ExcludeCIDRs)
 		}
+		if n := e.Neighbors; n != nil {
+			cfg.NeighborsEnabled = n.Enabled
+		}
 		return cfg
 	}
 
