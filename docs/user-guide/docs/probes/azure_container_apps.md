@@ -263,6 +263,10 @@ curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ca"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ca"
 ```
 
+## Sizing
+
+Measured on 0.6.3 with one collector following 26 Container Apps (4 of them writing logs) and 3 jobs: about 0.01 vCPU (peak 0.02) and 150 MiB of working set, as Azure counts it. A container sized at 0.25 vCPU and 512 MiB leaves a wide margin. The state kept on the share is a few KiB, plus the logs queue during a backend outage.
+
 ## Shared credentials
 
 To avoid repeating the identity of the app registration in every entry, set it once in the agent's environment. It serves both Azure probes (`azure_container_apps` and `azure_container_app_jobs`). A probe that sets a key itself keeps its own value for that key.
