@@ -1,6 +1,5 @@
-//go:build linux
+//go:build unix
 
-// internal/agent/probes/podlogs/inode_linux.go
 package podlogs
 
 import (
