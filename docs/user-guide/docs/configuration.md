@@ -108,6 +108,7 @@ entities:
 | `depends_on.enabled` | `false` | Also map this host's outbound dependencies. Off by default because which peers a host talks to can be sensitive |
 | `depends_on.debounce` | `3` | How many scrapes must have seen a peer before it counts as a dependency rather than a passing connection. The scrapes need not be consecutive: a peer keeps its progress across up to 15 scrapes without being seen (or `debounce`, if larger). The delay before one appears is at least `debounce × interval` |
 | `depends_on.exclude_cidrs` | none | Peer ranges to leave out entirely |
+| `neighbors.enabled` | `false` | Also report the hosts and devices this host sees in its ARP/NDP table, as `network.neighbor` entities (identity: this host and the neighbour MAC address, `AA-BB-CC-DD-EE-FF`), each linked to the local interface it was seen on. Neighbours seen only on link-local addresses or on the default Docker/Podman bridge ranges are left out. Off by default: the receiving Toise must know the `network.neighbor` type, or it rejects these entities |
 
 A loopback peer on an OS dynamic port (the client side of a one-shot local exchange) is never mapped as a dependency, whatever these settings say (since 0.6.2).
 
