@@ -17,13 +17,10 @@ reports its links. A link is reported when the neighbor advertises a
 named port (LLDP port ID subtype interface name or locally assigned);
 a port known only by its MAC address is not linked.
 
-A discovery mode that crawls the network outward from seed devices is
-accepted in the configuration but not active yet
-([#953](https://github.com/senhub-io/senhub-agent/issues/953)): the
-`discovery` block is validated and ignored. The crawl profile is v2c
-only.
-
-One probe instance polls one device; declare one instance per device.
+One probe instance polls one device for its metrics. With a `discovery`
+block it also crawls the network outward from seed devices and puts every
+device it finds on the map, with its interfaces and links (see
+[Discovery](#discovery)).
 
 ## Quick start
 
@@ -45,7 +42,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:adde5eb861b0941dfd012fb4747a317fe2492e3b9686227e2f76a82db71ec2c8 -->
+<!-- sha256:bc8a145145a9e1c36c6101f20996f2adcd3c1bee4477d4698c8caa8b05e87bf0 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -70,7 +67,7 @@ one series per interface (`if_index` tag).
 | `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
 | `custom_mappings[].type` | No | `gauge` | How the value is reported: a gauge as read, a counter as a monotonic total. One of `gauge`, `counter` |
 | `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
-| `discovery` | No | - | Topology crawl from seed devices. Not active yet (#953): the block is validated and ignored |
+| `discovery` | No | - | Topology crawl from seed devices: every device found through LLDP, within allowed_cidrs, is put on the map (topology only, no metrics) |
 | `discovery.seeds` | Yes | - | Entry-point device addresses |
 | `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
 | `discovery.profile.version` | No | `v2c` | SNMP version used to probe the discovered devices. One of `v2c`, `2c`, `2` |
@@ -166,19 +163,12 @@ table and the row index becomes that tag.
 
 ### Discovery
 
-!!! warning "Not active yet"
-    The `discovery` block is parsed and validated but **not wired to
-    the poll lifecycle yet** — configuring it does nothing today
-    beyond a startup warning. It is documented here because the
-    configuration shape is final. Per-device topology (LLDP
-    neighbors, routes, bridge tables of the polled `target`) is
-    active and independent of this block. Tracking:
-    [#953](https://github.com/senhub-io/senhub-agent/issues/953).
-
-When the crawl ships, a `discovery` block will make the probe crawl
-outward from seed devices using LLDP neighbor tables, bounded by
-CIDR ranges and depth/device caps, and report discovered devices and
-links on the entity rail:
+A `discovery` block makes the probe crawl outward from seed devices
+through their LLDP neighbor tables, bounded by CIDR ranges and depth and
+device caps, and report every device found on the entity rail: the
+device, its interfaces and addresses, its routes and its LLDP links.
+Discovered devices give topology only, no metrics: metrics stay with
+the polled `target`.
 
 ```yaml
 params:
@@ -195,7 +185,12 @@ params:
 ```
 
 `max_devices` is a hard cap on discovered devices and `max_hops` bounds
-the crawl depth from the seeds. `governance_rules` stamps governance on
+the crawl depth from the seeds. Only neighbors inside `allowed_cidrs` are
+followed (seeds are always polled), at most four devices are polled at a
+time, and the crawl runs every `interval` of the block (the topology
+interval by default), never overlapping itself. A device that stops
+answering stays on the map for two more runs, so one lost UDP exchange
+does not retract it with all its links. The crawl profile is v2c only. `governance_rules` stamps governance on
 devices as the crawl finds them (see below).
 
 The `governance` parameter of this probe and the `governance` block every
@@ -283,6 +278,10 @@ series' tags.
 |---|---|---|---|---|
 | `senhub.snmp.up` | `senhub.snmp.up` | SNMP {instance} Reachability | # | 1 when the last poll reached the SNMP target, 0 otherwise |
 | `senhub.snmp.poll.duration` | `senhub.snmp.poll.duration` | SNMP {instance} Poll Duration | s | Wall-clock time taken by the last poll cycle |
+| `senhub.snmp.discovery.devices` | `snmp_poll_discovery_devices` | SNMP {instance} Discovered Devices | # | Devices that answered the last discovery crawl |
+| `senhub.snmp.discovery.runs` | `snmp_poll_discovery_runs` | SNMP {instance} Discovery Runs | # | Discovery crawls run since the agent started |
+| `senhub.snmp.discovery.duration` | `snmp_poll_discovery_last_duration_seconds` | SNMP {instance} Discovery Duration | s | Wall-clock time of the last discovery crawl |
+| `senhub.snmp.discovery.failures` | `snmp_poll_discovery_failures` | SNMP {instance} Discovery Failures {reason} | # | Devices the crawl could not use since the agent started, by reason: unreachable (no SNMP answer) or identity (no device id resolvable) |
 | `snmp.sys.uptime` | `snmp.sys.uptime` | SNMP {instance} Uptime | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
 | `snmp.interface.in_octets` | `snmp.interface.in_octets` | SNMP {instance} IF{if_index} In Octets | bytes | ifInOctets — total octets received on the interface |
 | `snmp.interface.out_octets` | `snmp.interface.out_octets` | SNMP {instance} IF{if_index} Out Octets | bytes | ifOutOctets — total octets transmitted on the interface |

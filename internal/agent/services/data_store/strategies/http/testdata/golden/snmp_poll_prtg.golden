@@ -1,55 +1,79 @@
 [
   {
-    "channel": "SNMP tinstance IFtif_index Admin Status",
-    "value": 76.5,
+    "channel": "SNMP tinstance Discovered Devices",
+    "value": 65,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "SNMP tinstance IFtif_index In Discards",
-    "value": 42,
+    "channel": "SNMP tinstance Discovery Duration",
+    "value": 88,
     "float": 1,
-    "unit": "Count"
+    "unit": "TimeSeconds"
   },
   {
-    "channel": "SNMP tinstance IFtif_index In Errors",
+    "channel": "SNMP tinstance Discovery Failures treason",
     "value": 99.5,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "SNMP tinstance IFtif_index In Octets",
+    "channel": "SNMP tinstance Discovery Runs",
     "value": 76.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Admin Status",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index In Discards",
+    "value": 88,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index In Errors",
+    "value": 65,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index In Octets",
+    "value": 42,
     "float": 1,
     "unit": "BytesBandwidth"
   },
   {
     "channel": "SNMP tinstance IFtif_index Oper Status",
-    "value": 88,
-    "float": 1,
-    "unit": "Count"
-  },
-  {
-    "channel": "SNMP tinstance IFtif_index Out Discards",
     "value": 53.5,
     "float": 1,
     "unit": "Count"
   },
   {
+    "channel": "SNMP tinstance IFtif_index Out Discards",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
     "channel": "SNMP tinstance IFtif_index Out Errors",
-    "value": 111,
+    "value": 76.5,
     "float": 1,
     "unit": "Count"
   },
   {
     "channel": "SNMP tinstance IFtif_index Out Octets",
-    "value": 88,
+    "value": 53.5,
     "float": 1,
     "unit": "BytesBandwidth"
   },
   {
     "channel": "SNMP tinstance IFtif_index Speed",
-    "value": 65,
+    "value": 111,
     "float": 1,
     "unit": "Custom",
     "customunit": "bit/s"
@@ -68,7 +92,7 @@
   },
   {
     "channel": "SNMP tinstance Uptime",
-    "value": 65,
+    "value": 111,
     "float": 1,
     "unit": "Custom",
     "customunit": "centiseconds"
