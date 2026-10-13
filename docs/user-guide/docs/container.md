@@ -83,7 +83,7 @@ From 0.6.3 the agent is tested with the state directory (`/var/lib/senhub-agent`
 
 Use SMB. It is the default Azure Files protocol on Container Apps and the tested one. NFS shares on Azure Files require a premium storage account and a virtual network; they are not tested with the agent.
 
-Size the share from the logs queue: it is capped by `SENHUB_LOG_QUEUE_MAX_BYTES` (default 128 MiB) with a 24 h retention. Plan the share accordingly, a few hundred MiB per collector.
+Size the share from the logs queue: it is capped by `SENHUB_LOG_QUEUE_MAX_BYTES` (default 128 MiB) with a 24 h retention. Plan the share accordingly, a few hundred MiB per collector. A queued line takes about 290 bytes on disk: the default 128 MiB holds a 3-hour backend outage up to about 43 lines per second (measured: 3 hours at 20 lines per second, no line lost or duplicated, the backlog drained in about two minutes after recovery). For a busier collector, raise `SENHUB_LOG_QUEUE_MAX_BYTES` to rate × outage × 300 bytes; the `records.volume` metric of the Container Apps probe gives the rate.
 
 Use one collector per share directory. Two agents must not share the same state directory.
 

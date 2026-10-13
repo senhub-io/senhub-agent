@@ -1434,7 +1434,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "defqbr545b18gf"
           },
-          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND severity:~\"^(ERROR|FATAL)$\" | stats count() as lines",
+          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND (severity_text:~\"^(ERROR|FATAL)$\" OR severity:~\"^(ERROR|FATAL)$\") | stats count() as lines",
           "queryType": "stats"
         }
       ],
@@ -1483,7 +1483,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "defqbr545b18gf"
           },
-          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND severity:=\"WARN\" | stats count() as lines",
+          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND (severity_text:=\"WARN\" OR severity:=\"WARN\") | stats count() as lines",
           "queryType": "stats"
         }
       ],
@@ -1532,7 +1532,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "defqbr545b18gf"
           },
-          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND (severity:~\"^(${severity:pipe})$\" OR severity:\"\") | sort by (_time desc) | limit 500",
+          "expr": "\"senhub.azure_container_apps.app\":~\"^${app:regex}$\" AND (severity_text:~\"^(${severity:pipe})$\" OR severity:~\"^(${severity:pipe})$\" OR ((severity_text:\"\" OR severity_text:=\"Unspecified\") AND severity:\"\")) | copy severity_text as level | sort by (_time desc) | limit 500",
           "editorMode": "code",
           "queryType": "instant",
           "maxLines": 500
