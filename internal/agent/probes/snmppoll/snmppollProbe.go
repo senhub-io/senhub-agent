@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -27,6 +28,13 @@ type snmppollProbe struct {
 
 	// newClient is the SNMP client factory, overridable in tests.
 	newClient func(*config) snmpClient
+
+	// Discovery background loop lifecycle. discoveryCancel cancels the loop
+	// started by OnStart; discoveryWG waits for it in OnShutdown.
+	discoveryCancel context.CancelFunc
+	discoveryWG     sync.WaitGroup
+	discoveryMet    discoveryMetrics
+	discovered      map[string]*discoveredState
 }
 
 // NewSnmpPollProbe builds an snmp_poll probe from its raw params block.
@@ -72,15 +80,6 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		}
 	}
 
-	if cfg.Discovery != nil {
-		// The crawl engine is merged but not yet wired to the poll
-		// lifecycle (#156); without this warning an operator gets a
-		// validated, silently inert block.
-		moduleLogger.Warn().
-			Str("target", cfg.Target).
-			Msg("snmp_poll discovery is configured but not active yet (#953): the block is validated and ignored; per-device topology (LLDP/routes/bridge) still runs")
-	}
-
 	entitySrc := newEntitySource(cfg, moduleLogger)
 	probe := &snmppollProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -111,6 +110,13 @@ func (p *snmppollProbe) OnStart(_ chan struct{}) error {
 		Str("target", p.cfg.Target).
 		Uint16("port", p.cfg.Port).
 		Msg("SNMP poll probe started")
+
+	if p.cfg.Discovery != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		p.discoveryCancel = cancel
+		p.discoveryWG.Add(1)
+		go p.discoveryLoop(ctx)
+	}
 	return nil
 }
 
@@ -157,10 +163,18 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: end.Sub(start).Seconds(), Tags: statusTags(p.instance)},
 	)
 
+	if p.cfg.Discovery != nil {
+		points = append(points, p.discoveryDataPoints(end)...)
+	}
+
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 func (p *snmppollProbe) OnShutdown(_ context.Context) error {
+	if p.discoveryCancel != nil {
+		p.discoveryCancel()
+		p.discoveryWG.Wait()
+	}
 	return nil
 }
 

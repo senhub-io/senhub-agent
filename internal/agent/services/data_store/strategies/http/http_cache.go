@@ -272,7 +272,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"http_check":  {"target", "metric_type"},
 	"icmp_check":  {"target", "metric_type"},
 	"tcp_dial":    {"target", "metric_type"},
-	"snmp_poll":   {"instance", "if_index", "metric_type"},
+	"snmp_poll":   {"instance", "if_index", "metric_type", "reason"}, // reason: discovery failures
 	// haproxy: one series per (proxy, component) pair; metric_type
 	// separates sessions / throughput / error / request families.
 	"haproxy": {"proxy", "component", "metric_type"},

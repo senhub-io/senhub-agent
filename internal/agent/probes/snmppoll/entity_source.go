@@ -121,6 +121,11 @@ type snmpEntitySource struct {
 	deviceID string
 	ifNames  map[string]string
 
+	// discMu guards discObs, the latest discovery crawl observation. The
+	// discovery loop rebuilds it each run and swaps it under this mutex.
+	discMu  sync.Mutex
+	discObs entity.Observation
+
 	// registry reconciles a neighbour seen via LLDP with the canonical id of the
 	// same device when another probe instance polls it directly. Shared across
 	// instances in production; overridable in tests.
@@ -176,6 +181,20 @@ type sweepResult struct {
 // omitted one is a retracted one). Not publishing keeps the consumer's
 // previous state alive until the neighbour is known.
 func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
+	single, singleOK := s.observeSingle()
+	disc := s.getDiscoveryObservation()
+
+	discEmpty := len(disc.Entities) == 0 && len(disc.Relations) == 0
+	if !singleOK && discEmpty {
+		return entity.Observation{}, false
+	}
+	if singleOK && discEmpty {
+		return single, true
+	}
+	return mergeObservations(single, disc), true
+}
+
+func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	s.mu.Lock()
 	res, swept := s.cache, s.swept
 	s.mu.Unlock()
@@ -188,6 +207,18 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 	return obs, true
+}
+
+func (s *snmpEntitySource) setDiscoveryObservation(obs entity.Observation) {
+	s.discMu.Lock()
+	s.discObs = obs
+	s.discMu.Unlock()
+}
+
+func (s *snmpEntitySource) getDiscoveryObservation() entity.Observation {
+	s.discMu.Lock()
+	defer s.discMu.Unlock()
+	return s.discObs
 }
 
 // build turns a sweep into the observation, resolving each LLDP neighbour
