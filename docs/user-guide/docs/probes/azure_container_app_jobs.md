@@ -20,7 +20,7 @@ Both probes share the same credential, the same Azure Resource Manager access an
 
 ```yaml
 # probes.d/41-azure-container-app-jobs.yaml
-- name: nightly-import
+- name: caj
   type: azure_container_app_jobs
   params:
     tenant_id: "00000000-0000-0000-0000-000000000000"
@@ -29,30 +29,90 @@ Both probes share the same credential, the same Azure Resource Manager access an
     subscription_id: "00000000-0000-0000-0000-000000000000"
     resource_group: "rg-production"
     app: "nightly-import"
-    bookmark_path: "/var/lib/senhub/nightly-import.executions"
+    bookmark_path: "/var/lib/senhub-agent/caj.executions"
     interval: 60
 ```
 
 `app` is the name of the job. It is called `app` because the two probes share their configuration shape; a job goes in the same field an application would.
 
+## From environment variables
+
+Where placing a file is harder than setting a variable (a container platform, a Helm chart), the probe is declared by the agent's [environment rule](../configuration.md#configuring-probes-from-environment-variables). The probe name is yours; the examples call it `CAJ` (Container App Job), as the applications page calls its probe `CA`. The job name goes in `APP`, one probe per job, and a name with a hyphen (`nightly-import`) is a value there, not part of a variable:
+
+```bash
+SENHUB_PROBE_CAJ_TYPE=azure_container_app_jobs
+SENHUB_PROBE_CAJ_APP=nightly-import
+SENHUB_PROBE_CAJ_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CAJ_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CAJ_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CAJ_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CAJ_RESOURCE_GROUP=rg-production
+SENHUB_PROBE_CAJ_BOOKMARK_PATH=/var/lib/senhub-agent/caj.executions
+```
+
+A second job is a second probe with its own name (`CAJ2`) and its own `APP`; the [shared credentials](#shared-credentials) save repeating the identity, and [discovery](#discovering-jobs) follows every job with one probe.
+
+!!! note "One entry per job, or discovery"
+    An entry follows one job named by `app`, or every job of the subscription with a [`discovery:` block](#discovering-jobs). An entry with neither is refused.
+
+- **One bookmark per job.** The file holds the names of the executions already published; two jobs sharing one overwrite each other and republish runs after a restart. `bookmark_path` defaults to `<probe name>.executions` in the agent's state directory, which should be a volume, so each probe name gets its own file without setting anything. Name it explicitly only to keep a bookmark you had before.
+- **`${env:}` inside a value is not expanded.** `SENHUB_PROBE_CAJ_CLIENT_SECRET=${env:AZ_SECRET}` would reach the probe as that literal text. To share the credential between several jobs, point each probe's `CLIENT_SECRET_FILE` at the same mounted secret (`/run/secrets/az_client_secret` above, repeated for `CAJ2`), or declare the probes in `SENHUB_PROBES` (or a `probes.d` file), where `"${env:AZ_CLIENT_SECRET}"` is resolved at every start. See [the environment rule](../configuration.md#no-env-inside-a-value).
+- **Precedence.** The variables overlay the probes of the files and of `SENHUB_PROBES`, key by key, and the variable wins.
+
+## Discovering jobs
+
+Instead of one entry per job, a `discovery:` block follows every job the subscription holds. It takes the same keys as the applications probe; `max_apps` caps the number of jobs followed.
+
+```yaml
+probes:
+  caj:
+    type: azure_container_app_jobs
+    subscription_id: 00000000-0000-0000-0000-000000000000
+    discovery:
+      resource_groups: [rg-batch, rg-etl]
+      include: ["etl-*", "report"]
+      exclude: ["*-tmp"]
+      max_apps: 50        # cap on followed jobs
+      interval: 300       # seconds between two enumerations
+```
+
+With the [shared credentials](#shared-credentials) in the environment, the same probe can be declared from the environment alone:
+
+```bash
+SENHUB_PROBE_CAJ_TYPE=azure_container_app_jobs
+SENHUB_PROBE_CAJ_DISCOVERY__RESOURCE_GROUPS=rg-batch,rg-etl
+SENHUB_PROBE_CAJ_DISCOVERY__EXCLUDE=*-tmp
+```
+
+Each discovered job is followed exactly like a configured one. Its metrics carry the `azure_job` label, and the executions already published are remembered in `<probe name>.<job>.executions` in the agent state directory (`caj.etl-daily.executions`). A job that disappears is dropped at the next enumeration, and one that appears is picked up; a failed enumeration keeps the jobs already followed. `app`, `resource_group` and `bookmark_path` cannot be combined with `discovery`. The credential needs `Microsoft.App/jobs/read` on the subscription, or on each resource group listed in `resource_groups`.
+
+If executions come back with no replica and no log arrives, the log names the missing `Microsoft.App/jobs/*/read` permission once per job.
+
 ## Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:d1a6aba39d901183a8fc6d679f75d132fb14ffe408766e80b2e15805e7081464 -->
+<!-- sha256:3994de8591dff2c663778e7f93549200936e23abffba1b3ee3ff42d26186a192 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `tenant_id` | Yes | - | Entra ID tenant (directory) ID |
-| `client_id` | Yes | - | Application (client) ID of the app registration |
-| `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `subscription_id` | Yes | - | Subscription that holds the job |
-| `resource_group` | Yes | - | Resource group of the job |
-| `app` | Yes | - | Name of the Container Apps job |
+| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless SENHUB_AZURE_TENANT_ID is set for every Azure probe of the agent |
+| `client_id` | In practice | - | Application (client) ID of the app registration; required unless SENHUB_AZURE_CLIENT_ID is set for every Azure probe of the agent |
+| `client_secret` | In practice | - | Client secret of the app registration; one of client_secret, client_secret_file, SENHUB_AZURE_CLIENT_SECRET or SENHUB_AZURE_CLIENT_SECRET_FILE is required, in that order of precedence. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `client_secret_file` | No | - | File holding the client secret (a mounted secret, for example); read when the probe is configured. Used when client_secret is not set |
+| `subscription_id` | In practice | - | Subscription that holds the job; required unless SENHUB_AZURE_SUBSCRIPTION_ID is set for every Azure probe of the agent |
+| `resource_group` | No | - | Resource group of the job; required unless 'discovery' is set, which finds it |
+| `app` | No | - | Name of the Container Apps job; required unless 'discovery' is set, which finds them |
+| `discovery` | No | - | Follow every job the subscription holds instead of naming one; exclusive with 'app', 'resource_group' and 'bookmark_path'. Each job is followed as if it had its own entry |
+| `discovery.interval` | No | `300` | Seconds between two enumerations of the subscription; a job that left is dropped and a new one picked up at the next one |
+| `discovery.max_apps` | No | `100` | Hard cap on how many jobs one instance follows (the key is shared with the applications probe); what is left out is named in the log |
+| `discovery.resource_groups` | No | - | Bound the search to these resource groups; empty means every group the credential can read |
+| `discovery.include` | No | - | Follow only the names matching one of these; '*' is the only wildcard |
+| `discovery.exclude` | No | - | Never follow a name matching one of these; wins over include |
 | `containers` | No | - | Container names to read; empty reads every container of the execution |
 | `tail_lines` | No | `100` | Lines read from a finished execution, 0 to 300. An execution's log is read once, so this is the whole of what is published for it |
 | `interval` | No | `60` | Seconds between two reads of the execution list. A job that runs less often than this is still seen, its verdict being read from history. Its OUTPUT is not: Azure keeps an execution replica about 150 seconds after the run ends, so an interval above that loses the logs |
-| `bookmark_path` | No | - | File remembering the executions already published, so a restart does not publish a run's output twice. Without it, a restart republishes the window Azure still holds |
+| `bookmark_path` | No | - | File remembering the executions already published, so a restart does not publish a run's output twice. Defaults to <probe name>.executions in the agent state directory (<probe name>.<job>.executions per job under discovery, where this key is refused) |
 | `parser` | No | - | How each line is read |
 | `parser.type` | No | `raw` | Shape of a line; raw keeps it whole. One of `raw`, `regex`, `json`, `logfmt` |
 | `parser.pattern` | No | - | Regular expression with named groups (type regex) |
@@ -141,6 +201,57 @@ was already collecting, the job reads were refused with
 share a credential only if its role covers both; a credential already
 carrying the four application actions needs these three added to it.
 
+## Shared credentials
+
+To avoid repeating the identity of the app registration in every entry, set it once in the agent's environment. It serves both Azure probes (`azure_container_apps` and `azure_container_app_jobs`). A probe that sets a key itself keeps its own value for that key.
+
+| Variable | Replaces |
+|---|---|
+| `SENHUB_AZURE_TENANT_ID` | `tenant_id` |
+| `SENHUB_AZURE_CLIENT_ID` | `client_id` |
+| `SENHUB_AZURE_CLIENT_SECRET` | `client_secret` |
+| `SENHUB_AZURE_CLIENT_SECRET_FILE` | path of a file holding the secret (a mounted secret, for example) |
+| `SENHUB_AZURE_SUBSCRIPTION_ID` | `subscription_id` |
+
+The secret is taken from the first of these that is set: `client_secret`, `client_secret_file` (a probe key naming a file), `SENHUB_AZURE_CLIENT_SECRET`, `SENHUB_AZURE_CLIENT_SECRET_FILE`. A secret file that cannot be read is an error, not a fallback. The variables are read when the probe is configured, so changing them needs a restart.
+
+```yaml
+probes:
+  ca:
+    type: azure_container_apps
+    discovery: {}
+  caj:
+    type: azure_container_app_jobs
+    discovery: {}
+```
+
+## Checking the setup
+
+`senhub-agent check azure` verifies, without changing anything, that the credentials of the configured Azure probes (`azure_container_apps` and `azure_container_app_jobs`) can do what the probes need. It prints one verdict per line and never prints a secret.
+
+```bash
+senhub-agent check azure               # every enabled Azure probe in the installed configuration
+senhub-agent check azure --probe caj   # one probe, by name
+senhub-agent check azure /path/to/agent.yaml
+```
+
+For each probe it checks, in order:
+
+| Line | What it verifies |
+|---|---|
+| `token` | Entra ID issues a token for the tenant, client ID and secret of the probe |
+| `subscription` | The subscription can be read. A `WARN` here is normal when the role is scoped to a resource group |
+| `apps` / `jobs` | The application (or, with `discovery`, every application) and the job are found, grouped by resource group |
+| `permission` | Each action the probe needs is granted at its scope, from the effective permissions Azure reports for the credential |
+
+The actions checked are `Microsoft.App/containerApps/read`, `.../revisions/read`, `.../revisions/replicas/read` and `.../getAuthtoken/action` for applications, and `Microsoft.App/jobs/read`, `Microsoft.App/jobs/*/read` and `Microsoft.App/jobs/getAuthtoken/action` for jobs. A role that only grants `jobs/executions/read` is reported as missing `jobs/*/read`: the verdicts would look right while no log line ever arrived.
+
+The command exits with `0` when every required item passes and `1` when one fails (or when no Azure probe is configured), so it can gate a deployment script. Like the other commands, it runs as root or administrator.
+
+## Dashboards
+
+A ready-made Grafana dashboard for this probe, `azure-container-app-jobs.json`, is provided in [`docs/grafana/`](https://github.com/senhub-io/senhub-agent/tree/master/docs/grafana) (see its README for the data path it expects). It covers executions by status per job, duration, time since last success, failures and logs filtered by job and severity.
+
 ## Metric reference
 
 Every metric this probe can emit. **Metric** is the OpenTelemetry name the
@@ -165,5 +276,6 @@ series' tags.
 | `senhub.azure_container_app_jobs.executions.without_logs` | `azure_container_app_jobs_executions_without_logs` | Executions Without Logs | # | Executions whose verdict was read but whose output was gone: Azure had already cleaned up the replica. The run is still counted; only its lines are lost |
 | `senhub.azure_container_app_jobs.records.emitted` | `azure_container_app_jobs_records_emitted` | Records Emitted | # | Log records published from execution output |
 | `senhub.azure_container_app_jobs.arm.reads_remaining` | `azure_container_app_jobs_arm_reads_remaining` | ARM Reads Remaining | # | Reads left in the subscription's Azure Resource Manager budget, as ARM reports it; a fleet of instances shows here how close it is to being throttled |
+| `senhub.azure_container_app_jobs.read.failures` | `azure_container_app_jobs_read_failures` | Read Failures {reason} | # | Cumulative reads of the job's executions, replicas or output Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable, no_replica. denied is almost always a role without Microsoft.App/jobs/*/read |
 
 <!-- schema:metrics:end -->

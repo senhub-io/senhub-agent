@@ -184,11 +184,12 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// azure_container_app_jobs watches one job per instance, and an
 	// agent may watch several. The job name is what tells their series
 	// apart; the resource group is what tells two jobs of the same name
-	// in two groups apart.
+	// in two groups apart; the reason splits its read failures by cause.
 	"azure_container_app_jobs": {
 		"metric_type",
 		"azure_job",
 		"azure_resource_group",
+		"reason",
 	},
 
 	// High-availability probes

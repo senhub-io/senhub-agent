@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -17,6 +16,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 	"senhub-agent.go/internal/agent/services/license"
@@ -299,7 +299,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	version := versionInfo.Version
 	commit := versionInfo.Commit
 
-	hostname, _ := os.Hostname()
+	hostname := common.CanonicalHostName()
 	response := SystemInfoResponse{
 		Status:           "running",
 		Hostname:         hostname,

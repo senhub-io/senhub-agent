@@ -44,7 +44,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("closing temp file for %s: %w", path, err)
 	}
-	if err := os.Chmod(tmpName, perm); err != nil {
+	if err := os.Chmod(tmpName, perm); err != nil && !fsown.Refused(err) {
 		return fmt.Errorf("setting mode on temp file for %s: %w", path, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
