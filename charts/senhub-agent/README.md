@@ -80,6 +80,27 @@ Trade-offs, to be accepted knowingly:
   probe (it would run once per node: install a second, Deployment
   release), a ServiceMonitor, a whole `config.agent`, `identity.existingSecret`.
 
+## Pod logs
+
+`podLogs.enabled` (default `true`) adds a `kubernetes_logs` probe in a
+DaemonSet. One agent per node reads that node's `/var/log/pods` directory
+read-only. The files there are `root:root 0640`: the pod gets group 0 as a
+supplementary group to read them, and no capability.
+The node and pod identity come from the downward API; the agent excludes
+its own pod.
+
+- DaemonSet only: each node pod log tree is read by the agent on that
+  node. In a Deployment the `podLogs` block is ignored, because a single
+  pod cannot see every node's log tree.
+- Filter namespaces inside `podLogs.params`, for example
+  `exclude_namespaces: [kube-system]`. The supported parameters are the
+  probe's own (`include_namespaces`, `exclude_namespaces`,
+  `include_pods`, `exclude_pods`, `scan_interval`, `from_beginning`, ...).
+- Turn it off with `podLogs.enabled=false` (only affects a DaemonSet).
+
+The chart's default probe is named `pods` and scans
+`podLogs.podLogsPath` (`/var/log/pods`).
+
 ## What it creates
 
 | Object | When | Why |
