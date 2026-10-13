@@ -120,6 +120,19 @@ metrics:
       unit: "{record}"
       type: counter
 
+  - name: "azure_container_apps_records_bytes"
+    channel: "records_bytes"
+    display_name: "Records Bytes"
+    unit: "B"
+    category: "status"
+    description: "Cumulative bytes of log record bodies this probe has published, per application under discovery; compares with what Log Analytics bills by volume"
+    multi_instance_labels:
+      - "azure_app"
+    otel:
+      name: senhub.azure_container_apps.records.volume
+      unit: "By"
+      type: counter
+
   - name: "azure_container_apps_records_dropped"
     channel: "records_dropped"
     display_name: "Records Dropped"
