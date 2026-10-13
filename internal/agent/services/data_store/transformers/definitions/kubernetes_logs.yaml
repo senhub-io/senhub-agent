@@ -1,0 +1,65 @@
+probe_name: "kubernetes_logs"
+friendly_name: "Kubernetes Logs"
+version: "1.0.0"
+host_level: false
+
+# kubernetes_logs is a node DaemonSet log conduit. Log records ride the OTLP
+# log rail, not this transformation table. Collect() emits only the probe's
+# own self-metrics, without per-pod or per-file labels to avoid cardinality
+# explosions.
+
+metrics:
+  - name: "senhub.kubernetes_logs.files_followed"
+    channel: "kubernetes_logs_files_followed"
+    display_name: "Kubernetes Logs Files Followed"
+    unit: "#"
+    category: "status"
+    description: "Number of pod log files currently followed"
+    otel:
+      name: senhub.kubernetes_logs.files_followed
+      unit: "{file}"
+      type: gauge
+
+  - name: "senhub.kubernetes_logs.pods_followed"
+    channel: "kubernetes_logs_pods_followed"
+    display_name: "Kubernetes Logs Pods Followed"
+    unit: "#"
+    category: "status"
+    description: "Number of unique pods currently followed"
+    otel:
+      name: senhub.kubernetes_logs.pods_followed
+      unit: "{pod}"
+      type: gauge
+
+  - name: "senhub.kubernetes_logs.records_emitted"
+    channel: "kubernetes_logs_records_emitted"
+    display_name: "Kubernetes Logs Records Emitted"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of log records this probe has published to the log rail"
+    otel:
+      name: senhub.kubernetes_logs.records_emitted
+      unit: "{record}"
+      type: counter
+
+  - name: "senhub.kubernetes_logs.records_truncated"
+    channel: "kubernetes_logs_records_truncated"
+    display_name: "Kubernetes Logs Records Truncated"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of log records truncated by the max_line_bytes cap"
+    otel:
+      name: senhub.kubernetes_logs.records_truncated
+      unit: "{record}"
+      type: counter
+
+  - name: "senhub.kubernetes_logs.read_errors"
+    channel: "kubernetes_logs_read_errors"
+    display_name: "Kubernetes Logs Read Errors"
+    unit: "#"
+    category: "status"
+    description: "Cumulative count of pod log file read errors"
+    otel:
+      name: senhub.kubernetes_logs.read_errors
+      unit: "{error}"
+      type: counter
