@@ -306,6 +306,7 @@ func (s *OTLPSyncStrategy) noticeEntitiesOff() {
 }
 
 func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
+	agentstate.SeedExportSendFailed("otlp")
 	s.startMu.Lock()
 	defer s.startMu.Unlock()
 
