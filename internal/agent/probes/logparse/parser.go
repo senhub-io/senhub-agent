@@ -99,6 +99,13 @@ var levelToken = regexp.MustCompile(
 		`|^(?:\S+\s+){0,2}(?P<first>(?i:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))(?:[\s:]|$)`,
 )
 
+// accessLogShape matches the strict HTTP access-log shape. It is only
+// run after levelToken finds no level word, so a stated level wins.
+var accessLogShape = regexp.MustCompile(
+	`^(?:\S+) (?:\S+) (?:\S+) \[[^\]]+\] "(?:\\.|[^"\\])*" ` +
+		`(?P<status>[1-5]\d{2}) (?:\d+|-)(?: "(?:\\.|[^"\\])*" "(?:\\.|[^"\\])*")?(?: .*)?$`,
+)
+
 const sniffHead = 160
 
 // SniffSeverity reads the level word at the head of a line that no
@@ -111,7 +118,7 @@ func SniffSeverity(line string) (agentstate.LogSeverity, string) {
 	}
 	m := levelToken.FindStringSubmatch(head)
 	if m == nil {
-		return agentstate.LogSeverityUnspecified, ""
+		return sniffAccessLogSeverity(line)
 	}
 	for i, name := range levelToken.SubexpNames() {
 		if i == 0 || name == "" || m[i] == "" {
@@ -142,6 +149,41 @@ func SniffSeverity(line string) (agentstate.LogSeverity, string) {
 		return agentstate.LogSeverityUnspecified, ""
 	}
 	return agentstate.LogSeverityUnspecified, ""
+}
+
+// sniffAccessLogSeverity checks the HTTP access-log shape only after the
+// level-word sniff found nothing. The cheap prefix check keeps the
+// anchored regexp from running on every ordinary line.
+func sniffAccessLogSeverity(line string) (agentstate.LogSeverity, string) {
+	head := line
+	if len(head) > 120 {
+		head = head[:120]
+	}
+	lb := strings.Index(head, " [")
+	rb := strings.Index(head, "] \"")
+	if lb < 0 || rb < lb {
+		return agentstate.LogSeverityUnspecified, ""
+	}
+
+	m := accessLogShape.FindStringSubmatch(line)
+	if m == nil {
+		return agentstate.LogSeverityUnspecified, ""
+	}
+	status := m[accessLogShape.SubexpIndex("status")]
+	if status == "" {
+		return agentstate.LogSeverityUnspecified, ""
+	}
+
+	switch status[0] {
+	case '5':
+		return agentstate.LogSeverityError, "ERROR"
+	case '4':
+		return agentstate.LogSeverityWarn, "WARN"
+	case '1', '2', '3':
+		return agentstate.LogSeverityInfo, "INFO"
+	default:
+		return agentstate.LogSeverityUnspecified, ""
+	}
 }
 
 func applyRegex(pc ParserConfig, line string, rec *agentstate.LogRecord) {
