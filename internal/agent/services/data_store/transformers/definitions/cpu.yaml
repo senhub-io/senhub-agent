@@ -458,7 +458,7 @@ metrics:
     unit: "#"
     category: "system"
     prtg_skip: false
-    description: "1 when the kernel considers the clock synchronised, else 0"
+    description: "1 when the clock is synchronised (Linux: adjtimex; Windows: the Windows Time service has at least one time source), else 0"
     otel:
       name: senhub.system.clock.synchronized
       unit: "1"
@@ -472,7 +472,7 @@ metrics:
     unit: "s"
     category: "system"
     prtg_skip: false
-    description: "Estimated error of the host clock in seconds, from adjtimex esterror; absent while unsynchronised"
+    description: "Estimated error of the host clock in seconds (Linux: adjtimex esterror; Windows: Windows Time Service Computed Time Offset); absent while unsynchronised"
     otel:
       name: senhub.system.clock.offset
       unit: s
@@ -486,7 +486,7 @@ metrics:
     unit: "s"
     category: "system"
     prtg_skip: true
-    description: "Maximum error of the host clock in seconds, from adjtimex maxerror"
+    description: "Maximum error of the host clock in seconds, from adjtimex maxerror; Linux only"
     otel:
       name: senhub.system.clock.max_error
       unit: s

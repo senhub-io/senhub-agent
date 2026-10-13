@@ -411,8 +411,8 @@ series' tags.
 | `system.processes.count` | `cpu_processes_total` | Processes Total | # | Total number of processes on the host. |
 | `senhub.system.time` | `system_time` | Host Clock | s | Current time of the host clock, in seconds since the Unix epoch, sampled at collection |
 | `system.uptime` | `system_uptime` | Host Uptime | s | Time since the host booted, in seconds |
-| `senhub.system.clock.synchronized` | `system_clock_synchronized` | Host Clock Synchronized | # | 1 when the kernel considers the clock synchronised, else 0 |
-| `senhub.system.clock.offset` | `system_clock_offset` | Host Clock Offset | s | Estimated error of the host clock in seconds, from adjtimex esterror; absent while unsynchronised |
-| `senhub.system.clock.max_error` | `system_clock_max_error` | Host Clock Maximum Error | s | Maximum error of the host clock in seconds, from adjtimex maxerror |
+| `senhub.system.clock.synchronized` | `system_clock_synchronized` | Host Clock Synchronized | # | 1 when the clock is synchronised (Linux: adjtimex; Windows: the Windows Time service has at least one time source), else 0 |
+| `senhub.system.clock.offset` | `system_clock_offset` | Host Clock Offset | s | Estimated error of the host clock in seconds (Linux: adjtimex esterror; Windows: Windows Time Service Computed Time Offset); absent while unsynchronised |
+| `senhub.system.clock.max_error` | `system_clock_max_error` | Host Clock Maximum Error | s | Maximum error of the host clock in seconds, from adjtimex maxerror; Linux only |
 
 <!-- schema:metrics:end -->

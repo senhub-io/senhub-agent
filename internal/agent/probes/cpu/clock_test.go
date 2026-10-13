@@ -246,3 +246,30 @@ func TestOffsetIsOmittedWhenClockIsUnsynchronised(t *testing.T) {
 		t.Errorf("max_error tags = %+v, want clock_source=ntpd", maxError.Tags)
 	}
 }
+
+func TestMaxErrorIsOmittedWhenUnknown(t *testing.T) {
+	c := withClock{
+		Collector: stubCollector{},
+		now:       time.Now,
+		sync: func() (clockSync, error) {
+			return clockSync{
+				source:          "w32time",
+				synced:          true,
+				offset:          3 * time.Millisecond,
+				maxErrorUnknown: true,
+			}, nil
+		},
+	}
+
+	points, err := c.Collect(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := pointByName(points, "system_clock_max_error"); ok {
+		t.Fatal("system_clock_max_error must be omitted when the platform has no bound")
+	}
+	offset, ok := pointByName(points, "system_clock_offset")
+	if !ok || offset.Value != 0.003 {
+		t.Fatalf("system_clock_offset = %+v (found %v), want 0.003 s", offset, ok)
+	}
+}

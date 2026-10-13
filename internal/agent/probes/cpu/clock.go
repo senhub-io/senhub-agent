@@ -23,7 +23,10 @@ type clockSync struct {
 	synced   bool
 	offset   time.Duration
 	maxError time.Duration
-	source   string
+	// maxErrorUnknown leaves system_clock_max_error out: Windows has no
+	// such bound, and a 0 would read as a perfect clock.
+	maxErrorUnknown bool
+	source          string
 }
 
 // withClock adds the host clock, clock synchronisation state, and the uptime
@@ -89,12 +92,14 @@ func (c *withClock) Collect(timestamp time.Time) ([]datapoint.DataPoint, error) 
 				Value:     synchronizedValue,
 				Tags:      syncTags,
 			})
-			points = append(points, datapoint.DataPoint{
-				Name:      "system_clock_max_error",
-				Timestamp: timestamp,
-				Value:     syncState.maxError.Seconds(),
-				Tags:      syncTags,
-			})
+			if !syncState.maxErrorUnknown {
+				points = append(points, datapoint.DataPoint{
+					Name:      "system_clock_max_error",
+					Timestamp: timestamp,
+					Value:     syncState.maxError.Seconds(),
+					Tags:      syncTags,
+				})
+			}
 			if syncState.synced {
 				points = append(points, datapoint.DataPoint{
 					Name:      "system_clock_offset",
