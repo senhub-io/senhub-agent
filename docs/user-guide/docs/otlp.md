@@ -562,7 +562,8 @@ strategies; the logs path is **additive**.
 
 ### The agent's own warnings
 
-The agent also sends its own warnings and errors as log records, so an
+On request, the agent also sends its own warnings and errors as log
+records, so an
 operator who reads only the logs backend sees, for example, a probe
 reporting a missing cloud permission. Records come from the producer
 `senhub-agent` (type `agent`) with severity WARN, ERROR or FATAL, the
@@ -574,8 +575,8 @@ of the log pipeline itself are never sent back into it.
 At most 20 records a second are sent, with bursts up to 100; the rest
 are dropped and counted in `senhub.agent.self_logs.dropped`
 (`senhub.agent.self_logs.published` counts the others). The environment
-variable `SENHUB_SELF_LOGS` sets the floor: `warn` (default), `error`, or
-`off` to send none.
+variable `SENHUB_SELF_LOGS` turns it on: `warn` sends warnings and above, `error`
+errors and above. Unset (or `off`), nothing is sent.
 
 ### Logs survive an outage
 

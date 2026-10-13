@@ -35,12 +35,12 @@ type selfLogWriter struct {
 
 func selfLogLevelFromEnv() zerolog.Level {
 	switch os.Getenv("SENHUB_SELF_LOGS") {
+	case "warn":
+		return zerolog.WarnLevel
 	case "error":
 		return zerolog.ErrorLevel
-	case "off":
-		return zerolog.Disabled
 	default:
-		return zerolog.WarnLevel
+		return zerolog.Disabled
 	}
 }
 

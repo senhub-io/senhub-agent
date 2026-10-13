@@ -98,10 +98,16 @@ func TestSelfLogErrorLevelIgnoresWarn(t *testing.T) {
 	}
 }
 
-func TestSelfLogOffBuildsNoWriter(t *testing.T) {
-	t.Setenv("SENHUB_SELF_LOGS", "off")
-	if w := newSelfLogWriter(selfLogLevelFromEnv()); w != nil {
-		t.Fatal("SENHUB_SELF_LOGS=off must not build a writer")
+func TestSelfLogIsOffUnlessAsked(t *testing.T) {
+	for _, v := range []string{"", "off", "nonsense"} {
+		t.Setenv("SENHUB_SELF_LOGS", v)
+		if w := newSelfLogWriter(selfLogLevelFromEnv()); w != nil {
+			t.Fatalf("SENHUB_SELF_LOGS=%q must not build a writer", v)
+		}
+	}
+	t.Setenv("SENHUB_SELF_LOGS", "warn")
+	if w := newSelfLogWriter(selfLogLevelFromEnv()); w == nil || w.minLevel != zerolog.WarnLevel {
+		t.Fatal("SENHUB_SELF_LOGS=warn must build a warn writer")
 	}
 }
 
