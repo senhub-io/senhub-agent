@@ -204,11 +204,13 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 		logShipper: shipper,
 	}
 
+	selfLogs := newSelfLogWriter(selfLogLevelFromEnv())
+
 	switch args.Env {
 	case "development":
-		logger = buildDevelopmentLogger(args, config)
+		logger = buildDevelopmentLogger(args, config, selfLogs)
 	default:
-		logger = buildProductionLogger(args, config)
+		logger = buildProductionLogger(args, config, selfLogs)
 	}
 
 	// Reset the selective-debug state for this logger construction.
@@ -282,20 +284,25 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 
 // buildDevelopmentLogger creates a development-oriented logger configuration
 // that writes formatted logs to stderr with debug level enabled
-func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
+func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig, selfLogs *selfLogWriter) *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	// Default writer is console with masking
 	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
-	var writer io.Writer = NewMaskingWriter(consoleWriter)
+	writers := []io.Writer{NewMaskingWriter(consoleWriter)}
 
 	// If debug log shipper is configured, create a multi-writer with masking
 	if config.logShipper != nil {
 		// Apply masking to the log shipper
-		maskedShipper := NewMaskingWriter(config.logShipper)
-		writer = zerolog.MultiLevelWriter(writer, maskedShipper)
+		writers = append(writers, NewMaskingWriter(config.logShipper))
 		bootstrapLog().Info().Msg("Debug log shipping enabled in development mode")
 	}
+
+	if selfLogs != nil {
+		writers = append(writers, selfLogs)
+	}
+
+	writer := io.Writer(zerolog.MultiLevelWriter(writers...))
 
 	logger := zerolog.
 		New(writer).
@@ -327,7 +334,7 @@ func journaldAttached() bool {
 	return os.Getenv("JOURNAL_STREAM") != ""
 }
 
-func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logger {
+func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig, selfLogs *selfLogWriter) *Logger {
 	logPath := getLogPath(args)
 
 	// Detect interactive (`run`) vs service (daemon) mode.
@@ -366,6 +373,10 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig) *Logg
 	if config.logShipper != nil {
 		writers = append(writers, NewMaskingWriter(config.logShipper))
 		bootstrapLog().Info().Msg("Debug log shipping enabled in production mode")
+	}
+
+	if selfLogs != nil {
+		writers = append(writers, selfLogs)
 	}
 
 	// zerolog's global level is a hard floor: should() drops any event below

@@ -428,7 +428,7 @@ func TestModuleOverride_BeatsAQuieterBaseLogger(t *testing.T) {
 func TestProductionLogger_RuntimeModuleDebugReachesTheWriter(t *testing.T) {
 	withRestoredLogState(t)
 
-	built := buildProductionLogger(&cliArgs.ParsedArgs{}, &LoggerConfig{})
+	built := buildProductionLogger(&cliArgs.ParsedArgs{}, &LoggerConfig{}, nil)
 	var buf bytes.Buffer
 	base := built.Output(&buf)
 
@@ -455,7 +455,7 @@ func TestProductionLogger_RuntimeModuleDebugReachesTheWriter(t *testing.T) {
 
 	// The override is process state, not logger state: rebuilding the logger,
 	// as a reload would, keeps it.
-	rebuilt := buildProductionLogger(&cliArgs.ParsedArgs{}, &LoggerConfig{})
+	rebuilt := buildProductionLogger(&cliArgs.ParsedArgs{}, &LoggerConfig{}, nil)
 	buf.Reset()
 	base2 := rebuilt.Output(&buf)
 	NewModuleLogger(&base2, "probe.ibmi").Debug().Msg("still raised")
