@@ -22,16 +22,16 @@ Replicas that appear with a scale-out or a new revision are attached on the next
 
 ```yaml
 # probes.d/40-azure-container-apps.yaml — each file under probes.d/ is a YAML array of probes
-- name: squash-logs
+- name: ca
   type: azure_container_apps
   params:
     tenant_id: "00000000-0000-0000-0000-000000000000"
     client_id: "11111111-1111-1111-1111-111111111111"
-    client_secret: "${secret:squash-logs.client_secret}"   # OS secret store; inline plaintext is auto-sealed on install
+    client_secret: "${secret:ca.client_secret}"   # OS secret store; inline plaintext is auto-sealed on install
     subscription_id: "22222222-2222-2222-2222-222222222222"
     resource_group: rg-squash
     app: squash-tm
-    bookmark_path: /var/lib/senhub-agent/squash-logs.bookmark
+    bookmark_path: /var/lib/senhub-agent/ca.bookmark
     min_severity: warn                 # INFO and below never leave the agent
     exclude:
       - 'GET /health '                 # the platform's own probes
@@ -52,12 +52,12 @@ The `governance` block is the agent's per-probe governance (see [Configuration](
 Naming applications one by one stops working at the scale of a tenant: the list has to be maintained, and an application created last week is collected only once somebody remembers it. A `discovery` block replaces the list with a question asked of Azure.
 
 ```yaml
-- name: aca-subscription
+- name: ca
   type: azure_container_apps
   params:
     tenant_id: "${env:AZ_TENANT}"
     client_id: "${env:AZ_CLIENT}"
-    client_secret: "${secret:aca.client_secret}"
+    client_secret: "${secret:ca.client_secret}"
     subscription_id: "00000000-0000-0000-0000-000000000000"
     discovery:
       interval: 300                  # how often the subscription is asked
@@ -66,16 +66,16 @@ Naming applications one by one stops working at the scale of a tenant: the list 
       exclude: ["*-preview"]
 ```
 
-`discovery` and `app` are exclusive. A list you wrote and a list Azure answers would fight over the same bookmarks, so the configuration refuses the pair and says which to remove.
+`discovery` is exclusive with `app` **and** with `resource_group`: discovery finds the applications and their resource groups itself. A list you wrote and a list Azure answers would fight over the same bookmarks, so the configuration refuses the combination and says which key to remove. `subscription_id` and the credentials stay at the probe level.
 
 | Key | Default | What it does |
 |---|---|---|
-| `interval` | `300` | Seconds between two enumerations of the subscription. The replica scan keeps its own, faster, cadence. |
-| `max_apps` | `100` | Hard cap. Applications beyond it are left out and the log says how many, rather than the list being silently truncated. |
-| `resource_groups` | every group | Bounds the search. |
+| `interval` | `300` | Seconds between two enumerations of the subscription, 60 to 86400. The replica scan keeps its own, faster, cadence. |
+| `max_apps` | `100` | Hard cap, 1 to 500. Applications beyond it are left out and the log says how many, rather than the list being silently truncated. |
+| `resource_groups` | every group | Bounds the search. Not to be confused with the probe-level `resource_group`, which is refused here. |
 | `include` / `exclude` | every name | Filter on the application name; `*` is the only wildcard and `exclude` wins. |
 
-Three things are worth knowing before turning it on.
+Four things are worth knowing before turning it on.
 
 - **The role does not have to be granted on the whole subscription.** Azure returns, from a subscription-wide listing, only the resources the credential is allowed to read. Grant the role on one resource group and discovery finds exactly the applications of that group; grant it on the subscription and it finds them all. Measured on a real tenant: a role assigned on a single resource group returned its six applications from the subscription-wide call, and nothing else. So a security team that will not widen a read grant can still use discovery, bounded by the assignment rather than by a list.
 - **What bounds an instance is the credential, not the probe.** Every application of one discovery shares the credentials and the subscription, because each of those is a single value. An application in another subscription belongs to another instance.
@@ -88,48 +88,51 @@ When several applications are followed, what describes an application is publish
 
 # From environment variables
 
-Where placing a file is harder than setting a variable (a container platform, a Helm chart), the probe is declared by the agent's [environment rule](../configuration.md#configuring-probes-from-environment-variables). The probe name is yours; the application name goes in `APP`, and a name with a hyphen (`squash-tm`) is a value there, not part of a variable.
+Where placing a file is harder than setting a variable (a container platform, a Helm chart), the probe is declared by the agent's [environment rule](../configuration.md#configuring-probes-from-environment-variables). The probe name is yours; the examples call it `CA` (Container App), and its jobs counterpart `CAJ` (Container App Job). The application name goes in `APP`, and a name with a hyphen (`squash-tm`) is a value there, not part of a variable.
 
-One probe per application (list mode), the credentials repeated for each:
+One probe per application (list mode), the credentials repeated for each. A second application is a second probe with its own name (`CA2`):
 
 ```bash
-SENHUB_PROBE_OLTP_TYPE=azure_container_apps
-SENHUB_PROBE_OLTP_APP=oltp
-SENHUB_PROBE_OLTP_TENANT_ID=00000000-0000-0000-0000-000000000000
-SENHUB_PROBE_OLTP_CLIENT_ID=11111111-1111-1111-1111-111111111111
-SENHUB_PROBE_OLTP_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
-SENHUB_PROBE_OLTP_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
-SENHUB_PROBE_OLTP_RESOURCE_GROUP=rg-squash
-SENHUB_PROBE_OLTP_BOOKMARK_PATH=/var/lib/senhub-agent/oltp.bookmark
+SENHUB_PROBE_CA_TYPE=azure_container_apps
+SENHUB_PROBE_CA_APP=oltp
+SENHUB_PROBE_CA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CA_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CA_RESOURCE_GROUP=rg-squash
+SENHUB_PROBE_CA_BOOKMARK_PATH=/var/lib/senhub-agent/ca.bookmark
 ```
 
 The whole subscription (discovery mode), one probe:
 
 ```bash
-SENHUB_PROBE_ACA_TYPE=azure_container_apps
-SENHUB_PROBE_ACA_TENANT_ID=00000000-0000-0000-0000-000000000000
-SENHUB_PROBE_ACA_CLIENT_ID=11111111-1111-1111-1111-111111111111
-SENHUB_PROBE_ACA_CLIENT_SECRET_FILE=/run/secrets/aca_client_secret
-SENHUB_PROBE_ACA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
-SENHUB_PROBE_ACA_DISCOVERY__INTERVAL=300
-SENHUB_PROBE_ACA_DISCOVERY__EXCLUDE=*-preview
-SENHUB_PROBE_ACA_BOOKMARK_PATH=/var/lib/senhub-agent/aca.bookmark
+SENHUB_PROBE_CA_TYPE=azure_container_apps
+SENHUB_PROBE_CA_TENANT_ID=00000000-0000-0000-0000-000000000000
+SENHUB_PROBE_CA_CLIENT_ID=11111111-1111-1111-1111-111111111111
+SENHUB_PROBE_CA_CLIENT_SECRET_FILE=/run/secrets/az_client_secret
+SENHUB_PROBE_CA_SUBSCRIPTION_ID=22222222-2222-2222-2222-222222222222
+SENHUB_PROBE_CA_DISCOVERY__INTERVAL=300
+SENHUB_PROBE_CA_DISCOVERY__EXCLUDE=*-preview
+SENHUB_PROBE_CA_BOOKMARK_PATH=/var/lib/senhub-agent/ca.bookmark
 ```
 
 Each instance keeps its own `bookmark_path`, under the agent's state directory, which should be a volume.
+
+A `${env:...}` written inside one of these values is not expanded, and `SENHUB_PROBE_CA_CLIENT_SECRET=${env:AZ_SECRET}` would reach the probe as that literal text. To share one credential between probes, give each the same `..._CLIENT_SECRET_FILE`, or declare the probes in `SENHUB_PROBES`, where `${env:AZ_SECRET}` is resolved; see [the environment rule](../configuration.md#no-env-inside-a-value). The variables overlay the probes of the files and of `SENHUB_PROBES`, key by key, and win.
 
 # Configuration Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:061d51983d3979e26288ba278b1cdf157c64fb706358f8e629cdd501f1976335 -->
+<!-- sha256:594aa2781c62f1c4a058e376decf87f8d97bd1fa6b3ba1921b42a0a1ea40c2cb -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `tenant_id` | Yes | - | Entra ID tenant (directory) ID |
-| `client_id` | Yes | - | Application (client) ID of the app registration |
-| `client_secret` | Yes | - | Client secret of the app registration. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `subscription_id` | Yes | - | Subscription that holds the Container App |
+| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless SENHUB_AZURE_TENANT_ID is set for every Azure probe of the agent |
+| `client_id` | In practice | - | Application (client) ID of the app registration; required unless SENHUB_AZURE_CLIENT_ID is set for every Azure probe of the agent |
+| `client_secret` | In practice | - | Client secret of the app registration; one of client_secret, client_secret_file, SENHUB_AZURE_CLIENT_SECRET or SENHUB_AZURE_CLIENT_SECRET_FILE is required, in that order of precedence. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `client_secret_file` | No | - | File holding the client secret (a mounted secret, for example); read when the probe is configured. Used when client_secret is not set |
+| `subscription_id` | In practice | - | Subscription that holds the Container App; required unless SENHUB_AZURE_SUBSCRIPTION_ID is set for every Azure probe of the agent |
 | `resource_group` | No | - | Resource group of the Container App; required unless 'discovery' is set, which finds it |
 | `app` | No | - | Name of the Container App; required unless 'discovery' is set, which finds them |
 | `discovery` | No | - | Follow every application the subscription holds instead of naming one; exclusive with 'app' and 'resource_group' |
@@ -256,9 +259,64 @@ Four of them answer a question the others cannot:
 Log records are delivered to the outputs that consume logs, OTLP first; restrict them with the per-probe `log_strategies` key if needed. The state metrics are available through every configured output; for PRTG and Nagios, query the probe by its configured `name`:
 
 ```bash
-curl "http://localhost:8080/api/{agentkey}/prtg/metrics/squash-logs"
-curl "http://localhost:8080/api/{agentkey}/nagios/metrics/squash-logs"
+curl "http://localhost:8080/api/{agentkey}/prtg/metrics/ca"
+curl "http://localhost:8080/api/{agentkey}/nagios/metrics/ca"
 ```
+
+## Sizing
+
+Measured on 0.6.3 with one collector following 26 Container Apps (4 of them writing logs) and 3 jobs: about 0.01 vCPU (peak 0.02) and 150 MiB of working set, as Azure counts it. A container sized at 0.25 vCPU and 512 MiB leaves a wide margin. The state kept on the share is a few KiB, plus the logs queue during a backend outage.
+
+## Shared credentials
+
+To avoid repeating the identity of the app registration in every entry, set it once in the agent's environment. It serves both Azure probes (`azure_container_apps` and `azure_container_app_jobs`). A probe that sets a key itself keeps its own value for that key.
+
+| Variable | Replaces |
+|---|---|
+| `SENHUB_AZURE_TENANT_ID` | `tenant_id` |
+| `SENHUB_AZURE_CLIENT_ID` | `client_id` |
+| `SENHUB_AZURE_CLIENT_SECRET` | `client_secret` |
+| `SENHUB_AZURE_CLIENT_SECRET_FILE` | path of a file holding the secret (a mounted secret, for example) |
+| `SENHUB_AZURE_SUBSCRIPTION_ID` | `subscription_id` |
+
+The secret is taken from the first of these that is set: `client_secret`, `client_secret_file` (a probe key naming a file), `SENHUB_AZURE_CLIENT_SECRET`, `SENHUB_AZURE_CLIENT_SECRET_FILE`. A secret file that cannot be read is an error, not a fallback. The variables are read when the probe is configured, so changing them needs a restart.
+
+```yaml
+probes:
+  ca:
+    type: azure_container_apps
+    discovery: {}
+  caj:
+    type: azure_container_app_jobs
+    discovery: {}
+```
+
+## Checking the setup
+
+`senhub-agent check azure` verifies, without changing anything, that the credentials of the configured Azure probes (`azure_container_apps` and `azure_container_app_jobs`) can do what the probes need. It prints one verdict per line and never prints a secret.
+
+```bash
+senhub-agent check azure               # every enabled Azure probe in the installed configuration
+senhub-agent check azure --probe caj   # one probe, by name
+senhub-agent check azure /path/to/agent.yaml
+```
+
+For each probe it checks, in order:
+
+| Line | What it verifies |
+|---|---|
+| `token` | Entra ID issues a token for the tenant, client ID and secret of the probe |
+| `subscription` | The subscription can be read. A `WARN` here is normal when the role is scoped to a resource group |
+| `apps` / `jobs` | The application (or, with `discovery`, every application) and the job are found, grouped by resource group |
+| `permission` | Each action the probe needs is granted at its scope, from the effective permissions Azure reports for the credential |
+
+The actions checked are `Microsoft.App/containerApps/read`, `.../revisions/read`, `.../revisions/replicas/read` and `.../getAuthtoken/action` for applications, and `Microsoft.App/jobs/read`, `Microsoft.App/jobs/*/read` and `Microsoft.App/jobs/getAuthtoken/action` for jobs. A role that only grants `jobs/executions/read` is reported as missing `jobs/*/read`: the verdicts would look right while no log line ever arrived.
+
+The command exits with `0` when every required item passes and `1` when one fails (or when no Azure probe is configured), so it can gate a deployment script. Like the other commands, it runs as root or administrator.
+
+## Dashboards
+
+A ready-made Grafana dashboard for this probe, `azure-container-apps.json`, is provided in [`docs/grafana/`](https://github.com/senhub-io/senhub-agent/tree/master/docs/grafana) (see its README for the data path it expects). It covers coverage (applications followed out of found), per-application health, scan failures by reason, record volume and logs filtered by application and severity.
 
 ## Metric reference
 
@@ -282,10 +340,16 @@ series' tags.
 | `senhub.azure_container_apps.records.last_age` | `azure_container_apps_records_last_age` | Seconds Since Last Record | s | Seconds since a line last left this probe; an application that says nothing is silent, not necessarily broken, so read it against the open streams |
 | `senhub.azure_container_apps.arm.reads_remaining` | `azure_container_apps_arm_reads_remaining` | ARM Reads Remaining | # | Reads left in the subscription's Azure Resource Manager budget, as the last answer reported it |
 | `senhub.azure_container_apps.records_emitted` | `azure_container_apps_records_emitted` | Records Emitted | # | Cumulative count of log records this probe has published to the log rail |
+| `senhub.azure_container_apps.records.volume` | `azure_container_apps_records_bytes` | Records Bytes | B | Cumulative bytes of log record bodies this probe has published, per application under discovery; compares with what Log Analytics bills by volume |
 | `senhub.azure_container_apps.records_dropped` | `azure_container_apps_records_dropped` | Records Dropped | # | Cumulative count of lines dropped at the source by exclude patterns or min_severity |
 | `senhub.azure_container_apps.records_unparsed` | `azure_container_apps_records_unparsed` | Records Unparsed | # | Cumulative lines the declared parser could not read; a parser declared wrong loses every line and nothing else says so |
 | `senhub.azure_container_apps.stream.reconnects` | `azure_container_apps_stream_reconnects` | Stream Reconnects | # | Cumulative count of console log streams re-attached after a drop |
 | `senhub.azure_container_apps.stream.attach_throttled` | `azure_container_apps_attach_throttled` | Attaches Throttled | # | Cumulative attaches the stream endpoint refused for rate; counted apart from the reconnects, which climb on their own since Azure cuts every stream about every ten minutes |
 | `senhub.azure_container_apps.scan.failures` | `azure_container_apps_scan_failures` | Scan Failures {reason} | # | Cumulative replica scans Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable. Reachability alone reads the same for a wrong secret, a deleted application and a control plane pushing back |
+| `senhub.azure_container_apps.discovery.found` | `azure_container_apps_discovery_found` | Applications Found | # | Applications the last successful subscription listing returned; found = followed + left out |
+| `senhub.azure_container_apps.discovery.followed` | `azure_container_apps_discovery_followed` | Applications Followed | # | Applications this instance follows after the filters and the max_apps cap |
+| `senhub.azure_container_apps.discovery.left_out` | `azure_container_apps_discovery_left_out` | Applications Left Out {reason} | # | Applications found but not followed, by cause: filter (include, exclude, resource_groups) or max_apps |
+| `senhub.azure_container_apps.discovery.last_age` | `azure_container_apps_discovery_last_age` | Since Last Discovery | s | Seconds since the last successful subscription listing; climbs while discovery fails |
+| `senhub.azure_container_apps.discovery.failures` | `azure_container_apps_discovery_failures` | Discovery Failures {reason} | # | Cumulative subscription listings Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable |
 
 <!-- schema:metrics:end -->

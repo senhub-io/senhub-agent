@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 
@@ -93,7 +94,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		if log != nil {
 			probesDirExists := dirExists(probesDir)
 			strategiesDirExists := dirExists(strategiesDir)
-			if probesDirExists || strategiesDirExists {
+			if (probesDirExists || strategiesDirExists) && !splitWillHarmonise(baseDir) && firstLegacyWarning(configPath) {
 				log.Warn().
 					Str("config_path", configPath).
 					Bool("probes_d_present", probesDirExists).
@@ -111,6 +112,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 		if err := applyLicenseSidecar(&data, configPath); err != nil {
 			return LocalConfigurationData{}, err
 		}
+		resolveRelativePaths(&data, configPath)
 		warnSNMPPollOverlaps(log, data.Probes)
 		return data, nil
 	}
@@ -136,6 +138,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	if err := applyLicenseSidecar(&merged, configPath); err != nil {
 		return LocalConfigurationData{}, err
 	}
+	resolveRelativePaths(&merged, configPath)
 	warnSNMPPollOverlaps(log, merged.Probes)
 	return merged, nil
 }
@@ -288,7 +291,8 @@ func listYAMLFiles(dir string) ([]string, error) {
 
 // ignoredFragments lists the files of dir that the loader leaves out
 // without being told to: not a dotfile, not *.disabled, and not ending in
-// .yaml or .yml. A copy taken before an edit, otlp.yaml.bak-20260908,
+// .yaml or .yml, nor set aside by the agent's own split (*.install-default).
+// A copy taken before an edit, otlp.yaml.bak-20260908,
 // is the usual one. It is not loaded, which is right, and it is said, so
 // an operator who meant it as a fragment learns it does not count.
 func ignoredFragments(dir string) []string {
@@ -299,7 +303,7 @@ func ignoredFragments(dir string) []string {
 	var out []string
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".disabled") {
+		if e.IsDir() || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".disabled") || strings.HasSuffix(name, installDefaultSuffix) {
 			continue
 		}
 		if ext := strings.ToLower(filepath.Ext(name)); ext != ".yaml" && ext != ".yml" {
@@ -315,7 +319,7 @@ func reportIgnoredFragments(log *logger.ModuleLogger, dirs ...string) {
 		return
 	}
 	for _, dir := range dirs {
-		if names := ignoredFragments(dir); len(names) > 0 {
+		if names := ignoredFragments(dir); len(names) > 0 && firstIgnoredReport(dir, names) {
 			log.Info().
 				Str("dir", dir).
 				Strs("files", names).
@@ -346,4 +350,39 @@ func mergeConfigs(base LocalConfigurationData, probes []ProbeConfig, strategies 
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// legacyWarned records the configuration files already reported as legacy
+// in this process: the loader runs several times per start, and the
+// warning said the same thing each time.
+var legacyWarned sync.Map
+
+func firstLegacyWarning(configPath string) bool {
+	_, seen := legacyWarned.LoadOrStore(configPath, struct{}{})
+	return !seen
+}
+
+// ignoredReported records the (directory, file set) pairs already reported, so
+// the same unknown files are named once per process rather than at every
+// configuration reload.
+var ignoredReported sync.Map
+
+func firstIgnoredReport(dir string, names []string) bool {
+	_, seen := ignoredReported.LoadOrStore(dir+"\x00"+strings.Join(names, "\x00"), struct{}{})
+	return !seen
+}
+
+// splitWillHarmonise reports that the boot-time split will migrate this
+// legacy file on its own: the .d directories hold only what install
+// created or an earlier attempt left. Warning that they are ignored would
+// then announce, at the start that creates them, a state that ends a
+// moment later.
+func splitWillHarmonise(baseDir string) bool {
+	_, foreign := classifyFragments(baseDir)
+	for _, p := range foreign {
+		if !isInstallDefaultFragment(p) {
+			return false
+		}
+	}
+	return true
 }

@@ -85,6 +85,24 @@ func (p *OTLPReceiverProbe) origin(remoteAddr string) string {
 	return originRemote
 }
 
+// coverageOrigins lists the paths this listener can be reached by, which
+// are the origins whose coverage series start at zero: a socket is only
+// "uds", a loopback bind only "tcp_loopback", and any other bind may also
+// see remote senders.
+func (p *OTLPReceiverProbe) coverageOrigins() []string {
+	if p.config.UnixPath != "" {
+		return []string{originUDS}
+	}
+	host, _, err := net.SplitHostPort(p.config.Address)
+	if err != nil {
+		host = p.config.Address
+	}
+	if ip := net.ParseIP(host); (ip != nil && ip.IsLoopback()) || host == "localhost" {
+		return []string{originTCPLoopback}
+	}
+	return []string{originTCPLoopback, originRemote}
+}
+
 // stampResource adds this host's identity to one Resource when the path
 // allows it and the sender stated no host.* of its own.
 func stampResource(res *resourcepb.Resource, origin string, own hostStamp) {

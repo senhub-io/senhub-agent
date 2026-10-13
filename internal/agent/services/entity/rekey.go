@@ -1,6 +1,11 @@
 package entity
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
+	"sync"
 	"sync/atomic"
 )
 
@@ -43,6 +48,73 @@ type RekeyAnnouncer struct {
 	// because the consumer's delete is idempotent by contract — written that way
 	// for a producer that restarts.
 	announced atomic.Int32
+	// checked records that the marker of an earlier start was looked for; it
+	// only latches once a marker store is active, so a look made before
+	// EnableRekeyMarkers does not hide a marker that exists. suppressed is set
+	// when that earlier start already announced this re-key.
+	checkMu    sync.Mutex
+	checked    bool
+	suppressed atomic.Bool
+}
+
+// markerStore remembers, across restarts, which re-keys were announced. The
+// consumer reads every delete as "the producer says it is gone", so repeating
+// the announcement at each start would retract the legacy node forever. One
+// small file per re-key lives in the state directory; a start that finds it
+// stays silent.
+type markerStore struct {
+	dir      string
+	warn     func(error)
+	warnOnce sync.Once
+}
+
+var markers atomic.Pointer[markerStore]
+
+// EnableRekeyMarkers makes announcers announce once per state directory
+// instead of at every process start. warn receives the first failure to
+// write a marker (the announcement is then repeated at the next start, as
+// before). An empty dir restores the stateless behaviour.
+func EnableRekeyMarkers(dir string, warn func(error)) {
+	if dir == "" {
+		markers.Store(nil)
+		return
+	}
+	markers.Store(&markerStore{dir: dir, warn: warn})
+}
+
+func (r *RekeyAnnouncer) markerPath(m *markerStore) string {
+	sum := sha256.Sum256([]byte(r.entityType + "|" + r.idKey + "|" + r.legacyID + "|" + r.newID))
+	return filepath.Join(m.dir, "rekey-"+hex.EncodeToString(sum[:8])+".announced")
+}
+
+func (r *RekeyAnnouncer) checkMarker() {
+	r.checkMu.Lock()
+	defer r.checkMu.Unlock()
+	if r.checked {
+		return
+	}
+	m := markers.Load()
+	if m == nil {
+		return
+	}
+	r.checked = true
+	if _, err := os.Stat(r.markerPath(m)); err == nil {
+		r.suppressed.Store(true)
+	}
+}
+
+func (r *RekeyAnnouncer) writeMarker() {
+	m := markers.Load()
+	if m == nil {
+		return
+	}
+	err := os.MkdirAll(m.dir, 0o755)
+	if err == nil {
+		err = os.WriteFile(r.markerPath(m), []byte(r.entityType+" "+r.legacyID+" -> "+r.newID+"\n"), 0o644)
+	}
+	if err != nil && m.warn != nil {
+		m.warnOnce.Do(func() { m.warn(err) })
+	}
 }
 
 // RekeyAnnounceCycles is how many observation cycles carry the announcement.
@@ -67,8 +139,16 @@ func (r *RekeyAnnouncer) Announce() {
 	if r == nil {
 		return
 	}
-	if r.announced.Add(1) > RekeyAnnounceCycles {
+	r.checkMarker()
+	if r.suppressed.Load() {
 		return
+	}
+	n := r.announced.Add(1)
+	if n > RekeyAnnounceCycles {
+		return
+	}
+	if n == RekeyAnnounceCycles {
+		defer r.writeMarker()
 	}
 	PublishEvent(Event{
 		Kind: EntityDelete,
@@ -87,7 +167,11 @@ func (r *RekeyAnnouncer) Announce() {
 // alias missing them travels the whole wire and then does nothing, which is the
 // worst of both: the cost of sending it and none of the effect.
 func (r *RekeyAnnouncer) SameAs() (Relation, bool) {
-	if r == nil || r.announced.Load() > RekeyAnnounceCycles {
+	if r == nil {
+		return Relation{}, false
+	}
+	r.checkMarker()
+	if r.suppressed.Load() || r.announced.Load() > RekeyAnnounceCycles {
 		return Relation{}, false
 	}
 	return Relation{

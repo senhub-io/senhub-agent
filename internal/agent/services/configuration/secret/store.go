@@ -91,7 +91,7 @@ func (s *FileStore) save(m map[string]string) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("closing secret store temp file: %w", err)
 	}
-	if err := os.Chmod(tmpName, 0o600); err != nil {
+	if err := os.Chmod(tmpName, 0o600); err != nil && !fsown.Refused(err) {
 		return fmt.Errorf("setting secret store mode: %w", err)
 	}
 	if err := os.Rename(tmpName, s.path); err != nil {

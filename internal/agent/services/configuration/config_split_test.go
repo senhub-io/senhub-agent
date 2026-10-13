@@ -1,13 +1,17 @@
 package configuration
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v2"
+
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // writeMonolithicFixture stages a minimal-but-realistic monolithic
@@ -333,3 +337,58 @@ func TestMigrateToMultiFile_FailureLeavesNothingBehind(t *testing.T) {
 		t.Errorf("fragments left behind: %v %v", owned, foreign)
 	}
 }
+
+// The split is the migration the legacy-layout warning asks for: it must not
+// be logged just before the split runs on install defaults.
+func TestMigrateToMultiFile_NoLegacyWarningBeforeTheSplit(t *testing.T) {
+	dir := t.TempDir()
+	path := writeMonolithicFixture(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, "probes.d"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "probes.d", "00-host.yaml"), []byte("# nothing yet\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf)
+	log := logger.NewModuleLogger((*logger.Logger)(&zl), "configuration.split.test")
+	if _, err := MigrateToMultiFile(path, log); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "Legacy monolithic") {
+		t.Errorf("legacy warning logged before the split: %s", buf.String())
+	}
+}
+
+func TestLoadWarnsOfLegacyOnlyWhenTheSplitWillNotRun(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		fragment string
+		body     string
+		warn     bool
+	}{
+		{"install defaults only", "00-host.yaml", "# nothing yet\n", false},
+		{"a fragment of the operator", "50-mine.yaml", operatorFragment, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeMonolithicFixture(t, dir)
+			if err := os.MkdirAll(filepath.Join(dir, "probes.d"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "probes.d", tc.fragment), []byte(tc.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf)
+			if _, err := LoadFromDisk(path, logger.NewModuleLogger((*logger.Logger)(&zl), "configuration.test")); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(buf.String(), "Legacy monolithic"); got != tc.warn {
+				t.Errorf("legacy warning = %v, want %v: %s", got, tc.warn, buf.String())
+			}
+		})
+	}
+}
+
+const operatorFragment = "- name: mine\n  type: cpu\n"

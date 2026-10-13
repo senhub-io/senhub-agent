@@ -91,3 +91,25 @@ func TestGetProcessSnapshot_GoroutineGrowthDetectable(t *testing.T) {
 		t.Errorf("expected at least %d goroutines, got %d", before+spawned-5, after)
 	}
 }
+
+// The CPU counter is what the process used, not GOMAXPROCS times its
+// age: a short busy loop must show up, and an idle second must not add a
+// whole CPU second per core.
+func TestProcessCPUSecondsIsUsedNotAvailable(t *testing.T) {
+	before, ok := processCPUSeconds()
+	if !ok {
+		t.Skip("no process CPU time on this platform")
+	}
+	start := time.Now()
+	x := 0
+	for time.Since(start) < 200*time.Millisecond {
+		x++
+	}
+	_ = x
+	time.Sleep(300 * time.Millisecond)
+	after, _ := processCPUSeconds()
+	used := after - before
+	if used < 0.02 || used > 0.6 {
+		t.Errorf("CPU used over a 0.2 s busy loop and a 0.3 s sleep = %.3f s, want about 0.2", used)
+	}
+}

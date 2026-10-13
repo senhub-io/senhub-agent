@@ -15,6 +15,7 @@ import (
 
 	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/cliexit"
 )
 
@@ -52,6 +53,7 @@ func (p *program) Start(s service.Service) error {
 }
 
 func (p *program) Stop(s service.Service) error {
+	agentstate.MarkShuttingDown()
 	// The budget is what the services declare they need, not a single
 	// flat allowance that whichever service stops first can consume in
 	// full (#285). The supervisor still bounds each one individually.

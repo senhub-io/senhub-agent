@@ -113,9 +113,24 @@ metrics:
     unit: "#"
     category: "status"
     description: "Cumulative count of log records this probe has published to the log rail"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.records_emitted
       unit: "{record}"
+      type: counter
+
+  - name: "azure_container_apps_records_bytes"
+    channel: "records_bytes"
+    display_name: "Records Bytes"
+    unit: "B"
+    category: "status"
+    description: "Cumulative bytes of log record bodies this probe has published, per application under discovery; compares with what Log Analytics bills by volume"
+    multi_instance_labels:
+      - "azure_app"
+    otel:
+      name: senhub.azure_container_apps.records.volume
+      unit: "By"
       type: counter
 
   - name: "azure_container_apps_records_dropped"
@@ -124,6 +139,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Cumulative count of lines dropped at the source by exclude patterns or min_severity"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.records_dropped
       unit: "{record}"
@@ -135,6 +152,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Cumulative lines the declared parser could not read; a parser declared wrong loses every line and nothing else says so"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.records_unparsed
       unit: "{record}"
@@ -146,6 +165,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Cumulative count of console log streams re-attached after a drop"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.stream.reconnects
       unit: "{reconnect}"
@@ -157,6 +178,8 @@ metrics:
     unit: "#"
     category: "status"
     description: "Cumulative attaches the stream endpoint refused for rate; counted apart from the reconnects, which climb on their own since Azure cuts every stream about every ten minutes"
+    multi_instance_labels:
+      - "azure_app"
     otel:
       name: senhub.azure_container_apps.stream.attach_throttled
       unit: "{attach}"
@@ -169,9 +192,73 @@ metrics:
     category: "status"
     description: "Cumulative replica scans Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable. Reachability alone reads the same for a wrong secret, a deleted application and a control plane pushing back"
     multi_instance_labels:
+      - "azure_app"
       - "reason"
     otel:
       name: senhub.azure_container_apps.scan.failures
+      unit: "{scan}"
+      type: counter
+    tag_to_attribute:
+      reason: reason
+
+  - name: "azure_container_apps_discovery_found"
+    channel: "discovery_found"
+    display_name: "Applications Found"
+    unit: "#"
+    category: "status"
+    description: "Applications the last successful subscription listing returned; found = followed + left out"
+    otel:
+      name: senhub.azure_container_apps.discovery.found
+      unit: "{app}"
+      type: gauge
+
+  - name: "azure_container_apps_discovery_followed"
+    channel: "discovery_followed"
+    display_name: "Applications Followed"
+    unit: "#"
+    category: "status"
+    description: "Applications this instance follows after the filters and the max_apps cap"
+    otel:
+      name: senhub.azure_container_apps.discovery.followed
+      unit: "{app}"
+      type: gauge
+
+  - name: "azure_container_apps_discovery_left_out"
+    channel: "discovery_left_out_{reason}"
+    display_name: "Applications Left Out {reason}"
+    unit: "#"
+    category: "status"
+    description: "Applications found but not followed, by cause: filter (include, exclude, resource_groups) or max_apps"
+    multi_instance_labels:
+      - "reason"
+    otel:
+      name: senhub.azure_container_apps.discovery.left_out
+      unit: "{app}"
+      type: gauge
+    tag_to_attribute:
+      reason: reason
+
+  - name: "azure_container_apps_discovery_last_age"
+    channel: "discovery_last_age"
+    display_name: "Since Last Discovery"
+    unit: "s"
+    category: "status"
+    description: "Seconds since the last successful subscription listing; climbs while discovery fails"
+    otel:
+      name: senhub.azure_container_apps.discovery.last_age
+      unit: "s"
+      type: gauge
+
+  - name: "azure_container_apps_discovery_failures"
+    channel: "discovery_failures_{reason}"
+    display_name: "Discovery Failures {reason}"
+    unit: "#"
+    category: "status"
+    description: "Cumulative subscription listings Azure refused, by cause: denied, not_found, throttled, refused, timeout, unreachable"
+    multi_instance_labels:
+      - "reason"
+    otel:
+      name: senhub.azure_container_apps.discovery.failures
       unit: "{scan}"
       type: counter
     tag_to_attribute:

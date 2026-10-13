@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/shirou/gopsutil/v3/process"
+
+	"senhub-agent.go/internal/agent/services/fsown"
 )
 
 // ServiceName is the service.name every agent carries on its service.instance.
@@ -142,7 +144,7 @@ func Write(dir, instanceID, agentKey string) error {
 		cleanup()
 		return fmt.Errorf("closing instance id file: %w", err)
 	}
-	if err := os.Chmod(tmpName, mode); err != nil {
+	if err := os.Chmod(tmpName, mode); err != nil && !fsown.Refused(err) {
 		cleanup()
 		return fmt.Errorf("setting mode %v on instance id file: %w", mode, err)
 	}

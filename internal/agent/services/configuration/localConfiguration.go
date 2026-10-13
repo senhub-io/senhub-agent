@@ -360,7 +360,10 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		// strategies are fragments. Minted before the split, the key found
 		// no http entry in a `storage:` sequence and the fragment came out
 		// without one. The seal below finds the layout already split.
-		splitBackup := harmoniseLayout(lc.configPath, lc.logger)
+		splitBackup, splitErr := harmoniseLayout(lc.configPath, lc.logger)
+		if splitErr != nil {
+			lc.logger.Warn().Err(splitErr).Msg("Monolithic config not split; continuing with the current layout")
+		}
 
 		// Give an installation made before the read and administration
 		// surfaces were told apart the key the second one now needs —
@@ -375,7 +378,12 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
 		// on any error, and we continue with the existing config rather than
 		// refusing to start — a sealing fault must never brick the agent.
-		sealErr := SealInlineSecrets(lc.configPath, lc.logger)
+		// A layout that could not be split is reported above; sealing would
+		// repeat the same refusal as a second, misleading failure.
+		var sealErr error
+		if splitErr == nil {
+			sealErr = SealInlineSecrets(lc.configPath, lc.logger)
+		}
 		if sealErr == nil && splitBackup != "" {
 			if err := os.Remove(splitBackup); err != nil && !os.IsNotExist(err) {
 				lc.logger.Warn().Err(err).Str("file", splitBackup).Msg("Could not remove harmonise backup (plaintext may linger)")

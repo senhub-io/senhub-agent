@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -53,8 +54,7 @@ type MigrateResult struct {
 //
 // Source-file comments are not carried into the fragments — they live
 // in the backup. Fragments get their own header comments.
-func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateResult, error) {
-	result := MigrateResult{}
+func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result MigrateResult, migrateErr error) {
 	if configPath == "" {
 		return result, fmt.Errorf("no config path provided")
 	}
@@ -77,8 +77,40 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 	// same check, and each attempt left one more backup (#974).
 	fragmentsDir := filepath.Dir(configPath)
 	owned, foreign := classifyFragments(fragmentsDir)
-	if len(foreign) > 0 {
-		return result, &FragmentsBesideMonolithicError{ConfigPath: configPath, Fragments: foreign}
+	var defaults, userFragments []string
+	for _, p := range foreign {
+		if isInstallDefaultFragment(p) {
+			defaults = append(defaults, p)
+		} else {
+			userFragments = append(userFragments, p)
+		}
+	}
+	if len(userFragments) > 0 {
+		return result, &FragmentsBesideMonolithicError{ConfigPath: configPath, Fragments: userFragments}
+	}
+	// The files `install` creates are ignored in legacy mode and hold
+	// nothing of the operator's: they are set aside, not a reason to
+	// refuse. A migration that does not complete puts them back.
+	var movedAside [][2]string
+	defer func() {
+		if migrateErr == nil {
+			return
+		}
+		for _, m := range movedAside {
+			if _, err := os.Stat(m[0]); os.IsNotExist(err) {
+				_ = os.Rename(m[1], m[0])
+			}
+		}
+	}()
+	for _, p := range defaults {
+		aside := p + installDefaultSuffix
+		if _, err := os.Stat(aside); err == nil {
+			aside = p + "." + time.Now().Format("20060102-150405") + installDefaultSuffix
+		}
+		if err := os.Rename(p, aside); err != nil {
+			return result, fmt.Errorf("setting aside %s, created by install: %w", p, err)
+		}
+		movedAside = append(movedAside, [2]string{p, aside})
 	}
 	for _, p := range owned {
 		if err := os.Remove(p); err != nil {
@@ -86,8 +118,10 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (MigrateRes
 		}
 	}
 
-	// Snapshot the merged view BEFORE we touch anything.
-	before, err := LoadFromDisk(configPath, log)
+	// Snapshot the merged view BEFORE we touch anything. The legacy-layout
+	// warning is withheld: the split about to run is the migration it asks
+	// the operator to do.
+	before, err := LoadFromDisk(configPath, nil)
 	if err != nil {
 		return result, fmt.Errorf("failed to load current configuration: %w", err)
 	}
@@ -386,6 +420,61 @@ func classifyFragments(configDir string) (owned, foreign []string) {
 		}
 	}
 	return owned, foreign
+}
+
+// installDefaultSuffix marks a fragment `install` created and a migration
+// moved aside.
+const installDefaultSuffix = ".install-default"
+
+// installHTTPFragmentPattern matches strategies.d/00-http.yaml as install
+// writes it: the template text with its values (port, bind address,
+// endpoints, admin key, TLS block) left free.
+func installHTTPFragmentPattern() *regexp.Regexp {
+	verbs := regexp.MustCompile(`%[dsv]`)
+	var b strings.Builder
+	b.WriteString(`(?s)\A\s*`)
+	last := 0
+	for _, loc := range verbs.FindAllStringIndex(HTTPStrategyFragmentTemplate, -1) {
+		b.WriteString(regexp.QuoteMeta(HTTPStrategyFragmentTemplate[last:loc[0]]))
+		b.WriteString(`.*?`)
+		last = loc[1]
+	}
+	b.WriteString(regexp.QuoteMeta(HTTPStrategyFragmentTemplate[last:]))
+	b.WriteString(`\s*\z`)
+	return regexp.MustCompile(b.String())
+}
+
+// isInstallDefaultFragment reports whether path is a fragment `install`
+// creates and nobody edited: probes.d/00-host.yaml with the default host
+// probes, strategies.d/00-http.yaml with the default HTTP strategy, or a
+// file holding nothing but comments.
+func isInstallDefaultFragment(path string) bool {
+	data, err := os.ReadFile(path) // #nosec G304 - a fragment of the agent's own configuration
+	if err != nil {
+		return false
+	}
+	if len(strings.TrimSpace(stripYAMLComments(string(data)))) == 0 {
+		return true
+	}
+	switch filepath.Base(filepath.Dir(path)) + "/" + filepath.Base(path) {
+	case "probes.d/00-host.yaml":
+		return strings.TrimSpace(string(data)) == strings.TrimSpace(HostProbesFragmentTemplate)
+	case "strategies.d/00-http.yaml":
+		return installHTTPFragmentPattern().Match(data)
+	}
+	return false
+}
+
+func stripYAMLComments(s string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func firstLineHas(path, marker string) bool {

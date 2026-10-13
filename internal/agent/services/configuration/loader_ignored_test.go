@@ -28,3 +28,19 @@ func TestACopyBesideAFragmentIsNotLoadedAndIsNamed(t *testing.T) {
 		t.Errorf("ignored = %v, want the backup copy alone", got)
 	}
 }
+
+// Files the split itself set aside are not reported as unknown.
+func TestInstallDefaultFilesSetAsideAreNotReported(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"00-host.yaml", "00-host.yaml.install-default", "00-http.yaml.20261012-101010.install-default", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x: 1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := ignoredFragments(dir); !reflect.DeepEqual(got, []string{"notes.txt"}) {
+		t.Errorf("ignored = %v, want notes.txt alone", got)
+	}
+	if !firstIgnoredReport(dir, []string{"notes.txt"}) || firstIgnoredReport(dir, []string{"notes.txt"}) {
+		t.Error("the same unknown file must be reported once")
+	}
+}
