@@ -88,8 +88,10 @@ a node, which is why the default is the node.
 !!! warning "What you accept"
     - The pod shares the node's PID and network namespaces and can read
       the whole node filesystem. It stays read-only, uid 10001, with no
-      capability and no privilege escalation, so it reads what any user
-      can, not root-only files. Kubernetes' `baseline` level forbids
+      capability and no privilege escalation. With pod logs on (the
+      default), its supplementary group 0 also lets it read the files
+      of group `root` that are group-readable, such as the pod logs;
+      files readable by root alone stay closed. Kubernetes' `baseline` level forbids
       host namespaces and hostPath: label the namespace
       `pod-security.kubernetes.io/enforce=privileged`.
     - The pods share the node's network, so the HTTP output would be
@@ -120,6 +122,25 @@ two together). Install a second release for it:
 `--set hostMonitoring.enabled=false --set kubernetesProbe.enabled=true --set rbac.kubernetesProbe.enabled=true`
 (a Deployment). The same goes for a `ServiceMonitor` and for a whole
 `config.agent`, which carry one key for every agent.
+
+## Pod logs
+
+In the DaemonSet, each agent also ships the stdout and stderr of every
+pod of its node, through the [`kubernetes_logs`](probes/kubernetes_logs.md)
+probe. The chart mounts the node's `/var/log/pods` read-only, writes the
+probe as `probes.d/56-kubernetes-logs.yaml`, and gives the pod its node
+and own identity through the downward API (the agent leaves its own pod
+out). The log files are `root:root 0640`: the pod gets group 0 as a
+supplementary group to read them.
+
+```yaml
+podLogs:
+  enabled: true          # DaemonSet only; ignored in a Deployment
+  params:
+    exclude_namespaces: [kube-system]
+```
+
+Turn it off with `--set podLogs.enabled=false`.
 
 ## Monitoring the cluster
 
