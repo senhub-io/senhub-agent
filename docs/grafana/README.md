@@ -60,6 +60,12 @@ Container Apps dashboard (`senhub_azure_container_apps_discovery_*`)
 needs the discovery metrics added in 0.6.3; it stays empty on older
 agents.
 
+The logs panels read the level from `severity_text` (what an
+OpenTelemetry Collector path writes) or `severity`, and use the LogsQL
+`copy` pipe to colour lines by level: they were checked against
+VictoriaLogs v1.52.0, and an older VictoriaLogs without `copy` rejects
+the Recent logs query.
+
 All vendor dashboards carry "**(awaiting live data)**" in their title
 until a customer pilot lights up the corresponding probe. Schema is
 validated, queries are cross-checked against
