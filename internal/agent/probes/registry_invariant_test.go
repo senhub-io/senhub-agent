@@ -146,6 +146,7 @@ var probeConfigFixtures = map[string]map[string]interface{}{
 	"ceph":            {"username": "admin", "password": "secret"},
 	"filetail":        {"paths": []interface{}{"/var/log/app.log"}},
 	"kubernetes_logs": {"root": "/var/log/pods"},
+	"kubelet_stats":   {"endpoint": "https://127.0.0.1:10250"},
 	"jenkins":         {"endpoint": "https://jenkins.example.com"},
 	"modbus": {"host": "192.0.2.10", "registers": []interface{}{
 		map[string]interface{}{"name": "reg0", "address": 0, "type": "uint16"},
@@ -228,6 +229,9 @@ func TestEveryRegisteredProbeHasEntitySource(t *testing.T) {
 		// host self-observability
 		"cpu": true, "memory": true, "network": true, "logicaldisk": true,
 		"wifi_signal_strength": true,
+		// the node's kubelet: pods and containers are put on the map by
+		// the kubernetes probe, which reads them from the API server
+		"kubelet_stats": true,
 		// log conduits
 		"linux_logs": true, "syslog": true, "filetail": true, "kubernetes_logs": true,
 		"windows_eventlog": true, "event": true,
