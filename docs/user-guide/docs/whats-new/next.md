@@ -11,6 +11,7 @@ Changes land here as they are merged. The 0.6.3 corrective release collects them
 - **Container Apps discovery reports its coverage.** `discovery.found`, `discovery.followed` and `discovery.left_out` (by `filter` or `max_apps`) read "26 of 26" from metrics; `discovery.last_age` and `discovery.failures` show a listing that stopped working. Under discovery, the volume counters and scan failures are given per application, and an application never read no longer reports zero replicas.
 - **Container App Jobs discovery.** A `discovery:` block on `azure_container_app_jobs` follows every job of a subscription (resource groups, include and exclude patterns, cap), each with its own executions file; jobs that appear or disappear are picked up at the next enumeration. When executions come back without replicas, the log names the missing `Microsoft.App/jobs/*/read` permission once per job.
 - **Shared Azure credentials.** `SENHUB_AZURE_TENANT_ID`, `SENHUB_AZURE_CLIENT_ID`, `SENHUB_AZURE_CLIENT_SECRET` (or `_FILE`) and `SENHUB_AZURE_SUBSCRIPTION_ID` give the identity once for every Azure probe; a probe's own value still wins key by key.
+- **Log volume per Container App.** `senhub.azure_container_apps.records.volume` counts the bytes of published log bodies per application, so the volume compares with what Log Analytics bills; the official dashboard shows it per second and over the range.
 
 ## Fixes
 
@@ -34,3 +35,4 @@ Changes land here as they are merged. The 0.6.3 corrective release collects them
 - **A stalled update download is abandoned.** An archive download that receives no byte for 60 seconds is cancelled and retried like a cut stream, instead of waiting indefinitely.
 - **No false alarms when the configuration is split.** The first start of a monolithic `agent.yaml` no longer logs the "Legacy monolithic config" warning just before splitting it, and the `*.install-default` files set aside by the split are no longer reported as "Files not loaded".
 - **host.id is always lowercase.** The `/etc/machine-id` fallback was not lowercased; the same id in two cases would be two hosts downstream (no host in production was affected).
+- **The agent's own CPU time is what it used.** `senhub.agent.process.cpu.time` read the CPU available to the process (GOMAXPROCS over its lifetime), so an idle agent in a 2-CPU container showed 2 CPUs busy; it now reads user plus system time from the OS.
