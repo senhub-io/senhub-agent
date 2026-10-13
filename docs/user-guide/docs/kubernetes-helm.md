@@ -123,6 +123,20 @@ two together). Install a second release for it:
 (a Deployment). The same goes for a `ServiceMonitor` and for a whole
 `config.agent`, which carry one key for every agent.
 
+## Pod and container resources
+
+In the DaemonSet, each agent also reads its node's kubelet through the
+[`kubelet_stats`](probes/kubelet_stats.md) probe: CPU, memory,
+filesystem and network used by the node, each pod and each container.
+The chart binds a ClusterRole with `get` on `nodes/stats` to the
+service account, mounts its token, and gives the agent the node IP
+(`status.hostIP`). Turn it off with `--set kubeletStats.enabled=false`.
+
+Most kubelets serve a self-signed certificate that the cluster CA does
+not sign, so the chart sets `kubeletStats.insecureSkipVerify: true`. Set
+it to `false` once the kubelet serving certificates are signed by the
+cluster CA (`serverTLSBootstrap`).
+
 ## Pod logs
 
 In the DaemonSet, each agent also ships the stdout and stderr of every
