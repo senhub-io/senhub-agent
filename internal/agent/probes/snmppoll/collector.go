@@ -51,6 +51,16 @@ func buildPlan(cfg *config) (scalars, walks []oidMapping) {
 	return scalars, walks
 }
 
+// collectOptions controls pure collect behavior that varies by the probe's
+// identity-resolution state.
+type collectOptions struct {
+	// SkipUnnamedInterfaces makes collect drop walked rows whose if_index
+	// has no network.interface.name. This keeps interface metric series from
+	// being born without their topology join key and then changing label set
+	// once a later sweep names the interface.
+	SkipUnnamedInterfaces bool
+}
+
 // collect runs one poll cycle and returns the decoded datapoints (without
 // probe_name/probe_type enrichment — the probe adds those). It is
 // best-effort: a failed scalar Get or a failed column walk is logged and
@@ -60,17 +70,24 @@ func buildPlan(cfg *config) (scalars, walks []oidMapping) {
 // ifNames carry the polled device's resolved network.device.id and its
 // ifIndex→ifName map (from the entity source's last sweep); they tag the
 // metrics with the SAME identity as the topology entities so a backend joins
-// device/interface metrics to their entities. Both may be empty before the
-// first topology sweep — the tags are simply omitted until then.
+// device/interface metrics to their entities. Callers that set
+// collectOptions.SkipUnnamedInterfaces true drop walked interface rows whose
+// ifIndex has no name in ifNames so a series never gains a key later.
 // The boolean result reports whether the device ANSWERED at least one
 // request this cycle: UDP "connect" cannot fail for an unreachable or
 // auth-failing device, so reachability must be judged on responses —
 // otherwise senhub.snmp.up stays 1 through a real outage and the
 // SnmpDeviceDown alert never fires.
-func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames map[string]string, now time.Time, log *logger.ModuleLogger) ([]data_store.DataPoint, bool) {
+func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames map[string]string, now time.Time, log *logger.ModuleLogger, opts ...collectOptions) ([]data_store.DataPoint, bool) {
+	options := collectOptions{}
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+
 	scalars, walks := buildPlan(cfg)
 	points := make([]data_store.DataPoint, 0, len(scalars)+len(walks)*8)
 	answered := false
+	skippedInterfaces := 0
 
 	// Scalars: a single (chunked) Get of all <OID>.0 instances.
 	if len(scalars) > 0 {
@@ -116,17 +133,29 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 			}
 			var extra []tags.Tag
 			if m.IndexLabel != "" {
-				extra = append(extra, tags.Tag{Key: m.IndexLabel, Value: index})
-				// Interface metrics: resolve the ifIndex to network.interface.name so the
-				// datapoint joins to its network.interface entity.
 				if m.IndexLabel == "if_index" {
-					if name := ifNames[index]; name != "" {
+					name := ifNames[index]
+					if name == "" && options.SkipUnnamedInterfaces {
+						skippedInterfaces++
+						continue
+					}
+					extra = append(extra, tags.Tag{Key: m.IndexLabel, Value: index})
+					if name != "" {
 						extra = append(extra, tags.Tag{Key: "network.interface.name", Value: name})
 					}
+				} else {
+					extra = append(extra, tags.Tag{Key: m.IndexLabel, Value: index})
 				}
 			}
 			points = append(points, newPoint(m, vb.Value, now, instance, deviceID, extra))
 		}
+	}
+
+	if skippedInterfaces > 0 && log != nil {
+		log.Debug().
+			Str("target", instance).
+			Int("skipped_interface_rows", skippedInterfaces).
+			Msg("skipping interface metrics whose interface is not named by the current topology snapshot")
 	}
 
 	return points, answered
