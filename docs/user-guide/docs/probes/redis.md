@@ -50,6 +50,16 @@ The Sentinel instance reports, per monitored master, its status, replicas, Senti
 
 Channels that change on a failover, and so should not raise an alert on their own: the replication role, the replication offset, the connected replicas, and the Sentinel master status and failover in progress while it runs.
 
+On a Sentinel, `Redis Up` says whether the Sentinel process itself answers. A Sentinel has no keyspace and no replication role: it reports no database channel, and `Replication Role` reads -1.
+
+## Reading the channels
+
+`Replication Role` is 1 on a master, 0 on a replica and -1 on a Sentinel (or when INFO gives no role). PRTG shows Master, Replica or "Sentinel or unknown" instead of the number once the agent's value lookups are installed on the PRTG server: see [Installing PRTG value lookups](../web-interface.md#installing-prtg-value-lookups). The same applies to `Redis Up` and the persistence status channels.
+
+Redis prints no keyspace line for a database that holds no key. The probe still reports `DB 0 Keys`, `DB 0 Expiring Keys` and `DB 0 Average TTL` at 0 in that case, so an alert on the key count of db0 keeps a channel to watch when the instance is emptied. Other databases appear once they hold a key.
+
+From Redis 8, INFO also prints key-size distributions (`db0_distrib_strings_sizes` and the like). They are not databases and the probe ignores them.
+
 ## Parameters
 
 <!-- schema:params:start -->
