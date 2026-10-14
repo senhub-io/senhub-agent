@@ -94,11 +94,12 @@ the last collection, so a reading is up to one collection interval old.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:7596f11130e51ee1a6c261d0023d3d6a3a7ea0406866540cd3941f76189a5abd -->
+<!-- sha256:3a0aa945b72b105780dc05ab00ba172fd246699f9642123741ff67c2854c5ecb -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Collection interval in seconds |
+| `per_core_details` | No | `false` | Windows only: restore per-core user, system, irq and softirq metrics; the default emits only per-core usage while _Total keeps all metrics, and true restores the full per-core breakdown (ignored on Linux). |
 
 <!-- schema:params:end -->
 
