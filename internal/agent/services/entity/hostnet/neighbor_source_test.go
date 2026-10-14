@@ -4,9 +4,17 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/macindex"
 )
+
+func newTestNeighborSource(hostID string) *NeighborSource {
+	src := NewNeighborSource(func() string { return hostID })
+	src.macIndex = macindex.New(time.Minute)
+	return src
+}
 
 func mustObserve(t *testing.T, src *NeighborSource) entity.Observation {
 	t.Helper()
@@ -18,7 +26,7 @@ func mustObserve(t *testing.T, src *NeighborSource) entity.Observation {
 }
 
 func TestNeighborSourceObserveBuildsEntitiesScopeAndRelations(t *testing.T) {
-	src := NewNeighborSource(func() string { return "host-1" })
+	src := newTestNeighborSource("host-1")
 	src.readNeighbors = func() ([]hostNeighbor, error) {
 		return []hostNeighbor{
 			{IP: "192.0.2.10", MAC: "aa-bb-cc-dd-ee-ff", Iface: "eth0", State: "reachable"},
@@ -70,7 +78,7 @@ func TestNeighborSourceObserveBuildsEntitiesScopeAndRelations(t *testing.T) {
 }
 
 func TestNeighborSourceFiltersRepeatedRanges(t *testing.T) {
-	src := NewNeighborSource(func() string { return "host-1" })
+	src := newTestNeighborSource("host-1")
 	src.readNeighbors = func() ([]hostNeighbor, error) {
 		return []hostNeighbor{
 			{IP: "169.254.0.10", MAC: "00-11-22-33-44-55", Iface: "eth0", State: "reachable"},
@@ -89,7 +97,7 @@ func TestNeighborSourceFiltersRepeatedRanges(t *testing.T) {
 // KVM and most hypervisors hand out locally administered MACs
 // (52-54-00-...): filtering them would hide every VM neighbour.
 func TestNeighborSourceKeepsLocallyAdministeredMAC(t *testing.T) {
-	src := NewNeighborSource(func() string { return "host-1" })
+	src := newTestNeighborSource("host-1")
 	src.readNeighbors = func() ([]hostNeighbor, error) {
 		return []hostNeighbor{
 			{IP: "198.51.100.1", MAC: "52-54-00-33-44-55", Iface: "eth0", State: "reachable"},
@@ -107,8 +115,76 @@ func TestNeighborSourceKeepsLocallyAdministeredMAC(t *testing.T) {
 	}
 }
 
+func TestNeighborSourceResolvesToDeviceInterface(t *testing.T) {
+	idx := macindex.New(time.Minute)
+	idx.SetEnabled(true)
+	idx.Register("aa-bb-cc-dd-ee-ff", "device-1", "Ethernet1")
+
+	src := newTestNeighborSource("host-1")
+	src.macIndex = idx
+	src.readNeighbors = func() ([]hostNeighbor, error) {
+		return []hostNeighbor{
+			{IP: "192.0.2.10", MAC: "aa-bb-cc-dd-ee-ff", Iface: "eth0", State: "reachable"},
+		}, nil
+	}
+
+	obs := mustObserve(t, src)
+
+	var neighborOf []entity.Relation
+	var resolvesTo []entity.Relation
+	for _, rel := range obs.Relations {
+		switch rel.Type {
+		case relNeighborOf:
+			neighborOf = append(neighborOf, rel)
+		case relResolvesTo:
+			resolvesTo = append(resolvesTo, rel)
+		}
+	}
+	if len(neighborOf) != 1 {
+		t.Fatalf("got %d neighbor_of relations, want 1", len(neighborOf))
+	}
+	if len(resolvesTo) != 1 {
+		t.Fatalf("got %d resolves_to relations, want 1", len(resolvesTo))
+	}
+
+	rel := resolvesTo[0]
+	if rel.FromType != entityTypeNetworkNeighbor || rel.ToType != entityTypeNetworkInterface {
+		t.Fatalf("resolves_to relation = %#v, want network.neighbor -> network.interface", rel)
+	}
+	wantToID := map[string]any{idKeyNetworkDevice: "device-1", idKeyInterfaceName: "Ethernet1"}
+	if !reflect.DeepEqual(rel.ToID, wantToID) {
+		t.Fatalf("resolves_to ToID = %#v, want %#v", rel.ToID, wantToID)
+	}
+	if got := rel.Attributes[attrBasis]; got != "arp" {
+		t.Fatalf("basis = %#v, want arp", got)
+	}
+	if got := rel.Attributes[attrConfidence]; got != 0.9 {
+		t.Fatalf("confidence = %#v, want 0.9", got)
+	}
+}
+
+func TestNeighborSourceResolvesToFlagOff(t *testing.T) {
+	idx := macindex.New(time.Minute)
+	idx.Register("aa-bb-cc-dd-ee-ff", "device-1", "Ethernet1")
+
+	src := newTestNeighborSource("host-1")
+	src.macIndex = idx
+	src.readNeighbors = func() ([]hostNeighbor, error) {
+		return []hostNeighbor{
+			{IP: "192.0.2.10", MAC: "aa-bb-cc-dd-ee-ff", Iface: "eth0", State: "reachable"},
+		}, nil
+	}
+
+	obs := mustObserve(t, src)
+	for _, rel := range obs.Relations {
+		if rel.Type == relResolvesTo {
+			t.Fatalf("flag off emitted resolves_to: %#v", rel)
+		}
+	}
+}
+
 func TestNeighborSourceReadErrorReturnsFalse(t *testing.T) {
-	src := NewNeighborSource(func() string { return "host-1" })
+	src := newTestNeighborSource("host-1")
 	src.readNeighbors = func() ([]hostNeighbor, error) { return nil, errors.New("boom") }
 
 	if _, ok := src.Observe(); ok {
@@ -117,7 +193,7 @@ func TestNeighborSourceReadErrorReturnsFalse(t *testing.T) {
 }
 
 func TestNeighborSourceEmptyHostIDReturnsFalse(t *testing.T) {
-	src := NewNeighborSource(func() string { return "" })
+	src := newTestNeighborSource("")
 	src.readNeighbors = func() ([]hostNeighbor, error) {
 		return []hostNeighbor{{IP: "192.0.2.1", MAC: "00-11-22-33-44-55", Iface: "eth0", State: "reachable"}}, nil
 	}
