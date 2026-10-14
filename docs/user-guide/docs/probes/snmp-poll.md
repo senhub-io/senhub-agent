@@ -282,6 +282,7 @@ series' tags.
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
 | `senhub.snmp.up` | `senhub.snmp.up` | SNMP {instance} Reachability | # | 1 when the last poll reached the SNMP target, 0 otherwise |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | SNMP {instance} Check Result | # | Why the last poll failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 | `senhub.snmp.poll.duration` | `senhub.snmp.poll.duration` | SNMP {instance} Poll Duration | s | Wall-clock time taken by the last poll cycle |
 | `snmp.sys.uptime` | `snmp.sys.uptime` | SNMP {instance} Uptime | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
 | `snmp.interface.in_octets` | `snmp.interface.in_octets` | SNMP {instance} IF{if_index} In Octets | bytes | ifInOctets — total octets received on the interface |
