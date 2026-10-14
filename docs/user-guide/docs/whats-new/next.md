@@ -16,3 +16,4 @@ Nothing released yet since 0.6.3. Changes land here as they are merged.
 ## Fixes
 
 - **A cut link leaves the map, and a silent device leaves as unmonitored.** `snmp_poll` no longer reports a link while either of its ports reads down, even when the far switch still lists the neighbour. A device that stops answering is no longer replayed after three topology intervals and leaves with the reason "unmonitored", not as gone; a device answering nothing at all no longer appears under an address-only identity. The local interface of a link whose far end was not read recently carries `senhub.link.peer_state` (`unread`, `stale`, `unreachable`).
+- **A neighbour the ARP cache forgot is not reported as ended.** When an ARP or NDP entry ages out, on the host or in a device's tables read over SNMP, its `network.neighbor` now leaves with the reason "evicted" instead of "terminated".
