@@ -4,7 +4,7 @@ Dashboards deployed via Grafana's file-based provisioning. Drop into
 the Grafana host's provisioned dashboards directory; the running
 Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 
-## Catalog v1 — 21 dashboards
+## Catalog v1 — 23 dashboards
 
 ### Linux host (7)
 
@@ -17,6 +17,13 @@ Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 | `linux-filesystem.json` | SenHub Linux — Filesystem   | `senhub-linux-filesystem` |
 | `linux-network.json`    | SenHub Linux — Network      | `senhub-linux-network` |
 | `linux-logs.json`       | SenHub Linux — Logs         | `senhub-linux-logs` |
+
+### Kubernetes (2)
+
+| File | Dashboard | UID |
+|---|---|---|
+| `kubernetes-workloads.json` | SenHub Kubernetes — Workloads | `senhub-kubernetes-workloads` |
+| `kubernetes-logs.json`      | SenHub Kubernetes — Pod logs  | `senhub-kubernetes-logs` |
 
 ### Windows host (5)
 

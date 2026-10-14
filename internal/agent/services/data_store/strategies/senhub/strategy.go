@@ -153,6 +153,7 @@ func (s *SyncStrategySenhub) ValidateConfigParams(params configuration.StorageCo
 }
 
 func (s *SyncStrategySenhub) Start(ctx context.Context) error {
+	agentstate.SeedExportSendFailed("senhub")
 	if (s.scheduler) != nil {
 		return nil
 	}

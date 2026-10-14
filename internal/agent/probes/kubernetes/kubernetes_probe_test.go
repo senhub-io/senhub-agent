@@ -17,6 +17,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -807,5 +808,43 @@ func TestCollect_UpMetric_APIError(t *testing.T) {
 	}
 	if !upFound {
 		t.Error("senhub.kubernetes.up was not emitted on API error")
+	}
+}
+
+// TestCollectNodes_EmitsK8sNodeAndSameAs drives the probe's real node path:
+// a node with a UID and a MachineID yields the host, the k8s.node and the
+// same_as between them in the cycle's inventory.
+func TestCollectNodes_EmitsK8sNodeAndSameAs(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "worker-1", UID: "4b1e7c2a-0000-4000-8000-0000000000aa"},
+		Status: corev1.NodeStatus{
+			NodeInfo:   corev1.NodeSystemInfo{MachineID: "3f2a9c7e1b5d48e6a0c4f7b29d18e5a3", KubeletVersion: "v1.31.2"},
+			Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}},
+		},
+	}
+	p := buildTestProbe(t, kubefake.NewSimpleClientset(node), true, false, false)
+	if _, err := p.collectNodes(context.Background(), time.Now()); err != nil {
+		t.Fatalf("collectNodes() error: %v", err)
+	}
+	var host, k8sNode bool
+	for _, e := range p.pendingInventory.entities {
+		switch e.Type {
+		case entity.TypeHost:
+			host = true
+		case entity.TypeK8sNode:
+			k8sNode = true
+			if e.Attributes["k8s.node.name"] != "worker-1" {
+				t.Errorf("k8s.node attributes = %v", e.Attributes)
+			}
+		}
+	}
+	sameAs := 0
+	for _, r := range p.pendingInventory.relations {
+		if r.Type == entity.RelSameAs && r.FromType == entity.TypeK8sNode && r.ToType == entity.TypeHost {
+			sameAs++
+		}
+	}
+	if !host || !k8sNode || sameAs != 1 {
+		t.Fatalf("host=%v k8s.node=%v same_as=%d, want true/true/1", host, k8sNode, sameAs)
 	}
 }

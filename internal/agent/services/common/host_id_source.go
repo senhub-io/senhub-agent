@@ -39,6 +39,37 @@ func DegenerateHostID(id string) bool {
 	return len(distinct) < 4 || ascending >= 16
 }
 
+// effectiveHostID is the host identity the agent reports: SENHUB_HOST_ID
+// when the deployment set a usable one, the identity derived from the
+// machine otherwise. The container entrypoint used to be the only reader
+// of the variable, writing it where the OS keeps its machine id; but the
+// derivation prefers the DMI product UUID whenever it is readable, which a
+// root process in a container can do, so containers on one VM all came
+// back as that VM. The configured value is rendered the way the derivation
+// renders a machine id (lowercase, dashed 8-4-4-4-12), so a host keeps the
+// same identity whichever way it was deployed.
+func effectiveHostID(derived string) string {
+	if c := normalizeHostID(os.Getenv("SENHUB_HOST_ID")); validConfiguredHostID(c) {
+		return c[0:8] + "-" + c[8:12] + "-" + c[12:16] + "-" + c[16:20] + "-" + c[20:32]
+	}
+	return lowerHostID(derived)
+}
+
+// validConfiguredHostID accepts 32 hexadecimal digits that are not an
+// example or blank value. A rejected value falls back to the derived
+// identity; the entity detector names it at start.
+func validConfiguredHostID(h string) bool {
+	if len(h) != 32 {
+		return false
+	}
+	for _, r := range h {
+		if hexValue(r) < 0 {
+			return false
+		}
+	}
+	return !DegenerateHostID(h)
+}
+
 func normalizeHostID(s string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), "-", ""))
 }

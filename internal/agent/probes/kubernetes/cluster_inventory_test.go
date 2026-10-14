@@ -26,7 +26,7 @@ func TestNodeEntity_KeyedOnTheMachineID(t *testing.T) {
 
 	ent, ok := nodeEntity(n, "cluster-uid")
 	if !ok {
-		t.Fatal("node with a MachineID must produce an entity")
+		t.Fatal("node with a MachineID must produce a host entity")
 	}
 	if ent.Type != entity.TypeHost {
 		t.Errorf("type = %q, want host — a Kubernetes node is a machine with its own OS", ent.Type)
@@ -45,12 +45,24 @@ func TestNodeEntity_KeyedOnTheMachineID(t *testing.T) {
 	if _, isID := ent.ID["host.uuid"]; isID {
 		t.Error("SystemUUID must not be part of the identity")
 	}
+
+	// The cluster-role attributes moved to the k8s.node entity.
+	for _, key := range []string{
+		"k8s.node.name",
+		"k8s.kubelet.version",
+		"k8s.container.runtime",
+		"k8s.cluster.uid",
+	} {
+		if _, exists := ent.Attributes[key]; exists {
+			t.Errorf("host must not carry %s (moved to k8s.node)", key)
+		}
+	}
 }
 
-// The consumer's instruction, and the right one: no /etc/machine-id, no host
-// entity from the cluster view. A missing node is a visible hole an in-guest
-// agent fills; a node keyed on a fallback is a silent duplicate nobody sees.
-func TestNodeEntity_NoMachineIDMeansNoEntity(t *testing.T) {
+// A node without a MachineID produces no HOST entity from the cluster view. A
+// missing node is a visible hole an in-guest agent fills; a host keyed on a
+// fallback is a silent duplicate nobody sees.
+func TestNodeEntity_NoMachineIDMeansNoHostEntity(t *testing.T) {
 	n := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{Name: "node-2"},
 		Status: corev1.NodeStatus{NodeInfo: corev1.NodeSystemInfo{
@@ -59,9 +71,178 @@ func TestNodeEntity_NoMachineIDMeansNoEntity(t *testing.T) {
 		}},
 	}
 	if _, ok := nodeEntity(n, "cluster-uid"); ok {
-		t.Fatal("a node without a MachineID must produce NO entity — falling back " +
+		t.Fatal("a node without a MachineID must produce NO host entity — falling back " +
 			"on SystemUUID would mint a second identity for a machine the " +
 			"in-guest agent already reports correctly")
+	}
+}
+
+// The node inventory emits a host for the machine, a k8s.node for its role in
+// the cluster, and one same_as edge joining them when both identities are
+// present on the API object.
+func TestNodeInventory_SplitsClusterRoleFromMachine(t *testing.T) {
+	n := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"},
+		Spec:       corev1.NodeSpec{Unschedulable: true},
+		Status: corev1.NodeStatus{
+			NodeInfo: corev1.NodeSystemInfo{
+				MachineID:               "8b86170405bc4382b0577eac3df5e730",
+				SystemUUID:              "4C4C4544-0043",
+				OperatingSystem:         "linux",
+				Architecture:            "amd64",
+				KubeletVersion:          "v1.31.2",
+				OSImage:                 "Ubuntu 22.04",
+				ContainerRuntimeVersion: "containerd://1.7.0",
+			},
+			Conditions: []corev1.NodeCondition{
+				{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+				{Type: corev1.NodeMemoryPressure, Status: corev1.ConditionFalse},
+				{Type: corev1.NodeDiskPressure, Status: corev1.ConditionFalse},
+				{Type: corev1.NodePIDPressure, Status: corev1.ConditionUnknown},
+			},
+		},
+	}
+
+	entities, relations := nodeInventory(n, "cluster-uid")
+	if len(entities) != 2 {
+		t.Fatalf("got %d entities, want one host and one k8s.node", len(entities))
+	}
+
+	var hostEnt, nodeEnt *entity.Entity
+	for i := range entities {
+		switch entities[i].Type {
+		case entity.TypeHost:
+			hostEnt = &entities[i]
+		case entity.TypeK8sNode:
+			nodeEnt = &entities[i]
+		}
+	}
+	if hostEnt == nil || nodeEnt == nil {
+		t.Fatalf("expected one host and one k8s.node, got %v", entities)
+	}
+
+	if got := hostEnt.ID["host.id"]; got != "8b861704-05bc-4382-b057-7eac3df5e730" {
+		t.Errorf("host.id = %v, want dashed MachineID", got)
+	}
+	for _, key := range []string{
+		"k8s.node.name",
+		"k8s.kubelet.version",
+		"k8s.container.runtime",
+		"k8s.cluster.uid",
+	} {
+		if _, ok := hostEnt.Attributes[key]; ok {
+			t.Errorf("host must not carry %s (moved to k8s.node)", key)
+		}
+	}
+	if got := hostEnt.Attributes["host.name"]; got != "node-1" {
+		t.Errorf("host.name = %v, want node-1", got)
+	}
+	if got := hostEnt.Attributes["os.type"]; got != "linux" {
+		t.Errorf("os.type = %v, want linux", got)
+	}
+	if got := hostEnt.Attributes["host.arch"]; got != "amd64" {
+		t.Errorf("host.arch = %v, want amd64", got)
+	}
+	if got := hostEnt.Attributes["k8s.node.os_image"]; got != "Ubuntu 22.04" {
+		t.Errorf("k8s.node.os_image = %v, want Ubuntu 22.04", got)
+	}
+
+	if got := nodeEnt.ID["k8s.node.uid"]; got != "node-uid" {
+		t.Errorf("k8s.node.uid = %v, want node-uid", got)
+	}
+	for key, want := range map[string]any{
+		"k8s.node.name":          "node-1",
+		"k8s.kubelet.version":    "v1.31.2",
+		"k8s.container.runtime":  "containerd://1.7.0",
+		"k8s.cluster.uid":        "cluster-uid",
+		"k8s.node.unschedulable": true,
+	} {
+		if got := nodeEnt.Attributes[key]; got != want {
+			t.Errorf("%s = %v, want %v", key, got, want)
+		}
+	}
+	for key, want := range map[string]string{
+		"k8s.node.condition.ready":           "true",
+		"k8s.node.condition.memory_pressure": "false",
+		"k8s.node.condition.disk_pressure":   "false",
+		"k8s.node.condition.pid_pressure":    "unknown",
+	} {
+		if got := nodeEnt.Attributes[key]; got != want {
+			t.Errorf("%s = %v, want %v", key, got, want)
+		}
+	}
+
+	if len(relations) != 1 {
+		t.Fatalf("got %d relations, want one same_as", len(relations))
+	}
+	rel := relations[0]
+	if rel.Type != entity.RelSameAs {
+		t.Errorf("relation type = %q, want same_as", rel.Type)
+	}
+	if rel.FromType != entity.TypeK8sNode || rel.ToType != entity.TypeHost {
+		t.Errorf("relation is %s -> %s, want k8s.node -> host", rel.FromType, rel.ToType)
+	}
+	if rel.FromID["k8s.node.uid"] != "node-uid" {
+		t.Errorf("relation from id = %v, want node-uid", rel.FromID)
+	}
+	if rel.ToID["host.id"] != "8b861704-05bc-4382-b057-7eac3df5e730" {
+		t.Errorf("relation to id = %v, want dashed MachineID", rel.ToID)
+	}
+	if got := rel.Attributes["basis"]; got != "k8s_api" {
+		t.Errorf("relation basis = %v, want k8s_api", got)
+	}
+	if confidence, ok := rel.Attributes["confidence"].(float64); !ok || confidence != 1.0 {
+		t.Errorf("relation confidence = %v, want 1.0", rel.Attributes["confidence"])
+	}
+}
+
+// Without a MachineID, the node's role is still visible. The host is not
+// emitted from this cluster view, and there is no same_as edge.
+func TestNodeInventory_NoMachineIDEmitsK8sNodeOnly(t *testing.T) {
+	n := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-2", UID: "node-uid"},
+		Status: corev1.NodeStatus{NodeInfo: corev1.NodeSystemInfo{
+			MachineID: "",
+		}},
+	}
+
+	entities, relations := nodeInventory(n, "cluster-uid")
+	if len(entities) != 1 {
+		t.Fatalf("got %d entities, want only k8s.node", len(entities))
+	}
+	if entities[0].Type != entity.TypeK8sNode {
+		t.Errorf("entity type = %q, want k8s.node", entities[0].Type)
+	}
+	if entities[0].ID["k8s.node.uid"] != "node-uid" {
+		t.Errorf("k8s.node.uid = %v, want node-uid", entities[0].ID["k8s.node.uid"])
+	}
+	if len(relations) != 0 {
+		t.Errorf("got %d relations, want none", len(relations))
+	}
+}
+
+// Without a UID, there is no k8s.node role entity. The machine half remains.
+func TestNodeInventory_NoUIDEmitsHostOnly(t *testing.T) {
+	n := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-3"},
+		Status: corev1.NodeStatus{NodeInfo: corev1.NodeSystemInfo{
+			MachineID:       "8b86170405bc4382b0577eac3df5e730",
+			OperatingSystem: "linux",
+		}},
+	}
+
+	entities, relations := nodeInventory(n, "cluster-uid")
+	if len(entities) != 1 {
+		t.Fatalf("got %d entities, want only host", len(entities))
+	}
+	if entities[0].Type != entity.TypeHost {
+		t.Errorf("entity type = %q, want host", entities[0].Type)
+	}
+	if entities[0].ID["host.id"] != "8b861704-05bc-4382-b057-7eac3df5e730" {
+		t.Errorf("host.id = %v, want dashed MachineID", entities[0].ID["host.id"])
+	}
+	if len(relations) != 0 {
+		t.Errorf("got %d relations, want none", len(relations))
 	}
 }
 

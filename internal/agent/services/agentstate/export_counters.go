@@ -54,6 +54,27 @@ func IncrementExportSendFailed(strategy, reason string) {
 	exportSendFailed.mu.Unlock()
 }
 
+// exportFailureReasons are the reasons exporterrors.Reason returns.
+var exportFailureReasons = []string{"transport", "validation", "configuration"}
+
+// SeedExportSendFailed declares the send-failure counter of a push
+// strategy at zero for every reason, so the series exists from the start:
+// emitted only after a first failure, it vanished at every restart and an
+// alert reading it went silent.
+func SeedExportSendFailed(strategy string) {
+	if strategy == "" {
+		return
+	}
+	exportSendFailed.mu.Lock()
+	for _, r := range exportFailureReasons {
+		k := exportFailureKey{strategy, r}
+		if _, ok := exportSendFailed.m[k]; !ok {
+			exportSendFailed.m[k] = 0
+		}
+	}
+	exportSendFailed.mu.Unlock()
+}
+
 // ExportSendFailure is one row of the send-failure counter.
 type ExportSendFailure struct {
 	Strategy string
