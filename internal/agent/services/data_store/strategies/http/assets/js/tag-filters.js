@@ -49,6 +49,12 @@ class TagFilters {
                 return;
             }
 
+            const bulkBtn = e.target.closest('.value-bulk');
+            if (bulkBtn) {
+                this.setAllValues(bulkBtn.dataset.tag, bulkBtn.dataset.checked === 'true');
+                return;
+            }
+
             const header = e.target.closest('.tag-header-clickable');
             if (header) {
                 this.toggleTagSection(header);
@@ -282,6 +288,21 @@ class TagFilters {
         valuesContainer.className = 'values-container';
         valuesContainer.id = `values-${tagKey}`;
         valuesContainer.style.display = 'none';
+
+        // Select all / Clear: tick or untick every value at once, so a long
+        // list can be narrowed by unticking a few rather than ticking many.
+        const bulk = document.createElement('div');
+        bulk.className = 'value-bulk-actions';
+        [['Select all', true], ['Clear', false]].forEach(([text, checked]) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'value-bulk';
+            btn.textContent = text;
+            btn.dataset.tag = tagKey;
+            btn.dataset.checked = String(checked);
+            bulk.appendChild(btn);
+        });
+        valuesContainer.appendChild(bulk);
 
         // "All values" option
         const allOption = document.createElement('div');
@@ -539,6 +560,22 @@ class TagFilters {
                 this.updateSelectedTags();
             });
         }
+    }
+
+    /**
+     * Tick or untick every value of one tag, the "All values" box included,
+     * then rebuild the filter once.
+     */
+    setAllValues(tagKey, checked) {
+        const boxes = this.container.querySelectorAll(`input[data-tag="${CSS.escape(tagKey)}"]:not([id^="tag-"])`);
+        boxes.forEach(cb => { cb.checked = checked; });
+        if (checked) {
+            const main = this.container.querySelector(`#tag-${CSS.escape(tagKey)}`);
+            if (main && !main.checked) {
+                main.checked = true;
+            }
+        }
+        this.updateSelectedTags();
     }
 
     clearTagSelections(tagKey) {
