@@ -118,7 +118,12 @@ multipath route is its own route; on Windows from the forwarding table), with
 `network.interface.name` and the metric, as described for devices in
 [SNMP Poll → Routes](probes/snmp-poll.md#routes). At most 500 routes are
 published per host; the host entity carries `senhub.routes.limit` and
-`senhub.routes.omitted`.
+`senhub.routes.omitted`. The host entity also carries `senhub.host.ip_forwarding.ipv4` and
+`senhub.host.ip_forwarding.ipv6`, true when the host routes packets of that
+family between its interfaces (kernel switches on Linux, IP helper API on
+Windows), each absent when it could not be read: a path crosses a host only
+when it routes the path's address family, so a multi-homed server is not drawn
+as a gateway.
 
 A loopback peer on an OS dynamic port (the client side of a one-shot local exchange) is never mapped as a dependency, whatever these settings say (since 0.6.2).
 
