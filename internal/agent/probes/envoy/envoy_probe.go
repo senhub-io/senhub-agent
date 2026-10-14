@@ -1,20 +1,8 @@
-// Package envoy implements the free envoy probe: scrapes the Envoy
-// admin interface (/stats?format=prometheus) to expose downstream
-// listener and upstream cluster metrics as OTel-first datapoints.
-//
-// Envoy exposes hundreds of metrics; this probe focuses on the
-// operationally critical signals: server health, listener downstream
-// connections/requests, and per-cluster upstream connections/requests.
-// The Prometheus-format endpoint is preferred over the colon-separated
-// text format because it carries type information and labels.
-//
-// Cluster-scoped metrics (envoy.cluster.*) carry a "cluster" tag
-// derived from the envoy_cluster_name label so that multi-cluster
-// deployments produce separate series per cluster.
 package envoy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +15,7 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -53,6 +42,17 @@ type envoyConfig struct {
 	Timeout      time.Duration
 	Interval     time.Duration
 	InstanceName string
+}
+
+// envoyStatusError identifies an HTTP error returned by the Envoy admin API
+// so Collect can classify it with dbcommon.ClassifyHTTPStatus.
+type envoyStatusError struct {
+	code int
+	url  string
+}
+
+func (e envoyStatusError) Error() string {
+	return fmt.Sprintf("GET %s: status %d", e.url, e.code)
 }
 
 // EnvoyProbe implements the envoy probe.
@@ -145,32 +145,69 @@ func (p *EnvoyProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// identityTags returns the service.instance.id tag shared by every datapoint
+// emitted by this probe.
+func (p *EnvoyProbe) identityTags() []tags.Tag {
+	t := []tags.Tag{}
+	if id := p.entitySrc.currentServiceInstanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "service.instance.id", Value: id})
+	}
+	return t
+}
+
 // Collect fetches Envoy stats and returns OTel-first datapoints.
 // If the admin interface is unreachable, senhub.envoy.up=0 is emitted
 // and Collect returns nil (a transient error is never a fatal collection
 // failure for monitoring probes).
 func (p *EnvoyProbe) Collect() ([]data_store.DataPoint, error) {
 	points, err := p.collectFunc()
+	now := time.Now()
+
 	if err != nil {
 		p.moduleLogger.Warn().
 			Err(err).
 			Str("endpoint", p.config.Endpoint).
 			Msg("envoy admin unreachable")
 		p.entitySrc.setReachable(false)
-		now := time.Now()
-		upPoint := data_store.DataPoint{
+
+		points = []data_store.DataPoint{{
 			Name:      "senhub.envoy.up",
 			Value:     0,
 			Timestamp: now,
-			Tags: []tags.Tag{
-				{Key: "metric_type", Value: "overview"},
-			},
-		}
-		enriched := p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{upPoint}, p.GetName())
-		return enriched, nil
+			Tags: append(
+				p.identityTags(),
+				tags.Tag{Key: "metric_type", Value: "overview"},
+			),
+		}}
+	} else {
+		p.entitySrc.setReachable(true)
 	}
-	p.entitySrc.setReachable(true)
+
+	checkPoint := data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(classifyCollectErr(err)),
+		Timestamp: now,
+		Tags: append(
+			p.identityTags(),
+			tags.Tag{Key: "metric_type", Value: "status"},
+		),
+	}
+	points = append(points, checkPoint)
+
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+func classifyCollectErr(err error) dbcommon.CheckResult {
+	if err == nil {
+		return dbcommon.CheckOK
+	}
+
+	var statusErr envoyStatusError
+	if errors.As(err, &statusErr) {
+		return dbcommon.ClassifyHTTPStatus(statusErr.code)
+	}
+
+	return dbcommon.ClassifyError(err)
 }
 
 // fetchAndParse is the production implementation: GET /stats?format=prometheus
@@ -191,7 +228,7 @@ func (p *EnvoyProbe) fetchAndParse() ([]data_store.DataPoint, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
+		return nil, envoyStatusError{code: resp.StatusCode, url: url}
 	}
 
 	parser := expfmt.NewTextParser(model.UTF8Validation)
@@ -253,15 +290,19 @@ func (p *EnvoyProbe) buildDatapoints(families map[string]*dto.MetricFamily, ts t
 
 	// Helper: build a tag slice for overview metrics.
 	overviewTags := func() []tags.Tag {
-		return []tags.Tag{{Key: "metric_type", Value: "overview"}}
+		return append(
+			p.identityTags(),
+			tags.Tag{Key: "metric_type", Value: "overview"},
+		)
 	}
 
 	// Helper: build per-cluster tag slices.
 	clusterTags := func(clusterName string) []tags.Tag {
-		return []tags.Tag{
-			{Key: "metric_type", Value: "cluster"},
-			{Key: "cluster", Value: clusterName},
-		}
+		return append(
+			p.identityTags(),
+			tags.Tag{Key: "metric_type", Value: "cluster"},
+			tags.Tag{Key: "cluster", Value: clusterName},
+		)
 	}
 
 	// Helper: add a scalar datapoint when the metric is present.

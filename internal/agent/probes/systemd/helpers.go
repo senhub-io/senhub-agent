@@ -12,6 +12,7 @@ import (
 
 	dbus "github.com/coreos/go-systemd/v22/dbus"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/tags"
@@ -116,19 +117,56 @@ func filterUnits(cfg probeConfig, all []dbus.UnitStatus) []dbus.UnitStatus {
 	return out
 }
 
+// baseTagsForUnit builds the tag set common to every datapoint for a
+// systemd unit. The entity identity is included here so all series for
+// this unit are born with service.instance.id.
+func baseTagsForUnit(u dbus.UnitStatus, entityID string) []tags.Tag {
+	unitType := unitTypeSuffix(u.Name)
+	t := []tags.Tag{
+		{Key: "systemd.unit", Value: u.Name},
+		{Key: "systemd.unit.type", Value: unitType},
+		{Key: "metric_type", Value: "status"},
+	}
+	if entityID != "" {
+		t = append(t, tags.Tag{Key: "service.instance.id", Value: entityID})
+	}
+	return t
+}
+
+// buildCheckResultDatapoint emits the probe-level check result gauge with
+// the supplied base tags. If metric_type is not present, it is set to
+// "status"; if it is already present, the caller's value is preserved.
+func buildCheckResultDatapoint(ts time.Time, err error, baseTags []tags.Tag) data_store.DataPoint {
+	tagsCopy := append([]tags.Tag(nil), baseTags...)
+
+	hasMetricType := false
+	for _, t := range tagsCopy {
+		if t.Key == "metric_type" {
+			hasMetricType = true
+			break
+		}
+	}
+	if !hasMetricType {
+		tagsCopy = append(tagsCopy, tags.Tag{Key: "metric_type", Value: "status"})
+	}
+
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(err)),
+		Timestamp: ts,
+		Tags:      tagsCopy,
+	}
+}
+
 // buildDatapoints emits the per-unit metrics for one unit.
 //
 // nRestarts is non-nil only for service units when the NRestarts
 // property was successfully retrieved from dbus (linux only). Callers
 // on non-linux platforms or in tests that don't have a live dbus
 // connection pass nil to omit the restart counter datapoint.
-func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64) []data_store.DataPoint {
+func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, entityID string) []data_store.DataPoint {
 	unitType := unitTypeSuffix(u.Name)
-	baseTags := []tags.Tag{
-		{Key: "systemd.unit", Value: u.Name},
-		{Key: "systemd.unit.type", Value: unitType},
-		{Key: "metric_type", Value: "status"},
-	}
+	baseTags := baseTagsForUnit(u, entityID)
 
 	// systemd.unit.active_state: 1=active, 0=otherwise
 	var activeVal float64

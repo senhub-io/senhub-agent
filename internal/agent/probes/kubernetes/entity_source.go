@@ -47,6 +47,15 @@ func (s *k8sEntitySource) setClusterIdentity(clusterEndpoint, clusterUID string)
 	s.clusterUID = clusterUID
 }
 
+// clusterID returns the value Observe would put in the service.instance.id
+// identity map key, or "" when no cluster entity is emitted. It reads under
+// the source mutex so telemetry keys and entity observations cannot disagree.
+func (s *k8sEntitySource) clusterID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.clusterUID
+}
+
 // Observe returns the cluster entity. Always ok=true once initialised.
 func (s *k8sEntitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()

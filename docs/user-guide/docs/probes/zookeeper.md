@@ -90,5 +90,6 @@ series' tags.
 | `zookeeper.synced_followers` | `zookeeper.synced_followers` | ZooKeeper Synced Followers | # | Number of followers in sync with the leader — leader only (zk_synced_followers) |
 | `zookeeper.pending_syncs` | `zookeeper.pending_syncs` | ZooKeeper Pending Syncs | # | Number of pending sync operations — leader only (zk_pending_syncs) |
 | `zookeeper.server_state` | `zookeeper.server_state` | ZooKeeper Server Role | # | Always 1; the 'state' attribute carries the role: leader, follower, or standalone |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

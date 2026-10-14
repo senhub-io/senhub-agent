@@ -11,6 +11,10 @@ import (
 	dbus "github.com/coreos/go-systemd/v22/dbus"
 )
 
+func testEntityID(unit string) string {
+	return "systemd://host-1/" + unit
+}
+
 // ---------------------------------------------------------------------------
 // parseConfig
 // ---------------------------------------------------------------------------
@@ -164,7 +168,7 @@ func TestFilterUnits_EmptyInput(t *testing.T) {
 func TestBuildDatapoints_ActiveRunningLoaded(t *testing.T) {
 	u := makeUnit("nginx.service", "active", "running", "loaded")
 	ts := time.Unix(1000, 0)
-	pts := buildDatapoints(u, ts, nil)
+	pts := buildDatapoints(u, ts, nil, testEntityID(u.Name))
 
 	// Expect 3 datapoints (no NRestarts passed).
 	if len(pts) != 3 {
@@ -189,7 +193,7 @@ func TestBuildDatapoints_ActiveRunningLoaded(t *testing.T) {
 
 func TestBuildDatapoints_InactiveDeadNotFound(t *testing.T) {
 	u := makeUnit("failed.service", "inactive", "dead", "not-found")
-	pts := buildDatapoints(u, time.Now(), nil)
+	pts := buildDatapoints(u, time.Now(), nil, testEntityID(u.Name))
 
 	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
@@ -210,7 +214,7 @@ func TestBuildDatapoints_InactiveDeadNotFound(t *testing.T) {
 func TestBuildDatapoints_WithNRestarts(t *testing.T) {
 	u := makeUnit("crashed.service", "active", "running", "loaded")
 	restarts := float64(3)
-	pts := buildDatapoints(u, time.Now(), &restarts)
+	pts := buildDatapoints(u, time.Now(), &restarts, testEntityID(u.Name))
 
 	// Expect 4 datapoints (3 states + restarts).
 	if len(pts) != 4 {
@@ -230,7 +234,7 @@ func TestBuildDatapoints_TimerNoRestarts(t *testing.T) {
 	// non-nil nRestarts is supplied (the helper guards on unit type).
 	u := makeUnit("logrotate.timer", "active", "waiting", "loaded")
 	restarts := float64(0)
-	pts := buildDatapoints(u, time.Now(), &restarts)
+	pts := buildDatapoints(u, time.Now(), &restarts, testEntityID(u.Name))
 
 	for _, p := range pts {
 		if p.Name == "systemd.unit.restarts" {
@@ -241,7 +245,7 @@ func TestBuildDatapoints_TimerNoRestarts(t *testing.T) {
 
 func TestBuildDatapoints_SubStateTags(t *testing.T) {
 	u := makeUnit("nginx.service", "active", "running", "loaded")
-	pts := buildDatapoints(u, time.Now(), nil)
+	pts := buildDatapoints(u, time.Now(), nil, testEntityID(u.Name))
 
 	for _, p := range pts {
 		if p.Name != "systemd.unit.sub_state" {
@@ -267,7 +271,7 @@ func TestBuildDatapoints_UnitTypeTags(t *testing.T) {
 	}
 	for _, c := range cases {
 		u := makeUnit(c.unitName, "active", "running", "loaded")
-		pts := buildDatapoints(u, time.Now(), nil)
+		pts := buildDatapoints(u, time.Now(), nil, testEntityID(c.unitName))
 		for _, p := range pts {
 			if p.Name == "systemd.unit.sub_state" {
 				continue
@@ -287,7 +291,7 @@ func TestBuildDatapoints_UnitTypeTags(t *testing.T) {
 
 func TestBuildDatapoints_ListeningSubState(t *testing.T) {
 	u := makeUnit("dbus.socket", "active", "listening", "loaded")
-	pts := buildDatapoints(u, time.Now(), nil)
+	pts := buildDatapoints(u, time.Now(), nil, testEntityID(u.Name))
 	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
 		byName[p.Name] = p.Value

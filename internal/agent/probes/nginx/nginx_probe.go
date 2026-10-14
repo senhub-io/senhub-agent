@@ -14,6 +14,7 @@ package nginx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -45,6 +47,15 @@ type nginxConfig struct {
 	Interval     time.Duration
 	Timeout      time.Duration
 	InstanceName string
+}
+
+type nginxStatusError struct {
+	endpoint string
+	code     int
+}
+
+func (e *nginxStatusError) Error() string {
+	return fmt.Sprintf("GET %s: unexpected status %d", e.endpoint, e.code)
 }
 
 const (
@@ -117,17 +128,38 @@ func (p *NginxProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// baseTags returns the identity key shared by every nginx datapoint plus the
+// metric-type tag for one metric family.
+func (p *NginxProbe) baseTags(metricType string) []tags.Tag {
+	t := []tags.Tag{
+		{Key: "metric_type", Value: metricType},
+	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "service.instance.id", Value: id})
+	}
+	return t
+}
+
+func (p *NginxProbe) checkResultValue(err error) float64 {
+	if err == nil {
+		return float64(dbcommon.CheckOK)
+	}
+	var statusErr *nginxStatusError
+	if errors.As(err, &statusErr) {
+		return float64(dbcommon.ClassifyHTTPStatus(statusErr.code))
+	}
+	return float64(dbcommon.ClassifyError(err))
+}
+
 // Collect fetches the stub_status page and emits the Nginx metrics.
 // A non-reachable endpoint is a measurement (up=0), never a
 // collection-level error.
 func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	commonTags := []tags.Tag{
-		{Key: "metric_type", Value: "connections"},
-	}
-	upTags := []tags.Tag{
-		{Key: "metric_type", Value: "availability"},
-	}
+	commonTags := p.baseTags("connections")
+	upTags := p.baseTags("availability")
+	throughputTags := p.baseTags("throughput")
+	statusTags := p.baseTags("status")
 
 	body, err := p.fetchStatus()
 	if err != nil {
@@ -135,6 +167,7 @@ func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.nginx.up", Value: 0, Timestamp: now, Tags: upTags},
+			{Name: dbcommon.CheckResultMetric, Value: p.checkResultValue(err), Timestamp: now, Tags: statusTags},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
@@ -145,6 +178,7 @@ func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.nginx.up", Value: 0, Timestamp: now, Tags: upTags},
+			{Name: dbcommon.CheckResultMetric, Value: p.checkResultValue(err), Timestamp: now, Tags: statusTags},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
@@ -153,10 +187,11 @@ func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.nginx.up", Value: 1, Timestamp: now, Tags: upTags},
+		{Name: dbcommon.CheckResultMetric, Value: p.checkResultValue(nil), Timestamp: now, Tags: statusTags},
 		{Name: "nginx.connections.current", Value: float64(stats.activeConnections), Timestamp: now, Tags: commonTags},
 		{Name: "nginx.connections.accepted", Value: float64(stats.accepted), Timestamp: now, Tags: commonTags},
 		{Name: "nginx.connections.handled", Value: float64(stats.handled), Timestamp: now, Tags: commonTags},
-		{Name: "nginx.requests", Value: float64(stats.requests), Timestamp: now, Tags: []tags.Tag{{Key: "metric_type", Value: "throughput"}}},
+		{Name: "nginx.requests", Value: float64(stats.requests), Timestamp: now, Tags: throughputTags},
 		{Name: "nginx.connections.reading", Value: float64(stats.reading), Timestamp: now, Tags: commonTags},
 		{Name: "nginx.connections.writing", Value: float64(stats.writing), Timestamp: now, Tags: commonTags},
 		{Name: "nginx.connections.waiting", Value: float64(stats.waiting), Timestamp: now, Tags: commonTags},
@@ -182,7 +217,7 @@ func (p *NginxProbe) fetchStatus() (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET %s: unexpected status %d", p.cfg.Endpoint, resp.StatusCode)
+		return "", &nginxStatusError{endpoint: p.cfg.Endpoint, code: resp.StatusCode}
 	}
 	// service.version rides the entity from the Server header ("nginx/1.27.0").
 	p.entitySrc.setVersion(nginxVersionFromServerHeader(resp.Header.Get("Server")))

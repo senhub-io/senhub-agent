@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -129,15 +130,24 @@ func (p *InfluxDBProbe) OnShutdown(_ context.Context) error {
 // value), never returned as a collection error.
 func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	baseTags := []tags.Tag{
-		{Key: "metric_type", Value: "availability"},
+	baseTags := []tags.Tag{}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "db.instance.id", Value: id})
 	}
 
 	var points []data_store.DataPoint
 
 	// --- /health ---
-	up, version := p.checkHealth()
+	up, version, statusCode, healthErr := p.checkHealth()
 	p.entitySrc.setReachable(up, version)
+
+	checkResult := dbcommon.CheckOK
+	if statusCode > 0 && (statusCode < 200 || statusCode >= 300) {
+		checkResult = dbcommon.ClassifyHTTPStatus(statusCode)
+	} else if healthErr != nil {
+		checkResult = dbcommon.ClassifyError(healthErr)
+	}
+
 	upVal := float64(0)
 	if up {
 		upVal = 1
@@ -155,23 +165,56 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// --- /metrics (Prometheus text) ---
 	promMetrics := p.scrapePrometheusMetrics()
-	metricsTags := []tags.Tag{{Key: "metric_type", Value: "performance"}}
+	metricsTags := append(baseTags[:len(baseTags):len(baseTags)], tags.Tag{Key: "metric_type", Value: "performance"})
 
 	promMap := map[string]struct {
 		outName string
 		tags    []tags.Tag
 	}{
-		"storage_reads_total":                    {outName: "influxdb.storage.reads", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"boltdb_reads_total":                     {outName: "influxdb.storage.reads", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"storage_writes_total":                   {outName: "influxdb.storage.writes", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"boltdb_writes_total":                    {outName: "influxdb.storage.writes", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "io"})},
-		"http_query_request_bytes_total":         {outName: "influxdb.query.requests", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "query"})},
-		"query_requests_total":                   {outName: "influxdb.query.requests", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "query"})},
-		"task_scheduler_currently_running_tasks": {outName: "influxdb.tasks.runs.active", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
-		"task_scheduler_total_runs_complete":     {outName: "influxdb.tasks.runs.complete", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
-		"task_scheduler_total_runs_failed":       {outName: "influxdb.tasks.runs.failed", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "tasks"})},
-		"go_goroutines":                          {outName: "go.goroutines", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "runtime"})},
-		"go_memstats_heap_inuse_bytes":           {outName: "go.memory.heap.used", tags: append(metricsTags, tags.Tag{Key: "metric_type", Value: "runtime"})},
+		"storage_reads_total": {
+			outName: "influxdb.storage.reads",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "io"}),
+		},
+		"boltdb_reads_total": {
+			outName: "influxdb.storage.reads",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "io"}),
+		},
+		"storage_writes_total": {
+			outName: "influxdb.storage.writes",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "io"}),
+		},
+		"boltdb_writes_total": {
+			outName: "influxdb.storage.writes",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "io"}),
+		},
+		"http_query_request_bytes_total": {
+			outName: "influxdb.query.requests",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "query"}),
+		},
+		"query_requests_total": {
+			outName: "influxdb.query.requests",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "query"}),
+		},
+		"task_scheduler_currently_running_tasks": {
+			outName: "influxdb.tasks.runs.active",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "tasks"}),
+		},
+		"task_scheduler_total_runs_complete": {
+			outName: "influxdb.tasks.runs.complete",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "tasks"}),
+		},
+		"task_scheduler_total_runs_failed": {
+			outName: "influxdb.tasks.runs.failed",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "tasks"}),
+		},
+		"go_goroutines": {
+			outName: "go.goroutines",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "runtime"}),
+		},
+		"go_memstats_heap_inuse_bytes": {
+			outName: "go.memory.heap.used",
+			tags:    append(metricsTags[:len(metricsTags):len(metricsTags)], tags.Tag{Key: "metric_type", Value: "runtime"}),
+		},
 	}
 
 	// Track which output names have already been emitted to avoid
@@ -198,14 +241,23 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("influxdb: failed to count buckets")
 		} else {
+			bucketTags := append(baseTags[:len(baseTags):len(baseTags)], tags.Tag{Key: "metric_type", Value: "storage"})
 			points = append(points, data_store.DataPoint{
 				Name:      "influxdb.buckets",
 				Value:     float64(bucketCount),
 				Timestamp: now,
-				Tags:      []tags.Tag{{Key: "metric_type", Value: "storage"}},
+				Tags:      bucketTags,
 			})
 		}
 	}
+
+	checkTags := append(baseTags[:len(baseTags):len(baseTags)], tags.Tag{Key: "metric_type", Value: "status"})
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(checkResult),
+		Timestamp: now,
+		Tags:      checkTags,
+	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -216,29 +268,34 @@ type healthResponse struct {
 	Version string `json:"version"`
 }
 
-// checkHealth calls GET /health and returns (up, version).
-func (p *InfluxDBProbe) checkHealth() (bool, string) {
+// checkHealth calls GET /health and returns (up, version, httpStatus, err).
+// An HTTP status outside 2xx makes the target unreachable for this cycle.
+func (p *InfluxDBProbe) checkHealth() (bool, string, int, error) {
 	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint+"/health", nil)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("influxdb: building health request")
-		return false, ""
+		return false, "", 0, err
 	}
 	p.addAuthHeader(req)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("influxdb: health check failed")
-		return false, ""
+		return false, "", 0, err
 	}
 	defer resp.Body.Close()
+	statusCode := resp.StatusCode
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	var hr healthResponse
 	if jsonErr := json.Unmarshal(body, &hr); jsonErr != nil {
 		p.moduleLogger.Warn().Err(jsonErr).Msg("influxdb: parsing health response")
-		return false, ""
+		return false, "", statusCode, jsonErr
 	}
-	return hr.Status == "pass", hr.Version
+	if statusCode < 200 || statusCode >= 300 {
+		return false, hr.Version, statusCode, nil
+	}
+	return hr.Status == "pass", hr.Version, statusCode, nil
 }
 
 // scrapePrometheusMetrics calls GET /metrics and returns a map of

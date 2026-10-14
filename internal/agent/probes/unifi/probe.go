@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -64,6 +66,21 @@ type unifiProbe struct {
 	entitySource *unifiEntitySource
 
 	identityOnce sync.Once
+}
+
+// unifiHTTPStatusError preserves the HTTP status code so the check result
+// can be classified with dbcommon.ClassifyHTTPStatus rather than generic
+// error matching.
+type unifiHTTPStatusError struct {
+	path string // empty for login
+	code int
+}
+
+func (e *unifiHTTPStatusError) Error() string {
+	if e.path != "" {
+		return fmt.Sprintf("%s returned status %d", e.path, e.code)
+	}
+	return fmt.Sprintf("login returned status %d", e.code)
 }
 
 // NewUnifiProbe builds a unifi probe from its raw params block.
@@ -164,52 +181,85 @@ func (p *unifiProbe) OnShutdown(_ context.Context) error {
 // not a collection error.
 func (p *unifiProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	baseTags := []tags.Tag{
-		{Key: "endpoint", Value: p.cfg.Endpoint},
-		{Key: "site", Value: p.cfg.Site},
-		{Key: "metric_type", Value: "controller"},
-	}
 
 	var points []data_store.DataPoint
-	emitUp := func(up float64) []data_store.DataPoint {
-		points = append([]data_store.DataPoint{
-			{Name: "senhub.unifi.up", Value: up, Timestamp: now, Tags: baseTags},
-		}, points...)
-		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName())
+	emitUp := func(up float64, err error, baseTags []tags.Tag, controllerTags []tags.Tag) []data_store.DataPoint {
+		upPoint := data_store.DataPoint{Name: "senhub.unifi.up", Value: up, Timestamp: now, Tags: controllerTags}
+		checkTags := append([]tags.Tag(nil), baseTags...)
+		checkTags = append(checkTags, tags.Tag{Key: "metric_type", Value: "status"})
+		checkPoint := data_store.DataPoint{
+			Name:      dbcommon.CheckResultMetric,
+			Value:     float64(p.classifyError(err)),
+			Timestamp: now,
+			Tags:      checkTags,
+		}
+		pts := append([]data_store.DataPoint{upPoint, checkPoint}, points...)
+		return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName())
 	}
 
 	if err := p.login(); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("unifi login failed")
 		p.entitySource.markReachable(false)
-		return emitUp(0), nil
+		baseTags, controllerTags := p.collectionTags()
+		return emitUp(0, err, baseTags, controllerTags), nil
 	}
 
 	health, err := p.fetchHealth()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("unifi health fetch failed")
 		p.entitySource.markReachable(false)
-		return emitUp(0), nil
+		baseTags, controllerTags := p.collectionTags()
+		return emitUp(0, err, baseTags, controllerTags), nil
 	}
 	devices, err := p.fetchDevices()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("unifi device fetch failed")
 		p.entitySource.markReachable(false)
-		return emitUp(0), nil
+		baseTags, controllerTags := p.collectionTags()
+		return emitUp(0, err, baseTags, controllerTags), nil
 	}
 	clients, err := p.fetchClients()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("unifi client fetch failed")
 		p.entitySource.markReachable(false)
-		return emitUp(0), nil
+		baseTags, controllerTags := p.collectionTags()
+		return emitUp(0, err, baseTags, controllerTags), nil
 	}
 
 	p.resolveControllerIdentity()
 	p.entitySource.markReachable(true)
-	points = append(points, p.buildNetworkPoints(health, baseTags, now)...)
-	points = append(points, p.buildDevicePoints(devices, now)...)
-	points = append(points, p.buildClientPoints(clients, baseTags, now)...)
+	baseTags, controllerTags := p.collectionTags()
+	points = append(points, p.buildNetworkPoints(health, controllerTags, now)...)
+	points = append(points, p.buildDevicePoints(devices, baseTags, now)...)
+	points = append(points, p.buildClientPoints(clients, controllerTags, now)...)
 
-	return emitUp(1), nil
+	return emitUp(1, nil, baseTags, controllerTags), nil
+}
+
+// collectionTags builds the probe-wide base tags after the entity source has
+// been marked observed for this cycle, so the identity key (when present) is
+// exactly the ID the entity source will emit.
+func (p *unifiProbe) collectionTags() (baseTags []tags.Tag, controllerTags []tags.Tag) {
+	baseTags = []tags.Tag{
+		{Key: "endpoint", Value: p.cfg.Endpoint},
+		{Key: "site", Value: p.cfg.Site},
+	}
+	if id := p.entitySource.ServiceInstanceID(); id != "" {
+		baseTags = append(baseTags, tags.Tag{Key: idKeyServiceInstanceID, Value: id})
+	}
+	controllerTags = append(append([]tags.Tag(nil), baseTags...), tags.Tag{Key: "metric_type", Value: "controller"})
+	return baseTags, controllerTags
+}
+
+func (p *unifiProbe) classifyError(err error) dbcommon.CheckResult {
+	if err == nil {
+		return dbcommon.CheckOK
+	}
+	var statusErr *unifiHTTPStatusError
+	if errors.As(err, &statusErr) {
+		return dbcommon.ClassifyHTTPStatus(statusErr.code)
+	}
+	return dbcommon.ClassifyError(err)
 }
 
 // sysinfoEnvelope is the subset of stat/sysinfo that identifies the
@@ -264,7 +314,7 @@ func (p *unifiProbe) login() error {
 	}
 	defer drain(resp)
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("login returned status %d", resp.StatusCode)
+		return &unifiHTTPStatusError{code: resp.StatusCode}
 	}
 	return nil
 }
@@ -282,7 +332,7 @@ func (p *unifiProbe) getJSON(path string, out interface{}) error {
 	}
 	defer drain(resp)
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s returned status %d", path, resp.StatusCode)
+		return &unifiHTTPStatusError{path: path, code: resp.StatusCode}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("decoding %s: %w", path, err)
@@ -371,7 +421,7 @@ func (p *unifiProbe) buildNetworkPoints(health healthEnvelope, baseTags []tags.T
 
 // buildDevicePoints emits the per-type inventory rollups and the
 // per-device cpu/memory/satisfaction gauges.
-func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []data_store.DataPoint {
+func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, baseTags []tags.Tag, ts time.Time) []data_store.DataPoint {
 	type counts struct{ total, adopted, disconnected int }
 	byType := map[string]*counts{}
 
@@ -391,13 +441,12 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 			c.disconnected++
 		}
 
-		devTags := []tags.Tag{
-			{Key: "endpoint", Value: p.cfg.Endpoint},
-			{Key: "site", Value: p.cfg.Site},
-			{Key: "device_name", Value: deviceName(d)},
-			{Key: "device_type", Value: dt},
-			{Key: "metric_type", Value: "device"},
-		}
+		devTags := append([]tags.Tag(nil), baseTags...)
+		devTags = append(devTags,
+			tags.Tag{Key: "device_name", Value: deviceName(d)},
+			tags.Tag{Key: "device_type", Value: dt},
+			tags.Tag{Key: "metric_type", Value: "device"},
+		)
 		if cpu, ok := parseFloat(d.SysStats.CPU); ok {
 			points = append(points, data_store.DataPoint{Name: "unifi.device.cpu", Value: float64(cpu), Timestamp: ts, Tags: devTags})
 		}
@@ -408,12 +457,11 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 		// no satisfaction to report: the controller returns null for it,
 		// and a 0 would read as the worst experience possible.
 		if dt == "uap" && d.State == 1 {
-			apTags := []tags.Tag{
-				{Key: "endpoint", Value: p.cfg.Endpoint},
-				{Key: "site", Value: p.cfg.Site},
-				{Key: "device_name", Value: deviceName(d)},
-				{Key: "metric_type", Value: "access_point"},
-			}
+			apTags := append([]tags.Tag(nil), baseTags...)
+			apTags = append(apTags,
+				tags.Tag{Key: "device_name", Value: deviceName(d)},
+				tags.Tag{Key: "metric_type", Value: "access_point"},
+			)
 			points = append(points,
 				data_store.DataPoint{Name: "unifi.ap.clients", Value: float64(d.NumSta), Timestamp: ts, Tags: apTags},
 			)
@@ -426,12 +474,11 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, ts time.Time) []d
 	}
 
 	for dt, c := range byType {
-		typeTags := []tags.Tag{
-			{Key: "endpoint", Value: p.cfg.Endpoint},
-			{Key: "site", Value: p.cfg.Site},
-			{Key: "device_type", Value: dt},
-			{Key: "metric_type", Value: "inventory"},
-		}
+		typeTags := append([]tags.Tag(nil), baseTags...)
+		typeTags = append(typeTags,
+			tags.Tag{Key: "device_type", Value: dt},
+			tags.Tag{Key: "metric_type", Value: "inventory"},
+		)
 		points = append(points,
 			data_store.DataPoint{Name: "unifi.devices.total", Value: float64(c.total), Timestamp: ts, Tags: typeTags},
 			data_store.DataPoint{Name: "unifi.devices.adopted", Value: float64(c.adopted), Timestamp: ts, Tags: typeTags},

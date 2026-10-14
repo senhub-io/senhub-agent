@@ -78,5 +78,6 @@ series' tags.
 | `haproxy.requests.errors` | `haproxy.requests.errors` | HAProxy {proxy} {component} Request Errors | # | Total request errors (ereq) — frontends only |
 | `haproxy.responses.errors` | `haproxy.responses.errors` | HAProxy {proxy} {component} Response Errors | # | Total response errors (eresp) |
 | `haproxy.requests.rate` | `haproxy.requests.rate` | HAProxy {proxy} {component} Request Rate | #/s | Current request rate in requests per second (req_rate) — frontends only |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

@@ -1,15 +1,3 @@
-// Package proxmox implements the free proxmox probe: monitors Proxmox VE
-// clusters via the Proxmox REST API, collecting metrics for nodes, virtual
-// machines (QEMU), LXC containers, and storage pools.
-//
-// Authentication uses PVE API tokens (user@realm!tokenid / UUID pair),
-// transmitted as the Authorization: PVEAPIToken header. No cookies or
-// ticket-based auth is used so credentials never expire mid-cycle.
-//
-// OTel naming follows proxmox.* as the vendor-specific namespace. The probe
-// is in the FREE tier: Proxmox VE is open-source hypervisor infrastructure;
-// basic hypervisor observability is equivalent to the host-monitoring role
-// (cpu, memory, logicaldisk) and belongs in the open-core collection wedge.
 package proxmox
 
 import (
@@ -20,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -151,6 +140,30 @@ func (p *ProxmoxProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// entityIDTags builds the probe's base identity tags. The value comes from the
+// entity source accessor so tags always match the emitted entity ID. It is nil
+// when the entity source has not pinned an ID yet.
+func (p *ProxmoxProbe) entityIDTags() []tags.Tag {
+	if id := p.entitySrc.InstanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
+}
+
+// checkResultPoint emits exactly one check-result datapoint per collection,
+// carrying the probe's identity tags plus metric_type=status.
+func (p *ProxmoxProbe) checkResultPoint(err error, now time.Time, identityTags []tags.Tag) data_store.DataPoint {
+	t := make([]tags.Tag, 0, len(identityTags)+1)
+	t = append(t, identityTags...)
+	t = append(t, tags.Tag{Key: "metric_type", Value: "status"})
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(err)),
+		Timestamp: now,
+		Tags:      t,
+	}
+}
+
 // Collect fetches one metrics cycle from the Proxmox API and returns
 // datapoints for all nodes (and their VMs/containers/storage) that match
 // the optional node filter. A failure on one node logs a warning and
@@ -171,7 +184,9 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 	nodes, err := p.fetchNodes()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("proxmox: listing nodes failed")
-		points := []data_store.DataPoint{upPoint}
+		identityTags := p.entityIDTags()
+		upPoint.Tags = append(upPoint.Tags, identityTags...)
+		points := []data_store.DataPoint{upPoint, p.checkResultPoint(err, now, identityTags)}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
@@ -192,6 +207,12 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 	// failure here does not flip the identity.
 	clusterName, _ := p.fetchClusterName()
 	p.entitySrc.refresh(clusterName)
+
+	identityTags := p.entityIDTags()
+	for i := range points {
+		points[i].Tags = append(points[i].Tags, identityTags...)
+	}
+	points = append(points, p.checkResultPoint(nil, now, identityTags))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

@@ -146,3 +146,14 @@ func (s *entitySource) buildObservation(addr, port, version string) entity.Obser
 
 	return obs
 }
+
+// InstanceID returns the db.instance.id the entity carries, or "" until it
+// is pinned and the entity exists.
+func (s *entitySource) InstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.pinned {
+		return ""
+	}
+	return s.instanceID
+}

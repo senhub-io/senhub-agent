@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -37,6 +38,16 @@ type solrConfig struct {
 	InstanceName string
 	Timeout      time.Duration
 	Interval     time.Duration
+}
+
+// solrHTTPError identifies an HTTP status error from the Solr metrics API so
+// the check-result classification can use ClassifyHTTPStatus.
+type solrHTTPError struct {
+	code int
+}
+
+func (e *solrHTTPError) Error() string {
+	return fmt.Sprintf("solr metrics returned HTTP %d", e.code)
 }
 
 // SolrProbe collects metrics from a local or remote Solr instance.
@@ -138,16 +149,13 @@ func (p *SolrProbe) collect(now time.Time) []data_store.DataPoint {
 	ctx, cancel := context.WithTimeout(context.Background(), p.config.Timeout)
 	defer cancel()
 
-	commonTags := []tags.Tag{
-		{Key: "metric_type", Value: "overview"},
-	}
-
 	metricsResp, err := p.fetchMetrics(ctx)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.config.Endpoint).Msg("solr metrics fetch failed")
 		p.entitySrc.setReachable(false, "")
 		return []data_store.DataPoint{
-			{Name: "senhub.solr.up", Value: 0, Timestamp: now, Tags: commonTags},
+			{Name: "senhub.solr.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")},
+			p.checkResultPoint(now, err),
 		}
 	}
 	p.entitySrc.setReachable(true, "")
@@ -155,7 +163,7 @@ func (p *SolrProbe) collect(now time.Time) []data_store.DataPoint {
 
 	var points []data_store.DataPoint
 	points = append(points, data_store.DataPoint{
-		Name: "senhub.solr.up", Value: 1, Timestamp: now, Tags: commonTags,
+		Name: "senhub.solr.up", Value: 1, Timestamp: now, Tags: p.baseTags("overview"),
 	})
 
 	// JVM metrics
@@ -172,6 +180,7 @@ func (p *SolrProbe) collect(now time.Time) []data_store.DataPoint {
 		points = append(points, p.buildCorePoints(metricsResp, coresResp, now)...)
 	}
 
+	points = append(points, p.checkResultPoint(now, nil))
 	return points
 }
 
@@ -193,7 +202,7 @@ func (p *SolrProbe) fetchMetrics(ctx context.Context) (*solrMetricsResponse, err
 		return nil, fmt.Errorf("reading metrics response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("solr metrics returned HTTP %d", resp.StatusCode)
+		return nil, &solrHTTPError{code: resp.StatusCode}
 	}
 
 	var mr solrMetricsResponse
@@ -231,6 +240,36 @@ func (p *SolrProbe) fetchCores(ctx context.Context) (*solrCoresResponse, error) 
 	return &cr, nil
 }
 
+// baseTags returns the common tags for a datapoint, including the db identity
+// key when the entity source has pinned it. This is the single place where the
+// entity identity is attached to series.
+func (p *SolrProbe) baseTags(metricType string) []tags.Tag {
+	base := []tags.Tag{{Key: "metric_type", Value: metricType}}
+	if id := p.entitySrc.currentID(); id != "" {
+		base = append(base, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+	return base
+}
+
+func (p *SolrProbe) checkResultPoint(now time.Time, err error) data_store.DataPoint {
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     checkResultValue(err),
+		Timestamp: now,
+		Tags:      p.baseTags("status"),
+	}
+}
+
+func checkResultValue(err error) float64 {
+	if err == nil {
+		return float64(dbcommon.CheckOK)
+	}
+	if httpErr, ok := err.(*solrHTTPError); ok {
+		return float64(dbcommon.ClassifyHTTPStatus(httpErr.code))
+	}
+	return float64(dbcommon.ClassifyError(err))
+}
+
 // buildJVMPoints extracts JVM heap and thread metrics from metrics.solr.jvm.
 func (p *SolrProbe) buildJVMPoints(mr *solrMetricsResponse, now time.Time) []data_store.DataPoint {
 	raw, ok := mr.Metrics["solr.jvm"]
@@ -243,8 +282,8 @@ func (p *SolrProbe) buildJVMPoints(mr *solrMetricsResponse, now time.Time) []dat
 		return nil
 	}
 
-	memTags := []tags.Tag{{Key: "metric_type", Value: "memory"}}
-	threadTags := []tags.Tag{{Key: "metric_type", Value: "threads"}}
+	memTags := p.baseTags("memory")
+	threadTags := p.baseTags("threads")
 
 	var points []data_store.DataPoint
 
@@ -281,8 +320,8 @@ func (p *SolrProbe) buildNodePoints(mr *solrMetricsResponse, now time.Time) []da
 		return nil
 	}
 
-	reqTags := []tags.Tag{{Key: "metric_type", Value: "requests"}}
-	cacheTags := []tags.Tag{{Key: "metric_type", Value: "cache"}}
+	reqTags := p.baseTags("requests")
+	cacheTags := p.baseTags("cache")
 
 	var points []data_store.DataPoint
 
@@ -364,10 +403,8 @@ func (p *SolrProbe) buildCorePoints(mr *solrMetricsResponse, cr *solrCoresRespon
 			continue
 		}
 
-		coreTags := []tags.Tag{
-			{Key: "metric_type", Value: "storage"},
-			{Key: "core", Value: coreName},
-		}
+		coreTags := p.baseTags("storage")
+		coreTags = append(coreTags, tags.Tag{Key: "core", Value: coreName})
 
 		if indexSize := extractNestedFloat(coreMetrics, "INDEX.sizeInBytes"); indexSize >= 0 {
 			points = append(points, data_store.DataPoint{

@@ -89,5 +89,6 @@ series' tags.
 | `activemq.message.queue_size` | `activemq.message.queue_size` | ActiveMQ {destination_type} {destination} Queue Size | # | Number of messages currently waiting in the destination |
 | `activemq.destination.consumer.count` | `activemq.destination.consumer.count` | ActiveMQ {destination_type} {destination} Consumers | # | Number of consumers currently subscribed to the destination |
 | `activemq.destination.producer.count` | `activemq.destination.producer.count` | ActiveMQ {destination_type} {destination} Producers | # | Number of producers currently attached to the destination |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

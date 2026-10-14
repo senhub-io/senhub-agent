@@ -224,3 +224,13 @@ func orchestratorFacts(labels map[string]string) map[string]any {
 	}
 	return out
 }
+
+// HostID returns the host id the containers are anchored to, so a
+// collection-level series names the same host entity.
+func (s *dockerEntitySource) HostID() string {
+	hostFn := s.hostID
+	if hostFn == nil {
+		hostFn = defaultHostID
+	}
+	return hostFn()
+}

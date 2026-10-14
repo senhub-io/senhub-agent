@@ -11,6 +11,7 @@ package apache
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -168,13 +170,34 @@ type modStatusFields struct {
 	totalKBytes *int64
 }
 
+// modStatusHTTPError is returned when mod_status responds with a non-200 code.
+// The status code is kept separately so check-result classification can use
+// ClassifyHTTPStatus instead of the generic error classifier.
+type modStatusHTTPError struct {
+	code     int
+	endpoint string
+}
+
+func (e *modStatusHTTPError) Error() string {
+	return fmt.Sprintf("GET %s returned HTTP %d", e.endpoint, e.code)
+}
+
 func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 	commonTags := []tags.Tag{
 		{Key: "metric_type", Value: "status"},
 	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		commonTags = append(commonTags, tags.Tag{Key: "service.instance.id", Value: id})
+	}
 
 	fields, err := p.fetchStatus()
+	checkValue := dbcommon.ClassifyError(err)
 	if err != nil {
+		var httpErr *modStatusHTTPError
+		if errors.As(err, &httpErr) {
+			checkValue = dbcommon.ClassifyHTTPStatus(httpErr.code)
+		}
+
 		p.moduleLogger.Warn().
 			Err(err).
 			Str("endpoint", p.cfg.Endpoint).
@@ -182,6 +205,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 		p.entitySrc.setReachable(false, "")
 		return []data_store.DataPoint{
 			{Name: "senhub.apache.up", Value: 0, Timestamp: now, Tags: commonTags},
+			{Name: dbcommon.CheckResultMetric, Value: float64(checkValue), Timestamp: now, Tags: commonTags},
 		}
 	}
 
@@ -189,6 +213,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.apache.up", Value: 1, Timestamp: now, Tags: commonTags},
+		{Name: dbcommon.CheckResultMetric, Value: float64(checkValue), Timestamp: now, Tags: commonTags},
 	}
 
 	if fields.uptime != nil {
@@ -267,7 +292,7 @@ func (p *apacheProbe) fetchStatus() (*modStatusFields, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s returned HTTP %d", p.cfg.Endpoint, resp.StatusCode)
+		return nil, &modStatusHTTPError{code: resp.StatusCode, endpoint: p.cfg.Endpoint}
 	}
 
 	return parseModStatus(resp)

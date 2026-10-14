@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -164,7 +165,7 @@ func TestParseTracking_LeapStatuses(t *testing.T) {
 }
 
 // TestCollect_Success asserts that a successful run emits up, the seven NTP
-// metrics, and the four one-hot state series that say WHY up has its value.
+// metrics, the four one-hot state series, and the check result point.
 func TestCollect_Success(t *testing.T) {
 	raw, err := NewChronyProbe(map[string]interface{}{}, newTestLogger())
 	if err != nil {
@@ -188,7 +189,7 @@ func TestCollect_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect error: %v", err)
 	}
-	if got, want := len(points), 12; got != want {
+	if got, want := len(points), 13; got != want {
 		t.Errorf("Collect: got %d points, want %d", got, want)
 	}
 	// The reason is readable without opening the log: exactly one state series
@@ -212,16 +213,22 @@ func TestCollect_Success(t *testing.T) {
 		t.Errorf("ntp.time.offset: got %v ms, want ~0.123 ms", got)
 	}
 
-	// Every datapoint must carry metric_type=time_sync.
+	// Every metric series carries metric_type=time_sync; the check result
+	// carries metric_type=status.
 	for _, pt := range points {
-		if !hasTag(pt.Tags, "metric_type", "time_sync") {
-			t.Errorf("point %s missing metric_type=time_sync", pt.Name)
+		wantMetricType := "time_sync"
+		if pt.Name == dbcommon.CheckResultMetric {
+			wantMetricType = "status"
+		}
+		if !hasTag(pt.Tags, "metric_type", wantMetricType) {
+			t.Errorf("point %s missing metric_type=%s", pt.Name, wantMetricType)
 		}
 	}
 }
 
 // TestCollect_Failure asserts that a subprocess failure emits only
-// senhub.chrony.up=0 and no other metrics.
+// senhub.chrony.up=0, the state series, and the check result — no NTP
+// measurement, since there is nothing to measure.
 func TestCollect_Failure(t *testing.T) {
 	raw, err := NewChronyProbe(map[string]interface{}{}, newTestLogger())
 	if err != nil {
@@ -245,11 +252,11 @@ func TestCollect_Failure(t *testing.T) {
 	if up.Value != 0 {
 		t.Errorf("senhub.chrony.up = %v, want 0", up.Value)
 	}
-	// On failure only up and the state series are emitted — never a measurement,
-	// since there is nothing to measure. The state series are what make the
-	// failure legible without the log.
+	// On failure only up, the state series, and the check result are emitted —
+	// never a measurement, since there is nothing to measure. The state series
+	// are what make the failure legible without the log.
 	for _, pt := range points {
-		if pt.Name != "senhub.chrony.up" && pt.Name != "senhub.chrony.state" {
+		if pt.Name != "senhub.chrony.up" && pt.Name != "senhub.chrony.state" && pt.Name != dbcommon.CheckResultMetric {
 			t.Errorf("a measurement was emitted on failure: %s", pt.Name)
 		}
 	}

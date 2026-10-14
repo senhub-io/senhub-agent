@@ -83,6 +83,17 @@ func newSolrEntitySource(endpoint, instanceName string, client *http.Client) *so
 	return s
 }
 
+// currentID returns the pinned db.instance.id, or "" when no id has been
+// pinned yet. It is the same value Observe would use for db.instance.id.
+func (s *solrEntitySource) currentID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.pinned {
+		return ""
+	}
+	return s.instanceID
+}
+
 // setReachable records the current reachability and version string.
 // Called from Collect on each cycle; safe for concurrent use.
 func (s *solrEntitySource) setReachable(up bool, version string) {

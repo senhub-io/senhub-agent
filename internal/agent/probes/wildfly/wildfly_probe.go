@@ -13,11 +13,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -54,6 +56,13 @@ type mgmtResponse struct {
 	// failure-description is present when outcome == "failed".
 	FailureDescription string `json:"failure-description,omitempty"`
 }
+
+type httpStatusError struct {
+	code int
+	msg  string
+}
+
+func (e *httpStatusError) Error() string { return e.msg }
 
 // probeConfig holds validated configuration.
 type probeConfig struct {
@@ -155,6 +164,20 @@ func (p *WildflyProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+func (p *WildflyProbe) baseTags() []tags.Tag {
+	if id := p.entitySrc.InstanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
+}
+
+func (p *WildflyProbe) tags(metricType string, extra ...tags.Tag) []tags.Tag {
+	t := p.baseTags()
+	t = append(t, tags.Tag{Key: "metric_type", Value: metricType})
+	t = append(t, extra...)
+	return t
+}
+
 // Collect gathers all metrics in one cycle. A connection failure is
 // recorded as senhub.wildfly.up=0 but never returned as an error —
 // the framework must keep scheduling even when the server is down.
@@ -166,7 +189,9 @@ func (p *WildflyProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	up := float64(0)
+	var collectErr error
 	if err := p.collectAll(ctx, now, &points); err != nil {
+		collectErr = err
 		p.moduleLogger.Warn().
 			Err(err).
 			Str("endpoint", p.cfg.Endpoint).
@@ -177,15 +202,27 @@ func (p *WildflyProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(true, "")
 	}
 
+	checkResult := dbcommon.ClassifyError(collectErr)
+	var statusErr *httpStatusError
+	if errors.As(collectErr, &statusErr) {
+		checkResult = dbcommon.ClassifyHTTPStatus(statusErr.code)
+	}
+
 	upPoint := data_store.DataPoint{
 		Name:      "senhub.wildfly.up",
 		Value:     up,
 		Timestamp: now,
-		Tags: []tags.Tag{
-			{Key: "metric_type", Value: "availability"},
-		},
+		Tags:      p.tags("availability"),
 	}
-	points = append([]data_store.DataPoint{upPoint}, points...)
+
+	checkPoint := data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(checkResult),
+		Timestamp: now,
+		Tags:      p.tags("status"),
+	}
+
+	points = append([]data_store.DataPoint{upPoint, checkPoint}, points...)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -263,10 +300,10 @@ func (p *WildflyProbe) mgmtCall(ctx context.Context, req mgmtRequest, dst interf
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("authentication failed (HTTP 401)")
+		return &httpStatusError{code: resp.StatusCode, msg: "authentication failed (HTTP 401)"}
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("unexpected HTTP status %d", resp.StatusCode)
+		return &httpStatusError{code: resp.StatusCode, msg: fmt.Sprintf("unexpected HTTP status %d", resp.StatusCode)}
 	}
 
 	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
@@ -311,7 +348,7 @@ func (p *WildflyProbe) collectJVM(ctx context.Context, now time.Time, points *[]
 		return err
 	}
 
-	mt := []tags.Tag{{Key: "metric_type", Value: "memory"}}
+	mt := p.tags("memory")
 	*points = append(*points,
 		data_store.DataPoint{Name: "jvm.memory.heap.used", Value: float64(result.HeapMemoryUsage.Used), Timestamp: now, Tags: mt},
 		data_store.DataPoint{Name: "jvm.memory.heap.committed", Value: float64(result.HeapMemoryUsage.Committed), Timestamp: now, Tags: mt},
@@ -340,7 +377,7 @@ func (p *WildflyProbe) collectUndertow(ctx context.Context, now time.Time, point
 		return err
 	}
 
-	mt := []tags.Tag{{Key: "metric_type", Value: "requests"}}
+	mt := p.tags("requests")
 	*points = append(*points,
 		data_store.DataPoint{Name: "wildfly.request.count", Value: float64(result.RequestCount), Timestamp: now, Tags: mt},
 		data_store.DataPoint{Name: "wildfly.error.count", Value: float64(result.ErrorCount), Timestamp: now, Tags: mt},
@@ -368,7 +405,7 @@ func (p *WildflyProbe) collectTransactions(ctx context.Context, now time.Time, p
 		return err
 	}
 
-	mt := []tags.Tag{{Key: "metric_type", Value: "operations"}}
+	mt := p.tags("operations")
 	*points = append(*points,
 		data_store.DataPoint{Name: "wildfly.transaction.committed", Value: float64(result.NumberOfTransactions), Timestamp: now, Tags: mt},
 		data_store.DataPoint{Name: "wildfly.transaction.rolledback", Value: float64(result.NumberOfAbortedTransactions), Timestamp: now, Tags: mt},
@@ -426,10 +463,7 @@ func (p *WildflyProbe) collectOneDatasource(ctx context.Context, now time.Time, 
 		return err
 	}
 
-	mt := []tags.Tag{
-		{Key: "metric_type", Value: "connections"},
-		{Key: "datasource", Value: dsName},
-	}
+	mt := p.tags("connections", tags.Tag{Key: "datasource", Value: dsName})
 	*points = append(*points,
 		data_store.DataPoint{Name: "wildfly.datasource.connections.active", Value: float64(result.Statistics.Pool.ActiveCount), Timestamp: now, Tags: mt},
 		data_store.DataPoint{Name: "wildfly.datasource.connections.available", Value: float64(result.Statistics.Pool.AvailableCount), Timestamp: now, Tags: mt},

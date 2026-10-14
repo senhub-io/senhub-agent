@@ -122,5 +122,6 @@ series' tags.
 | `oracle.tablespace.limit` | `oracle.tablespace.total` | Tablespace {tablespace} Total | B | Maximum size per tablespace in bytes (dba_tablespace_usage_metrics) |
 | `oracle.wait_class.total` | `oracle.wait_class.total` | Wait Class {wait_class} | # | Cumulative time waited per wait class in centiseconds (v$system_wait_class) |
 | `oracle.enqueue_deadlocks` | `oracle.enqueue_deadlocks` | Enqueue Deadlocks | # | Cumulative enqueue deadlocks detected (v$sysstat 'enqueue deadlocks') |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

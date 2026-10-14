@@ -81,5 +81,6 @@ series' tags.
 | `nginx.connections.reading` | `nginx.connections.reading` | Nginx Reading Connections | # | Connections where nginx is reading the request header |
 | `nginx.connections.writing` | `nginx.connections.writing` | Nginx Writing Connections | # | Connections where nginx is writing the response to the client |
 | `nginx.connections.waiting` | `nginx.connections.waiting` | Nginx Waiting Connections | # | Idle keep-alive connections waiting for a request |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

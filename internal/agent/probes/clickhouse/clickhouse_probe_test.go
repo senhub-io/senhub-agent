@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -146,6 +147,67 @@ func TestCollect_Up(t *testing.T) {
 	}
 }
 
+func TestCollect_Up_DatapointsCarryIdentityKeyAndCheckResult(t *testing.T) {
+	srv := chServer(t)
+	defer srv.Close()
+
+	p, err := NewClickHouseProbe(map[string]interface{}{
+		"endpoint": srv.URL,
+	}, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewClickHouseProbe: %v", err)
+	}
+	chProbe := p.(*ClickHouseProbe)
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	wantID := chProbe.entitySrc.currentID()
+
+	if wantID == "" {
+		t.Fatal("entity source has no current id after successful collect")
+	}
+
+	seenCheckResult := false
+	for _, dp := range points {
+		var gotID string
+		found := false
+		for _, tag := range dp.Tags {
+			if tag.Key == "db.instance.id" {
+				found = true
+				gotID = tag.Value
+			}
+		}
+		if !found {
+			t.Errorf("%s missing db.instance.id tag", dp.Name)
+			continue
+		}
+		if gotID != wantID {
+			t.Errorf("%s db.instance.id = %q, want %q", dp.Name, gotID, wantID)
+		}
+
+		if dp.Name == dbcommon.CheckResultMetric {
+			seenCheckResult = true
+			if dp.Value != 0 {
+				t.Errorf("%s = %v, want 0 on successful collect", dp.Name, dp.Value)
+			}
+			metricType := ""
+			for _, tag := range dp.Tags {
+				if tag.Key == "metric_type" {
+					metricType = tag.Value
+				}
+			}
+			if metricType != "status" {
+				t.Errorf("%s metric_type = %q, want status", dp.Name, metricType)
+			}
+		}
+	}
+	if !seenCheckResult {
+		t.Errorf("%s missing on successful collect", dbcommon.CheckResultMetric)
+	}
+}
+
 func TestCollect_RefusalCarriesTheServerReason(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -185,9 +247,42 @@ func TestCollect_Down(t *testing.T) {
 	if byName["senhub.clickhouse.up"] != 0 {
 		t.Errorf("senhub.clickhouse.up = %v, want 0 when server unreachable", byName["senhub.clickhouse.up"])
 	}
-	// No other metrics emitted when unreachable.
-	if len(byName) != 1 {
-		t.Errorf("expected only senhub.clickhouse.up when server is down, got %d metrics: %v", len(byName), byName)
+	if got := byName[dbcommon.CheckResultMetric]; got != float64(dbcommon.CheckTargetDown) {
+		t.Errorf("%s = %v, want %v when connection refused", dbcommon.CheckResultMetric, got, float64(dbcommon.CheckTargetDown))
+	}
+	// up and check result are the only datapoints emitted when unreachable.
+	if len(byName) != 2 {
+		t.Errorf("expected up and check result when server is down, got %d metrics: %v", len(byName), byName)
+	}
+}
+
+func TestCollect_Down_IdentityKeyAndCheckResult(t *testing.T) {
+	p, err := NewClickHouseProbe(map[string]interface{}{
+		"endpoint": "http://127.0.0.1:19999",
+		"timeout":  1,
+	}, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewClickHouseProbe: %v", err)
+	}
+	_ = p.(*ClickHouseProbe)
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect must not return an error on scrape failure: %v", err)
+	}
+
+	for _, dp := range points {
+		var gotID string
+		found := false
+		for _, tag := range dp.Tags {
+			if tag.Key == "db.instance.id" {
+				found = true
+				gotID = tag.Value
+			}
+		}
+		if found {
+			t.Errorf("%s db.instance.id = %q before any entity, want none", dp.Name, gotID)
+		}
 	}
 }
 

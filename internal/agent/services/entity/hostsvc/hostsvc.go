@@ -18,7 +18,6 @@
 package hostsvc
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"sync"
@@ -185,7 +184,7 @@ func buildObservation(hostID string, ls []listener, ipToIface map[string]string,
 			}
 		}
 
-		endpoint := fmt.Sprintf("%s:%d/%s", hostID, l.Port, l.Transport)
+		endpoint := entity.ListenerEndpoint(hostID, int(l.Port), l.Transport)
 		listenerID := map[string]any{idKeyServiceEndpoint: endpoint}
 
 		attrs := map[string]any{attrTransport: l.Transport}

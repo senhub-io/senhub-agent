@@ -69,6 +69,11 @@ func newInfluxdbEntitySource(cfg probeConfig) *influxdbEntitySource {
 	}
 }
 
+// InstanceID returns the pinned db.instance.id used in telemetry tags.
+func (s *influxdbEntitySource) InstanceID() string {
+	return s.instanceID
+}
+
 // setReachable updates the liveness state and version banner.
 // Called from Collect after the /health check.
 func (s *influxdbEntitySource) setReachable(up bool, version string) {

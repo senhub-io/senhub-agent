@@ -16,6 +16,13 @@ import (
 // runs_on target moves from the node to the pod when it does — an edge change,
 // not a re-key.
 
+// k8sNodeUID returns the Kubernetes node UID, the identity key of the k8s.node
+// entity. The entity source and the metric rail both call this function so the
+// emitted tag and entity ID cannot diverge.
+func k8sNodeUID(n *corev1.Node) string {
+	return strings.TrimSpace(string(n.UID))
+}
+
 // nodeEntity returns the host half of a Kubernetes node's graph presence.
 //
 // The inventory splits a node into two entities when the node reports both a
@@ -60,7 +67,7 @@ func nodeEntity(n *corev1.Node, _ string) (entity.Entity, bool) {
 // presence. It is emitted whenever the node has a UID, even when the machine
 // id is absent.
 func nodeK8sEntity(n *corev1.Node, clusterUID string) (entity.Entity, bool) {
-	uid := strings.TrimSpace(string(n.UID))
+	uid := k8sNodeUID(n)
 	if uid == "" {
 		return entity.Entity{}, false
 	}
@@ -186,6 +193,13 @@ func canonicalMachineID(raw string) string {
 	return id[0:8] + "-" + id[8:12] + "-" + id[12:16] + "-" + id[16:20] + "-" + id[20:32]
 }
 
+// podUID returns the Kubernetes pod UID, the identity key of the pod entity.
+// The entity source and the metric rail both call this function so the
+// emitted tag and entity ID cannot diverge.
+func podUID(pod *corev1.Pod) string {
+	return strings.TrimSpace(string(pod.UID))
+}
+
 // containerEntity turns a container status into a container entity.
 //
 // Identity is the full lowercase sha with the runtime scheme stripped. The
@@ -269,7 +283,7 @@ func containerRuntime(raw string) string {
 // telemetry needs an entity to hang it on, which is C4 deciding rather than a
 // preference about what reads well.
 func podEntity(pod *corev1.Pod) (entity.Entity, bool) {
-	uid := strings.TrimSpace(string(pod.UID))
+	uid := podUID(pod)
 	if uid == "" {
 		return entity.Entity{}, false
 	}
