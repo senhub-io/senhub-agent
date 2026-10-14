@@ -111,6 +111,15 @@ entities:
 | `neighbors.enabled` | `false` | Also report the hosts and devices this host sees in its ARP/NDP table, as `network.neighbor` entities (identity: this host and the neighbour MAC address, `AA-BB-CC-DD-EE-FF`), each linked to the local interface it was seen on. Neighbours seen only on link-local addresses or on the default Docker/Podman bridge ranges are left out. Off by default: the receiving Toise must know the `network.neighbor` type, or it rejects these entities |
 | `neighbors.resolves_to` | `false` | Also link a neighbour to the interface that owns its MAC (`resolves_to`, with a `basis` of `arp`, `ndp` or `fdb` and a `confidence`), only when this agent observed both ends: the host's gateway neighbour to the router interface its own `snmp_poll` read, and the host's own MAC learned on a switch port to the host's interface. Another host's MAC is never resolved. This is what lets a path descend from a host to its switch port. Off by default: the receiving Toise must accept the relation's attributes |
 
+The host's routing table is always part of entity detection: every route of
+the main table, IPv4 and IPv6 (on Linux through netlink, so each next hop of a
+multipath route is its own route; on Windows from the forwarding table), with
+`route.type`, `route.protocol`, `network.route.protocol.code`, the egress
+`network.interface.name` and the metric, as described for devices in
+[SNMP Poll → Routes](probes/snmp-poll.md#routes). At most 500 routes are
+published per host; the host entity carries `senhub.routes.limit` and
+`senhub.routes.omitted`.
+
 A loopback peer on an OS dynamic port (the client side of a one-shot local exchange) is never mapped as a dependency, whatever these settings say (since 0.6.2).
 
 **Why this is not under an output.** What a host *is* does not depend on
