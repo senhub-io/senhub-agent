@@ -786,7 +786,8 @@ func TestMaybeSweep_SilentDeviceStopsBeingReplayed(t *testing.T) {
 // TestRetainRecentlySeen_AgedOutDeviceIsUnobserved checks a discovered device
 // that stopped answering leaves as unobserved, not as a producer removal.
 func TestRetainRecentlySeen_AgedOutDeviceIsUnobserved(t *testing.T) {
-	p := &snmppollProbe{entitySource: newEntitySource(&config{Target: "192.0.2.10"}, testLogger(t))}
+	cfg := &config{Target: "192.0.2.10"}
+	p := &snmppollProbe{cfg: cfg, entitySource: newEntitySource(cfg, testLogger(t))}
 	dev := entity.Observation{Entities: []entity.Entity{{
 		Type: entityTypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "name:sw2"},
 	}}}
@@ -869,7 +870,7 @@ func TestObserve_DropsDiscoveredLinkOnceFarEndIsReadDown(t *testing.T) {
 	if obs, _ := s.Observe(); len(obs.Relations) != 1 {
 		t.Fatalf("before the far end is read: %d relations, want 1", len(obs.Relations))
 	}
-	s.registry.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperDown}}, s.now())
+	s.registry.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperDown}}, time.Minute, s.now())
 	if obs, _ := s.Observe(); len(obs.Relations) != 0 {
 		t.Errorf("after the far end is read down: %d relations, want 0", len(obs.Relations))
 	}

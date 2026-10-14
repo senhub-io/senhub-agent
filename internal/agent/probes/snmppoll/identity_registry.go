@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -33,7 +34,12 @@ type polledRegistry struct {
 	// downPorts holds the interfaces a recent sweep read as not up, keyed
 	// by device id and interface name, so a link a neighbour still lists
 	// can be checked against the far end's own view of its port.
-	downPorts map[string]time.Time
+	downPorts map[string]time.Time // value: when the mark expires
+	// portsRead is when each device last had its port states read, and
+	// unreachable when a sweep of it last failed: together they say how
+	// much evidence stands behind the far end of a link.
+	portsRead   map[string]time.Time // value: when the reading goes stale
+	unreachable map[string]time.Time // value: when the failure is forgotten
 	// started is when the registry began filling: the agent's start for
 	// the shared one. It is empty then, and fills in the order the probe
 	// instances happen to sweep.
@@ -133,7 +139,11 @@ func portKey(deviceID, ifName string) string { return deviceID + "\x00" + ifName
 // recordPortStates stores which of a swept device's interfaces are not up.
 // An interface read as up clears a previous down mark; an unread status
 // changes nothing.
-func (r *polledRegistry) recordPortStates(deviceID string, ifaces []ifaceRow, now time.Time) {
+//
+// Freshness is counted in the sweeping instance's own cadence (silentAfterSweeps
+// intervals): one fixed window would call a slow-swept device stale between two
+// good sweeps and flip the mark on every cycle.
+func (r *polledRegistry) recordPortStates(deviceID string, ifaces []ifaceRow, interval time.Duration, now time.Time) {
 	if deviceID == "" {
 		return
 	}
@@ -142,6 +152,12 @@ func (r *polledRegistry) recordPortStates(deviceID string, ifaces []ifaceRow, no
 	if r.downPorts == nil {
 		r.downPorts = map[string]time.Time{}
 	}
+	if r.portsRead == nil {
+		r.portsRead = map[string]time.Time{}
+	}
+	until := now.Add(freshFor(interval))
+	r.portsRead[deviceID] = until
+	delete(r.unreachable, deviceID)
 	for _, ifc := range ifaces {
 		if ifc.Name == "" || ifc.OperStatus == 0 {
 			continue
@@ -150,11 +166,11 @@ func (r *polledRegistry) recordPortStates(deviceID string, ifaces []ifaceRow, no
 		if ifc.OperStatus == ifOperUp {
 			delete(r.downPorts, k)
 		} else {
-			r.downPorts[k] = now
+			r.downPorts[k] = until
 		}
 	}
-	for k, seen := range r.downPorts {
-		if now.Sub(seen) > polledRegistryTTL {
+	for k, exp := range r.downPorts {
+		if now.After(exp) {
 			delete(r.downPorts, k)
 		}
 	}
@@ -164,8 +180,8 @@ func (r *polledRegistry) recordPortStates(deviceID string, ifaces []ifaceRow, no
 func (r *polledRegistry) portDown(deviceID, ifName string, now time.Time) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	seen, ok := r.downPorts[portKey(deviceID, ifName)]
-	return ok && now.Sub(seen) <= polledRegistryTTL
+	exp, ok := r.downPorts[portKey(deviceID, ifName)]
+	return ok && !now.After(exp)
 }
 
 // dropLinksToDownPorts removes connected_to edges whose far end a sweep read
@@ -188,4 +204,89 @@ func dropLinksToDownPorts(obs *entity.Observation, r *polledRegistry, now time.T
 		kept = append(kept, rel)
 	}
 	obs.Relations = kept
+}
+
+// recordUnreachable notes that a sweep of a known device got no answer.
+func (r *polledRegistry) recordUnreachable(deviceID string, interval time.Duration, now time.Time) {
+	if r == nil || deviceID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.unreachable == nil {
+		r.unreachable = map[string]time.Time{}
+	}
+	r.unreachable[deviceID] = now.Add(freshFor(interval))
+}
+
+// Values of senhub.link.peer_state, set on the local interface of a link
+// whose far end does not have fresh evidence; absent when it does.
+const (
+	attrLinkPeerState    = "senhub.link.peer_state"
+	peerStateUnread      = "unread"
+	peerStateStale       = "stale"
+	peerStateUnreachable = "unreachable"
+)
+
+// peerState says how much evidence stands behind a far device's ports: ""
+// when they were read recently, else why not.
+func (r *polledRegistry) peerState(deviceID string, now time.Time) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if exp, ok := r.unreachable[deviceID]; ok && !now.After(exp) {
+		return peerStateUnreachable
+	}
+	exp, ok := r.portsRead[deviceID]
+	switch {
+	case !ok:
+		return peerStateUnread
+	case now.After(exp):
+		return peerStateStale
+	}
+	return ""
+}
+
+// annotatePeerState marks the local interface of each link whose far end has
+// no fresh evidence. The mark rides the interface, not the edge: Toise keeps
+// attributes on an embedded relation only for same_as and resolves_to, and a
+// physical interface has one neighbour, so the interface names the link.
+func annotatePeerState(obs *entity.Observation, r *polledRegistry, now time.Time) {
+	if r == nil {
+		return
+	}
+	state := map[string]string{}
+	for _, rel := range obs.Relations {
+		if rel.Type != relConnectedTo {
+			continue
+		}
+		dev, _ := rel.ToID[idKeyNetworkDevice].(string)
+		if st := r.peerState(dev, now); st != "" {
+			state[portKey(fmt.Sprint(rel.FromID[idKeyNetworkDevice]), fmt.Sprint(rel.FromID[idKeyInterfaceName]))] = st
+		}
+	}
+	if len(state) == 0 {
+		return
+	}
+	for i, e := range obs.Entities {
+		if e.Type != entityTypeNetworkInterface {
+			continue
+		}
+		st, ok := state[portKey(fmt.Sprint(e.ID[idKeyNetworkDevice]), fmt.Sprint(e.ID[idKeyInterfaceName]))]
+		if !ok {
+			continue
+		}
+		attrs := make(map[string]any, len(e.Attributes)+1)
+		for k, v := range e.Attributes {
+			attrs[k] = v
+		}
+		attrs[attrLinkPeerState] = st
+		obs.Entities[i].Attributes = attrs
+	}
+}
+
+func freshFor(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		interval = defaultTopologyInterval
+	}
+	return silentAfterSweeps * interval
 }

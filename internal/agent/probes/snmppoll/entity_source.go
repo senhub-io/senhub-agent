@@ -241,6 +241,7 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 	// built when it was collected, possibly before the far end was read
 	// down in the same run.
 	dropLinksToDownPorts(&obs, s.registry, s.now())
+	annotatePeerState(&obs, s.registry, s.now())
 	return obs, true
 }
 
@@ -389,7 +390,11 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		if s.failingSince.IsZero() {
 			s.failingSince = now
 		}
+		known := s.deviceID
 		s.mu.Unlock()
+		if s.registry != nil {
+			s.registry.recordUnreachable(known, s.interval, now)
+		}
 		return
 	}
 
@@ -496,7 +501,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// mac: shadow (one node per device, not several).
 	if s.registry != nil {
 		s.registry.recordPolled(self, deviceID, now)
-		s.registry.recordPortStates(deviceID, ifaces, now)
+		s.registry.recordPortStates(deviceID, ifaces, s.interval, now)
 	}
 	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
 		s.registerInterfaceMacs(deviceID, ifaces)
