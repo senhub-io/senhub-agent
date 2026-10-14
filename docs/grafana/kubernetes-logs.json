@@ -1,0 +1,497 @@
+{
+  "uid": "senhub-kubernetes-logs",
+  "title": "SenHub Kubernetes \u2014 Pod logs",
+  "description": "Log volume and pod logs for Kubernetes from the kubernetes_logs probe.",
+  "tags": [
+    "senhub",
+    "agents",
+    "kubernetes",
+    "logs"
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Metrics data source",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "VictoriaMetrics",
+          "value": "victoriametrics"
+        }
+      },
+      {
+        "name": "logs_datasource",
+        "label": "Logs data source",
+        "type": "datasource",
+        "query": "victoriametrics-logs-datasource",
+        "refresh": 1,
+        "current": {
+          "selected": true,
+          "text": "VL-SF",
+          "value": "defqbr545b18gf"
+        }
+      },
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "query",
+        "datasource": {
+          "type": "victoriametrics-logs-datasource",
+          "uid": "${logs_datasource}"
+        },
+        "query": "stats by (\"k8s.namespace.name\")",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "pod",
+        "label": "Pod",
+        "type": "query",
+        "datasource": {
+          "type": "victoriametrics-logs-datasource",
+          "uid": "${logs_datasource}"
+        },
+        "query": "\"k8s.namespace.name\":~\"^${namespace:regex}$\" | stats by (\"k8s.pod.name\")",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "container",
+        "label": "Container",
+        "type": "query",
+        "datasource": {
+          "type": "victoriametrics-logs-datasource",
+          "uid": "${logs_datasource}"
+        },
+        "query": "\"k8s.namespace.name\":~\"^${namespace:regex}$\" AND \"k8s.pod.name\":~\"^${pod:regex}$\" | stats by (\"k8s.container.name\")",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "severity",
+        "label": "Severity",
+        "type": "custom",
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "WARN",
+            "ERROR",
+            "FATAL"
+          ],
+          "value": [
+            "WARN",
+            "ERROR",
+            "FATAL"
+          ]
+        },
+        "options": [
+          {
+            "text": "TRACE",
+            "value": "TRACE",
+            "selected": false
+          },
+          {
+            "text": "DEBUG",
+            "value": "DEBUG",
+            "selected": false
+          },
+          {
+            "text": "INFO",
+            "value": "INFO",
+            "selected": false
+          },
+          {
+            "text": "WARN",
+            "value": "WARN",
+            "selected": true
+          },
+          {
+            "text": "ERROR",
+            "value": "ERROR",
+            "selected": true
+          },
+          {
+            "text": "FATAL",
+            "value": "FATAL",
+            "selected": true
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "id": 1,
+      "title": "Volume",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Records emitted / s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(senhub_kubernetes_logs_records_emitted_total[$__rate_interval]))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "colorMode": "background_solid"
+      },
+      "id": 2,
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Files followed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(senhub_kubernetes_logs_files_followed)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "colorMode": "background_solid"
+      },
+      "id": 3,
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pods followed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(senhub_kubernetes_logs_pods_followed)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "colorMode": "background_solid"
+      },
+      "id": 4,
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Truncated records / s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(senhub_kubernetes_logs_records_truncated_total[$__rate_interval]))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "colorMode": "background_solid"
+      },
+      "id": 5,
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 15,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Read errors / s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(senhub_kubernetes_logs_read_errors_total[$__rate_interval]))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value",
+        "colorMode": "background_solid"
+      },
+      "id": 6,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      }
+    },
+    {
+      "type": "row",
+      "id": 7,
+      "title": "Logs",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "panels": []
+    },
+    {
+      "type": "logs",
+      "title": "Recent logs",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs_datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs_datasource}"
+          },
+          "expr": "\"k8s.namespace.name\":~\"^${namespace:regex}$\" AND \"k8s.pod.name\":~\"^${pod:regex}$\" AND \"k8s.container.name\":~\"^${container:regex}$\" AND (severity_text:~\"^(${severity:pipe})$\" OR severity:~\"^(${severity:pipe})$\" OR ((severity_text:\"\" OR severity_text:=\"Unspecified\") AND severity:\"\")) | copy severity_text as level | sort by (_time desc) | limit 500",
+          "editorMode": "code",
+          "queryType": "instant",
+          "maxLines": 500
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      },
+      "id": 8,
+      "gridPos": {
+        "h": 18,
+        "w": 16,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Log volume by severity",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${logs_datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${logs_datasource}"
+          },
+          "expr": "\"k8s.namespace.name\":~\"^${namespace:regex}$\" AND \"k8s.pod.name\":~\"^${pod:regex}$\" AND \"k8s.container.name\":~\"^${container:regex}$\" | stats count() as lines by (severity_text)",
+          "queryType": "stats",
+          "legendFormat": "{{severity_text}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "displayMode": "gradient"
+      },
+      "id": 9,
+      "gridPos": {
+        "h": 18,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      }
+    }
+  ]
+}

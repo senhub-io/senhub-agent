@@ -20,17 +20,58 @@ keyspace size, replication state and persistence (RDB/AOF) health.
     port: 6379
 ```
 
+## TLS and Sentinel example
+
+A Redis instance and its Sentinel, both over TLS with an internal CA, authenticated with an ACL user. The password comes from the secret store.
+
+```yaml
+# probes.d/10-redis.yaml
+- name: redis-main
+  type: redis
+  params:
+    host: redis.example.internal
+    port: 6379
+    tls: true
+    tls_ca_file: /etc/senhub-agent/certs/internal-ca.pem
+    username: monitoring
+    password: ${secret:redis.password}
+- name: redis-sentinel
+  type: redis
+  params:
+    host: redis.example.internal
+    port: 26379
+    tls: true
+    tls_ca_file: /etc/senhub-agent/certs/internal-ca.pem
+    username: monitoring
+    password: ${secret:redis.password}
+```
+
+The Sentinel instance reports, per monitored master, its status, replicas, Sentinels, quorum, other Sentinels and whether a failover is in progress.
+
+Channels that change on a failover, and so should not raise an alert on their own: the replication role, the replication offset, the connected replicas, and the Sentinel master status and failover in progress while it runs.
+
+On a Sentinel, `Redis Up` says whether the Sentinel process itself answers. A Sentinel has no keyspace and no replication role: it reports no database channel, and `Replication Role` reads -1.
+
+## Reading the channels
+
+`Replication Role` is 1 on a master, 0 on a replica and -1 on a Sentinel (or when INFO gives no role). PRTG shows Master, Replica or "Sentinel or unknown" instead of the number once the agent's value lookups are installed on the PRTG server: see [Installing PRTG value lookups](../web-interface.md#installing-prtg-value-lookups). The same applies to `Redis Up` and the persistence status channels.
+
+Redis prints no keyspace line for a database that holds no key. The probe still reports `DB 0 Keys`, `DB 0 Expiring Keys` and `DB 0 Average TTL` at 0 in that case, so an alert on the key count of db0 keeps a channel to watch when the instance is emptied. Other databases appear once they hold a key.
+
+From Redis 8, INFO also prints key-size distributions (`db0_distrib_strings_sizes` and the like). They are not databases and the probe ignores them.
+
 ## Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:d0e143f77b6a55e1fef65a7e634bc711ede3cf868677975ea93564a488a26976 -->
+<!-- sha256:c08efcbba0d8fff80d842c7d975fd49c88eed77bfd142e69e6ec24bef55aac16 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `host` | In practice | `127.0.0.1` | Server hostname or address |
 | `port` | In practice | `6379` | Server port |
 | `password` | In practice | - | AUTH password, when required. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `username` | No | - | ACL username for AUTH <username> <password> |
 | `tls` | No | `false` | Use TLS for the connection |
 | `tls_cert_file` | No | - | Client certificate (PEM) for mutual TLS; needs tls_key_file and tls: true |
 | `tls_key_file` | No | - | Private key (PEM) matching tls_cert_file |
@@ -160,5 +201,8 @@ series' tags.
 | `redis.sentinel.master.sentinels` | `redis.sentinel.master.sentinels` | Sentinel Master {master} Sentinels | # | Sentinels monitoring a master, this one included (INFO sentinel masterN sentinels) |
 | `redis.tracking.clients` | `redis.tracking.clients` | Tracking Clients | # | Number of clients using RESP3 client-side caching tracking (tracking_clients; 0 when absent) |
 | `redis.tracking.keys` | `redis.tracking.keys` | Tracking Keys | # | Number of keys in the client-side tracking invalidation table (tracking_table_used_keys; 0 when absent) |
+| `redis.sentinel.master.quorum` | `redis.sentinel.master.quorum` | Sentinel Master {master} Quorum | # | Configured quorum for a monitored master (SENTINEL MASTERS quorum) |
+| `redis.sentinel.master.failover_in_progress` | `redis.sentinel.master.failover_in_progress` | Sentinel Master {master} Failover In Progress | # | Whether a failover is currently in progress for a monitored master: 1=yes, 0=no (SENTINEL MASTERS flags/failover-state) |
+| `redis.sentinel.master.other_sentinels` | `redis.sentinel.master.other_sentinels` | Sentinel Master {master} Other Sentinels | # | Number of other Sentinels monitoring this master (SENTINEL MASTERS num-other-sentinels) |
 
 <!-- schema:metrics:end -->

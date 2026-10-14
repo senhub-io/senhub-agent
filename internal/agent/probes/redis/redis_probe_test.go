@@ -180,6 +180,8 @@ func TestParseKeyspaceLine(t *testing.T) {
 		{"db1:keys=0,expires=0,avg_ttl=0", "1", 0, 0, 0, true},
 		{"db12:keys=999,expires=10,avg_ttl=500", "12", 999, 10, 500, true},
 		{"notadb:keys=1,expires=0", "", 0, 0, 0, false},
+		{"db0_distrib_strings_sizes:2=1,4=3,8=2", "", 0, 0, 0, false},
+		{"dbx:keys=1", "", 0, 0, 0, false},
 		{"nocoron", "", 0, 0, 0, false},
 	}
 	for _, tc := range cases {
@@ -264,6 +266,15 @@ func indexDatapoints(pts []data_store.DataPoint) map[string][]data_store.DataPoi
 		idx[dp.Name] = append(idx[dp.Name], dp)
 	}
 	return idx
+}
+
+func tagValue(dp data_store.DataPoint, key string) string {
+	for _, tag := range dp.Tags {
+		if tag.Key == key {
+			return tag.Value
+		}
+	}
+	return ""
 }
 
 func hasTag(dp data_store.DataPoint, key, val string) bool {
@@ -354,8 +365,8 @@ func TestBuildDatapoints_Down(t *testing.T) {
 	}
 }
 
-// TestBuildDatapoints_NoKeyspace verifies that no redis.db.keys are
-// emitted when the keyspace section is absent.
+// TestBuildDatapoints_NoKeyspace verifies that an instance without any key,
+// whose INFO keyspace has no db0 line, still reports db0 at 0.
 func TestBuildDatapoints_NoKeyspace(t *testing.T) {
 	p := newTestProbe(t)
 	now := time.Now()
@@ -366,8 +377,51 @@ func TestBuildDatapoints_NoKeyspace(t *testing.T) {
 	}
 	pts := p.buildDatapoints(info, nil, nil, nil, now, 1)
 	idx := indexDatapoints(pts)
+	for _, name := range []string{"redis.db.keys", "redis.db.expires", "redis.db.avg_ttl"} {
+		v := idx[name]
+		if len(v) != 1 || v[0].Value != 0 || tagValue(v[0], "db") != "0" {
+			t.Errorf("%s: want one db0 point at 0, got %v", name, v)
+		}
+	}
+}
+
+// TestBuildDatapoints_Redis8KeysizesAreNotDatabases feeds the keysizes
+// section Redis 8 prints next to the keyspace: only db0 and db3 are
+// databases.
+func TestBuildDatapoints_Redis8KeysizesAreNotDatabases(t *testing.T) {
+	blob := "# Server\r\nredis_version:8.0.2\r\nredis_mode:standalone\r\n" +
+		"# Replication\r\nrole:master\r\n" +
+		"# Keysizes\r\ndb0_distrib_strings_sizes:2=1,4=3,8=2\r\ndb0_distrib_lists_items:1=1\r\n" +
+		"db3_distrib_hashes_items:4=2\r\n" +
+		"# Keyspace\r\ndb0:keys=6,expires=1,avg_ttl=1000,subexpiry=0\r\ndb3:keys=2,expires=0,avg_ttl=0,subexpiry=0\r\n"
+	p := newTestProbe(t)
+	pts := p.buildDatapoints(parseInfoBlob(blob), nil, nil, nil, time.Now(), 1)
+	got := map[string]float64{}
+	for _, dp := range indexDatapoints(pts)["redis.db.keys"] {
+		got[tagValue(dp, "db")] = dp.Value
+	}
+	want := map[string]float64{"0": 6, "3": 2}
+	if len(got) != len(want) || got["0"] != 6 || got["3"] != 2 {
+		t.Errorf("redis.db.keys per db = %v, want %v", got, want)
+	}
+}
+
+// TestBuildDatapoints_SentinelHasNoKeyspace verifies a Sentinel, which has
+// no keyspace, does not get a made-up db0, and still reports itself up.
+func TestBuildDatapoints_SentinelHasNoKeyspace(t *testing.T) {
+	p := newTestProbe(t)
+	info := map[string]string{"redis_version": "7.2.4", "redis_mode": "sentinel"}
+	sentinelInfo := map[string]string{"sentinel_masters": "1",
+		"master0": "name=mymaster,status=ok,address=10.0.0.1:6379,slaves=1,sentinels=3"}
+	idx := indexDatapoints(p.buildDatapoints(info, nil, nil, sentinelInfo, time.Now(), 1))
 	if _, ok := idx["redis.db.keys"]; ok {
-		t.Error("redis.db.keys should not be emitted without keyspace section")
+		t.Error("a Sentinel must not report redis.db.keys")
+	}
+	if v := idx["senhub.db.up"]; len(v) != 1 || v[0].Value != 1 {
+		t.Errorf("senhub.db.up on a Sentinel: want 1, got %v", v)
+	}
+	if v := idx["redis.replication.role"]; len(v) != 1 || v[0].Value != -1 {
+		t.Errorf("redis.replication.role on a Sentinel: want -1, got %v", v)
 	}
 }
 
