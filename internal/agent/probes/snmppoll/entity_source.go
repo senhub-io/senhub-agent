@@ -147,6 +147,10 @@ type snmpEntitySource struct {
 	// discovery loop rebuilds it each run and swaps it under this mutex.
 	discMu  sync.Mutex
 	discObs entity.Observation
+	// discRan marks that a discovery run has completed: from then on an
+	// empty discovery view means its devices left (as unobserved), not that
+	// the view failed.
+	discRan bool
 
 	// registry reconciles a neighbour seen via LLDP with the canonical id of the
 	// same device when another probe instance polls it directly. Shared across
@@ -221,7 +225,7 @@ type sweepResult struct {
 // previous state alive until the neighbour is known.
 func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 	single, singleOK := s.observeSingle()
-	disc := s.getDiscoveryObservation()
+	disc, discRan := s.discoveryView()
 
 	discEmpty := len(disc.Entities) == 0 && len(disc.Relations) == 0
 	if s.silent() {
@@ -229,8 +233,14 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 		// now removes it as unmonitored rather than holding it.
 		singleOK = true
 	}
-	if !singleOK && discEmpty {
+	if !singleOK && discEmpty && !discRan {
 		return entity.Observation{}, false
+	}
+	if !singleOK && discEmpty {
+		// Discovery ran and every device it knew left: report the empty view.
+		// ok=false here would make the detector replay the last one for up to
+		// lastGoodTTL, keeping a cut link on the map for a quarter hour.
+		return entity.Observation{}, true
 	}
 	obs := single
 	if !(singleOK && discEmpty) {
@@ -311,6 +321,7 @@ func (s *snmpEntitySource) Unobserved() []entity.Entity {
 func (s *snmpEntitySource) setDiscoveryObservation(obs entity.Observation) {
 	s.discMu.Lock()
 	s.discObs = obs
+	s.discRan = true
 	s.discMu.Unlock()
 }
 
@@ -1226,3 +1237,9 @@ var (
 	_ entity.DepartureSource  = (*snmpEntitySource)(nil)
 	_ entity.UnobservedSource = (*snmpEntitySource)(nil)
 )
+
+func (s *snmpEntitySource) discoveryView() (entity.Observation, bool) {
+	s.discMu.Lock()
+	defer s.discMu.Unlock()
+	return s.discObs, s.discRan
+}

@@ -259,3 +259,33 @@ func TestRunDiscovery_GatewayAddressJoinsTheHostRoute(t *testing.T) {
 		t.Fatalf("no network.address 10.0.0.1 bound_to A Gi0/0; relations=%v", obs.Relations)
 	}
 }
+
+// TestRunDiscovery_GatewayCutEmptiesTheView reproduces the bench cut: the
+// agent's gateway stops answering, the discovered devices age out, and the
+// source then reports an empty view (ok=true) so the detector removes them,
+// instead of a failed one it would replay for lastGoodTTL.
+func TestRunDiscovery_GatewayCutEmptiesTheView(t *testing.T) {
+	f := newDiscoveryFakeFactory(t)
+	hostChainFixtures(f)
+	probe := newDiscoveryTestProbe(t, hostSeedsRaw(nil, nil), f)
+	probe.hostScope = func() ([]string, []*net.IPNet, error) {
+		return []string{"10.0.0.1"}, mustCIDRs(t, "10.0.0.0/24"), nil
+	}
+	probe.runDiscovery(context.Background())
+	if obs, ok := probe.entitySource.Observe(); !ok || len(obs.Entities) == 0 {
+		t.Fatalf("before the cut: ok=%v, %d entities", ok, len(obs.Entities))
+	}
+
+	f.setConnectError("10.0.0.1", errors.New("request timeout"))
+	f.setConnectError("10.0.0.2", errors.New("request timeout"))
+	for i := 0; i < discoveryMissGrace; i++ {
+		probe.runDiscovery(context.Background())
+	}
+	obs, ok := probe.entitySource.Observe()
+	if !ok || len(obs.Entities) != 0 {
+		t.Fatalf("after the devices aged out: ok=%v, %d entities; want an empty view with ok=true", ok, len(obs.Entities))
+	}
+	if u := probe.entitySource.Unobserved(); len(u) == 0 {
+		t.Error("the aged-out devices must be handed over as unobserved")
+	}
+}
