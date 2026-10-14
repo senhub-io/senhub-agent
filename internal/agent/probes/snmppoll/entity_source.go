@@ -1210,3 +1210,19 @@ func entityIdentity(e entity.Entity) string {
 	}
 	return b.String()
 }
+
+// DepartureReason implements entity.DepartureSource: a device's neighbours
+// come from its ARP and bridge tables, caches that forget idle entries, so a
+// neighbour that stops being listed was evicted, not seen to leave. Devices,
+// interfaces and routes keep the default.
+func (s *snmpEntitySource) DepartureReason(e entity.Entity) string {
+	if e.Type == entityTypeNetworkNeighbor {
+		return entity.ReasonEvicted
+	}
+	return ""
+}
+
+var (
+	_ entity.DepartureSource  = (*snmpEntitySource)(nil)
+	_ entity.UnobservedSource = (*snmpEntitySource)(nil)
+)

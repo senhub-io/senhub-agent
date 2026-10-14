@@ -10,7 +10,7 @@ func WithAttributes(src Source, attrs map[string]any) Source {
 	if src == nil || len(attrs) == 0 {
 		return src
 	}
-	return wrapAttributed(attributedSource{src: src, attrs: func() map[string]any { return attrs }})
+	return attributedSource{src: src, attrs: func() map[string]any { return attrs }}
 }
 
 // WithAttributesFunc is WithAttributes for attributes that change while the
@@ -20,7 +20,7 @@ func WithAttributesFunc(src Source, attrs func() map[string]any) Source {
 	if src == nil || attrs == nil {
 		return src
 	}
-	return wrapAttributed(attributedSource{src: src, attrs: attrs})
+	return attributedSource{src: src, attrs: attrs}
 }
 
 type attributedSource struct {
@@ -58,18 +58,6 @@ func (a attributedSource) Observe() (Observation, bool) {
 	return o, ok
 }
 
-// wrapAttributed keeps an UnobservedSource visible to the detector through
-// the wrapper: losing it would turn every governed snmp_poll device that stops
-// answering back into a producer-observed removal.
-func wrapAttributed(a attributedSource) Source {
-	if _, ok := a.src.(UnobservedSource); ok {
-		return unobservedAttributed{a}
-	}
-	return a
-}
-
-type unobservedAttributed struct{ attributedSource }
-
-func (u unobservedAttributed) Unobserved() []Entity {
-	return u.src.(UnobservedSource).Unobserved()
-}
+// Unwrap exposes the wrapped source, so the detector still finds its optional
+// interfaces (UnobservedSource, DepartureSource) through the governance wrapper.
+func (a attributedSource) Unwrap() Source { return a.src }

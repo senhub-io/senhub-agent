@@ -2275,9 +2275,10 @@ ended":
 |---|---|---|
 | `terminated` | the resource ended | the source answered and stopped listing the entity (an empty observation with `ok=true` is the legitimate way to say everything it watched is gone) |
 | `parent_removed` | the resource ended | the entity lost its anchoring relation and is no longer reachable in the graph |
-| `unmonitored` | **the observation ended — the resource may still be running** | the source was unregistered (its probe stopped, or was removed from the configuration), or it failed for longer than `lastGoodTTL` |
+| `unmonitored` | **the observation ended — the resource may still be running** | the source was unregistered (its probe stopped, or was removed from the configuration), or it failed for longer than `lastGoodTTL`; also a device `snmp_poll` can no longer read (three topology intervals without an answer, or a table walk that failed) |
+| `evicted` | **a cache forgot the entry — nobody saw it leave** | a `network.neighbor` the source read from an ARP, NDP or bridge table is no longer listed: the entry aged out |
 
-`unmonitored` is the one that earns the attribute. A `db` entity that vanishes
+`unmonitored` and `evicted` are the ones that earn the attribute. A `db` entity that vanishes
 because someone edited a probe list must never read as "the database is gone" —
 that reading is what causes an incident. It is the producer-side mirror of
 `liveness_expiry`: there the consumer says it stopped hearing, here we say we

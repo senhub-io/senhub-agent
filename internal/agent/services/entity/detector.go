@@ -204,7 +204,14 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	for _, r := range regs {
 		live[r.id] = true
 		o, ok := r.src.Observe()
-		if u, isU := r.src.(UnobservedSource); isU {
+		if dep, isD := sourceAs[DepartureSource](r.src); isD {
+			for _, e := range d.lastGood[r.id].obs.Entities {
+				if reason := dep.DepartureReason(e); reason != "" {
+					reasons[entityKey(e.Type, e.ID)] = reason
+				}
+			}
+		}
+		if u, isU := sourceAs[UnobservedSource](r.src); isU {
 			markUnmonitored(reasons, u.Unobserved())
 		}
 		switch {
