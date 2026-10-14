@@ -1,4 +1,3 @@
-//senhub-agent/internal/agent/probes/host/networkProbe_windows.go
 //go:build windows
 
 package network
@@ -13,6 +12,7 @@ import (
 
 	"github.com/yusufpapurcu/wmi"
 	"senhub-agent.go/internal/agent/probes/hostpoll"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -91,15 +91,16 @@ type interfaceInfo struct {
 }
 
 type windowsNetworkCollector struct {
-	query       *pdh.Query
-	paths       map[string]pathInfo
-	interfaces  map[string]interfaceInfo // key = PDH name
-	mu          sync.Mutex
-	initialized bool
-	logger      *logger.ModuleLogger
+	query               *pdh.Query
+	paths               map[string]pathInfo
+	interfaces          map[string]interfaceInfo // key = PDH name
+	mu                  sync.Mutex
+	initialized         bool
+	logger              *logger.ModuleLogger
+	includeAddressLabel bool
 }
 
-func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo, error) {
+func getNetworkInterfaces(logger *logger.ModuleLogger, includeVirtual bool) (map[string]interfaceInfo, error) {
 	logger.Debug().Msg("Starting Network Interfaces Detection")
 
 	// 1. WMI Query
@@ -181,6 +182,13 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 			logger.Debug().Str("adapter", iface.Name).Msg("Adapter is disabled, skipping")
 			continue
 		}
+		if !includeVirtual && isWindowsVirtualAdapter(iface.Name, adapterInfo.name) {
+			logger.Debug().
+				Str("connection", iface.Name).
+				Str("adapter", adapterInfo.name).
+				Msg("Virtual/container adapter skipped by default")
+			continue
+		}
 
 		// Get IP addresses
 		addrs, err := iface.Addrs()
@@ -259,6 +267,13 @@ func getNetworkInterfaces(logger *logger.ModuleLogger) (map[string]interfaceInfo
 				break
 			}
 		}
+		if !includeVirtual && isWindowsVirtualAdapter(inst, adapterName) {
+			logger.Debug().
+				Str("pdh", inst).
+				Str("adapter", adapterName).
+				Msg("Virtual/container PDH adapter skipped by default")
+			continue
+		}
 		interfaces[inst] = interfaceInfo{
 			adapterName: adapterName,
 		}
@@ -281,6 +296,9 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 	// Create module logger for host probes
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.host")
 
+	includeVirtual, _ := types.BoolParam(config, "include_virtual_interfaces")
+	addressLabel, _ := types.BoolParam(config, "address_label")
+
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %w", err)
@@ -288,17 +306,18 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 
 	moduleLogger.Debug().Msg("Initializing network collector")
 
-	interfaces, err := getNetworkInterfaces(moduleLogger)
+	interfaces, err := getNetworkInterfaces(moduleLogger, includeVirtual)
 	if err != nil {
 		query.Close()
 		return nil, fmt.Errorf("failed to get network interfaces: %w", err)
 	}
 
 	collector := &windowsNetworkCollector{
-		query:      query,
-		paths:      make(map[string]pathInfo),
-		interfaces: interfaces,
-		logger:     moduleLogger,
+		query:               query,
+		paths:               make(map[string]pathInfo),
+		interfaces:          interfaces,
+		logger:              moduleLogger,
+		includeAddressLabel: addressLabel,
 	}
 
 	if err := collector.initializeCounters(); err != nil {
@@ -421,19 +440,11 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 			})
 		}
 
-		if interfaceInfo.ipv4 != "" {
-			metricTags = append(metricTags, tags.Tag{
-				Key:     "ip",
-				Value:   interfaceInfo.ipv4,
-				Private: false,
-			})
-		} else if interfaceInfo.ipv6 != "" {
-			metricTags = append(metricTags, tags.Tag{
-				Key:     "ip",
-				Value:   interfaceInfo.ipv6,
-				Private: false,
-			})
-		}
+		// The primary address label is opt-in. An address changes on DHCP
+		// renewal or IPv6 temporary-address rotation; keeping it out of the
+		// default series avoids a new series for every interface metric on each
+		// rotation.
+		metricTags = appendIPLabel(metricTags, w.includeAddressLabel, primaryWindowsIP(interfaceInfo.ipv4, interfaceInfo.ipv6))
 
 		// Secondary IPs are intentionally NOT emitted. Earlier versions
 		// produced positional ip_1, ip_2, ... ip_N labels which exploded
