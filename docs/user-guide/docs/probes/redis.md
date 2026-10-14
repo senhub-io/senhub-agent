@@ -204,5 +204,6 @@ series' tags.
 | `redis.sentinel.master.quorum` | `redis.sentinel.master.quorum` | Sentinel Master {master} Quorum | # | Configured quorum for a monitored master (SENTINEL MASTERS quorum) |
 | `redis.sentinel.master.failover_in_progress` | `redis.sentinel.master.failover_in_progress` | Sentinel Master {master} Failover In Progress | # | Whether a failover is currently in progress for a monitored master: 1=yes, 0=no (SENTINEL MASTERS flags/failover-state) |
 | `redis.sentinel.master.other_sentinels` | `redis.sentinel.master.other_sentinels` | Sentinel Master {master} Other Sentinels | # | Number of other Sentinels monitoring this master (SENTINEL MASTERS num-other-sentinels) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

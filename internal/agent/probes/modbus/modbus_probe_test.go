@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -351,5 +353,131 @@ func TestEntitySource_BecomesLiveAfterMarkLive(t *testing.T) {
 	id, _ := ent.ID["service.instance.id"].(string)
 	if id != "modbus://192.168.1.100:502" {
 		t.Errorf("entity id = %q, want modbus://192.168.1.100:502", id)
+	}
+}
+
+func hasTag(dp data_store.DataPoint, key, value string) bool {
+	for _, tag := range dp.Tags {
+		if tag.Key == key && tag.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCollect_Success_CarriesEntityIDAndCheckResult(t *testing.T) {
+	probe, err := NewModbusProbe(map[string]interface{}{
+		"host": "192.168.1.100",
+		"registers": []interface{}{
+			map[string]interface{}{
+				"name":    "temperature",
+				"address": 40001,
+				"type":    "uint16",
+			},
+		},
+	}, testLogger(t))
+	if err != nil {
+		t.Fatalf("NewModbusProbe: %v", err)
+	}
+	p := probe.(*ModbusProbe)
+	p.SetName("modbus-test")
+	p.newClient = func(_ probeConfig) modbusClient {
+		return &fakeClient{
+			responses: map[uint16][]byte{0: {0x00, 0x2A}},
+		}
+	}
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	wantID := "modbus://192.168.1.100:502"
+	for _, dp := range points {
+		if !hasTag(dp, "service.instance.id", wantID) {
+			t.Errorf("datapoint %s missing service.instance.id tag: %+v", dp.Name, dp.Tags)
+		}
+	}
+
+	var check *data_store.DataPoint
+	for i := range points {
+		if points[i].Name == dbcommon.CheckResultMetric {
+			check = &points[i]
+			break
+		}
+	}
+	if check == nil {
+		t.Fatal("check result datapoint not found")
+	}
+	if check.Value != 0 {
+		t.Errorf("check result = %v, want 0", check.Value)
+	}
+	if !hasTag(*check, "metric_type", "status") {
+		t.Errorf("check result missing metric_type status: %+v", check.Tags)
+	}
+	if !hasTag(*check, "service.instance.id", wantID) {
+		t.Errorf("check result missing identity tag: %+v", check.Tags)
+	}
+}
+
+func TestCollect_ConnectError_CheckResultAndEntityID(t *testing.T) {
+	probe, err := NewModbusProbe(map[string]interface{}{
+		"host": "192.168.1.100",
+		"registers": []interface{}{
+			map[string]interface{}{"name": "r1", "address": 40001, "type": "uint16"},
+		},
+	}, testLogger(t))
+	if err != nil {
+		t.Fatalf("NewModbusProbe: %v", err)
+	}
+	p := probe.(*ModbusProbe)
+	p.SetName("modbus-test")
+	// Simulate a previous successful connection so the entity source is live.
+	p.entitySource.markLive()
+	p.newClient = func(_ probeConfig) modbusClient {
+		return &fakeClient{connectErr: fmt.Errorf("connection refused")}
+	}
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect returned error: %v", err)
+	}
+
+	wantID := "modbus://192.168.1.100:502"
+	for _, dp := range points {
+		if !hasTag(dp, "service.instance.id", wantID) {
+			t.Errorf("datapoint %s missing service.instance.id tag: %+v", dp.Name, dp.Tags)
+		}
+	}
+
+	var upVal *float64
+	var check *data_store.DataPoint
+	for i := range points {
+		if points[i].Name == "modbus.up" {
+			v := points[i].Value
+			upVal = &v
+		}
+		if points[i].Name == dbcommon.CheckResultMetric {
+			check = &points[i]
+		}
+	}
+	if upVal == nil {
+		t.Fatal("modbus.up not found")
+	}
+	if *upVal != 0 {
+		t.Errorf("modbus.up = %v, want 0", *upVal)
+	}
+	if check == nil {
+		t.Fatal("check result datapoint not found")
+	}
+	wantClass := float64(dbcommon.ClassifyError(fmt.Errorf("connection refused")))
+	if check.Value != wantClass {
+		t.Errorf("check result = %v, want %v", check.Value, wantClass)
+	}
+	if !hasTag(*check, "metric_type", "status") {
+		t.Errorf("check result missing metric_type status: %+v", check.Tags)
+	}
+	if !hasTag(*check, "service.instance.id", wantID) {
+		t.Errorf("check result missing identity tag: %+v", check.Tags)
 	}
 }

@@ -1,26 +1,16 @@
-// Package jenkins implements the free jenkins probe: a Jenkins CI
-// controller monitored over its HTTP REST API (stdlib only, no external
-// dependency). One cycle reads three endpoints — the job tree, the
-// computer (nodes/executors) view and the build queue — and emits job,
-// node and queue health as metrics, plus a service.instance entity for
-// the controller (entity rail, #185).
-//
-// Naming: there is no otelcol-contrib Jenkins receiver with a metric
-// vocabulary to align to, so the metrics live under senhub.jenkins.*.
-// Job/node counts collapse onto one OTel name discriminated by a status
-// attribute; per-job duration / last-build-number split by job name.
 package jenkins
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -59,6 +49,13 @@ type jenkinsConfig struct {
 	Timeout      time.Duration
 	InstanceName string // optional operator-supplied stable id (precedence 1)
 }
+
+type httpStatusError struct {
+	code int
+	msg  string
+}
+
+func (e *httpStatusError) Error() string { return e.msg }
 
 // jenkinsProbe monitors a single Jenkins controller.
 type jenkinsProbe struct {
@@ -201,30 +198,82 @@ func (p *jenkinsProbe) Collect() ([]data_store.DataPoint, error) {
 	nodes, nodesErr := p.fetchNodes()
 	queue, queueErr := p.fetchQueue()
 
+	identityTags := p.baseTags()
+
 	up := float64(1)
 	if jobsErr != nil {
 		up = 0
 		p.moduleLogger.Warn().Err(jobsErr).Str("instance", p.instance).Msg("jenkins jobs query failed")
 	}
 	points = append(points, data_store.DataPoint{
-		Name: metricUp, Value: up, Timestamp: now, Tags: statusTags(p.instance),
+		Name:      metricUp,
+		Value:     up,
+		Timestamp: now,
+		Tags: combineTags([]tags.Tag{
+			{Key: "instance", Value: p.instance},
+			{Key: "metric_type", Value: "status"},
+		}, identityTags...),
 	})
 
 	if jobsErr == nil {
-		points = append(points, p.buildJobPoints(jobs, now)...)
+		points = append(points, p.buildJobPoints(jobs, now, identityTags)...)
 	}
 	if nodesErr == nil {
-		points = append(points, p.buildNodePoints(nodes, now)...)
+		points = append(points, p.buildNodePoints(nodes, now, identityTags)...)
 	} else {
 		p.moduleLogger.Warn().Err(nodesErr).Str("instance", p.instance).Msg("jenkins nodes query failed")
 	}
 	if queueErr == nil {
-		points = append(points, p.buildQueuePoints(queue, now)...)
+		points = append(points, p.buildQueuePoints(queue, now, identityTags)...)
 	} else {
 		p.moduleLogger.Warn().Err(queueErr).Str("instance", p.instance).Msg("jenkins queue query failed")
 	}
 
+	checkErr := jobsErr
+	if checkErr == nil {
+		checkErr = nodesErr
+	}
+	if checkErr == nil {
+		checkErr = queueErr
+	}
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(classifyJenkinsError(checkErr)),
+		Timestamp: now,
+		Tags: combineTags([]tags.Tag{
+			{Key: "metric_type", Value: "status"},
+		}, identityTags...),
+	})
+
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// baseTags returns the entity identity tags shared by every datapoint this
+// probe emits. The id is resolved by the same entity source that emits the
+// service.instance entity, so the two values cannot diverge.
+func (p *jenkinsProbe) baseTags() []tags.Tag {
+	if id := p.entitySource.serviceInstanceID(); id != "" {
+		return []tags.Tag{{Key: idKeyServiceInstanceID, Value: id}}
+	}
+	return nil
+}
+
+func classifyJenkinsError(err error) dbcommon.CheckResult {
+	if err == nil {
+		return dbcommon.CheckOK
+	}
+	var httpErr *httpStatusError
+	if errors.As(err, &httpErr) {
+		return dbcommon.ClassifyHTTPStatus(httpErr.code)
+	}
+	return dbcommon.ClassifyError(err)
+}
+
+func combineTags(first []tags.Tag, extra ...tags.Tag) []tags.Tag {
+	out := make([]tags.Tag, 0, len(first)+len(extra))
+	out = append(out, first...)
+	out = append(out, extra...)
+	return out
 }
 
 // --- wire shapes -----------------------------------------------------------
@@ -277,7 +326,7 @@ type queueItem struct {
 //
 // Job status is read from lastBuild.result, falling back to the colour ball
 // when no build has run yet. Jobs with no build are not counted (no status).
-func (p *jenkinsProbe) buildJobPoints(jobs []job, ts time.Time) []data_store.DataPoint {
+func (p *jenkinsProbe) buildJobPoints(jobs []job, ts time.Time, baseTags []tags.Tag) []data_store.DataPoint {
 	statusCounts := map[string]int{
 		"success":  0,
 		"failure":  0,
@@ -298,10 +347,10 @@ func (p *jenkinsProbe) buildJobPoints(jobs []job, ts time.Time) []data_store.Dat
 			statusCounts[status]++
 		}
 
-		jobTags := []tags.Tag{
-			{Key: "job", Value: j.Name},
-			{Key: "metric_type", Value: "jobs"},
-		}
+		jobTags := combineTags(baseTags,
+			tags.Tag{Key: "job", Value: j.Name},
+			tags.Tag{Key: "metric_type", Value: "jobs"},
+		)
 		points = append(points,
 			data_store.DataPoint{Name: metricJobDuration, Value: float64(j.LastBuild.Duration), Timestamp: ts, Tags: jobTags},
 			data_store.DataPoint{Name: metricJobLastBuildNum, Value: float64(j.LastBuild.Number), Timestamp: ts, Tags: jobTags},
@@ -311,10 +360,10 @@ func (p *jenkinsProbe) buildJobPoints(jobs []job, ts time.Time) []data_store.Dat
 	for status, count := range statusCounts {
 		points = append(points, data_store.DataPoint{
 			Name: metricJobCount, Value: float64(count), Timestamp: ts,
-			Tags: []tags.Tag{
-				{Key: "status", Value: status},
-				{Key: "metric_type", Value: "jobs"},
-			},
+			Tags: combineTags(baseTags,
+				tags.Tag{Key: "status", Value: status},
+				tags.Tag{Key: "metric_type", Value: "jobs"},
+			),
 		})
 	}
 	return points
@@ -323,7 +372,7 @@ func (p *jenkinsProbe) buildJobPoints(jobs []job, ts time.Time) []data_store.Dat
 // buildNodePoints maps the computer view to:
 //   - node.count collapsed by online/offline;
 //   - executor.count collapsed by busy/free across all online nodes.
-func (p *jenkinsProbe) buildNodePoints(nodes []computer, ts time.Time) []data_store.DataPoint {
+func (p *jenkinsProbe) buildNodePoints(nodes []computer, ts time.Time, baseTags []tags.Tag) []data_store.DataPoint {
 	online, offline := 0, 0
 	busy, free := 0, 0
 
@@ -342,12 +391,12 @@ func (p *jenkinsProbe) buildNodePoints(nodes []computer, ts time.Time) []data_st
 		}
 	}
 
-	mt := []tags.Tag{{Key: "metric_type", Value: "nodes"}}
+	mt := combineTags(baseTags, tags.Tag{Key: "metric_type", Value: "nodes"})
 	statusTag := func(status string) []tags.Tag {
-		return append([]tags.Tag{{Key: "status", Value: status}}, mt...)
+		return combineTags([]tags.Tag{{Key: "status", Value: status}}, mt...)
 	}
 	stateTag := func(state string) []tags.Tag {
-		return append([]tags.Tag{{Key: "state", Value: state}}, mt...)
+		return combineTags([]tags.Tag{{Key: "state", Value: state}}, mt...)
 	}
 
 	return []data_store.DataPoint{
@@ -359,14 +408,14 @@ func (p *jenkinsProbe) buildNodePoints(nodes []computer, ts time.Time) []data_st
 }
 
 // buildQueuePoints maps the build queue to its size and its blocked count.
-func (p *jenkinsProbe) buildQueuePoints(q queueResponse, ts time.Time) []data_store.DataPoint {
+func (p *jenkinsProbe) buildQueuePoints(q queueResponse, ts time.Time, baseTags []tags.Tag) []data_store.DataPoint {
 	blocked := 0
 	for _, item := range q.Items {
 		if item.Blocked {
 			blocked++
 		}
 	}
-	mt := []tags.Tag{{Key: "metric_type", Value: "queue"}}
+	mt := combineTags(baseTags, tags.Tag{Key: "metric_type", Value: "queue"})
 	return []data_store.DataPoint{
 		{Name: metricQueueSize, Value: float64(len(q.Items)), Timestamp: ts, Tags: mt},
 		{Name: metricQueueBlocked, Value: float64(blocked), Timestamp: ts, Tags: mt},
@@ -401,13 +450,6 @@ func normalizeJobStatus(result, color string) string {
 		}
 	}
 	return ""
-}
-
-func statusTags(instance string) []tags.Tag {
-	return []tags.Tag{
-		{Key: "instance", Value: instance},
-		{Key: "metric_type", Value: "status"},
-	}
 }
 
 // --- HTTP plumbing ---------------------------------------------------------
@@ -457,7 +499,10 @@ func (p *jenkinsProbe) getJSON(path string, out interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("jenkins %s returned HTTP %s: %s", path, strconv.Itoa(resp.StatusCode), string(body))
+		return &httpStatusError{
+			code: resp.StatusCode,
+			msg:  fmt.Sprintf("jenkins %s returned HTTP %d: %s", path, resp.StatusCode, string(body)),
+		}
 	}
 
 	// service.version rides the entity from the X-Jenkins header (present on

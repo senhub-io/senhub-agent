@@ -77,5 +77,6 @@ series' tags.
 | `systemd.unit.sub_state` | `systemd.unit.sub_state` | Systemd {systemd.unit} Sub State | # | 1 when the unit sub state is 'running' or 'listening', 0 otherwise. The sub_state tag carries the raw sub state value. |
 | `systemd.unit.load_state` | `systemd.unit.load_state` | Systemd {systemd.unit} Load State | # | 1 when the unit load state is 'loaded', 0 otherwise (not-found, error, masked) |
 | `systemd.unit.restarts` | `systemd.unit.restarts` | Systemd {systemd.unit} Restarts | # | Cumulative restart count for service units (NRestarts D-Bus property). Only emitted for units of type 'service'. |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

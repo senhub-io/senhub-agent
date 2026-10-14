@@ -152,3 +152,14 @@ func (s *opensearchEntitySource) Observe() (entity.Observation, bool) {
 func (s *opensearchEntitySource) hostPort() string {
 	return s.addr + ":" + strconv.Itoa(s.port)
 }
+
+// InstanceID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *opensearchEntitySource) InstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.idPinned {
+		return ""
+	}
+	return s.pinnedID
+}

@@ -1,8 +1,3 @@
-// Package zookeeper implements the free zookeeper probe: monitors an
-// Apache ZooKeeper node via the mntr four-letter command over raw TCP.
-// The probe connects to host:port, sends "mntr\n", reads key-tab-value
-// lines until EOF, and emits OTel-named metrics covering latency,
-// connections, requests, data, file descriptors, and ensemble state.
 package zookeeper
 
 import (
@@ -14,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -175,6 +171,39 @@ func (p *ZookeeperProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// baseTags returns the entity identity tags shared by every datapoint for this probe.
+func (p *ZookeeperProbe) baseTags() []tags.Tag {
+	if id := p.entityObs.instanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
+}
+
+// checkResultPoint creates the dbcommon.CheckResultMetric datapoint with the
+// standard metric_type=status tag.
+func (p *ZookeeperProbe) checkResultPoint(v float64, ts time.Time) data_store.DataPoint {
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     v,
+		Timestamp: ts,
+		Tags: []tags.Tag{
+			{Key: "metric_type", Value: "status"},
+		},
+	}
+}
+
+// addBaseTags appends the probe's base identity tags to every datapoint.
+func (p *ZookeeperProbe) addBaseTags(pts []data_store.DataPoint) []data_store.DataPoint {
+	baseTags := p.baseTags()
+	if len(baseTags) == 0 {
+		return pts
+	}
+	for i := range pts {
+		pts[i].Tags = append(pts[i].Tags, baseTags...)
+	}
+	return pts
+}
+
 // Collect sends "mntr" to the ZooKeeper node and parses the response.
 // A connection failure emits senhub.zookeeper.up=0 and returns nil —
 // the probe is never in error from the scheduler's perspective; an
@@ -188,7 +217,8 @@ func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Warn().Err(err).Str("address", address).Msg("zookeeper mntr failed")
 		p.entityObs.setUp("", false, "")
 		pts := []data_store.DataPoint{p.upPoint(0, now)}
-		return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName()), nil
+		pts = append(pts, p.checkResultPoint(float64(dbcommon.ClassifyError(err)), now))
+		return p.BaseProbe.EnrichDataPointsWithProbeName(p.addBaseTags(pts), p.GetName()), nil
 	}
 
 	version := kv["zk_version"]
@@ -204,7 +234,8 @@ func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
 
 	p.entityObs.setUp(serverID, true, version)
 	pts := p.buildDataPoints(kv, now)
-	return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName()), nil
+	pts = append(pts, p.checkResultPoint(float64(dbcommon.ClassifyError(nil)), now))
+	return p.BaseProbe.EnrichDataPointsWithProbeName(p.addBaseTags(pts), p.GetName()), nil
 }
 
 // resolveServerID fetches the ZooKeeper "conf" output and extracts the

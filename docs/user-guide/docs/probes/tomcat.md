@@ -86,5 +86,6 @@ series' tags.
 | `jvm.gc.collections.count` | `jvm.gc.collections.count` | JVM GC Count {collector} | # | Number of garbage collection cycles performed by the collector |
 | `jvm.gc.collections.elapsed` | `jvm.gc.collections.elapsed` | JVM GC Elapsed {collector} | ms | Total time spent in garbage collection by the collector |
 | `jvm.threads.count` | `jvm.threads.count` | JVM Thread Count | # | Current number of live threads in the JVM |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

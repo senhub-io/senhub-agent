@@ -7,6 +7,7 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -125,6 +127,16 @@ func (p *opensearchProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+func (p *opensearchProbe) baseTags() []tags.Tag {
+	if p.entitySrc == nil {
+		return nil
+	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		return []tags.Tag{{Key: "db.instance.id", Value: id}}
+	}
+	return nil
+}
+
 // Collect fetches cluster health + local node stats and emits datapoints.
 // senhub.opensearch.up is always emitted, even on error (up=0).
 //
@@ -135,17 +147,19 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 
-	upTags := []tags.Tag{{Key: "metric_type", Value: "status"}}
-
 	health, err := p.fetchClusterHealth()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("opensearch cluster health fetch failed")
 		if p.entitySrc != nil {
 			p.entitySrc.setReachable(false, "")
 		}
+
+		baseTags := p.baseTags()
+		upTags := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "status"})
 		points = append(points,
 			data_store.DataPoint{Name: "senhub.opensearch.up", Value: 0, Timestamp: now, Tags: upTags},
 		)
+		points = append(points, newCheckResultPoint(err, baseTags, now))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
@@ -160,10 +174,13 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
+	baseTags := p.baseTags()
+	upTags := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "status"})
+
 	points = append(points,
 		data_store.DataPoint{Name: "senhub.opensearch.up", Value: 1, Timestamp: now, Tags: upTags},
 	)
-	points = append(points, p.buildClusterHealthPoints(health, now)...)
+	points = append(points, p.buildClusterHealthPoints(health, now, baseTags)...)
 
 	nodeStats, err := p.fetchNodeStats()
 	if err != nil {
@@ -172,7 +189,7 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 		if p.entitySrc != nil {
 			p.entitySrc.setReachable(true, "")
 		}
-		// Return what we have (cluster health is available).
+		points = append(points, newCheckResultPoint(err, baseTags, now))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
@@ -187,7 +204,8 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(true, nodeVersion)
 	}
 
-	points = append(points, p.buildNodeStatsPoints(nodeStats, now)...)
+	points = append(points, p.buildNodeStatsPoints(nodeStats, now, baseTags)...)
+	points = append(points, newCheckResultPoint(nil, baseTags, now))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -239,20 +257,20 @@ func statusToFloat(status string) float64 {
 	}
 }
 
-func (p *opensearchProbe) buildClusterHealthPoints(h *clusterHealth, ts time.Time) []data_store.DataPoint {
-	clusterTag := tags.Tag{Key: "metric_type", Value: "status"}
-	nodeTag := tags.Tag{Key: "metric_type", Value: "nodes"}
-	shardTag := tags.Tag{Key: "metric_type", Value: "shards"}
-	taskTag := tags.Tag{Key: "metric_type", Value: "tasks"}
+func (p *opensearchProbe) buildClusterHealthPoints(h *clusterHealth, ts time.Time, baseTags []tags.Tag) []data_store.DataPoint {
+	clusterTag := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "status"})
+	nodeTag := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "nodes"})
+	shardTag := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "shards"})
+	taskTag := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "tasks"})
 
 	return []data_store.DataPoint{
-		{Name: "opensearch.cluster.health", Value: statusToFloat(h.Status), Timestamp: ts, Tags: []tags.Tag{clusterTag}},
-		{Name: "opensearch.cluster.nodes", Value: float64(h.NumberOfNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
-		{Name: "opensearch.cluster.data_nodes", Value: float64(h.NumberOfDataNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
-		{Name: "opensearch.cluster.shards.active", Value: float64(h.ActiveShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "opensearch.cluster.shards.unassigned", Value: float64(h.UnassignedShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "opensearch.cluster.shards.relocating", Value: float64(h.RelocatingShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "opensearch.cluster.pending_tasks", Value: float64(h.NumberOfPendingTasks), Timestamp: ts, Tags: []tags.Tag{taskTag}},
+		{Name: "opensearch.cluster.health", Value: statusToFloat(h.Status), Timestamp: ts, Tags: clusterTag},
+		{Name: "opensearch.cluster.nodes", Value: float64(h.NumberOfNodes), Timestamp: ts, Tags: nodeTag},
+		{Name: "opensearch.cluster.data_nodes", Value: float64(h.NumberOfDataNodes), Timestamp: ts, Tags: nodeTag},
+		{Name: "opensearch.cluster.shards.active", Value: float64(h.ActiveShards), Timestamp: ts, Tags: shardTag},
+		{Name: "opensearch.cluster.shards.unassigned", Value: float64(h.UnassignedShards), Timestamp: ts, Tags: shardTag},
+		{Name: "opensearch.cluster.shards.relocating", Value: float64(h.RelocatingShards), Timestamp: ts, Tags: shardTag},
+		{Name: "opensearch.cluster.pending_tasks", Value: float64(h.NumberOfPendingTasks), Timestamp: ts, Tags: taskTag},
 	}
 }
 
@@ -327,11 +345,11 @@ func (p *opensearchProbe) fetchNodeStats() (*nodeStatsResponse, error) {
 	return &r, nil
 }
 
-func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Time) []data_store.DataPoint {
+func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Time, baseTags []tags.Tag) []data_store.DataPoint {
 	var points []data_store.DataPoint
 
 	for _, node := range r.Nodes {
-		jvmTags := []tags.Tag{{Key: "metric_type", Value: "jvm"}}
+		jvmTags := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "jvm"})
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.jvm.memory.heap.used",
@@ -348,10 +366,10 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 		)
 
 		for collectorName, gc := range node.JVM.GC.Collectors {
-			gcTags := []tags.Tag{
-				{Key: "metric_type", Value: "jvm"},
-				{Key: "collector", Value: collectorName},
-			}
+			gcTags := withTags(baseTags,
+				tags.Tag{Key: "metric_type", Value: "jvm"},
+				tags.Tag{Key: "collector", Value: collectorName},
+			)
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "opensearch.jvm.gc.collections.count",
@@ -368,18 +386,18 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 			)
 		}
 
-		indexingTags := []tags.Tag{
-			{Key: "metric_type", Value: "indexing"},
-			{Key: "operation", Value: "index"},
-		}
-		searchQueryTags := []tags.Tag{
-			{Key: "metric_type", Value: "search"},
-			{Key: "operation", Value: "query"},
-		}
-		searchFetchTags := []tags.Tag{
-			{Key: "metric_type", Value: "search"},
-			{Key: "operation", Value: "fetch"},
-		}
+		indexingTags := withTags(baseTags,
+			tags.Tag{Key: "metric_type", Value: "indexing"},
+			tags.Tag{Key: "operation", Value: "index"},
+		)
+		searchQueryTags := withTags(baseTags,
+			tags.Tag{Key: "metric_type", Value: "search"},
+			tags.Tag{Key: "operation", Value: "query"},
+		)
+		searchFetchTags := withTags(baseTags,
+			tags.Tag{Key: "metric_type", Value: "search"},
+			tags.Tag{Key: "operation", Value: "fetch"},
+		)
 
 		points = append(points,
 			data_store.DataPoint{
@@ -420,7 +438,7 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 			},
 		)
 
-		processTags := []tags.Tag{{Key: "metric_type", Value: "process"}}
+		processTags := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "process"})
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.process.cpu.usage",
@@ -430,7 +448,7 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 			},
 		)
 
-		osTags := []tags.Tag{{Key: "metric_type", Value: "os"}}
+		osTags := withTags(baseTags, tags.Tag{Key: "metric_type", Value: "os"})
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "opensearch.os.memory.used",
@@ -441,10 +459,10 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 		)
 
 		for poolName, pool := range node.ThreadPool {
-			tpTags := []tags.Tag{
-				{Key: "metric_type", Value: "thread_pool"},
-				{Key: "thread_pool", Value: poolName},
-			}
+			tpTags := withTags(baseTags,
+				tags.Tag{Key: "metric_type", Value: "thread_pool"},
+				tags.Tag{Key: "thread_pool", Value: poolName},
+			)
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "opensearch.thread_pool.tasks.queued",
@@ -479,6 +497,40 @@ func (p *opensearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.Tim
 
 // ----- HTTP helpers -----------------------------------------------------------
 
+type httpStatusError struct {
+	statusCode int
+	url        string
+	body       string
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("GET %s returned %d: %s", e.url, e.statusCode, e.body)
+}
+
+func withTags(base []tags.Tag, extra ...tags.Tag) []tags.Tag {
+	out := make([]tags.Tag, 0, len(base)+len(extra))
+	out = append(out, base...)
+	out = append(out, extra...)
+	return out
+}
+
+func newCheckResultPoint(err error, baseTags []tags.Tag, ts time.Time) data_store.DataPoint {
+	var statusErr *httpStatusError
+	var result dbcommon.CheckResult
+	if errors.As(err, &statusErr) {
+		result = dbcommon.ClassifyHTTPStatus(statusErr.statusCode)
+	} else {
+		result = dbcommon.ClassifyError(err)
+	}
+
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(result),
+		Timestamp: ts,
+		Tags:      withTags(baseTags, tags.Tag{Key: "metric_type", Value: "status"}),
+	}
+}
+
 func (p *opensearchProbe) getJSON(path string, v interface{}) error {
 	url := p.cfg.Endpoint + path
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -497,7 +549,7 @@ func (p *opensearchProbe) getJSON(path string, v interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("GET %s returned %d: %s", url, resp.StatusCode, string(body))
+		return &httpStatusError{statusCode: resp.StatusCode, url: url, body: string(body)}
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {

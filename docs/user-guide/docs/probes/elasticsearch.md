@@ -91,5 +91,6 @@ series' tags.
 | `elasticsearch.thread_pool.tasks.queued` | `elasticsearch.thread_pool.tasks.queued` | Elasticsearch Thread Pool {thread_pool} Queued | # | Number of tasks currently queued in the thread pool |
 | `elasticsearch.thread_pool.tasks.completed` | `elasticsearch.thread_pool.tasks.completed` | Elasticsearch Thread Pool {thread_pool} Completed | # | Cumulative tasks completed by the thread pool |
 | `elasticsearch.thread_pool.tasks.rejected` | `elasticsearch.thread_pool.tasks.rejected` | Elasticsearch Thread Pool {thread_pool} Rejected | # | Cumulative tasks rejected by the thread pool (queue full) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

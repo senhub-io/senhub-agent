@@ -32,6 +32,20 @@ metrics:
     tag_to_attribute:
       instance: snmp.target
 
+  - name: "senhub.probe.check.result"
+    channel: "check_result"
+    display_name: "SNMP {instance} Check Result"
+    unit: "#"
+    category: "status"
+    description: "Why the last poll failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied"
+    lookup: "senhub.probe.check.result"
+    otel:
+      name: senhub.probe.check.result
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
   - name: "senhub.snmp.poll.duration"
     channel: "snmp_poll_duration"
     display_name: "SNMP {instance} Poll Duration"

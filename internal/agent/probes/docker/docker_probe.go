@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/dockerapi"
 	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/probes/types"
@@ -264,6 +265,29 @@ func (p *dockerProbe) buildClient() *http.Client {
 	}
 }
 
+// hostBaseTags returns the identity tags for the host the Docker engine runs
+// on. When the daemon is unreachable there is no container.id yet, so the
+// collection-level check is anchored to the host entity the entity source
+// already uses for its runs_on edges.
+func (p *dockerProbe) hostBaseTags() []tags.Tag {
+	if id := p.entitySrc.HostID(); id != "" {
+		return []tags.Tag{{Key: idKeyHost, Value: id}}
+	}
+	return nil
+}
+
+// checkResultPoint emits the collection-level check result.
+func (p *dockerProbe) checkResultPoint(ts time.Time, checkErr error) data_store.DataPoint {
+	checkTags := append([]tags.Tag{}, p.hostBaseTags()...)
+	checkTags = append(checkTags, tags.Tag{Key: "metric_type", Value: "status"})
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(checkErr)),
+		Timestamp: ts,
+		Tags:      checkTags,
+	}
+}
+
 func (p *dockerProbe) GetInterval() time.Duration { return p.cfg.Interval }
 func (p *dockerProbe) ShouldStart() bool          { return true }
 
@@ -285,12 +309,14 @@ func (p *dockerProbe) OnShutdown(ctx context.Context) error {
 func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	containers, socketOK, err := p.listContainers()
-	if err != nil || !socketOK {
+	containers, socketOK, listErr := p.listContainers()
+	checkErr := listErr
+	if listErr != nil || !socketOK {
 		// The socket is unreachable. On a hardened non-root install that is the
 		// NORMAL state — /var/run/docker.sock is root:docker 0660 — so before
 		// giving up, read what the kernel exposes without any privilege.
-		if points, ok := p.collectFromCgroups(now, err); ok {
+		if points, ok := p.collectFromCgroups(now, listErr); ok {
+			points = append(points, p.checkResultPoint(now, checkErr))
 			// Same enrichment as the socket path below. Without it every
 			// datapoint reaches the data store with no probe_name and no
 			// probe_type, so the transformer registry cannot resolve a
@@ -298,10 +324,11 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 			// silently, on the install shape the fallback exists to serve.
 			return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 		}
-		if err != nil {
-			return nil, fmt.Errorf("docker: listing containers: %w", err)
+		points := []data_store.DataPoint{p.checkResultPoint(now, checkErr)}
+		if listErr != nil {
+			return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), fmt.Errorf("docker: listing containers: %w", listErr)
 		}
-		return nil, nil
+		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
 	containers = p.applyFilter(containers)
@@ -329,6 +356,7 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 	for _, res := range results {
 		points = append(points, p.buildDatapoints(res, now)...)
 	}
+	points = append(points, p.checkResultPoint(now, checkErr))
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
@@ -436,6 +464,7 @@ func (p *dockerProbe) matchesExclude(name string) bool {
 func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_store.DataPoint {
 	name := primaryName(res.container)
 	baseTags := []tags.Tag{
+		{Key: idKeyContainerID, Value: res.container.ID},
 		// The FULL sha, not the 12-character form. Truncation is a CLI display
 		// convention chosen by the observer, and it is destructive: the entity
 		// is keyed on the full id, so a consumer querying by the entity's own

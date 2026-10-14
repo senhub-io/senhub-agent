@@ -25,7 +25,10 @@ import (
 
 	probing "github.com/prometheus-community/pro-bing"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -59,6 +62,7 @@ type ICMPCheckProbe struct {
 	config       checkConfig
 	moduleLogger *logger.ModuleLogger
 	ping         pingFunc
+	entitySrc    *icmpEntitySource
 }
 
 type checkConfig struct {
@@ -87,12 +91,19 @@ func NewICMPCheckProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		return nil, err
 	}
 
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
 	probe := &ICMPCheckProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
+		entitySrc:    newICMPEntitySource(hostID),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	probe.ping = probe.pingOnce
 	return probe, nil
 }
@@ -207,15 +218,19 @@ func (p *ICMPCheckProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 	for _, res := range results {
-		points = append(points, p.buildDatapoints(res, now)...)
+		identityTags := p.identityTagsForResult(res)
+		points = append(points, p.buildDatapoints(res, now, identityTags)...)
+		points = append(points, p.buildCheckResult(res, now, identityTags))
 	}
+
+	p.entitySrc.setObservation(p.buildEntityObservation(results, agentstate.GetAgentInstanceID()))
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 // buildDatapoints converts one ping outcome into the metric set. RTTs
 // are emitted in milliseconds (the operator-facing unit); the OTel
 // mapping in icmp_check.yaml converts to seconds.
-func (p *ICMPCheckProbe) buildDatapoints(res pingResult, ts time.Time) []data_store.DataPoint {
+func (p *ICMPCheckProbe) buildDatapoints(res pingResult, ts time.Time, identityTags []tags.Tag) []data_store.DataPoint {
 	baseTags := []tags.Tag{
 		{Key: "target", Value: res.target},
 		{Key: "metric_type", Value: "availability"},
@@ -223,6 +238,7 @@ func (p *ICMPCheckProbe) buildDatapoints(res pingResult, ts time.Time) []data_st
 	if res.resolvedIP != "" {
 		baseTags = append(baseTags, tags.Tag{Key: "ip", Value: res.resolvedIP})
 	}
+	baseTags = append(baseTags, identityTags...)
 
 	up := float64(0)
 	if res.err == nil && res.received > 0 {
@@ -251,6 +267,25 @@ func (p *ICMPCheckProbe) buildDatapoints(res pingResult, ts time.Time) []data_st
 		)
 	}
 	return points
+}
+
+// buildCheckResult emits the per-target check status gauge.
+func (p *ICMPCheckProbe) buildCheckResult(res pingResult, ts time.Time, identityTags []tags.Tag) data_store.DataPoint {
+	statusTags := []tags.Tag{
+		{Key: "target", Value: res.target},
+		{Key: "metric_type", Value: "status"},
+	}
+	if res.resolvedIP != "" {
+		statusTags = append(statusTags, tags.Tag{Key: "ip", Value: res.resolvedIP})
+	}
+	statusTags = append(statusTags, identityTags...)
+
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(res.err)),
+		Timestamp: ts,
+		Tags:      statusTags,
+	}
 }
 
 // pingOnce is the production pingFunc: one pro-bing round per target.

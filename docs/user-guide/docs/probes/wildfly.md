@@ -80,5 +80,6 @@ series' tags.
 | `wildfly.transaction.rolledback` | `wildfly.transaction.rolledback` | WildFly Transactions Rolled Back | # | Total number of aborted (rolled back) JTA transactions |
 | `wildfly.datasource.connections.active` | `wildfly.datasource.connections.active` | WildFly DS {datasource} Active Connections | # | Number of active (in-use) connections in the JDBC datasource pool |
 | `wildfly.datasource.connections.available` | `wildfly.datasource.connections.available` | WildFly DS {datasource} Available Connections | # | Number of available (idle) connections in the JDBC datasource pool |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

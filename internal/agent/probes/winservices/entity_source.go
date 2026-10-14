@@ -30,6 +30,10 @@ const (
 	relRunsOn                 = "runs_on"
 )
 
+func buildServiceInstanceID(hostID string) string {
+	return serviceName + "@" + hostID
+}
+
 // winServicesEntitySource feeds the entity rail with the static
 // service.instance entity and its runs_on → host relation. Observe never
 // blocks; the entity itself is stable for the lifetime of the probe, but the
@@ -72,7 +76,7 @@ func (s *winServicesEntitySource) Observe() (entity.Observation, bool) {
 	if hostID == "" {
 		return entity.Observation{}, false
 	}
-	instanceID := serviceName + "@" + hostID
+	instanceID := buildServiceInstanceID(hostID)
 	serviceID := map[string]any{idKeyServiceInstanceID: instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{
@@ -111,4 +115,16 @@ func (s *winServicesEntitySource) Observe() (entity.Observation, bool) {
 	}
 
 	return obs, true
+}
+
+// serviceInstanceID returns the id the entity carries, or "" while the host
+// id is unknown and no entity is emitted (see Observe).
+func (s *winServicesEntitySource) serviceInstanceID() string {
+	s.mu.RLock()
+	hostID := s.hostID
+	s.mu.RUnlock()
+	if hostID == "" {
+		return ""
+	}
+	return buildServiceInstanceID(hostID)
 }

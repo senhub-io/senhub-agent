@@ -237,6 +237,20 @@ metrics:
       proxmox.storage: proxmox.storage
       proxmox.node: proxmox.node
 
+  - name: "senhub.probe.check.result"
+    channel: "check_result"
+    display_name: "Check Result"
+    unit: "#"
+    category: "status"
+    description: "Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied"
+    lookup: "senhub.probe.check.result"
+    otel:
+      name: senhub.probe.check.result
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      service.instance.id: service.instance.id
+
 tag_metadata:
   proxmox.node:
     type: resource
@@ -253,3 +267,4 @@ tag_metadata:
   metric_type:
     type: category
     label: "Metric Type"
+

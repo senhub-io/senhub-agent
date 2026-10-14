@@ -349,6 +349,7 @@ series' tags.
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
 | `senhub.snmp.up` | `senhub.snmp.up` | SNMP {instance} Reachability | # | 1 when the last poll reached the SNMP target, 0 otherwise |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | SNMP {instance} Check Result | # | Why the last poll failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 | `senhub.snmp.poll.duration` | `senhub.snmp.poll.duration` | SNMP {instance} Poll Duration | s | Wall-clock time taken by the last poll cycle |
 | `senhub.snmp.discovery.devices` | `snmp_poll_discovery_devices` | SNMP {instance} Discovered Devices | # | Devices that answered the last discovery crawl |
 | `senhub.snmp.discovery.runs` | `snmp_poll_discovery_runs` | SNMP {instance} Discovery Runs | # | Discovery crawls run since the agent started |

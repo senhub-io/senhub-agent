@@ -53,6 +53,9 @@ func newNginxEntitySource(endpoint, instanceName, hostID string) *nginxEntitySou
 	}
 }
 
+// InstanceID returns the stable service.instance.id this probe emits.
+func (s *nginxEntitySource) InstanceID() string { return s.instanceID }
+
 // hostPortFromEndpoint extracts host and port (as int64) from an HTTP(S) URL.
 // Missing port defaults to 80 for http and 443 for https.
 func hostPortFromEndpoint(rawURL string) (host string, port int64) {

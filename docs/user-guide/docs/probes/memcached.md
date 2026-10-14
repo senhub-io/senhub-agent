@@ -83,5 +83,6 @@ series' tags.
 | `memcached.commands` | `memcached.commands` | Memcached Commands {command} | # | Number of commands executed, by command type (get/set/flush) |
 | `memcached.evictions` | `memcached.evictions` | Memcached Evictions | # | Number of items evicted from the cache due to memory pressure |
 | `memcached.cpu.usage` | `memcached.cpu.usage` | Memcached CPU {state} | s | CPU time consumed by the Memcached process, by state (user or system) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

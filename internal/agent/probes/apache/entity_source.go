@@ -35,6 +35,12 @@ func newApacheEntitySource(instanceName, hostID string, host string, port int) *
 	}
 }
 
+// InstanceID returns the stable service.instance.id used in entity observations.
+// Telemetry tags use this accessor so they stay byte-identical to the entity id.
+func (s *apacheEntitySource) InstanceID() string {
+	return s.instanceID
+}
+
 // resolveInstanceID builds the stable service.instance.id. Precedence:
 //  1. operator-supplied instance_name (verbatim, unique across instances)
 //  2. "apache@" + stable host id

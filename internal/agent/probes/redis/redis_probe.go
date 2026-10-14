@@ -136,9 +136,7 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	conn, err := p.dialFn("tcp", p.instance, p.cfg.Timeout)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis connect failed")
-		return p.BaseProbe.EnrichDataPointsWithProbeName(
-			[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
-			p.GetName()), nil
+		return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 	}
 	defer conn.Close()
 
@@ -146,9 +144,7 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 		tlsConn, err := p.handshake(conn)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis TLS handshake failed")
-			return p.BaseProbe.EnrichDataPointsWithProbeName(
-				[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
-				p.GetName()), nil
+			return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 		}
 		conn = tlsConn
 	}
@@ -156,9 +152,7 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 	if parts := authCommandArgs(p.cfg); len(parts) > 0 {
 		if err := sendCommand(conn, p.cfg.Timeout, parts...); err != nil {
 			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis AUTH send failed")
-			return p.BaseProbe.EnrichDataPointsWithProbeName(
-				[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
-				p.GetName()), nil
+			return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 		}
 		resp, err := readLine(conn, p.cfg.Timeout)
 		if err != nil || strings.HasPrefix(resp, "-") {
@@ -166,25 +160,19 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 				err = fmt.Errorf("auth rejected: %s", resp)
 			}
 			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis AUTH failed")
-			return p.BaseProbe.EnrichDataPointsWithProbeName(
-				[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
-				p.GetName()), nil
+			return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 		}
 	}
 
 	if err := sendCommand(conn, p.cfg.Timeout, "INFO", "all"); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO send failed")
-		return p.BaseProbe.EnrichDataPointsWithProbeName(
-			[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
-			p.GetName()), nil
+		return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 	}
 
 	blob, err := readInfo(conn, p.cfg.Timeout)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO read failed")
-		return p.BaseProbe.EnrichDataPointsWithProbeName(
-			[]data_store.DataPoint{{Name: "senhub.db.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")}},
-			p.GetName()), nil
+		return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 	}
 
 	info := parseInfoBlob(blob)
@@ -253,6 +241,12 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 		p.addSentinelMasterDetailPoints(&points, sentinelMasters, now)
 	}
 	p.entityObs.update(p.cfg, info)
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.CheckOK),
+		Timestamp: now,
+		Tags:      p.baseTags("status"),
+	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -274,16 +268,24 @@ func (p *redisProbe) baseTags(metricType string) []tags.Tag {
 		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 		{Key: "metric_type", Value: metricType},
 	}
-	// The identity of the entity these metrics describe (#741). Without it a
-	// consumer holding a db entity has no key that matches any series: it can
-	// only guess from db.system.name plus an address, which stops working the
-	// moment two databases of the same kind share a host — the collapse #740
-	// was about. Omitted while the id is unresolved rather than emitted empty,
-	// since a blank label and the real one are two series for one database.
+	// The identity of the entity these metrics describe (#741). It is pinned
+	// when the probe is built (instance_name, or the host-scoped fallback
+	// Redis always needs, having no server id), so every series is born with
+	// it. A blank value is never emitted: a blank label and the real one would
+	// be two series for one database.
 	if id := p.entityObs.instanceID(); id != "" {
 		t = append(t, tags.Tag{Key: "db.instance.id", Value: id})
 	}
 	return t
+}
+
+// failurePoints returns the up=0 and check-result datapoints emitted when
+// a connection/auth/read failure makes this target unreachable.
+func (p *redisProbe) failurePoints(err error, ts time.Time) []data_store.DataPoint {
+	return []data_store.DataPoint{
+		{Name: "senhub.db.up", Value: 0, Timestamp: ts, Tags: p.baseTags("overview")},
+		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(err)), Timestamp: ts, Tags: p.baseTags("status")},
+	}
 }
 
 func (p *redisProbe) addGauge(out *[]data_store.DataPoint, name string, value float64, ts time.Time, metricType string, extra ...tags.Tag) {

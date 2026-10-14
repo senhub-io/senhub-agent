@@ -83,6 +83,15 @@ func hostPortFromEndpoint(rawURL string) (host string, port int64) {
 	return host, n
 }
 
+// InstanceID returns the service.instance.id that Observe uses for this
+// WildFly instance. The id is pinned at construction, so it is stable even
+// when the management API is down.
+func (s *wildflyEntitySource) InstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.instanceID
+}
+
 // setReachable is called from Collect to report whether the management API
 // responded successfully this cycle. When version is non-empty it is stored as
 // the service.version attribute (updated on every successful cycle).

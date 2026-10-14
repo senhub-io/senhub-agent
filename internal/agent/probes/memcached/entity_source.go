@@ -59,6 +59,9 @@ func newMemcachedEntitySource(host string, port int, instanceName string) *memca
 	}
 }
 
+// InstanceID returns the pinned, immutable db.instance.id for this probe.
+func (s *memcachedEntitySource) InstanceID() string { return s.instanceID }
+
 // setReachable updates the reachability state and optional descriptive
 // attributes. Called from Collect() after each stats fetch attempt.
 func (s *memcachedEntitySource) setReachable(up bool, version string) {
@@ -93,7 +96,8 @@ func (s *memcachedEntitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, true
 	}
 
-	dbID := map[string]any{"db.instance.id": s.instanceID}
+	instanceID := s.InstanceID()
+	dbID := map[string]any{"db.instance.id": instanceID}
 	obs := entity.Observation{
 		Entities: []entity.Entity{{
 			Type:       "db",
@@ -108,7 +112,7 @@ func (s *memcachedEntitySource) Observe() (entity.Observation, bool) {
 			FromType: "service.instance",
 			FromID:   map[string]any{"service.instance.id": agentID},
 			ToType:   "db",
-			ToID:     map[string]any{"db.instance.id": s.instanceID},
+			ToID:     map[string]any{"db.instance.id": instanceID},
 		})
 	}
 

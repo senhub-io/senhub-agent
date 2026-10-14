@@ -73,5 +73,6 @@ series' tags.
 | `apache.workers` | `apache.workers` | Apache Workers {state} | # | Number of Apache workers in each state: busy (serving requests) or idle (waiting) |
 | `apache.requests` | `apache.requests` | Apache Requests | # | Cumulative number of HTTP requests served since Apache started (Total Accesses) |
 | `apache.traffic` | `apache.traffic` | Apache Traffic | B | Cumulative bytes transferred since Apache started (Total kBytes * 1024) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

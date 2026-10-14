@@ -16,6 +16,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/dockerapi"
 	"senhub-agent.go/internal/agent/probes/dockerdial"
 	"senhub-agent.go/internal/agent/probes/types"
@@ -63,6 +65,15 @@ type swarmProbe struct {
 	newClient func() *http.Client
 	// api is the Engine API version negotiated with the daemon.
 	api dockerapi.Version
+}
+
+type httpStatusError struct {
+	code int
+	path string
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("GET %s returned %d", e.path, e.code)
 }
 
 // NewSwarmProbe builds the probe from its YAML config block.
@@ -153,22 +164,38 @@ func (p *swarmProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	info, state, err := p.fetchSwarm()
-	points = append(points, p.availabilityPoints(state, now)...)
+
+	var clusterTags []tags.Tag
+	if state == stateManager {
+		clusterTags = []tags.Tag{
+			{Key: "swarm.cluster.id", Value: info.ID},
+		}
+		if id := clusterServiceInstanceID(info.ID); id != "" {
+			clusterTags = append(clusterTags, tags.Tag{Key: "service.instance.id", Value: id})
+		}
+		if name := info.Spec.Name; name != "" {
+			clusterTags = append(clusterTags, tags.Tag{Key: "swarm.cluster.name", Value: name})
+		}
+	}
+
+	points = append(points, p.availabilityPoints(state, now, clusterTags)...)
+
+	checkResult := dbcommon.CheckOK
+	if err != nil {
+		checkResult = classifyCheckError(err)
+	} else if state == stateWorker || state == stateNotInSwarm {
+		checkResult = dbcommon.ClassifyHTTPStatus(http.StatusServiceUnavailable)
+	}
+
 	if state != stateManager {
 		p.explainOnce(state, err)
 		// Withdraw the entity: a node that cannot see the cluster must not
 		// keep publishing the last snapshot it saw as if it were current.
 		p.entitySrc.update("", "", 0, 0, nil)
+		points = append(points, p.checkResultPoint(checkResult, nil, now))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	p.notManagerLogged.Store(false)
-
-	clusterTags := []tags.Tag{
-		{Key: "swarm.cluster.id", Value: info.ID},
-	}
-	if name := info.Spec.Name; name != "" {
-		clusterTags = append(clusterTags, tags.Tag{Key: "swarm.cluster.name", Value: name})
-	}
 
 	var firstErr error
 	record := func(err error) {
@@ -207,7 +234,12 @@ func (p *swarmProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, p.overlayPoints(networks, services, tasks, clusterTags, now)...)
 	}
 
+	if firstErr != nil {
+		checkResult = classifyCheckError(firstErr)
+	}
 	p.entitySrc.update(info.ID, info.Spec.Name, len(nodes), len(services), segmentFactsOf(networks))
+
+	points = append(points, p.checkResultPoint(checkResult, clusterTags, now))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), firstErr
 }
@@ -280,7 +312,7 @@ func (p *swarmProbe) fetchSwarm() (swarmInfo, clusterState, error) {
 		return info, p.classifyUnavailable(body), nil
 	}
 	if status != http.StatusOK {
-		return info, stateUnreachable, fmt.Errorf("GET /swarm returned %d", status)
+		return info, stateUnreachable, &httpStatusError{code: status, path: "/swarm"}
 	}
 	if err := json.Unmarshal(body, &info); err != nil {
 		return info, stateUnreachable, fmt.Errorf("decoding /swarm: %w", err)
@@ -290,23 +322,24 @@ func (p *swarmProbe) fetchSwarm() (swarmInfo, clusterState, error) {
 
 // availabilityPoints emits one series per state, so a dashboard reads the
 // reason rather than a bare zero.
-func (p *swarmProbe) availabilityPoints(state clusterState, now time.Time) []data_store.DataPoint {
+func (p *swarmProbe) availabilityPoints(state clusterState, now time.Time, clusterTags []tags.Tag) []data_store.DataPoint {
 	up := float64(0)
 	if state == stateManager {
 		up = 1
 	}
 	points := []data_store.DataPoint{
-		point("senhub.swarm.up", up, now, []tags.Tag{{Key: "metric_type", Value: "availability"}}),
+		point("senhub.swarm.up", up, now, withTags(clusterTags, tags.Tag{Key: "metric_type", Value: "availability"})),
 	}
 	for _, s := range []clusterState{stateManager, stateWorker, stateNotInSwarm, stateUnreachable} {
 		v := float64(0)
 		if s == state {
 			v = 1
 		}
-		points = append(points, point("senhub.swarm.node_role_state", v, now, []tags.Tag{
-			{Key: "state", Value: s.String()},
-			{Key: "metric_type", Value: "availability"},
-		}))
+		points = append(points, point("senhub.swarm.node_role_state", v, now,
+			withTags(clusterTags,
+				tags.Tag{Key: "state", Value: s.String()},
+				tags.Tag{Key: "metric_type", Value: "availability"},
+			)))
 	}
 	return points
 }
@@ -353,7 +386,7 @@ func getJSON[T any](p *swarmProbe, path string) ([]T, error) {
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("GET %s returned %d", path, status)
+		return nil, &httpStatusError{code: status, path: path}
 	}
 	var out []T
 	if err := json.Unmarshal(body, &out); err != nil {
@@ -376,6 +409,23 @@ func point(name string, value float64, ts time.Time, t []tags.Tag) data_store.Da
 		Timestamp: ts,
 		Tags:      t,
 	}
+}
+
+// checkResultPoint emits the single check-result gauge for this collection.
+func (p *swarmProbe) checkResultPoint(result dbcommon.CheckResult, base []tags.Tag, now time.Time) data_store.DataPoint {
+	return point(dbcommon.CheckResultMetric, float64(result), now,
+		withTags(base, tags.Tag{Key: "metric_type", Value: "status"}))
+}
+
+// classifyCheckError distinguishes an HTTP status carried by an httpStatusError
+// from a transport error, so each is classified by the code path that knows
+// the real outcome.
+func classifyCheckError(err error) dbcommon.CheckResult {
+	var statusErr *httpStatusError
+	if errors.As(err, &statusErr) {
+		return dbcommon.ClassifyHTTPStatus(statusErr.code)
+	}
+	return dbcommon.ClassifyError(err)
 }
 
 // withTags concatenates without aliasing the base slice — appending to a shared

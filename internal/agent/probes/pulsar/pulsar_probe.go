@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -156,13 +157,17 @@ func (p *PulsarProbe) OnShutdown(_ context.Context) error {
 // the pipeline always receives a datapoint set.
 func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
+	up, readyCheck := p.checkReady()
+	p.entitySrc.setReachable(up)
+
 	baseTags := []tags.Tag{
 		{Key: "endpoint", Value: p.config.Endpoint},
 		{Key: "metric_type", Value: "broker"},
 	}
+	if id := p.entitySrc.telemetryID(); id != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "service.instance.id", Value: id})
+	}
 
-	up := p.checkReady()
-	p.entitySrc.setReachable(up)
 	upVal := float64(0)
 	if up {
 		upVal = 1
@@ -172,9 +177,11 @@ func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
 		{Name: "senhub.pulsar.up", Value: upVal, Timestamp: now, Tags: baseTags},
 	}
 
+	checkResult := readyCheck
 	if up {
-		scraped, err := p.scrapeMetrics(now, baseTags)
+		scraped, err, scrapedCheck := p.scrapeMetrics(now, baseTags)
 		if err != nil {
+			checkResult = scrapedCheck
 			p.moduleLogger.Warn().
 				Err(err).
 				Str("endpoint", p.config.Endpoint).
@@ -184,12 +191,27 @@ func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
+	statusTags := make([]tags.Tag, len(baseTags))
+	copy(statusTags, baseTags)
+	for i := range statusTags {
+		if statusTags[i].Key == "metric_type" {
+			statusTags[i].Value = "status"
+		}
+	}
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(checkResult),
+		Timestamp: now,
+		Tags:      statusTags,
+	})
+
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
-// checkReady performs GET <endpoint>/admin/v2/brokers/ready and returns
-// true when the broker responds with HTTP 200.
-func (p *PulsarProbe) checkReady() bool {
+// checkReady performs GET <endpoint>/admin/v2/brokers/ready. It returns true
+// when the broker responds with HTTP 200, and the classified check result for
+// this readiness attempt.
+func (p *PulsarProbe) checkReady() (bool, dbcommon.CheckResult) {
 	url := p.config.Endpoint + "/admin/v2/brokers/ready"
 	resp, err := p.client.Get(url) // #nosec G107 - endpoint is operator-configured
 	if err != nil {
@@ -197,12 +219,15 @@ func (p *PulsarProbe) checkReady() bool {
 			Err(err).
 			Str("url", url).
 			Msg("pulsar readiness check failed")
-		return false
+		return false, dbcommon.ClassifyError(err)
 	}
 	defer resp.Body.Close()
 	// Drain body so the connection can be reused.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	return resp.StatusCode == http.StatusOK
+	if resp.StatusCode != http.StatusOK {
+		return false, dbcommon.ClassifyHTTPStatus(resp.StatusCode)
+	}
+	return true, dbcommon.CheckOK
 }
 
 // scrapeMetrics fetches GET <endpoint>/metrics (Prometheus text) and
@@ -210,19 +235,24 @@ func (p *PulsarProbe) checkReady() bool {
 // Labels on the scraped series become tags on the datapoint; this lets
 // PRTG/Prom/OTLP consumers filter by namespace or topic when Pulsar
 // annotates its broker-level aggregates.
-func (p *PulsarProbe) scrapeMetrics(ts time.Time, baseTags []tags.Tag) ([]data_store.DataPoint, error) {
+// The third return is the classified check result for this scrape attempt.
+func (p *PulsarProbe) scrapeMetrics(ts time.Time, baseTags []tags.Tag) ([]data_store.DataPoint, error, dbcommon.CheckResult) {
 	url := p.config.Endpoint + "/metrics"
 	resp, err := p.client.Get(url) // #nosec G107 - endpoint is operator-configured
 	if err != nil {
-		return nil, fmt.Errorf("fetching %s: %w", url, err)
+		return nil, fmt.Errorf("fetching %s: %w", url, err), dbcommon.ClassifyError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetching %s: unexpected status %d", url, resp.StatusCode)
+		return nil, fmt.Errorf("fetching %s: unexpected status %d", url, resp.StatusCode), dbcommon.ClassifyHTTPStatus(resp.StatusCode)
 	}
 
-	return parsePrometheusText(io.LimitReader(resp.Body, maxBodyBytes), ts, baseTags)
+	points, err := parsePrometheusText(io.LimitReader(resp.Body, maxBodyBytes), ts, baseTags)
+	if err != nil {
+		return nil, err, dbcommon.ClassifyError(err)
+	}
+	return points, nil, dbcommon.CheckOK
 }
 
 // parsePrometheusText reads a Prometheus text exposition line-by-line

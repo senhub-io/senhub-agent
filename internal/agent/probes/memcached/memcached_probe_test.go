@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -210,9 +211,139 @@ func TestCollect_UnreachableServer_EmitsUpZero(t *testing.T) {
 		t.Error("senhub.memcached.up not emitted when server is unreachable")
 	}
 
-	// No other metrics should be emitted when unreachable
-	if len(points) != 1 {
-		t.Errorf("got %d points on error, want exactly 1 (up=0 only)", len(points))
+	// No stats metrics should be emitted when unreachable: only up=0 and the
+	// classified check result.
+	if len(points) != 2 {
+		t.Errorf("got %d points on error, want exactly 2 (up=0 and check_result)", len(points))
+	}
+}
+
+func TestCollect_ReachableServer_EmitsIdentityOnAllDatapoints(t *testing.T) {
+	addr, stop := fakeMemcached(t)
+	defer stop()
+
+	host, portStr, _ := net.SplitHostPort(addr)
+	port := 0
+	fmt.Sscanf(portStr, "%d", &port)
+
+	l := newTestLogger(t)
+	probe, err := NewMemcachedProbe(map[string]interface{}{
+		"host": host,
+		"port": port,
+	}, l)
+	if err != nil {
+		t.Fatalf("NewMemcachedProbe: %v", err)
+	}
+	mp := probe.(*MemcachedProbe)
+	wantID := mp.entitySrc.InstanceID()
+
+	points, err := probe.Collect()
+	if err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+	if len(points) == 0 {
+		t.Fatal("Collect() returned no datapoints")
+	}
+
+	checkFound := false
+	for _, dp := range points {
+		gotID := ""
+		for _, tag := range dp.Tags {
+			if tag.Key == "db.instance.id" {
+				gotID = tag.Value
+				break
+			}
+		}
+		if gotID != wantID {
+			t.Errorf("datapoint %q db.instance.id tag = %q, want %q", dp.Name, gotID, wantID)
+		}
+
+		if dp.Name != dbcommon.CheckResultMetric {
+			continue
+		}
+		checkFound = true
+		if dp.Value != 0 {
+			t.Errorf("senhub.probe.check.result on reachable server = %v, want 0", dp.Value)
+		}
+		metricType := ""
+		for _, tag := range dp.Tags {
+			if tag.Key == "metric_type" {
+				metricType = tag.Value
+				break
+			}
+		}
+		if metricType != "status" {
+			t.Errorf("senhub.probe.check.result metric_type = %q, want status", metricType)
+		}
+	}
+
+	if !checkFound {
+		t.Error("missing senhub.probe.check.result on reachable server")
+	}
+}
+
+func TestCollect_UnreachableServer_EmitsIdentityAndClassifiedCheckResult(t *testing.T) {
+	l := newTestLogger(t)
+	probe, err := NewMemcachedProbe(map[string]interface{}{
+		"host":    "127.0.0.1",
+		"port":    19999, // nothing listening
+		"timeout": 1,
+	}, l)
+	if err != nil {
+		t.Fatalf("NewMemcachedProbe: %v", err)
+	}
+	mp := probe.(*MemcachedProbe)
+	wantID := mp.entitySrc.InstanceID()
+
+	points, err := probe.Collect()
+	if err != nil {
+		t.Fatalf("Collect() must never return an error: %v", err)
+	}
+
+	upFound := false
+	checkFound := false
+	for _, dp := range points {
+		gotID := ""
+		for _, tag := range dp.Tags {
+			if tag.Key == "db.instance.id" {
+				gotID = tag.Value
+				break
+			}
+		}
+		if gotID != wantID {
+			t.Errorf("datapoint %q db.instance.id tag = %q, want %q", dp.Name, gotID, wantID)
+		}
+
+		switch dp.Name {
+		case "senhub.memcached.up":
+			upFound = true
+			if dp.Value != 0 {
+				t.Errorf("senhub.memcached.up = %v, want 0 (unreachable)", dp.Value)
+			}
+		case dbcommon.CheckResultMetric:
+			checkFound = true
+			want := float64(dbcommon.CheckTargetDown)
+			if dp.Value != want {
+				t.Errorf("senhub.probe.check.result on unreachable server = %v, want %v", dp.Value, want)
+			}
+			metricType := ""
+			for _, tag := range dp.Tags {
+				if tag.Key == "metric_type" {
+					metricType = tag.Value
+					break
+				}
+			}
+			if metricType != "status" {
+				t.Errorf("senhub.probe.check.result metric_type = %q, want status", metricType)
+			}
+		}
+	}
+
+	if !upFound {
+		t.Error("missing senhub.memcached.up on unreachable server")
+	}
+	if !checkFound {
+		t.Error("missing senhub.probe.check.result on unreachable server")
 	}
 }
 

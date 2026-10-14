@@ -41,6 +41,15 @@ func newEntitySource(instance, host string) *oracleEntitySource {
 	return &oracleEntitySource{instance: instance, host: host, hostID: dbcommon.HostID}
 }
 
+// dbInstanceID returns the value used in the entity ID map. Telemetry tags use
+// this accessor so they cannot drift from the entity identity.
+func (s *oracleEntitySource) dbInstanceID() string {
+	if s == nil {
+		return ""
+	}
+	return s.instance
+}
+
 // setVersion records the server version (v$instance.version) so it rides the
 // entity as the descriptive db.system.version attribute (toise#216 AT1).
 func (s *oracleEntitySource) setVersion(v string) {

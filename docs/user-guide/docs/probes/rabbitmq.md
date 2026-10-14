@@ -94,5 +94,6 @@ series' tags.
 | `rabbitmq.queue.messages.ready` | `rabbitmq.queue.messages.ready` | RabbitMQ {vhost}/{queue} Messages Ready | # | Messages ready for delivery in this queue (messages_ready) |
 | `rabbitmq.queue.messages.unacknowledged` | `rabbitmq.queue.messages.unacknowledged` | RabbitMQ {vhost}/{queue} Messages Unacknowledged | # | Messages delivered to consumers but not yet acknowledged in this queue (messages_unacknowledged) |
 | `rabbitmq.queue.consumers` | `rabbitmq.queue.consumers` | RabbitMQ {vhost}/{queue} Consumers | # | Number of consumers subscribed to this queue (consumers) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

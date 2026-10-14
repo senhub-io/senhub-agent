@@ -56,6 +56,14 @@ func resolveInstanceID(instanceName, hostID string) string {
 	return "phpfpm"
 }
 
+// InstanceID returns the service.instance.id value used by the entity source.
+// It is immutable after construction, so callers can use it as a constant tag.
+func (s *phpfpmEntitySource) InstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.instanceID
+}
+
 // setReachable is called by the collect cycle: true when the status page
 // responded, false on any fetch error. version may be empty when unknown.
 func (s *phpfpmEntitySource) setReachable(up bool, version string) {

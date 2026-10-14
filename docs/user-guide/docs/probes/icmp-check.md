@@ -88,5 +88,6 @@ series' tags.
 | `senhub.icmp.rtt.avg` | `senhub.icmp.rtt.avg` | Ping {target} RTT Avg | ms | Average round-trip time over the last cycle |
 | `senhub.icmp.rtt.max` | `senhub.icmp.rtt.max` | Ping {target} RTT Max | ms | Maximum round-trip time over the last cycle |
 | `senhub.icmp.rtt.stddev` | `senhub.icmp.rtt.stddev` | Ping {target} RTT StdDev | ms | Round-trip time standard deviation (jitter proxy) over the last cycle |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

@@ -72,6 +72,14 @@ func newCouchDBEntitySource(endpoint, instanceName string) *couchdbEntitySource 
 	return s
 }
 
+// InstanceID returns the current db.instance.id value for telemetry tags.
+// It is the pinned id once known, or the host:port fallback before that.
+func (s *couchdbEntitySource) InstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pinnedID
+}
+
 // setReachable is called by Collect to report the current connectivity state.
 // When up is false the entity is suppressed from Observe until the next
 // successful collection (transient outage != gone).

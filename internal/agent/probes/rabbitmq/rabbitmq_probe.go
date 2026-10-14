@@ -1,14 +1,9 @@
-// Package rabbitmq implements the free rabbitmq probe: node-level totals,
-// per-node resource metrics, and per-queue depth via the RabbitMQ HTTP
-// Management API (GET /api/overview, /api/nodes, /api/queues).
-//
-// Authentication: HTTP Basic (default guest/guest). No external dependencies;
-// stdlib net/http + encoding/json only.
 package rabbitmq
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -42,6 +38,15 @@ type rabbitConfig struct {
 	InstanceName string
 	Interval     time.Duration
 	Timeout      time.Duration
+}
+
+type httpStatusError struct {
+	code int
+	url  string
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("GET %s: unexpected status %d", e.url, e.code)
 }
 
 const (
@@ -160,6 +165,23 @@ func (p *rabbitProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// identityTags returns the service.instance.id tag for the entity this probe
+// instance describes. It is empty until the entity source has an id pinned.
+func (p *rabbitProbe) identityTags() []tags.Tag {
+	if id := p.entitySrc.pinnedInstanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
+}
+
+func (p *rabbitProbe) classifyCheckError(err error) dbcommon.CheckResult {
+	var httpErr *httpStatusError
+	if errors.As(err, &httpErr) {
+		return dbcommon.ClassifyHTTPStatus(httpErr.code)
+	}
+	return dbcommon.ClassifyError(err)
+}
+
 // Collect fetches /api/overview, /api/nodes, and /api/queues.
 // On any HTTP or parse error the probe emits up=0 and returns nil
 // (a reachability failure is a measurement, not a collection error).
@@ -170,19 +192,44 @@ func (p *rabbitProbe) OnShutdown(_ context.Context) error {
 func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
+	var checkErr error
 
-	overviewPoints, nodeName, reachable := p.collectOverview(now)
+	overviewPoints, reachable, err := p.collectOverview(now)
 	points = append(points, overviewPoints...)
+	if err != nil {
+		checkErr = err
+	}
 
 	if reachable {
-		// Pin the tech id on first successful collect.
-		p.entitySrc.tryPinTechID(nodeName)
 		p.entitySrc.setReachable(true, "")
-		points = append(points, p.collectNodes(now)...)
-		points = append(points, p.collectQueues(now)...)
+		idTags := p.identityTags()
+
+		nodePoints, err := p.collectNodes(now, idTags)
+		points = append(points, nodePoints...)
+		if err != nil && checkErr == nil {
+			checkErr = err
+		}
+
+		queuePoints, err := p.collectQueues(now, idTags)
+		points = append(points, queuePoints...)
+		if err != nil && checkErr == nil {
+			checkErr = err
+		}
 	} else {
 		p.entitySrc.setReachable(false, "")
 	}
+
+	idTags := p.identityTags()
+	checkTags := make([]tags.Tag, 0, len(idTags)+1)
+	checkTags = append(checkTags, idTags...)
+	checkTags = append(checkTags, tags.Tag{Key: "metric_type", Value: "status"})
+
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(p.classifyCheckError(checkErr)),
+		Timestamp: now,
+		Tags:      checkTags,
+	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -211,22 +258,24 @@ type overviewResponse struct {
 	} `json:"object_totals"`
 }
 
-// collectOverview fetches /api/overview and returns the datapoints, the
-// broker node name (for entity identity), and whether the broker was reachable.
-func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, string, bool) {
-	baseTags := []tags.Tag{
-		{Key: "metric_type", Value: "overview"},
-	}
-
+// collectOverview fetches /api/overview and returns the datapoints and whether
+// the broker was reachable.
+func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, bool, error) {
 	var overview overviewResponse
 	err := p.fetchJSON("/api/overview", &overview)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("rabbitmq overview fetch failed")
+		baseTags := append(p.identityTags(), tags.Tag{Key: "metric_type", Value: "overview"})
 		return []data_store.DataPoint{
 			{Name: "senhub.rabbitmq.up", Value: 0, Timestamp: now, Tags: baseTags},
-		}, "", false
+		}, false, err
 	}
 
+	// Pin the tech id before emitting overview points so they carry the same
+	// identity the entity source will use.
+	p.entitySrc.tryPinTechID(overview.Node)
+
+	baseTags := append(p.identityTags(), tags.Tag{Key: "metric_type", Value: "overview"})
 	pts := []data_store.DataPoint{
 		{Name: "senhub.rabbitmq.up", Value: 1, Timestamp: now, Tags: baseTags},
 	}
@@ -259,7 +308,7 @@ func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, st
 		pts = append(pts, dp("rabbitmq.channels.total", float64(*v), now, baseTags))
 	}
 
-	return pts, overview.Node, true
+	return pts, true, nil
 }
 
 // ── Nodes ───────────────────────────────────────────────────────────────────
@@ -275,19 +324,18 @@ type nodeResponse struct {
 	Uptime      *int64 `json:"uptime"`
 }
 
-func (p *rabbitProbe) collectNodes(now time.Time) []data_store.DataPoint {
+func (p *rabbitProbe) collectNodes(now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
 	var nodes []nodeResponse
 	if err := p.fetchJSON("/api/nodes", &nodes); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("rabbitmq nodes fetch failed")
-		return nil
+		return nil, err
 	}
 
 	var pts []data_store.DataPoint
 	for _, node := range nodes {
-		nodeTags := []tags.Tag{
-			{Key: "node", Value: node.Name},
-			{Key: "metric_type", Value: "node"},
-		}
+		nodeTags := make([]tags.Tag, 0, len(identityTags)+2)
+		nodeTags = append(nodeTags, identityTags...)
+		nodeTags = append(nodeTags, tags.Tag{Key: "node", Value: node.Name}, tags.Tag{Key: "metric_type", Value: "node"})
 
 		if v := node.MemUsed; v != nil {
 			pts = append(pts, dp("rabbitmq.node.memory.used", float64(*v), now, nodeTags))
@@ -312,7 +360,7 @@ func (p *rabbitProbe) collectNodes(now time.Time) []data_store.DataPoint {
 			pts = append(pts, dp("rabbitmq.node.uptime", float64(*v), now, nodeTags))
 		}
 	}
-	return pts
+	return pts, nil
 }
 
 // ── Queues ──────────────────────────────────────────────────────────────────
@@ -326,20 +374,22 @@ type queueResponse struct {
 	Consumers              *int64 `json:"consumers"`
 }
 
-func (p *rabbitProbe) collectQueues(now time.Time) []data_store.DataPoint {
+func (p *rabbitProbe) collectQueues(now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
 	var queues []queueResponse
 	if err := p.fetchJSON("/api/queues", &queues); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("rabbitmq queues fetch failed")
-		return nil
+		return nil, err
 	}
 
 	var pts []data_store.DataPoint
 	for _, q := range queues {
-		qTags := []tags.Tag{
-			{Key: "vhost", Value: q.Vhost},
-			{Key: "queue", Value: q.Name},
-			{Key: "metric_type", Value: "queue"},
-		}
+		qTags := make([]tags.Tag, 0, len(identityTags)+3)
+		qTags = append(qTags, identityTags...)
+		qTags = append(qTags,
+			tags.Tag{Key: "vhost", Value: q.Vhost},
+			tags.Tag{Key: "queue", Value: q.Name},
+			tags.Tag{Key: "metric_type", Value: "queue"},
+		)
 
 		if v := q.MessagesReady; v != nil {
 			pts = append(pts, dp("rabbitmq.queue.messages.ready", float64(*v), now, qTags))
@@ -351,7 +401,7 @@ func (p *rabbitProbe) collectQueues(now time.Time) []data_store.DataPoint {
 			pts = append(pts, dp("rabbitmq.queue.consumers", float64(*v), now, qTags))
 		}
 	}
-	return pts
+	return pts, nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -381,7 +431,7 @@ func (p *rabbitProbe) fetchJSON(path string, dst interface{}) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: unexpected status %d", url, resp.StatusCode)
+		return &httpStatusError{code: resp.StatusCode, url: url}
 	}
 
 	body, err := io.ReadAll(resp.Body)

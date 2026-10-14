@@ -156,3 +156,11 @@ func (s *consulEntitySource) Observe() (entity.Observation, bool) {
 	defer s.mu.Unlock()
 	return s.cache, s.ready
 }
+
+// InstanceID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *consulEntitySource) InstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pinnedID
+}

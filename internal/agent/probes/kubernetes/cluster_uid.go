@@ -66,5 +66,8 @@ func resolveClusterIdentity(cs kubernetes.Interface, timeout time.Duration) (str
 // Deriving it twice is how a relation ends up pointing at an entity that does
 // not exist, which the consumer buffers and then drops.
 func (p *KubernetesProbe) clusterIdentity() string {
+	if p.entitySrc != nil {
+		return p.entitySrc.clusterID()
+	}
 	return p.clusterUID
 }
