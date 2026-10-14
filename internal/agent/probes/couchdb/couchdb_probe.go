@@ -1,16 +1,15 @@
-// Package couchdb implements the FREE-tier CouchDB monitoring probe.
-// It queries the CouchDB /_node/_local/_stats endpoint using BasicAuth
-// and emits counters and gauges aligned with OTel semantic conventions.
 package couchdb
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -43,6 +42,17 @@ type CouchDBProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *couchdbEntitySource
+}
+
+// httpStatusError conveys an HTTP status code from a failed CouchDB request so
+// the check result can be classified with dbcommon.ClassifyHTTPStatus.
+type httpStatusError struct {
+	url  string
+	code int
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("GET %s: unexpected status %d", e.url, e.code)
 }
 
 // statsResponse maps the relevant fields of GET /_node/_local/_stats.
@@ -168,6 +178,19 @@ func NewCouchDBProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 	return p, nil
 }
 
+// baseTags is the single place where the probe attaches the entity identity
+// key. The id is resolved lazily: pinned couchdb:<uuid> once known, or the
+// host:port fallback before the first successful root fetch.
+func (p *CouchDBProbe) baseTags(metricType string) []tags.Tag {
+	t := []tags.Tag{
+		{Key: "metric_type", Value: metricType},
+	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+	return t
+}
+
 func (p *CouchDBProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
@@ -193,16 +216,21 @@ func (p *CouchDBProbe) OnShutdown(_ context.Context) error {
 // nil is returned — a failing remote is a measurement, not a collection error.
 func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	baseTags := []tags.Tag{
-		{Key: "metric_type", Value: "overview"},
-	}
 
 	stats, err := p.fetchStats()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("CouchDB unreachable")
 		p.entitySrc.setReachable(false)
+
+		checkResult := dbcommon.ClassifyError(err)
+		var statusErr *httpStatusError
+		if errors.As(err, &statusErr) {
+			checkResult = dbcommon.ClassifyHTTPStatus(statusErr.code)
+		}
+
 		points := []data_store.DataPoint{
-			{Name: "senhub.couchdb.up", Value: 0, Timestamp: now, Tags: baseTags},
+			{Name: "senhub.couchdb.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")},
+			{Name: dbcommon.CheckResultMetric, Value: float64(checkResult), Timestamp: now, Tags: p.baseTags("status")},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
@@ -216,6 +244,12 @@ func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
 
 	p.entitySrc.setReachable(true)
 	points := p.buildDatapoints(stats, now)
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(nil)),
+		Timestamp: now,
+		Tags:      p.baseTags("status"),
+	})
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
@@ -238,7 +272,7 @@ func (p *CouchDBProbe) fetchStats() (*statsResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: unexpected status %d", url, resp.StatusCode)
+		return nil, &httpStatusError{url: url, code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -273,7 +307,7 @@ func (p *CouchDBProbe) fetchRoot() (*rootResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s/: unexpected status %d", p.cfg.Endpoint, resp.StatusCode)
+		return nil, &httpStatusError{url: p.cfg.Endpoint + "/", code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -290,9 +324,9 @@ func (p *CouchDBProbe) fetchRoot() (*rootResponse, error) {
 
 // buildDatapoints converts the parsed stats into OTel-first datapoints.
 func (p *CouchDBProbe) buildDatapoints(s *statsResponse, ts time.Time) []data_store.DataPoint {
-	overviewTags := []tags.Tag{{Key: "metric_type", Value: "overview"}}
-	httpdTags := []tags.Tag{{Key: "metric_type", Value: "httpd"}}
-	ioTags := []tags.Tag{{Key: "metric_type", Value: "io"}}
+	overviewTags := p.baseTags("overview")
+	httpdTags := p.baseTags("httpd")
+	ioTags := p.baseTags("io")
 
 	points := []data_store.DataPoint{
 		// Availability

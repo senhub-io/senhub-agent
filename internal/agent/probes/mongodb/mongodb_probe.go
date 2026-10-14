@@ -23,6 +23,7 @@ import (
 	mongodrv "go.mongodb.org/mongo-driver/mongo"
 	mongooptions "go.mongodb.org/mongo-driver/mongo/options"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -149,10 +150,12 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 	up := float64(1)
+	var checkErr error
 
 	status, err := p.runServerStatus()
 	if err != nil {
 		up = 0
+		checkErr = err
 		p.entitySrc.setReachable(false, "")
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("MongoDB serverStatus failed")
 	} else {
@@ -176,6 +179,12 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points, data_store.DataPoint{
 		Name:      "senhub.mongodb.up",
 		Value:     up,
+		Timestamp: now,
+		Tags:      p.baseTags(metricTypeStatus),
+	})
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(checkErr)),
 		Timestamp: now,
 		Tags:      p.baseTags(metricTypeStatus),
 	})
@@ -512,10 +521,14 @@ func (p *mongoDBProbe) runDBStats(dbName string, now time.Time) ([]data_store.Da
 
 // baseTags returns the common tags emitted on every datapoint.
 func (p *mongoDBProbe) baseTags(metricType string) []tags.Tag {
-	return []tags.Tag{
+	t := []tags.Tag{
 		{Key: "instance", Value: p.instance},
 		{Key: "metric_type", Value: metricType},
 	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+	return t
 }
 
 // hostPortFromURI extracts the host and port from a MongoDB URI such as

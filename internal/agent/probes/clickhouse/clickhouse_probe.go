@@ -1,14 +1,3 @@
-// Package clickhouse implements the free clickhouse probe: monitors a
-// ClickHouse server through its HTTP interface (port 8123) by reading
-// system.metrics, system.events and system.asynchronous_metrics.
-//
-// The Prometheus endpoint is not used: it is off by default and needs a
-// <prometheus> block and a port of its own, whereas the HTTP interface
-// answers on every install.
-//
-// The probe maps a fixed set of these to OTel-canonical names and always
-// emits senhub.clickhouse.up so the pipeline has a health signal even when
-// the server is unreachable.
 package clickhouse
 
 import (
@@ -20,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -174,6 +164,20 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	return cfg, nil
 }
 
+// buildBaseTags is the single place where the probe constructs the tags
+// shared by every datapoint. The identity key must come from the entity
+// source itself so datapoints and the entity rail can never disagree.
+func (p *ClickHouseProbe) buildBaseTags() []tags.Tag {
+	t := []tags.Tag{
+		{Key: "instance", Value: p.config.Endpoint},
+		{Key: "metric_type", Value: "overview"},
+	}
+	if id := p.entitySrc.currentID(); id != "" {
+		t = append(t, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+	return t
+}
+
 func (p *ClickHouseProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
@@ -205,17 +209,13 @@ func (p *ClickHouseProbe) OnShutdown(_ context.Context) error {
 // next Observe call, which is the documented db degraded fallback.
 func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	baseTags := []tags.Tag{
-		{Key: "instance", Value: p.config.Endpoint},
-		{Key: "metric_type", Value: "overview"},
-	}
 
 	up := float64(1)
-	rows, err := p.fetchSystemRows()
-	if err != nil {
+	rows, collectErr := p.fetchSystemRows()
+	if collectErr != nil {
 		up = 0
 		p.entitySrc.setReachable(false, "")
-		p.moduleLogger.Warn().Err(err).Str("endpoint", p.config.Endpoint).Msg("clickhouse collection failed")
+		p.moduleLogger.Warn().Err(collectErr).Str("endpoint", p.config.Endpoint).Msg("clickhouse collection failed")
 	} else {
 		// Try to pin the instance id on the first successful collect.
 		// isPinned() is a no-op check when instance_name was already set.
@@ -231,11 +231,16 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(true, "")
 	}
 
+	// Build base tags only after the entity id has been resolved above, or kept
+	// as its fallback on the error path, so datapoints and the entity source
+	// always carry the same db.instance.id.
+	baseTags := p.buildBaseTags()
+
 	points := []data_store.DataPoint{
 		{Name: "senhub.clickhouse.up", Value: up, Timestamp: now, Tags: baseTags},
 	}
 
-	if err == nil {
+	if collectErr == nil {
 		for _, m := range knownMetrics {
 			var value float64
 			found := false
@@ -256,6 +261,20 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 			})
 		}
 	}
+
+	checkTags := make([]tags.Tag, len(baseTags))
+	copy(checkTags, baseTags)
+	for i := range checkTags {
+		if checkTags[i].Key == "metric_type" {
+			checkTags[i].Value = "status"
+		}
+	}
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(collectErr)),
+		Timestamp: now,
+		Tags:      checkTags,
+	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

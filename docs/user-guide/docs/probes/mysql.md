@@ -298,5 +298,6 @@ series' tags.
 | `senhub.db.mysql.replica.sql_thread.running` | `senhub.db.mysql.replica.sql_thread.running` | Replica SQL Thread Running | # | On replica: 1 if Slave_SQL_Running='Yes', 0 otherwise |
 | `senhub.db.database.size` | `senhub.db.database.size.per_database` | Database Size ({database}) | B | Size of an individual database (opt-in via per_database flag) |
 | `senhub.db.mysql.table.size` | `senhub.db.mysql.table.size` | Table Size ({database}.{table}) | B | Size of an individual table (opt-in via per_table flag) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

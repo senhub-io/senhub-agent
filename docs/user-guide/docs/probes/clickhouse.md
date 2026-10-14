@@ -86,5 +86,6 @@ series' tags.
 | `clickhouse.inserted.data` | `clickhouse.inserted.data` | ClickHouse {instance} Inserted Bytes | B | Cumulative bytes inserted (system.events InsertedBytes) |
 | `clickhouse.read.data` | `clickhouse.read.data` | ClickHouse {instance} Read Compressed Bytes | B | Cumulative compressed bytes read from storage (system.events ReadCompressedBytes) |
 | `clickhouse.written.data` | `clickhouse.written.data` | ClickHouse {instance} Written Compressed Bytes | B | Cumulative compressed bytes written to MergeTree parts by inserts (system.events MergeTreeDataWriterCompressedBytes) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

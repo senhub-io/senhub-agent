@@ -160,5 +160,6 @@ series' tags.
 | `redis.sentinel.master.sentinels` | `redis.sentinel.master.sentinels` | Sentinel Master {master} Sentinels | # | Sentinels monitoring a master, this one included (INFO sentinel masterN sentinels) |
 | `redis.tracking.clients` | `redis.tracking.clients` | Tracking Clients | # | Number of clients using RESP3 client-side caching tracking (tracking_clients; 0 when absent) |
 | `redis.tracking.keys` | `redis.tracking.keys` | Tracking Keys | # | Number of keys in the client-side tracking invalidation table (tracking_table_used_keys; 0 when absent) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

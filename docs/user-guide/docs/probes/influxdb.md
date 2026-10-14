@@ -77,5 +77,6 @@ series' tags.
 | `go.goroutines` | `go.goroutines` | InfluxDB Goroutines | # | Number of goroutines currently running in the InfluxDB process (go_goroutines) |
 | `go.memory.heap.used` | `go.memory.heap.used` | InfluxDB Heap In Use | B | Bytes of heap memory in use by the InfluxDB process (go_memstats_heap_inuse_bytes) |
 | `influxdb.buckets` | `influxdb.buckets` | InfluxDB Buckets | # | Total number of buckets in the InfluxDB organisation (requires token) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

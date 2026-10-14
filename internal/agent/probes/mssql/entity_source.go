@@ -35,6 +35,10 @@ type mssqlEntitySource struct {
 	// rekey announces the 0.5.4 identity migration for a local instance whose
 	// id was host-scoped. nil when nothing was re-keyed (remote target).
 	rekey *entity.RekeyAnnouncer
+	// instanceID is the exact db.instance.id emitted in the fixed observation.
+	// The probe reuses it in baseTags so telemetry datapoints and the entity
+	// cannot diverge.
+	instanceID string
 }
 
 // newEntitySource builds the source for the configured host:port target. The
@@ -55,8 +59,9 @@ func newEntitySource(host string, port int) *mssqlEntitySource {
 		idKeyDBSystem:   dbSystemMSSQL,
 	}
 	s := &mssqlEntitySource{
-		hostID: dbcommon.HostID,
-		rekey:  rekey,
+		hostID:     dbcommon.HostID,
+		rekey:      rekey,
+		instanceID: instanceID,
 		obs: entity.Observation{
 			Entities: []entity.Entity{
 				{

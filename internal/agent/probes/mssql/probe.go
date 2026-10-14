@@ -21,6 +21,7 @@ import (
 
 	_ "github.com/microsoft/go-mssqldb"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -48,6 +49,7 @@ const (
 	metricTypeLocks       = "locks"
 	metricTypeIO          = "io"
 	metricTypeStorage     = "storage"
+	metricTypeStatus      = "status"
 )
 
 type config struct {
@@ -203,16 +205,25 @@ func (p *MSSQLProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 	up := float64(1)
+	var checkErr error
 
 	if p.db == nil {
 		up = 0
+		checkErr = fmt.Errorf("mssql connection not initialized")
 	} else if err := p.db.PingContext(ctx); err != nil {
 		up = 0
+		checkErr = err
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("mssql ping failed")
 	}
 
 	points = append(points, data_store.DataPoint{
 		Name: "senhub.db.up", Value: up, Timestamp: now, Tags: p.baseTags(metricTypeOverview),
+	})
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(checkErr)),
+		Timestamp: now,
+		Tags:      p.baseTags(metricTypeStatus),
 	})
 
 	if up == 1 {
@@ -241,7 +252,8 @@ func (p *MSSQLProbe) baseTags(metricType string) []tags.Tag {
 	return []tags.Tag{
 		{Key: "metric_type", Value: metricType},
 		{Key: "instance", Value: p.instance},
-		{Key: "db.system.name", Value: "mssql"},
+		{Key: idKeyDBInstance, Value: p.entitySource.instanceID},
+		{Key: idKeyDBSystem, Value: dbSystemMSSQL},
 		{Key: "server.address", Value: p.cfg.Host},
 		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 	}
