@@ -80,6 +80,19 @@ Trade-offs, to be accepted knowingly:
   probe (it would run once per node: install a second, Deployment
   release), a ServiceMonitor, a whole `config.agent`, `identity.existingSecret`.
 
+## Pod and container resources
+
+`kubeletStats.enabled` (default `true`) adds a `kubelet_stats` probe in a
+DaemonSet: each agent reads its node's kubelet (`/stats/summary`) for the
+CPU, memory, filesystem and network used by the node, its pods and their
+containers. The chart binds a ClusterRole with `get` on `nodes/stats` to
+the service account and mounts its token; the agent calls the node by
+its IP (`status.hostIP`).
+
+Most kubelets serve a self-signed certificate, so
+`kubeletStats.insecureSkipVerify` is `true` by default. Set it to `false`
+once the kubelet serving certificates are signed by the cluster CA.
+
 ## Pod logs
 
 `podLogs.enabled` (default `true`) adds a `kubernetes_logs` probe in a

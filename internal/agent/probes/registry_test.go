@@ -232,6 +232,7 @@ func TestProbeRegistry(t *testing.T) {
 		"event",
 		"snmp_poll",
 		"filetail",
+		"kubelet_stats",
 		"kubernetes_logs",
 		"otlp_receiver",
 		"snmp_trap",

@@ -195,6 +195,7 @@ nav:
       - Docker: probes/docker.md
       - Kubernetes: probes/kubernetes.md
       - Kubernetes pod logs: probes/kubernetes_logs.md
+      - Kubelet stats: probes/kubelet_stats.md
       - Docker Swarm: probes/swarm.md
       - Proxmox VE: probes/proxmox.md
       - Hyper-V: probes/hyperv.md
