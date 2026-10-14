@@ -12,6 +12,7 @@ import (
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/process"
 	"senhub-agent.go/internal/agent/probes/hostpoll"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -113,11 +114,12 @@ type pathInfo struct {
 }
 
 type windowsCollector struct {
-	query       *pdh.Query
-	paths       map[string]pathInfo
-	mu          sync.Mutex
-	initialized bool
-	logger      *logger.ModuleLogger
+	query          *pdh.Query
+	paths          map[string]pathInfo
+	mu             sync.Mutex
+	initialized    bool
+	logger         *logger.ModuleLogger
+	perCoreDetails bool
 }
 
 func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (hostpoll.Collector, error) {
@@ -127,15 +129,18 @@ func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (
 	// Create module logger for host probes
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.host")
 
+	perCoreDetails, _ := types.BoolParam(config, "per_core_details")
+
 	query, err := pdh.NewQuery()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PDH query: %w", err)
 	}
 
 	collector := &windowsCollector{
-		query:  query,
-		paths:  make(map[string]pathInfo),
-		logger: moduleLogger,
+		query:          query,
+		paths:          make(map[string]pathInfo),
+		logger:         moduleLogger,
+		perCoreDetails: perCoreDetails,
 	}
 
 	if err := collector.initializeCounters(); err != nil {
@@ -159,7 +164,6 @@ func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (
 }
 
 // shouldIncludeInstance checks if an instance should be included according to filters
-// Improved shouldIncludeInstance
 func (w *windowsCollector) shouldIncludeInstance(instance string) bool {
 	w.logger.Debug().
 		Str("instance", instance).
@@ -232,6 +236,14 @@ func (w *windowsCollector) initializeCounters() error {
 					continue
 				}
 
+				if !shouldCollectCPUCounter(metricName, instance, w.perCoreDetails) {
+					w.logger.Debug().
+						Str("metric", metricName).
+						Str("instance", instance).
+						Msg("Per-core breakdown metric skipped")
+					continue
+				}
+
 				path := pdh.BuildCounterPath(def.path, instance)
 				// Create a unique key for each metric/instance combination
 				uniqueKey := fmt.Sprintf("%s|%s", metricName, instance)
@@ -278,7 +290,6 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		Int("paths_count", len(w.paths)).
 		Msg("Starting metrics collection")
 
-	// Log registered paths
 	if w.logger.Debug().Enabled() {
 		for name, pathInfo := range w.paths {
 			w.logger.Debug().
@@ -342,7 +353,6 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		metricTags := append([]tags.Tag{}, baseTags...)
 
 		// Adding core tag for ALL CPU metrics for consistent filtering
-		// System metrics: only keep _Total instance to avoid duplicates
 		isSystemMetric := normalizedName == "cpu_dpc_rate" || normalizedName == "cpu_dpc_queued" ||
 			normalizedName == "cpu_interrupts" || normalizedName == "cpu_queue_length" ||
 			normalizedName == "cpu_context_switches"
@@ -353,7 +363,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 				Str("metric", normalizedName).
 				Str("instance", pathInfo.instance).
 				Msg("Skipping per-core instance of system metric")
-			continue // Skip this metric completely
+			continue
 		}
 
 		if pathInfo.instance != "" && pathInfo.instance != "_Total" && !isSystemMetric {
@@ -396,8 +406,6 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	// Windows wraps EnumProcesses. Cheap single syscall (~10s of
 	// microseconds for a few hundred processes). Mapped via cpu.yaml
 	// to OTel system.processes.count.
-	// The processor count, which the native agent reports as
-	// system.cpu.num and which the Unix collector already sent.
 	if n, cerr := cpu.Counts(true); cerr == nil && n > 0 {
 		countTags := append([]tags.Tag{}, baseTags...)
 		countTags = append(countTags, tags.Tag{Key: "core", Value: "total"})
