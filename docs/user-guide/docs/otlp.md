@@ -560,6 +560,24 @@ The OTLP strategy ships logs from these probe sources:
 Probes still emit DataPoints to the existing PRTG/Nagios/event
 strategies; the logs path is **additive**.
 
+### The agent's own warnings
+
+On request, the agent also sends its own warnings and errors as log
+records, so an
+operator who reads only the logs backend sees, for example, a probe
+reporting a missing cloud permission. Records come from the producer
+`senhub-agent` (type `agent`) with severity WARN, ERROR or FATAL, the
+message as body (` error=...` appended when the event carries one), the
+agent module in `senhub.agent.module`, and the other fields of the event
+as attributes, secrets masked as in the agent's own log file. Messages
+of the log pipeline itself are never sent back into it.
+
+At most 20 records a second are sent, with bursts up to 100; the rest
+are dropped and counted in `senhub.agent.self_logs.dropped`
+(`senhub.agent.self_logs.published` counts the others). The environment
+variable `SENHUB_SELF_LOGS` turns it on: `warn` sends warnings and above, `error`
+errors and above. Unset (or `off`), nothing is sent.
+
 ### Logs survive an outage
 
 When the collector cannot take a batch of event logs, the agent keeps it
