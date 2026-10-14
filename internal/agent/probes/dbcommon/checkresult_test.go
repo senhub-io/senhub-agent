@@ -38,6 +38,8 @@ func TestClassifyError(t *testing.T) {
 		{"tls.CertificateVerificationError", wrap(&tls.CertificateVerificationError{Err: errors.New("verification failed")}), CheckTLSError},
 		{"mongodb selection timeout over a refused dial", fmt.Errorf("serverStatus: %w", errors.New("server selection error: server selection timeout, current topology: { Type: Single, Servers: [{ Addr: 127.0.0.1:1, Type: Unknown, Last error: dial tcp 127.0.0.1:1: connect: connection refused }, ] }")), CheckTargetDown},
 		{"mongodb selection timeout, no dial error", errors.New("server selection error: server selection timeout, current topology: { Type: Single }"), CheckTimeout},
+		{"windows refusal in a selection timeout", errors.New("server selection error: server selection timeout, current topology: { Last error: dial tcp 127.0.0.1:1: connectex: No connection could be made because the target machine actively refused it. }"), CheckTargetDown},
+		{"windows reset", errors.New("read tcp 10.0.0.1:5432: wsarecv: An existing connection was forcibly closed by the remote host."), CheckTargetDown},
 		{"flattened i/o timeout", errors.New("read tcp 10.0.0.1:5432: i/o timeout"), CheckTimeout},
 		{"flattened no such host", errors.New("dial tcp: lookup db.invalid: no such host"), CheckTargetDown},
 		{"mysql Error 1045", errors.New("Error 1045 (28000): Access denied for user 'root'@'localhost'"), CheckAuthDenied},

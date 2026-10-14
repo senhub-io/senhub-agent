@@ -55,8 +55,8 @@ func ClassifyError(err error) CheckResult {
 	// into the message. A refusal there means the target is down, even though
 	// the error chain itself ends on a deadline.
 	msg := strings.ToLower(err.Error())
-	if containsAny(msg, "connection refused", "no route to host", "network is unreachable",
-		"connection reset by peer", "no such host") {
+	if containsAny(msg, "connection refused", "actively refused", "no route to host",
+		"network is unreachable", "connection reset by peer", "forcibly closed", "no such host") {
 		return CheckTargetDown
 	}
 
