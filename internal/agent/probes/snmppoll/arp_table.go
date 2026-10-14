@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -37,6 +38,15 @@ type arpBuild struct {
 	ip      string
 	mac     string
 	typ     int
+}
+
+func collectARP(client snmpClient) ([]arpEntry, error) {
+	primary, pErr := client.WalkRaw(ipNetToPhysicalEntry)
+	legacy, lErr := client.WalkRaw(ipNetToMediaEntry)
+	if pErr != nil && lErr != nil {
+		return nil, fmt.Errorf("ARP walks: primary %w; legacy %v", pErr, lErr)
+	}
+	return parseARPTables(primary, legacy), nil
 }
 
 func parseARPTables(primary, legacy []snmpRawBind) []arpEntry {

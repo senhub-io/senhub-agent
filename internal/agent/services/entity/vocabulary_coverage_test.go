@@ -37,6 +37,12 @@ func TestNoEntityTypeIsEmittedOutsideTheVocabulary(t *testing.T) {
 	for _, typ := range AllTypes {
 		known[typ] = true
 	}
+	// Registered by the consumer but not yet listed by the pinned emit SDK.
+	// Each entry is a declared lag with an exit, never a silent bypass.
+	// TODO(ent#635): drop once pkg/emit lists network.neighbor.
+	for _, typ := range []string{"network.neighbor"} {
+		known[typ] = true
+	}
 
 	// Relationship literals share the `Type:` field name. They are a separate
 	// vocabulary, owned by the same consumer, and are not this test's subject.

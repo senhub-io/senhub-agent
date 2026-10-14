@@ -29,6 +29,7 @@ import (
 	"senhub-agent.go/internal/agent/services/entity/hostiface"
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
 	"senhub-agent.go/internal/agent/services/entity/hostsvc"
+	"senhub-agent.go/internal/agent/services/entity/macindex"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -69,6 +70,11 @@ type Config struct {
 	// NeighborsEnabled gates the ARP/NDP neighbour source. Off by
 	// default: network.neighbor consumers are not deployed everywhere.
 	NeighborsEnabled bool
+
+	// NeighborsResolvesTo lets the neighbour sources link a neighbour to the
+	// interface owning its MAC (resolves_to). Off by default: the consumer
+	// must first accept the relation's basis and confidence attributes.
+	NeighborsResolvesTo bool
 }
 
 // Service is the lifecycle wrapper around the detector.
@@ -220,6 +226,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
 		entity.RegisterSource(hostiface.New(hostIDFn)))
 
+	macindex.SetEnabled(cfg.NeighborsResolvesTo)
 	if cfg.NeighborsEnabled {
 		s.unregisters = append(s.unregisters, entity.RegisterSource(hostnet.NewNeighborSource(hostIDFn)))
 	}
@@ -305,6 +312,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 		Dur("interval", cfg.Interval).
 		Bool("depends_on", cfg.DependsOnEnabled).
 		Bool("neighbors", cfg.NeighborsEnabled).
+		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
 		Msg("entity detection started")
 	return nil
 }
