@@ -3,6 +3,7 @@ package varnish
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -19,6 +20,9 @@ func tagValue(p data_store.DataPoint, key string) (string, bool) {
 }
 
 func TestCollect_Success_IdentityKeysAndCheckResult(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake varnishstat is a shell script")
+	}
 	dir := t.TempDir()
 	script := filepath.Join(dir, "varnishstat")
 	content := "#!/bin/sh\ncat <<'EOF'\n{\"MAIN.client_req\":{\"value\":10}}\nEOF\n"
