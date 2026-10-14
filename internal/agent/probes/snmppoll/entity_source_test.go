@@ -851,3 +851,26 @@ func TestMaybeSweep_PartialSweepUnobservesWhatItCouldNotRead(t *testing.T) {
 		t.Errorf("the interface the failed walk could not read must be unobserved, got %+v", u)
 	}
 }
+
+// TestObserve_DropsDiscoveredLinkOnceFarEndIsReadDown checks a discovered
+// device's link, built before the far end was read down, is dropped when
+// the merged view is read.
+func TestObserve_DropsDiscoveredLinkOnceFarEndIsReadDown(t *testing.T) {
+	s := newEntitySource(&config{Target: "192.0.2.10"}, testLogger(t))
+	s.registry = newPolledRegistry()
+	s.setDiscoveryObservation(entity.Observation{
+		Entities: []entity.Entity{{Type: entityTypeNetworkInterface, ID: interfacePortKey("sw2", "Ethernet1")}},
+		Relations: []entity.Relation{{
+			Type:     relConnectedTo,
+			FromType: entityTypeNetworkInterface, FromID: interfacePortKey("sw2", "Ethernet1"),
+			ToType: entityTypeNetworkInterface, ToID: interfacePortKey("sw1", "Ethernet2"),
+		}},
+	})
+	if obs, _ := s.Observe(); len(obs.Relations) != 1 {
+		t.Fatalf("before the far end is read: %d relations, want 1", len(obs.Relations))
+	}
+	s.registry.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperDown}}, s.now())
+	if obs, _ := s.Observe(); len(obs.Relations) != 0 {
+		t.Errorf("after the far end is read down: %d relations, want 0", len(obs.Relations))
+	}
+}

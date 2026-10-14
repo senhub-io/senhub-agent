@@ -237,6 +237,10 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 		obs = mergeObservations(single, disc)
 	}
 	linkPrivateNextHops(&obs)
+	// Applied again on the merged view: a discovered device's links were
+	// built when it was collected, possibly before the far end was read
+	// down in the same run.
+	dropLinksToDownPorts(&obs, s.registry, s.now())
 	return obs, true
 }
 
