@@ -68,7 +68,15 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- $psc := deepCopy .Values.podSecurityContext }}
+        {{- if and $ds .Values.podLogs.enabled }}
+        {{- /* Pod log files are root:root 0640 (containerd, CRI-O). An
+        added capability would not reach a non-root process (Kubernetes
+        sets no ambient capabilities), so read access comes from the
+        group: gid 0 as a supplementary group, nothing more. */}}
+        {{- $_ := set $psc "supplementalGroups" (concat (default list $psc.supplementalGroups) (list 0) | uniq) }}
+        {{- end }}
+        {{- toYaml $psc | nindent 8 }}
       initContainers:
         {{- if $ds }}
         # The state directory is a hostPath, created root-owned: hand it
@@ -147,6 +155,24 @@ spec:
               containerPort: {{ .Values.http.port }}
               protocol: TCP
           env:
+            # The kubernetes_logs probe identifies its node and own pod
+            # from the downward API. Always set; harmless when not used.
+            - name: SENHUB_K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SENHUB_K8S_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SENHUB_K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SENHUB_K8S_POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             {{- if not $ds }}
             # The identity, from the Secret: SENHUB_HOST_ID is also read by
             # the agent to mark the host identity as configured. A
@@ -223,6 +249,15 @@ spec:
               mountPath: /var/log/senhub-agent
             - name: tmp
               mountPath: /tmp
+            {{- if and $ds .Values.podLogs.enabled }}
+            # The node's pod log directory, mounted read-only at the
+            # path the probe scans. On containerd and CRI-O the files
+            # under /var/log/pods are regular files, so no runtime
+            # directory is mounted.
+            - name: pod-logs
+              mountPath: {{ .Values.podLogs.podLogsPath }}
+              readOnly: true
+            {{- end }}
             {{- if not $ds }}
             # host.id is read from /etc/machine-id. Mounted from the
             # identity Secret, it is the same on every pod of the release
@@ -280,6 +315,12 @@ spec:
         - name: host-root
           hostPath:
             path: /
+            type: Directory
+        {{- end }}
+        {{- if and $ds .Values.podLogs.enabled }}
+        - name: pod-logs
+          hostPath:
+            path: {{ .Values.podLogs.podLogsPath }}
             type: Directory
         {{- end }}
         {{- with .Values.extraVolumes }}
