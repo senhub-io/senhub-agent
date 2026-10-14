@@ -60,11 +60,13 @@ All metrics include the `interface` tag to identify the specific network interfa
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:7596f11130e51ee1a6c261d0023d3d6a3a7ea0406866540cd3941f76189a5abd -->
+<!-- sha256:8f603a6b775e2b27430e4ce93333cdd4fa729ef191812e43a2cad3adf4fff6b8 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Collection interval in seconds |
+| `include_virtual_interfaces` | No | `false` | Collect container/virtualisation interfaces; false skips virtual interfaces to keep default metric series minimal, true restores every interface the probe accepts. |
+| `address_label` | No | `false` | Add the primary interface address as a per-series IP label; false keeps dynamic address changes from creating new series, true restores the previous IP tag. |
 
 <!-- schema:params:end -->
 
@@ -439,7 +441,6 @@ All network metrics include detailed tags for identification and filtering:
 | Tag | Description | Example |
 |-----|-------------|---------|
 | `interface` | Interface identifier | `eth0`, `ens192`, `Intel[R] PRO_1000 MT` |
-| `network.interface.name` | Interface name, the key of the `network.interface` entity | `eth0`, `Ethernet` |
 | `host` | System FQDN, lower-cased | `web-01.example.com` |
 | `os` | Operating system | `linux`, `windows`, `darwin` |
 | `platform` | OS distribution / platform | `debian`, `ubuntu` |
@@ -450,7 +451,7 @@ All network metrics include detailed tags for identification and filtering:
 | `adapter` | Physical adapter name | `Intel(R) PRO/1000 MT Desktop Adapter` |
 | `connection_name` | Connection name | `Ethernet`, `Wi-Fi` |
 
-Series carry no address label: an address changes on a DHCP renewal or an
+Series carry no address label by default (`address_label: true` restores it): an address changes on a DHCP renewal or an
 IPv6 temporary-address rotation, and each change would start new series for
 every interface metric. The interface's addresses are on its
 `network.interface` entity.
