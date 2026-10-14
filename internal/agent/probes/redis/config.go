@@ -13,6 +13,7 @@ type probeConfig struct {
 	Host         string
 	Port         int
 	Password     string
+	Username     string
 	TLS          bool
 	TLSCertFile  string
 	TLSKeyFile   string
@@ -41,6 +42,9 @@ func parseConfig(raw map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := raw["password"].(string); ok {
 		cfg.Password = v
+	}
+	if v, ok := raw["username"].(string); ok {
+		cfg.Username = v
 	}
 	if v, ok := raw["tls"].(bool); ok {
 		cfg.TLS = v

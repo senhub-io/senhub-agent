@@ -20,6 +20,7 @@ import (
 var logProducers = []string{
 	"syslog", "event", "filetail", "snmp_trap",
 	"linux_logs", "windows_eventlog", "otlp_receiver", "kubernetes",
+	"kubernetes_logs",
 }
 
 func constructProbe(t *testing.T, name string, cfg configuration.ProbeConfig) types.Probe {

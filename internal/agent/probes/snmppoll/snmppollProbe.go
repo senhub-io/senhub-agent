@@ -3,8 +3,10 @@ package snmppoll
 import (
 	"context"
 	"fmt"
+	"net"
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"strconv"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -13,6 +15,8 @@ import (
 	"senhub-agent.go/internal/agent/services/snmpmib"
 	"senhub-agent.go/internal/agent/tags"
 )
+
+const keysWaitCycles = 3
 
 // snmppollProbe polls one SNMP target each cycle. It feeds two rails: the
 // metric rail (built-in MIB modules + custom OID mappings → datapoints)
@@ -28,6 +32,25 @@ type snmppollProbe struct {
 
 	// newClient is the SNMP client factory, overridable in tests.
 	newClient func(*config) snmpClient
+
+	// hostScope supplies the host's default gateways and private connected
+	// networks for per-run discovery bounds. Overridable in tests.
+	hostScope func() (gateways []string, networks []*net.IPNet, err error)
+
+	// Discovery background loop lifecycle. discoveryCancel cancels the loop
+	// started by OnStart; discoveryWG waits for it in OnShutdown.
+	discoveryCancel    context.CancelFunc
+	discoveryWG        sync.WaitGroup
+	discoveryMet       discoveryMetrics
+	discovered         map[string]*discoveredState
+	hostScopeErrStreak int
+	noSeedStreak       int
+
+	// identityWaitCycles counts consecutive cycles without a resolved
+	// network.device.id. When it reaches keysWaitCycles the probe gives up and
+	// freezes identityGaveUp so metric series never change label set later.
+	identityWaitCycles int
+	identityGaveUp     bool
 }
 
 // NewSnmpPollProbe builds an snmp_poll probe from its raw params block.
@@ -73,15 +96,6 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		}
 	}
 
-	if cfg.Discovery != nil {
-		// The crawl engine is merged but not yet wired to the poll
-		// lifecycle (#156); without this warning an operator gets a
-		// validated, silently inert block.
-		moduleLogger.Warn().
-			Str("target", cfg.Target).
-			Msg("snmp_poll discovery is configured but not active yet (#953): the block is validated and ignored; per-device topology (LLDP/routes/bridge) still runs")
-	}
-
 	entitySrc := newEntitySource(cfg, moduleLogger)
 	probe := &snmppollProbe{
 		BaseProbe:    &types.BaseProbe{},
@@ -90,6 +104,7 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		moduleLogger: moduleLogger,
 		entitySource: entitySrc,
 		newClient:    func(c *config) snmpClient { return newGosnmpClient(c) },
+		hostScope:    defaultHostScope,
 	}
 	probe.SetProbeType(probeType)
 	probe.SetEntitySource(entitySrc)
@@ -112,6 +127,13 @@ func (p *snmppollProbe) OnStart(_ chan struct{}) error {
 		Str("target", p.cfg.Target).
 		Uint16("port", p.cfg.Port).
 		Msg("SNMP poll probe started")
+
+	if p.cfg.Discovery != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		p.discoveryCancel = cancel
+		p.discoveryWG.Add(1)
+		go p.discoveryLoop(ctx)
+	}
 	return nil
 }
 
@@ -126,6 +148,9 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	check := dbcommon.CheckOK
 	var points []data_store.DataPoint
 
+	keylessMode := p.identityGaveUp
+	identityResolved := p.entitySource.DeviceID() != ""
+
 	if err := client.Connect(); err != nil {
 		up = 0
 		check = dbcommon.ClassifyError(err)
@@ -136,16 +161,53 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 				p.moduleLogger.Warn().Err(cErr).Msg("error closing SNMP connection")
 			}
 		}()
+
 		// Entity rail: refresh the topology snapshot on its own slow cadence,
 		// reusing this already-connected client. Observe() (detector goroutine)
 		// reads the cache; this only walks when topologyInterval has elapsed.
-		// Done BEFORE collect so the metrics carry the freshly-resolved device
-		// id / interface names (correlation tags); between sweeps the cached
-		// values are reused.
 		p.entitySource.maybeSweep(client, start)
+		identityResolved = p.entitySource.DeviceID() != ""
+
+		var deviceID string
+		var ifNames map[string]string
+		var opts collectOptions
+
+		if keylessMode {
+			// Keyless mode: correlation tags are deliberately omitted forever,
+			// even if a later sweep resolves the identity, so metric series never
+			// change their label set.
+			deviceID = ""
+			ifNames = nil
+			opts.SkipUnnamedInterfaces = false
+		} else if identityResolved {
+			deviceID = p.entitySource.DeviceID()
+			ifNames = p.entitySource.InterfaceNames()
+			// A device that names none of its interfaces never will: its
+			// rows go out unnamed for good rather than not at all.
+			opts.SkipUnnamedInterfaces = len(ifNames) > 0
+		} else {
+			// Waiting for the first successful sweep: no device or interface
+			// metrics are emitted this cycle.
+			deviceID = ""
+			ifNames = nil
+			opts.SkipUnnamedInterfaces = false
+		}
+
 		var answered bool
-		points, answered = collect(client, p.cfg, p.instance,
-			p.entitySource.DeviceID(), p.entitySource.InterfaceNames(), start, p.moduleLogger)
+		if keylessMode || identityResolved {
+			var metricPoints []data_store.DataPoint
+			metricPoints, answered = collect(client, p.cfg, p.instance, deviceID, ifNames, start, p.moduleLogger, opts)
+			points = append(points, metricPoints...)
+		} else {
+			// Poll enough to judge reachability, but discard decoded metrics
+			// until the identity is resolved or the probe gives up.
+			_, answered = collect(client, p.cfg, p.instance, "", nil, start, p.moduleLogger)
+			// Only a device that answers without yielding an identity counts
+			// toward giving up; an unreachable one is not an identity failure.
+			if answered {
+				p.noteIdentityWait()
+			}
+		}
 		if !answered {
 			// Connected (UDP always does) but zero responses: the device
 			// is unreachable, filtered, or rejecting our credentials.
@@ -165,10 +227,18 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: end.Sub(start).Seconds(), Tags: statusTags(p.instance)},
 	)
 
+	if p.cfg.Discovery != nil {
+		points = append(points, p.discoveryDataPoints(end)...)
+	}
+
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 func (p *snmppollProbe) OnShutdown(_ context.Context) error {
+	if p.discoveryCancel != nil {
+		p.discoveryCancel()
+		p.discoveryWG.Wait()
+	}
 	return nil
 }
 
@@ -188,4 +258,18 @@ func (p *snmppollProbe) checkResultTags() []tags.Tag {
 		t = append(t, tags.Tag{Key: "network.device.id", Value: id})
 	}
 	return t
+}
+
+// noteIdentityWait counts a cycle where the device answered but its identity
+// is still unresolved, and gives up after keysWaitCycles.
+func (p *snmppollProbe) noteIdentityWait() {
+	p.identityWaitCycles++
+	if p.identityWaitCycles < keysWaitCycles {
+		return
+	}
+	p.identityGaveUp = true
+	p.moduleLogger.Warn().
+		Str("target", p.instance).
+		Int("cycles", p.identityWaitCycles).
+		Msg("giving up waiting for device identity; emitting device and interface metrics without correlation tags")
 }

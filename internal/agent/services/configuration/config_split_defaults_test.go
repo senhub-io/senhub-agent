@@ -172,3 +172,61 @@ func TestHarmoniseLayout_ReturnsTheRefusal(t *testing.T) {
 		t.Errorf("want the refusal returned, got backup=%q err=%v", backup, err)
 	}
 }
+
+// A host installed with 0.5.x and upgraded through 0.6.0 keeps the 0.5.x
+// 00-http.yaml and a copy of its otlp strategy that 0.6.0 wrote beside a
+// still monolithic agent.yaml. The split must complete and keep the otlp
+// strategy of agent.yaml.
+func TestMigrateToMultiFile_HalfMigratedBy060(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent.yaml")
+	body := `config_version: 3
+agent:
+  key: "migrate-test-key"
+storage:
+  - name: otlp
+    params:
+      endpoint: "ingest.example.test:443"
+      protocol: http
+probes:
+  - name: cpu
+    type: cpu
+`
+	files := map[string]string{
+		path: body,
+		filepath.Join(dir, "strategies.d", "00-http.yaml"): fmt.Sprintf(httpStrategyFragmentTemplate05,
+			8080, `"127.0.0.1"`, `["prtg", "web", "nagios"]`),
+		filepath.Join(dir, "strategies.d", "10-otlp.yaml"): "# Strategy 'otlp' migrated from monolithic config on 20260929-224101.\n" +
+			"otlp:\n  endpoint: \"ingest.example.test:443\"\n  protocol: http\n",
+	}
+	for p, b := range files {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !isInstallDefaultFragment(filepath.Join(dir, "strategies.d", "00-http.yaml")) {
+		t.Fatal("the 0.5.x install 00-http.yaml is not recognised")
+	}
+	if _, err := MigrateToMultiFile(path, nil); err != nil {
+		t.Fatalf("split refused: %v", err)
+	}
+	after, err := LoadFromDisk(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var otlp, http int
+	for _, s := range after.Storage {
+		switch s.Name {
+		case "otlp":
+			otlp++
+		case "http":
+			http++
+		}
+	}
+	if otlp != 1 || http != 0 {
+		t.Fatalf("after the split: %d otlp, %d http strategies, want 1 and 0 (as before)", otlp, http)
+	}
+}

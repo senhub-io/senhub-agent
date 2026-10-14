@@ -15,15 +15,22 @@ mappings cover the vendor-specific long tail.
 The probe also reads the LLDP neighbor table of each polled device and
 reports its links. A link is reported when the neighbor advertises a
 named port (LLDP port ID subtype interface name or locally assigned);
-a port known only by its MAC address is not linked.
+a port known only by its MAC address is not linked. A link is not reported
+while either of its ports was last read down: a device keeps a neighbor in
+its LLDP table for a while after the link went down, and a virtual link can
+stay up on one side after the other was shut.
 
-A discovery mode that crawls the network outward from seed devices is
-accepted in the configuration but not active yet
-([#953](https://github.com/senhub-io/senhub-agent/issues/953)): the
-`discovery` block is validated and ignored. The crawl profile is v2c
-only.
+When the far end of a link has not been read recently, the local interface
+carries `senhub.link.peer_state`: `unread` (the far device is not polled),
+`stale` (its last reading is older than three of its sweeps) or
+`unreachable` (it stopped answering). The attribute is absent when both ends
+were read. A device that stops answering is no longer reported after three
+topology intervals; it leaves the map as unmonitored, not as gone.
 
-One probe instance polls one device; declare one instance per device.
+One probe instance polls one device for its metrics. With a `discovery`
+block it also crawls the network outward from seed devices (by default the
+host's gateways) and puts every device it finds on the map, with its interfaces and links (see
+[Discovery](#discovery)).
 
 ## Quick start
 
@@ -45,7 +52,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:adde5eb861b0941dfd012fb4747a317fe2492e3b9686227e2f76a82db71ec2c8 -->
+<!-- sha256:9901d7c60779d5bf53036864a394918c2f131825e011491d96f1633ae337ed18 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -60,9 +67,10 @@ one series per interface (`if_index` tag).
 | `v3.priv_protocol` | No | - | Privacy protocol; needs auth_protocol. One of `DES`, `AES`, `AES192`, `AES256` |
 | `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `retries` | No | `2` | Retries per request |
+| `max_routes` | No | `500` | Maximum number of route entities emitted per device |
 | `timeout` | No | `5s` | Per-request timeout |
 | `interval` | No | `60s` | Metric polling cadence |
-| `topology_interval` | No | `10m` | Entity and topology sweep cadence |
+| `topology_interval` | No | `1m` | Entity and topology sweep cadence |
 | `mibs` | In practice | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
 | `mib_paths` | No | - | Local MIB files or folders used to name custom mappings |
 | `custom_mappings` | No | - | OID to metric mappings |
@@ -70,12 +78,13 @@ one series per interface (`if_index` tag).
 | `custom_mappings[].metric` | No | - | Metric name; resolved from mib_paths when omitted |
 | `custom_mappings[].type` | No | `gauge` | How the value is reported: a gauge as read, a counter as a monotonic total. One of `gauge`, `counter` |
 | `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
-| `discovery` | No | - | Topology crawl from seed devices. Not active yet (#953): the block is validated and ignored |
-| `discovery.seeds` | Yes | - | Entry-point device addresses |
+| `discovery` | No | - | Topology crawl from seed devices: every device found through LLDP, within allowed_cidrs, is put on the map (topology only, no metrics) |
+| `discovery.seeds` | No | - | Entry-point device addresses; default: the host's default gateways |
+| `discovery.seed_from_host` | No | `true` | Add the host's default gateways as crawl seeds |
 | `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
 | `discovery.profile.version` | No | `v2c` | SNMP version used to probe the discovered devices. One of `v2c`, `2c`, `2` |
 | `discovery.profile.community` | Yes | - | Community string used to probe the discovered devices. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `discovery.allowed_cidrs` | Yes | - | The crawl never leaves these ranges |
+| `discovery.allowed_cidrs` | No | - | The crawl never leaves these ranges; default: the host's own private networks |
 | `discovery.max_devices` | No | `200` | Hard cap on the number of discovered devices |
 | `discovery.max_hops` | No | `4` | Crawl depth from the seeds |
 | `discovery.interval` | No | - | Crawl cadence; topology_interval by default |
@@ -166,19 +175,34 @@ table and the row index becomes that tag.
 
 ### Discovery
 
-!!! warning "Not active yet"
-    The `discovery` block is parsed and validated but **not wired to
-    the poll lifecycle yet** — configuring it does nothing today
-    beyond a startup warning. It is documented here because the
-    configuration shape is final. Per-device topology (LLDP
-    neighbors, routes, bridge tables of the polled `target`) is
-    active and independent of this block. Tracking:
-    [#953](https://github.com/senhub-io/senhub-agent/issues/953).
+A `discovery` block makes the probe crawl outward from seed devices
+through their LLDP neighbor tables, bounded by CIDR ranges and depth and
+device caps, and report every device found on the entity rail: the
+device, its interfaces and addresses, its routes and its LLDP links.
+Discovered devices give topology only, no metrics: metrics stay with
+the polled `target`.
 
-When the crawl ships, a `discovery` block will make the probe crawl
-outward from seed devices using LLDP neighbor tables, bounded by
-CIDR ranges and depth/device caps, and report discovered devices and
-links on the entity rail:
+The credentials are the only thing the block needs. Without `seeds`, the
+crawl starts from the default gateways of the host the agent runs on;
+without `allowed_cidrs`, it stays inside the host's own private networks
+(a network wider than /16 is narrowed to the /16 around the host's
+address). Both are read again at every run, so a gateway change is
+followed:
+
+```yaml
+params:
+  target: 192.168.1.10
+  discovery:
+    profile:
+      community: "${secret:snmp.community}"
+```
+
+The gateway's address is reported as the same `network.address` node the
+host's default route points to, so the host and its network meet on the
+map without further configuration.
+
+Give `seeds` and `allowed_cidrs` to crawl elsewhere or wider. With
+`seed_from_host: false` only the listed seeds are used:
 
 ```yaml
 params:
@@ -195,13 +219,56 @@ params:
 ```
 
 `max_devices` is a hard cap on discovered devices and `max_hops` bounds
-the crawl depth from the seeds. `governance_rules` stamps governance on
+the crawl depth from the seeds. Only neighbors inside `allowed_cidrs` are
+followed (configured seeds are always polled; a host gateway outside the
+ranges is not), at most four devices are polled at a
+time, and the crawl runs every `interval` of the block (the topology
+interval by default), never overlapping itself. A device that stops
+answering stays on the map for two more runs, so one lost UDP exchange
+does not retract it with all its links. The crawl profile is v2c only. `governance_rules` stamps governance on
 devices as the crawl finds them (see below).
 
 The `governance` parameter of this probe and the `governance` block every
 probe entry accepts (see [Governance per probe](../configuration.md#governance-per-probe))
 share one vocabulary. Both stamp the polled device; on a key present in both,
 the probe-level parameter wins, and a matched discovery rule wins over either.
+
+#### Routes
+
+The routing table of the polled device and of every discovered device is
+published as `network.route` entities, read from `ipCidrRouteTable` and
+`inetCidrRouteTable` (IPv4 and IPv6). A route is identified by its device,
+its destination and its next hop, so two next hops to one destination (ECMP,
+or a backup route) are two routes. Each route carries:
+
+| Attribute | Meaning |
+|---|---|
+| `route.type` | `local` (directly connected), `remote` (through a next hop), `reject`, `blackhole` or `other` |
+| `route.protocol` | Where the route comes from, in the IANA vocabulary: `netmgmt` (static), `ospf`, `bgp`, `local`, `rip`, `isis`, `cisco_eigrp`… Absent when the code has no name |
+| `network.route.protocol.code` | The raw protocol code the device gave |
+| `network.interface.name` | The egress interface; absent on `reject` and `blackhole` routes, which end by design |
+| `metric` | The route metric, when the device gives one |
+
+A route without a next hop (`local`, `reject`, `blackhole`) carries `0.0.0.0`
+(`::` in IPv6) as next hop, the encoding the MIB itself uses. A connected
+route is what lets a path reach a destination on the device's own networks.
+
+At most `max_routes` routes are published per device (500 by default).
+Connected, default, reject and blackhole routes are always kept. The device
+entity carries `senhub.routes.limit` and `senhub.routes.omitted`, the number
+of routes it listed and that were not published, so a table cut by the bound
+is never mistaken for a complete one. A device carrying a full Internet table
+is not meant to be inventoried route by route.
+
+#### Link aggregation
+
+With `entities.aggregation.enabled`, the probe reads `ifStackTable` (IF-MIB)
+and the IEEE 802.3ad LAG MIB on the polled and discovered devices: each member
+port is linked to its port-channel (`aggregated_into`), the port-channel
+carries its mode (`lacp`, or `static` when the LAG MIB says nothing about it),
+and a LACP member carries `active` (collecting and distributing) or `standby`.
+A port-channel borrows a member's MAC address, so for MAC-based resolution the
+member owns it, never the port-channel.
 
 #### Governance for discovered devices
 
@@ -284,6 +351,11 @@ series' tags.
 | `senhub.snmp.up` | `senhub.snmp.up` | SNMP {instance} Reachability | # | 1 when the last poll reached the SNMP target, 0 otherwise |
 | `senhub.probe.check.result` | `senhub.probe.check.result` | SNMP {instance} Check Result | # | Why the last poll failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 | `senhub.snmp.poll.duration` | `senhub.snmp.poll.duration` | SNMP {instance} Poll Duration | s | Wall-clock time taken by the last poll cycle |
+| `senhub.snmp.discovery.devices` | `snmp_poll_discovery_devices` | SNMP {instance} Discovered Devices | # | Devices that answered the last discovery crawl |
+| `senhub.snmp.discovery.runs` | `snmp_poll_discovery_runs` | SNMP {instance} Discovery Runs | # | Discovery crawls run since the agent started |
+| `senhub.snmp.discovery.duration` | `snmp_poll_discovery_last_duration_seconds` | SNMP {instance} Discovery Duration | s | Wall-clock time of the last discovery crawl |
+| `senhub.snmp.discovery.failures` | `snmp_poll_discovery_failures` | SNMP {instance} Discovery Failures {reason} | # | Devices the crawl could not use since the agent started, by reason: unreachable (no SNMP answer) or identity (no device id resolvable) |
+| `senhub.snmp.discovery.seeds` | `snmp_poll_discovery_seeds` | SNMP {instance} Discovery Seeds {source} | # | Seeds the last discovery crawl started from, by source: configured (discovery.seeds) or host (the host's default gateways) |
 | `snmp.sys.uptime` | `snmp.sys.uptime` | SNMP {instance} Uptime | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
 | `snmp.interface.in_octets` | `snmp.interface.in_octets` | SNMP {instance} IF{if_index} In Octets | bytes | ifInOctets — total octets received on the interface |
 | `snmp.interface.out_octets` | `snmp.interface.out_octets` | SNMP {instance} IF{if_index} Out Octets | bytes | ifOutOctets — total octets transmitted on the interface |

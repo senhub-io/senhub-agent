@@ -35,6 +35,42 @@ type Source interface {
 	Observe() (Observation, bool)
 }
 
+// UnobservedSource is a Source that stops reporting part of what it watched
+// because it can no longer look at it (a discovered device that no longer
+// answers), not because it learned it is gone. Unobserved returns, once, the
+// entities it dropped that way since the last call, so their removal reads as
+// unmonitored instead of as the producer having seen them end.
+type UnobservedSource interface {
+	Source
+	Unobserved() []Entity
+}
+
+// DepartureSource is a Source that knows what an entity it stops listing
+// means. A source reading a cache (ARP, NDP, a bridge table) never sees a
+// neighbour leave: an absent entry was forgotten, and calling that a
+// termination asserts an end nobody observed. DepartureReason returns the
+// reason for e, or "" to keep the default.
+type DepartureSource interface {
+	Source
+	DepartureReason(e Entity) string
+}
+
+// sourceAs finds the optional interface T on src or on what it wraps.
+func sourceAs[T any](src Source) (T, bool) {
+	for src != nil {
+		if t, ok := src.(T); ok {
+			return t, true
+		}
+		u, ok := src.(interface{ Unwrap() Source })
+		if !ok {
+			break
+		}
+		src = u.Unwrap()
+	}
+	var zero T
+	return zero, false
+}
+
 // registered pairs a Source with the registry id its detector-side caches
 // key on. Ids are never reused, so a re-registered source starts clean.
 type registered struct {

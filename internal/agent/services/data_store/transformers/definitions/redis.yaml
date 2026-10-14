@@ -767,6 +767,48 @@ metrics:
       unit: "{key}"
       type: gauge
 
+  - name: "redis.sentinel.master.quorum"
+    channel: "redis_sentinel_master_{master}_quorum"
+    display_name: "Sentinel Master {master} Quorum"
+    unit: "#"
+    multi_instance_labels: ["master"]
+    category: "sentinel"
+    description: "Configured quorum for a monitored master (SENTINEL MASTERS quorum)"
+    otel:
+      name: redis.sentinel.master.quorum
+      unit: "{quorum}"
+      type: gauge
+    tag_to_attribute:
+      master: redis.sentinel.master.name
+
+  - name: "redis.sentinel.master.failover_in_progress"
+    channel: "redis_sentinel_master_{master}_failover_in_progress"
+    display_name: "Sentinel Master {master} Failover In Progress"
+    unit: "#"
+    multi_instance_labels: ["master"]
+    category: "sentinel"
+    description: "Whether a failover is currently in progress for a monitored master: 1=yes, 0=no (SENTINEL MASTERS flags/failover-state)"
+    otel:
+      name: redis.sentinel.master.failover_in_progress
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      master: redis.sentinel.master.name
+
+  - name: "redis.sentinel.master.other_sentinels"
+    channel: "redis_sentinel_master_{master}_other_sentinels"
+    display_name: "Sentinel Master {master} Other Sentinels"
+    unit: "#"
+    multi_instance_labels: ["master"]
+    category: "sentinel"
+    description: "Number of other Sentinels monitoring this master (SENTINEL MASTERS num-other-sentinels)"
+    otel:
+      name: redis.sentinel.master.other_sentinels
+      unit: "{sentinel}"
+      type: gauge
+    tag_to_attribute:
+      master: redis.sentinel.master.name
+
   - name: "senhub.probe.check.result"
     channel: "check_result"
     display_name: "Check Result"

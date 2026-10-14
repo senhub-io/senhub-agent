@@ -34,7 +34,7 @@ type ifaceRow struct {
 	Name       string
 	OperStatus int    // raw IF-MIB enum (0 when unread)
 	SpeedMbps  int64  // ifHighSpeed (Mbit/s); 0 when unread
-	Mac        string // ifPhysAddress, formatted aa:bb:cc:dd:ee:ff; "" when unread
+	Mac        string // ifPhysAddress in entity.CanonicalMAC form (AA-BB-CC-DD-EE-FF); "" when unread
 	Mtu        int64  // ifMtu (octets); 0 when unread
 	IfType     int    // IANAifType; 0 when unread
 	Duplex     int    // dot3StatsDuplexStatus (1=unknown,2=half,3=full); 0 when unread

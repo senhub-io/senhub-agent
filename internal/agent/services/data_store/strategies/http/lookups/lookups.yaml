@@ -533,9 +533,9 @@ redis.replication.role:
   source: "senhub-agent probes/redis/redis_probe.go (role → master=1, slave/replica=0, else=-1)"
   mappings:
     -1:
-      text: "Unknown"
-      severity: "warning"
-      description: "Role could not be determined (e.g. sentinel or missing INFO role field)"
+      text: "Sentinel or unknown"
+      severity: "unknown"
+      description: "A Sentinel, which has no replication role, or an instance whose INFO gave no role"
     0:
       text: "Replica"
       severity: "ok"

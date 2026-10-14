@@ -420,6 +420,20 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">Node, pod, deployment, PVC metrics via API server</span>
   </a>
 
+  <a href="kubernetes_logs/" class="probe-card" data-family="containers" data-tier="free">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/kubernetes.svg" alt="" loading="lazy">
+    <span class="probe-name">Kubernetes pod logs</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">stdout/stderr of every pod of the node, with k8s attributes</span>
+  </a>
+
+  <a href="kubelet_stats/" class="probe-card" data-family="containers" data-tier="free">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/kubernetes.svg" alt="" loading="lazy">
+    <span class="probe-name">Kubelet stats</span>
+    <span class="probe-tier-badge free">Free</span>
+    <span class="probe-desc">CPU, memory, disk and network used by the node, its pods and containers</span>
+  </a>
+
   <a href="swarm/" class="probe-card" data-family="containers" data-tier="free">
     <img class="probe-logo probe-logo-si" src="../assets/probe-logos/swarm.svg" alt="" loading="lazy">
     <span class="probe-name">Docker Swarm</span>
