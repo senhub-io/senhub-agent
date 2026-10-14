@@ -28,17 +28,17 @@ var commonTimestampLayouts = []string{
 // (Unspecified, "") so the caller can leave severity empty.
 func severityFromText(level string) (agentstate.LogSeverity, string) {
 	switch strings.ToUpper(strings.TrimSpace(level)) {
-	case "TRACE":
+	case "TRACE", "TRC":
 		return agentstate.LogSeverityTrace, "TRACE"
 	case "DEBUG", "DBG":
 		return agentstate.LogSeverityDebug, "DEBUG"
-	case "INFO", "INFORMATION", "NOTICE":
+	case "INFO", "INFORMATION", "NOTICE", "NOTE", "SYSTEM", "INF":
 		return agentstate.LogSeverityInfo, "INFO"
-	case "WARN", "WARNING":
+	case "WARN", "WARNING", "WRN":
 		return agentstate.LogSeverityWarn, "WARN"
 	case "ERROR", "ERR":
 		return agentstate.LogSeverityError, "ERROR"
-	case "FATAL", "CRITICAL", "CRIT", "EMERG", "PANIC":
+	case "FATAL", "CRITICAL", "CRIT", "CRT", "FTL", "EMERG", "PANIC":
 		return agentstate.LogSeverityFatal, "FATAL"
 	default:
 		return agentstate.LogSeverityUnspecified, ""
@@ -85,15 +85,19 @@ func ParseLine(pc ParserConfig, line string, readTime time.Time, probeName, prob
 	return rec, true
 }
 
-// levelToken is a level word as logging libraries write it at the head
-// of a line: upper case on its own ("2026-09-07 10:00:00 INFO ...",
-// "SquashTM - 13 ERROR [main]", "WARNING: ...") or any case in brackets
-// ("[error] 9#9: ...", "[INFO] Starting gunicorn"), or as a key=value
-// pair a logfmt library writes ("level=notice msg=..."), or in any case
-// among the first three words, where a logger puts it after a timestamp
-// ("2026-10-12T14:00:00Z warn disk almost full"). Prose is not a level:
-// "the user reported an error" names none.
-var levelToken = regexp.MustCompile(`(?:^|\s)(TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|ERR|FATAL|CRITICAL|CRIT|PANIC)(?:[\s:]|$)|\[(?i:(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))\]|(?:^|\s)(?i:level|lvl|severity)="?(?i:(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))(?:"|\s|$)|^(?:\S+\s+){0,2}(?i:(trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))(?:[\s:]|$)`)
+// levelToken matches one level word in the first sniffHead bytes of a raw
+// line. Named groups identify the form so the klog single-letter prefix
+// can be mapped before severityFromText.
+var levelToken = regexp.MustCompile(
+	`^(?P<klog>[IWEF])[0-9]{4} [0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?` +
+		`|"(?:level|severity|lvl)"\s*:\s*"(?P<json>[^"]*)"` +
+		`|\[[^\[\]:]+:(?P<apache>(?i:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic|inf|wrn|dbg|trc|ftl|crt|severe|config|fine|finer|finest|log|note|system))\]` +
+		`|\[(?P<bracket>(?i:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic|inf|wrn|dbg|trc|ftl|crt|note|system))\]` +
+		`|(?:^|\s)(?P<colon>SEVERE|FINE|FINER|FINEST|CONFIG|LOG):` +
+		`|(?:^|\s)(?P<bare>TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|ERR|FATAL|CRITICAL|CRIT|PANIC|INF|WRN|DBG|TRC|FTL|CRT)(?:[\s:]|$)` +
+		`|(?:^|\s)(?i:level|lvl|severity)="?(?P<logfmt>(?i:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic|inf|wrn|dbg|trc|ftl|crt))(?:"|\s|$)` +
+		`|^(?:\S+\s+){0,2}(?P<first>(?i:trace|debug|info|notice|warn|warning|error|err|fatal|critical|crit|panic))(?:[\s:]|$)`,
+)
 
 const sniffHead = 160
 
@@ -109,13 +113,35 @@ func SniffSeverity(line string) (agentstate.LogSeverity, string) {
 	if m == nil {
 		return agentstate.LogSeverityUnspecified, ""
 	}
-	word := m[1]
-	for _, alt := range m[2:] {
-		if word == "" {
-			word = alt
+	for i, name := range levelToken.SubexpNames() {
+		if i == 0 || name == "" || m[i] == "" {
+			continue
 		}
+		word := m[i]
+		switch name {
+		case "klog":
+			switch word {
+			case "I":
+				word = "INFO"
+			case "W":
+				word = "WARN"
+			case "E":
+				word = "ERROR"
+			case "F":
+				word = "FATAL"
+			}
+		}
+		if sev, text := severityFromText(word); sev != agentstate.LogSeverityUnspecified {
+			return sev, text
+		}
+		// java.util.logging and PostgreSQL words stay out of the short
+		// table, which also names the text a structured parser keeps.
+		if sev := agentstate.SeverityFromText(word); sev != agentstate.LogSeverityUnspecified {
+			return sev, word
+		}
+		return agentstate.LogSeverityUnspecified, ""
 	}
-	return severityFromText(word)
+	return agentstate.LogSeverityUnspecified, ""
 }
 
 func applyRegex(pc ParserConfig, line string, rec *agentstate.LogRecord) {
