@@ -108,6 +108,7 @@ const (
 	ScopeSNMPRoute = "senhub-agent/snmp-route" // device routing table (network.route)
 	ScopeSNMPIFMIB = "senhub-agent/snmp-ifmib" // device + IF-MIB ports/addresses
 	ScopeHostRoute = "senhub-agent/host-route" // host kernel routing table
+	ScopeHostARP   = "senhub-agent/host-arp"   // host ARP/NDP neighbour inventory
 	ScopeHostSvc   = "senhub-agent/host-svc"   // host listening-service inventory
 	ScopeHostIface = "senhub-agent/host-iface" // host interface/address inventory
 	ScopeHostDep   = "senhub-agent/host-dep"   // host outbound dependency flows
