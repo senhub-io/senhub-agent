@@ -178,7 +178,7 @@ func GetHostIdentity() (HostIdentity, error) {
 	}
 	np := getHostNameplate(virt)
 	return HostIdentity{
-		ID:                    lowerHostID(hostInfo.HostID),
+		ID:                    effectiveHostID(hostInfo.HostID),
 		Name:                  canonicalHostname(hostInfo.Hostname),
 		OSType:                hostInfo.OS,
 		Arch:                  hostInfo.KernelArch,
@@ -398,7 +398,7 @@ func GetHostResourceAttributes() (map[string]string, error) {
 			attrs[k] = v
 		}
 	}
-	set("host.id", lowerHostID(hostInfo.HostID))
+	set("host.id", effectiveHostID(hostInfo.HostID))
 	set("host.name", canonicalHostname(hostInfo.Hostname))
 	set("host.arch", hostInfo.KernelArch)
 	set("os.type", hostInfo.OS)

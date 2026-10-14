@@ -6,6 +6,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // AgentMetricsSnapshot is a frozen-in-time view of the agent's own
@@ -217,6 +218,22 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Attributes:  map[string]string{},
 			Value:       float64(agentstate.GetDroppedLogRecordsTotal()),
 			Description: "Cumulative count of log records dropped due to subscriber backpressure on the agent log channel.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.self_logs.published",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(logger.SelfLogsPublished()),
+			Description: "Cumulative count of the agent's own warnings and errors published on its log rail.",
+		},
+		otelmapper.OtelRecord{
+			Name:        "senhub.agent.self_logs.dropped",
+			Unit:        "{record}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(logger.SelfLogsDropped()),
+			Description: "Cumulative count of the agent's own warnings and errors dropped by the self-log rate limit.",
 		},
 		// The entity-event hand-off is reported with the OpenTelemetry SDK
 		// processor metrics: it is a log processor queue in all but name

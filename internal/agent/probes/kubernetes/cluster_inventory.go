@@ -16,47 +16,37 @@ import (
 // runs_on target moves from the node to the pod when it does — an edge change,
 // not a re-key.
 
-// nodeEntity turns a Kubernetes node into a host entity, or reports that it
-// must not be emitted.
+// nodeEntity returns the host half of a Kubernetes node's graph presence.
 //
-// The identity is the node's MachineID, which the kubelet reads from
-// /etc/machine-id — the same file gopsutil reads for the agent's own host.id.
-// A node entity keyed on it is therefore byte-identical to the entity an agent
-// running INSIDE that node emits for itself, and the two converge on one graph
-// node instead of duplicating. That convergence is the point of the exercise,
-// not a side effect: two observers deriving identical ids for the same thing
-// must land on one node (ADR 0018).
+// The inventory splits a node into two entities when the node reports both a
+// canonical MachineID and a UID: the host carries the machine facts, and the
+// k8s.node carries its role in the cluster. The two are joined by a same_as
+// relation from the k8s.node to the host; the probe reads both identities from
+// the same API object, which is the evidence for that relation.
 //
-// When the MachineID is absent, NOTHING is emitted. This is the consumer's
-// instruction and it is the right one: a missing node is a visible hole that
-// an in-guest agent fills, while a node keyed on a fallback source is a silent
-// duplicate nobody will ever notice. The same ordering rule as everywhere else
-// — better a gap the consumer can see than an answer it cannot check — applied
-// this time to the SOURCE of the identity rather than to its publication.
+// This function emits the host side only, and only when the node's MachineID
+// is canonical. The MachineID is what the kubelet reads from /etc/machine-id,
+// the file the agent's own host.id comes from, so the host emitted here and
+// the one an agent inside the node emits converge on one graph node (ADR 0018). A missing MachineID is a visible hole that an in-guest agent
+// fills; a fallback would mint a silent duplicate.
 //
 // SystemUUID is carried as a descriptive attribute rather than used as the
 // fallback: it is absent or forged on several virtualisation platforms, and it
 // is the natural same_as facet the day the consumer implements that overlay.
-func nodeEntity(n *corev1.Node, clusterUID string) (entity.Entity, bool) {
+func nodeEntity(n *corev1.Node, _ string) (entity.Entity, bool) {
 	machineID := canonicalMachineID(n.Status.NodeInfo.MachineID)
 	if machineID == "" {
 		return entity.Entity{}, false
 	}
 
 	attrs := map[string]any{
-		"host.name":             n.Name,
-		"k8s.node.name":         n.Name,
-		"os.type":               n.Status.NodeInfo.OperatingSystem,
-		"host.arch":             n.Status.NodeInfo.Architecture,
-		"k8s.kubelet.version":   n.Status.NodeInfo.KubeletVersion,
-		"k8s.node.os_image":     n.Status.NodeInfo.OSImage,
-		"k8s.container.runtime": n.Status.NodeInfo.ContainerRuntimeVersion,
+		"host.name":         n.Name,
+		"os.type":           n.Status.NodeInfo.OperatingSystem,
+		"host.arch":         n.Status.NodeInfo.Architecture,
+		"k8s.node.os_image": n.Status.NodeInfo.OSImage,
 	}
 	if uuid := strings.TrimSpace(n.Status.NodeInfo.SystemUUID); uuid != "" {
 		attrs["host.uuid"] = uuid
-	}
-	if clusterUID != "" {
-		attrs["k8s.cluster.uid"] = clusterUID
 	}
 
 	return entity.Entity{
@@ -64,6 +54,102 @@ func nodeEntity(n *corev1.Node, clusterUID string) (entity.Entity, bool) {
 		ID:         map[string]any{"host.id": machineID},
 		Attributes: attrs,
 	}, true
+}
+
+// nodeK8sEntity returns the k8s.node half of a Kubernetes node's graph
+// presence. It is emitted whenever the node has a UID, even when the machine
+// id is absent.
+func nodeK8sEntity(n *corev1.Node, clusterUID string) (entity.Entity, bool) {
+	uid := strings.TrimSpace(string(n.UID))
+	if uid == "" {
+		return entity.Entity{}, false
+	}
+
+	attrs := map[string]any{
+		"k8s.node.name":          n.Name,
+		"k8s.kubelet.version":    n.Status.NodeInfo.KubeletVersion,
+		"k8s.container.runtime":  n.Status.NodeInfo.ContainerRuntimeVersion,
+		"k8s.node.unschedulable": n.Spec.Unschedulable,
+	}
+	if clusterUID != "" {
+		attrs["k8s.cluster.uid"] = clusterUID
+	}
+	for _, cond := range n.Status.Conditions {
+		key, ok := nodeConditionAttributeName(cond.Type)
+		if !ok {
+			continue
+		}
+		attrs[key] = strings.ToLower(string(cond.Status))
+	}
+
+	return entity.Entity{
+		Type:       entity.TypeK8sNode,
+		ID:         map[string]any{"k8s.node.uid": uid},
+		Attributes: attrs,
+	}, true
+}
+
+// nodeConditionAttributeName maps the four Kubernetes node conditions we keep
+// to their graph attribute spellings, reusing the existing snake_case
+// convention for multiword names.
+func nodeConditionAttributeName(t corev1.NodeConditionType) (string, bool) {
+	switch t {
+	case corev1.NodeReady:
+		return "k8s.node.condition.ready", true
+	case corev1.NodeMemoryPressure:
+		return "k8s.node.condition.memory_pressure", true
+	case corev1.NodeDiskPressure:
+		return "k8s.node.condition.disk_pressure", true
+	case corev1.NodePIDPressure:
+		return "k8s.node.condition.pid_pressure", true
+	default:
+		return "", false
+	}
+}
+
+// sameAsK8sNodeHost returns the same_as edge tying the cluster's node entity to
+// the host machine entity. The API object is the evidence for both identities.
+func sameAsK8sNodeHost(nodeEnt, hostEnt entity.Entity) (entity.Relation, bool) {
+	if emptyID(nodeEnt.ID) || emptyID(hostEnt.ID) {
+		return entity.Relation{}, false
+	}
+	return entity.Relation{
+		Type:     entity.RelSameAs,
+		FromType: nodeEnt.Type,
+		FromID:   nodeEnt.ID,
+		ToType:   hostEnt.Type,
+		ToID:     hostEnt.ID,
+		Attributes: map[string]any{
+			"basis":      "k8s_api",
+			"confidence": 1.0,
+		},
+	}, true
+}
+
+// nodeInventory returns all entities and relations a single Kubernetes node
+// contributes to the graph: the host machine half, the k8s.node role half, and
+// — when both halves exist — the same_as edge joining them.
+func nodeInventory(n *corev1.Node, clusterUID string) ([]entity.Entity, []entity.Relation) {
+	var entities []entity.Entity
+	var relations []entity.Relation
+
+	hostEnt, hasHost := nodeEntity(n, clusterUID)
+	if hasHost {
+		entities = append(entities, hostEnt)
+	}
+
+	nodeEnt, hasK8sNode := nodeK8sEntity(n, clusterUID)
+	if hasK8sNode {
+		entities = append(entities, nodeEnt)
+	}
+
+	if hasHost && hasK8sNode {
+		if rel, ok := sameAsK8sNodeHost(nodeEnt, hostEnt); ok {
+			relations = append(relations, rel)
+		}
+	}
+
+	return entities, relations
 }
 
 // canonicalMachineID renders a machine-id the way the agent's own host entity

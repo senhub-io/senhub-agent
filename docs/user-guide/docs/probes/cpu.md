@@ -94,11 +94,12 @@ the last collection, so a reading is up to one collection interval old.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:7596f11130e51ee1a6c261d0023d3d6a3a7ea0406866540cd3941f76189a5abd -->
+<!-- sha256:3a0aa945b72b105780dc05ab00ba172fd246699f9642123741ff67c2854c5ecb -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Collection interval in seconds |
+| `per_core_details` | No | `false` | Windows only: restore per-core user, system, irq and softirq metrics; the default emits only per-core usage while _Total keeps all metrics, and true restores the full per-core breakdown (ignored on Linux). |
 
 <!-- schema:params:end -->
 
@@ -411,5 +412,8 @@ series' tags.
 | `system.processes.count` | `cpu_processes_total` | Processes Total | # | Total number of processes on the host. |
 | `senhub.system.time` | `system_time` | Host Clock | s | Current time of the host clock, in seconds since the Unix epoch, sampled at collection |
 | `system.uptime` | `system_uptime` | Host Uptime | s | Time since the host booted, in seconds |
+| `senhub.system.clock.synchronized` | `system_clock_synchronized` | Host Clock Synchronized | # | 1 when the clock is synchronised (Linux: adjtimex; Windows: the Windows Time service has at least one time source), else 0 |
+| `senhub.system.clock.offset` | `system_clock_offset` | Host Clock Offset | s | Estimated error of the host clock in seconds (Linux: adjtimex esterror; Windows: Windows Time Service Computed Time Offset); absent while unsynchronised |
+| `senhub.system.clock.max_error` | `system_clock_max_error` | Host Clock Maximum Error | s | Maximum error of the host clock in seconds, from adjtimex maxerror; Linux only |
 
 <!-- schema:metrics:end -->

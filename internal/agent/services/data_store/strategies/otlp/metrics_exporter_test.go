@@ -347,15 +347,32 @@ func TestBuildResourceMetrics_GroupsByNameUnitType(t *testing.T) {
 	}
 }
 
-func TestBuildResourceMetrics_DefaultsScopeVersion(t *testing.T) {
+// TestBuildResourceMetrics_NoScopeVersion checks the metric scope carries no
+// version: a backend turns it into an otel_scope_version label of every
+// series, and each upgrade would recreate them all.
+func TestBuildResourceMetrics_NoScopeVersion(t *testing.T) {
 	rm := buildResourceMetrics(
 		[]otelmapper.OtelRecord{{Name: "x", Unit: "1", Type: "gauge", Value: 1}},
 		resource.NewSchemaless(),
-		"", // unset
+		"",
 		time.Now(), time.Now(),
 	)
-	if got := rm.ScopeMetrics[0].Scope.Version; got != "dev" {
-		t.Errorf("Scope.Version=%q, want fallback 'dev'", got)
+	if got := rm.ScopeMetrics[0].Scope.Version; got != "" {
+		t.Errorf("Scope.Version=%q, want empty", got)
+	}
+}
+
+// TestMetricsResourceCarriesNoVersion checks the metrics resource leaves out
+// service.version while the one logs and traces use keeps it.
+func TestMetricsResourceCarriesNoVersion(t *testing.T) {
+	cfg := ResourceConfig{ServiceName: "senhub-agent"}
+	full := buildResource(cfg, "0.6.4", nil, nil)
+	metrics := buildResource(cfg, "", nil, nil)
+	if v, ok := full.Set().Value(resourceKeyServiceVersion); !ok || v.AsString() != "0.6.4" {
+		t.Errorf("logs/traces resource lost service.version: %v", full.Attributes())
+	}
+	if _, ok := metrics.Set().Value(resourceKeyServiceVersion); ok {
+		t.Errorf("metrics resource carries service.version: %v", metrics.Attributes())
 	}
 }
 
