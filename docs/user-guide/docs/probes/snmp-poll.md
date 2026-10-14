@@ -250,6 +250,16 @@ of routes it listed and that were not published, so a table cut by the bound
 is never mistaken for a complete one. A device carrying a full Internet table
 is not meant to be inventoried route by route.
 
+#### Link aggregation
+
+With `entities.aggregation.enabled`, the probe reads `ifStackTable` (IF-MIB)
+and the IEEE 802.3ad LAG MIB on the polled and discovered devices: each member
+port is linked to its port-channel (`aggregated_into`), the port-channel
+carries its mode (`lacp`, or `static` when the LAG MIB says nothing about it),
+and a LACP member carries `active` (collecting and distributing) or `standby`.
+A port-channel borrows a member's MAC address, so for MAC-based resolution the
+member owns it, never the port-channel.
+
 #### Governance for discovered devices
 
 A crawl finds devices you never listed, so their ownership, criticality and

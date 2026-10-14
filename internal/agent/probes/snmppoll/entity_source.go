@@ -1,8 +1,6 @@
 package snmppoll
 
 import (
-	"fmt"
-	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +10,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/hostiface"
 	"senhub-agent.go/internal/agent/services/entity/macindex"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -174,7 +173,7 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 		registry:          sharedPolledRegistry,
 		now:               time.Now,
 		hostID:            dbcommon.HostID,
-		hostInterfaceMACs: hostInterfaceMACs,
+		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
 		macIndex:          macindex.Default,
 	}
 }
@@ -191,6 +190,7 @@ type sweepResult struct {
 	ifNames       map[string]string
 	fdb           []fdbEntry
 	arp           []arpEntry
+	lag           lagData
 }
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
@@ -238,13 +238,6 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 }
 
 func (s *snmpEntitySource) setDiscoveryObservation(obs entity.Observation) {
-	if idx := s.macIndex; idx != nil && idx.Enabled() {
-		now := time.Now()
-		if s.now != nil {
-			now = s.now()
-		}
-		s.registerObservationInterfaceMacs(obs, now)
-	}
 	s.discMu.Lock()
 	s.discObs = obs
 	s.discMu.Unlock()
@@ -278,6 +271,7 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		maxRoutes = defaultMaxRoutes
 	}
 	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, maxRoutes)
+	applyLag(&obs, res.lag, res.ifaces, res.deviceID)
 	applyGovernance(obs, s.cfg, res.self, res.deviceID)
 	s.appendLocalRunsOn(&obs, res.deviceID)
 	return obs, unresolved
@@ -416,8 +410,9 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
 		s.registerInterfaceMacs(deviceID, ifaces)
 	}
+	lag := collectLagData(client, ifaces, s.moduleLogger)
 	// An unresolved identity means a failed sweep, not an empty network.
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps}, deviceID != ""
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag}, deviceID != ""
 }
 
 // appendLocalRunsOn anchors the polled device to the agent's own host with a
@@ -820,40 +815,46 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	return obs
 }
 
+// registerInterfaceMacs records which interface of the device OWNS each MAC.
+// An aggregate (ieee8023adLag) borrows a member's address, so it owns a MAC
+// only when no physical interface carries it; when two physical interfaces
+// carry the same MAC, ownership is undecidable and nothing is registered:
+// a resolution must hold both identities, not one and a half.
 func (s *snmpEntitySource) registerInterfaceMacs(deviceID string, ifaces []ifaceRow) {
 	if s.macIndex == nil || deviceID == "" {
 		return
 	}
+	for mac, name := range interfaceMACOwners(ifaces) {
+		s.macIndex.Register(mac, deviceID, name)
+	}
+}
+
+// interfaceMACOwners returns MAC → owning interface name for one device.
+func interfaceMACOwners(ifaces []ifaceRow) map[string]string {
+	physical := map[string][]string{}
+	aggregate := map[string][]string{}
 	for _, ifc := range ifaces {
 		if ifc.Mac == "" || ifc.Name == "" {
 			continue
 		}
-		s.macIndex.Register(ifc.Mac, deviceID, ifc.Name)
+		if ifc.IfType == ifTypeIEEE8023adLag {
+			aggregate[ifc.Mac] = append(aggregate[ifc.Mac], ifc.Name)
+		} else {
+			physical[ifc.Mac] = append(physical[ifc.Mac], ifc.Name)
+		}
 	}
-}
-
-func (s *snmpEntitySource) registerObservationInterfaceMacs(obs entity.Observation, now time.Time) {
-	if s.macIndex == nil {
-		return
+	out := map[string]string{}
+	for mac, names := range physical {
+		if len(names) == 1 {
+			out[mac] = names[0]
+		}
 	}
-	for _, e := range obs.Entities {
-		if e.Type != entityTypeNetworkInterface {
-			continue
+	for mac, names := range aggregate {
+		if _, carried := physical[mac]; !carried && len(names) == 1 {
+			out[mac] = names[0]
 		}
-		deviceID, _ := e.ID[idKeyNetworkDevice].(string)
-		if deviceID == "" {
-			continue
-		}
-		name, _ := e.ID[idKeyInterfaceName].(string)
-		if name == "" {
-			continue
-		}
-		mac, _ := e.Attributes[attrMac].(string)
-		if mac == "" {
-			continue
-		}
-		s.macIndex.Register(mac, deviceID, name)
 	}
+	return out
 }
 
 func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
@@ -1050,40 +1051,4 @@ func vendorName(pen string) string {
 	default:
 		return ""
 	}
-}
-
-// hostInterfaceMACs returns the host's own non-loopback interface MACs as a
-// MAC → interface-name map. It mirrors the hostiface MAC canonicalisation so
-// case-B device neighbours can resolve to the host interface entity.
-func hostInterfaceMACs() (map[string]string, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, fmt.Errorf("net.Interfaces: %w", err)
-	}
-	out := map[string]string{}
-	for _, ifc := range ifaces {
-		if ifc.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		if len(ifc.HardwareAddr) == 0 || isZeroMAC(ifc.HardwareAddr) {
-			continue
-		}
-		mac := entity.CanonicalMAC(ifc.HardwareAddr)
-		if mac == "" {
-			continue
-		}
-		if _, exists := out[mac]; !exists {
-			out[mac] = ifc.Name
-		}
-	}
-	return out, nil
-}
-
-func isZeroMAC(b []byte) bool {
-	for _, c := range b {
-		if c != 0 {
-			return false
-		}
-	}
-	return true
 }
