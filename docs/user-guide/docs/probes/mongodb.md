@@ -87,5 +87,6 @@ series' tags.
 | `mongodb.index.count` | `mongodb.index.count` | Indexes {database} | # | Number of indexes across all collections (dbStats.indexes) |
 | `mongodb.index.size` | `mongodb.index.size` | Index Size {database} | Bytes | Total size of all indexes on disk (dbStats.indexSize) |
 | `mongodb.storage.size` | `mongodb.storage.size` | Storage Size {database} | Bytes | Total amount of disk space allocated to all collections (dbStats.storageSize) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

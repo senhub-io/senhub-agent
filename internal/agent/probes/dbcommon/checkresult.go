@@ -50,6 +50,16 @@ func ClassifyError(err error) CheckResult {
 		return CheckTargetDown
 	}
 
+	// Some drivers (the MongoDB one among them) report a selection timeout
+	// whose only trace of the real cause is the last dial error, flattened
+	// into the message. A refusal there means the target is down, even though
+	// the error chain itself ends on a deadline.
+	msg := strings.ToLower(err.Error())
+	if containsAny(msg, "connection refused", "no route to host", "network is unreachable",
+		"connection reset by peer", "no such host") {
+		return CheckTargetDown
+	}
+
 	if errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 		return CheckTimeout
 	}
@@ -80,7 +90,6 @@ func ClassifyError(err error) CheckResult {
 		return CheckTLSError
 	}
 
-	msg := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(msg, "error 1044"),
 		strings.Contains(msg, "error 1142"),
@@ -123,6 +132,8 @@ func ClassifyError(err error) CheckResult {
 	case strings.Contains(msg, "not authorized"),
 		strings.Contains(msg, "unauthorized"):
 		return CheckPermissionDenied
+	case containsAny(msg, "i/o timeout", "server selection timeout", "deadline exceeded"):
+		return CheckTimeout
 	}
 
 	if errors.As(err, &netErr) {
@@ -173,4 +184,13 @@ func (c CheckResult) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }

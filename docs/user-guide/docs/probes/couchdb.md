@@ -77,5 +77,6 @@ series' tags.
 | `couchdb.database.writes` | `couchdb.database.writes` | CouchDB Database Writes | # | Total number of database write operations |
 | `couchdb.io.bytes.read` | `couchdb.io.bytes.read` | CouchDB IO Bytes Read | B | Total bytes read from disk by CouchDB (io_input) |
 | `couchdb.io.bytes.written` | `couchdb.io.bytes.written` | CouchDB IO Bytes Written | B | Total bytes written to disk by CouchDB (io_output) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->
