@@ -272,10 +272,8 @@ func buildResourceMetrics(
 		})
 	}
 
-	if scopeVersion == "" {
-		scopeVersion = "dev"
-	}
-
+	// No "dev" fallback: an empty scope version is omitted, and a version
+	// here would become an otel_scope_version label on every series.
 	return &metricdata.ResourceMetrics{
 		Resource: res,
 		ScopeMetrics: []metricdata.ScopeMetrics{
