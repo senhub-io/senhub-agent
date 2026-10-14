@@ -6,6 +6,8 @@
 
 ## Before you upgrade
 
+- **Leaner host defaults, each restorable.** The `network` probe no longer collects container and virtualisation interfaces (`veth`, `docker`, `br-`, `cni`, `flannel`, `cali`, `cilium`, `vxlan`, …; Hyper-V `vEthernet` adapters are kept) nor the `ip` label on interface series; `include_virtual_interfaces: true` and `address_label: true` restore them. On Windows the `cpu` probe keeps per-core usage and the full total, and `per_core_details: true` restores the per-core user, privileged, interrupt and DPC series. The PRTG channels of the dropped series disappear unless the option is set.
+- **Kubernetes containers have one producer.** On a Kubernetes node the `docker` probe no longer publishes containers carrying `io.kubernetes.pod.uid`; the `kubernetes` cluster probe describes them.
 - **SNMP topology is swept every minute by default.** `topology_interval` of `snmp_poll` (and so the discovery crawl) goes from 10 minutes to 1 minute, so a link going down is on the map within a minute. Polled devices answer a few more SNMP walks per minute; set `topology_interval` back to `10m` on a device that should be queried less often. Devices no longer carry `mgmt.ip`, which depended on the agent polling them; their addresses are `network.address` entities.
 - **Metric series no longer carry the agent version.** `service.version` is left off the metrics resource and the metric scope carries no version, so `service_version` and `otel_scope_version` labels disappear from every series in a Prometheus-like backend. Upgrading to 0.6.4 recreates the series once more; later upgrades no longer do. The version stays on logs, traces and `senhub.agent.build.info`.
 - **`SENHUB_HOST_ID` is now read by the agent binary itself.** Previously only the container entrypoint used it; the agent now honours a valid value directly (lowercase, dashed machine-id). Hosts run outside the official image that set `SENHUB_HOST_ID` will change identity; an invalid value is logged and ignored.
@@ -16,6 +18,9 @@
 
 ## Features
 
+- **Kubernetes nodes as their own entity.** The `kubernetes` probe publishes each node as `k8s.node` (its role in the cluster: kubelet version, runtime, schedulable, Ready and pressure conditions), joined by `same_as` to the host it runs on, which keeps the machine facts.
+- **Select all / Clear in the URL builder.** Each tag filter of the console's sensor URL builder starts with "Select all" and "Clear".
+- **Kubernetes Grafana dashboards.** `kubernetes-workloads.json` (node, pod and container resources from `kubelet_stats`) and `kubernetes-logs.json` (pod logs and their volume) in `docs/grafana/`.
 - **Ethernet aggregates on the map (opt-in).** LAG / LACP port-channels on switches and bonds or teams on Linux hosts and hypervisors: each member port is linked to its aggregate, with the aggregate's mode and, where it exists, each member's LACP or active-backup state, so a path no longer stops at an aggregate. `entities.aggregation.enabled`, off until the receiving Toise registers the relation.
 - **Hosts say whether they route.** `senhub.host.ip_forwarding.ipv4` and `.ipv6` on the host entity, so a multi-homed server is not drawn as a gateway.
 - **Full routing tables on the map.** Hosts and SNMP devices publish every route with its type (connected, remote, reject, blackhole), its origin (static, OSPF, BGP… in the IANA vocabulary), its egress interface and metric; each next hop of a multipath route is its own route, IPv6 included. Connected routes give the last hop of a path. A bound of 500 routes per host or device, with `senhub.routes.omitted` saying how many were left out. See [SNMP Poll → Routes](../probes/snmp-poll.md#routes).
@@ -31,6 +36,8 @@
 
 ## Fixes
 
+- **A link that went down leaves the map.** `snmp_poll` no longer asserts an LLDP link on a port that is down, which a device keeps listing until the neighbour's TTL expires.
+- **Router-to-router routes reach the next router.** A route whose private next hop is an address the agent sees on a device it polls now carries its `next_hop_via`, so a path no longer stops at every router.
 - **Redis 8 key-size lines are no longer read as databases.** Channels such as `DB 0_distrib_strings_sizes Keys` disappear; only `dbN` lines of the keyspace make a database.
 - **The agent image upgrades its base packages at build time.** The 0.6.4 image no longer ships a zlib version with a known CVE that container scanners flag.
 - **Entity heartbeats publish on a fixed grid.** Unchanged entities are re-published on a shared cadence with tolerance, so a ticker firing a few milliseconds early no longer produces alternating 120 s and 180 s gaps.
