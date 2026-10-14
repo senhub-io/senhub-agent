@@ -1,12 +1,15 @@
 package entity
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/toise-dev/toise/pkg/emit/wire"
+)
 
 // RelAggregatedInto links a LAG member port to its aggregate interface
-// (physical → logical). Not yet in the emit SDK: the consumer registers it
-// with the next pkg/emit tag, and emission stays behind
-// entities.aggregation.enabled until then.
-const RelAggregatedInto = "aggregated_into"
+// (physical → logical). Emission stays behind entities.aggregation.enabled
+// until a Toise that registers the relation is deployed.
+const RelAggregatedInto = wire.RelTypeAggregatedInto
 
 // Membership attributes, carried by the interfaces themselves: a port is a
 // member of at most one aggregate, so the state is unambiguous on the port.
