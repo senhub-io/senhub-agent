@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/macindex"
 )
 
 const (
@@ -12,9 +13,15 @@ const (
 	entityTypeNetworkInterface           = "network.interface"
 	idKeyNeighborMAC                     = "mac"
 	idKeyInterfaceName                   = "network.interface.name"
+	idKeyNetworkDevice                   = "network.device.id"
 	attrNetworkNeighborAddresses         = "network.neighbor.addresses"
 	attrNetworkNeighborObservedInterface = "network.neighbor.observed.interface"
 	relNeighborOf                        = "neighbor_of"
+	relResolvesTo                        = "resolves_to"
+	attrBasis                            = "basis"
+	attrConfidence                       = "confidence"
+
+	resolveConfidenceARPNDP = 0.9
 )
 
 // neighborDropPrefixes are CIDRs reused by convention on unrelated hosts:
@@ -32,6 +39,7 @@ var neighborDropPrefixes = []netip.Prefix{
 type NeighborSource struct {
 	hostID        func() string
 	readNeighbors func() ([]hostNeighbor, error)
+	macIndex      *macindex.Index
 }
 
 // NewNeighborSource builds the host-neighbour source. hostID returns the
@@ -40,6 +48,7 @@ func NewNeighborSource(hostID func() string) *NeighborSource {
 	return &NeighborSource{
 		hostID:        hostID,
 		readNeighbors: platformNeighbors,
+		macIndex:      macindex.Default,
 	}
 }
 
@@ -58,18 +67,23 @@ func (s *NeighborSource) Observe() (entity.Observation, bool) {
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	return buildNeighborObservation(host, neighbors).WithScope(entity.ScopeHostARP), true
+	return buildNeighborObservation(host, neighbors, s.macIndex).WithScope(entity.ScopeHostARP), true
 }
 
 type neighborGroup struct {
-	MAC    string
-	ips    map[string]bool
-	ifaces map[string]bool
+	MAC     string
+	ips     map[string]bool
+	ifaces  map[string]bool
+	hasIPv4 bool
+	hasIPv6 bool
 }
 
-func buildNeighborObservation(hostID string, neighbors []hostNeighbor) entity.Observation {
+func buildNeighborObservation(hostID string, neighbors []hostNeighbor, macIndex *macindex.Index) entity.Observation {
 	if hostID == "" || len(neighbors) == 0 {
 		return entity.Observation{}
+	}
+	if macIndex == nil {
+		macIndex = macindex.Default
 	}
 	neighbors = dedupeAndSortNeighbors(neighbors)
 
@@ -85,6 +99,13 @@ func buildNeighborObservation(hostID string, neighbors []hostNeighbor) entity.Ob
 		}
 		g.ips[n.IP] = true
 		g.ifaces[n.Iface] = true
+		if ip, err := netip.ParseAddr(n.IP); err == nil {
+			if ip.Is4() {
+				g.hasIPv4 = true
+			} else if ip.Is6() {
+				g.hasIPv6 = true
+			}
+		}
 	}
 
 	macs := make([]string, 0, len(groups))
@@ -103,6 +124,11 @@ func buildNeighborObservation(hostID string, neighbors []hostNeighbor) entity.Ob
 		ifaces := sortedSet(g.ifaces)
 		if len(ifaces) == 0 {
 			continue
+		}
+
+		basis := "ndp"
+		if g.hasIPv4 {
+			basis = "arp"
 		}
 
 		id := map[string]any{idKeyHost: hostID, idKeyNeighborMAC: mac}
@@ -124,6 +150,22 @@ func buildNeighborObservation(hostID string, neighbors []hostNeighbor) entity.Ob
 				ToType:   entityTypeNetworkInterface,
 				ToID:     map[string]any{idKeyHost: hostID, idKeyInterfaceName: iface},
 			})
+		}
+
+		if macIndex.Enabled() {
+			if target, ok := macIndex.Lookup(mac); ok && target.DeviceID != "" && target.Name != "" {
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relResolvesTo,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     map[string]any{idKeyNetworkDevice: target.DeviceID, idKeyInterfaceName: target.Name},
+					Attributes: map[string]any{
+						attrBasis:      basis,
+						attrConfidence: resolveConfidenceARPNDP,
+					},
+				})
+			}
 		}
 	}
 	return obs
@@ -162,3 +204,10 @@ func sortedSet(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// DepartureReason implements entity.DepartureSource: the source reads the
+// kernel's neighbour cache, so a neighbour it stops listing was forgotten by
+// the cache, not seen to leave.
+func (s *NeighborSource) DepartureReason(entity.Entity) string { return entity.ReasonAgedOut }
+
+var _ entity.DepartureSource = (*NeighborSource)(nil)

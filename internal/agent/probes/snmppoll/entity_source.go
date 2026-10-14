@@ -1,6 +1,9 @@
 package snmppoll
 
 import (
+	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -8,6 +11,8 @@ import (
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/hostiface"
+	"senhub-agent.go/internal/agent/services/entity/macindex"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/snmpcore"
@@ -28,6 +33,7 @@ const (
 	entityTypeNetworkRoute     = "network.route"
 	entityTypeNetworkInterface = "network.interface"
 	entityTypeNetworkAddress   = "network.address"
+	entityTypeNetworkNeighbor  = "network.neighbor"
 	entityTypeHost             = "host"
 	entityTypeServiceInstance  = "service.instance"
 	idKeyServiceInstanceID     = "service.instance.id"
@@ -36,6 +42,7 @@ const (
 	idKeyRouteDestination      = "route.destination"
 	idKeyInterfaceName         = "network.interface.name"
 	idKeyNetworkAddress        = "network.address"
+	idKeyNeighborMAC           = "mac"
 	attrNextHopIP              = "next_hop.ip"
 	attrRouteMetric            = "metric"
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
@@ -54,6 +61,13 @@ const (
 	relNextHopVia   = "next_hop_via"
 	relMonitors     = "monitors"
 	relRunsOn       = "runs_on"
+	relNeighborOf   = "neighbor_of"
+	relResolvesTo   = "resolves_to"
+	attrBasis       = "basis"
+	attrConfidence  = "confidence"
+
+	resolveConfidenceARPNDP = 0.9
+	resolveConfidenceFDB    = 0.7
 
 	// Retired relation types — pre-ADR-0022 device-to-device edges that carried
 	// their facts as edge attributes Toise's bare relationship descriptor drops.
@@ -112,6 +126,14 @@ type snmpEntitySource struct {
 	// swept marks that at least one sweep succeeded; before that the
 	// empty cache is reported with ok=false.
 	swept bool
+	// failingSince is when sweeps started failing (zero while they succeed).
+	// Past silentAfterSweeps topology intervals the cache stops being
+	// replayed: it would keep asserting links of a device nobody can read.
+	failingSince time.Time
+	// unobserved holds what was dropped for that reason (the polled device's
+	// cache, discovered devices aged out) until the detector collects it.
+	unobserved   []entity.Entity
+	silentMarked bool
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -120,6 +142,15 @@ type snmpEntitySource struct {
 	// place), so a reader holding the returned map sees a stable snapshot.
 	deviceID string
 	ifNames  map[string]string
+
+	// discMu guards discObs, the latest discovery crawl observation. The
+	// discovery loop rebuilds it each run and swaps it under this mutex.
+	discMu  sync.Mutex
+	discObs entity.Observation
+	// discRan marks that a discovery run has completed: from then on an
+	// empty discovery view means its devices left (as unobserved), not that
+	// the view failed.
+	discRan bool
 
 	// registry reconciles a neighbour seen via LLDP with the canonical id of the
 	// same device when another probe instance polls it directly. Shared across
@@ -133,6 +164,13 @@ type snmpEntitySource struct {
 	// When the SNMP target is the local host (loopback/localhost/empty) it anchors
 	// the polled network.device to this host with a runs_on edge (#310).
 	hostID func() string
+
+	// hostInterfaceMACs returns this host's own interface MAC map; MAC → name.
+	hostInterfaceMACs func() (map[string]string, error)
+
+	// macIndex is the shared interface-MAC index used for resolves_to and
+	// device-side network.neighbor emission. Defaults to the process-wide index.
+	macIndex *macindex.Index
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -140,25 +178,35 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 	if iv <= 0 {
 		iv = defaultTopologyInterval
 	}
+	macindex.Default.SetTTL(3 * iv)
 	return &snmpEntitySource{
-		cfg:          cfg,
-		interval:     iv,
-		moduleLogger: log,
-		registry:     sharedPolledRegistry,
-		now:          time.Now,
-		hostID:       dbcommon.HostID,
+		cfg:               cfg,
+		interval:          iv,
+		moduleLogger:      log,
+		registry:          sharedPolledRegistry,
+		now:               time.Now,
+		hostID:            dbcommon.HostID,
+		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
+		macIndex:          macindex.Default,
 	}
 }
 
 // sweepResult is what one topology sweep read from the device.
 type sweepResult struct {
-	self     deviceIdentity
-	topo     lldpTopology
-	routes   []routeRow
-	ifaces   []ifaceRow
-	addrs    []ipAddr
-	deviceID string
-	ifNames  map[string]string
+	self          deviceIdentity
+	topo          lldpTopology
+	routes        []routeRow
+	routesOmitted int
+	ifaces        []ifaceRow
+	addrs         []ipAddr
+	deviceID      string
+	ifNames       map[string]string
+	fdb           []fdbEntry
+	arp           []arpEntry
+	lag           lagData
+	// partial marks a sweep where at least one table walk failed: what is
+	// missing from it was not read, not seen gone.
+	partial bool
 }
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
@@ -176,10 +224,42 @@ type sweepResult struct {
 // omitted one is a retracted one). Not publishing keeps the consumer's
 // previous state alive until the neighbour is known.
 func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
+	single, singleOK := s.observeSingle()
+	disc, discRan := s.discoveryView()
+
+	discEmpty := len(disc.Entities) == 0 && len(disc.Relations) == 0
+	if s.silent() {
+		// The device is reported through Unobserved; an empty single view
+		// now removes it as unmonitored rather than holding it.
+		singleOK = true
+	}
+	if !singleOK && discEmpty && !discRan {
+		return entity.Observation{}, false
+	}
+	if !singleOK && discEmpty {
+		// Discovery ran and every device it knew left: report the empty view.
+		// ok=false here would make the detector replay the last one for up to
+		// lastGoodTTL, keeping a cut link on the map for a quarter hour.
+		return entity.Observation{}, true
+	}
+	obs := single
+	if !(singleOK && discEmpty) {
+		obs = mergeObservations(single, disc)
+	}
+	linkPrivateNextHops(&obs)
+	// Applied again on the merged view: a discovered device's links were
+	// built when it was collected, possibly before the far end was read
+	// down in the same run.
+	dropLinksToDownPorts(&obs, s.registry, s.now())
+	annotatePeerState(&obs, s.registry, s.now())
+	return obs, true
+}
+
+func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	s.mu.Lock()
 	res, swept := s.cache, s.swept
 	s.mu.Unlock()
-	if !swept {
+	if !swept || s.silent() {
 		return entity.Observation{}, false
 	}
 	now := s.now()
@@ -187,7 +267,68 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 	if unresolved > 0 && s.registry != nil && s.registry.warming(now) {
 		return entity.Observation{}, false
 	}
+	obs = s.appendResolvesNeighbors(obs, res)
 	return obs, true
+}
+
+// silentAfterSweeps is how many topology intervals of failed sweeps the last
+// good view is replayed for. It absorbs a lost SNMP reply without making the
+// device leave and re-enter the graph; beyond it the replay would assert a
+// topology no one has read.
+const silentAfterSweeps = 3
+
+// silent reports whether the polled device has failed long enough to stop
+// being replayed. The first time it is, its last view is queued as
+// unobserved so the detector removes it as unmonitored.
+func (s *snmpEntitySource) silent() bool {
+	now := s.now()
+	s.mu.Lock()
+	if s.failingSince.IsZero() || now.Sub(s.failingSince) < silentAfterSweeps*s.interval {
+		s.mu.Unlock()
+		return false
+	}
+	first := !s.silentMarked && s.swept
+	s.silentMarked = true
+	res := s.cache
+	s.mu.Unlock()
+	if first {
+		obs, _ := s.build(res, now)
+		s.markUnobserved(obs.Entities)
+	}
+	return true
+}
+
+// markUnobserved queues entities the source stopped reporting because it can
+// no longer read them.
+func (s *snmpEntitySource) markUnobserved(entities []entity.Entity) {
+	if len(entities) == 0 {
+		return
+	}
+	s.mu.Lock()
+	s.unobserved = append(s.unobserved, entities...)
+	s.mu.Unlock()
+}
+
+// Unobserved implements entity.UnobservedSource.
+func (s *snmpEntitySource) Unobserved() []entity.Entity {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.unobserved
+	s.unobserved = nil
+	return out
+}
+
+func (s *snmpEntitySource) setDiscoveryObservation(obs entity.Observation) {
+	s.discMu.Lock()
+	s.discObs = obs
+	s.discRan = true
+	s.discMu.Unlock()
+}
+
+func (s *snmpEntitySource) getDiscoveryObservation() entity.Observation {
+	s.discMu.Lock()
+	defer s.discMu.Unlock()
+	return s.discObs
 }
 
 // build turns a sweep into the observation, resolving each LLDP neighbour
@@ -207,6 +348,13 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		return resolveDeviceID(n)
 	}
 	obs := buildObservation(res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
+	dropLinksToDownPorts(&obs, s.registry, now)
+	maxRoutes := s.cfg.MaxRoutes
+	if maxRoutes <= 0 {
+		maxRoutes = defaultMaxRoutes
+	}
+	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, maxRoutes)
+	applyLag(&obs, res.lag, res.ifaces, res.deviceID)
 	applyGovernance(obs, s.cfg, res.self, res.deviceID)
 	s.appendLocalRunsOn(&obs, res.deviceID)
 	return obs, unresolved
@@ -249,10 +397,28 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		// interval while the consumer's view decays (audit D3).
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).
 			Msg("topology sweep failed; keeping previous snapshot and retrying next cycle")
+		s.mu.Lock()
+		if s.failingSince.IsZero() {
+			s.failingSince = now
+		}
+		known := s.deviceID
+		s.mu.Unlock()
+		if s.registry != nil {
+			s.registry.recordUnreachable(known, s.interval, now)
+		}
 		return
 	}
 
 	s.mu.Lock()
+	prev, hadPrev := s.cache, s.swept
+	s.mu.Unlock()
+	if res.partial && hadPrev {
+		s.markUnobserved(droppedEntities(s.buildQuiet(prev, now), s.buildQuiet(res, now)))
+	}
+
+	s.mu.Lock()
+	s.failingSince = time.Time{}
+	s.silentMarked = false
 	s.cache = res
 	s.deviceID = res.deviceID
 	s.ifNames = res.ifNames
@@ -266,28 +432,33 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 // neighbours). The result carries the resolved device id and the
 // ifIndex→ifName map for the metric collector's correlation tags.
 func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult, bool) {
+	partial := false
 	topo, err := collectLLDP(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("LLDP walk failed; emitting device without neighbours")
+		partial = true
 		topo = lldpTopology{}
 	}
 	routes, err := collectRoutes(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("routing walk failed; emitting device without routes")
+		partial = true
 		routes = nil
 	}
 	ifaces, err := collectInterfaces(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("ifTable walk failed; emitting device without interfaces")
+		partial = true
 		ifaces = nil
 	}
 	addrs, err := collectIPAddrs(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("ipAddrTable walk failed; emitting device without addresses")
+		partial = true
 		addrs = nil
 	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
@@ -303,6 +474,37 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		}
 	}
 
+	maxRoutes := s.cfg.MaxRoutes
+	if maxRoutes <= 0 {
+		maxRoutes = defaultMaxRoutes
+	}
+	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
+	if routesOmitted > 0 {
+		s.moduleLogger.Info().
+			Str("target", s.cfg.Target).
+			Int("kept", len(routes)).
+			Int("omitted", routesOmitted).
+			Int("max_routes", maxRoutes).
+			Msg("route table bound: some routes omitted")
+	}
+
+	var fdbs []fdbEntry
+	var arps []arpEntry
+	if idx := s.macIndex; idx != nil && idx.Enabled() {
+		fdbs, err = collectFDB(client)
+		if err != nil {
+			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+				Msg("bridge FDB walk failed; emitting device without neighbor resolution")
+			fdbs = nil
+		}
+		arps, err = collectARP(client)
+		if err != nil {
+			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+				Msg("ARP walk failed; emitting device without neighbor resolution")
+			arps = nil
+		}
+	}
+
 	// Register this directly-polled device's chassis MAC under its canonical id;
 	// neighbours are resolved against the shared registry when the observation
 	// is read (build): a neighbour known by the same MAC reconciles to the
@@ -310,9 +512,27 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// mac: shadow (one node per device, not several).
 	if s.registry != nil {
 		s.registry.recordPolled(self, deviceID, now)
+		s.registry.recordPortStates(deviceID, ifaces, s.interval, now)
 	}
-	// An unresolved identity means a failed sweep, not an empty network.
-	return sweepResult{self: self, topo: topo, routes: routes, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames}, deviceID != ""
+	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
+		s.registerInterfaceMacs(deviceID, ifaces)
+	}
+	lag := collectLagData(client, ifaces, s.moduleLogger)
+	// An unresolved identity means a failed sweep, not an empty network. So
+	// does a device that answered nothing: the target address alone still
+	// resolves to a mgmt: id, and caching that would replace the real device
+	// with a neighbourless ghost, retracting its links as if they had been
+	// seen to go.
+	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
+}
+
+// deviceAnswered reports whether any read reached the device, as opposed to
+// an identity built from the polled address alone.
+func deviceAnswered(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr) bool {
+	return self.SysName != "" || self.Serial != "" || self.VendorPEN != "" || len(self.EngineID) > 0 ||
+		len(self.ChassisMAC) > 0 || self.SysDescr != "" ||
+		len(topo.Neighbors) > 0 || len(routes) > 0 || len(ifaces) > 0 || len(addrs) > 0
 }
 
 // appendLocalRunsOn anchors the polled device to the agent's own host with a
@@ -646,6 +866,12 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	// local port matches the network.interface entity emitted above (most gear
 	// numbers lldpLocPortNum as ifIndex, so this hits); fall back to the LLDP
 	// local-port table.
+	ifOperByName := make(map[string]int, len(ifaces))
+	for _, ifc := range ifaces {
+		if ifc.Name != "" && ifc.OperStatus != 0 {
+			ifOperByName[ifc.Name] = ifc.OperStatus
+		}
+	}
 	ifIndexName := make(map[string]string, len(ifaces))
 	for _, ifc := range ifaces {
 		ifIndexName[ifc.Index] = ifc.Name
@@ -672,6 +898,13 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		}
 		remoteIf := namedPortID(n.PortIdSubtype, n.PortId)
 		if localIf == "" || remoteIf == "" {
+			continue
+		}
+		// A device can keep a neighbour in its LLDP table until the entry's
+		// TTL runs out after the link went down; a port that is not up
+		// carries no link, so the adjacency is not asserted. An unread
+		// status keeps the link.
+		if st, ok := ifOperByName[localIf]; ok && st != ifOperUp {
 			continue
 		}
 		obs.Relations = append(obs.Relations, entity.Relation{
@@ -707,66 +940,167 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		})
 	}
 
-	// network.route — the polled device's remote routes as entities it owns
-	// (has_route, mirror of has_interface). Identity after IP-FORWARD-MIB
-	// (RFC 4292), which indexes a route on its destination and its next
-	// hop: {device, destination, next hop}, so ECMP (one destination,
-	// several next hops) is several routes rather than the first one.
-	// Only remote routes with a usable next hop are emitted, which keeps
-	// the next hop always present. TOS and policy are not read. This
-	// supersedes the legacy routes_via device-to-device edge.
-	routeSeen := map[string]bool{}
-	for _, r := range routes {
-		if r.Type != routeTypeRemote || r.Destination == "" {
-			continue
-		}
-		if !usableNextHop(r.NextHop, self.MgmtIP) {
-			continue
-		}
-		key := r.Destination + " " + r.NextHop
-		if routeSeen[key] {
-			continue
-		}
-		routeSeen[key] = true
+	// network.route — the polled device's routes as entities it owns. The
+	// route emission lives in route_entities.go so the type/protocol/egress
+	// and bound counter rules stay with the route vocabulary.
+	appendRouteEntities(&obs, selfID, self, routes, ifaces, addrSeen)
 
-		routeID := map[string]any{idKeyNetworkDevice: selfID, idKeyRouteDestination: r.Destination, attrNextHopIP: r.NextHop}
-		var attrs map[string]any
-		if r.Metric > 0 {
-			attrs = map[string]any{attrRouteMetric: int64(r.Metric)}
-		}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs, Scope: entity.ScopeSNMPRoute,
-		})
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relHasRoute,
-			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
-			ToType: entityTypeNetworkRoute, ToID: routeID,
-		})
+	return obs
+}
 
-		// The gateway as the same network.address node a host route reaches
-		// via next_hop_via, but only for a globally unique address: a switch
-		// has no interface-class filter, and a private gateway shared by
-		// unrelated switches would merge them. next_hop.ip stays on the
-		// route either way.
-		gw := r.NextHop
-		if c, ok := entity.CanonicalIP(gw); ok {
-			gw = c
-		}
-		if !entity.AddressIsGloballyUnique(gw) {
+// registerInterfaceMacs records which interface of the device OWNS each MAC.
+// An aggregate (ieee8023adLag) borrows a member's address, so it owns a MAC
+// only when no physical interface carries it; when two physical interfaces
+// carry the same MAC, ownership is undecidable and nothing is registered:
+// a resolution must hold both identities, not one and a half.
+func (s *snmpEntitySource) registerInterfaceMacs(deviceID string, ifaces []ifaceRow) {
+	if s.macIndex == nil || deviceID == "" {
+		return
+	}
+	for mac, name := range interfaceMACOwners(ifaces) {
+		s.macIndex.Register(mac, deviceID, name)
+	}
+}
+
+// interfaceMACOwners returns MAC → owning interface name for one device.
+func interfaceMACOwners(ifaces []ifaceRow) map[string]string {
+	physical := map[string][]string{}
+	aggregate := map[string][]string{}
+	for _, ifc := range ifaces {
+		if ifc.Mac == "" || ifc.Name == "" {
 			continue
 		}
-		gwID := map[string]any{idKeyNetworkAddress: gw}
-		if !addrSeen[gw] {
-			addrSeen[gw] = true
-			obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: gwID, Scope: entity.ScopeSNMPRoute})
+		if ifc.IfType == ifTypeIEEE8023adLag {
+			aggregate[ifc.Mac] = append(aggregate[ifc.Mac], ifc.Name)
+		} else {
+			physical[ifc.Mac] = append(physical[ifc.Mac], ifc.Name)
 		}
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relNextHopVia,
-			FromType: entityTypeNetworkRoute, FromID: routeID,
-			ToType: entityTypeNetworkAddress, ToID: gwID,
+	}
+	out := map[string]string{}
+	for mac, names := range physical {
+		if len(names) == 1 {
+			out[mac] = names[0]
+		}
+	}
+	for mac, names := range aggregate {
+		if _, carried := physical[mac]; !carried && len(names) == 1 {
+			out[mac] = names[0]
+		}
+	}
+	return out
+}
+
+func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
+	if s.macIndex == nil || !s.macIndex.Enabled() || res.deviceID == "" {
+		return obs
+	}
+
+	hostMACs, err := s.hostInterfaceMACs()
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("host interface MAC scan failed; skipping network.neighbor emission")
+		return obs
+	}
+	if len(hostMACs) == 0 {
+		return obs
+	}
+
+	hostID := s.hostID()
+	if hostID == "" {
+		return obs
+	}
+
+	ifName := func(ifIndex int) string {
+		if res.ifNames == nil {
+			return ""
+		}
+		return res.ifNames[strconv.Itoa(ifIndex)]
+	}
+
+	type heard struct {
+		ifName     string
+		hostIface  string
+		basis      string
+		confidence float64
+	}
+	groups := map[string][]heard{}
+	add := func(mac string, ifIndex int, basis string, confidence float64) {
+		canon, ok := entity.CanonicalMACString(mac)
+		if !ok {
+			return
+		}
+		hostIface, ok := hostMACs[canon]
+		if !ok || hostIface == "" {
+			return
+		}
+		port := ifName(ifIndex)
+		if port == "" {
+			return
+		}
+		groups[canon] = append(groups[canon], heard{
+			ifName:     port,
+			hostIface:  hostIface,
+			basis:      basis,
+			confidence: confidence,
 		})
 	}
 
+	for _, e := range res.fdb {
+		add(e.MAC, e.IfIndex, "fdb", resolveConfidenceFDB)
+	}
+	for _, e := range res.arp {
+		add(e.MAC, e.IfIndex, "arp", resolveConfidenceARPNDP)
+	}
+	if len(groups) == 0 {
+		return obs
+	}
+
+	macs := make([]string, 0, len(groups))
+	for mac := range groups {
+		macs = append(macs, mac)
+	}
+	sort.Strings(macs)
+
+	for _, mac := range macs {
+		entries := groups[mac]
+		id := map[string]any{idKeyNetworkDevice: res.deviceID, idKeyNeighborMAC: mac}
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type:  entityTypeNetworkNeighbor,
+			ID:    id,
+			Scope: entity.ScopeSNMPIFMIB,
+		})
+
+		seenNeighborOf := map[string]bool{}
+		seenResolves := map[string]bool{}
+		for _, e := range entries {
+			if !seenNeighborOf[e.ifName] {
+				seenNeighborOf[e.ifName] = true
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relNeighborOf,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     interfacePortKey(res.deviceID, e.ifName),
+				})
+			}
+
+			key := e.basis + "\x00" + e.hostIface
+			if !seenResolves[key] {
+				seenResolves[key] = true
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relResolvesTo,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     map[string]any{idKeyHost: hostID, idKeyInterfaceName: e.hostIface},
+					Attributes: map[string]any{
+						attrBasis:      e.basis,
+						attrConfidence: e.confidence,
+					},
+				})
+			}
+		}
+	}
 	return obs
 }
 
@@ -850,4 +1184,62 @@ func vendorName(pen string) string {
 	default:
 		return ""
 	}
+}
+
+func (s *snmpEntitySource) buildQuiet(res sweepResult, now time.Time) entity.Observation {
+	obs, _ := s.build(res, now)
+	return obs
+}
+
+// droppedEntities returns the entities of before that after no longer holds.
+// After a partial sweep these are what the failed walk could not read, so
+// they leave as unmonitored rather than as seen gone.
+func droppedEntities(before, after entity.Observation) []entity.Entity {
+	kept := make(map[string]bool, len(after.Entities))
+	for _, e := range after.Entities {
+		kept[entityIdentity(e)] = true
+	}
+	var out []entity.Entity
+	for _, e := range before.Entities {
+		if !kept[entityIdentity(e)] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func entityIdentity(e entity.Entity) string {
+	keys := make([]string, 0, len(e.ID))
+	for k := range e.ID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(e.Type)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "|%s=%v", k, e.ID[k])
+	}
+	return b.String()
+}
+
+// DepartureReason implements entity.DepartureSource: a device's neighbours
+// come from its ARP and bridge tables, caches that forget idle entries, so a
+// neighbour that stops being listed aged out, not seen to leave. Devices,
+// interfaces and routes keep the default.
+func (s *snmpEntitySource) DepartureReason(e entity.Entity) string {
+	if e.Type == entityTypeNetworkNeighbor {
+		return entity.ReasonAgedOut
+	}
+	return ""
+}
+
+var (
+	_ entity.DepartureSource  = (*snmpEntitySource)(nil)
+	_ entity.UnobservedSource = (*snmpEntitySource)(nil)
+)
+
+func (s *snmpEntitySource) discoveryView() (entity.Observation, bool) {
+	s.discMu.Lock()
+	defer s.discMu.Unlock()
+	return s.discObs, s.discRan
 }
