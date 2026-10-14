@@ -322,3 +322,47 @@ func TestRouteEntities_DropRoutesCarryNoEgress(t *testing.T) {
 		}
 	}
 }
+
+// TestLinkPrivateNextHops checks a route to a private gateway gains its
+// next_hop_via only when the observation holds that address bound to a
+// polled device's interface.
+func TestLinkPrivateNextHops(t *testing.T) {
+	route := func(dst, nh string) entity.Entity {
+		return entity.Entity{Type: entityTypeNetworkRoute,
+			ID:         map[string]any{idKeyNetworkDevice: "serial:9:R1", idKeyRouteDestination: dst, attrNextHopIP: nh},
+			Attributes: map[string]any{attrRouteType: "remote"}}
+	}
+	obs := entity.Observation{
+		Entities: []entity.Entity{
+			route("10.98.0.0/24", "10.0.12.2"), // R2's address, polled by this agent
+			route("10.97.0.0/24", "10.0.13.3"), // unknown private gateway
+			route("10.96.0.0/24", "10.0.14.4"), // bound to a HOST interface only
+		},
+		Relations: []entity.Relation{
+			{Type: relBoundTo, FromType: entityTypeNetworkAddress, FromID: map[string]any{idKeyNetworkAddress: "10.0.12.2"},
+				ToType: entityTypeNetworkInterface, ToID: map[string]any{idKeyNetworkDevice: "serial:9:R2", idKeyInterfaceName: "Ethernet1"}},
+			{Type: relBoundTo, FromType: entityTypeNetworkAddress, FromID: map[string]any{idKeyNetworkAddress: "10.0.14.4"},
+				ToType: entityTypeNetworkInterface, ToID: map[string]any{"host.id": "h1", idKeyInterfaceName: "eth0"}},
+		},
+	}
+	linkPrivateNextHops(&obs)
+	var via []string
+	for _, r := range obs.Relations {
+		if r.Type == relNextHopVia {
+			via = append(via, r.ToID[idKeyNetworkAddress].(string))
+		}
+	}
+	if len(via) != 1 || via[0] != "10.0.12.2" {
+		t.Fatalf("next_hop_via targets = %v, want only 10.0.12.2", via)
+	}
+	linkPrivateNextHops(&obs)
+	n := 0
+	for _, r := range obs.Relations {
+		if r.Type == relNextHopVia {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("a second pass must not duplicate the edge, got %d", n)
+	}
+}

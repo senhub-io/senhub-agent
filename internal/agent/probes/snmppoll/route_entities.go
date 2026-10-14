@@ -1,8 +1,10 @@
 package snmppoll
 
 import (
+	"fmt"
 	"net"
 	"sort"
+	"strings"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -240,4 +242,73 @@ func applyRouteCounters(obs *entity.Observation, deviceID string, omitted, limit
 			return
 		}
 	}
+}
+
+// linkPrivateNextHops adds the next_hop_via a route to a private gateway
+// lacks when this same observation holds that address bound to an
+// interface of a device the agent polled. Router-to-router links are
+// almost always private, and without the edge a path stopped at every
+// router; but a private address is not a unique identity, so the edge is
+// only asserted when the agent holds both ends itself, as for the host's
+// own gateway. Two sites reusing one range behind one agent remain a
+// known limit: the consumer refuses to cross an address entered and left
+// by bound_to, so the collision reads as a named convergence, not a path.
+func linkPrivateNextHops(obs *entity.Observation) {
+	bound := map[string]bool{}
+	for _, r := range obs.Relations {
+		if r.Type == relBoundTo && r.FromType == entityTypeNetworkAddress && r.ToType == entityTypeNetworkInterface {
+			if _, onDevice := r.ToID[idKeyNetworkDevice]; !onDevice {
+				continue
+			}
+			if ip, ok := r.FromID[idKeyNetworkAddress].(string); ok {
+				bound[ip] = true
+			}
+		}
+	}
+	if len(bound) == 0 {
+		return
+	}
+	linked := map[string]bool{}
+	for _, r := range obs.Relations {
+		if r.Type == relNextHopVia && r.FromType == entityTypeNetworkRoute {
+			linked[entityKeyString(r.FromID)] = true
+		}
+	}
+	var add []entity.Relation
+	for _, e := range obs.Entities {
+		if e.Type != entityTypeNetworkRoute || linked[entityKeyString(e.ID)] {
+			continue
+		}
+		rt, _ := e.Attributes[attrRouteType].(string)
+		if rt != "remote" && rt != "other" {
+			continue
+		}
+		gw, _ := e.ID[attrNextHopIP].(string)
+		if c, ok := entity.CanonicalIP(gw); ok {
+			gw = c
+		}
+		if !bound[gw] {
+			continue
+		}
+		add = append(add, entity.Relation{
+			Type:     relNextHopVia,
+			FromType: entityTypeNetworkRoute, FromID: e.ID,
+			ToType: entityTypeNetworkAddress, ToID: map[string]any{idKeyNetworkAddress: gw},
+		})
+	}
+	obs.Relations = append(obs.Relations, add...)
+}
+
+// entityKeyString renders an identity map in a stable order for set keys.
+func entityKeyString(id map[string]any) string {
+	keys := make([]string, 0, len(id))
+	for k := range id {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&b, "%s=%v;", k, id[k])
+	}
+	return b.String()
 }
