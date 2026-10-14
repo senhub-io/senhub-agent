@@ -102,12 +102,14 @@ type config struct {
 
 // discoveryConfig is the validated "discovery:" block.
 type discoveryConfig struct {
-	Seeds        []string         // entry device IPs
-	Profile      discoveryProfile // single credential profile for discovered devices
-	MaxDevices   int              // hard cap on discovered devices
-	MaxHops      int              // BFS depth bound
-	AllowedCIDRs []*net.IPNet     // neighbours are crawled only within these
-	Interval     time.Duration    // crawl cadence; 0 → topology interval
+	Seeds           []string         // entry device IPs
+	SeedFromHost    bool             // add the host's default gateways as seeds
+	Profile         discoveryProfile // single credential profile for discovered devices
+	MaxDevices      int              // hard cap on discovered devices
+	MaxHops         int              // BFS depth bound
+	AllowedCIDRs    []*net.IPNet     // neighbours are crawled only within these
+	AllowedFromHost bool             // use the host's own private networks as bounds
+	Interval        time.Duration    // crawl cadence; 0 → topology interval
 
 	// GovernanceRules assign operator metadata to discovered devices by matching
 	// their facts (CIDR / vendor / sysName). Empty when no rules are configured.
@@ -354,9 +356,9 @@ func parseCustomMappings(v interface{}, haveMIBs bool) ([]customMapping, error) 
 }
 
 // parseDiscovery validates the optional "discovery:" block. Returns nil when
-// absent (single-target mode). Requires seeds (valid IPs), a v2c profile with a
-// community, and at least one allowed CIDR so the crawl cannot wander off the
-// managed network; max_devices / max_hops default to 200 / 4.
+// absent (single-target mode). Seeds and allowed_cidrs are optional: by
+// default the crawl starts from the host's default gateways and is bounded by
+// the host's own private connected networks.
 func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 	if v == nil {
 		return nil, nil
@@ -366,16 +368,28 @@ func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 		return nil, fmt.Errorf("'discovery' must be a mapping")
 	}
 
-	d := &discoveryConfig{MaxDevices: defaultMaxDevices, MaxHops: defaultMaxHops}
+	d := &discoveryConfig{
+		MaxDevices:   defaultMaxDevices,
+		MaxHops:      defaultMaxHops,
+		SeedFromHost: true,
+	}
+
+	if _, present := m["seed_from_host"]; present {
+		b, ok := types.BoolParam(m, "seed_from_host")
+		if !ok {
+			return nil, fmt.Errorf("discovery.seed_from_host must be true or false")
+		}
+		d.SeedFromHost = b
+	}
 
 	seeds, err := parseIPList(m["seeds"])
 	if err != nil {
 		return nil, fmt.Errorf("discovery.seeds: %w", err)
 	}
-	if len(seeds) == 0 {
-		return nil, fmt.Errorf("discovery.seeds is required (at least one entry device IP)")
-	}
 	d.Seeds = seeds
+	if len(seeds) == 0 && !d.SeedFromHost {
+		return nil, fmt.Errorf("discovery needs seeds or seed_from_host")
+	}
 
 	prof, ok := toStringMap(m["profile"])
 	if !ok {
@@ -400,10 +414,8 @@ func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("discovery.allowed_cidrs: %w", err)
 	}
-	if len(cidrs) == 0 {
-		return nil, fmt.Errorf("discovery.allowed_cidrs is required (bounds the crawl to the managed network)")
-	}
 	d.AllowedCIDRs = cidrs
+	d.AllowedFromHost = len(cidrs) == 0
 
 	if n, ok := types.IntParam(m, "max_devices"); ok {
 		if n <= 0 {

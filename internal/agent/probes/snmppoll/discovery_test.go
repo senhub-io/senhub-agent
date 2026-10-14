@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -106,6 +107,8 @@ type deviceFixture struct {
 	entPhysicalIndex string
 	localPorts       map[string]string // lldpLocPortNum -> port name
 	neighbors        []fixtureNeighbor
+	ifNames          map[string]string // ifIndex -> ifName
+	ipAddrs          map[string]string // IPv4 address -> ifIndex
 }
 
 // ipToOctets converts an IPv4 address to its four decimal octets (for the
@@ -206,6 +209,14 @@ func (d deviceFixture) walkRawData() map[string][]snmpRawBind {
 	}
 	if len(lldpMan) > 0 {
 		data[lldpRemManAddrIfId] = lldpMan
+	}
+
+	for idx, name := range d.ifNames {
+		data[ifName] = append(data[ifName], rawBind(ifName+"."+idx, gosnmp.OctetString, []byte(name)))
+	}
+	for ip, idx := range d.ipAddrs {
+		n, _ := strconv.Atoi(idx)
+		data[ipAdEntIfIndex] = append(data[ipAdEntIfIndex], rawBind(ipAdEntIfIndex+"."+ip, gosnmp.Integer, n))
 	}
 
 	return data

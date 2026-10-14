@@ -32,12 +32,13 @@ func init() {
 				{Key: "index_label", Kind: probes.KindString, Description: "Walk the OID as a table and tag rows with this label"},
 			}},
 			{Key: "discovery", Kind: probes.KindBlock, Group: "discovery", Description: "Topology crawl from seed devices: every device found through LLDP, within allowed_cidrs, is put on the map (topology only, no metrics)", Fields: []probes.ParamSpec{
-				{Key: "seeds", Kind: probes.KindStringList, Required: true, Description: "Entry-point device addresses"},
+				{Key: "seeds", Kind: probes.KindStringList, Description: "Entry-point device addresses; default: the host's default gateways"},
+				{Key: "seed_from_host", Kind: probes.KindBool, Default: true, Description: "Add the host's default gateways as crawl seeds"},
 				{Key: "profile", Kind: probes.KindBlock, Required: true, Description: "Credentials for crawled devices (v2c only)", Fields: []probes.ParamSpec{
 					{Key: "version", Kind: probes.KindString, Default: "v2c", Enum: []string{"v2c", "2c", "2"}, Description: "SNMP version used to probe the discovered devices"},
 					{Key: "community", Kind: probes.KindString, Required: true, Secret: true, Description: "Community string used to probe the discovered devices"},
 				}},
-				{Key: "allowed_cidrs", Kind: probes.KindStringList, Required: true, Description: "The crawl never leaves these ranges"},
+				{Key: "allowed_cidrs", Kind: probes.KindStringList, Description: "The crawl never leaves these ranges; default: the host's own private networks"},
 				{Key: "max_devices", Kind: probes.KindInt, Default: 200, Description: "Hard cap on the number of discovered devices"},
 				{Key: "max_hops", Kind: probes.KindInt, Default: 4, Description: "Crawl depth from the seeds"},
 				{Key: "interval", Kind: probes.KindDuration, Description: "Crawl cadence; topology_interval by default"},

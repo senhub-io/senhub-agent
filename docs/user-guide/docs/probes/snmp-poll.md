@@ -18,8 +18,8 @@ named port (LLDP port ID subtype interface name or locally assigned);
 a port known only by its MAC address is not linked.
 
 One probe instance polls one device for its metrics. With a `discovery`
-block it also crawls the network outward from seed devices and puts every
-device it finds on the map, with its interfaces and links (see
+block it also crawls the network outward from seed devices (by default the
+host's gateways) and puts every device it finds on the map, with its interfaces and links (see
 [Discovery](#discovery)).
 
 ## Quick start
@@ -42,7 +42,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:bc8a145145a9e1c36c6101f20996f2adcd3c1bee4477d4698c8caa8b05e87bf0 -->
+<!-- sha256:c6d235a1e3caab692da04a39b3fa36e85aa4e1e1e6671211823fec3bf09700a7 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -68,11 +68,12 @@ one series per interface (`if_index` tag).
 | `custom_mappings[].type` | No | `gauge` | How the value is reported: a gauge as read, a counter as a monotonic total. One of `gauge`, `counter` |
 | `custom_mappings[].index_label` | No | - | Walk the OID as a table and tag rows with this label |
 | `discovery` | No | - | Topology crawl from seed devices: every device found through LLDP, within allowed_cidrs, is put on the map (topology only, no metrics) |
-| `discovery.seeds` | Yes | - | Entry-point device addresses |
+| `discovery.seeds` | No | - | Entry-point device addresses; default: the host's default gateways |
+| `discovery.seed_from_host` | No | `true` | Add the host's default gateways as crawl seeds |
 | `discovery.profile` | Yes | - | Credentials for crawled devices (v2c only) |
 | `discovery.profile.version` | No | `v2c` | SNMP version used to probe the discovered devices. One of `v2c`, `2c`, `2` |
 | `discovery.profile.community` | Yes | - | Community string used to probe the discovered devices. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `discovery.allowed_cidrs` | Yes | - | The crawl never leaves these ranges |
+| `discovery.allowed_cidrs` | No | - | The crawl never leaves these ranges; default: the host's own private networks |
 | `discovery.max_devices` | No | `200` | Hard cap on the number of discovered devices |
 | `discovery.max_hops` | No | `4` | Crawl depth from the seeds |
 | `discovery.interval` | No | - | Crawl cadence; topology_interval by default |
@@ -170,6 +171,28 @@ device, its interfaces and addresses, its routes and its LLDP links.
 Discovered devices give topology only, no metrics: metrics stay with
 the polled `target`.
 
+The credentials are the only thing the block needs. Without `seeds`, the
+crawl starts from the default gateways of the host the agent runs on;
+without `allowed_cidrs`, it stays inside the host's own private networks
+(a network wider than /16 is narrowed to the /16 around the host's
+address). Both are read again at every run, so a gateway change is
+followed:
+
+```yaml
+params:
+  target: 192.168.1.10
+  discovery:
+    profile:
+      community: "${secret:snmp.community}"
+```
+
+The gateway's address is reported as the same `network.address` node the
+host's default route points to, so the host and its network meet on the
+map without further configuration.
+
+Give `seeds` and `allowed_cidrs` to crawl elsewhere or wider. With
+`seed_from_host: false` only the listed seeds are used:
+
 ```yaml
 params:
   target: 192.168.1.10
@@ -186,7 +209,8 @@ params:
 
 `max_devices` is a hard cap on discovered devices and `max_hops` bounds
 the crawl depth from the seeds. Only neighbors inside `allowed_cidrs` are
-followed (seeds are always polled), at most four devices are polled at a
+followed (configured seeds are always polled; a host gateway outside the
+ranges is not), at most four devices are polled at a
 time, and the crawl runs every `interval` of the block (the topology
 interval by default), never overlapping itself. A device that stops
 answering stays on the map for two more runs, so one lost UDP exchange
@@ -282,6 +306,7 @@ series' tags.
 | `senhub.snmp.discovery.runs` | `snmp_poll_discovery_runs` | SNMP {instance} Discovery Runs | # | Discovery crawls run since the agent started |
 | `senhub.snmp.discovery.duration` | `snmp_poll_discovery_last_duration_seconds` | SNMP {instance} Discovery Duration | s | Wall-clock time of the last discovery crawl |
 | `senhub.snmp.discovery.failures` | `snmp_poll_discovery_failures` | SNMP {instance} Discovery Failures {reason} | # | Devices the crawl could not use since the agent started, by reason: unreachable (no SNMP answer) or identity (no device id resolvable) |
+| `senhub.snmp.discovery.seeds` | `snmp_poll_discovery_seeds` | SNMP {instance} Discovery Seeds {source} | # | Seeds the last discovery crawl started from, by source: configured (discovery.seeds) or host (the host's default gateways) |
 | `snmp.sys.uptime` | `snmp.sys.uptime` | SNMP {instance} Uptime | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
 | `snmp.interface.in_octets` | `snmp.interface.in_octets` | SNMP {instance} IF{if_index} In Octets | bytes | ifInOctets — total octets received on the interface |
 | `snmp.interface.out_octets` | `snmp.interface.out_octets` | SNMP {instance} IF{if_index} Out Octets | bytes | ifOutOctets — total octets transmitted on the interface |

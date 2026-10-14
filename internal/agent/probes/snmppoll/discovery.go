@@ -27,6 +27,7 @@ const (
 	metricDiscoveryRuns                = "snmp_poll_discovery_runs"
 	metricDiscoveryLastDurationSeconds = "snmp_poll_discovery_last_duration_seconds"
 	metricDiscoveryFailures            = "snmp_poll_discovery_failures"
+	metricDiscoverySeeds               = "snmp_poll_discovery_seeds"
 )
 
 type discoveryMetrics struct {
@@ -36,6 +37,8 @@ type discoveryMetrics struct {
 	lastDuration        time.Duration
 	failuresUnreachable uint64
 	failuresIdentity    uint64
+	seedsConfigured     int
+	seedsHost           int
 }
 
 func (m *discoveryMetrics) record(devices int, d time.Duration) {
@@ -44,6 +47,13 @@ func (m *discoveryMetrics) record(devices int, d time.Duration) {
 	m.devices = devices
 	m.runs++
 	m.lastDuration = d
+}
+
+func (m *discoveryMetrics) recordSeeds(configured, host int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seedsConfigured = configured
+	m.seedsHost = host
 }
 
 func (m *discoveryMetrics) addFailure(reason string) {
@@ -61,6 +71,12 @@ func (m *discoveryMetrics) snapshot() (devices int, runs uint64, last time.Durat
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.devices, m.runs, m.lastDuration, m.failuresUnreachable, m.failuresIdentity
+}
+
+func (m *discoveryMetrics) snapshotSeeds() (configured, host int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.seedsConfigured, m.seedsHost
 }
 
 // discoveredState is the last good observation of one discovered device
@@ -106,12 +122,96 @@ func (p *snmppollProbe) runDiscovery(ctx context.Context) {
 
 	start := time.Now()
 	dcfg := p.cfg.Discovery
-	bounds := crawlBounds{MaxDevices: dcfg.MaxDevices, MaxHops: dcfg.MaxHops, Allowed: dcfg.AllowedCIDRs}
+
+	allowed := dcfg.AllowedCIDRs
+	var hostGateways []string
+	hostScope := p.hostScope
+	if hostScope == nil {
+		hostScope = defaultHostScope
+	}
+	if dcfg.SeedFromHost || dcfg.AllowedFromHost {
+		// A partial read still counts: a platform without a route reader
+		// has no gateway but still bounds the crawl to its own networks.
+		gws, nets, err := hostScope()
+		if err != nil {
+			p.hostScopeErrStreak++
+			if p.hostScopeErrStreak == 1 {
+				p.moduleLogger.Warn().Err(err).Int("gateways", len(gws)).Int("networks", len(nets)).
+					Msg("discovery: host scope partly unreadable; using what was read and the configured seeds")
+			}
+		} else {
+			p.hostScopeErrStreak = 0
+		}
+		hostGateways = gws
+		if dcfg.AllowedFromHost {
+			allowed = nets
+		}
+	}
+
+	configuredSeeds := dedupeStrings(dcfg.Seeds)
+	hostSeeds := []string{}
+	if dcfg.SeedFromHost {
+		for _, gw := range hostGateways {
+			if inAllowedCIDR(gw, allowed) {
+				hostSeeds = append(hostSeeds, gw)
+			}
+		}
+		hostSeeds = dedupeStrings(hostSeeds)
+	}
+
+	seeds := append([]string{}, configuredSeeds...)
+	seenSeeds := map[string]bool{}
+	for _, s := range configuredSeeds {
+		seenSeeds[s] = true
+	}
+	hostSeedsUsed := 0
+	for _, s := range hostSeeds {
+		if !seenSeeds[s] {
+			seenSeeds[s] = true
+			seeds = append(seeds, s)
+			hostSeedsUsed++
+		}
+	}
+	p.discoveryMet.recordSeeds(len(configuredSeeds), hostSeedsUsed)
+
+	if len(seeds) == 0 {
+		p.noSeedStreak++
+		if p.noSeedStreak == 1 {
+			p.moduleLogger.Info().Msg("no seed for this run")
+		}
+
+		// Keep the previous observation retention logic unchanged: an empty
+		// crawl ages known devices out after the usual miss grace.
+		obs := p.retainRecentlySeen(nil)
+		if p.entitySource != nil {
+			p.entitySource.setDiscoveryObservation(obs)
+		}
+
+		elapsed := time.Since(start)
+		p.discoveryMet.record(0, elapsed)
+
+		if elapsed > p.discoveryInterval() {
+			p.moduleLogger.Warn().
+				Dur("elapsed", elapsed).
+				Dur("interval", p.discoveryInterval()).
+				Msg("discovery run exceeded interval; next run starts after a full interval")
+		}
+
+		p.moduleLogger.Info().
+			Int("devices", 0).
+			Int("devices_kept", len(p.discovered)).
+			Dur("duration", elapsed).
+			Msg("discovery run completed")
+		return
+	}
+	p.noSeedStreak = 0
+
+	bounds := crawlBounds{MaxDevices: dcfg.MaxDevices, MaxHops: dcfg.MaxHops, Allowed: allowed}
 
 	poll := func(target string) (string, []string) {
 		return p.crawlPollDevice(ctx, target)
 	}
-	discovered := crawlWithWorkers(dcfg.Seeds, poll, bounds, discoveryMaxConcurrent)
+	discovered := crawlWithWorkers(seeds, poll, bounds, discoveryMaxConcurrent)
 	discovered = p.filterOwnTarget(discovered)
 	answered := 0
 
@@ -380,6 +480,7 @@ func applyDiscoveredGovernance(obs *entity.Observation, rules governance.Rules, 
 
 func (p *snmppollProbe) discoveryDataPoints(now time.Time) []data_store.DataPoint {
 	devices, runs, last, unreachable, identity := p.discoveryMet.snapshot()
+	configuredSeeds, hostSeeds := p.discoveryMet.snapshotSeeds()
 	baseTags := discoveryMetricTags(p.instance)
 
 	return []data_store.DataPoint{
@@ -388,11 +489,25 @@ func (p *snmppollProbe) discoveryDataPoints(now time.Time) []data_store.DataPoin
 		{Name: metricDiscoveryLastDurationSeconds, Timestamp: now, Value: last.Seconds(), Tags: baseTags},
 		{Name: metricDiscoveryFailures, Timestamp: now, Value: float64(unreachable), Tags: append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "reason", Value: "unreachable"})},
 		{Name: metricDiscoveryFailures, Timestamp: now, Value: float64(identity), Tags: append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "reason", Value: "identity"})},
+		{Name: metricDiscoverySeeds, Timestamp: now, Value: float64(configuredSeeds), Tags: append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "source", Value: "configured"})},
+		{Name: metricDiscoverySeeds, Timestamp: now, Value: float64(hostSeeds), Tags: append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "source", Value: "host"})},
 	}
 }
 
 func discoveryMetricTags(instance string) []tags.Tag {
 	return statusTags(instance)
+}
+
+func dedupeStrings(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // crawlWithWorkers is a worker-pool BFS crawl preserving crawl's deterministic

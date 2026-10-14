@@ -100,6 +100,21 @@ metrics:
       instance: snmp.target
       reason: reason
 
+  - name: "snmp_poll_discovery_seeds"
+    channel: "snmp_discovery_seeds_{source}"
+    display_name: "SNMP {instance} Discovery Seeds {source}"
+    unit: "#"
+    category: "status"
+    multi_instance_labels: ["source"]
+    description: "Seeds the last discovery crawl started from, by source: configured (discovery.seeds) or host (the host's default gateways)"
+    otel:
+      name: senhub.snmp.discovery.seeds
+      unit: "{seed}"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+      source: source
+
   # System group (MIB-II 1.3.6.1.2.1.1)
   - name: "snmp.sys.uptime"
     channel: "snmp_sys_uptime"
