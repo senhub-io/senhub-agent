@@ -269,15 +269,15 @@ func TestDeleteReason_UnobservedPartOfAnAnsweringSource_Unmonitored(t *testing.T
 	}
 }
 
-// departureFake is a source reading a cache: what it stops listing was
-// evicted, not seen to leave.
+// departureFake is a source reading a cache: what it stops listing aged
+// out, not seen to leave.
 type departureFake struct{ fakeSource }
 
-func (*departureFake) DepartureReason(Entity) string { return ReasonEvicted }
+func (*departureFake) DepartureReason(Entity) string { return ReasonAgedOut }
 
 // A neighbour forgotten by the ARP cache must not read as having ended, also
 // through the governance wrapper every probe source is registered with.
-func TestDeleteReason_CacheSourceDropsAsEvicted(t *testing.T) {
+func TestDeleteReason_CacheSourceDropsAsAgedOut(t *testing.T) {
 	for _, wrap := range []struct {
 		name string
 		fn   func(Source) Source
@@ -307,8 +307,8 @@ func TestDeleteReason_CacheSourceDropsAsEvicted(t *testing.T) {
 			if !ok {
 				t.Fatalf("no delete for the entity; got %d events", len(got))
 			}
-			if del.DeleteReason != ReasonEvicted {
-				t.Errorf("DeleteReason = %q, want %q", del.DeleteReason, ReasonEvicted)
+			if del.DeleteReason != ReasonAgedOut {
+				t.Errorf("DeleteReason = %q, want %q", del.DeleteReason, ReasonAgedOut)
 			}
 		})
 	}

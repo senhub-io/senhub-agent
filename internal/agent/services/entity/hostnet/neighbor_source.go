@@ -208,6 +208,6 @@ func sortedSet(m map[string]bool) []string {
 // DepartureReason implements entity.DepartureSource: the source reads the
 // kernel's neighbour cache, so a neighbour it stops listing was forgotten by
 // the cache, not seen to leave.
-func (s *NeighborSource) DepartureReason(entity.Entity) string { return entity.ReasonEvicted }
+func (s *NeighborSource) DepartureReason(entity.Entity) string { return entity.ReasonAgedOut }
 
 var _ entity.DepartureSource = (*NeighborSource)(nil)
