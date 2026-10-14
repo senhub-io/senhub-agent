@@ -130,8 +130,9 @@ func (p *InfluxDBProbe) OnShutdown(_ context.Context) error {
 // value), never returned as a collection error.
 func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	baseTags := []tags.Tag{
-		{Key: "db.instance.id", Value: p.entitySrc.InstanceID()},
+	baseTags := []tags.Tag{}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "db.instance.id", Value: id})
 	}
 
 	var points []data_store.DataPoint

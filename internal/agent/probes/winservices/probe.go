@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -74,6 +75,8 @@ type serviceState struct {
 // (collector_other.go) returns an error so a non-Windows host fails loudly.
 type collectFunc func(selected []string) ([]serviceState, error)
 
+type hostIDFunc func() string
+
 // WinServicesProbeConfig captures the operator-supplied options from the
 // probe YAML `params` block.
 type WinServicesProbeConfig struct {
@@ -93,6 +96,7 @@ type WinServicesProbe struct {
 	collect      collectFunc
 
 	entitySource *winServicesEntitySource
+	getHostID    hostIDFunc
 
 	// reportedMissing holds the selected names already reported as not
 	// found, so each is logged once rather than every cycle.
@@ -116,10 +120,18 @@ func NewWinServicesProbe(config map[string]interface{}, baseLogger *logger.Logge
 		moduleLogger: moduleLogger,
 		collect:      collectServices,
 		entitySource: newEntitySource(),
+		getHostID:    defaultHostID,
 	}
 	probe.SetProbeType(ProbeType)
 	probe.SetEntitySource(probe.entitySource)
 	return probe, nil
+}
+
+func defaultHostID() string {
+	if hi, err := common.GetHostIdentity(); err == nil {
+		return hi.ID
+	}
+	return ""
 }
 
 func parseConfig(config map[string]interface{}) (WinServicesProbeConfig, error) {
@@ -164,10 +176,7 @@ func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	up := float64(1)
 
-	hostID := ""
-	if hi, err := common.GetHostIdentity(); err == nil {
-		hostID = hi.ID
-	}
+	hostID := p.getHostID()
 	p.entitySource.setHostID(hostID)
 
 	states, err := p.collect(p.config.Services)
@@ -177,7 +186,8 @@ func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	points := []data_store.DataPoint{
-		{Name: "senhub.winservices.up", Value: up, Timestamp: now, Tags: statusTags()},
+		{Name: "senhub.winservices.up", Value: up, Timestamp: now, Tags: p.statusTags()},
+		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(err)), Timestamp: now, Tags: p.statusTags()},
 	}
 	for _, s := range states {
 		points = append(points, p.buildServiceDatapoints(s, now)...)
@@ -233,10 +243,16 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time) 
 	return points
 }
 
-func statusTags() []tags.Tag {
-	return []tags.Tag{
-		{Key: "metric_type", Value: "status"},
+func (p *WinServicesProbe) baseTags() []tags.Tag {
+	if id := p.entitySource.serviceInstanceID(); id != "" {
+		return []tags.Tag{{Key: idKeyServiceInstanceID, Value: id}}
 	}
+	return nil
+}
+
+func (p *WinServicesProbe) statusTags() []tags.Tag {
+	t := p.baseTags()
+	return append(t, tags.Tag{Key: "metric_type", Value: "status"})
 }
 
 func (p *WinServicesProbe) String() string {

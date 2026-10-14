@@ -60,6 +60,11 @@ func newHAProxyEntitySource(addr string, port int, instanceName, hostID string) 
 	}
 }
 
+// InstanceID returns the stable service.instance.id used in the entity ID map.
+func (s *haproxyEntitySource) InstanceID() string {
+	return s.instanceID
+}
+
 // setReachable updates the liveness flag.
 // Called from Collect; safe to call concurrently with Observe.
 func (s *haproxyEntitySource) setReachable(up bool) {

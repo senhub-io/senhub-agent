@@ -1,4 +1,3 @@
-// jolokia.go — minimal Jolokia HTTP client for this probe
 package tomcat
 
 import (
@@ -13,6 +12,14 @@ type jolokiaResponse struct {
 	Value  json.RawMessage `json:"value"`
 	Status int             `json:"status"`
 	Error  string          `json:"error"`
+}
+
+type jolokiaHTTPError struct {
+	statusCode int
+}
+
+func (e *jolokiaHTTPError) Error() string {
+	return fmt.Sprintf("jolokia http status: %d", e.statusCode)
 }
 
 type jolokiaClient struct {
@@ -31,6 +38,9 @@ func (c *jolokiaClient) read(ctx context.Context, mbean, attribute string) (json
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, &jolokiaHTTPError{statusCode: resp.StatusCode}
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, err

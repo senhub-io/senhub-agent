@@ -73,6 +73,19 @@ metrics:
     tag_to_attribute:
       windows.service.name: windows.service.name
 
+  - name: "senhub.probe.check.result"
+    platforms: ["windows"]
+    channel: "check_result"
+    display_name: "Check Result"
+    unit: "#"
+    category: "status"
+    lookup: "senhub.probe.check.result"
+    description: "Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied"
+    otel:
+      name: senhub.probe.check.result
+      unit: "{status}"
+      type: gauge
+
 # Windows runs some services only when something asks for them, and keeps
 # per-session copies of others whose names change at every logon; those
 # stay out of discovery by default.

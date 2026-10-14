@@ -1,22 +1,9 @@
-// Package consul implements the free consul probe: monitoring of a
-// Consul agent via its HTTP API (v1/agent/metrics, v1/agent/self,
-// v1/health/state/*) — service discovery health, raft performance,
-// RPC/DNS counters, cluster member count, leader status.
-//
-// Metric parsing follows two paths:
-//   - Prometheus text exposition from /v1/agent/metrics?format=prometheus
-//     (Consul 1.1+) for counters and gauges.
-//   - JSON from /v1/health/state/* for per-state check counts and from
-//     /v1/agent/self for node metadata and leader status.
-//
-// A failing agent is always represented as senhub.consul.up=0 and
-// Collect never returns an error — a probe that cannot reach Consul
-// is itself a measurement.
 package consul
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +15,7 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -71,6 +59,17 @@ type agentSelf struct {
 			Leader string `json:"leader"`
 		} `json:"consul"`
 	} `json:"Stats"`
+}
+
+// httpStatusError records an unexpected Consul HTTP status so Check Result
+// can classify it by status code instead of as an opaque transport error.
+type httpStatusError struct {
+	url  string
+	code int
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("GET %s: unexpected status %d", e.url, e.code)
 }
 
 // ConsulProbe collects metrics from a single Consul agent HTTP API.
@@ -176,6 +175,30 @@ func (p *ConsulProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// classifyRequestError returns a check result, preferring the HTTP status when
+// the failure came from a non-200 Consul response.
+func classifyRequestError(err error) dbcommon.CheckResult {
+	if err == nil {
+		return dbcommon.CheckOK
+	}
+
+	var hsErr *httpStatusError
+	if errors.As(err, &hsErr) {
+		return dbcommon.ClassifyHTTPStatus(hsErr.code)
+	}
+	return dbcommon.ClassifyError(err)
+}
+
+func upsertTag(in []tags.Tag, override tags.Tag) []tags.Tag {
+	for i := range in {
+		if in[i].Key == override.Key {
+			in[i].Value = override.Value
+			return in
+		}
+	}
+	return append(in, override)
+}
+
 // Collect fetches all Consul API endpoints and assembles datapoints.
 // It always emits senhub.consul.up and returns nil — a connection
 // failure is a measurement, not a collection error.
@@ -184,6 +207,9 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	baseTags := []tags.Tag{
 		{Key: "metric_type", Value: "overview"},
 	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "service.instance.id", Value: id})
+	}
 
 	// Always emit the up metric.
 	up := float64(1)
@@ -191,10 +217,14 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 	var version string
 	var nodeID string
+	var checkErr error
 
 	// 1. Prometheus metrics from /v1/agent/metrics?format=prometheus
 	promPoints, err := p.collectPrometheusMetrics(now, baseTags)
 	if err != nil {
+		if checkErr == nil {
+			checkErr = err
+		}
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).
 			Msg("consul: failed to fetch prometheus metrics")
 		up = 0
@@ -207,6 +237,9 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	// the service.instance.id in the entity rail.
 	selfPoints, ver, nid, err := p.collectAgentSelf(now, baseTags)
 	if err != nil {
+		if checkErr == nil {
+			checkErr = err
+		}
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).
 			Msg("consul: failed to fetch agent/self")
 		up = 0
@@ -219,6 +252,9 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	// 3. Health check counts per state.
 	healthPoints, err := p.collectHealthChecks(now)
 	if err != nil {
+		if checkErr == nil {
+			checkErr = err
+		}
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).
 			Msg("consul: failed to fetch health states")
 		up = 0
@@ -234,7 +270,7 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// Prepend the up metric so it is always first.
-	all := make([]data_store.DataPoint, 0, 1+len(points))
+	all := make([]data_store.DataPoint, 0, 2+len(points))
 	all = append(all, data_store.DataPoint{
 		Name:      "senhub.consul.up",
 		Value:     up,
@@ -242,6 +278,19 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 		Tags:      baseTags,
 	})
 	all = append(all, points...)
+	all = append(all, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(classifyRequestError(checkErr)),
+		Timestamp: now,
+		Tags: []tags.Tag{
+			{Key: "metric_type", Value: "status"},
+		},
+	})
+
+	instanceID := p.entitySrc.InstanceID()
+	for i := range all {
+		all[i].Tags = upsertTag(all[i].Tags, tags.Tag{Key: "service.instance.id", Value: instanceID})
+	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(all, p.GetName()), nil
 }
@@ -266,7 +315,7 @@ func (p *ConsulProbe) get(url string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: unexpected status %d", url, resp.StatusCode)
+		return nil, &httpStatusError{url: url, code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))

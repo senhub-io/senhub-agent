@@ -77,5 +77,6 @@ series' tags.
 | `senhub.jenkins.node.executor.count` | `senhub.jenkins.node.executor.count` | Jenkins Executors {state} | # | Number of executors across online nodes by state (busy/free) |
 | `senhub.jenkins.queue.size` | `senhub.jenkins.queue.size` | Jenkins Queue Size | # | Number of items in the build queue |
 | `senhub.jenkins.queue.blocked` | `senhub.jenkins.queue.blocked` | Jenkins Queue Blocked | # | Number of blocked items in the build queue |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

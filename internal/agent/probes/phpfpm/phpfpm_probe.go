@@ -10,6 +10,7 @@ package phpfpm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -42,6 +44,15 @@ type fpmStatus struct {
 	TotalProcesses     int64  `json:"total processes"`
 	MaxChildrenReached int64  `json:"max children reached"`
 	SlowRequests       int64  `json:"slow requests"`
+}
+
+type httpStatusError struct {
+	url  string
+	code int
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("GET %s: HTTP %d", e.url, e.code)
 }
 
 type phpFPMProbe struct {
@@ -120,6 +131,13 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	return cfg, nil
 }
 
+func (p *phpFPMProbe) baseTags() []tags.Tag {
+	if id := p.entitySrc.InstanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
+}
+
 func (p *phpFPMProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
@@ -148,14 +166,26 @@ func (p *phpFPMProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 func (p *phpFPMProbe) collect(now time.Time) ([]data_store.DataPoint, error) {
-	status, err := p.fetchStatus()
-	if err != nil {
-		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("phpfpm status fetch failed")
+	status, fetchErr := p.fetchStatus()
+	result := dbcommon.CheckOK
+	if fetchErr != nil {
+		var httpErr *httpStatusError
+		if errors.As(fetchErr, &httpErr) {
+			result = dbcommon.ClassifyHTTPStatus(httpErr.code)
+		} else {
+			result = dbcommon.ClassifyError(fetchErr)
+		}
+	}
+
+	if fetchErr != nil {
+		p.moduleLogger.Warn().Err(fetchErr).Str("endpoint", p.cfg.Endpoint).Msg("phpfpm status fetch failed")
 		p.entitySrc.setReachable(false, "")
-		upTags := []tags.Tag{{Key: "metric_type", Value: "availability"}}
+		upTags := append(p.baseTags(), tags.Tag{Key: "metric_type", Value: "availability"})
+		checkTags := append(p.baseTags(), tags.Tag{Key: "metric_type", Value: "status"})
 		return []data_store.DataPoint{
 			{Name: "senhub.phpfpm.up", Value: 0, Timestamp: now, Tags: upTags},
-		}, err
+			{Name: dbcommon.CheckResultMetric, Value: float64(result), Timestamp: now, Tags: checkTags},
+		}, fetchErr
 	}
 	p.entitySrc.setReachable(true, "")
 
@@ -164,18 +194,9 @@ func (p *phpFPMProbe) collect(now time.Time) ([]data_store.DataPoint, error) {
 		poolTag = "unknown"
 	}
 
-	baseTags := []tags.Tag{
-		{Key: "pool", Value: poolTag},
-		{Key: "metric_type", Value: "availability"},
-	}
-	processTags := []tags.Tag{
-		{Key: "pool", Value: poolTag},
-		{Key: "metric_type", Value: "processes"},
-	}
-	connTags := []tags.Tag{
-		{Key: "pool", Value: poolTag},
-		{Key: "metric_type", Value: "connections"},
-	}
+	baseTags := append(p.baseTags(), tags.Tag{Key: "pool", Value: poolTag}, tags.Tag{Key: "metric_type", Value: "availability"})
+	processTags := append(p.baseTags(), tags.Tag{Key: "pool", Value: poolTag}, tags.Tag{Key: "metric_type", Value: "processes"})
+	connTags := append(p.baseTags(), tags.Tag{Key: "pool", Value: poolTag}, tags.Tag{Key: "metric_type", Value: "connections"})
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.phpfpm.up", Value: 1, Timestamp: now, Tags: baseTags},
@@ -189,6 +210,14 @@ func (p *phpFPMProbe) collect(now time.Time) ([]data_store.DataPoint, error) {
 		{Name: "phpfpm.processes.total", Value: float64(status.TotalProcesses), Timestamp: now, Tags: processTags},
 		{Name: "phpfpm.max_children_reached", Value: float64(status.MaxChildrenReached), Timestamp: now, Tags: connTags},
 	}
+
+	checkTags := append(p.baseTags(), tags.Tag{Key: "metric_type", Value: "status"})
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(result),
+		Timestamp: now,
+		Tags:      checkTags,
+	})
 	return points, nil
 }
 
@@ -233,7 +262,7 @@ func (p *phpFPMProbe) fetchStatus() (*fpmStatus, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
+		return nil, &httpStatusError{url: url, code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))

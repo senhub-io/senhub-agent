@@ -1,14 +1,3 @@
-// Package activemq implements the free activemq probe: monitors Apache
-// ActiveMQ brokers via the Jolokia HTTP REST API. Collects broker-level
-// resource usage and per-destination (queue/topic) message throughput.
-//
-// MBeans queried:
-//   - org.apache.activemq:type=Broker,brokerName=<name>  — broker overview
-//   - org.apache.activemq:type=Broker,brokerName=<name>,destinationType=Queue,destinationName=*
-//   - org.apache.activemq:type=Broker,brokerName=<name>,destinationType=Topic,destinationName=*
-//
-// Metric naming follows OTel-first convention (activemq.*); the probe status
-// sentinel lives under senhub.activemq.up (gauge, 1) and is always emitted.
 package activemq
 
 import (
@@ -23,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -210,7 +200,7 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 
-	brokerPoints, brokerID, err := p.collectBroker(ctx, now)
+	brokerPoints, _, err := p.collectBroker(ctx, now)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("activemq broker query failed")
 		p.entitySrc.setReachable(false, "")
@@ -224,13 +214,22 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 			Timestamp: now,
 			Tags:      p.baseTags("status"),
 		})
+		points = append(points, data_store.DataPoint{
+			Name:      dbcommon.CheckResultMetric,
+			Value:     float64(dbcommon.ClassifyError(err)),
+			Timestamp: now,
+			Tags:      p.baseTags("status"),
+		})
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	points = append(points, brokerPoints...)
 
-	// Pin the tech-reported BrokerId on the first successful collect.
-	// pinTechID is a no-op once the id is already resolved.
-	p.entitySrc.pinTechID(brokerID)
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     0,
+		Timestamp: now,
+		Tags:      p.baseTags("status"),
+	})
 
 	// Collect destinations and build the entity snapshot.
 	var dests []destinationSnapshot
@@ -264,11 +263,15 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 func (p *activemqProbe) baseTags(metricType string) []tags.Tag {
-	return []tags.Tag{
+	t := []tags.Tag{
 		{Key: "metric_type", Value: metricType},
 		{Key: "instance", Value: p.cfg.JolokiaURL},
 		{Key: "broker", Value: p.cfg.BrokerName},
 	}
+	if id := p.entitySrc.currentID(); id != "" {
+		t = append(t, tags.Tag{Key: "service.instance.id", Value: id})
+	}
+	return t
 }
 
 func (p *activemqProbe) brokerMBean() string {
@@ -304,9 +307,6 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 		{"activemq.temp.usage", "TempPercentUsage", 1.0},
 	}
 
-	statusTags := p.baseTags("status")
-	brokerTags := p.baseTags("overview")
-
 	var points []data_store.DataPoint
 
 	// Validate broker is reachable by reading one attribute first.
@@ -322,6 +322,16 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 		p.moduleLogger.Debug().Err(err).Msg("BrokerId attribute unavailable; entity id will use fallback")
 		brokerID = ""
 	}
+
+	// Pin the entity id before building any datapoint tags: telemetry must
+	// carry the same service.instance.id the entity source emits.
+	p.entitySrc.pinTechID(brokerID)
+	if brokerID == "" {
+		p.entitySrc.pinFallback()
+	}
+
+	statusTags := p.baseTags("status")
+	brokerTags := p.baseTags("overview")
 
 	points = append(points, data_store.DataPoint{
 		Name:      "senhub.activemq.up",

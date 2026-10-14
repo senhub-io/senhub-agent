@@ -232,3 +232,11 @@ func (s *kafkaEntitySource) Observe() (entity.Observation, bool) {
 
 	return obs, true
 }
+
+// instanceID returns the service.instance.id the entity carries, or "" until
+// it is pinned and the entity exists.
+func (s *kafkaEntitySource) instanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pinnedID
+}
