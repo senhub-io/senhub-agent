@@ -75,6 +75,11 @@ type Config struct {
 	// interface owning its MAC (resolves_to). Off by default: the consumer
 	// must first accept the relation's basis and confidence attributes.
 	NeighborsResolvesTo bool
+
+	// AggregationEnabled lets the interface sources link a LAG member to its
+	// aggregate (aggregated_into) and describe the membership. Off by
+	// default: the consumer must first register the relation.
+	AggregationEnabled bool
 }
 
 // Service is the lifecycle wrapper around the detector.
@@ -227,6 +232,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 		entity.RegisterSource(hostiface.New(hostIDFn)))
 
 	macindex.SetEnabled(cfg.NeighborsResolvesTo)
+	entity.SetAggregationEnabled(cfg.AggregationEnabled)
 	if cfg.NeighborsEnabled {
 		s.unregisters = append(s.unregisters, entity.RegisterSource(hostnet.NewNeighborSource(hostIDFn)))
 	}
@@ -313,6 +319,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 		Bool("depends_on", cfg.DependsOnEnabled).
 		Bool("neighbors", cfg.NeighborsEnabled).
 		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
+		Bool("aggregation", cfg.AggregationEnabled).
 		Msg("entity detection started")
 	return nil
 }
