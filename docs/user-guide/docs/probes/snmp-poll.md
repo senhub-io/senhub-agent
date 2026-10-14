@@ -52,7 +52,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:8e4189d935c497b5a56ad4c89c7500dada00a58579c3ef785a235b693e62282c -->
+<!-- sha256:9901d7c60779d5bf53036864a394918c2f131825e011491d96f1633ae337ed18 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -70,7 +70,7 @@ one series per interface (`if_index` tag).
 | `max_routes` | No | `500` | Maximum number of route entities emitted per device |
 | `timeout` | No | `5s` | Per-request timeout |
 | `interval` | No | `60s` | Metric polling cadence |
-| `topology_interval` | No | `10m` | Entity and topology sweep cadence |
+| `topology_interval` | No | `1m` | Entity and topology sweep cadence |
 | `mibs` | In practice | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
 | `mib_paths` | No | - | Local MIB files or folders used to name custom mappings |
 | `custom_mappings` | No | - | OID to metric mappings |

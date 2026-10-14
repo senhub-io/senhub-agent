@@ -142,7 +142,8 @@ same device derive byte-identical ids.
   SNMP management entity, failover-stable; a master-member serial would flap),
   and this also avoids latching onto a swappable module/PSU serial. Everything
   not chosen as the id goes in **descriptive attributes** (dotted lowercase,
-  frozen casing — `sys.name`, `sys.descr` (sysDescr.0), `mgmt.ip`,
+  frozen casing — `sys.name`, `sys.descr` (sysDescr.0) (not the polled
+  address: it depends on the observer and flapped between agents),
   `device.role` from the sysServices bitmask, `vendor` from the PEN, plus the
   chassis nameplate `hw.vendor`/`hw.model`/`hw.firmware_version` from
   ENTITY-MIB `entPhysicalMfgName`/`ModelName`/`FirmwareRev` of the **single**
