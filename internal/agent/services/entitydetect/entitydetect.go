@@ -30,6 +30,7 @@ import (
 	"senhub-agent.go/internal/agent/services/entity/hostiface"
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
 	"senhub-agent.go/internal/agent/services/entity/hostsvc"
+	"senhub-agent.go/internal/agent/services/entity/macindex"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -66,6 +67,20 @@ type Config struct {
 	DependsOnEnabled      bool
 	DependsOnDebounce     int
 	DependsOnExcludeCIDRs []*net.IPNet
+
+	// NeighborsEnabled gates the ARP/NDP neighbour source. Off by
+	// default: network.neighbor consumers are not deployed everywhere.
+	NeighborsEnabled bool
+
+	// NeighborsResolvesTo lets the neighbour sources link a neighbour to the
+	// interface owning its MAC (resolves_to). Off by default: the consumer
+	// must first accept the relation's basis and confidence attributes.
+	NeighborsResolvesTo bool
+
+	// AggregationEnabled lets the interface sources link a LAG member to its
+	// aggregate (aggregated_into) and describe the membership. Off by
+	// default: the consumer must first register the relation.
+	AggregationEnabled bool
 }
 
 // Service is the lifecycle wrapper around the detector.
@@ -227,6 +242,12 @@ func (s *Service) startLocked(ctx context.Context) error {
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
 		entity.RegisterSource(hostiface.New(hostIDFn)))
 
+	macindex.SetEnabled(cfg.NeighborsResolvesTo)
+	entity.SetAggregationEnabled(cfg.AggregationEnabled)
+	if cfg.NeighborsEnabled {
+		s.unregisters = append(s.unregisters, entity.RegisterSource(hostnet.NewNeighborSource(hostIDFn)))
+	}
+
 	if cfg.DependsOnEnabled {
 		dep := hostdep.New(hostIDFn, cfg.DependsOnDebounce, cfg.DependsOnExcludeCIDRs)
 		// Mapping a socket to its owning process reads /proc/<pid>/fd,
@@ -307,6 +328,9 @@ func (s *Service) startLocked(ctx context.Context) error {
 	s.logger.Info().
 		Dur("interval", cfg.Interval).
 		Bool("depends_on", cfg.DependsOnEnabled).
+		Bool("neighbors", cfg.NeighborsEnabled).
+		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
+		Bool("aggregation", cfg.AggregationEnabled).
 		Msg("entity detection started")
 	return nil
 }
