@@ -628,18 +628,26 @@ func (ts *tailState) markOpened(path string) {
 }
 
 // restartedAtStart records that the tail now reads the file at path from its
-// first byte. The offset and the file are replaced together: a look taken
-// between the two would pair the new file with the offset reached in the
-// old one, and a resume at that offset skips the start of the new file.
-func (ts *tailState) restartedAtStart(path string) {
+// first byte and returns the fingerprint at that moment ("" while the new
+// file is shorter than the fingerprint window). The offset, the file, and
+// the head fingerprint are replaced together: a look taken between the two
+// would pair the new file with the offset or hash reached in the old one,
+// and a resume at that offset skips or replays the start of the new file.
+func (ts *tailState) restartedAtStart(path string) string {
 	fi, err := os.Stat(path)
+	fp := ""
+	if err == nil {
+		fp = fingerprint(path, DefaultFingerprintLength)
+	}
 	ts.mu.Lock()
 	ts.offset.Store(0)
 	if err == nil {
 		ts.opened = fi
 	}
 	ts.checkedOffset = -1
+	ts.headFP = fp
 	ts.mu.Unlock()
+	return fp
 }
 
 // stillOnPath reports whether the file the tail reads is the one at path.
@@ -927,9 +935,7 @@ read:
 			} else {
 				p.debug().Err(err).Str("file", file).Msg("cannot open a drain handle on the new file")
 			}
-			ts.restartedAtStart(file)
-			fp = fingerprint(file, DefaultFingerprintLength)
-			ts.setHead(fp)
+			fp = ts.restartedAtStart(file)
 			persist()
 			lastFlush = time.Now()
 			dirty = false
@@ -957,6 +963,21 @@ read:
 		if line.Err != nil {
 			p.debug().Err(line.Err).Str("file", file).Msg("tail line error")
 			continue
+		}
+		if line.SeekInfo.Offset >= 0 && line.SeekInfo.Offset < lastOffset {
+			// nxadm/tail resets its own offset to 0 on a size shrink without a
+			// reopen event. If we only update lastOffset here, ts.headFP stays
+			// the pre-truncation hash; a later fingerprint poll sees a changed
+			// file and restarts from 0, re-emitting lines already read. Record
+			// the restart state now so the poll compares against this restart.
+			for _, logical := range asm.Flush() {
+				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+			}
+			lastOffset = 0
+			fp = ts.restartedAtStart(file)
+			persist()
+			lastFlush = time.Now()
+			dirty = false
 		}
 		lastOffset = line.SeekInfo.Offset
 		ts.offset.Store(lastOffset)

@@ -10,6 +10,7 @@ import (
 
 const (
 	entityTypeContainer  = "container"
+	labelK8sPodUID       = "io.kubernetes.pod.uid"
 	entityTypeHost       = "host"
 	idKeyContainerID     = "container.id"
 	idKeyHost            = "host.id"
@@ -78,6 +79,14 @@ func (s *dockerEntitySource) update(containers []containerListItem) {
 
 	obs := entity.Observation{}
 	for _, c := range containers {
+		// A container Kubernetes scheduled is described by the cluster
+		// probe, the one source of Kubernetes entities on a node. Emitting
+		// it here too would give one container two producers that disagree
+		// on its attributes. The runtime interface sets this label under
+		// Docker, containerd and CRI-O alike.
+		if c.Labels[labelK8sPodUID] != "" {
+			continue
+		}
 		name := primaryName(c)
 		cID := map[string]any{idKeyContainerID: c.ID}
 		attrs := map[string]any{

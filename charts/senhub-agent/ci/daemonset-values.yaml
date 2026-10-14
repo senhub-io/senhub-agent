@@ -23,6 +23,11 @@ config:
 daemonSet:
   stateHostPath: /var/lib/senhub-agent
 
+podLogs:
+  enabled: true
+  params:
+    exclude_namespaces: [kube-system]
+
 tolerations:
   - key: node-role.kubernetes.io/control-plane
     operator: Exists

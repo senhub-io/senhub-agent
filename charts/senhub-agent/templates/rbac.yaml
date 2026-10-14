@@ -64,3 +64,36 @@ subjects:
     name: {{ include "senhub-agent.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 {{- end }}
+{{- if eq (include "senhub-agent.kubeletStats" .) "true" }}
+{{- /*
+The kubelet_stats probe calls its node's kubelet (/stats/summary) with
+the pod's token; the kubelet authorises it as get on nodes/stats.
+*/ -}}
+{{- $kname := printf "%s-%s-kubelet-stats" .Release.Namespace (include "senhub-agent.fullname" .) | trunc 63 | trimSuffix "-" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $kname }}
+  labels:
+    {{- include "senhub-agent.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes/stats"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $kname }}
+  labels:
+    {{- include "senhub-agent.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $kname }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "senhub-agent.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"senhub-agent.go/internal/agent/services/entity/hostiface"
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
 	"senhub-agent.go/internal/agent/services/entity/hostsvc"
+	"senhub-agent.go/internal/agent/services/entity/macindex"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -65,6 +67,20 @@ type Config struct {
 	DependsOnEnabled      bool
 	DependsOnDebounce     int
 	DependsOnExcludeCIDRs []*net.IPNet
+
+	// NeighborsEnabled gates the ARP/NDP neighbour source. Off by
+	// default: network.neighbor consumers are not deployed everywhere.
+	NeighborsEnabled bool
+
+	// NeighborsResolvesTo lets the neighbour sources link a neighbour to the
+	// interface owning its MAC (resolves_to). Off by default: the consumer
+	// must first accept the relation's basis and confidence attributes.
+	NeighborsResolvesTo bool
+
+	// AggregationEnabled lets the interface sources link a LAG member to its
+	// aggregate (aggregated_into) and describe the membership. Off by
+	// default: the consumer must first register the relation.
+	AggregationEnabled bool
 }
 
 // Service is the lifecycle wrapper around the detector.
@@ -143,6 +159,9 @@ func (s *Service) startLocked(ctx context.Context) error {
 	}
 
 	var warnDegenerate sync.Once
+
+	// warnIgnoredHostID names a SENHUB_HOST_ID the agent could not use, once.
+	var warnIgnoredHostID sync.Once
 	hostFn := func() (entity.HostIdentity, error) {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
@@ -158,6 +177,13 @@ func (s *Service) startLocked(ctx context.Context) error {
 		idSource := ""
 		if common.HostIDFromConfiguration(hi.ID) {
 			idSource = "configuration"
+		} else if v := os.Getenv("SENHUB_HOST_ID"); v != "" {
+			warnIgnoredHostID.Do(func() {
+				s.logger.Error().
+					Str("senhub_host_id", v).
+					Str("host_id", hi.ID).
+					Msg("SENHUB_HOST_ID is set but not used: it must be 32 hexadecimal characters (dashes optional) and not an example or blank value. The host keeps the identity derived from the machine")
+			})
 		}
 		return entity.HostIdentity{
 			ID:                    hi.ID,
@@ -215,6 +241,12 @@ func (s *Service) startLocked(ctx context.Context) error {
 		entity.RegisterSource(hostnet.New(hostIDFn)),
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
 		entity.RegisterSource(hostiface.New(hostIDFn)))
+
+	macindex.SetEnabled(cfg.NeighborsResolvesTo)
+	entity.SetAggregationEnabled(cfg.AggregationEnabled)
+	if cfg.NeighborsEnabled {
+		s.unregisters = append(s.unregisters, entity.RegisterSource(hostnet.NewNeighborSource(hostIDFn)))
+	}
 
 	if cfg.DependsOnEnabled {
 		dep := hostdep.New(hostIDFn, cfg.DependsOnDebounce, cfg.DependsOnExcludeCIDRs)
@@ -296,6 +328,9 @@ func (s *Service) startLocked(ctx context.Context) error {
 	s.logger.Info().
 		Dur("interval", cfg.Interval).
 		Bool("depends_on", cfg.DependsOnEnabled).
+		Bool("neighbors", cfg.NeighborsEnabled).
+		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
+		Bool("aggregation", cfg.AggregationEnabled).
 		Msg("entity detection started")
 	return nil
 }
