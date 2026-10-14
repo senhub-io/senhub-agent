@@ -22,7 +22,9 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -60,6 +62,7 @@ type HTTPCheckProbe struct {
 	check        checkFunc
 	client       *http.Client
 	contentRe    *regexp.Regexp
+	entitySrc    *httpEntitySource
 }
 
 type checkConfig struct {
@@ -98,11 +101,19 @@ func NewHTTPCheckProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		}
 	}
 
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
+	entitySrc := newHTTPCheckEntitySource(hostID)
+
 	probe := &HTTPCheckProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
 		contentRe:    contentRe,
+		entitySrc:    entitySrc,
 		client: &http.Client{
 			Timeout: cfg.Timeout,
 			Transport: &http.Transport{
@@ -118,6 +129,7 @@ func NewHTTPCheckProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		},
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	probe.check = probe.checkOnce
 	return probe, nil
 }
@@ -197,6 +209,7 @@ func (p *HTTPCheckProbe) OnShutdown(ctx context.Context) error {
 // is a measurement (up=0), never a collection error.
 func (p *HTTPCheckProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
+	targetInfos := p.entitySrc.rebuild(p.config.Targets)
 	results := make([]httpResult, len(p.config.Targets))
 
 	sem := make(chan struct{}, maxParallelTargets)
@@ -214,7 +227,11 @@ func (p *HTTPCheckProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 	for _, res := range results {
-		points = append(points, p.buildDatapoints(res, now)...)
+		info := targetInfos[res.target]
+		extraTags := make([]tags.Tag, 0, len(info.id)+1)
+		extraTags = append(extraTags, tags.Tag{Key: "url.full", Value: res.target})
+		extraTags = append(extraTags, info.identityTags()...)
+		points = append(points, p.buildDatapoints(res, now, extraTags)...)
 	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -222,11 +239,16 @@ func (p *HTTPCheckProbe) Collect() ([]data_store.DataPoint, error) {
 // buildDatapoints converts one check outcome into the metric set.
 // Durations are milliseconds on the wire (OTel seconds via the YAML
 // value_scale); TLS expiry is days remaining (negative once expired).
-func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_store.DataPoint {
-	baseTags := []tags.Tag{
+func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time, extraTags []tags.Tag) []data_store.DataPoint {
+	baseTags := append([]tags.Tag{
 		{Key: "target", Value: res.target},
 		{Key: "metric_type", Value: "availability"},
-	}
+	}, extraTags...)
+
+	statusTags := append([]tags.Tag{
+		{Key: "target", Value: res.target},
+		{Key: "metric_type", Value: "status"},
+	}, extraTags...)
 
 	up := float64(0)
 	if res.up {
@@ -240,6 +262,7 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 	}
 
 	points := []data_store.DataPoint{
+		{Name: dbcommon.CheckResultMetric, Value: p.checkResultValue(res), Timestamp: ts, Tags: statusTags},
 		{Name: "senhub.httpcheck.up", Value: up, Timestamp: ts, Tags: baseTags},
 	}
 	if res.statusCode > 0 {
@@ -281,6 +304,19 @@ func (p *HTTPCheckProbe) buildDatapoints(res httpResult, ts time.Time) []data_st
 		)
 	}
 	return points
+}
+
+// checkResultValue classifies one target attempt into the shared probe
+// check-result enum. A response that arrived inspects its status; a transport
+// error uses ClassifyError over the wrapped attempt error.
+func (p *HTTPCheckProbe) checkResultValue(res httpResult) float64 {
+	if res.err != nil {
+		return float64(dbcommon.ClassifyError(res.err))
+	}
+	if res.statusCode > 0 {
+		return float64(dbcommon.ClassifyHTTPStatus(res.statusCode))
+	}
+	return float64(dbcommon.CheckOK)
 }
 
 // checkOnce is the production checkFunc: one traced HTTP request.
