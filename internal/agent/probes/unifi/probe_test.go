@@ -448,7 +448,7 @@ func TestDisconnectedAccessPointReportsNoSatisfaction(t *testing.T) {
 	}
 	p := &unifiProbe{}
 	got := map[string]float64{}
-	for _, dp := range p.buildDevicePoints(env, time.Now()) {
+	for _, dp := range p.buildDevicePoints(env, nil, time.Now()) {
 		for _, tg := range dp.Tags {
 			if tg.Key == "device_name" {
 				got[dp.Name+"/"+tg.Value] = dp.Value

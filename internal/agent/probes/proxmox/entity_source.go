@@ -58,6 +58,24 @@ func (s *proxmoxEntitySource) Observe() (entity.Observation, bool) {
 	return s.current, s.ready
 }
 
+// InstanceID returns the service.instance.id currently emitted by Observe, or
+// "" until the first refresh pins the entity. It reads the same snapshot under
+// the same mutex so telemetry tags can never diverge from the entity rail.
+func (s *proxmoxEntitySource) InstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.ready {
+		return ""
+	}
+	for _, e := range s.current.Entities {
+		if e.Type == "service.instance" {
+			id, _ := e.ID["service.instance.id"].(string)
+			return id
+		}
+	}
+	return ""
+}
+
 // refresh rebuilds the entity snapshot using the resolved stable ID for the
 // PVE management surface. clusterName is the PVE cluster name (empty when
 // standalone or when the cluster/status call failed). Called from Collect
