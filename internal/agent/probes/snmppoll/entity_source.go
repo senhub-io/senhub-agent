@@ -215,10 +215,12 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 	if !singleOK && discEmpty {
 		return entity.Observation{}, false
 	}
-	if singleOK && discEmpty {
-		return single, true
+	obs := single
+	if !(singleOK && discEmpty) {
+		obs = mergeObservations(single, disc)
 	}
-	return mergeObservations(single, disc), true
+	linkPrivateNextHops(&obs)
+	return obs, true
 }
 
 func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
