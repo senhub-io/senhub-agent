@@ -421,19 +421,10 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 			})
 		}
 
-		if interfaceInfo.ipv4 != "" {
-			metricTags = append(metricTags, tags.Tag{
-				Key:     "ip",
-				Value:   interfaceInfo.ipv4,
-				Private: false,
-			})
-		} else if interfaceInfo.ipv6 != "" {
-			metricTags = append(metricTags, tags.Tag{
-				Key:     "ip",
-				Value:   interfaceInfo.ipv6,
-				Private: false,
-			})
-		}
+		// No address label: an address changes on a DHCP renewal or an IPv6
+		// temporary-address rotation, and every change made a new series of
+		// every interface metric. The interface's addresses are facts of the
+		// network.interface entity, joined by network.interface.name.
 
 		// Secondary IPs are intentionally NOT emitted. Earlier versions
 		// produced positional ip_1, ip_2, ... ip_N labels which exploded

@@ -439,7 +439,7 @@ All network metrics include detailed tags for identification and filtering:
 | Tag | Description | Example |
 |-----|-------------|---------|
 | `interface` | Interface identifier | `eth0`, `ens192`, `Intel[R] PRO_1000 MT` |
-| `ip` | Primary IP address | `192.168.1.10`, `2001:db8::1` |
+| `network.interface.name` | Interface name, the key of the `network.interface` entity | `eth0`, `Ethernet` |
 | `host` | System FQDN, lower-cased | `web-01.example.com` |
 | `os` | Operating system | `linux`, `windows`, `darwin` |
 | `platform` | OS distribution / platform | `debian`, `ubuntu` |
@@ -449,23 +449,17 @@ All network metrics include detailed tags for identification and filtering:
 |-----|-------------|---------|
 | `adapter` | Physical adapter name | `Intel(R) PRO/1000 MT Desktop Adapter` |
 | `connection_name` | Connection name | `Ethernet`, `Wi-Fi` |
-| `ip_1`, `ip_2`, ... | Additional IPs | `192.168.1.11`, `10.0.0.5` |
 
-**Unix/Linux/macOS Tags:**
-| Tag | Description | Example |
-|-----|-------------|---------|
-| `ip_1`, `ip_2`, ... | Additional IPs | `192.168.1.11`, `fe80::1` |
+Series carry no address label: an address changes on a DHCP renewal or an
+IPv6 temporary-address rotation, and each change would start new series for
+every interface metric. The interface's addresses are on its
+`network.interface` entity.
 
 ### Example Queries
 
 **Filter by interface:**
 ```promql
 bytes_sent{interface="eth0"}
-```
-
-**Filter by IP address:**
-```promql
-packets_received{ip="192.168.1.10"}
 ```
 
 **Aggregate all interfaces:**
