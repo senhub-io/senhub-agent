@@ -10,6 +10,9 @@ func init() {
 		Summary:       "Ships stdout/stderr pod logs from the current Kubernetes node.",
 		DocsPath:      "docs/user-guide/docs/probes/kubernetes_logs.md",
 		MultiInstance: false,
+		// A rotated pod log is followed by its inode, which Windows does not
+		// expose; Kubernetes pod logs are a Linux node DaemonSet concern.
+		Platforms: []string{"linux"},
 		Params: []probes.ParamSpec{
 			{Key: "root", Kind: probes.KindString, Default: "/var/log/pods", Group: "source", Description: "Root directory containing the pod log directory structure"},
 			{Key: "include_namespaces", Kind: probes.KindStringList, Group: "filter", Description: "Follow only pods in namespaces matching one of these glob patterns"},

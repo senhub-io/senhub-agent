@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -249,6 +250,9 @@ func TestKubernetesLogs_PartialChunksReassembled(t *testing.T) {
 }
 
 func TestKubernetesLogs_RotationPublishesAllLinesInOrder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("rotation is followed by inode, which Windows does not expose; the probe is Linux-only")
+	}
 	t.Setenv("SENHUB_K8S_NODE_NAME", "node-rot")
 	dir := t.TempDir()
 	bmDir := t.TempDir()
