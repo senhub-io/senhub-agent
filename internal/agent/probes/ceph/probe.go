@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -151,6 +152,19 @@ func (p *CephProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// baseTags builds the common tags for every Ceph datapoint so each series
+// carries the entity identity key from the entity source.
+func (p *CephProbe) baseTags(metricType string, extra ...tags.Tag) []tags.Tag {
+	base := []tags.Tag{
+		{Key: "instance", Value: p.cfg.Endpoint},
+		{Key: "metric_type", Value: metricType},
+	}
+	if id := p.entitySrc.CurrentID(); id != "" {
+		base = append(base, tags.Tag{Key: idKeyServiceInstanceID, Value: id})
+	}
+	return append(base, extra...)
+}
+
 // Collect authenticates once per cycle, then fetches health/OSD/monitor/pool
 // data. A connection or auth failure is not a collection error: the probe
 // emits senhub.ceph.up=0 so the outage is observable.
@@ -158,22 +172,30 @@ func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	instance := p.cfg.Endpoint
 
-	baseTags := []tags.Tag{
-		{Key: "instance", Value: instance},
-		{Key: "metric_type", Value: "overview"},
-	}
-
-	// Authenticate — get a fresh token each cycle to avoid expiry edge cases.
-	token, err := p.authenticate()
+	token, statusCode, err := p.authenticate()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", instance).Msg("ceph auth failed")
+		baseTags := p.baseTags("overview")
+
 		up := data_store.DataPoint{
 			Name:      "senhub.ceph.up",
 			Value:     0,
 			Timestamp: now,
 			Tags:      baseTags,
 		}
-		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
+
+		checkValue := float64(dbcommon.ClassifyError(err))
+		if statusCode >= 400 {
+			checkValue = float64(dbcommon.ClassifyHTTPStatus(statusCode))
+		}
+		checkResult := data_store.DataPoint{
+			Name:      dbcommon.CheckResultMetric,
+			Value:     checkValue,
+			Timestamp: now,
+			Tags:      p.baseTags("status"),
+		}
+
+		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up, checkResult}, p.GetName()), nil
 	}
 	p.token = token
 
@@ -181,6 +203,8 @@ func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
 	// so that GET /api/cluster can resolve the cluster fsid). Subsequent calls
 	// are no-ops once the id is pinned.
 	p.entitySrc.pinID()
+
+	baseTags := p.baseTags("overview")
 
 	var points []data_store.DataPoint
 	points = append(points, data_store.DataPoint{
@@ -218,11 +242,18 @@ func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, pp...)
 	}
 
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.CheckOK),
+		Timestamp: now,
+		Tags:      p.baseTags("status"),
+	})
+
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 // authenticate posts credentials to /api/auth and returns the bearer token.
-func (p *CephProbe) authenticate() (string, error) {
+func (p *CephProbe) authenticate() (string, int, error) {
 	body, _ := json.Marshal(map[string]string{
 		"username": p.cfg.Username,
 		"password": p.cfg.Password,
@@ -230,31 +261,31 @@ func (p *CephProbe) authenticate() (string, error) {
 
 	req, err := http.NewRequest(http.MethodPost, p.cfg.Endpoint+"/api/auth", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("building auth request: %w", err)
+		return "", 0, fmt.Errorf("building auth request: %w", err)
 	}
 	req.Header.Set("Content-Type", cephContentType)
 	req.Header.Set("Accept", cephAccept)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("auth request: %w", err)
+		return "", 0, fmt.Errorf("auth request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("auth returned HTTP %d", resp.StatusCode)
+		return "", resp.StatusCode, fmt.Errorf("auth returned HTTP %d", resp.StatusCode)
 	}
 
 	var result struct {
 		Token string `json:"token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decoding auth response: %w", err)
+		return "", resp.StatusCode, fmt.Errorf("decoding auth response: %w", err)
 	}
 	if result.Token == "" {
-		return "", fmt.Errorf("auth response contains no token")
+		return "", resp.StatusCode, fmt.Errorf("auth response contains no token")
 	}
-	return result.Token, nil
+	return result.Token, resp.StatusCode, nil
 }
 
 // apiGet performs an authenticated GET request and returns the body bytes.
@@ -312,10 +343,7 @@ func (p *CephProbe) collectHealth(now time.Time, instance string) ([]data_store.
 		statusVal = 0
 	}
 
-	base := []tags.Tag{
-		{Key: "instance", Value: instance},
-		{Key: "metric_type", Value: "overview"},
-	}
+	base := p.baseTags("overview")
 
 	return []data_store.DataPoint{
 		{Name: "ceph.health.status", Value: statusVal, Timestamp: now, Tags: base},
@@ -353,10 +381,7 @@ func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.Da
 		}
 	}
 
-	base := []tags.Tag{
-		{Key: "instance", Value: instance},
-		{Key: "metric_type", Value: "osd"},
-	}
+	base := p.baseTags("osd")
 	return []data_store.DataPoint{
 		{Name: "ceph.osd.total", Value: float64(total), Timestamp: now, Tags: base},
 		{Name: "ceph.osd.in", Value: float64(inCount), Timestamp: now, Tags: base},
@@ -388,10 +413,7 @@ func (p *CephProbe) collectMonitors(now time.Time, instance string) ([]data_stor
 		return nil, fmt.Errorf("decoding monitor: %w", err)
 	}
 
-	base := []tags.Tag{
-		{Key: "instance", Value: instance},
-		{Key: "metric_type", Value: "monitor"},
-	}
+	base := p.baseTags("monitor")
 	return []data_store.DataPoint{
 		{Name: "ceph.monitor.count", Value: float64(len(mon.MonStatus.MonMap.Mons)), Timestamp: now, Tags: base},
 		{Name: "ceph.monitor.quorum_count", Value: float64(len(mon.InQuorum)), Timestamp: now, Tags: base},
@@ -432,11 +454,7 @@ func (p *CephProbe) collectPools(now time.Time, instance string) ([]data_store.D
 
 	var points []data_store.DataPoint
 	for _, pool := range pools {
-		base := []tags.Tag{
-			{Key: "instance", Value: instance},
-			{Key: "pool", Value: pool.PoolName},
-			{Key: "metric_type", Value: "pool"},
-		}
+		base := p.baseTags("pool", tags.Tag{Key: "pool", Value: pool.PoolName})
 		points = append(points,
 			data_store.DataPoint{Name: "ceph.pool.objects", Value: float64(pool.Stats.Objects.Latest), Timestamp: now, Tags: base},
 			data_store.DataPoint{Name: "ceph.pool.used", Value: float64(pool.Stats.Used.Latest), Timestamp: now, Tags: base},

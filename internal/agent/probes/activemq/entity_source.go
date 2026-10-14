@@ -187,3 +187,11 @@ func (s *activemqEntitySource) Observe() (entity.Observation, bool) {
 
 	return obs, true
 }
+
+// currentID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *activemqEntitySource) currentID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pinnedID
+}

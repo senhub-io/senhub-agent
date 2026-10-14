@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -103,26 +104,45 @@ func (p *VarnishProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// buildTags returns the base tag set for a varnish datapoint: the
+// service.instance.id identity key (same value the entity source emits) plus
+// the supplied metric_type and any extra discriminant tags.
+func (p *VarnishProbe) buildTags(metricType string, extra ...tags.Tag) []tags.Tag {
+	out := make([]tags.Tag, 0, 2+len(extra))
+	out = append(out,
+		tags.Tag{Key: "service.instance.id", Value: p.entitySrc.InstanceID()},
+		tags.Tag{Key: "metric_type", Value: metricType},
+	)
+	out = append(out, extra...)
+	return out
+}
+
 // Collect runs varnishstat and emits datapoints. If varnishstat is not found
 // or returns an error, senhub.varnish.up=0 is emitted and no error is
 // returned to the framework (a broken Varnish instance is a measurement, not
 // a collection fault).
 func (p *VarnishProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	statusTag := tags.Tag{Key: "metric_type", Value: "status"}
 
 	stats, err := p.runVarnishstat()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("varnishstat failed; reporting varnish down")
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
-			{Name: "senhub.varnish.up", Value: float64(0), Timestamp: now, Tags: []tags.Tag{statusTag}},
+			{Name: "senhub.varnish.up", Value: float64(0), Timestamp: now, Tags: p.buildTags("status")},
+			{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(err)), Timestamp: now, Tags: p.buildTags("status")},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
 	p.entitySrc.setReachable(true)
 	points := p.buildDataPoints(stats, now)
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(nil)),
+		Timestamp: now,
+		Tags:      p.buildTags("status"),
+	})
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
@@ -171,15 +191,6 @@ func get(stats map[string]varnishStat, key string) float64 {
 
 // buildDataPoints converts parsed varnishstat data into DataPoints.
 func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Time) []data_store.DataPoint {
-	statusTag := tags.Tag{Key: "metric_type", Value: "status"}
-	cacheTag := tags.Tag{Key: "metric_type", Value: "cache"}
-	requestTag := tags.Tag{Key: "metric_type", Value: "requests"}
-	connectionTag := tags.Tag{Key: "metric_type", Value: "connections"}
-	threadTag := tags.Tag{Key: "metric_type", Value: "threads"}
-	sessionTag := tags.Tag{Key: "metric_type", Value: "sessions"}
-	objectTag := tags.Tag{Key: "metric_type", Value: "objects"}
-	memoryTag := tags.Tag{Key: "metric_type", Value: "memory"}
-
 	var points []data_store.DataPoint
 
 	// Probe up
@@ -187,7 +198,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 		Name:      "senhub.varnish.up",
 		Value:     float64(1),
 		Timestamp: ts,
-		Tags:      []tags.Tag{statusTag},
+		Tags:      p.buildTags("status"),
 	})
 
 	// varnish.cache.operations — collapsed via result tag
@@ -203,7 +214,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 			Name:      "varnish.cache.operations",
 			Value:     float64(get(stats, entry.key)),
 			Timestamp: ts,
-			Tags:      []tags.Tag{cacheTag, {Key: "result", Value: entry.result}},
+			Tags:      p.buildTags("cache", tags.Tag{Key: "result", Value: entry.result}),
 		})
 	}
 
@@ -212,7 +223,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 		Name:      "varnish.client.requests.received",
 		Value:     float64(get(stats, "MAIN.client_req")),
 		Timestamp: ts,
-		Tags:      []tags.Tag{requestTag},
+		Tags:      p.buildTags("requests"),
 	})
 
 	// varnish.backend.connections.*
@@ -228,7 +239,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 			Name:      entry.metric,
 			Value:     float64(get(stats, entry.key)),
 			Timestamp: ts,
-			Tags:      []tags.Tag{connectionTag},
+			Tags:      p.buildTags("connections"),
 		})
 	}
 
@@ -245,7 +256,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 			Name:      "varnish.thread.operations",
 			Value:     float64(get(stats, entry.key)),
 			Timestamp: ts,
-			Tags:      []tags.Tag{threadTag, {Key: "operation", Value: entry.operation}},
+			Tags:      p.buildTags("threads", tags.Tag{Key: "operation", Value: entry.operation}),
 		})
 	}
 
@@ -254,13 +265,13 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 		Name:      "varnish.session.connections",
 		Value:     float64(get(stats, "MAIN.sess_conn")),
 		Timestamp: ts,
-		Tags:      []tags.Tag{sessionTag},
+		Tags:      p.buildTags("sessions"),
 	})
 	points = append(points, data_store.DataPoint{
 		Name:      "varnish.session.dropped",
 		Value:     float64(get(stats, "MAIN.sess_drop")),
 		Timestamp: ts,
-		Tags:      []tags.Tag{sessionTag},
+		Tags:      p.buildTags("sessions"),
 	})
 
 	// varnish.objects.stored (gauge)
@@ -268,7 +279,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 		Name:      "varnish.objects.stored",
 		Value:     float64(get(stats, "MAIN.n_object")),
 		Timestamp: ts,
-		Tags:      []tags.Tag{objectTag},
+		Tags:      p.buildTags("objects"),
 	})
 
 	// varnish.memory.allocated — sum all SMA.*.g_bytes and SMF.*.g_bytes entries
@@ -282,7 +293,7 @@ func (p *VarnishProbe) buildDataPoints(stats map[string]varnishStat, ts time.Tim
 		Name:      "varnish.memory.allocated",
 		Value:     float64(totalMemory),
 		Timestamp: ts,
-		Tags:      []tags.Tag{memoryTag},
+		Tags:      p.buildTags("memory"),
 	})
 
 	return points

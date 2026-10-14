@@ -1,15 +1,3 @@
-// Package chrony implements the free chrony probe: NTP synchronisation
-// health via chronyc tracking. Monitors stratum, time offset, frequency
-// offset, skew, root delay and root dispersion — the core NTP quality
-// indicators that signal drift, mis-configured time sources, or a host
-// that has fallen out of sync.
-//
-// The probe shells out to `chronyc -c tracking` (machine-readable CSV)
-// once per interval and parses the 14 comma-separated fields. If
-// chronyc is not found or returns a non-zero exit, senhub.chrony.up=0
-// is emitted and all other metrics are suppressed for that cycle.
-//
-// NTP state changes slowly; the default interval is 30 s.
 package chrony
 
 import (
@@ -21,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -124,10 +113,9 @@ func (p *ChronyProbe) OnShutdown(_ context.Context) error {
 }
 
 // Collect runs chronyc tracking once and emits the NTP metrics.
-// On subprocess failure senhub.chrony.up=0 is the only point emitted.
+// On subprocess failure senhub.chrony.up=0 is the only measurement emitted.
 func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
-	baseTags := []tags.Tag{{Key: "metric_type", Value: "time_sync"}}
 
 	hostID := ""
 	if hi, err := common.GetHostIdentity(); err == nil {
@@ -136,11 +124,23 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 
 	res := p.run()
 
+	if res.err != nil {
+		p.moduleLogger.Warn().Err(res.err).Msg("chronyc tracking failed")
+		p.entitySrc.setReachable(false, "", hostID)
+	} else {
+		p.entitySrc.setReachable(true, "", hostID)
+	}
+
+	var identityTags []tags.Tag
+	if id := p.entitySrc.ServiceInstanceID(); id != "" {
+		identityTags = append(identityTags, tags.Tag{Key: "service.instance.id", Value: id})
+	}
+	baseTags := append(append([]tags.Tag{}, identityTags...), tags.Tag{Key: "metric_type", Value: "time_sync"})
+	checkResultTags := append(append([]tags.Tag{}, identityTags...), tags.Tag{Key: "metric_type", Value: "status"})
+
 	upValue := float64(1)
 	if res.err != nil {
 		upValue = 0
-		p.moduleLogger.Warn().Err(res.err).Msg("chronyc tracking failed")
-		p.entitySrc.setReachable(false, "", hostID)
 	}
 
 	points := []data_store.DataPoint{
@@ -169,10 +169,16 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 		})
 	}
 
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(res.err)),
+		Timestamp: now,
+		Tags:      checkResultTags,
+	})
+
 	if res.err != nil {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
-	p.entitySrc.setReachable(true, "", hostID)
 
 	points = append(points,
 		data_store.DataPoint{

@@ -24,6 +24,7 @@ import (
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 )
 
 // ProbeType is the canonical type name used in license claims and the
@@ -79,6 +80,17 @@ func (p *SystemdProbe) OnStart(quitChannel chan struct{}) error {
 
 func (p *SystemdProbe) OnShutdown(ctx context.Context) error { return nil }
 
+// checkResultPoint is the probe's one check result: whether it could read
+// D-Bus at all. It hangs on the host, since a unit's own state is already
+// in its series and one result per unit would multiply the series count.
+func checkResultPoint(now time.Time, err error) data_store.DataPoint {
+	var t []tags.Tag
+	if hi, herr := common.GetHostIdentity(); herr == nil && hi.ID != "" {
+		t = append(t, tags.Tag{Key: "host.id", Value: hi.ID})
+	}
+	return buildCheckResultDatapoint(now, err, t)
+}
+
 // Collect opens a D-Bus connection, lists units and emits datapoints.
 // The connection is opened and closed per cycle: this keeps the probe
 // lightweight (no persistent goroutine) and avoids stale connection
@@ -86,13 +98,17 @@ func (p *SystemdProbe) OnShutdown(ctx context.Context) error { return nil }
 func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	conn, err := dbus.NewSystemConnection()
 	if err != nil {
-		return nil, fmt.Errorf("connecting to system D-Bus: %w", err)
+		now := time.Now()
+		points := []data_store.DataPoint{checkResultPoint(now, err)}
+		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), fmt.Errorf("connecting to system D-Bus: %w", err)
 	}
 	defer conn.Close()
 
 	all, err := conn.ListUnits()
 	if err != nil {
-		return nil, fmt.Errorf("listing systemd units: %w", err)
+		now := time.Now()
+		points := []data_store.DataPoint{checkResultPoint(now, err)}
+		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), fmt.Errorf("listing systemd units: %w", err)
 	}
 
 	selected := filterUnits(p.config, all)
@@ -115,6 +131,8 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 	for _, u := range selected {
+		entityID := p.entitySource.ServiceInstanceID(u.Name)
+
 		var nRestarts *float64
 		if unitTypeSuffix(u.Name) == "service" {
 			prop, err := conn.GetUnitTypeProperty(u.Name, "Service", "NRestarts")
@@ -125,9 +143,11 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 				}
 			}
 		}
-		pts := buildDatapoints(u, now, nRestarts)
+
+		pts := buildDatapoints(u, now, nRestarts, entityID)
 		points = append(points, pts...)
 	}
+	points = append(points, checkResultPoint(now, nil))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

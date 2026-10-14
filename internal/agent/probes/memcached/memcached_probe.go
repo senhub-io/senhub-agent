@@ -120,7 +120,9 @@ func (p *MemcachedProbe) Collect() ([]data_store.DataPoint, error) {
 
 	commonTags := []tags.Tag{
 		{Key: "instance", Value: addr},
-		{Key: "db.instance.id", Value: p.entitySrc.InstanceID()},
+	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		commonTags = append(commonTags, tags.Tag{Key: "db.instance.id", Value: id})
 	}
 
 	points := []data_store.DataPoint{

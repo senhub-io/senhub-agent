@@ -79,5 +79,6 @@ series' tags.
 | `phpfpm.processes.idle` | `phpfpm.processes.idle` | PHP-FPM {pool} Idle Processes | # | Number of idle processes waiting for requests |
 | `phpfpm.process.count` | `phpfpm.processes.total` | PHP-FPM {pool} Total Processes | # | Total number of processes (active + idle) |
 | `phpfpm.max_children_reached` | `phpfpm.max_children_reached` | PHP-FPM {pool} Max Children Reached | # | Total number of times the max_children limit was reached since pool start |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

@@ -85,5 +85,6 @@ series' tags.
 | `nats.jetstream.consumers` | `nats.jetstream.consumers` | NATS JetStream Consumers | # | Number of JetStream consumers across all streams |
 | `nats.jetstream.messages` | `nats.jetstream.messages` | NATS JetStream Messages | # | Total number of messages stored in JetStream across all streams |
 | `nats.jetstream.storage` | `nats.jetstream.storage` | NATS JetStream Storage | B | Total bytes stored in JetStream across all streams |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

@@ -83,3 +83,14 @@ func (s *systemdEntitySource) Observe() (entity.Observation, bool) {
 	}
 	return obs, true
 }
+
+// ServiceInstanceID returns the id of the unit's entity, or "" while the host
+// id is unknown and no entity is emitted.
+func (s *systemdEntitySource) ServiceInstanceID(name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hostID == "" {
+		return ""
+	}
+	return fmt.Sprintf("systemd://%s/%s", s.hostID, name)
+}

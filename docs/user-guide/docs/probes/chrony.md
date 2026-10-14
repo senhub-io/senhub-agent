@@ -122,5 +122,6 @@ series' tags.
 | `ntp.root.dispersion` | `ntp.root.dispersion` | NTP Root Dispersion | ms | Maximum clock error due to dispersion between the host and the stratum-1 source |
 | `ntp.stratum` | `ntp.stratum` | NTP Stratum | # | Stratum level of the NTP hierarchy (1 = directly connected to reference, 16 = unsynchronised) |
 | `ntp.leap_status` | `ntp.leap_status` | NTP Leap Status | # | Leap-second status reported by chrony: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

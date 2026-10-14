@@ -86,5 +86,6 @@ series' tags.
 | `kafka.consumer_group.offset` | `kafka.consumer_group.offset` | Kafka {group}/{topic}/{partition} Offset | {item} | Current offset of the consumer group at partition of a Kafka topic |
 | `kafka.consumer_group.lag` | `kafka.consumer_group.lag` | Kafka {group}/{topic}/{partition} Lag | {item} | Current approximate lag of consumer group at partition of a Kafka topic |
 | `kafka.consumer_group.topic.lag` | `kafka.consumer_group.lag_sum` | Kafka {group}/{topic} Lag Sum | {item} | Current approximate sum of consumer group lag across all partitions of a Kafka topic |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

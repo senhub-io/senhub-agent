@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -148,16 +149,14 @@ func (p *cassandraProbe) Collect() ([]data_store.DataPoint, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer cancel()
 
-	up := float64(1)
-	var points []data_store.DataPoint
-
 	collected, version, hostID, err := p.collect(ctx, now)
+
+	up := float64(1)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("cassandra collect failed")
 		up = 0
 		p.entitySrc.update("", p.jolokiaHost, p.jolokiaPort, false, "")
 	} else {
-		points = append(points, collected...)
 		techID := ""
 		if hostID != "" {
 			techID = "cassandra:" + hostID
@@ -165,15 +164,33 @@ func (p *cassandraProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.update(techID, p.jolokiaHost, p.jolokiaPort, true, version)
 	}
 
+	var baseTags []tags.Tag
+	if id := p.entitySrc.InstanceID(); id != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+
+	var points []data_store.DataPoint
+	if err == nil {
+		for i := range collected {
+			collected[i].Tags = append(append([]tags.Tag{}, baseTags...), collected[i].Tags...)
+		}
+		points = append(points, collected...)
+	}
+
 	upPoint := data_store.DataPoint{
 		Name:      "senhub.cassandra.up",
 		Value:     up,
 		Timestamp: now,
-		Tags: []tags.Tag{
-			{Key: "metric_type", Value: "status"},
-		},
+		Tags:      append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "status"}),
 	}
-	points = append([]data_store.DataPoint{upPoint}, points...)
+	checkPoint := data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(err)),
+		Timestamp: now,
+		Tags:      append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "status"}),
+	}
+
+	points = append([]data_store.DataPoint{upPoint, checkPoint}, points...)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
