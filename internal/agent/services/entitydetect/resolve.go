@@ -52,6 +52,7 @@ func Resolve(global *configuration.EntitiesConfig, storage []configuration.Stora
 		}
 		if n := e.Neighbors; n != nil {
 			cfg.NeighborsEnabled = n.Enabled
+			cfg.NeighborsResolvesTo = n.ResolvesTo
 		}
 		return cfg
 	}

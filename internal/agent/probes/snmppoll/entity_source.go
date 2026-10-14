@@ -1,6 +1,10 @@
 package snmppoll
 
 import (
+	"fmt"
+	"net"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -8,6 +12,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/macindex"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/snmpcore"
@@ -28,6 +33,7 @@ const (
 	entityTypeNetworkRoute     = "network.route"
 	entityTypeNetworkInterface = "network.interface"
 	entityTypeNetworkAddress   = "network.address"
+	entityTypeNetworkNeighbor  = "network.neighbor"
 	entityTypeHost             = "host"
 	entityTypeServiceInstance  = "service.instance"
 	idKeyServiceInstanceID     = "service.instance.id"
@@ -36,6 +42,7 @@ const (
 	idKeyRouteDestination      = "route.destination"
 	idKeyInterfaceName         = "network.interface.name"
 	idKeyNetworkAddress        = "network.address"
+	idKeyNeighborMAC           = "mac"
 	attrNextHopIP              = "next_hop.ip"
 	attrRouteMetric            = "metric"
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
@@ -54,6 +61,13 @@ const (
 	relNextHopVia   = "next_hop_via"
 	relMonitors     = "monitors"
 	relRunsOn       = "runs_on"
+	relNeighborOf   = "neighbor_of"
+	relResolvesTo   = "resolves_to"
+	attrBasis       = "basis"
+	attrConfidence  = "confidence"
+
+	resolveConfidenceARPNDP = 0.9
+	resolveConfidenceFDB    = 0.7
 
 	// Retired relation types — pre-ADR-0022 device-to-device edges that carried
 	// their facts as edge attributes Toise's bare relationship descriptor drops.
@@ -138,6 +152,13 @@ type snmpEntitySource struct {
 	// When the SNMP target is the local host (loopback/localhost/empty) it anchors
 	// the polled network.device to this host with a runs_on edge (#310).
 	hostID func() string
+
+	// hostInterfaceMACs returns this host's own interface MAC map; MAC → name.
+	hostInterfaceMACs func() (map[string]string, error)
+
+	// macIndex is the shared interface-MAC index used for resolves_to and
+	// device-side network.neighbor emission. Defaults to the process-wide index.
+	macIndex *macindex.Index
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -145,13 +166,16 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 	if iv <= 0 {
 		iv = defaultTopologyInterval
 	}
+	macindex.Default.SetTTL(3 * iv)
 	return &snmpEntitySource{
-		cfg:          cfg,
-		interval:     iv,
-		moduleLogger: log,
-		registry:     sharedPolledRegistry,
-		now:          time.Now,
-		hostID:       dbcommon.HostID,
+		cfg:               cfg,
+		interval:          iv,
+		moduleLogger:      log,
+		registry:          sharedPolledRegistry,
+		now:               time.Now,
+		hostID:            dbcommon.HostID,
+		hostInterfaceMACs: hostInterfaceMACs,
+		macIndex:          macindex.Default,
 	}
 }
 
@@ -164,6 +188,8 @@ type sweepResult struct {
 	addrs    []ipAddr
 	deviceID string
 	ifNames  map[string]string
+	fdb      []fdbEntry
+	arp      []arpEntry
 }
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
@@ -206,10 +232,18 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	if unresolved > 0 && s.registry != nil && s.registry.warming(now) {
 		return entity.Observation{}, false
 	}
+	obs = s.appendResolvesNeighbors(obs, res)
 	return obs, true
 }
 
 func (s *snmpEntitySource) setDiscoveryObservation(obs entity.Observation) {
+	if idx := s.macIndex; idx != nil && idx.Enabled() {
+		now := time.Now()
+		if s.now != nil {
+			now = s.now()
+		}
+		s.registerObservationInterfaceMacs(obs, now)
+	}
 	s.discMu.Lock()
 	s.discObs = obs
 	s.discMu.Unlock()
@@ -334,6 +368,23 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		}
 	}
 
+	var fdbs []fdbEntry
+	var arps []arpEntry
+	if idx := s.macIndex; idx != nil && idx.Enabled() {
+		fdbs, err = collectFDB(client)
+		if err != nil {
+			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+				Msg("bridge FDB walk failed; emitting device without neighbor resolution")
+			fdbs = nil
+		}
+		arps, err = collectARP(client)
+		if err != nil {
+			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+				Msg("ARP walk failed; emitting device without neighbor resolution")
+			arps = nil
+		}
+	}
+
 	// Register this directly-polled device's chassis MAC under its canonical id;
 	// neighbours are resolved against the shared registry when the observation
 	// is read (build): a neighbour known by the same MAC reconciles to the
@@ -342,8 +393,11 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	if s.registry != nil {
 		s.registry.recordPolled(self, deviceID, now)
 	}
+	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
+		s.registerInterfaceMacs(deviceID, ifaces)
+	}
 	// An unresolved identity means a failed sweep, not an empty network.
-	return sweepResult{self: self, topo: topo, routes: routes, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames}, deviceID != ""
+	return sweepResult{self: self, topo: topo, routes: routes, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps}, deviceID != ""
 }
 
 // appendLocalRunsOn anchors the polled device to the agent's own host with a
@@ -801,6 +855,156 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	return obs
 }
 
+func (s *snmpEntitySource) registerInterfaceMacs(deviceID string, ifaces []ifaceRow) {
+	if s.macIndex == nil || deviceID == "" {
+		return
+	}
+	for _, ifc := range ifaces {
+		if ifc.Mac == "" || ifc.Name == "" {
+			continue
+		}
+		s.macIndex.Register(ifc.Mac, deviceID, ifc.Name)
+	}
+}
+
+func (s *snmpEntitySource) registerObservationInterfaceMacs(obs entity.Observation, now time.Time) {
+	if s.macIndex == nil {
+		return
+	}
+	for _, e := range obs.Entities {
+		if e.Type != entityTypeNetworkInterface {
+			continue
+		}
+		deviceID, _ := e.ID[idKeyNetworkDevice].(string)
+		if deviceID == "" {
+			continue
+		}
+		name, _ := e.ID[idKeyInterfaceName].(string)
+		if name == "" {
+			continue
+		}
+		mac, _ := e.Attributes[attrMac].(string)
+		if mac == "" {
+			continue
+		}
+		s.macIndex.Register(mac, deviceID, name)
+	}
+}
+
+func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
+	if s.macIndex == nil || !s.macIndex.Enabled() || res.deviceID == "" {
+		return obs
+	}
+
+	hostMACs, err := s.hostInterfaceMACs()
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("host interface MAC scan failed; skipping network.neighbor emission")
+		return obs
+	}
+	if len(hostMACs) == 0 {
+		return obs
+	}
+
+	hostID := s.hostID()
+	if hostID == "" {
+		return obs
+	}
+
+	ifName := func(ifIndex int) string {
+		if res.ifNames == nil {
+			return ""
+		}
+		return res.ifNames[strconv.Itoa(ifIndex)]
+	}
+
+	type heard struct {
+		ifName     string
+		hostIface  string
+		basis      string
+		confidence float64
+	}
+	groups := map[string][]heard{}
+	add := func(mac string, ifIndex int, basis string, confidence float64) {
+		canon, ok := entity.CanonicalMACString(mac)
+		if !ok {
+			return
+		}
+		hostIface, ok := hostMACs[canon]
+		if !ok || hostIface == "" {
+			return
+		}
+		port := ifName(ifIndex)
+		if port == "" {
+			return
+		}
+		groups[canon] = append(groups[canon], heard{
+			ifName:     port,
+			hostIface:  hostIface,
+			basis:      basis,
+			confidence: confidence,
+		})
+	}
+
+	for _, e := range res.fdb {
+		add(e.MAC, e.IfIndex, "fdb", resolveConfidenceFDB)
+	}
+	for _, e := range res.arp {
+		add(e.MAC, e.IfIndex, "arp", resolveConfidenceARPNDP)
+	}
+	if len(groups) == 0 {
+		return obs
+	}
+
+	macs := make([]string, 0, len(groups))
+	for mac := range groups {
+		macs = append(macs, mac)
+	}
+	sort.Strings(macs)
+
+	for _, mac := range macs {
+		entries := groups[mac]
+		id := map[string]any{idKeyNetworkDevice: res.deviceID, idKeyNeighborMAC: mac}
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type:  entityTypeNetworkNeighbor,
+			ID:    id,
+			Scope: entity.ScopeSNMPIFMIB,
+		})
+
+		seenNeighborOf := map[string]bool{}
+		seenResolves := map[string]bool{}
+		for _, e := range entries {
+			if !seenNeighborOf[e.ifName] {
+				seenNeighborOf[e.ifName] = true
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relNeighborOf,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     interfacePortKey(res.deviceID, e.ifName),
+				})
+			}
+
+			key := e.basis + "\x00" + e.hostIface
+			if !seenResolves[key] {
+				seenResolves[key] = true
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relResolvesTo,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     map[string]any{idKeyHost: hostID, idKeyInterfaceName: e.hostIface},
+					Attributes: map[string]any{
+						attrBasis:      e.basis,
+						attrConfidence: e.confidence,
+					},
+				})
+			}
+		}
+	}
+	return obs
+}
+
 func deviceEntity(id string, attrs map[string]any, scope string) entity.Entity {
 	return entity.Entity{Type: entityTypeNetworkDevice, ID: deviceKey(id), Attributes: attrs, Scope: scope}
 }
@@ -881,4 +1085,40 @@ func vendorName(pen string) string {
 	default:
 		return ""
 	}
+}
+
+// hostInterfaceMACs returns the host's own non-loopback interface MACs as a
+// MAC → interface-name map. It mirrors the hostiface MAC canonicalisation so
+// case-B device neighbours can resolve to the host interface entity.
+func hostInterfaceMACs() (map[string]string, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("net.Interfaces: %w", err)
+	}
+	out := map[string]string{}
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if len(ifc.HardwareAddr) == 0 || isZeroMAC(ifc.HardwareAddr) {
+			continue
+		}
+		mac := entity.CanonicalMAC(ifc.HardwareAddr)
+		if mac == "" {
+			continue
+		}
+		if _, exists := out[mac]; !exists {
+			out[mac] = ifc.Name
+		}
+	}
+	return out, nil
+}
+
+func isZeroMAC(b []byte) bool {
+	for _, c := range b {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
 }

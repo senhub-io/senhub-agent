@@ -70,7 +70,8 @@ type EntitiesDependsOnConfig struct {
 }
 
 type EntitiesNeighborsConfig struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled    bool `yaml:"enabled"`
+	ResolvesTo bool `yaml:"resolves_to,omitempty"`
 }
 
 // LocalAgentConfig represents agent-specific configuration
