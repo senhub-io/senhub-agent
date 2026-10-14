@@ -169,14 +169,14 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		{Destination: "0.0.0.0/0", NextHop: "10.0.0.254", Type: routeTypeRemote},    // default route
 		{Destination: "10.30.0.0/16", NextHop: "0.0.0.0", Type: routeTypeRemote},    // unspecified next-hop → skip
 		{Destination: "10.40.0.0/16", NextHop: "10.0.0.1", Type: routeTypeRemote},   // == self mgmt → skip
-		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},                 // not remote → skip
+		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},                 // connected → next hop 0.0.0.0
 		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},               // unparseable index → skip
 	}
 	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, resolveDeviceID)
 
-	// self device + 3 routes (10.20.0.0/16 via .254 and via .2, 0.0.0.0/0);
-	// private gateways get no address node
-	if len(obs.Entities) != 4 {
+	// self device + 4 routes (10.20.0.0/16 via .254 and via .2, 0.0.0.0/0,
+	// connected 10.50.0.0/16); private gateways get no address node
+	if len(obs.Entities) != 5 {
 		t.Fatalf("entities = %d (%+v)", len(obs.Entities), obs.Entities)
 	}
 	var routeEnts, hasRoute int
@@ -210,8 +210,8 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 			t.Errorf("has_route should be a bare edge, got attrs %v", r.Attributes)
 		}
 	}
-	if routeEnts != 3 || hasRoute != 3 {
-		t.Fatalf("routeEnts=%d hasRoute=%d, want 3/3", routeEnts, hasRoute)
+	if routeEnts != 4 || hasRoute != 4 {
+		t.Fatalf("routeEnts=%d hasRoute=%d, want 4/4", routeEnts, hasRoute)
 	}
 }
 

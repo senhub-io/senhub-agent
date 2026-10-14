@@ -20,6 +20,7 @@ func init() {
 				{Key: "priv_passphrase", Kind: probes.KindString, Secret: true, Description: "Required with priv_protocol"},
 			}},
 			{Key: "retries", Kind: probes.KindInt, Default: 2, Group: "collection", Description: "Retries per request"},
+			{Key: "max_routes", Kind: probes.KindInt, Default: 500, Group: "collection", Description: "Maximum number of route entities emitted per device"},
 			{Key: "timeout", Kind: probes.KindDuration, Default: "5s", Group: "collection", Description: "Per-request timeout"},
 			{Key: "interval", Kind: probes.KindDuration, Default: "60s", Group: "collection", Description: "Metric polling cadence"},
 			{Key: "topology_interval", Kind: probes.KindDuration, Default: "10m", Group: "collection", Description: "Entity and topology sweep cadence"},

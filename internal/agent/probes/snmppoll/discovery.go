@@ -448,7 +448,13 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 		return resolveDeviceID(n)
 	}
 
+	maxRoutes := p.cfg.MaxRoutes
+	if maxRoutes <= 0 {
+		maxRoutes = defaultMaxRoutes
+	}
+	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
 	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
+	applyRouteCounters(&obs, deviceID, routesOmitted, maxRoutes)
 	applyDiscoveredGovernance(&obs, p.cfg.Discovery.GovernanceRules, self, deviceID)
 	// The gateway and the access switch are usually discovered, not the
 	// polled target: the MAC resolution must cover them too.
