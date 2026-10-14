@@ -61,6 +61,15 @@ func (e *entityObserver) needsPin() bool {
 	return e.pinnedID == ""
 }
 
+// instanceID returns the pinned service.instance.id exactly as Observe would
+// emit it in the entity ID map, or "" when the id has not been pinned yet.
+// Called by the probe to attach the identity key to every datapoint.
+func (e *entityObserver) instanceID() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.pinnedID
+}
+
 // Observe implements entity.Source. Returns ok=false when the id has not been
 // pinned yet (we have not yet learned a stable id to emit) or when the last
 // Collect cycle reported the node as down (the detector reuses its previous

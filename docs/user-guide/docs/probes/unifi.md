@@ -90,5 +90,6 @@ series' tags.
 | `unifi.device.memory` | `unifi.device.memory` | UniFi {device_name} Memory | % | Per-device memory utilization percentage |
 | `unifi.ap.clients` | `unifi.ap.clients` | UniFi AP {device_name} Clients | # | Clients associated to this access point |
 | `unifi.ap.satisfaction` | `unifi.ap.satisfaction` | UniFi AP {device_name} Satisfaction | # | Access point experience score as a 0..1 ratio |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->
