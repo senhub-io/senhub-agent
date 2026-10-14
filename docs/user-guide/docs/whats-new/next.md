@@ -6,6 +6,7 @@
 
 ## Before you upgrade
 
+- **SNMP topology is swept every minute by default.** `topology_interval` of `snmp_poll` (and so the discovery crawl) goes from 10 minutes to 1 minute, so a link going down is on the map within a minute. Polled devices answer a few more SNMP walks per minute; set `topology_interval` back to `10m` on a device that should be queried less often. Devices no longer carry `mgmt.ip`, which depended on the agent polling them; their addresses are `network.address` entities.
 - **Metric series no longer carry the agent version.** `service.version` is left off the metrics resource and the metric scope carries no version, so `service_version` and `otel_scope_version` labels disappear from every series in a Prometheus-like backend. Upgrading to 0.6.4 recreates the series once more; later upgrades no longer do. The version stays on logs, traces and `senhub.agent.build.info`.
 - **`SENHUB_HOST_ID` is now read by the agent binary itself.** Previously only the container entrypoint used it; the agent now honours a valid value directly (lowercase, dashed machine-id). Hosts run outside the official image that set `SENHUB_HOST_ID` will change identity; an invalid value is logged and ignored.
 - **Hosts and SNMP devices now publish full routing tables.** Each route appears as an entity with `route.type`, `route.protocol`, the egress interface and metric, capped at 500 per host or device; `senhub.routes.omitted` reports how many were left out. Topology consumers will receive these new entities and attributes.
