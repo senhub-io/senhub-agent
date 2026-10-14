@@ -144,5 +144,6 @@ series' tags.
 | `senhub.system.passwd.checksum` | `passwd_checksum` | Passwd Checksum | # | CRC32 of the content of /etc/passwd, as a number. It changes whenever the file changes, so a server that alerts on a change of value sees an account added, removed or edited; it is not a cryptographic hash and does not say what changed |
 | `senhub.system.passwd.modified_timestamp` | `passwd_modified_time` | Passwd Modified Time | s | Unix time of the last modification of /etc/passwd |
 | `process.count` | `process.count` | Process {process.name} Count | # | Number of running instances of this process name |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

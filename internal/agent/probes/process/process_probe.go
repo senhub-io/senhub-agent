@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
-	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -61,16 +60,18 @@ func (p *processProbe) OnShutdown(_ context.Context) error { return nil }
 
 func (p *processProbe) Collect() ([]data_store.DataPoint, error) {
 	ts := time.Now()
-	points, snaps, err := collect(ts, p.cfg, p.logger)
+	hostID := getHostID()
+	baseTags, err := buildHostTags(hostID)
 	if err != nil {
-		return nil, fmt.Errorf("process probe: collect: %w", err)
+		return []data_store.DataPoint{newCheckResultPoint(hostIdentityTags(hostID), ts, err)}, fmt.Errorf("process probe: collect: %w", err)
+	}
+
+	points, snaps, err := collectWithBaseTags(ts, p.cfg, p.logger, baseTags)
+	if err != nil {
+		return points, fmt.Errorf("process probe: collect: %w", err)
 	}
 
 	if p.entitySrc != nil {
-		hostID := ""
-		if hi, herr := common.GetHostIdentity(); herr == nil {
-			hostID = hi.ID
-		}
 		ents := make([]procEntity, 0, len(snaps))
 		for _, s := range snaps {
 			// A process with no readable creation time cannot carry the

@@ -64,6 +64,15 @@ type segmentFacts struct {
 
 func newEntitySource() *entitySource { return &entitySource{} }
 
+// clusterServiceInstanceID renders the Swarm cluster id as the consumer's
+// subtype-prefixed service.instance identity.
+func clusterServiceInstanceID(clusterID string) string {
+	if clusterID == "" {
+		return ""
+	}
+	return "swarm://" + clusterID
+}
+
 // update records the cluster identity after a successful manager cycle.
 // Called with an empty clusterID when the node cannot see the cluster, which
 // withdraws the entity rather than freezing the last good snapshot.
@@ -78,6 +87,17 @@ func (s *entitySource) update(clusterID, name string, nodes, services int, segme
 	s.ready = clusterID != ""
 }
 
+// serviceInstanceID returns the cluster service.instance id exactly as Observe
+// would emit it, or "" when the entity is not currently pinned.
+func (s *entitySource) serviceInstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.ready {
+		return ""
+	}
+	return clusterServiceInstanceID(s.clusterID)
+}
+
 // Observe returns the cluster entity and its monitors edge.
 func (s *entitySource) Observe() (entity.Observation, bool) {
 	s.mu.Lock()
@@ -86,7 +106,7 @@ func (s *entitySource) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
-	svcID := map[string]any{"service.instance.id": "swarm://" + s.clusterID}
+	svcID := map[string]any{"service.instance.id": clusterServiceInstanceID(s.clusterID)}
 	attrs := map[string]any{
 		"service.name":        "docker-swarm",
 		"swarm.cluster.id":    s.clusterID,
