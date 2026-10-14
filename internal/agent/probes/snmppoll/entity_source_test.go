@@ -701,3 +701,34 @@ func TestBuildObservation_NoMonitorsWithoutAgentID(t *testing.T) {
 		t.Errorf("relations = %+v, want none without an agent id", obs.Relations)
 	}
 }
+
+// TestBuildObservation_ConnectedToNeedsAnUpPort checks a neighbour still
+// listed in LLDP is not linked once its local port is down, and is linked
+// when the port is up or its status was not read.
+func TestBuildObservation_ConnectedToNeedsAnUpPort(t *testing.T) {
+	self := deviceIdentity{Serial: "FOC1", VendorPEN: "9", SysName: "core-sw"}
+	topo := lldpTopology{Neighbors: []lldpNeighbor{{
+		LocalPortNum: "5", ChassisIdSubtype: subtypeMacAddress,
+		ChassisId:     []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+		PortIdSubtype: portSubtypeIfName, PortId: []byte("Gi0/1"), SysName: "neigh",
+	}}}
+	links := func(status int) int {
+		ifaces := []ifaceRow{{Index: "5", Name: "Gi1/0/5", OperStatus: status}}
+		n := 0
+		for _, r := range buildObservation(self, topo, nil, ifaces, nil, resolveDeviceID).Relations {
+			if r.Type == relConnectedTo {
+				n++
+			}
+		}
+		return n
+	}
+	if got := links(ifOperDown); got != 0 {
+		t.Errorf("down port: %d connected_to, want 0", got)
+	}
+	if got := links(ifOperUp); got != 1 {
+		t.Errorf("up port: %d connected_to, want 1", got)
+	}
+	if got := links(0); got != 1 {
+		t.Errorf("unread status: %d connected_to, want 1", got)
+	}
+}

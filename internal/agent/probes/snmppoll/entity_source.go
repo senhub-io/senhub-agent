@@ -748,6 +748,12 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	// local port matches the network.interface entity emitted above (most gear
 	// numbers lldpLocPortNum as ifIndex, so this hits); fall back to the LLDP
 	// local-port table.
+	ifOperByName := make(map[string]int, len(ifaces))
+	for _, ifc := range ifaces {
+		if ifc.Name != "" && ifc.OperStatus != 0 {
+			ifOperByName[ifc.Name] = ifc.OperStatus
+		}
+	}
 	ifIndexName := make(map[string]string, len(ifaces))
 	for _, ifc := range ifaces {
 		ifIndexName[ifc.Index] = ifc.Name
@@ -774,6 +780,13 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		}
 		remoteIf := namedPortID(n.PortIdSubtype, n.PortId)
 		if localIf == "" || remoteIf == "" {
+			continue
+		}
+		// A device can keep a neighbour in its LLDP table until the entry's
+		// TTL runs out after the link went down; a port that is not up
+		// carries no link, so the adjacency is not asserted. An unread
+		// status keeps the link.
+		if st, ok := ifOperByName[localIf]; ok && st != ifOperUp {
 			continue
 		}
 		obs.Relations = append(obs.Relations, entity.Relation{
