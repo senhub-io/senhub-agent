@@ -52,6 +52,7 @@ type hostRoute struct {
 type Source struct {
 	hostID     func() string
 	readRoutes func() ([]hostRoute, error)
+	forwarding func() (v4, v6 string)
 }
 
 // New builds the host-route source. hostID returns the host's stable id
@@ -60,6 +61,7 @@ func New(hostID func() string) *Source {
 	return &Source{
 		hostID:     hostID,
 		readRoutes: platformRoutes,
+		forwarding: platformForwarding,
 	}
 }
 
@@ -71,7 +73,13 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	return buildObservation(s.hostID(), routes).WithScope(entity.ScopeHostRoute), true
+	hostID := s.hostID()
+	obs := buildObservation(hostID, routes)
+	if s.forwarding != nil {
+		v4, v6 := s.forwarding()
+		obs = withForwarding(obs, hostID, v4, v6)
+	}
+	return obs.WithScope(entity.ScopeHostRoute), true
 }
 
 // buildObservation maps routes to network.route entities owned by the host.
