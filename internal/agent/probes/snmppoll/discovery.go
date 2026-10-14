@@ -332,6 +332,9 @@ func (p *snmppollProbe) retainRecentlySeen(fresh map[string]entity.Observation) 
 	for id, st := range p.discovered {
 		if _, ok := fresh[id]; !ok {
 			st.misses++
+			if p.entitySource != nil && p.entitySource.registry != nil {
+				p.entitySource.registry.recordUnreachable(id, p.discoveryInterval(), time.Now())
+			}
 			if st.misses >= discoveryMissGrace {
 				if p.entitySource != nil {
 					p.entitySource.markUnobserved(st.obs.Entities)
@@ -440,7 +443,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 
 	if p.entitySource != nil && p.entitySource.registry != nil {
 		p.entitySource.registry.recordPolled(self, deviceID, time.Now())
-		p.entitySource.registry.recordPortStates(deviceID, ifaces, time.Now())
+		p.entitySource.registry.recordPortStates(deviceID, ifaces, p.discoveryInterval(), time.Now())
 	}
 
 	resolveNeighbor := func(n deviceIdentity) string {

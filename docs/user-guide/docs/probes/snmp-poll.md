@@ -15,7 +15,17 @@ mappings cover the vendor-specific long tail.
 The probe also reads the LLDP neighbor table of each polled device and
 reports its links. A link is reported when the neighbor advertises a
 named port (LLDP port ID subtype interface name or locally assigned);
-a port known only by its MAC address is not linked.
+a port known only by its MAC address is not linked. A link is not reported
+while either of its ports was last read down: a device keeps a neighbor in
+its LLDP table for a while after the link went down, and a virtual link can
+stay up on one side after the other was shut.
+
+When the far end of a link has not been read recently, the local interface
+carries `senhub.link.peer_state`: `unread` (the far device is not polled),
+`stale` (its last reading is older than three of its sweeps) or
+`unreachable` (it stopped answering). The attribute is absent when both ends
+were read. A device that stops answering is no longer reported after three
+topology intervals; it leaves the map as unmonitored, not as gone.
 
 One probe instance polls one device for its metrics. With a `discovery`
 block it also crawls the network outward from seed devices (by default the
