@@ -487,6 +487,7 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 
 // Start initializes and starts the sync strategy
 func (s *EventSyncStrategy) Start(ctx context.Context) error {
+	agentstate.SeedExportSendFailed("event")
 	if ctx == nil {
 		ctx = context.Background()
 	}

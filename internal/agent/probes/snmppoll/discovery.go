@@ -332,7 +332,13 @@ func (p *snmppollProbe) retainRecentlySeen(fresh map[string]entity.Observation) 
 	for id, st := range p.discovered {
 		if _, ok := fresh[id]; !ok {
 			st.misses++
+			if p.entitySource != nil && p.entitySource.registry != nil {
+				p.entitySource.registry.recordUnreachable(id, p.discoveryInterval(), time.Now())
+			}
 			if st.misses >= discoveryMissGrace {
+				if p.entitySource != nil {
+					p.entitySource.markUnobserved(st.obs.Entities)
+				}
 				delete(p.discovered, id)
 				continue
 			}
@@ -437,6 +443,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 
 	if p.entitySource != nil && p.entitySource.registry != nil {
 		p.entitySource.registry.recordPolled(self, deviceID, time.Now())
+		p.entitySource.registry.recordPortStates(deviceID, ifaces, p.discoveryInterval(), time.Now())
 	}
 
 	resolveNeighbor := func(n deviceIdentity) string {
@@ -448,9 +455,43 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 		return resolveDeviceID(n)
 	}
 
+	maxRoutes := p.cfg.MaxRoutes
+	if maxRoutes <= 0 {
+		maxRoutes = defaultMaxRoutes
+	}
+	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
 	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
+	if p.entitySource != nil {
+		dropLinksToDownPorts(&obs, p.entitySource.registry, time.Now())
+	}
+	applyRouteCounters(&obs, deviceID, routesOmitted, maxRoutes)
+	applyLag(&obs, collectLagData(client, ifaces, p.moduleLogger), ifaces, deviceID)
 	applyDiscoveredGovernance(&obs, p.cfg.Discovery.GovernanceRules, self, deviceID)
+	// The gateway and the access switch are usually discovered, not the
+	// polled target: the MAC resolution must cover them too.
+	if es := p.entitySource; es != nil && es.macIndex != nil && es.macIndex.Enabled() {
+		es.registerInterfaceMacs(deviceID, ifaces)
+		res := sweepResult{deviceID: deviceID, ifNames: ifaceNameMap(ifaces)}
+		if fdbs, err := collectFDB(client); err == nil {
+			res.fdb = fdbs
+		}
+		if arps, err := collectARP(client); err == nil {
+			res.arp = arps
+		}
+		obs = es.appendResolvesNeighbors(obs, res)
+	}
 	return obs
+}
+
+// ifaceNameMap is the ifIndex → ifName map of a set of interface rows.
+func ifaceNameMap(ifaces []ifaceRow) map[string]string {
+	out := make(map[string]string, len(ifaces))
+	for _, ifc := range ifaces {
+		if ifc.Name != "" {
+			out[ifc.Index] = ifc.Name
+		}
+	}
+	return out
 }
 
 func applyDiscoveredGovernance(obs *entity.Observation, rules governance.Rules, self deviceIdentity, selfID string) {

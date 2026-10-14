@@ -1,4 +1,3 @@
-// internal/agent/probes/host/networkProbe_unix.go
 //go:build !windows
 
 package network
@@ -10,6 +9,7 @@ import (
 
 	psnet "github.com/shirou/gopsutil/v3/net"
 	"senhub-agent.go/internal/agent/probes/hostpoll"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -46,6 +46,13 @@ func getValidIPAddresses(addrs []net.Addr) []string {
 }
 
 func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interfaceInfo {
+	if !shouldMonitorInterfaceName(interfaceName, u.includeVirtualInterfaces) {
+		u.logger.Debug().
+			Str("interface", interfaceName).
+			Msg("Virtual/container interface skipped by default")
+		return interfaceInfo{isMonitored: false}
+	}
+
 	iface, err := net.InterfaceByName(interfaceName)
 	if err != nil {
 		return interfaceInfo{
@@ -100,8 +107,10 @@ func (u *unixNetworkCollector) isInterfaceMonitored(interfaceName string) interf
 }
 
 type unixNetworkCollector struct {
-	logger       *logger.Logger
-	lastCounters map[string]counterWithTime
+	logger                   *logger.Logger
+	lastCounters             map[string]counterWithTime
+	includeVirtualInterfaces bool
+	addressLabel             bool
 }
 
 type counterWithTime struct {
@@ -109,10 +118,15 @@ type counterWithTime struct {
 	Timestamp time.Time
 }
 
-func newNetworkCollector(_ map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
+func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
+	includeVirtual, _ := types.BoolParam(config, "include_virtual_interfaces")
+	addressLabel, _ := types.BoolParam(config, "address_label")
+
 	return &unixNetworkCollector{
-		logger:       logger,
-		lastCounters: make(map[string]counterWithTime),
+		logger:                   logger,
+		lastCounters:             make(map[string]counterWithTime),
+		includeVirtualInterfaces: includeVirtual,
+		addressLabel:             addressLabel,
 	}, nil
 }
 
@@ -168,20 +182,11 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			Private: false,
 		})
 
-		// Add the primary IP address as a tag. Earlier versions emitted
-		// every IP via positional ip_1, ip_2, ... ip_N labels — interfaces
-		// with multiple IPv6 addresses produced a cardinality explosion in
-		// Prometheus and an unstable label set order. The primary IP is
-		// enough to identify the interface; secondary IPs (link-local,
-		// IPv6 temporary addresses, etc.) belong in a separate enrichment
-		// channel if ever needed.
-		if len(interfaceInfo.addresses) > 0 {
-			interfaceTags = append(interfaceTags, tags.Tag{
-				Key:     "ip",
-				Value:   interfaceInfo.addresses[0],
-				Private: false,
-			})
-		}
+		// The primary address label is opt-in. An address changes on a DHCP
+		// renewal or an IPv6 temporary-address rotation; keeping it out of the
+		// default series avoids a new series for every interface metric on each
+		// rotation.
+		interfaceTags = appendIPLabel(interfaceTags, u.addressLabel, firstIP(interfaceInfo.addresses))
 
 		// What the link itself says: the speed it negotiated and whether
 		// it is operationally up. Gauges, so they are emitted on every
