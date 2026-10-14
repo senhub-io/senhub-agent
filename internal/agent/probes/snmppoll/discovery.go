@@ -333,6 +333,9 @@ func (p *snmppollProbe) retainRecentlySeen(fresh map[string]entity.Observation) 
 		if _, ok := fresh[id]; !ok {
 			st.misses++
 			if st.misses >= discoveryMissGrace {
+				if p.entitySource != nil {
+					p.entitySource.markUnobserved(st.obs.Entities)
+				}
 				delete(p.discovered, id)
 				continue
 			}

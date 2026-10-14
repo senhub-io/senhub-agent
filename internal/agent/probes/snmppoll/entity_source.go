@@ -125,6 +125,14 @@ type snmpEntitySource struct {
 	// swept marks that at least one sweep succeeded; before that the
 	// empty cache is reported with ok=false.
 	swept bool
+	// failingSince is when sweeps started failing (zero while they succeed).
+	// Past silentAfterSweeps topology intervals the cache stops being
+	// replayed: it would keep asserting links of a device nobody can read.
+	failingSince time.Time
+	// unobserved holds what was dropped for that reason (the polled device's
+	// cache, discovered devices aged out) until the detector collects it.
+	unobserved   []entity.Entity
+	silentMarked bool
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -212,6 +220,11 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 	disc := s.getDiscoveryObservation()
 
 	discEmpty := len(disc.Entities) == 0 && len(disc.Relations) == 0
+	if s.silent() {
+		// The device is reported through Unobserved; an empty single view
+		// now removes it as unmonitored rather than holding it.
+		singleOK = true
+	}
 	if !singleOK && discEmpty {
 		return entity.Observation{}, false
 	}
@@ -227,7 +240,7 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	s.mu.Lock()
 	res, swept := s.cache, s.swept
 	s.mu.Unlock()
-	if !swept {
+	if !swept || s.silent() {
 		return entity.Observation{}, false
 	}
 	now := s.now()
@@ -237,6 +250,53 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	}
 	obs = s.appendResolvesNeighbors(obs, res)
 	return obs, true
+}
+
+// silentAfterSweeps is how many topology intervals of failed sweeps the last
+// good view is replayed for. It absorbs a lost SNMP reply without making the
+// device leave and re-enter the graph; beyond it the replay would assert a
+// topology no one has read.
+const silentAfterSweeps = 3
+
+// silent reports whether the polled device has failed long enough to stop
+// being replayed. The first time it is, its last view is queued as
+// unobserved so the detector removes it as unmonitored.
+func (s *snmpEntitySource) silent() bool {
+	now := s.now()
+	s.mu.Lock()
+	if s.failingSince.IsZero() || now.Sub(s.failingSince) < silentAfterSweeps*s.interval {
+		s.mu.Unlock()
+		return false
+	}
+	first := !s.silentMarked && s.swept
+	s.silentMarked = true
+	res := s.cache
+	s.mu.Unlock()
+	if first {
+		obs, _ := s.build(res, now)
+		s.markUnobserved(obs.Entities)
+	}
+	return true
+}
+
+// markUnobserved queues entities the source stopped reporting because it can
+// no longer read them.
+func (s *snmpEntitySource) markUnobserved(entities []entity.Entity) {
+	if len(entities) == 0 {
+		return
+	}
+	s.mu.Lock()
+	s.unobserved = append(s.unobserved, entities...)
+	s.mu.Unlock()
+}
+
+// Unobserved implements entity.UnobservedSource.
+func (s *snmpEntitySource) Unobserved() []entity.Entity {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.unobserved
+	s.unobserved = nil
+	return out
 }
 
 func (s *snmpEntitySource) setDiscoveryObservation(obs entity.Observation) {
@@ -316,10 +376,17 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		// interval while the consumer's view decays (audit D3).
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).
 			Msg("topology sweep failed; keeping previous snapshot and retrying next cycle")
+		s.mu.Lock()
+		if s.failingSince.IsZero() {
+			s.failingSince = now
+		}
+		s.mu.Unlock()
 		return
 	}
 
 	s.mu.Lock()
+	s.failingSince = time.Time{}
+	s.silentMarked = false
 	s.cache = res
 	s.deviceID = res.deviceID
 	s.ifNames = res.ifNames
@@ -413,8 +480,21 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		s.registerInterfaceMacs(deviceID, ifaces)
 	}
 	lag := collectLagData(client, ifaces, s.moduleLogger)
-	// An unresolved identity means a failed sweep, not an empty network.
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag}, deviceID != ""
+	// An unresolved identity means a failed sweep, not an empty network. So
+	// does a device that answered nothing: the target address alone still
+	// resolves to a mgmt: id, and caching that would replace the real device
+	// with a neighbourless ghost, retracting its links as if they had been
+	// seen to go.
+	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag}, deviceID != "" && answered
+}
+
+// deviceAnswered reports whether any read reached the device, as opposed to
+// an identity built from the polled address alone.
+func deviceAnswered(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr) bool {
+	return self.SysName != "" || self.Serial != "" || self.VendorPEN != "" || len(self.EngineID) > 0 ||
+		len(self.ChassisMAC) > 0 || self.SysDescr != "" ||
+		len(topo.Neighbors) > 0 || len(routes) > 0 || len(ifaces) > 0 || len(addrs) > 0
 }
 
 // appendLocalRunsOn anchors the polled device to the agent's own host with a
