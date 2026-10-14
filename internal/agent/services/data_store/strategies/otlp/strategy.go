@@ -58,6 +58,12 @@ type OTLPSyncStrategy struct {
 	// service.version, deployment.environment, operator extras, plus the
 	// agent-level global_tags) attached to every emitted batch.
 	resource *resource.Resource
+	// metricsResource is resource without service.version. A backend such
+	// as VictoriaMetrics turns resource attributes into labels of every
+	// series, so the build version there made every upgrade recreate every
+	// series and broke each rate() across it. The version stays on logs and
+	// traces, where it creates no series, and on senhub.agent.build.info.
+	metricsResource *resource.Resource
 
 	// globalTagKeys is the set of agent-level global_tag keys. They are
 	// carried on the Resource, so they are stripped from per-metric
@@ -243,17 +249,18 @@ func NewOTLPSyncStrategy(
 	}
 
 	s := &OTLPSyncStrategy{
-		agentConfig:   agentConfig,
-		rawParams:     params,
-		cfg:           cfg,
-		logger:        moduleLogger,
-		store:         store,
-		registry:      transformers.NewTransformerRegistry(baseLogger),
-		resource:      buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
-		globalTagKeys: globalTagKeys,
-		globalTags:    globalTags,
-		memLimiter:    ml,
-		psReporter:    newPartialSuccessReporter(moduleLogger, "export"),
+		agentConfig:     agentConfig,
+		rawParams:       params,
+		cfg:             cfg,
+		logger:          moduleLogger,
+		store:           store,
+		registry:        transformers.NewTransformerRegistry(baseLogger),
+		resource:        buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
+		metricsResource: buildResource(cfg.Resource, "", hostAttrs, globalTags),
+		globalTagKeys:   globalTagKeys,
+		globalTags:      globalTags,
+		memLimiter:      ml,
+		psReporter:      newPartialSuccessReporter(moduleLogger, "export"),
 	}
 
 	if cfg.Persistence.Enabled && cfg.Persistence.Path != "" {
@@ -622,8 +629,8 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 		ctx,
 		s.store,
 		s.registry,
-		s.resource,
-		cliArgs.Version,
+		s.metricsResource,
+		"",
 		s.startTime,
 		now,
 		resolveOpts,

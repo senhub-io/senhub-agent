@@ -495,7 +495,7 @@ group series and logs into entities. Defaults:
 - `service.instance.id` = an RFC 4122 UUID (version 5) derived from the
   agent key: one per agent, stable for as long as the key is, as the
   OpenTelemetry semantic conventions recommend
-- `service.version` = the agent build version (when known)
+- `service.version` = the agent build version (when known), on logs and traces only. Metrics leave it out, and their scope carries no version: a backend such as VictoriaMetrics turns resource and scope attributes into labels of every series, so a version there would recreate every series at each upgrade. The version is on `senhub.agent.build.info`, one series.
 
 Any additional key/value pair under `resource:` is passed through
 verbatim — useful for `k8s.*`, `cloud.*`, `host.*`, or your own
