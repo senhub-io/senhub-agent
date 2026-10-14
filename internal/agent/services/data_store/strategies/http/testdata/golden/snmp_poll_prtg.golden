@@ -1,62 +1,67 @@
 [
   {
+    "channel": "SNMP tinstance Check Result",
+    "value": 53.5,
+    "valuelookup": "senhub.probe.check.result"
+  },
+  {
     "channel": "SNMP tinstance IFtif_index Admin Status",
-    "value": 76.5,
+    "value": 88,
     "float": 1,
     "unit": "Count"
   },
   {
     "channel": "SNMP tinstance IFtif_index In Discards",
-    "value": 42,
-    "float": 1,
-    "unit": "Count"
-  },
-  {
-    "channel": "SNMP tinstance IFtif_index In Errors",
-    "value": 99.5,
-    "float": 1,
-    "unit": "Count"
-  },
-  {
-    "channel": "SNMP tinstance IFtif_index In Octets",
-    "value": 76.5,
-    "float": 1,
-    "unit": "BytesBandwidth"
-  },
-  {
-    "channel": "SNMP tinstance IFtif_index Oper Status",
-    "value": 88,
-    "float": 1,
-    "unit": "Count"
-  },
-  {
-    "channel": "SNMP tinstance IFtif_index Out Discards",
     "value": 53.5,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "SNMP tinstance IFtif_index Out Errors",
+    "channel": "SNMP tinstance IFtif_index In Errors",
     "value": 111,
     "float": 1,
     "unit": "Count"
   },
   {
-    "channel": "SNMP tinstance IFtif_index Out Octets",
+    "channel": "SNMP tinstance IFtif_index In Octets",
     "value": 88,
     "float": 1,
     "unit": "BytesBandwidth"
   },
   {
-    "channel": "SNMP tinstance IFtif_index Speed",
+    "channel": "SNMP tinstance IFtif_index Oper Status",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Out Discards",
     "value": 65,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Out Errors",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Out Octets",
+    "value": 99.5,
+    "float": 1,
+    "unit": "BytesBandwidth"
+  },
+  {
+    "channel": "SNMP tinstance IFtif_index Speed",
+    "value": 76.5,
     "float": 1,
     "unit": "Custom",
     "customunit": "bit/s"
   },
   {
     "channel": "SNMP tinstance Poll Duration",
-    "value": 53.5,
+    "value": 65,
     "float": 1,
     "unit": "TimeSeconds"
   },
@@ -68,7 +73,7 @@
   },
   {
     "channel": "SNMP tinstance Uptime",
-    "value": 65,
+    "value": 76.5,
     "float": 1,
     "unit": "Custom",
     "customunit": "centiseconds"

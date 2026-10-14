@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"context"
 	"fmt"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"strconv"
 	"time"
 
@@ -122,10 +123,12 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 
 	client := p.newClient(p.cfg)
 	up := float64(1)
+	check := dbcommon.CheckOK
 	var points []data_store.DataPoint
 
 	if err := client.Connect(); err != nil {
 		up = 0
+		check = dbcommon.ClassifyError(err)
 		p.moduleLogger.Warn().Err(err).Str("target", p.instance).Msg("SNMP connect failed")
 	} else {
 		defer func() {
@@ -147,6 +150,9 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 			// Connected (UDP always does) but zero responses: the device
 			// is unreachable, filtered, or rejecting our credentials.
 			up = 0
+			// UDP gives no refusal: silence is all a filtered, unreachable
+			// or wrong-community device ever returns.
+			check = dbcommon.CheckTimeout
 			p.moduleLogger.Warn().Str("target", p.instance).Msg("SNMP device answered no request this cycle")
 		}
 	}
@@ -154,6 +160,8 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	end := time.Now()
 	points = append(points,
 		data_store.DataPoint{Name: metricUp, Timestamp: end, Value: up, Tags: statusTags(p.instance)},
+		data_store.DataPoint{Name: dbcommon.CheckResultMetric, Timestamp: end, Value: float64(check),
+			Tags: p.checkResultTags()},
 		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: end.Sub(start).Seconds(), Tags: statusTags(p.instance)},
 	)
 
@@ -169,4 +177,15 @@ func statusTags(instance string) []tags.Tag {
 		{Key: "instance", Value: instance},
 		{Key: "metric_type", Value: "status"},
 	}
+}
+
+// checkResultTags names the device the check is about once it has been
+// resolved, so a reader seeing the device expire from the graph finds why in
+// this series from the first failed poll on.
+func (p *snmppollProbe) checkResultTags() []tags.Tag {
+	t := statusTags(p.instance)
+	if id := p.entitySource.DeviceID(); id != "" {
+		t = append(t, tags.Tag{Key: "network.device.id", Value: id})
+	}
+	return t
 }
