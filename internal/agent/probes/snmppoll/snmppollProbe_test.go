@@ -45,6 +45,9 @@ func TestCollect_Success(t *testing.T) {
 		getResult: []snmpVarBind{
 			{OID: "1.3.6.1.2.1.1.3.0", Value: 54321, IsNumeric: true},
 		},
+		walkRawResult: map[string][]snmpRawBind{
+			oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
+		},
 	}
 	probe := newTestProbe(t, baseRaw(), fc)
 

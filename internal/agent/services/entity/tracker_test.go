@@ -165,3 +165,76 @@ func TestTracker_SuppressesUnchangedHeartbeats(t *testing.T) {
 		t.Fatalf("reappearance must publish immediately, got %+v", got)
 	}
 }
+
+func TestTracker_FixedHeartbeatGrid(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 2*time.Second)
+
+	state := func(attr string, ts time.Time) Event {
+		return Event{Kind: EntityState, Time: ts, Interval: 3 * time.Minute, Entity: &Entity{
+			Type: "db", ID: map[string]any{"db.instance.id": "pg1"},
+			Attributes: map[string]any{"state": attr},
+		}}
+	}
+
+	base := time.Unix(2000, 0).UTC()
+	steps := []struct {
+		at         time.Time
+		attr       string
+		wantState  int
+		wantDelete int
+	}{
+		{base, "a", 1, 0},
+		{base.Add(1 * time.Second), "a", 0, 0},
+		{base.Add(2 * time.Second), "a", 1, 0},
+		{base.Add(3 * time.Second), "b", 1, 0},
+		{base.Add(4 * time.Second), "b", 1, 0},
+	}
+
+	for _, step := range steps {
+		got = nil
+		tr.Reconcile([]Event{state(step.attr, step.at)}, step.at, nil)
+
+		states, deletes := 0, 0
+		for _, ev := range got {
+			switch ev.Kind {
+			case EntityState:
+				states++
+			case EntityDelete:
+				deletes++
+			}
+		}
+		if states != step.wantState || deletes != step.wantDelete {
+			t.Fatalf("at %v published state=%d delete=%d, want state=%d delete=%d (events: %+v)",
+				step.at, states, deletes, step.wantState, step.wantDelete, got)
+		}
+	}
+}
+
+// TestTracker_HeartbeatCadenceSurvivesTickJitter replays a 60 s ticker that
+// fires up to 50 ms early or late for 30 minutes: a stable entity must be
+// re-published every 120 s, never at 180 s.
+func TestTracker_HeartbeatCadenceSurvivesTickJitter(t *testing.T) {
+	var times []time.Time
+	tr := NewTracker(func(ev Event) { times = append(times, ev.Time) }, 2*time.Minute)
+	ev := func(ts time.Time) Event {
+		return Event{Kind: EntityState, Time: ts, Interval: 6 * time.Minute, Entity: &Entity{
+			Type: "network.device", ID: map[string]any{"network.device.id": "serial:9:S1"},
+		}}
+	}
+	base := time.Unix(10000, 0).UTC()
+	jitter := []time.Duration{-50, 30, -20, 50, -45, 10}
+	for i := 0; i <= 30; i++ {
+		ts := base.Add(time.Duration(i)*time.Minute + jitter[i%len(jitter)]*time.Millisecond)
+		tr.Reconcile([]Event{ev(ts)}, ts, nil)
+	}
+	for i := 1; i < len(times); i++ {
+		gap := times[i].Sub(times[i-1])
+		if gap < 119*time.Second || gap > 121*time.Second {
+			t.Fatalf("heartbeat %d came %v after the previous one, want 120 s; times=%v", i, gap, times)
+		}
+	}
+	if len(times) != 16 {
+		t.Errorf("published %d heartbeats over 30 min, want 16", len(times))
+	}
+}

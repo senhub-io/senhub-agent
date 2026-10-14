@@ -34,6 +34,11 @@ const (
 	defaultMaxDevices = 200
 	defaultMaxHops    = 4
 
+	// Route inventory bound: a device with a full Internet table must not be
+	// inventoried route by route. Connected, default, reject and blackhole
+	// routes are always kept; the rest are sorted deterministically and cut.
+	defaultMaxRoutes = 500
+
 	// metricUp is 1 when the last poll reached the device, 0 otherwise.
 	metricUp = "senhub.snmp.up"
 	// metricPollDuration is the wall-clock seconds the poll cycle took.
@@ -79,6 +84,8 @@ type config struct {
 	// TopologyInterval is the (slow) cadence for the entity-rail topology
 	// sweep, independent of the metric Interval. Zero → defaultTopologyInterval.
 	TopologyInterval time.Duration
+	// MaxRoutes bounds the number of network.route entities emitted per device.
+	MaxRoutes int
 
 	// MIBs is the ordered list of built-in MIB selectors to poll
 	// (e.g. "mib-2", "if-mib").
@@ -139,6 +146,7 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		Timeout:   defaultTimeout,
 		Retries:   defaultRetries,
 		Interval:  defaultInterval,
+		MaxRoutes: defaultMaxRoutes,
 	}
 
 	if target, _ := raw["target"].(string); strings.TrimSpace(target) != "" {
@@ -180,6 +188,14 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 			errs = append(errs, "retries must be zero or greater")
 		} else {
 			cfg.Retries = v
+		}
+	}
+
+	if v, ok := types.IntParam(raw, "max_routes"); ok {
+		if v < 1 {
+			errs = append(errs, "max_routes must be at least 1")
+		} else {
+			cfg.MaxRoutes = v
 		}
 	}
 

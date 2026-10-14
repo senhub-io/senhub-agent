@@ -4,6 +4,36 @@
       "probe_name": "cpu",
       "probe_type": "cpu"
     },
+    "metric": "system_clock_max_error",
+    "otel_name": "senhub.system.clock.max_error",
+    "type": "gauge",
+    "unit": "s"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "system_clock_offset",
+    "otel_name": "senhub.system.clock.offset",
+    "type": "gauge",
+    "unit": "s"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
+    "metric": "system_clock_synchronized",
+    "otel_name": "senhub.system.clock.synchronized",
+    "type": "gauge",
+    "unit": "1"
+  },
+  {
+    "attributes": {
+      "probe_name": "cpu",
+      "probe_type": "cpu"
+    },
     "metric": "cpu_context_switches",
     "otel_name": "senhub.system.cpu.context_switches",
     "type": "gauge",

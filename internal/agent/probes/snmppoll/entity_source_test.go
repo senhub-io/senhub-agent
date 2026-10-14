@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -170,14 +171,14 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		{Destination: "0.0.0.0/0", NextHop: "10.0.0.254", Type: routeTypeRemote},    // default route
 		{Destination: "10.30.0.0/16", NextHop: "0.0.0.0", Type: routeTypeRemote},    // unspecified next-hop → skip
 		{Destination: "10.40.0.0/16", NextHop: "10.0.0.1", Type: routeTypeRemote},   // == self mgmt → skip
-		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},                 // not remote → skip
+		{Destination: "10.50.0.0/16", NextHop: "10.0.0.9", Type: 3},                 // connected → next hop 0.0.0.0
 		{Destination: "", NextHop: "10.0.0.7", Type: routeTypeRemote},               // unparseable index → skip
 	}
 	obs := buildObservation(self, lldpTopology{}, routes, nil, nil, resolveDeviceID)
 
-	// self device + 3 routes (10.20.0.0/16 via .254 and via .2, 0.0.0.0/0);
-	// private gateways get no address node
-	if len(obs.Entities) != 4 {
+	// self device + 4 routes (10.20.0.0/16 via .254 and via .2, 0.0.0.0/0,
+	// connected 10.50.0.0/16); private gateways get no address node
+	if len(obs.Entities) != 5 {
 		t.Fatalf("entities = %d (%+v)", len(obs.Entities), obs.Entities)
 	}
 	var routeEnts, hasRoute int
@@ -211,8 +212,8 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 			t.Errorf("has_route should be a bare edge, got attrs %v", r.Attributes)
 		}
 	}
-	if routeEnts != 3 || hasRoute != 3 {
-		t.Fatalf("routeEnts=%d hasRoute=%d, want 3/3", routeEnts, hasRoute)
+	if routeEnts != 4 || hasRoute != 4 {
+		t.Fatalf("routeEnts=%d hasRoute=%d, want 4/4", routeEnts, hasRoute)
 	}
 }
 
@@ -711,5 +712,178 @@ func TestSelfAttrs_SameDeviceTwoObservers(t *testing.T) {
 	a.MgmtIP, b.MgmtIP = "10.10.0.1", "10.20.0.1"
 	if fmt.Sprint(selfAttrs(a)) != fmt.Sprint(selfAttrs(b)) {
 		t.Errorf("two observers disagree: %v vs %v", selfAttrs(a), selfAttrs(b))
+	}
+}
+
+// TestBuildObservation_ConnectedToNeedsAnUpPort checks a neighbour still
+// listed in LLDP is not linked once its local port is down, and is linked
+// when the port is up or its status was not read.
+func TestBuildObservation_ConnectedToNeedsAnUpPort(t *testing.T) {
+	self := deviceIdentity{Serial: "FOC1", VendorPEN: "9", SysName: "core-sw"}
+	topo := lldpTopology{Neighbors: []lldpNeighbor{{
+		LocalPortNum: "5", ChassisIdSubtype: subtypeMacAddress,
+		ChassisId:     []byte{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+		PortIdSubtype: portSubtypeIfName, PortId: []byte("Gi0/1"), SysName: "neigh",
+	}}}
+	links := func(status int) int {
+		ifaces := []ifaceRow{{Index: "5", Name: "Gi1/0/5", OperStatus: status}}
+		n := 0
+		for _, r := range buildObservation(self, topo, nil, ifaces, nil, resolveDeviceID).Relations {
+			if r.Type == relConnectedTo {
+				n++
+			}
+		}
+		return n
+	}
+	if got := links(ifOperDown); got != 0 {
+		t.Errorf("down port: %d connected_to, want 0", got)
+	}
+	if got := links(ifOperUp); got != 1 {
+		t.Errorf("up port: %d connected_to, want 1", got)
+	}
+	if got := links(0); got != 1 {
+		t.Errorf("unread status: %d connected_to, want 1", got)
+	}
+}
+
+// TestMaybeSweep_SilentDeviceStopsBeingReplayed checks a device that stops
+// answering is replayed for silentAfterSweeps topology intervals, then
+// dropped and handed to the detector as unobserved, and comes back on the
+// next good sweep.
+func TestMaybeSweep_SilentDeviceStopsBeingReplayed(t *testing.T) {
+	good := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
+	}}
+	dead := &fakeClient{getErr: errors.New("request timeout"), walkErr: errors.New("request timeout"),
+		walkRawErr: errors.New("request timeout")}
+	const iv = time.Minute
+	cfg := &config{Target: "192.0.2.10", TopologyInterval: iv}
+	s := newEntitySource(cfg, testLogger(t))
+	now := time.Unix(1780272000, 0)
+	s.now = func() time.Time { return now }
+
+	s.maybeSweep(good, now)
+	now = now.Add(iv)
+	s.maybeSweep(dead, now)
+
+	now = now.Add((silentAfterSweeps - 1) * iv)
+	if obs, ok := s.Observe(); !ok || len(obs.Entities) == 0 {
+		t.Fatalf("within the grace the last view must be replayed, got ok=%v %d entities", ok, len(obs.Entities))
+	}
+	if u := s.Unobserved(); len(u) != 0 {
+		t.Fatalf("nothing is unobserved within the grace, got %d", len(u))
+	}
+
+	now = now.Add(iv)
+	obs, ok := s.Observe()
+	if !ok || len(obs.Entities) != 0 {
+		t.Fatalf("past the grace the device must be dropped from an answering view, got ok=%v %+v", ok, obs.Entities)
+	}
+	u := s.Unobserved()
+	if len(u) != 1 || u[0].ID[idKeyNetworkDevice] != "name:sw1" {
+		t.Fatalf("unobserved = %+v, want the silent device", u)
+	}
+	s.Observe()
+	if u := s.Unobserved(); len(u) != 0 {
+		t.Errorf("the device is handed over once, got %d again", len(u))
+	}
+
+	now = now.Add(iv)
+	s.maybeSweep(good, now)
+	if obs, ok := s.Observe(); !ok || len(obs.Entities) != 1 {
+		t.Errorf("a good sweep brings the device back, got ok=%v %d entities", ok, len(obs.Entities))
+	}
+}
+
+// TestRetainRecentlySeen_AgedOutDeviceIsUnobserved checks a discovered device
+// that stopped answering leaves as unobserved, not as a producer removal.
+func TestRetainRecentlySeen_AgedOutDeviceIsUnobserved(t *testing.T) {
+	cfg := &config{Target: "192.0.2.10"}
+	p := &snmppollProbe{cfg: cfg, entitySource: newEntitySource(cfg, testLogger(t))}
+	dev := entity.Observation{Entities: []entity.Entity{{
+		Type: entityTypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "name:sw2"},
+	}}}
+	p.retainRecentlySeen(map[string]entity.Observation{"name:sw2": dev})
+	for i := 0; i < discoveryMissGrace-1; i++ {
+		p.retainRecentlySeen(nil)
+		if u := p.entitySource.Unobserved(); len(u) != 0 {
+			t.Fatalf("miss %d: unobserved too early: %+v", i+1, u)
+		}
+	}
+	p.retainRecentlySeen(nil)
+	u := p.entitySource.Unobserved()
+	if len(u) != 1 || u[0].ID[idKeyNetworkDevice] != "name:sw2" {
+		t.Fatalf("unobserved = %+v, want the aged-out device", u)
+	}
+}
+
+// walkFailing fails one table walk and answers the rest from the fake.
+type walkFailing struct {
+	*fakeClient
+	base string
+}
+
+func (w walkFailing) WalkRaw(base string) ([]snmpRawBind, error) {
+	if base == w.base {
+		return nil, errors.New("request timeout")
+	}
+	return w.fakeClient.WalkRaw(base)
+}
+
+// TestMaybeSweep_PartialSweepUnobservesWhatItCouldNotRead checks interfaces
+// missing because the ifTable walk failed leave as unobserved, not as seen gone.
+func TestMaybeSweep_PartialSweepUnobservesWhatItCouldNotRead(t *testing.T) {
+	fc := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
+		ifName:         {{OID: ifName + ".1", Value: []byte("Gi0/1")}},
+	}}
+	s := newEntitySource(&config{Target: "192.0.2.10", TopologyInterval: time.Minute}, testLogger(t))
+	now := time.Unix(1780272000, 0)
+	s.now = func() time.Time { return now }
+
+	s.maybeSweep(fc, now)
+	hasIface := func(es []entity.Entity) bool {
+		for _, e := range es {
+			if e.Type == entityTypeNetworkInterface {
+				return true
+			}
+		}
+		return false
+	}
+	if obs, _ := s.Observe(); !hasIface(obs.Entities) {
+		t.Fatalf("first sweep should report the interface: %+v", obs.Entities)
+	}
+	s.Unobserved()
+
+	now = now.Add(time.Minute)
+	s.maybeSweep(walkFailing{fakeClient: fc, base: ifName}, now)
+	if obs, ok := s.Observe(); !ok || hasIface(obs.Entities) {
+		t.Fatalf("partial sweep: ok=%v, interface still reported: %+v", ok, obs.Entities)
+	}
+	if u := s.Unobserved(); !hasIface(u) {
+		t.Errorf("the interface the failed walk could not read must be unobserved, got %+v", u)
+	}
+}
+
+// TestObserve_DropsDiscoveredLinkOnceFarEndIsReadDown checks a discovered
+// device's link, built before the far end was read down, is dropped when
+// the merged view is read.
+func TestObserve_DropsDiscoveredLinkOnceFarEndIsReadDown(t *testing.T) {
+	s := newEntitySource(&config{Target: "192.0.2.10"}, testLogger(t))
+	s.registry = newPolledRegistry()
+	s.setDiscoveryObservation(entity.Observation{
+		Entities: []entity.Entity{{Type: entityTypeNetworkInterface, ID: interfacePortKey("sw2", "Ethernet1")}},
+		Relations: []entity.Relation{{
+			Type:     relConnectedTo,
+			FromType: entityTypeNetworkInterface, FromID: interfacePortKey("sw2", "Ethernet1"),
+			ToType: entityTypeNetworkInterface, ToID: interfacePortKey("sw1", "Ethernet2"),
+		}},
+	})
+	if obs, _ := s.Observe(); len(obs.Relations) != 1 {
+		t.Fatalf("before the far end is read: %d relations, want 1", len(obs.Relations))
+	}
+	s.registry.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperDown}}, time.Minute, s.now())
+	if obs, _ := s.Observe(); len(obs.Relations) != 0 {
+		t.Errorf("after the far end is read down: %d relations, want 0", len(obs.Relations))
 	}
 }

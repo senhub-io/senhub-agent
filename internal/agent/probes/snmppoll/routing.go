@@ -17,9 +17,17 @@ const (
 	colRouteNextHop  = "4"
 	colRouteIfIndex  = "5"
 	colRouteType     = "6"
+	colRouteProto    = "7" // ipCidrRouteProto (IANA-IP-ROUTE-PROTOCOL-MIB)
 	colRouteMetric1  = "11"
+)
 
-	routeTypeRemote = 4 // ipCidrRouteType: 4 = remote (indirect — a real next-hop)
+// IP forwarding route type codes.
+const (
+	routeTypeOther     = 1
+	routeTypeReject    = 2
+	routeTypeLocal     = 3
+	routeTypeRemote    = 4
+	routeTypeBlackhole = 5
 )
 
 // Address-family-agnostic routing table — inetCidrRouteTable (RFC 4292),
@@ -37,6 +45,7 @@ const (
 	colInetRouteNextHop = "6"
 	colInetRouteIfIndex = "7"
 	colInetRouteType    = "8"
+	colInetRouteProto   = "9" // inetCidrRouteProto (IANA-IP-ROUTE-PROTOCOL-MIB)
 	colInetRouteMetric1 = "12"
 )
 
@@ -58,6 +67,7 @@ type routeTableSpec struct {
 	nextHop  string
 	ifIndex  string
 	typeCol  string
+	proto    string
 	metric1  string
 	destFrom func(rowKey string) string
 }
@@ -68,6 +78,7 @@ var (
 		nextHop:  colRouteNextHop,
 		ifIndex:  colRouteIfIndex,
 		typeCol:  colRouteType,
+		proto:    colRouteProto,
 		metric1:  colRouteMetric1,
 		destFrom: routeDestFromIndex,
 	}
@@ -76,18 +87,47 @@ var (
 		nextHop:  colInetRouteNextHop,
 		ifIndex:  colInetRouteIfIndex,
 		typeCol:  colInetRouteType,
+		proto:    colInetRouteProto,
 		metric1:  colInetRouteMetric1,
 		destFrom: inetRouteDestFromIndex,
 	}
 )
 
-// routeRow is one decoded ipCidrRouteTable entry (only the fields we use).
+// ianaRouteProtocolNames maps IANA-IP-ROUTE-PROTOCOL-MIB code points to the
+// frozen route.protocol vocabulary. Code 1 is the only "other"; unknown codes
+// intentionally have no entry, so route.protocol is omitted while
+// network.route.protocol.code still carries the raw code.
+var ianaRouteProtocolNames = map[int]string{
+	1:  "other",
+	2:  "local",
+	3:  "netmgmt",
+	4:  "icmp",
+	5:  "egp",
+	6:  "ggp",
+	7:  "hello",
+	8:  "rip",
+	9:  "isis",
+	10: "esis",
+	11: "cisco_igrp",
+	12: "bbn_spf_igp",
+	13: "ospf",
+	14: "bgp",
+	15: "idpr",
+	16: "cisco_eigrp",
+	17: "dvmrp",
+	18: "rpl",
+	19: "dhcp",
+	20: "ttdp",
+}
+
+// routeRow is one decoded routing-table entry (only the fields we use).
 type routeRow struct {
 	Destination string // canonical CIDR from the entry index, "" when unparseable
 	NextHop     string // canonicalized IP, or "" when unusable
 	Type        int
 	IfIndex     string
 	Metric      int
+	Protocol    int // raw IANA-IP-ROUTE-PROTOCOL-MIB code, 0 when unread
 }
 
 // collectRoutes walks both routing tables. A device implementing only one
@@ -143,6 +183,10 @@ func parseRouteTable(spec routeTableSpec, binds []snmpRawBind) []routeRow {
 		case spec.typeCol:
 			if v, ok := snmpcore.AsInt(b.Value); ok {
 				r.Type = v
+			}
+		case spec.proto:
+			if v, ok := snmpcore.AsInt(b.Value); ok {
+				r.Protocol = v
 			}
 		case spec.ifIndex:
 			if v, ok := snmpcore.AsInt(b.Value); ok {

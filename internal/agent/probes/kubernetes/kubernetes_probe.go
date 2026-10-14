@@ -375,6 +375,9 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 // collectNodes lists all nodes and emits per-node metrics.
 func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
 	inv := &p.pendingInventory
+	if p.nodeMachineIDs == nil {
+		p.nodeMachineIDs = map[string]string{}
+	}
 	nodes, err := p.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("listing nodes: %w", err)
@@ -435,12 +438,14 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 
 		points = append(points, nodeConditionPoints(n, now, baseTags)...)
 
-		// The node as a host entity, built from the list already fetched. A
-		// node whose MachineID is unreadable contributes nothing — see
-		// nodeEntity for why no fallback identity is minted.
-		if ent, ok := nodeEntity(n, p.clusterUID); ok {
-			inv.entities = append(inv.entities, ent)
-			p.nodeMachineIDs[nodeName] = ent.ID["host.id"].(string)
+		// The node as its host (machine facts, when the MachineID is
+		// readable) and as a k8s.node (its role in the cluster), joined by
+		// same_as; see nodeInventory. No fallback identity is minted.
+		ents, rels := nodeInventory(n, p.clusterUID)
+		inv.entities = append(inv.entities, ents...)
+		inv.relations = append(inv.relations, rels...)
+		if id := canonicalMachineID(n.Status.NodeInfo.MachineID); id != "" {
+			p.nodeMachineIDs[nodeName] = id
 		} else {
 			delete(p.nodeMachineIDs, nodeName)
 		}
