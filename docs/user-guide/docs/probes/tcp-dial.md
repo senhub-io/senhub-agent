@@ -57,5 +57,6 @@ series' tags.
 |---|---|---|---|---|
 | `senhub.tcpdial.up` | `senhub.tcpdial.up` | TCP {target} Up | # | 1 when the TCP connect completed within the timeout |
 | `senhub.tcpdial.duration` | `senhub.tcpdial.duration` | TCP {target} Connect Time | ms | Time for the TCP three-way handshake to complete |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->
