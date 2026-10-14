@@ -181,6 +181,7 @@ func (s *SyncStrategyPrtg) ValidateConfigParams(params configuration.StorageConf
 }
 
 func (s *SyncStrategyPrtg) Start(ctx context.Context) error {
+	agentstate.SeedExportSendFailed("prtg")
 	if (s.scheduler) != nil {
 		return nil
 	}
