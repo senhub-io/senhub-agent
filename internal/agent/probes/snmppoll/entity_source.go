@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -199,6 +200,9 @@ type sweepResult struct {
 	fdb           []fdbEntry
 	arp           []arpEntry
 	lag           lagData
+	// partial marks a sweep where at least one table walk failed: what is
+	// missing from it was not read, not seen gone.
+	partial bool
 }
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
@@ -385,6 +389,13 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	}
 
 	s.mu.Lock()
+	prev, hadPrev := s.cache, s.swept
+	s.mu.Unlock()
+	if res.partial && hadPrev {
+		s.markUnobserved(droppedEntities(s.buildQuiet(prev, now), s.buildQuiet(res, now)))
+	}
+
+	s.mu.Lock()
 	s.failingSince = time.Time{}
 	s.silentMarked = false
 	s.cache = res
@@ -400,28 +411,33 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 // neighbours). The result carries the resolved device id and the
 // ifIndex→ifName map for the metric collector's correlation tags.
 func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult, bool) {
+	partial := false
 	topo, err := collectLLDP(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("LLDP walk failed; emitting device without neighbours")
+		partial = true
 		topo = lldpTopology{}
 	}
 	routes, err := collectRoutes(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("routing walk failed; emitting device without routes")
+		partial = true
 		routes = nil
 	}
 	ifaces, err := collectInterfaces(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("ifTable walk failed; emitting device without interfaces")
+		partial = true
 		ifaces = nil
 	}
 	addrs, err := collectIPAddrs(client)
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("ipAddrTable walk failed; emitting device without addresses")
+		partial = true
 		addrs = nil
 	}
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
@@ -486,7 +502,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// with a neighbourless ghost, retracting its links as if they had been
 	// seen to go.
 	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag}, deviceID != "" && answered
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
 }
 
 // deviceAnswered reports whether any read reached the device, as opposed to
@@ -1146,4 +1162,40 @@ func vendorName(pen string) string {
 	default:
 		return ""
 	}
+}
+
+func (s *snmpEntitySource) buildQuiet(res sweepResult, now time.Time) entity.Observation {
+	obs, _ := s.build(res, now)
+	return obs
+}
+
+// droppedEntities returns the entities of before that after no longer holds.
+// After a partial sweep these are what the failed walk could not read, so
+// they leave as unmonitored rather than as seen gone.
+func droppedEntities(before, after entity.Observation) []entity.Entity {
+	kept := make(map[string]bool, len(after.Entities))
+	for _, e := range after.Entities {
+		kept[entityIdentity(e)] = true
+	}
+	var out []entity.Entity
+	for _, e := range before.Entities {
+		if !kept[entityIdentity(e)] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func entityIdentity(e entity.Entity) string {
+	keys := make([]string, 0, len(e.ID))
+	for k := range e.ID {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(e.Type)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "|%s=%v", k, e.ID[k])
+	}
+	return b.String()
 }
