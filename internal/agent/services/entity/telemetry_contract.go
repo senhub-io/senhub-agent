@@ -40,6 +40,7 @@ const (
 	TypeNetworkEndpoint  = wire.TypeNetworkEndpoint
 	TypePod              = wire.TypePod
 	TypeNetworkSegment   = wire.TypeNetworkSegment
+	TypeNetworkNeighbor  = wire.TypeNetworkNeighbor
 )
 
 // Relation types, same reasoning. The last three are registered but legacy:
@@ -203,6 +204,12 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		Shipped: true,
 	},
 	TypeNetworkRoute: {
+		Status:  StatusGraphOnly,
+		Shipped: true,
+	},
+	// An ARP/NDP observation: no series of its own, read through the
+	// interface it was seen on.
+	TypeNetworkNeighbor: {
 		Status:  StatusGraphOnly,
 		Shipped: true,
 	},
