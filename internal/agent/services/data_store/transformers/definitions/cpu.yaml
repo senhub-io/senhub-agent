@@ -446,7 +446,58 @@ metrics:
       unit: s
       type: gauge
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Host clock synchronisation state (Linux only). The kernel exposes both
+  # a synchronised bit and error bounds through adjtimex; the source is
+  # detected from the local daemon's runtime footprints and cached for 10
+  # minutes.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: "system_clock_synchronized"
+    channel: "system_clock_synchronized"
+    display_name: "Host Clock Synchronized"
+    unit: "#"
+    category: "system"
+    prtg_skip: false
+    description: "1 when the clock is synchronised (Linux: adjtimex; Windows: the Windows Time service has at least one time source), else 0"
+    otel:
+      name: senhub.system.clock.synchronized
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      clock_source: clock.source
+
+  - name: "system_clock_offset"
+    channel: "system_clock_offset"
+    display_name: "Host Clock Offset"
+    unit: "s"
+    category: "system"
+    prtg_skip: false
+    description: "Estimated error of the host clock in seconds (Linux: adjtimex esterror; Windows: Windows Time Service Computed Time Offset); absent while unsynchronised"
+    otel:
+      name: senhub.system.clock.offset
+      unit: s
+      type: gauge
+    tag_to_attribute:
+      clock_source: clock.source
+
+  - name: "system_clock_max_error"
+    channel: "system_clock_max_error"
+    display_name: "Host Clock Maximum Error"
+    unit: "s"
+    category: "system"
+    prtg_skip: true
+    description: "Maximum error of the host clock in seconds, from adjtimex maxerror; Linux only"
+    otel:
+      name: senhub.system.clock.max_error
+      unit: s
+      type: gauge
+    tag_to_attribute:
+      clock_source: clock.source
+
 tag_metadata:
+  clock_source:
+    type: category
+    label: "Clock Source"
   core:
     type: resource
     label: "CPU Core"

@@ -108,8 +108,13 @@ func TestProcessCPUSecondsIsUsedNotAvailable(t *testing.T) {
 	_ = x
 	time.Sleep(300 * time.Millisecond)
 	after, _ := processCPUSeconds()
+	wall := time.Since(start).Seconds()
 	used := after - before
-	if used < 0.02 || used > 0.6 {
-		t.Errorf("CPU used over a 0.2 s busy loop and a 0.3 s sleep = %.3f s, want about 0.2", used)
+	// The other tests of the package run in parallel in the same process,
+	// so the upper bound cannot be the loop alone. What it guards is the
+	// old estimate, wall time times every CPU of the machine.
+	available := wall * float64(runtime.NumCPU())
+	if used < 0.02 || (runtime.NumCPU() >= 4 && used > available/2) {
+		t.Errorf("CPU used over a 0.2 s busy loop and a 0.3 s sleep = %.3f s, want about 0.2 (available %.1f s)", used, available)
 	}
 }
