@@ -247,6 +247,7 @@ var freeTierProbes = map[string]bool{
 	"linux_logs":       true,
 	"windows_eventlog": true,
 	"filetail":         true,
+	"kubernetes_logs":  true,
 	"dns_latency":      true,
 	"http_check":       true,
 	"icmp_check":       true,

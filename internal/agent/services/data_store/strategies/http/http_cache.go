@@ -223,6 +223,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// warning these probes raised on every push (#724).
 	"filetail":         {"log.file.path"},
 	"linux_logs":       {},
+	"kubernetes_logs":  {},
 	"windows_eventlog": {},
 	"snmp_trap":        {},
 

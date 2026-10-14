@@ -35,6 +35,7 @@ func TestOSSBuildRegistersOnlyPublicProbes(t *testing.T) {
 		"event",
 		"exec",
 		"filetail",
+		"kubernetes_logs",
 		"haproxy",
 		"http_check",
 		"hyperv",

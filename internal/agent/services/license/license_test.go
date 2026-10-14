@@ -93,6 +93,7 @@ func TestGetFreeTierProbes(t *testing.T) {
 		"linux_logs":           false,
 		"windows_eventlog":     false,
 		"filetail":             false,
+		"kubernetes_logs":      false,
 		"snmp_poll":            false,
 		"otlp_receiver":        false,
 		"snmp_trap":            false,
