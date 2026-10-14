@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"sync"
 	"time"
@@ -143,6 +144,9 @@ func (s *Service) startLocked(ctx context.Context) error {
 	}
 
 	var warnDegenerate sync.Once
+
+	// warnIgnoredHostID names a SENHUB_HOST_ID the agent could not use, once.
+	var warnIgnoredHostID sync.Once
 	hostFn := func() (entity.HostIdentity, error) {
 		hi, err := common.GetHostIdentity()
 		if err != nil {
@@ -158,6 +162,13 @@ func (s *Service) startLocked(ctx context.Context) error {
 		idSource := ""
 		if common.HostIDFromConfiguration(hi.ID) {
 			idSource = "configuration"
+		} else if v := os.Getenv("SENHUB_HOST_ID"); v != "" {
+			warnIgnoredHostID.Do(func() {
+				s.logger.Error().
+					Str("senhub_host_id", v).
+					Str("host_id", hi.ID).
+					Msg("SENHUB_HOST_ID is set but not used: it must be 32 hexadecimal characters (dashes optional) and not an example or blank value. The host keeps the identity derived from the machine")
+			})
 		}
 		return entity.HostIdentity{
 			ID:                    hi.ID,
