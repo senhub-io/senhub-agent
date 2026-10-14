@@ -803,3 +803,51 @@ func TestRetainRecentlySeen_AgedOutDeviceIsUnobserved(t *testing.T) {
 		t.Fatalf("unobserved = %+v, want the aged-out device", u)
 	}
 }
+
+// walkFailing fails one table walk and answers the rest from the fake.
+type walkFailing struct {
+	*fakeClient
+	base string
+}
+
+func (w walkFailing) WalkRaw(base string) ([]snmpRawBind, error) {
+	if base == w.base {
+		return nil, errors.New("request timeout")
+	}
+	return w.fakeClient.WalkRaw(base)
+}
+
+// TestMaybeSweep_PartialSweepUnobservesWhatItCouldNotRead checks interfaces
+// missing because the ifTable walk failed leave as unobserved, not as seen gone.
+func TestMaybeSweep_PartialSweepUnobservesWhatItCouldNotRead(t *testing.T) {
+	fc := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
+		ifName:         {{OID: ifName + ".1", Value: []byte("Gi0/1")}},
+	}}
+	s := newEntitySource(&config{Target: "192.0.2.10", TopologyInterval: time.Minute}, testLogger(t))
+	now := time.Unix(1780272000, 0)
+	s.now = func() time.Time { return now }
+
+	s.maybeSweep(fc, now)
+	hasIface := func(es []entity.Entity) bool {
+		for _, e := range es {
+			if e.Type == entityTypeNetworkInterface {
+				return true
+			}
+		}
+		return false
+	}
+	if obs, _ := s.Observe(); !hasIface(obs.Entities) {
+		t.Fatalf("first sweep should report the interface: %+v", obs.Entities)
+	}
+	s.Unobserved()
+
+	now = now.Add(time.Minute)
+	s.maybeSweep(walkFailing{fakeClient: fc, base: ifName}, now)
+	if obs, ok := s.Observe(); !ok || hasIface(obs.Entities) {
+		t.Fatalf("partial sweep: ok=%v, interface still reported: %+v", ok, obs.Entities)
+	}
+	if u := s.Unobserved(); !hasIface(u) {
+		t.Errorf("the interface the failed walk could not read must be unobserved, got %+v", u)
+	}
+}
