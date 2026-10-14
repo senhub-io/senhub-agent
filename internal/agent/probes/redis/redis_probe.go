@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -422,18 +423,31 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 	p.addGauge(&pts, "redis.keyspace.hit.ratio", ratio, ts, "cache")
 
 	// keyspace per-db (lines like db0:keys=N,expires=M,avg_ttl=T)
+	sawDB0 := false
 	for key, val := range info {
-		if !strings.HasPrefix(key, "db") {
+		if !keyspaceDBKey.MatchString(key) {
 			continue
 		}
 		dbIdx, keys, expires, avgTTL, ok := parseKeyspaceLine(key + ":" + val)
 		if !ok {
 			continue
 		}
+		if dbIdx == "0" {
+			sawDB0 = true
+		}
 		dbTag := tags.Tag{Key: "db", Value: dbIdx}
 		p.addGauge(&pts, "redis.db.keys", float64(keys), ts, "keyspace", dbTag)
 		p.addGauge(&pts, "redis.db.expires", float64(expires), ts, "keyspace", dbTag)
 		p.addGauge(&pts, "redis.db.avg_ttl", float64(avgTTL), ts, "keyspace", dbTag)
+	}
+	// Redis omits the line of a database that holds no key, so an emptied
+	// db0 would lose its channels instead of reading 0. A Sentinel has no
+	// keyspace at all.
+	if !sawDB0 && info["redis_mode"] != "sentinel" {
+		dbTag := tags.Tag{Key: "db", Value: "0"}
+		p.addGauge(&pts, "redis.db.keys", 0, ts, "keyspace", dbTag)
+		p.addGauge(&pts, "redis.db.expires", 0, ts, "keyspace", dbTag)
+		p.addGauge(&pts, "redis.db.avg_ttl", 0, ts, "keyspace", dbTag)
 	}
 
 	// replication
@@ -796,13 +810,18 @@ func parseSentinelMasterStats(m map[string]string) (totalSlaves, okSlaves, total
 // parseKeyspaceLine parses a keyspace entry. The INFO map stores the
 // value without the key prefix, so the caller must pass "db0:keys=N,...".
 // Returns (dbIndex, keys, expires, avgTTL, ok).
+// keyspaceDBKey matches a logical database line of INFO keyspace. Redis 8
+// also prints keysizes lines such as db0_distrib_strings_sizes, which are
+// not databases.
+var keyspaceDBKey = regexp.MustCompile(`^db[0-9]+$`)
+
 func parseKeyspaceLine(line string) (dbIdx string, keys int64, expires int64, avgTTL int64, ok bool) {
 	// line = "db0:keys=100,expires=5,avg_ttl=3000"
 	dbPart, rest, cut := strings.Cut(line, ":")
 	if !cut {
 		return "", 0, 0, 0, false
 	}
-	if !strings.HasPrefix(dbPart, "db") {
+	if !keyspaceDBKey.MatchString(dbPart) {
 		return "", 0, 0, 0, false
 	}
 	dbIdx = strings.TrimPrefix(dbPart, "db")
