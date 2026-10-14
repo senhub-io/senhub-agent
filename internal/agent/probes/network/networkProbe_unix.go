@@ -168,20 +168,10 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			Private: false,
 		})
 
-		// Add the primary IP address as a tag. Earlier versions emitted
-		// every IP via positional ip_1, ip_2, ... ip_N labels — interfaces
-		// with multiple IPv6 addresses produced a cardinality explosion in
-		// Prometheus and an unstable label set order. The primary IP is
-		// enough to identify the interface; secondary IPs (link-local,
-		// IPv6 temporary addresses, etc.) belong in a separate enrichment
-		// channel if ever needed.
-		if len(interfaceInfo.addresses) > 0 {
-			interfaceTags = append(interfaceTags, tags.Tag{
-				Key:     "ip",
-				Value:   interfaceInfo.addresses[0],
-				Private: false,
-			})
-		}
+		// No address label: an address changes on a DHCP renewal or an IPv6
+		// temporary-address rotation, and every change made a new series of
+		// every interface metric. The interface's addresses are facts of the
+		// network.interface entity, joined by network.interface.name.
 
 		// What the link itself says: the speed it negotiated and whether
 		// it is operationally up. Gauges, so they are emitted on every
