@@ -166,3 +166,19 @@ func TestUpdate_IgnoresLocalNetworks(t *testing.T) {
 		}
 	}
 }
+
+// TestDockerEntitySource_LeavesKubernetesContainersToTheClusterProbe checks a
+// container scheduled by Kubernetes is not emitted here: the cluster probe is
+// its one producer.
+func TestDockerEntitySource_LeavesKubernetesContainersToTheClusterProbe(t *testing.T) {
+	s := &dockerEntitySource{hostID: func() string { return "host-9" }}
+	s.update([]containerListItem{
+		{ID: "abc123", Names: []string{"/web"}, Image: "nginx:1.27"},
+		{ID: "k8s001", Names: []string{"/k8s_app_pod"}, Image: "app:1",
+			Labels: map[string]string{"io.kubernetes.pod.uid": "7f1c1a2e-0000-4000-8000-000000000001"}},
+	})
+	obs, _ := s.Observe()
+	if len(obs.Entities) != 1 || obs.Entities[0].ID[idKeyContainerID] != "abc123" {
+		t.Fatalf("entities = %+v, want only the plain Docker container", obs.Entities)
+	}
+}
