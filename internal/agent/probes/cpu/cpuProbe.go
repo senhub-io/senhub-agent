@@ -24,12 +24,16 @@ func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 			if err != nil {
 				return nil, err
 			}
-			return withClock{
+			return &withClock{
 				Collector: collector,
 				now:       time.Now,
 				uptime:    host.Uptime,
 				onUptimeError: func(err error) {
 					moduleLogger.Warn().Err(err).Msg("reading the host uptime failed; the uptime point is left out of this cycle")
+				},
+				sync: newClockSync(),
+				onSyncError: func(err error) {
+					moduleLogger.Warn().Err(err).Msg("reading the host clock synchronisation state failed; clock sync points are left out of this cycle")
 				},
 			}, nil
 		},

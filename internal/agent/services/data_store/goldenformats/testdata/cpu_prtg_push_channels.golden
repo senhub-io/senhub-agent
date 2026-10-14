@@ -26,6 +26,9 @@
   "cpu_system",
   "cpu_usage_total",
   "cpu_user",
+  "system_clock_max_error",
+  "system_clock_offset",
+  "system_clock_synchronized",
   "system_time",
   "system_uptime"
 ]
