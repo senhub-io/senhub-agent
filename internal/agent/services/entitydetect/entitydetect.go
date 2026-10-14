@@ -66,6 +66,10 @@ type Config struct {
 	DependsOnEnabled      bool
 	DependsOnDebounce     int
 	DependsOnExcludeCIDRs []*net.IPNet
+
+	// NeighborsEnabled gates the ARP/NDP neighbour source. Off by
+	// default: network.neighbor consumers are not deployed everywhere.
+	NeighborsEnabled bool
 }
 
 // Service is the lifecycle wrapper around the detector.
@@ -227,6 +231,10 @@ func (s *Service) startLocked(ctx context.Context) error {
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
 		entity.RegisterSource(hostiface.New(hostIDFn)))
 
+	if cfg.NeighborsEnabled {
+		s.unregisters = append(s.unregisters, entity.RegisterSource(hostnet.NewNeighborSource(hostIDFn)))
+	}
+
 	if cfg.DependsOnEnabled {
 		dep := hostdep.New(hostIDFn, cfg.DependsOnDebounce, cfg.DependsOnExcludeCIDRs)
 		// Mapping a socket to its owning process reads /proc/<pid>/fd,
@@ -307,6 +315,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 	s.logger.Info().
 		Dur("interval", cfg.Interval).
 		Bool("depends_on", cfg.DependsOnEnabled).
+		Bool("neighbors", cfg.NeighborsEnabled).
 		Msg("entity detection started")
 	return nil
 }

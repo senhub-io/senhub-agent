@@ -55,6 +55,9 @@ type EntitiesConfig struct {
 	// DependsOn maps this host's outbound dependencies. Off by default:
 	// reading which peers a host talks to can be privacy-sensitive.
 	DependsOn *EntitiesDependsOnConfig `yaml:"depends_on,omitempty"`
+	// Neighbors reports this host's ARP/NDP neighbours as network.neighbor
+	// entities. Off by default: a Toise older than the type rejects them.
+	Neighbors *EntitiesNeighborsConfig `yaml:"neighbors,omitempty"`
 }
 
 type EntitiesDependsOnConfig struct {
@@ -64,6 +67,10 @@ type EntitiesDependsOnConfig struct {
 	// dependency and a passing connection.
 	Debounce     int      `yaml:"debounce,omitempty"`
 	ExcludeCIDRs []string `yaml:"exclude_cidrs,omitempty"`
+}
+
+type EntitiesNeighborsConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // LocalAgentConfig represents agent-specific configuration
