@@ -77,6 +77,16 @@ func (s *hypervEntitySource) Observe() (entity.Observation, bool) {
 	return s.cache, s.hasData
 }
 
+// HostID returns the hypervisor machine-id that this entity source places in
+// every host.id identity map, or "" before the host identity is known.
+// Metric tagging must use this accessor so the tag can never diverge from the
+// entity rail, and must omit the key when the value is "".
+func (s *hypervEntitySource) HostID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hostID
+}
+
 // update rebuilds the cached observation from the latest VM list. Called from
 // the probe's Collect path after a successful WMI query.
 func (s *hypervEntitySource) update(vms []vmInfo) {

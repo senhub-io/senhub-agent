@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -287,16 +288,25 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		p.nodeMachineIDs = map[string]string{}
 	}
 	up := float64(0)
+	var checkErr error
 	var points []data_store.DataPoint
-	upTags := []tags.Tag{
+
+	baseTags := []tags.Tag{
 		{Key: "k8s.cluster.name", Value: p.clusterEndpoint},
-		{Key: "metric_type", Value: "availability"},
 	}
+	if clusterID := p.clusterIdentity(); clusterID != "" {
+		baseTags = append(baseTags, tags.Tag{Key: "service.instance.id", Value: clusterID})
+	}
+	upTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "availability"})
+	checkTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "status"})
 
 	if p.cfg.CollectNodes {
 		pts, err := p.collectNodes(ctx, now)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("kubernetes: node collection failed")
+			if checkErr == nil {
+				checkErr = err
+			}
 		} else {
 			up = 1
 		}
@@ -307,6 +317,9 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		pts, err := p.collectPods(ctx, now)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("kubernetes: pod collection failed")
+			if checkErr == nil {
+				checkErr = err
+			}
 		} else {
 			up = 1
 		}
@@ -317,6 +330,9 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		pts, err := p.collectDeployments(ctx, now)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("kubernetes: deployment collection failed")
+			if checkErr == nil {
+				checkErr = err
+			}
 		} else {
 			up = 1
 		}
@@ -348,6 +364,9 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Str("kind", w.name).
 				Msg("kubernetes: workload collection partially failed")
+			if checkErr == nil {
+				checkErr = err
+			}
 		} else if len(pts) > 0 {
 			up = 1
 		}
@@ -360,10 +379,20 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	if p.cfg.CollectEvents {
 		if err := p.collectEvents(ctx, now); err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("kubernetes: event collection partially failed")
+			if checkErr == nil {
+				checkErr = err
+			}
 		}
 	}
 
 	p.entitySrc.setInventory(p.pendingInventory)
+
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(checkErr)),
+		Timestamp: now,
+		Tags:      checkTags,
+	})
 
 	points = append(points, data_store.DataPoint{
 		Name: metricUp, Value: up, Timestamp: now, Tags: upTags,
@@ -391,6 +420,9 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 			{Key: "k8s.node.name", Value: nodeName},
 			{Key: "k8s.cluster.name", Value: p.clusterEndpoint},
 			{Key: "metric_type", Value: "node"},
+		}
+		if uid := k8sNodeUID(n); uid != "" {
+			baseTags = append(baseTags, tags.Tag{Key: "k8s.node.uid", Value: uid})
 		}
 
 		ready := float64(0)
@@ -494,7 +526,7 @@ func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_
 	// a different pod — so the entity is keyed on the UID, and without the UID
 	// here a consumer holding a pod entity has nothing that matches a series.
 	// Name and namespace stay: they are what a human reads.
-	if uid := strings.TrimSpace(string(pod.UID)); uid != "" {
+	if uid := podUID(pod); uid != "" {
 		baseTags = append(baseTags, tags.Tag{Key: "k8s.pod.uid", Value: uid})
 	}
 
@@ -532,6 +564,9 @@ func (p *KubernetesProbe) buildContainerPoints(pod *corev1.Pod, now time.Time) [
 			{Key: "k8s.pod.name", Value: pod.Name},
 			{Key: "k8s.namespace.name", Value: pod.Namespace},
 			{Key: "metric_type", Value: "container"},
+		}
+		if id := normalizeContainerID(cs.ContainerID); id != "" {
+			baseTags = append(baseTags, tags.Tag{Key: "container.id", Value: id})
 		}
 
 		ready := float64(0)

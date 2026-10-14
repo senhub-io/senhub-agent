@@ -81,6 +81,21 @@ metrics:
     tag_to_attribute:
       state: hyperv.vm.state
 
+  - name: "senhub.probe.check.result"
+    platforms: ["windows"]
+    channel: "check_result"
+    display_name: "Check Result"
+    unit: "#"
+    category: "status"
+    description: "Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied"
+    lookup: "senhub.probe.check.result"
+    otel:
+      name: senhub.probe.check.result
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      host.id: host.id
+
 tag_metadata:
   hyperv.vm.name:
     type: resource
@@ -97,3 +112,4 @@ tag_metadata:
   probe_type:
     type: resource
     label: "Probe Type"
+

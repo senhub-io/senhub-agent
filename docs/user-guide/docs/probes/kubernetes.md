@@ -181,5 +181,6 @@ series' tags.
 | `k8s.hpa.desired_replicas` | `k8s.hpa.desired_replicas` | HPA {k8s.hpa.name} Desired Replicas | # | Desired replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts |
 | `k8s.hpa.min_replicas` | `k8s.hpa.min_replicas` | HPA {k8s.hpa.name} Min Replicas | # | Min replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts |
 | `k8s.hpa.max_replicas` | `k8s.hpa.max_replicas` | HPA {k8s.hpa.name} Max Replicas | # | Max replica count. An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own counts |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

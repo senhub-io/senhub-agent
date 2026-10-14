@@ -30,6 +30,7 @@ import (
 
 	"github.com/yusufpapurcu/wmi"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -159,6 +160,10 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Warn().Err(hErr).Msg("host tags unavailable; hyperv metrics omit host.id")
 		hostTags = nil
 	}
+	// Replace any host.id from common host tags with the exact identity value
+	// used by the entity source. If the entity source has no host.id yet, the
+	// key is omitted rather than inventing a fallback.
+	hostTags = withEntityHostID(hostTags, p.entitySource)
 
 	vms, sumByName, err := p.queryWMI()
 
@@ -175,6 +180,12 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 			Timestamp: now,
 			Tags:      withHost(hostTags, tags.Tag{Key: "metric_type", Value: "status"}),
 		},
+		{
+			Name:      dbcommon.CheckResultMetric,
+			Value:     float64(dbcommon.ClassifyError(err)),
+			Timestamp: now,
+			Tags:      withHost(hostTags, tags.Tag{Key: "metric_type", Value: "status"}),
+		},
 	}
 
 	if err == nil {
@@ -188,6 +199,27 @@ func (p *HypervProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// withEntityHostID returns host tags with the entity source's host.id identity
+// key replacing any host.id from common host tags. The value must come from the
+// entity source so the metric tag and the entity ID map can never diverge.
+func withEntityHostID(hostTags []tags.Tag, s *hypervEntitySource) []tags.Tag {
+	if s == nil {
+		return hostTags
+	}
+	hostID := s.HostID()
+	out := make([]tags.Tag, 0, len(hostTags)+1)
+	for _, t := range hostTags {
+		if t.Key == "host.id" {
+			continue
+		}
+		out = append(out, t)
+	}
+	if hostID != "" {
+		out = append(out, tags.Tag{Key: "host.id", Value: hostID})
+	}
+	return out
 }
 
 // withHost returns a fresh tag slice = host tags followed by the extras, so
@@ -286,7 +318,7 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 		// Paired with the host.id that withHost already stamps, this is the
 		// entity's full composite identity, so a consumer holding the entity
 		// can find its series instead of matching on a renameable label.
-		if guid := strings.TrimSpace(vm.Name); guid != "" {
+		if guid := vm.Name; guid != "" {
 			vmTags = append(vmTags, tags.Tag{Key: "vmid", Value: guid})
 		}
 
