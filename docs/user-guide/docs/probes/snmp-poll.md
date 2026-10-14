@@ -42,7 +42,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:c6d235a1e3caab692da04a39b3fa36e85aa4e1e1e6671211823fec3bf09700a7 -->
+<!-- sha256:8e4189d935c497b5a56ad4c89c7500dada00a58579c3ef785a235b693e62282c -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -57,6 +57,7 @@ one series per interface (`if_index` tag).
 | `v3.priv_protocol` | No | - | Privacy protocol; needs auth_protocol. One of `DES`, `AES`, `AES192`, `AES256` |
 | `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `retries` | No | `2` | Retries per request |
+| `max_routes` | No | `500` | Maximum number of route entities emitted per device |
 | `timeout` | No | `5s` | Per-request timeout |
 | `interval` | No | `60s` | Metric polling cadence |
 | `topology_interval` | No | `10m` | Entity and topology sweep cadence |
@@ -221,6 +222,33 @@ The `governance` parameter of this probe and the `governance` block every
 probe entry accepts (see [Governance per probe](../configuration.md#governance-per-probe))
 share one vocabulary. Both stamp the polled device; on a key present in both,
 the probe-level parameter wins, and a matched discovery rule wins over either.
+
+#### Routes
+
+The routing table of the polled device and of every discovered device is
+published as `network.route` entities, read from `ipCidrRouteTable` and
+`inetCidrRouteTable` (IPv4 and IPv6). A route is identified by its device,
+its destination and its next hop, so two next hops to one destination (ECMP,
+or a backup route) are two routes. Each route carries:
+
+| Attribute | Meaning |
+|---|---|
+| `route.type` | `local` (directly connected), `remote` (through a next hop), `reject`, `blackhole` or `other` |
+| `route.protocol` | Where the route comes from, in the IANA vocabulary: `netmgmt` (static), `ospf`, `bgp`, `local`, `rip`, `isis`, `cisco_eigrp`… Absent when the code has no name |
+| `network.route.protocol.code` | The raw protocol code the device gave |
+| `network.interface.name` | The egress interface; absent on `reject` and `blackhole` routes, which end by design |
+| `metric` | The route metric, when the device gives one |
+
+A route without a next hop (`local`, `reject`, `blackhole`) carries `0.0.0.0`
+(`::` in IPv6) as next hop, the encoding the MIB itself uses. A connected
+route is what lets a path reach a destination on the device's own networks.
+
+At most `max_routes` routes are published per device (500 by default).
+Connected, default, reject and blackhole routes are always kept. The device
+entity carries `senhub.routes.limit` and `senhub.routes.omitted`, the number
+of routes it listed and that were not published, so a table cut by the bound
+is never mistaken for a complete one. A device carrying a full Internet table
+is not meant to be inventoried route by route.
 
 #### Governance for discovered devices
 

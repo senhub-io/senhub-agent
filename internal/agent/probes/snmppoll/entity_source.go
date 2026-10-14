@@ -181,15 +181,16 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 
 // sweepResult is what one topology sweep read from the device.
 type sweepResult struct {
-	self     deviceIdentity
-	topo     lldpTopology
-	routes   []routeRow
-	ifaces   []ifaceRow
-	addrs    []ipAddr
-	deviceID string
-	ifNames  map[string]string
-	fdb      []fdbEntry
-	arp      []arpEntry
+	self          deviceIdentity
+	topo          lldpTopology
+	routes        []routeRow
+	routesOmitted int
+	ifaces        []ifaceRow
+	addrs         []ipAddr
+	deviceID      string
+	ifNames       map[string]string
+	fdb           []fdbEntry
+	arp           []arpEntry
 }
 
 // Observe returns the last cached topology snapshot. Non-blocking; safe to
@@ -272,6 +273,11 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		return resolveDeviceID(n)
 	}
 	obs := buildObservation(res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
+	maxRoutes := s.cfg.MaxRoutes
+	if maxRoutes <= 0 {
+		maxRoutes = defaultMaxRoutes
+	}
+	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, maxRoutes)
 	applyGovernance(obs, s.cfg, res.self, res.deviceID)
 	s.appendLocalRunsOn(&obs, res.deviceID)
 	return obs, unresolved
@@ -368,6 +374,20 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		}
 	}
 
+	maxRoutes := s.cfg.MaxRoutes
+	if maxRoutes <= 0 {
+		maxRoutes = defaultMaxRoutes
+	}
+	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
+	if routesOmitted > 0 {
+		s.moduleLogger.Info().
+			Str("target", s.cfg.Target).
+			Int("kept", len(routes)).
+			Int("omitted", routesOmitted).
+			Int("max_routes", maxRoutes).
+			Msg("route table bound: some routes omitted")
+	}
+
 	var fdbs []fdbEntry
 	var arps []arpEntry
 	if idx := s.macIndex; idx != nil && idx.Enabled() {
@@ -397,7 +417,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		s.registerInterfaceMacs(deviceID, ifaces)
 	}
 	// An unresolved identity means a failed sweep, not an empty network.
-	return sweepResult{self: self, topo: topo, routes: routes, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps}, deviceID != ""
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps}, deviceID != ""
 }
 
 // appendLocalRunsOn anchors the polled device to the agent's own host with a
@@ -792,65 +812,10 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 		})
 	}
 
-	// network.route — the polled device's remote routes as entities it owns
-	// (has_route, mirror of has_interface). Identity after IP-FORWARD-MIB
-	// (RFC 4292), which indexes a route on its destination and its next
-	// hop: {device, destination, next hop}, so ECMP (one destination,
-	// several next hops) is several routes rather than the first one.
-	// Only remote routes with a usable next hop are emitted, which keeps
-	// the next hop always present. TOS and policy are not read. This
-	// supersedes the legacy routes_via device-to-device edge.
-	routeSeen := map[string]bool{}
-	for _, r := range routes {
-		if r.Type != routeTypeRemote || r.Destination == "" {
-			continue
-		}
-		if !usableNextHop(r.NextHop, self.MgmtIP) {
-			continue
-		}
-		key := r.Destination + " " + r.NextHop
-		if routeSeen[key] {
-			continue
-		}
-		routeSeen[key] = true
-
-		routeID := map[string]any{idKeyNetworkDevice: selfID, idKeyRouteDestination: r.Destination, attrNextHopIP: r.NextHop}
-		var attrs map[string]any
-		if r.Metric > 0 {
-			attrs = map[string]any{attrRouteMetric: int64(r.Metric)}
-		}
-		obs.Entities = append(obs.Entities, entity.Entity{
-			Type: entityTypeNetworkRoute, ID: routeID, Attributes: attrs, Scope: entity.ScopeSNMPRoute,
-		})
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relHasRoute,
-			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
-			ToType: entityTypeNetworkRoute, ToID: routeID,
-		})
-
-		// The gateway as the same network.address node a host route reaches
-		// via next_hop_via, but only for a globally unique address: a switch
-		// has no interface-class filter, and a private gateway shared by
-		// unrelated switches would merge them. next_hop.ip stays on the
-		// route either way.
-		gw := r.NextHop
-		if c, ok := entity.CanonicalIP(gw); ok {
-			gw = c
-		}
-		if !entity.AddressIsGloballyUnique(gw) {
-			continue
-		}
-		gwID := map[string]any{idKeyNetworkAddress: gw}
-		if !addrSeen[gw] {
-			addrSeen[gw] = true
-			obs.Entities = append(obs.Entities, entity.Entity{Type: entityTypeNetworkAddress, ID: gwID, Scope: entity.ScopeSNMPRoute})
-		}
-		obs.Relations = append(obs.Relations, entity.Relation{
-			Type:     relNextHopVia,
-			FromType: entityTypeNetworkRoute, FromID: routeID,
-			ToType: entityTypeNetworkAddress, ToID: gwID,
-		})
-	}
+	// network.route — the polled device's routes as entities it owns. The
+	// route emission lives in route_entities.go so the type/protocol/egress
+	// and bound counter rules stay with the route vocabulary.
+	appendRouteEntities(&obs, selfID, self, routes, ifaces, addrSeen)
 
 	return obs
 }
