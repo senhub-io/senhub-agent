@@ -6,6 +6,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/exporthook"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -712,6 +713,20 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	for _, r := range exporthook.SelfRecords(time.Now()) {
+		attrs := r.Attributes
+		if attrs == nil {
+			attrs = map[string]string{}
+		}
+		records = append(records, otelmapper.OtelRecord{
+			Name:        r.Name,
+			Unit:        r.Unit,
+			Type:        r.Type,
+			Attributes:  attrs,
+			Value:       r.Value,
+			Description: r.Description,
+		})
+	}
 	return records
 }
 
