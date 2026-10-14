@@ -6,6 +6,7 @@ Nothing released yet since 0.6.3. Changes land here as they are merged.
 
 ## Features
 
+- **Series metering (Enterprise).** `senhub.agent.series.active`, `.created` and `.untracked` count, per output and probe, the series the agent exports over OTLP, the figure a time-series backend bills on. See [Series metering](../otlp.md#series-metering-enterprise).
 - **Ethernet aggregates on the map (opt-in).** LAG / LACP port-channels on switches and bonds or teams on Linux hosts and hypervisors: each member port is linked to its aggregate, with the aggregate's mode and, where it exists, each member's LACP or active-backup state, so a path no longer stops at an aggregate. `entities.aggregation.enabled`, off until the receiving Toise registers the relation.
 - **Hosts say whether they route.** `senhub.host.ip_forwarding.ipv4` and `.ipv6` on the host entity, so a multi-homed server is not drawn as a gateway.
 

@@ -14,6 +14,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/exporthook"
 	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -150,6 +151,7 @@ func NewSensor(
 			Msg("No license configured - free tier: every probe type runs except the paid ones")
 	}
 
+	publishLicense(licenseValidator, validatedLicense)
 	return &sensor{
 		startedProbes:    []*probes.ProbePoller{},
 		failedProbes:     map[string]failedProbe{},
@@ -160,6 +162,17 @@ func NewSensor(
 		licenseValidator: licenseValidator,
 		license:          validatedLicense,
 	}
+}
+
+// publishLicense lets the export-path extensions ask what the licence
+// allows. The closure holds this licence: the export path never waits on
+// the sensor lock, and a new licence replaces it.
+func publishLicense(v license.Validator, lic *license.License) {
+	if v == nil {
+		exporthook.SetAuthorizer(nil)
+		return
+	}
+	exporthook.SetAuthorizer(func(feature string) bool { return v.IsProbeAuthorized(lic, feature) })
 }
 
 func (s *sensor) GetName() string {
@@ -193,6 +206,7 @@ func (s *sensor) SyncConfiguration() error {
 			isExpired := lic.IsExpired && !s.licenseValidator.IsInGracePeriod(lic)
 			if !isExpired {
 				s.license = lic
+				publishLicense(s.licenseValidator, lic)
 				agentstate.ClearLicenseInvalid()
 				s.moduleLogger.Info().
 					Str("tier", string(lic.Tier)).

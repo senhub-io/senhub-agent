@@ -11,6 +11,9 @@ It is designed to run as a node `DaemonSet` with the node's
 primary mode: there is no static target list. Inclusion and exclusion
 globs are available to narrow the set of pods and namespaces.
 
+The probe runs on Linux nodes only: it follows a rotated log file by its
+inode, which Windows does not expose.
+
 ## Quick start
 
 Mount the node pod log directory and provide the agent's identity

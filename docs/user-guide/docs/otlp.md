@@ -856,6 +856,26 @@ under runaway-cardinality conditions. Raise them only when you know
 what's generating the series, otherwise the agent will happily eat
 RAM tracking churning timeseries.
 
+### Series metering (Enterprise)
+
+A time-series backend such as VictoriaMetrics sizes and bills on active
+series: a metric name with one set of point attributes, which received a
+sample within the last hour. The Enterprise edition counts them on the
+agent, as it exports, so you know what a host, a container or a pod
+costs before you size the backend:
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `senhub.agent.series.active` | gauge | `output`, `probe` | Series this output exported within the last hour |
+| `senhub.agent.series.created` | counter | `output`, `probe` | Series exported for the first time since the agent started; a steady climb is churn the backend stores as new series |
+| `senhub.agent.series.untracked` | counter | – | New series not counted because the agent reached its 500,000-series memory bound; above 0, the active counts are a floor |
+
+The agent's own metrics are counted under `probe="__agent__"`. Global
+tags ride on the resource and do not multiply the count. The figures
+describe the exports up to the previous push. Metering needs an
+Enterprise licence; without it the agent counts nothing and emits none
+of these metrics.
+
 ### What time a point carries
 
 Every push re-exports the last value of every stored series, so the time
