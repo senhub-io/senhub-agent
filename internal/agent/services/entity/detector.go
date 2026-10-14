@@ -204,6 +204,9 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	for _, r := range regs {
 		live[r.id] = true
 		o, ok := r.src.Observe()
+		if u, isU := r.src.(UnobservedSource); isU {
+			markUnmonitored(reasons, u.Unobserved())
+		}
 		switch {
 		case ok:
 			d.lastGood[r.id] = cachedObservation{obs: o, at: ts}

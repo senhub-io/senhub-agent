@@ -35,6 +35,16 @@ type Source interface {
 	Observe() (Observation, bool)
 }
 
+// UnobservedSource is a Source that stops reporting part of what it watched
+// because it can no longer look at it (a discovered device that no longer
+// answers), not because it learned it is gone. Unobserved returns, once, the
+// entities it dropped that way since the last call, so their removal reads as
+// unmonitored instead of as the producer having seen them end.
+type UnobservedSource interface {
+	Source
+	Unobserved() []Entity
+}
+
 // registered pairs a Source with the registry id its detector-side caches
 // key on. Ids are never reused, so a re-registered source starts clean.
 type registered struct {

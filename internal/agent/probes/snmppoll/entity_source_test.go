@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -730,5 +731,75 @@ func TestBuildObservation_ConnectedToNeedsAnUpPort(t *testing.T) {
 	}
 	if got := links(0); got != 1 {
 		t.Errorf("unread status: %d connected_to, want 1", got)
+	}
+}
+
+// TestMaybeSweep_SilentDeviceStopsBeingReplayed checks a device that stops
+// answering is replayed for silentAfterSweeps topology intervals, then
+// dropped and handed to the detector as unobserved, and comes back on the
+// next good sweep.
+func TestMaybeSweep_SilentDeviceStopsBeingReplayed(t *testing.T) {
+	good := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
+	}}
+	dead := &fakeClient{getErr: errors.New("request timeout"), walkErr: errors.New("request timeout"),
+		walkRawErr: errors.New("request timeout")}
+	const iv = time.Minute
+	cfg := &config{Target: "192.0.2.10", TopologyInterval: iv}
+	s := newEntitySource(cfg, testLogger(t))
+	now := time.Unix(1780272000, 0)
+	s.now = func() time.Time { return now }
+
+	s.maybeSweep(good, now)
+	now = now.Add(iv)
+	s.maybeSweep(dead, now)
+
+	now = now.Add((silentAfterSweeps - 1) * iv)
+	if obs, ok := s.Observe(); !ok || len(obs.Entities) == 0 {
+		t.Fatalf("within the grace the last view must be replayed, got ok=%v %d entities", ok, len(obs.Entities))
+	}
+	if u := s.Unobserved(); len(u) != 0 {
+		t.Fatalf("nothing is unobserved within the grace, got %d", len(u))
+	}
+
+	now = now.Add(iv)
+	obs, ok := s.Observe()
+	if !ok || len(obs.Entities) != 0 {
+		t.Fatalf("past the grace the device must be dropped from an answering view, got ok=%v %+v", ok, obs.Entities)
+	}
+	u := s.Unobserved()
+	if len(u) != 1 || u[0].ID[idKeyNetworkDevice] != "name:sw1" {
+		t.Fatalf("unobserved = %+v, want the silent device", u)
+	}
+	s.Observe()
+	if u := s.Unobserved(); len(u) != 0 {
+		t.Errorf("the device is handed over once, got %d again", len(u))
+	}
+
+	now = now.Add(iv)
+	s.maybeSweep(good, now)
+	if obs, ok := s.Observe(); !ok || len(obs.Entities) != 1 {
+		t.Errorf("a good sweep brings the device back, got ok=%v %d entities", ok, len(obs.Entities))
+	}
+}
+
+// TestRetainRecentlySeen_AgedOutDeviceIsUnobserved checks a discovered device
+// that stopped answering leaves as unobserved, not as a producer removal.
+func TestRetainRecentlySeen_AgedOutDeviceIsUnobserved(t *testing.T) {
+	p := &snmppollProbe{entitySource: newEntitySource(&config{Target: "192.0.2.10"}, testLogger(t))}
+	dev := entity.Observation{Entities: []entity.Entity{{
+		Type: entityTypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "name:sw2"},
+	}}}
+	p.retainRecentlySeen(map[string]entity.Observation{"name:sw2": dev})
+	for i := 0; i < discoveryMissGrace-1; i++ {
+		p.retainRecentlySeen(nil)
+		if u := p.entitySource.Unobserved(); len(u) != 0 {
+			t.Fatalf("miss %d: unobserved too early: %+v", i+1, u)
+		}
+	}
+	p.retainRecentlySeen(nil)
+	u := p.entitySource.Unobserved()
+	if len(u) != 1 || u[0].ID[idKeyNetworkDevice] != "name:sw2" {
+		t.Fatalf("unobserved = %+v, want the aged-out device", u)
 	}
 }
