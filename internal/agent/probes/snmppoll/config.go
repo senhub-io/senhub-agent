@@ -21,9 +21,11 @@ const (
 	defaultTimeout          = 5 * time.Second
 	defaultRetries          = 2
 	defaultInterval         = 60 * time.Second
-	// defaultTopologyInterval — the entity rail sweeps topology far slower
-	// than metrics (Toise guidance ~5-15 min); see entity_source.go.
-	defaultTopologyInterval = 10 * time.Minute
+	// defaultTopologyInterval is the topology sweep cadence, and so the
+	// resolution at which a link going down is dated: at 10 min a cut port
+	// stayed linked on the map for most of an incident. Unchanged entities
+	// cost the consumer nothing more at this pace, its heartbeats compact.
+	defaultTopologyInterval = time.Minute
 
 	minPort = 1
 	maxPort = 65535

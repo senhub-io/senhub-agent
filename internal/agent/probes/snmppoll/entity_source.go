@@ -1120,7 +1120,10 @@ func interfacePortKey(deviceID, ifName string) map[string]any {
 
 // selfAttrs carries only observer-independent descriptive
 // attributes (ENTITY-DETECTION.md §6b): the same device seen by two agents
-// must not flap on last-writer-wins.
+// must not flap on last-writer-wins. The address this agent polled is not
+// one of them: three agents reaching a router through three of its
+// addresses rewrote it in turn on every report. The device's addresses are
+// published as network.address entities bound to its interfaces.
 func selfAttrs(self deviceIdentity) map[string]any {
 	attrs := map[string]any{}
 	add := func(k, v string) {
@@ -1130,7 +1133,6 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	}
 	add("sys.name", self.SysName)
 	add(attrSysDescr, self.SysDescr)
-	add("mgmt.ip", canonIP(self.MgmtIP))
 	add("device.role", deviceRole(self.Services))
 	add("vendor", vendorName(self.VendorPEN))
 	add(attrHwVendor, self.HwVendor)

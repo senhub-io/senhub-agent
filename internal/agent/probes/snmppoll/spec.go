@@ -23,7 +23,7 @@ func init() {
 			{Key: "max_routes", Kind: probes.KindInt, Default: 500, Group: "collection", Description: "Maximum number of route entities emitted per device"},
 			{Key: "timeout", Kind: probes.KindDuration, Default: "5s", Group: "collection", Description: "Per-request timeout"},
 			{Key: "interval", Kind: probes.KindDuration, Default: "60s", Group: "collection", Description: "Metric polling cadence"},
-			{Key: "topology_interval", Kind: probes.KindDuration, Default: "10m", Group: "collection", Description: "Entity and topology sweep cadence"},
+			{Key: "topology_interval", Kind: probes.KindDuration, Default: "1m", Group: "collection", Description: "Entity and topology sweep cadence"},
 			{Key: "mibs", Kind: probes.KindStringList, Enum: []string{"mib-2", "if-mib"}, Essential: true, Group: "metrics", Description: "Built-in MIB modules to poll; this or custom_mappings is required"},
 			{Key: "mib_paths", Kind: probes.KindStringList, Group: "metrics", Description: "Local MIB files or folders used to name custom mappings"},
 			{Key: "custom_mappings", Kind: probes.KindBlockList, Group: "metrics", Description: "OID to metric mappings", Fields: []probes.ParamSpec{
